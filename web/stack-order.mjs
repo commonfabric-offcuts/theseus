@@ -5,8 +5,9 @@
 // sends. Nothing here touches the page or Core; reply-stacks.mjs draws what
 // these answer and stack-feed.mjs sends the acts.
 //
-// A stack is a message and every loaded reply to it, and to those replies,
-// plus each stack someone joined to it. The message it starts with (its head)
+// A stack is a dossier as the page holds it: a message and every loaded reply
+// to it, and to those replies, plus each stack someone joined to it, by the
+// dossier Core names for each (item 550). The message it starts with (its head)
 // stays at the top; every other message in it reads as a chat does, oldest
 // first, a joined stack's among the rest, as one run. The
 // stacks themselves keep the topic newest on top: each sits where its newest
@@ -44,21 +45,16 @@ function parentOf(item, has) {
   return item.reply_to && has(item.reply_to) ? { id: item.reply_to, joined: null } : null;
 }
 
-// Gathers the loaded messages (items: topic_messages items, has(id): whether
-// a message is on the page; viewer: who reads) into stacks. Each stack: { id:
-// its head's id, head, replies: every other message in reading order, joins:
-// Map of the id of each joined stack's first message to its join ({ into, by,
-// at_ms }), newest: the newest seq in it, lifted: the newest seq that lifts it,
-// any but a reply of the viewer's own (a stack joined to it lifts it however
-// it began), placed: the reader's own place for it or null }.
-export function gather(items, { has = null, viewer = null } = {}) {
+// What each loaded message (items) hangs under on the page: up(id), its parent
+// there (parentOf) or null; has(id): whether a message is on the page, skip(id):
+// one that is but heads nothing and is under nothing. Core refuses a join that
+// would loop; a loop the page still meets (from rows read at different moments)
+// is cut at its newest message.
+function links(items, has, skip) {
   const byId = new Map(items.map(item => [item.id, item]));
-  const on = has ?? (id => byId.has(id));
+  const on = id => (has ? has(id) : byId.has(id)) && !skip(id);
   const parent = new Map(items.map(item => [item.id, parentOf(item, on)]));
   const up = id => { const next = parent.get(id); return next && byId.has(next.id) ? next : null; };
-  // Core refuses a join that would loop; a loop the page still meets (from
-  // rows read at different moments) is cut at its newest message, which then
-  // heads its own stack.
   for (const item of items) {
     const path = [item.id];
     for (let next = up(item.id); next; next = up(path.at(-1))) {
@@ -69,30 +65,121 @@ export function gather(items, { has = null, viewer = null } = {}) {
       break;
     }
   }
-  // The head each message is under.
-  const headOf = new Map();
+  return { byId, up };
+}
+
+// Item 550: the dossier each loaded message is in, as a Map of its id to the
+// id of the dossier's first message. Core's position on a message names it
+// (stack_position.root_id), and the page takes it as Core says: it never works
+// a dossier out from what it has loaded, so loading more of a dossier moves no
+// message into another. A message under another the page holds (it answers
+// it, or was joined to it, by the acts the page shows) is in that one's
+// dossier, as Core places it too, so a join or a split the page shows before
+// Core's positions are read again puts its messages where the act does (item
+// 470). One that hangs under nothing (a dossier's first message), whose own
+// join or split is not yet answered (moving, stack-feed.mjs) or that carries
+// no position (a Core before positions) is its own dossier's first message.
+// has, filled, apart: as gather takes them.
+export function dossiersOf(items, { has = null, filled = new Set(), apart = new Set() } = {}) {
+  return dossiers(items, links(items, has, id => filled.has(id) || apart.has(id)));
+}
+function dossiers(items, { byId, up }) {
+  const found = new Map();
+  const of = (id, seen) => {
+    if (found.has(id)) return found.get(id);
+    if (seen.has(id)) return id;
+    seen.add(id);
+    const item = byId.get(id), parent = up(id), root = item.stack_position?.root_id;
+    const hangs = Boolean(actsOf(item).joined?.into || item.reply_to);
+    const dossier = parent ? of(parent.id, seen) : !root || !hangs || item.moving ? id : root !== id && byId.has(root) ? of(root, seen) : root;
+    found.set(id, dossier);
+    return dossier;
+  };
+  for (const item of items) of(item.id, new Set());
+  return found;
+}
+
+// Gathers the loaded messages (items: topic_messages items, has(id): whether
+// a message is on the page; viewer: who reads) into stacks, one for each
+// dossier (dossiersOf). Each stack: { id: its head's id, head, replies: every
+// other message in reading order, joins: Map of the id of each joined stack's
+// first message to its join ({ into, by, at_ms }), newest: the newest seq in
+// it, lifted: the newest seq that lifts it, any but a reply of the viewer's
+// own (a stack joined to it lifts it however it began), placed: the reader's
+// own place for it or null, dossier: the id of its dossier's first message }.
+// Its head is that first message where the page holds it. Where the page does
+// not, the stack is gathered (item 550): its head is the oldest of its
+// messages that hang under none the page holds, as each such one was a card of
+// its own before 550, and not a reply of the reader's own while another can
+// be, so that reply keeps its own style; the others are its branches, a Set,
+// each kept in view when it is folded (shown), and the head shows whole too
+// (reply-stacks.mjs); null where the stack is not gathered. A place is the
+// dossier's, as its name is (item 550): where the stack's head is not its first
+// message, the place is the one Core's position carries for that first
+// message; where that carries none, the place set last on another of its
+// messages sorts it (heldPlace).
+// Item 550: what More messages loads shows where its button was
+// (reply-stacks.mjs, fill). filled: the ids of older messages it loaded of the
+// dossier of the stack shown last above it, which show at that stack's end,
+// under what it showed, newest first, never folded away and never its head;
+// apart: those of any other dossier the page drew then, each a card of its own
+// there, which takes no place. Neither heads anything or is under anything,
+// so nothing shown moves. A stack carries those at its end as filled, a Set.
+export function gather(items, { has = null, viewer = null, filled = new Set(), apart = new Set() } = {}) {
+  const { byId, up } = links(items, has, id => filled.has(id) || apart.has(id)), dossier = dossiers(items, { byId, up });
+  const groups = new Map();
   for (const item of items) {
-    let at = item.id;
-    for (let next = up(at); next; next = up(at)) at = next.id;
-    headOf.set(item.id, at);
+    const key = apart.has(item.id) ? item : dossier.get(item.id);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
   }
-  const stacks = new Map();
-  for (const item of items) {
-    const head = headOf.get(item.id);
-    if (!stacks.has(head)) stacks.set(head, { id: head, head: byId.get(head), members: [], joins: new Map() });
-    stacks.get(head).members.push(item);
-    if (item.id !== head && up(item.id)?.joined) stacks.get(head).joins.set(item.id, up(item.id).joined);
-  }
-  return [...stacks.values()].map(({ head, members, joins }) => {
+  const oldest = list => list.reduce((most, item) => (item.seq < most.seq ? item : most));
+  return [...groups].map(([key, members]) => {
+    const root = dossier.get(members[0].id), fresh = members.filter(item => !filled.has(item.id)), tops = fresh.filter(item => !up(item.id));
+    const theirs = tops.filter(item => viewer === null || item.author_id !== viewer);
+    const head = fresh.find(item => item.id === root) ?? oldest(theirs.length ? theirs : tops.length ? tops : fresh.length ? fresh : members);
     // Every message under the head as one run, oldest first: its replies, each
     // stack joined to it and the replies to those, however deep. A join
     // changes no message, so splitting it out puts both stacks back as they were.
-    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);
-    const placed = typeof actsOf(head).placed === 'number' ? actsOf(head).placed : null;
+    // The older messages Earlier messages filled it with follow, newest first.
+    const late = members.filter(item => item.id !== head.id && filled.has(item.id)).sort((a, b) => b.seq - a.seq);
+    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => a.seq - b.seq), ...late];
+    const joins = new Map(replies.filter(item => up(item.id)?.joined).map(item => [item.id, up(item.id).joined]));
+    const position = positionOf({ head, replies, dossier: root }), byRoot = position && position.root_id !== head.id && 'place_revision' in position;
+    const first = byRoot ? position.placed : actsOf(head).placed, place = typeof first === 'number' ? first : heldPlace(position);
+    // A card of its own that More loaded (apart) takes no place: it shows where the button was.
+    const alone = apart.has(head.id), placed = !alone && typeof place === 'number' ? place : null;
     const newest = list => list.reduce((most, item) => Math.max(most, item.seq), 0);
     const own = item => item.id !== head.id && !joins.has(item.id) && viewer !== null && item.author_id === viewer;
-    return { id: head.id, head, replies, joins, newest: newest(members), lifted: newest(members.filter(item => !own(item))), placed };
+    return { id: head.id, head, replies, joins, newest: newest(members), lifted: newest(members.filter(item => !own(item))), placed, dossier: root,
+      filled: new Set(late.map(item => item.id)), branches: head.id === root || alone ? null : new Set(tops.filter(item => item !== head).map(item => item.id)) };
   });
+}
+
+// Item 550: before a dossier was placed on its first message, a stack was
+// placed on the message heading it, a reply or a stack later joined into the
+// dossier. Core's position lists the reader's own places on the dossier's
+// other messages (places, each with when it was set, at_ms); the one set last
+// is the dossier's, loaded or not, whichever message heads its stack. Null
+// where it lists none, and where Core sends no such list.
+function heldPlace(position) {
+  const held = (position?.places ?? []).filter(each => typeof each.placed === 'number');
+  return held.reduce((latest, each) => (latest === null || each.at_ms > latest.at_ms ? each : latest), null)?.placed ?? null;
+}
+
+// Item 550: what the page keeps of a stack for this visit (how far it is
+// open, its earlier-messages row, the first of the seven it shows) is the
+// dossier's. A dossier's stack can take another head as the page holds more
+// of it (its first message read with a later page, or a reply of someone
+// else's where every reply was the reader's own). Answers a Map of each
+// stack's head before (before: the stacks as last gathered) to the head of its
+// dossier's stack now (after), for each stack whose head no longer heads one;
+// a head that still heads a stack keeps its own, so a join, which puts one
+// dossier into another, carries nothing.
+export function reheaded(before, after) {
+  const now = new Map(), heads = new Set(after.map(stack => stack.id));
+  for (const stack of after) if (!now.has(stack.dossier)) now.set(stack.dossier, stack.id);
+  return new Map(before.filter(stack => !heads.has(stack.id) && now.has(stack.dossier)).map(stack => [stack.id, now.get(stack.dossier)]));
 }
 
 // Where a stack sorts: its own place, else its newest message that lifts it.
@@ -122,7 +209,8 @@ export const LEVELS = ['folded', 'open'];
 // they are counted afresh.
 export const RECENT = 7;
 export function earlierOf(stack, level, { held = null } = {}) {
-  const all = [stack.head, ...stack.replies];
+  // What Earlier messages filled the stack with shows at its end, never behind the row (gather, filled).
+  const all = [stack.head, ...stack.replies].filter(item => !stack.filled?.has(item.id));
   if (level !== 'open') return [];
   const at = held === null ? -1 : all.findIndex(item => item.id === held);
   if (at >= 0) return all.slice(0, at);
@@ -134,11 +222,16 @@ export function earlierOf(stack, level, { held = null } = {}) {
 // drew them (reply-stacks.mjs). A fold never decides this:
 // a folded reply shows where it would, as its one-line row (rowFolded). Open,
 // an earlier reply (earlierOf, held) shows once its row was opened (earlier).
+// Item 550: what Earlier messages filled the stack with always shows (gather,
+// filled), and folded, a stack gathered from branches under a first message
+// the page has not loaded keeps each branch's head in view (branches): before
+// 550 each was a stack of its own, its card in view, and a fold loses none.
 export function shown(stack, item, { level = 'folded', kept = () => false, earlier = false, held = null } = {}) {
+  if (stack.filled?.has(item.id)) return true;
   if (!earlier && earlierOf(stack, level, { held }).includes(item)) return false;
   if (level === 'open') return true;
   if (level === 'head') return false;
-  return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);
+  return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack) || Boolean(stack.branches?.has(item.id));
 }
 
 // Whether a message reads as its one-line row: the reader folded it (their
@@ -269,6 +362,25 @@ export function drawnBelow(stack, here = () => null) {
   return ![stack.head, ...stack.replies].some(item => here(item) === place);
 }
 
+// The dossier a stack is drawn from: Core's first message of it (positionOf),
+// or the stack's own head where Core sent no position. A dossier whose first
+// message the page has not loaded is drawn as more than one stack.
+export const dossierOf = stack => positionOf(stack)?.root_id ?? stack.id;
+
+// The dossiers the reader starred a message in (item 635), by dossierOf: one
+// a stack drawn from it shows a starred message of (its acts as the page shows
+// them), or one whose position names a message the reader starred that the
+// page has not loaded (has(id), Core's word for the rest). Its title bar shows
+// the reader's star, and Move below More is refused while it does.
+export function starredDossiers(stacks, has) {
+  const found = new Set();
+  for (const stack of stacks) {
+    const position = positionOf(stack);
+    if ([stack.head, ...stack.replies].some(item => actsOf(item).starred === true) || (position?.starred ?? []).some(id => !has(id))) found.add(dossierOf(stack));
+  }
+  return found;
+}
+
 // A dossier's place as Core holds it for the reader (positionOf): its first
 // message and the revision of their stack.aside act on it, which each Move
 // below More and Bring back that changes it raises, made on any device. Acts
@@ -391,16 +503,17 @@ export function laterPosition(known, answer) {
   return answer;
 }
 // The stack's position, from the positions its messages carry. One is the
-// stack's only where the page's own reading of it agrees (item 470): it names
-// the head, or the head hangs under a message the page has not loaded and it
-// names none in the stack. A join or a split, before Core answers it and
-// until its messages are read again, leaves the positions Core sent before it
-// on the messages it moved; such a position is another dossier's, and null
-// where none fits.
+// stack's only where it names the stack's dossier (gather's dossier, item
+// 550); for a stack gather did not make, where the page's own reading of it
+// agrees (item 470): it names the head, or the head hangs under a message the
+// page has not loaded and it names none in the stack. A join or a split,
+// before Core answers it and until its messages are read again, leaves the
+// positions Core sent before it on the messages it moved; such a position is
+// another dossier's, and null where none fits.
 export function positionOf(stack) {
   const inside = new Set(stack.replies.map(item => item.id));
   const hangs = Boolean(actsOf(stack.head).joined?.into || stack.head.reply_to);
-  const fits = position => position.root_id === stack.head.id || hangs && !inside.has(position.root_id);
+  const fits = position => ('dossier' in stack ? position.root_id === stack.dossier : position.root_id === stack.head.id || hangs && !inside.has(position.root_id));
   return [stack.head, ...stack.replies].map(item => item.stack_position).filter(position => position && fits(position))
     .reduce((known, next) => laterPosition(known, next), null);
 }

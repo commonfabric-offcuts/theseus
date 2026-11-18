@@ -109,7 +109,7 @@ export class EditorRegistry {
         if (this.disposed) return null;
         reply.unavailable = !state.source_available || !state.destination_available;
         this.inline = { surface: 'inline', initialized: true, topic: copy(topic), editors: { reply }, mode: 'reply', destinationAvailable: !reply.unavailable };
-        this.present(this.inline); this.activity(); return this.inline;
+        await this.present(this.inline); this.activity(); return this.inline;
       } finally { foreground.release(); }
     };
     this.initializingInline = initialize();
@@ -259,7 +259,9 @@ export class EditorRegistry {
     const presentation = { token, source, sourceUnavailable, destinationAvailable: state.destination_available,
       editors: { reply, note }, mode: 'reply', opener, mark: state.mark ?? null };
     this.pendingOpen = null;
-    this.current = presentation; this.present(presentation); return presentation;
+    this.current = presentation; await this.present(presentation);
+    if (token !== this.generation || this.disposed) return null;
+    return presentation;
     } catch (error) {
       if (token !== this.generation || this.disposed) return null;
       throw error;
@@ -608,7 +610,7 @@ export class EditorRegistry {
       this.sessions.delete(editor.key);
       const restored = await this.register(editor.context, editor.context.kind === 'note' ? state.note : state.draft);
       presentation.editors[editor.context.kind] = restored;
-      if (this.isCurrent(presentation)) this.present(presentation);
+      if (this.isCurrent(presentation)) await this.present(presentation);
       return restored;
     } finally { editor.adopting = false; this.changed(editor); }
   }

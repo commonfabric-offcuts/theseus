@@ -36,6 +36,7 @@ import { readingChecks } from './topic_reading_native.mjs';
 import { navigationChecks } from './reader_navigation_native.mjs';
 import { departureChecks, assertDepartureTrace } from './reader_departure_native.mjs';
 import { ReleaseRule } from './release-rule.mjs';
+import { closeNativePage, settlePageReleases } from './native-page-cleanup.mjs';
 import { protocol, bounded, stamps, cleanupVerdict, closeAll, fixtureBound, CALL_BOUND_MS, FIXTURE_BOUND_MS } from './native-calls.mjs';
 import { FELL } from './press-fell.mjs';
 import { spawn } from 'node:child_process';
@@ -91,7 +92,7 @@ const control = data => {
 // A line when each case starts and one when it ends (native-calls.mjs).
 const stamp = stamps();
 const results = [], hashes = {}, observations = [];
-for (const filename of [...(mode==='--reading'?['tests/topic_reading_native.mjs','web/reveal.mjs','web/message-menu.mjs','web/glyphs.mjs','tests/menu_glyphs.mjs','web/feed-passages.mjs','web/lit-field.mjs','web/message-format.mjs','web/reactions.mjs','web/card-reading.mjs','web/outcome-conversation.mjs','web/card-scroll.mjs','web/interaction-guide.mjs','web/reply-stacks.mjs','tests/stack_native.mjs','tests/png-bands.mjs','tests/message_edit_native.mjs','web/message-edit.mjs','web/message-edit-writing.mjs','web/stack-order.mjs','web/stack-feed.mjs','web/stack-look.css','web/things-rail.mjs','aim_next/stacks.py','web/fold.mjs','web/rail-drawer.mjs','aim_next/reactions.py','aim_next/topic_reading.py','web/at-names.mjs','web/whisper-choice.mjs','aim_next/addressing.py','aim_next/drafts.py']:[]), ...(mode==='--forms'?['tests/form_rules_native.mjs','tests/team_invite_native.mjs','web/agent-invite.mjs','aim_next/invite.py','web/quick-create.mjs','web/outcome-purpose.mjs','web/people.mjs','web/opening-view.mjs','web/creation-view.mjs','aim_next/openings.py','aim_next/store.py']:[]), ...(mode==='--conversation'?['tests/conversation_native.mjs','web/outcome-conversation.mjs','web/message-menu.mjs','web/glyphs.mjs','web/reactions.mjs','aim_next/reactions.py','web/whisper-choice.mjs','web/outcome-scope.mjs','web/topic-navigation.mjs','aim_next/standing_conversation.py','aim_next/conversation.py']:[]), ...(mode==='--header'?['tests/topic_header_native.mjs','tests/links_native.mjs','tests/png-bands.mjs','web/topic-header.mjs','web/topic-settings.mjs','web/topic-state.mjs','web/people.mjs','web/links.mjs','web/dismiss.mjs','web/fold.mjs','web/message-menu.mjs','web/glyphs.mjs','web/app-session.mjs']:[]), ...(mode==='--health'?['tests/health_native.mjs','web/health.mjs','web/health-light.mjs','web/topic-navigation.mjs','aim_next/health.py','aim_next/runner.py','aim_next/live.py','aim_next/store.py']:[]), ...(mode==='--targets'?['tests/targets_native.mjs','web/targets.mjs','web/targets-words.mjs','web/charts.mjs','web/outcomes.mjs','web/topic-navigation.mjs','web/app.mjs','aim_next/checks.py','aim_next/outcome_kind.py','aim_next/outcome_rules.py']:[]), ...(mode==='--pipeline'?['tests/pipeline_native.mjs','tests/menu_glyphs.mjs','web/glyphs.mjs','web/pipeline.mjs','web/pipeline-words.mjs','web/topic-navigation.mjs','web/outcome-scope.mjs','web/app.mjs','aim_next/pipeline.py','aim_next/outcome_rules.py','aim_next/blocking.py']:[]), ...(mode==='--rail'?['tests/outcome_rail_native.mjs','tests/set_aside_native.mjs','aim_next/drafts.py','web/arrow-reach.mjs','web/skills.mjs','web/things-rail.mjs','aim_next/tools_core.py','aim_next/tool_words.py','web/key-tree.mjs','web/in-place-navigation.mjs','web/outline-rail.mjs','web/rail-drawer.mjs','web/rails.mjs','web/outcome-scope.mjs','web/outcomes.mjs','web/outcome-light.mjs','web/opening.mjs','web/creation.mjs','web/topic-state.mjs','web/attention.mjs','aim_next/topic_state.py']:[]), ...(mode==='--wakes'?['tests/wakes_native.mjs','web/wake-lights.mjs','web/people.mjs','aim_next/wake_health.py','aim_next/runner.py']:[]), ...(mode==='--sources'?['tests/topic_sources_native.mjs','web/quick-create.mjs','web/opening.mjs','web/opening-view.mjs','web/topic-navigation.mjs','aim_next/sources.py','aim_next/openings.py']:[]), ...(mode==='--duties'?['tests/topic_duties_native.mjs','web/topic-state.mjs','aim_next/responsibility.py']:[]), ...(mode==='--notebook'?['web/notebook-page.mjs','web/notebook-writing.mjs','web/notebook-images.mjs','web/deck-page.mjs','web/deck.mjs','web/image-pick.mjs','tests/notebook_pages_native.mjs','tests/notebook_sheet_native.mjs','tests/notebook_card_images_native.mjs','tests/menu_glyphs.mjs','web/notebook-sheet.mjs','web/glyphs.mjs','web/outcome-references.mjs','web/page-reads.mjs','web/page-changes.mjs','web/page-here.mjs','web/topic-navigation.mjs','web/live.mjs','aim_next/live.py','aim_next/memory.py']:[]), ...(mode==='--list'?['tests/topic_list_native.mjs','web/topic-navigation.mjs','aim_next/topic_state.py','aim_next/conversation.py','aim_next/store.py']:[]), ...(mode==='--light'?['tests/outcome_light_native.mjs','web/outcome-light.mjs','web/outcome-light-words.mjs','web/outcomes.mjs','web/topic-state.mjs','web/topic-navigation.mjs','aim_next/outcome_light.py','aim_next/outcome_rules.py','aim_next/blocking.py','aim_next/work.py','aim_next/topic_state.py','aim_next/store.py']:[]), ...(mode==='--work'?['tests/topic_work_native.mjs','web/topic-state.mjs','web/topic-navigation.mjs','web/people.mjs','aim_next/work.py','aim_next/conversation.py','aim_next/topic_state.py']:[]), ...(mode==='--whispers'?['tests/whisper_native.mjs','web/whisper-choice.mjs','aim_next/whispers.py','aim_next/conversation.py']:[]), ...(mode==='--asks'?['tests/reader_asks_native.mjs','web/whisper-choice.mjs','web/people.mjs','web/topic-state.mjs','web/topic-navigation.mjs','aim_next/topic_state.py','aim_next/conversation.py']:[]), ...(mode==='--colors'?['tests/reader_colors_native.mjs','tests/agent_colors_native.mjs','tests/new_line_native.mjs','web/unanswered.mjs','tests/fold_native.mjs','web/fold.mjs','tests/png-bands.mjs','web/live.mjs','aim_next/live.py','web/author-colors.mjs','web/marks.mjs','web/colors.mjs','web/color-picker.mjs','web/people.mjs','aim_next/colors.py','aim_next/delivery.py','aim_next/conversation.py','web/read-through.mjs']:[]), ...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs',...(mode==='--navigation'?['web/opening-view.mjs','web/opening.mjs','web/opening-store.mjs']:[])] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/lines.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/press-hold.mjs', 'web/times.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/image-rows.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', 'tests/release-rule.mjs', 'tests/press-fell.mjs', 'tests/native-calls.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'aim_next/web_build.py', 'web/boot.js', 'web/in-place-navigation.mjs', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', ...(mode === '--inline' ? ['tests/reader_inline_native.mjs', 'tests/reader_images_native.mjs'] : ['tests/reader_freshness_native.mjs']), ...(mode === '--live' ? ['web/live.mjs', 'web/session-renewal.mjs', 'aim_next/live.py', 'web/attention.mjs', 'web/outcomes.mjs', 'web/topic-navigation.mjs', 'aim_next/delivery.py', 'tests/reader_live_native.mjs', 'tests/render_native.mjs', 'tests/png-bands.mjs', 'web/marks.mjs', 'web/read-through.mjs', 'tests/ui_marks.test.mjs'] : [])] : [])]) {
+for (const filename of [...(mode==='--reading'?['tests/fixtures/item_645_original_web.json', 'tests/fixtures/item_645_original_web.tar.gz', 'web/dossier-cover.mjs', 'tests/stack_native.mjs', 'tests/topic_reading_native.mjs', 'tests/ui_folded_names.test.mjs', 'tests/fixtures/ui_http.py', 'tests/native-calls.mjs', 'tests/press-fell.mjs', 'web/reply-stacks.mjs', 'web/app.mjs', 'web/aim.css', 'web/stack-look.css', 'web/unanswered.mjs', 'web/outcome-conversation.mjs', 'web/read-through.mjs', 'web/stack-feed.mjs', 'web/stack-order.mjs', 'web/outcome-scope.mjs', 'tools/native.py', 'tools/release_check.py']:[]),...(mode==='--reading'?['tests/topic_reading_native.mjs','web/reveal.mjs','web/message-menu.mjs','web/glyphs.mjs','tests/menu_glyphs.mjs','web/feed-passages.mjs','web/lit-field.mjs','web/message-format.mjs','web/reactions.mjs','web/card-reading.mjs','web/outcome-conversation.mjs','web/card-scroll.mjs','web/interaction-guide.mjs','web/reply-stacks.mjs','tests/stack_native.mjs','tests/png-bands.mjs','tests/message_edit_native.mjs','web/message-edit.mjs','web/message-edit-writing.mjs','web/stack-order.mjs','web/stack-feed.mjs','web/stack-look.css','web/things-rail.mjs','aim_next/stacks.py','web/fold.mjs','web/rail-drawer.mjs','aim_next/reactions.py','aim_next/topic_reading.py','web/at-names.mjs','web/whisper-choice.mjs','aim_next/addressing.py','aim_next/drafts.py']:[]), ...(mode==='--forms'?['tests/form_rules_native.mjs','tests/team_invite_native.mjs','web/agent-invite.mjs','aim_next/invite.py','web/quick-create.mjs','web/outcome-purpose.mjs','web/people.mjs','web/opening-view.mjs','web/creation-view.mjs','aim_next/openings.py','aim_next/store.py']:[]), ...(mode==='--conversation'?['tests/conversation_native.mjs','web/outcome-conversation.mjs','web/message-menu.mjs','web/glyphs.mjs','web/reactions.mjs','aim_next/reactions.py','web/whisper-choice.mjs','web/outcome-scope.mjs','web/topic-navigation.mjs','aim_next/standing_conversation.py','aim_next/conversation.py']:[]), ...(mode==='--header'?['tests/topic_header_native.mjs','tests/links_native.mjs','tests/png-bands.mjs','web/topic-header.mjs','web/topic-settings.mjs','web/topic-state.mjs','web/people.mjs','web/links.mjs','web/dismiss.mjs','web/fold.mjs','web/message-menu.mjs','web/glyphs.mjs','web/app-session.mjs']:[]), ...(mode==='--health'?['tests/health_native.mjs','web/health.mjs','web/health-light.mjs','web/topic-navigation.mjs','aim_next/health.py','aim_next/runner.py','aim_next/live.py','aim_next/store.py']:[]), ...(mode==='--targets'?['tests/targets_native.mjs','web/targets.mjs','web/targets-words.mjs','web/charts.mjs','web/outcomes.mjs','web/topic-navigation.mjs','web/app.mjs','aim_next/checks.py','aim_next/outcome_kind.py','aim_next/outcome_rules.py']:[]), ...(mode==='--pipeline'?['tests/pipeline_native.mjs','tests/menu_glyphs.mjs','web/glyphs.mjs','web/pipeline.mjs','web/pipeline-words.mjs','web/topic-navigation.mjs','web/outcome-scope.mjs','web/app.mjs','aim_next/pipeline.py','aim_next/outcome_rules.py','aim_next/blocking.py']:[]), ...(mode==='--rail'?['tests/outcome_rail_native.mjs','tests/set_aside_native.mjs','aim_next/drafts.py','web/arrow-reach.mjs','web/skills.mjs','web/things-rail.mjs','aim_next/tools_core.py','aim_next/tool_words.py','web/key-tree.mjs','web/in-place-navigation.mjs','web/outline-rail.mjs','web/rail-drawer.mjs','web/rails.mjs','web/outcome-scope.mjs','web/outcomes.mjs','web/outcome-light.mjs','web/opening.mjs','web/creation.mjs','web/topic-state.mjs','web/attention.mjs','aim_next/topic_state.py']:[]), ...(mode==='--wakes'?['tests/wakes_native.mjs','web/wake-lights.mjs','web/people.mjs','aim_next/wake_health.py','aim_next/runner.py']:[]), ...(mode==='--sources'?['tests/topic_sources_native.mjs','web/quick-create.mjs','web/opening.mjs','web/opening-view.mjs','web/topic-navigation.mjs','aim_next/sources.py','aim_next/openings.py']:[]), ...(mode==='--duties'?['tests/topic_duties_native.mjs','web/topic-state.mjs','aim_next/responsibility.py']:[]), ...(mode==='--notebook'?['web/notebook-page.mjs','web/notebook-writing.mjs','web/notebook-images.mjs','web/deck-page.mjs','web/deck.mjs','web/image-pick.mjs','tests/notebook_pages_native.mjs','tests/notebook_sheet_native.mjs','tests/notebook_card_images_native.mjs','tests/menu_glyphs.mjs','web/notebook-sheet.mjs','web/glyphs.mjs','web/outcome-references.mjs','web/page-reads.mjs','web/page-changes.mjs','web/page-here.mjs','web/topic-navigation.mjs','web/live.mjs','aim_next/live.py','aim_next/memory.py']:[]), ...(mode==='--list'?['tests/topic_list_native.mjs','web/topic-navigation.mjs','aim_next/topic_state.py','aim_next/conversation.py','aim_next/store.py']:[]), ...(mode==='--light'?['tests/outcome_light_native.mjs','web/outcome-light.mjs','web/outcome-light-words.mjs','web/outcomes.mjs','web/topic-state.mjs','web/topic-navigation.mjs','aim_next/outcome_light.py','aim_next/outcome_rules.py','aim_next/blocking.py','aim_next/work.py','aim_next/topic_state.py','aim_next/store.py']:[]), ...(mode==='--work'?['tests/topic_work_native.mjs','web/topic-state.mjs','web/topic-navigation.mjs','web/people.mjs','aim_next/work.py','aim_next/conversation.py','aim_next/topic_state.py']:[]), ...(mode==='--whispers'?['tests/whisper_native.mjs','web/whisper-choice.mjs','aim_next/whispers.py','aim_next/conversation.py']:[]), ...(mode==='--asks'?['tests/reader_asks_native.mjs','web/whisper-choice.mjs','web/people.mjs','web/topic-state.mjs','web/topic-navigation.mjs','aim_next/topic_state.py','aim_next/conversation.py']:[]), ...(mode==='--colors'?['tests/reader_colors_native.mjs','tests/agent_colors_native.mjs','tests/new_line_native.mjs','web/unanswered.mjs','tests/fold_native.mjs','web/fold.mjs','tests/png-bands.mjs','web/live.mjs','aim_next/live.py','web/author-colors.mjs','web/marks.mjs','web/colors.mjs','web/color-picker.mjs','web/people.mjs','aim_next/colors.py','aim_next/delivery.py','aim_next/conversation.py','web/read-through.mjs']:[]), ...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs',...(mode==='--navigation'?['web/opening-view.mjs','web/opening.mjs','web/opening-store.mjs']:[])] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/lines.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/press-hold.mjs', 'web/times.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/image-rows.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', 'tests/release-rule.mjs', 'tests/native-page-cleanup.mjs', 'tests/press-fell.mjs', 'tests/native-calls.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'aim_next/web_build.py', 'web/boot.js', 'web/in-place-navigation.mjs', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', ...(mode === '--inline' ? ['tests/reader_inline_native.mjs', 'tests/reader_images_native.mjs'] : ['tests/reader_freshness_native.mjs']), ...(mode === '--live' ? ['web/live.mjs', 'web/session-renewal.mjs', 'aim_next/live.py', 'web/attention.mjs', 'web/outcomes.mjs', 'web/topic-navigation.mjs', 'aim_next/delivery.py', 'tests/reader_live_native.mjs', 'tests/render_native.mjs', 'tests/png-bands.mjs', 'web/marks.mjs', 'web/read-through.mjs', 'tests/ui_marks.test.mjs'] : [])] : [])]) {
   let source;
   try { source = await readFile(path.join(root, filename)); }
   catch (error) {
@@ -118,11 +119,9 @@ let runningCase = null;
 // refusal a failure. One still unsettled when the page goes is a request the
 // instrument left paused. Every connected page is held to this as it goes:
 // when its case closes it, or after the case for the pages still open.
-const releasesSettled = async p => {
-  await until(() => p.unsettledReleases.size === 0, 'every refused interception release settled');
-  assert.deepEqual(p.failedReleases, [], 'every interception release the page did not give up succeeded');
-  if (p.excusedReleases.length) observations.push({ name: 'releases refused because the page gave its request up', case: runningCase, targetId: p.targetId, releases: [...p.excusedReleases] });
-};
+const releasesSettled = p => settlePageReleases(p, until, record => {
+  observations.push({...record,case:runningCase,targetId:p.targetId});
+});
 try {
   facts = await control({ method: 'ready' });
   phases.fixtureReady = Date.now();
@@ -165,6 +164,7 @@ try {
     // A refused release counts in errors and fails its case unless the page
     // gave that request up (release-rule.mjs).
     const releases = new ReleaseRule({ failed: failure => errors.push(failure) });
+    const releaseHandlers = new Set();
     let intercept = null, recordResponses = false;
     listeners.set(sessionId, packet => {
       if (['Page.fileChooserOpened', 'Runtime.bindingCalled'].includes(packet.method)) events.push(packet);
@@ -193,10 +193,11 @@ try {
             responses.push({ payload, url: event.request.url, status: event.responseStatusCode, body, at: Date.now() });
           }
           if (await intercept?.(payload, event)) { held.push({ event, payload }); return; }
-          await send(event.responseStatusCode===undefined?'Fetch.continueRequest':'Fetch.continueResponse', { requestId: event.requestId });
-        }; handle().catch(error => {
-          releases.refused({ message: error.message,requestId:event.requestId,networkId:event.networkId,url:event.request.url,responseStatusCode:event.responseStatusCode }, error.cdp?.message);
-        });
+          await releases.release(event, () => send(event.responseStatusCode===undefined?'Fetch.continueRequest':'Fetch.continueResponse', { requestId: event.requestId }));
+        };
+        const task = handle().catch(error => errors.push({message:error.message,requestId:event.requestId}));
+        releaseHandlers.add(task);
+        task.finally(() => releaseHandlers.delete(task));
       }
     });
     await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable');
@@ -245,10 +246,11 @@ try {
         ...(name === 'Enter' && !modifiers ? { text: '\r', unmodifiedText: '\r' } : {}) });
       await send('Input.dispatchKeyEvent', { type: 'keyUp', ...data });
     };
-    const close = async () => {
-      try { if (connectedPages.has(targetId)) await releasesSettled(connectedPages.get(targetId)); }
-      finally { connectedPages.delete(targetId); if (pages.delete(targetId)) await cdp('Target.closeTarget', { targetId }); listeners.delete(sessionId); }
-    };
+    const close = () => closeNativePage({
+      settle: async () => { if (connectedPages.has(targetId)) await releasesSettled(connectedPages.get(targetId)); },
+      close: async () => { if (pages.has(targetId)) { await cdp('Target.closeTarget', { targetId }); pages.delete(targetId); } },
+      forget: () => { connectedPages.delete(targetId); listeners.delete(sessionId); },
+    });
     if (connected) {
       if (mode === '--images') await send('Page.addScriptToEvaluateOnNewDocument', { source: imageInstrumentation });
       // A card a reply stack folds away (docs/reply-stacks.md) is reached as a
@@ -293,6 +295,7 @@ try {
       };
       const connectedPage = { targetId, send, evaluate, close, box, point, key, unfold, calls, held, errors, events, network, responses,
         excusedReleases: releases.excused, failedReleases: releases.failed, unsettledReleases: releases.unsettled,
+        pendingReleases: releases.pending, releaseHandlers,
         recordResponses: () => { recordResponses = true; },
         response: async event => {
           const result = await send('Fetch.getResponseBody', { requestId: event.requestId });
@@ -300,7 +303,7 @@ try {
         },
         intercept: handler => { intercept = handler; },
         release: async entry => {
-          await send('Fetch.continueResponse', { requestId: entry.event.requestId });
+          if (!await releases.release(entry.event, () => send('Fetch.continueResponse', { requestId: entry.event.requestId }))) return;
           await until(() => finished.has(entry.event.networkId), 'released response finished');
           await evaluate('new Promise(resolve=>setTimeout(resolve,0))');
         },
@@ -333,7 +336,7 @@ try {
           // 476), and a press on that row shows it whole first, as unfold does.
           const card = `#messages .message-card[data-id="${facts.sources[index].id}"]`;
           if (await evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded === 'true'`)) {
-            await point(`${card} > .message-folded > .folded-author`);
+            await point(`${card} > .message-folded > .folded-words`);
             await until(() => evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded !== 'true'`), 'the folded message unfolds');
             await unfold(`#messages [data-id="${facts.sources[index].id}"]`);
           }
@@ -440,6 +443,24 @@ try {
         try { state = await p.evaluate('({departure:window.departureState?.(),departureTrace:window.departureDiagnostics,snapshot:window.freshSnapshot?.(),evidence:window.freshEvidence,opening:{status:document.querySelector("#inline-save-state")?.textContent,app:document.querySelector("#app-status")?.textContent,review:document.querySelector("#review-content")?.textContent,reviewStatus:document.querySelector("#review-status")?.textContent,reviewOpen:document.querySelector("#version-review")?.open},reader:{open:document.querySelector("#reader")?.open,notice:document.querySelector("#reader-notice")?.textContent,saveState:document.querySelector("#save-state")?.textContent,writingReadOnly:document.querySelector("#writing-body")?.readOnly,focus:document.activeElement?.id},access:{unavailable:window.observedRegistry?.current?.sourceUnavailable,unconfirmed:window.observedRegistry?.current?.availabilityUnconfirmed},updates:document.querySelector("#updates-message")?.textContent,navigation:document.querySelector("#topic-navigation-status")?.textContent,url:location.href,mediaURLs:window.observedMediaURLs?.size})'); }
         catch (error) { state = { diagnosticError: error.message }; }
         observations.push({ name: 'failed case diagnostics', case: name, targetId, state, errors: p.errors, calls: p.calls });
+        try { observations.push({ name: 'bounded failure page state', case: name, targetId, state: await p.evaluate(`(()=>{
+          // bounded failure snapshot, authorized by8124; no message text or request headers.
+          const limits={stacks:16,cards:24,loadedIds:120,rows:32,controls:16,string:80},truncation={strings:false};
+          const word=value=>{const s=String(value??'');if(s.length>limits.string)truncation.strings=true;return s.slice(0,limits.string)};
+          const bounded=(name,nodes,limit)=>{const all=Array.from(nodes);truncation[name]={total:all.length,kept:Math.min(all.length,limit),truncated:all.length>limit};return all.slice(0,limit)};
+          const rect=e=>{const b=e.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height}};
+          const identity=e=>e?{tagName:word(e.tagName),id:word(e.id),className:word(e.className),role:word(e.getAttribute('role')),messageId:word(e.closest('[data-id]')?.dataset.id),topicId:word(e.closest('[data-topic-id]')?.dataset.topicId),workspaceId:word(e.closest('[data-workspace-id]')?.dataset.workspaceId)}:null;
+          const active=document.activeElement,ancestry=[];let parent=active;for(let n=0;parent&&n<4;n++,parent=parent.parentElement)ancestry.push(identity(parent));truncation.ancestry={kept:ancestry.length,truncated:Boolean(parent)};
+          const cards=document.querySelectorAll('#messages .message-card[data-id]');
+          const stacks=bounded('stacks',document.querySelectorAll('#messages .reply-stack'),limits.stacks).map(e=>({head:word(e.dataset.stack),fold:word(e.dataset.fold),whole:word(e.dataset.headOpen),rect:rect(e)}));
+          const cardState=bounded('cards',cards,limits.cards).map(e=>({id:word(e.dataset.id),whole:word(e.dataset.whole),folded:word(e.dataset.folded),scrollInPlace:e.classList.contains('scroll-in-place'),clientHeight:e.clientHeight,scrollHeight:e.scrollHeight,scrollTop:e.scrollTop,rect:rect(e)}));
+          const controls=bounded('controls',document.querySelectorAll('#more-messages, #new-line-older, #messages .stack-earlier'),limits.controls).map(e=>({id:word(e.id),className:word(e.className),shown:Boolean(e.getClientRects().length),disabled:Boolean(e.disabled)||e.getAttribute('aria-disabled')==='true',rect:rect(e)}));
+          const outline=document.querySelector('#outline'),rows=outline?outline.querySelectorAll('.nav-item, [role=treeitem]'):[];
+          const rowState=bounded('rows',rows,limits.rows).map(e=>({topicId:word(e.dataset.topicId),workspaceId:word(e.dataset.workspaceId),id:word(e.id),shown:Boolean(e.getClientRects().length),current:word(e.getAttribute('aria-current')),selected:word(e.getAttribute('aria-selected')),expanded:word(e.getAttribute('aria-expanded')),rect:rect(e)}));
+          const reader=document.querySelector('#reader'),source=document.querySelector('#source-body');
+          return {limits,truncation,activeElement:identity(active),ancestry,stackState:{stacks,cards:cardState,loadedIds:bounded('loadedIds',cards,limits.loadedIds).map(e=>word(e.dataset.id)),controls},outlineState:{exists:Boolean(outline),activeRowId:word(active?.closest('[data-topic-id]')?.dataset.topicId),scrollTop:outline?.scrollTop??null,clientHeight:outline?.clientHeight??null,scrollHeight:outline?.scrollHeight??null,rows:rowState},readerState:{exists:Boolean(reader),open:reader?.open??false,sourceId:word(reader?.dataset.sourceId??source?.dataset.id??window.observedRegistry?.current?.source?.source_ref?.id)}};
+        })()`) }); }
+        catch (diagnosticError) { observations.push({ name: 'bounded failure page state error', case: name, targetId, diagnosticError: diagnosticError.message }); }
       }
     }
     finally {
@@ -1546,10 +1567,13 @@ try {
       });
     }
     await check('connected quote, newline, private note, focus, autosave geometry and touch boundary', async () => {
+      // CSS-pixel rounding allowance, far below the 40px drag expansion.
+      const geometryTolerance = 2, minimumDragExpansion = 40, minimumWideHeightShare = .94;
       const p = await page('connected', null, true); await p.open(1);
       assert.ok((await p.evaluate('document.querySelector("#source-body").textContent')).length > 1024);
       await p.point('#source-body [data-start="0"]', 'move'); await p.key('Enter');
       assert.equal(await field(p), '> Source 1 exact passage. \n\n');
+      assert.equal(await p.evaluate('document.querySelector("#reader").dataset.layout'), 'wide', 'quoting on a laptop opens the wide Reader');
       await p.send('Input.insertText', { text: 'Connected response' }); await p.key('Enter');
       assert.equal(await field(p), '> Source 1 exact passage. \n\nConnected response\n');
       assert.equal(p.calls.filter(call => call.payload?.kind === 'message.send').length, 0);
@@ -1575,13 +1599,21 @@ try {
       await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'reader closed');
       assert.equal(await p.evaluate('document.activeElement.dataset.id'), facts.sources[1].id);
       await p.open(1); assert.equal(await field(p), reply);
-      // Wide is an item in the Reader's ⋯ (docs/links.md).
+      // The earlier quote already made this laptop wide (644/668). Exercise
+      // both menu directions from that state, keeping the saved reply.
+      assert.equal(await p.evaluate('document.querySelector("#reader").dataset.layout'), 'wide', 'the quoted reply reopens wide');
+      await p.point('#reader-menu');
+      await until(() => p.evaluate(`document.querySelector('.message-menu-list [role=menuitem]:last-child')?.textContent === 'Stacked layout'`), "the wide Reader's menu offers Stacked");
+      await p.point('.message-menu-list [role=menuitem]:last-child');
+      await until(() => p.evaluate(`document.querySelector('#reader').dataset.layout === 'stacked'`), 'the Reader is stacked');
+      assert.equal(await field(p), reply, 'switching to stacked keeps the reply');
       await p.point('#reader-menu');
       await until(() => p.evaluate(`document.querySelector('.message-menu-list [role=menuitem]:last-child')?.textContent === 'Wide layout'`), "the Reader's menu offers Wide");
       await p.point('.message-menu-list [role=menuitem]:last-child');
       await until(() => p.evaluate(`document.querySelector('#reader').dataset.layout === 'wide'`), 'the Reader is wide');
+      assert.equal(await field(p), reply, 'switching back to wide keeps the reply');
       const wide = await p.box('.writing-pane'), dialog = await p.box('#reader');
-      assert.ok(wide.height > dialog.height * .94, 'writing keeps the full wide column');
+      assert.ok(wide.height + geometryTolerance >= dialog.height * minimumWideHeightShare, 'writing keeps the full wide column');
       await p.point('#writing-body'); await p.send('Input.insertText', { text: ' Undo tail' });
       const withTail = await field(p);
       await until(async () => (await privateState()).draft.body === withTail, 'autosave of native edit');
@@ -1590,15 +1622,16 @@ try {
       const before = await p.evaluate("(()=>{const e=document.querySelector('#source-body');const r=document.createRange();r.setStart(e.children[4].firstChild,0);r.setEnd(e.children[5].firstChild,8);const s=getSelection();s.removeAllRanges();s.addRange(r);return {text:s.toString(),scroll:e.scrollTop,caret:[document.querySelector('#writing-body').selectionStart,document.querySelector('#writing-body').selectionEnd]}})()");
       await until(() => p.evaluate('document.querySelector("#save-state").textContent === "Saved to Theseus"'), 'undo saved');
       const after = await p.evaluate("({text:getSelection().toString(),scroll:document.querySelector('#source-body').scrollTop,caret:[document.querySelector('#writing-body').selectionStart,document.querySelector('#writing-body').selectionEnd]})");
-      assert.deepEqual(after, before, 'status repaint preserves source selection, place and caret');
+      assert.deepEqual({ text: after.text, caret: after.caret }, { text: before.text, caret: before.caret }, 'status repaint preserves source selection and caret');
+      assert.ok(Math.abs(after.scroll - before.scroll) <= geometryTolerance, `status repaint preserves source place within ${geometryTolerance}px`);
       const grip = await p.box('#reader-divider'), x = grip.x + grip.width / 2, y = grip.y + grip.height / 2;
       const writingBefore = await p.box('.writing-pane');
       await p.point('#reader-divider');
-      assert.ok(Math.abs((await p.box('.writing-pane')).width - writingBefore.width) < 2, 'divider near-action click does not resize');
+      assert.ok(Math.abs((await p.box('.writing-pane')).width - writingBefore.width) <= geometryTolerance, `divider near-action click does not resize within ${geometryTolerance}px`);
       await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
       for (let step = 1; step <= 6; step++) await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x - step * 10, y, button: 'left', buttons: 1 });
       await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: x - 60, y, button: 'left', buttons: 0, clickCount: 1 });
-      assert.ok((await p.box('.writing-pane')).width > writingBefore.width + 40, 'actual browser drag expands wide writing');
+      assert.ok((await p.box('.writing-pane')).width > writingBefore.width + minimumDragExpansion - geometryTolerance, 'actual browser drag expands wide writing');
       assert.equal(await field(p), reply); assert.equal(await p.evaluate('getSelection().toString()'), before.text);
       await p.key('Escape'); assert.equal(await p.evaluate('document.querySelector("#reader").open'), true);
       await p.key('Escape'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'reader escape');

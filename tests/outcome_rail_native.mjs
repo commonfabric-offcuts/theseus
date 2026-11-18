@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { withPageCleanup } from './native-page-cleanup.mjs';
 
 // The side rail inside an outcome and the page without a header bar (pipeline
 // items 101 and 107), in the real browser against the real server, at 1280
@@ -96,6 +97,79 @@ export async function railChecks({ check, page, until, control, view, facts, sho
           topics:[...li.querySelectorAll('.ol-topics a[data-topic-id]')].filter(shown).map(a=>({id:a.dataset.topicId,unread:Number(a.querySelector('.unread-count')?.textContent??0),current:a.getAttribute('aria-current')}))}]}))}})()`);
   const home = p => p.evaluate(`(()=>{const h=document.getElementById('outcomes-home'),l=h.querySelector('.outcome-light'),w=h.querySelector('.elsewhere-words');
     return {lit:Boolean(l)&&l.getClientRects().length>0,words:w&&w.getClientRects().length>0?w.textContent:null,said:w?.textContent??null,label:h.getAttribute('aria-label')}})()`);
+
+  // Item 654: native taps in sequence, with the page and drawer observed through
+  // every animation frame, so an intermediate navigation or close cannot hide.
+  for (const size of ['w320', 'w375', 'phone', 'laptop']) for (const theme of ['light', 'dark']) {
+    await check(`rail item 654 ${size} ${theme}: collapsed then open outcome, page and drawer stay on first phone tap, Conversation on second; laptop and topic presses keep their way`, async () => {
+      const oid = `rail-654-${size}-${theme}`, tid = oid + '-topic';
+      await control({ method: 'light_outcome', outcome: oid, title: 'Tap outcome', topic: { id: tid, title: 'Tap topic' } });
+      const p = await open(oid, '/?topic=t1', size, theme), phone = SIZES[size].mobile;
+      await outlineAtRest(p, oid);
+      await until(async () => Boolean((await outline(p)).outcomes[oid]), 'the outcome row is listed');
+      const name = `#outline .ol-outcome[data-workspace-id="${oid}"] .ol-name`;
+      const topic = `#outline a[data-topic-id="${tid}"]`;
+      const press = async selector => {
+        await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+        if (phone) await tap(p, selector); else await p.point(selector);
+      };
+      const show = async () => {
+        if (phone && !(await drawer(p)).open) {
+          await tap(p, '#rail-open');
+          await until(async () => (await drawer(p)).open, 'the drawer is open');
+        }
+      };
+      await show();
+      const origin = await loaded(p);
+      await p.evaluate(`document.querySelector(${JSON.stringify(name)}).scrollIntoView({block:'center'})`);
+      assert.equal((await outline(p)).outcomes[oid].open, false, 'the other outcome starts collapsed');
+      await shot(p, `item-654-${size}-${theme}-collapsed`);
+      await p.evaluate(`(()=>{
+        const main=document.getElementById('main'),rail=document.getElementById('rail');
+        window.item654Before={main,rail,url:location.href,history:history.length,scroll:scrollY,railScroll:rail.scrollTop,title:document.getElementById('topic-title').textContent};
+        window.item654Clicks=0;document.addEventListener('click',()=>++window.item654Clicks,true);
+        window.item654Frames=[];window.item654Watching=true;
+        const frame=()=>{if(!window.item654Watching)return;window.item654Frames.push({url:location.href,open:rail.classList.contains('open'),same:document.getElementById('main')===main,scroll:scrollY});requestAnimationFrame(frame)};
+        requestAnimationFrame(frame);
+      })()`);
+      await press(name);
+      await until(() => p.evaluate('window.item654Clicks>=1'), 'the native press dispatched its click');
+      // Wait on the result of the act, including the old navigation on a red-before run.
+      await until(() => p.evaluate(`document.body.dataset.ready==='true' && (location.search==='?conversation=${oid}' || Boolean(document.querySelector(${JSON.stringify(topic)})))`), 'the expansion or old navigation has drawn');
+      await shot(p, `item-654-${size}-${theme}-first`);
+      if (phone) {
+        const kept = await p.evaluate(`(()=>{window.item654Watching=false;const b=window.item654Before;return {
+          url:location.href===b.url,history:history.length===b.history,main:document.getElementById('main')===b.main,rail:document.getElementById('rail')===b.rail,
+          scroll:scrollY===b.scroll,railScroll:Math.abs(b.rail.scrollTop-b.railScroll)<=1,title:document.getElementById('topic-title').textContent===b.title,
+          frames:window.item654Frames.every(f=>f.url===b.url&&f.open&&f.same&&f.scroll===b.scroll)}})()`);
+        assert.deepEqual(await drawer(p).then(({focus,...rest})=>rest), {open:true,backdrop:true,inert:true,expanded:'true'}, 'first phone tap keeps the drawer open over the same page');
+        assert.ok(Object.values(kept).every(Boolean), 'first phone tap keeps page, history, scroll and rail through every frame: '+JSON.stringify(kept));
+        assert.equal((await outline(p)).outcomes.w1.open, true, 'the outcome being read stays expanded too');
+      } else {
+        await p.evaluate('window.item654Watching=false');
+        assert.equal(await p.evaluate('location.search'), '?conversation='+oid, 'a collapsed laptop outcome still opens its Conversation on the first click');
+      }
+      assert.equal((await outline(p)).outcomes[oid].open, true, 'the first press shows the topics');
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(name)}).getAttribute('aria-expanded')`), 'true', 'the expanded state is announced');
+      await press(name);
+      await until(() => p.evaluate(`document.body.dataset.ready==='true' && location.search==='?conversation=${oid}' && document.getElementById('topic-title').textContent==='Conversation'`), 'the second press opens the outcome Conversation');
+      if (phone) assert.equal((await drawer(p)).open, false, 'navigation closes the phone drawer');
+      await show();
+      await until(async () => (await outline(p)).outcomes[oid].open === Boolean(phone), 'phone navigation keeps topics open; the laptop click still folds them');
+      await shot(p, `item-654-${size}-${theme}-conversation`);
+      if (!phone) {
+        await press(name);
+        await until(async () => (await outline(p)).outcomes[oid].open, 'the next laptop click still expands');
+      }
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(topic)})?.getClientRects().length)`), 'the topic is visible');
+      await press(topic);
+      await until(() => p.evaluate(`document.body.dataset.ready==='true' && location.search==='?topic=${tid}' && document.getElementById('topic-title').textContent==='Tap topic'`), 'a topic press still opens that topic');
+      if (phone) assert.equal((await drawer(p)).open, false, 'a topic tap closes the drawer as it navigates');
+      assert.equal(await loaded(p), origin, 'navigation stays in this document');
+      await shot(p, `item-654-${size}-${theme}-topic`);
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+  }
 
   await check('rail no page has a header bar or Refresh; the logo block tops the rail inside an outcome and main on the outcome page and home, at 1280 and 390, light and dark', async () => {
     for (const [size, theme] of COMBOS) {
@@ -801,6 +875,94 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(async () => (await placeOf(p).catch(() => null))?.origin > before, what + ': a new document');
     await settled(p, what);
   };
+  // Item 641: each width/theme has its own result, so one red cannot hide another surface.
+  for (const size of ['laptop', 'w320', 'w375', 'phone']) for (const theme of ['light', 'dark']) {
+    for (const placed of [false, true]) await check(`rail item 641 ${placed ? 'new topics enter at the top of a saved order' : 'activity never moves an unplaced topic'} at ${size} ${theme}`, async () => {
+      const tag = `rail-641-${size}-${theme}-${placed ? 'placed' : 'default'}`;
+      const oid = tag + '-o', a = tag + '-a', b = tag + '-b', c = tag + '-c';
+      await control({ method: 'light_outcome', outcome: oid, title: 'Topics stay put', topic: { id: a, title: 'Topic A' } });
+      await control({ method: 'light_outcome', outcome: oid, exists: true, topic: { id: b, title: 'Topic B' } });
+      if (placed) await control({ method: 'order_as', workspace_id: oid, ids: [a, b], operation_id: tag + '-place' });
+      const p = await open(tag, '/?topic=' + b, size, theme);
+      const ids = async () => (await outline(p)).outcomes[oid]?.topics.map(row => row.id);
+      const press = async selector => {
+        await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+        await until(() => p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),b=e.getBoundingClientRect();
+          return b.top>=0 && b.bottom<=innerHeight && e.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2));})()`), tag + ': ' + selector + ' is in view and uncovered');
+        if (SIZES[size].mobile) await tap(p, selector); else await p.point(selector);
+      };
+      const show = async () => {
+        await until(() => p.evaluate("document.body?.dataset.ready==='true'").catch(() => false), tag + ': page is ready');
+        if (SIZES[size].mobile && !(await drawer(p)).open) {
+          await press('#rail-open');
+          await until(async () => (await drawer(p)).open, tag + ': drawer opens');
+        }
+        await outlineAtRest(p, tag);
+      };
+      const reload = async why => {
+        const before = await loaded(p);
+        await p.send('Page.reload');
+        await until(async () => (await loaded(p).catch(() => before)) !== before, why + ': new document');
+        await show();
+      };
+      const expect = async (wanted, why) => {
+        await outlineAtRest(p, tag + ': ' + why);
+        assert.deepEqual(await ids(), wanted, why);
+      };
+      await withPageCleanup(p, async () => {
+        await show();
+        await until(async () => (await ids())?.length === 2, tag + ': both topic rows drawn');
+        let wanted = placed ? [a, b] : [b, a];
+        await expect(wanted, 'initial order');
+        if (placed) {
+          await control({ method: 'light_outcome', outcome: oid, exists: true, topic: { id: c, title: 'Topic C — new' } });
+          await until(async () => (await ids())?.includes(c), tag + ': new topic is drawn');
+          wanted = [c, a, b];
+          await expect(wanted, 'a topic new to the reader enters at the top once');
+        }
+        await shot(p, tag + '-before-activity');
+        const target = a;
+        const unread = (await outline(p)).outcomes[oid].topics.find(row => row.id === target).unread;
+        const sent = await control({ method: 'agent_message', operation_id: tag + '-news', topic_id: target, join: true, addressees: [], body: 'Another person’s new message leaves topic positions alone.' });
+        assert.equal(sent.status, 'committed', 'the message actually committed');
+        await until(async () => (await outline(p)).outcomes[oid]?.topics.find(row => row.id === target)?.unread > unread, tag + ': the message updates the row');
+        // Move the pointer out so the hover protection cannot mask a recency reorder.
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
+        await shot(p, tag + '-after-activity');
+        await expect(wanted, 'a new message changes the count and never moves a topic');
+        await reload(tag + ': reopen the page');
+        await show();
+        await expect(wanted, 'the same topic order survives a reload');
+        // Negative: the reader can still move a topic, with the native keys, on phones too.
+        await keysTo(p, 'topic:' + target);
+        const movedOrder = [...wanted], at = wanted.indexOf(target);
+        [movedOrder[at - 1], movedOrder[at]] = [movedOrder[at], movedOrder[at - 1]];
+        await p.key('ArrowUp', 4);
+        await until(async () => JSON.stringify(await ids()) === JSON.stringify(movedOrder), tag + ': own reorder moves the topic');
+        await until(async () => JSON.stringify((await control({ method: 'order_as', workspace_id: oid })).ids) === JSON.stringify(movedOrder), tag + ': Core records the move');
+        await reload(tag + ': reopen after own move');
+        await show();
+        await expect(movedOrder, 'the reader’s move holds after reload');
+        if (SIZES[size].mobile) {
+          await p.key('Escape');
+          await until(async () => !(await drawer(p)).open, tag + ': close the drawer to write');
+        }
+        const body = 'My message in Topic B keeps Topic A above it — ' + tag;
+        await press('#inline-writing-body');
+        await p.send('Input.insertText', { text: body });
+        await until(() => p.evaluate("!document.getElementById('inline-send').disabled"), tag + ': send is available');
+        await press('#inline-send');
+        await until(() => p.evaluate(`document.getElementById('messages').textContent.includes(${JSON.stringify(body)})`), tag + ': own send is drawn');
+        await show();
+        await expect(movedOrder, 'sending in B keeps A above B throughout');
+        await reload(tag + ': reopen after sending');
+        await expect(movedOrder, 'A stays above B after sending and reopening');
+        await shot(p, tag + '-own-move');
+        assert.deepEqual(p.errors, []);
+      });
+    });
+  }
+
   // The same address loaded fresh in a page of its own: what both rails show there.
   const fresh = async (search, name) => {
     const q = await page(name, null, true, { url: facts.origin + '/' + search, beforeNavigate: async r => { await r.send('Emulation.setDeviceMetricsOverride', SIZES.laptop); } });
@@ -1738,7 +1900,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.equal(await keyedAt(p), row, `${what}: and ${back === 'ArrowDown' ? '↓' : '↑'} comes back to it`);
   };
 
-  await check('rail a press on an outline row opens its place in place with the keys kept on the row, wearing their ring: ↑ and ↓ go on from it and → into the page, for another outcome, a topic and the Conversation of the outcome being read; Return keeps the keys there too; back lands on the page\'s heading with no ring; at 390 the drawer closes and opens again on the row tapped, ringed', async () => {
+  await check('rail a press on an outline row opens its place in place with the keys kept on the row, wearing their ring: ↑ and ↓ go on from it and → into the page, for another outcome, a topic and the Conversation of the outcome being read; Return keeps the keys there too; back lands on the page\'s heading with no ring; at 390 the drawer closes and opens again on the row tapped, ringed; item 654 phone expands before navigation', async () => {
     await control({ method: 'light_outcome', outcome: 'rail-ring-o', title: 'Ring outcome', topic: { id: 'rail-ring-t', title: 'Ring topic' } });
     const p = await open('rail-ring', '/?topic=t1');
     await settled(p, 'the topic is up');
@@ -1845,6 +2007,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await tap(phone, '#rail-open');
     await until(async () => (await drawer(phone)).open, '"☰ Outcomes" opens the drawer');
     await phone.evaluate(`document.querySelector('${name}').scrollIntoView({block:'center'})`);
+    await tap(phone, name);
+    await until(async () => (await outline(phone)).outcomes['rail-ring-o'].open, 'item 654: the first tap expands');
+    assert.equal((await drawer(phone)).open, true, 'item 654: expansion keeps the drawer open');
+    assert.equal(await phone.evaluate('location.search'), '?topic=t1', 'item 654: expansion keeps the current page');
     await tap(phone, name);
     await arrived(phone, '?conversation=rail-ring-o', null, 'the tapped outcome\'s Conversation opens');
     assert.equal((await drawer(phone)).open, false, 'the drawer is closed');
@@ -2445,7 +2611,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
 
   // Items 148 and 320 come last: their outcomes, and the questions left waiting in them,
   // would change what the checks before them count and push their rows down the outline.
-  await check('rail outcome clicks toggle topics and waiting opens the exact unloaded question', async () => {
+  await check('rail outcome clicks toggle topics and waiting opens the exact unloaded question; item 654 phone opens Conversation without folding', async () => {
     for (const size of ['laptop', 'phone']) {
       const oid='rail-toggle-'+size, tid=oid+'-topic';
       await control({method:'light_outcome',outcome:oid,title:'Outcome toggle '+size,topic:{id:tid,title:'Question beyond the first page'}});
@@ -2472,13 +2638,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await until(async()=>(await outline(p)).outcomes[oid]?.open,'outcome starts expanded');
       await p.evaluate(`document.querySelector(${JSON.stringify(name)}).scrollIntoView({block:'center'})`);
       await press(name);
-      await until(async()=>(await outline(p)).outcomes[oid]?.current==='page'&&!(await outline(p)).outcomes[oid]?.open,'click both opens Conversation and folds topics');
+      await until(async()=>(await outline(p)).outcomes[oid]?.current==='page'&&(await outline(p)).outcomes[oid]?.open===(size==='phone'),'Conversation opens; a phone keeps topics open, a laptop folds');
       await showRail();
-      await press(name);
-      await until(async()=>(await outline(p)).outcomes[oid]?.open,'second click expands topics');
-      await showRail();
-      await press(name);
-      await until(async()=>!(await outline(p)).outcomes[oid]?.open,'third click folds topics');
+      if(size==='phone') {
+        // Folding remains the keys' act on a phone; a tap on an open outcome navigates.
+        await p.key('ArrowLeft',4);
+        await until(async()=>!(await outline(p)).outcomes[oid]?.open,'the keys fold topics on the phone');
+      } else {
+        await press(name);
+        await until(async()=>(await outline(p)).outcomes[oid]?.open,'second click expands topics');
+        await press(name);
+        await until(async()=>!(await outline(p)).outcomes[oid]?.open,'third click folds topics');
+      }
       // The keys are on the outcome's row, as after any press in the outline (item 462); at 390 the drawer, opened again, is on it.
       await showRail();
       await pressedRow(p,'name:'+oid,size+': the third click');

@@ -125,15 +125,17 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // (webkit_native.mjs), so there it happens just before the tap.
   const tap = async (p, selector, at = 'corner', during = null) => {
     const aim = await until(() => p.evaluate(`new Promise(done=>{const t=document.querySelector(${JSON.stringify(selector)}),
-      rect=()=>{const b=t&&(${at === 'first'}?t.getClientRects()[0]:t.getBoundingClientRect());return b?{x:b.x,y:b.y,width:b.width,height:b.height}:null},same=(a,b)=>JSON.stringify(a)===JSON.stringify(b),
-      look=()=>{const b=rect();if(!b)return {b};const x=${at === 'corner'}?b.x+Math.min(12,b.width/2):b.x+b.width/2,y=${at === 'corner'}?b.y+Math.min(12,b.height/2):b.y+b.height/2,
-        h=document.elementFromPoint(x,y);return {b,x,y,inside:x>=0&&y>=0&&x<innerWidth&&y<innerHeight,hit:t.contains(h)?'':h?h.tagName.toLowerCase()+'.'+h.className:'nothing'}};
+      rect=()=>{const b=t&&(${at === 'first'}?t.getClientRects()[0]:t.getBoundingClientRect());return b?{x:b.x,y:b.y,width:b.width,height:b.height}:null},
+      tapStableTolerancePx=0.5,same=(a,b)=>Boolean(a&&b)&&['x','y','width','height'].every(key=>Math.abs(a[key]-b[key])<=tapStableTolerancePx),
+      look=()=>{const tapViewportTolerancePx=0.5,b=rect();if(!b)return {b};const x=${at === 'corner'}?b.x+Math.min(12,b.width/2):b.x+b.width/2,y=${at === 'corner'}?b.y+Math.min(12,b.height/2):b.y+b.height/2,
+        h=document.elementFromPoint(x,y);return {b,x,y,inside:x>=tapViewportTolerancePx&&y>=tapViewportTolerancePx&&x<=innerWidth-tapViewportTolerancePx&&y<=innerHeight-tapViewportTolerancePx,hit:t.contains(h)?'':h?h.tagName.toLowerCase()+'.'+h.className:'nothing'}};
       if(document.hidden)return done(look());
       const first=rect();requestAnimationFrame(()=>{const second=rect();requestAnimationFrame(()=>done(same(first,second)&&same(second,rect())?look():null))})})`),
-      `${selector} holds its place across two frames before a tap`);
+      `${selector} holds its place across two frames before a tap (tapStableTolerancePx=0.5)`);
     const { b, x, y } = aim;
-    assert.ok(b && b.width > 0 && b.height > 0, `visible target ${selector}`);
-    assert.ok(aim.inside, `${selector} is inside the window before a tap`);
+    const tapVisibleTolerancePx = 0.5;
+    assert.ok(b && b.width > tapVisibleTolerancePx && b.height > tapVisibleTolerancePx, `visible target ${selector} (tapVisibleTolerancePx=0.5)`);
+    assert.ok(aim.inside, `${selector} is inside the window before a tap (tapViewportTolerancePx=0.5)`);
     assert.equal(aim.hit, '', `${selector} is covered by ${aim.hit} where it would be tapped`);
     await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
     if (during) await during();
@@ -176,7 +178,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       if (device === 'phone') await unfoldRow(p, device, id);
       else {
         const dossier = await p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).closest('.reply-stack')?.dataset.single === 'false'`);
-        await p.point(card(id) + ' > .message-folded > .folded-author', 'move');
+        await p.point(card(id) + ' > .message-folded > .folded-words', 'move');
         await until(async () => (await lit(p)).includes(id) && (await bar(p) === null) === dossier, `${device}: ${id} lights on its folded row, ${dossier ? 'with no bar in a dossier' : 'with its bar'}`);
         return;
       }
@@ -191,8 +193,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // Whether a message shows as its folded row, and a press on that row, which shows it whole again (docs/reply-stacks.md).
   const foldedRow = (p, id) => p.evaluate(`(c=>c?.dataset.folded==='true'&&Boolean(c.querySelector(':scope > .message-folded')?.getClientRects().length))(document.querySelector(${JSON.stringify(card(id))}))`);
   const unfoldRow = async (p, device, id) => {
-    // On its author, at the row's start ("Folded" is said to a screen reader only in a dossier, item 471).
-    const row = card(id) + ' > .message-folded > .folded-author';
+    // On its words: item 645 keeps repeated sender names for screen readers only.
+    const row = card(id) + ' > .message-folded > .folded-words';
     await centre(p, row); await press(p, device, row);
     await until(async () => !await foldedRow(p, id) && await p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`), `${device}: a press on ${id}'s row shows it whole`);
   };
@@ -246,7 +248,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const line = card(ids.plain) + ' > .message-reactions';
       const count = () => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(line)})?.querySelector('.reaction-count');return c?{text:c.textContent,mine:c.classList.contains('mine'),who:getComputedStyle(c.querySelector('.reaction-who')).display!=='none'}:null})()`);
       await light(p, device, ids.plain);
-      assert.deepEqual(await bar(p), { thumb: 'false', reply: null, more: null }, device + ': 👍, Reply and ⋯; no ✅ 🚫 on a message that asks nothing');
+      assert.deepEqual(await bar(p), { thumb: 'false', reply: null, fold: null, more: null }, device + ': 👍, Reply, Fold and ⋯; no ✅ 🚫 on a message that asks nothing, and no Show full message on one shown whole');
       assert.equal(await count(), null, device + ': no count before anyone thumbs it');
       const thumb = async (on, how) => {
         await how();
@@ -269,7 +271,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       if (device === 'phone') {
         // Where a finger presses, each of the bar's buttons is at least 44px each way.
         const sizes = await p.evaluate(`[...document.querySelectorAll('${BAR} button')].filter(b=>!b.hidden).map(b=>{const r=b.getBoundingClientRect();return [b.dataset.act,Math.round(r.width),Math.round(r.height)]})`);
-        assert.ok(sizes.length === 3 && sizes.every(([, width, height]) => width >= 44 && height >= 44), `phone: the bar's buttons are 44px or more (${JSON.stringify(sizes)})`);
+        // 👍, Reply, Fold (item 473) and ⋯.
+        assert.ok(sizes.length === 4 && sizes.every(([, width, height]) => width >= 44 && height >= 44), `phone: the bar's buttons are 44px or more (${JSON.stringify(sizes)})`);
         // On a phone a tap on the count names who, as hover does; it does not take the thumbs-up back.
         await until(() => foldedRow(p, ids.plain), 'phone: given again, the thumbs-up folds the message again');
         await unfoldRow(p, device, ids.plain);
@@ -306,7 +309,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.deepEqual(await p.evaluate(`[...document.querySelector(${JSON.stringify(card(ids.ask))}).querySelectorAll('[data-react]')].map(e=>[e.dataset.react,e.textContent])`),
         [['yes', '✅ Go ahead'], ['no', "🚫 Don't"]], device + ': the ask offers both answers on its card');
       await light(p, device, ids.ask);
-      assert.deepEqual(await bar(p), { thumb: 'false', yes: 'false', no: 'false', reply: null, more: null }, device + ': and on its bar');
+      assert.deepEqual(await bar(p), { thumb: 'false', yes: 'false', no: 'false', reply: null, fold: null, more: null }, device + ': and on its bar');
       // Laptop: the card's ✅, then the bar's 🚫. Phone: the bar's ✅, then the card's 🚫.
       const first = device === 'phone' ? `${BAR} [data-act=yes]` : `${choices} [data-react=yes]`;
       const second = device === 'phone' ? `${choices} [data-react=no]` : `${BAR} [data-act=no]`;
@@ -329,7 +332,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
           await press(p, device, card(ids.ask) + ' > .stack-head .stack-who');
           await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.ask) + ' > .message-folded')})?.getClientRects().length)`), device + ': a press on the dossier\'s head row shows the ask as its folded row');
         }
-        await press(p, device, card(ids.ask) + ' > .message-folded > .folded-author');
+        await press(p, device, card(ids.ask) + ' > .message-folded > .folded-words');
         await until(() => p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`), device + ': a press on its folded row shows the ask whole');
         if (device !== 'phone' || !(await lit(p)).includes(ids.ask)) await light(p, device, ids.ask);
       };
@@ -352,6 +355,120 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await relight();
       await until(async () => (await bar(p))?.no === 'true' && (await bar(p))?.yes === 'false', device + ': the bar shows 🚫');
       assert.equal(await readerOn(p), null, device + ': still nothing opened');
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  // The bar is bounded by the window (docs/interaction.md): a go-ahead ask its card cuts off has the most buttons a
+  // bar shows (👍 ✅ 🚫, Reply, Show full message, Fold and ⋯, item 473), seven a finger wide, more than a 320px
+  // window holds in a row, and "Link copied" on its ⋯ widens a bar further. In every state, at 390, 375 and 320
+  // pixels, the bar keeps to one row over its card, every button 44px to touch and inside the window, ⋯ last: where
+  // there is no room it puts Fold, then Show full message, behind its ⋯, whose menu offers them, and they come back
+  // once there is room (the ⋯ says ⋯ again). Where there is room it puts nothing away: a laptop, a short ask at 390.
+  await check('reading a go-ahead ask\'s bar keeps every button in the window at 390, 375 and 320 pixels, with Show full message and with "Link copied" on its ⋯, in one row, what does not fit behind its ⋯', async () => {
+    const long = Array.from({ length: 70 }, (_, i) => `Step ${i}. What the deploy will do, in words that need the whole card.`).join('\n\n');
+    // The bar as it stands: its buttons in order, each one's box, and the bar's and its card's boxes.
+    const barNow = (p, id) => p.evaluate(`(()=>{const b=document.querySelector('${BAR}');if(!b||b.hidden)return null;const box=e=>{const r=e.getBoundingClientRect();return {left:Math.round(r.left),right:Math.round(r.right),top:Math.round(r.top),bottom:Math.round(r.bottom),width:Math.round(r.width),height:Math.round(r.height)}};
+      return {window:document.documentElement.clientWidth,bar:box(b),card:box(document.querySelector(${JSON.stringify(card(id))})),said:b.querySelector('[data-act=more]').textContent,
+        buttons:[...b.querySelectorAll('button')].filter(x=>!x.hidden).map(x=>({act:x.dataset.act,...box(x)})),sideways:document.documentElement.scrollWidth>document.documentElement.clientWidth}})()`);
+    const frames = p => p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+    // What the ⋯ menu calls each button the bar can put behind it.
+    const MENU = { full: 'Show full message', fold: 'Fold' };
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'reading-ask-bar-' + device;
+      const ids = await seed(topic, [['short', { sender: 'aim-core', join: true, whole_topic: true, body: 'May I deploy release 33 now?',
+        post_args: { addressees: [facts.actor], intent: 'ask', go_ahead: true } }],
+        ['long', { sender: 'aim-core', whole_topic: true, body: 'May I deploy release 34 now?\n\n' + long, post_args: { addressees: [facts.actor], intent: 'ask', go_ahead: true } }]]);
+      const p = await open(topic, device, topic, ids.short);
+      // The page's own clipboard, so Copy Link says "Link copied" on the ⋯ and the Mac's pasteboard is never touched.
+      await p.evaluate(`(()=>{if(!navigator.clipboard)Object.defineProperty(navigator,'clipboard',{configurable:true,value:{}});Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async text=>{(window.copied??=[]).push(text)}});return true})()`);
+      const problems = [];
+      // Looks at the bar in one state, and answers what it shows and what it put behind its ⋯.
+      const look = async (width, id, state) => {
+        const want = id === ids.long ? ['thumb', 'yes', 'no', 'reply', 'full', 'fold', 'more'] : ['thumb', 'yes', 'no', 'reply', 'fold', 'more'];
+        const at = await barNow(p, id), where = `${device} ${width} ${id === ids.long ? 'long' : 'short'} ask, ${state}`;
+        if (!at) { problems.push(`${where}: no bar`); return { shown: [], behind: [] }; }
+        const shown = at.buttons.map(b => b.act), behind = want.filter(act => !shown.includes(act));
+        // It shows its buttons in their order, ⋯ last, and puts only Show full message and Fold away.
+        if (JSON.stringify(shown) !== JSON.stringify(want.filter(act => shown.includes(act))) || behind.some(act => !(act in MENU))) problems.push(`${where}: the bar is ${shown.join(' ')}, from ${want.join(' ')}`);
+        if (state === 'Link copied' && at.said !== 'Link copied') problems.push(`${where}: the ⋯ says ${JSON.stringify(at.said)}`);
+        for (const b of at.buttons) {
+          if (b.left < 0 || b.right > at.window) problems.push(`${where}: ${b.act} runs off the window (${b.left}–${b.right} in ${at.window})`);
+          if (device === 'phone' && (b.width < 44 || b.height < 44)) problems.push(`${where}: ${b.act} is ${b.width}×${b.height}, under 44px`);
+        }
+        if (at.bar.left < 0 || at.bar.right > at.window) problems.push(`${where}: the bar runs off the window (${at.bar.left}–${at.bar.right} in ${at.window})`);
+        if (at.bar.bottom <= at.card.top || at.bar.top >= at.card.bottom) problems.push(`${where}: the bar is not over its card (bar ${at.bar.top}–${at.bar.bottom}, card ${at.card.top}–${at.card.bottom})`);
+        const rows = new Set(at.buttons.map(b => b.top)).size;
+        if (rows !== 1) problems.push(`${where}: the bar takes ${rows} rows`);
+        if (at.sideways) problems.push(`${where}: the page scrolls sideways`);
+        // Where there is room, nothing goes behind the ⋯: a laptop, and a phone's short ask at 390 before anything is said.
+        if ((device === 'laptop' || (width === 390 && id === ids.short && state === 'plain')) && behind.length) problems.push(`${where}: ${behind.join(' and ')} went behind the ⋯ with room for them`);
+        // Seven buttons a finger wide are wider than 320 pixels less 8 each side, and six are not: Fold alone goes.
+        if (width === 320 && id === ids.long && state === 'plain' && JSON.stringify(behind) !== '["fold"]') problems.push(`${where}: behind the ⋯ is ${JSON.stringify(behind)}, not Fold alone`);
+        observations.push({ name: 'ask bar in the window', engine, device, width, message: id === ids.long ? 'long' : 'short', state, rows, shown, behind, bar: at.bar, window: at.window });
+        return { shown, behind };
+      };
+      // A press on the bar's ⋯ opens its menu (a sheet on a phone), which offers what the bar put behind it.
+      const offers = async (behind, where) => {
+        await press(p, device, `${BAR} [data-act=more]`);
+        const items = await until(async () => { const now = await p.evaluate(`[...document.querySelectorAll('.message-menu-list [role=menuitem]')].map(b=>b.firstChild?.textContent??'')`); return now.includes('Copy Link') ? now : null; }, `${device}: the ⋯ menu offers Copy Link`);
+        for (const act of behind) if (!items.includes(MENU[act])) problems.push(`${where}: the ⋯ menu does not offer ${MENU[act]}, which the bar put behind it (${items.join(', ')})`);
+        return items;
+      };
+      // Copy Link from that menu, and the ⋯ says "Link copied".
+      const copy = async (id, behind, where) => {
+        const items = await offers(behind, where);
+        await press(p, device, `.message-menu-list [role=menuitem]:nth-child(${items.indexOf('Copy Link') + 1})`);
+        await until(() => p.evaluate(`!document.querySelector('.message-menu-list') && document.querySelector('${BAR} [data-act=more]').textContent === 'Link copied'`), `${device}: the ⋯ says Link copied`);
+        await frames(p);
+        assert.ok((await lit(p)).includes(id), `${device}: the message keeps its light`);
+      };
+      const widths = device === 'phone' ? [390, 375, 320] : [DEVICES.laptop.width];
+      for (const width of widths) {
+        if (width !== DEVICES[device].width) await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES[device], width });
+        await until(() => p.evaluate(`innerWidth === ${width}`), `${device}: the window is ${width} wide`);
+        for (const id of [ids.short, ids.long]) {
+          const name = id === ids.long ? 'long' : 'short';
+          await light(p, device, id);
+          // The long ask's card cuts it off, and its bar offers Show full message (there is room for it before anything is said).
+          if (id === ids.long) await until(async () => (await barNow(p, id))?.buttons.some(b => b.act === 'full'), `${device} ${width}: the long ask's bar offers Show full message`);
+          await frames(p);
+          const plain = await look(width, id, 'plain');
+          if (width === 320 || device === 'laptop') for (const theme of ['light', 'dark']) {
+            await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+            await frames(p); await shot(p, `ask-bar-${device}-${width}-${name}-${theme}`);
+          }
+          await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+          await copy(id, plain.behind, `${device} ${width} ${name} ask`);
+          const copied = await look(width, id, 'Link copied');
+          if (width === 320) await shot(p, `ask-bar-${device}-${width}-${name}-copied`);
+          // The next press on the ⋯ opens its menu, offering what the bar put behind it for "Link copied", and once it
+          // has landed the ⋯ says ⋯ again and what went behind it comes back; Escape closes the menu.
+          await offers(copied.behind, `${device} ${width} ${name} ask, Link copied`);
+          await p.key('Escape');
+          await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), `${device}: Escape closes the ⋯ menu`);
+          await until(() => p.evaluate(`document.querySelector('${BAR} [data-act=more]').textContent === '⋯'`), `${device}: the ⋯ says ⋯ again`);
+          await frames(p);
+          const again = await look(width, id, '⋯ again');
+          if (JSON.stringify(again.shown) !== JSON.stringify(plain.shown)) problems.push(`${device} ${width} ${name} ask: with ⋯ again the bar is ${again.shown.join(' ')}, not ${plain.shown.join(' ')} as before Link copied`);
+        }
+      }
+      assert.deepEqual(problems, [], `${device}: every button of the bar in the window, in one row`);
+      assert.equal(await readerOn(p), null, `${device}: nothing opened`);
+      // Both asks are answered, so no topic is left waiting on the reader: the rail's waiting light it would leave lit
+      // widens the rail's first row for every check after this one. Each answer is a reply, which folds its ask into its
+      // stack's head row and moves the cards: the page shows the reply and the bar's ✅ holds its place across two
+      // frames before the next press.
+      for (const id of [ids.long, ids.short]) {
+        const name = id === ids.long ? 'long' : 'short';
+        if (!(await lit(p)).includes(id)) await light(p, device, id);
+        await until(() => p.evaluate(`new Promise(done=>{const at=()=>JSON.stringify(document.querySelector('${BAR} [data-act=yes]')?.getBoundingClientRect()??null),first=at();requestAnimationFrame(()=>requestAnimationFrame(()=>done(first!=='null'&&first===at())))})`), `${device}: the ${name} ask's ✅ holds its place`);
+        await press(p, device, `${BAR} [data-act=yes]`);
+        await until(async () => (await reactions(id)).answers.some(a => a.actor_id === facts.actor && a.answer === 'yes'), `${device}: Core holds ✅ on the ${name} ask`);
+        const reply = await until(async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 10 })).items.find(item => item.reply_to === id && item.author_id === facts.actor)?.id, `${device}: the ${name} ask's answer is a reply`);
+        await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${reply}"]')) && window.fetchesOut === 0`), `${device}: the page shows the ${name} ask's answer`);
+      }
       assert.deepEqual(p.errors, []);
       await p.close();
     }

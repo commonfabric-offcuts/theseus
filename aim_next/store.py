@@ -44,7 +44,7 @@ from .outcome_kind import OutcomeKind, KINDS_SCHEMA
 from .outcome_end import ENDED, ENDS_SCHEMA, OutcomeEnd, end_view
 from .outcome_rules import KIND_BEFORE_R21
 from .reactions import Reactions, REACTION_SCHEMA
-from .outline_order import OutlineOrder, ORDER_SCHEMA
+from .outline_order import OutlineOrder, ORDER_SCHEMA, TOPIC_POSITION_SCHEMA
 from .stacks import Stacks, ACT_COVERS
 from .covers import Covers
 from .blocking import Blocking, BLOCKS_SCHEMA
@@ -55,7 +55,7 @@ from .tool_records import Records as ToolRecords
 from . import message_edit
 
 
-SCHEMA_VERSION = "46"
+SCHEMA_VERSION = "47"
 
 
 def commit_identity_intact(metadata):
@@ -131,7 +131,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_COVERS + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_COVERS + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA + TOPIC_POSITION_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -797,7 +797,7 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
             {"kind": "workspace", "id": workspace["id"], "version": version}]
 
     def _view_workspace_topics(self, db, actor, args):
-        """One page of an outcome's topics, latest activity first (docs/topic-list.md).
+        """One page of an outcome's topics, newest stable position first (docs/topic-list.md).
 
         Three lists, each from one index: the topics that are neither done nor
         archived (the default), the done ones (done: true), and the archived ones
@@ -828,8 +828,8 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
                                "WHERE t.workspace_id=? AND t.archived=? AND (t.state='done')=?" + (
                                    # The open list leaves out the conversation, which has its own row; it is
                                    # never Done or archived unless its outcome is reached, and then it is listed there.
-                                   " AND t.kind='topic'" if not archived and not flag else "") + apart + (" AND (t.activity_ms,t.id)<(?,?)" if keyset else "") +
-                               " ORDER BY t.activity_ms DESC,t.id DESC LIMIT ?",
+                                   " AND t.kind='topic'" if not archived and not flag else "") + apart + (" AND (t.list_position,t.id)<(?,?)" if keyset else "") +
+                               " ORDER BY t.list_position DESC,t.id DESC LIMIT ?",
                                (workspace["id"], int(archived), flag) + ((json.dumps(sorted(builds)),) if apart else ()) + (after[1:] if keyset else ())
                                + (limit + 1 - len(rows),)).fetchall()
             if len(rows) > limit:
@@ -842,7 +842,7 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
                   "archived": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=1",
                                          (workspace["id"],)).fetchone()[0]}
         answer = {"instance_id": self.instance_id, "items": items, "groups": groups,
-                  "next_cursor": order_cursor(last["state"] == "done", last["activity_ms"], last["id"]) if len(rows) > limit else None,
+                  "next_cursor": order_cursor(last["state"] == "done", last["list_position"], last["id"]) if len(rows) > limit else None,
                   # The person's own order of this outcome's topics, on every page (outline_order.py).
                   "order": self._outline_order(db, actor, workspace["id"]),
                   "relevant_versions": {"workspace": workspace["version"]}}
@@ -854,7 +854,7 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
             building = sorted(self._building_topics(db, workspace["id"]))
             answer["building"] = self._topic_items(db, actor, db.execute(
                 "SELECT t.*,s.message_count,m.seq AS latest_seq FROM topics t " + _TOPIC_SUMMARY +
-                "WHERE t.id IN (SELECT value FROM json_each(?)) ORDER BY t.activity_ms DESC,t.id DESC",
+                "WHERE t.id IN (SELECT value FROM json_each(?)) ORDER BY t.list_position DESC,t.id DESC",
                 (json.dumps(building),)).fetchall(), builds) if building else []
         return answer
 

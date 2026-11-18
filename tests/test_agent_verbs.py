@@ -239,7 +239,7 @@ class ReadingVerbCase(AgentVerbCase):
         # The outcome's conversation comes first, on its own line, then its topics.
         conversation, *topics = out.splitlines()
         self.assertRegex(conversation, r"^conversation t-[0-9a-f]{32} \(agent-a answers; 0 new\)$")
-        self.assertEqual([line.split("  ")[0] for line in topics], ["t1", "t0"])
+        self.assertEqual([line.split("  ")[0] for line in topics], ["t0", "t1"], "641: posting in t1 does not move it above the newer t0")
         code, out, _ = self.run_cli("read", "t1")
         self.assertEqual(code, 0)
         seq = self.sql("SELECT seq FROM messages WHERE id=?", (long_id,))[0][0]

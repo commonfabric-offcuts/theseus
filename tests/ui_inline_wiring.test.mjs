@@ -16,6 +16,7 @@ import { TopicViews } from '../web/topic-views.mjs';
 import { RecoveryCleanup } from '../web/cleanup.mjs';
 import { replyLine } from '../web/replies.mjs';
 import { placeNewLine } from '../web/unanswered.mjs';
+import { revealSelection } from '../web/reveal.mjs';
 import { cardClass, paintCardColor, agentColor, AGENT_PALETTE } from '../web/author-colors.mjs';
 import { AgentColors } from '../web/colors.mjs';
 import { openColorPicker } from '../web/color-picker.mjs';
@@ -65,7 +66,8 @@ function loadPageScope(context, root) {
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const elements = new Map(), events = [], calls = [], paints = [], observers = [], days = [];
   class Element {
-    constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true; }
+    constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true;
+      this.style = {}; this.scrollTop = 0; this.scrollHeight = 600; this.clientHeight = 600; }
     addEventListener(name, fn) { this.handlers[name] = fn; }
     get classList() {
       const names = () => String(this.className ?? '').split(' ').filter(Boolean), set = list => { this.className = list.join(' '); };
@@ -88,6 +90,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     get lastChild() { return this.children[this.children.length - 1] ?? null; }
     getAttributeNames() { return []; }
     hasAttribute(name) { return name in this; }
+    toggleAttribute(name, force = !this.hasAttribute(name)) { if (force) this.setAttribute(name, ''); else this.removeAttribute(name); return force; }
     // A bare tag name finds the first such element inside, a :scope chain the first it reaches; any other selector names an element by id.
     querySelector(selector) {
       if (selector.startsWith(':scope')) return this.querySelectorAll(selector)[0] ?? null;
@@ -112,11 +115,17 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
     focus() { document.activeElement = this; }
     scrollIntoView() {}
+    scrollBy(options) { this.scrollTop += options.top; events.push(['scroll', this.id, options]); }
     contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
     closest(selector) { for (let at = this; at; at = at.parent) if (selector.startsWith('.') && String(at.className ?? '').split(' ').includes(selector.slice(1))) return at; return null; }
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
     // Where it is on screen: wholly in view, unless a check places it (box).
-    getBoundingClientRect() { return this.box ?? { top: 0, bottom: 40, height: 40 }; }
+    getBoundingClientRect() {
+      const box = this.box ?? { top: 80, bottom: 120, height: 40, left: 0, right: 300, width: 300 };
+      let offset = context.window.scrollY ?? 0;
+      for (let at = this.parentElement; at; at = at.parentElement) offset += at.scrollTop;
+      return { ...box, top: box.top - offset, bottom: box.bottom - offset };
+    }
     // Shown unless it or what holds it is hidden.
     getClientRects() { for (let at = this; at; at = at.parent) if (at.hidden) return []; return [this.getBoundingClientRect()]; }
     replaceWith(next) { if (this.parent) { this.parent.insertBefore(next, this); this.remove(); } }
@@ -130,8 +139,10 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   };
   // Whether el is reached from root through these child steps.
   const inChain = (el, chain, root) => { let at = el; for (let i = chain.length - 1; i >= 0; i--, at = at.parent) if (!at || !isStep(at, chain[i])) return false; return at === root; };
-  const document = { body: get('body'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
-    createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: s => s === '[data-unreached]' ? [...elements.values()].filter(el => 'unreached' in el.dataset) : [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
+  const document = { body: get('body'), documentElement: get('html'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
+    createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }),
+    // The bars' glyphs (glyphs.mjs) are svg elements.
+    createElementNS: (ns, tag) => Object.assign(new Element(), { tagName: String(tag), namespaceURI: ns }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: s => s === '[data-unreached]' ? [...elements.values()].filter(el => 'unreached' in el.dataset) : [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
     addEventListener(name, fn) { events.push(['document-handler', name, fn]); },
     removeEventListener(name, fn) { const at = events.findIndex(([kind, n, f]) => kind === 'document-handler' && n === name && f === fn); if (at >= 0) events.splice(at, 1); },
     // The page's window, as a test may replace it, with the size watch the message bar keeps (message-menu.mjs).
@@ -164,6 +175,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     savedTimes: new Map(), savedTime: EditorRegistry.prototype.savedTime, localTopicVersion: EditorRegistry.prototype.localTopicVersion,
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
     pending() { return { items: [], next_cursor: null }; }, cancelOpen() { return false; },
+    recoveryCandidates: async () => ({ items: [], nextCursor: null }), neighbors: async () => null,
     // Which replies are in doubt, and the Review buttons, are the registry's own answers, read over this fake's registered writings and pages.
     doubt(editor) { return EditorRegistry.prototype.doubt.call({ pages: { get: () => this.pending(editor) }, sessions: this.sessions, asides: this.asides }, editor); },
     asidesOf(editor) { return EditorRegistry.prototype.asidesOf.call({ pages: { get: () => this.pending(editor) }, sessions: this.sessions }, editor); },
@@ -183,14 +195,17 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   }
   const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} }, innerHeight: 600, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     // The window's own location and history are the page's, as in a browser (the shell reads them there).
-    window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }), get location() { return scope.location; }, get history() { return scope.history; } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
+    window: { innerHeight: 600, scrollY: 0,
+      getComputedStyle: el => ({ overflowY: 'visible', position: 'static', scrollPaddingTop: '0px', scrollPaddingBottom: '0px', ...el.style }),
+      scrollBy(options) { scope.window.scrollY += options.top; events.push(['scroll', 'window', options]); },
+      addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }), get location() { return scope.location; }, get history() { return scope.history; } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     // A page that loads another asks Theseus nothing more until it stays (api.mjs depart, stay); here each fixture's page says
     // so in its events, and the module every fixture shares goes on answering.
     depart: () => events.push(['depart']), stay: () => events.push(['stay']),
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
-    Reader: class { constructor() { return reader; } },
-    TopicViews: class { constructor() { return views; } }, Freshness: class { constructor() { return fresh; } },
+    Reader: class { constructor(callbacks) { reader.callbacks = callbacks; return reader; } },
+    TopicViews: class { constructor() { return views; } }, Freshness: class { constructor(options) { fresh.options = options; return fresh; } },
     initialViews: async () => ({}), actorBaseline: async () => null, readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '',
     openIntentJournal: async () => { events.push(['intent-journal']); throw Error('No browser intent storage in this fixture'); },
     openOpeningStore: async () => { events.push(['opening-store']); return { close() {} }; },
@@ -202,8 +217,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   loadPageScope(context, 'app.mjs');
   let source = webSource('app.mjs').replace(/^import [^;]*;\n/gm, '');
   assert.equal(source.match(/^begin\(\);$/gm)?.length, 1); source = source.replace(/^begin\(\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, present, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus,
-    inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, present, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus, readerDossierName, enableFreshness,
+    inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; if ('topicUnavailable' in value) topicUnavailable = value.topicUnavailable; if ('stackFeed' in value) stackFeed = value.stackFeed; if ('here' in value) here = value.here; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
     get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail,outcomeScope,marks,commitReload,topicNavigation}; } };`, context);
@@ -217,6 +232,25 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const state = (ref = editor.context.sourceRef) => ({ instance_id: 'fixture', source_ref: ref, destination: { topic_id: 't1' }, source_available: true, destination_available: true });
   return { ...context.wiring, makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap, views, document, observers, days };
 }
+
+test('the inline fixture reveals an offscreen card through real window and scroller geometry', () => {
+  const geometryTolerance = .5;
+  for (const scroller of [false, true]) {
+    const f = fixture(), host = f.get('messages'), card = f.document.createElement('article');
+    host.append(card); card.box = { top: 950, bottom: 990, height: 40 };
+    host.box = { top: 0, bottom: 600, height: 600 };
+    const area = scroller ? host : f.document.documentElement;
+    area.style = { scrollPaddingTop: '20px', scrollPaddingBottom: '40px' };
+    if (scroller) { host.style.overflowY = 'auto'; host.scrollHeight = 1200; }
+    revealSelection(card); card.focus();
+    assert.equal(f.document.activeElement, card, 'the actual reveal leaves its landing card focusable');
+    const scrolls = f.events.filter(event => event[0] === 'scroll');
+    assert.equal(scrolls.length, 1);
+    assert.equal(scrolls[0][1], scroller ? 'messages' : 'window');
+    assert.equal(scrolls[0][2].behavior, 'instant');
+    assert.ok(Math.abs(card.getBoundingClientRect().bottom - 506) <= geometryTolerance, `the padded viewport reveals the card with its buffer within ${geometryTolerance}px`);
+  }
+});
 
 test('inline Ctrl-W uses the shared writing input path and preserves readonly writing', () => {
   const f=fixture(), field=f.get('inline-writing-body');
@@ -247,7 +281,7 @@ test('outcome detail keeps transient choices, hides denied content, and recovers
       if(failure) throw failure;
       return {instance_id:'fixture',workspace:{id:'w1',title:'Real outcome',purpose:'Purpose'}};
     }
-    return {instance_id:'fixture',items:name==='workspace_topics'?[{...f.topic,activity_ms:1}]:[],next_cursor:null};
+    return {instance_id:'fixture',items:name==='workspace_topics'?[{...f.topic,activity_ms:1,list_position:1}]:[],next_cursor:null};
   };
   await f.initialize();
   assert.equal(f.get('topic-title').textContent,'Real outcome');
@@ -285,7 +319,7 @@ test('an outcome page back from a refusal shows its topics only once what stands
         if (denied) throw Object.assign(Error('Access denied'), { code: 'FORBIDDEN' });
         return { instance_id: 'fixture', workspace: { id: 'w1', title: 'Real outcome', purpose: 'Purpose' } };
       }
-      return { instance_id: 'fixture', items: name === 'workspace_topics' ? [{ ...f.topic, activity_ms: 1 }] : [], next_cursor: null };
+      return { instance_id: 'fixture', items: name === 'workspace_topics' ? [{ ...f.topic, activity_ms: 1, list_position: 1 }] : [], next_cursor: null };
     } finally { out--; }
   };
   // Every read the commit made has landed but the held one, and the page has done with what they brought.
@@ -511,7 +545,7 @@ test('actual home wordmark, Outcomes and topic links preserve dirty writing befo
   f.registry.keepEditorsLocal=async()=>{};
   Object.assign(f.editor,{localVersion:1,ackVersion:0});Object.defineProperty(f.editor,'dirty',{get:()=>f.editor.ackVersion<f.editor.localVersion});
   f.registry.flush=async()=>({recorded:false,status:'unknown'});
-  f.api.view=async(name,args)=>name==='workspace_topics'?{instance_id:'fixture',items:[{id:'t2',title:'Second',workspace_id:'w1',activity_ms:1}],next_cursor:null}:read(name,args);
+  f.api.view=async(name,args)=>name==='workspace_topics'?{instance_id:'fixture',items:[{id:'t2',title:'Second',workspace_id:'w1',activity_ms:1,list_position:1}],next_cursor:null}:read(name,args);
   await f.initialize();await drain();
   const row=()=>f.get('topics').children.find(child=>child.dataset?.topicId==='t2');
   for(const control of [f.get('outcomes-home'),f.get('wordmark'),row()]){
@@ -3371,6 +3405,183 @@ test('your own message keeps its own style when it arrives live and when More lo
     m30: 'message-card agent-card agent-green', m29: 'message-card agent-card agent-green', m28: 'message-card own-message', m27: 'message-card agent-card agent-blue' });
 });
 
+// Item 550's limits: a topic whose messages all answer its opening message, above the page, is one dossier, one
+// stack. More messages fills that stack: the older messages it loads show at the stack's end, where the button was,
+// newest first and whole, under the head the stack had; a message of the reader's own, live or loaded, never heads it
+// and keeps its own style.
+test('More messages shows the older messages of the dossier it fills where its button was, under the head it had, the reader\'s own their own', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  const at = { root_id: 'm1', through: null, below: false, aside_revision: 0, name: null, name_revision: 0, at: { acts: 1, messages: 0 } };
+  const item = (seq, author_id = 'fable') => ({ id: 'm' + seq, seq, author_id, author_kind: author_id === 'fixture-person' ? 'human' : 'agent', body: 'Body ' + seq, topic_id: 't1', reply_to: 'm1', stack_position: at });
+  const page = (items, next, version) => ({ instance_id: 'fixture', items, next_cursor: next, relevant_versions: { topic: version } });
+  views.messagesPage(page([40, 41, 42, 43].map(seq => item(seq)), 40, 1), { initial: true }); await settle();
+  views.messagesPage(page([item(44, 'fixture-person')], null, 2), { live: true, cursor: views.newest }); await settle();
+  const view = f.api.view;
+  // The page More reads reaches the dossier's first message, m1, which then heads nothing and gathers nothing.
+  const first = { id: 'm1', seq: 1, author_id: 'fable', author_kind: 'agent', body: 'Where shall we meet?', topic_id: 't1', stack_position: at };
+  f.api.view = async (name, args) => name === 'topic_messages' ? page([first, item(36), item(37, 'fixture-person'), item(38)], null, 2)
+    : name === 'memory_items' ? { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } } : view(name, args);
+  const drawn = () => entries(f.get('messages')).map(entry => [entry.dataset.id, entry.className, !entry.hidden]);
+  const before = drawn();
+  assert.deepEqual(before.map(([id]) => id), ['m40', 'm41', 'm42', 'm43', 'm44'], 'one stack, its head m40');
+  await f.get('more-messages').onclick(); await settle(); await settle();
+  assert.deepEqual(drawn(), [...before, ['m38', 'message-card agent-card agent-green', true], ['m37', 'message-card own-message', true], ['m36', 'message-card agent-card agent-green', true],
+    ['m1', 'message-card agent-card agent-green', true]],
+    'the stack keeps its head and what it showed, then the older messages, newest first, each shown, the reader\'s own its own');
+  assert.equal(drawn().find(([id]) => id === 'm44')[1], 'message-card own-message', 'the reader\'s own live message is a reply, never the head');
+  // Where the button was: the filled cards a run of whole cards, none overlapping another or covering the face above
+  // it, which keeps the place it had (stack-look.css, data-stack-filled); the faces above still overlap as a stack's do,
+  // the head m40 among them, which shows whole though the stack is folded (its first message is not loaded, fix round B2).
+  const faces = Object.fromEntries(entries(f.get('messages')).map(entry => [entry.dataset.id, [entry.dataset.stackFilled, entry.dataset.stackOverlap, entry.dataset.stackCovered]]));
+  assert.deepEqual(faces, { m40: ['false', 'false', 'true'], m41: ['false', 'true', 'true'], m42: ['false', 'true', 'true'], m43: ['false', 'true', 'true'], m44: ['false', 'true', 'false'],
+    m38: ['true', 'false', 'false'], m37: ['true', 'false', 'false'], m36: ['true', 'false', 'false'], m1: ['true', 'false', 'false'] });
+});
+
+// Item 550, its fix round's B1: More messages shows every older message it loads where its button was, of whichever
+// dossier. Here the last card above the button is a message of its own (m36), and the older page holds only replies of
+// a dossier whose first message (m1) is above the page and whose stack (m37..m41) sits higher up. Each older reply
+// shows below m36, newest first; the cards shown keep their order and how they show, and the stack higher up keeps
+// its head and its messages: none of the older replies goes into it.
+test('More messages shows every older message it loads where its button was, those of a dossier whose stack sits higher up too, and what was shown holds', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  const at = root => ({ root_id: root, through: null, below: false, aside_revision: 0, name: null, name_revision: 0, at: { acts: 1, messages: 0 } });
+  const item = (seq, root, reply_to = null) => ({ id: 'm' + seq, seq, author_id: 'fable', author_kind: 'agent', body: 'Body ' + seq, topic_id: 't1',
+    ...(reply_to ? { reply_to } : {}), stack_position: at(root) });
+  const run = (from, through, make) => Array.from({ length: through - from + 1 }, (_, n) => make(from + n));
+  const page = (items, next, version) => ({ instance_id: 'fixture', items, next_cursor: next, relevant_versions: { topic: version } });
+  // m2..m35 answer m1, older than the page; m36 is a message of its own; m37..m41 answer m1; m42..m65 are messages of their own.
+  views.messagesPage(page([item(36, 'm36'), ...run(37, 41, seq => item(seq, 'm1', 'm1')), ...run(42, 65, seq => item(seq, 'm' + seq))], 36, 1), { initial: true }); await settle();
+  const view = f.api.view;
+  f.api.view = async (name, args) => name === 'topic_messages' ? page(run(6, 35, seq => item(seq, 'm1', 'm1')), 6, 1)
+    : name === 'memory_items' ? { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } } : view(name, args);
+  const drawn = () => entries(f.get('messages')).map(entry => [entry.dataset.id, !entry.hidden]);
+  const stackOf = id => entryIn(f, id)?.closest('.reply-stack')?.dataset.stack ?? null;
+  const before = drawn();
+  assert.deepEqual([before.at(-1), stackOf('m41'), ['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf)], [['m36', true], 'm37', Array(5).fill('m37')],
+    'm36 is the last card above More, and the dossier\'s five replies are one stack higher up, headed by m37');
+  await f.get('more-messages').onclick(); await settle(); await settle();
+  assert.deepEqual(drawn(), [...before, ...run(6, 35, seq => ['m' + (41 - seq), true])],
+    'what was shown keeps its order and how it shows; below it, every older message, newest first, each shown');
+  assert.deepEqual([['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf), run(6, 35, seq => stackOf('m' + seq)).filter(Boolean)], [Array(5).fill('m37'), []],
+    'the stack higher up keeps its head and its messages: no older reply goes into it, or into a stack of its own');
+  // Pressed again, the last card above the button is m6, a card of its own of that same dossier: the next older
+  // replies (m2..m5) show below it too, newest first, as cards of their own, and nothing shown moves; none goes into
+  // the stack higher up (the second press is where the fault showed, fix round's re-review B1).
+  const shown = drawn();
+  assert.deepEqual(shown.at(-1), ['m6', true], 'm6, a card of its own, is the last card above More');
+  f.api.view = async (name, args) => name === 'topic_messages' ? page(run(2, 5, seq => item(seq, 'm1', 'm1')), null, 1)
+    : name === 'memory_items' ? { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } } : view(name, args);
+  await f.get('more-messages').onclick(); await settle(); await settle();
+  assert.deepEqual(drawn(), [...shown, ['m5', true], ['m4', true], ['m3', true], ['m2', true]],
+    'pressed again: what was shown keeps its order, and below it every older message, newest first, each shown');
+  assert.deepEqual([['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf), run(2, 35, seq => stackOf('m' + seq)).filter(Boolean)], [Array(5).fill('m37'), []],
+    'pressed again, the stack higher up still keeps its head and its messages alone');
+});
+
+// Merge B3: an older card kept apart by More is not the dossier's lone loaded message.
+test('B3 More keeps one cover per dossier, never pills on older cards kept apart, including its root on a second press', async () => {
+  for (const folder of [false, true]) for (const state of ['empty', 'stands', 'waiting', 'proposed', 'thumb', 'word']) {
+    const { f } = await readingPage();
+    f.document.createElementNS = (_ns, tag) => f.document.createElement(tag);
+    const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+    f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+    const cover = state === 'empty' ? null : { stands: 'Answered', owner: 'fixture-person', by: 'fable', at_ms: 1,
+      waiting: state === 'waiting' || state === 'proposed' ? [{ text: 'Launch?', default: 'Friday' }] : [],
+      payload: ['proposed', 'thumb', 'word'].includes(state) ? { text: 'Ready', message_id: 'm1', seq: 1, kind: 'answer',
+        done: state === 'proposed' ? null : { how: state, by: 'fixture-person', at_ms: 1700000000000 } } : null };
+    const item = (seq, root = 'm1') => ({ id: 'm' + seq, seq, author_id: 'fable', author_kind: 'agent', body: 'Body ' + seq, topic_id: 't1',
+      reply_to: seq === Number(root.slice(1)) ? null : root, acts: { cover: seq === 1 ? cover : null, cover_revision: seq === 1 ? 1 : 0 },
+      stack_position: { root_id: root, cover: root === 'm1' ? cover : null, cover_revision: 1, through: null, below: false, aside_revision: 0, at: { acts: 1, messages: 7 } } });
+    const page = (items, next) => ({ instance_id: 'fixture', items, next_cursor: next, relevant_versions: { topic: 1 } });
+    views.messagesPage(page([item(4, 'm4'), item(5), ...(folder ? [item(6)] : []), item(7, 'm7')], 4), { initial: true }); await settle();
+    const walk = node => (node.children ?? []).filter(e => e && typeof e === 'object').flatMap(e => [e, ...walk(e)]);
+    const descendants = () => walk(f.get('messages'));
+    const pills = () => descendants().filter(e => e.classList?.contains('row-pills'));
+    const sheets = () => descendants().filter(e => e.classList?.contains('dossier-cover'));
+    const hasPills = !folder && ['waiting', 'proposed', 'thumb', 'word'].includes(state);
+    assert.equal(pills().length, hasPills ? 1 : 0, `${folder}/${state}: a genuinely lone reply keeps its pills`);
+    assert.equal(sheets().length, folder && cover ? 1 : 0);
+    const view = f.api.view;
+    for (const [items, next] of [[[item(2), item(3)], 2], [[item(1)], null]]) {
+      f.api.view = async (name, args) => name === 'topic_messages' ? page(items, next)
+        : name === 'memory_items' ? { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } } : view(name, args);
+      await f.get('more-messages').onclick(); await settle(); await settle();
+      assert.equal(pills().length, hasPills ? 1 : 0, `${folder}/${state}: More never duplicates the dossier cover as pills`);
+      assert.equal(sheets().length, folder && cover ? 1 : 0, 'the original sheet stays');
+      for (const older of [1, 2, 3]) {
+        const entry = entryIn(f, 'm' + older);
+        if (entry) assert.equal(walk(entry).some(e => e.classList?.contains('row-pills')), false, 'an apart reply or root has no cover pills');
+      }
+    }
+  }
+});
+
+// Item 550, its fix round's B2: in a stack gathered under a first message the page has not loaded (m1), the message
+// at its head is a reply, a card of its own before 550, and its words show, as each reply kept in view shows, while
+// the stack is folded: unread or read. The negative: a stack headed by its own first message (m40) folds it to its
+// tab, as before.
+test('folded, a stack gathered under a first message not loaded shows its head\'s words, unread or read; a first message heading its stack folds to its tab', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  const at = root => ({ root_id: root, through: null, below: false, aside_revision: 0, name: null, name_revision: 0, at: { acts: 1, messages: 0 } });
+  const item = (seq, root, extra = {}) => ({ id: 'm' + seq, seq, author_id: 'fable', author_kind: 'agent', body: 'Body ' + seq, topic_id: 't1', stack_position: at(root), ...extra });
+  // m2..m5 answer m1, above the page, all unread; m20..m22 answer m10, above the page, all read; m40 heads its own reply m41.
+  const items = [...[2, 3, 4, 5].map(seq => item(seq, 'm1', { reply_to: 'm1', unread: true })), ...[20, 21, 22].map(seq => item(seq, 'm10', { reply_to: 'm10' })),
+    item(40, 'm40'), item(41, 'm40', { reply_to: 'm40' })];
+  views.messagesPage({ instance_id: 'fixture', items, next_cursor: null, relevant_versions: { topic: 1 } }, { initial: true }); await settle();
+  const section = id => entryIn(f, id)?.closest('.reply-stack') ?? null;
+  const look = id => [section(id)?.dataset.stack, section(id)?.dataset.fold, section(id)?.dataset.headOpen];
+  assert.deepEqual([look('m2'), look('m20'), look('m40')], [['m2', 'folded', 'true'], ['m20', 'folded', 'true'], ['m40', 'folded', 'false']],
+    'folded, each gathered stack shows its head\'s card whole, unread or read; the stack headed by its own first message shows its tab alone');
+  assert.deepEqual([2, 3, 4, 5].map(seq => entryIn(f, 'm' + seq).hidden), [false, false, false, false], 'every unread reply in view, its head among them');
+  // A press on the head's words does what it does on any card (opens the Reader), as it did on that reply's own card
+  // before 550; a press on its tab opens the dossier. The negative: a head folded to its tab opens the dossier wherever
+  // it is pressed.
+  const part = (id, name) => entryIn(f, id).children.find(child => String(child.className).split(' ').includes(name));
+  const press = async (id, name) => { await entryIn(f, id).onclick({ target: part(id, name), button: 0, preventDefault() {} }); await settle(); };
+  await press('m2', 'message-preview');
+  assert.deepEqual(look('m2')[1], 'folded', 'the head\'s words are the card\'s, not the tab\'s');
+  await press('m40', 'message-preview');
+  assert.equal(look('m40')[1], 'open', 'a head folded to its tab opens its dossier wherever it is pressed');
+  await press('m2', 'stack-head');
+  assert.deepEqual([look('m2'), look('m40')], [['m2', 'open', 'true'], ['m40', 'open', 'true']], 'the tab opens the gathered dossier, its head still whole');
+});
+
+// Item 550's limit on the Reader's title (item 561): under a source it names the dossier, by its name, else its first
+// message's line, never by the oldest reply the page holds; where the page's stacks cannot say (that first message not
+// loaded, or the topic's updates paused), the dossier Core read with the source says. A dossier of that one message
+// keeps the topic's name.
+test('the Reader\'s title names the dossier by its name, else its first message\'s line, never the oldest loaded reply, the topic paused or not', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  const wire = extra => f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh, ...extra });
+  wire({});
+  const at = name => ({ root_id: 'm1', through: null, below: false, aside_revision: 0, name, name_revision: name ? 1 : 0, at: { acts: 1, messages: 0 } });
+  const item = (seq, name = null) => ({ id: 'm' + seq, seq, author_id: 'fable', author_kind: 'agent', body: 'Reply line ' + seq, topic_id: 't1', reply_to: 'm1', stack_position: at(name) });
+  views.messagesPage({ instance_id: 'fixture', items: [40, 41, 42].map(seq => item(seq)), next_cursor: 40, relevant_versions: { topic: 1 } }, { initial: true }); await settle();
+  const core = { root_id: 'm1', name: null, first: { body: 'Where shall the club meet?\nThe hall or the boathouse.', attachments: [] }, alone: false };
+  const source = (id, dossier = core) => ({ source_ref: { kind: 'message', id }, topic_id: 't1', dossier });
+  assert.equal(f.readerDossierName(source('m41')), 'Where shall the club meet?', 'the first message\'s line, as Core read it, not "Reply line 40"');
+  wire({ topicUnavailable: true });
+  assert.equal(f.readerDossierName(source('m41')), 'Where shall the club meet?', 'the same while the topic\'s updates are paused');
+  assert.equal(f.readerDossierName(source('m41', { ...core, name: { text: 'Club hall', by: 'fable' } })), 'Club hall', 'paused, the name Core read');
+  wire({ topicUnavailable: false });
+  // A name on the page's positions shows at once, over what Core read with the source.
+  views.messagesPage({ instance_id: 'fixture', items: [item(43, { text: 'Hall plan', by: 'fable', at_ms: 1 })], next_cursor: null, relevant_versions: { topic: 2 } }, { live: true, cursor: views.newest }); await settle();
+  assert.equal(f.readerDossierName(source('m41')), 'Hall plan');
+  // The negatives: a dossier of one message alone keeps the topic's name, and so does a message read without a
+  // dossier (sent by name from a topic the reader does not read).
+  const lone = { id: 'm50', seq: 50, author_id: 'fable', author_kind: 'agent', body: 'On its own', topic_id: 't1', stack_position: { ...at(null), root_id: 'm50' } };
+  views.messagesPage({ instance_id: 'fixture', items: [lone], next_cursor: null, relevant_versions: { topic: 3 } }, { live: true, cursor: views.newest }); await settle();
+  assert.equal(f.readerDossierName(source('m50', { root_id: 'm50', name: null, first: { body: 'On its own', attachments: [] }, alone: true })), null);
+  assert.equal(f.readerDossierName(source('m50', null)), null);
+});
+
 test('a Notebook page shown in the Reader is read at the revision shown; a message is not, and a refused read is said', async () => {
   const { f } = await readingPage();
   const answers = [];
@@ -3919,7 +4130,7 @@ test('a message\'s Reader shows its writing\'s Review button as it opens', async
   const reading = { token: 1, source: { instance_id: 'fixture', source_ref: { kind: 'message', id: 'm1' }, topic_id: 't1', title: 'm1', body: '', attachments: [] },
     editors: { reply: modal }, mode: 'reply', opener: null, mark: null };
   f.registry.current = reading;
-  f.registry.options.present(reading);
+  await f.registry.options.present(reading);
   assert.equal(f.get('pending-submissions').firstElementChild?.textContent, 'Review 1 reply');
 });
 
@@ -4299,13 +4510,45 @@ const conversationMessages = () => [
 ];
 const ASKED = [{ ask_message_id: 'm4', on: 'fixture-person', by: 'agent-a', since_ms: TODAY, item_id: 'm1', excerpt: 'which Friday?' }];
 
+test('a covered dossier keeps its first sheet beside the title tools through an edit and a cover rewrite', async () => {
+  const list = conversationMessages();
+  list[0].acts = { cover: { stands: 'Ready for Friday', waiting: [], payload: null, owner: 'fixture-person' }, cover_revision: 1 };
+  const { f, stackOf, opens } = await conversationPage(list);
+  const parts = () => stackOf('m1').children;
+  const checkParts = stands => {
+    const [head, cover, toggle, tools, replies] = parts();
+    assert.equal(head.dataset.id, 'm1');
+    assert.equal(cover.className, 'dossier-cover');
+    assert.equal(cover.children[0].children[0].textContent, stands);
+    assert.equal(toggle.className, 'stack-toggle');
+    assert.equal(tools.className, 'stack-tools');
+    assert.deepEqual(tools.children.map(button => button.dataset.tool), ['reply', 'aside', 'menu']);
+    assert.equal(replies.className, 'stack-replies');
+    assert.equal(stackOf('m1').dataset.covered, 'true');
+  };
+  checkParts('Ready for Friday');
+  const original = parts()[1];
+  f.views.messages.set('m1', { ...f.views.messages.get('m1'), body: 'The launch now stands at Saturday.', revision: 2 });
+  f.paintViews('messages'); await settle();
+  checkParts('Ready for Friday');
+  assert.equal(parts()[1], original, 'an edit keeps the existing cover sheet');
+  const root = f.views.messages.get('m1');
+  f.views.messages.set('m1', { ...root, acts: { ...root.acts, cover: { ...root.acts.cover, stands: 'Ready for Saturday' }, cover_revision: 2 } });
+  f.paintViews('messages'); await settle();
+  checkParts('Ready for Saturday');
+  parts()[3].children[0].onclick(); await settle();
+  assert.equal(opens.at(-1)?.[0], 'm1', 'Reply still opens the dossier first message');
+});
+
 test('on the conversation page replies stack under the message they answer, as in any topic, and its own marks reach every stacked message', async () => {
   const { f, painted, stackOf } = await conversationPage(conversationMessages(), { waits: ASKED });
   assert.ok(stackOf('m2'), 'a reply on the conversation page is in a reply stack');
   const stack = stackOf('m1');
   assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => stackOf(id) === stack), [true, true, true, true], 'every reply up the chain, in the one stack of the message they answer');
   assert.deepEqual(listed(f).map(child => child.dataset.id ?? 'stack'), ['m6', 'stack'], 'the stack sits where its newest message would, below the newer item on its own');
-  const [head, toggle, replies] = stack.children;
+  // The title bar's glyphs (item 473) sit between the chevron and the replies.
+  const [head, toggle, tools, replies] = stack.children;
+  assert.equal(tools.className, 'stack-tools');
   assert.deepEqual([head.dataset.id, replies.children.map(child => child.dataset.id ?? child.className)], ['m1', ['m2', 'm3', 'm4', 'm5']],
     'the message on top, its replies under it oldest first, as a chat reads, with folded replies kept in their positions');
   // Folded, a stack shows its newest reply and what the person must not miss there: an item nothing has settled, and an ask that waits on them.
@@ -4368,4 +4611,138 @@ test('on the conversation page a reply folded in its stack is never reported rea
   await settle(); await settle();
   assert.equal(entryIn(f, 'm2').hidden, true, 'm2 is folded in its stack');
   assert.deepEqual(ranges(), [[5, 6]], 'the messages on screen are read, the folded reply is not, and the person\'s own is never reported');
+});
+
+
+async function starred655() {
+  const f = fixture();
+  await f.initialize();
+  Object.assign(f.reader, { dialog: { open: false }, show() { this.dialog.open = true; }, paintPending() {}, paintRecipients() {} });
+  f.registry.neighbors = async () => null;
+  f.registry.recoveryCandidates = async () => ({ items: [], nextCursor: null });
+  const source = { instance_id: 'fixture', source_ref: { kind: 'message', id: 'old-root' }, topic_id: 't1', seq: 1, body: 'The unnamed first line.\nMore words.', attachments: [] };
+  const p = { token: 1, surface: 'reader', mode: 'reply', source, editors: { reply: { ...f.editor, offered: true } } };
+  f.registry.current = p;
+  const feed = { dossierName: () => null, arrange() {}, actsOf: () => ({}), asideOffer: () => null };
+  f.inject({ ...f.owners(), api: f.api, bootstrap: f.bootstrap, reader: f.reader, topic: f.topic, views: f.views, stackFeed: feed });
+  let position = { root_id: 'old-root', name: null, has_other_messages: true };
+  const read = f.api.view;
+  f.api.view = async (name, args, options) => {
+    if (name === 'stack_positions') return { instance_id: 'fixture', topic_id: 't1', items: [{ message_id: args.message_ids[0], stack_position: position }] };
+    if (name === 'topic_messages' && args.message_ids) return { instance_id: 'fixture', items: [{ id: position.root_id, body: 'The unnamed first line.', attachments: [] }] };
+    return read(name, args, options);
+  };
+  return { f, p, source, feed, setPosition: value => { position = value; } };
+}
+
+test('item 655 B1 unloaded unnamed roots and replies use the first line while singletons keep the topic fallback', async () => {
+  const { f, p, source, setPosition } = await starred655();
+  await f.present(p);
+  assert.equal(f.readerDossierName(source), 'The unnamed first line.', 'an unloaded root with replies has the dossier first line');
+  setPosition({ root_id: 'old-root', has_other_messages: false, name: null });
+  await f.present(p);
+  assert.equal(f.readerDossierName(source), null, 'a singleton does not acquire a dossier title');
+  source.source_ref.id = 'old-reply';
+  setPosition({ root_id: 'old-root', has_other_messages: true, name: null });
+  await f.present(p);
+  assert.equal(f.readerDossierName(source), 'The unnamed first line.', 'a reply uses its root, not its own words');
+});
+
+test('item 655 B2 freshness follows unloaded rename clear join split and loaded singleton without a stale cached name', async () => {
+  const { f, p, source, setPosition } = await starred655();
+  setPosition({ root_id: 'old-root', has_other_messages: true, name: { text: 'Old name' } });
+  await f.present(p);
+  assert.equal(f.readerDossierName(source), 'Old name');
+  f.enableFreshness({});
+  for (const [position, expected] of [
+    [{ root_id: 'old-root', has_other_messages: true, name: { text: 'Renamed elsewhere' } }, 'Renamed elsewhere'],
+    [{ root_id: 'old-root', has_other_messages: true, name: null }, 'The unnamed first line.'],
+    [{ root_id: 'joined-root', has_other_messages: true, name: { text: 'Joined elsewhere' } }, 'Joined elsewhere'],
+    [{ root_id: 'old-root', has_other_messages: true, name: null }, 'The unnamed first line.'],
+  ]) {
+    setPosition(position);
+    await f.fresh.options.refresh('acts', 2, (name, args) => f.api.view(name, args), () => true);
+    assert.equal(f.readerDossierName(source), expected, 'freshness must refresh the unloaded source title too');
+  }
+  p.dossierName = 'Old cached name';
+  f.views.messages.set(source.source_ref.id, { id: source.source_ref.id });
+  assert.equal(f.readerDossierName(source), null, 'a loaded singleton never falls back to a cached old dossier name');
+});
+
+for (const failedRead of ['stack_positions', 'topic_messages']) test(`item 655 B3 ${failedRead} lookup failure opens the exact source and shows a notice`, async () => {
+  const { f, p, source } = await starred655();
+  source.source_ref.id = 'old-reply';
+  const view = f.api.view;
+  f.api.view = async (name, ...args) => { if (name === failedRead) throw Error('Transient lookup refusal'); return view(name, ...args); };
+  await assert.doesNotReject(f.present(p), 'metadata failure must not reject presentation');
+  assert.equal(f.reader.dialog.open, true, 'metadata failure must not hide the source');
+  assert.equal(f.reader.presentation.source, source);
+  assert.match(f.get('reader-notice').textContent, /Dossier name could not be read/);
+});
+
+test('item 655 B4 title return clears Only new after preservation succeeds, while dismissal and refused close keep it', async () => {
+  const { f, p, source } = await starred655();
+  const here = { page: true, onlyNew: true, items: new Map(), view: null };
+  f.views.messages.set(source.source_ref.id, { id: source.source_ref.id });
+  f.inject({ ...f.owners(), api: f.api, bootstrap: f.bootstrap, reader: f.reader, topic: f.topic, views: f.views, here });
+  f.registry.close = async () => { f.registry.current = null; return true; };
+  f.reader.presentation = p;
+  assert.equal(await f.reader.callbacks.close(null, 'close'), true);
+  assert.equal(here.onlyNew, true, 'ordinary dismissal preserves the filter');
+  f.registry.current = p;
+  f.registry.close = async () => false;
+  assert.equal(await f.reader.callbacks.close(null, 'parent'), false);
+  assert.equal(here.onlyNew, true, 'refused preservation changes no filter');
+  f.registry.close = async () => { f.registry.current = null; return true; };
+  assert.equal(await f.reader.callbacks.close(null, 'parent'), true);
+  assert.equal(here.onlyNew, false, 'an explicit return reveals the settled source by clearing Only new');
+});
+
+
+test('item 655 B1 a loaded root whose replies are still outside the page agrees with its scoped title', async () => {
+  const { f, p, source, setPosition } = await starred655();
+  const position = { root_id: source.source_ref.id, name_revision: 0, at: { acts: 3 }, has_other_messages: true, name: null };
+  setPosition(position);
+  f.views.messages.set(source.source_ref.id, { id: source.source_ref.id, stack_position: position });
+  await f.present(p);
+  assert.equal(f.readerDossierName(source), 'The unnamed first line.');
+  f.views.messages.get(source.source_ref.id).stack_position = { ...position, name_revision: 1, at: { acts: 4 } };
+  assert.equal(f.readerDossierName(source), null, 'a later loaded position refuses stale cached metadata');
+});
+
+test('item 655 B2 an older dossier lookup cannot reverse a newer freshness answer', async () => {
+  const { f, p, source, setPosition } = await starred655();
+  setPosition({ root_id: source.source_ref.id, name: { text: 'Latest confirmed name' } });
+  const entered = defer(), held = defer(), view = f.api.view;
+  let first = true;
+  f.api.view = async (name, ...args) => {
+    if (name === 'stack_positions' && first) { first = false; entered.resolve(); return held.promise; }
+    return view(name, ...args);
+  };
+  const old = f.present(p);
+  await entered.promise;
+  await f.present(p);
+  held.resolve({ instance_id: 'fixture', topic_id: 't1', items: [{ message_id: source.source_ref.id,
+    stack_position: { root_id: source.source_ref.id, name: { text: 'Stale old name' } } }] });
+  await old;
+  assert.equal(f.readerDossierName(source), 'Latest confirmed name', 'the later lookup wins even when the older one finishes last');
+});
+
+test('item 655 B3 a metadata failure from an abandoned opening cannot paint over the newer Reader', async () => {
+  const { f, p } = await starred655();
+  const entered = defer(), held = defer(), view = f.api.view;
+  let first = true;
+  f.api.view = async (name, ...args) => {
+    if (name === 'stack_positions' && first) { first = false; entered.resolve(); return held.promise; }
+    return view(name, ...args);
+  };
+  const old = f.present(p).catch(error => error);
+  await entered.promise;
+  const next = { ...p, token: 2, source: { ...p.source, source_ref: { kind: 'message', id: 'newer-source' } } };
+  f.registry.current = next;
+  await f.present(next);
+  held.reject(Error('Abandoned read failed'));
+  await old;
+  assert.equal(f.reader.presentation, next);
+  assert.doesNotMatch(f.get('reader-notice').textContent, /Dossier name could not be read/);
 });
