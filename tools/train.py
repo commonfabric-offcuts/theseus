@@ -40,7 +40,7 @@ SHA = re.compile(r"[0-9a-f]{40}")
 # the first two from the code itself, so a module either starts loading is guarded here or that test fails.
 DEPLOY_TOOL = ("tools/deploy.py", "tools/release_check.py", "tools/known_reds.py", "tools/releases.py", "tools/train.py",
                "tools/checks.py", "tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/ci-input-reads.json",
-               "tools/quarantine.py", "tools/steps_for.py", "tools/base_move.py")
+               "tools/quarantine.py", "tools/steps_for.py", "tools/base_move.py", "tools/own_case_receipt.py")
 CONTROLLER = ".github/"
 MIGRATIONS = ("aim_next/migrations.py",)
 # GitHub's REST API paths for one workflow run, one check run and one pull request, and its compare of a commit with a

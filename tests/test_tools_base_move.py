@@ -848,7 +848,7 @@ class ControllerProvenance(unittest.TestCase):
         self.raw['pull_requests'][0]['base']['ref'] = 'train/35'; self.refuses('archived check current PR')
 
     def test_missing_archived_pr(self):
-        self.raw['pull_requests'] = []; self.refuses('archived check current PR')
+        self.raw['pull_requests'] = []; self.refuses('empty check association needs merged train context')
 
     def test_wrong_archived_pr_number(self):
         self.raw['pull_requests'][0]['number'] = 32; self.refuses('archived check current PR')
