@@ -35,6 +35,15 @@ export async function item756Checks({check, page, until, control, facts, shot, o
       try {
         await until(()=>p.evaluate("document.body.dataset.ready==='true' && !document.documentElement.hasAttribute('data-rails-reading') && Boolean(document.querySelector('#outline-only-waiting .n'))"),'item 756 outline settled');
         const baseline=await count();
+        if(width!==1280) {
+          await press('#rail-open');
+          await until(()=>p.evaluate("document.getElementById('rail').classList.contains('open')"),'baseline drawer is open');
+        }
+        await shot(p,label+'-before');
+        if(width!==1280) {
+          await p.key('Escape');
+          await until(()=>p.evaluate("!document.getElementById('rail').classList.contains('open')"),'baseline drawer closes before writing');
+        }
         await press('#new-message');
         await until(()=>p.evaluate("document.getElementById('inline-writing-body').getClientRects().length>0"),'writing is open');
         await press('#inline-writing-body');
@@ -42,13 +51,17 @@ export async function item756Checks({check, page, until, control, facts, shot, o
         await p.key('ArrowLeft',8); // native Shift-Left makes a real selection
         const writing=await snapshot();
         assert.ok(writing.end > writing.start, 'native Shift-Left selected actual writing');
-        await shot(p,label+'-before');
         const wait={text:'Choose a cabin',default:'Keep the current cabin'};
         await act(0,[wait,wait]); await act(1,[wait]);
         await until(async()=>await count()===baseline+2,'item 756 two covers count once each immediately');
         const kept=await snapshot();
         assert.deepEqual(kept,writing,'cover refresh keeps exact writing, native selection, focus and document');
-        if(width!==1280) { await p.key('Escape'); await press('#rail-open'); }
+        await p.key('Escape');
+        await until(()=>p.evaluate("!document.getElementById('new-message-sheet').open"),'composer put back before native rail activation');
+        if(width!==1280) {
+          await press('#rail-open');
+          await until(()=>p.evaluate("document.getElementById('rail').classList.contains('open')"),'updated drawer is open');
+        }
         await shot(p,label+'-after');
         if(width===1280) {
           await press('#outline-only-waiting');
