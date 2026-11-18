@@ -207,3 +207,41 @@ back to merged context. No manifest field selects or overrides this behavior,
 and no context default authorizes empty associations. Original artifacts and
 red/refusal output remain unchanged. Ordinary and no-base-move guards retain
 their existing behavior.
+
+### Bounded item 652 Pool fallback (8571)
+
+This is the explicitly narrow fallback, **not a general item adapter**. Item 651
+keeps its exact reviewed source profile and `item 651` filter. The second profile
+is the compose harness at assembly `10c4ca6ecfa8e77e0986b0b16838c60a5a9cacc4`
+(tree `16d1cd391839b66e2cd2927200ecacaecca7542c`) plus
+`tests/card_editor_652.mjs`, both pinned by reviewed SHA-256 constants. The
+workflow, native driver, release reader and thumbnail helper retain the original
+651 pins. Only those exact bytes authorize the exact `item 652` filter; a spec
+cannot select a profile or supply trusted hashes. The helper is included in the
+derived assembly input OIDs and source digests. No candidate code is executed.
+
+The reviewed 652 source uses the same `check` function, engine prefix, six
+phases, raw report envelope and PASS/count output as 651. Its four mutation
+checks record their trails in evidence files and emit no CAUGHT lines. Thus the
+existing ordered log parser applies unchanged: 651's five exact CAUGHT lines per
+engine remain required; invented 652 CAUGHT lines refuse. Every 652 neutral name
+must start with the exact `item 652 ` boundary (or equal `item 652`), and still
+match independently reviewed obligations once in each engine with null phase.
+No command, ZIP, attempt, API, tree/parent, raw-byte, phase or cleanup check is
+relaxed. No additional mutation-trail/archive/runtime proof is claimed.
+
+Unknown harness/helper bytes, steps, filters, row fields or log conventions
+refuse. This deliberately does not interpret arbitrary candidate JavaScript or
+trust a source digest merely because a candidate reports the same digest.
+A safe general adapter does not fit this bounded extension: 717's source uses
+`stack_native.mjs`/`dossier_promises_native.mjs`; 715 uses
+`outcome_rail_native.mjs`/`outline_stars_native.mjs` and other engine entry points.
+Their source, phase, identity and logging conventions need a separate reviewed
+parser design. They remain unsupported here, with their original qualifications
+and future final-base receipts untouched.
+
+`tests/test_tools_own_receipt_652.py` supplies synthetic parser controls using
+frozen 652 source and stubbed API answers. These are not authenticated hosted
+receipts or native behavior evidence. The genuine 651 package remains a separate
+control. Actual final-base 652 acceptance requires its original Pool return and
+live API comparison; a local parser control cannot establish that acceptance.
