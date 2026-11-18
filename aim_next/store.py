@@ -46,7 +46,7 @@ from .outcome_rules import KIND_BEFORE_R21
 from .reactions import Reactions, REACTION_SCHEMA
 from .outline_order import OutlineOrder, ORDER_SCHEMA, TOPIC_POSITION_SCHEMA
 from .stacks import Stacks, ACT_COVERS
-from .covers import Covers
+from .covers import Covers, COVER_WAIT_SCHEMA
 from .blocking import Blocking, BLOCKS_SCHEMA
 from .message_edit import MessageEdit, EDIT_SESSION_UP, MESSAGE_EDIT_UP
 from .invite import Invites, INVITATIONS_SCHEMA
@@ -55,7 +55,7 @@ from .tool_records import Records as ToolRecords
 from . import message_edit
 
 
-SCHEMA_VERSION = "47"
+SCHEMA_VERSION = "48"
 
 
 def commit_identity_intact(metadata):
@@ -131,7 +131,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_COVERS + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA + TOPIC_POSITION_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_COVERS + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA + TOPIC_POSITION_SCHEMA + COVER_WAIT_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -674,6 +674,7 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
                     "unread": unread, "addressed": addressed, "build": build, "kind": facts["kind"],
                     "reached_ms": facts["reached"]["ms"] if facts["reached"] else None,
                     "end": end_view(self._end(db, row["id"])),
+                    "cover_waiting": sum(self._cover_wait_counts(db, actor, workspace_id=row["id"]).values()),
                     "light": self._outcome_stands(db, actor, row)["light"]}
         # The person's own order of their outcomes, on every page (outline_order.py).
         return _bounded_page({"instance_id": self.instance_id, "reached_count": reached_count, "ended_count": ended_count,
@@ -866,10 +867,12 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
         counts = self._unread(db, actor, topics=[item["id"] for item in items])
         waits = self._waits_by_topic(db, [item["id"] for item in items])
         work = work_by_topic(db, waits, actor)
+        cover_waits = self._cover_wait_counts(db, actor, topics=[item["id"] for item in items])
         for item in items:
             item["unread"], item["addressed"] = counts.get(item["id"], (0, 0, None))[:2]
             item["archived"] = bool(item["archived"])
             item["waiting_on"], item["asks"] = waits[item["id"]]
             item["work"] = work[item["id"]]
+            item["cover_waiting"] = cover_waits.get(item["id"], 0)
             item["build"] = item["id"] in builds
         return items
