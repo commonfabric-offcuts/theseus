@@ -51,7 +51,8 @@ class Item735Runtime:
                     path.write_bytes(data)
                 filename, old, new = {
                     "no-reveal": ("app.mjs", b"showStarred: id => run(() => landReadingMessage({ id })),", b"showStarred: id => {},"),
-                    "wrong-destination": ("stack-feed.mjs", b"this.showStarred(id);", b"this.showStarred(stack.id);"),
+                    "wrong-destination": ("stack-feed.mjs", b"this.showStarred(id);", b"this.showStarred(stack.replies.at(-1).id);"),
+                    "touch-gate": ("message-menu.mjs", b"a, .fold-line, [data-stack-act=starred]", b"a, .fold-line"),
                     "no-scroll": ("app.mjs", b"    revealSelection(card);\n    card.focus({ preventScroll: true });", b"    // source mutant: selection scroll omitted\n    card.focus({ preventScroll: true });"),
                 }[phase]
                 path = destination / filename

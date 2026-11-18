@@ -1,4 +1,4 @@
-# The dossier title star (item 735, warp 8387)
+# The dossier title star (item 735, warp 8421/8463)
 
 A press on the filled star in a dossier's title opens the earliest message
 **you starred** in that dossier (message order, not when stars were added).
@@ -15,9 +15,15 @@ in the same order. No own star means no title control. Another actor's star
 or private message cannot supply its destination. Return and Space activate
 the control, as do pointer and touch.
 
-The hidden-reply fixture is this slice's own case. Item 640's in-flight
-first-message visibility work is separate and is not copied here. The nine
-live Fast Trains records establish star ownership, not actual page visibility;
+Both the hidden reply and the folded-away first message are this slice's
+own cases (8421 supersedes the previous split with parked item 640).
+The existing title action owns its first phone tap even after closing writing;
+card-body taps retain their first-light behavior. Item 646 independently
+changes when this same control is visible; there is still one starred action
+and one callback. The hidden-reply fixture puts its target after 26 earlier
+rows, so revealing it must scroll; the no-scroll mutant must fail geometry.
+
+The nine live Fast Trains records establish star ownership, not actual page visibility;
 this work makes no claim about, and changes nothing on, Tony's actual page.
 Native checks matching `item 735` in both reading engines retain base/red,
 applied mutation, restoration and current images on isolated Core fixtures.

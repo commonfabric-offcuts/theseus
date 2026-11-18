@@ -143,7 +143,8 @@ export class MessageMenu {
       // drawn whole under Only new, light first as any card's does.
       if (onEarlierRow(entry, event.target)) return;
       // A message folded to its row unfolds at the first tap (reply-stacks.mjs).
-      if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line') && cardIn(entry).dataset.folded !== 'true') {
+      // The title star owns its first tap, just as a link does (item 735).
+      if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, [data-stack-act=starred]') && cardIn(entry).dataset.folded !== 'true') {
         this.light(entry);
         // The reply arrow answers its own first tap with its words (card-reading.mjs).
         if (event.target.closest?.('.replied-mark')) return;

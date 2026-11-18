@@ -269,10 +269,16 @@ press cannot reach.
   dark; `tests/test_new_line.py` (`CountLeadsThereCase`): the count and the
   message it leads to are one rule ([attention.md](attention.md)).
 - `tests/item_735_native.mjs`, reached by `tests/stack_native.mjs` in those
-  same two engines: "reading item 735 hidden starred reply red first and
-  restored" at 320, 375, 390 and 1280, light/dark. A title star shows the
-  earliest message you starred in that dossier, including a reply hidden by
-  Earlier messages, with its star, whole on screen. The "Core paging and
+  same two engines: "reading item 735 first starred message red first and
+  restored" and
+  "reading item 735 hidden starred message red first and restored" at 320,
+  375, 390 and 1280, light/dark. A title star shows the earliest message you
+  starred in that dossier, including its folded-away first message or a reply
+  hidden by
+  Earlier messages, with its star, whole on screen at the first phone tap after
+  closing writing. Applied source mutants qualify exact identity, visible
+  geometry and the unlit-card touch gate; native Reader archive/return keeps
+  item 635's hold and exact writing. The "Core paging and
   unchanged 613 unread reveal" cases keep the same landing for both inputs
   ([title-star.md](title-star.md)).
 - `tests/topic_header_native.mjs` (`native-header`): "header a topic Ready for

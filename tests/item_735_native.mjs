@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 // Every product act below is browser input; evaluate only observes or scrolls.
 export async function item735Checks(ctx, h) {
   const { check, until, control, view, shot, facts, observations } = ctx;
-  const { seed, open, centre, press, tap, card, entry } = h;
+  const { seed, open, centre, press, tap, card, entry, words, closeReader } = h;
   const devices = ['laptop', 'phone', 'phone-375', 'phone-320'];
   // Two CSS px allow subpixel/scroll rounding, but never a hidden/offscreen card.
   const tolerance = { viewportRoundingPx: 2, paintedPx: 1 };
@@ -64,86 +64,142 @@ export async function item735Checks(ctx, h) {
   };
   const assertLanding = async (p, topic, root, target) => {
     await until(() => p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(card(target))})`), 'item 735 exact message takes focus');
-    assert.deepEqual(await look(p, topic, root, target), want(topic, root), 'title star reveals the exact hidden starred reply in place');
+    assert.deepEqual(await look(p, topic, root, target), want(topic, root), 'title star reveals the exact own-starred message in place');
   };
 
-  for (const device of devices) for (const theme of ['light', 'dark']) {
-    await check(`reading item 735 hidden starred reply red first and restored ${device} ${theme}`, async () => {
-      const topic = `hidden-735-${device}-${theme}`;
+  // Tony's picture shape runs first: latest replies with the first message folded away.
+  for (const shape of ['first', 'hidden']) for (const device of devices) for (const theme of ['light', 'dark']) {
+    await check(`reading item 735 ${shape} starred message red first and restored ${device} ${theme}`, async () => {
+      const topic = `${shape}-735-${device}-${theme}`;
       const ids = await seed(topic, [
         ['root', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'The spring garden plan.', read: true }],
-        ...Array.from({ length: 18 }, (_, n) => ['r' + n, { sender: 'aim-core', reply_to: 'root', addressees: [facts.actor], body: `Garden reply ${n}: keep this exact message.`, read: true }]),
+        ...Array.from({ length: shape === 'hidden' ? 40 : 18 }, (_, n) => ['r' + n, { sender: 'aim-core', reply_to: 'root', addressees: [facts.actor], body: `Garden reply ${n}: keep this exact message.`, read: true }]),
         ['neighbour', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Another dossier keeps its place.', read: true }],
         ['neighbourReply', { sender: 'aim-ux', reply_to: 'neighbour', addressees: [facts.actor], body: 'The neighbour remains separate.', read: true }],
         ['private', { sender: 'fixture-other-person', join: true, reply_to: 'root', addressees: ['aim-core'], whisper: true, body: 'PRIVATE 735 cannot select or leak.', read: true }],
       ]);
+      const target = shape === 'first' ? ids.root : ids.r26, later = shape === 'first' ? ids.r1 : ids.r29;
+      const prepare = async p => {
+        if (shape === 'hidden') await ready(p, device, ids.root);
+        else assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(section(ids.root) + ' > .stack-toggle')}).dataset.state`), 'folded', 'picture case starts open to latest with its first message folded away');
+        await settled(p);
+      };
       await setStar(topic, ids.private, true, 'private-star', 'fixture-other-person');
-      await setStar(topic, ids.r0, true, 'their-star', 'aim-core');
-      await setStar(topic, ids.r1, true, 'own-star');
-      assert.deepEqual((await position(topic, ids.root)).starred, [ids.r1], 'Core destination is the one own available star');
-      assert.equal((await acts(topic, ids.r1)).folded, false, 'personal folded=false does not establish view visibility');
+      await setStar(topic, shape === 'first' ? ids.r0 : ids.root, true, 'their-star', 'aim-core');
+      await setStar(topic, target, true, 'own-star');
+      assert.deepEqual((await position(topic, ids.root)).starred, [target], 'Core destination is the one own available star');
+      assert.equal((await acts(topic, target)).folded, false, 'personal folded=false does not establish view visibility');
       const corePage = await view('topic_messages', { topic_id: topic, direction: 'before', limit: 100 });
       assert.equal(corePage.items.some(item => item.id === ids.private), false, 'Core enforces actual private access');
       observations.push({ name: 'item 735 fixture identity', topic, ids, instance_id: facts.instance_id, actor: facts.actor, tolerance });
-      const phases = ['base', ...(device === 'laptop' && theme === 'light' ? ['no-reveal', 'wrong-destination', 'no-scroll'] : []), 'restored'];
-      for (const phase of phases) await runtime(phase, async receipt => {
+      const reds = ['base', ...(device === 'laptop' && theme === 'light' ? ['no-reveal', 'wrong-destination', ...(shape === 'hidden' ? ['no-scroll'] : [])] : []), ...(device !== 'laptop' ? ['touch-gate'] : [])];
+      const phases = reds.flatMap(phase => [phase, 'restored']);
+      for (const [phaseIndex, phase] of phases.entries()) await runtime(phase, async receipt => {
+        const phaseKey = `${phaseIndex}-${phase}`;
         let p;
         try {
-          p = await open(`${topic}-${phase}`, device, topic, ids.root, 'window.holdReads=true');
+          p = await open(`${topic}-${phaseKey}`, device, topic, ids.root, 'window.holdReads=true');
           assert.equal(await p.evaluate(`document.querySelector('script[type=module][src]').src.includes('/b/${receipt.stamp}/')`), true, 'page uses the actual selected source stamp');
-          await themeOf(p, theme); await ready(p, device, ids.root);
-          assert.equal((await look(p, topic, ids.root, ids.r1)).whole, false, 'the own-starred reply starts behind Earlier messages even fully expanded');
+          await themeOf(p, theme); await prepare(p);
+          assert.equal((await look(p, topic, ids.root, target)).whole, false, 'the exact own-starred message starts folded away from this view');
           assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(star(ids.root))}).textContent`), '★ Starred');
+          assert.equal(await p.evaluate(`document.querySelectorAll(${JSON.stringify(star(ids.root))}).length`), 1, 'one title control, no duplicate hit target');
           const order = await p.evaluate(`[...document.querySelectorAll('#messages > .reply-stack')].map(e=>e.dataset.stack)`);
           const beforePosition = await position(topic, ids.root);
           const writing = `Exact writing 735 ${device} ${theme}.`;
-          if (phase === 'restored') {
+          if (phase === 'restored' || phase === 'touch-gate') {
             await centre(p, '#new-message'); await press(p, input(device), '#new-message');
             await until(() => p.evaluate("document.activeElement?.id==='inline-writing-body'"), 'native composer ready');
-            await p.send('Input.insertText', { text: writing }); await p.key('Escape');
+            await p.key('a', 4); await p.send('Input.insertText', { text: writing }); await p.key('Escape');
             await until(() => p.evaluate("!document.querySelector('#new-message-sheet').open"), 'composer returned with writing kept');
           }
-          await centre(p, star(ids.root)); await shot(p, `${topic}-${phase}-before`);
+          await centre(p, star(ids.root));
+          if ((phase === 'restored' || phase === 'touch-gate') && device !== 'laptop') assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).classList.contains('lit')`), false, 'composer close leaves title head unlit before its FIRST tap');
+          await shot(p, `${topic}-${phaseKey}-before`);
+          observations.push({ name: 'item 735 before native press', topic, phase, phaseKey, state: await look(p, topic, ids.root, target), scrollY: await p.evaluate('scrollY') });
           await activate(p, device, ids.root, phase === 'restored' && device === 'laptop' && theme === 'dark' ? 'Enter' : null);
+          observations.push({ name: 'item 735 after native press', topic, phase, phaseKey, state: await look(p, topic, ids.root, target), geometry: await p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(card(target))}).getBoundingClientRect();return {scrollY,viewport:innerHeight,top:b.top,bottom:b.bottom}})()`) });
           if (phase === 'restored') {
-            await assertLanding(p, topic, ids.root, ids.r1);
+            await assertLanding(p, topic, ids.root, target);
             assert.equal(await p.evaluate("document.querySelector('#inline-writing-body').value"), writing, 'title navigation preserves exact composer writing');
           } else {
-            const actual = await look(p, topic, ids.root, ids.r1); let raw;
-            assert.throws(() => assert.deepEqual(actual, want(topic, ids.root), 'title star reveals the exact hidden starred reply in place'), error => {
+            const actual = await look(p, topic, ids.root, target); let raw;
+            assert.throws(() => assert.deepEqual(actual, want(topic, ids.root), 'title star reveals the exact own-starred message in place'), error => {
               assert.equal(error.code, 'ERR_ASSERTION'); raw = { stack: error.stack, actual: error.actual, expected: error.expected }; return true;
-            }, 'the actual hidden-reply assertion must reject old/mutated source');
-            observations.push({ name: 'item 735 actual red failure', topic, phase, stamp: receipt.stamp, raw });
+            }, 'the actual own-message assertion must reject old/mutated source');
+            if (phase === 'touch-gate') assert.equal(actual.whole, false, 'old touch gate swallows reveal from the unlit title');
+            if (phase === 'no-scroll') {
+              assert.equal(actual.whole, true, 'scroll mutant really reveals the target');
+              assert.equal(actual.focused, true, 'scroll mutant really selects the exact target');
+              assert.equal(actual.onScreen, false, 'scroll mutant must die on offscreen geometry, not another field');
+            }
+            observations.push({ name: 'item 735 actual red failure', topic, phase, phaseKey, stamp: receipt.stamp, raw });
           }
-          await shot(p, `${topic}-${phase}-after`);
+          await shot(p, `${topic}-${phaseKey}-after`);
           assert.deepEqual(await position(topic, ids.root), beforePosition, 'title press changes no Core star, place, hold or identity');
           assert.deepEqual(await p.evaluate(`[...document.querySelectorAll('#messages > .reply-stack')].map(e=>e.dataset.stack)`), order, 'dossier order unchanged');
           assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(entry(ids.private))})!==null||document.querySelector('#messages').textContent.includes('PRIVATE 735')`), false, 'no private DOM or words leak');
+          if (phase === 'restored') {
+            await centre(p, words(target)); await press(p, input(device), words(target));
+            await until(() => p.evaluate("document.querySelector('#reader').open"), 'native message press opens the Reader');
+            await until(() => p.evaluate("document.querySelector('#reader-star').getAttribute('aria-pressed')==='true'"), 'Reader shows the same own star');
+            await press(p, input(device), '#reader-aside');
+            await until(() => p.evaluate("[...document.querySelectorAll('.press-note')].some(n=>n.textContent.includes('unstar it to move it below More'))"), '635 archive still says why this starred dossier stays');
+            assert.deepEqual(await position(topic, ids.root), beforePosition, '635 hold changes no position or star');
+            await closeReader(p, input(device));
+            assert.equal(await p.evaluate("document.querySelector('#inline-writing-body').value"), writing, 'Reader hold and return retain exact writing');
+            assert.deepEqual(await position(topic, ids.root), beforePosition, 'Reader return keeps the same dossier');
+            await shot(p, topic + '-' + phaseKey + '-635-hold-return');
+          }
           assert.deepEqual(p.errors, []);
-        } finally { if (p) await p.close(); }
+        } finally {
+          if (p) {
+            try {
+              observations.push({ name: 'item 735 before cleanup', topic, phase, phaseKey, state: await look(p, topic, ids.root, target), geometry: await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(target))}),b=c?.getBoundingClientRect();return {scrollY,viewport:innerHeight,active:document.activeElement?.outerHTML,top:b?.top,bottom:b?.bottom}})()`) });
+              await shot(p, `${topic}-${phaseKey}-before-cleanup`);
+            } finally { await p.close(); }
+          }
+        }
       });
       // Several own stars: added in reverse message order, earliest still wins.
-      await setStar(topic, ids.r1, false, 'earliest-off');
-      await setStar(topic, ids.r4, true, 'later-on');
-      await setStar(topic, ids.r1, true, 'earliest-last');
-      assert.deepEqual((await position(topic, ids.root)).starred, [ids.r1, ids.r4]);
+      await setStar(topic, target, false, 'earliest-off');
+      await setStar(topic, later, true, 'later-on');
+      await setStar(topic, target, true, 'earliest-last');
+      assert.deepEqual((await position(topic, ids.root)).starred, [target, later]);
       let p;
       try {
         p = await open(topic + '-multiple', device, topic, ids.root, 'window.holdReads=true');
-        await themeOf(p, theme); await ready(p, device, ids.root);
+        await themeOf(p, theme); await prepare(p);
         await activate(p, device, ids.root, device === 'laptop' ? ' ' : null);
-        await assertLanding(p, topic, ids.root, ids.r1);
+        await assertLanding(p, topic, ids.root, target);
         await shot(p, topic + '-multiple-earliest');
-      } finally { if (p) await p.close(); }
-      await setStar(topic, ids.r1, false, 'earliest-final-off');
-      await setStar(topic, ids.r4, false, 'later-final-off');
+      } finally { if (p) { try { observations.push({ name: 'item 735 auxiliary before cleanup', topic, state: await look(p, topic, ids.root, target) }); await shot(p, topic + '-multiple-before-cleanup'); } finally { await p.close(); } } }
+      await setStar(topic, target, false, 'earliest-final-off');
+      await setStar(topic, later, false, 'later-final-off');
       assert.deepEqual((await position(topic, ids.root)).starred, [], 'other actor stars cannot supply a destination');
+      p = null;
       try {
         p = await open(topic + '-negative', device, topic, ids.root, 'window.holdReads=true');
-        await themeOf(p, theme); await ready(p, device, ids.root);
+        await themeOf(p, theme); await prepare(p);
         assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(star(ids.root))}))`), false, 'no own star: no selector despite another actor and private stars');
-        await shot(p, topic + '-no-own-star'); assert.deepEqual(p.errors, []);
-      } finally { if (p) await p.close(); }
+        await shot(p, topic + '-no-own-star');
+        if (device !== 'laptop') {
+          // Exempting the title action must not make a card body's first tap open it.
+          await centre(p, '#new-message'); await press(p, input(device), '#new-message');
+          await until(() => p.evaluate("document.activeElement?.id==='inline-writing-body'"), 'negative control composer ready');
+          await p.key('Escape');
+          await until(() => p.evaluate("!document.querySelector('#new-message-sheet').open"), 'negative control composer closed');
+          const bodyTarget = shape === 'first' ? ids.r17 : ids.r39;
+          await centre(p, words(bodyTarget)); await press(p, input(device), words(bodyTarget));
+          assert.equal(await p.evaluate("document.querySelector('#reader').open"), false, 'card body FIRST tap still only lights');
+          assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(bodyTarget))}).classList.contains('lit')`), true, 'native first body tap lights its own card');
+          await press(p, input(device), words(bodyTarget));
+          await until(() => p.evaluate("document.querySelector('#reader').open"), 'card body SECOND tap still opens');
+          await closeReader(p, input(device));
+          await shot(p, topic + '-body-touch-ownership');
+        }
+        assert.deepEqual(p.errors, []);
+      } finally { if (p) { try { observations.push({ name: 'item 735 auxiliary before cleanup', topic, state: await look(p, topic, ids.root, target) }); await shot(p, topic + '-negative-before-cleanup'); } finally { await p.close(); } } }
     });
   }
 

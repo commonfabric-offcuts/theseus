@@ -27,6 +27,9 @@ class Item735Case(StackCase):
         self.assertEqual(page['items'][0]['stack_position']['root_id'], root)
         self.assertEqual(page['items'][0]['stack_position']['starred'], [early, late])
         self.assertIn('error', self.store.view('owner', 'source', {'source_ref': {'kind': 'message', 'id': hidden}}))
+        self.committed(self.star(root))
+        self.assertEqual(self.store.view('owner', 'stack_positions', {'topic_id': 't1', 'message_ids': [root]})['items'][0]['stack_position']['starred'], [root, early, late])
+        self.committed(self.star(root, on=False, revision=1))
         self.committed(self.star(early, on=False, revision=1))
         self.committed(self.star(late, on=False, revision=1))
         pos = self.store.view('owner', 'stack_positions', {'topic_id': 't1', 'message_ids': [root]})
@@ -39,7 +42,7 @@ class Item735Case(StackCase):
         script_src = ' '.join(["'self'"] + ["'%s'" % digest for digest in build.script_hashes])
         server = SimpleNamespace(build=build, csp="default-src 'self';script-src " + script_src + ';style-src self;')
         runtime = Item735Runtime(server, root, 'isolated-735', 'fixture-reader')
-        for phase in ('base', 'no-reveal', 'wrong-destination', 'no-scroll'):
+        for phase in ('base', 'no-reveal', 'wrong-destination', 'no-scroll', 'touch-gate'):
             receipt = runtime.select(phase)
             self.assertNotEqual(receipt['stamp'], build.stamp)
             self.assertEqual(receipt['core_identity'], {'instance_id': 'isolated-735', 'actor': 'fixture-reader'})
