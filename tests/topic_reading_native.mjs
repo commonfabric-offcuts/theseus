@@ -18,6 +18,7 @@
 // coming fully into view, and a click or a tap scrolling nothing (379).
 import assert from 'node:assert/strict';
 import { stackChecks } from './stack_native.mjs';
+import { readingItem757Checks } from './reading_item_757_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
 
@@ -3189,6 +3190,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.close();
   });
 
+  await readingItem757Checks({ check, until, view, control, shot, facts, observations, engine },
+    { open, centre, press, openReader, closeReader, card });
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
   await editChecks({ check, until, view, control, facts, shot, engine },

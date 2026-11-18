@@ -17,10 +17,12 @@ from types import SimpleNamespace
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from aim_next import Store, initialize
 from aim_next import server as server_module
 from aim_next.server import create_server, RequestError
 from aim_next.stacks import KINDS as STACK_KINDS, current_acts
+from fixtures.source_item_757 import native_control as item_757_control
 
 
 class FreshnessControls:
@@ -1304,6 +1306,8 @@ def main():
                             **({"draft": True} if request.get("draft") else {})),
                             {"item_id": request["item_id"], "owner_scope": {"kind": "workspace", "id": workspace}},
                             {"item_revision": 0}, sender=sender)
+                    elif freshness and request["method"] == "item_757":
+                        answer = item_757_control(store, command, actor, request)
                     elif freshness and request["method"] == "pipeline":
                         # Someone acts on an outcome's pipeline as their CLI does: a
                         # pipeline.* command fenced on the revision that sender reads
