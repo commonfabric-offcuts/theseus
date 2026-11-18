@@ -124,3 +124,10 @@ a phone by its source tap before comparing the visible cover. Every item-738
 capture waits for actual finite animation.finished, an animation frame and an
 opaque Reader, and retains that qualification receipt. An in-flight transition
 or mismatched writing state is not accepted as an equal-state comparison.
+
+Tony8657 / warp8658: the waiting animation is the only visible request-progress
+indicator from the initial click onward. The transient Requesting update label
+is removed from source; accessible names and honest refusal/error text remain.
+No second preview approval is required. Existing in-flight checks keep their
+exact tested source; this correction must be incorporated into the returned
+738 correction lineage before its final handoff.
