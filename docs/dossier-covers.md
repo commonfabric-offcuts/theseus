@@ -11,8 +11,14 @@ fold under it as they always have.
 
 A cover has three fields. Each is set or cleared on its own.
 
-- **Where it stands**: one line, at most 300 characters. Line breaks and runs
-  of spaces fold to single spaces.
+- **Where it stands**: at most 300 characters, including line breaks. LF
+  separates lines and stays a line break through command, storage and the
+  shared cover sheet (item 769). CRLF becomes LF: the CR is folded with the
+  other whitespace on its line. Within each LF-separated line, whitespace
+  folds to single spaces as before; outer whitespace is trimmed, and an
+  all-whitespace value clears the field. Interior blank lines stay blank.
+  Single-line values keep their existing normalization and look. These are
+  plain words: no label parsing, Markdown or inferred historical breaks.
 - **What waits on the owner**: at most four things, each with its default,
   the thing that happens if the owner says nothing. A thing that waits is at
   most 300 characters, and its default at most 200.
@@ -175,6 +181,16 @@ owner's Done included. On a phone the line gives way while the reply is being wr
 so the message keeps its lines ([reader.md](reader.md)).
 
 ## Checks
+
+Item 769: the focused Core/CLI cases in `tests/test_dossier_covers.py`, HTTP
+case in `tests/test_http_store.py` and shared drawing case in
+`tests/ui_dossier_cover.test.mjs` check literal LF source values separately
+from visual proof. The `reading item 769` cases in `tests/stack_native.mjs`
+(`native-reading`, `native-webkit-reading`) measure consecutive painted lines
+on the feed and the Reader's opened shared sheet at 320, 375, 390 and 1280,
+light and dark, through updates and reload. A single-line cover stays one
+line; waits, defaults, payload and unsent writing survive. Measured geometry
+uses `lineGeometryTolerancePx = 2`. Desktop WebKit is not physical iOS proof.
 
 `tests/test_dossier_covers.py` covers storage, merging, revisions and their
 refusals, Done by 👍 and by a named reply (and by no one else, and never by a
