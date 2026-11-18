@@ -1184,7 +1184,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   const allShown = (p, what) => until(async () => { const seen = await pictures(p); return seen.length === PICTURES.length && seen.every(state => state === 'shown') && seen; }, what);
   const readerOpen = p => p.evaluate("Boolean(document.querySelector('#reader')?.open)");
 
-  await check('rail a move made while the right rail\'s pictures are still being read shows every picture on the page reached, and again on coming back; a picture opens its message in place', async () => {
+  await check('rail a move made while the right rail\'s pictures are still being read shows every picture on the page reached, and again on coming back; a picture link Return opens its message in place', async () => {
     await pictured();
     const p = await page('rail-pictures', null, true, { url: facts.origin + '/?topic=rail-pics-t', beforeNavigate: async q => { await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop); } });
     const media = payload => typeof payload?.media_id === 'string';
@@ -1202,19 +1202,20 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await arrived(p, '?topic=rail-pics-t', 'Pictures topic', 'back to the topic');
     await settled(p, 'the topic is up');
     await allShown(p, 'and every picture shows again on the topic');
-    // A picture on the Conversation opens its message: in its topic, in place, in the Reader.
+    // Return on the containing link still opens the message; clicking its image opens a tab (item 651).
     await p.evaluate('history.forward()');
     await arrived(p, '?conversation=rail-pics-o', null, 'forward to the Conversation');
     await settled(p, 'the Conversation is up again');
     await allShown(p, 'its pictures show');
-    await press(p, '#things [data-key=images] a.thumb');
+    await p.evaluate(`document.querySelector('#things [data-key=images] a.thumb').focus()`);
+    await p.key('Enter');
     await arrived(p, '?topic=rail-pics-t', 'Pictures topic', 'the picture opens its topic');
     await until(() => readerOpen(p), 'with its message in the Reader');
     assert.equal((await placeOf(p)).origin, start.origin, 'in place, with no load');
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  await check('rail at 390 a picture in the outcome\'s things opens its message in place and closes the sheet; "Just this topic" shows the topic\'s own things again', async () => {
+  await check('rail at 390 a picture link in the outcome\'s things opens its message with Return and closes the sheet; "Just this topic" shows the topic\'s own things again', async () => {
     await pictured();
     const p = await open('rail-sheet-row', '/?conversation=rail-pics-o', 'phone');
     // On a phone the right rail reads only once its sheet is open.
@@ -1225,16 +1226,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const scope = () => p.evaluate(`(()=>{const t=document.getElementById('things');return {heading:t.querySelector('h2').textContent,name:t.querySelector('.things-name').textContent,
       chips:[...t.querySelectorAll('.things-scope .chip')].map(c=>c.getAttribute('aria-pressed')),busy:t.querySelector('.things-sections').getAttribute('aria-busy')==='true'}})()`);
     // A finger on what the selector names, brought into view and once it holds its place (the sheet slides in, the header fills).
-    const reach = async selector => {
+    const STABLE_PX = 1.25; // Both engines may settle at neighboring subpixels.
+    const reach = async (selector, key = false) => {
       await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
       let last = null;
-      await until(async () => { const now = await p.box(selector), same = Boolean(last && now) && ['x', 'y', 'width', 'height'].every(key => now[key] === last[key]); last = now; return same; }, selector + ' holds its place');
-      await tap(p, selector);
+      await until(async () => { const now = await p.box(selector), same = Boolean(last && now) && ['x', 'y', 'width', 'height'].every(key => Math.abs(now[key] - last[key]) <= STABLE_PX); last = now; return same; }, selector + ' holds its place');
+      if (key) { await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`); await p.key('Enter'); }
+      else await tap(p, selector);
     };
     await reach('#things-open');
     await until(sheet, 'the sheet opens');
     await allShown(p, 'the outcome\'s pictures show in it');
-    await reach('#things [data-key=images] a.thumb');
+    await reach('#things [data-key=images] a.thumb', true);
     await arrived(p, '?topic=rail-pics-t', 'Pictures topic', 'the picture opens its topic');
     await until(() => readerOpen(p), 'with its message in the Reader');
     assert.equal(await sheet(), false, 'the sheet has closed');
@@ -1250,9 +1253,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await reach('#things .things-scope .chip:nth-child(1)');
     const topic = await until(async () => { const seen = await scope(); return seen.heading === 'In this topic' && !seen.busy && seen; }, '"Just this topic" shows the topic\'s own things again');
     assert.deepEqual([topic.name, topic.chips], ['Pictures topic', ['true', 'false']], 'named for the topic, with "Just this topic" pressed');
-    // A picture of the topic on show opens its message in the Reader, with no move, and the sheet closes for it.
+    // The containing link keeps Return's original message-navigation act.
     await allShown(p, 'the topic\'s pictures show');
-    await reach('#things [data-key=images] a.thumb');
+    await reach('#things [data-key=images] a.thumb', true);
     await until(() => readerOpen(p), 'the picture\'s message opens in the Reader');
     assert.deepEqual([await sheet(), (await placeOf(p)).origin], [false, start.origin], 'the sheet has closed, on the same page');
     assert.deepEqual(p.errors, []); await p.close();

@@ -226,3 +226,19 @@ cover. The owner's existing payload acceptance controls remain authoritative.
 
 `aim-next cover MESSAGE --promises JSON` supplies this list explicitly; `[]`
 clears it. Readback includes each source, status, time and prior version.
+
+The item 717 native fit check keeps its 2px rounding tolerance and bounds the
+cover by the requested CSS width as well as the actual visual/layout viewport.
+It records those measurements before asserting, including for rendering mutants;
+mobile viewport expansion must not make an oversized cover pass. Every applied
+mutant retains its actual error, exact restored bytes and a separate restored
+control result, even when the error was not the intended one.
+
+Acceptance Tab diagnostics observe native keydown/keyup at window capture,
+bubble and after the input call returns, plus focusin/out, active elements and
+target visibility, disabled/inert and clipping ancestry. On failed traversal,
+a minimal details/summary/button in the same document is reached and operated
+with native keys after Escape closes the Reader. This calibration never replaces
+the failed acceptance assertion. Delivery/mapping and product causation remain
+unestablished until retained native events distinguish them; no diagnostic
+programmatically focuses a control or invokes a product handler.

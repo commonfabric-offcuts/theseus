@@ -1,4 +1,64 @@
 {
+  "tests/card_editor_652.mjs": {
+    "29f5d8f780d5fd12470f49ae96eaf7315b5fa1e58c093730eba2aa31a33f858c": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    },
+    "29f5d8f780d5fd12470f49ae96eaf7315b5fa1e58c093730eba2aa31a33f858c:1": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    },
+    "29f5d8f780d5fd12470f49ae96eaf7315b5fa1e58c093730eba2aa31a33f858c:2": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    },
+    "c52319f1ae9d2ba6294ef516ff2f7f1ed7b9d42b13fbccb69de51faef3686da0": {
+      "inputs": [
+        "web/aim.css",
+        "web/deck-page.mjs",
+        "web/notebook-page.mjs",
+        "web/notebook-writing.mjs",
+        "tests/reader_compose_native.mjs",
+        "tests/card_editor_652.mjs",
+        "tests/ui_card_editor_652.test.mjs",
+        "tests/notebook_sheet_native.mjs",
+        "tests/notebook_card_images_native.mjs",
+        "tests/fixtures/ui_http.py",
+        "aim_next/web_build.py"
+      ],
+      "scope": "repository"
+    },
+    "e35de926de0ac16f697d6056cd9925e919e5d4c1fa4ede91ae60317d40f7d4b7": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    },
+    "29f5d8f780d5fd12470f49ae96eaf7315b5fa1e58c093730eba2aa31a33f858c:3": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    },
+    "29f5d8f780d5fd12470f49ae96eaf7315b5fa1e58c093730eba2aa31a33f858c:4": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    },
+    "29f5d8f780d5fd12470f49ae96eaf7315b5fa1e58c093730eba2aa31a33f858c:5": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    }
+  },
   "tests/assessment_freshness_probe.mjs": {
     "7573a8d879d256cef616ae54287425ffde04ea1fdf224e3120cfe5b7a3772473": {
       "inputs": [],
@@ -4352,6 +4412,62 @@
       "scope": "repository"
     }
   },
+  "tests/thumbnail_open_native.mjs": {
+    "b18fe37654baa75ab83f386a6567cb7d21cd67b421aca1f4e2d2b931382c370b": {
+      "inputs": [
+        "tests/fixtures/media/screen.png"
+      ],
+      "scope": "repository"
+    },
+    "6fb8bae121b78868160c97c969bc671f794c0047646c319fb580ab48d785ee66": {
+      "inputs": [
+        "web/aim.css",
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/message-menu.mjs",
+        "web/card-images.mjs",
+        "tests/reader_compose_native.mjs",
+        "tests/thumbnail_open_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "806e38f5fe8da526c2824e929294d5a6f26a2fa653c37725ca0369911a1df85b": {
+      "inputs": [
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/message-menu.mjs"
+      ],
+      "scope": "repository"
+    },
+    "806e38f5fe8da526c2824e929294d5a6f26a2fa653c37725ca0369911a1df85b:1": {
+      "inputs": [
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/message-menu.mjs"
+      ],
+      "scope": "repository"
+    },
+    "806e38f5fe8da526c2824e929294d5a6f26a2fa653c37725ca0369911a1df85b:2": {
+      "inputs": [
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/message-menu.mjs"
+      ],
+      "scope": "repository"
+    },
+    "6fb8bae121b78868160c97c969bc671f794c0047646c319fb580ab48d785ee66:1": {
+      "inputs": [
+        "web/aim.css",
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/message-menu.mjs",
+        "web/card-images.mjs",
+        "tests/reader_compose_native.mjs",
+        "tests/thumbnail_open_native.mjs"
+      ],
+      "scope": "repository"
+    }
+  },
   "tests/dossier_promises_native.mjs": {
     "03c709be8e8f459174fa0202cba6888ea482930c60160ec20f4d752cd77eee8a": {
       "inputs": [],
@@ -4372,6 +4488,14 @@
     "6fb8bae121b78868160c97c969bc671f794c0047646c319fb580ab48d785ee66": {
       "inputs": [
         "tests/dossier_promises_native.mjs",
+        "tests/topic_reading_native.mjs",
+        "tests/reader_persistence_native.mjs",
+        "tests/webkit_native.mjs",
+        "web/index.html",
+        "web/aim.css",
+        "web/layout.mjs",
+        "web/arrow-reach.mjs",
+        "web/message-menu.mjs",
         "web/dossier-cover.mjs",
         "web/reader.mjs",
         "web/stack-look.css",

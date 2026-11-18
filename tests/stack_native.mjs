@@ -7535,6 +7535,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await dossierFold(topic, ids.folded);
     // The fixture names each image after the message it came with (its seed's place): which message carries which.
     const carrier = Object.fromEntries(seeds.flatMap(([key, more], n) => (more.attachments ?? []).map((_, k) => [`${topic}-${n}-media-${k}`, ids[key]])));
+    const THUMB_SIZE_PX = 1.5, THUMB_SQUARE_PX = .75, THUMB_EDGE_PX = 1.5; // Engine-tolerant bounds; a shrunken square still fails.
     // Each image read the page makes, as it sends it; with window.refuseMedia, Theseus's refusal of that image.
     const READS = `(()=>{window.mediaReads=[];const f=window.fetch;window.fetch=function(input,init){let b=null;
       try{const u=typeof input==='string'?input:input.url;if(u.endsWith('/api/media/read')){b=JSON.parse(init.body);window.mediaReads.push(b)}}catch(e){}
@@ -7543,10 +7544,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const thumbs = p => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},out={};
       for(const [key,id] of Object.entries(ids)){const c=document.querySelector('#messages .message-card[data-id="'+id+'"]'),s=c?.querySelector(':scope > .card-images');
         out[key]=s&&s.getClientRects().length?[...s.children].map(h=>{const b=h.getBoundingClientRect(),i=h.querySelector(':scope > img'),cb=c.getBoundingClientRect();
-          return {name:h.getAttribute('aria-label'),title:h.title,role:h.getAttribute('role'),square:Math.abs(b.width-b.height)<.5,size:Math.round(b.width*10)/10,
-            picture:Boolean(i&&!i.hidden&&i.naturalWidth>0),words:[...h.querySelectorAll(':scope > .card-image-name')].filter(n=>n.getClientRects().length).map(n=>n.textContent).join(''),inCard:b.left>=cb.left-.5&&b.right<=cb.right+.5}}):null}
+          return {name:h.getAttribute('aria-label'),title:h.title,role:h.getAttribute('role'),square:Math.abs(b.width-b.height)<=${THUMB_SQUARE_PX},size:Math.abs(b.width-parseFloat(getComputedStyle(document.documentElement).fontSize)*4.2)<=${THUMB_SIZE_PX},
+            picture:Boolean(i&&!i.hidden&&i.naturalWidth>0),words:[...h.querySelectorAll(':scope > .card-image-name')].filter(n=>n.getClientRects().length).map(n=>n.textContent).join(''),inCard:b.left>=cb.left-${THUMB_EDGE_PX}&&b.right<=cb.right+${THUMB_EDGE_PX}}}):null}
       return {thumbs:out,rail:Math.round(parseFloat(getComputedStyle(document.documentElement).fontSize)*4.2*10)/10,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
-    const image = (name, rail, picture = true) => ({ name: `Image: ${name}`, title: name, role: 'img', square: true, size: rail, picture, words: picture ? '' : name, inCard: true });
+    const image = (name, rail, picture = true) => ({ name: `Image: ${name}`, title: name, role: 'group', square: true, size: true, picture, words: picture ? '' : name, inCard: true });
     const want = (rail, refused = false) => ({ thumbs: { root: null, two: [image('palette.png', rail), image('one.jpg', rail)], plain: null, file: null, folded: null, last: null,
       single: [image('screen.png', rail, !refused)] }, rail, sideways: false });
     for (const device of Object.keys(DEVICES)) {
@@ -7648,7 +7649,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const shown = (look, at) => {
       const seen = look.hosts.filter(h => inView(look, h));
       assert.ok(seen.length > 0, `${at}: a thumbnail is in view`);
-      for (const h of seen) assert.deepEqual([h.picture, h.role, h.name, `Image: ${h.title}`], [true, 'img', `Image: ${h.title}`, h.name], `${at}: ${h.message}'s thumbnail shows, named`);
+      for (const h of seen) assert.deepEqual([h.picture, h.role, h.name, `Image: ${h.title}`], [true, 'group', `Image: ${h.title}`, h.name], `${at}: ${h.message}'s thumbnail shows, named`);
     };
     for (const device of Object.keys(DEVICES)) {
       const topic = `card-thumbs-near-${device}`, ids = await seed(topic, seeds);

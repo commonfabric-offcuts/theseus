@@ -5,6 +5,55 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Shared with the browser-free oracle control; this is the actual native read.
+export const promiseCoverMeasurement = (selector, configuredWidth) => `(()=>{
+    const c=document.querySelector(${JSON.stringify(selector)});if(!c)return null;
+    const b=c.getBoundingClientRect(),v=window.visualViewport,configuredWidth=${JSON.stringify(configuredWidth)};
+    const viewport=Math.min(configuredWidth,innerWidth,v?.width??innerWidth);
+    return {words:c.textContent,rows:[...c.querySelectorAll('.cover-promise')].map(e=>({text:e.textContent,state:e.dataset.state,
+      old:[...e.querySelectorAll('s')].map(s=>({text:s.textContent,struck:getComputedStyle(s).textDecorationLine.includes('line-through')})),
+      cite:e.querySelector('.cover-src')?.textContent,times:[...e.querySelectorAll('time')].map(t=>t.dateTime)})),
+      left:b.left,right:b.right,viewport,overflow:document.documentElement.scrollWidth-viewport,done:c.dataset.done,
+      metrics:{configuredWidth,innerWidth,innerHeight,clientWidth:document.documentElement.clientWidth,
+        scrollWidth:document.documentElement.scrollWidth,scrollX,devicePixelRatio,
+        visual:v?{width:v.width,height:v.height,scale:v.scale,offsetLeft:v.offsetLeft,offsetTop:v.offsetTop,pageLeft:v.pageLeft}:null}}})()`;
+
+export function assertPromiseCoverFit(seen) {
+  const EDGE_TOLERANCE_PX = 2; // Engine rounding only; the +160px width mutant must fail.
+  assert.ok(seen.left >= -EDGE_TOLERANCE_PX && seen.right <= seen.viewport + EDGE_TOLERANCE_PX && seen.overflow <= EDGE_TOLERANCE_PX,
+    `cover fits within ${EDGE_TOLERANCE_PX}px rounding tolerance: ${JSON.stringify(seen)}`);
+}
+
+// Passive observation, installed before production listeners. Event references
+// are read again after p.key returns, including events stopped before window bubble.
+export const PROMISE_NATIVE_TRACE = `(()=>{
+  const identity=e=>e?{id:e.id??null,tag:e.tagName??e.nodeName}:null;
+  const state=e=>{if(!e||e.nodeType!==1)return identity(e);const ancestry=[];let at=e;
+    for(;at&&ancestry.length<24;at=at.parentElement){const s=getComputedStyle(at),b=at.getBoundingClientRect();
+      ancestry.push({...identity(at),hidden:at.hidden,disabled:Boolean(at.disabled),inert:at.inert,
+        ariaHidden:at.getAttribute('aria-hidden'),display:s.display,visibility:s.visibility,opacity:s.opacity,
+        overflowX:s.overflowX,overflowY:s.overflowY,clip:s.clip,clipPath:s.clipPath,
+        rect:{left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width,height:b.height}})}
+    return {...identity(e),connected:e.isConnected,enabled:!e.matches(':disabled'),tabIndex:e.tabIndex,
+      visible:e.getClientRects().length>0&&getComputedStyle(e).visibility==='visible',
+      ancestry,ancestryTruncated:Boolean(at)}};
+  let events=[],dropped=0,selector=null;
+  const snapshot=()=>({activeElement:state(document.activeElement),target:state(document.querySelector(selector)),
+    readerOpen:document.querySelector('#reader')?.open,visibility:document.visibilityState,hasFocus:document.hasFocus()});
+  const describe=(event,phase)=>({type:event.type,phase,isTrusted:event.isTrusted,key:event.key,code:event.code,
+    altKey:event.altKey,ctrlKey:event.ctrlKey,metaKey:event.metaKey,shiftKey:event.shiftKey,
+    repeat:event.repeat,defaultPrevented:event.defaultPrevented,eventPhase:event.eventPhase,
+    target:identity(event.target),targetState:state(event.target),relatedTarget:identity(event.relatedTarget),activeElement:identity(document.activeElement),
+    path:event.composedPath().slice(0,24).map(identity)});
+  for(const type of ['keydown','keyup','focusin','focusout'])for(const capture of [true,false])
+    addEventListener(type,event=>{if(!selector)return;if(events.length>=128){dropped++;return}
+      events.push({event,seen:describe(event,capture?'capture':'bubble')})},{capture,passive:true});
+  window.promiseNativeTrace={begin:target=>{events=[];dropped=0;selector=target;return snapshot()},
+    end:()=>{const after=snapshot(),answer={after,dropped,events:events.map(({event,seen})=>({...seen,
+      afterHandlers:{defaultPrevented:event.defaultPrevented,activeElement:identity(document.activeElement)}}))};
+      events=[];selector=null;return answer}};
+})();`;
+
 export async function promiseChecks(api, helpers) {
   const { check, until, view, control, shot, facts, observations, engine } = api;
   // Both actual reading entrypoints take CHROME EVIDENCE MODE FILTER. Keep this family's
@@ -12,7 +61,9 @@ export async function promiseChecks(api, helpers) {
   const evidence = process.argv[3], root = fileURLToPath(new URL('../', import.meta.url));
   assert.ok(path.isAbsolute(evidence), 'the actual entrypoint supplies its absolute evidence folder');
   const sources = {};
-  for (const name of ['tests/dossier_promises_native.mjs', 'web/dossier-cover.mjs', 'web/reader.mjs', 'web/stack-look.css',
+  for (const name of ['tests/dossier_promises_native.mjs', 'tests/topic_reading_native.mjs',
+    'tests/reader_persistence_native.mjs', 'tests/webkit_native.mjs', 'web/index.html', 'web/aim.css',
+    'web/layout.mjs', 'web/arrow-reach.mjs', 'web/message-menu.mjs', 'web/dossier-cover.mjs', 'web/reader.mjs', 'web/stack-look.css',
     'aim_next/cover_promises.py', 'aim_next/cover_values.py', 'aim_next/covers.py', 'aim_next/cli_covers.py']) {
     const bytes = await readFile(path.join(root, name));
     const target = path.join(evidence, 'source', name);
@@ -45,21 +96,15 @@ export async function promiseChecks(api, helpers) {
     return { topic, ids, promise };
   };
   const covers = root => `#messages .reply-stack[data-stack="${root}"] > .dossier-cover`;
-  const measure = (p, selector) => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(selector)});if(!c)return null;
-    const b=c.getBoundingClientRect();return {words:c.textContent,rows:[...c.querySelectorAll('.cover-promise')].map(e=>({text:e.textContent,state:e.dataset.state,
-      old:[...e.querySelectorAll('s')].map(s=>({text:s.textContent,struck:getComputedStyle(s).textDecorationLine.includes('line-through')})),
-      cite:e.querySelector('.cover-src')?.textContent,times:[...e.querySelectorAll('time')].map(t=>t.dateTime)})),
-      left:b.left,right:b.right,viewport:innerWidth,overflow:document.documentElement.scrollWidth-innerWidth,done:c.dataset.done}})()`);
+  const measure = (p, selector, width) => p.evaluate(promiseCoverMeasurement(selector, width === 'laptop' ? 1280 : Number(width)));
   const verify = (seen, state, expected, moved) => {
-    const EDGE_TOLERANCE_PX = 2; // Engine rounding only; the +160px width mutant must fail.
     assert.ok(seen && seen.rows.length === 1, 'one explicit promise appears');
     assert.equal(seen.rows[0].state, state);
     assert.ok(seen.rows[0].text.includes(text));
     assert.ok(seen.rows[0].text.includes(expected));
     assert.ok(seen.rows[0].cite, 'source attribution is linked');
     if (moved) assert.ok(seen.rows[0].old.some(x => x.struck && x.text.includes('America/Los_Angeles')), 'the prior time is visibly struck');
-    assert.ok(seen.left >= -EDGE_TOLERANCE_PX && seen.right <= seen.viewport + EDGE_TOLERANCE_PX && seen.overflow <= EDGE_TOLERANCE_PX,
-      `cover fits within ${EDGE_TOLERANCE_PX}px rounding tolerance: ${JSON.stringify(seen)}`);
+    assertPromiseCoverFit(seen);
     assert.equal(seen.done, 'false', 'a kept promise never gives Done');
     assert.ok(seen.words.includes('Which cabin?') && seen.words.includes('Road clear') && seen.words.includes('payload proposed'), 'existing cover fields survive');
   };
@@ -104,10 +149,11 @@ export async function promiseChecks(api, helpers) {
         const update = await write(ids.root, { promises: [{ ...promise, state, due }] }, `${topic}-${width}-${theme}-${++rev}`);
         assert.equal(update.status, 'committed', JSON.stringify(update));
         if (selected && selected !== branch) continue;
-        await until(async () => { const c = await measure(p, covers(ids.root)); return c?.rows[0]?.state === state && c.rows[0].text.includes(expected); }, `recorded ${state} / ${expected} arrives`);
+        await until(async () => { const c = await measure(p, covers(ids.root), width); return c?.rows[0]?.state === state && c.rows[0].text.includes(expected); }, `recorded ${state} / ${expected} arrives`);
         await centre(p, covers(ids.root));
-        const seen = await measure(p, covers(ids.root)); verify(seen, state, expected, rev >= 3);
+        const seen = await measure(p, covers(ids.root), width);
         observations.push({ name: 'item 717 cover state', phase, engine, width, theme, state, seen });
+        verify(seen, state, expected, rev >= 3);
         if (capture) await shot(p, `717-${phase}-${state}-${rev}-feed-${width}-${theme}`);
         // Open the cover's native source link by touch; keyboard reaches the same link with Tab on a laptop.
         const link = covers(ids.root) + ' .cover-promise > .cover-src';
@@ -126,7 +172,9 @@ export async function promiseChecks(api, helpers) {
         await until(() => p.evaluate('document.querySelector("#reader").open'), 'source link opens the Reader');
         await press(p, device, '#reader-cover > summary');
         await until(() => p.evaluate('document.querySelector("#reader-cover").open'), 'native cover disclosure opens');
-        verify(await measure(p, '#reader-cover .dossier-cover'), state, expected, rev >= 3);
+        const readerSeen = await measure(p, '#reader-cover .dossier-cover', width);
+        observations.push({ name: 'item 717 Reader cover state', phase, engine, width, theme, state, seen: readerSeen });
+        verify(readerSeen, state, expected, rev >= 3);
         if (capture) await shot(p, `717-${phase}-${state}-${rev}-reader-${width}-${theme}`);
         await closeReader(p, device);
       }
@@ -171,18 +219,59 @@ export async function promiseChecks(api, helpers) {
     await press(p, device, '#reader-cover > summary');
     await until(() => p.evaluate('document.querySelector("#reader-cover").open'), 'cover disclosure opens natively');
   };
+  const tracedKey = async (p, key, selector, trace) => {
+    const before = await p.evaluate(`window.promiseNativeTrace.begin(${JSON.stringify(selector)})`);
+    const step = { key, before };
+    trace.push(step);
+    let error;
+    try { await p.key(key); } catch (caught) { error = caught; }
+    if (error) step.error = String(error);
+    const delivered = await p.evaluate('window.promiseNativeTrace.end()');
+    Object.assign(step, delivered);
+    if (error) throw error;
+    return p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`);
+  };
+  const calibrateTab = async p => {
+    const calibration = { name: 'item 717 native same-document Tab calibration', engine, trace: [] };
+    observations.push(calibration);
+    try {
+      // Only after the production traversal has failed. Escape is native;
+      // no pointer, focus(), showModal(), handler call or mapping change.
+      await tracedKey(p, 'Escape', '#reader', calibration.trace);
+      await until(() => p.evaluate('!document.querySelector("#reader").open'), 'native Escape closes Reader before calibration');
+      await p.evaluate(`(()=>{const host=document.createElement('aside');host.id='promise-tab-calibration';
+        host.style.cssText='position:fixed;top:0;left:0;z-index:2147483647;background:Canvas;color:CanvasText';
+        const details=document.createElement('details'),summary=document.createElement('summary'),button=document.createElement('button');
+        summary.id='promise-tab-summary';summary.textContent='Tab calibration';
+        button.id='promise-tab-button';button.type='button';button.textContent='Next native stop';
+        details.append(summary,button);host.append(details);document.body.append(host)})()`);
+      let summaryReached = false;
+      for (let n = 0; n < 120 && !summaryReached; n++) summaryReached = await tracedKey(p, 'Tab', '#promise-tab-summary', calibration.trace);
+      calibration.summaryReached = summaryReached;
+      if (!summaryReached) return;
+      await tracedKey(p, 'Enter', '#promise-tab-summary', calibration.trace);
+      calibration.detailsOpen = await p.evaluate('document.querySelector("#promise-tab-summary").parentElement.open');
+      calibration.buttonReached = await tracedKey(p, 'Tab', '#promise-tab-button', calibration.trace);
+    } catch (error) { calibration.error = String(error); }
+    finally {
+      try { await p.evaluate('document.querySelector("#promise-tab-calibration")?.remove()'); }
+      catch (error) { calibration.cleanupError = String(error); }
+    }
+  };
   const activate = async (p, device, selector) => {
     await centre(p, selector);
     if (device === 'phone') return press(p, device, selector);
     const focusTrace = [];
+    const diagnostic = { name: 'item 717 acceptance native delivery', engine, selector, focusTrace };
+    observations.push(diagnostic); // Retain successful delivery as well as red.
     let reached = await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`);
     for (let n = 0; n < 120 && !reached; n++) {
-      await p.key('Tab'); reached = await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`);
-      focusTrace.push(await p.evaluate('({id:document.activeElement?.id,tag:document.activeElement?.tagName})'));
+      reached = await tracedKey(p, 'Tab', selector, focusTrace);
     }
-    if (!reached) observations.push({ name: 'item 717 acceptance focus failure', selector, focusTrace,
-      target: await p.evaluate(`(e=>e?{hidden:e.hidden,disabled:e.disabled,display:getComputedStyle(e).display,visibility:getComputedStyle(e).visibility}:null)(document.querySelector(${JSON.stringify(selector)}))`) });
-    assert.ok(reached, 'native Tab reaches acceptance'); await p.key('Enter');
+    diagnostic.reached = reached;
+    if (!reached) await calibrateTab(p);
+    assert.ok(reached, 'native Tab reaches acceptance');
+    await tracedKey(p, 'Enter', selector, focusTrace);
   };
   // Hold a real native thumb request before transport in both engines; no handler is called.
   const HOLD_THUMB = `(()=>{const f=window.fetch;window.promiseThumbQueue=[];window.promiseHold=true;
@@ -195,14 +284,14 @@ export async function promiseChecks(api, helpers) {
       const { topic, ids, promise } = await make(`owner-${stage}-${width}-${theme}`);
       assert.equal((await write(ids.root, { promises: [{ ...promise, state: 'kept' }] }, topic + '-kept')).status, 'committed');
       const device = shape.startsWith('phone') ? 'phone' : 'laptop';
-      const p = await open(topic, shape, topic, ids.root, HOLD_THUMB);
+      const p = await open(topic, shape, topic, ids.root, PROMISE_NATIVE_TRACE + HOLD_THUMB);
       try {
         await scheme(p, theme); await sourceOpen(p, device, ids.root);
         await p.evaluate('window.staleThumb=true');
         await activate(p, device, '#thumb-source');
         await until(() => p.evaluate('window.promiseThumbQueue.length===1'), 'the native thumb is queued before transport');
         assert.equal((await held(topic, ids.root)).payload.done, null, 'a pending acceptance is not Done');
-        assert.equal((await measure(p, '#reader-cover .dossier-cover')).rows[0].state, 'kept');
+        assert.equal((await measure(p, '#reader-cover .dossier-cover', width)).rows[0].state, 'kept');
         if (stage === 'pending') await shot(p, `717-owner-pending-${width}-${theme}`);
         await p.evaluate('window.releasePromiseThumb()');
         await until(() => p.evaluate('!document.querySelector("#reader-notice").hidden && document.querySelector("#reader-notice").textContent.length>0'), 'Core refusal is said by the real Reader');
@@ -214,7 +303,7 @@ export async function promiseChecks(api, helpers) {
           await activate(p, device, '#thumb-source');
           await until(async () => (await held(topic, ids.root)).payload.done?.by === facts.actor, 'the owner gives Done through the retry gesture');
           await until(() => p.evaluate('!document.querySelector("#reader").open'), 'accepted thumb closes the Reader');
-          await until(async () => (await measure(p, covers(ids.root)))?.words.includes('done · your'), 'owner acceptance arrives on the cover');
+          await until(async () => (await measure(p, covers(ids.root), width))?.words.includes('done · your'), 'owner acceptance arrives on the cover');
           assert.equal((await held(topic, ids.root)).promises[0].state, 'kept');
           await centre(p, covers(ids.root)); await shot(p, `717-owner-retried-${width}-${theme}`);
         }
@@ -231,10 +320,10 @@ export async function promiseChecks(api, helpers) {
       for (const [width, shape] of sizes) for (const theme of ['light', 'dark']) {
         const { topic, ids, promise } = await make(`nonowner-${width}-${theme}`);
         assert.equal((await write(ids.root, { promises: [{ ...promise, state: 'kept' }] }, topic + '-kept')).status, 'committed');
-        const p = await open(topic, shape, topic, ids.root), device = shape.startsWith('phone') ? 'phone' : 'laptop';
+        const p = await open(topic, shape, topic, ids.root, PROMISE_NATIVE_TRACE), device = shape.startsWith('phone') ? 'phone' : 'laptop';
         try {
           await scheme(p, theme); await sourceOpen(p, device, ids.root);
-          assert.ok((await measure(p, '#reader-cover .dossier-cover')).words.includes('Waits on'));
+          assert.ok((await measure(p, '#reader-cover .dossier-cover', width)).words.includes('Waits on'));
           await activate(p, device, '#thumb-source');
           await until(() => p.evaluate('!document.querySelector("#reader").open'), 'the nonowner thumbs the source natively');
           assert.equal((await held(topic, ids.root)).payload.done, null, 'a nonowner thumb never accepts');
@@ -268,7 +357,7 @@ export async function promiseChecks(api, helpers) {
           const retry = await write(ids.root, { promises: [promise] }, topic + '-retried');
           assert.equal(retry.result.changed, false, 'a valid identical retry creates no history');
           await sourceOpen(p, device, ids.root);
-          assert.equal((await measure(p, '#reader-cover .dossier-cover')).rows[0].state, 'promised');
+          assert.equal((await measure(p, '#reader-cover .dossier-cover', width)).rows[0].state, 'promised');
         } else {
           await control({ method: 'targets', kind: 'outcome.end_set', args: { state: 'archived' }, operation_id: topic + '-archive' });
           archived = true;
@@ -276,7 +365,7 @@ export async function promiseChecks(api, helpers) {
           const refused = await write(ids.root, { promises: [{ ...promise, state: 'kept' }] }, topic + '-closed-edit');
           assert.equal(refused.error?.code, 'OUTCOME_ARCHIVED');
           assert.equal((await held(topic, ids.root)).promises[0].state, 'promised');
-          assert.equal((await measure(p, '#reader-cover .dossier-cover')).rows[0].state, 'promised', 'read-only cover stays readable');
+          assert.equal((await measure(p, '#reader-cover .dossier-cover', width)).rows[0].state, 'promised', 'read-only cover stays readable');
         }
         await shot(p, `717-${branch}-${width}-${theme}`);
         assert.deepEqual(p.errors, []);
@@ -309,25 +398,34 @@ export async function promiseChecks(api, helpers) {
     for (const mutant of promiseMutations) {
       assert.equal(original.split(mutant.from).length, 2, mutant.name + ' has one real target');
       const changed = original.replace(mutant.from, mutant.to);
-      await writeFile(url, changed); assert.equal(await readFile(url, 'utf8'), changed, 'mutation applied');
+      const evidence = { name: 'item 717 mutant attempt', mutant: mutant.name,
+        intendedFailure: false, restoredControlPassed: false, applied: false, mutatedServed: false, restoredServed: false,
+        original_sha256: createHash('sha256').update(original).digest('hex'), mutated_sha256: createHash('sha256').update(changed).digest('hex') };
+      observations.push(evidence);
       let failure;
       try {
+        await writeFile(url, changed); assert.equal(await readFile(url, 'utf8'), changed, 'mutation applied');
+        evidence.applied = true;
         await restart();
         const served = await (await fetch(facts.origin + '/dossier-cover.mjs')).text();
         assert.equal(served, changed, 'the owned server serves the actual mutated bytes');
+        evidence.mutatedServed = true;
         await scenario('mutant-' + serial, false, false);
-      } catch (error) { failure = error; }
+      } catch (error) { failure = error; Object.assign(evidence, { error: String(error), stack: error.stack }); }
       finally { await writeFile(url, original); assert.equal(await readFile(url, 'utf8'), original, 'original bytes restored'); await restart();
-        assert.equal(await (await fetch(facts.origin + '/dossier-cover.mjs')).text(), original, 'restored bytes are served too'); }
-      assert.ok(failure, mutant.name + ' must fail');
+        evidence.restored_sha256 = createHash('sha256').update(await readFile(url)).digest('hex');
+        assert.equal(await (await fetch(facts.origin + '/dossier-cover.mjs')).text(), original, 'restored bytes are served too');
+        evidence.restoredServed = true; }
       const intended = { 'promise omitted': /recorded promised/, 'prior time not struck': /prior time is visibly struck/, 'missed credited kept': /recorded missed/, 'cover too wide': /cover fits within/, 'source target too small': /44px touch target/ };
-      const evidence = { name: 'item 717 mutant attempt', mutant: mutant.name, error: String(failure), stack: failure?.stack,
-        intendedFailure: intended[mutant.name].test(String(failure)), restoredControlPassed: false,
-        original_sha256: createHash('sha256').update(original).digest('hex'), mutated_sha256: createHash('sha256').update(changed).digest('hex'), restored_sha256: createHash('sha256').update(await readFile(url)).digest('hex') };
-      observations.push(evidence); // Preserve the actual error even when the diagnostic guard refuses it.
+      Object.assign(evidence, { error: String(failure), stack: failure?.stack,
+        intendedFailure: intended[mutant.name].test(String(failure)) });
+      // A wrong error remains red, but cannot prevent the exact restored control
+      // from running and retaining its own result (the original fifth-mutant gap).
+      try { await scenario('restored-' + serial, false, false); evidence.restoredControlPassed = true; }
+      catch (error) { evidence.restoredControlError = String(error); evidence.restoredControlStack = error.stack; }
+      assert.ok(failure, mutant.name + ' must fail');
       assert.match(String(failure), intended[mutant.name], 'the mutation fails the intended product assertion');
-      await scenario('restored-' + serial, false, false);
-      evidence.restoredControlPassed = true;
+      assert.ok(evidence.restoredControlPassed, `the exact restored control passes: ${evidence.restoredControlError ?? ''}`);
     }
   });
 }
