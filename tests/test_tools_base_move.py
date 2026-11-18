@@ -785,7 +785,7 @@ class ControllerProvenance(unittest.TestCase):
                 'digest': 'sha256:' + digest(data), 'workflow_run': {'id': 202, 'head_sha': self.controller_head}}
 
     def consume(self):
-        return base_move.controller_binding(self.source, self.judgment, self.provider, REPOSITORY, self.head)
+        return base_move.controller_binding(self.source, self.judgment, self.provider, REPOSITORY, self.head, None)
 
     def refuses(self, why):
         with self.assertRaisesRegex(base_move.Refused, why):
@@ -848,7 +848,7 @@ class ControllerProvenance(unittest.TestCase):
         self.raw['pull_requests'][0]['base']['ref'] = 'train/35'; self.refuses('archived check current PR')
 
     def test_missing_archived_pr(self):
-        self.raw['pull_requests'] = []; self.refuses('archived check current PR')
+        self.raw['pull_requests'] = []; self.refuses('empty check association needs merged train context')
 
     def test_wrong_archived_pr_number(self):
         self.raw['pull_requests'][0]['number'] = 32; self.refuses('archived check current PR')

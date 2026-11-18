@@ -445,7 +445,7 @@ def live_head(config):
     return head.stdout.strip()
 
 
-def release_plan(config, head, sha, measured, number, no_items, live_since=None, flagged=()):
+def release_plan(config, head, sha, measured, number, no_items, live_since=None, flagged=(), evidence=None):
     """The records this deploy writes once the release is verified: (this release's, those before it, its commits, latest).
 
     Everything is read now, before anything stops, and each record is checked
@@ -508,6 +508,11 @@ def release_plan(config, head, sha, measured, number, no_items, live_since=None,
             require(shipped_in.setdefault(item, named["release"]) == named["release"],
                     "pipeline item %d shipped in release %d; release %d names it again"
                     % (item, shipped_in[item], named["release"]))
+    if record is not None and evidence is not None:
+        try:
+            record = releases.prepare_record(record, evidence)
+        except (train_check.Refused, Refusal, OSError, ValueError, KeyError, TypeError, RecursionError) as error:
+            raise Refused("the release record could not be prepared: %s; nothing was stopped" % error)
     for checked in before + ([dict(record, deployed_at=now(), evidence="/checked")] if record else []):
         try:
             release_row(checked)
@@ -518,13 +523,19 @@ def release_plan(config, head, sha, measured, number, no_items, live_since=None,
 
 def record_commands(config, evidence, records):
     """Each record written to EVIDENCE as release-N.json, and the admin command that records it."""
-    commands = []
-    for written in records:
-        path = (evidence / ("release-%d.json" % written["release"])).resolve()
-        path.write_text(json.dumps(written, indent=1) + "\n")
-        commands.append([config.python, "-I", "-B", str(config.live / "bin/aim-next-admin"), "record-release",
-                         "--profile", str(config.server_profile), "--record", str(path)])
-    return commands
+    try:
+        commands = []
+        for written in records:
+            release_row(written)  # The actual row, with its actual deploy time, may still refuse.
+            if isinstance(written.get("measurements"), dict) and "full_measurements" in written["measurements"]:
+                releases.verify_record(written, evidence)
+            path = evidence / ("release-%d.json" % written["release"])
+            releases.publish_once(path, (json.dumps(written, indent=1) + "\n").encode("utf-8"))
+            commands.append([config.python, "-I", "-B", str(config.live / "bin/aim-next-admin"), "record-release",
+                             "--profile", str(config.server_profile), "--record", str(path)])
+        return commands
+    except (train_check.Refused, Refusal, OSError, ValueError, KeyError, TypeError, RecursionError) as error:
+        raise Refused("release record commands were not prepared: %s; no record command was run" % error)
 
 
 def live_checks(config, sha):
@@ -786,7 +797,8 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     measured = (releases.train_measurements(trained) if trained is not None
                 else releases.measurements(json.loads(Path(summary).read_text()), accepted, judged))
     measured = dict(measured, **steps_beyond_policy(config, head))
-    planned, before, commits, latest = release_plan(config, head, sha, measured, number, no_items, live_since, revert)
+    planned, before, commits, latest = release_plan(config, head, sha, measured, number, no_items, live_since, revert,
+                                                   evidence=evidence.resolve())
     if trained is not None and "base_move" in trained:
         require(latest is not None and latest["commit"] == head
                 and latest["release"] == trained["base_move"]["live_release"],
@@ -871,13 +883,21 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     verified = {"root_status": root, "bootstrap_head": boot[:600], "cli_exit": cli.returncode,
                 "cli": cli.stdout[:600], "cli_err": cli.stderr[:600],
                 "server_alive": server.poll() is None, "runner_alive": runner.poll() is None}
-    record(evidence, "10-verify", verified)
-    # The records, in the order they are written: those before this release, then its own, stamped now.
-    records = before + ([dict(planned, deployed_at=now(), evidence=str(evidence.resolve()))] if planned else [])
-    commands = record_commands(config, evidence, records)
-    later = "; once it works, record it with: %s" % " && ".join(" ".join(argv) for argv in commands) if commands else ""
-    require(root == 200 and cli.returncode == 0 and verified["server_alive"] and verified["runner_alive"],
-            "%s did not verify, so no release record was written: %s. %s is live%s" % (this, verified, sha[:12], later))
+    passed_verify = root == 200 and cli.returncode == 0 and verified["server_alive"] and verified["runner_alive"]
+    deployed_at = now() if passed_verify else None  # Capture the real transition, before evidence/record I/O.
+    verified["deployed_at"] = deployed_at
+    try:
+        record(evidence, "10-verify", verified)
+    except OSError as error:
+        raise Refused("%s is live but verification evidence was not saved: %s; coordinator recovery required" % (this, error))
+    require(passed_verify, "%s did not verify, so no release record was written: %s. %s is live; coordinator recovery required"
+            % (this, verified, sha[:12]))
+    # The records keep verification time even if evidence or Core writing takes much longer.
+    records = before + ([dict(planned, deployed_at=deployed_at, evidence=str(evidence.resolve()))] if planned else [])
+    try:
+        commands = record_commands(config, evidence.resolve(), records)
+    except Refused as error:
+        raise Refused("%s is live but unrecorded; %s; coordinator recovery required" % (this, error))
 
     # 8. Record the release in the instance, now that it is verified live; the evidence keeps the same records.
     writes = []

@@ -5,6 +5,15 @@ complete-source validator, required 52-step inventory, controller publication,
 App identity, resolution review and own-case obligations retain their guards.
 Unknown shapes refuse; there is no fallback. This is evidence consumption only.
 
+The continuation dispatch and controller call require explicit `merged_context`,
+just like complete-source validation. Direct unmerged callers pass `None`.
+Postmerge callers carry the actual context authenticated by train/base-move
+validation after its immutable source/assembly/release parent and tree checks.
+An empty check association requires that context; forwarding never substitutes
+`None` or supplies an optional default. Nonempty associations retain their exact
+original binding. The module is closed deploy-owned code in both
+`train.DEPLOY_TOOL` and Core's `DEPLOY_OWN` (warp8564/8583).
+
 The continuation document is exactly `{version: 1, authorization, original,
 completion}`. Authorization is a Ref to exactly `{reviewer, record, source_head,
 source_tree, original_run, original_attempt, base_at_run, pr, original_workflow,

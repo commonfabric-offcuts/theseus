@@ -264,4 +264,56 @@ ran before that tool kept a summary, so its measurements are `null`: the only
 count for it is a sentence written by hand on the pipeline page, and a record
 holds what a check measured, not what someone wrote down.
 
-For a reviewed base move, `measurements.train.base_move` v4 keeps the compact evidence record defined in [base-move-evidence.md](base-move-evidence.md). Its original `judgment`, raw failed-step flags/counts, controller refusal and source summary reference remain unchanged; a durable source audit binds every original red. The separate record names the new live base, assembly, resolution review and own-case artifacts, without claiming another full run.
+For a reviewed base move, `measurements.train.base_move` v4 keeps the evidence record defined in [base-move-evidence.md](base-move-evidence.md). Its original `judgment`, raw failed-step flags/counts, controller refusal and source summary reference remain unchanged; a durable source audit binds every original red. The separate record names the new live base, assembly, resolution review and own-case artifacts, without claiming another full run.
+
+### Compact storage for new deploy records (warp8521)
+
+Every new deploy record, train or local summary, uses this storage form after
+the existing full guard passes. Historical records/backfills keep their original
+form. This is not judge input: `tools/train.py` still reads the full train and
+validates every source/controller/review/receipt fact before planning a record.
+Core's 16384-byte measurement limit and its record/admin contracts do not change.
+
+Before stopping anything, the deploy saves the **entire** measurements object
+(including reverts and policy qualifications) as canonical UTF-8 JSON: sorted
+keys, compact separators, literal Unicode, no NaN and no trailing newline.
+The fixed filename is `release-N-measurements.json` inside that deploy's owned,
+absolute, resolved evidence directory. Paths are at most 1024 UTF-8 bytes; full
+payloads are at most 16 MiB. Publication is atomic, durable and never overwrites
+an existing file. An existing unequal file, symlink, foreign owner, unreadable
+file, partial write, bad hash or read-back mismatch refuses before stopping.
+
+The row's `measurements.full_measurements` is
+`{version: 1, path, sha256, bytes}`. It binds the canonical complete measurements,
+not a rewritten subset. All original measurement fields remain inline except
+`train.base_move.receipts.obligations`: that potentially large list becomes
+`{count, sha256}` of its complete canonical list. The receipt also gains its
+complete pre-compaction `sha256`. Nothing is removed from the saved payload.
+`train.judge_receipts_sha256` binds the complete producer-run and verdict-check
+lists separately when a judgment is present; the lists themselves stay inline.
+This projection is unconditional for this schema, without release/item special
+cases. Every other list remains intact; any future oversized metadata refuses
+the unchanged Core bound rather than being truncated or adaptively omitted.
+
+The pipeline board (`Pipeline._shipped_numbers`, `pipeline_state` and the legacy
+page builder) reads release number, items and deploy time. The CLI release/count
+reader additionally reads local counts; other decision readers read
+skipped/scoped and train kind/judgment.
+Health's `_release_check`, `_release_train`, `_release_scoped`, Core's
+`judgment_pending` and `check_reading.steps_of_measurements` retain exactly their
+existing answers. The scorecard's release read uses number, deploy time, items,
+head and previous. All these fields, item approved heads/review qualifications,
+all original judgment entries (including failure conclusions), source reds,
+controller refusal and Pool receipts remain exact. A digest never means green.
+
+Planning validates the compact row with Core before any stop. Full read-back
+and exact reprojection are required again immediately before record commands;
+release filename, train merge head, shipped items and qualification/receipt
+differences refuse. New release JSON is also published once without overwrite.
+The deploy captures `deployed_at` immediately after successful real verification,
+before evidence/record writing, retaining it in `10-verify.json`; it is never
+the later record time. A record
+failure cannot advance publication or claim recorded completion. A failure
+before stopping leaves the prior runtime alone; a failure after verification
+reports the already-live but unrecorded release honestly for coordinator
+recovery. This correction adds no deployment/recovery bypass or new CLI verb.

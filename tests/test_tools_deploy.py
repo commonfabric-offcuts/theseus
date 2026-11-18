@@ -421,7 +421,7 @@ class ReleasePlan(DeployCase):
     def test_a_record_the_store_would_refuse_stops_the_deploy_before_anything_stops(self):
         # 501 items: more than a record holds, so the record could never be written once the release is live.
         host = FakeHost(self.config, log=log(("Everything", [", ".join(str(n) for n in range(1, 502))])))
-        self.assertIn("the release record would be refused: items is a list of at most 500", self.refused(host))
+        self.assertIn("the release record could not be prepared: items is a list of at most 500", self.refused(host))
         self.assertEqual((self.kills, host.ran("-c"), self.records()[-1]), ([], [], "02-checkout"))
 
     def test_a_release_that_names_no_item_says_so_or_stops_before_anything_stops(self):
@@ -534,6 +534,8 @@ class ReleasePlan(DeployCase):
                    ("Train 8: revert 412", [], ["Revert 412"]))
 
     def test_a_reverted_item_ships_nothing_and_the_record_says_how_it_was_taken_back(self):
+        # Each scenario is a distinct plan; its published evidence is immutable.
+        self.evidence = Path(self.tmp.name) / "reverted-by-flag"
         self.deploy(FakeHost(self.config, log=self.REVERTED), dry=True, revert=[398, 399])
         record = self.plan()["record"]
         self.assertEqual(record["items"], [464])
@@ -541,9 +543,11 @@ class ReleasePlan(DeployCase):
                                                               {"item": 398, "commit": None, "by": "flag"},
                                                               {"item": 399, "commit": None, "by": "flag"}])
         # Without the flag the trailer still takes 412 back, and only 412.
+        self.evidence = Path(self.tmp.name) / "reverted-by-trailer"
         self.deploy(FakeHost(self.config, log=self.REVERTED), dry=True)
         self.assertEqual(self.plan()["record"]["items"], [464, 398, 399])
         # A release with nothing reverted says nothing of it.
+        self.evidence = Path(self.tmp.name) / "nothing-reverted"
         self.deploy(FakeHost(self.config), dry=True)
         self.assertNotIn("reverts", self.plan()["record"]["measurements"])
         self.assertEqual(self.kills, [])

@@ -191,3 +191,25 @@ matching the independently reviewed obligations exactly, once each. The
 normalized identities, command and input OIDs are labeled `derived`, separately
 from raw counts and original Refs. Geometric measurement schemas are unsupported
 here and refuse; #7715's tolerance checklist still applies to independent review.
+
+### Current check association after the train merges
+
+GitHub may return `pull_requests: []` for the original check after a normal
+merge. Only the explicit reviewed base-move path may consume that empty list.
+The train reader forwards the actual merged PR API answer, train PR number and
+release ref; after validating the exact ordered source/assembly/live/release
+parents, equal assembly/release tree, independent body review, overlap scope
+and approved ancestry, the base-move reader forwards that context to full-source
+and controller validation. The archived producer must name that same PR and
+source head, with the release ref and an archived base equal to the original
+or live base. The original source base must equal the manifest's original base.
+The actual PR must be merged at the requested release merge, with assembly as
+head and the exact live base/ref. The source is not a direct release parent.
+All archive/App/publication/output/full-source/receipt checks still apply.
+
+Missing or non-list associations refuse. A nonempty association still takes
+only the original exact PR/head/base check; a wrong association never falls
+back to merged context. No manifest field selects or overrides this behavior,
+and no context default authorizes empty associations. Original artifacts and
+red/refusal output remain unchanged. Ordinary and no-base-move guards retain
+their existing behavior.

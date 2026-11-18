@@ -5,11 +5,13 @@ import copy
 import io
 import json
 from pathlib import Path
+import subprocess
+import unittest
 import zipfile
 
-from tools import base_move as b, continuation_envelope as envelope, release_check as check, ci_known_reds as ci
+from tools import base_move as b, continuation_envelope as envelope, release_check as check, ci_known_reds as ci, train
 from test_tools_base_move import BaseMoveFixture, digest
-from test_tools_train import REPOSITORY
+from test_tools_train import BRANCH, REPOSITORY
 
 
 class Continuation(BaseMoveFixture):
@@ -174,7 +176,7 @@ class Continuation(BaseMoveFixture):
         def git(*args):
             import subprocess
             return subprocess.run(['git', '-C', str(self.live), *args], capture_output=True, text=True)
-        return b.full_source(self.evidence_body['source'], judgment, git, self.github, REPOSITORY, self.head)
+        return b.full_source(self.evidence_body['source'], judgment, git, self.github, REPOSITORY, self.head, None)
 
     def refuses(self, why):
         with self.assertRaisesRegex((b.Refused, ci.Refused), why):
@@ -363,3 +365,84 @@ class Continuation(BaseMoveFixture):
         self.payloads['check-3']['python-units.log'] = self.payloads['check-3']['python-units.log'].replace(
             b'test_two (test_beta.Sample)', b'test_other (test_beta.Sample)')
         self.freeze_envelope(); self.refuses('incomplete Python inventory')
+
+
+class ContinuationContext(unittest.TestCase):
+    """Real validator dispatch over synthetic immutable Git/API/archive fixtures."""
+
+    def setUp(self):
+        self.fixture = f = Continuation()
+        f.setUp()
+        self.addCleanup(f.doCleanups)
+        f.api['repos/' + REPOSITORY + '/check-runs/201']['pull_requests'] = []
+        f.pull['base']['sha'] = f.L
+
+    def consume(self):
+        f = self.fixture
+        def git(*args):
+            return subprocess.run(['git', '-C', str(f.live), *args], capture_output=True, text=True)
+        return train.judge(f.candidate(), f.merged, f.L, BRANCH, REPOSITORY, git, f.github)
+
+    def test_postmerge_empty_association_carries_authenticated_context(self):
+        f = self.fixture
+        try:
+            result = self.consume()['base_move']
+        except train.Refused as error:
+            self.fail('authenticated continuation context was refused: ' + str(error))
+        observed = result['source_observed']
+        self.assertEqual(observed['kind'], 'original-partial-plus-scoped-completion')
+        self.assertTrue(observed['complete'])
+        self.assertFalse(observed['passed'])
+        self.assertEqual(observed['red_count'], 1)
+        self.assertEqual(observed['partial_shards'], ['check-1'])
+        self.assertEqual(observed['controller']['refusals'], 'the base is not judged here\n')
+        self.assertEqual(observed['controller']['output'], f.controller_check['output'])
+        self.assertEqual(result['source']['continuation'], f.evidence_body['source']['continuation'])
+        self.assertEqual(f.api['repos/' + REPOSITORY + '/check-runs/201']['pull_requests'], [])
+
+    def test_unmerged_explicit_none_cannot_admit_empty_association(self):
+        with self.assertRaisesRegex(b.Refused, 'needs merged train context'):
+            self.fixture.consume()
+
+    def test_actual_merged_pr_base_cannot_be_replaced(self):
+        self.fixture.pull['base']['sha'] = self.fixture.old
+        with self.assertRaisesRegex(train.Refused, 'merged PR binding differs'):
+            self.consume()
+
+    def test_actual_reversed_assembly_parents_refuse(self):
+        f = self.fixture
+        bad = f.git(f.work, 'commit-tree', f.tree(f.assembly), '-p', f.L, '-p', f.head,
+                    '-m', 'synthetic reversed continuation assembly parents')
+        f.git(f.live, 'fetch', '-q', str(f.work), bad)
+        f.evidence_body['assembly_head'] = bad
+        with self.assertRaisesRegex(train.Refused, 'assembly parents differ'):
+            self.consume()
+
+    def test_actual_reversed_final_parents_refuse(self):
+        f = self.fixture
+        bad = f.git(f.work, 'commit-tree', f.tree(f.assembly), '-p', f.assembly, '-p', f.L,
+                    '-m', 'synthetic reversed continuation release parents')
+        f.git(f.origin, 'fetch', '-q', str(f.work), bad)
+        f.git(f.origin, 'update-ref', 'refs/heads/' + BRANCH, bad)
+        f.git(f.live, 'fetch', '-q', str(f.work), bad)
+        f.merged = bad
+        f.pull.update(merge_commit_sha=bad, head={'sha': f.L})
+        with self.assertRaisesRegex(train.Refused, 'release merge parents differ'):
+            self.consume()
+
+    def test_continuation_path_is_guarded_in_ordinary_train(self):
+        f = self.fixture
+        safe = f.branch('ordinary-continuation', f.L, [('tools/continuation_envelope.py', '# changed validator\n')])
+        f.git(f.origin, 'update-ref', 'refs/heads/' + BRANCH, f.L)
+        f.merged = f.merge(safe)
+        f.api['repos/' + REPOSITORY + '/pulls/31'] = f.pull
+        path = f.candidate()
+        data = json.loads(path.read_text())
+        del data['base_move']
+        data.update(kind='ordinary', judgment=None,
+                    items=[{'item': 481, 'approved_head': safe, 'review': 'synthetic review'}])
+        path.write_text(json.dumps(data))
+        def git(*args):
+            return subprocess.run(['git', '-C', str(f.live), *args], capture_output=True, text=True)
+        with self.assertRaisesRegex(train.Refused, 'ordinary train cannot change.*tools/continuation_envelope.py'):
+            train.judge(path, f.merged, f.L, BRANCH, REPOSITORY, git, f.github)

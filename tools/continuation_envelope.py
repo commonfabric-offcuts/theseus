@@ -164,7 +164,7 @@ def manual_plan(workflow, authorized):
               and '--only "${{ matrix.steps }}"' in text, 'continuation unknown manual source command')
 
 
-def validate(source, judgment, git, github, repository, head):
+def validate(source, judgment, git, github, repository, head, merged_context):
     b.fields(source, 'run attempt tested_merge base_at_run files inventory audit controller continuation')
     b.number(source['run']); b.number(source['attempt'])
     env = b.fields(b.document(source['continuation']), 'version authorization original completion')
@@ -208,7 +208,7 @@ def validate(source, judgment, git, github, repository, head):
               and workflow_bytes == git_bytes(git, auth['workflow_head'], WORKFLOW),
               'continuation frozen workflow differs')
     manual_plan(workflow_bytes, auth['plan'])
-    controller = b.controller_binding(source, judgment, github, repository, head)
+    controller = b.controller_binding(source, judgment, github, repository, head, merged_context)
     b.require(controller['producer']['pr'] == auth['pr'], 'continuation controller PR differs')
     inventory = b.document(source['inventory'])
     b.require(isinstance(inventory, dict) and set(inventory) == set(check.REQUIRED), 'incomplete source inventory')
