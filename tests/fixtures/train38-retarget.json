@@ -1,0 +1,150 @@
+{
+  "producer": {
+    "producer": {
+      "run_id": "44156670774",
+      "run_attempt": "1",
+      "event": "pull_request",
+      "conclusion": "failure",
+      "workflow_id": 418035217,
+      "workflow_path": ".github/workflows/checks.yml",
+      "workflow_name": "Checks",
+      "head_sha": "3d0678a1f955d3f908781535567082101293b590",
+      "head_branch": "train/38",
+      "head_repository": "commonfabric-offcuts/theseus",
+      "created_at": "2026-11-17T19:15:43Z",
+      "url": "https://github.com/commonfabric-offcuts/theseus/actions/runs/44156670774",
+      "pull_request": {
+        "number": 75,
+        "head_sha": "3d0678a1f955d3f908781535567082101293b590",
+        "base_ref": "release/live73",
+        "base_sha": "1bc72642c726076e29362171131bc1babf7e2c50"
+      }
+    },
+    "controller": {
+      "run_id": "44169124015",
+      "run_attempt": "1",
+      "workflow_sha": "e468f0cb50330765d3576152569b2b4eb4add3a9",
+      "workflow_ref": "commonfabric-offcuts/theseus/.github/workflows/verdict.yml@refs/heads/codex/aim-next",
+      "sha": "e468f0cb50330765d3576152569b2b4eb4add3a9",
+      "ref": "refs/heads/codex/aim-next",
+      "repository": "commonfabric-offcuts/theseus",
+      "url": "https://github.com/commonfabric-offcuts/theseus/actions/runs/44169124015"
+    }
+  },
+  "merge": {
+    "sha": "37a4bc1ae91e6711ad676cfb40762228fd46f749",
+    "tree": "c9eb217645def3781f13736fa8de64b7fde4aa69",
+    "first_parent": "496b72fe7cd9229df6df584f2bd4b69ddcda45de",
+    "second_parent": "3d0678a1f955d3f908781535567082101293b590",
+    "fetched": null,
+    "rebuilt": null
+  },
+  "refusals": [
+    "check-0/run.json names a git-read base different from its merge's first parent",
+    "check-1/run.json names a git-read base different from its merge's first parent",
+    "check-2/run.json names a git-read base different from its merge's first parent",
+    "check-3/run.json names a git-read base different from its merge's first parent",
+    "check-4/run.json names a git-read base different from its merge's first parent"
+  ],
+  "receipts": [
+    {
+      "shard": 0,
+      "sha256": "042cbdb3721763337f5ccfb9f1903ad4e4643fca29b167196400298a24293626",
+      "base_at_run": {
+        "ref": "train/35",
+        "sha": "496b72fe7cd9229df6df584f2bd4b69ddcda45de"
+      },
+      "merge": {
+        "sha": "37a4bc1ae91e6711ad676cfb40762228fd46f749",
+        "tree": "c9eb217645def3781f13736fa8de64b7fde4aa69",
+        "first_parent": "496b72fe7cd9229df6df584f2bd4b69ddcda45de",
+        "second_parent": "3d0678a1f955d3f908781535567082101293b590"
+      },
+      "base": {
+        "ref": "train/35",
+        "sha": "496b72fe7cd9229df6df584f2bd4b69ddcda45de"
+      }
+    },
+    {
+      "shard": 1,
+      "sha256": "861b7a14ec85f2196328645f85e833fd973ea34297976e208bfa7ae1eeddda7e",
+      "base_at_run": {
+        "ref": "train/35",
+        "sha": "496b72fe7cd9229df6df584f2bd4b69ddcda45de"
+      },
+      "merge": {
+        "sha": "37a4bc1ae91e6711ad676cfb40762228fd46f749",
+        "tree": "c9eb217645def3781f13736fa8de64b7fde4aa69",
+        "first_parent": "496b72fe7cd9229df6df584f2bd4b69ddcda45de",
+        "second_parent": "3d0678a1f955d3f908781535567082101293b590"
+      },
+      "base": {
+        "ref": "train/35",
+        "sha": "496b72fe7cd9229df6df584f2bd4b69ddcda45de"
+      }
+    },
+    {
+      "shard": 2,
+      "sha256": "f1cb0172e4c252b4285b8f0fa6a1ffd1cd187f374e2a08befb8d148c23120914",
+      "base_at_run": {
+        "ref": "train/35",
+        "sha": "496b72fe7cd9229df6df584f2bd4b69ddcda45de"
+      },
+      "merge": {
+        "sha": "37a4bc1ae91e6711ad676cfb40762228fd46f749",
+        "tree": "c9eb217645def3781f13736fa8de64b7fde4aa69",
+        "first_parent": "496b72fe7cd9229df6df584f2bd4b69ddcda45de",
+        "second_parent": "3d0678a1f955d3f908781535567082101293b590"
+      },
+      "base": {
+        "ref": "train/35",
+        "sha": "496b72fe7cd9229df6df584f2bd4b69ddcda45de"
+      }
+    },
+    {
+      "shard": 3,
+      "sha256": "2ca0926b1720e17ccde81343cf02f78090af6c32f4ec488d279318e54dfdd608",
+      "base_at_run": {
+        "ref": "train/35",
+        "sha": "496b72fe7cd9229df6df584f2bd4b69ddcda45de"
+      },
+      "merge": {
+        "sha": "37a4bc1ae91e6711ad676cfb40762228fd46f749",
+        "tree": "c9eb217645def3781f13736fa8de64b7fde4aa69",
+        "first_parent": "496b72fe7cd9229df6df584f2bd4b69ddcda45de",
+        "second_parent": "3d0678a1f955d3f908781535567082101293b590"
+      },
+      "base": {
+        "ref": "train/35",
+        "sha": "496b72fe7cd9229df6df584f2bd4b69ddcda45de"
+      }
+    },
+    {
+      "shard": 4,
+      "sha256": "20537f3c9b369b8b0733b966bb0e83bdca0f3456719b03dbbf28e27efb2196a2",
+      "base_at_run": {
+        "ref": "train/35",
+        "sha": "496b72fe7cd9229df6df584f2bd4b69ddcda45de"
+      },
+      "merge": {
+        "sha": "37a4bc1ae91e6711ad676cfb40762228fd46f749",
+        "tree": "c9eb217645def3781f13736fa8de64b7fde4aa69",
+        "first_parent": "496b72fe7cd9229df6df584f2bd4b69ddcda45de",
+        "second_parent": "3d0678a1f955d3f908781535567082101293b590"
+      },
+      "base": {
+        "ref": "train/35",
+        "sha": "496b72fe7cd9229df6df584f2bd4b69ddcda45de"
+      }
+    }
+  ],
+  "trees": {
+    "496b72fe7cd9229df6df584f2bd4b69ddcda45de": "0f739ffdff5d75b452e1eedd9c5ca08418d9ce76",
+    "1bc72642c726076e29362171131bc1babf7e2c50": "0f739ffdff5d75b452e1eedd9c5ca08418d9ce76"
+  },
+  "retained_sha256": {
+    "verdict-44156670774-1-c1.zip": "32ca4c245b51ba9c97bb793f39542779a464d6446323d350de8618c875d50f89",
+    "raw-base-comparison.json": "4663a7f47796e39e265d8fe9341bae148f1ea9fd3cce9fd9585a18a50f09699b",
+    "refusals": "30d57f6dbef8380a8d5bea40699e65da2d8d52b654024ee0b57519cae11d7d25"
+  }
+}

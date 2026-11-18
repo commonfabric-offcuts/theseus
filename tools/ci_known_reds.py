@@ -254,6 +254,9 @@ def producer_binding(path, environ):
     """Bind original PR or release-branch push evidence to the protected event."""
     record = read_json(path)
     event = read_json(environ.get('GITHUB_EVENT_PATH', ''))
+    require(isinstance(record, dict) and all(isinstance(record.get(k), dict) for k in ('controller', 'producer', 'merge')),
+            'missing or malformed original controller binding')
+    require(isinstance(event, dict) and isinstance(event.get('workflow_run'), dict), 'missing controller event binding')
     require(environ.get('GITHUB_EVENT_NAME') == 'workflow_run' and event.get('action') == 'completed',
             '--producer requires a protected completed workflow_run controller')
     controller = record['controller']
@@ -268,6 +271,9 @@ def producer_binding(path, environ):
     for field in ('workflow_sha','sha'):
         require(isinstance(controller[field],str) and SHA.fullmatch(controller[field]), 'invalid controller source identity')
     p, observed, merge = record['producer'], event['workflow_run'], record['merge']
+    require(set(('run_id', 'run_attempt', 'event', 'head_sha', 'head_branch', 'head_repository',
+                 'created_at', 'conclusion', 'workflow_path', 'workflow_name')) <= set(p)
+            and {'sha', 'tree', 'first_parent', 'second_parent'} <= set(merge), 'partial original producer binding')
     require(str(p['run_id']) == str(observed['id']) and str(p['run_attempt']) == str(observed['run_attempt']),
             'producer is not the triggering run/attempt')
     require(int(p['run_attempt']) == 1, 'protected controller refuses producer retries; request a fresh producer run')
@@ -279,7 +285,8 @@ def producer_binding(path, environ):
     require(p['head_sha'] == observed['head_sha'], 'producer head differs from API event')
     require(p['conclusion'] == observed['conclusion'] and p['conclusion'] in ('success','failure'), 'producer is cancelled or incomplete')
     if p['event'] == 'pull_request':
-        pr = p['pull_request']
+        pr = p.get('pull_request')
+        require(isinstance(pr, dict) and {'number', 'head_sha', 'base_ref', 'base_sha'} <= set(pr), 'partial original PR binding')
         prs = [r for r in observed.get('pull_requests',[]) if r.get('number') == pr['number']]
         require(p['head_sha'] == pr['head_sha'] and len(prs) == 1 and prs[0]['head']['sha'] == pr['head_sha']
                 and prs[0]['base']['sha'] == pr['base_sha'], 'PR base/head is not authenticated by controller event')
@@ -290,6 +297,28 @@ def producer_binding(path, environ):
             require(all(isinstance(tested_base.get(k), str) and SHA.fullmatch(tested_base[k]) for k in ('sha','branch_head')),
                     'invalid authenticated tested base')
             base = {'ref':tested_base['ref'],'sha':tested_base['sha']}
+        comparison = record.get('base_comparison')
+        require(isinstance(comparison, dict) and set(comparison) == {'at_run', 'current'}, 'missing or malformed base comparison')
+        at_run, current = comparison['at_run'], comparison['current']
+        require(isinstance(at_run, dict) and set(at_run) == {'sha', 'tree'}
+                and isinstance(current, dict) and set(current) == {'number', 'head_sha', 'repository', 'ref', 'sha', 'tree'},
+                'partial base comparison')
+        require(all(isinstance(fact.get(k), str) and SHA.fullmatch(fact[k])
+                    for fact in (at_run, current) for k in ('sha', 'tree')), 'invalid base commit/tree identity')
+        require(isinstance(tested_base, dict) and at_run['sha'] == base['sha']
+                and current['sha'] == tested_base['branch_head']
+                and current['number'] == pr['number'] and current['head_sha'] == p['head_sha']
+                and current['repository'] == repository and current['ref'] == pr['base_ref'], 'current PR base comparison binding differs')
+        require(at_run['tree'] == current['tree'], 'base comparison has different trees')
+        require(('receipt_base' in record) == ('base_at_run' in record), 'partial original base observation')
+        if 'receipt_base' in record:
+            original, observed_base = record['receipt_base'], record['base_at_run']
+            require(isinstance(original, dict) and set(original) == {'ref', 'sha'}
+                    and isinstance(original['ref'], str) and bool(original['ref'])
+                    and isinstance(original['sha'], str) and SHA.fullmatch(original['sha']), 'invalid original receipt base')
+            require(observed_base == {'ref': original['ref'], 'sha': base['sha']}, 'original base_at_run differs from tested parent')
+            require(original == {'ref': pr['base_ref'], 'sha': pr['base_sha']} or original['sha'] == base['sha'],
+                    'original receipt base is neither API base nor tested parent')
         require(merge['first_parent'] == base['sha'] and merge['second_parent'] == p['head_sha'], 'merge parents differ from API base/head')
     else:
         base = p['comparison_base']
@@ -584,8 +613,12 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
     require(Counter(s for shard in plan for s in shard) == Counter(REQUIRED), 'incomplete or duplicated shard plan')
     entries = provenance['shards']
     require(len(entries) == len(plan), 'missing shard provenance')
-    base_at_run_format(provenance, [entry.get('receipt') for entry in entries],
-                       {'ref':base['ref'], 'sha':expected_merge['first_parent']} if run['event'] == 'pull_request' else None)
+    observed_base = ({'ref':base['ref'], 'sha':expected_merge['first_parent']} if run['event'] == 'pull_request' else None)
+    if binding is not None and 'base_at_run' in binding:
+        observed_base = binding['base_at_run']
+    base_at_run_format(provenance, [entry.get('receipt') for entry in entries], observed_base)
+    if binding is not None and run['event'] == 'pull_request':
+        require(('base_at_run' in provenance) == ('base_at_run' in binding), 'original base observation format differs from protected record')
     artifacts = [s['artifact'] for s in entries]
     require(unique(artifacts, 'shard artifacts') == {'check-%d' % i for i in range(len(plan))}, 'unexpected artifact set')
     require(unique(summary.get('combined_from'), 'combined artifact summaries') ==
@@ -807,6 +840,18 @@ def tested_base_reached(root, base, binding):
         require(subprocess.run(['git','-C',str(root),'merge-base','--is-ancestor',base['sha'],
                                 binding['tested_base']['branch_head']], capture_output=True).returncode == 0,
                 'tested base was not reached by authenticated base branch')
+    if 'base_comparison' in binding:
+        comparison = binding['base_comparison']
+        for fact in comparison.values():
+            require(git(root, 'cat-file', '-t', fact['sha']).strip() == b'commit', 'base identity is not a commit')
+            require(git(root, 'rev-parse', fact['sha']+'^{tree}').decode().strip() == fact['tree'], 'base tree differs from Git')
+        require(comparison['at_run']['tree'] == comparison['current']['tree'], 'Git base trees differ')
+    if 'receipt_base' in binding:
+        original = binding['receipt_base']
+        require(subprocess.run(['git','check-ref-format','--branch',original['ref']], capture_output=True).returncode == 0,
+                'invalid original base ref')
+        require(subprocess.run(['git','-C',str(root),'merge-base','--is-ancestor',original['sha'],base['sha']],
+                               capture_output=True).returncode == 0, 'original base is not reached by tested base')
 
 
 def validate(summary_path, provenance_path, shards, base_root, candidate_root, producer_path, known_runs, environ=None):
@@ -823,6 +868,8 @@ def validate(summary_path, provenance_path, shards, base_root, candidate_root, p
     contained_evidence(Path(shards))
     raw_base = ({'ref':None,'sha':None} if run['event'] == 'push' else
                 {'ref':binding['producer']['pull_request']['base_ref'], 'sha':binding['producer']['pull_request']['base_sha']})
+    if 'receipt_base' in binding:
+        raw_base = binding['receipt_base']
     observed, summary = read_evidence(summary_path,provenance_path,shards,candidate_root,commit,run,raw_base,expected_merge,binding)
     known, base_runs = known_base_failures(known_runs,candidate_root,base,binding['producer'])
     failures, mutations = failure_records(observed,candidate_root,commit,run['id'])

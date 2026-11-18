@@ -239,7 +239,8 @@ jobs:
           # and the pushed branch's head.
           python3 -I - "$OUT/producer.json" "$OUT/shards" "$OUT/release-check" "$OUT/merge.json" "$OUT/refusals" <<'PY' >> "$GITHUB_OUTPUT"
           import glob, json, os, re, sys
-          producer = json.load(open(sys.argv[1]))["producer"]
+          binding = json.load(open(sys.argv[1]))
+          producer = binding["producer"]
           push = producer["event"] == "push"
           pushed = producer.get("head_commit") or {}
           shards_dir, release_check, out, refusals_path = sys.argv[2:6]
@@ -263,6 +264,7 @@ jobs:
               refusals.append("the producer run left no whole-run summary")
           merges = set()
           base_formats = set()
+          observations = []
           for path, receipt in receipts:
               run = receipt.get("run") if isinstance(receipt.get("run"), dict) else {}
               if (run.get("id"), run.get("attempt")) != (producer["run_id"], producer["run_attempt"]):
@@ -273,9 +275,22 @@ jobs:
               fields = tuple(v if isinstance(v, str) and hex40.match(v) else None for v in (merge.get(k) for k in ("sha", "tree", "first_parent", "second_parent")))
               base_formats.add("base_at_run" in receipt)
               if "base_at_run" in receipt:
-                  expected = None if push else {"ref": producer["pull_request"]["base_ref"], "sha": fields[2]}
+                  raw_base = receipt.get("base")
+                  # Keep the producer's original branch observation after a retarget. The commit is still only
+                  # nominated here; Git authenticates it as the tested merge's first parent in the next step.
+                  valid_base = (isinstance(raw_base, dict) and set(raw_base) == {"ref", "sha"}
+                                and isinstance(raw_base.get("ref"), str) and bool(raw_base["ref"])
+                                and isinstance(raw_base.get("sha"), str) and hex40.fullmatch(raw_base["sha"]))
+                  expected = None if push else {"ref": raw_base["ref"] if valid_base else None, "sha": fields[2]}
                   if receipt["base_at_run"] != expected:
                       refusals.append("%s names a git-read base different from its merge's first parent" % clean(os.path.relpath(path, shards_dir)))
+                  if not push:
+                      if not valid_base:
+                          refusals.append("missing or malformed original receipt base")
+                      elif (raw_base != {"ref": producer["pull_request"]["base_ref"], "sha": producer["pull_request"]["base_sha"]}
+                            and raw_base["sha"] != fields[2]):
+                          refusals.append("original receipt base is neither the run's API base nor its tested parent")
+                      observations.append((raw_base, receipt["base_at_run"]))
               # A pushed head with one parent has no second; every other commit checked names all four.
               if not all(fields if not (push and len(pushed.get("parents") or []) == 1) else fields[:3]):
                   refusals.append("%s names a merge with a malformed or missing object id" % clean(os.path.relpath(path, shards_dir)))
@@ -288,6 +303,8 @@ jobs:
               refusals.append("the shards name different merges: %s" % sorted(str(m) for m in merges))
           if len(base_formats) > 1:
               refusals.append("the shards mix legacy and base_at_run receipt formats")
+          if observations and any(observation != observations[0] for observation in observations):
+              refusals.append("the shards name different original base observations")
           sha, tree, first, second = merges.pop() if len(merges) == 1 else (None, None, None, None)
           if push:
               if sha and sha != producer["head_sha"]:
@@ -303,6 +320,9 @@ jobs:
           json.dump({"sha": sha, "tree": tree, "first_parent": first, "second_parent": second, "fetched": None, "rebuilt": None}, open(out, "w"), indent=1)
           open(refusals_path, "a").write("".join(line + "\n" for line in refusals))
           ok = not refusals and sha is not None
+          if ok and observations:
+              binding["receipt_base"], binding["base_at_run"] = observations[0]
+              json.dump(binding, open(sys.argv[1], "w"), indent=1)
           print("merge_sha=%s" % (sha if ok else ""))
           print("tree=%s" % (tree if ok else ""))
           print("base_sha=%s" % (first if ok else ""))
@@ -367,6 +387,30 @@ jobs:
             PUSH_PRODUCER_CODE="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- .github/workflows/checks.yml tools/ | tr '\n' ' ')"
             export PUSH_PRODUCER_CODE
           else
+            # Read the current PR separately; the triggering run and its PR association stay unchanged. A retarget
+            # to another ref needs a new controller association, never a relabelled original run.
+            if ! gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" > "$OUT/current-pr.json"; then
+              refuse "the current PR could not be read"
+            fi
+            if ! python3 -I - <<'PY'
+          import json, os, re
+          e = os.environ
+          try:
+              pr = json.load(open(e["OUT"] + "/current-pr.json"))
+              assert isinstance(pr, dict) and str(pr["number"]) == e["NUMBER"] and pr["state"] == "open"
+              assert pr["head"]["sha"] == e["HEAD_SHA"] and pr["head"]["repo"]["full_name"] == e["GITHUB_REPOSITORY"]
+              assert pr["base"]["ref"] == e["BASE_REF"] and pr["base"]["repo"]["full_name"] == e["GITHUB_REPOSITORY"]
+              assert re.fullmatch(r"[0-9a-f]{40}", pr["base"]["sha"])
+          except (OSError, ValueError, KeyError, TypeError, AssertionError):
+              raise SystemExit(1)
+          PY
+            then
+              refuse "the current PR number, open state, repository, head or base binding differs or is malformed"
+            fi
+            current_sha="$(python3 -I -c 'import json,os; print(json.load(open(os.environ["OUT"]+"/current-pr.json"))["base"]["sha"])')"
+            if [ "$current_sha" != "$branch_head" ]; then
+              refuse "the current PR base $current_sha is not the fetched branch head $branch_head"
+            fi
             git fetch -q origin "refs/pull/$NUMBER/head"
             if [ "$(git rev-parse FETCH_HEAD)" != "$HEAD_SHA" ]; then
               refuse "refs/pull/$NUMBER/head is $(git rev-parse FETCH_HEAD) now, not $HEAD_SHA; the pull request has moved on and its newer run gets the verdict"
@@ -374,6 +418,16 @@ jobs:
             if ! git merge-base --is-ancestor "$BASE_SHA" "origin/$BASE_REF"; then
               refuse "the base $BASE_SHA is not a commit on $BASE_REF"
             fi
+            if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null || ! git cat-file -e "$current_sha^{commit}" 2>/dev/null; then
+              refuse "a base commit could not be read"
+            fi
+            if ! at_run_tree="$(git rev-parse "$BASE_SHA^{tree}")" || ! current_tree="$(git rev-parse "$current_sha^{tree}")"; then
+              refuse "a base tree could not be read"
+            fi
+            if [ "$at_run_tree" != "$current_tree" ]; then
+              refuse "the tested base $BASE_SHA tree $at_run_tree and current PR base $current_sha tree $current_tree have different trees"
+            fi
+            export AT_RUN_TREE="$at_run_tree" CURRENT_BASE_SHA="$current_sha" CURRENT_BASE_TREE="$current_tree"
             # The merge commit the producer checked out, fetched by its id: its parents and tree must be the ones the
             # receipts name and GitHub's record implies. If GitHub no longer serves it, the run is stale.
             if ! git fetch -q origin "$MERGE_SHA" 2>/dev/null || ! git cat-file -e "$MERGE_SHA^{commit}" 2>/dev/null; then
@@ -410,7 +464,7 @@ jobs:
           # The authenticated merge goes into producer.json as well: that file is the validator's one handshake. This
           # runs from inside the candidate's checkout, so -I: a plain `python3 -` puts the working directory first on
           # sys.path, and a json.py in the candidate's tree would run here.
-          python3 -I - "$OUT/merge.json" "$OUT/producer.json" "$MERGE_SHA" "$rebuilt" "$branch_head" <<'PY'
+          if ! python3 -I - "$OUT/merge.json" "$OUT/producer.json" "$MERGE_SHA" "$rebuilt" "$branch_head" <<'PY'
           import json, os, sys
           doc = json.load(open(sys.argv[1]))
           doc["fetched"] = sys.argv[3]
@@ -421,10 +475,27 @@ jobs:
           producer = json.load(open(sys.argv[2]))
           producer["merge"] = doc
           if producer["producer"]["event"] == "pull_request":
+              original = producer.get("receipt_base")
+              if original is not None:
+                  # Original API base may lag the tested Git parent, but must belong to its history.
+                  import subprocess
+                  if (subprocess.run(["git", "check-ref-format", "--branch", original["ref"]], capture_output=True).returncode
+                          or subprocess.run(["git", "merge-base", "--is-ancestor", original["sha"], doc["first_parent"]], capture_output=True).returncode):
+                      open(os.environ["OUT"] + "/refusals", "a").write("original receipt base is not reached by the tested base\n")
+                      raise SystemExit(1)
               producer["tested_base"] = {"ref": producer["producer"]["pull_request"]["base_ref"],
                                          "sha": doc["first_parent"], "branch_head": sys.argv[5]}
+              pr = json.load(open(os.environ["OUT"] + "/current-pr.json"))
+              producer["base_comparison"] = {
+                  "at_run": {"sha": doc["first_parent"], "tree": os.environ["AT_RUN_TREE"]},
+                  "current": {"number": pr["number"], "head_sha": pr["head"]["sha"],
+                              "repository": pr["base"]["repo"]["full_name"], "ref": pr["base"]["ref"],
+                              "sha": os.environ["CURRENT_BASE_SHA"], "tree": os.environ["CURRENT_BASE_TREE"]}}
           json.dump(producer, open(sys.argv[2], "w"), indent=1)
           PY
+          then
+            refuse "the authenticated base receipt could not be completed"
+          fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
       - name: The controller, at the commit this workflow runs from
         id: controller
@@ -821,6 +892,13 @@ jobs:
               if isinstance(tested_base, dict):
                   lines.append("GitHub event base: %s; tested Git base: %s on %s (authenticated branch head %s)" % (
                       p["pull_request"]["base_sha"], tested_base.get("sha"), tested_base.get("ref"), tested_base.get("branch_head")))
+              comparison = producer.get("base_comparison")
+              if isinstance(comparison, dict):
+                  at_run, current = comparison["at_run"], comparison["current"]
+                  lines.append("Base trees: at run %s tree %s; current PR #%s base %s on %s tree %s" % (
+                      at_run["sha"], at_run["tree"], current["number"], current["sha"], current["ref"], current["tree"]))
+                  lines.append("Original receipt base: %s; original base_at_run: %s" % (
+                      json.dumps(producer.get("receipt_base")), json.dumps(producer.get("base_at_run"))))
           lines.append("Controller: workflow %s at %s, run %s" % (c["workflow_ref"], c["workflow_sha"], c["url"]))
           known = read("history/known-runs.json")
           if isinstance(known, dict):

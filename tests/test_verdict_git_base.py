@@ -31,6 +31,7 @@ class VerdictGitBaseCase(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        self.cache_prefix = os.environ.get('PYTHONPYCACHEPREFIX', str(self.root / 'pycache'))
         self.repo = self.root / 'repo'
         self.repo.mkdir()
         self.git('init', '-q')
@@ -78,6 +79,19 @@ class VerdictGitBaseCase(unittest.TestCase):
         self.producer_path.write_text(json.dumps(self.producer))
         self.refusals = self.out / 'refusals'
         self.refusals.write_text('')
+        self.current_path = self.root / 'current-pr.json'
+        self.current = {'number': 34, 'state': 'open',
+                        'head': {'sha': self.head, 'repo': {'full_name': 'org/repo'}},
+                        'base': {'ref': 'release/live73', 'sha': self.base,
+                                 'repo': {'full_name': 'org/repo'}}}
+        self.stub = self.root / 'stub'
+        self.stub.mkdir()
+        gh = self.stub / 'gh'
+        gh.write_text('#!/bin/sh\ncat "$CURRENT_PR_FIXTURE"\n')
+        gh.chmod(0o755)
+        python = self.stub / 'python3'
+        python.write_text('#!/bin/sh\nexec "'+sys.executable+'" -X "pycache_prefix=$PYTHONPYCACHEPREFIX" "$@"\n')
+        python.chmod(0o755)
 
     def git(self, *args):
         return subprocess.run(['git', '-C', str(self.repo)] + list(args), capture_output=True, text=True, check=True).stdout
@@ -85,17 +99,18 @@ class VerdictGitBaseCase(unittest.TestCase):
     def remote_git(self, *args):
         return subprocess.run(['git', '--git-dir='+str(self.remote)] + list(args), capture_output=True, text=True, check=True).stdout
 
-    def nominate(self, declared=False, bad_declaration=False, bad_head=False, mixed=False):
+    def nominate(self, declared=False, bad_declaration=False, bad_head=False, mixed=False, original_ref='release/live73'):
         for i in range(2):
             folder = self.out / 'shards' / ('check-%d' % i)
             folder.mkdir(parents=True)
             receipt = {'run': {'id': '99', 'attempt': '1'},
+                       'base': {'ref': original_ref, 'sha': self.old if original_ref == 'release/live73' else self.base},
                        'merge': {'sha': self.merge, 'tree': self.tree, 'first_parent': self.base,
                                  'second_parent': self.old if bad_head else self.head}}
             if declared and not (mixed and i):
-                receipt['base_at_run'] = {'ref': 'release/live73', 'sha': self.old if bad_declaration else self.base}
+                receipt['base_at_run'] = {'ref': original_ref, 'sha': self.old if bad_declaration else self.base}
             (folder / 'run.json').write_text(json.dumps(receipt))
-        answer = subprocess.run([sys.executable, '-I', '-S', '-c', python_step("The receipts, held to GitHub's record"),
+        answer = subprocess.run([sys.executable, '-I', '-S', '-X', 'pycache_prefix='+self.cache_prefix, '-c', python_step("The receipts, held to GitHub's record"),
                                  str(self.producer_path), str(self.out / 'shards'), str(self.out / 'release-check'),
                                  str(self.out / 'merge.json'), str(self.refusals)], capture_output=True, text=True, check=True)
         return dict(line.split('=', 1) for line in answer.stdout.splitlines())
@@ -112,6 +127,9 @@ class VerdictGitBaseCase(unittest.TestCase):
         shell = textwrap.dedent(section('The tested merge, fetched and rebuilt').split('        run: |\n', 1)[1])
         output = self.root / 'outputs'
         env['GITHUB_OUTPUT'] = str(output)
+        self.current_path.write_text(json.dumps(self.current))
+        env.update(PATH=str(self.stub)+os.pathsep+env['PATH'], CURRENT_PR_FIXTURE=str(self.current_path),
+                   PYTHONPYCACHEPREFIX=self.cache_prefix)
         subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', shell], env=env, capture_output=True, text=True, check=True)
         return output.read_text() if output.exists() else ''
 
@@ -146,12 +164,14 @@ class VerdictGitBaseCase(unittest.TestCase):
                          '-m', 'later base').strip()
         subprocess.run(['git', '--git-dir='+str(self.remote), 'fetch', '-q', str(self.repo), later], check=True)
         self.remote_git('update-ref', 'refs/heads/release/live73', later)
+        self.current['base']['sha'] = later
         self.assertIn('ready=true', self.rebuild(self.nominate()))
         self.assertEqual(json.loads(self.producer_path.read_text())['tested_base']['branch_head'], later)
 
     def test_first_parent_outside_base_branch_refuses(self):
         # The Git object exists and every receipt agrees; it was never reached by the authenticated base branch.
         self.remote_git('update-ref', 'refs/heads/release/live73', self.old)
+        self.current['base']['sha'] = self.old
         self.assertNotIn('ready=true', self.rebuild(self.nominate()))
         self.assertIn('is not a commit on release/live73', self.refusals.read_text())
 
