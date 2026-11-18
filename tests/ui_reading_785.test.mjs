@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { held785, solid785, capture785, read785, pill785, rect785, frames785, allExpressions785, expressions785, staleInit785 } from './reading_785_oracle.mjs';
-import { reading785Checks, names785 } from './reading_785_native.mjs';
+import { reading785Checks, names785, withRestored785 } from './reading_785_native.mjs';
 import { readingChecks } from './topic_reading_native.mjs';
 const source=readFileSync(new URL('../web/app.mjs',import.meta.url),'utf8');
 const cut=s=>s.slice(s.indexOf('let roomy = null, listAnchor'),s.indexOf('// The New line, just below the oldest message'));
@@ -86,4 +86,46 @@ test('item 785 exact generated stale-answer gate holds only the old topic and re
  await Promise.resolve();await Promise.resolve();assert.equal(settled,false);assert.equal(win.reading785Pending,1);
  assert.equal(await win.fetch('/api/view',{body:JSON.stringify({name:'topic_messages',args:{topic_id:'destination'}})}),answer,'destination is never held by old-topic gate');
  vm.runInContext(expressions785.release,ctx);assert.equal(await old,answer);assert.equal(settled,true);vm.runInContext(expressions785.release,ctx);
+});
+
+test('item 785 each outside request explicitly selects its actual topic; omission mutants caught and restored',()=>{
+ const native=readFileSync(new URL('./reading_785_native.mjs',import.meta.url),'utf8');
+ const requests=[...native.matchAll(/await control\((\{method:'agent_message'.*?\})\)/g)].map(m=>m[1]);
+ assert.equal(requests.length,3,'arrival, stale and after-leave requests all covered');
+ const dir=mkdtempSync(join(tmpdir(),'reading785-requests-')),path=join(dir,'request.js');
+ const control=s=>{const r=vm.runInNewContext('('+s+')',{key:'arrival',topic:'isolated-topic',facts:{actor:'fixture-viewer'},body785:x=>x});assert.equal(r.source,'topic','outside request must select readable topic rather than unreadable first message');assert.equal(r.topic_id,'isolated-topic');return r;};
+ try {for(const [index,original] of requests.entries()){
+  control(original);assert.equal(original.split("source:'topic',").length,2);
+  writeFileSync(path,original.replace("source:'topic',",''));const applied=readFileSync(path,'utf8');assert.notEqual(sha(applied),sha(original));
+  assert.throws(()=>control(applied),/outside request must select readable topic/);
+  writeFileSync(path,original);assert.equal(sha(readFileSync(path)),sha(original));control(readFileSync(path,'utf8'));
+  console.log(JSON.stringify({requestMutation785:index,applied:sha(applied),caught:true,restored:sha(readFileSync(path)),control:true}));
+ }}finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('item 785 restoration preserves both exact exceptions and executes after mutant failure',async()=>{
+ const mutant=Error('mutant exact failure'),restored=Error('restored exact failure'),calls=[];
+ await assert.rejects(withRestored785(async()=>{calls.push('mutant');throw mutant},async()=>{calls.push('restored');throw restored}),error=>error instanceof AggregateError&&error.errors[0]===mutant&&error.errors[1]===restored);
+ assert.deepEqual(calls,['mutant','restored']);
+ await assert.rejects(withRestored785(async()=>{throw mutant},async()=>{}),error=>error===mutant);
+ await assert.rejects(withRestored785(async()=>{},async()=>{throw restored}),error=>error===restored);
+ await withRestored785(async()=>{},async()=>{});
+ const native=readFileSync(new URL('./reading_785_native.mjs',import.meta.url),'utf8');
+ const original=native.slice(native.indexOf('export async function withRestored785')).replace('export ','');
+ const control=async s=>{const run=vm.runInNewContext('('+s+')');await assert.rejects(run(async()=>{throw mutant},async()=>{throw restored}),e=>e.errors?.[0]===mutant&&e.errors?.[1]===restored,'both original exceptions retained');};
+ const dir=mkdtempSync(join(tmpdir(),'reading785-errors-')),path=join(dir,'restore.js');
+ try {const target="catch(error){errors.push(error);}";assert.equal(original.split(target).length,3);
+  const changed=original.replace(target,'catch(error){}');writeFileSync(path,changed);assert.notEqual(sha(readFileSync(path)),sha(original));
+  await assert.rejects(control(readFileSync(path,'utf8')),/both original exceptions retained/);
+  writeFileSync(path,original);assert.equal(sha(readFileSync(path)),sha(original));await control(readFileSync(path,'utf8'));
+  console.log(JSON.stringify({errorMutation785:sha(changed),caught:true,restored:sha(original),control:true}));
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('item 785 event label survives a separately named mutant phase',()=>{
+ const native=readFileSync(new URL('./reading_785_native.mjs',import.meta.url),'utf8');
+ const expression=native.match(/const history = (.*);/)[1],observations=[];
+ const history=vm.runInNewContext(expression,{observations,engine:'model'});
+ history('runtime failure',{phase:'no-hold',error:'exact mutant exception'});
+ assert.equal(observations[0].event,'runtime failure');assert.equal(observations[0].phase,'no-hold');assert.equal(observations[0].error,'exact mutant exception');
 });

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 """Focused Build/control checks, without a server, browser, profile or real store."""
+import ast
 import hashlib
 import importlib.util
 from pathlib import Path
@@ -12,6 +13,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from aim_next.web_build import load
+from aim_next import Store, initialize
 
 MODULE_PATH = ROOT / "tests/fixtures/reading_785_runtime.py"
 
@@ -47,6 +49,63 @@ def control(module, destination):
 
 
 class Reading785BuildCase(unittest.TestCase):
+    def test_real_core_wrong_source_refusal_and_topic_commit_readback(self):
+        # Execute the actual nested fixture helper without main(), HTTP or server.
+        tree = ast.parse((ROOT / "tests/fixtures/ui_http.py").read_text())
+        helper = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "agent_message")
+        with tempfile.TemporaryDirectory(prefix="reading785-core-") as folder:
+            path = Path(folder).resolve() / "isolated.sqlite3"
+            instance, actor, sender = "reading785-core", "fixture-viewer", "fixture-outside"
+            binding = initialize(path, instance, [{"id": actor, "kind": "human"},
+                {"id": sender, "kind": "agent"}], authority_path=Path(folder).resolve() / "authority.json")["binding"]
+            core = Store(path, instance, expected_binding=binding)
+            commands = []
+
+            def command(kind, operation, args, target=None, expected=None, sender=actor):
+                envelope = {"v": 1, "instance_id": instance, "operation_id": operation, "kind": kind,
+                    "target": target or {}, "expected": dict(expected or {}, authority={
+                        k: binding[k] for k in ("authority_id", "authority_epoch")}), "args": args}
+                answer = core.command(sender, envelope)
+                self.assertEqual(answer["status"], "committed", answer)
+                commands.append((sender, envelope, answer))
+                return answer
+
+            command("workspace.create", "workspace", {"id": "w1", "title": "Isolated", "team": []})
+            source = {"kind": "new_topic", "id": "private-opening", "workspace_id": "w1"}
+            command("draft.save", "seed-save", {"source_ref": source, "topic_id": "private-topic",
+                "generation": "seed-generation", "body": "Private seed words", "opening": {
+                    "workspace_id": "w1", "title": "Private source", "participants": []}},
+                {"draft_id": "seed-draft"}, {"draft_revision": 0})
+            command("submission.prepare", "seed-prepare", {"draft_id": "seed-draft", "submission_id": "seed-sub",
+                "send_operation_id": "seed-send"}, {"topic_id": "private-topic"}, {"draft_revision": 1})
+            seed = command("topic.create_and_send", "seed-send", {"submission_id": "seed-sub"}, {"topic_id": "private-topic"})
+            command("draft.save", "topic-save", {"source_ref": {"kind": "new_topic", "id": "arrival-opening", "workspace_id": "w1"},
+                "topic_id": "arrival-topic", "generation": "arrival-generation", "body": "Arrival topic seed", "opening": {
+                    "workspace_id": "w1", "title": "Arrival", "participants": [sender]}},
+                {"draft_id": "arrival-draft"}, {"draft_revision": 0})
+            command("submission.prepare", "topic-prepare", {"draft_id": "arrival-draft", "submission_id": "arrival-sub",
+                "send_operation_id": "topic-send"}, {"topic_id": "arrival-topic"}, {"draft_revision": 1})
+            command("topic.create_and_send", "topic-send", {"submission_id": "arrival-sub"}, {"topic_id": "arrival-topic"})
+            namespace = {"actor": actor, "store": lambda: core, "command": command,
+                "sources": [{"kind": "message", "id": seed["result"]["message_id"]}],
+                "published": lambda operation, attachments, sender: []}
+            exec(compile(ast.Module(body=[helper], type_ignores=[]), "actual-fixture-agent-message", "exec"), namespace)
+            request = {"operation_id": "outside-arrival", "topic_id": "arrival-topic", "sender": sender,
+                "addressees": [actor], "body": "Exact outside words.\nSecond line."}
+            before = len(commands)
+            with self.assertRaisesRegex(AssertionError, "No readable source"):
+                namespace["agent_message"](request)
+            self.assertEqual(len(commands), before, "wrong-source refusal precedes any mutation")
+            receipt = namespace["agent_message"](dict(request, source="topic"))
+            self.assertEqual(receipt["status"], "committed")
+            sender_id, envelope, answer = commands[-1]
+            self.assertEqual(core.command(sender_id, envelope), answer, "same send operation is exactly once")
+            rows = [r for r in core.view(actor, "topic_messages", {"topic_id": "arrival-topic", "direction": "before", "limit": 10})["items"] if r["author_id"] == sender]
+            self.assertEqual([(r["id"], r["author_id"], r["body"]) for r in rows],
+                [(receipt["result"]["message_id"], sender, request["body"])])
+            print({"core785": "wrong source refused; topic committed; exact readback once; retry unchanged",
+                "cache_prefix": sys.pycache_prefix}, flush=True)
+
     def test_build_controls(self):
         with tempfile.TemporaryDirectory(prefix="reading785-build-") as destination:
             control(module_at(MODULE_PATH), destination)

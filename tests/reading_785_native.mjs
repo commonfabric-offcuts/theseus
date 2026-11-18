@@ -5,7 +5,7 @@ export const names785 = ['laptop','phone'].flatMap(device=>['light','dark'].map(
 const body785 = label => `${label}. The real words at this reading place stay exactly here.\n\n` + 'A paragraph with enough real words to cross several lines on a phone and keep a distinct reading identity. '.repeat(6);
 
 export async function reading785Checks({check,until,control,view,facts,shot,observations,engine}, {seed,open,tap}) {
- const history = (phase,data) => observations.push({name:'reading item 785',phase,engine,...data});
+ const history = (event,data) => observations.push({name:'reading item 785',event,engine,...data});
  const settle = async p => {await p.evaluate(frames785);await p.evaluate(frames785);};
  const snapshot = async (p,phase,before=null) => {await settle(p);const after=await p.evaluate(read785);history(phase,{before,after});if(before)held785(before,after);return after;};
  const wheel = async (p,dy) => {
@@ -22,7 +22,7 @@ export async function reading785Checks({check,until,control,view,facts,shot,obse
   return ids;
  };
  const arrival = async (p,topic,key) => {
-  const result=await control({method:'agent_message',operation_id:key,topic_id:topic,sender:'aim-core',addressees:[facts.actor],body:body785(key+' outside arrival')});
+  const result=await control({method:'agent_message',source:'topic',operation_id:key,topic_id:topic,sender:'aim-core',addressees:[facts.actor],body:body785(key+' outside arrival')});
   assert.equal(result.status,'committed','other fixture actor arrival commits in real Core');
   const id=result.result.message_id;
   await until(()=>p.evaluate(E.exists(id)),'other fixture actor realtime arrival is drawn');
@@ -94,7 +94,7 @@ export async function reading785Checks({check,until,control,view,facts,shot,obse
    const deliberate=await p.evaluate(capture785);await resizeAbove(p,ids.m11,90);await snapshot(p,'new deliberate anchor holds',deliberate);
    // Hold an actual old-topic messages answer, release only after native navigation.
    await p.evaluate(E.gate);
-   await control({method:'agent_message',operation_id:topic+'-stale',topic_id:topic,sender:'aim-core',body:'Held old-topic realtime words.'});
+   await control({method:'agent_message',source:'topic',operation_id:topic+'-stale',topic_id:topic,sender:'aim-core',body:'Held old-topic realtime words.'});
    await until(()=>p.evaluate(E.waiting),'old-topic message response is actually held');
    // Native topic navigation; later old-topic arrivals cannot repaint its destination.
    await wheel(p,-100000);await until(()=>p.evaluate(E.top),'native wheel reaches navigation');
@@ -104,7 +104,7 @@ export async function reading785Checks({check,until,control,view,facts,shot,obse
     const selector='a[href='+JSON.stringify(link)+']';if(device==='phone')await tap(p,selector);else await p.point(selector);
     await until(()=>p.evaluate(E.navigated),'native navigation reaches different topic');
     await p.evaluate(E.release);await settle(p);
-    await control({method:'agent_message',operation_id:topic+'-after-leave',topic_id:topic,sender:'aim-core',body:'Old topic arrival after navigation.'});await settle(p);
+    await control({method:'agent_message',source:'topic',operation_id:topic+'-after-leave',topic_id:topic,sender:'aim-core',body:'Old topic arrival after navigation.'});await settle(p);
     assert.equal(await p.evaluate(E.absent(midArrival)),true,'old topic cannot reappear after navigation');history('navigation settled',{link});
    } else assert.fail('real t1 topic navigation link is reachable');
    assert.deepEqual(p.errors,[]);
@@ -119,8 +119,9 @@ export async function reading785Checks({check,until,control,view,facts,shot,obse
    const body=topic+' own deliberate send';await p.send('Input.insertText',{text:body});await p.key('Enter',4);
    const receipt=await until(()=>p.evaluate(E.receipt),'Core answers native own send');assert.equal(receipt.status,'committed','own native send commits');
    const core=await view('topic_messages',{topic_id:topic,direction:'before',limit:5});const own=core.items.filter(e=>e.author_id===facts.actor&&e.body===body);assert.equal(own.length,1,'own send records exact words once');
-   await until(()=>p.evaluate(E.exists(own[0].id)),'own sent card arrives');await until(async()=>!await p.evaluate(E.sheetOpen),'own send closes New sheet');
+   await until(()=>p.evaluate(E.exists(own[0].id)),'own sent card arrives');assert.equal(await p.evaluate(E.sheetOpen),true,'own send retains New sheet with stay:true');
    const ownRect=await p.evaluate(rect785(card785(own[0].id)));history('own send native landing',{device,theme,before,after:await p.evaluate(E.y),ownRect,receipt});assert.ok(ownRect.bottom>0&&ownRect.top<await p.evaluate(E.viewportHeight),'own send lands visibly rather than retaining old reading hold');assert.equal(await p.evaluate(pill785),null,'own send makes no New above offer');
+   await press('#new-message-close');await until(async()=>!await p.evaluate(E.sheetOpen),'native close returns retained New sheet to its place');
    await locate(card785(own[0].id),140);const words=card785(own[0].id)+' > .message-preview';await press(words);if(device==='phone'&&!await p.evaluate(E.readerOpen))await press(words);
    await until(()=>p.evaluate(E.readerOpen),'native opening retains normal Reader semantics');await press('#reader-close');await until(async()=>!await p.evaluate(E.readerOpen),'native close returns to topic');
    const controlSelector=await p.evaluate(E.olderControl);assert.ok(controlSelector,'real older page is available');await locate(controlSelector,device==='phone'?400:500);
@@ -134,7 +135,8 @@ export async function reading785Checks({check,until,control,view,facts,shot,obse
   // Every mutant runs on an immutable copied Build, each page closes before restoration.
   const variants=['no-hold','wrong-anchor','pill-top','pill-centre','pill-surface','pill-shadow'].map(phase=>({phase,device:'laptop',theme:'light'})).concat(['laptop','phone'].flatMap(device=>['light','dark'].map(theme=>({phase:'fallback',device,theme}))));
   for(const {phase,device,theme} of variants) {
-   const receipt=await control({method:'reading_785_runtime',phase});history('runtime mutation applied',{receipt});let p;
+   const receipt=await control({method:'reading_785_runtime',phase});history('runtime mutation applied',{phase,receipt});let p;
+   await withRestored785(async()=>{
    try {
     const topic='reading785-mutant-'+phase+'-'+device+'-'+theme,ids=await seedTopic(topic);p=await open(topic,device,topic,ids.m13);await p.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]});await bind(p,receipt);
     await until(()=>p.evaluate(E.ready),'mutant initial reads settle');await position(p,ids.m7,-90);
@@ -152,13 +154,24 @@ export async function reading785Checks({check,until,control,view,facts,shot,obse
     }
     history('runtime mutant caught or fallback verified',{phase,before,after});assert.deepEqual(p.errors,[]);
    } catch(error){history('runtime failure',{phase,error:error.stack});throw error;} finally {
-    if(p)await p.close();
+    if(p){await p.close();history('mutant page closed',{phase});}
+   }
+   },async()=>{
     const restored=await control({method:'reading_785_runtime',phase:'restored'});assert.equal(restored.restored,true);assert.deepEqual(restored.hashes,receipt.candidate_hashes);history('runtime byte restored',{receipt:restored});
     let restoredPage;
     try {const key='reading785-restored-'+phase+'-'+device+'-'+theme,ids=await seedTopic(key);restoredPage=await open(key,'laptop',key,ids.m13);await bind(restoredPage,restored);await until(()=>restoredPage.evaluate(E.ready),'restored candidate initial reads settle');await position(restoredPage,ids.m7,-90);const before=await restoredPage.evaluate(capture785);await arrival(restoredPage,key,key+'-new');await snapshot(restoredPage,'restored native control '+phase,before);assert.deepEqual(restoredPage.errors,[]);}
-    finally {if(restoredPage)await restoredPage.close();}
-
-   }
+    catch(error){history('restored control failure',{phase,error:error.stack});throw error;}
+    finally {if(restoredPage){await restoredPage.close();history('restored page closed',{phase});}}
+   });
   }
  });
+}
+
+// Always restore; preserve both failures when the restored candidate also fails.
+export async function withRestored785(mutant, restored) {
+ const errors=[];
+ try {await mutant();} catch(error){errors.push(error);}
+ try {await restored();} catch(error){errors.push(error);}
+ if(errors.length===1)throw errors[0];
+ if(errors.length>1)throw new AggregateError(errors,'item 785 mutant and restored control failed');
 }
