@@ -34,7 +34,7 @@ import { NotebookCreate } from './notebook-create.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from './quick-create.mjs';
 import { PurposeLine } from './outcome-purpose.mjs';
 import { AgentInvite, Invitation } from './agent-invite.mjs';
-import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf } from './marks.mjs';
+import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf, paintNoteCorner } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, opened } from './fold.mjs';
@@ -740,12 +740,12 @@ function sourceAttachments(presentation) {
 }
 // act: what the person's act of reading captured (Marks.capture), for a card
 // or Read it; every other open passes none and clears nothing.
-async function openSource(ref, opener, act = null) {
+async function openSource(ref, opener, act = null, mode = 'reply') {
   const request = ++opening;
   const from = registry.interactive;
   views.retain(views.currentItem, ref.kind === 'memory' ? ref.id : null);
   status('');
-  try { await marks.open(registry, ref, { topicId: topic.id, opener }, act); }
+  try { await marks.open(registry, ref, { topicId: topic.id, opener, mode }, act); }
   catch (error) {
     if (request === opening) {
       if (from?.surface !== 'inline' && registry.isCurrent(from)) reader.notice(error);
@@ -991,6 +991,14 @@ function feedOf() {
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
+    loadMessage: async id => {
+      const accessEpoch = listAccessEpoch, page = views, topicId = topic.id;
+      const current = () => !registry.disposed && !topicUnavailable && !authorityReviewPending() &&
+        accessEpoch === listAccessEpoch && page === views && topicId === topic.id;
+      if (!current()) return null;
+      await loadUntil(() => current() ? { id } : null);
+      return current() ? views.messages.get(id) ?? null : null;
+    },
     hold: paint => keepListAnchor(paint), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); }, home: $('new-message-sheet'),
     // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
@@ -1036,6 +1044,9 @@ function paintCardReading() {
     entry.dataset.talk = quiet ? 'agents' : '';
     paintReading(card, item, { read: cardRead(item), quiet, go: goToMessage });
     paintAwaiting(card, item);
+    // The shortcut is the card's last act, after its words and controls.
+    paintNoteCorner(card, item, (id, opener) => run(() =>
+      openSource({ kind: 'message', id }, opener, marks.capture(id), 'note')));
   }
 }
 // A message the page shows, brought into view: its stack opened first when it
@@ -1102,7 +1113,7 @@ function participantPill(person) {
 // gear, except on a conversation, which refuses every change Topic settings makes.
 function paintHeader(current) {
   // ✅ Done on a topic Ready for review, for a reader who may say where it stands: the Done chip's tap.
-  paintTopicHeader({ title: $('topic-title'), subtitle: $('topic-description'), gear: $('settings-open') }, current, bootstrap.actor,
+  paintTopicHeader({ title: $('topic-title'), subtitle: $('topic-description'), gear: $('settings-open'), pencil: $('topic-title-rename') }, current, bootstrap.actor,
     { settings: current.kind !== 'conversation', done: topicState?.says ? () => topicState.markDone() : null });
   // A conversation's heading says what it is for and who answers, not where it stands.
   if (current.kind === 'conversation') {
@@ -1755,7 +1766,7 @@ async function loadUntil(wanted) {
 // The New line's "More new below": the line's message read in; then it takes
 // the focus, with the line in its place below it.
 async function loadToUnread() {
-  return landUnreadMessage(views.line);
+  return landReadingMessage(views.line);
 }
 // What a topic's unread count leads to (item 613, docs/attention.md): the
 // oldest message still unread for the reader, as Core finds it by the rule
@@ -1768,25 +1779,34 @@ async function loadToUnread() {
 async function landOnUnread() {
   // Pressed in the phone's drawer, the drawer gets out of the way as a move would close it (rail-drawer.mjs).
   if (shell.drawer?.isOpen()) shell.drawer.close();
-  return landUnreadMessage(views.oldestUnread);
+  return landReadingMessage(views.oldestUnread);
 }
 let unreadLanding = 0, unreadLandingBusy = false;
-// Both explicit ways to read the oldest unread message earn the same view
+// Unread counts and a dossier's title star earn the same view (613, 735)
 // and the same revision-fenced mark clear. Capture before any page loads:
 // another device renewing the mark while they run must keep its newer mark.
-async function landUnreadMessage(wanted) {
+async function landReadingMessage(wanted, { rootId = null, starred = false } = {}) {
   const request = ++unreadLanding, act = wanted && marks.capture(wanted.id);
-  const current = () => request === unreadLanding && !registry.disposed;
+  const accessEpoch = listAccessEpoch;
+  const current = () => request === unreadLanding && !registry.disposed &&
+    accessEpoch === listAccessEpoch && !topicUnavailable && !authorityReviewPending();
+  const available = () => {
+    const item = wanted && views.messages.get(wanted.id);
+    return item && (!rootId || item.stack_position?.root_id === rootId) &&
+      (!starred || stackFeed.actsOf(item.id, item).starred);
+  };
+  const unavailable = () => { if (starred) status('The starred message is unavailable or changed. Nothing was opened.'); };
   // Pagination can briefly put another unread card on screen on the way to
   // this one. Those transient positions are not a person's reading place.
   unreadLandingBusy = true;
   try {
-    const found = await loadUntil(() => wanted);
+    const found = await loadUntil(() => current() ? wanted : null);
     if (!current()) return;
-    if (!found) return;
+    if (!found || !available()) { unavailable(); return; }
     const id = found.dataset.id, root = views.messages.get(id)?.stack_position?.root_id ?? null;
-    if (root) await loadUntil(() => ({ id: root }));
+    if (root) await loadUntil(() => current() ? { id: root } : null);
     if (!current()) return;
+    if (!available() || (rootId && !views.messages.has(rootId))) { unavailable(); return; }
     const entry = entries($('messages')).find(child => child.dataset.id === id);
     if (!entry) return;
     reveal(entry, { full: true, open: true });
@@ -1851,6 +1871,7 @@ async function checkAvailability(read, current, topicDenied = true) {
     $('more-messages').hidden = true; $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
     // No settings for a topic the reader cannot see.
     $('settings-open').hidden = true; settings?.close();
+    topicState?.hide(); $('topic-title-rename').hidden = true;
     paintMarks();
     // The rails hide what they show of it too.
     shell.topicChanged();
@@ -2192,7 +2213,7 @@ async function initialize() {
   // "Tools this topic improves" (docs/skills-and-tools.md): read with the page, and again as Topic settings opens.
   // One for the topic being read: a topic reached in place replaces the one before, so its chips never paint here.
   settings ??= new TopicSettings({ dialog: $('topic-settings'), gear: $('settings-open'), heading: $('settings-title'), close: $('settings-close'),
-    opened: () => { const tools = topicTools; if (tools) run(() => tools.load()); } });
+    opened: () => { topicState?.restoreTitleSurface(); const tools = topicTools; if (tools) run(() => tools.load()); } });
   $('topic-tools').hidden = true; $('topic-tools').replaceChildren();
   topicTools = here.page ? null : new TopicTools({ host: $('topic-tools'), topicId: topic.id, instanceId: bootstrap.instance_id, read: pipelineView, send: pipelineSend });
   if (topicTools) { const tools = topicTools; run(() => tools.load()); }
@@ -2229,7 +2250,8 @@ async function initialize() {
   paintParticipants(topic, result.participants);
   // The topic as the topic view gives it, read once after a change that was not confirmed.
   const readTopic = async () => validate(await registry.cleanup.list(options => api.view('topic', { topic_id: topicId }, options)));
-  topicState = new TopicStatePanel({ host: $('topic-state'), reader: bootstrap.actor, refresh: () => freshness?.request(), painted: paintHeader, read: readTopic,
+  topicState?.hide();
+  topicState = new TopicStatePanel({ titleSurface: { host: $('topic-title-edit'), title: $('topic-title'), pencil: $('topic-title-rename') }, host: $('topic-state'), reader: bootstrap.actor, refresh: () => freshness?.request(), painted: paintHeader, read: readTopic,
     // Words not saved are shown, in Topic settings, even when leaving it was what saved them.
     attention: () => { if (!$('topic-settings').open) settings.open(); },
     // Each save names its operation: sent again, it is the same command, and Core answers what it holds for it.

@@ -8,8 +8,10 @@ import { createInterface } from 'node:readline';
 import { Api, AttemptError } from '../web/api.mjs';
 import { RecoveryJournal } from '../web/journal.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
-import { Marks, paintAuthor, paintMarkButton, marksWords } from '../web/marks.mjs';
+import { Marks, paintAuthor, paintMarkButton, marksWords, paintNoteCorner } from '../web/marks.mjs';
 import { clock } from '../web/times.mjs';
+
+import { miniDocument } from './fixtures/mini_dom.mjs';
 
 const copy = value => structuredClone(value);
 const deferred = () => {
@@ -385,4 +387,59 @@ test('a superseded open cannot discard the current reading open deferred until f
   await settled();
   assert.deepEqual(f.clears().map(c => [c.envelope.target.message_id, c.envelope.expected.mark_revision]),
     [[second.message_id, second.mark_revision]], 'the current message must clear when it is shown');
+});
+
+test('item 649: opening a private note presents note mode immediately and leaves the reply exact', async t => {
+  const { registry, control, source, facts, api } = await fixture(t);
+  const ref = source(0), note = 'Exact private note.\nTwo  spaces.', reply = 'Exact reply, to the same topic.';
+  for (const [kind, body] of [['note', note], ['draft', reply]]) await control({ method: 'private_writing',
+    operation_id: 'corner-649-' + kind, kind, topic_id: facts.topic_id, message_id: ref.id, body });
+  const modes = [];
+  registry.present = p => modes.push(p.mode);
+  const opened = await registry.open(ref, { topicId: facts.topic_id, mode: 'note' });
+  assert.deepEqual(modes, ['note'], 'no reply presentation flashes before the private note');
+  assert.equal(opened.editors.note.draft.body, note);
+  assert.equal(opened.editors.reply.draft.body, reply);
+  assert.equal(opened.editors.reply.context.topicId, facts.topic_id);
+  const state = await api.view('editor_state', { source_ref: ref, topic_id: facts.topic_id });
+  assert.equal(state.note.body, note); assert.equal(state.draft.body, reply);
+  await registry.open(source(1), { topicId: facts.topic_id });
+  assert.equal(registry.current.mode, 'reply', 'ordinary message opens retain reply mode');
+});
+
+test('item 649: only your saved note offers a named corner and repaint keeps its focus target', () => {
+  const doc = miniDocument(), card = doc.createElement('button'), opened = [];
+  const paint = item => paintNoteCorner(card, item, (id, corner) => opened.push([id, corner]), doc);
+  paint({ id: 'm', note: 'someone else', yours: { note: false } });
+  assert.equal(card.children.length, 0);
+  paint({ id: 'm', yours: { note: true }, body: 'Public message' });
+  const corner = card.querySelector('.note-corner');
+  assert.equal(corner.getAttribute('role'), 'button'); assert.equal(corner.tabIndex, 0);
+  assert.equal(corner.getAttribute('aria-label'), 'Open your private note'); assert.equal(corner.title, 'Open your private note');
+  paint({ id: 'm', yours: { note: true, version: 2 } });
+  assert.equal(card.querySelector('.note-corner'), corner);
+  const event = key => ({ key, preventDefault() {}, stopPropagation() {} });
+  corner.onclick(event()); corner.onkeydown(event('Enter')); corner.onkeydown(event(' ')); corner.onkeydown(event('x'));
+  assert.deepEqual(opened, [['m', corner], ['m', corner], ['m', corner]]);
+  paint({ id: 'm', yours: { note: false } });
+  assert.equal(card.children.length, 0, 'emptying your note removes the shortcut');
+});
+
+test('item 649: switching to a saved note without a caret keeps its exact writing and can return to the reply', async () => {
+  const { Reader } = await import('../web/reader.mjs');
+  const reply = { draft: { body: 'Reply  unchanged.', caret: { start: 2, end: 2 } } };
+  const note = { draft: { body: 'Exact note\nkept privately.', caret: null } };
+  const ranges = [];
+  const r = Object.assign(Object.create(Reader.prototype), {
+    mode: 'reply', sessions: { reply, note }, viewToken: 0, callbacks: { edit() {} },
+    cancelImagePicker() {}, caret: () => ({ start: 2, end: 2 }), disarm() {},
+    drawEditor() { this.field.value = this.editor.draft.body; },
+    field: { value: '', focus() {}, setSelectionRange: (start, end) => ranges.push([start, end]) },
+  });
+  r.switchMode('note');
+  assert.equal(r.field.value, note.draft.body);
+  assert.deepEqual(ranges, [[note.draft.body.length, note.draft.body.length]]);
+  r.switchMode('reply');
+  assert.equal(r.field.value, 'Reply  unchanged.');
+  assert.deepEqual(ranges[1], [2, 2]);
 });

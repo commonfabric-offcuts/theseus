@@ -1,0 +1,64 @@
+test_access_removed_after_read_refuses_without_leaking_or_mutating (test_item_646.Item646Case) ... ok
+test_busy_is_unrecorded_then_same_operation_commits_once (test_item_646.Item646Case) ... FAIL
+test_exact_response_operation_and_persistence_survive_retry_and_stale_unstar (test_item_646.Item646Case) ... FAIL
+test_partial_page_carries_actual_root_and_only_own_accessible_stars (test_item_646.Item646Case) ... ok
+test_real_source_controls_apply_and_restore_every_public_byte (test_item_646.Item646Case) ... ok
+
+======================================================================
+FAIL: test_busy_is_unrecorded_then_same_operation_commits_once (test_item_646.Item646Case)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/codex-646-tests-8636/tests/test_item_646.py", line 80, in test_busy_is_unrecorded_then_same_operation_commits_once
+    self.assertEqual(self.store.command('owner', request), receipt)
+AssertionError: {'affected': [{'id': 't1', 'kind': 'acts', [319 chars]ted'} != {'instance_id': 'test-instance', 'operation[318 chars] 1}]}
+  {'affected': [{'id': 't1', 'kind': 'acts', 'version': 1}],
+   'instance_id': 'test-instance',
+   'kind': 'message.star',
+   'operation_id': '646-busy',
+-  'recorded': False,
+?              ^^^^
+
++  'recorded': True,
+?              ^^^
+
+   'result': {'acts_before': 0,
+              'acts_version': 1,
+              'changed': True,
+              'message_id': 'm-43d75f0b5082451b936a871629d54898',
+              'seq': 2,
+              'star_revision': 1,
+              'starred': True,
+              'topic_id': 't1'},
+   'status': 'committed'}
+
+======================================================================
+FAIL: test_exact_response_operation_and_persistence_survive_retry_and_stale_unstar (test_item_646.Item646Case)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/codex-646-tests-8636/tests/test_item_646.py", line 55, in test_exact_response_operation_and_persistence_survive_retry_and_stale_unstar
+    self.assertEqual(reopened.command('owner', request), receipt, 'same operation answers actual recorded receipt')
+AssertionError: {'affected': [{'id': 't1', 'kind': 'acts', [319 chars]ted'} != {'instance_id': 'test-instance', 'operation[318 chars] 1}]}
+  {'affected': [{'id': 't1', 'kind': 'acts', 'version': 1}],
+   'instance_id': 'test-instance',
+   'kind': 'message.star',
+   'operation_id': '646-once',
+-  'recorded': False,
+?              ^^^^
+
++  'recorded': True,
+?              ^^^
+
+   'result': {'acts_before': 0,
+              'acts_version': 1,
+              'changed': True,
+              'message_id': 'm-5b1fe7903fb547b3b468673f8451129f',
+              'seq': 2,
+              'star_revision': 1,
+              'starred': True,
+              'topic_id': 't1'},
+   'status': 'committed'} : same operation answers actual recorded receipt
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.927s
+
+FAILED (failures=2)

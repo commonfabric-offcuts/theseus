@@ -367,6 +367,16 @@ export function drawnBelow(stack, here = () => null) {
 // message the page has not loaded is drawn as more than one stack.
 export const dossierOf = stack => positionOf(stack)?.root_id ?? stack.id;
 
+// Core lists accessible own stars oldest first, including unloaded messages.
+// Loaded acts win over stale positions (an unstar or a new star in flight).
+export function firstStarredMessage(stack, messages) {
+  const own = [stack.head, ...stack.replies].filter(item => actsOf(item).starred === true).sort((a, b) => a.seq - b.seq)[0];
+  const first = (positionOf(stack)?.starred ?? []).find(id => !messages.has(id) || actsOf(messages.get(id)).starred === true);
+  if (!first) return own?.id ?? null;
+  const loaded = messages.get(first);
+  return !loaded || !own || loaded.seq <= own.seq ? first : own.id;
+}
+
 // The dossiers the reader starred a message in (item 635), by dossierOf: one
 // a stack drawn from it shows a starred message of (its acts as the page shows
 // them), or one whose position names a message the reader starred that the

@@ -1,0 +1,20 @@
+test_access_removed_after_read_refuses_without_leaking_or_mutating (test_item_646.Item646Case) ... ok
+test_busy_is_unrecorded_then_same_operation_commits_once (test_item_646.Item646Case) ... ok
+test_exact_response_operation_and_persistence_survive_retry_and_stale_unstar (test_item_646.Item646Case) ... ok
+test_partial_page_carries_actual_root_and_only_own_accessible_stars (test_item_646.Item646Case) ... FAIL
+test_real_source_controls_apply_and_restore_every_public_byte (test_item_646.Item646Case) ... ok
+
+======================================================================
+FAIL: test_partial_page_carries_actual_root_and_only_own_accessible_stars (test_item_646.Item646Case)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/codex-646-tests-8636/tests/test_item_646.py", line 38, in test_partial_page_carries_actual_root_and_only_own_accessible_stars
+    self.rejected(self.star(private), 'FORBIDDEN')
+  File "/Users/commonfabric/aim-worktrees/codex-646-tests-8636/tests/reader_fixture.py", line 39, in rejected
+    self.assertEqual(receipt.get("error", {}).get("code"), code, receipt)
+AssertionError: None != 'FORBIDDEN' : {'instance_id': 'test-instance', 'operation_id': 'op-13', 'kind': 'message.star', 'status': 'committed', 'recorded': True, 'result': {'message_id': 'm-3a72c5847e81487f80c17b2ec94db41b', 'topic_id': 't1', 'seq': 3, 'starred': True, 'star_revision': 1, 'changed': True, 'acts_version': 5, 'acts_before': 4}, 'affected': [{'kind': 'acts', 'id': 't1', 'version': 5}]}
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.913s
+
+FAILED (failures=1)

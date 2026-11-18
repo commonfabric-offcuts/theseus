@@ -2500,8 +2500,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);",
-     ""
+     "    const sent = this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : [], { optimistic: !confirmed });",
+     "    const sent = Promise.resolve({});"
     ]
    ],
    "check": {
@@ -5111,7 +5111,7 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, .image-thumb') && cardIn(entry).dataset.folded !== 'true') {",
+     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, .image-thumb, .note-corner, .stack-star') && cardIn(entry).dataset.folded !== 'true') {",
      "if (false) {"
     ]
    ],
@@ -8597,7 +8597,7 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "host.addEventListener('click', event => this.claim(event.target), true);",
+     "host.addEventListener('click', event => { if (!event.target.closest?.('.stack-star')) this.claim(event.target); }, true);",
      "host.addEventListener('click', event => {}, true);"
     ]
    ],
@@ -28733,8 +28733,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "!event.target.closest?.('a, .fold-line, .image-thumb')",
-     "!event.target.closest?.('a, .fold-line')"
+     "!event.target.closest?.('a, .fold-line, .image-thumb, .note-corner, .stack-star')",
+     "!event.target.closest?.('a, .fold-line, .note-corner, .stack-star')"
     ]
    ],
    "check": {
@@ -30478,18 +30478,18 @@
    }
   },
   {
-   "item": 635,
-   "act": "The title bar shows the reader's star when any message of the dossier is starred by them",
+   "item": 646,
+   "act": "The second-line dossier control shows only this reader's star on the actual first message; a starred reply alone does not light it (supersedes the passive635 indicator)",
    "break": [
     [
      "web/reply-stacks.mjs",
-     "const marked = state.starred.has(dossierOf(stack));",
-     "const marked = starred;"
+     "const marked = first ? first.acts?.starred === true : (positionOf(stack)?.starred ?? []).includes(root);",
+     "const marked = [stack.head, ...stack.replies].some(item => item.acts?.starred) || (positionOf(stack)?.starred ?? []).length > 0;"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks star title bar"
+    "case": "reading item 646 toggle privacy writing and original appearance"
    }
   },
   {
@@ -30513,8 +30513,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);",
-     "this.act('message.star', item, { starred: on }, []);"
+     "    const sent = this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : [], { optimistic: !confirmed });",
+     "    const sent = this.act('message.star', item, { starred: on }, [], { optimistic: !confirmed });"
     ]
    ],
    "check": {
@@ -31834,7 +31834,7 @@
    "break": [
     [
      "web/app.mjs",
-     "  if (root) await loadUntil(() => ({ id: root }));\n",
+     "  if (root) await loadUntil(() => current() ? { id: root } : null);\n",
      ""
     ]
    ],
@@ -32172,6 +32172,155 @@
    ],
    "check": {
     "node": "tests/ui_card_scroll_probe.test.mjs"
+   }
+  },
+  {
+   "item": 649,
+   "act": "Only your saved private note offers a corner; emptying it removes the corner",
+   "break": [
+    [
+     "web/marks.mjs",
+     "if (item?.yours?.note !== true)",
+     "if (false)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 649.*empty and other actor notes"
+   }
+  },
+  {
+   "item": 649,
+   "act": "Pressing the note corner opens the composer directly to your exact note, keeping the reply and destination",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "editors: { reply, note }, mode, opener, mark:",
+     "editors: { reply, note }, mode: 'reply', opener, mark:"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 649.*normal corner"
+   }
+  },
+  {
+   "item": 649,
+   "act": "A first phone tap on the note corner opens the private note",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "'a, .fold-line, .image-thumb, .note-corner, .stack-star'",
+     "'a, .fold-line, .image-thumb, .stack-star'"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 649.*normal corner"
+   }
+  },
+  {
+   "item": 649,
+   "act": "The note corner is a named 44px touch target",
+   "break": [
+    [
+     "web/aim.css",
+     "width:2.75rem;height:2.75rem;margin-left:auto;color:var(--muted);cursor:pointer",
+     "width:1rem;height:1rem;margin-left:auto;color:var(--muted);cursor:pointer"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 649.*normal corner"
+   }
+  },
+  {
+   "item": 649,
+   "act": "A saved note without a caret can be opened and returned from without losing writing",
+   "break": [
+    [
+     "web/reader.mjs",
+     "const caret = this.editor.draft.caret ?? { start: this.field.value.length, end: this.field.value.length };",
+     "const caret = this.editor.draft.caret;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_marks.test.mjs"
+   }
+  },
+  {
+   "item": 656,
+   "act": "The title pencil opens the existing title field in the header",
+   "break": [
+    [
+     "web/topic-state.mjs",
+     "      titleSurface.pencil.onclick = () => this.renameTitle();",
+     "      titleSurface.pencil.onclick = () => {};"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "item 656 normal:"
+   }
+  },
+  {
+   "item": 656,
+   "act": "The title pencil follows the existing permission to rename",
+   "break": [
+    [
+     "web/topic-header.mjs",
+     "  if (pencil) pencil.hidden = !settings || !managesTopic(topic, reader) || title.hidden;",
+     "  if (pencil) pencil.hidden = !settings || title.hidden;"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "item 656 permission:"
+   }
+  },
+  {
+   "item": 656,
+   "act": "The header gives the title field back so settings rename still works",
+   "break": [
+    [
+     "web/topic-state.mjs",
+     "      if (managed) this.controls.actions.prepend(managed.title);",
+     "      if (managed) surface.host.append(managed.title);"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "item 656 normal:"
+   }
+  },
+  {
+   "item": 656,
+   "act": "A refused header rename keeps its words and recovery notice in the header",
+   "break": [
+    [
+     "web/topic-state.mjs",
+     "        if (!(field.name === 'title' && this.inlineTitle)) this.attention();",
+     "        this.attention();"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "item 656 refused:"
+   }
+  },
+  {
+   "item": 656,
+   "act": "A permission panel rebuild keeps the title field model for exact writing and Escape recovery",
+   "break": [
+    [
+     "web/topic-state.mjs",
+     "    this.fields = titleFields;",
+     "    this.fields = {};"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "item 656 membership-editing:"
    }
   }
  ]

@@ -1,0 +1,59 @@
+test_access_removed_after_read_refuses_without_leaking_or_mutating (test_item_646.Item646Case) ... ok
+test_busy_is_unrecorded_then_same_operation_commits_once (test_item_646.Item646Case) ... FAIL
+test_exact_response_operation_and_persistence_survive_retry_and_stale_unstar (test_item_646.Item646Case) ... FAIL
+test_partial_page_carries_actual_root_and_only_own_accessible_stars (test_item_646.Item646Case) ... FAIL
+test_real_source_controls_apply_and_restore_every_public_byte (test_item_646.Item646Case) ... ok
+
+======================================================================
+FAIL: test_busy_is_unrecorded_then_same_operation_commits_once (test_item_646.Item646Case)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/codex-646-tests-8636/tests/test_item_646.py", line 81, in test_busy_is_unrecorded_then_same_operation_commits_once
+    self.assertEqual(self.sql("SELECT count(*) FROM message_acts WHERE kind='star'"), [(1,)])
+AssertionError: Lists differ: [(0,)] != [(1,)]
+
+First differing element 0:
+(0,)
+(1,)
+
+- [(0,)]
+?   ^
+
++ [(1,)]
+?   ^
+
+
+======================================================================
+FAIL: test_exact_response_operation_and_persistence_survive_retry_and_stale_unstar (test_item_646.Item646Case)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/codex-646-tests-8636/tests/test_item_646.py", line 57, in test_exact_response_operation_and_persistence_survive_retry_and_stale_unstar
+    self.assertEqual(self.sql("SELECT message_id,revision FROM message_acts WHERE kind='star'"), [(root, 1)], 'one immutable act')
+AssertionError: Lists differ: [] != [('m-695f15beec1a4aab817a97e7b2649b72', 1)]
+
+Second list contains 1 additional elements.
+First extra element 0:
+('m-695f15beec1a4aab817a97e7b2649b72', 1)
+
+- []
++ [('m-695f15beec1a4aab817a97e7b2649b72', 1)] : one immutable act
+
+======================================================================
+FAIL: test_partial_page_carries_actual_root_and_only_own_accessible_stars (test_item_646.Item646Case)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/codex-646-tests-8636/tests/test_item_646.py", line 36, in test_partial_page_carries_actual_root_and_only_own_accessible_stars
+    self.assertEqual(position['starred'], [early], 'other readers and private stars cannot light root')
+AssertionError: Lists differ: [] != ['m-180543ddb3b94592ab7c7b51824cc4de']
+
+Second list contains 1 additional elements.
+First extra element 0:
+'m-180543ddb3b94592ab7c7b51824cc4de'
+
+- []
++ ['m-180543ddb3b94592ab7c7b51824cc4de'] : other readers and private stars cannot light root
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.933s
+
+FAILED (failures=3)

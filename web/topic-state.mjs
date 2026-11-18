@@ -187,8 +187,8 @@ export class TopicStatePanel {
   // topic painted; read() gives {topic, participants}, read once after a
   // refusal or a lost answer to show what Core holds; attention() asks the
   // page to show Topic settings when a line's words are refused.
-  constructor({ host, reader, send, sendNote = null, refresh = () => {}, painted = () => {}, read = null, attention = () => {} }) {
-    Object.assign(this, { host, reader, send, sendNote, refresh, painted, read, attention });
+  constructor({ host, reader, send, sendNote = null, refresh = () => {}, painted = () => {}, read = null, attention = () => {}, titleSurface = null }) {
+    Object.assign(this, { host, reader, send, sendNote, refresh, painted, read, attention, titleSurface });
     // kept: the refusal said over a line's words, while they stay unsaved.
     // running: each answer still awaited. at: the topic version Core said
     // each part of what shows at: the last read, what a topic.update answers
@@ -199,6 +199,10 @@ export class TopicStatePanel {
     // One notice, kept in place, so a screen reader announces each new text.
     this.notice = element('p', { className: 'notice', hidden: true });
     this.notice.setAttribute('role', 'status');
+    if (titleSurface) {
+      titleSurface.host.replaceChildren(); titleSurface.host.hidden = true; titleSurface.title.hidden = false;
+      titleSurface.pencil.onclick = () => this.renameTitle();
+    }
   }
 
   // A read of the topic and its participants.
@@ -225,7 +229,7 @@ export class TopicStatePanel {
     this.painted(topic);
   }
 
-  reset() { this.controls = null; this.fields = {}; this.kept = null; this.show(null); }
+  reset() { this.restoreTitleSurface(); this.managedTitle = null; this.controls = null; this.fields = {}; this.kept = null; this.show(null); }
 
   // Whether the reader may say where the topic stands, by Core's rule: its
   // participants, its creator, whoever organises the outcome and whoever has
@@ -239,6 +243,10 @@ export class TopicStatePanel {
   // The chips, the note and the quiet line of who said it: chips to tap for
   // those who may say where it stands, the state alone for everyone else.
   build(says) {
+    // Reclaim the field while its lending panel still owns it. Keep the
+    // title model across a permission rebuild so answers and writing survive.
+    this.restoreTitleSurface();
+    const titleFields = Object.fromEntries(['title', 'archived'].filter(name => this.fields[name]).map(name => [name, this.fields[name]]));
     const chips = element('div', { className: 'state-chips' });
     chips.setAttribute('role', 'group'); chips.setAttribute('aria-labelledby', 'stand-heading');
     const states = new Map();
@@ -247,7 +255,7 @@ export class TopicStatePanel {
     people.setAttribute('role', 'group'); people.setAttribute('aria-labelledby', 'waiting-label');
     const waiting = element('div', { className: 'waiting-on', hidden: true }, waitingLabel, people);
     let note;
-    this.fields = {};
+    this.fields = titleFields;
     if (says) {
       for (const value of STATES) {
         const button = chip(LABELS[value], () => this.tap('state', () => value));
@@ -299,13 +307,13 @@ export class TopicStatePanel {
   // topic's creator: two quiet actions. Rename puts a one-line title in their place.
   manage(manager) {
     const controls = this.controls;
-    if (manager && !controls.managed) {
+    if (manager && !this.managedTitle) {
       const unchanged = () => this.fields.title?.line.value === this.topic?.title;
       const title = this.line('title', { id: 'topic-rename', className: 'rename-line', hidden: true },
-        { cancel: () => { this.renaming(false); return true; }, leave: () => { if (!unchanged()) this.save('title'); } });
+        { cancel: () => { this.renaming(false); return true; }, leave: () => { if (!this.movingTitle && !unchanged()) this.save('title'); } });
       title.setAttribute('aria-label', 'Title');
       // Leaving the title unchanged puts the actions back, where the focus went.
-      title.addEventListener('blur', () => { if (unchanged() && !title.hidden) this.renaming(false, false); });
+      title.addEventListener('blur', () => { if (!this.movingTitle && unchanged() && !title.hidden) this.renaming(false, false); });
       const rename = element('button', { type: 'button', className: 'text-action', textContent: 'Rename' });
       rename.onclick = () => this.renaming(true);
       // Archive means what it said when pressed.
@@ -314,24 +322,59 @@ export class TopicStatePanel {
       this.fields.archived = { name: 'archived' };
       controls.actions.replaceChildren(title, rename, archive);
       controls.actions.hidden = false;
-      controls.managed = { title, rename, archive };
-    } else if (!manager && controls.managed) {
-      controls.actions.replaceChildren(); controls.actions.hidden = true; controls.managed = null;
-      delete this.fields.title; delete this.fields.archived;
+      this.managedTitle = { title, rename, archive };
+    }
+    if (this.managedTitle) {
+      if (!manager) this.restoreTitleSurface();
+      const { title, rename, archive } = this.managedTitle;
+      // A read-only panel owns the same disabled field behind its hidden
+      // actions; a regained permission makes those exact words available.
+      if (!controls.actions.contains(title) && !this.inlineTitle) controls.actions.replaceChildren(title, rename, archive);
+      title.disabled = rename.disabled = archive.disabled = !manager;
+      controls.actions.hidden = !manager;
+      controls.managed = manager ? this.managedTitle : null;
     }
   }
 
-  // Whether the one-line title shows in place of Rename and Archive.
-  // focus: whether the focus moves too, to the title or back to Rename.
+  // The header borrows the existing title field and its notice. No second
+  // save model: both entry points keep the same words, fences and operation.
+  renameTitle() {
+    const managed = this.controls?.managed, surface = this.titleSurface;
+    if (!managed || !surface || this.topic.kind === 'conversation') return;
+    this.inlineTitle = true;
+    surface.title.hidden = surface.pencil.hidden = true; surface.host.hidden = false;
+    surface.host.append(managed.title, this.notice);
+    this.show(null);
+    this.renaming(true);
+  }
+
+  // Opening settings or ending the edit puts the field and notice back. A
+  // move alone preserves its writing and in-flight save, without taking focus.
+  restoreTitleSurface() {
+    if (!this.inlineTitle) return;
+    const managed = this.controls?.managed, surface = this.titleSurface;
+    this.inlineTitle = false;
+    this.movingTitle = true;
+    try {
+      if (managed) this.controls.actions.prepend(managed.title);
+      this.host.insertBefore(this.notice, this.controls?.actions ?? null);
+    } finally { this.movingTitle = false; }
+    surface.host.hidden = true; surface.title.hidden = false;
+    surface.pencil.hidden = !managesTopic(this.topic, this.reader) || this.topic.kind === 'conversation';
+  }
+
+  // Whether the one-line title shows in place of the title or settings actions.
+  // focus: whether the focus moves too, to the line or back to its opener.
   renaming(on, focus = true) {
     const managed = this.controls?.managed;
     if (!managed) return;
     const had = managed.title === document.activeElement;
-    if (!on) this.cancel('title');
+    const opener = this.inlineTitle ? this.titleSurface.pencil : managed.rename;
+    if (!on) { this.cancel('title'); this.restoreTitleSurface(); }
     managed.title.hidden = !on; managed.rename.hidden = managed.archive.hidden = on;
     if (!focus) return;
     if (on) { managed.title.focus(); managed.title.select(); }
-    else if (had || document.activeElement === document.body || !document.activeElement) managed.rename.focus();
+    else if (had || document.activeElement === document.body || !document.activeElement) opener.focus();
   }
 
   // The reader's own part, for a participant: only they say what they do here.
@@ -397,6 +440,7 @@ export class TopicStatePanel {
   // waits on is out. At the person's act (ask), a save it waits on whose
   // answer was lost is asked again first.
   turn(field, ask = true) {
+    if (['title', 'archived'].includes(field.name) && !managesTopic(this.topic, this.reader)) return this.queue;
     if (field.next) {
       const busy = field.out ? field : this.blocker(field);
       if (!busy) this.go(field);
@@ -468,7 +512,7 @@ export class TopicStatePanel {
         if (answer) field.start = this.snapshot(field.name);
         message = kept(field.name, answer ? this.held(field.name).value : null);
         this.kept = { name: field.name, message };
-        this.attention();
+        if (!(field.name === 'title' && this.inlineTitle)) this.attention();
       } else {
         message = field.line ? `${KEPT[field.name]}, so yours was not saved.` : CHANGED;
         if (!field.line) this.stop(field);
@@ -620,7 +664,8 @@ export class TopicStatePanel {
   }
 
   hide() {
-    this.host.hidden = true; this.host.replaceChildren(); this.topic = null; this.controls = null; this.fields = {}; this.kept = null; this.at = null; this.show(null);
+    this.restoreTitleSurface();
+    this.host.hidden = true; this.host.replaceChildren(); this.topic = null; this.managedTitle = null; this.controls = null; this.fields = {}; this.kept = null; this.at = null; this.show(null);
   }
 }
 

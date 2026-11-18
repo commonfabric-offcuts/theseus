@@ -276,12 +276,49 @@ press cannot reach.
   read", at a laptop's width and at 390, 375 and 320 on a phone, light and
   dark; `tests/test_new_line.py` (`CountLeadsThereCase`): the count and the
   message it leads to are one rule ([attention.md](attention.md)).
+- `tests/item_646_native.mjs`, reached from `tests/stack_native.mjs` in
+  native-reading and native-webkit-reading: the cases matching “item 646”
+  check the always-visible second-line first-message star with native pointer,
+  touch and keyboard, original padding/appearance, confirmed state, true-root
+  paging, writing preservation and actual Core failure/recovery boundaries.
+  `tests/test_item_646.py` holds Core privacy, identity, access, operations and
+  persistence. Tony8635 approved the exact preview under8617; the compact
+  natural glyph box supersedes the old44px target. Presence is not a passing
+  claim: the current REPORT/ACCEPTANCE carries observed results and gaps.
+  735's reveal cases below remain parked historical evidence, not646 gates.
+- Historical `tests/item_735_native.mjs`, reached by `tests/stack_native.mjs` in those
+  same two engines: "reading item 735 first starred message red first and
+  restored" and
+  "reading item 735 hidden starred message red first and restored" at 320,
+  375, 390 and 1280, light/dark. A title star shows the earliest message you
+  starred in that dossier, including its folded-away first message or a reply
+  hidden by
+  Earlier messages, with its star, whole on screen at the first phone tap after
+  closing writing. Applied source mutants qualify exact identity, visible
+  geometry and the unlit-card touch gate; native Reader archive/return keeps
+  item 635's hold and exact writing. The "Core paging and
+  unchanged 613 unread reveal" cases keep the same landing for both inputs
+  ([title-star.md](title-star.md)).
 - `tests/topic_header_native.mjs` (`native-header`): "header a topic Ready for
   review shows ✅ Done beside its state; a click marks it Done, into the Done
   group, and the button goes; an active topic shows none", "header ✅ Done is
   reached with Tab and pressed with Return or Space, and the focus lands on the
   subtitle saying Done".
-- Otherwise no automated check. Held by Tony's preview of every new surface.
+- `tests/topic_reading_native.mjs` (`native-reading`, `native-webkit-reading`):
+  the `reading item 649` cases at 320, 375, 390 and laptop, light and dark:
+  the message's own note corner opens the composer to that private note by
+  pointer, keys and first tap; a slow or failed opening retains writing and
+  can be retried, an unavailable source keeps saving held and offers Retry access, and empty
+  or other-reader notes show no corner.
+- `tests/topic_title_native.mjs` (`native-header`, `native-colors`,
+  `native-webkit-colors`): the “item 656” cases keep the Rename topic pencil
+  beside the title, edit there, retain the name in header and rail after
+  reload, preserve settings rename and follow its permission. The “item 656
+  membership-editing” and “membership-busy” cases revoke and regain ownership
+  for a nonparticipant with no previous authorship, retaining exact writing
+  and the pending operation through the read-only rebuild and native Escape. Each state
+  (normal, editing, busy, refused, invalid title, and read-only) is checked
+  at 320, 375, 390 and laptop widths in both themes.
 
 The topic's Team says "Team". + Add becomes Done while the possible agent
 pills and field show; Done or a click outside closes them without adding the
