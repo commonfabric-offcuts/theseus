@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests import own_receipt_fixtures as portable
+
 """Literal document/test boundaries; review objects are SYNTHETIC.
 
 Real immutable Git trees supply entries, never source admission or native proof.
@@ -33,7 +35,7 @@ LISTING = [{'assembly_blob': '80d840ed8e40beead225e8519bcbd3e368844bda',
 
 
 def git(*args):
-    return subprocess.run(['git'] + list(args), capture_output=True, text=True)
+    return subprocess.run(portable.git_command() + list(args), capture_output=True, text=True)
 
 
 class LiteralAdaptations(unittest.TestCase):

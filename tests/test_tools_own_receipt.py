@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-"""Focused retained-byte controls. Set OWN_RECEIPT_EVIDENCE to the frozen package."""
+from tests import own_receipt_fixtures as portable
+
+"""Focused retained-byte controls over the portable frozen genuine package."""
 import copy
 import hashlib
 import json
@@ -19,10 +21,7 @@ REPOSITORY = 'commonfabric-offcuts/theseus'
 
 class GenuinePoolReceipt(unittest.TestCase):
     def setUp(self):
-        folder = os.environ.get('OWN_RECEIPT_EVIDENCE')
-        if not folder:
-            self.skipTest('named retained genuine receipt package required')
-        self.folder = Path(folder)
+        self.folder = portable.package('651')
         self.assembly, self.tree = ASSEMBLY, TREE
         self.receipt = json.loads((self.folder / 'receipt.json').read_bytes())
         self.expected = [tuple(r) for r in json.loads((self.folder / 'expected.json').read_bytes())]
@@ -38,7 +37,7 @@ class GenuinePoolReceipt(unittest.TestCase):
         self.api = API()
         self.temp = tempfile.TemporaryDirectory(prefix='own-receipt-negative-')
         self.addCleanup(self.temp.cleanup)
-        self.git = lambda *args: subprocess.run(['git'] + list(args), capture_output=True, text=True)
+        self.git = lambda *args: subprocess.run(portable.git_command() + list(args), capture_output=True, text=True)
 
     def save(self, name, data):
         path = Path(self.temp.name) / name

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests import own_receipt_fixtures as portable
+
 """Bounded publication controls over genuine retained bytes; no native runs.
 
 API variants are local negative/clock fixtures, never authenticated new runs.
@@ -18,8 +20,6 @@ from tools import base_move as b, own_case_receipt as own
 
 class PublicationSkew(unittest.TestCase):
     def setUp(self):
-        if not os.environ.get('OWN_RECEIPT_EVIDENCE'):
-            self.fail('OWN_RECEIPT_EVIDENCE must name the genuine 651 package')
         self.f = genuine.GenuinePoolReceipt()
         self.f.setUp()
         self.addCleanup(self.f.doCleanups)
@@ -174,7 +174,7 @@ class PublicationSkew(unittest.TestCase):
 
 class AuthenticCorrectedRed(unittest.TestCase):
     def test_authentic_red_advances_only_to_original_native_exit_refusal(self):
-        root = Path('/Users/commonfabric/.local/share/theseus/fable-tools/coordinator-20261117/train44-corrected-own-read')
+        root = portable.package('652')
         receipt = b.loads((root / 'own-receipt.json').read_bytes())
         binding = b.document(receipt['pool'])
         archive = b.artifact(binding['artifact']['archive'])
@@ -188,7 +188,7 @@ class AuthenticCorrectedRed(unittest.TestCase):
         class API:
             def get(self, path):
                 return answers[paths[path[len('repos/' + genuine.REPOSITORY + '/'):]]]
-        git = lambda *args: subprocess.run(['git', '--git-dir=' + str(root / 'git')] + list(args), capture_output=True, text=True)
+        git = lambda *args: subprocess.run(portable.git_command() + list(args), capture_output=True, text=True)
         self.assertEqual(answers['artifact']['created_at'], '2026-11-18T05:32:29Z')
         self.assertEqual(answers['jobs']['jobs'][0]['steps'][5]['completed_at'], '2026-11-18T05:32:28Z')
         report = b.document(receipt['report'])

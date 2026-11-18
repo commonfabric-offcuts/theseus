@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests import own_receipt_fixtures as portable
+
 """Actual Git inputs with explicitly SYNTHETIC receipt/API/ZIP positives.
 
 No native execution, source admission or independently authenticated pass.
@@ -57,7 +59,7 @@ class ComposedControls(families.FamilyControls):
         super().setUp()
         if self.item == '717':
             self.report['hashes'].update({p: hashlib.sha256(subprocess.check_output(
-                ['git', 'show', self.head + ':' + p])).hexdigest() for p in SNAPSHOTS})
+                portable.git_command() + ['show', self.head + ':' + p])).hexdigest() for p in SNAPSHOTS})
             self.sync()
 
     def test_exact_selected_binding_and_literals(self):
@@ -69,7 +71,7 @@ class ComposedControls(families.FamilyControls):
         self.assertEqual(facts['derived']['source_sha256'], dict(profile['sources'], **{
             p: own.SOURCES[p] for p in (own.WORKFLOW, 'tools/native.py', 'tools/release_check.py')}))
         for path, expected in profile['sources'].items():
-            raw = subprocess.check_output(['git', 'show', self.head + ':' + path])
+            raw = subprocess.check_output(portable.git_command() + ['show', self.head + ':' + path])
             self.assertEqual(hashlib.sha256(raw).hexdigest(), expected)
 
     def test_each_selected_source_byte_is_required(self):

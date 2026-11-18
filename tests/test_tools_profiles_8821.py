@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests import own_receipt_fixtures as portable
+
 """Exact Git source and SYNTHETIC API/ZIP positives; archive parsing is REPLAY.
 
 No browser, fixture, hosted request, installation or source admission is run.
@@ -19,7 +21,7 @@ from tools import base_move as b, own_case_receipt as own
 from tools import ci_known_reds as ci
 
 FIX = json.loads((Path(__file__).parent / 'fixtures/own_profiles_8821.json').read_bytes())
-EVIDENCE = Path('/Users/commonfabric/.local/share/theseus/auditor/evidence')
+EVIDENCE = portable.evidence()
 
 
 class LiteralControls:
@@ -124,7 +126,7 @@ class LiteralControls:
 
     def test_extra_source_claim_refuses(self):
         path='AGENTS.md'
-        self.report['hashes'][path]=hashlib.sha256(subprocess.check_output(['git','show',self.head+':'+path])).hexdigest()
+        self.report['hashes'][path]=hashlib.sha256(subprocess.check_output(portable.git_command() + ['show',self.head+':'+path])).hexdigest()
         self.sync();self.f.refuses('literal snapshot inputs')
 
     def test_missing_reordered_duplicate_or_unknown_cases_refuse(self):
@@ -252,14 +254,15 @@ class ArchiveReplay(unittest.TestCase):
     def test_originals_remain_red_and_genuine_webkit649_parser_replay(self):
         for item,folder in [('649','item649-bde3fe71'),('656','item656-cb111964')]:
             for engine in ('chromium','webkit'):
-                with self.subTest(item=item,engine=engine),zipfile.ZipFile(EVIDENCE/folder/(engine+'-original.zip')) as z:
+                with self.subTest(item=item,engine=engine):
+                    members=portable.replay_members(item,engine)
                     mode='reading' if item=='649' else 'colors'
                     step=('webkit-' if engine=='webkit' else '')+mode
-                    raw=z.read('c1/evidence/native.json');report=json.loads(raw)
+                    raw=members['c1/evidence/native.json'];report=json.loads(raw)
                     self.assertEqual(len(report['results']),128 if item=='649' else 71)
                     self.assertEqual(sum(r['passed'] for r in report['results']),128 if item=='649' and engine=='webkit' else 126 if item=='649' else 70)
-                    contents={n:z.read(n) for n in ('c1/evidence/native.json','c1/native-'+step+'.log')}
-                    if engine=='chromium':contents['c1/evidence/phases.json']=z.read('c1/evidence/phases.json')
+                    contents={n:members[n] for n in ('c1/evidence/native.json','c1/native-'+step+'.log')}
+                    if engine=='chromium':contents['c1/evidence/phases.json']=members['c1/evidence/phases.json']
                     expected=[('native-'+step,r['name'],None,engine) for r in report['results']]
                     record=dict(counts=dict(tests=len(expected),**{'pass':len(expected)},fail=0,failed=[],browser_closed=True))
                     if item=='649' and engine=='webkit':

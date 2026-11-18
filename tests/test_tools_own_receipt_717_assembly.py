@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests import own_receipt_fixtures as portable
+
 """Exact additive 717 binding; all positive receipt/API rows are SYNTHETIC.
 
 Git source and the independent auditor facts are real read-only inputs. These
@@ -17,7 +19,7 @@ from tools import base_move as b, own_case_receipt as own
 ASSEMBLY = 'e6f6e5ec30b553511a839252d3aff73bbc12819d'
 TREE = 'cdc7364d9372c3453ee3d3dc3d706647d585664a'
 TESTS_TREE = 'ed9493b450303989e6c12c560b38ee0c75101e52'
-FACTS = Path('/Users/commonfabric/.local/share/theseus/auditor/evidence/train45-live96-e6f6e5ec/final-test-inputs.json')
+FACTS = portable.evidence() / 'train45-live96-e6f6e5ec/final-test-inputs.json'
 FACTS_SHA256 = 'd970677dbda12ce88884c67bfcf4b976c1f286e6fe0aa61ad9761853b20267b5'
 
 
@@ -43,7 +45,7 @@ class AssemblyControls(families.FamilyControls):
                          dict(facts['sources'], **{p: own.SOURCES[p] for p in
                               (own.WORKFLOW, 'tools/native.py', 'tools/release_check.py')}))
         for path, digest in facts['sources'].items():
-            actual = subprocess.check_output(['git', 'show', ASSEMBLY + ':' + path])
+            actual = subprocess.check_output(portable.git_command() + ['show', ASSEMBLY + ':' + path])
             self.assertEqual(hashlib.sha256(actual).hexdigest(), digest)
 
     def test_one_byte_change_to_each_pinned_input_refuses(self):

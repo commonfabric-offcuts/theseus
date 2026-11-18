@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests import own_receipt_fixtures as portable
+
 """Narrow 717/715 parser controls. Positive Pool/API fixtures are SYNTHETIC.
 
 Original full producer reports are used only as negative parsing evidence.
@@ -24,7 +26,7 @@ PRODUCERS = {
     '717': ('f31e319994ecc96c5565828a53fde75c01bd3386', 'e2dfb9e663611cbf4303a52cd00578d3652c5347'),
     '715': ('5903d8b8fac63b8b4e6d191dbc8d59db5094d9b0', '8da417bd928698add7bbace7cc91f8b02799b6d9'),
 }
-EVIDENCE = Path('/Users/commonfabric/.local/share/theseus/auditor/evidence')
+EVIDENCE = portable.evidence()
 ORIGINALS = {
     'reading': EVIDENCE / 'train45-full-44219718033/check-0/native/reading',
     'webkit-reading': EVIDENCE / 'train45-full-44219718033/check-2/native/webkit-reading',
@@ -42,8 +44,8 @@ def wrapper_for(head, step, item):
                'GIT_COMMITTER_NAME': 'Synthetic parser fixture', 'GIT_COMMITTER_EMAIL': 'synthetic@example.invalid',
                'GIT_AUTHOR_DATE': '2026-11-17T00:00:00Z', 'GIT_COMMITTER_DATE': '2026-11-17T00:00:00Z'}
         def git(*args, data=None):
-            return subprocess.run(['git'] + list(args), input=data, capture_output=True, env=env, check=True).stdout.decode().strip()
-        workflow = subprocess.check_output(['git', 'show', 'c4af1c667aeb54b193f483ac7f8385c6895eafb2:' + own.WORKFLOW])
+            return subprocess.run(portable.git_command() + list(args), input=data, capture_output=True, env=env, check=True).stdout.decode().strip()
+        workflow = subprocess.check_output(portable.git_command() + ['show', 'c4af1c667aeb54b193f483ac7f8385c6895eafb2:' + own.WORKFLOW])
         spec = json.dumps({'step': step, 'cases': ['item ' + item], 'label': 'synthetic' + step, 'snapshot': head}).encode()
         git('read-tree', head)
         for path, raw in [(own.WORKFLOW, workflow), (own.SPEC, spec)]:
@@ -93,7 +95,7 @@ class FamilyControls:
         self.harness = 'tests/webkit_native.mjs' if self.webkit else 'tests/reader_persistence_native.mjs'
         self.name = self.mode + ' item ' + self.item + ' synthetic parser control'
         self.log_member = 'c1/native-' + self.step + '.log'
-        self.report = {'mode': '--' + self.mode, 'hashes': {self.harness: hashlib.sha256(subprocess.check_output(['git','show',self.head+':'+self.harness])).hexdigest()},
+        self.report = {'mode': '--' + self.mode, 'hashes': {self.harness: hashlib.sha256(subprocess.check_output(portable.git_command() + ['show',self.head+':'+self.harness])).hexdigest()},
                        'results': [{'name': self.name, 'passed': True}], 'observations': [],
                        'fixtureExitCode': 0, 'fixtureErrors': '', 'browserClosed': True}
         if self.webkit:

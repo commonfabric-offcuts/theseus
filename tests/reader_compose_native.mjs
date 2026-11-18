@@ -567,9 +567,9 @@ async function run() {
         if (shape.startsWith('phone')) {
           assert.ok(at.tab && at.name, `${shape}, ${dossier}: the message's dossier has a tab in the feed, and the title its button: ${JSON.stringify(at)}`);
           if (dossier === 'short') assert.equal(at.tab, SHORT_NAME, `${shape}: the short dossier's tab shows the name it was given: ${JSON.stringify(at)}`);
-          // A short name fits whole; a long one is cut, with the ellipsis in effect. Either takes one line, its button one line
-          // high, and runs into no control, on the header's second row.
-          assert.deepEqual([at.title, at.name.text, at.name.fits, at.name.ellipsis, at.name.lines, at.name.height < 2 * at.name.line, at.name.into, at.twoRows],
+          // A short name fits whole; a long one is cut, with the ellipsis in effect. Either takes one text line;
+          // the button keeps the approved 44px target floor, otherwise stays below two text lines, and overlaps no control.
+          assert.deepEqual([at.title, at.name.text, at.name.fits, at.name.ellipsis, at.name.lines, at.name.height >= 44 && (at.name.height === 44 || at.name.height < 2 * at.name.line), at.name.into, at.twoRows],
             [at.tab, at.tab, dossier === 'short', true, 1, true, [], true],
             `${shape}: the title is the dossier's name, ${dossier === 'short' ? 'whole' : 'cut with an ellipsis'}, on one line of the header's second row, clear of the controls: ${JSON.stringify(at)}`);
           assert.deepEqual([at.small, at.over, at.sideways], [[], [], false], `${shape}, ${dossier}: every control of the header 44px, none over another, nothing sideways: ${JSON.stringify(at)}`);

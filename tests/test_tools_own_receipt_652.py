@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests import own_receipt_fixtures as portable
+
 """Synthetic parser controls against frozen 652 source, never a hosted receipt.
 
 The API is an in-memory stub. No candidate program is imported or executed.
@@ -30,7 +32,7 @@ class Synthetic652(unittest.TestCase):
         # A local, unreferenced wrapper object. It is never pushed or executed.
         cls.temp = tempfile.TemporaryDirectory(prefix='synthetic-own-652-')
         cls.addClassCleanup(cls.temp.cleanup)
-        cls.git = staticmethod(lambda *args: subprocess.run(['git'] + list(args), capture_output=True, text=True))
+        cls.git = staticmethod(lambda *args: subprocess.run(portable.git_command() + list(args), capture_output=True, text=True))
         workflow = own.source_bytes(cls.git, 'c4af1c667aeb54b193f483ac7f8385c6895eafb2', [own.WORKFLOW])[own.WORKFLOW]
         spec = json.dumps({'step': 'compose', 'cases': ['item 652'], 'label': 'synthetic652', 'snapshot': cls.assembly}).encode()
         # Explicit Git-only environment; no credential/profile/environment reads.
@@ -40,7 +42,7 @@ class Synthetic652(unittest.TestCase):
                    'GIT_COMMITTER_NAME': 'Synthetic parser fixture', 'GIT_COMMITTER_EMAIL': 'synthetic@example.invalid',
                    'GIT_AUTHOR_DATE': '2026-11-17T00:00:00Z', 'GIT_COMMITTER_DATE': '2026-11-17T00:00:00Z'}
         def git(*args, data=None):
-            return subprocess.run(['git'] + list(args), input=data, capture_output=True, env=git_env, check=True).stdout.decode().strip()
+            return subprocess.run(portable.git_command() + list(args), input=data, capture_output=True, env=git_env, check=True).stdout.decode().strip()
         git('read-tree', cls.assembly)
         for path, data in [(own.WORKFLOW, workflow), (own.SPEC, spec)]:
             blob = git('hash-object', '-w', '--stdin', data=data)
