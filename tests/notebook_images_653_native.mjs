@@ -1,4 +1,11 @@
 import assert from 'node:assert/strict';
+import { withPageCleanup, closeNativePage } from './native-page-cleanup.mjs';
+
+export const releaseNotebook653 = "(item653State='normal',window.item653Release?.())";
+export const withNotebook653 = (p, action) => withPageCleanup({
+  get errors() { return p.errors; },
+  close: () => closeNativePage({ settle: () => p.evaluate(releaseNotebook653), close: () => p.close(), forget: () => {} }),
+}, action);
 // Own Notebook cases use the registered Chrome/WebKit adapter and its normal
 // fixture/browser cleanup. State injection is at fetch, never at a UI handler.
 export async function notebookImages653({check,page,until,control,view,facts,shot}) {
@@ -45,7 +52,7 @@ export async function notebookImages653({check,page,until,control,view,facts,sho
         assert.ok(Math.abs(g.width-3*g.rem)<=GEOMETRY_PX&&Math.abs(g.height-3*g.rem)<=GEOMETRY_PX,'item 653 3rem square: '+JSON.stringify(g));assert.equal(g.fit,'contain');
         if(width!=='laptop')assert.ok(g.width>=44-TOUCH_PX&&g.height>=44-TOUCH_PX);
       };
-      try{
+      await withNotebook653(p,async()=>{
         await until(()=>p.evaluate("document.body.dataset.ready==='true'"),'item 653 Notebook ready');
         if(state==='read-error'){
           await until(()=>p.evaluate("document.body.textContent.includes('Item 653 page read unavailable')"),'named read error');
@@ -75,17 +82,14 @@ export async function notebookImages653({check,page,until,control,view,facts,sho
         assert.equal(await p.evaluate('document.documentElement.scrollWidth<=innerWidth+2'),true,'no horizontal page loss');
         if(['busy','refused','save-error'].includes(state)){
           const written=await p.evaluate(`document.querySelector(${JSON.stringify(field)}).value`);
-          await p.evaluate("item653State='normal';window.item653Release?.()");
+          await p.evaluate(releaseNotebook653);
           if(state!=='busy')await press(surface==='sheet'?'.notebook-sheet-status .deck-again':'#deck-page .deck-again');
           await until(async()=> (await view('memory_current',{item_id:id})).body.includes('Item 653 added writing.'),'recovery actually saves');
           assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(field)}).value`),written,'same writing after recovery');
           await geometry(host+' .deck-writing .image-thumb');await shot(p,`item-653-${width}-${scheme}-${surface}-${state}-recovered`);
         }
         assert.deepEqual(p.errors,[]);
-      }finally{
-        await p.evaluate("item653State='normal';window.item653Release?.()");
-        await p.close();
-      }
+      });
     });
   }
 }
