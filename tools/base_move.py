@@ -677,6 +677,22 @@ TEST_ADAPTATION_REASON = ('Preserve live item 644 pointer focus(preventScroll) w
 TEST_ADAPTATIONS = {TEST_ADAPTATION_PATH: dict(TEST_ADAPTATION_BLOBS, reason=TEST_ADAPTATION_REASON),
     'tests/card_editor_652.mjs': {'original_blob': None, 'source_blob': '68f60f880e532186cc49b972b3208a46203e4dfe', 'live_blob': None, 'assembly_blob': 'cb188b6c11f8aee76f61332e32e302ea45522736', 'reason': 'Preserve native press/focus requirements, retain original causes, capture missing delivery/media/failure evidence and unique normal/mutant/restored geometry; unchanged456 identities and six phases.'},
     'tests/ui_card_editor_652_contract.test.mjs': {'original_blob': None, 'source_blob': None, 'live_blob': None, 'assembly_blob': 'b90dc6e506d7c474e27e6bb4009e4f3e168a6bfa', 'reason': 'New browser-free contract checks hold phone-width44px rule and truthful diagnostic/error/phase preservation.'},
+    # Warp8778: exact document/test bytes only; no product adaptation permission.
+    'docs/dossier-covers.md': {'original_blob': '405543b6bf11eb290f3276c7c82767a15d5d3327',
+ 'source_blob': 'dc2a2964d5a92f0e6cd4897f885b11001ff70e11',
+ 'live_blob': '405543b6bf11eb290f3276c7c82767a15d5d3327',
+ 'assembly_blob': 'd28833e622ce354a8aa134cfa1992f088970752b',
+ 'reason': 'Document the requested-width fit boundary with unchanged 2px tolerance, native Tab diagnostics and '
+           'separate mutant/restored results; no product or key mapping change.'},
+    'tests/dossier_promises_native.mjs': {'original_blob': None,
+ 'source_blob': 'bfa1b3e7ccedac3829910d591c3b07abbf0e1590',
+ 'live_blob': None,
+ 'assembly_blob': '3d5d3338854685301cec3e631166390d15b11c02',
+ 'reason': 'Bound fit to requested and actual viewports, observe native Tab delivery/calibration without changing '
+           'acceptance, retain every mutant error and separate exact restored control, and snapshot eight '
+           'additional actual sources; fourteen identities and 2px tolerance unchanged.'},
+    'tests/outline_stars_native.mjs': {'original_blob': None, 'source_blob': '02fe0a1f2b9b4a0a868e59f686562b970cd6ca02', 'live_blob': None, 'assembly_blob': '80d840ed8e40beead225e8519bcbd3e368844bda', 'reason': 'Retain every original assertion and identity; add only35 state/reopen/readiness lines for the original visible, loaded, nonbusy dossier row after native phone drawer reopening, with bounded failure evidence.'},
+    'tests/webkit_native.mjs': {'original_blob': 'da3db531d43497916f8108d207a7e1df9e87a279', 'source_blob': 'ec212d08a9d23f7e9230e20faea7acca6bd6227e', 'live_blob': 'da3db531d43497916f8108d207a7e1df9e87a279', 'assembly_blob': 'a3bacaba479930e26eccc3675d05074b9d39b55d', 'reason': 'Correct only the stale SKIPPED key to the exact offered picture-link Return name; retain HELD, its qualification and the missing-offer guard; no picture behavior pass.'},
 }
 
 

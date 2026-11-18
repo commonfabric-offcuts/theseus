@@ -317,9 +317,9 @@ trust a source digest merely because a candidate reports the same digest.
 A safe general adapter does not fit this bounded extension: 717's source uses
 `stack_native.mjs`/`dossier_promises_native.mjs`; 715 uses
 `outcome_rail_native.mjs`/`outline_stars_native.mjs` and other engine entry points.
-Their source, phase, identity and logging conventions need a separate reviewed
-parser design. They remain unsupported here, with their original qualifications
-and future final-base receipts untouched.
+Their source, phase, identity and logging conventions require the separately
+bounded reading/rail profiles below. The compose parser grants no additional
+authority; original qualifications and final-base receipt obligations remain.
 
 `tests/test_tools_own_receipt_652.py` supplies synthetic parser controls using
 frozen 652 source and stubbed API answers. These are not authenticated hosted
@@ -356,10 +356,142 @@ Counts, normal exit, fixture/browser cleanup, exact independent identities and
 all claimed source hashes are checked. No failed raw row is accepted, including
 the historical 717 intended-assertion/restore red and four WebKit Tab reds, or
 715's twelve phone drawer reds. Synthesized controls are parser evidence only;
-no final-base 717/715 receipt exists or is implied by this change.
+synthetic controls establish no final-base 717/715 receipt or acceptance.
 
 ### Exact 652 correction addendum (warp8652)
 
 The reviewed correction2f4996b4, canonically assembled as7c4e13ba on the same original source/live parents, adds two exact test-only adaptations alongside the existing four-width pointer unit. tests/card_editor_652.mjs changes source blob68f60f880e532186cc49b972b3208a46203e4dfe tocb188b6c11f8aee76f61332e32e302ea45522736, absent in original and live. tests/ui_card_editor_652_contract.test.mjs is absent in original/source/live and adds blobb90dc6e506d7c474e27e6bb4009e4f3e168a6bfa. Each requires the exact fixed reason, mode100644, independently read Git entries and the same final canonical-body review binding. Only these enumerated bytes qualify; product and all unlisted non-overlap entries remain strict. New test addition is explicit null source, not permission to add arbitrary tests.
 
 The exact corrected652 helper SHA256e400b065311cc5212a14ed8eeff5ab536dd2f6967b2bb7a0ed450d68d9e44c6d is an additional independently reviewed reporter profile. The original11b2e057 helper remains supported separately. Both use unchanged compose entrypoint ee64a06f, all456 expected identities and six phases. The correction preserves native press/focus obligations and captures original errors, event/handler delivery, media/computed rules and distinct restored artifacts. Additive diagnostic files do not replace original report/log/ZIP/API proof. No candidate-selected hash/schema override and no acceptance of a red receipt is introduced. Unknown helper bytes refuse. Final own receipt and narrow corrected assembly review remain mandatory.
+
+### Additive exact 717 assembly profile (warp8750)
+
+The independent auditor's `train45-live96-e6f6e5ec/final-test-inputs.json`
+(SHA-256 `d970677dbda12ce88884c67bfcf4b976c1f286e6fe0aa61ad9761853b20267b5`)
+binds one additional literal 717 profile: producer/assembly
+`e6f6e5ec30b553511a839252d3aff73bbc12819d`, tree
+`cdc7364d9372c3453ee3d3dc3d706647d585664a`, tests subtree
+`ed9493b450303989e6c12c560b38ee0c75101e52`. Of the ten original 717 pins,
+only `tests/stack_native.mjs` changes, to SHA-256
+`55c328660130b03be5daa108187010780ec5fc716d7b0adfdc85962ab3c18b70`:
+the reviewed live96 stack plus original 717 import/call. Original 717 and 715
+profiles retain every field. The bounded composition below adds actual715 and
+final717; the e6 profile and its evidence remain separate and unchanged.
+
+Only the independently pinned tests subtree selects one of the literal profiles
+for the requested family. Every shared workflow/command pin and every selected
+source pin must then match exact bytes. Unknown trees and one-byte harness or
+helper changes refuse; manifests and report self-hashes cannot authorize them.
+Derived `schema_binding.producer` and `tests_tree` identify the selected profile.
+All existing API/attempt/parent/tree/archive/raw-byte/identity/phase/cleanup,
+normal zero-exit, exact inventory and fixed two-second publication checks remain.
+
+This is a source-reader addition. Synthetic parser controls do not establish
+actual 717 acceptance. The earlier e6 Chromium and WebKit calls are red and
+certify e6 only; neither can supply a receipt for final717.
+Original reds, qualifications, source continuation, complete-source admission
+and release guard memberships remain unchanged. Independent review and a
+commit-named installation follow this source handoff.
+
+
+### Actual715 and final717 composition (warp8775/8778)
+
+This source-only composition copies component6aff8bbb80b5f9301d3961f762609fd28c2dd3bc
+exactly before the following additions. That component is not independently
+approved or installed. The original715/717 profiles, exact e6 profile, and all
+651/original652/corrected652 fields remain unchanged.
+
+The actual715 sibling assembly is d9b93adfabed0e960a14febf9975de294429248b,
+tree4a26a9ec3d3770650bcf8e9eca36c5c23f403d50, tests
+cc5a7e74dc16adf9c81fa633fd27b2047f40eb39. The independent train46-live96-d9b93adf
+REVIEW.json SHA256 is9dc6c79f23f8b79b6f8e13a4d56c4243f595f2a705eb7d17a3ef1a4f4b13eb3a;
+final-test-inputs.json iscff75917627719ef2e639d2486403cfb061f89fc01c7116aef0bcd1a3ea4c57e.
+Only outcome_rail_native.mjs changes from original715, to
+5835f965cf4035e56524fe37c627e7f1abb1d4de63c834c0bf9494cb6c00b9b8.
+Both coordinator-owned715 engine calls are in flight under8775 at task start;
+this composition claims no pass or fresh authentication.
+
+The final717 sibling assembly is dddf00e171fa3924f12e9a1c4f20cac5a6602d3c,
+tree231373687757f80fe495194157b39f6935b3b550, tests
+aa3a1417a26e171e33d89e778c34edd16dd24ef4. Its ordered parents are original45
+f31e319994ecc96c5565828a53fde75c01bd3386 and actual96
+0a68981b0fa25b9a6085c5f9ab1ecf8d16bf9b7d. Original717's ten pins remain,
+with stack_native at55c328660130b03be5daa108187010780ec5fc716d7b0adfdc85962ab3c18b70
+and dossier_promises_native at1d2472157ec5f3cbeb4d3bb9c18c0336d08a1f7920fa1e52e5a669b14787b4a0.
+Actual Git bytes bind these literals. The final717 narrow independent review
+arrived before freeze: train45-final-dddf00e1/REVIEW.json SHA256
+b7084400786d383cda5159497ac59b7b9ec3f88d9891501c6bd2227db8a0bd11;
+final-test-inputs.json SHA256
+82e9f1204a1838035f2d4954b3036381f822dde5eac86f067e61d9f9af81ac5f.
+Its ten pins and sixteen actual snapshots match Git and these literals.
+This addition supplies no native authority. Under8764/8768/8778 the coordinator
+owns ONE final717 Chromium/WebKit pair at that exact assembly, after applicable
+review. It may remain red and hold45. There is no716 support or extra allocation.
+
+Warp8778 permits exactly two nonoverlap adaptations in TEST_ADAPTATIONS:
+docs/dossier-covers.md and tests/dossier_promises_native.mjs, with four literal
+original/source/live/assembly blobs and fixed concrete reasons in base_move.py.
+These document/test changes correct the requested-width oracle and retain
+native Tab delivery/calibration plus separate mutant/restored results. They do
+not alter product or the native Tab mapping. Existing652 literals are exact.
+The four true overlaps remain interaction.md, acts.json, stack_native.mjs and
+ci-input-reads.json; they still require complete independent diff/body review.
+The assembly's ci-input-reads expansion is exactly one repository read-list,
+adding eight actual snapshots: reader_persistence_native.mjs,
+topic_reading_native.mjs, webkit_native.mjs, web/aim.css, web/arrow-reach.mjs,
+web/index.html, web/layout.mjs and web/message-menu.mjs. Every claimed actual
+source hash remains validated. No declaration is changed in this tool clone.
+
+Unknown tests trees, harness/helper bytes and adapter changes refuse. Literal
+selection remains family plus exact tests tree, followed by every source pin;
+no manifest chooses hashes, reasons or a schema. Product nonoverlap changes
+remain refused. Ordinary/continuation readers, exact assembly parenting, API,
+ZIP, attempt, provenance, two-second publication, inventory, identity, phase,
+cleanup, normal exit0 and both-engine obligations retain their existing guards.
+Original171 reds, historical incomplete acceptance, all original715/717
+qualifications and source authority remain. Synthetic fixtures test readers only.
+Combined independent review and one commit-named installation are coordinator
+next steps; no install, push, deploy, browser, Pool or product call is made here.
+
+### Final715 and fresh649/656 literals (8821)
+
+Final715 adds only the independently bound4225184688d7503296e1c0034f1418cb48f4a9d3
+profile (tree28acdaa0460ab1ec990e0cea136049cf37715757, tests
+313a5d22de9923f419a0a474a8f0a3e19a611702). Two enumerated nonoverlap
+adaptations bind every original/source/live/result blob, mode100644 and a fixed
+reason: outline_stars_native's35 inserted state/reopen/readiness lines preserve
+all original assertions, and webkit_native changes one stale SKIPPED literal.
+Every other nonoverlap remains strict. Existing652/717 adaptations and original
+profiles remain exact. Final715's prior94/100 and94/101, exit1, and original200
+full-run failures remain failures; the coordinator's final pair is not a pass
+until genuine receipts prove it.
+
+Fresh train48 is8737fa03cb3a9ec587d8b7b3678a96352b85fd1b, tree
+8f99a0270e6c487331f14a74aa5bdc11b228568c, tests
+936aff89743a7fbc2515129e90eb57d0ae4e028f. Exact canonical head/tree,
+195 static input pins (including the416-edge import closure), five literal
+reporter/mode snapshot lists and ordered identities authorize only649's
+reading/webkit-reading filter`item 649`, and656's colors/webkit-colors/header
+filter`item 656`. No WebKit header mode is declared. Source declarations are
+frozen data here; no candidate source parser or producer-selected schema runs.
+Unknown trees, families, source bytes, missing inputs, changed case order,
+duplicates, API/ZIP mismatches, nonzero exits and unclean teardown refuse.
+
+649 uses the pinned reading reporter schema;656 additionally emits oldhead,
+base comparison and ledger mutant diagnostics between case records. These
+records remain ordered, schema checked and source bound, with caught failures
+and exact restored controls required; they are never discarded or counted as
+extra cases. Chromium keeps its actual start/result stamps and complete action/
+cleanup phases; WebKit keeps engine/ms on its rows and has no phases file.
+Neither engine gains an invented timestamp, phase or engine field.
+
+Original649 remains126/128 Chromium (two741 privacy branches) and128/128 WebKit,
+18 starts;656 remains70/71 in both engines, field-return mutant survived,
+restored phase absent, B2 gear unrun746,28 starts. These literals can validate
+future genuine exact-source returns, not waive these reds. Retired47's fatal
+native-openings receipt still refuses; there is no withdrawal guard form.
+Final717 is red and held to tomorrow732. Whole-source45/46 envelopes, fixture
+teardown, exact inventories, independent obligations and both-engine coverage
+remain mandatory. This complete delta from installed10aea requires ONE
+independent review and installation; no source admission, runtime green,
+allocation, installation or self-approval is supplied here.734 is excluded.

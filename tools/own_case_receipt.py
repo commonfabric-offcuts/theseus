@@ -15,6 +15,7 @@ from pathlib import Path
 import zipfile
 
 from tools import base_move as b, ci_known_reds as ci
+from tools import own_case_profiles_8821 as final_profiles
 
 WORKFLOW = '.github/workflows/pool.yml'
 SPEC = '.github/pool-run.json'
@@ -60,6 +61,45 @@ FAMILIES = {'717': {'head': 'f31e319994ecc96c5565828a53fde75c01bd3386',
                      'tests/outcome_rail_native.mjs': 'b5797308e822dfea0550830f1a91c30018b90e57664721a945cee38a25d952ef',
                      'tests/outline_stars_native.mjs': '6c196bb9fad58b3c506fed333cc4c5cafecc8efec70aeee391f10cdf967c0ee9',
                      'tests/outline_stars_oracle.mjs': 'f71cd4ac0d88755ea25a64224bb75cac61f208e8ed23ff5044e3ec3b3715bd16'}}}
+# Independently reviewed assembly binding (warp8750); never receipt-supplied.
+# Original FAMILIES and the copied e6 profile remain exact.
+ASSEMBLY_717 = {'head': 'e6f6e5ec30b553511a839252d3aff73bbc12819d',
+ 'tests_tree': 'ed9493b450303989e6c12c560b38ee0c75101e52',
+ 'sources': {'tests/reader_persistence_native.mjs': 'ff89beeadcaefd631ceaa273fcc22ddfdf0a6f28224ddc18eac6bf7b7aa8b608',
+             'tests/webkit_native.mjs': 'd3f7638a39a10ae26845def968b26da1c2ca4fdbae4d9c0a5c266956065d13f3',
+             'tests/native-calls.mjs': 'f3121cf9108a017a77224191b88615618dc152e464de9b42abb7f6c591f3633c',
+             'tests/native-page-cleanup.mjs': '1f087302cc6eaca7ffc304a6ec64204d8cb7b59745224ef533fb0fd0a2e14e99',
+             'tests/release-rule.mjs': 'b34d024358d9d98ce80434dd080c44eed590253a0ca021a0dafac91370c8268f',
+             'tests/press-fell.mjs': '1b8b2a2b779e76033b3d4502178fb87b102b0d21c77a387f53964a02d7e1ebd5',
+             'tests/fixtures/ui_http.py': '8b935a49acdf454148b8be960b46d2a5e3e2977a7ba27286115f2c8220b11a59',
+             'tests/topic_reading_native.mjs': '855831061528c1c02be140f02e0b8b49b8205f170f9e5b1398db94f87a961fac',
+             'tests/stack_native.mjs': '55c328660130b03be5daa108187010780ec5fc716d7b0adfdc85962ab3c18b70',
+             'tests/dossier_promises_native.mjs': 'e46e1d55452b278f917d82c8d13dab88fbbee3115008c90925a2be18c6e2b044'}}
+# Actual sibling assembly literals (warp8775/8778); source-only, no native approval.
+ASSEMBLY_715 = {'head': 'd9b93adfabed0e960a14febf9975de294429248b',
+ 'tests_tree': 'cc5a7e74dc16adf9c81fa633fd27b2047f40eb39',
+ 'sources': {'tests/reader_persistence_native.mjs': 'b0e81544d9be87d6aa8e28187407296dec1705c7e438f97a01944e3855a54f2b',
+             'tests/webkit_native.mjs': '4db15fd3c3315c1fd0f47ec97263abda40cb42b3edaaa585ac4d43fe1a05e3ae',
+             'tests/native-calls.mjs': 'f3121cf9108a017a77224191b88615618dc152e464de9b42abb7f6c591f3633c',
+             'tests/native-page-cleanup.mjs': '1f087302cc6eaca7ffc304a6ec64204d8cb7b59745224ef533fb0fd0a2e14e99',
+             'tests/release-rule.mjs': 'b34d024358d9d98ce80434dd080c44eed590253a0ca021a0dafac91370c8268f',
+             'tests/press-fell.mjs': '1b8b2a2b779e76033b3d4502178fb87b102b0d21c77a387f53964a02d7e1ebd5',
+             'tests/fixtures/ui_http.py': 'ab614f015bce3dd0845e8e4e1070c66ad8b7858a62d101f13092be8ccea1b622',
+             'tests/outcome_rail_native.mjs': '5835f965cf4035e56524fe37c627e7f1abb1d4de63c834c0bf9494cb6c00b9b8',
+             'tests/outline_stars_native.mjs': '6c196bb9fad58b3c506fed333cc4c5cafecc8efec70aeee391f10cdf967c0ee9',
+             'tests/outline_stars_oracle.mjs': 'f71cd4ac0d88755ea25a64224bb75cac61f208e8ed23ff5044e3ec3b3715bd16'}}
+FINAL_717 = {'head': 'dddf00e171fa3924f12e9a1c4f20cac5a6602d3c',
+ 'tests_tree': 'aa3a1417a26e171e33d89e778c34edd16dd24ef4',
+ 'sources': {'tests/reader_persistence_native.mjs': 'ff89beeadcaefd631ceaa273fcc22ddfdf0a6f28224ddc18eac6bf7b7aa8b608',
+             'tests/webkit_native.mjs': 'd3f7638a39a10ae26845def968b26da1c2ca4fdbae4d9c0a5c266956065d13f3',
+             'tests/native-calls.mjs': 'f3121cf9108a017a77224191b88615618dc152e464de9b42abb7f6c591f3633c',
+             'tests/native-page-cleanup.mjs': '1f087302cc6eaca7ffc304a6ec64204d8cb7b59745224ef533fb0fd0a2e14e99',
+             'tests/release-rule.mjs': 'b34d024358d9d98ce80434dd080c44eed590253a0ca021a0dafac91370c8268f',
+             'tests/press-fell.mjs': '1b8b2a2b779e76033b3d4502178fb87b102b0d21c77a387f53964a02d7e1ebd5',
+             'tests/fixtures/ui_http.py': '8b935a49acdf454148b8be960b46d2a5e3e2977a7ba27286115f2c8220b11a59',
+             'tests/topic_reading_native.mjs': '855831061528c1c02be140f02e0b8b49b8205f170f9e5b1398db94f87a961fac',
+             'tests/stack_native.mjs': '55c328660130b03be5daa108187010780ec5fc716d7b0adfdc85962ab3c18b70',
+             'tests/dossier_promises_native.mjs': '1d2472157ec5f3cbeb4d3bb9c18c0336d08a1f7920fa1e52e5a669b14787b4a0'}}
 MEMBERS = ('cases.json', 'c1.log', 'c1/native-compose.log', 'c1/evidence/native.json')
 JOB_STEPS = ['Set up job', 'Run actions/checkout@v4', 'Run actions/setup-node@v4',
              "Chrome for Testing and Playwright's WebKit", 'The cases', 'Keep the evidence',
@@ -87,7 +127,68 @@ def api_fact(binding, key, github, repository, path):
     return saved
 
 
-def family_results(contents, step, native_step, case_filter, expected):
+def title_log_records(lines, rows, webkit):
+    """Consume only the pinned656 reporter's diagnostics in their actual order.
+
+    These are assertions inside a single native case, not extra executions.
+    Original raw logs remain bound by their archive and Ref.
+    """
+    remaining = iter(lines)
+    records = []
+
+    def take(names):
+        value = next(remaining, None)
+        return b.fields(value, names)
+
+    def caught(value):
+        b.require(isinstance(value, str) and bool(value.strip())
+                  and re.search(r'title|pencil|renam|focus|settings', value, re.I),
+                  'Pool656 missing intended mutant failure')
+
+    for i, row in enumerate(rows):
+        if not webkit:
+            records.append(take('case started'))
+        if i == 0:
+            old = final_profiles.OLDHEAD_656
+            red = take('item oldhead red_source fixed_source caught exact_restoration')
+            b.require(type(red['item']) is int and red['item'] == 656
+                      and red['oldhead'] == old['head'] and red['red_source'] == old['red_source']
+                      and red['fixed_source'] == old['fixed_source'] and red['exact_restoration'] is True
+                      and isinstance(red['caught'], str)
+                      and 'permission rebuild restores the header title' in red['caught'],
+                      'Pool656 oldhead source/restoration differs')
+            restored = take('item oldhead restored_control_passed')
+            b.require(restored == {'item': 656, 'oldhead': old['head'], 'restored_control_passed': True}
+                      and type(restored['item']) is int, 'Pool656 oldhead restored control missing')
+        elif i == 65:
+            base = take('item base_screenshots restored')
+            b.require(base == {'item': 656, 'base_screenshots': '833d2a153f6fb98ff41c63f0736791f76a1188a8',
+                               'restored': True} and type(base['item']) is int,
+                      'Pool656 base comparison restoration differs')
+        elif i >= 66:
+            name, pins = final_profiles.MUTANTS_656[i - 66]
+            failure = take('item mutation failed_case')
+            b.require(type(failure['item']) is int and failure['item'] == 656
+                      and failure['mutation'] == name, 'Pool656 mutation identity differs')
+            caught(failure['failed_case'])
+            for path, before, mutated in pins:
+                trail = take('item mutation file before mutated caught')
+                b.require(type(trail['item']) is int and trail['item'] == 656
+                          and trail['mutation'] == name and isinstance(trail['file'], str)
+                          and Path(trail['file']).is_absolute() and trail['file'].endswith('/' + path)
+                          and trail['before'] == before and trail['mutated'] == mutated
+                          and trail['caught'] == failure['failed_case'],
+                          'Pool656 applied mutation source differs')
+            restored = take('item mutation restored_control_passed')
+            b.require(restored == {'item': 656, 'mutation': name, 'restored_control_passed': True}
+                      and type(restored['item']) is int, 'Pool656 mutant restored control missing')
+        records.append(take('name passed engine ms' if webkit else 'name passed started finished'))
+    exhausted = object()
+    b.require(next(remaining, exhausted) is exhausted, 'Pool656 extra ordered log record')
+    return records
+
+
+def family_results(contents, step, native_step, case_filter, expected, literal_item=None):
     """Interpret only the independently pinned reading/rail reporter families.
 
     This has no source evaluator. Callers must first verify FAMILIES and the
@@ -117,10 +218,18 @@ def family_results(contents, step, native_step, case_filter, expected):
         b.require(report['baseline'] is False and report['legacyAdmission'] is False and report['teardown'] == []
                   and isinstance(report['finalHealth'], dict) and report['finalHealth'].get('fatal') == [],
                   'Pool phase or teardown differs')
+    if literal_item:
+        wanted_hashes = {p: final_profiles.TRAIN48['sources'][p]
+                         for p in final_profiles.SNAPSHOTS_48[native_step]}
+        b.require(report['hashes'] == wanted_hashes, 'Pool literal snapshot inputs differ')
     rows = report['results']
     b.require(isinstance(rows, list) and bool(rows), 'Pool missing raw cases')
     b.require(all(isinstance(row, dict) and row.get('passed') is True for row in rows),
               'Pool raw case failed or invalid')
+    if literal_item:
+        mode_names = [n.replace('colors ', mode + ' ', 1) if literal_item == '656' else n
+                      for n in final_profiles.CASES_48[literal_item]]
+        b.require([r.get('name') for r in rows] == mode_names, 'Pool literal ordered cases differ')
     keys = []
     for row in rows:
         # A red row (including a caught/unrestored mutant) never becomes green.
@@ -138,6 +247,8 @@ def family_results(contents, step, native_step, case_filter, expected):
     counts = {'tests': len(rows), 'pass': len(rows), 'fail': 0, 'failed': [], 'browser_closed': True}
     b.require(b.canonical(step['counts']) == b.canonical(counts), 'Pool raw count differs')
     lines = [b.loads(line) for line in contents['c1/native-' + native_step + '.log'].decode().splitlines()]
+    if literal_item == '656':
+        lines = title_log_records(lines, rows, webkit)
     if webkit:
         b.require(b.canonical(lines) == b.canonical(rows), 'Pool ordered result log differs')
     else:
@@ -220,12 +331,26 @@ def validate(receipt, git, github, repository, assembly, assembly_tree, expected
     initial = source_bytes(git, wrapper, [SPEC])
     spec = b.fields(b.loads(initial[SPEC]), 'step cases label snapshot')
     family = None
-    if spec['step'] in ('reading', 'webkit-reading', 'rail', 'webkit-rail'):
-        item = '717' if spec['step'] in ('reading', 'webkit-reading') else '715'
-        family = FAMILIES[item]
+    literal_item = None
+    if spec['step'] in ('reading', 'webkit-reading', 'rail', 'webkit-rail', 'colors', 'webkit-colors', 'header'):
+        tests_tree = b.ask(git, 'rev-parse', '--verify', wrapper + ':tests').strip()
+        if tests_tree == final_profiles.TRAIN48['tests_tree']:
+            item = '649' if spec['step'] in ('reading', 'webkit-reading') else '656'
+            allowed_steps = ('reading', 'webkit-reading') if item == '649' else ('colors', 'webkit-colors', 'header')
+            b.require(spec['step'] in allowed_steps, 'Pool literal family step differs')
+            family, literal_item = final_profiles.TRAIN48, item
+        else:
+            b.require(spec['step'] in ('reading', 'webkit-reading', 'rail', 'webkit-rail'),
+                      'Pool independently bound tests schema differs')
+            item = '717' if spec['step'] in ('reading', 'webkit-reading') else '715'
+            profiles = ((FAMILIES[item], ASSEMBLY_717, FINAL_717) if item == '717' else
+                        (FAMILIES[item], ASSEMBLY_715, final_profiles.FINAL_715))
+            family = next((profile for profile in profiles if profile['tests_tree'] == tests_tree), None)
+            b.require(family is not None, 'Pool independently bound tests schema differs')
+        if family is final_profiles.TRAIN48 or family is final_profiles.FINAL_715:
+            b.require(assembly == family['head'] and assembly_tree == family['tree'],
+                      'Pool literal canonical source differs')
         case_filter = 'item ' + item
-        b.require(b.ask(git, 'rev-parse', '--verify', wrapper + ':tests').strip() == family['tests_tree'],
-                  'Pool independently bound tests schema differs')
         authorized = {p: SOURCES[p] for p in (WORKFLOW, 'tools/native.py', 'tools/release_check.py')}
         authorized.update(family['sources'])
         sources = source_bytes(git, wrapper, list(authorized))
@@ -243,7 +368,7 @@ def validate(receipt, git, github, repository, assembly, assembly_tree, expected
     for path, expected_digest in authorized.items():
         b.require(b.digest(sources[path]) == expected_digest, 'Pool executed source/command differs: ' + path)
     b.require(spec['snapshot'] == assembly and b.tree(git, assembly) == assembly_tree, 'Pool spec snapshot differs')
-    b.require(spec['step'] in (('reading', 'webkit-reading', 'rail', 'webkit-rail') if family else ('compose',))
+    b.require(spec['step'] in (('reading', 'webkit-reading', 'rail', 'webkit-rail', 'colors', 'webkit-colors', 'header') if family else ('compose',))
               and isinstance(spec['cases'], list) and len(spec['cases']) == 1 and spec['cases'][0] == case_filter
               and isinstance(spec['label'], str) and re.fullmatch(r'[A-Za-z0-9._-]{1,80}', spec['label']),
               'Pool spec step/filter differs')
@@ -322,7 +447,7 @@ def validate(receipt, git, github, repository, assembly, assembly_tree, expected
     b.require(step['name'] == step_name and type(step['exit']) is int and step['exit'] == 0
               and step['passed'] is True, 'Pool raw step/exit differs')
     if family:
-        keys = family_results(contents, step, spec['step'], case_filter, expected)
+        keys = family_results(contents, step, spec['step'], case_filter, expected, literal_item)
         by_engine = {keys[0][3]: {k[1] for k in keys}}
         schema = 'pool-reading-rail-v1'
         harness = 'tests/webkit_native.mjs' if spec['step'].startswith('webkit-') else 'tests/reader_persistence_native.mjs'
