@@ -312,6 +312,12 @@ large children are projected recursively. Large lists of result records keep
 every record in order. Large inventories inside counts may become references;
 the numeric counts and step identities stay inline, including long scalar
 name/id/step/case/phase/engine/head/head_sha values in result containers.
+The counts context follows every nested mapping and list, rather than ending
+at the first mapping. Those mappings and lists retain each scalar at its
+original location, including numeric arrays, booleans and nulls. Only a bulky
+string-list inventory inside that context may become a section reference;
+containers of records or numeric counts are walked. Unknown unsupported shapes
+or facts that exceed the final row bound refuse before publication.
 A still-large dictionary whose children were projected also carries
 `_storage_projection`, binding its whole original
 section. That key is reserved throughout complete input. The root is already

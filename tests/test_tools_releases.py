@@ -270,6 +270,48 @@ class CompactRecords(unittest.TestCase):
         reversed_full = dict(reversed(list(self.full.items())))
         self.assertEqual(releases.compact_measurements(reversed_full, Path(measured["full_measurements"]["path"])), measured)
 
+    def test_nested_count_facts_survive_inventory_growth_in_mappings_and_lists(self):
+        # Auditor8875: only inventory size changes; 1/8/9 must not disappear.
+        for as_list in (False, True):
+            for large in (False, True):
+                with self.subTest(as_list=as_list, large=large):
+                    counts = {"pass": 1, "fail": 8, "total": 9,
+                              "fractions": [1, 8, 9], "available": False,
+                              "unknown": None, "label": "WebKit exact result",
+                              "failed_cases": ["raw failure " + "x" * 90] * (8 if large else 1)}
+                    engines = [{"webkit": counts}] if as_list else {"webkit": counts}
+                    full = {"release_check": {"commit": self.record["commit"]},
+                            "custom_results": [{"name": "failed step", "passed": False,
+                                                "counts": {"engines": engines}}]}
+                    with tempfile.TemporaryDirectory() as temp:
+                        folder = Path(temp).resolve()
+                        record = dict(self.record, measurements=full)
+                        prepared = releases.prepare_record(record, folder)
+                        row = dict(prepared, evidence=str(folder), deployed_at=self.at)
+                        self.assertEqual(releases.verify_record(row, folder), full)
+                        self.assertLessEqual(len(core.release_row(row)["measurements"].encode()), 16384)
+                        observed = row["measurements"]["custom_results"][0]["counts"].get("engines", {})
+                        if as_list:
+                            self.assertIsInstance(observed, list, "nested count records must remain a list")
+                            self.assertEqual(len(observed), 1)
+                            observed = observed[0]
+                        result = observed.get("webkit", {})
+                        for key in ("pass", "fail", "total", "fractions", "available", "unknown", "label"):
+                            self.assertIn(key, result, "scalar count facts must remain inline")
+                            self.assertEqual(result[key], counts[key])
+                        inventory = result["failed_cases"]
+                        if large:
+                            self.assertEqual(inventory["count"], 8)
+                            self.assertEqual(inventory["sha256"], releases.digest(counts["failed_cases"]))
+                        else:
+                            self.assertEqual(inventory, counts["failed_cases"])
+
+    def test_unwalkable_shape_refuses_before_publishing_full_measurements(self):
+        self.full["custom_results"] = [{"passed": False, "counts": {"engines": ({"pass": 1},)}}]
+        with self.assertRaisesRegex(train.Refused, "unsupported measurement shape"):
+            self.prepared()
+        self.assertFalse((self.output / "release-107-measurements.json").exists())
+
     def test_reserved_section_marker_refuses_even_in_small_inline_input(self):
         self.full["train"]["items"][0]["_storage_projection"] = {}
         with self.assertRaisesRegex(train.Refused, "reserved"):

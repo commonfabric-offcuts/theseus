@@ -150,18 +150,25 @@ def _has_inline(value):
 
 
 def _project_section(value, path, pointer="", structure=False):
+    # Counts context follows nested records. A scalar fact is never a section
+    # inventory, and numeric/mixed arrays retain every position in that context.
+    if structure and not isinstance(value, (dict, list)):
+        return copy.deepcopy(value)
     if len(canonical(value)) <= SECTION_BYTES:
         return copy.deepcopy(value)
-    if not structure and not _has_inline(value):
+    count_structure = structure and (isinstance(value, dict) or
+                                     (isinstance(value, list) and any(not isinstance(v, str) for v in value)))
+    if not count_structure and not _has_inline(value):
         return _section_ref(value, path, pointer)
     if isinstance(value, list):
-        return [_project_section(v, path, pointer + "/" + str(i)) for i, v in enumerate(value)]
+        return [_project_section(v, path, pointer + "/" + str(i), structure=structure)
+                for i, v in enumerate(value)]
     result = {}
     for key, child in value.items():
         token = key.replace("~", "~0").replace("/", "~1")
         result[key] = (copy.deepcopy(child) if key in INLINE_VALUES or
                        (key in INLINE_IDENTITIES and not isinstance(child, (dict, list))) else
-                       _project_section(child, path, pointer + "/" + token, structure=(key == "counts")))
+                       _project_section(child, path, pointer + "/" + token, structure=(structure or key == "counts")))
     if pointer and result != value and len(canonical(result)) > SECTION_BYTES:
         result["_storage_projection"] = _section_ref(value, path, pointer)
     return result
@@ -179,6 +186,7 @@ def compact_measurements(full, path):
     _require(not _reserved_projection(full), "storage projection field is reserved")
     raw = canonical(full)
     _require(len(raw) <= MAX_FULL_BYTES, "payload exceeds its byte bound")
+    _require(json.loads(raw) == full, "unsupported measurement shape; expected JSON mappings, lists and scalars")
     result = _project_section(full, path)
     train = full.get("train")
     if isinstance(train, dict):
