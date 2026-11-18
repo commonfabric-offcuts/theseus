@@ -185,6 +185,12 @@ the pointer's way, the keys' and the phone's.
   answer an agent's go-ahead ask in one tap or click, on the message or its
   bar, and the agent hears it as a reply (docs/thumbs.md).
 
+- **Your note corner.** A message with your private note shows a small note
+  corner. A click, Return or Space on it, or a phone's first tap, opens the
+  composer directly to that note, keeping the reply and its destination.
+  An empty note and another reader's note show no corner. (item 649,
+  docs/topic-reading.md; the `reading item 649` native cases in both engines.)
+
 ## Writing
 
 - **The reply in the Reader** is one quiet line while you read (+, the field

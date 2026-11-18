@@ -34,7 +34,7 @@ import { NotebookCreate } from './notebook-create.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from './quick-create.mjs';
 import { PurposeLine } from './outcome-purpose.mjs';
 import { AgentInvite, Invitation } from './agent-invite.mjs';
-import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf } from './marks.mjs';
+import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf, paintNoteCorner } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, opened } from './fold.mjs';
@@ -756,12 +756,12 @@ function sourceAttachments(presentation) {
 }
 // act: what the person's act of reading captured (Marks.capture), for a card
 // or Read it; every other open passes none and clears nothing.
-async function openSource(ref, opener, act = null) {
+async function openSource(ref, opener, act = null, mode = 'reply') {
   const request = ++opening;
   const from = registry.interactive;
   views.retain(views.currentItem, ref.kind === 'memory' ? ref.id : null);
   status('');
-  try { await marks.open(registry, ref, { topicId: topic.id, opener }, act); }
+  try { await marks.open(registry, ref, { topicId: topic.id, opener, mode }, act); }
   catch (error) {
     if (request === opening) {
       if (from?.surface !== 'inline' && registry.isCurrent(from)) reader.notice(error);
@@ -1052,6 +1052,9 @@ function paintCardReading() {
     entry.dataset.talk = quiet ? 'agents' : '';
     paintReading(card, item, { read: cardRead(item), quiet, go: goToMessage });
     paintAwaiting(card, item);
+    // The shortcut is the card's last act, after its words and controls.
+    paintNoteCorner(card, item, (id, opener) => run(() =>
+      openSource({ kind: 'message', id }, opener, marks.capture(id), 'note')));
   }
 }
 // A message the page shows, brought into view: its stack opened first when it
