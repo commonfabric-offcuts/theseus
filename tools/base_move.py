@@ -557,10 +557,67 @@ def own_receipt(receipt, git, github, repository, assembly, assembly_tree, expec
     return legacy_own_receipt(receipt, git, assembly, assembly_tree, expected), None
 
 
+# Exact reviewed test bytes, not a manifest-selected path family or hash policy.
+# This unit imports product code; product does not gain adaptation permission.
+TEST_ADAPTATION_PATH = 'tests/ui_card_editor_652.test.mjs'
+TEST_ADAPTATION_BLOBS = {
+    'original_blob': None,
+    'source_blob': '23f57444c36c5a163f76b35ef7810532ab3af46a',
+    'live_blob': None,
+    'assembly_blob': '8a18797a497672deefb66ba90cf42c15d3e2c4d9',
+}
+TEST_ADAPTATION_REASON = ('Preserve live item 644 pointer focus(preventScroll) without forced reveal '
+                          'or scrolling on ordinary redraw at all four widths.')
+
+
+def resolution_scope(git, old, head, live, assembly, review, adaptations):
+    """Compare every Git entry; only the explicit reviewed test may differ."""
+    require(isinstance(adaptations, list), 'invalid test adaptations')
+    listed = {}
+    original, source, base, result = (entries(git, h) for h in (old, head, live, assembly))
+    for row in adaptations:
+        fields(row, 'path original_blob source_blob live_blob assembly_blob reason')
+        path = row['path']
+        require(path == TEST_ADAPTATION_PATH, 'unsupported test adaptation path')
+        require(path not in listed, 'duplicate test adaptation')
+        require(row['reason'] == TEST_ADAPTATION_REASON, 'test adaptation reason differs')
+        require({k: row[k] for k in TEST_ADAPTATION_BLOBS} == TEST_ADAPTATION_BLOBS,
+                'test adaptation reviewed blobs differ')
+        for key, actual in (('original_blob', original), ('source_blob', source),
+                            ('live_blob', base), ('assembly_blob', result)):
+            claimed = row[key]
+            expected = None if claimed is None else '100644 blob ' + sha(claimed)
+            require(actual.get(path) == expected, 'test adaptation Git entry differs: ' + key)
+        listed[path] = row
+    paths = set(original) | set(source) | set(base) | set(result)
+    overlap, applied = [], set()
+    for path in paths:
+        own_changed = source.get(path) != original.get(path)
+        base_changed = base.get(path) != original.get(path)
+        if own_changed and base_changed:
+            overlap.append(path)
+        else:
+            expected = base.get(path) if base_changed else source.get(path)
+            if path in listed:
+                require(result.get(path) != expected, 'inapplicable test adaptation')
+                applied.add(path)
+            else:
+                require(result.get(path) == expected, 'scope widening or approved/base changes lost: ' + path)
+    require(applied == set(listed), 'unapplied test adaptation')
+    require(isinstance(review['conflict_paths'], list) and Counter(review['conflict_paths']) == Counter(overlap),
+            'resolution path scope differs')
+
+
 def validate(ref, judgment, git, github, repository, live, merge, items, merged_pull, pr_number, release_branch):
     """The verified record, including all artifact references and review, or refusal."""
     try:
-        data = fields(document(ref), 'version source_head original_base live_base live_release assembly_head assembly_tree source receipts review')
+        data = document(ref)
+        names = 'version source_head original_base live_base live_release assembly_head assembly_tree source receipts review'
+        fields(data, names + ' test_adaptations' if isinstance(data, dict) and 'test_adaptations' in data else names)
+        adaptations = []
+        if 'test_adaptations' in data:
+            adaptations = data['test_adaptations']
+            require(isinstance(adaptations, list) and bool(adaptations), 'empty or invalid test adaptations')
         require(type(data['version']) is int and data['version'] == 4, 'unknown version')
         for key in ('source_head', 'original_base', 'live_base', 'assembly_head', 'assembly_tree'):
             sha(data[key])
@@ -590,19 +647,7 @@ def validate(ref, judgment, git, github, repository, live, merge, items, merged_
                 '--output=' + str(patch), head, assembly)
             actual_diff = patch.read_bytes()
         require(artifact(review['diff']) == actual_diff, 'reviewed resolution diff differs')
-        original, source, base, result = (entries(git, h) for h in (old, head, live, assembly))
-        paths = set(original) | set(source) | set(base) | set(result)
-        overlap = []
-        for path in paths:
-            own_changed = source.get(path) != original.get(path)
-            base_changed = base.get(path) != original.get(path)
-            if own_changed and base_changed:
-                overlap.append(path)
-            else:
-                expected = base.get(path) if base_changed else source.get(path)
-                require(result.get(path) == expected, 'scope widening or approved/base changes lost: ' + path)
-        require(isinstance(review['conflict_paths'], list) and Counter(review['conflict_paths']) == Counter(overlap),
-                'resolution path scope differs')
+        resolution_scope(git, old, head, live, assembly, review, adaptations)
         merged_context = {'pull': merged_pull, 'number': pr_number, 'release_branch': release_branch,
                           'merge': merge, 'assembly': assembly, 'live': live,
                           'original_base': old, 'source_head': head}

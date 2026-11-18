@@ -13,7 +13,8 @@ live_release, assembly_head, assembly_tree, source, receipts, review}`. Object
 names are full Git OIDs. Git must prove assembly parents `[source_head,
 live_base]`, release parents `[live_base, assembly_head]`, exact release/assembly
 trees, the exact common original base, and approved ancestry. Entries changed
-only on one side retain that side's exact entry. Every overlap is reviewed;
+only on one side retain that side's exact entry, except the explicit bounded
+test adaptation below. Every overlap is reviewed;
 no extra feature work is permitted in resolutions. Review covers the entire
 binary source-head-to-assembly diff, including clean merges.
 
@@ -151,6 +152,43 @@ Train38 stays red/held and original39/40 retain their original judgments.
 No same-tree acceptance, item719 change or normal-path change is made.
 Independent review must include #7715's measured geometry tolerance rule; no
 measured layout case is expected for this change.
+
+### Explicit test-only non-overlap adaptation (8610)
+
+V4 also accepts the exact manifest fields above **plus** `test_adaptations`.
+When present it is a nonempty list of exact `{path, original_blob, source_blob,
+live_blob, assembly_blob, reason}` objects, one per adapted non-overlap entry.
+All four blob fields are mandatory; JSON null explicitly means absent. The
+listing is inside the canonical body bound by the final independent resolution
+review's `evidence_sha256`. Freeze it before that review. A review of an earlier
+body, the original source audit, or the earlier assembly review cannot bind it.
+Reviewer/record attribution remains subject to independent audit, not a
+cryptographic signature claim. No review, context or signature default is added.
+
+This bounded compatibility knows only `tests/ui_card_editor_652.test.mjs`, the
+actual four-width Node unit: source blob
+`23f57444c36c5a163f76b35ef7810532ab3af46a`, assembly blob
+`8a18797a497672deefb66ba90cf42c15d3e2c4d9`, absent at original and live bases.
+The exact reason is `Preserve live item 644 pointer focus(preventScroll) without
+forced reveal or scrolling on ordinary redraw at all four widths.` (one line).
+These reviewed test bytes and exact path establish qualification; an extension,
+directory, candidate hash claim or reviewer label alone never does. Unknown
+test families or other test edits require a separate reviewed source change.
+
+Git independently supplies every original/source/live/assembly entry. Every
+present entry must be a regular non-executable `100644 blob`; symlinks, gitlinks,
+mode changes, source/base substitutions and absent assembly entries refuse.
+Listed entries must be actual non-overlap mismatches with the exact reviewed
+before/after blobs and reason. Empty, duplicate, reused, stale, inapplicable or
+incorrect listings refuse. Every unlisted non-overlap entry stays exact to its
+parent side; product never qualifies. All true overlaps still require the full
+conflict-path listing, and the review still binds the whole binary diff.
+
+Existing complete v4 envelopes without `test_adaptations` remain valid and
+strict. This changes no source/controller/receipt, compact storage, post-merge
+context, ordinary/no-record guard or immutable binding interface. The frozen44
+source-only comparison is not full admission: its original own return and final
+independent body/resolution review remain required.
 
 ### Genuine Pool own receipts (source-bound adapter)
 
