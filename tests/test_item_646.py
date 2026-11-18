@@ -89,6 +89,18 @@ class Item646Case(StackCase):
         self.assertEqual(self.rows('star'), [])
         self.assertEqual(self.store.view('agent-b', 'stars', {})['items'], [])
 
+    def test_readonly_reached_outcome_keeps_personal_star_available_and_truthful(self):
+        root = self.post('Kept to read')
+        version = lambda: self.store.view('owner', 'workspace', {'workspace_id': 'w1'})['workspace']['version']
+        self.committed(self.command('outcome.kind_set', {'kind': 'reach'}, {'workspace_id': 'w1'}, {'workspace_revision': version()}))
+        self.committed(self.command('outcome.reach', {'words': 'Done', 'unmet_confirmed': True}, {'workspace_id': 'w1'}, {'workspace_revision': version()}))
+        before = self.sql("SELECT version FROM workspaces WHERE id='w1'")
+        self.committed(self.star(root))
+        self.assertTrue(self.acts(root)['starred'], 'personal star stays available on content kept to read')
+        self.committed(self.star(root, on=False, revision=1))
+        self.assertFalse(self.acts(root)['starred'])
+        self.assertEqual(self.sql("SELECT version FROM workspaces WHERE id='w1'"), before)
+
     def test_real_source_controls_apply_and_restore_every_public_byte(self):
         root = self.path.parent / 'runtime-646'
         root.mkdir()
@@ -96,7 +108,7 @@ class Item646Case(StackCase):
         script_src = ' '.join(["'self'"] + ["'%s'" % digest for digest in build.script_hashes])
         server = SimpleNamespace(build=build, csp="default-src 'self';script-src " + script_src + ';style-src self;')
         runtime = Item646Runtime(server, root, 'isolated-646', 'fixture-reader')
-        phases = ('approved', 'original', 'wrong-root', 'loaded-reply', 'reply-state', 'navigation', 'focus', 'optimistic', 'pending', 'touch-gate', 'padding', 'background', 'target')
+        phases = ('approved', 'original', 'wrong-root', 'loaded-reply', 'reply-state', 'navigation', 'focus', 'optimistic', 'doubt', 'pending', 'touch-gate', 'touch-cancel', 'padding', 'background', 'target')
         for phase in phases:
             with self.subTest(phase=phase):
                 try:

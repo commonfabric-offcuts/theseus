@@ -268,12 +268,16 @@ press cannot reach.
   read", at a laptop's width and at 390, 375 and 320 on a phone, light and
   dark; `tests/test_new_line.py` (`CountLeadsThereCase`): the count and the
   message it leads to are one rule ([attention.md](attention.md)).
-- Current 646 preview direction (Tony8575 / warp8576): the always-visible
-  second-line star toggles the reader's star on the actual first message,
-  without navigation, reveal or a focus jump. Zero checks are authored/run
-  for this revision before Tony's new preview word. 735 remains parked;
-  the historical reveal contract and attempted checks below do not establish
-  the current toggle's behavior or approve 735.
+- `tests/item_646_native.mjs`, reached from `tests/stack_native.mjs` in
+  native-reading and native-webkit-reading: the cases matching “item 646”
+  check the always-visible second-line first-message star with native pointer,
+  touch and keyboard, original padding/appearance, confirmed state, true-root
+  paging, writing preservation and actual Core failure/recovery boundaries.
+  `tests/test_item_646.py` holds Core privacy, identity, access, operations and
+  persistence. Tony8635 approved the exact preview under8617; the compact
+  natural glyph box supersedes the old44px target. Presence is not a passing
+  claim: the current REPORT/ACCEPTANCE carries observed results and gaps.
+  735's reveal cases below remain parked historical evidence, not646 gates.
 - Historical `tests/item_735_native.mjs`, reached by `tests/stack_native.mjs` in those
   same two engines: "reading item 735 first starred message red first and
   restored" and
