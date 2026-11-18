@@ -132,7 +132,7 @@ export async function dossierSelectionQuoteChecks({ check, until, view, control,
         await tap(p, pill);
         const body = 'My existing reply\n\n> '+phrase+'\n\n';
         const draft = await assertQuote(p, topic, ids.last, body);
-        assert.deepEqual(draft.addressees, ['aim-core'], 'the current Reader destination stays with its owner');
+        assert.deepEqual(draft.addressees, [], 'the saved draft keeps its seeded empty To destination');
         const state = await view('editor_state', { source_ref: { kind: 'message', id: ids.last }, topic_id: topic });
         assert.equal(state.note.body, 'My private note');
         await p.send('Input.insertText', { text: 'Still writing' });
