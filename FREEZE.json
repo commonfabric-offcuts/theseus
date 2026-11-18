@@ -1,103 +1,109 @@
 {
-  "base": "782dcf9dc4b6810e90bc9dcbf83a870b938b3e61",
-  "branch": "fable/own-receipt-8425",
-  "checks": {
-    "actual_api_control": {
-      "bytes": 4655,
-      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/own-receipt-8425/actual-control.json",
-      "sha256": "f516e620e53b4b8b038fb0854ac4b0a8018292fb994312c7c56594b2d0fc73cd"
-    },
-    "applied_mutants": 8,
-    "control_log": {
-      "bytes": 4738,
-      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/own-receipt-8425/final-control-3.log",
-      "sha256": "0ad7290bb6045eb9f9bdbc022472e584963e1b1693c9638362c38b28f9408e05"
-    },
-    "diff_check": "pass",
-    "focused_result": "pass",
-    "focused_tests": 61,
-    "invariants": {
-      "bytes": 3149,
-      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/own-receipt-8425/invariants.json",
-      "sha256": "4ff118444ee4617672d9f453413f0c7f79aefb3e90b51aee2b15f1f3757350a9"
-    },
-    "mutants": {
-      "bytes": 4791,
-      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/own-receipt-8425/mutants.json",
-      "sha256": "850b7800099a8a10dd28a3ae800eb5529d3535c517a1cbf44d057dd63683a3a5"
-    },
-    "python": "CPython 3.9.6",
-    "red": "genuine control refused before adapter; installed command shape refusal independently reproduced"
-  },
-  "controller_binding_sha256": "a01aa25c8863bff5b0b2207510c6e549f672301b0aed21c833beb26329f7ef09",
-  "evidence_index": {
-    "bytes": 15925,
-    "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/own-receipt-8425/evidence-index.json",
-    "sha256": "ce90af993cd36d4d6c4f7420837b69d4e0367ef6f94b1f9ff1abcf3803c36619"
-  },
-  "genuine": {
-    "assembly": "5a522267fef5a9649d7301200badc9e32ee0fe8a",
-    "attempt": 1,
-    "derived_engine_counts": {
-      "chromium": 293,
-      "webkit": 293
-    },
-    "raw_passes": 586,
-    "raw_rows": 586,
-    "run": 44221559712,
-    "tree": "ffa8f11f33748139b506659e2c524c2dc5652994",
-    "wrapper": "c4af1c667aeb54b193f483ac7f8385c6895eafb2"
-  },
-  "limits": [
-    "one exact pinned workflow/native/release/compose/thumbnail schema; item 651 only; one execution",
-    "unknown source/schema or geometric measurement payload refuses",
-    "expected.json is a derived test fixture; independent auditor must judge complete obligations",
-    "no combined full-source/controller/release validation or installation claimed",
-    "no hosted/browser/full-suite run, push, deployment, live-store/board/flight/Core write or delegation"
-  ],
-  "normalization": "derived internal neutral names and engine from exact source-bound prefix; phase null; no raw byte changes or synthetic raw argv/tool/engine fields",
-  "original_source_context": {
-    "api": {
-      "bytes": 14017,
-      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/coordinator-20261117/train43-v4/run-api.json",
-      "sha256": "73c0d43bfdab0c7156c84288c38a0fd9f85861c5d76a703c853f06e85c37d5fc"
-    },
-    "head": "08b4e0ddbcb323c1ed37786e41ef774e693a9614",
-    "run": 44208914389
-  },
-  "remaining": [
-    "root combines controller correction with adapter and checks exact overlap",
-    "root freezes final combined head, then one independent auditor review including #7715 tolerance checklist",
-    "one eventual commit-named installation including tools/own_case_receipt.py"
-  ],
-  "seat": "codex-own-receipt-8425",
-  "self_binding": "FREEZE.json excludes itself from recursive SHA indexing; the resulting Git commit binds its exact bytes. FINAL.json outside the commit records that commit and this file digest.",
+  "version": 1,
+  "kind": "bounded source freeze for ONE independent review; NOT self-approval or admission",
+  "base": "63b13881bcabfca79cf6beb0ac371f060f101172",
+  "rollback": "63b13881bcabfca79cf6beb0ac371f060f101172",
+  "branch": "fable/752-guard9042",
+  "seat": "codex-752-guard9042",
   "sources": {
+    "tools/train.py": {
+      "path": "/Users/commonfabric/aim-worktrees/codex-752-guard9042/tools/train.py",
+      "sha256": "730bdce8f4e0a479a783fecd8f5d4c094d64efdc1963b2c84e442c460afd6029",
+      "bytes": 104932
+    },
+    "tests/test_tools_source_carry_752.py": {
+      "path": "/Users/commonfabric/aim-worktrees/codex-752-guard9042/tests/test_tools_source_carry_752.py",
+      "sha256": "55d77ca9e5d48be8df136cebce8283f33d949323287cbb64c7c0ed6fcccb2974",
+      "bytes": 19498
+    },
+    "docs/source-carry-752.md": {
+      "path": "/Users/commonfabric/aim-worktrees/codex-752-guard9042/docs/source-carry-752.md",
+      "sha256": "eda35c12c8717383b101ac8fd2d6382d4d9f6f26f02f1061daffe6e4d14ab13f",
+      "bytes": 8111
+    },
     "REVIEW.md": {
-      "bytes": 5545,
-      "path": "/Users/commonfabric/aim-worktrees/codex-own-receipt-8425/REVIEW.md",
-      "sha256": "a134af401f76506bcd9424ca702fb819cf5e1ad3ea12c8817d3700ca7aca6cf0"
-    },
-    "docs/base-move-evidence.md": {
-      "bytes": 12685,
-      "path": "/Users/commonfabric/aim-worktrees/codex-own-receipt-8425/docs/base-move-evidence.md",
-      "sha256": "94a672db65b2285f36b472b48b42a44d04dfd32b6010a0b6d0fdee621d61a12a"
-    },
-    "tests/test_tools_own_receipt.py": {
-      "bytes": 18422,
-      "path": "/Users/commonfabric/aim-worktrees/codex-own-receipt-8425/tests/test_tools_own_receipt.py",
-      "sha256": "3b5e2d5ac6fe3e12959380aa68c51401b14cdcc317e05026ca132c7a115b2cf0"
-    },
-    "tools/base_move.py": {
-      "bytes": 38815,
-      "path": "/Users/commonfabric/aim-worktrees/codex-own-receipt-8425/tools/base_move.py",
-      "sha256": "209330f8b7d48eaf7e6d711d94ee29d63274f145100985feb8bc8323314e5e64"
-    },
-    "tools/own_case_receipt.py": {
-      "bytes": 15597,
-      "path": "/Users/commonfabric/aim-worktrees/codex-own-receipt-8425/tools/own_case_receipt.py",
-      "sha256": "90396ff061978503594c0821ce6f90308771b7bd38496e7bc7d14d35814b22ca"
+      "path": "/Users/commonfabric/aim-worktrees/codex-752-guard9042/REVIEW.md",
+      "sha256": "b05f0814fc7a56ee780f6b810b7e3415c2dcfa95a8d68346899ddfb66b57835e",
+      "bytes": 15433
     }
   },
-  "version": 1
+  "carry": {
+    "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/752-guard9042/COMPLETE-CARRY.json",
+    "sha256": "66ebfa73840d6b29fa006fefb1eddc219939c34b4c919d4514cfb9118db11bd8",
+    "bytes": 2132709
+  },
+  "canonical_carry_sha256": "5189efe95a3fb471d5e5590c4970d189cbaf1380bebf201951c108ea6061bf4a",
+  "coordinator_records": {
+    "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/752-guard9042/COORDINATOR-RECORDS.json",
+    "sha256": "ee09be8808a8a08eff1cf9ba48c34d4ed08c770108d047110453ff3f32584533",
+    "bytes": 32789
+  },
+  "historical_diagnostic": {
+    "review": {
+      "path": "/Users/commonfabric/aim-worktrees/codex-752-guard9031/REVIEW.md",
+      "sha256": "aac6069fa0825bb107c25f64fa790b1bc6c2f19a99d10ede5dfbe32cf29f6b0f",
+      "bytes": 8875
+    },
+    "boundary": {
+      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/752-guard9031/BOUNDARY.json",
+      "sha256": "5b822eeb8b4ed72131e515fb282904a1f4fe679fe25a45e730021d440545d6d1",
+      "bytes": 12101
+    }
+  },
+  "evidence_index": {
+    "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/752-guard9042/EVIDENCE-INDEX.json",
+    "sha256": "41e47ba46f6f313b351d0230d99b6822540946f05049149480dc9309d7edc79c",
+    "bytes": 46842
+  },
+  "checks": {
+    "python": "CPython 3.9.6",
+    "focused": 22,
+    "retained_evidence": 11,
+    "actual_source_mutants": 12,
+    "all_final_controls": "pass",
+    "sequential": true,
+    "focused_log": {
+      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/752-guard9042/final-focused-v3.log",
+      "sha256": "623ff48f49e4139d9293e480daf67d55d306e98219f25b184778c6708b2a2012",
+      "bytes": 2806
+    },
+    "actual_log": {
+      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/752-guard9042/final-real-v3.log",
+      "sha256": "82df5d39beb5f28c13d0b625b0385fa2478287c2f2bd57e432e360d3f68919a0",
+      "bytes": 1739
+    },
+    "mutations": {
+      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/752-guard9042/campaign-v3/MUTATIONS.json",
+      "sha256": "8dd47c7795c1484837d3b0f69ca9a8007f7d5b1959f50d8ede68dd54ea9703b5",
+      "bytes": 9144
+    },
+    "invariants": {
+      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/752-guard9042/INVARIANTS.json",
+      "sha256": "8fd3ac05ba5caf77ffa2733705db00cb4afcc6cceb8195ac74e312deab821fda",
+      "bytes": 3014
+    }
+  },
+  "current_compose": {
+    "artifact": 14433354869,
+    "zip_sha256": "76ba64406cb00d75c0c5813605c4e8b622b143c78a608cf1e5ce89b335c34854",
+    "raw": 1510,
+    "true": 1508,
+    "false": 2,
+    "conclusion": "failure",
+    "placement": "NOT supplied; explicit refusal",
+    "evidence": {
+      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/752-guard9042/COMPOSE-RETURN.json",
+      "sha256": "a33976c903267daf92a292c47fd8c19abbca84b48c03e12d136b60f0a62b697a",
+      "bytes": 590975
+    }
+  },
+  "remaining": [
+    "Python1 whole and Node whole genuine d097 replacement receipts",
+    "independent classification/ruling for two new item648 WebKit compose reds; no admission extension inferred",
+    "complete canonical final union/body/inventory/workflow/own-case review",
+    "ONE independent review of frozen source before any installation",
+    "actual GitHub merge and full strict train judgment before deployment"
+  ],
+  "installation_plan": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/752-guard9042/INSTALL-PLAN.md",
+  "self_binding": "Git commit binds this FREEZE.json. External SOURCE-FREEZE.json records final commit/tree/parents/changedpaths, clean status and literal commit-named installation plan. No recursive self-hash."
 }

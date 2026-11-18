@@ -110,7 +110,10 @@ def load(path):
         train = base_move.loads(Path(path).read_text())
     except (OSError, ValueError, RecursionError, base_move.Refused) as error:
         raise Refused("no readable train at %s: %s" % (path, error))
-    if not isinstance(train, dict) or set(train) not in (set(KEYS), set(KEYS) | {"base_move"}, set(KEYS) | {"scoped"}):
+    if not isinstance(train, dict) or set(train) not in (set(KEYS), set(KEYS) | {"base_move"}, set(KEYS) | {"scoped"},
+                                                       set(KEYS) | {"source_carry"}):
+        if isinstance(train, dict) and 'source_carry' in train:
+            raise Refused('source_carry is mutually exclusive with base_move and scoped')
         raise Refused("the train is a JSON object with exactly %s, optionally base_move or scoped (mutually exclusive)" % ", ".join(KEYS))
     if not _number(train["pr"]):
         raise Refused("pr is the pull request's number, not %r" % (train["pr"],))
@@ -150,6 +153,13 @@ def load(path):
         try:
             fields(train['scoped'], 'path sha256')
         except ScopedRefused as error:
+            raise Refused(str(error))
+    if 'source_carry' in train:
+        if train['kind'] != 'judged-first' or judgment is None:
+            raise Refused('source_carry evidence requires a judged-first judgment')
+        try:
+            base_move.fields(train['source_carry'], 'path sha256')
+        except base_move.Refused as error:
             raise Refused(str(error))
     return train
 
@@ -308,7 +318,15 @@ def judge(path, sha, live, release_branch, repository, git, github):
     else:
         if train["judgment"] is None:
             raise Refused("a judged-first train comes with its judgment: the runs and checks of its judged run, and the audit")
-        if "base_move" in train:
+        if 'source_carry' in train:
+            runs, checks = judged(github, repository, train['judgment'])
+            judgment = {'head': CARRY_752_HEAD, 'producer_runs': runs, 'verdict_checks': checks,
+                        'audit': train['judgment']['audit']}
+            judgment['source_carry'] = validate_source_carry(
+                train['source_carry'], judgment, git, github, repository, live, merge, train['items'],
+                merged_pull, train['pr'], release_branch)
+            carry_require(judgment['source_carry']['context'] == 'merged', 'test-merge proof is not deploy admission')
+        elif "base_move" in train:
             # The exception has a concrete evidence contract; the original guard
             # below remains the only path when no explicit record exists.
             runs, checks = judged(github, repository, train["judgment"])
@@ -885,3 +903,695 @@ def scoped_unit_evidence(step, out, expected, job, raw, receipt):
                 and not expected, 'empty Python partition differs')
         return
     return ci.unit_evidence(step, out, expected)
+
+
+# Item 752 is an explicit exact-record route owned here, alongside scoped
+# evidence. No candidate-selected input list can replace this independent body.
+CARRY_752_FILE = '66ebfa73840d6b29fa006fefb1eddc219939c34b4c919d4514cfb9118db11bd8'
+CARRY_752_BODY = '5189efe95a3fb471d5e5590c4970d189cbaf1380bebf201951c108ea6061bf4a'
+CARRY_752_OLD = '6e08d31e1c52caa670b09185ec01ffe052942397'
+CARRY_752_HEAD = 'd0978e76ba115ece3f03754a220aee2d6ceba87b'
+CARRY_752_TREE = '490fa783d2131680ab9754ac27b95f2a92e29c35'
+CARRY_752_BASE = '3187c1bc851bdb256c272928a00dce974e2c8e48'
+CARRY_752_MERGE = '5896b1312642199a8717cd3398dda97accf2f4f3'
+CARRY_752_RUNS = {
+    44284000276: (CARRY_752_OLD, CARRY_752_OLD),
+    44297550079: ('f24636938a018d1c22c62887058d67a86a6279c9', CARRY_752_OLD),
+    44305214536: ('918a612e77f4a62d12a9dda21034e6e23bd88037', CARRY_752_HEAD),
+    44306987525: ('35c66074e5c677b5cdbb405ed362bff64db40aa0', CARRY_752_HEAD),
+}
+CARRY_752_HISTORY = {
+    '134778432497.log': '7a826bc6b50447f4ca83c45782ccf8d8be5b820e0694f4a94fa82dd77e22a253',
+    '134804897024.log': '0954f7d29e9b677a1ec109a71a6d837c0c33aab4d2d065b1fc5c5c3299307d20',
+    '134804897592.log': 'b9257946f6dc9246a326aef7305f2bf2e01bdaac01b966fa7cd9f9968f0a61b4',
+}
+CARRY_752_RETURNED = {
+    'python-2': (14428831875, 'aca022ad9df5c207574ed89d7709263e31ba589fa164ea3fd2fbf265353d7f22'),
+    'python-3': (14428254693, '65cd421328adbc41c51533dda4d4f019d36f87115d105d5f6ba7c98be7e91412'),
+    'python-4': (14428620240, 'df2bc1cec8f2805ba84aeff5d9a858be40529c686fba78404d7d29757e1b5f64'),
+    'deploy-refusals': (14427878182, 'eb047254d9563e8490f0b478002d74981953ffcb0f90959fbcb9296ae5294992'),
+}
+
+
+def carry_require(ok, why):
+    if not ok:
+        raise Refused('source carry 752: ' + why)
+
+
+def carry_canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+
+
+def carry_record(ref):
+    raw = base_move.artifact(ref)
+    carry_require(digest(raw) == CARRY_752_FILE, 'absent, stale or altered independent carry body')
+    data = base_move.loads(raw)
+    carry_require(digest(carry_canonical(data)) == CARRY_752_BODY, 'canonical carry binding differs')
+    carry_require(data['coverage']['carry_exact_recorded_scope'] == 48
+                  and data['coverage']['refused_whole_step_carry'] == 2
+                  and Counter(s['decision'] for s in data['steps']) == {
+                      'carry-exact-recorded-scope': 48, 'refuse-whole-step-unchanged-input-carry': 2},
+                  '48 carries and two refusals required')
+    # Consume the complete prior reviews, not only their names or summaries.
+    prior = {key: base_move.document(value) for key, value in data['prior_independent_records'].items()}
+    return data, prior
+
+
+def carry_sources(data, prior, git):
+    """Verify all recorded source claims, including qualified non-manifests.
+
+    Batch Git archives retain exact bytes; never import a candidate reader.
+    Refused scopes retain their differing hashes rather than being made equal.
+    """
+    import tarfile
+    commits = (data['original_head'], data['original_tested_merge'], data['target_head'])
+    carry_require(commits == (CARRY_752_OLD, CARRY_752_MERGE, CARRY_752_HEAD)
+                  and data['original_base'] == CARRY_752_BASE and data['target_tree'] == CARRY_752_TREE,
+                  'source family differs')
+    carry_require(parents_of(git, CARRY_752_MERGE) == [CARRY_752_BASE, CARRY_752_OLD]
+                  and tree_of(git, CARRY_752_MERGE) == tree_of(git, CARRY_752_OLD)
+                  and tree_of(git, CARRY_752_HEAD) == CARRY_752_TREE, 'original parent/tree differs')
+    changed = _ask(git, 'source diff', 'diff', '--name-only', CARRY_752_OLD, CARRY_752_HEAD).splitlines()
+    carry_require(changed == data['changed_files'], 'correction changed-path inventory differs')
+    claims = []
+    def visit(value):
+        if isinstance(value, dict):
+            if {'path', 'original_head_sha256', 'original_merge_sha256', 'target_sha256', 'unchanged'} <= set(value):
+                claims.append(value)
+            for child in value.values():
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+    visit(data)
+    reader = prior['four-reader']
+    for row in reader['conservative_verified_inputs']:
+        claims.append(dict(path=row['path'], original_head_sha256=row['sha256'],
+                           original_merge_sha256=row['sha256'], target_sha256=row['sha256'], unchanged=True))
+    paths = sorted({row['path'] for row in claims})
+    for path in paths:
+        base_move.safe_path(path)
+    actual = {}
+    with tempfile.TemporaryDirectory(prefix='carry-752-git-') as temp:
+        for commit, column in zip(commits, ('original_head_sha256', 'original_merge_sha256', 'target_sha256')):
+            target = Path(temp) / (column + '.tar')
+            _ask(git, 'reviewed inputs', 'archive', '--format=tar', '--output=' + str(target), commit, '--', *paths)
+            with tarfile.open(str(target)) as archive:
+                for path in paths:
+                    member = archive.getmember(path)
+                    carry_require(member.isfile(), 'non-file carried input ' + path)
+                    with archive.extractfile(member) as handle:
+                        actual[(path, column)] = digest(handle.read())
+    for row in claims:
+        values = [actual[(row['path'], key)] for key in ('original_head_sha256', 'original_merge_sha256', 'target_sha256')]
+        carry_require(values == [row[key] for key in ('original_head_sha256', 'original_merge_sha256', 'target_sha256')]
+                      and row['unchanged'] is (len(set(values)) == 1), 'changed or undeclared carried input ' + row['path'])
+    for commit, expected in reader['web_subtrees'].items():
+        carry_require(_ask(git, 'Reader subtree', 'rev-parse', '--verify', commit + ':web').strip() == expected,
+                      'qualified Reader web subtree differs')
+    for step in data['steps']:
+        if step['decision'] == 'carry-exact-recorded-scope':
+            carry_require(not step['changed_input_intersection'], 'intersecting step cannot carry')
+    return {'paths': len(paths), 'claims': len(claims), 'carry': 48, 'refused': 2}
+
+
+def carry_run(binding, github, repository, git):
+    from tools import continuation_envelope as continuation
+    base_move.fields(binding, 'run attempt workflow_head source_head')
+    base_move.number(binding['run']); base_move.number(binding['attempt'])
+    base_move.sha(binding['workflow_head']); base_move.sha(binding['source_head'])
+    carry_require(binding['attempt'] == 1, 'wrong run attempt')
+    expected = CARRY_752_RUNS.get(binding['run'])
+    if expected is not None:
+        carry_require((binding['workflow_head'], binding['source_head']) == expected, 'wrong source/workflow')
+    else:
+        carry_require(binding['source_head'] == CARRY_752_HEAD, 'replacement source differs')
+    event = 'pull_request' if binding['run'] == 44284000276 else 'workflow_dispatch'
+    run, jobs = continuation.run_fact(binding, github, repository, binding['workflow_head'], event)
+    if event == 'pull_request':
+        prs = run.get('pull_requests')
+        carry_require(isinstance(prs, list) and len(prs) == 1 and prs[0].get('number') == 86
+                      # GitHub updates this association as PR86 moves. It is
+                      # not the immutable run.head_sha or tested source. Both
+                      # exact historical/current PR heads are independently
+                      # bound below; no arbitrary association head qualifies.
+                      and prs[0].get('head', {}).get('sha') in (CARRY_752_OLD, CARRY_752_HEAD)
+                      and {k: prs[0].get('base', {}).get(k) for k in ('ref', 'sha')} ==
+                          {'ref': 'release/live73', 'sha': CARRY_752_BASE}, 'original API PR/head/base differs')
+    else:
+        carry_require(parents_of(git, binding['workflow_head']) == [binding['source_head']], 'workflow parent differs')
+        changed = _ask(git, 'workflow delta', 'diff', '--name-only', binding['source_head'], binding['workflow_head']).splitlines()
+        carry_require(changed == ['.github/workflows/checks.yml'], 'workflow changes unrelated source')
+        workflow = continuation.git_bytes(git, binding['workflow_head'], '.github/workflows/checks.yml')
+        trigger = re.search(r'^on:\n((?:[ \t].*\n|\n)+)', workflow.decode(), re.M)
+        carry_require(trigger is not None and re.findall(r'^  ([A-Za-z_]+):', trigger[1], re.M) == ['workflow_dispatch'],
+                      'replacement workflow is not manual-only')
+    return run, jobs
+
+
+def carry_archive(row, run, jobs, github, repository):
+    """Authenticate original ZIP; index every member, read only named data."""
+    from tools import continuation_envelope as continuation
+    base_move.fields(row, 'key run id name job archive')
+    base_move.safe_path(row['key']); base_move.number(row['id'])
+    carry_require(row['run'] == run['id'], 'archive run differs')
+    raw = base_move.artifact(row['archive'])
+    meta = github.get('repos/%s/actions/artifacts/%d' % (repository, row['id']))
+    wr = meta.get('workflow_run') or {}
+    carry_require(type(meta.get('id')) is int and meta['id'] == row['id'] and meta.get('name') == row['name']
+                  and meta.get('expired') is False and meta.get('size_in_bytes') == len(raw)
+                  and meta.get('digest') == 'sha256:' + digest(raw)
+                  and wr.get('id') == run['id'] and wr.get('head_sha') == run['head_sha']
+                  and wr.get('head_branch') == run['head_branch']
+                  and wr.get('repository_id') == run['repository']['id']
+                  and wr.get('head_repository_id') == run['head_repository']['id'], 'ZIP API identity/digest differs')
+    carry_require(row['job'] in jobs, 'archive attempt job missing')
+    job = jobs[row['job']]
+    upload_name = "Keep the whole run's summary" if row['name'] == 'release-check' else 'Keep the evidence'
+    upload = [s for s in job.get('steps', []) if s.get('name') == upload_name
+              and s.get('status') == 'completed' and s.get('conclusion') == 'success']
+    carry_require(len(upload) == 1, 'archive upload missing')
+    times = [continuation.stamp(s) for s in (upload[0]['started_at'], meta['created_at'], job['completed_at'])]
+    carry_require(all(t.utcoffset() is not None for t in times) and times[0] <= times[1] <= times[2],
+                  'archive attempt/upload differs')
+    members, index = {}, {}
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        names = archive.namelist()
+        carry_require(len(names) == len(set(names)), 'duplicate ZIP member')
+        for name in names:
+            base_move.safe_path(name[:-1] if name.endswith('/') else name)
+            if name.endswith('/'):
+                continue
+            value = archive.read(name)
+            index[name] = digest(value)
+            # Opaque caches/images remain in the complete digest index. Never
+            # extract or execute code, including source archives in evidence.
+            if name.endswith(('.json', '.log')) and not name.startswith('pyc/') and '/pyc/' not in name:
+                members[name] = value
+    return members, index
+
+
+def carry_dispatch(contents, binding, run, git, repository):
+    from tools import continuation_envelope as continuation
+    dispatch = base_move.loads(contents['dispatch-source.json'])
+    source = binding['source_head']; workflow = binding['workflow_head']
+    expected = {'version': 1, 'requested_source': source, 'checked_source': source,
+                'checked_tree': tree_of(git, source), 'parents': parents_of(git, source),
+                'original_source': CARRY_752_OLD, 'original_run': 44284000276, 'original_attempt': 1,
+                'release_base': CARRY_752_BASE, 'workflow_api_head': workflow, 'workflow_sha': workflow,
+                'workflow_ref': repository + '/' + continuation.WORKFLOW + '@refs/heads/' + run['head_branch'],
+                'run': str(run['id']), 'attempt': '1', 'event': 'workflow_dispatch',
+                'source_changes': _ask(git, 'dispatch changes', 'diff', '--name-only', CARRY_752_OLD, source).rstrip('\n')}
+    # New-source wrappers preserve a separately recorded authority list. It is
+    # included in the final independently bound archive/body, never a bypass.
+    if 'authority' in dispatch:
+        carry_require(isinstance(dispatch['authority'], list) and bool(dispatch['authority'])
+                      and all(type(n) is int for n in dispatch['authority']), 'invalid dispatch authority')
+        expected['authority'] = dispatch['authority']
+    carry_require(carry_canonical(dispatch) == carry_canonical(expected), 'dispatch source/workflow/base/parents differ')
+    return dispatch
+
+
+def carry_review(data, judgment):
+    review = base_move.fields(base_move.document(data['review']),
+        'version reviewer record judgment_audit body_sha256 inventory_sha256 workflow_sha256 obligations')
+    carry_require(type(review['version']) is int and review['version'] == 1 and review['reviewer'] == 'auditor'
+                  and _words(review['record']) and review['record'] != judgment['audit']
+                  and review['judgment_audit'] == judgment['audit'], 'independent final review absent or mismatched')
+    body = {k: v for k, v in data.items() if k != 'review'}
+    carry_require(review['body_sha256'] == digest(carry_canonical(body))
+                  and review['inventory_sha256'] == data['inventory']['sha256'], 'final review/body/inventory binding differs')
+    return review
+
+
+def carry_scopes(data, carried):
+    scopes = [s['step'] for s in carried['steps'] if s['decision'] == 'carry-exact-recorded-scope']
+    expected = scopes + ['python-1', 'python-2', 'python-3', 'python-4', 'node-units', 'deploy-refusals', 'native-compose']
+    executions = data['executions']
+    carry_require(isinstance(executions, list), 'missing execution inventory')
+    for row in executions:
+        base_move.fields(row, 'scope archive step')
+    actual = [r['scope'] for r in executions]
+    missing = sorted(set(expected) - set(actual))
+    carry_require(Counter(actual) == Counter(expected),
+                  'pending/missing or duplicate/extra scopes: ' + ', '.join(missing or actual))
+    return {r['scope']: r for r in executions}
+
+
+def carry_cases(rows, expected, what):
+    carry_require(isinstance(expected, list) and bool(expected), what + ': missing reviewed cases')
+    actual = [ci.key(r) for r in rows]; planned = [ci.key(r) for r in expected]
+    carry_require(len(set(actual)) == len(actual) and len(set(planned)) == len(planned)
+                  and Counter(actual) == Counter(planned), what + ': duplicate/missing/extra case inventory')
+
+
+def carry_compose_authority(rows):
+    # Auditor9042 places old outcomes only. New intersecting-step reds cannot
+    # inherit that authority or be cleared by a generic final-body review.
+    reds = [r['name'] for r in rows if r.get('passed') is not True
+            and not (r.get('expectedFailure') is True and r.get('mutationCaught') is True)]
+    carry_require(not reds, 'new-head compose raw reds need separate independent placement: ' + '; '.join(reds))
+
+
+def carry_unit(step, out, expected, scope):
+    """Only Python2's exact independently bound 12 skips remain qualified."""
+    text = (out / (step['name'] + '.log')).read_text()
+    node = step['name'] == 'node-units'
+    counts, good = release_check.node_counts(text) if node else release_check.python_counts(text)
+    carry_require(counts == step.get('counts') and good is True and step.get('passed') is True
+                  and type(step.get('exit')) is int and step['exit'] == 0, scope + ': raw counts/exit/partial differs')
+    listing = text if node else carry_unit_listing(text)
+    rows = ci.unit_records(listing, node=node)
+    carry_cases([r for r, _ in rows], expected, scope)
+    skips = [(r, status) for r, status in rows if status.startswith('skipped ')]
+    if scope == 'python-2':
+        carry_require(counts.get('tests') == 1220 and counts.get('skipped') == 12 and len(skips) == 12
+                      and all('FrozenReaders' in r['name'] for r, _ in skips), 'Python2 unexecuted qualification differs')
+    else:
+        carry_require(not skips and not counts.get('skipped'), scope + ': skipped control')
+    carry_require(all(status == 'ok' or (scope == 'python-2' and status.startswith('skipped ')) for _, status in rows)
+                  and not any(counts.get(k, 0) for k in ('todo', 'cancelled', 'expected failures', 'unexpected successes')),
+                  scope + ': incomplete control')
+    # Node's parser counts top-level tests while identities also include nested
+    # TAP checks. Their complete identity union is required by carry_cases.
+    if not node:
+        carry_require(len(rows) == counts['tests'], scope + ': partial unittest listing')
+    return rows
+
+
+def carry_unit_listing(text):
+    # OK (skipped=12) itself matches the legacy parser's test-name shape.
+    # Bound the listing at the actual single unittest terminal, retaining the
+    # original bytes/counts and exact skipped identities separately above.
+    terminals = list(re.finditer(r'^Ran ([0-9]+) tests? in [^\n]+\n', text, re.M))
+    carry_require(len(terminals) == 1, 'missing or repeated unittest terminal')
+    return text[:terminals[0].start()].split('\n======================================================================\n', 1)[0]
+
+
+def carry_replacement(content, binding, run, git, repository, scope, step):
+    """Actual summary, checked commit, command and manual quarantine facts."""
+    from tools import continuation_envelope as continuation
+    carry_dispatch(content, binding, run, git, repository)
+    receipt = base_move.loads(content['run.json']); raw = base_move.loads(content['summary.json'])
+    carry_require(receipt.get('summary_sha256') == digest(content['summary.json']), 'replacement summary digest differs')
+    selected = [s['name'] for s in raw['steps']]
+    continuation.clean_summary(raw, receipt, selected, CARRY_752_HEAD, git)
+    ci.same_run(receipt['run'], {'id': binding['run'], 'attempt': 1, 'repository': repository,
+        'workflow': 'Checks', 'event': 'workflow_dispatch', 'workflow_sha': binding['workflow_head'],
+        'workflow_ref': repository + '/' + continuation.WORKFLOW + '@refs/heads/' + run['head_branch']})
+    parents = parents_of(git, CARRY_752_HEAD)
+    carry_require(receipt.get('merge') == {'sha': CARRY_752_HEAD, 'tree': CARRY_752_TREE,
+                  'first_parent': parents[0], 'second_parent': None}
+                  and receipt.get('base') == {'ref': None, 'sha': None} and receipt.get('base_at_run') is None
+                  and receipt.get('head') == {'ref': 'refs/heads/' + run['head_branch'], 'sha': binding['workflow_head']},
+                  'replacement receipt source/head/base differs')
+    carry_require(step in raw['steps'] and selected.count(step['name']) == 1
+                  and receipt['shard']['steps'] == selected and len(set(selected)) == len(selected),
+                  'replacement raw step/assignment differs')
+    carry_require(raw.get('quarantine') == {'at': None,
+        'refused': 'a workflow_dispatch run has no event base, so nothing is quarantined', 'held': [], 'green': False},
+        'manual-event quarantine truth differs')
+    required_run = {'python-2': 44305214536, 'python-3': 44305214536,
+                    'native-compose': 44306987525, 'deploy-refusals': 44306987525}.get(scope)
+    carry_require(binding['run'] == required_run if required_run else binding['run'] not in CARRY_752_RUNS,
+                  'replacement scope/run differs')
+    return receipt, raw
+
+
+def carry_python4(contents, old_contents, prior, expected, inventory):
+    audit = prior['python4-explicit-case-union']
+    receipt = base_move.loads(contents['run.json'])
+    result = base_move.loads(contents['python4-result.json'])
+    selection = base_move.loads(contents['python4-inventory.json'])
+    carry_require(receipt == audit['receipt'] and result == audit['result'] and selection == audit['inventory'],
+                  'Python4 separately bound receipt/result/selection differs')
+    for key, name in [('subset_inventory_sha256', 'python4-inventory.json'),
+                      ('subset_result_sha256', 'python4-result.json'), ('subset_log_sha256', 'python-units.log')]:
+        carry_require(receipt[key] == digest(contents[name]), 'Python4 subset raw digest differs')
+    full, selected = selection['original_inventory'], selection['selected_ids']
+    selected_set = set(selected); carried = set(full) - selected_set
+    carry_require(len(full) == len(set(full)) == 1331 and len(selected) == len(selected_set) == 135
+                  and len(carried) == 1196 and inventory == {'carried': sorted(carried), 'selected': selected},
+                  'Python4 exact1196+135 union differs')
+    carry_require(digest(old_contents['python-units.log']) == selection['original_log_sha256'], 'Python4 original log differs')
+    def dotted(name):
+        match = re.fullmatch(r'(\S+) \(([^)]+)\)', name)
+        carry_require(match is not None, 'Python4 invalid raw identity')
+        return match[2] + '.' + match[1]
+    old_text = old_contents['python-units.log'].decode()
+    # This exact digest-bound original is cut while one named test is open.
+    # It is NOT a completed shard. Only its 1196 completed OK identities carry;
+    # the open identity must belong to the explicit new-head selection.
+    tail = re.search(r'(^|\n)(\S+ \([^)]+\)) \.\.\. $', old_text)
+    carry_require(tail is not None and dotted(tail[2]) in selected_set, 'Python4 cut identity differs')
+    old = ci.unit_records(old_text[:tail.start()].split('\n======================================================================\n', 1)[0])
+    old_ok = {dotted(r['name']) for r, status in old if status == 'ok'}
+    carry_require(len(old_ok) == 1196 and carried == old_ok and not carried.intersection(selected_set),
+                  'Python4 overlap or carried nonpass')
+    rows = ci.unit_records(contents['python-units.log'].decode())
+    carry_require(len(rows) == 135 and all(status == 'ok' for _, status in rows)
+                  and {dotted(r['name']) for r, _ in rows} == selected_set
+                  and result['started_ids'] == result['passed_ids'] == selected
+                  and result['tree_unchanged'] is True and result['was_successful'] is True,
+                  'Python4 subset partial or skipped')
+    carry_cases([{'name': name} for name in full], expected, 'python-4')
+
+
+def validate_source_carry(ref, judgment, git, github, repository, live, merge, items, merged_pull, pr, release_branch):
+    """Opted-in PR86 judgment. No partial evidence can authorize a deploy."""
+    from tools import continuation_envelope as continuation
+    try:
+        data = base_move.fields(base_move.document(ref),
+            'version carry runs archives executions inventory history controller receipts review')
+        carry_require(type(data['version']) is int and data['version'] == 1, 'unknown version')
+        carried, prior = carry_record(data['carry'])
+        carry_require(repository == 'commonfabric-offcuts/theseus' and pr == 86 and live == CARRY_752_BASE
+                      and release_branch == 'release/live73', 'wrong repository/PR/live base/release branch')
+        # judge reaches here only after pull_merge/on_branch. A separate
+        # read-only caller may prove the full source union BEFORE merging,
+        # using GitHub's actual open PR test-merge (never a fabricated merge).
+        fresh_pull = github.get(PULL_PATH % (repository, pr))
+        carry_require(fresh_pull == merged_pull, 'fresh PR context differs')
+        merged = merged_pull.get('merged') is True
+        premerge = merged_pull.get('merged') is False and merged_pull.get('state') == 'open'
+        carry_require((merged or premerge) and merged_pull.get('number') == pr
+                      and merged_pull.get('merge_commit_sha') == merge
+                      and merged_pull.get('head', {}).get('sha') == CARRY_752_HEAD
+                      and merged_pull.get('base', {}).get('ref') == release_branch
+                      and merged_pull.get('base', {}).get('sha') == live
+                      and parents_of(git, merge) == [live, CARRY_752_HEAD]
+                      and tree_of(git, merge) == CARRY_752_TREE, 'actual PR/source/base/parent/tree differs')
+        for item in items:
+            carry_require(_contains(git, item['approved_head'], CARRY_752_HEAD, 'approved source ancestry'),
+                          'approved head ancestry differs')
+        source_facts = carry_sources(carried, prior, git)
+        executions = carry_scopes(data, carried)
+        carry_require(isinstance(data['runs'], list) and len({r['run'] for r in data['runs']}) == len(data['runs'])
+                      and set(CARRY_752_RUNS) <= {r['run'] for r in data['runs']}, 'missing or duplicate source runs')
+        bindings = {r['run']: r for r in data['runs']}
+        runs = {n: carry_run(r, github, repository, git) for n, r in bindings.items()}
+        carry_require(Counter(r['id'] for r in judgment['producer_runs']) == Counter(bindings)
+                      and [r['id'] for r in judgment['verdict_checks']] == [134773516808], 'judgment run/check inventory differs')
+        review = carry_review(data, judgment)
+        carry_require(isinstance(data['history'], dict) and set(CARRY_752_HISTORY) <= set(data['history']),
+                      'missing historical cut/startup logs')
+        for name, reference in data['history'].items():
+            base_move.safe_path(name)
+            raw_history = base_move.artifact(reference)
+            if name in CARRY_752_HISTORY:
+                carry_require(digest(raw_history) == CARRY_752_HISTORY[name], 'historical failure body differs')
+        workflows = {r['workflow_head']: digest(continuation.git_bytes(git, r['workflow_head'], continuation.WORKFLOW))
+                     for r in bindings.values() if r['run'] != 44284000276}
+        carry_require(review['workflow_sha256'] == workflows, 'independent workflow byte binding differs')
+        inventory = base_move.fields(base_move.document(data['inventory']), 'archives cases python4')
+        carry_require(set(inventory['cases']) == set(executions), 'complete reviewed scope inventory differs')
+        carry_require(isinstance(data['archives'], list) and bool(data['archives']), 'missing archives')
+        archives, archive_rows = {}, {}
+        ids_seen = set()
+        for row in data['archives']:
+            carry_require(row['key'] not in archives and row['id'] not in ids_seen and row['run'] in runs,
+                          'duplicate archive or unknown run')
+            ids_seen.add(row['id']); archive_rows[row['key']] = row
+            run, jobs = runs[row['run']]
+            content, index = carry_archive(row, run, jobs, github, repository)
+            carry_require(inventory['archives'].get(row['key']) == index, 'independent complete ZIP member index differs')
+            archives[row['key']] = content
+        mandatory = {'original/check-%d' % i for i in range(11)} | {
+            'original/release-check', 'continuation/check-0', 'continuation/check-1'}
+        carry_require(mandatory <= set(archives) and set(inventory['archives']) == set(archives),
+                      'missing original cut/red/startup archives or extra inventory')
+        for key, row in carried['archives'].items():
+            actual = archive_rows[key]
+            content = archives[key]
+            carry_require(actual['id'] == row['artifact_id'] and actual['archive']['sha256'] == row['archive_sha256']
+                          and digest(content['run.json']) == row['run_receipt_sha256']
+                          and base_move.loads(content['run.json']) == row['run'], 'pinned original archive/receipt differs')
+            if row.get('summary') is not None:
+                carry_require(base_move.loads(content['summary.json']) == row['summary']
+                              and digest(content['summary.json']) == row['run']['summary_sha256'], 'original summary differs')
+            else:
+                carry_require('summary.json' not in content, 'invented partial cleanup summary')
+        # All historical JSON/log members remain digest bound in the inventory;
+        # original source/controller facts are never replaced by correction runs.
+        original_summary = base_move.loads(archives['original/release-check']['summary.json'])
+        carry_require(original_summary.get('commit') == CARRY_752_MERGE and original_summary.get('passed') is False,
+                      'original partial/red aggregate relabelled')
+        context = {'pull': merged_pull, 'number': pr, 'release_branch': release_branch, 'merge': merge,
+                   'assembly': CARRY_752_HEAD, 'live': live, 'original_base': live, 'source_head': CARRY_752_OLD,
+                   'mode': 'merged' if merged else 'premerge-source-proof'}
+        controller_source = {'run': 44284000276, 'attempt': 1, 'controller': data['controller'],
+            'base_at_run': {'ref': release_branch, 'sha': live},
+            'tested_merge': {'sha': CARRY_752_MERGE, 'tree': tree_of(git, CARRY_752_MERGE),
+                             'first_parent': live, 'second_parent': CARRY_752_OLD}}
+        controller_judgment = dict(judgment, producer_runs=[next(r for r in judgment['producer_runs'] if r['id'] == 44284000276)])
+        controller = carry_controller(controller_source, controller_judgment, github, repository, CARRY_752_OLD, context)
+        carried_by_scope = {r['step']: r for r in carried['steps'] if r['decision'] == 'carry-exact-recorded-scope'}
+        provenance = base_move.loads(archives['original/release-check']['provenance.json'])
+        old_merge = controller_source['tested_merge']
+        carry_require(provenance.get('merge') == old_merge
+                      and provenance.get('base_at_run') == controller_source['base_at_run']
+                      and Counter(provenance.get('required', [])) == Counter(release_check.REQUIRED)
+                      and Counter(original_summary.get('required', [])) == Counter(release_check.REQUIRED),
+                      'original source/required provenance differs')
+        original_plan = provenance['plan']
+        python_plan = {int(r['python_shard'].split('/')[0]): r for r in original_plan if 'python_shard' in r}
+        carry_require(set(python_plan) == {1, 2, 3, 4}, 'original Python plan incomplete')
+        planned_files = [p for row in python_plan.values() for p in row['files']]
+        source_paths = _ask(git, 'Python source inventory', 'ls-tree', '-r', '--name-only', CARRY_752_HEAD, '--', 'tests').splitlines()
+        carry_require(len(planned_files) == len(set(planned_files))
+                      and sorted(planned_files) == ci_input_reads.python_files(source_paths), 'complete Python source inventory differs')
+        for i, job in enumerate(original_plan):
+            original_receipt = base_move.loads(archives['original/check-%d' % i]['run.json'])
+            carry_require(archive_rows['original/check-%d' % i]['run'] == 44284000276, 'original archive run differs')
+            ci.same_run(original_receipt['run'], {'id': 44284000276, 'attempt': 1, 'repository': repository,
+                'workflow': 'Checks', 'event': 'pull_request', 'workflow_sha': CARRY_752_MERGE,
+                'workflow_ref': repository + '/' + continuation.WORKFLOW + '@refs/pull/86/merge'})
+            carry_require(original_receipt.get('merge') == old_merge
+                          and original_receipt.get('base_at_run') == controller_source['base_at_run']
+                          and original_receipt.get('head', {}).get('sha') == CARRY_752_OLD
+                          and original_receipt.get('shard') == {'name': job['name'], 'steps': job['steps'].split(',')},
+                          'original source/assignment receipt differs')
+        python_keys, python_files = set(), set()
+        with tempfile.TemporaryDirectory(prefix='carry-752-raw-') as temp:
+            for scope, execution in executions.items():
+                key = execution['archive']; content = archives[key]; step = execution['step']
+                out = Path(temp) / scope; out.mkdir()
+                for name, value in content.items():
+                    target = out / name; target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(value)
+                expected = inventory['cases'][scope]
+                if scope in carried_by_scope:
+                    old = carried_by_scope[scope]
+                    carry_require(key == old['archive'] and step == old['normalized_step_receipt'], 'carried step/placement differs')
+                    if scope == 'wake-replay':
+                        carry_require(digest(content['replay/candidate-1/replay.json']) == old['raw_report_sha256']
+                                      and digest(content['wake-replay-candidate-1.log']) == old['raw_log_sha256'], 'replay raw bytes differ')
+                        carry_require(expected == [{'name': 'candidate-1'}], 'replay inventory differs')
+                    else:
+                        report = base_move.loads(content[old['report_member']])
+                        carry_require(digest(content[old['report_member']]) == old['raw_sha256']
+                                      and report['results'] == old['raw_cases'], 'omitted/altered original red or control')
+                        carry_cases(report['results'], expected, scope)
+                        if 'raw_log_sha256' in old:
+                            carry_require(digest(content[scope + '.log']) == old['raw_log_sha256'], 'carried raw log differs')
+                    continue
+                binding = bindings[archive_rows[key]['run']]; run = runs[binding['run']][0]
+                carry_require(binding['source_head'] == CARRY_752_HEAD, 'refused old-source whole-step reused')
+                if scope in CARRY_752_RETURNED:
+                    carry_require((archive_rows[key]['id'], archive_rows[key]['archive']['sha256']) == CARRY_752_RETURNED[scope],
+                                  'independently reviewed returned artifact differs')
+                if scope == 'python-4':
+                    carry_dispatch(content, binding, run, git, repository)
+                    carry_require(binding['run'] == 44305214536, 'Python4 source run differs')
+                    carry_require(step == prior['python4-explicit-case-union']['result'], 'Python4 result record differs')
+                    carry_python4(content, archives['original/check-7'], prior, expected, inventory['python4'])
+                    continue
+                receipt, raw = carry_replacement(content, binding, run, git, repository, scope, step)
+                job = runs[binding['run']][1][archive_rows[key]['job']]
+                release = [s for s in job.get('steps', []) if s.get('name') ==
+                           'Whole release check, ' + ','.join(s['name'] for s in raw['steps'])]
+                carry_require(job.get('name') == 'PR86 correction ' + receipt['shard']['name']
+                              and len(release) == 1 and release[0].get('status') == 'completed'
+                              and release[0].get('conclusion') in ('success', 'failure'), 'replacement job/command assignment differs')
+                if scope == 'native-compose':
+                    carry_require(step['name'] == scope and release_check.ran_whole(step), 'compose not whole')
+                    ci.cases(step, out, expected)
+                    report = base_move.loads(content['native/compose/native.json'])
+                    carry_compose_authority(report['results'])
+                    base_move.teardown(report)
+                    carry_require(not report.get('instrumentError') and not report.get('pageErrors')
+                                  and not report.get('left'), 'compose cleanup/instrument failure')
+                    continuation.native_source_proof(report, False, None,
+                        lambda head, path: continuation.git_bytes(git, head, path), CARRY_752_HEAD, CARRY_752_HEAD)
+                else:
+                    name = 'python-units' if scope.startswith('python-') else scope
+                    carry_require(step['name'] == name, 'wrong unit step')
+                    rows = carry_unit(step, out, expected, scope)
+                    if scope.startswith('python-'):
+                        index = int(scope[-1]); part = step['python_shard']
+                        carry_require(part['index'] == index and part['total'] == 4 and raw.get('python_shard') == part,
+                                      'Python partition differs')
+                        carry_require(part['files'] == python_plan[index]['files'] and step.get('argv', [])[1:] ==
+                            [raw['checkout'] + '/tools/unit_shards.py', '--root', raw['checkout'], '--shard', '%d/4' % index],
+                            'Python whole partition command/files differs')
+                        metadata = [base_move.loads(line) for line in content['python-units.log'].decode().splitlines()
+                                    if line.startswith('{"unit_shards":')]
+                        carry_require(len(metadata) == 1 and metadata[0].get('python_shard') == part
+                                      and metadata[0].get('tests') == step['counts']['tests'], 'Python partition log differs')
+                        files = part['files']; keys = {ci.key(r) for r, _ in rows}
+                        carry_require(len(files) == len(set(files)) and not python_files.intersection(files)
+                                      and not python_keys.intersection(keys), 'Python overlap')
+                        python_files.update(files); python_keys.update(keys)
+                    else:
+                        argv = step.get('argv')
+                        if scope == 'node-units':
+                            node_files = sorted(p for p in source_paths if '/' not in p[len('tests/'):]
+                                                and p.endswith('.test.mjs'))
+                            carry_require(isinstance(argv, list) and argv[1:] ==
+                                ['--test', '--test-reporter=tap'] + node_files, 'Node whole command/input inventory differs')
+                        else:
+                            carry_require(isinstance(argv, list) and argv[1:] ==
+                                ['-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_tools_*.py',
+                                 '-k', 'test_tools_deploy.DeployRefuses', '-k', 'test_tools_train.', '-v'],
+                                'deploy-refusals command differs')
+        py4_ids = set(prior['python4-explicit-case-union']['inventory']['original_inventory'])
+        def dotted_key(row):
+            match = re.fullmatch(r'(\S+) \(([^)]+)\)', row['name'])
+            carry_require(match is not None, 'Python invalid union identity')
+            return match[2] + '.' + match[1]
+        other_py = [r for scope in ('python-1', 'python-2', 'python-3') for r in inventory['cases'][scope]]
+        carry_require(not py4_ids.intersection(dotted_key(r) for r in other_py), 'Python4 case overlap')
+        # Own acceptance stays separate and uses the existing exact-source reader.
+        obligations = review['obligations']; expected_own = []
+        carry_require(isinstance(obligations, list) and bool(obligations), 'missing independent own-case obligations')
+        for row in obligations:
+            base_move.fields(row, 'step case phase engine')
+            carry_require(row['step'] in ci.NATIVE and _words(row['case']) and row['engine'] in ('chromium', 'webkit')
+                          and (row['phase'] is None or _words(row['phase'])), 'invalid own-case obligation')
+            expected_own.append((row['step'], row['case'], row['phase'], row['engine']))
+        carry_require(len(set(expected_own)) == len(expected_own) and all(
+            (s, c, p, e) in expected_own for s, c, p, _ in expected_own for e in ('chromium', 'webkit')), 'incomplete own engines')
+        got = Counter()
+        for receipt in data['receipts']:
+            keys, _ = base_move.own_receipt(receipt, git, github, repository, CARRY_752_HEAD, CARRY_752_TREE, expected_own)
+            got.update(keys)
+        carry_require(got == Counter({key: 1 for key in expected_own}), 'missing/duplicate own-case receipts')
+        return {'version': 1, 'evidence': ref, 'carry': data['carry'], 'review': data['review'],
+                'inventory': data['inventory'], 'source_facts': source_facts, 'controller': controller,
+                'context': 'merged' if merged else 'premerge-source-proof; NOT deploy admission',
+                'scopes': 55, 'required_steps': 52, 'qualified_unexecuted': 12,
+                'kind': 'exact-two-source-carry; original outcomes retained'}
+    except (base_move.Refused, ci.Refused, release_check.Refused, OSError, ValueError, KeyError, IndexError, TypeError,
+            AttributeError, RecursionError, zipfile.BadZipFile) as error:
+        raise Refused('source carry 752: invalid or incomplete evidence: %s' % error)
+
+
+def carry_controller(source, judgment, github, repository, head, merged_context):
+    data = base_move.fields(source['controller'], 'run attempt current_base verdict_artifact published_artifact')
+    current = base_move.base_fact(data['current_base'])
+    original = base_move.base_fact(source.get('base_at_run'))
+    base_move.require(source['tested_merge']['first_parent'] == original['sha']
+            and source['tested_merge']['second_parent'] == head, 'controller original merge binding differs')
+    base_move.number(data['run']); base_move.number(data['attempt'])
+    base_move.require(data['run'] != source['run'], 'controller is not a separate run')
+    run = github.get('repos/%s/actions/runs/%d' % (repository, data['run']))
+    base_move.require(run.get('id') == data['run'] and run.get('run_attempt') == data['attempt']
+            and run.get('name') == 'Verdict' and run.get('path') == '.github/workflows/verdict.yml'
+            and run.get('event') == 'workflow_run' and run.get('status') == 'completed'
+            and run.get('conclusion') in ('success', 'failure'), 'controller run identity differs')
+    base_move.sha(run['head_sha'])
+    suffix = '%d-%d-c%d' % (source['run'], source['attempt'], data['attempt'])
+    verdict = base_move.controller_archive(data['verdict_artifact'], github, repository, run, 'verdict-' + suffix)
+    published = base_move.controller_archive(data['published_artifact'], github, repository, run, 'published-' + suffix)
+    binding = base_move.loads(verdict['producer.json']); check = base_move.loads(verdict['check-run.json'])
+    pub = base_move.loads(published['published.json'])
+    producer, controller = binding['producer'], binding['controller']
+    ci.same_run({'id': producer.get('run_id'), 'attempt': producer.get('run_attempt')},
+                {'id': source['run'], 'attempt': source['attempt']})
+    base_move.require(producer.get('head_sha') == head and producer.get('head_repository') == repository
+            and producer.get('event') == 'pull_request' and producer.get('workflow_name') == 'Checks'
+            and producer.get('workflow_path') == '.github/workflows/checks.yml'
+            and producer.get('conclusion') == judgment['producer_runs'][0]['conclusion'], 'controller producer binding differs')
+    pr = producer['pull_request']
+    base_move.require(pr.get('head_sha') == head and pr.get('base_sha') == current['sha']
+            and pr.get('base_ref') == current['ref'], 'controller current PR binding differs')
+    base_move.number(pr['number'])
+    url = 'https://github.com/%s/actions/runs/%d' % (repository, data['run'])
+    ci.same_run({'id': controller.get('run_id'), 'attempt': controller.get('run_attempt')},
+                {'id': data['run'], 'attempt': data['attempt']})
+    base_move.require(controller.get('repository') == repository and controller.get('url') == url
+            and controller.get('sha') == controller.get('workflow_sha') == run['head_sha']
+            and controller.get('ref') == 'refs/heads/' + run['head_branch']
+            and controller.get('workflow_ref') == repository + '/.github/workflows/verdict.yml@' + controller['ref'],
+            'protected controller identity differs')
+    base_move.require(len(judgment['verdict_checks']) == 1, 'need exact published Verdict check')
+    listed = judgment['verdict_checks'][0]
+    raw = github.get('repos/%s/check-runs/%d' % (repository, listed['id']))
+    prs = raw.get('pull_requests')
+    if prs == []:
+        # Context comes only from the reviewed two-edge Git chain in validate,
+        # never from a manifest override or a missing/nonempty association.
+        base_move.require(isinstance(merged_context, dict), 'empty check association needs merged train context')
+        ctx = merged_context
+        pull = ctx['pull']
+        base_move.require(pull.get('number') == ctx['number'] == pr['number']
+                and pull.get('merged') is True and pull.get('merge_commit_sha') == ctx['merge']
+                and pull.get('head', {}).get('sha') == ctx['assembly']
+                and pull.get('base', {}).get('sha') == ctx['live']
+                and pull.get('base', {}).get('ref') == current['ref'] == ctx['release_branch']
+                and original['sha'] == ctx['original_base']
+                and current['sha'] in (ctx['original_base'], ctx['live'])
+                and head == ctx['source_head'], 'empty check association merged PR binding differs')
+    else:
+        # This sole opted-in family has two separately authenticated source
+        # heads. GitHub's PR association is mutable; check.head_sha, producer,
+        # publication and failed conclusion remain the original immutable facts.
+        base_move.require(isinstance(merged_context, dict), 'carry check needs actual merged context')
+        ctx = merged_context
+        pull = ctx['pull']
+        base_move.require(head == CARRY_752_OLD and ctx['source_head'] == head
+                and ctx['assembly'] == CARRY_752_HEAD and ctx['live'] == CARRY_752_BASE
+                and pull.get('number') == ctx['number'] == pr['number'] == 86
+                and (pull.get('merged') is True or (ctx.get('mode') == 'premerge-source-proof'
+                     and pull.get('merged') is False and pull.get('state') == 'open'))
+                and pull.get('merge_commit_sha') == ctx['merge']
+                and pull.get('head', {}).get('sha') == CARRY_752_HEAD
+                and pull.get('base', {}).get('sha') == CARRY_752_BASE
+                and pull.get('base', {}).get('ref') == current['ref'] == ctx['release_branch']
+                and current['sha'] == original['sha'] == CARRY_752_BASE,
+                'carry check actual merge/base context differs')
+        base_move.require(isinstance(prs, list) and len(prs) == 1 and prs[0].get('number') == pr['number']
+                and prs[0].get('head', {}).get('sha') in (CARRY_752_OLD, CARRY_752_HEAD)
+                and prs[0].get('base', {}).get('ref') == current['ref']
+                and prs[0].get('base', {}).get('sha') == current['sha'], 'archived check current PR binding differs')
+    external = '%d-%d' % (source['run'], source['attempt'])
+    # Plain early refusals require equal complete base facts and the exact
+    # publication pair. Branch-named receipts also occur without a base move.
+    # Both PR records above and all three names below must still agree.
+    plain = current == original and (pub.get('name'), pub.get('base')) == ('Verdict', '')
+    name = 'Verdict' if plain else 'Verdict for ' + current['ref']
+    published_base = '' if plain else current['ref']
+    base_move.require(pub.get('check_run_id') == listed['id'] == raw.get('id')
+            and pub.get('head_sha') == head and pub.get('name') == name and pub.get('base') == published_base
+            and pub.get('external_id') == external, 'published Verdict binding differs')
+    for key, expected in (('controller_run', data['run']), ('controller_attempt', data['attempt']),
+                          ('producer_run', source['run']), ('producer_attempt', source['attempt'])):
+        base_move.require(str(pub.get(key)) == str(expected), 'published attempt binding differs')
+    base_move.require(raw.get('app', {}).get('id') == base_move.VERDICT_APP['id']
+            and raw.get('app', {}).get('slug') == base_move.VERDICT_APP['slug'], 'untrusted Verdict App')
+    expected = {'name': name, 'head_sha': head, 'status': 'completed',
+                'conclusion': listed['conclusion'], 'details_url': url, 'external_id': external}
+    base_move.require(listed['conclusion'] in ('success', 'failure') and all(
+        raw.get(k) == check.get(k) == v for k, v in expected.items()), 'source check binding differs')
+    output = check['output']; api_output = raw.get('output') or {}
+    summary = output['summary']
+    appended = '\nPublished by controller run %d attempt %d.' % (data['run'], data['attempt'])
+    base_move.require(api_output.get('title') == output.get('title')
+            and api_output.get('summary') in (summary, summary + appended), 'Verdict output differs')
+    refusal = verdict['refusals'].decode()
+    if refusal.strip():
+        base_move.require(output.get('title') == 'refused' and check['conclusion'] == 'failure'
+                and summary.startswith('Refused:\n' + ''.join('- ' + line + '\n' for line in refusal.splitlines())),
+                'Verdict refusal ground differs')
+    return {'run': data['run'], 'attempt': data['attempt'], 'head': run['head_sha'],
+            'check': listed['id'], 'current_base': current, 'output': output, 'refusals': refusal,
+            'producer': {'head_ref': producer['head_branch'], 'pr': pr['number']}}
