@@ -35,6 +35,16 @@ def runtime(server, candidate, csp, root, phase, loader):
         assert files[name] != before and files[name].count(new) == 1
         mutation = {"file": name, "before": hashlib.sha256(before).hexdigest(),
                     "after": hashlib.sha256(files[name]).hexdigest(), "count": 1}
+    elif phase == "tiny-target":
+        name = "aim.css"
+        old = b".dossier-quote-pill{position:fixed;z-index:21;min-width:44px;min-height:44px;"
+        new = b".dossier-quote-pill{position:fixed;z-index:21;min-width:12px;min-height:12px;"
+        assert files[name].count(old) == 1, "one exact item 674 touch target"
+        before = files[name]
+        files[name] = before.replace(old, new)
+        assert files[name] != before and files[name].count(new) == 1
+        mutation = {"file": name, "before": hashlib.sha256(before).hexdigest(),
+                    "after": hashlib.sha256(files[name]).hexdigest(), "count": 1}
     elif phase != "restored":
         raise ValueError("Unknown item 674 phase: " + phase)
     if phase == "restored":

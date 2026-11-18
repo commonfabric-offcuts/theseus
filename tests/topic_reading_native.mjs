@@ -3190,7 +3190,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.close();
   });
 
-  await dossierSelectionQuoteChecks({ check, until, view, control, shot, facts, observations, engine },
+  await dossierSelectionQuoteChecks({ check, until, view, control, shot, facts, observations, engine, grant },
     { seed, open, becomes, centre, tap, card, words, openReader, closeReader, into });
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });

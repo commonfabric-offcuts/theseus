@@ -148,3 +148,14 @@ test('item 674 swipe selection priority mutant red then restored ordinary swipe 
   assert.throws(()=>swipeCheck(mutant),/selection takes priority/);swipeCheck(swipeMethod);
   console.log(JSON.stringify({name:'item 674 swipe priority',native:false,applied:1,mutant:sha(mutant),restored:sha(swipeMethod),caught:true}));
 });
+
+test('item 674 Quote retains its validated words when native focus on the pill collapses selection',()=>{
+  const f=fixture(),pill={hidden:false,style:{},offsetWidth:100,offsetHeight:44};
+  f.c.pill=pill;f.c.current=f.chosen;f.c.doc.activeElement=pill;
+  f.selection.rangeCount=0;f.selection.isCollapsed=true;
+  f.c.viewport=()=>({left:0,top:0,right:390,bottom:844});
+  f.range.getBoundingClientRect=()=>({left:20,right:100,top:100,bottom:120});
+  f.c.update();assert.equal(pill.hidden,false,'keyboard focus keeps the validated offer');
+  assert.equal(f.c.current?.excerpt.text,'Amber birds');
+  f.words.revision=3;f.c.update();assert.equal(pill.hidden,true,'a changed source still invalidates the focused offer');
+});

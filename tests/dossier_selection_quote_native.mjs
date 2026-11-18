@@ -2,9 +2,11 @@
 // Mouse dragging in a touch-enabled desktop engine is not iOS handle/menu proof.
 import assert from 'node:assert/strict';
 
-export async function dossierSelectionQuoteChecks({ check, until, view, control, shot, facts, observations, engine }, h) {
+export async function dossierSelectionQuoteChecks({ check, until, view, control, shot, facts, observations, engine, grant }, h) {
   const { seed, open, becomes, centre, tap, card, words, closeReader } = h;
   const pill = '#dossier-quote-selection', phrase = 'Amber birds';
+  let selection674 = 0;
+  const desktopBefore = new Map();
   const source = 'Amber birds rest here. A second sentence stays readable.';
   const visible = p => p.evaluate(`Boolean(document.querySelector('${pill}') && !document.querySelector('${pill}').hidden)`);
   const frames = p => p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
@@ -47,7 +49,14 @@ export async function dossierSelectionQuoteChecks({ check, until, view, control,
     await centre(p, '#workspace-name'); await p.point('#workspace-name');
     await centre(p, words(id)); await frames(p);
     await drag(p, await pointOf(p, words(id), text, 'start'), await pointOf(p, words(id), text, 'end'));
-    assert.equal(await p.evaluate('getSelection().toString()'), text, 'native drag selected exact words');
+    const selected = await p.evaluate('getSelection().toString()');
+    if (selected !== text) {
+      const key='item-674-selection-unreached-'+(++selection674);
+      observations.push({name:'item 674 native selection diagnostic',key,engine,expected:text,actual:selected,
+        state:await p.evaluate(`(()=>{const w=document.querySelector(${JSON.stringify(words(id))}),c=w.closest('.message-card'),s=getComputedStyle(w),sel=getSelection();return {coarse:matchMedia('(pointer:coarse)').matches,cardTag:c.tagName,cardRole:c.getAttribute('role'),userSelect:s.userSelect,webkitUserSelect:s.webkitUserSelect,reader:document.querySelector('#reader').open,rangeCount:sel.rangeCount,collapsed:sel.isCollapsed,active:document.activeElement.tagName}})()`)});
+      await shot(p,key);
+    }
+    assert.equal(selected, text, 'native drag selected exact words');
   };
   const quoteState = async (topic, id) => (await view('editor_state', { source_ref: { kind: 'message', id }, topic_id: topic })).draft;
   const assertQuote = async (p, topic, id, body) => {
@@ -87,7 +96,7 @@ export async function dossierSelectionQuoteChecks({ check, until, view, control,
 
   for (const device of ['phone-320','phone-375','phone','laptop']) for (const tone of ['light','dark']) {
     const key = `item-674-${device}-${tone}`;
-    await check(`reading item 674 exact quote and unchanged default ${device} ${tone}`, async () => {
+    await check(`reading item 674 exact quote and unchanged default ${device} ${tone} geometryTolerancePx=0.5`, async () => {
       const topic = key, ids = await setup(topic);
       const startingIds=(await view('topic_messages',{topic_id:topic,direction:'before',limit:20})).items.map(m=>m.id).sort();
       await control({ method: 'private_writing', kind: 'draft', message_id: ids.last, topic_id: topic, operation_id: key+'-draft', body: 'My existing reply' });
@@ -101,6 +110,7 @@ export async function dossierSelectionQuoteChecks({ check, until, view, control,
         else {
           await drag(p, await pointOf(p, words(ids.last), phrase, 'start'), await pointOf(p, words(ids.last), phrase, 'end'));
           assert.equal(await p.evaluate('getSelection().toString()'), '', 'unchanged desktop card button has no native text selection');
+          desktopBefore.set(key, await p.evaluate("document.querySelector('#reader').open"));
         }
       }));
       await withPage(key+'-after', device, topic, ids, tone, async p => {
@@ -108,15 +118,16 @@ export async function dossierSelectionQuoteChecks({ check, until, view, control,
           await drag(p, await pointOf(p, words(ids.last), phrase, 'start'), await pointOf(p, words(ids.last), phrase, 'end'));
           assert.equal(await p.evaluate('getSelection().toString()'), '', 'desktop card selection behavior is unchanged');
         } else await select(p, ids.last);
-        await closed(p);
+        if(device==='laptop') assert.equal(await p.evaluate("document.querySelector('#reader').open"),desktopBefore.get(key),'desktop native drag keeps its actual original opening behavior');
+        else await closed(p);
         assert.equal(await p.evaluate("matchMedia('(pointer:coarse)').matches"), device !== 'laptop', 'actual coarse-pointer media condition');
         assert.equal(await visible(p), device !== 'laptop', 'only the coarse-pointer selection offers the pill');
         await shot(p, key+'-selected');
         if (device === 'laptop') return;
         const geometry = await p.evaluate(`(()=>{const p=document.querySelector('${pill}'),b=p.getBoundingClientRect(),t=document.querySelector('#quote-selection');return {width:b.width,height:b.height,left:b.left,top:b.top,right:b.right,bottom:b.bottom,screen:innerWidth,screenH:innerHeight,label:p.textContent,template:t.textContent}})()`);
-        const tolerancePx = .5; // CSS fractional layout rounding, not permission for a smaller target.
-        assert.ok(geometry.width >= 44-tolerancePx && geometry.height >= 44-tolerancePx, JSON.stringify(geometry));
-        assert.ok(geometry.left >= 0 && geometry.top >= 0 && geometry.right <= geometry.screen+tolerancePx && geometry.bottom <= geometry.screenH+tolerancePx);
+        const geometryTolerancePx = .5; // CSS fractional layout rounding, not permission for a smaller target.
+        assert.ok(geometry.width >= 44-geometryTolerancePx && geometry.height >= 44-geometryTolerancePx, JSON.stringify(geometry));
+        assert.ok(geometry.left >= 0 && geometry.top >= 0 && geometry.right <= geometry.screen+geometryTolerancePx && geometry.bottom <= geometry.screenH+geometryTolerancePx);
         assert.equal(geometry.label, geometry.template, 'the actual composer pill markup is reused');
         await tap(p, pill);
         const body = 'My existing reply\n\n> '+phrase+'\n\n';
@@ -152,6 +163,11 @@ export async function dossierSelectionQuoteChecks({ check, until, view, control,
         await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.last))}).hidden=false`); await frames(p);
         assert.equal(await visible(p),false,'making the source visible does not revive invalidated words');
         await select(p,ids.last);
+        // A deleted-word annotation is a DOM guard input, not message deletion.
+        await p.evaluate(`document.querySelector(${JSON.stringify(words(ids.last))}).firstElementChild.classList.add('struck-words')`); await frames(p);
+        assert.equal(await visible(p),false,'selected deleted-word annotations offer nothing');await shot(p,key+'-deleted-annotation');
+        await p.evaluate(`document.querySelector(${JSON.stringify(words(ids.last))}).firstElementChild.classList.remove('struck-words')`);
+        await select(p,ids.last);
         await control({ method:'agent_edit',sender:'aim-core',message_id:ids.last,revision:1,operation_id:key+'-edit',body:'New words replace the selected revision.' });
         await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(words(ids.last))}).textContent==='New words replace the selected revision.'`),'item 674 source repaint arrived');
         assert.equal(await visible(p),false,'repainted selection has no stale quote'); await closed(p); await shot(p,key+'-repainted');
@@ -180,9 +196,58 @@ export async function dossierSelectionQuoteChecks({ check, until, view, control,
     });
   });
 
-  for (const tone of ['light','dark']) await check(`reading item 674 keyboard activation and cancelled native press ${tone}`,async()=>{
-    const key='item-674-key-'+tone,topic=key,ids=await setup(topic);
+  await check('reading item 674 target mutant fails measured minimum geometryTolerancePx=0.5 and restores',async()=>{
+    const key='item-674-target-mutant',topic=key,ids=await setup(topic);
+    await runtime('tiny-target',key,async receipt=>{
+      assert.equal(receipt.mutation.count,1);
+      await withPage(key,'phone',topic,ids,'light',async p=>{
+        await select(p,ids.last);assert.equal(await visible(p),true);
+        const box=await p.box(pill),geometryTolerancePx=.5;
+        await expectedRed(key,async()=>assert.ok(box.height>=44-geometryTolerancePx,'native target keeps minimum 44px with geometryTolerancePx=0.5'));
+        await shot(p,key+'-red');
+      });
+    });
+    await withPage(key+'-restored','phone',topic,ids,'light',async p=>{
+      await select(p,ids.last);assert.equal(await visible(p),true);
+      const box=await p.box(pill),geometryTolerancePx=.5;
+      assert.ok(box.height>=44-geometryTolerancePx);await shot(p,key+'-restored');
+    });
+  });
+
+  if(engine==='chrome') for(const tone of ['light','dark']) await check(`reading item 674 native swipe selection priority normal swipe and Copy ${tone}`,async()=>{
+    const key='item-674-swipe-'+tone,topic=key,ids=await setup(topic);
     await withPage(key,'phone',topic,ids,tone,async p=>{
+      await select(p,ids.last);assert.equal(await visible(p),true);
+      if(grant){
+        await grant(['clipboard-read','clipboard-write']);await p.key('c',4);
+        assert.equal(await p.evaluate('navigator.clipboard.readText()'),phrase,'native Copy retains exact browser selection');
+      }else assert.fail('Chromium Copy requires its existing native permission grant');
+      const b=await p.box(card(ids.last)),x=b.x+35,y=b.y+20;
+      const swipe=async()=>{
+        await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
+        await p.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+110,y}]});
+        await p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await frames(p);
+      };
+      await swipe();
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.last))}).dataset.folded`),'false','selection takes priority over native fold swipe');
+      await shot(p,key+'-selection');
+      await centre(p,'#workspace-name');await p.point('#workspace-name');await centre(p,card(ids.last));await frames(p);
+      assert.equal(await p.evaluate('getSelection().isCollapsed'),true,'ordinary swipe starts with no selection');
+      // Re-measure after scrolling; the native finger starts on this card now.
+      const at=await p.box(card(ids.last)),sx=at.x+35,sy=at.y+20;
+      await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:sx,y:sy}]});
+      await p.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:sx+110,y:sy}]});
+      await p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(card(ids.last))}).dataset.folded==='true'`),'ordinary native swipe still folds the message');
+      assert.ok((await view('message_acts',{topic_id:topic})).items.some(m=>m.message_id===ids.last&&m.acts.folded),'Core keeps the native fold');
+      await shot(p,key+'-normal');
+    });
+  });
+  if(engine!=='chrome') observations.push({name:'item 674 unreached native swipe and Copy',engine,reason:'existing WebKit adapter has no native touch drag or clipboard-read grant; Chromium owns those gesture assertions'});
+
+  for (const device of ['phone-320','phone-375','phone']) for (const tone of ['light','dark']) await check(`reading item 674 keyboard activation and cancelled native press ${device} ${tone}`,async()=>{
+    const key='item-674-key-'+device+'-'+tone,topic=key,ids=await setup(topic);
+    await withPage(key,device,topic,ids,tone,async p=>{
       await select(p,ids.last);assert.equal(await visible(p),true);
       if(engine==='chrome'){
         const b=await p.box(pill),x=b.x+b.width/2,y=b.y+b.height/2;
@@ -202,11 +267,11 @@ export async function dossierSelectionQuoteChecks({ check, until, view, control,
     });
   });
 
-  for(const state of ['busy','refused','error']) await check(`reading item 674 ${state} existing opening owner and recovered activation`,async()=>{
-    const key='item-674-'+state,topic=key,ids=await setup(topic),hold=key+'-hold';
+  for(const device of ['phone-320','phone-375','phone']) for(const tone of ['light','dark']) for(const state of ['busy','refused','error']) await check(`reading item 674 ${state} existing opening owner and recovered activation ${device} ${tone}`,async()=>{
+    const key='item-674-'+state+'-'+device+'-'+tone,topic=key,ids=await setup(topic),hold=key+'-hold';
     let held=false;
     try{
-      await withPage(key,'phone',topic,ids,'light',async p=>{
+      await withPage(key,device,topic,ids,tone,async p=>{
         await select(p,ids.last);assert.equal(await visible(p),true);
         const since=(await control({method:'admission_events'})).next;
         if(state==='busy'){

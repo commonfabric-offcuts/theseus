@@ -55,3 +55,12 @@ The current quote destination/layout and writing owners are the default.
 Desktop WebKit does not establish physical iOS selection handles, system menus,
 software-keyboard geometry or native touch-drag cancellation. Unreached states
 and raw failures belong in the stage report; they are not passing checks.
+
+
+A native selection changed after invalidation releases the old quarantine; a
+new deliberate selection of the same phrase can qualify. Native focus on the
+offered Quote button may collapse browser selection: that button retains the
+already captured, revalidated range while it owns focus. Changing words,
+revision, visibility or availability still refuses it. Leaving that button
+returns to the browser's current selection. These are the only additions to
+the preview controller; the Reader's quote owner and defaults remain its own.

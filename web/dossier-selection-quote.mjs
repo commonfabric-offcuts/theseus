@@ -26,6 +26,7 @@ export class DossierSelectionQuote {
     this.current = null; this.held = null; this.invalid = null;
 
     this.doc.addEventListener('selectionchange', () => this.update());
+    this.doc.addEventListener('focusin', () => this.update());
     this.phone.addEventListener('change', () => this.update());
     this.doc.addEventListener('scroll', () => this.update(), { capture: true, passive: true });
     this.win.addEventListener('resize', () => this.update());
@@ -36,7 +37,7 @@ export class DossierSelectionQuote {
     this.doc.addEventListener('pointerdown', event => {
       if (!this.pill.contains(event.target)) { this.held = null; this.update(); return; }
       // Before focus or native selection collapse, exactly as the Reader does.
-      this.held = this.capture();
+      this.held = this.choice();
       if (event.pointerType === 'mouse') event.preventDefault();
     }, true);
     this.doc.addEventListener('pointerup', event => {
@@ -48,11 +49,11 @@ export class DossierSelectionQuote {
     this.pill.addEventListener('pointercancel', () => this.release());
     this.pill.addEventListener('pointerleave', event => { if (event.buttons) this.release(); });
     this.pill.addEventListener('keydown', event => {
-      if (event.key === 'Enter' || event.key === ' ') this.held = this.capture();
+      if (event.key === 'Enter' || event.key === ' ') this.held = this.choice();
       if (event.key === 'Escape') this.clear();
     });
     this.pill.onclick = event => {
-      const chosen = this.held ?? (event.detail === 0 ? this.capture() : null);
+      const chosen = this.held ?? (event.detail === 0 ? this.choice() : null);
       // Validate again after a held repaint has landed at pointerup. Never
       // fall back to a hover passage or to the dossier's first message.
       const valid = chosen && this.valid(chosen);
@@ -108,6 +109,13 @@ export class DossierSelectionQuote {
     const left = view?.offsetLeft ?? 0, top = view?.offsetTop ?? 0;
     return { left, top, right: left + (view?.width ?? this.doc.documentElement.clientWidth),
       bottom: top + (view?.height ?? this.win.innerHeight) };
+  }
+  choice() {
+    // Native Tab can collapse selection as the offered button takes focus.
+    // Keep that exact validated capture only while this button owns focus.
+    if (this.doc.activeElement === this.pill && this.doc.getSelection()?.isCollapsed !== false &&
+        this.current && this.valid(this.current)) return this.current;
+    return this.capture();
   }
   capture() {
     if (!this.available()) return null;
@@ -178,7 +186,7 @@ export class DossierSelectionQuote {
   clear() { this.current = this.held = null; if (!this.pill.hidden) this.pill.hidden = true; }
   release() { this.held = null; this.update(); }
   update() {
-    const chosen = this.held ?? this.capture();
+    const chosen = this.held ?? this.choice();
     if (!chosen || !this.valid(chosen)) { this.clear(); return; }
     this.current = chosen;
     if (this.pill.hidden) this.pill.hidden = false;
