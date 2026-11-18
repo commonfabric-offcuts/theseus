@@ -31,6 +31,12 @@ export async function composerWidthCases(h) {
   await writeFile(path.join(evidence, 'item-650-base-inputs.json'), JSON.stringify({ commit: BASE, hashes: baseHashes }, null, 2));
   const refusedName = 'item650-refused.heic';
   const receipts = [];
+  // Playwright routing disables the browser's HTTP cache. Reuse only exact
+  // immutable static responses fetched from this fixture at this source;
+  // APIs and specialized source/mutant routes below still go to the server.
+  const staticResponses = new Map();
+  const cacheReceipt = async () => writeFile(path.join(evidence, `item-650-static-cache-${engine}.json`), JSON.stringify(
+    [...staticResponses].map(([url, value]) => ({ path: new URL(url).pathname, sha256: createHash('sha256').update(value.body).digest('hex'), bytes: value.body.length, hits: value.hits })), null, 2));
   const surfaces = ['Reader', 'New message', 'Wide Reader'];
   const states = ['empty', 'writing', 'saving', 'busy', 'refused with recovery', 'read-only', 'error',
     'permission unavailable', 'access unconfirmed', 'access checking', 'conflict review', 'composition refused',
@@ -73,6 +79,18 @@ export async function composerWidthCases(h) {
   async function setup(surface, state, shape, scheme, { baseline = false, mutation = null } = {}) {
     let applied = null, servedHash = null;
     const prepare = async p => {
+      await p.route(/\/[^/?]+\.(?:mjs|css)(?:\?.*)?$/, async route => {
+        const url = route.request().url();
+        let value = staticResponses.get(url);
+        if (!value) {
+          const response = await route.fetch();
+          assert.equal(response.status(), 200, 'static cache stores a successful fixture response only');
+          value = { body: await response.body(), headers: response.headers(), hits: 0 };
+          staticResponses.set(url, value);
+        }
+        value.hits++;
+        await route.fulfill({ status: 200, headers: value.headers, body: value.body });
+      });
       await instrument(p, baseline);
       // Observe the actual registry change path: Reader's Review button is
       // painted by app.changed, separately from Reader.paintStatus.
@@ -252,9 +270,13 @@ export async function composerWidthCases(h) {
     const seen = new Set();
     for (;;) {
       await p.keyboard.press(engine === 'webkit' ? 'Alt+Tab' : 'Tab');
+      await p.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
       const stop = await p.evaluate(a => {
         const el = document.activeElement, dialog = document.querySelector(a.dialog);
-        return { index: [...document.querySelectorAll('*')].indexOf(el),
+        window.item650FocusIds ??= new WeakMap();
+        window.item650NextFocusId ??= 0;
+        if (!window.item650FocusIds.has(el)) window.item650FocusIds.set(el, ++window.item650NextFocusId);
+        return { index: window.item650FocusIds.get(el),
           side: el?.parentElement === dialog ? el.dataset.edge : null,
           ring: el?.matches(':focus-visible') };
       }, a);
@@ -560,5 +582,5 @@ export async function composerWidthCases(h) {
     await writeFile(path.join(evidence, `item-650-mutants-${engine}.json`), JSON.stringify(receipts, null, 2));
     console.log(`MUTANT ${engine} ${mutation.name}: applied, caught, original restored and control passed`);
   });
-
+  await cacheReceipt();
 }

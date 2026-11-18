@@ -6,7 +6,7 @@
     }
   },
   "tests/composer_width_native.mjs": {
-    "4129c3e7e053e3130c55723de3f5049d97a301c9da3fa6e8f367f46fa384c826": {
+    "a433fbe22037c8fdff729946804f2ad6a9f4b22d7edaef38d8e67489af80ca06": {
       "inputs": [
         "web/reader.mjs",
         "web/inline-composer.mjs",
