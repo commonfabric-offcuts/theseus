@@ -1,10 +1,59 @@
 # Notebook Cards: a Notebook page as a deck
 
 A tool for sorting ideas and capturing notes, usable from any outcome. Any
-Notebook page opens as a deck of cards: thumbed through one at a time on a
-phone, and sorted as a list with the keys on a laptop, a card's children
+Notebook page opens as a deck of cards, sorted as a list, a card's children
 grouped under it. It is deliberately light (pipeline item 278): no Core
 change, and one unit test file for the rules that keep a page's words.
+
+## Default on phones (item 652)
+
+For now, editing cards on a phone uses the same card editor as on a laptop,
+as the default: the vertical list of cards with the writing box in the card's
+own place, in the composer sheet and on the full page. There is no separate
+phone carousel. Edit, Done, New card and Undo remain available by touch;
+chevrons and speech bubbles have names, tooltips and 44px touch targets.
+Autosaving, exact unfinished writing, permissions and recovery choices use
+the same Notebook writer at every width.
+
+`tests/reader_compose_native.mjs` (`native-compose`), the `item 652` cases in
+`tests/card_editor_652.mjs`, holds this default in Chromium and WebKit at
+320, 375, 390px and laptop width, light and dark, across the actual editor
+states. Layout bounds use named tolerances; applied source mutants must fail
+those bounds and pass again after restoration.
+
+The 44px card targets and matching title clearance apply at phone widths
+(up to 760px) as well as with a coarse pointer. A phone viewport does not
+depend on the browser reporting its primary pointer correctly. At laptop
+widths, a fine pointer retains its existing controls.
+
+At those phone widths, every pressable inside `.notebook-sheet` has a
+44px minimum width and height, independent of pointer classification. This
+includes the header links and chips, Edit/Done/New card/Undo, writing and
+ask fields and the To picker, chevrons and speech bubbles, every recovery
+and conflict choice (including Try again and Discard my writing), image
+actions and thumbnails, fenced-text Copy, ordinary links and the changes
+summary. Native controls, links, summaries, button/link roles and elements
+with a tabindex share the floor; only the two minimum dimensions use
+`!important` so more-specific status and state rules cannot lower them.
+Ordinary links get an inline block so the minimum applies; the header glyph
+and speech-bubble links keep their own display. Hidden controls stay hidden.
+The in-place writer keeps the greater of 44px and its retained card height;
+the ask field keeps five rem, card thumbnails three rem in both dimensions,
+and coarse-pointer image choices three rem in height.
+The scope is the Notebook editor sheet; the full-page card editor retains
+its existing target rules, and other composers and Pipeline controls do not
+acquire this rule.
+
+The item 652 trail records actual pointer/hover media, viewport and input
+mode, computed control boxes and applicable CSS rules. Native chevron
+presses fold and restore the child without changing saved words. Opening a
+sheet's `memory.read` request is an observation of a request, not proof of
+completed rendering. Focus-entry failures retain the engine's original
+error, an immediate unmodified screenshot, active element, native DOM
+events, Edit handler entry/return and timed DOM mutations. These observations
+do not force focus or excuse a failed native press. Scenario screenshots,
+geometry and diagnostics retain their normal, mutant or restored suffix;
+the case names and six native-compose phases stay the same.
 
 ## The page is the deck
 
@@ -58,7 +107,7 @@ fail that check. This unit control alone does not establish native behavior.
 
 | act | laptop | phone |
 | --- | --- | --- |
-| pick the card above or below | ↑ ↓ | swipe |
+| pick the card above or below | ↑ ↓ | tap the card, or Edit |
 | move the card past the one above or below it | ⌘↑ ⌘↓ | |
 | merge with the card above or below it | ⇧⌘↑ ⇧⌘↓ | |
 | put the card under the one above it | Tab | |
@@ -118,10 +167,19 @@ them, as in the composer (interaction.md), and on a Mac ⌃A and ⌃E go to the
 start and end of the line, and ⌃K, ⌃U and ⌃W delete to its end, back to its
 start and the word before the cursor.
 
-On a laptop a card being written stays where it showed: its box takes the
+At every width a card being written stays where it showed: its box takes the
 card's own place and height, its words stay on the lines they showed on, a
 card with children keeps its chevron where it stood, and the cards around it
-do not move. The box grows only when what is written needs more room. The
+do not move. The box grows only when what is written needs more room. On a
+touch parent card, chevron clearance belongs to the title line alone. The
+editor measures the read body's start to keep the taller touch title's room;
+opening Edit without
+changing the body keeps its horizontal origin and wrapping. The `item 652 B1`
+cases compare unchanged body character positions, line membership, chevron
+and adjacent-card bounds before and after native Edit, then check Done writes
+no revision, in both surfaces, themes and engines at 320/375/390 and laptop.
+Each measured comparison names its tolerance (2 CSS px); the whole-body
+padding source mutant must be caught and the restored control pass. The
 title takes the words' face while it is written, so it moves by the
 difference between the two faces' lines, and a title that wrapped beside the
 speech bubble may take a line fewer. Words that show as a list, a quote or
@@ -162,11 +220,11 @@ rail's foot that ends the page (docs/rails.md, "The rail's foot";
 docs/interaction.md, "The arrows everywhere"). With nothing focused the arrows stay the deck's, picking
 a card.
 ⇧⌘← folds every card's children away and ⇧⌘→ shows them all again. ↑ and ↓ pass over
-folded cards, a phone's swipe holds only the cards that show, and the count
+folded cards, only unfolded cards show, and the count
 says how many are folded away. An act that puts a card under a folded card,
 Tab or an undo, unfolds it to show the card where it went; a remove beside a
-folded card leaves it folded. On a phone, where one card shows at a time, a
-child card shows its parent's title above its own.
+folded card leaves it folded. A child card is indented under its parent at
+every width.
 
 ## Images in a card
 
@@ -356,8 +414,8 @@ only that row: Text, Cards and Draft keep identical boxes while the status
 words change. Attention notices wrap whole there. A refusal's Try again and Discard
 my writing follow its words, wrapping when needed, and are 44 points tall on
 touch. An empty sign keeps its row. Below the head is one
-place that scrolls; on a phone one card fills it, swiped through as on the full
-page. The line of keys above the cards is short there (↑ ↓ pick · Return new
+place that scrolls, containing the same vertical card list as the full page
+at every width. The line of keys above the cards is short there (↑ ↓ pick · Return new
 card · ⌘Return edit, and while writing Escape done · ⌘Return next card), the
 full page's line its tooltip.
 
@@ -380,7 +438,7 @@ does not use moves nothing behind it, and neither does a wheel, a trackpad or
 a finger over the backdrop or the sheet's head (its title, chips and saving
 sign), or over a card or past the end of what scrolls in the sheet. Each is
 the sheet's own only where a box in it would scroll that way, a finger's way
-counted from where it touched down, so a swipe still goes through the cards.
+counted from where it touched down, so a vertical drag scrolls the card list.
 The page showing is read again on every commit, so a
 revision made elsewhere shows at once, and is read as it comes, so its light
 stays out (nothing is drawn above the cards for it; the person's own revisions
@@ -403,8 +461,8 @@ the page open over it with its card box as it was.
 `?cards=ITEM` (topic-navigation.mjs) is the full page, with no rail, so the
 deck has the width; the eyebrow goes back to the page in its topic or outcome.
 Existing Cards links still open it. Its count and buttons stand above the
-cards, where a phone's keyboard never covers Done, and a phone opens scrolled
-to them.
+cards. The list and the in-place editor are the laptop's on a phone too, for
+now, with Done available above the cards.
 
 The checks are `tests/notebook_sheet_native.mjs`, in the `notebook` and
 `webkit-notebook` modes. Its "notebook item 642" cases compare the controls'

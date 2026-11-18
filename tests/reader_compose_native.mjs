@@ -29,6 +29,7 @@ import { createRequire } from 'node:module';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { cardEditor652 } from './card_editor_652.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const [chrome, evidence, filter = ''] = process.argv.slice(2);
@@ -114,7 +115,7 @@ const results = [], measured = [], shots = [], contexts = new Set();
 let browser, engine;
 
 // at: the fixture the page reads, the cases' own unless one says otherwise.
-async function page(shape, scheme = 'light', path = '/?topic=t1', at = facts) {
+async function page(shape, scheme = 'light', path = '/?topic=t1', at = facts, prepare = async () => {}) {
   const options = SHAPES[shape];
   const context = await browser.newContext({ ...options, colorScheme: scheme });
   contexts.add(context);
@@ -124,6 +125,7 @@ async function page(shape, scheme = 'light', path = '/?topic=t1', at = facts) {
   const p = await context.newPage();
   const errors = [];
   p.on('pageerror', error => errors.push(String(error)));
+  await prepare(p);
   await p.goto(at.origin + path);
   // A busy machine can take a while over the first load.
   await until(p, () => document.body?.dataset.ready === 'true', 'application bootstrap', undefined, 30000);
@@ -286,6 +288,7 @@ const NAMING = {
 const namedIn = (p, at) => p.evaluate(s => [...document.querySelector(s).querySelectorAll('[data-name]')].map(el => el.dataset.name), at.named);
 
 async function run() {
+  await cardEditor652({ check, page, until, press, picture, control, facts, engine, evidence, root });
   if (!filter || filter.includes('item 651')) await thumbnailChecks({ check, page, press, until, picture, close, control, facts, root, engine, evidence });
   // Items 644 and 668: observe every frame, including focus and layout changes during the act.
   for (const shape of ['phone-320', 'phone-375', 'phone-390', 'stacked']) for (const scheme of ['light', 'dark']) {

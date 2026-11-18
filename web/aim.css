@@ -986,7 +986,7 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
   .reader-end .end-step { color: #5f6b73; }
   .reading-pane.agent-pane .reader-end .end-step { color: #56616a; }
 }
-/* Cards: a Notebook page as a deck (docs/decks.md). On a laptop a list, the picked card lit and every card's words cut at four lines; on a phone one whole card fills the width and a swipe goes to the next. The count and the buttons stand above the cards. */
+/* Item 652: the laptop card editor is the default on phones for now (docs/decks.md). One vertical list and one in-place writing box at every width; touch controls keep their targets. */
 .deck-page{max-width:46rem;display:grid;gap:.6rem}.deck-status{min-height:1.5rem;flex-wrap:wrap;margin:0}.deck-status .deck-again{min-height:2rem;font-size:.78rem;padding:.1rem .6rem}
 .deck-opening{color:var(--muted);line-height:1.6;overflow-wrap:anywhere}
 .deck-cards{list-style:none;margin:0;padding:0;display:grid;gap:.45rem}
@@ -995,7 +995,7 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .deck-card.deck-selected{background:color-mix(in srgb,var(--accent) 12%,var(--panel))}.deck-card.deck-selected:not([aria-current=true]){border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}.deck-card:focus{outline:none}.deck-card:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
 .deck-title{margin:0;font-size:1rem;font-weight:700;line-height:1.35}.deck-words{margin-top:.3rem;font-size:.92rem;line-height:1.55;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}.deck-words:empty{display:none}
 .deck-writing{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:color-mix(in srgb,var(--soft) 45%,var(--panel))}.deck-editor{overflow:hidden}
-@media(min-width:761px){.deck-fold{min-height:0}.deck-editor{min-height:var(--kept,0px);padding:0;border:0;border-radius:0;background:none;font-size:.92rem;line-height:1.55;scrollbar-gutter:auto}.deck-editor:focus-visible{outline:none}.deck-parent>.deck-editor{text-indent:1.3rem}.deck-writing:not(.deck-worded)>.deck-editor{margin:calc((1.35rem - .92rem * 1.55) / 2) 0}.deck-worded>.deck-editor{padding-top:calc(1.35rem + .3rem - .92rem * 1.55)}.deck-chevron{position:absolute;top:.75rem;left:.95rem}}.deck-empty{padding:1rem 0}
+.deck-fold{min-height:0}.deck-editor{min-height:var(--kept,0px);padding:0;border:0;border-radius:0;background:none;font-size:.92rem;line-height:1.55;scrollbar-gutter:auto}.deck-editor:focus-visible{outline:none}.deck-parent>.deck-editor{text-indent:1.3rem}.deck-writing:not(.deck-worded)>.deck-editor{margin:calc((1.35rem - .92rem * 1.55) / 2) 0}.deck-worded>.deck-editor{padding-top:calc(var(--body-start,1.65rem) - .92rem * 1.55)}.deck-chevron{position:absolute;top:.75rem;left:.95rem}.deck-empty{padding:1rem 0}
 .deck-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.deck-count{flex:1;color:var(--muted);font-size:.85rem}.deck-keys{margin:0;font-size:.78rem;display:grid}.deck-keys>span{grid-area:1/1}
 .deck-read-only .deck-bar button,.deck-read-only .deck-keys{display:none}
 .deck-card{position:relative;margin-left:calc(var(--depth,0) * 1.6rem)}.deck-card[hidden]{display:none}.deck-card>.deck-title{padding-right:4.2rem}
@@ -1014,8 +1014,8 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .deck-image:has(>.image-thumb[hidden])>.deck-image-name,.deck-image:not(:has(>.image-thumb))>.deck-image-name{padding:.4rem .6rem;border:1px dashed var(--line);border-radius:.5rem}.deck-image[data-state]:has(>.image-thumb:not([hidden]))>.deck-image-name{order:1;align-self:center;max-width:12rem}
 .deck-image-remove{order:2;flex:none;display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;padding:0;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--ink);font-size:1.1rem;line-height:1;cursor:pointer}.deck-image-remove:hover{background:var(--soft)}
 @media(pointer:coarse){.deck-image-remove{width:2.75rem;height:2.75rem}}
-/* On a phone a card being written keeps room for its images beside the box, both on the screen at once. */
-@media(max-width:760px){.deck-writing:has(>.deck-images)>.deck-editor{min-height:min(26dvh,14rem)}.deck-image>.image-thumb{max-height:min(30dvh,14rem)}}
+/* Keep the phone image cap; its writing uses the shared in-place box. */
+@media(max-width:760px){.deck-image>.image-thumb{max-height:min(30dvh,14rem)}}
 .deck-writing.deck-dropping{outline:2px dashed var(--accent);outline-offset:2px}
 /* A card's image where its page is read (the Reader, a page in place): at the size it reads at, never wider than the words nor taller than most of the screen, its name under it; an image the page does not carry is its name alone. */
 .md-image{display:block}.page-image{display:flex;flex-direction:column;align-items:flex-start;gap:.25rem;margin:.35rem 0;min-width:0;max-width:100%;white-space:normal}
@@ -1023,9 +1023,9 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .page-image-name{font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}.page-image[data-state=missing]>.page-image-name{padding:.4rem .6rem;border:1px dashed var(--line);border-radius:.5rem}
 .deck-asking{border-color:var(--accent)}.deck-ask-form{display:grid;gap:.45rem;margin-top:.7rem}.deck-ask-field{min-height:5rem;overflow:hidden}
 .deck-ask-line{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.deck-ask-to{min-height:2.2rem}
-@media(max-width:760px){.deck-page{max-width:none}.deck-cards{display:flex;gap:0;overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;scrollbar-width:none}.deck-cards::-webkit-scrollbar{display:none}.deck-cards.deck-editing{overflow-x:hidden}
-.deck-card,.deck-editor{min-height:min(55dvh,30rem)}.deck-card{flex:0 0 100%;scroll-snap-align:center;max-height:72dvh;overflow-y:auto;padding:1.1rem 1.15rem;border-radius:.9rem}.deck-card[aria-current=true]{box-shadow:none;border-color:var(--line);background:var(--panel)}
-.deck-card{margin-left:0}.deck-under{display:block;margin:0 0 .35rem;font-size:.85rem}.deck-fold{width:2.25rem;height:2.5rem;margin:-.6rem .1rem -.6rem -.75rem}.deck-writing{padding:0;border:0;box-shadow:none;background:none}.deck-chevron{display:none}.deck-ask{opacity:1}.deck-bubble{min-height:40px}.deck-title{font-size:1.25rem}.deck-words{display:block;-webkit-line-clamp:unset;font-size:1.02rem;line-height:1.65}.deck-keys{display:none}.deck-count{flex-basis:100%;text-align:center}.deck-bar button{flex:1}}
+@media(pointer:coarse),(max-width:760px){.deck-fold{width:2.75rem;height:2.75rem;min-height:2.75rem}.deck-status .deck-again{min-height:2.75rem}.deck-bubble{min-height:2.75rem}.deck-parent>.deck-editor{text-indent:2.75rem}}
+@media(max-width:760px){.deck-page{max-width:none}.deck-keys{display:none}.deck-ask{opacity:1}.deck-count{flex-basis:100%;text-align:center}.deck-bar button{flex:1}}
+
 .page-here-cards{display:inline-flex;align-items:center;min-height:44px;margin-right:.8rem}
 /* Starting a Notebook page uses the same quiet pencil as starting a message. */
 .notebook-create{display:inline-grid;place-items:center;margin-left:auto;padding:.35rem;min-width:2.75rem;min-height:2.75rem;border:0;background:transparent;color:var(--muted)}
@@ -1050,7 +1050,7 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .notebook-images{display:grid;gap:.5rem}.notebook-images>button{justify-self:start}
 .notebook-image-rows{display:grid;gap:.4rem}.notebook-image{display:flex;align-items:center;gap:.65rem;min-width:0;flex-wrap:wrap}
 .notebook-image>span{flex:1;min-width:8rem;overflow-wrap:anywhere}.notebook-image .image-thumb{width:3rem;height:3rem;object-fit:contain}
-/* A Notebook page in the composer over the feed (notebook-sheet.mjs): the saving sign always has its own row below the title and controls. Changing its words never changes the columns or wraps the three view buttons (item 642). The page below is the one place that scrolls. */
+/* A Notebook page in the composer over the feed (notebook-sheet.mjs): the saving sign always has its own row below the title and controls. Changing its words never changes the columns or wraps the three view buttons (item 642). The page below is the one place that scrolls, with the shared vertical card list at every width (item 652). */
 dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .notebook-sheet{display:flex;flex-direction:column;height:100%;min-height:0}
 .notebook-sheet-head{flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;grid-template-areas:"title views full close" "status status status status";align-items:center;gap:.35rem .5rem;padding:.45rem .5rem .45rem 1.1rem;border-bottom:1px solid var(--line)}
@@ -1081,14 +1081,22 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .notebook-back{max-width:16rem;min-height:2.75rem;padding:.3rem .6rem;overflow:hidden;text-overflow:ellipsis;color:var(--accent);font-size:.88rem;font-weight:600}
 @media(pointer:coarse){.notebook-sheet-views .notebook-views button,.notebook-sheet-views .notebook-draft-toggle,.notebook-sheet-views .notebook-draft-note,.notebook-sheet-status .deck-status>button{min-height:2.75rem}.notebook-sheet-page>.notebook-images>button{min-height:2.75rem}}
 @media(max-width:760px){
+  /* Item 652: every pressable in the Notebook editor sheet keeps a 44px floor,
+     regardless of pointer media or state-specific sizing (including refusals).
+     Only these minima win the cascade; the controls keep their own layout. */
+  .notebook-sheet :is(button,input,textarea,select,a[href],summary,[role=button],[role=link],[tabindex]){min-width:2.75rem!important;min-height:2.75rem!important}
+  /* Keep the larger minima already owned by writing and image controls. */
+  .notebook-sheet textarea.deck-editor{min-height:max(2.75rem,var(--kept,0px))!important}
+  .notebook-sheet textarea.deck-ask-field{min-height:5rem!important}
+  .notebook-sheet .deck-image>.image-thumb{min-width:3rem!important;min-height:3rem!important}
+  @media(pointer:coarse){.notebook-sheet button.image-option{min-height:3rem!important}}
+  .notebook-sheet a[href]:not(.sheet-glyph,.deck-bubble){display:inline-block}
   /* Title and glyphs, then the three chips, then the sign in its own row at every phone width. */
   .notebook-sheet-head{display:flex;flex-wrap:wrap;padding:.3rem .35rem .45rem 1rem}
   .notebook-sheet-title{flex:1 1 calc(100% - 6.6rem)}.notebook-sheet-views{flex:none}
   .notebook-sheet-status{flex:0 0 100%;max-width:none;container-type:inline-size}.notebook-sheet-status .deck-status{justify-content:flex-end}
   @container (max-width:12rem){.notebook-sheet-status .save-time{display:none}}
   .notebook-sheet-page{padding:0 .75rem .75rem}
-  .notebook-sheet-page>.deck-cards{flex:1 1 auto;min-height:0;align-items:stretch}
-  .notebook-sheet-page .deck-card{min-height:0;max-height:none}
   .notebook-sheet-views .notebook-views button,.notebook-sheet-views .notebook-draft-toggle,.notebook-sheet-views .notebook-draft-note,.notebook-sheet-page>.notebook-images>button{min-height:2.75rem}
   .notebook-sheet-page>.deck-bar button{flex:none;padding-inline:.9rem}
   .notebook-back{max-width:9rem}

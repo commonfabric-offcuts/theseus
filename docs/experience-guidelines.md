@@ -73,6 +73,20 @@ never promises a quote that Return would not make.
   takes the focus …" and "reading Tab off a lit passage on a dossier's card
   puts the light out …".
 
+## Cards on a phone
+
+For now, editing cards on a phone uses the same card editor as on a laptop,
+as the default, in the composer sheet and on the full page (item 652).
+
+- `tests/reader_compose_native.mjs` (`native-compose`), the `item 652` cases
+  in `tests/card_editor_652.mjs`: the vertical list and in-place writing,
+  normal, empty, saving, permission refusals and recovery, read-only, read
+  and save errors, conflict choices, authority refusal and device-copy error,
+  at 320, 375, 390px and laptop width, light and dark, in both engines.
+- `tests/ui_card_editor_652.test.mjs`: pointer picking uses the list's focus
+  and holds the page at all four widths, with no horizontal paging; native
+  card-editor cases retain the keyboard's vertical reveal.
+
 ## Image thumbnails open the image
 
 Clicking, tapping or pressing Return on a displayed thumbnail opens that image
