@@ -126,8 +126,8 @@ export async function promiseChecks(api, helpers) {
         const citation = covers(fixture.ids.root) + ' .cover-payload .cover-src';
         await centre(p, citation); await press(p, device, citation);
         await until(() => p.evaluate('document.querySelector("#reader").open'), 'the visible source citation opens the Reader');
-        await press(p, device, '#reader-cover > summary');
-        await until(() => p.evaluate('document.querySelector("#reader-cover").open'), 'baseline disclosure opens');
+        await press(p, device, '#reader-cover-line');
+        await until(() => p.evaluate('document.querySelector("#reader-cover").hasAttribute("open")'), 'baseline disclosure opens');
         await shot(p, `717-base-reader-${width}-${theme}`);
       } finally { await p.close(); }
     }
@@ -170,8 +170,8 @@ export async function promiseChecks(api, helpers) {
           assert.ok(reached, 'native Tab reaches the promise source'); await p.key('Enter');
         }
         await until(() => p.evaluate('document.querySelector("#reader").open'), 'source link opens the Reader');
-        await press(p, device, '#reader-cover > summary');
-        await until(() => p.evaluate('document.querySelector("#reader-cover").open'), 'native cover disclosure opens');
+        await press(p, device, '#reader-cover-line');
+        await until(() => p.evaluate('document.querySelector("#reader-cover").hasAttribute("open")'), 'native cover disclosure opens');
         const readerSeen = await measure(p, '#reader-cover .dossier-cover', width);
         observations.push({ name: 'item 717 Reader cover state', phase, engine, width, theme, state, seen: readerSeen });
         verify(readerSeen, state, expected, rev >= 3);
@@ -216,15 +216,15 @@ export async function promiseChecks(api, helpers) {
     const citation = covers(root) + ' .cover-payload .cover-src';
     await centre(p, citation); await press(p, device, citation);
     await until(() => p.evaluate('document.querySelector("#reader").open'), 'payload source opens natively');
-    await press(p, device, '#reader-cover > summary');
-    await until(() => p.evaluate('document.querySelector("#reader-cover").open'), 'cover disclosure opens natively');
+    await press(p, device, '#reader-cover-line');
+    await until(() => p.evaluate('document.querySelector("#reader-cover").hasAttribute("open")'), 'cover disclosure opens natively');
   };
-  const tracedKey = async (p, key, selector, trace) => {
+  const tracedKey = async (p, key, selector, trace, modifiers = 0) => {
     const before = await p.evaluate(`window.promiseNativeTrace.begin(${JSON.stringify(selector)})`);
-    const step = { key, before };
+    const step = { key, modifiers, before };
     trace.push(step);
     let error;
-    try { await p.key(key); } catch (caught) { error = caught; }
+    try { await p.key(key, modifiers); } catch (caught) { error = caught; }
     if (error) step.error = String(error);
     const delivered = await p.evaluate('window.promiseNativeTrace.end()');
     Object.assign(step, delivered);
@@ -273,6 +273,47 @@ export async function promiseChecks(api, helpers) {
     assert.ok(reached, 'native Tab reaches acceptance');
     await tracedKey(p, 'Enter', selector, focusTrace);
   };
+  const disclosureKeys = async (p, meta, legacy = false) => {
+    const trace = [], entry = { name: 'item 717 disclosure native keys', engine, ...meta, trace };
+    observations.push(entry);
+    let onLine = await p.evaluate('document.activeElement===document.querySelector("#reader-cover-line")');
+    for (let n = 0; n < 120 && !onLine; n++) onLine = await tracedKey(p, 'Tab', '#reader-cover-line', trace);
+    assert.ok(onLine, 'native Tab reaches the disclosure itself');
+    const first = '#reader-cover .cover-payload .cover-src';
+    // One ordinary next stop, not a traversal that can wrap around a broken disclosure.
+    assert.ok(await tracedKey(p, 'Tab', first, trace), 'native Tab leaves the open cover line for its first source');
+    if (legacy) return;
+    assert.ok(await tracedKey(p, 'Tab', '#reader-cover-line', trace, 8), 'native Shift-Tab returns to the cover line');
+    for (const [key, expanded] of [[' ', false], ['Enter', true], ['Enter', false], [' ', true]]) {
+      assert.ok(await tracedKey(p, key, '#reader-cover-line', trace), 'disclosure activation keeps native focus');
+      const seen = await p.evaluate(`(()=>{const line=document.querySelector('#reader-cover-line'),host=line.parentElement,
+        sheet=document.getElementById(line.getAttribute('aria-controls'));
+        return {tag:line.tagName,expanded:line.getAttribute('aria-expanded'),open:host.hasAttribute('open'),
+          sheetShown:sheet.getClientRects().length>0,words:line.textContent,
+          ring:getComputedStyle(line).outlineStyle}})()`);
+      entry.states ??= []; entry.states.push({ key, ...seen });
+      assert.deepEqual([seen.tag, seen.expanded, seen.open, seen.sheetShown], ['BUTTON', String(expanded), expanded, expanded]);
+      assert.notEqual(seen.ring, 'none', 'keyboard disclosure focus stays visible');
+    }
+  };
+  const beginFrames = p => p.evaluate(`(()=>{const frames=[];let running=true;
+    const tick=()=>{if(!running)return;const host=document.querySelector('#reader-cover'),line=document.querySelector('#reader-cover-line'),
+      sheet=document.querySelector('#reader-cover .dossier-cover'),thumb=document.querySelector('#thumb-source'),notice=document.querySelector('#reader-notice');
+      frames.push({frame:frames.length,readerOpen:document.querySelector('#reader').open,coverHidden:host.hidden,coverShown:host.getClientRects().length>0,
+        open:host.hasAttribute('open'),expanded:line.getAttribute('aria-expanded'),sheetShown:Boolean(sheet?.getClientRects().length),
+        focused:document.activeElement.id,thumbDisabled:thumb.disabled,noticeHidden:notice.hidden,notice:notice.textContent,
+        promiseState:sheet?.querySelector('.cover-promise')?.dataset.state??null});requestAnimationFrame(tick)};
+    requestAnimationFrame(tick);window.promiseFrames=()=>{running=false;return frames}})()`);
+  const endFrames = async (p, meta) => {
+    const frames = await p.evaluate('window.promiseFrames()');
+    observations.push({ name: 'item 717 acceptance frames', engine, ...meta, frames });
+    assert.ok(frames.length > 0, 'the actual presentation had observed frames');
+    for (const frame of frames) if (frame.readerOpen && frame.coverShown) {
+      assert.equal(frame.expanded, String(frame.open), 'expanded semantics agree on every observed frame');
+      assert.equal(frame.sheetShown, frame.open, 'only the open sheet is drawn on every observed frame');
+      assert.equal(frame.promiseState, 'kept', 'acceptance never rewrites the promise on any observed frame');
+    }
+  };
   // Hold a real native thumb request before transport in both engines; no handler is called.
   const HOLD_THUMB = `(()=>{const f=window.fetch;window.promiseThumbQueue=[];window.promiseHold=true;
     window.fetch=function(input,init){let b;try{b=JSON.parse(init?.body)}catch{};
@@ -286,7 +327,10 @@ export async function promiseChecks(api, helpers) {
       const device = shape.startsWith('phone') ? 'phone' : 'laptop';
       const p = await open(topic, shape, topic, ids.root, PROMISE_NATIVE_TRACE + HOLD_THUMB);
       try {
-        await scheme(p, theme); await sourceOpen(p, device, ids.root);
+        const meta = { stage, width, theme };
+        await scheme(p, theme); await centre(p, covers(ids.root)); await shot(p, `717-${stage}-page-before-${width}-${theme}`);
+        await beginFrames(p); await sourceOpen(p, device, ids.root);
+        await disclosureKeys(p, meta); await shot(p, `717-${stage}-reader-before-${width}-${theme}`);
         await p.evaluate('window.staleThumb=true');
         await activate(p, device, '#thumb-source');
         await until(() => p.evaluate('window.promiseThumbQueue.length===1'), 'the native thumb is queued before transport');
@@ -298,6 +342,7 @@ export async function promiseChecks(api, helpers) {
         assert.equal((await held(topic, ids.root)).payload.done, null, 'refused acceptance changes nothing');
         assert.equal(await p.evaluate('document.querySelector("#reader").open'), true, 'refusal leaves the Reader open');
         if (stage === 'refused') await shot(p, `717-owner-refused-${width}-${theme}`);
+        await disclosureKeys(p, { ...meta, after: 'refusal' });
         if (stage === 'retried') {
           await until(() => p.evaluate('!document.querySelector("#thumb-source").disabled'), 'refused thumb is ready for a native retry');
           await activate(p, device, '#thumb-source');
@@ -307,6 +352,7 @@ export async function promiseChecks(api, helpers) {
           assert.equal((await held(topic, ids.root)).promises[0].state, 'kept');
           await centre(p, covers(ids.root)); await shot(p, `717-owner-retried-${width}-${theme}`);
         }
+        await endFrames(p, meta);
         assert.deepEqual(p.errors, []);
       } finally { await p.close(); }
     }
@@ -322,12 +368,16 @@ export async function promiseChecks(api, helpers) {
         assert.equal((await write(ids.root, { promises: [{ ...promise, state: 'kept' }] }, topic + '-kept')).status, 'committed');
         const p = await open(topic, shape, topic, ids.root, PROMISE_NATIVE_TRACE), device = shape.startsWith('phone') ? 'phone' : 'laptop';
         try {
-          await scheme(p, theme); await sourceOpen(p, device, ids.root);
+          const meta = { stage: 'nonowner', width, theme };
+          await scheme(p, theme); await centre(p, covers(ids.root)); await shot(p, `717-nonowner-page-before-${width}-${theme}`);
+          await beginFrames(p); await sourceOpen(p, device, ids.root);
+          await disclosureKeys(p, meta); await shot(p, `717-nonowner-reader-before-${width}-${theme}`);
           assert.ok((await measure(p, '#reader-cover .dossier-cover', width)).words.includes('Waits on'));
           await activate(p, device, '#thumb-source');
           await until(() => p.evaluate('!document.querySelector("#reader").open'), 'the nonowner thumbs the source natively');
           assert.equal((await held(topic, ids.root)).payload.done, null, 'a nonowner thumb never accepts');
           await centre(p, covers(ids.root)); await shot(p, `717-nonowner-${width}-${theme}`);
+          await endFrames(p, meta);
           assert.deepEqual(p.errors, []);
         } finally { await p.close(); }
       }
@@ -374,6 +424,61 @@ export async function promiseChecks(api, helpers) {
         if (archived) await control({ method: 'targets', kind: 'outcome.end_set', args: { state: 'open' }, operation_id: topic + '-reopen' });
       }
     }
+  });
+
+  await check('reading item 717 native Reader disclosure mutant catches the stuck next stop and exact restored control passes', async () => {
+    const markup = new URL('../web/index.html', import.meta.url), reader = new URL('../web/reader.mjs', import.meta.url);
+    const files = [markup, reader], originals = await Promise.all(files.map(file => readFile(file, 'utf8')));
+    const from = [
+      '<div id="reader-cover" class="reader-cover" hidden><button id="reader-cover-line" type="button" aria-expanded="false" aria-controls="reader-cover-sheet"></button></div>',
+      "    this.$('reader-cover-line').onclick = () => this.setCoverOpen(!this.$('reader-cover').hasAttribute('open'));\n",
+    ];
+    const to = ['<details id="reader-cover" class="reader-cover" hidden><summary id="reader-cover-line"></summary></details>', ''];
+    const mutated = originals.map((s, n) => {
+      assert.equal(s.split(from[n]).length, 2, 'one actual disclosure mutation target'); return s.replace(from[n], to[n]);
+    });
+    const hash = s => createHash('sha256').update(s).digest('hex');
+    const record = { name: 'item 717 disclosure applied mutant', engine,
+      original: originals.map(hash), mutated: mutated.map(hash), applied: false, restored: false };
+    observations.push(record);
+    const restart = async expected => {
+      await control({ method: 'server_stop' }); const next = await control({ method: 'server_start' });
+      assert.equal(next.origin, facts.origin); facts.token = next.token;
+      for (let n = 0; n < files.length; n++) {
+        assert.equal(await readFile(files[n], 'utf8'), expected[n], 'actual product bytes on disk');
+        const served = await (await fetch(facts.origin + (n ? '/reader.mjs' : '/'))).text();
+        if (n) assert.equal(served, expected[n], 'actual Reader module bytes served');
+        else {
+          // The server stamps HTML with its isolated fixture session. Only compare
+          // the disclosure, never retain or print that generated session value.
+          const disclosure = expected[n].match(/<(?:div|details) id="reader-cover"[^\n]+/)[0];
+          assert.ok(served.includes(disclosure), 'the actual disclosure markup is served');
+        }
+      }
+    };
+    const probe = async (phase, legacy) => {
+      const { topic, ids, promise } = await make(phase);
+      assert.equal((await write(ids.root, { promises: [{ ...promise, state: 'kept' }] }, topic + '-kept')).status, 'committed');
+      const p = await open(topic, 'laptop', topic, ids.root, PROMISE_NATIVE_TRACE);
+      try {
+        await sourceOpen(p, 'laptop', ids.root); await shot(p, `717-${phase}-reader-laptop-light`);
+        await disclosureKeys(p, { stage: phase, width: 'laptop', theme: 'light' }, legacy);
+      } finally { await p.close(); }
+    };
+    let failed;
+    try {
+      for (let n = 0; n < files.length; n++) await writeFile(files[n], mutated[n]);
+      await restart(mutated); record.applied = true;
+      try { await probe('disclosure-mutant', true); } catch (error) { failed = error; record.error = String(error); record.stack = error.stack; }
+    } finally {
+      for (let n = 0; n < files.length; n++) await writeFile(files[n], originals[n]);
+      await restart(originals); record.restored = true; record.restoredHashes = (await Promise.all(files.map(file => readFile(file, 'utf8')))).map(hash);
+      try { await probe('disclosure-restored', false); record.restoredControlPassed = true; }
+      catch (error) { record.restoredControlPassed = false; record.restoredControlError = String(error); record.restoredControlStack = error.stack; }
+    }
+    if (engine === 'webkit') assert.match(String(failed), /native Tab leaves the open cover line for its first source/, 'restoring native details catches the product keyboard failure');
+    else assert.equal(failed, undefined, 'Chromium remains the unchanged native-disclosure control');
+    assert.equal(record.restoredControlPassed, true, record.restoredControlError);
   });
 
   await check('reading item 717 applied rendering mutants fail the same own case and restored bytes pass', async () => {

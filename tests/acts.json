@@ -28017,8 +28017,8 @@
    "break": [
     [
      "web/reader.mjs",
-     "    if (!same) this.$('reader-cover').open = false;",
-     "    if (false) this.$('reader-cover').open = false;"
+     "    if (!same) this.setCoverOpen(false);",
+     "    if (false) this.setCoverOpen(false);"
     ]
    ],
    "check": {
@@ -28032,7 +28032,7 @@
    "break": [
     [
      "web/reader.mjs",
-     "    if (dossier !== (this.coverDossier ?? null)) { host.open = false; this.coverDossier = dossier; }",
+     "    if (dossier !== (this.coverDossier ?? null)) { this.setCoverOpen(false); this.coverDossier = dossier; }",
      "    if (dossier !== (this.coverDossier ?? null)) { this.coverDossier = dossier; }"
     ]
    ],
@@ -28052,8 +28052,8 @@
     ],
     [
      "web/reader.mjs",
-     "    if (!same) this.$('reader-cover').open = false;\n    this.paintTitle(source, topics);",
-     "    if (!same) this.$('reader-cover').open = false;\n    this.paintCover(source);\n    this.paintTitle(source, topics);"
+     "    if (!same) this.setCoverOpen(false);\n    this.paintTitle(source, topics);",
+     "    if (!same) this.setCoverOpen(false);\n    this.paintCover(source);\n    this.paintTitle(source, topics);"
     ]
    ],
    "check": {

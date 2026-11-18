@@ -242,3 +242,17 @@ with native keys after Escape closes the Reader. This calibration never replaces
 the failed acceptance assertion. Delivery/mapping and product causation remain
 unestablished until retained native events distinguish them; no diagnostic
 programmatically focuses a control or invokes a product handler.
+
+### Reader disclosure keyboard correction (717, warp 9174)
+
+The Reader's cover line is a native button disclosure. Its `aria-expanded`
+tracks the sheet's open attribute and `aria-controls` names the sheet. Native
+Tab and Shift-Tab move through the visible source citations, reading and writing
+and the existing owner controls; Return and Space toggle only the disclosure.
+No Tab handler advances focus on its behalf. Opening another message or losing
+the cover closes the disclosure; a rewrite of an open cover keeps it open.
+This replaces the Reader's details/summary path, which retained focus on its
+summary through 120 trusted uncancelled Option-Tab presses in each of four
+production acceptance states on the unchanged source. The native correction
+check restores that disclosure as an applied mutant and records its failure
+and the exact restored control. It does not claim a Safari or iOS device run.
