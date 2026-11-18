@@ -120,7 +120,7 @@ async function page(shape, scheme = 'light', path = '/?topic=t1', at = facts, pr
   contexts.add(context);
   if (engine === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: at.origin });
   const mode = JSON.stringify(['aim-next', at.instance_id, 'reader-layout', 'mode']);
-  await context.addInitScript(([key, value]) => { try { localStorage.setItem(key, value); } catch { /* a fresh page reads stacked */ } }, [mode, shape.endsWith('wide') ? 'wide' : 'stacked']);
+  await context.addInitScript(([key, value]) => { try { if (localStorage.getItem(key) === null) localStorage.setItem(key, value); } catch { /* a fresh page reads stacked */ } }, [mode, shape.endsWith('wide') ? 'wide' : 'stacked']);
   const p = await context.newPage();
   const errors = [];
   p.on('pageerror', error => errors.push(String(error)));

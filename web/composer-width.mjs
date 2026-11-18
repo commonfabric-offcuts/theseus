@@ -9,6 +9,11 @@ export function composerWidth(dialog) {
   if (!dialog) return;
   const doc = dialog.ownerDocument, win = doc.defaultView;
   const active = () => dialog.open && !dialog.classList.contains('notebook-mode');
+  // Choices belong to this element's lifetime. CSS selects the Reader's
+  // current layout; New message has its own element and single choice.
+  const widthProperty = () => dialog.id === 'reader'
+    ? `--composer-width-${dialog.dataset.layout === 'wide' ? 'wide' : 'stacked'}` : '--composer-width';
+  const setWidth = width => dialog.style.setProperty(widthProperty(), `${width}px`);
   const bounds = () => {
     const phone = win.innerWidth <= 760;
     const widest = parseFloat(win.getComputedStyle(dialog).getPropertyValue('--widest')) * parseFloat(win.getComputedStyle(doc.documentElement).fontSize);
@@ -34,7 +39,7 @@ export function composerWidth(dialog) {
       // Every held position is relative to pointerdown, including a return to
       // its origin. A dead zone here would leave an earlier width in place.
       const { minimum, maximum } = bounds();
-      dialog.style.setProperty('--composer-width', `${edgeWidth(drag.width, delta, drag.side, minimum, maximum)}px`);
+      setWidth(edgeWidth(drag.width, delta, drag.side, minimum, maximum));
     });
     const end = event => {
       if (drag?.id !== event.pointerId || drag.edge !== edge) return;
@@ -49,7 +54,7 @@ export function composerWidth(dialog) {
       event.preventDefault(); event.stopPropagation();
       const { minimum, maximum } = bounds();
       const delta = event.key === 'ArrowLeft' ? -16 : 16;
-      dialog.style.setProperty('--composer-width', `${edgeWidth(dialog.getBoundingClientRect().width, delta, side, minimum, maximum)}px`);
+      setWidth(edgeWidth(dialog.getBoundingClientRect().width, delta, side, minimum, maximum));
     });
     dialog.append(edge); return edge;
   });

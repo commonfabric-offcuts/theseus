@@ -71,9 +71,15 @@ export async function composerWidthCases(h) {
     await route.fulfill({ response, body: source.replace(needle, `${needle} window.${name} = this;`) });
   });
   async function setup(surface, state, shape, scheme, { baseline = false, mutation = null } = {}) {
-    let applied = null;
+    let applied = null, servedHash = null;
     const prepare = async p => {
       await instrument(p, baseline);
+      // Observe the actual registry change path: Reader's Review button is
+      // painted by app.changed, separately from Reader.paintStatus.
+      await p.route(/\/app\.mjs(?:\?.*)?$/, async route => {
+        const response = await route.fetch(), source = await response.text();
+        await route.fulfill({ response, body: `${source}\nwindow.item650Changed = changed;\n` });
+      });
       if (surface === 'New message' && state === 'error') {
         let refused = false;
         await p.route('**/api/view', route => {
@@ -89,8 +95,11 @@ export async function composerWidthCases(h) {
         const response = await route.fetch();
         await route.fulfill({ response, body: execFileSync('git', ['show', `${BASE}:web/aim.css`], { cwd: root, encoding: 'utf8' }) });
       });
-      if (mutation) await p.route(/\/composer-width\.mjs(?:\?.*)?$/, async route => {
+      if (!baseline) await p.route(/\/composer-width\.mjs(?:\?.*)?$/, async route => {
         const response = await route.fetch(), original = await response.text();
+        servedHash = createHash('sha256').update(original).digest('hex');
+        assert.equal(servedHash, hashes['web/composer-width.mjs'], 'actual served original source matches the declared snapshot');
+        if (!mutation) { await route.fulfill({ response, body: original }); return; }
         assert.equal(original.split(mutation.old).length, 2, `unique applied mutant ${mutation.name}`);
         const changed = original.replace(mutation.old, mutation.new);
         assert.notEqual(changed, original, 'mutant changes served bytes');
@@ -100,6 +109,7 @@ export async function composerWidthCases(h) {
       });
     };
     const a = at(surface), p = await page(surface === 'Wide Reader' ? 'wide' : shape, scheme, '/?topic=t1', undefined, prepare);
+    if (!baseline) assert.equal(servedHash, hashes['web/composer-width.mjs'], 'the fresh page loaded the exact original source before any mutation');
     if (surface === 'New message') {
       await until(p, () => !document.querySelector('#inline-composer').hidden, 'the new-message composer');
       await press(p, '#new-message');
@@ -189,7 +199,7 @@ export async function composerWidthCases(h) {
           message: 'Runtime changed — review saved version', authority: { authority_id: 'item650-runtime', authority_epoch: 2 },
           remote: { ...structuredClone(editor.draft), body: 'Saved item 650 runtime version.' },
         };
-        adapter.paintStatus();
+        window.item650Changed(editor);
       }, [a, state]);
     }
     if (state === 'private note') {
@@ -276,11 +286,24 @@ export async function composerWidthCases(h) {
     const restored = async () => near((await geometry(p, a)).width, before.width, `${side} held return to origin restores width`);
     if (touch) {
       const cdp = await p.ctx.newCDPSession(p);
+      await p.evaluate(a => {
+        window.item650PointerMoves = [];
+        document.querySelector(a.dialog).addEventListener('pointermove', event => {
+          window.item650PointerMoves.push({ x: event.clientX, trusted: event.isTrusted, type: event.pointerType });
+        }, { capture: true });
+      }, a);
+      const delivered = async expected => {
+        await until(p, expected => window.item650PointerMoves.some(e => e.trusted && e.type === 'touch' && Math.abs(e.x - expected) < .5), 'the trusted native touch move delivered', expected);
+        await p.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+      };
       try {
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + inward, y }] });
+        await delivered(x + inward);
         await shrink();
+        await p.evaluate(() => { window.item650PointerMoves = []; });
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] });
+        await delivered(x);
         await restored();
       } finally {
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
@@ -330,16 +353,23 @@ export async function composerWidthCases(h) {
         const vertical = await geometry(p, a);
         near(vertical.width, before.width, 'vertical dragging cannot resize');
         near(vertical.top, initial.top, 'vertical dragging cannot move');
+        assert.deepEqual(await kept(p, a), saved, 'width changes preserve exact writing, selection, destination, mode, privacy and recovery controls');
       }
       for (const side of ['left', 'right']) {
         await tabToEdge(p, a, side);
+        // WebKit's native focus traversal can move a textarea's selection.
+        // Snapshot after traversal, then require each width act to keep it.
+        const reached = await kept(p, a);
         await p.keyboard.press(side === 'left' ? 'ArrowRight' : 'ArrowLeft');
         near((await geometry(p, a)).width, initial.width - 32, 'keyboard moves the focused edge symmetrically');
+        assert.deepEqual(await kept(p, a), reached, 'keyboard width changes preserve exact writing, selection, destination, mode, privacy and recovery controls');
         await p.keyboard.press(side === 'left' ? 'ArrowLeft' : 'ArrowRight');
         near((await geometry(p, a)).width, initial.width, 'keyboard grows it back');
         await returnDrag(p, a, side, touch);
+        assert.deepEqual(await kept(p, a), reached, 'held width changes preserve exact writing, selection, destination, mode, privacy and recovery controls');
       }
-      assert.deepEqual(await kept(p, a), saved, 'width changes preserve exact writing, selection, destination, mode, privacy and recovery controls');
+      const final = await kept(p, a);
+      assert.deepEqual({ ...final, start: saved.start, end: saved.end }, saved, 'native traversal and width changes preserve exact writing and its owners');
       assert.deepEqual(commands, [], 'dragging neither saves nor sends nor changes recipients');
       await picture(p, `${label}-after`);
     } finally { p.off('request', observe); }
@@ -361,6 +391,7 @@ export async function composerWidthCases(h) {
   }
   async function lifetimeProof(shape, scheme, mutation = null) {
     const { p, a, applied } = await setup('Reader', 'writing', shape, scheme, { mutation });
+    try {
     const n = at('New message'), saved = await kept(p, a), initial = await geometry(p, a);
     const phone = initial.view <= 760, touch = engine === 'chromium' && p.touch;
     const defaults = { stacked: phone ? initial.view : Math.min(72 * 16, initial.view - 48),
@@ -413,21 +444,36 @@ export async function composerWidthCases(h) {
     await p.reload();
     await until(p, () => document.body?.dataset.ready === 'true', 'reloaded application');
     await open(p, second);
-    await width(a, defaults.stacked, 'reload restores stacked source-defined default');
+    assert.equal(await p.locator('#reader').getAttribute('data-layout'), phone ? 'stacked' : 'wide', 'reload keeps the separate existing mode preference');
+    await width(a, phone ? defaults.stacked : defaults.wide, 'reload restores current mode source-defined default');
     if (!phone) {
-      await chooseMode(p, 'wide');
-      await width(a, defaults.wide, 'reload restores Wide source-defined default');
+      await chooseMode(p, 'stacked');
+      await width(a, defaults.stacked, 'reload restores stacked source-defined default');
     }
     await picture(p, 'item-650-lifetime-reader-reloaded');
     await putAway(p, a); await openNew(p);
     await width(n, defaults.stacked, 'reload restores independent New message default');
     await picture(p, 'item-650-lifetime-new-reloaded');
-    await close(p);
     return applied;
+    } finally { await close(p); }
   }
   for (const shape of [...shapes, 'very-wide-stacked']) for (const scheme of ['light', 'dark']) {
     await check(`item 650 independent mode widths ${shape} ${scheme}: close reopen and reload defaults`, () => lifetimeProof(shape, scheme));
   }
+  const lifetimeMutations = [
+    { name: 'wrong-mode', old: "dialog.dataset.layout === 'wide' ? 'wide' : 'stacked'", new: "'stacked'", expected: /Wide keeps its own chosen width/ },
+    { name: 'undersize', old: 'const setWidth = width => dialog.style.setProperty(widthProperty(), `${width}px`);',
+      new: 'const setWidth = width => dialog.style.setProperty(widthProperty(), `${width - 16}px`);', expected: /stacked keeps its chosen width/ },
+  ];
+  for (const mutation of lifetimeMutations) await check(`item 650 applied mutant ${mutation.name} and restored mode widths`, async () => {
+    await assert.rejects(() => lifetimeProof('stacked', 'light', mutation), error => error.code === 'ERR_ASSERTION' && mutation.expected.test(error.message), `mode widths catch ${mutation.name} on its intended assertion`);
+    await control({ method: 'reset_drafts' });
+    await lifetimeProof('stacked', 'light');
+    const changed = await readFile(path.join(evidence, `${engine}-item-650-${mutation.name}.mjs`));
+    receipts.push({ name: mutation.name, engine, file: 'web/composer-width.mjs', original: hashes['web/composer-width.mjs'],
+      mutated: createHash('sha256').update(changed).digest('hex'), caught: true, restored: true, restoredHash: hashes['web/composer-width.mjs'] });
+    await writeFile(path.join(evidence, `item-650-mutants-${engine}.json`), JSON.stringify(receipts, null, 2));
+  });
   for (const surface of surfaces) for (const state of ['refused with recovery', ...(surface === 'New message' ? ['error'] : []),
     'permission unavailable', 'access unconfirmed', 'access checking', 'conflict review', 'composition refused',
     'recovery discovery', 'authority recovery blocked', 'authority recovery ready']) for (const shape of surface === 'Wide Reader' ? ['stacked'] : shapes) for (const scheme of ['light', 'dark']) {
@@ -476,6 +522,7 @@ export async function composerWidthCases(h) {
     { name: 'keyboard-inert', old: "const delta = event.key === 'ArrowLeft' ? -16 : 16;", new: "const delta = 0;", expected: /keyboard moves the focused edge symmetrically/ },
     { name: 'writing-lost', old: "const delta = event.clientX - drag.x;", new: "doc.querySelector('#writing-body').value = 'lost'; const delta = event.clientX - drag.x;", expected: /width changes preserve exact writing/ },
     { name: 'return-origin-discarded', old: 'const delta = event.clientX - drag.x;', new: 'const delta = event.clientX - drag.x; if (Math.abs(delta) < 1) return;', expected: /held return to origin restores width/ },
+    { name: 'return-drift', old: 'const delta = event.clientX - drag.x;', new: 'const delta = event.clientX - drag.x; if (delta !== 0) drag.moved = true; if (delta === 0 && drag.moved) drag.width -= 16;', expected: /held return to origin restores width/ },
     { name: 'tab-unreachable', old: 'edge.tabIndex = 0;', new: 'edge.tabIndex = -1;', expected: /native Tab reaches the left composer edge/ },
   ];
   // Break width in each newly covered branch using the real adapter state.

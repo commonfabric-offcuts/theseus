@@ -1205,6 +1205,8 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 
 /* Item 650: only horizontal width changes; the existing vertical rules hold.
    The transparent 44px targets carry quiet neutral grips, never card edges. */
+dialog#reader[data-width-edges]{--composer-width:var(--composer-width-stacked,var(--widest))}
+dialog#reader[data-width-edges][data-layout=wide]{--composer-width:var(--composer-width-wide,var(--widest))}
 dialog[data-width-edges][open]:not(.notebook-mode){width:min(var(--composer-width,var(--widest)),calc(100vw - 3rem));min-width:min(760px,calc(100vw - 3rem));margin-inline:auto}
 .composer-edge{position:absolute;z-index:6;top:calc(50% - 22px);width:44px;height:44px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:ew-resize}
 .composer-edge[data-edge=left]{left:0}.composer-edge[data-edge=right]{right:0}

@@ -46,7 +46,7 @@ test('item 650 Reader modes keep independent widths for their element lifetime',
   dialog.dataset.layout = 'wide';
   assert.equal(width(), 1152, 'unchosen Wide has no stacked width');
   drag(32);
-  assert.equal(width(), 1088);
+  assert.equal(width(), 1088, 'Wide stores its own choice');
   dialog.dataset.layout = 'stacked';
   assert.equal(width(), 1120, 'stacked restores its own choice');
   dialog.open = false; dialog.open = true;

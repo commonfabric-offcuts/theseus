@@ -32472,6 +32472,51 @@
     "native": "compose",
     "case": "item 650 New message authority recovery ready stacked light"
    }
+  },
+  {
+   "item": 650,
+   "act": "Reader layout widths remain independent",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "dialog.dataset.layout === 'wide' ? 'wide' : 'stacked'",
+     "'stacked'"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 independent mode widths stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "Chosen width is not undersized",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "const setWidth = width => dialog.style.setProperty(widthProperty(), `${width}px`);",
+     "const setWidth = width => dialog.style.setProperty(widthProperty(), `${width - 16}px`);"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 independent mode widths stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "Held return has no accumulated width drift",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "const delta = event.clientX - drag.x;",
+     "const delta = event.clientX - drag.x; if (delta !== 0) drag.moved = true; if (delta === 0 && drag.moved) drag.width -= 16;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader writing stacked light"
+   }
   }
  ]
 }
