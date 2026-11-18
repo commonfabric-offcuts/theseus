@@ -4467,5 +4467,74 @@
       ],
       "scope": "repository"
     }
+  },
+  "tests/image_buttons_653.mjs": {
+    "4dabbd7619f41bc23743908004b27ded4ffd587151b3dd65deecc6031965a60f": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs",
+        "web/aim.css",
+        "web/page-image.mjs",
+        "web/image-pick.mjs",
+        "web/notebook-page.mjs",
+        "web/deck-page.mjs",
+        "tests/image_buttons_653.mjs",
+        "tests/reader_compose_native.mjs",
+        "tests/fixtures/ui_http.py"
+      ]
+    },
+    "654fd49c54035c6198c5a9369045c85d52808c998c3ced8594055e981704df81": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs",
+        "web/aim.css"
+      ]
+    },
+    "654fd49c54035c6198c5a9369045c85d52808c998c3ced8594055e981704df81:1": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs",
+        "web/aim.css"
+      ]
+    },
+    "654fd49c54035c6198c5a9369045c85d52808c998c3ced8594055e981704df81:2": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs",
+        "web/aim.css"
+      ]
+    },
+    "4dabbd7619f41bc23743908004b27ded4ffd587151b3dd65deecc6031965a60f:1": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs",
+        "web/aim.css",
+        "web/page-image.mjs",
+        "web/image-pick.mjs",
+        "web/notebook-page.mjs",
+        "web/deck-page.mjs",
+        "tests/image_buttons_653.mjs",
+        "tests/reader_compose_native.mjs",
+        "tests/fixtures/ui_http.py"
+      ]
+    }
+  },
+  "tests/test_item_653_fixture.py": {
+    "49a4f45b4d568269d786a2dbbf5eeade89e07898c2b2941e414d749d59362e94": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "c38d6838ea143eb479c7e1264eab1491a8155f2030d0c3b34e874621fc1d88b1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/ui_image_buttons_653.test.mjs": {
+    "4d2394765421743034b9b1c68fbb60f3bbcf6cfe570769fc4075aa9f0e5ce128": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    }
   }
 }
