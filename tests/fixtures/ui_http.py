@@ -18,6 +18,7 @@ import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from item_674_runtime import runtime as item674_runtime
 from aim_next import Store, initialize
 from aim_next import server as server_module
 from aim_next.server import create_server, RequestError
@@ -811,6 +812,9 @@ def main():
                     elif request["method"] == "item_731_mutants":
                         from item_731_mutants import run
                         answer = {"proofs": run()}
+                    elif request["method"] == "item_674_runtime":
+                        answer = item674_runtime(server, item645_candidate, item645_candidate_csp, root,
+                                                 request["phase"], server_module.web_build.load)
                     elif request["method"] == "item_645_runtime":
                         answer = item645_runtime(request["phase"])
                     elif request["method"] == "counts":
