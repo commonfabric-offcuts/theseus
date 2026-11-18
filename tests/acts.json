@@ -32098,6 +32098,203 @@
    "check": {
     "node": "tests/ui_card_scroll_probe.test.mjs"
    }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: wrong recipient",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "candidates = [writer[0] if writer else None, topic[\"coordinator_id\"]]",
+     "candidates = [topic[\"coordinator_id\"], writer[0] if writer else None]"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: duplicate prompt",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "if pending and pending[\"state\"] == \"pending\":",
+     "if False and pending and pending[\"state\"] == \"pending\":"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: human completes",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "or self._actor(db, actor)[\"kind\"] != \"agent\"",
+     "or False"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: empty completes",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "or not (value[\"stands\"] or value[\"waiting\"] or value[\"payload\"])",
+     "or False"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: no completion",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "version = self._cover_refreshed(db, actor, message, before, value, current + 1, version)",
+     "# mutant removes completion in the cover transaction"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: stale refresh",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "if envelope[\"expected\"][\"cover_revision\"] != current:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: private prompt leaks",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "private = message[\"private_to\"] is not None",
+     "private = False"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: self delivery",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "if recipient == actor:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: human is writer",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "row[\"kind\"] != \"agent\"",
+     "False"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: disabled writer",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "or not row[\"enabled\"]",
+     "or False"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: missing writer backfill",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "FROM content WHERE previous IS NULL OR value<>previous",
+     "FROM content WHERE 0"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Pending cover refresh uses the existing sent-message dots without a visible pending label",
+   "break": [
+    [
+     "web/cover-refresh.mjs",
+     "local.error || (!pending && local.busy ? 'Requesting update…' : '')",
+     "local.error || (pending ? 'Awaiting new cover' : local.busy ? 'Requesting update…' : '')"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 738"
+   }
+  },
+  {
+   "item": 738,
+   "act": "The refresh request publication and pending intent roll back together",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "version = self._record_act(db, \"cover_refresh\", message, \"\", actor, value, acts.get(\"cover_refresh_revision\", 0) + 1)",
+     "version = 0"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "A closed outcome cannot publish a cover refresh request",
+   "break": [
+    [
+     "aim_next/outcome_end.py",
+     "def _closed(self, db, workspace_id):",
+     "def _closed(self, db, workspace_id):\n        return None  # actual closed-outcome boundary removed"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
   }
  ]
 }

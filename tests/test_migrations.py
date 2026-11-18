@@ -176,6 +176,22 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Item 738 adds the 48th step. Recover 47's act constraint using the
+        # independently frozen schema-46 definition (unchanged in 47), retaining
+        # every old act and its next ID. No production migration is called here.
+        db.execute("DROP TABLE cover_writers")
+        sequence = db.execute("SELECT seq FROM sqlite_sequence WHERE name='message_acts'").fetchone()
+        db.execute("CREATE TEMP TABLE kept_refresh_acts AS SELECT * FROM message_acts")
+        db.execute("DROP TABLE message_acts")
+        db.execute(next(sql for sql in SCHEMA_46 if sql.startswith("CREATE TABLE message_acts ")))
+        db.execute("INSERT INTO message_acts SELECT * FROM kept_refresh_acts")
+        db.execute("DROP TABLE kept_refresh_acts")
+        db.execute("DELETE FROM sqlite_sequence WHERE name='message_acts'")
+        if sequence:
+            db.execute("INSERT INTO sqlite_sequence(name,seq) VALUES ('message_acts',?)", sequence)
+        for statement in SCHEMA_46:
+            if statement.startswith("CREATE INDEX ") and " ON message_acts(" in statement:
+                db.execute(statement)
         # Version 47 keeps derived stable topic positions, independently checked below.
         db.execute("DROP TRIGGER topic_position_insert")
         db.execute("DROP TABLE topic_position_clock")
@@ -1982,12 +1998,14 @@ class Schema23Case(MigrationCase):
 
 
 def everything(path):
-    """Every retained record, excluding version 47’s derived placement index/clock (checked separately)."""
+    """Every pre-48 retained record, excluding derived placement and the additive writer table.
+
+    Item 738 checks writer reconstruction/history separately in test_cover_refresh.py."""
     with sqlite3.connect(str(path)) as db:
         tables = [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
         rows = {}
         for table in tables:
-            if table in ("metadata", "topic_position_clock"):
+            if table in ("metadata", "topic_position_clock", "cover_writers"):
                 continue
             columns = [row[1] for row in db.execute("PRAGMA table_info(" + table + ")") if row[1] != "list_position"]
             rows[table] = sorted(db.execute("SELECT " + ",".join(columns) + " FROM " + table).fetchall(), key=repr)
@@ -4244,10 +4262,10 @@ class CoverStepCase(MigrationCase):
 
     def test_the_step_follows_the_ends_and_topic_positions_follow_it(self):
         steps = [step[:2] for step in migrations.STEPS]
-        self.assertEqual(steps[-3:], [(BEFORE_ENDS, ENDS_VERSION), (BEFORE_COVERS, COVERS_VERSION), ("46", "47")])
+        self.assertEqual(steps[-4:], [(BEFORE_ENDS, ENDS_VERSION), (BEFORE_COVERS, COVERS_VERSION), ("46", "47"), ("47", "48")])
         self.assertEqual([step for step in steps if step[0] == BEFORE_COVERS or step[1] == COVERS_VERSION],
                          [(BEFORE_COVERS, COVERS_VERSION)], "one step leaves 45 and one reaches 46")
-        self.assertEqual((BEFORE_COVERS, COVERS_VERSION, SCHEMA_VERSION), ("45", "46", "47"))
+        self.assertEqual((BEFORE_COVERS, COVERS_VERSION, SCHEMA_VERSION), ("45", "46", "48"))
 
     def test_item_641_covers_45_to_46_precedes_positions_46_to_47(self):
         message = self.acted()
@@ -4260,7 +4278,7 @@ class CoverStepCase(MigrationCase):
             db.execute("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) "
                        "SELECT 'cover',id,topic_id,seq,'','owner','{}',5,1 FROM messages WHERE id=?", (message,))
         stored = everything(self.path)
-        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], "47")
+        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], SCHEMA_VERSION)
         self.assertEqual(everything(self.path), stored, "positions preserve the cover and every retained record")
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
         self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE list_position>0"), [(2,)])
@@ -4435,7 +4453,7 @@ class TopicPositionStepCase(unittest.TestCase):
         with self.assertRaises(StoreOpenError):
             Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.path.read_bytes(), before, "a read cannot migrate")
-        self.assertEqual(migrations.STEPS[-1][:2], ("46", "47"), "no migration-number collision with the base")
+        self.assertEqual(migrations.STEPS[-2][:2], ("46", "47"), "no migration-number collision with the base")
         self.assertTrue(migrate(self.path, "test-instance", self.binding)["migrated"])
         self.assertEqual(everything(self.path), stored, "all pre-existing records, including saved orders and revisions, survive")
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))

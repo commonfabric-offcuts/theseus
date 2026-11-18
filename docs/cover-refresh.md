@@ -52,8 +52,8 @@ it cannot be completed by a write to another root.
 
 The coordinator hosts this candidate on copied data without agents. A press can
 therefore prove durable pending and reload continuity only after Tony tries it;
-completion awaits the real writer pathway. This source-only stage writes/runs
-zero tests and runs no server, browser, suite, pool work or review. Pipeline 737
+completion awaits the real writer pathway. The source-only preview stage wrote and ran zero tests; subsequent test evidence is
+kept separately at the tested commit. Pipeline 737
 links and 717 promises remain separate; this slice retains this base's cover
 contracts without copying either worktree.
 
@@ -61,4 +61,28 @@ The browser keeps an unconfirmed command under its instance, actor and root,
 with captured authority, before sending it. It retries that exact envelope; a
 recorded refusal releases it for a new deliberate press. A changed authority
 never silently rebinds it. Storage refusal sends nothing. Cross-tab races are
-coalesced by Core in its write transaction. These mechanisms are untested here.
+coalesced by Core in its write transaction. Their checks are named below; pass evidence belongs to an exact tested commit.
+
+
+## Checks (item 738)
+
+`tests/test_cover_refresh.py` uses real temporary Core records for recipient
+selection, publication, same-operation retry/coalescing, authorization, privacy,
+stale revisions, owner-only Done, human/no-op/empty writes, atomic completion,
+rollback, root joins, reopen continuity and explicit schema 47 to 48 migration.
+The act ledger retains executable source breaks for these boundaries.
+
+`tests/cover_refresh_native.mjs`, imported by `topic_reading_native.mjs`, is
+selected by `item 738` in `native-reading` and `native-webkit-reading`. Its native
+pointer, touch and keyboard acts cover the sheet, singleton pills and Reader,
+at 320, 375, 390 and laptop widths in light and dark. It captures unchanged
+live94 source before images and candidate idle/busy/pending/reload/completed
+states; Core's actual agent cover command supplies completion. Transport,
+read-only storage, unavailable writer and missing-cover cases retain honest
+state. Source controls measure lost pending, visible pending text and a 1px
+hit target, then require exact byte restoration. Geometry names its 1 CSS px
+rounding tolerance and the undersized-target control must still fail.
+
+These cases run only through the coordinator's allocated pool. Their presence
+is not a pass claim; the external report records source hashes, results,
+phase evidence, cleanup and visual inspection at the tested head.

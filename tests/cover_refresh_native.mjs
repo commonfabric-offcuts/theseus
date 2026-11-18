@@ -1,0 +1,259 @@
+// Item 738. Native gestures against an isolated real HTTP/Core fixture.
+// Source controls swap real immutable Builds, never DOM or handler substitutes.
+import assert from 'node:assert/strict';
+
+const GATE = `window.coverSends=[];window.coverReceipts=[];window.coverGate='pass';window.coverReleases=[];
+window.releaseCovers=()=>{window.coverGate='pass';for(const go of window.coverReleases.splice(0))go()};
+{const send=window.fetch;window.fetch=async function(input,init){
+ const b=typeof init?.body==='string' && String(input).endsWith('/api/command')?JSON.parse(init.body):null;
+ if(b?.kind!=='stack.cover_refresh')return send.call(this,input,init);
+ window.coverSends.push(structuredClone(b));
+ const mode=window.coverGate;
+ if(mode==='hold')await new Promise(go=>window.coverReleases.push(go));
+ if(mode==='offline')throw Error('Fixture transport interrupted before dispatch');
+ const r=await send.call(this,input,init);window.coverReceipts.push(await r.clone().json());
+ if(mode==='lost')throw Error('Fixture lost actual Core response');return r;
+}}`;
+const CONTROL = '.cover-refresh-glyph';
+
+export async function coverRefreshChecks({ check, until, view, control, shot, facts, observations, engine }, helpers) {
+  const { seed, open, centre, tap, press, openReader, closeReader, card } = helpers;
+  const inputFor = device => device === 'laptop' ? 'laptop' : 'phone';
+  const write = async (topic, root, args, suffix, sender = 'aim-core') => {
+    const r = await control({ method: 'stack_act', kind: 'stack.cover', sender, message_id: root, args, operation_id: `${topic}-${suffix}` });
+    assert.equal(r.status, 'committed', JSON.stringify(r)); return r.result;
+  };
+  const read = root => view('dossier_cover', { message_id: root });
+  const setup = async (topic, single = false) => {
+    const ids = await seed(topic, [
+      ['root', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'Cabin weekend: check the latest road report.' }],
+      ...(!single ? [['answer', { sender: 'aim-core', reply_to: 'root', addressees: [facts.actor], body: 'The lake opens in May; the road report is linked.' }]] : []),
+    ]);
+    await write(topic, ids.root, { stands: 'Road checked; waiting for the booking', waiting: [{ text: 'Book the cabin?', default: 'Friday if no answer' }],
+      payload: { text: 'The May weekend', message_id: ids.answer ?? ids.root, kind: 'answer', link: 'https://example.test/cabin' } }, 'cover');
+    return ids;
+  };
+  const scope = (surface, root) => surface === 'reader' ? '#reader-cover .dossier-cover' : surface === 'singleton'
+    ? `${card(root)} > .row-pills` : `#messages .reply-stack[data-stack="${root}"] > .dossier-cover`;
+  const exposeReply = async (p, device, root) => {
+    const toggle = `#messages .reply-stack[data-stack="${root}"] > .stack-toggle`;
+    if (await p.evaluate(`document.querySelector(${JSON.stringify(toggle)})?.dataset.state==='closed'`)) {
+      await centre(p, toggle); await press(p, inputFor(device), toggle);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(toggle)})?.dataset.state==='open'`), 'native dossier toggle opens replies');
+    }
+  };
+  const show = async (p, device, topic, ids, surface) => {
+    if (surface === 'reader') {
+      await exposeReply(p, device, ids.root);
+      await openReader(p, inputFor(device), ids.answer, 'The lake opens in May');
+      await press(p, inputFor(device), '#reader-cover > summary');
+    }
+    const where = surface === 'singleton' && await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(scope('sheet', ids.root))}))`) ? scope('sheet', ids.root) : scope(surface, ids.root);
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(where + ' ' + CONTROL)}))`), surface + ': refresh is drawn');
+    await centre(p, where + ' ' + CONTROL);
+    return where;
+  };
+  const look = (p, where) => p.evaluate(`(()=>{const h=document.querySelector(${JSON.stringify(where)}),c=h?.querySelector('.cover-refresh-glyph'),s=h?.querySelector('.cover-refresh-status'),d=c?.querySelector('.item-waiting'),b=c?.getBoundingClientRect();
+    return {tag:c?.tagName,pending:c?.dataset.pending,status:s?.textContent,dots:d?.children.length??0,svg:c?.querySelector('svg')?.dataset.glyph,
+      busy:c?.getAttribute('aria-disabled'),words:h?.textContent,title:c?.title,href:c?.getAttribute('href'),box:b?{x:b.x,y:b.y,width:b.width,height:b.height}:null,
+      overflow:document.documentElement.scrollWidth-innerWidth,focused:c===document.activeElement,
+      animation:d?[...d.children].map(e=>getComputedStyle(e).animationName):[]}})()`);
+  const pendingShape = (state, checkLabel = true) => {
+    assert.equal(state.tag, 'A', 'pending control opens the recorded request');
+    assert.equal(state.pending, 'true');
+    if (checkLabel) assert.equal(state.status, '', 'Tony8505: no visible pending label');
+    assert.equal(state.dots, 3, 'actual shared waitingDots component');
+    assert.deepEqual(state.animation, ['item-waiting', 'item-waiting', 'item-waiting'], 'existing sent-message animation');
+  };
+  // #7715: 1 CSS px covers fractional engine rounding; a 1px target mutant
+  // remains 42px below the 44px phone minimum and cannot pass this check.
+  const geometry = (state, device) => {
+    const targetTolerancePx738 = 1, overflowTolerancePx738 = 1;
+    assert.ok(state.box.width >= (device === 'laptop' ? 32 : 44) - targetTolerancePx738, 'target width (targetTolerancePx738=1)');
+    assert.ok(state.box.height >= (device === 'laptop' ? 32 : 44) - targetTolerancePx738, 'target height (targetTolerancePx738=1)');
+    assert.ok(state.overflow <= overflowTolerancePx738, 'page fits (overflowTolerancePx738=1)');
+  };
+  const activate = async (p, device, selector, keyboard = false) => {
+    await centre(p, selector);
+    if (!keyboard) return press(p, inputFor(device), selector);
+    for (let n = 0; n < 120; n++) {
+      if (await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`)) break;
+      await p.key('Tab');
+    }
+    assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`), true, 'native Tab reaches refresh');
+    await p.key('Enter');
+  };
+  const source = async (phase, key, action) => {
+    const receipt = await control({ method: 'item_738_runtime', phase });
+    observations.push({ name: 'item 738 source phase', key, ...receipt });
+    try { return await action(receipt); }
+    finally {
+      const restored = await control({ method: 'item_738_runtime', phase: 'restored' });
+      assert.equal(restored.restored, true);
+      assert.deepEqual(restored.hashes, receipt.candidate_hashes, 'exact candidate bytes restored');
+      observations.push({ name: 'item 738 source restore', key, ...restored });
+    }
+  };
+  const originalCover = state => ({ stands: state.cover.stands, waiting: state.cover.waiting, payload: state.cover.payload, by: state.cover.by, at_ms: state.cover.at_ms });
+
+  for (const device of ['laptop', 'phone-320', 'phone-375', 'phone']) for (const theme of ['light', 'dark']) {
+    for (const surface of ['sheet', 'singleton', 'reader']) await check(`reading item 738 ${surface} ${device} ${theme}: native request, busy, durable pending, request link and real writer completion`, async () => {
+      const topic = `refresh738-${surface}-${device}-${theme}`, ids = await setup(topic, surface === 'singleton');
+      const before = await read(ids.root);
+      // The actual live source at the supplied live94 commit, on these same
+      // invented records, gives unmodified before images of each touched screen.
+      await source('live', topic, async receipt => {
+        let old;
+        try {
+          old = await open(topic + '-live', device, topic, ids.root, GATE);
+          await old.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+          if (surface === 'reader') { await exposeReply(old, device, ids.root); await openReader(old, inputFor(device), ids.answer, 'The lake opens in May'); await press(old, inputFor(device), '#reader-cover > summary'); }
+          const at = scope(surface, ids.root); await centre(old, at);
+          assert.equal(await old.evaluate(`Boolean(document.querySelector(${JSON.stringify(at + ' ' + CONTROL)}))`), false, 'live source has no refresh glyph');
+          assert.equal(await old.evaluate(`document.querySelector('script[type="module"][src]').src.includes('/b/${receipt.stamp}/')`), true);
+          await shot(old, topic + '-before');
+        } finally { if (old) await old.close(); }
+      });
+      let p;
+      try {
+        p = await open(topic, device, topic, ids.root, GATE);
+        await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        let where = await show(p, device, topic, ids, surface);
+        const idle = await look(p, where); geometry(idle, device); assert.equal(idle.svg, 'refresh');
+        await shot(p, topic + '-idle');
+        await p.evaluate("window.coverGate='hold'");
+        await activate(p, device, where + ' ' + CONTROL, surface === 'reader' || device === 'laptop');
+        await until(() => p.evaluate('window.coverReleases.length===1'), 'request held before real dispatch');
+        const busy = await look(p, where);
+        assert.equal(busy.status, 'Requesting update…'); assert.equal(busy.dots, 3);
+        assert.equal((await read(ids.root)).refresh, null, 'busy is not a Core pending fact');
+        await shot(p, topic + '-busy');
+        await activate(p, device, where + ' ' + CONTROL);
+        assert.equal(await p.evaluate('window.coverSends.length'), 1, 'repeated pending tap coalesces before dispatch');
+        await p.evaluate('window.releaseCovers()');
+        await until(async () => (await read(ids.root)).refresh?.state === 'pending', 'Core records actual pending');
+        if (surface === 'singleton') where = scope('sheet', ids.root);
+        await until(async () => (await look(p, where)).tag === 'A', 'pending reaches native surface');
+        const pending = await read(ids.root), painted = await look(p, where);
+        pendingShape(painted, false); geometry(painted, device);
+        assert.equal(pending.refresh.recipient, 'aim-core', 'recorded writer, no hardcoded coordinator');
+        assert.deepEqual(originalCover(pending), originalCover(before), 'whole original cover preserved');
+        assert.ok(painted.href.includes(pending.refresh.request_message_id), 'request link names actual published message');
+        await shot(p, topic + '-pending');
+        observations.push({ name: 'item 738 native lifecycle', topic, device, theme, surface, idle, busy, pending, painted,
+          envelopes: await p.evaluate('window.coverSends'), receipts: await p.evaluate('window.coverReceipts') });
+        // A new page is a genuine reload of the same isolated origin, with no
+        // browser-context error swallowed while the old document goes away.
+        await p.close(); p = await open(topic + '-reload', device, topic, ids.root, GATE);
+        await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        where = await show(p, device, topic, ids, surface);
+        const reloaded = await look(p, where); pendingShape(reloaded, false);
+        assert.equal(await p.evaluate('window.coverSends.length'), 0, 'reload sends no new request');
+        await shot(p, topic + '-reload');
+        await activate(p, device, where + ' ' + CONTROL, device === 'laptop');
+        await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('Please rewrite this dossier')`), 'pending link opens the actual recorded request');
+        assert.equal((await control({ method: 'item_738_audit', root: ids.root })).requests.filter(x => JSON.parse(x.addressees).includes('aim-core') && x.intent === 'ask').length, 1, 'exactly one ordinary request in Core');
+        await closeReader(p, inputFor(device));
+        if (surface === 'reader') where = await show(p, device, topic, ids, surface);
+
+        await write(topic, ids.root, { stands: 'Human checked the road again' }, 'human', facts.actor);
+        assert.equal((await read(ids.root)).refresh.state, 'pending', 'human edit cannot complete');
+        await write(topic, ids.root, { stands: 'Human checked the road again' }, 'noop');
+        assert.equal((await read(ids.root)).refresh.state, 'pending', 'no-op agent write cannot complete');
+        await control({ method: 'agent_thumb', sender: facts.actor, message_id: ids.answer ?? ids.root, operation_id: topic + '-done' });
+        assert.equal((await read(ids.root)).refresh.state, 'pending', 'owner Done cannot complete');
+        const newCover = await write(topic, ids.root, { stands: 'The cabin is booked for May' }, 'real-writer');
+        await until(async () => (await read(ids.root)).refresh?.state === 'completed', 'real agent Core cover command completes');
+        await until(async () => (await look(p, where)).tag === 'BUTTON', 'native control follows actual completion');
+        const completed = await read(ids.root);
+        assert.equal(completed.refresh.completed_revision, newCover.cover_revision);
+        assert.equal(completed.cover.payload.done.how, 'thumb');
+        assert.equal(completed.cover.payload.link, before.cover.payload.link);
+        assert.deepEqual(completed.cover.waiting, before.cover.waiting);
+        await shot(p, topic + '-completed');
+        assert.deepEqual([painted.status, reloaded.status], ['', ''], 'Tony8505: no visible pending label before or after reload');
+        assert.deepEqual(p.errors, []);
+      } finally { if (p) await p.close(); }
+    });
+  }
+
+  for (const device of ['laptop', 'phone-320', 'phone-375', 'phone']) for (const theme of ['light', 'dark']) {
+    for (const failure of ['offline', 'storage', 'unavailable', 'missing']) await check(`reading item 738 ${failure} ${device} ${theme}: honest failure, exact retry and unchanged cover`, async () => {
+      const topic = `refresh738-${failure}-${device}-${theme}`, ids = await setup(topic);
+      if (failure === 'unavailable') await write(topic, ids.root, { stands: 'Human latest cover' }, 'human', facts.actor);
+      if (failure === 'missing') await write(topic, ids.root, { stands: null, waiting: [], payload: null }, 'clear');
+      const before = await read(ids.root);
+      const init = GATE + (failure === 'storage' ? `
+{const keep=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k.startsWith('aim-next-cover-refresh:'))throw Error('Fixture read-only storage');return keep.call(this,k,v)}}` : '');
+      let p;
+      try {
+        p = await open(topic, device, topic, ids.root, init);
+        await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        if (failure === 'missing') {
+          assert.equal((await read(ids.root)).cover, null);
+          assert.equal(await p.evaluate(`Boolean(document.querySelector('#messages .cover-refresh-glyph'))`), false, 'missing cover advertises no rewrite');
+          await centre(p, `#messages .reply-stack[data-stack="${ids.root}"]`);
+          await shot(p, topic + '-missing');
+          assert.equal(await p.evaluate('window.coverSends.length'), 0);
+          await write(topic, ids.root, { stands: 'Actual writer supplies a new cover' }, 'new-cover');
+          await show(p, device, topic, ids, 'sheet');
+          assert.deepEqual(p.errors, []); return;
+        }
+        const where = await show(p, device, topic, ids, 'sheet');
+        if (failure === 'offline') await p.evaluate("window.coverGate='offline'");
+        await activate(p, device, where + ' ' + CONTROL, device === 'laptop');
+        await until(async () => { const state = await look(p, where); return state.busy !== 'true' && Boolean(state.status); }, 'honest error appears beside original cover');
+        const failed = await look(p, where); geometry(failed, device);
+        if (failure === 'storage') { assert.match(failed.status, /Nothing was sent/); assert.equal(await p.evaluate('window.coverSends.length'), 0); }
+        else if (failure === 'unavailable') assert.match(failed.status, /No available cover writer/);
+        else assert.match(failed.status, /not confirmed/);
+        assert.equal((await read(ids.root)).refresh, null);
+        assert.deepEqual(originalCover(await read(ids.root)), originalCover(before));
+        await shot(p, topic + '-error');
+        const sent = await p.evaluate('window.coverSends');
+        await p.close(); p = await open(topic + '-reload', device, topic, ids.root, GATE);
+        await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await show(p, device, topic, ids, 'sheet');
+        if (failure === 'unavailable') {
+          await write(topic, ids.root, { stands: 'Actual agent takes over' }, 'takeover');
+          await until(async () => (await look(p, where)).words.includes('Actual agent takes over'), 'actual new writer reaches the page before a fresh deliberate retry');
+        }
+        // Read-only storage failure made no envelope. An unconfirmed transport
+        // request retains its original operation, authority and revision.
+        {
+          await activate(p, device, where + ' ' + CONTROL);
+          await until(async () => (await read(ids.root)).refresh?.state === 'pending', 'deliberate retry records actual pending');
+          if (failure === 'offline') assert.deepEqual(await p.evaluate('window.coverSends'), sent, 'reload retries the same complete envelope');
+          await until(async () => (await look(p, where)).tag === 'A', 'retry reaches durable activity');
+          pendingShape(await look(p, where));
+          await shot(p, topic + '-retry');
+        }
+        observations.push({ name: 'item 738 failure boundary', topic, failure, device, theme, failed, sent });
+        assert.deepEqual(p.errors, []);
+      } finally { if (p) await p.close(); }
+    });
+  }
+
+  await check('reading item 738 applied source controls: lost pending, forbidden visible label and undersized target each fail the actual assertion, exact restore', async () => {
+    const topic = 'refresh738-mutants', ids = await setup(topic);
+    const r = await control({ method: 'stack_act', kind: 'stack.cover_refresh', sender: facts.actor, message_id: ids.root, args: {}, operation_id: topic + '-request' });
+    assert.equal(r.status, 'committed');
+    for (const phase of ['lost-pending', 'visible-text', 'small-target']) await source(phase, topic, async receipt => {
+      let p;
+      try {
+        p = await open(topic + '-' + phase, 'phone', topic, ids.root, GATE);
+        const where = await show(p, 'phone', topic, ids, 'sheet');
+        assert.equal(await p.evaluate(`document.querySelector('script[type="module"][src]').src.includes('/b/${receipt.stamp}/')`), true);
+        const state = await look(p, where);
+        assert.throws(() => phase === 'small-target' ? geometry(state, 'phone') : pendingShape(state), { name: 'AssertionError' }, 'applied source mutant must fail the real native assertion');
+        await shot(p, topic + '-' + phase);
+        observations.push({ name: 'item 738 killed native mutant', phase, state });
+      } finally { if (p) await p.close(); }
+    });
+    let p;
+    try {
+      p = await open(topic + '-restored', 'phone', topic, ids.root, GATE);
+      const where = await show(p, 'phone', topic, ids, 'sheet'); pendingShape(await look(p, where)); geometry(await look(p, where), 'phone');
+    } finally { if (p) await p.close(); }
+  });
+}
