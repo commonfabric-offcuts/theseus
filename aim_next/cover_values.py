@@ -19,11 +19,12 @@ a named reply counts because it is the owner's own reply to that message. Until 
 import json
 
 from .contract import Refusal, _identifier
+from .cover_promises import written_promises
 from .whispers import VISIBLE
 
 # What an empty cover stands at: the act's value before anyone wrote one, and after every field is cleared.
-EMPTY_COVER = {"stands": None, "waiting": [], "payload": None}
-FIELDS = ("stands", "waiting", "payload")
+EMPTY_COVER = {"stands": None, "waiting": [], "payload": None, "promises": []}
+FIELDS = ("stands", "waiting", "payload", "promises")
 STANDS_CHARS = 300
 WAIT_CHARS = 300
 DEFAULT_CHARS = 200
@@ -98,11 +99,11 @@ def written(args):
     """The fields a write sets, validated: {field: value}, each present field set (None or [] clears it). Done is
     refused wherever it is named, and a write names at least one field."""
     if not isinstance(args, dict) or not args:
-        raise Refusal("INVALID_ARGUMENT", "A cover write sets or clears stands, waiting or payload")
+        raise Refusal("INVALID_ARGUMENT", "A cover write sets or clears stands, waiting, payload or promises")
     if "done" in args:
         raise Refusal("DONE_BY_OWNER", DONE_REFUSED)
     if set(args) - set(FIELDS):
-        raise Refusal("INVALID_ARGUMENT", "A cover holds stands, waiting and payload only")
+        raise Refusal("INVALID_ARGUMENT", "A cover holds stands, waiting, payload and promises only")
     fields = {}
     if "stands" in args:
         fields["stands"] = _line(args["stands"], "Where it stands", STANDS_CHARS, required=False)
@@ -110,6 +111,8 @@ def written(args):
         fields["waiting"] = _waiting(args["waiting"])
     if "payload" in args:
         fields["payload"] = _payload(args["payload"])
+    if "promises" in args:
+        fields["promises"] = written_promises(args["promises"])
     return fields
 
 
@@ -148,7 +151,7 @@ def shown(db, actor, value, by, at_ms, owner):
     """The cover as actor reads it, or None when every field is clear: its fields, who wrote it last and when, and the
     outcome's owner (whose 👍 or word gives Done). A word given in a whisper actor is outside shows as given, with no
     message to open."""
-    if value == EMPTY_COVER or (not value["stands"] and not value["waiting"] and value["payload"] is None):
+    if value == EMPTY_COVER or (not value["stands"] and not value["waiting"] and value["payload"] is None and not value["promises"]):
         return None
     payload = value["payload"]
     # done_by is what the writer named; a reader is told Done, which carries the word when they can open it.
@@ -160,4 +163,4 @@ def shown(db, actor, value, by, at_ms, owner):
         if seen is None:
             payload = dict(payload, done={key: item for key, item in done.items() if key not in ("message_id", "seq")})
     return {"stands": value["stands"], "waiting": [dict(each) for each in value["waiting"]],
-            "payload": dict(payload) if payload is not None else None, "by": by, "at_ms": at_ms, "owner": owner}
+            "payload": dict(payload) if payload is not None else None, **({"promises": value["promises"]} if value["promises"] else {}), "by": by, "at_ms": at_ms, "owner": owner}
