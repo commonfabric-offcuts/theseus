@@ -1036,6 +1036,9 @@ function paintCardReading() {
     entry.dataset.talk = quiet ? 'agents' : '';
     paintReading(card, item, { read: cardRead(item), quiet, go: goToMessage });
     paintAwaiting(card, item);
+    // The shortcut is the card's last act, after its words and controls.
+    paintNoteCorner(card, item, (id, opener) => run(() =>
+      openSource({ kind: 'message', id }, opener, marks.capture(id), 'note')));
   }
 }
 // A message the page shows, brought into view: its stack opened first when it
@@ -1117,8 +1120,6 @@ function paintCardAuthor(author, item) {
   paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true, wasEdited(item), carriesOf(item));
   if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
   if (here?.page) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
-  paintNoteCorner(author.parentElement, item, (id, opener) => run(() =>
-    openSource({ kind: 'message', id }, opener, marks.capture(id), 'note')));
   // The star in its header, put back as the line is painted again (StackFeed.paintStar).
   stackFeed?.paintStar(author, item);
 }

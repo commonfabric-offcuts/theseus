@@ -5111,7 +5111,7 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line') && cardIn(entry).dataset.folded !== 'true') {",
+     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, .note-corner') && cardIn(entry).dataset.folded !== 'true') {",
      "if (false) {"
     ]
    ],
@@ -32150,8 +32150,8 @@
    "break": [
     [
      "web/aim.css",
-     "width:2.75rem;height:2.75rem;color:var(--muted);border-radius:.5rem;cursor:pointer",
-     "width:1rem;height:1rem;color:var(--muted);border-radius:.5rem;cursor:pointer"
+     "width:2.75rem;height:2.75rem;margin-left:auto;color:var(--muted);cursor:pointer",
+     "width:1rem;height:1rem;margin-left:auto;color:var(--muted);cursor:pointer"
     ]
    ],
    "check": {

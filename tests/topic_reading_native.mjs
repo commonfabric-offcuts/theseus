@@ -447,7 +447,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       };
       await check(`reading ${name} normal own card and whole target with original-runtime negative and restored native presses`,async()=>{
         const s=await setup('normal'),{p}=s;
-        const good=await geometry(s);assertGeometry(good);
+        const good=await geometry(s);observations.push({name:'reading '+name+' initial own-card geometry',good});assertGeometry(good);
         // eb054586 called paintNoteCorner while only the author existed.
         // Reapply that exact DOM order on the real page, then restore it.
         let orderRed;
@@ -455,6 +455,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
           await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(s.ids[s.key]))}),n=c.querySelector(':scope > .note-corner');c.querySelector(':scope > .message-author').after(n)})()`);
           assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(s.corner)}).previousElementSibling.classList.contains('message-author')`),true,'failed-head placement mutation actually applied');
           orderRed=await geometry(s);
+          observations.push({name:'reading '+name+' applied failed-head placement',source:'eb054586a92ee5acaec4d28c87e024695a1ca593',caseWithoutFix:'108d6535df16be155882a00291e77263ff75b780',orderRed});
           assert.throws(()=>assertGeometry(orderRed),/corner lies after all words/,'failed-head corner before words is native red');
           await shot(p,'reading-'+name.replaceAll(' ','-')+'-failed-head-red');
         } finally {
@@ -466,6 +467,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         try {
           await p.evaluate(`(()=>{const e=document.createElement('style');e.id='item649-small-target';e.textContent='.note-corner{width:1rem;height:1rem}';document.head.append(e)})()`);
           smallRed=await geometry(s);
+          observations.push({name:'reading '+name+' applied 16px ledger target mutant',smallRed});
           assert.equal(smallRed.b.width,16,'16px size mutation actually applied');
           assert.throws(()=>assertGeometry(smallRed),/full 44px target/,'small target is native red');
         } finally { await p.evaluate("document.querySelector('#item649-small-target')?.remove()"); }
@@ -475,6 +477,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
           await p.evaluate(`(()=>{const e=document.createElement('style');e.id='item649-original-runtime-control';e.textContent=${JSON.stringify(brokenCornerRules)};document.head.append(e)})()`);
           assert.equal(await p.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(s.corner)})).position`),'absolute','broken source rule actually applied');
           const broken=await geometry(s);
+          observations.push({name:'reading '+name+' applied original absolute placement',broken});
           assert.throws(()=>assertGeometry(broken),/corner belongs inside|corner lies after|sampled point/,'original B1/B2 geometry must fail');
           if(shape==='B2-covered')assert.ok(broken.bottomCentreMiss,'B2 original target really loses its bottom hit area to the following card');
           assert.equal(await p.evaluate("document.querySelector('#item649-original-runtime-control').textContent"),brokenCornerRules,'exact negative rules applied');

@@ -259,7 +259,7 @@ export function paintAuthor(author, name, sent, marked, edited = false, carries 
 export function paintNoteCorner(card, item, open, doc = document) {
   let corner = card.querySelector(':scope > .note-corner');
   if (item?.yours?.note !== true) { corner?.remove(); return; }
-  if (corner) return;
+  if (corner) { if (card.lastElementChild !== corner) card.append(corner); return; }
   corner = doc.createElement('span'); corner.className = 'note-corner';
   corner.setAttribute('role', 'button'); corner.tabIndex = 0;
   corner.setAttribute('aria-label', 'Open your private note'); corner.title = 'Open your private note';
