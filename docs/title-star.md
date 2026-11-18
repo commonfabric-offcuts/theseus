@@ -59,3 +59,11 @@ Those are preserved historical sources, not execution or approval of the
 message star, and hidden-reply/no-scroll evidence remains incomplete. Under
 warp8529 this composition is source-only until the coordinator hosts a copy
 and Tony gives his actual first 646 preview word; no checks run here.
+
+## Preview background revision — Tony8600 / warp8601
+
+The second-line star has no distinct background: the dossier's actual surface
+shows through at rest, hover, press and keyboard focus. This also avoids a
+sticky hover patch after a phone tap. Keep the existing visible keyboard
+focus outline and current first-message toggle. Same copied preview only;
+zero tests before Tony's new word.

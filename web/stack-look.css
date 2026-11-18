@@ -265,8 +265,7 @@
 .stack-new{flex:none;color:var(--stack-new);font-size:.72rem;font-weight:700}
 /* 646: the original second-line mark's font, colour and separator, now one
    always-visible toggle. Its touch box occupies real room in this line. */
-.stack-star{flex:none;color:var(--stack-star);cursor:pointer}
-.stack-star:hover{background:var(--stack-folder-deep)}
+.stack-star{flex:none;color:var(--stack-star);cursor:pointer;background:transparent;-webkit-tap-highlight-color:transparent}
 .stack-star:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 @media(pointer:coarse){
   .reply-stack{--stack-meta-lh:2.75rem}
