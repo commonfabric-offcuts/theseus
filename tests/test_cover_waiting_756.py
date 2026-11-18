@@ -214,6 +214,29 @@ class CoverWaitMigration50Case(CoverWaiting756Case):
         self.cover(first, [], 2)
         self.assertEqual(self.item()['cover_waiting'], 0)
 
+    def test_refresh_history_occupied_guard_is_reached_below_the_order_step(self):
+        from aim_next.migrations import migrate, MigrationError
+        root = self.create_topic()['id']
+        self.cover(root, [{'text': 'Choose', 'default': 'Keep'}])
+        self.committed(self.command('stack.cover_refresh', target={'message_id': root},
+                                    expected={'cover_revision': 1}))
+        acts = self.sql('SELECT * FROM message_acts ORDER BY id')
+        self.assertTrue(self.sql("SELECT id FROM message_acts WHERE kind='cover_refresh'"))
+        # First remove only50's derived wait index. Explicit fixture preparation
+        # empties49's positions to reach the independent48 refresh-history guard;
+        # the occupied49 refusal is tested above without this preparation.
+        migrate(self.path, 'test-instance', self.binding, '49')
+        self.sql('DELETE FROM dossier_order')
+        self.assertEqual(migrate(self.path, 'test-instance', self.binding, '48')['schema_version'], '48')
+        before = self.path.read_bytes()
+        with self.assertRaises(MigrationError) as raised:
+            migrate(self.path, 'test-instance', self.binding, '47')
+        self.assertEqual(raised.exception.code, 'RECORDS_WOULD_BE_LOST')
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertEqual(self.sql('SELECT * FROM message_acts ORDER BY id'), acts)
+        migrate(self.path, 'test-instance', self.binding)
+        self.assertEqual(self.item()['cover_waiting'], 1)
+
     def test_empty_tail_rolls_back_through_all_parent_steps(self):
         from aim_next.migrations import migrate
         for target in ('49', '48', '47', '46'):

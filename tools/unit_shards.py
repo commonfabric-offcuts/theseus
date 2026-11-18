@@ -5,6 +5,8 @@ import argparse
 import collections
 import json
 import math
+import datetime
+import re
 from pathlib import Path
 import sys
 import time
@@ -62,7 +64,8 @@ def jobs(root, weights):
         measured = bucket['minutes'] + config['setup_minutes']
         result.append({'name': 'python units %d of %d' % (i, len(bins)), 'steps': 'python-units',
                        'python_shard': '%d/%d' % (i, len(bins)), 'files': sorted(bucket['files']),
-                       'timeout': math.ceil(measured * 1.5)})
+                       'timeout': 49, 'timeout_source': 'python-49m-partitions-v1',
+                       'historical_estimated_minutes_including_setup': measured})
     for name in ('node-units', 'deploy-refusals'):
         result.append({'name': name, 'steps': name,
                        'timeout': math.ceil((config['minutes'][name] + config['setup_minutes']) * 1.5)})
@@ -156,7 +159,7 @@ def run(root, shard=None, weights=None):
     return 0 if result.wasSuccessful() else 1
 
 
-def main(argv=None):
+def unit_main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=ROOT)
     parser.add_argument('--shard')
@@ -171,6 +174,279 @@ def main(argv=None):
     except ValueError as error:
         print('refused: %s' % error, file=sys.stderr)
         return 2
+
+
+# Item740 adds budgeting beside this producer's unchanged unit runner and selector.
+import os
+if __package__ in (None, ''):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools import release_check as check
+import hashlib
+import subprocess
+
+
+def scope_record(base, changed, chosen, notes):
+    native = ['native-' + step.name for step in check.NATIVE_STEPS]
+    if len(chosen) != len(set(chosen)) or not set(chosen) <= set(native):
+        raise check.Refused('scope did not choose unique native steps')
+    return {'steps': chosen, 'live': base, 'changed': changed,
+            'not_run': [name for name in native if name not in chosen],
+            'notes': notes[:20], 'why': check.scoped_words(base, chosen)}
+
+
+def _canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
+
+
+def _digest(value):
+    return hashlib.sha256(value).hexdigest()
+
+
+def browser_identities(files):
+    """Conservative provenance on this producer, never a timing/selection gate.
+
+    This ancestry predates live98's reader graph. Bind every supplied source
+    byte for every native mode rather than borrowing that unrelated policy.
+    Only timing metadata is excluded, as in the approved740 provenance.
+    """
+    identity = _digest(_canonical({path: _digest(data) for path, data in files.items()
+                                  if path != '.github/check-weights.json'}))
+    return {'native-' + step.name: identity for step in check.NATIVE_STEPS}
+
+
+def committed_browser_identities(root, head):
+    names = check.git(root, 'ls-tree', '-r', '--name-only', head)
+    if names.returncode:
+        raise check.Refused('browser measurement inventory unavailable')
+    files = {}
+    for path in names.stdout.splitlines():
+        result = subprocess.run(['git', '-C', str(root), 'show', head + ':' + path], capture_output=True)
+        if result.returncode:
+            raise check.Refused('browser measurement input unavailable: ' + path)
+        files[path] = result.stdout
+    return browser_identities(files)
+
+
+def positive_number(value):
+    return type(value) in (int, float) and math.isfinite(value) and value > 0
+
+
+def sha256(value):
+    return isinstance(value, str) and re.fullmatch('[0-9a-f]{64}', value) is not None
+
+
+def browser_case_inventory(report):
+    # Reader expected-failure/restored phases intentionally repeat a name.
+    # Their existing (phase, name) identity must survive measurement intact.
+    cases = [(row.get('phase', ''), row.get('name')) for row in report.get('results', [])]
+    if (not cases or not all(isinstance(phase, str) and isinstance(name, str) and name
+                             for phase, name in cases) or len(cases) != len(set(cases))):
+        raise check.Refused('browser observation invalid named case inventory')
+    return sorted(cases)
+
+
+def browser_observation(summary, report, name, identity, evidence):
+    """Timing only; a finished failed result stays failed in original evidence.
+
+    Call with the final summary and report bytes from a retained, independently
+    authenticated artifact and identity computed from summary.commit's source.
+    This helper grants no acceptance or continuation authority.
+    """
+    selected = [s['name'] for s in summary.get('steps', [])]
+    if (summary.get('tree_unchanged') is not True or len(selected) != len(set(selected))
+            or summary.get('only', summary.get('required')) != selected or selected.count(name) != 1
+            or not check.COMMIT.fullmatch(summary.get('commit', ''))):
+        raise check.Refused('browser observation requires a complete clean summary: ' + name)
+    step = summary['steps'][selected.index(name)]
+    cases = browser_case_inventory(report)
+    counts = step.get('counts') or {}
+    if (counts.get('tests') != len(cases)
+            or counts.get('browser_closed') is not True
+            or not (report.get('closed') is True or report.get('browserClosed') is True)
+            or report.get('fixtureExitCode', 0) != 0 or report.get('fixtureErrors')
+            or report.get('teardown')):
+        raise check.Refused('browser observation incomplete inventory or cleanup: ' + name)
+    try:
+        seconds = (datetime.datetime.fromisoformat(step['finished_at'].replace('Z', '+00:00'))
+                   - datetime.datetime.fromisoformat(step['started_at'].replace('Z', '+00:00'))).total_seconds()
+    except (KeyError, ValueError, TypeError) as error:
+        raise check.Refused('browser observation missing wall time: %s: %s' % (name, error))
+    if not positive_number(seconds) or (identity is not None and not sha256(identity)):
+        raise check.Refused('browser observation invalid duration or source: ' + name)
+    return {'step': name, 'source': summary['commit'], 'inputs_sha256': identity,
+            'seconds': seconds, 'case_count': len(cases),
+            'cases_sha256': _digest(_canonical(sorted(cases))),
+            'complete': True, 'cleanup': True, 'evidence': evidence}
+
+
+def replace_browser_observations(observations, fresh):
+    """Refresh measured steps after a future run; archive old rows separately.
+
+    The caller authenticates retained bytes and formats completed steps with
+    browser_observation. This changes timing inputs only, never a raw verdict.
+    """
+    replaced = {row['step'] for row in fresh}
+    return sorted([row for row in observations if row['step'] not in replaced] + list(fresh),
+                  key=lambda row: _canonical(row))
+
+
+def browser_jobs(native, observations, identities, budget, initial_shards):
+    """Warp9266: maximum by step name, full coverage, fit first.
+
+    Retained partial elapsed times are planning lower bounds. Source/runtime
+    mismatch never discards timing; acceptance and cleanup remain elsewhere.
+    """
+    if len(native) != len(set(native)):
+        raise check.Refused('duplicate browser selection')
+    capacity = budget.get('capacity_minutes')
+    reserve = budget.get('setup_upload_minutes')
+    factor = budget.get('duration_factor')
+    if (budget.get('policy') != 'browser-120m-fit-first-v1'
+            or type(capacity) is not int or capacity != 120
+            or type(reserve) not in (int, float) or reserve != 5
+            or type(factor) not in (int, float) or factor != 1.25
+            or type(initial_shards) is not int or initial_shards < 1):
+        raise check.Refused('invalid browser capacity policy')
+    durations, proofs, isolated, blocked = {}, {}, set(), []
+    for name in sorted(native):
+        rows = [row for row in observations if row.get('step') == name]
+        for row in rows:
+            evidence = row.get('evidence') or {}
+            partial = row.get('kind') == 'partial-lower-bound' and row.get('complete') is False
+            if (not positive_number(row.get('seconds'))
+                    or not check.COMMIT.fullmatch(row.get('source', ''))
+                    or not evidence.get('run') or not evidence.get('artifact')
+                    or (not partial and (row.get('complete') is not True
+                        or row.get('cleanup') is not True
+                        or type(row.get('case_count')) is not int or row['case_count'] < 1
+                        or (row.get('kind') != 'completed-log-interval' and (
+                            not sha256(row.get('cases_sha256'))
+                            or not sha256(evidence.get('report_sha256'))))))
+                    or (partial and not sha256(evidence.get('log_sha256')))
+                    or (not sha256(evidence.get('summary_sha256'))
+                        and not sha256(evidence.get('log_sha256')))):
+                raise check.Refused('invalid browser timing observation: ' + name)
+        proofs[name] = sorted(rows, key=lambda r: _canonical(r))
+        if not rows:
+            durations[name] = None
+            isolated.add(name)
+            continue
+        durations[name] = max(row['seconds'] for row in rows) / 60
+        if (durations[name] > (capacity - reserve) / factor / 2
+                or any(row.get('complete') is False for row in rows)):
+            isolated.add(name)
+        if durations[name] * factor + reserve > capacity:
+            blocked.append(name + ': oversize %.3f measured * %.2f + %.3f reserve > %d minutes' % (
+                durations[name], factor, reserve, capacity))
+    if blocked:
+        raise check.Refused('browser plan cannot fit observed steps; ' + '; '.join(blocked))
+    known = [name for name in native if name not in isolated]
+    bins = [{'minutes': 0.0, 'steps': []} for _ in range(min(initial_shards, len(known)))]
+    for name in sorted(known, key=lambda n: (-durations[n], n)):
+        bucket = min(bins, key=lambda b: b['minutes'])
+        if (bucket['minutes'] + durations[name]) * factor + reserve > capacity:
+            bucket = {'minutes': 0.0, 'steps': []}
+            bins.append(bucket)
+        bucket['steps'].append(name)
+        bucket['minutes'] += durations[name]
+    bins = [b for b in bins if b['steps']]
+    for name in sorted(isolated, key=lambda n: (durations[n] is None, -(durations[n] or 0), n)):
+        bins.append({'minutes': durations[name], 'steps': [name]})
+    assigned = [n for b in bins for n in b['steps']]
+    if sorted(assigned) != sorted(native):
+        raise check.Refused('browser coverage differs from complete selection')
+    result = []
+    for i, bucket in enumerate(bins, 1):
+        minutes = bucket['minutes']
+        partial = any(row.get('complete') is False for n in bucket['steps'] for row in proofs[n])
+        if minutes is not None and minutes * factor + reserve > capacity:
+            raise check.Refused('overfilled browser bin')
+        result.append({'name': 'browser %d of %d (capacity %d min)' % (i, len(bins), capacity),
+                       'steps': ','.join(bucket['steps']), 'minutes': minutes,
+                       'budget_minutes': math.ceil(minutes * factor + reserve) if minutes is not None else None,
+                       'timeout_minutes': capacity, 'timeout_source': budget['policy'],
+                       'timing_basis': ('unknown-first-run' if minutes is None else
+                                        'includes-partial-lower-bound' if partial else 'retained-step-maximum'),
+                       'measurements': {n: proofs[n] for n in bucket['steps']}})
+    return result
+
+
+def plan(root, event_name, event, head, browser_shards=4, measured=None, weights=None):
+    """{shards, scoped, why}: PR scope when provable; otherwise every required step."""
+    if browser_shards < 1:
+        raise ValueError('at least one browser shard')
+    scoped, why = None, 'only pull requests may scope their checks'
+    if event_name == 'pull_request':
+        try:
+            base = event['pull_request']['base']['sha']
+            pr_head = event['pull_request']['head']['sha']
+            if not all(isinstance(sha, str) and check.COMMIT.fullmatch(sha) for sha in (base, pr_head, head)):
+                raise check.Refused('event has no exact base, PR head and tested head')
+            # On GitHub HEAD is the tested merge, whose first parent must be the
+            # event base. A moving release branch requires a fresh PR event.
+            if head != pr_head:
+                parents = check.git(root, 'rev-list', '--parents', '-n', '1', head)
+                if parents.returncode or parents.stdout.strip().split() != [head, base, pr_head]:
+                    raise check.Refused('tested merge does not bind the event base and PR head')
+            changed, chosen, notes = check.scope(root, base, head)
+            problems = check.small_fix_problems(changed)
+            if problems:
+                raise check.Refused('; '.join(problems))
+            scoped = scope_record(base, changed, chosen, notes)
+            why = scoped['why']
+        except (check.Refused, OSError, ValueError, KeyError, TypeError, AttributeError, SyntaxError) as error:
+            why = 'full run: scope unavailable: %s' % error
+    native = scoped['steps'] if scoped is not None else ['native-' + step.name for step in check.NATIVE_STEPS]
+    if weights is None:
+        weights = json.loads((root / '.github/check-weights.json').read_text())
+    # Timing is chosen by step name under warp9266. The producer scope proof
+    # above still binds the event/source; timing never grants acceptance.
+    identities = {}
+    shards = browser_jobs(native, weights.get('browser_observations', []), identities,
+                          weights.get('browser_budget', {}), browser_shards)
+    for job in jobs(root, weights):
+        job['timeout_minutes'] = job.pop('timeout')
+        shards.append(job)
+    shards.append({'name': 'wake replay', 'steps': check.WAKE_REPLAY, 'timeout_minutes': 45})
+    expected = set(check.REQUIRED) - set(scoped['not_run'] if scoped else [])
+    ordinary = [s for shard in shards if not shard.get('python_shard') for s in shard['steps'].split(',')]
+    assert sorted(ordinary + ['python-units']) == sorted(expected)
+    return {'shards': shards, 'scoped': scoped, 'why': why}
+
+
+def plan_main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--event-name', default=os.environ.get('GITHUB_EVENT_NAME', ''))
+    parser.add_argument('--event', default=os.environ.get('GITHUB_EVENT_PATH'))
+    parser.add_argument('--head', default=os.environ.get('GITHUB_SHA', ''))
+    parser.add_argument('--browser-shards', type=int, default=int(os.environ.get('BROWSER_SHARDS', '4')))
+    parser.add_argument('--github-output', action='store_true')
+    args = parser.parse_args(argv)
+    root = Path(__file__).resolve().parents[1]
+    try:
+        event = json.loads(Path(args.event).read_text()) if args.event else {}
+    except (OSError, ValueError):
+        event = {}
+    weights = json.loads((root / '.github/check-weights.json').read_text())
+    try:
+        result = plan(root, args.event_name, event, args.head, args.browser_shards, weights['minutes'], weights)
+    except (check.Refused, ValueError) as error:
+        print('refused: %s' % error, file=sys.stderr)
+        return 2
+    if args.github_output:
+        print('shards=' + json.dumps(result['shards']))
+        print('scoped=' + json.dumps(result['scoped']))
+        print(result['why'], file=sys.stderr)
+    else:
+        print(json.dumps(result, indent=2))
+    return 0
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ['--plan']:
+        return plan_main(argv[1:])
+    return unit_main(argv)
 
 
 if __name__ == '__main__':
