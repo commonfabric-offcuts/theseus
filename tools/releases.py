@@ -40,7 +40,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from aim_next.contract import _json
-from aim_next.releases import judgment_pending, release_row, MAX_EVIDENCE_BYTES
+from aim_next.releases import judgment_pending, release_row, MAX_EVIDENCE_BYTES, MAX_MEASUREMENTS_BYTES
 from tools import train as train_check
 
 NUMBER = re.compile(r"[1-9][0-9]*")
@@ -52,6 +52,20 @@ LOG_FORMAT = ("--format=%H%x1f%s%x1f%(trailers:key=Pipeline,valueonly,separator=
               "%x1f%(trailers:key=Train-Item,valueonly,separator=%x1d)%x1e")
 REVERT = re.compile(r"revert(?:\s+(.*)|$)", re.I | re.S)
 MAX_FULL_BYTES = 16 * 1024 * 1024
+# One thirty-second of Core's unchanged row bound is each section's byte share.
+SECTION_BYTES = MAX_MEASUREMENTS_BYTES // 32
+# Positive preservation contract: reader inputs, raw conclusions and qualifications.
+# These are never replaced by storage pointers, however large they become.
+INLINE_VALUES = frozenset((
+    "release_check", "python_units", "node_units", "native", "known_reds", "skipped", "scoped",
+    "judged_tree", "reverts", "steps_beyond_policy", "steps_beyond_policy_unread",
+    "items", "judgment", "hosted_run", "review", "audit", "controller", "output", "refusals",
+    "conclusion", "status", "passed", "exit",
+))
+INLINE_MARKERS = INLINE_VALUES | {"count", "counts", "run", "attempt"}
+# Retain scalar identities within result containers, without mistaking an
+# inventory of named objects for a list of measured results.
+INLINE_IDENTITIES = frozenset(("name", "id", "step", "case", "phase", "engine", "head", "head_sha"))
 
 
 def canonical(value):
@@ -121,25 +135,66 @@ def publish_once(path, raw, limit=MAX_FULL_BYTES):
             temporary.unlink()
 
 
+def _section_ref(value, path, pointer):
+    # The sole absolute full_measurements path anchors every section. Repeating
+    # its directory per inventory would spend the row budget on identical text.
+    return {"count": len(value), "sha256": digest(value), "path": Path(path).name, "pointer": pointer}
+
+
+def _has_inline(value):
+    if isinstance(value, dict):
+        return bool(INLINE_MARKERS.intersection(value)) or any(_has_inline(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_has_inline(v) for v in value)
+    return False
+
+
+def _project_section(value, path, pointer="", structure=False):
+    if len(canonical(value)) <= SECTION_BYTES:
+        return copy.deepcopy(value)
+    if not structure and not _has_inline(value):
+        return _section_ref(value, path, pointer)
+    if isinstance(value, list):
+        return [_project_section(v, path, pointer + "/" + str(i)) for i, v in enumerate(value)]
+    result = {}
+    for key, child in value.items():
+        token = key.replace("~", "~0").replace("/", "~1")
+        result[key] = (copy.deepcopy(child) if key in INLINE_VALUES or
+                       (key in INLINE_IDENTITIES and not isinstance(child, (dict, list))) else
+                       _project_section(child, path, pointer + "/" + token, structure=(key == "counts")))
+    if pointer and result != value and len(canonical(result)) > SECTION_BYTES:
+        result["_storage_projection"] = _section_ref(value, path, pointer)
+    return result
+
+
+def _reserved_projection(value):
+    if isinstance(value, dict):
+        return "_storage_projection" in value or any(_reserved_projection(v) for v in value.values())
+    return isinstance(value, list) and any(_reserved_projection(v) for v in value)
+
+
 def compact_measurements(full, path):
     """Storage projection only, never a judge: complete qualifications and raw conclusions stay inline."""
     _require(isinstance(full, dict) and "full_measurements" not in full, "expected complete measurements, not a pointer")
+    _require(not _reserved_projection(full), "storage projection field is reserved")
     raw = canonical(full)
     _require(len(raw) <= MAX_FULL_BYTES, "payload exceeds its byte bound")
-    result = copy.deepcopy(full)
-    train = result.get("train")
+    result = _project_section(full, path)
+    train = full.get("train")
     if isinstance(train, dict):
         judgment = train.get("judgment")
         if isinstance(judgment, dict):
             _require("judge_receipts_sha256" not in train, "judge receipt digest field is reserved")
-            train["judge_receipts_sha256"] = {key: digest(judgment[key]) for key in ("producer_runs", "verdict_checks")}
+            result["train"]["judge_receipts_sha256"] = {
+                key: digest(judgment[key]) for key in ("producer_runs", "verdict_checks")}
         moved = train.get("base_move")
         receipts = moved.get("receipts") if isinstance(moved, dict) else None
         if isinstance(receipts, dict) and "obligations" in receipts:
             obligations = receipts["obligations"]
             _require(isinstance(obligations, list), "expected full receipt obligations, not a digest")
-            receipts["sha256"] = digest(receipts)
-            receipts["obligations"] = {"count": len(obligations), "sha256": digest(obligations)}
+            projected_receipts = result["train"]["base_move"]["receipts"]
+            projected_receipts["sha256"] = digest(receipts)
+            projected_receipts["obligations"] = _section_ref(obligations, path, "/train/base_move/receipts/obligations")
     result["full_measurements"] = {"version": 1, "path": str(path), "sha256": hashlib.sha256(raw).hexdigest(),
                                    "bytes": len(raw)}
     return result

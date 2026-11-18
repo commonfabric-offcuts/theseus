@@ -285,15 +285,46 @@ file, partial write, bad hash or read-back mismatch refuses before stopping.
 
 The row's `measurements.full_measurements` is
 `{version: 1, path, sha256, bytes}`. It binds the canonical complete measurements,
-not a rewritten subset. All original measurement fields remain inline except
-`train.base_move.receipts.obligations`: that potentially large list becomes
-`{count, sha256}` of its complete canonical list. The receipt also gains its
-complete pre-compaction `sha256`. Nothing is removed from the saved payload.
-`train.judge_receipts_sha256` binds the complete producer-run and verdict-check
-lists separately when a judgment is present; the lists themselves stay inline.
-This projection is unconditional for this schema, without release/item special
-cases. Every other list remains intact; any future oversized metadata refuses
-the unchanged Core bound rather than being truncated or adaptively omitted.
+not a rewritten subset. `train.judge_receipts_sha256` still binds the complete
+producer-run and verdict-check lists; receipt obligations retain their count
+and digest and now also name their location in the full file.
+
+The storage projection uses a fixed **512 canonical UTF-8 byte share per
+section** (one thirty-second of Core's unchanged bound), for every release
+and every section name. A large section with no
+inline result/qualification facts becomes `{count, sha256, path, pointer}`:
+count is its number of entries (characters for a string), SHA-256 covers that
+whole canonical section, path is the fixed basename of the full immutable
+measurements file and pointer is its RFC 6901 JSON pointer in that file.
+The sole absolute `full_measurements.path` anchors every section in the same
+evidence directory; section paths are never opened independently. This avoids
+repeating an up-to-1024-byte directory for every reference. No separate
+mutable section file or invented receipt is introduced.
+
+Inline facts are a positive preservation contract, not a list of sections to
+shrink: existing count/decision reader inputs (`release_check`, `python_units`,
+`node_units`, `native`, `known_reds`, `skipped`, `scoped`, `judged_tree`, `reverts`,
+policy qualifications, train `items`, `judgment`, `hosted_run`) and explicit
+`review`, `audit`, `controller`, `output`, `refusals`, `conclusion`, `status`,
+`passed` and `exit` values remain exact. A container with such facts, counts,
+or run/attempt identities keeps its shape and scalar identities; its other
+large children are projected recursively. Large lists of result records keep
+every record in order. Large inventories inside counts may become references;
+the numeric counts and step identities stay inline, including long scalar
+name/id/step/case/phase/engine/head/head_sha values in result containers.
+A still-large dictionary whose children were projected also carries
+`_storage_projection`, binding its whole original
+section. That key is reserved throughout complete input. The root is already
+bound by `full_measurements`.
+
+This leaves original source failure conclusions, failed-step identities and
+raw numeric counts, red count, controller refusal and accepted own results
+inline. Individual failure names and bulky artifact inventories remain exact
+in the full file, with section references rather than being relabeled or
+omitted from evidence. No digest means green. Protected writing is never
+truncated; if protected facts plus references cannot fit Core's unchanged
+16384-byte bound, preparation refuses before publication/stop. This projection
+is storage only and is never accepted as full guard input.
 
 The pipeline board (`Pipeline._shipped_numbers`, `pipeline_state` and the legacy
 page builder) reads release number, items and deploy time. The CLI release/count
@@ -303,8 +334,10 @@ Health's `_release_check`, `_release_train`, `_release_scoped`, Core's
 `judgment_pending` and `check_reading.steps_of_measurements` retain exactly their
 existing answers. The scorecard's release read uses number, deploy time, items,
 head and previous. All these fields, item approved heads/review qualifications,
-all original judgment entries (including failure conclusions), source reds,
-controller refusal and Pool receipts remain exact. A digest never means green.
+all original judgment entries (including failure conclusions), source red counts,
+controller refusal and raw Pool results remain inline and exact; bulky inventories
+are bound to their whole canonical sections in the full file. A digest never
+means green.
 
 Planning validates the compact row with Core before any stop. Full read-back
 and exact reprojection are required again immediately before record commands;

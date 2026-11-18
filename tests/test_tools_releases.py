@@ -138,7 +138,8 @@ class CompactRecords(unittest.TestCase):
         self.assertEqual(self.full, original)
         receipts = row["measurements"]["train"]["base_move"]["receipts"]
         full_receipts = original["train"]["base_move"]["receipts"]
-        self.assertEqual(receipts["obligations"], {"count": 600, "sha256": releases.digest(full_receipts["obligations"])})
+        self.assertEqual(receipts["obligations"], {"count": 600, "sha256": releases.digest(full_receipts["obligations"]),
+                         "path": Path(ref["path"]).name, "pointer": "/train/base_move/receipts/obligations"})
         self.assertEqual(receipts["sha256"], releases.digest(full_receipts))
         self.assertEqual(receipts["pool"], full_receipts["pool"])
         self.assertEqual(row["measurements"]["train"]["judge_receipts_sha256"],
@@ -212,12 +213,67 @@ class CompactRecords(unittest.TestCase):
 
     def test_full_and_future_compact_bounds_without_truncation(self):
         self.full["future_metadata"] = "x" * 17000
+        projected = self.prepared()
+        self.assertEqual(releases.verify_record(projected, self.output), self.full)
+        self.assertEqual(projected["measurements"]["future_metadata"]["count"], 17000)
+        # Writing that qualifies a result must stay inline, even when it cannot fit.
+        Path(projected["measurements"]["full_measurements"]["path"]).unlink()
+        self.full["train"]["items"][0]["review"] = "qualified " * 2000
         original = copy.deepcopy(self.full)
         with self.assertRaisesRegex(core.Refusal, "16384"): self.prepared()
         self.assertEqual(self.full, original)
         self.assertFalse((self.output / "release-107-measurements.json").exists())
         with mock.patch.object(releases, "MAX_FULL_BYTES", 8):
             with self.assertRaisesRegex(train.Refused, "byte bound"): self.prepared()
+
+    def test_general_sections_keep_results_and_bind_whole_sections(self):
+        # A different shape: arbitrary names, escaped pointer tokens and no base move.
+        self.full["train"].pop("base_move")
+        rows = [{"name": "diagnostic-%d " % i + "identity " * 70, "exit": 1, "passed": False,
+                 "counts": {"tests": 80, "pass": 30, "fail": 50,
+                            "failed": ["exact failure α " + "z" * 80] * 50},
+                 "evidence~/": {"long~key/": ["artifact " + "x" * 90] * 100}}
+                for i in range(3)]
+        self.full["unfamiliar~/"] = rows
+        self.full["another_inventory"] = [{"label": "x" * 100, "digest": "a" * 64}] * 300
+        original = copy.deepcopy(self.full)
+        row = self.prepared()
+        measured = row["measurements"]
+        for i, step in enumerate(measured["unfamiliar~/"]):
+            for key in ("name", "exit", "passed"):
+                self.assertEqual(step[key], rows[i][key])
+            self.assertEqual({k: step["counts"][k] for k in ("tests", "pass", "fail")},
+                             {"tests": 80, "pass": 30, "fail": 50})
+        def resolve(pointer):
+            value = original
+            for token in pointer.split("/")[1:]:
+                token = token.replace("~1", "/").replace("~0", "~")
+                value = value[int(token)] if isinstance(value, list) else value[token]
+            return value
+        def check(value):
+            if isinstance(value, dict):
+                if set(value) == {"count", "sha256", "path", "pointer"}:
+                    whole = resolve(value["pointer"])
+                    self.assertEqual(value["count"], len(whole))
+                    self.assertEqual(value["sha256"], releases.digest(whole))
+                    self.assertEqual(value["path"], Path(measured["full_measurements"]["path"]).name)
+                else:
+                    for v in value.values(): check(v)
+            elif isinstance(value, list):
+                for v in value: check(v)
+        check(measured)
+        self.assertEqual(releases.verify_record(row, self.output), original)
+        self.assertEqual(self.full, original)
+        self.assertEqual(self.readers(dict(self.record, deployed_at=self.at)), self.readers(row))
+        self.assertLessEqual(len(core.release_row(row)["measurements"].encode()), 16384)
+        # Stable under input dictionary insertion order, including section hashes.
+        reversed_full = dict(reversed(list(self.full.items())))
+        self.assertEqual(releases.compact_measurements(reversed_full, Path(measured["full_measurements"]["path"])), measured)
+
+    def test_reserved_section_marker_refuses_even_in_small_inline_input(self):
+        self.full["train"]["items"][0]["_storage_projection"] = {}
+        with self.assertRaisesRegex(train.Refused, "reserved"):
+            self.prepared()
 
     def test_io_failures_do_not_publish_partial_bytes(self):
         path = self.output / "release-107-measurements.json"
