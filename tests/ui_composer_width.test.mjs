@@ -26,13 +26,35 @@ function pointerFixture(initial) {
   const dialog = { ownerDocument: doc, open: true, id: 'reader', dataset: {},
     classList: { contains() { return false; } },
     style: { setProperty(name, value) { properties.set(name, value); } },
-    getBoundingClientRect() { return { width: parseFloat(properties.get('--composer-width') || String(initial)) }; },
+    getBoundingClientRect() {
+      const mode = dialog.dataset.layout === 'wide' ? 'wide' : 'stacked';
+      return { width: parseFloat(properties.get('--composer-width') || properties.get(`--composer-width-${mode}`) || String(initial)) };
+    },
     append(edge) { edges.push(edge); },
     addEventListener(name, fn) { listeners.set(name, fn); },
   };
   composerWidth(dialog);
   return { dialog, edges };
 }
+
+test('item 650 Reader modes keep independent widths for their element lifetime', () => {
+  const { dialog, edges } = pointerFixture(1152);
+  const drag = delta => { edges[0].fire('pointerdown', 100); edges[0].fire('pointermove', 100 + delta); edges[0].fire('pointerup', 100 + delta); };
+  const width = () => dialog.getBoundingClientRect().width;
+  drag(16);
+  assert.equal(width(), 1120);
+  dialog.dataset.layout = 'wide';
+  assert.equal(width(), 1152, 'unchosen Wide has no stacked width');
+  drag(32);
+  assert.equal(width(), 1088);
+  dialog.dataset.layout = 'stacked';
+  assert.equal(width(), 1120, 'stacked restores its own choice');
+  dialog.open = false; dialog.open = true;
+  assert.equal(width(), 1120, 'reopening the same element keeps its choice');
+  dialog.dataset.layout = 'wide';
+  assert.equal(width(), 1088, 'Wide restores its own choice');
+  assert.equal(pointerFixture(1152).dialog.getBoundingClientRect().width, 1152, 'a new element has no old choices');
+});
 
 for (const initial of [320, 375, 390, 1152]) for (const [index, side, inward] of [[0, 'left', 16], [1, 'right', -16]]) {
   test(`item 650 ${initial} ${side}: a held drag follows a return through its origin`, () => {
