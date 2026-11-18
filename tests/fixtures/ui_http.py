@@ -21,6 +21,7 @@ from aim_next import Store, initialize
 from aim_next import server as server_module
 from aim_next.server import create_server, RequestError
 from aim_next.stacks import KINDS as STACK_KINDS, current_acts
+from item_735_runtime import Item735Runtime
 
 
 class FreshnessControls:
@@ -508,6 +509,7 @@ def main():
             server.store_factory = lambda: GatedStore(factory(), gate)
             return server
         server = serve()
+        item735_runtime = Item735Runtime(server, root, instance, actor)
         # Item 645: source-bound page comparisons inside one filtered native run.
         # This private stdin control swaps immutable public Build bytes only;
         # Core, records, origin and authority remain the same isolated fixture.
@@ -686,6 +688,8 @@ def main():
                                   "freshness": freshness, "agent": "fixture-notebook-agent" if freshness else None}
                     elif request["method"] == "item_645_runtime":
                         answer = item645_runtime(request["phase"])
+                    elif request["method"] == "item_735_runtime":
+                        answer = item735_runtime.select(request["phase"])
                     elif request["method"] == "counts":
                         with sqlite3.connect(str(path)) as db:
                             answer = {"media": db.execute("SELECT count(*) FROM media_intents").fetchone()[0]}

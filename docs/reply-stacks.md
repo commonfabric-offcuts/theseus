@@ -413,7 +413,12 @@ their acts.
   the reader's own note and saved reply, docs/topic-reading.md), "New" when
   the message itself is new, an always-visible ☆/★ control (646 below), lit if the reader starred any message of the
   dossier, not only its first (item 635: a later reply, or one the page has
-  not loaded, which the dossier's position names), how many replied and who, and how many replies are new. The tab is two
+  not loaded, which the dossier's position names), how many replied and who, and how many replies are new.
+  Pressing that filled star shows the earliest message you starred in this
+  dossier, in message order, through the same paged reveal as the unread
+  badge (items 613/735, [title-star.md](title-star.md)); a reply behind
+  Earlier messages opens whole, with its star and the keys on it, in place.
+  The tab is two
   lines high: the short name, then the rest on one line that never wraps to
   a third (`stack-look.css`). When that line is short of room, who replied
   and what is new give way first, then the marks, whole glyphs dropped from
@@ -520,7 +525,7 @@ finds a card finds it alone, and the star acts on the card it sits in. It is
 put back each time the author line is painted again (a mark from another
 device, the time's words changing).
 
-### Header star preview (646; composition with 735 pending)
+### Header star preview (646; source composition under warp8529)
 
 The named default under warp8399/8412/8413, confirmed by Tony8436,
 replaces the title bar's passive star indicator with one always-visible
@@ -541,21 +546,30 @@ header toggle wording; Tony's original item 5 requested a first-message
 star/unstar toggle after 635 (warp #6826).
 
 646 supplies the `star` callback for the unlit control and reuses
-`StackFeed.star` on the loaded first message identified by `dossierOf`.
-When that first message is outside the loaded page, base94 asks the reader
-to load earlier messages before starring; it never stars a substitute reply
-or guesses an unloaded message's star revision. No loader is added here.
+`StackFeed.star` on the actual first message identified by Core's `dossierOf`.
+If unloaded, the existing 613 `loadUntil` / topic-message pagination loads
+that exact identity before its current star revision is used. It never asks
+the reader to Load earlier, stars a substitute reply, or guesses a revision.
+Loading does not open the dossier or touch writing. Access, runtime and root
+identity must still agree after loading; unavailable or changed destinations
+say so and send nothing. Repeated presses while loading, sending or awaiting
+a recorded result make no second star operation. This header path draws no
+optimistic star or Bring back and announces success only after Core commits;
+the existing act queue, refusal notices and exact-operation recovery remain.
 The header star occupies its own reserved space in the tab, with a 44px
 target under a finger and keyboard activation by Return or Space. A surface
 without a dossier header (Only new or a standalone message), and the title
 temporarily replaced by its rename field, retain their existing behavior.
 
-This is source-only preview work: no tests written or run, no browser,
-units, pool or review. Base94 alone has no lit-reveal callback. The
-coordinator must compose 735's frozen return and resolve the shared
-`paintHead` before hosting the preview on a copy. Tony's actual preview
-approval is required before tests start; the eventual 18-start budget is
-unspent and unallocated.
+This is source-only preview work: no tests written or run, no syntax/compile,
+browser, units, pool, server or review. The full preserved 735 correction
+`db569f4edaa36e65d17bd01c7a0595f9c75de55b` is composed with the preserved
+646 preview, retaining one header control and the existing `starred` callback.
+The coordinator hosts the first copied preview after this return. Tony's
+actual first 646 preview word is required before tests. This is no approval
+of 735: it remains parked, including its own message star covered by the
+floating action bar at 320px, hidden-reply fixture and no-scroll proof gaps.
+Its historical tests/evidence are inherited source, not runs of this preview.
 ## Doing it
 
 On a message (its card focused, never in writing), these keys work:

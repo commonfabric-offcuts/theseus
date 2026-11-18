@@ -324,6 +324,7 @@ export function headClick(list, entry, event) {
   if (!found?.head || !found.section || !found.stack.replies.length) return false;
   const { stack } = found, act = event?.target?.closest?.('.stack-act')?.dataset.stackAct;
   if (act === 'rename') { state.on?.rename?.(stack); return true; }
+  if (act === 'starred') { state.on?.starred?.(stack); return true; }
   // The first message drawn as an earlier one's row, under the tab: a press
   // there shows it whole, for this visit (item 476); the tab acts as before.
   if (state.earlierRows.has(stack.id) && onEarlierRow(entry, event?.target)) { state.whole.add(stack.id); state.again(); return true; }
@@ -499,7 +500,7 @@ const replies = n => (n === 1 ? 'reply' : 'replies');
 // image, the reader's own note and saved reply: marks.mjs, item 127), how many
 // replied and who, and what is new. One always-visible star replaces the
 // passive indicator (646). Lit means any message is starred (635); its
-// starred action belongs to 735, which the coordinator composes separately.
+// single starred action uses 735 and the existing 613 landing.
 function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   let row = headRows.get(card);
   if (!row) { row = element(doc, 'span', 'stack-head'); headRows.set(card, row); }
