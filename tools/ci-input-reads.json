@@ -3904,6 +3904,18 @@
         "docs/tools.md"
       ],
       "scope": "repository"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "23cafcce2f1a494e287905a1c56ddd23aeaaefdf00a374dcf47f9a8f04f6ec88:2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "23cafcce2f1a494e287905a1c56ddd23aeaaefdf00a374dcf47f9a8f04f6ec88:3": {
+      "scope": "generated/system/product",
+      "inputs": []
     }
   },
   "tests/test_tools_deploy_branch.py": {
@@ -4960,11 +4972,11 @@
   "tests/test_tools_check_plan.py": {
     "250766ef9167859fcd395067930d0e9b9c0d41d7a2728d4a777b91499fdc9388": {
       "inputs": [
-        "tools/check_plan.py",
+        ".github/check-weights.json",
+        "tools/ci_input_reads.py",
         "tools/release_check.py",
-        "tools/unit_shards.py",
         "tools/steps_for.py",
-        ".github/check-weights.json"
+        "tools/unit_shards.py"
       ],
       "scope": "repository"
     },
@@ -5005,6 +5017,20 @@
         ".github/workflows/checks.yml"
       ],
       "scope": "repository"
+    },
+    "0a77164d8414220455858a9d5bb6f545af16bf7f7bf859727898d348a563934b:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "10fdba30cfda5085acad39d7f7286fc3ae6dea4e45c8ba49b962d039e759a897": {
+      "inputs": [
+        ".github/workflows/nightly-live.yml"
+      ],
+      "scope": "repository"
+    },
+    "c50a51b1fade7f17fcefb77f3e5e56bd711073c15548c0d020dc969e40493a39": {
+      "inputs": [],
+      "scope": "generated/system/product"
     }
   },
   "tests/thumbnail_open_native.mjs": {
@@ -5608,6 +5634,389 @@
         "web/aim.css"
       ],
       "scope": "repository"
+    }
+  },
+  "tests/compose_swipe_648_protections.mjs": {
+    "231eb206251c79b80f661fa52bd53ea0e274d31f5858268d885696017c37c900": {
+      "inputs": [
+        "tests/acts.json"
+      ],
+      "scope": "repository"
+    },
+    "8ae9a7184b71fc69a85d840944e19a26d3e20c646a055925d4d3ff1794493a42": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "0318686cfe106132f64cd978447603221b739cd734b31616be0b6f01b5732f09": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "0318686cfe106132f64cd978447603221b739cd734b31616be0b6f01b5732f09:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "8ae9a7184b71fc69a85d840944e19a26d3e20c646a055925d4d3ff1794493a42:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "0318686cfe106132f64cd978447603221b739cd734b31616be0b6f01b5732f09:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "0318686cfe106132f64cd978447603221b739cd734b31616be0b6f01b5732f09:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_base_move.py": {
+    "b952d48fa80270162e170ab0ce54e58ee61be3331f5dbbe4407e3fa7cf2777ab": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "e6dfbe66d5bdc007f3e4685a07db55eefae6797202d8357c37c9b59f1b2d2d1d": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "89a6a0308a93fbefdcec56b8940357ec6d06ae3512c403fae3762ddeeec68651": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "0a7b745006494c7634dda3b7808fa5b1160f5fc06f29a7e45c004e687e636c8b": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "874702e1d1f7f9af838165f7424773d889713aa0eb72e2ab2c057e29044d0274": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "b344d7ed8838a141df008aec69f138181fc241c6f0f578d5dddf004b6d93929d": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "874866ee1dd5e2f3fdcf25dc1ede33c85d09750111c430120a70ceb932ead74e": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:6": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "5dfd0303205fcec48818fad3c9a5c5b56ac40c249bb094e41785cffb0114258e": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "af9f11a828d5bd159079720b8dfd1b3b0e184c0d53b28ce0fdb21be5d01222b0": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "dc2ef741a6032a8e234f17319e83ba6016a47170856d6c71b133cc3ddacced78": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:6": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_scoped_guard.py": {
+    "2ca1793e9836537fadada5c83b3b278f7829ed60adfef91f5fc7cf45e8e9c153": {
+      "inputs": [
+        "tools/release_check.py"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/test_tools_continuation_envelope.py": {
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_own_receipt.py": {
+    "31d13b11611c907f8b2fdb7df2ffbb31e480eb274c65d50abcc11b55f8ca49cf": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "e06b38aa481435494cd1f940c02dcd893e20301f34b3fa816fdd572a1a05d9e9": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "66eae333beaa68c5492374794a58215caccae37680ded942be2de96375b24c64": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "1f7986a586637ec27aeee29229b1f6156d4d9f7b8b4938c53f94211539f7b2a8": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "66eae333beaa68c5492374794a58215caccae37680ded942be2de96375b24c64:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "ba7dd190128c0bc0553abd76731b054d8cbc9ff1d331cadbf3101a498d674827": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_own_receipt_families.py": {
+    "8f89e13184a573b59555dcdfbb1c92f86ced8305d5c49d836f0850c39e83dbbe": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_own_receipt_publication.py": {
+    "bd3a6f2e591ea6b7b0f95cac08fe13a490d431ccfe416dcd330ddb7c358287de": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "ff17f1fb92d0e6e9346846ce82c4c0819e481b8b5a97560a054c3c7aab99c45b": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_postmerge.py": {
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:6": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_releases.py": {
+    "b952d48fa80270162e170ab0ce54e58ee61be3331f5dbbe4407e3fa7cf2777ab": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "06d78bf70e51d260bf9b9a7946acfe6f03f123f06e2d223c48841fe245dbae65": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "06d78bf70e51d260bf9b9a7946acfe6f03f123f06e2d223c48841fe245dbae65:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_resolution_adaptations.py": {
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_source_readers_8715.py": {
+    "cbd8196a439e926db9f3eb13f868e6397028e5aed85f6da8504eaebf4a51a9d7": {
+      "inputs": [
+        "tools/continuation_envelope.py"
+      ],
+      "scope": "repository"
+    },
+    "790e13d3e4d9e3bcc6a8aa839e7366a14dfba426f39f1df22bcab6fdf7f60eab": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "e88836ccedc3bcccce0ca7d244ac3d79ea97642cfaef91d613c42f34c43e745e": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "c8c765a14e0dbf99ce7f7dcba7fae3e19e5c447bcb2fcc591fc7eda9bc9cc6aa": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_own_receipt_717_assembly.py": {
+    "317ce79014ae552c75f65841335534ae5340e14fb2c0bf19c335588183ab2e95": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "317ce79014ae552c75f65841335534ae5340e14fb2c0bf19c335588183ab2e95:1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/test_tools_profiles_8821.py": {
+    "ff4cac0f708e95f55027d3f2dd399ae4420a7ea5699bcc91b311594126d8cf70": {
+      "scope": "repository",
+      "inputs": [
+        "tests/fixtures/own_profiles_8821.json"
+      ]
+    },
+    "35bb61fddae774204fd822ff5097c96a35c0b7a57ddbd2151bfac923449408f0": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "44d8d5d00c45b2aa9b5b812944ae5b15833dc07441050294e7d268a606cf89f6": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "1f7986a586637ec27aeee29229b1f6156d4d9f7b8b4938c53f94211539f7b2a8": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "2aebedff790f29ae5dc9f16b5bc9b0c328dbd517785c7ed69babcd0e07e2f98a": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/own_receipt_fixtures.py": {
+    "01f2bf03aedc7847b3dd7d1125faa62f691658eb71da6458246c4856eca5d63b": {
+      "scope": "repository",
+      "inputs": [
+        "tests/fixtures/own_receipts/manifest.json"
+      ]
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "scope": "repository",
+      "inputs": [
+        "tests/fixtures/own_receipts/objects/0baf803bc2215183e12ecac41306cb098d133470039fc592d9f1716e1841f145.gz",
+        "tests/fixtures/own_receipts/objects/12d31c66240958e7dbc8e7e64823b3acb782f435f5e4902a6265b118cb89ecdd.gz",
+        "tests/fixtures/own_receipts/objects/1c6c91e88fc72cc6d0478bb4448614ec6280f68aebfa61e44d1ec2591f32a6be.gz",
+        "tests/fixtures/own_receipts/objects/1eb03b13ed6c564c1a10fbb3a33ebf0548d991bd72f7a8f03a034d3783882b18.gz",
+        "tests/fixtures/own_receipts/objects/1f0ab1a324e55e9e8d51f4643ce649612a69939df23519037a18c187e0175fe7.gz",
+        "tests/fixtures/own_receipts/objects/254df39f355360525e43e83f5fbb89e73eb0aa5970536d67a3571d11dff4f2ab.gz",
+        "tests/fixtures/own_receipts/objects/270ba276ea9cb5b17527a8363e57ac624bca8cd79264561d8535e6a12104d192.gz",
+        "tests/fixtures/own_receipts/objects/2d528c0e1451d45d7c8f6ff2fefa43e5992553a506a3d5a3c6af2aab434509a6.gz",
+        "tests/fixtures/own_receipts/objects/40da19f72d922f6eb3baa427394157334d2e55c3c291a7481a1dfad52291ecde.gz",
+        "tests/fixtures/own_receipts/objects/45d48881567471635953ee38349a7de3b6d5addef9ec647d197c8533e630f10f.gz",
+        "tests/fixtures/own_receipts/objects/47785917908f864117ff0fd04de328df76dd14a4e740416c3913b1c2d7e66db5.gz",
+        "tests/fixtures/own_receipts/objects/5090838ea883ceafaaadfbf63840674173e20c0a2f52bf87a2c5e9efbd9e0f3d.gz",
+        "tests/fixtures/own_receipts/objects/61c5a6656eb8e091baf9662db3a60c41ec96579e3a2d6796be933d2c55dbfdf6.gz",
+        "tests/fixtures/own_receipts/objects/65ac1f1718e1224fb81bf2c84f4b64a1fe4d86a342864dad39d654a4a6029535.gz",
+        "tests/fixtures/own_receipts/objects/6687c175e5221a2ceab4a218d33eef93f591dbf1644b303b02dcf2db83391880.gz",
+        "tests/fixtures/own_receipts/objects/6949c070adbe3516ec033e8836523f8a04bbd9b2252e47609408c8d258ab1e64.gz",
+        "tests/fixtures/own_receipts/objects/69ce6a919cbcf12e2694575e20702a59e1e75b06f71cc90f620baaca52cad9cf.gz",
+        "tests/fixtures/own_receipts/objects/747c9ae099b40fe132aea2c228a61c583676d8838e8d0f1baa192243457998df.gz",
+        "tests/fixtures/own_receipts/objects/766539a1c26f86602d6249b0af8b318a8cd3e29b2ad6568dd18df75ad6bfe086.gz",
+        "tests/fixtures/own_receipts/objects/86de5a1aa3ece5549e94edbc02cc26f45b8a5067cdb8f52d87e5d71a8f7a715c",
+        "tests/fixtures/own_receipts/objects/8e0d6a0b82416ed19aab240e68c55f02fd6b40bf2353fac7ef8ac1514fefee96.gz",
+        "tests/fixtures/own_receipts/objects/931e11e72b6e85945ecbc1b7c75f24bb4b2cd5e51fbde4a09e4b032765737a59.gz",
+        "tests/fixtures/own_receipts/objects/997953b3b00aca5332a09482fefab9ee37ad62f2d3f93cf637a192b8dbd241a3.gz",
+        "tests/fixtures/own_receipts/objects/99caa5a8371510fe46f3e6d5fd43c5ad9f79cca59dcfc16108b0c3f5bb55a33d.gz",
+        "tests/fixtures/own_receipts/objects/9f606fc6cbe503b508ca55d37a5d5f1a4e20c0fc4b9e0125b21971d3c93df546.gz",
+        "tests/fixtures/own_receipts/objects/a674caaffa672967afaa158ee179e2ebefd612ebe8fe519d56cf6a648aba0025.gz",
+        "tests/fixtures/own_receipts/objects/b038ecfd24820ad270a07246fc773ea89eb86c6a754b807617f077f81f614bf5.gz",
+        "tests/fixtures/own_receipts/objects/b2865c85376ff32832e73cd9e72afd175503fa33ce87e1027b85a7f161466ae3.gz",
+        "tests/fixtures/own_receipts/objects/b55beedad0be99ec883f50d9094b379db0ef60a824a54d9f61a4943376ea7d01.gz",
+        "tests/fixtures/own_receipts/objects/b5665ddb0fdba83528afba16d3b3ef32c9de03589d0f3e087a349dfc48b2dd0c.gz",
+        "tests/fixtures/own_receipts/objects/bbcd97c2c90bb8c0c9350caf967d18bc747a60db8bef776855d0c6ce66da6919.gz",
+        "tests/fixtures/own_receipts/objects/dac2e49c7b0dcb6503283ce75e57624b9016c5a43e1ebe9e89d2513284ccadc4",
+        "tests/fixtures/own_receipts/objects/c9748eafe8cb581c62371b66108c30428e164c4f677ca2cdf95e2dce704f06c5.gz",
+        "tests/fixtures/own_receipts/objects/cea693de45a703f4d410350150c8f69da0a65a1aa240682e862972347f0e75ff",
+        "tests/fixtures/own_receipts/objects/d0b34b47eecfe371e396d93b5f4f63c2da448b2d7b289a705a104c459ab09507",
+        "tests/fixtures/own_receipts/objects/d87deabda9acedbb14b1f14142cb787fd5940c5f0d88601697d9adac7327b071.gz",
+        "tests/fixtures/own_receipts/objects/d970677dbda12ce88884c67bfcf4b976c1f286e6fe0aa61ad9761853b20267b5",
+        "tests/fixtures/own_receipts/objects/dec83025d5f016725e90099cf39c1192eb2997de0b4008dcca39716e44dce208.gz",
+        "tests/fixtures/own_receipts/objects/e5e8cbb01e1369c7cf9e76d246f786639e49cfadc1c85c066896294d7fd3886b.gz",
+        "tests/fixtures/own_receipts/objects/ed7d24f9e70a0206a793e9c12921845165edb75203385114d2120f9c705651b5.gz",
+        "tests/fixtures/own_receipts/objects/ee464e465f75d6af43e24f60ea87b413b38295202443f5f04d96b9adc3b54a2b.gz",
+        "tests/fixtures/own_receipts/objects/f325f03503032bb0c145d2af49ba21eb80f115b72b47dbfc68cfdd5543170a7e.gz",
+        "tests/fixtures/own_receipts/objects/f4045d3faefea85615b5db99f9d88d8f88bf226491ee3cab72fd385a1f7ec783.gz",
+        "tests/fixtures/own_receipts/objects/f8f821cea1615df2f0a10758c714a4d0f522d6438b8e30c7e196e29e1f24fa0f"
+      ]
+    },
+    "b952d48fa80270162e170ab0ce54e58ee61be3331f5dbbe4407e3fa7cf2777ab": {
+      "scope": "generated/system/product",
+      "inputs": []
     }
   }
 }

@@ -1,0 +1,37 @@
+{
+  "assembly": "e6f6e5ec30b553511a839252d3aff73bbc12819d",
+  "tree": "cdc7364d9372c3453ee3d3dc3d706647d585664a",
+  "tests_tree": "ed9493b450303989e6c12c560b38ee0c75101e52",
+  "sources": {
+    "tests/reader_persistence_native.mjs": "ff89beeadcaefd631ceaa273fcc22ddfdf0a6f28224ddc18eac6bf7b7aa8b608",
+    "tests/webkit_native.mjs": "d3f7638a39a10ae26845def968b26da1c2ca4fdbae4d9c0a5c266956065d13f3",
+    "tests/native-calls.mjs": "f3121cf9108a017a77224191b88615618dc152e464de9b42abb7f6c591f3633c",
+    "tests/native-page-cleanup.mjs": "1f087302cc6eaca7ffc304a6ec64204d8cb7b59745224ef533fb0fd0a2e14e99",
+    "tests/release-rule.mjs": "b34d024358d9d98ce80434dd080c44eed590253a0ca021a0dafac91370c8268f",
+    "tests/press-fell.mjs": "1b8b2a2b779e76033b3d4502178fb87b102b0d21c77a387f53964a02d7e1ebd5",
+    "tests/fixtures/ui_http.py": "8b935a49acdf454148b8be960b46d2a5e3e2977a7ba27286115f2c8220b11a59",
+    "tests/topic_reading_native.mjs": "855831061528c1c02be140f02e0b8b49b8205f170f9e5b1398db94f87a961fac",
+    "tests/stack_native.mjs": "55c328660130b03be5daa108187010780ec5fc716d7b0adfdc85962ab3c18b70",
+    "tests/dossier_promises_native.mjs": "e46e1d55452b278f917d82c8d13dab88fbbee3115008c90925a2be18c6e2b044"
+  },
+  "prior_profile": {
+    "head": "f31e319994ecc96c5565828a53fde75c01bd3386",
+    "tests_tree": "4371130014b2cab2853e8831516c2d1f5cfb1f75",
+    "sources": {
+      "tests/reader_persistence_native.mjs": "ff89beeadcaefd631ceaa273fcc22ddfdf0a6f28224ddc18eac6bf7b7aa8b608",
+      "tests/webkit_native.mjs": "d3f7638a39a10ae26845def968b26da1c2ca4fdbae4d9c0a5c266956065d13f3",
+      "tests/native-calls.mjs": "f3121cf9108a017a77224191b88615618dc152e464de9b42abb7f6c591f3633c",
+      "tests/native-page-cleanup.mjs": "1f087302cc6eaca7ffc304a6ec64204d8cb7b59745224ef533fb0fd0a2e14e99",
+      "tests/release-rule.mjs": "b34d024358d9d98ce80434dd080c44eed590253a0ca021a0dafac91370c8268f",
+      "tests/press-fell.mjs": "1b8b2a2b779e76033b3d4502178fb87b102b0d21c77a387f53964a02d7e1ebd5",
+      "tests/fixtures/ui_http.py": "8b935a49acdf454148b8be960b46d2a5e3e2977a7ba27286115f2c8220b11a59",
+      "tests/topic_reading_native.mjs": "855831061528c1c02be140f02e0b8b49b8205f170f9e5b1398db94f87a961fac",
+      "tests/stack_native.mjs": "ec82b0e865d17a6211f808f7be186623aca9eed1e722402a2b06402af8f550ed",
+      "tests/dossier_promises_native.mjs": "e46e1d55452b278f917d82c8d13dab88fbbee3115008c90925a2be18c6e2b044"
+    }
+  },
+  "source_changes": [
+    "tests/stack_native.mjs"
+  ],
+  "production_review": "narrow assembly only; one own call still required"
+}

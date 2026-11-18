@@ -2385,6 +2385,12 @@ async function initialize() {
     paneClass: source => paneClass(source, bootstrap.actor, agentShown),
     dossierName: source => readerDossierName(source),
     dossierCover: source => readerDossierCover(source),
+    // Item 648: same personal fold as the Reader's menu. Core and StackFeed
+    // retain starred/already folded, optimistic and refused/recovery behavior.
+    foldMessage: source => {
+      const item = readerFeedItem();
+      if (item && item.id === source.source_ref.id) stackFeed.setFold(item, true, { focus: false });
+    },
     people: whisperPeople, actor: () => bootstrap.actor,
   });
   // The Reader's ⋯ offers Wide or Stacked only where the window can choose, so

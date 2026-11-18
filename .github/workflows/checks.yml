@@ -69,7 +69,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -I tools/check_plan.py --github-output >> "$GITHUB_OUTPUT"
+          python3 -I tools/unit_shards.py --plan --github-output >> "$GITHUB_OUTPUT"
 
   check:
     name: ${{ matrix.name }}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 import io
 import json
 import os
@@ -18,7 +19,7 @@ from unittest import mock
 
 from aim_next import admin, cli, outcome_rules, pipeline_state, supervisor as runner_supervisor
 from aim_next.contract import Refusal
-from tools import deploy, known_reds, release_check
+from tools import deploy, known_reds, release_check, releases
 import test_agent_cli
 from test_pipeline_steering import PipelineCase
 
@@ -231,6 +232,17 @@ class DeployCase(unittest.TestCase):
     def records(self):
         return sorted(path.stem for path in self.evidence.glob("*.json"))
 
+    def complete_measurements(self, record):
+        """Read the real sidecar, its identity and exact compact projection."""
+        path = self.evidence.resolve() / ("release-%d-measurements.json" % record["release"])
+        raw = path.read_bytes()
+        full = json.loads(raw)
+        self.assertEqual(raw, json.dumps(full, sort_keys=True, separators=(',', ':')).encode())
+        self.assertEqual(record['measurements']['full_measurements'],
+                         dict(version=1, path=str(path), sha256=hashlib.sha256(raw).hexdigest(), bytes=len(raw)))
+        self.assertEqual(releases.verify_record(dict(record, evidence=str(self.evidence.resolve())), self.evidence.resolve()), full)
+        return full
+
 
 class Config(DeployCase):
     def test_the_config_names_every_machine_path_and_the_argv_is_built_from_it(self):
@@ -276,7 +288,10 @@ class Refusals(DeployCase):
     def test_a_dry_run_reads_and_records_the_plan_and_changes_nothing(self):
         host = FakeHost(self.config)
         self.deploy(host, dry=True)
-        self.assertEqual(self.records(), ["00-plan", "00-release-check", "01-live", "02-checkout", "02-release"])
+        self.assertEqual(self.records(), ["00-plan", "00-release-check", "01-live", "02-checkout", "02-release", "release-20-measurements"])
+        planned = json.loads((self.evidence / '02-release.json').read_text())['record']
+        self.complete_measurements(planned)
+        self.assertFalse((self.evidence / 'release-20.json').exists())
         self.assertEqual(self.kills, [])
         self.assertEqual(host.ran("merge") + host.ran("migrate") + host.ran("-c"), [])
         live = json.loads((self.evidence / "01-live.json").read_text())
@@ -421,7 +436,7 @@ class ReleasePlan(DeployCase):
     def test_a_record_the_store_would_refuse_stops_the_deploy_before_anything_stops(self):
         # 501 items: more than a record holds, so the record could never be written once the release is live.
         host = FakeHost(self.config, log=log(("Everything", [", ".join(str(n) for n in range(1, 502))])))
-        self.assertIn("the release record would be refused: items is a list of at most 500", self.refused(host))
+        self.assertIn("the release record could not be prepared: items is a list of at most 500", self.refused(host))
         self.assertEqual((self.kills, host.ran("-c"), self.records()[-1]), ([], [], "02-checkout"))
 
     def test_a_release_that_names_no_item_says_so_or_stops_before_anything_stops(self):
@@ -534,6 +549,8 @@ class ReleasePlan(DeployCase):
                    ("Train 8: revert 412", [], ["Revert 412"]))
 
     def test_a_reverted_item_ships_nothing_and_the_record_says_how_it_was_taken_back(self):
+        # Each scenario is a distinct plan; its published evidence is immutable.
+        self.evidence = Path(self.tmp.name) / "reverted-by-flag"
         self.deploy(FakeHost(self.config, log=self.REVERTED), dry=True, revert=[398, 399])
         record = self.plan()["record"]
         self.assertEqual(record["items"], [464])
@@ -541,9 +558,11 @@ class ReleasePlan(DeployCase):
                                                               {"item": 398, "commit": None, "by": "flag"},
                                                               {"item": 399, "commit": None, "by": "flag"}])
         # Without the flag the trailer still takes 412 back, and only 412.
+        self.evidence = Path(self.tmp.name) / "reverted-by-trailer"
         self.deploy(FakeHost(self.config, log=self.REVERTED), dry=True)
         self.assertEqual(self.plan()["record"]["items"], [464, 398, 399])
         # A release with nothing reverted says nothing of it.
+        self.evidence = Path(self.tmp.name) / "nothing-reverted"
         self.deploy(FakeHost(self.config), dry=True)
         self.assertNotIn("reverts", self.plan()["record"]["measurements"])
         self.assertEqual(self.kills, [])
@@ -880,7 +899,7 @@ class FullDeploy(Restarting):
             self.fail("the deploy did not complete: %r" % error)
         self.assertEqual(self.records(), ["00-plan", "00-release-check", "01-live", "02-checkout", "02-release", "03-stopped",
                                           "04-backup", "05-fast-forward", "06-migrate", "07-server", "09-runner",
-                                          "10-verify", "11-release", "12-release-branch", "release-20"])
+                                          "10-verify", "11-release", "12-release-branch", "release-20", "release-20-measurements"])
         self.assertEqual(self.kills, [(222, 15), (111, 15)])
         # The backup reads the server's profile, the one bound to the database.
         backup = host.ran("-c")[0][-1]
@@ -907,7 +926,8 @@ class FullDeploy(Restarting):
         self.assertIn("did not report ready", str(caught.exception))
         self.assertEqual(len(self.started), 1)
         self.assertFalse((self.instance / "run-runner-03").exists())
-        self.assertEqual(self.records()[-1], "07-server")
+        self.assertEqual(self.records()[-2:], ["07-server", "release-20-measurements"])
+        self.assertFalse((self.evidence / 'release-20.json').exists())
 
     def test_a_runner_that_does_not_acquire_its_guard_stops_the_deploy_before_the_verify(self):
         self.stubs(event="waiting")
@@ -915,13 +935,15 @@ class FullDeploy(Restarting):
             self.run_deploy(FakeHost(self.config))
         self.assertIn("did not acquire its guard", str(caught.exception))
         self.assertEqual(len(self.started), 2)
-        self.assertEqual(self.records()[-1], "09-runner")
+        self.assertEqual(self.records()[-2:], ["09-runner", "release-20-measurements"])
+        self.assertFalse((self.evidence / 'release-20.json').exists())
 
     def test_a_verified_release_is_recorded_in_the_instance_and_the_evidence(self):
         host = FakeHost(self.config)
         before = datetime.datetime.now().astimezone()
         self.run_deploy(host)
         [written] = host.written
+        self.complete_measurements(written)
         self.assertEqual({key: written[key] for key in ("release", "commit", "previous", "items", "source", "evidence")},
                          {"release": 20, "commit": SHA, "previous": HEAD, "items": [88], "source": "deploy",
                           "evidence": str(self.evidence.resolve())})
@@ -940,13 +962,18 @@ class FullDeploy(Restarting):
         message = str(caught.exception)
         self.assertIn("did not verify, so no release record was written", message)
         self.assertEqual(host.ran("record-release"), [])
-        # It leaves the record and the command that writes it, for when the release is made to work by hand.
+        # The unverified plan and full measurements remain; no deployed record
+        # or ready-to-record command can turn failed verification into a release.
         kept = self.evidence / "release-20.json"
-        self.assertEqual(json.loads(kept.read_text())["commit"], SHA)
-        self.assertIn("%s is live; once it works, record it with: %s" % (SHA[:12], " ".join([
-            self.config.python, "-I", "-B", str(self.config.live / "bin/aim-next-admin"), "record-release",
-            "--profile", str(self.config.server_profile), "--record", str(kept.resolve())])), message)
-        return json.loads((self.evidence / "10-verify.json").read_text())
+        self.assertFalse(kept.exists())
+        planned = json.loads((self.evidence / '02-release.json').read_text())['record']
+        self.assertEqual(planned['commit'], SHA)
+        self.complete_measurements(planned)
+        self.assertIn("%s is live; coordinator recovery required" % SHA[:12], message)
+        self.assertNotIn('record it with:', message)
+        verified = json.loads((self.evidence / "10-verify.json").read_text())
+        self.assertIsNone(verified['deployed_at'])
+        return verified
 
     def test_a_release_whose_cli_fails_is_not_recorded(self):
         self.assertEqual(self.unverified(FakeHost(self.config, cli=2))["cli_exit"], 2)
@@ -1020,7 +1047,7 @@ class FullDeploy(Restarting):
         self.assertIn("the restart of release 19 did not verify, so no release record was written: ", str(caught.exception))
         self.assertNotIn("record-release", str(caught.exception))
         self.assertNotIn("record it with", str(caught.exception), "no offer of commands when there are none")
-        self.assertTrue(str(caught.exception).endswith("%s is live" % HEAD[:12]), str(caught.exception)[-120:])
+        self.assertTrue(str(caught.exception).endswith("%s is live; coordinator recovery required" % HEAD[:12]), str(caught.exception)[-120:])
         self.assertEqual(host.ran("record-release"), [])
 
     def test_a_record_the_instance_refuses_says_the_release_is_live_and_how_to_record_it(self):
