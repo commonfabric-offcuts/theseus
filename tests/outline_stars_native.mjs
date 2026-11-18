@@ -73,8 +73,8 @@ export async function item715Checks({check, page, until, control, facts, shot, o
             await p.key('ArrowLeft',4);
             await until(()=>p.evaluate(`!document.querySelector('#outline .ol-outcome[data-workspace-id="${seed.workspace}"]').hasAttribute('data-open')`),'native folding hides the parent');
             const before=p.calls.filter(c=>c.payload?.name==='stars'&&c.payload.args?.topic_id===seed.topic).length;
-            await act(seed,seed.roots[3],'stack.name',{name:'Changed while folded'},prefix);
             p.recordResponses();
+            await act(seed,seed.roots[3],'stack.name',{name:'Changed while folded'},prefix);
             await until(()=>p.responses.some(r=>r.payload?.name==='workspaces'),'the commit has refreshed the folded outline');
             assert.equal(p.calls.filter(c=>c.payload?.name==='stars'&&c.payload.args?.topic_id===seed.topic).length,before,'a folded parent starts no scoped star reads');
             assert.equal(await p.evaluate(`document.querySelectorAll('#outline .ol-dossier').length`),0,'folding removes every child title');
@@ -148,7 +148,9 @@ export async function item715Checks({check, page, until, control, facts, shot, o
             const held=p.held.shift(); p.intercept(null);
             if(state==='busy') await p.release(held);
             else {
-              await p.send('Fetch.fulfillRequest',{requestId:held.event.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'application/json'}],body:Buffer.from(JSON.stringify({instance_id:facts.instance_id,error:{code:state==='refused'?'FORBIDDEN':'DATABASE_BUSY',message:'Scoped read unavailable',retryable:state==='error'}})).toString('base64')});
+              const answer={instance_id:facts.instance_id,error:{code:state==='refused'?'FORBIDDEN':'DATABASE_BUSY',message:'Scoped read unavailable',retryable:state==='error'}};
+              if(held.route) await held.route.fulfill({status:200,json:answer});
+              else await p.send('Fetch.fulfillRequest',{requestId:held.event.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'application/json'}],body:Buffer.from(JSON.stringify(answer)).toString('base64')});
               await until(()=>p.evaluate(`Boolean(document.querySelector('#outline .ol-dossiers button[data-retry]'))`),'the scoped refusal offers recovery');
               assert.equal(await p.evaluate(`document.querySelectorAll('#outline .ol-dossier').length`),state==='refused'?0:4,'denied clears private titles; an ordinary read error keeps confirmed titles');
               await shot(p,label+'-recovery');

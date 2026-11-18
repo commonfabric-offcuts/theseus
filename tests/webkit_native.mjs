@@ -261,7 +261,8 @@ try {
     assert.equal(connected, true, 'WebKit runs connected pages only');
     let touch = ['--device', '--invite'].includes(mode), scheme = null;
     const initScripts = [];
-    const errors = [], calls = [], events = [];
+    const errors = [], calls = [], events = [], responses = [];
+    let recordResponses = false;
     const attach = opened => {
       // WebKit reports each read a page had out when it navigates away as a page
       // error ("... due to access control checks"), though the page handles
@@ -283,6 +284,12 @@ try {
         if (leaving && /^Fetch API cannot load \S+ due to access control checks\.$/.test(error.stack?.split('\n')[0] ?? '')) events.push({ method: 'leaving page read cancelled', message: error.message });
         else errors.push({ message: error.message, stack: error.stack });
       });
+      opened.on('response', async response => {
+        if (!recordResponses || !response.url().startsWith(facts.origin+'/api/')) return;
+        let payload; try {payload=JSON.parse(response.request().postData()??'null');} catch {return;}
+        if (!payload?.name) return;
+        try {responses.push({payload,url:response.url(),status:response.status(),body:await response.json(),at:Date.now()});} catch { /* a navigation can give up its response */ }
+      });
       opened.on('request', request => {
         if (!request.url().startsWith(facts.origin + '/api/')) return;
         let payload; try { payload = JSON.parse(request.postData() ?? 'null'); } catch { payload = null; }
@@ -291,16 +298,17 @@ try {
       return opened;
     };
     let pw = attach(await (await contextWith(touch)).newPage());
-    // The Chrome harness's intercept, release and fail, for the invite mode: a request the handler picks reaches the
+    // The Chrome harness's intercept, release and fail, for invite and rail modes: a request the handler picks reaches the
     // server, and its answer is held from the page (a response-stage hold), then given to it or lost as a reset connection.
     let intercept = null;
     const held = [];
-    if (mode === '--invite') await pw.route(facts.origin + '/api/**', async route => {
+    const interceptPage = async opened => {if (['--invite','--rail'].includes(mode)) await opened.route(facts.origin + '/api/**', async route => {
       let payload; try { payload = JSON.parse(route.request().postData() ?? 'null'); } catch { payload = null; }
       if (!(intercept && await intercept(payload))) return route.continue();
       const response = await route.fetch();
       held.push({ payload, route, response });
-    });
+    });};
+    await interceptPage(pw);
     const evaluate = expression => read(pw, `(async()=>(${expression}))()`);
     let touchAt = null;
     // The CDP calls the listed checks make, each done with WebKit's own input.
@@ -356,6 +364,7 @@ try {
         if (touch) return {};
         const at = pw.url(), size = pw.viewportSize();
         const moved = attach(await (await contextWith(true)).newPage());
+        await interceptPage(moved);
         await moved.setViewportSize(size); await moved.emulateMedia({ colorScheme: scheme });
         for (const script of initScripts) await moved.addInitScript(script);
         // Before its first navigation the page is blank and simply opens in the touch context.
@@ -468,8 +477,9 @@ try {
         await until(() => evaluate(`!document.querySelector(${JSON.stringify(earlierRow)})`), `${selector} shows whole from its earlier message's row`);
       }
     };
-    const p = { send, evaluate, close, box, point, key, unfold, calls, errors, events, held, network: [], responses: [], pw, selectionPaint, selectionWithinHover: true,
-      intercept: handler => { assert.equal(mode, '--invite', 'intercept is offered in the invite mode'); intercept = handler; },
+    const p = { send, evaluate, close, box, point, key, unfold, calls, errors, events, held, network: [], responses, pw, selectionPaint, selectionWithinHover: true,
+      intercept: handler => { assert.ok(['--invite','--rail'].includes(mode), 'intercept is offered in invite and rail modes'); intercept = handler; },
+      recordResponses: () => {recordResponses=true;},
       release: entry => entry.route.fulfill({ response: entry.response }),
       fail: entry => entry.route.abort('connectionreset'),
       open: async index => {
