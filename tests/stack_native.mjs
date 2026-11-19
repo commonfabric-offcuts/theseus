@@ -1574,8 +1574,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   const positionIn = async (topic, id) => (await view('stack_positions', { topic_id: topic, message_ids: [id] })).items[0].stack_position;
   // ⋯ of a message again: on a phone a tap on the message already lit opens the Reader (openReader), so another
   // message is lit first, as a person taps elsewhere before coming back to it.
-  const menuAgain = async (p, device, id, elsewhere) => {
-    if (device === 'phone' && (await lit(p)).includes(id)) await light(p, device, elsewhere);
+  const menuAgain = async (p, device, id, elsewhere, reveal) => {
+    if (device === 'phone' && (await lit(p)).includes(id)) await light(p, device, elsewhere, false, reveal);
     return menuOf(p, device, id);
   };
   // What these cases seed is read through at their end, as reading it on screen would, so the cases after them find the
@@ -4134,17 +4134,28 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await p.close(); p = await open(key + '-reload', device, topic, ids.a, '', query);
         await dossierTheme(p, theme);
         await becomes(order, [ids.a, ids.b], 'reload keeps A above B');
+        // Visibility for this case's alternate phone card uses a native wheel,
+        // not programmatic scrolling: a reading gesture releases the prior
+        // card's hold before the viewport moves. The press remains a touch tap.
+        const reveal731 = async (page, selector) => {
+          const box = await page.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {top:b.top,bottom:b.bottom,height:b.height,viewport:innerHeight}})()`);
+          if (box.top >= 0 && box.bottom <= box.viewport) return;
+          const deltaY = box.top + box.height / 2 - box.viewport / 2;
+          observations.push({name:'item 731 alternate-card visibility',key,method:'native wheel',selector,deltaY});
+          await page.send('Input.dispatchMouseEvent', {type:'mouseWheel',x:6,y:box.viewport/2,deltaX:0,deltaY});
+          await until(() => page.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return b.top>=0&&b.bottom<=innerHeight})()`), '731 alternate card is visible after native wheel');
+        };
         // The reader still moves a dossier through real keys or the touch menu.
         if (input === 'laptop') { await keyTo(p, ids.b); await p.key('ArrowUp', 4); }
-        else { await menuAgain(p, input, ids['b-live'], ids.a1); await moveItem(p, input, 'Move its stack up'); }
+        else { await menuAgain(p, input, ids['b-live'], ids.a1, reveal731); await moveItem(p, input, 'Move its stack up'); }
         await becomes(order, [ids.b, ids.a], 'the reader moves B above A');
         await until(async () => typeof (await actsOf(topic, ids.b))?.placed === 'number', 'Core records the native move');
         assert.equal((await actsOf(topic, ids.b, other))?.placed ?? null, null, 'the move belongs only to the reader');
         if (input === 'laptop') await p.key('ArrowDown', 4);
-        else { await menuAgain(p, input, ids['b-live'], ids.a1); await moveItem(p, input, 'Move its stack down'); }
+        else { await menuAgain(p, input, ids['b-live'], ids.a1, reveal731); await moveItem(p, input, 'Move its stack down'); }
         await becomes(order, [ids.a, ids.b], 'the reader can move B down too');
         if (input === 'laptop') await p.key('z', 4);
-        else { await menuAgain(p, input, ids['b-live'], ids.a1); await moveItem(p, input, 'Undo'); }
+        else { await menuAgain(p, input, ids['b-live'], ids.a1, reveal731); await moveItem(p, input, 'Undo'); }
         await becomes(order, [ids.b, ids.a], 'native Undo restores the preceding own move');
         // New roots enter first even above a dossier the reader placed.
         await post('c'); roots.push(ids.c);
