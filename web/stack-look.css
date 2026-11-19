@@ -459,18 +459,27 @@
    message, open or closed. It wears the folder's own colour, with a subtle inset shadow. Its pills are one language:
    a line glyph in the text's colour, then a few words; the state is words and weight, never a fill. A message on its own shows its cover's pills
    under who wrote it instead. Only New, and an agent-only dossier's quiet row, show no cover. */
-.reply-stack>.dossier-cover{display:flex;position:relative;box-sizing:border-box;margin:0 0 .4rem;padding:.7rem .9rem .75rem;
+.reply-stack>.dossier-cover{display:grid;position:relative;box-sizing:border-box;margin:0 0 .4rem;padding:.7rem .9rem .75rem;
   --ink:var(--stack-folder-ink);--muted:var(--stack-meta-ink);--accent:var(--stack-cover-accent);--warn:var(--stack-star);
   border-radius:var(--stack-r-sheet,.6rem);background:var(--stack-folder);box-shadow:var(--stack-cover-inset)}
 /* Small source links keep full-strength ink on the folder too. */
 .reply-stack>.dossier-cover .cover-src{opacity:1}
-.dossier-cover{flex-direction:column;gap:.38rem;font-size:.9rem;line-height:1.4;color:var(--ink);text-align:left;white-space:normal}
-.cover-line{display:block;min-width:0}
+.dossier-cover{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.38rem .4rem;font-size:.9rem;line-height:1.4;color:var(--ink);text-align:left;white-space:normal}
+.cover-line{display:block;grid-column:1;min-width:0}
 .cover-line>.row-pill,.cover-line>.topic-state{margin:0 .4rem 0 0}
 .cover-line>.cover-src{margin-left:.35rem}
 .cover-stands{font-size:.95rem;font-weight:550;white-space:pre-line}
 .cover-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:.4rem}
 .cover-refresh{display:inline-flex;align-items:center;gap:.25rem;min-width:0;flex-wrap:wrap;color:var(--muted);font-size:.78rem;font-weight:400}
+/* 853: the last content row shares its corner with the existing control.
+   Touch/no-hover stays visible; opacity keeps the keyboard stop on desktop. */
+.dossier-cover>.cover-refresh{grid-column:2;align-self:end;justify-self:end;flex-direction:row-reverse;flex-wrap:nowrap;max-width:min(40vw,16rem);text-align:right}
+.dossier-cover>.cover-refresh .cover-refresh-status{min-width:0}
+.cover-refresh-status:empty{display:none}
+@media(hover:hover) and (pointer:fine){
+  .dossier-cover>.cover-refresh{opacity:0;pointer-events:none}
+  .dossier-cover:is(:hover,:focus-within)>.cover-refresh{opacity:1;pointer-events:auto}
+}
 .cover-refresh-glyph{display:inline-flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;
   width:2rem;min-height:2rem;padding:.3rem;border:0;border-radius:.35rem;background:transparent;color:var(--muted);cursor:pointer}
 .cover-refresh-glyph:hover{color:var(--ink);background:var(--soft)}

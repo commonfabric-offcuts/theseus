@@ -70,7 +70,7 @@ test('the sheet says where it stands, its payload with its label, pill and the m
 test('a sheet holds only the lines its cover says, and one done with nothing waiting says so', () => {
   const doc = miniDocument();
   const bare = coverSheet(doc, { ...COVER, stands: null, waiting: [], payload: { ...COVER.payload, kind: null, done: DONE_BY_THUMB } }, context());
-  assert.deepEqual(bare.children.map(line => line.className), ['cover-line cover-heading', 'cover-line cover-payload']);
+  assert.deepEqual(bare.children.map(line => line.className), ['cover-line cover-payload']);
   assert.equal(of(bare, 'cover-label')[0].text, 'Payload', 'no kind, no kind in the label');
   assert.equal(bare.dataset.done, 'true');
   const waits = coverSheet(doc, { ...COVER, payload: null }, context());
