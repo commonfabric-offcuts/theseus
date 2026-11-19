@@ -76,7 +76,7 @@ createInterface({ input: fixture.stdout }).on('line', line => {
   const result = JSON.parse(line), request = requests.get(result.id); requests.delete(result.id);
   // An answer after its control's bound finds no one waiting.
   if (!request) return;
-  if (result.failure) request.reject(Error(result.failure)); else request.resolve(result.answer);
+  if (Object.hasOwn(result, 'failure')) request.reject(Error(result.failure)); else request.resolve(result.answer);
 });
 const fixtureExit = new Promise(resolve => fixture.once('exit', code => {
   for (const request of requests.values()) request.reject(Error(`Fixture exited ${code}: ${fixtureErrors}`));
