@@ -25,6 +25,6 @@ export class NotebookViews {
 
 export function notebookDocument(mode, doc = globalThis.document) {
   const icon = doc.createElement('span'); icon.className = 'notebook-document'; icon.dataset.mode = mode; icon.setAttribute('aria-hidden', 'true');
-  for (let i = 0; i < 4; i++) icon.append(doc.createElement('span'));
+  for (let i = 0; i < (mode === 'text' ? 4 : 3); i++) icon.append(doc.createElement('span'));
   return icon;
 }

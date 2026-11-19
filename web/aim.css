@@ -1383,7 +1383,17 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 .notebook-document[data-mode=text]{grid-template-columns:1fr;align-content:center;gap:.35rem}
 .notebook-document[data-mode=text]>span{height:1px;border:0;background:var(--muted)}
 .notebook-document-title{font-size:.85rem;font-weight:600;line-height:1.35}
-.notebook-document-view{color:var(--muted);font-size:.7rem}
-.outcome-team.topic-people{justify-content:flex-start;flex-wrap:wrap;max-width:100%;margin:1rem 0 1.5rem}
-.outcome-team.topic-people .participants{justify-content:flex-start}
+/* 852: a title and its badges share one line below the mode icon. */
+.notebook-document-label{display:flex;align-items:baseline;justify-content:center;gap:.3rem;max-width:100%}
+.notebook-document-label .unread-count{flex:none}
+.notebook-document[data-mode=cards]{display:block;position:relative;padding:0;border:0;background:transparent;box-shadow:none}
+.notebook-document[data-mode=cards]>span{position:absolute;inset:.5rem .4rem .1rem .2rem;border:1px solid var(--line);border-radius:.25rem;background:var(--panel);box-shadow:0 1px 2px rgb(0 0 0 / .06)}
+.notebook-document[data-mode=cards]>span:nth-child(1){transform:translate(.35rem,-.35rem)}
+.notebook-document[data-mode=cards]>span:nth-child(2){transform:translate(.18rem,-.18rem)}
+.selection-page #outcome-references{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
+.selection-page #outcome-references>.rail-heading{grid-column:2;grid-row:1;justify-content:flex-end}
+.selection-page #outcome-references-list{grid-column:1;grid-row:1}
+.selection-page #outcome-references>:is(.notice,.rail-line,#more-references){grid-column:1/-1}
+.selection-page #topics-heading{text-transform:none;letter-spacing:normal}
+.outcome-team.topic-people{margin:0 0 1rem auto}
 .outcome-team.topic-people .team-invite{margin:0}
