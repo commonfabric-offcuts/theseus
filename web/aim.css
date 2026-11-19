@@ -63,7 +63,8 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 html:has(#messages:not([hidden])){overflow-anchor:none}
 /* Centre on the message column, overriding the legacy inline left edge. */
 #messages{anchor-name:--message-column}
-.new-above{position:fixed;top:12px;left:anchor(--message-column center)!important;transform:translateX(-50%);z-index:20;display:inline-flex;align-items:center;justify-content:center;margin:0;min-height:36px;padding:.35rem .9rem;border:0;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:.875rem;font-weight:650;line-height:1.4;box-shadow:0 4px 16px rgb(0 0 0 / .18)}
+.new-above{position:fixed;top:12px;z-index:20;display:inline-flex;align-items:center;justify-content:center;margin:0;min-height:36px;padding:.35rem .9rem;border:0;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:.875rem;font-weight:650;line-height:1.4;box-shadow:0 4px 16px rgb(0 0 0 / .18)}
+@supports (left:anchor(--message-column center)){.new-above{left:anchor(--message-column center)!important;transform:translateX(-50%);}}
 .new-above:hover{background:var(--accent)}
 @media(pointer:coarse){.new-above{min-height:44px}}
 /* A topic's unread count leads to its oldest unread message (item 613): a press on it lands there, and on a phone it answers a finger 44px each way, reaching back over the title's end and never past the row's right. */.unread-count[data-lands]{cursor:pointer}@media(pointer:coarse),(max-width:760px){.unread-count[data-lands]{position:relative}.unread-count[data-lands]::after{content:'';position:absolute;top:50%;right:0;width:max(100%,44px);height:44px;transform:translateY(-50%)}}

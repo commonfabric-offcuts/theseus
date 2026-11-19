@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { held785, solid785, capture785, read785, pill785, rect785, frames785, allExpressions785, expressions785, staleInit785 } from './reading_785_oracle.mjs';
-import { reading785Checks, names785, withRestored785 } from './reading_785_native.mjs';
+import { reading785Checks, names785, withRestored785, moreLanding785, withDiagnostics785 } from './reading_785_native.mjs';
 import { readingChecks } from './topic_reading_native.mjs';
-import { traceInit785, sourceProbes785, installTrace785, traceBegin785, traceMark785, traceReceipt785, traceRead785, frontier785, landing785, settlement785, TRACE_LIMIT785, SETTLEMENT_FRAMES785 } from './reading_785_trace.mjs';
+import { traceInit785, sourceProbes785, installTrace785, traceBegin785, traceMark785, traceReceipt785, traceRead785, frontier785, landing785, settlement785, TRACE_LIMIT785, SETTLEMENT_FRAMES785, wheelSettlement785 } from './reading_785_trace.mjs';
 const source=readFileSync(new URL('../web/app.mjs',import.meta.url),'utf8');
 const cut=s=>s.slice(s.indexOf('let roomy = null, listAnchor'),s.indexOf('// The New line, just below the oldest message'));
 const sha=s=>createHash('sha256').update(s).digest('hex');
@@ -17,12 +17,12 @@ function model(s=source) {
  const win={scrollY:300,addEventListener:(k,f)=>listeners.add(f),removeEventListener:(k,f)=>listeners.delete(f),scrollBy:({top})=>{win.scrollY+=top;scrolls.push(top)}};
  const node=(id,y,h=160)=>{const e={id,dataset:{id,seq:String(nodes.length+1)},isConnected:true,hidden:false,y,h,children:[],style:{setProperty:(k,v)=>{e.y+=parseFloat(v)},removeProperty:()=>{}},contains:n=>n===e||e.children.includes(n),getBoundingClientRect:()=>({top:e.y-win.scrollY,bottom:e.y+e.h-win.scrollY,left:20,right:420,width:400,height:e.h}),getClientRects:()=>e.hidden?[]:[e.getBoundingClientRect()],compareDocumentPosition:n=>nodes.indexOf(n)>nodes.indexOf(e)?4:0,querySelectorAll:()=>[],addEventListener:(k,f)=>listeners.add(f),removeEventListener:(k,f)=>listeners.delete(f)};return e;};
  const list=node('messages',100),main=node('main',0),home=node('new-message-sheet',4000);home.parentElement=list;home.open=false;home.contains=()=>false;
- list.contains=n=>nodes.includes(n);list.querySelectorAll=()=>nodes;main.children=[list];main.contains=n=>n===list||nodes.includes(n);
+ list.contains=n=>nodes.includes(n);list.querySelectorAll=()=>nodes;main.children=[list];main.contains=n=>n===list||nodes.includes(n);main.append=()=>{};
  nodes.push(node('a',250),node('b',450),node('c',650));
  const document={activeElement:null,documentElement:{scrollHeight:5000},body:{},querySelectorAll:()=>nodes.filter(e=>!e.hidden),addEventListener:(k,f)=>listeners.add(f),removeEventListener:(k,f)=>listeners.delete(f),caretPositionFromPoint:()=>null};
  const Observer=class {constructor(cb){this.cb=cb;this.observed=new Set();this.disconnected=false;observers.push(this)}observe(n){this.observed.add(n)}unobserve(n){this.observed.delete(n)}disconnect(){this.observed.clear();this.disconnected=true}takeRecords(){return []}};
- const context=vm.createContext({window:win,document,innerWidth:600,innerHeight:800,Node:{DOCUMENT_POSITION_FOLLOWING:4,TEXT_NODE:3},inline:null,registry:{},retired:null,entries:()=>nodes,drawn:(l,id)=>nodes.some(n=>n.dataset.id===id&&!n.hidden),typingField:()=>false,views:{messages:new Map()},bootstrap:{actor:'viewer'},messageEntries:new Map(),button:()=>{throw Error('unexpected offer')},$:id=>({messages:list,main,'new-message-sheet':home})[id],opened:e=>e,ResizeObserver:Observer,MutationObserver:Observer,requestAnimationFrame:f=>{frames.set(++serial,f);return serial},cancelAnimationFrame:id=>frames.delete(id)});
- vm.runInContext(cut(s)+`;globalThis.api785={captureListAnchor,restoreListAnchor,keepListAnchor,watchListAnchor,rememberListAnchor,stop:()=>anchorWatch.stop(),settle:()=>anchorWatch.mutations.cb(),act:()=>[...[]],state:()=>({anchorActing,anchorDepth,listAnchor})};`,context);
+ const context=vm.createContext({window:win,document,innerWidth:600,innerHeight:800,Node:{DOCUMENT_POSITION_FOLLOWING:4,TEXT_NODE:3},inline:null,registry:{},retired:null,entries:()=>nodes,drawn:(l,id)=>nodes.some(n=>n.dataset.id===id&&!n.hidden),typingField:()=>false,views:{messages:new Map()},bootstrap:{actor:'viewer'},messageEntries:new Map(),topic:{id:'isolated-topic'},reveal:()=>{},button:(text,activate)=>({activate,style:{},setAttribute:()=>{}}),$:id=>({messages:list,main,'new-message-sheet':home})[id],opened:e=>e,ResizeObserver:Observer,MutationObserver:Observer,requestAnimationFrame:f=>{frames.set(++serial,f);return serial},cancelAnimationFrame:id=>frames.delete(id)});
+ vm.runInContext(cut(s)+`;globalThis.api785={captureListAnchor,restoreListAnchor,keepListAnchor,watchListAnchor,rememberListAnchor,paintNewAbove,offers:newAbove,pill:()=>newAboveButton,stop:()=>anchorWatch.stop(),settle:()=>anchorWatch.mutations.cb(),act:()=>[...[]],state:()=>({anchorActing,anchorDepth,listAnchor})};`,context);
  return {context,api:context.api785,win,nodes,list,main,document,scrolls,observers,listeners,frames,node};
 }
 function holdControl(s) {const m=model(s),before=m.nodes[0].getBoundingClientRect().top,saved=m.api.captureListAnchor();for(const n of m.nodes)n.y+=135;m.api.restoreListAnchor(saved);assert.equal(m.nodes[0].getBoundingClientRect().top,before,'actual source absorbs 135px displacement');}
@@ -78,7 +78,7 @@ test('item 785 exact generated expressions compile and execute with escaped iden
  const good=vm.runInContext(pill785,ctx);for(const change of [{top:0},{centre:good.centre+8},{alpha:0.5},{shadow:'none'},{left:-8}])assert.throws(()=>solid785({...good,...change}),{name:'AssertionError'});
 });
 test('item 785 dry enumeration is exact owned filter with no browser or fixture',async()=>{
- const names=[],forbidden=()=>{throw Error('dry registration attempted fixture or browser work')};await readingChecks({check:async name=>{if(/^reading item 785/.test(name))names.push(name)},page:forbidden,until:forbidden,view:forbidden,control:forbidden,shot:forbidden,facts:{actor:'dry-reader',agent:'dry-agent',origin:'https://fixture.invalid'},observations:[],engine:'chrome'});assert.deepEqual(names,names785);assert.ok(names.every(n=>/^reading item 785/.test(n)));console.log(JSON.stringify({dryEnumeration785:names,count:names.length,route:'actual readingChecks registration'}));
+ const names=[],allNames=[],forbidden=()=>{throw Error('dry registration attempted fixture or browser work')};await readingChecks({check:async name=>{allNames.push(name);if(/^reading item 785/.test(name))names.push(name)},page:forbidden,until:forbidden,view:forbidden,control:forbidden,shot:forbidden,facts:{actor:'dry-reader',agent:'dry-agent',origin:'https://fixture.invalid'},observations:[],engine:'chrome'});assert.deepEqual(names,names785);assert.ok(names.every(n=>/^reading item 785/.test(n)));console.log(JSON.stringify({dryEnumeration785:names,count:names.length,fullEntrypointCount:allNames.length,fullEntrypointNames:allNames,route:'actual readingChecks registration'}));
 });
 
 test('item 785 exact generated stale-answer gate holds only the old topic and releases once',async()=>{
@@ -112,7 +112,7 @@ test('item 785 restoration preserves both exact exceptions and executes after mu
  await assert.rejects(withRestored785(async()=>{},async()=>{throw restored}),error=>error===restored);
  await withRestored785(async()=>{},async()=>{});
  const native=readFileSync(new URL('./reading_785_native.mjs',import.meta.url),'utf8');
- const original=native.slice(native.indexOf('export async function withRestored785')).replace('export ','');
+ const original=native.slice(native.indexOf('export async function withRestored785'),native.indexOf('export function moreLanding785')).replace('export ','');
  const control=async s=>{const run=vm.runInNewContext('('+s+')');await assert.rejects(run(async()=>{throw mutant},async()=>{throw restored}),e=>e.errors?.[0]===mutant&&e.errors?.[1]===restored,'both original exceptions retained');};
  const dir=mkdtempSync(join(tmpdir(),'reading785-errors-')),path=join(dir,'restore.js');
  try {const target="catch(error){errors.push(error);}";assert.equal(original.split(target).length,3);
@@ -179,10 +179,10 @@ test('item 785 applied trace projection fault fails exact source diagnostic orac
  const control=s=>{const {ctx,node,win}=traceContext785();win.__trace785.begin('projection');Object.assign(ctx,{anchor:node,tops:new Map([[node,160]]),point:null});vm.runInContext(s,ctx);assert.equal(win.__trace785.read().events.find(e=>e.event==='capture').savedTop,160,'captured source top must equal actual lexical anchor top');};
  try{const mutant=original.replace('tops.get(anchor)??null','(tops.get(anchor)+8)');writeFileSync(path,mutant);assert.notEqual(sha(readFileSync(path)),sha(original));assert.throws(()=>control(readFileSync(path,'utf8')),/captured source top must equal actual lexical anchor top/);writeFileSync(path,original);assert.equal(sha(readFileSync(path)),sha(original));control(readFileSync(path,'utf8'));console.log(JSON.stringify({traceInstrument785:{applied:sha(mutant),caught:true,restored:sha(original),control:true}}));}finally{rmSync(dir,{recursive:true,force:true});}
 });
-test('item 785 fixed settlement preserves acceptance -1 and retirement 0 as separate predicates',async()=>{
+test('item 785 fixed settlement retains legacy strict visibility separately from accepted activation eligibility',async()=>{
  const {ctx,node}=traceContext785();let top=-0.5,frames=0;node.getBoundingClientRect=()=>({top,bottom:100,left:10,right:410});node.contains=()=>true;node.closest=()=>node;node.classList={contains:()=>false};node.hidden=true;
  ctx.document.querySelector=s=>s==='.new-above'?null:node;ctx.requestAnimationFrame=f=>{frames++;f()};
- const state=vm.runInContext(landing785('arrival'),ctx);assert.equal(state.accepts,true);assert.equal(state.retires,false);const settled=await vm.runInContext(settlement785('arrival'),ctx);assert.equal(frames,SETTLEMENT_FRAMES785);assert.equal(settled.length,12);assert.equal(settled.at(-1).arrival.top,-0.5);
+ const state=vm.runInContext(landing785('arrival'),ctx);assert.equal(state.accepts,true);assert.equal(state.legacyVisible,false);assert.equal(state.retires,true);const settled=await vm.runInContext(settlement785('arrival'),ctx);assert.equal(frames,SETTLEMENT_FRAMES785);assert.equal(settled.length,12);assert.equal(settled.at(-1).arrival.top,-0.5);
  top=-8;assert.equal(vm.runInContext(landing785('arrival'),ctx).accepts,false,'8px position fault cannot pass arrivalSightPx=1');
  top=0.5;assert.equal(vm.runInContext(landing785('arrival'),ctx).retires,true);
  for(const expr of [traceInit785,traceRead785,traceBegin785('hostile"\\\n'),traceMark785('hostile"\\\n'),traceReceipt785('op"\\\n','id"\\\n','committed'),frontier785,landing785('hostile"\\\n'),settlement785('hostile"\\\n')])new vm.Script(expr);
@@ -191,9 +191,74 @@ test('item 785 applied generated landing and frame faults fail then byte restore
  const dir=mkdtempSync(join(tmpdir(),'reading785-settlement-')),path=join(dir,'generated.js');
  const context=top=>{const {ctx,node}=traceContext785();node.getBoundingClientRect=()=>({top,bottom:100,left:10,right:410});node.contains=()=>true;node.closest=()=>node;node.classList={contains:()=>false};ctx.document.querySelector=s=>s==='.new-above'?null:node;return ctx;};
  const controls=[
-  ['landing bound',landing785('arrival'),'r.top>=-1','r.top>=-8',async s=>assert.equal(vm.runInContext(s,context(-8)).accepts,false,'8px fault remains outside arrivalSightPx=1')],
-  ['retirement predicate',landing785('arrival'),'r.top>=0','r.top>=-1',async s=>assert.equal(vm.runInContext(s,context(-0.5)).retires,false,'negative top cannot retire offer')],
+  ['landing bound',landing785('arrival'),'accepts:!!r&&r.top>=-1','accepts:!!r&&r.top>=-8',async s=>assert.equal(vm.runInContext(s,context(-8)).accepts,false,'8px fault remains outside arrivalSightPx=1')],
+  ['retirement predicate',landing785('arrival'),'r.top>=0','r.top>=-1',async s=>assert.equal(vm.runInContext(s,context(-0.5)).legacyVisible,false,'legacy strict visibility remains separately measured')],
   ['frame budget',settlement785('arrival'),'frame<12','frame<13',async s=>assert.equal((await vm.runInContext(s,context(0.5))).length,12,'fixed frame budget remains twelve')],
  ];
  try{for(const [name,original,target,replacement,control] of controls){assert.equal(original.split(target).length,2);const mutant=original.replace(target,replacement);writeFileSync(path,mutant);assert.notEqual(sha(readFileSync(path)),sha(original));await assert.rejects(control(readFileSync(path,'utf8')),{name:'AssertionError'});writeFileSync(path,original);assert.equal(sha(readFileSync(path)),sha(original));await control(readFileSync(path,'utf8'));console.log(JSON.stringify({settlementInstrument785:{name,applied:sha(mutant),caught:true,restored:sha(original),control:true}}));}}finally{rmSync(dir,{recursive:true,force:true});}
 });
+
+function retirementControl785(s=source, fault=null) {
+ const m=model(s),e=m.nodes[0],other=m.nodes[1];
+ e.y=m.win.scrollY-50;other.y=m.win.scrollY-100;
+ const message={id:e.dataset.id,topic_id:'isolated-topic'};
+ m.context.views.messages.set(e.dataset.id,message);m.context.messageEntries.set(e.dataset.id,e);m.context.messageEntries.set(other.dataset.id,other);
+ m.api.offers.add(e.dataset.id);m.api.offers.add(other.dataset.id);
+ m.api.paintNewAbove();
+ e.scrollIntoView=()=>{e.y=m.win.scrollY-0.015625;if(fault==='out-of-sight')e.y=m.win.scrollY-8;};
+ e.focus=()=>{m.document.activeElement=e;
+  if(fault==='focus')m.document.activeElement=null;
+  if(fault==='disconnected')e.isConnected=false;
+  if(fault==='hidden')m.list.hidden=true;
+  if(fault==='retired')m.context.retired={};
+  if(fault==='topic')m.context.topic={id:'another-topic'};
+  if(fault==='message')m.context.views.messages.set(e.dataset.id,{...message});
+  if(fault==='entry')m.context.messageEntries.set(e.dataset.id,other);
+ };
+ // Inspect activation retirement before unrelated repaint prunes stale entries.
+ vm.runInContext('rememberListAnchor=()=>{}',m.context);
+ m.api.pill().activate();
+ assert.equal(m.api.offers.has(e.dataset.id),!!fault,'only actually reached current arrival retires, including fractional top');
+ assert.equal(m.api.offers.has(other.dataset.id),true,'other unreached arrival keeps its offer');
+ return m;
+}
+test('item 785 reached arrival retires by identity at fractional accepted landing; guards retain unreached offers',()=>{
+ retirementControl785();for(const fault of ['focus','disconnected','hidden','retired','topic','message','entry','out-of-sight'])retirementControl785(source,fault);
+});
+function cssControl785(css) {
+ const base=css.match(/(?:^|\n)\.new-above\{([^}]+)\}/)[1];
+ const supported=css.match(/@supports \(left:anchor\(--message-column center\)\)\{\.new-above\{([^}]+)\}\}/)?.[1]??'';
+ // Model only the actual two positioning declarations; native owns real layout.
+ const layout=anchor=>{const declarations=base+(anchor?supported:'');const translated=declarations.includes('transform:translateX(-50%)');const anchored=anchor&&declarations.includes('left:anchor(--message-column center)!important');return {left:(anchored?220:160)-(translated?60:0),translated};};
+ assert.equal(layout(false).left,160,'fallback retains legacy inline left edge');
+ assert.equal(layout(true).left,160,'supported anchor retains centred pill');
+ assert.equal(layout(true).translated,true,'supported layout keeps half-width translation');
+}
+test('item 785 fallback translation is scoped to supported anchor layout',()=>cssControl785(readFileSync(new URL('../web/aim.css',import.meta.url),'utf8')));
+
+test('item 785 applied retirement and fallback product regressions fail and byte restore',()=>{
+ const css=readFileSync(new URL('../web/aim.css',import.meta.url),'utf8'),dir=mkdtempSync(join(tmpdir(),'reading785-product-')),path=join(dir,'source');
+ const variants=[['retirement',source,'rect.top >= -1','rect.top >= 0',retirementControl785],['all-offers',source,'newAbove.delete(id);\n      rememberListAnchor();','newAbove.clear();\n      rememberListAnchor();',retirementControl785],['focus-guard',source,'card.contains(document.activeElement)','true',s=>retirementControl785(s,'focus')],['fallback',css,'@supports (left:anchor(--message-column center)){.new-above{left:anchor(--message-column center)!important;transform:translateX(-50%);}}','.new-above{left:anchor(--message-column center)!important;transform:translateX(-50%);}',cssControl785]];
+ try{for(const [name,original,target,replacement,control] of variants){assert.equal(original.split(target).length,2);const changed=original.replace(target,replacement);writeFileSync(path,changed);assert.notEqual(sha(readFileSync(path)),sha(original));assert.throws(()=>control(readFileSync(path,'utf8')),{name:'AssertionError'});writeFileSync(path,original);assert.equal(sha(readFileSync(path)),sha(original));control(readFileSync(path,'utf8'));console.log(JSON.stringify({edgeProduct785:{name,applied:sha(changed),caught:true,restored:sha(original),control:true}}));}}finally{rmSync(dir,{recursive:true,force:true});}
+});
+async function wheelControl785(expression, mode) {
+ const {ctx,win,listeners}=traceContext785();let frame=0;
+ vm.runInContext(traceBegin785('wheel control'),ctx);vm.runInContext(traceMark785('native wheel dispatch',{dy:-100000}),ctx);
+ ctx.requestAnimationFrame=fn=>{frame++;if(mode==='moving')ctx.scrollY+=8;if(mode==='events')listeners.scroll();if(mode==='ended'&&frame===2)listeners.scrollend();fn()};
+ const result=await vm.runInContext(expression,ctx);assert.equal(result.frames.length,12,'wheel settlement stays within fixed12 frames');assert.equal(result.completed,mode==='quiet'||mode==='ended','moving or continued scroll events cannot qualify as completion');if(mode==='ended')assert.equal(result.reason,'observed scrollend');if(mode==='quiet')assert.equal(result.reason,'bounded quiet-frame fallback');return result;
+}
+test('item 785 exact wheel settlement expression distinguishes completion, quiet fallback and exhausted movement; real fault crosses1px',async()=>{
+ for(const mode of ['quiet','ended','moving','events'])await wheelControl785(wheelSettlement785,mode);
+ const dir=mkdtempSync(join(tmpdir(),'reading785-wheel-')),path=join(dir,'wheel.js');
+ try{const changed=wheelSettlement785.replace('Math.abs(scrollY-y)<=1','Math.abs(scrollY-y)<=8');assert.notEqual(changed,wheelSettlement785);writeFileSync(path,changed);await assert.rejects(wheelControl785(readFileSync(path,'utf8'),'moving'),/cannot qualify as completion/);writeFileSync(path,wheelSettlement785);assert.equal(sha(readFileSync(path)),sha(wheelSettlement785));await wheelControl785(readFileSync(path,'utf8'),'moving');console.log(JSON.stringify({wheelInstrument785:{applied:sha(changed),caught:true,restored:sha(wheelSettlement785),control:true}}));}finally{rmSync(dir,{recursive:true,force:true});}
+});
+test('item 785 More new below oracle requires exact oldest-unread focus and retained real frontier; applied faults restore',()=>{
+ const good={wanted:{id:'oldest'},target:{accepts:true,arrival:{id:'oldest',connected:true},active:{message:'oldest'}},prior:['a'],after:['a','oldest'],moreBefore:{frontier:{loaded:['a'],olderCursor:31}},moreAfter:{frontier:{loaded:['a','oldest'],olderCursor:null}}};moreLanding785(good);
+ const original=moreLanding785.toString(),dir=mkdtempSync(join(tmpdir(),'reading785-more-')),path=join(dir,'oracle.js');
+ try{for(const [name,target,replacement,bad] of [
+ ['wrong target',"state.wanted.id, 'More new below reaches exact oldest-unread identity'","state.target.arrival.id, 'More new below reaches exact oldest-unread identity'",{...good,target:{...good.target,arrival:{id:'other',connected:true}}}],
+ ['focus',"state.target.active.message, state.wanted.id","state.wanted.id, state.wanted.id",{...good,target:{...good.target,active:{message:'other'}}}],
+ ['frontier',"state.moreBefore.frontier.loaded.every(id=>state.moreAfter.frontier.loaded.includes(id))","true",{...good,moreAfter:{frontier:{loaded:['oldest'],olderCursor:null}}}],
+ ]){assert.throws(()=>moreLanding785(bad),{name:'AssertionError'});assert.equal(original.split(target).length,2);const changed=original.replace(target,replacement);writeFileSync(path,changed);assert.notEqual(sha(readFileSync(path)),sha(original));const fn=vm.runInNewContext('('+readFileSync(path,'utf8')+')',{assert});assert.throws(()=>assert.throws(()=>fn(bad),{name:'AssertionError'}),{name:'AssertionError'});writeFileSync(path,original);assert.equal(sha(readFileSync(path)),sha(original));const restored=vm.runInNewContext('('+readFileSync(path,'utf8')+')',{assert});restored(good);assert.throws(()=>restored(bad),{name:'AssertionError'});console.log(JSON.stringify({moreInstrument785:{name,applied:sha(changed),caught:true,restored:sha(original),control:true}}));}}finally{rmSync(dir,{recursive:true,force:true});}
+});
+test('item 785 failure capture preserves primary and secondary errors separately',async()=>{const primary=Error('primary'),capture=Error('capture');assert.equal(await withDiagnostics785(primary,async()=>{}),primary);const both=await withDiagnostics785(primary,async()=>{throw capture});assert.equal(both.errors[0],primary);assert.equal(both.errors[1],capture);});

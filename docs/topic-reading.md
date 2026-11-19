@@ -395,3 +395,20 @@ and a link's target is read as an address once (brackets that share a target
 that is no address, or sit inside one, are words), so a
 hostile message costs work in proportion to its length, not to its square. What it draws is too: a table draws no more cells
 than were written, plus one a short row, never its rows times its columns.
+
+## New arrivals above the reading place (785)
+
+New above remembers arrivals by message identity. Activating it retires the
+arrival actually reached, after its current topic, message and connected card
+are confirmed and focus lands inside it visibly. A fractional scroll edge
+within one CSS pixel counts as a landing. Other arrivals still above sight
+keep their offers. The pill centres on the message column when CSS anchor
+positioning is supported; its fallback keeps the legacy inline left edge.
+
+More new below follows the New line's oldest unread message, loads the real
+older pages until it is available and gives that message visible focus.
+Generic More messages retains its existing first-loaded-card landing rule.
+The focused item 785 native checks distinguish these destinations. Their
+document-top control waits for observed scroll completion or a bounded quiet
+frame fallback before introducing an arrival; the same-card drift limit stays
+one CSS pixel. This control does not change product anchoring.

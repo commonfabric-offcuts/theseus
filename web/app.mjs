@@ -833,10 +833,20 @@ function paintNewAbove() {
   if (!newAboveButton && newAbove.size) {
     newAboveButton = button('New above ↑', () => {
       const entry = entries(list).find(card => newAbove.has(card.dataset.id));
-      if (!entry) return;
+      if (!entry || retired || !list.isConnected || list.hidden) return;
+      const id = entry.dataset.id, currentTopic = topic, message = views.messages.get(id);
+      if (!message || message.topic_id !== currentTopic?.id || messageEntries.get(id) !== entry) return;
       reveal(entry);
       entry.scrollIntoView({ block: 'start', behavior: 'instant' });
-      opened(entry).focus({ preventScroll: true });
+      const card = opened(entry);
+      card.focus({ preventScroll: true });
+      const rect = entry.getBoundingClientRect();
+      // Retire this arrival once the activation really reaches it. Native
+      // scrolling may round the edge by a fraction of a CSS pixel.
+      if (!retired && topic === currentTopic && views.messages.get(id) === message &&
+          messageEntries.get(id) === entry && list.isConnected && !list.hidden &&
+          entry.isConnected && drawn(list, id) && card.contains(document.activeElement) &&
+          rect.top >= -1 && rect.top < innerHeight && rect.bottom > 0) newAbove.delete(id);
       rememberListAnchor();
     });
     newAboveButton.className = 'new-above';

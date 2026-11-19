@@ -55,6 +55,7 @@ Object.assign(expressions785,{
  receipt:`window.sendReceipts.at(-1)??null`,
  sentCard:body=>`[...document.querySelectorAll('#messages .message-card')].find(e=>e.textContent.includes(${JSON.stringify(body)}))?.dataset.id??null`,
  readerOpen:`document.querySelector('#reader').open`,
+ retainedWriting:`document.querySelector('#inline-writing-body').value`,
  drawnIds:`[...document.querySelectorAll('#messages .message-card')].filter(e=>e.getClientRects().length).map(e=>e.dataset.id)`,
  olderControl:`['#more-messages','button.new-line-older[data-line=older]'].find(s=>document.querySelector(s)?.getClientRects().length>0)??null`,
 });

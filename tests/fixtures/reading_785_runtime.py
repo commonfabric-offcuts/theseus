@@ -11,7 +11,7 @@ MUTATIONS = {
     "pill-centre": ("aim.css", "left:anchor(--message-column center)!important;", "left:calc(anchor(--message-column center) + 40px)!important;"),
     "pill-surface": ("aim.css", "background:var(--accent);color:var(--on-accent);font-size:.875rem;", "background:transparent;color:var(--on-accent);font-size:.875rem;"),
     "pill-shadow": ("aim.css", "box-shadow:0 4px 16px rgb(0 0 0 / .18)", "box-shadow:none"),
-    "fallback": ("aim.css", "left:anchor(--message-column center)!important;", ""),
+    "fallback": ("aim.css", "left:anchor(--message-column center)!important;transform:translateX(-50%);", ""),
 }
 
 
