@@ -23,6 +23,7 @@ import { messagePreview } from './message-preview.mjs';
 import { revealSelection } from './reveal.mjs';
 import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
 import { contact, heard, notTaken, NOT_TAKEN } from './api.mjs';
+import { CoordinationChoice } from './coordination-choice.mjs';
 
 // Why Archive does nothing for a dossier holding a message the reader
 // starred (item 635), as Core says it (aim_next/stacks.py, HELD_BY_STAR): the
@@ -165,6 +166,8 @@ export class StackFeed {
     newest = () => {}, refreshPositions = async () => {}, acted = () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), navigate = () => {}, press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
     colorOf = () => null, clock = () => Date.now(), doc = document }) {
     Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, acted, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, clock, doc });
+    this.coordinationChoice = new CoordinationChoice({ instanceId, viewer, view: doc.defaultView ?? globalThis.window });
+    this.state.showCoordination = this.coordinationChoice.on;
     home?.addEventListener('close', () => this.arrange());
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // A stand-in for each message the page has not loaded that an act is on (a
@@ -267,9 +270,9 @@ export class StackFeed {
     }), ...listed];
   }
   arrange() {
-    this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, colorOf: this.colorOf, home: this.home, doc: this.doc, on: {
+    this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, colorOf: this.colorOf, home: this.home, coordinationHost: this.filterHost, doc: this.doc, on: {
       navigate: () => this.navigate(), more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
-      coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
+      coordinationCount: (count, news) => this.paintCoordination(count, news),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id), fold: id => this.foldId(id),
       folded: (stack, was) => {
         // Explicitly collapsing this dossier handles its loaded arrivals.
@@ -343,18 +346,25 @@ export class StackFeed {
     if (star.textContent !== (starred ? '★' : '☆')) star.textContent = starred ? '★' : '☆';
     star.setAttribute('aria-pressed', String(starred)); star.setAttribute('aria-label', words); star.title = words;
   }
-  paintCoordination(count = this.coordinationCount ?? 0) {
+  paintCoordination(count = this.coordinationCount ?? 0, news = false) {
     this.coordinationCount = count;
     if (!this.filterHost) return;
     let button = this.filterHost.querySelector('button');
     if (!button) {
       button = this.doc.createElement('button'); button.type = 'button'; button.className = 'filter-chip';
       this.filterHost.append(button);
-      button.onclick = () => { this.state.showCoordination = !this.state.showCoordination; this.arrange(); };
+      button.onclick = () => {
+        this.coordinationChoice.set(!this.state.showCoordination);
+        this.state.showCoordination = this.coordinationChoice.on;
+        this.state.coordinationHere.clear();
+        this.arrange();
+      };
     }
     button.textContent = `Show agent coordination (${count})`;
     button.setAttribute('aria-pressed', String(this.state.showCoordination));
-    this.filterHost.hidden = count === 0 && this.state.showCoordination;
+    button.dataset.news = String(news);
+    button.setAttribute('aria-label', `Show agent coordination (${count})${news ? ', new messages' : ''}`);
+    this.filterHost.hidden = count === 0;
   }
   // Says what just happened, for a screen reader.
   say(words) { this.said.textContent = ''; this.said.textContent = words; }

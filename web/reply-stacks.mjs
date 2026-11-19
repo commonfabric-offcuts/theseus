@@ -120,7 +120,7 @@ export function topOf(list, entry) {
 // own (apart; stack-order.mjs, gather). None is ever recorded.
 export function stackState(list) {
   if (!states.has(list)) states.set(list, { levels: new Map(), kept: new Set(), peeked: new Set(), here: new Map(), renaming: null,
-    stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: true, below: new Set(), viewer: null, again: () => {}, waiting: new Set(),
+    stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: false, coordinationHere: new Set(), below: new Set(), viewer: null, again: () => {}, waiting: new Set(),
     checking: new Map(), earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set(), filling: null, filled: new Set(), apart: new Set() });
   return states.get(list);
 }
@@ -196,10 +196,11 @@ export function setLevel(state, stack, level) {
 // is its own view: More's button goes, every New item shows wherever it sits,
 // put aside or not, and hidden agent coordination stays hidden (aim.css,
 // stack-look.css).
+const coordinationRevealed = (state, stack) => [stack.head, ...stack.replies].some(item => state.coordinationHere.has(item.id));
 export function shownView(state) {
   const only = state.only ?? null, asideShown = Boolean(state.moreOpen || only);
   return { below: stack => state.below.has(stack.id), only, asideShown,
-    hidden: stack => (state.below.has(stack.id) && !asideShown) || (!state.showCoordination && state.coordination.has(stack.id)) };
+    hidden: stack => (state.below.has(stack.id) && !asideShown) || (!state.showCoordination && state.coordination.has(stack.id) && !coordinationRevealed(state, stack)) };
 }
 export const shownStacks = state => shownOrder(state.stacks, shownView(state));
 // Whether the page draws message id, by its one view: its stack on show
@@ -265,8 +266,9 @@ export function reveal(entry, { full = false, open = false } = {}) {
   const feed = entry?.closest?.('#messages');
   if (feed && states.has(feed)) {
     const state = stackState(feed);
-    if (!state.showCoordination && (entry.dataset.coordination === 'agents' || entry.closest('[data-coordination=agents]'))) {
-      state.showCoordination = true; state.on?.coordinationShown?.(true); state.again();
+    const stack = state.stacks.find(each => each.id === entry.dataset.id || each.replies.some(item => item.id === entry.dataset.id));
+    if (!state.showCoordination && stack && state.coordination.has(stack.id)) {
+      state.coordinationHere.add(entry.dataset.id); state.again();
     }
   }
   const section = entry?.closest?.('.reply-stack');
@@ -642,7 +644,7 @@ export function paintFoldedNames(list, messages, state = stackState(list)) {
   const visit = nodes => {
     let previous = null;
     for (const entry of nodes) {
-      if (entry.hidden || (!state.showCoordination && entry.dataset.coordination === 'agents')) continue;
+      if (entry.hidden || (!state.showCoordination && entry.dataset.coordination === 'agents' && entry.dataset.coordinationRevealed !== 'true')) continue;
       if (entry.classList.contains('reply-stack')) {
         const head = entry.querySelector(':scope > [data-id]');
         visit([...(state.only || entry.dataset.headOpen === 'true' ? [head] : []), ...entry.querySelector(':scope > .stack-replies').children]);
@@ -857,7 +859,7 @@ function paintStack(section, stack, byId, context) {
 // drawn after it is put back. While the list is hidden it rests after it, at
 // the page's end.
 export function arrangeStacks(list, messages, options = {}) {
-  const { keep = () => false, unread = () => false, quiet = () => false, viewer = null, nameOf = id => id, colorOf = () => null, on = null, home = null, doc = list.ownerDocument } = options;
+  const { keep = () => false, unread = () => false, quiet = () => false, viewer = null, nameOf = id => id, colorOf = () => null, on = null, home = null, coordinationHost = null, doc = list.ownerDocument } = options;
   const state = stackState(list);
   Object.assign(state, { viewer, colorOf, again: () => arrangeStacks(list, messages, options) });
   if (on) state.on = on;
@@ -896,7 +898,8 @@ export function arrangeStacks(list, messages, options = {}) {
   state.folded = new Set(loaded.filter(item => rowFolded(item, { peeked: each => state.peeked.has(each.id) })).map(item => item.id));
   state.coordination = new Set(stacks.filter(stack => coordinationStack(stack, quiet)).map(stack => stack.id));
   list.dataset.showCoordination = String(state.showCoordination);
-  state.on?.coordinationCount?.(state.coordination.size);
+  const coordinationNews = stacks.some(stack => state.coordination.has(stack.id) && [stack.head, ...stack.replies].some(unread));
+  state.on?.coordinationCount?.(state.coordination.size, coordinationNews);
   const top = [...waiting], aside = [], live = new Set(), context = { state, keep, unread, nameOf, colorOf, doc };
   state.below = new Set();
   for (const stack of stacks) {
@@ -910,6 +913,7 @@ export function arrangeStacks(list, messages, options = {}) {
     if (!state.sections.has(stack.id)) state.sections.set(stack.id, makeStack(doc, stack.id));
     const section = state.sections.get(stack.id);
     paintStack(section, stack, byId, context);
+    section.dataset.coordinationRevealed = String(coordinationRevealed(state, stack));
     destination.push(section);
   }
   // More counts the dossiers it would show: with Show agent coordination off,
@@ -928,12 +932,18 @@ export function arrangeStacks(list, messages, options = {}) {
   if (shownAside) {
     state.more.textContent = `Archived (${shownAside})`;
     state.more.setAttribute('aria-expanded', String(Boolean(state.moreOpen)));
-    top.push(state.more, ...aside);
-  } else { state.more?.remove(); top.push(...aside); }
+  } else state.more?.remove();
+  if (shownAside || coordinationHost && state.coordination.size) {
+    state.controls ??= element(doc, 'div', 'stack-controls');
+    if (shownAside) state.controls.append(state.more);
+    if (coordinationHost) state.controls.append(coordinationHost);
+    top.push(state.controls);
+  } else state.controls?.remove();
+  top.push(...aside);
   // Entries the page has that Core's messages do not name stay where they are,
   // and so does anything else that is not a dossier, More or the composer at
   // rest (a line, or what holds the composer's place while it is up).
-  reconcile(list, top, node => (node === home ? resting : node.dataset.id ? messages.has(node.dataset.id) : !node.dataset.line && (node === state.more || node.classList.contains('reply-stack'))));
+  reconcile(list, top, node => (node === home ? resting : node.dataset.id ? messages.has(node.dataset.id) : !node.dataset.line && (node === state.controls || node === state.more || node.classList.contains('reply-stack'))));
   for (const [id, section] of state.sections) if (!live.has(id)) { section.remove(); state.sections.delete(id); }
   for (const entry of byId.values()) if (entry.parentElement === list) entry.hidden = false;
   // Only a stack's head carries its row: a message that headed one before a
@@ -952,7 +962,7 @@ export function arrangeStacks(list, messages, options = {}) {
   // What is hidden here is what shownView says is hidden: below a closed More,
   // unless Only new draws the New items there.
   const { asideShown } = shownView(state);
-  for (const node of top) if (node !== state.more && node !== home) node.hidden = state.waiting.has(node.dataset.id) || aside.includes(node) && !asideShown;
+  for (const node of top) if (node !== state.controls && node !== home) node.hidden = state.waiting.has(node.dataset.id) || aside.includes(node) && !asideShown;
   if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
   state.on?.arranged?.();
   paintFoldedNames(list, messages, state);
