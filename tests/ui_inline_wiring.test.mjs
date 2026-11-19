@@ -32,8 +32,10 @@ import { Reader as RealReader } from '../web/reader.mjs';
 import { entries } from '../web/reply-stacks.mjs';
 // A message's entry in the list, on its own or in its reply stack (reply-stacks.mjs).
 const entryIn = (f, id) => entries(f.get('messages')).find(entry => entry.dataset.id === id);
-// The list's messages, stacks and lines in their order, leaving out the New message composer resting among them (item 465).
-const listed = f => f.get('messages').children.filter(child => child !== f.get('new-message-sheet'));
+// A singleton's folder still contains one message. Helpers which inspect
+// messages, multi-message stacks and lines read through that wrapper.
+const singleEntry = node => node.dataset.single === 'true' ? node.children.find(child => child.dataset.id) : node;
+const listed = f => f.get('messages').children.filter(child => child !== f.get('new-message-sheet')).map(singleEntry);
 import { SessionRenewal } from '../web/session-renewal.mjs';
 import { phoneCheck } from '../web/phone-check.mjs';
 import { Api as RealApi, AttemptError, Deadline, notAnswering, unreached } from '../web/api.mjs';
@@ -70,12 +72,24 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true;
       this.style = {}; this.scrollTop = 0; this.scrollHeight = 600; this.clientHeight = 600; }
     addEventListener(name, fn) { this.handlers[name] = fn; }
+    // The real selection-quote owner clones the Reader's pill. Clone its
+    // content and reflected attributes, without copying event listeners.
+    cloneNode(deep = false) {
+      const clone = new Element(this.id);
+      for (const name of ['tagName', 'namespaceURI', 'className', 'textContent', 'title', 'type', 'hidden', 'disabled', 'value']) {
+        if (name in this) clone[name] = this[name];
+      }
+      clone.dataset = { ...this.dataset }; clone.style = { ...this.style };
+      if (deep) clone.append(...this.children.map(child => child instanceof Element ? child.cloneNode(true)
+        : typeof child === 'object' ? { data: child.data, textContent: child.textContent, children: [] } : child));
+      return clone;
+    }
     get classList() {
       const names = () => String(this.className ?? '').split(' ').filter(Boolean), set = list => { this.className = list.join(' '); };
       return { add: name => { if (!names().includes(name)) set([...names(), name]); }, remove: name => set(names().filter(n => n !== name)),
         contains: name => names().includes(name), toggle: (name, on = !names().includes(name)) => { set(on ? [...names().filter(n => n !== name), name] : names().filter(n => n !== name)); return on; } };
     }
-    append(...items) { for (const item of items) { if (typeof item === 'object') item.parent = this; this.children.push(item); } }
+    append(...items) { for (const item of items) { if (typeof item === 'object') { item.remove?.(); item.parent = this; } this.children.push(item); } }
     replaceChildren(...items) { this.children = []; this.append(...items); }
     prepend(...items) { for (const item of items) item.remove(); this.children.unshift(...items); for (const item of items) item.parent = this; }
     after(...items) { const host = this.parent; if (!host) return; for (const item of items) item.remove(); host.children.splice(host.children.indexOf(this) + 1, 0, ...items); for (const item of items) item.parent = host; }
@@ -156,6 +170,9 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     if (name === 'workspace') return { instance_id: 'fixture', workspace: { title: 'Workspace' } };
     if (name === 'marks') return { instance_id: 'fixture', topic_id: args.topic_id, items: [], next_cursor: null };
     if (name === 'colors') return { instance_id: 'fixture', palette: [...AGENT_PALETTE], items: [], next_cursor: null };
+    if (name === 'source' && args.source_ref?.kind === 'message' && views.messages.has(args.source_ref.id)) {
+      return { instance_id: 'fixture', source_ref: args.source_ref, topic_id: topic.id, attachments: [], ...views.messages.get(args.source_ref.id) };
+    }
     // An outcome to keep with no target and no checks yet, as Core answers for one (docs/targets.md).
     if (name === 'outcome_checks') return { instance_id: 'fixture', workspace_id: args.workspace_id, workspace_title: 'Workspace', owner: 'owner', coordinator: 'agent-a',
       you_own: false, you_steer: false, target: null, kind: { kind: 'keep', started_by: 'owner', started_ms: null, you_change: false }, word: null, failing_check: null,
@@ -189,6 +206,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   };
   const reader = { keepReplyVisible: RealReader.prototype.keepReplyVisible, narrow: { addEventListener() {} }, layoutChoice: null, notice: what => { showLine(get('reader-notice'), what); events.push(['reader-notice', lineText(what)]); }, paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]), paintTitle: source => events.push(['title', source.title]) };
   const views = { scope: {}, messages: new Map(), retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, readState: async () => true, placeAfresh() {}, sighted() {}, opened() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1, showAlone: () => false, aloneItem: () => null };
+  Object.assign(views, { instanceId: bootstrap.instance_id, topicId: topic.id, starRoots: new Set(), starSerial: 0,
+    resetStars: TopicViews.prototype.resetStars, readStarred: TopicViews.prototype.readStarred, paint() {}, invalidate() {} });
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
@@ -206,7 +225,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
     Reader: class { constructor(callbacks) { reader.callbacks = callbacks; return reader; } },
-    TopicViews: class { constructor() { return views; } }, Freshness: class { constructor(options) { fresh.options = options; return fresh; } },
+    TopicViews: class { constructor({ paint, invalidate }) { Object.assign(views, { paint, invalidate }); return views; } }, Freshness: class { constructor(options) { fresh.options = options; return fresh; } },
     initialViews: async () => ({}), actorBaseline: async () => null, readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '',
     openIntentJournal: async () => { events.push(['intent-journal']); throw Error('No browser intent storage in this fixture'); },
     openOpeningStore: async () => { events.push(['opening-store']); return { close() {} }; },
@@ -2449,7 +2468,7 @@ test('a card in the topic log says when its message was sent, and a message from
   f.views.messages.set('m4', { id: 'm4', seq: 4, author_id: 'fable', body: 'Earlier', topic_id: 't1', sent_ms: new Date(2026, 10, 3, 7, 41).getTime() });
   f.paintViews('messages');
   // The author line follows the card's ⋯ (docs/links.md).
-  const author = id => f.get('messages').children.find(card => card.dataset.id === id).children.find(node => node.className === 'message-author');
+  const author = id => entryIn(f, id).children.find(node => node.className === 'message-author');
   const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
   // The star in the header (item 376) comes after who and when, and is no part of the time.
   const parts = id => author(id).children.filter(node => node.className !== 'card-star').map(text);
@@ -2471,7 +2490,7 @@ test('the page watches the viewer\'s day once, and at a new day repaints every s
   await f.initialize();
   f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'tony', body: 'Timed', topic_id: 't1', sent_ms: new Date(2026, 10, 5, 5, 44).getTime() });
   f.paintViews('messages');
-  const time = f.get('messages').children[0].children.find(node => node.className === 'message-author').children[1].children[1];
+  const time = entryIn(f, 'm1').children.find(node => node.className === 'message-author').children[1].children[1];
   assert.equal(time.textContent, '5:44 AM');
   const query = f.document.querySelectorAll;
   f.document.querySelectorAll = selector => selector === 'time[data-ms]' ? [time] : query(selector);
@@ -3002,7 +3021,7 @@ test('clicking an agent\'s name on its card opens its color picker, not the mess
   const add = (seq, author_id, author_kind) => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id, author_kind, body: 'Body', topic_id: 't1' });
   add(1, 'fable', 'agent'); add(2, 'fixture-person', 'human'); add(3, 'fable', 'agent'); add(4, 'dan', 'human');
   f.paintViews('messages');
-  const card = id => f.get('messages').children.find(child => child.dataset.id === id);
+  const card = id => entryIn(f, id);
   const name = id => card(id).children.find(node => node.className === 'message-author').children[0];
   const opens = () => f.calls.filter(c => c.name === 'source' || c.name === 'editor_state').length;
   const before = opens();
@@ -3105,7 +3124,7 @@ test('an agent reading the page sees a message between others as a card, since i
   await f.initialize();
   f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'aim-core', author_kind: 'agent', body: 'Body', topic_id: 't1', addressees: ['aim-ux'] });
   f.paintViews('messages');
-  const entry = f.get('messages').children.find(child => child.dataset.id === 'm1');
+  const entry = entryIn(f, 'm1');
   assert.equal(entry.className.split(' ')[0], 'message-card', 'not folded for an agent');
 });
 
@@ -3122,7 +3141,7 @@ test('a folded message the person marked unread carries the pill on its line, th
   await marker.onclick(); await settle();
   const order = () => listed(f).map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
   assert.equal(order().split(' ').slice(-7).join(' '), '6 5 new 4 3 2 1', 'the New line sits just below the fold');
-  const fold = f.get('messages').children.find(child => child.dataset.id === 'm5'), [line, card] = fold.children;
+  const fold = entryIn(f, 'm5'), [line, card] = fold.children;
   assert.equal(fold.className, 'message-fold');
   assert.deepEqual([card.hidden, line['aria-expanded'], f.document.activeElement], [false, 'true', card], 'older-below opened the fold and focused its card');
   const pills = node => typeof node === 'string' ? 0 : (node.className === 'unread-mark' ? 1 : 0) + node.children.reduce((n, child) => n + pills(child), 0);
@@ -3349,7 +3368,7 @@ test('at the top of a topic a new message comes into view; read further down, th
   // Cards are laid out 100px apart from where the list starts, measured when
   // asked: a new card above pushes the rest down.
   let listTop = 0;
-  const cards = () => f.get('messages').children.filter(child => child.dataset.seq);
+  const cards = () => entries(f.get('messages'));
   for (const kind of ['querySelectorAll', 'querySelector']) assert.equal(typeof f.document[kind], 'function');
   f.document.querySelectorAll = () => cards();
   // The first message entry, on its own or in a reply stack (app.mjs MESSAGE_ENTRIES): here every card is on its own.
@@ -3384,7 +3403,7 @@ test('the New message composer rests just above More, under the last message sho
   const add = seq => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', author_kind: 'agent', body: 'Body ' + seq, topic_id: 't1' });
   add(1); add(2); add(3);
   f.paintViews('messages');
-  const order = () => f.get('messages').children.map(child => child === f.get('new-message-sheet') ? 'composer' : child.className === 'stack-more' ? 'More' : child.dataset.id);
+  const order = () => f.get('messages').children.map(singleEntry).map(child => child === f.get('new-message-sheet') ? 'composer' : child.className === 'stack-more' ? 'More' : child.dataset.id);
   assert.deepEqual(order(), ['m3', 'm2', 'm1', 'composer'], 'under the last message, with nothing below More');
   // m2 put below More: the composer stays above More, under m1.
   f.views.messages.get('m2').stack_position = { root_id: 'm2', through: 2, aside_revision: 1, below: true, at: { messages: 2, acts: 1 } };
@@ -3440,12 +3459,10 @@ test('More messages shows the older messages of the dossier it fills where its b
     m38: ['true', 'false', 'false'], m37: ['true', 'false', 'false'], m36: ['true', 'false', 'false'], m1: ['true', 'false', 'false'] });
 });
 
-// Item 550, its fix round's B1: More messages shows every older message it loads where its button was, of whichever
-// dossier. Here the last card above the button is a message of its own (m36), and the older page holds only replies of
-// a dossier whose first message (m1) is above the page and whose stack (m37..m41) sits higher up. Each older reply
-// shows below m36, newest first; the cards shown keep their order and how they show, and the stack higher up keeps
-// its head and its messages: none of the older replies goes into it.
-test('More messages shows every older message it loads where its button was, those of a dossier whose stack sits higher up too, and what was shown holds', async () => {
+// Item 799, shipped b8d449218cb01c42e003e76bc588637f3c99f252, replaced the apart branch:
+// More-loaded replies stay inside their existing dossier, keeping its head and existing order.
+// Here m36 is a separate dossier below m37..m41; older replies join that higher dossier.
+test('More keeps older replies inside their existing dossier with its head retained through both presses (799 b8d44921)', async () => {
   const { f } = await readingPage();
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
@@ -3465,26 +3482,26 @@ test('More messages shows every older message it loads where its button was, tho
   assert.deepEqual([before.at(-1), stackOf('m41'), ['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf)], [['m36', true], 'm37', Array(5).fill('m37')],
     'm36 is the last card above More, and the dossier\'s five replies are one stack higher up, headed by m37');
   await f.get('more-messages').onclick(); await settle(); await settle();
-  assert.deepEqual(drawn(), [...before, ...run(6, 35, seq => ['m' + (41 - seq), true])],
-    'what was shown keeps its order and how it shows; below it, every older message, newest first, each shown');
-  assert.deepEqual([['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf), run(6, 35, seq => stackOf('m' + seq)).filter(Boolean)], [Array(5).fill('m37'), []],
-    'the stack higher up keeps its head and its messages: no older reply goes into it, or into a stack of its own');
-  // Pressed again, the last card above the button is m6, a card of its own of that same dossier: the next older
-  // replies (m2..m5) show below it too, newest first, as cards of their own, and nothing shown moves; none goes into
-  // the stack higher up (the second press is where the fault showed, fix round's re-review B1).
+  assert.deepEqual(drawn(), [...before.slice(0, -1), ...run(6, 35, seq => ['m' + (41 - seq), true]), before.at(-1)],
+    'existing cards keep their relative order and visibility; older replies stay in their dossier before m36');
+  assert.deepEqual([['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf), run(6, 35, seq => stackOf('m' + seq)).filter(Boolean)], [Array(5).fill('m37'), Array(30).fill('m37')],
+    'the higher dossier retains m37 as its head and owns every older reply');
+  // The separate m36 dossier remains last. A second More press adds the next older replies
+  // to the same higher dossier, after its previous older page, without changing its head.
   const shown = drawn();
-  assert.deepEqual(shown.at(-1), ['m6', true], 'm6, a card of its own, is the last card above More');
+  assert.deepEqual(shown.at(-1), ['m36', true], 'the separate m36 dossier stays last above More');
   f.api.view = async (name, args) => name === 'topic_messages' ? page(run(2, 5, seq => item(seq, 'm1', 'm1')), null, 1)
     : name === 'memory_items' ? { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } } : view(name, args);
   await f.get('more-messages').onclick(); await settle(); await settle();
-  assert.deepEqual(drawn(), [...shown, ['m5', true], ['m4', true], ['m3', true], ['m2', true]],
-    'pressed again: what was shown keeps its order, and below it every older message, newest first, each shown');
-  assert.deepEqual([['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf), run(2, 35, seq => stackOf('m' + seq)).filter(Boolean)], [Array(5).fill('m37'), []],
-    'pressed again, the stack higher up still keeps its head and its messages alone');
+  assert.deepEqual(drawn(), [...shown.slice(0, -1), ['m5', true], ['m4', true], ['m3', true], ['m2', true], shown.at(-1)],
+    'pressed again: older replies remain together in their dossier before m36, newest first and shown');
+  assert.deepEqual([['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf), run(2, 35, seq => stackOf('m' + seq)).filter(Boolean)], [Array(5).fill('m37'), Array(34).fill('m37')],
+    'pressed again, the higher dossier still keeps its head and owns all of its older replies');
 });
 
-// Merge B3: an older card kept apart by More is not the dossier's lone loaded message.
-test('B3 More keeps one cover per dossier, never pills on older cards kept apart, including its root on a second press', async () => {
+// Item 803, shipped cdfeae10cff085a744c7ab48d570c8c43890d806, frames every admitted message.
+// A nonempty cover has one sheet even for a lone reply; More and root arrival duplicate no cover pills.
+test('B3 More keeps one cover sheet per dossier with no duplicate pills through root arrival (803 cdfeae10)', async () => {
   for (const folder of [false, true]) for (const state of ['empty', 'stands', 'waiting', 'proposed', 'thumb', 'word']) {
     const { f } = await readingPage();
     f.document.createElementNS = (_ns, tag) => f.document.createElement(tag);
@@ -3503,19 +3520,18 @@ test('B3 More keeps one cover per dossier, never pills on older cards kept apart
     const descendants = () => walk(f.get('messages'));
     const pills = () => descendants().filter(e => e.classList?.contains('row-pills'));
     const sheets = () => descendants().filter(e => e.classList?.contains('dossier-cover'));
-    const hasPills = !folder && ['waiting', 'proposed', 'thumb', 'word'].includes(state);
-    assert.equal(pills().length, hasPills ? 1 : 0, `${folder}/${state}: a genuinely lone reply keeps its pills`);
-    assert.equal(sheets().length, folder && cover ? 1 : 0);
+    assert.equal(pills().length, 0, `${folder}/${state}: a lone reply is framed and uses its cover sheet`);
+    assert.equal(sheets().length, cover ? 1 : 0);
     const view = f.api.view;
     for (const [items, next] of [[[item(2), item(3)], 2], [[item(1)], null]]) {
       f.api.view = async (name, args) => name === 'topic_messages' ? page(items, next)
         : name === 'memory_items' ? { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } } : view(name, args);
       await f.get('more-messages').onclick(); await settle(); await settle();
-      assert.equal(pills().length, hasPills ? 1 : 0, `${folder}/${state}: More never duplicates the dossier cover as pills`);
-      assert.equal(sheets().length, folder && cover ? 1 : 0, 'the original sheet stays');
+      assert.equal(pills().length, 0, `${folder}/${state}: More never duplicates the dossier cover as pills`);
+      assert.equal(sheets().length, cover ? 1 : 0, 'the original sheet stays');
       for (const older of [1, 2, 3]) {
         const entry = entryIn(f, 'm' + older);
-        if (entry) assert.equal(walk(entry).some(e => e.classList?.contains('row-pills')), false, 'an apart reply or root has no cover pills');
+        if (entry) assert.equal(walk(entry).some(e => e.classList?.contains('row-pills')), false, 'a reply or arriving root has no duplicate cover pills');
       }
     }
   }
@@ -3981,7 +3997,7 @@ test('a link to a place in this Theseus opens it as the rail does, keeping writi
   await f.initialize(); await drain();
   f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'fable', body: 'Carried on in https://fixture/?topic=t2 now.', topic_id: 't1', sent_ms: null, reply_to: null });
   f.paintViews('messages');
-  const [a] = linksIn(f.get('messages').children.find(node => node.dataset.id === 'm1'));
+  const [a] = linksIn(entryIn(f, 'm1'));
   assert.deepEqual([a.href, a.target ?? ''], ['?topic=t2', ''], 'it stays in this tab');
   const press = clicked(a);
   assert.deepEqual([press.stopped, press.prevented], [true, true], 'the page opens it, not the browser');
@@ -4494,7 +4510,7 @@ async function conversationPage(list, { waits = [], href = 'https://fixture/?top
   };
   await f.initialize(); for (let n = 0; n < 6; n++) await settle();
   assert.equal(f.document.body.classList.contains('conversation-page'), true, 'the page is the conversation');
-  const stackOf = id => entryIn(f, id)?.closest('.reply-stack') ?? null;
+  const stackOf = id => { const folder = entryIn(f, id)?.closest('.reply-stack'); return folder?.dataset.single === 'true' ? null : folder ?? null; };
   return { f, painted, opens, stackOf };
 }
 // One item answered, asked back about, and replied to, beside a new item of its own:
