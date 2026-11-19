@@ -865,6 +865,7 @@ function paintViews(kind) {
   // All but the header and the people, which repaint in place, move the list:
   // under a press held down they wait for it to end, so the click lands where it began.
   if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }
+  if (kind === 'starred') { keepListAnchor(paintStarredStatus); return; }
   // A thumbs-up reads its message (card-reading.mjs, readNow): its card, and its stack's count of new replies, read so.
   if (kind === 'reactions') { keepListAnchor(() => { paintCardReading(); stackMessages(); menu?.paint(); }); paintReaderThumb$(); return; }
   // A star, a stack's name, a join or a place, here or on another device (stack-feed.mjs).
@@ -1015,6 +1016,13 @@ function syncDossierHeads() {
   }
 }
 function stackMessages() { syncDossierHeads(); feedOf().arrange(); paintDossierSourceStatus(); }
+function paintStarredStatus() {
+  const line = $('starred-status'), words = $('starred-status-words'), retry = $('starred-retry');
+  line.hidden = topicUnavailable || authorityReviewPending() || !views.starredPending;
+  words.textContent = views.starredError ? 'Could not finish loading starred dossiers. ' : 'Loading starred dossiers…';
+  retry.hidden = !views.starredError;
+  retry.onclick = () => { views.resetStars(); freshness?.request({ retry: true }); };
+}
 // The fallback is a real canonical dossier route, guarded by the same writing
 // preservation as all other in-app links. No source body is inferred here.
 function paintDossierSourceStatus() {
@@ -1068,6 +1076,7 @@ function feedOf() {
 function drawFeed(on, ...parts) {
   const sheet = $('new-message-sheet'), inFeed = $('messages').contains(sheet);
   for (const id of ['messages', 'notebook', 'topic-people', ...parts]) $(id).hidden = !on;
+  if (on) paintStarredStatus(); else $('starred-status').hidden = true;
   if (on === inFeed) return;
   if (!on && sheet.open) sheet.close();
   if (stackFeed) stackFeed.arrange(); else if (!on) $('main').append(sheet);
@@ -1889,7 +1898,7 @@ function revisionOffer(presentation) {
   } };
 }
 function updateStatus(state) {
-  if (state.kind === 'authority') { ++listAccessEpoch; dossierHeads?.invalidate(); }
+  if (state.kind === 'authority') { ++listAccessEpoch; dossierHeads?.invalidate(); views?.resetStars(); }
   updateState = state;
   const quiet = state.kind === 'current' || state.kind === 'defer';
   $('updates-status').hidden = quiet;
@@ -1906,6 +1915,7 @@ function updateStatus(state) {
 }
 async function checkAvailability(read, current, topicDenied = true) {
   dossierHeads?.invalidate();
+  views.resetStars();
   if (topicDenied) {
     topicUnavailable = true; ++listAccessEpoch;
     dossierHeads?.invalidate();
@@ -2076,6 +2086,8 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
     rebuild: async (_read, current) => { if (current()) for (const item of views.refreshKeys()) freshness.invalidate(item.key, item.version, true); },
     refresh: async (key, version, read, current) => {
       if (key === 'availability') { await checkAvailability(read, current, false); return true; }
+      if (key === 'starred') return views.readStarred(read, () => current() && !topicUnavailable && !authorityReviewPending());
+      if (key === 'acts' || key === 'topic') views.resetStars();
       if (key.startsWith('edit:')) return messageEdited(key, version, read, current);
       // The edit session of one of the person's messages moved (docs/message-edit.md): another device may have taken it.
       if (key.startsWith('edit_session:')) { if (messageEdit?.id === key.slice(13)) messageEdit.writing.sessionChanged(version); return true; }
@@ -2107,6 +2119,7 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
   });
   document.addEventListener('visibilitychange', () => freshness.setVisible(document.visibilityState === 'visible'));
   window.addEventListener('online', () => { if (document.visibilityState === 'visible') freshness.request(); topicState?.reconnected(); });
+  views.resetStars();
   freshness.setVisible(document.visibilityState === 'visible');
 }
 // What could not be done for want of Theseus is done again once Theseus has
