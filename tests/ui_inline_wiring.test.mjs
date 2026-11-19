@@ -1791,6 +1791,41 @@ async function readingPage() {
   return { f, ranges, card };
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
+
+test('843 actual dossier chevron clears its session marks on collapse, preserves them on expand and leaves other dossiers alone', async () => {
+  const { f } = await readingPage();
+  // This fixture supplies the browser microtask primitive used by clearVisitNew.
+  f.runObservation('globalThis.queueMicrotask = fn => Promise.resolve().then(fn)');
+  const items = [
+    { id: 'm1', seq: 1, body: 'Head' },
+    { id: 'm2', seq: 2, body: 'Reply', reply_to: 'm1' },
+    { id: 'm3', seq: 3, body: 'Newest reply', reply_to: 'm1' },
+    { id: 'm4', seq: 4, body: 'Unrelated dossier' },
+  ].map(item => ({ ...item, author_id: 'agent-a', topic_id: 't1', unread: false, acts: { folded: false, fold_revision: 0 } }));
+  for (const item of items) f.views.messages.set(item.id, item);
+  const stored = JSON.stringify(items), commands = f.calls.filter(c => c.kind).length;
+  f.runObservation('visitNew.arrive([...views.messages.values()])');
+  f.paintViews('messages'); await settle();
+  const marks = () => [...f.runObservation('visitNew.arrivals')].sort();
+  const walk = node => (node.children ?? []).filter(e => e && typeof e === 'object').flatMap(e => [e, ...walk(e)]);
+  const chevron = () => walk(f.get('messages')).find(e => e.classList?.contains('stack-toggle') && e.closest('.reply-stack')?.dataset.stack === 'm1');
+  assert.deepEqual(marks(), ['m1', 'm2', 'm3', 'm4']);
+  assert.equal(chevron().dataset.state, 'folded');
+  chevron().onclick(); await settle();
+  assert.equal(chevron().dataset.state, 'open');
+  assert.deepEqual(marks(), ['m1', 'm2', 'm3', 'm4'], 'expansion is not handling the messages');
+  chevron().onclick(); await settle();
+  assert.equal(chevron().dataset.state, 'folded');
+  assert.deepEqual(marks(), ['m4'], 'collapse handles the loaded dossier, not just its head');
+  f.runObservation('stackFeed.undos.pop()()'); await settle();
+  assert.equal(chevron().dataset.state, 'open');
+  f.runObservation('visitNew.arrive([...views.messages.values()]); paintMessageUpdates()');
+  assert.deepEqual(marks(), ['m4'], 'Undo or a repeated live page cannot resurrect handled marks');
+  f.runObservation("visitNew.arrive([{id:'later',author_id:'agent-a'}])");
+  assert.deepEqual(marks(), ['later', 'm4'], 'later arrivals still become new');
+  assert.equal(JSON.stringify(items), stored, 'stored read and fold facts remain untouched');
+  assert.equal(f.calls.filter(c => c.kind).length, commands, 'collapse sends no Core command');
+});
 const messages = (from, through) => Array.from({ length: through - from + 1 }, (_, i) => ({ id: 'm' + (from + i), seq: from + i, author_id: 'agent-a', body: 'Body ' + (from + i), topic_id: 't1' }));
 const page = (from, through, next) => ({ instance_id: 'fixture', items: messages(from, through), next_cursor: next, relevant_versions: { topic: 1 } });
 

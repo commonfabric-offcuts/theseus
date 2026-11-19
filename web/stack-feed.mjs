@@ -272,7 +272,11 @@ export class StackFeed {
       coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id), fold: id => this.foldId(id),
       folded: (stack, was) => {
-        if (was === 'open' || levelOf(this.state, stack.id) === 'head') this.acted(stack.id);
+        // Explicitly collapsing this dossier handles its loaded arrivals.
+        // Expanding or restoring its view must not clear unrelated marks.
+        if (was === 'open' || levelOf(this.state, stack.id) === 'head') {
+          for (const item of [stack.head, ...stack.replies]) this.acted(item.id);
+        }
         this.remember(() => { setLevel(this.state, stack, was); this.arrange(); });
       },
       earlier: (stack, count) => this.say(`${count === 1 ? 'The earlier message shows' : `${count} earlier messages show`} as rows, for this visit`),
