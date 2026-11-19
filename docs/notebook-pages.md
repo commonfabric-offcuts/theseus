@@ -1,7 +1,11 @@
 # Notebook pages and what changed since you read them
 
 An outcome's Notebook pages are on the right rail of its topics and its
-Conversation, and on its own page after its topics. A page someone has read
+Conversation, and first on its own page as a scrolling row of labeled document
+icons (item 847, [outcome-cards-847.md](outcome-cards-847.md)). An icon shows
+Cards or Text: the last view used for that page in this browser, per instance
+and person, defaulting to Cards; an explicit link view takes precedence.
+This preference changes no page revision or Draft mark. A page someone has read
 and that has been revised since is marked changed for them, the way a topic
 with unread messages carries a count, until they open it again, and opening
 it then shows what changed since the revision they last read.

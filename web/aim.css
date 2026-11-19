@@ -201,8 +201,8 @@ main::after{content:"";display:block;height:var(--line-room,0px)}
 .source-changes{margin:0 0 .6rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel);min-width:0}.source-changes summary{cursor:pointer;padding:.45rem .7rem;font-size:.85rem;font-weight:600}#source-changes-body{max-height:min(16rem,22dvh);overflow:auto}#source-changes-body,.page-here .source-changes>div{padding:0 .7rem .6rem;overflow-wrap:anywhere}.changes-summary{color:var(--muted);font-size:.8rem;margin:0 0 .35rem}.changes-text{white-space:pre-wrap;line-height:1.6}.changes-added{background:var(--soft);color:var(--ink);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:3px;border-radius:.15rem}.changes-removed{color:var(--muted);text-decoration:line-through}.changes-gap{color:var(--muted)}
 /* Words a person had read that the message's agent author has since changed (item 614): struck through where they stood, quieter than the words that replaced them. */
 .struck-words{color:var(--muted);text-decoration:line-through;text-decoration-thickness:1px}
-/* On an outcome's page its Notebook pages are listed as its topics are, and one opens in place below them. */
-.selection-page #outcome-references-list{display:grid;grid-template-columns:1fr;gap:.35rem;overflow:visible;padding:0}.selection-page #outcome-references-list .nav-item{width:100%;max-width:none;margin:0;background:var(--panel);border-color:var(--line);padding:.85rem}.selection-page #outcome-references-list .nav-item:hover{background:var(--soft)}.page-here{margin-top:1rem;padding:1rem 1.15rem;border:1px solid var(--line);border-radius:.75rem;background:var(--panel)}.page-here h2{margin-bottom:.2rem;overflow-wrap:anywhere}.page-here h2:focus{outline:none}.page-here .notice{margin:.5rem 0}.page-here .source-changes{margin:.8rem 0 0}.page-here-body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;margin:.8rem 0}
+/* On an outcome's page its Notebook pages open in the existing sheet. */
+.page-here{margin-top:1rem;padding:1rem 1.15rem;border:1px solid var(--line);border-radius:.75rem;background:var(--panel)}.page-here h2{margin-bottom:.2rem;overflow-wrap:anywhere}.page-here h2:focus{outline:none}.page-here .notice{margin:.5rem 0}.page-here .source-changes{margin:.8rem 0 0}.page-here-body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;margin:.8rem 0}
 /* The top of a topic: the title with a gear for Topic settings at its upper right, and the topic's note as a plain subtitle under it. */
 .title-row{display:flex;align-items:flex-start;gap:.75rem}.title-row h1{flex:1;min-width:0;overflow-wrap:anywhere;line-height:1.25;padding-top:.4rem}
 /* The gear: a quiet square button, 44 px to touch, its middle level with the title's first line. */
@@ -1359,3 +1359,31 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 .menu-description{display:flex;flex-direction:column;max-width:26rem;white-space:normal}
 .menu-description small{font-size:.78rem;font-weight:400;color:var(--muted)}
 .message-menu-list [aria-checked=true]{background:var(--soft)}
+
+
+/* Outcome home (847): the outline's topics, presented as plain dossier covers.
+   At 1280px, two 18rem rails and the main padding leave about 602px: two cards.
+   The phone breakpoint deliberately keeps one column regardless of title length. */
+.outcome-topic-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+.outcome-topic-card{display:flex;flex-direction:column;justify-content:space-between;gap:1.25rem;min-width:0;min-height:9rem;padding:1.1rem 1.2rem;border:1px solid var(--stack-sheet-edge);border-radius:.75rem;background:var(--stack-folder);box-shadow:var(--stack-cover-inset);color:var(--stack-folder-ink);text-decoration:none;overflow-wrap:anywhere}
+.outcome-topic-card:hover{background:var(--stack-folder-deep)}
+.outcome-topic-title{font-size:1.05rem;font-weight:650;line-height:1.5}
+.outcome-topic-meta{display:flex;flex-wrap:wrap;gap:.25rem .85rem;color:var(--stack-meta-ink);font-size:.75rem}
+.outcome-topic-toggle{margin:.85rem 0 .55rem}
+.outcome-topic-more{margin:.6rem 0}
+.outcome-topic-cards>.empty{margin:.8rem 0}
+@media(max-width:760px){.outcome-topic-grid{grid-template-columns:minmax(0,1fr);gap:.7rem}.outcome-topic-card{min-height:8rem;padding:1rem}}
+/* The existing page list is one horizontal strip; neither a long label nor a
+   long Notebook makes the whole middle column wider than its rails. */
+.selection-page #outcome-references-list{display:flex;gap:.75rem;overflow-x:auto;max-width:100%;padding:.4rem .2rem .65rem;scroll-padding:.2rem}
+.selection-page #outcome-references-list .nav-item{display:flex;flex-direction:column;align-items:center;gap:.4rem;flex:0 0 8rem;width:8rem;max-width:8rem;margin:0;padding:.7rem .4rem;border:1px solid transparent;background:transparent;text-align:center;white-space:normal;overflow-wrap:anywhere}
+.selection-page #outcome-references-list .nav-item:hover{background:var(--soft);border-color:var(--line)}
+.notebook-document{display:grid;grid-template-columns:repeat(2,1fr);gap:.3rem;width:3.25rem;height:4.1rem;padding:.75rem .45rem .45rem;background:var(--panel);border:1px solid var(--line);border-radius:.2rem .75rem .2rem .2rem;box-shadow:0 2px 3px rgb(0 0 0 / .06)}
+.notebook-document>span{border:1px solid var(--line);background:var(--soft);border-radius:.1rem}
+.notebook-document[data-mode=text]{grid-template-columns:1fr;align-content:center;gap:.35rem}
+.notebook-document[data-mode=text]>span{height:1px;border:0;background:var(--muted)}
+.notebook-document-title{font-size:.85rem;font-weight:600;line-height:1.35}
+.notebook-document-view{color:var(--muted);font-size:.7rem}
+.outcome-team.topic-people{justify-content:flex-start;flex-wrap:wrap;max-width:100%;margin:1rem 0 1.5rem}
+.outcome-team.topic-people .participants{justify-content:flex-start}
+.outcome-team.topic-people .team-invite{margin:0}

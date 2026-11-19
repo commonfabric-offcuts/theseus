@@ -1,8 +1,9 @@
 import { PAGE, paintChanged } from './topic-navigation.mjs';
+import { notebookDocument } from './notebook-view.mjs';
 
-// The outcome's own Notebook pages, on the outcome's own page after its
-// topics: what every topic in the outcome stands on, such as its architecture,
-// ways of working and guidelines. Each page is a row like a topic's, by title,
+// The outcome's own Notebook pages, first on the outcome's own page:
+// what every topic in the outcome stands on, such as its architecture,
+// ways of working and guidelines. Each page is a labeled document icon,
 // and opens in the composer over the page. The side rail lists none; a topic
 // and a Conversation list them on the right rail (things-rail.mjs). A page the reader read before and that was revised
 // since carries the count of its new revisions until they open it again. A reader outside the outcome cannot list its Notebook
@@ -10,11 +11,12 @@ import { PAGE, paintChanged } from './topic-navigation.mjs';
 // The topic's changes do not cover the outcome's Notebook, so each read tells
 // the Reader the revisions it saw.
 export class OutcomeReferences {
-  constructor({ scope, host, list, more, message, read, open, denied, seen = () => {}, create = null, pageMax = PAGE }) {
-    Object.assign(this, { scope, host, list, more, message, read, open, isDenied: denied, seen, pageMax });
+  constructor({ scope, host, list, more, message, read, open, denied, seen = () => {}, create = null, pageMax = PAGE, viewPreference = null }) {
+    Object.assign(this, { scope, host, list, more, message, read, open, isDenied: denied, seen, pageMax, viewPreference });
     this.creation = create?.(); this.creation?.setAvailable(false);
     this.items = []; this.next = null; this.loading = null; this.queued = null;
     more.onclick = () => this.load(true);
+    viewPreference?.listen(() => this.paint());
   }
   paint() {
     const ids = new Set(this.items.map(item => item.id));
@@ -26,6 +28,13 @@ export class OutcomeReferences {
         this.list.append(row);
       }
       row.textContent = item.title || 'Notebook item';
+      if (this.viewPreference) {
+        const mode = this.viewPreference.get(item.id), label = document.createElement('span'), view = document.createElement('span');
+        label.className = 'notebook-document-title'; label.textContent = item.title || 'Notebook item';
+        view.className = 'notebook-document-view'; view.textContent = mode === 'text' ? 'Text' : 'Cards';
+        row.replaceChildren(notebookDocument(mode), label, view);
+        row.dataset.mode = mode;
+      }
       paintChanged(row, item);
       row.onclick = () => this.open(item.source_ref, row);
       if (this.list.children[index] !== row) this.list.insertBefore(row, this.list.children[index] ?? null);

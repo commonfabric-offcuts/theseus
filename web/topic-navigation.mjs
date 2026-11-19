@@ -302,8 +302,9 @@ export class TopicNavigation {
 export class TopicRail {
   // key: the line under the topics that says what the work ring means, shown
   // while a row in view wears one.
-  constructor({ pages, host, more, retry, message, read, open, denied, updated, reader = null, pageMax = PAGE, done = null, archived = null, storage = null, area = host, key = null }) {
-    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, reader, pageMax, storage, area, key });
+  constructor({ pages, host, more, retry, message, read, open, denied, updated, painted = null, reader = null, pageMax = PAGE, done = null, archived = null, storage = null, area = host, key = null }) {
+    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, painted, reader, pageMax, storage, area, key });
+    this.rowItems = new WeakMap();
     this.denied = false; this.loading = null; this.queued = null; this.queuedAsked = false; this.failedMore = false; this.serial = 0;
     this.lists = [{ name: 'active', pages, host, more }];
     const kept = this.kept();
@@ -318,6 +319,7 @@ export class TopicRail {
       // it, so it shows at once, under the pointer that opened it too.
       list.details.addEventListener('toggle', () => {
         this.keep(name, list.details.open);
+        this.paint(true);
         if (list.details.open && !list.reading) this.load(list.pages.started ? false : list, true);
       });
     }
@@ -378,12 +380,7 @@ export class TopicRail {
       link = document.createElement('a'); link.className = 'nav-item'; link.dataset.topicId = item.id;
       // A topic waiting on the reader opens at the question (item 148): the Reader shows it.
       // A press on its unread count opens it at its oldest unread message (item 613).
-      link.onclick = event => {
-        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        event.preventDefault();
-        if (landsOnUnread(event.target, event)) return this.open(item.id, this.title(item.id), null, 'unread');
-        return this.open(item.id, this.title(item.id), this.question(item.id));
-      };
+      link.onclick = event => this.activate(item.id, event);
       this.links.set(item.id, link);
     }
     // A row drawn again with what it already shows is left alone, so the
@@ -399,7 +396,43 @@ export class TopicRail {
     link.href = routeHref(topicTarget(item.id, this.question(item.id)));
     if (item.id === this.pages.current?.id) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
+    this.rowItems.set(link, item);
     return link;
+  }
+  activate(id, event) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if (landsOnUnread(event.target, event)) return this.open(id, this.title(id), null, 'unread');
+    return this.open(id, this.title(id), this.question(id));
+  }
+  // A second presentation reads the rows this rail actually drew, including
+  // order held under the pointer. Visibility comes from the outline's own
+  // CSS, not a second implementation of its New / Waiting filters. A phone
+  // drawer off screen does not change these rows' own display properties.
+  shownLists() {
+    if (this.denied) return [];
+    return this.lists.filter(list => !list.details || displayed(list.details));
+  }
+  shownRows(list) {
+    if (this.denied || list.details && (!list.details.open || !displayed(list.details))) return [];
+    return [...list.host.children].filter(displayed).map(link => ({ link, item: this.rowItems.get(link) })).filter(row => row.item);
+  }
+  // Values and acts are the boundary to another presentation. Only this
+  // owner knows its DOM, CSS filter and held order; a card never reads them.
+  presentation() {
+    return {
+      reader: this.reader, started: this.pages.started, busy: Boolean(this.loading),
+      message: this.message.hidden ? '' : this.message.textContent,
+      retry: this.retry.hidden ? null : () => this.load(this.failedMore, true),
+      groups: this.shownLists().map(list => ({
+        name: list.name, label: list.label?.textContent ?? '', opened: !list.details || list.details.open,
+        toggle: list.details ? () => { list.details.open = !list.details.open; this.paint(true); } : null,
+        more: list.more.hidden || list.details && !list.details.open ? null : () => this.load(list),
+        rows: this.shownRows(list).map(({ item, link }) => ({
+          item: structuredClone(item), href: link.href, activate: event => this.activate(item.id, event),
+        })),
+      })),
+    };
   }
   // asked: the person asked for this change (More, Retry, opening a line), so
   // it shows at once, under the pointer too.
@@ -446,6 +479,7 @@ export class TopicRail {
     // The key shows while a row the person can see (in the topic list, or a line they opened) wears the ring.
     if (this.key) this.key.hidden = this.denied || !this.lists.some(list => (list === this.lists[0] || list.details.open) &&
       list.pages.items.some(item => owner.get(item.id) === list && item.work?.observed === true));
+    this.painted?.();
   }
   // A More asked for while a read runs shares it. A reload never joins a read
   // already sent: it may have been asked for after a commit that read cannot
@@ -498,10 +532,13 @@ export class TopicRail {
         for (const list of lists) list.reading = false;
         for (const control of [this.retry, ...this.lists.map(list => list.more)]) control.removeAttribute('aria-disabled');
         this.updated?.();
+        this.painted?.();
       });
     return this.loading;
   }
 }
+
+export const displayed = node => !node.hidden && (globalThis.getComputedStyle?.(node).display ?? '') !== 'none';
 
 // Puts exactly nodes in host, in their order, moving only what is out of place,
 // and never fixed: moving a node takes it out of the page for a moment, which
