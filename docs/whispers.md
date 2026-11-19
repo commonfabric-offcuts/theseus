@@ -16,10 +16,11 @@ counts for:
 
 A whisper never asks, so it never makes a topic wait on anyone.
 
-A message starts as a Tell unless the person presses Whisper, so nothing goes
-private by default. The one exception is a reply to a whisper, to the one agent
-in it, which starts as a whisper and continues the private exchange; the
-person can still choose Tell.
+A message with someone named starts as Ask, so it waits on them until they
+answer (item 848). With nobody named it stays Send to the topic. The person's
+explicit Tell or Whisper choice wins. Nothing goes private by default except
+a reply to a whisper, to the one agent in it, which starts as a whisper and
+continues the private exchange; the person can still choose Tell.
 
 ## Writing
 
@@ -34,10 +35,12 @@ draft `draft.save` keeps since is stamped `tell_first`, so a draft saved before
 keeps what it showed: when it names one agent in a topic, by its addressees or
 its leading @names, and says neither `whisper` nor `intent`, `editor_state`
 reads it, and `submission.prepare` freezes it, as the person's Whisper. A draft
-in the conversation showed a Tell and stays one, and a draft saved since with
-no choice is a Tell. The stamp stays inside the stored draft; reads leave it
-out. A browser's unsaved recovery copy from before is saved again as written,
-so it shows as a Tell before it is sent.
+in the conversation showed a Tell under that earlier default. The stamp stays
+inside the stored draft; reads leave it out. Item 848 changes only the page's
+undecided default: a current draft with no explicit choice and someone named
+shows Ask before it is sent, including recovered writing. Explicit saved
+choices and the old private-draft interpretation remain intact. No draft is
+rewritten or backfilled, and agents' CLI choices are unchanged.
 
 | Code | When |
 | --- | --- |

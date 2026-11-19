@@ -7,7 +7,7 @@ message is the same composer with no message above it.
 ## Reading
 
 While reading, the only thing under the message is one quiet line: `+`, a
-field that says who a reply would go to ("Tell fable · everyone here"), and
+field that says who a reply would go to ("Ask fable · everyone here"), and
 👍 for a reply of one thumb; `+` and 👍 wear no ring or fill until pointed at.
 Nothing under the message is boxed. A draft already written shows a Draft
 tag on the line, and one waiting to be reviewed shows its chip ("1 reply may
@@ -138,14 +138,14 @@ The existing fold command owns optimistic display, refusal and recovery.
 A press or Tab into the field makes it the composer:
 
 - **The who chip** says in words what Send will do and who sees it:
-  "Tell fable · everyone here", or, dashed, "Whisper to fable · only you
+  "Ask fable · everyone here", or, dashed, "Whisper to fable · only you
   two". A press opens the who panel: the full sentence of who sees it first,
   then How (Whisper, Tell, Ask), To, and In where the reply could go to
   another topic; Done closes it. On a laptop To is the topic's people,
   tapped to name them, and a field for anyone else; on a phone naming is
   two steps (below).
 - **Where it goes**, when In sends the reply to the outcome's conversation:
-  the chip says so ("Tell fable · in the conversation"), and so does the
+  the chip says so ("Ask fable · in the conversation"), and so does the
   panel's sentence ("Everyone in the conversation will see this"). A line
   under the chip says it goes there with a link to this message, who
   answers there, and that nobody in this topic is woken. With nothing
