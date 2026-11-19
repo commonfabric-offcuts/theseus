@@ -282,7 +282,7 @@ def _parser():
             post.add_argument("--reply-to")
         # A message to someone asks or tells them; --to, which said neither, is refused by name.
         post.add_argument("--asks")
-        post.add_argument("--ask-wait", help="literal ask_wait JSON; omitted agent asks use the first line, with no choices/default")
+        post.add_argument("--ask-wait", help="literal ask_wait JSON; omitted agent asks use the last question line, or first line, with no choices/default")
         post.add_argument("--tells")
         post.add_argument("--to")
         post.add_argument("--part", action="store_true")
@@ -1393,14 +1393,17 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         if args.get("reply_to"):
             cover = self.view("dossier_cover", {"message_id": args["reply_to"]})
             root, revision = cover["root_id"], cover["cover_revision"]
-        text = "Please respond to this message."
+        first, question = None, None
         for line in args["body"].splitlines():
             # Agent replies often lead with @names and a quote of the person.
             # Use the agent's own words, not that addressing or quoted writing.
             line = re.sub(r"^(?:@[\w.-]+[,:]?(?:\s+|$))+", "", line.strip()).strip()
             if line and not line.startswith(">"):
-                text = line
-                break
+                if first is None:
+                    first = line
+                if line.endswith("?"):
+                    question = line
+        text = question or first or "Please respond to this message."
         text = text if len(text) <= 300 else text[:299] + "…"
         args["ask_wait"] = {"root_id": root, "cover_revision": revision, "questions": [
             {"actor_id": person, "text": text, "options": [], "default": None,

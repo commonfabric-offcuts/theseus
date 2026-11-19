@@ -35,8 +35,9 @@ Every publication path shares Core `_publish`. Missing/invalid metadata refuses
 with a correction before message, delivery or cover effects. Metadata without
 an agent Ask to humans refuses too. Humans acquire no required metadata or UI.
 CLI post/reply accept `--ask-wait JSON`. Since Warp10892, omitting it on an
-agent's public Ask to people supplies a plain question from the first nonempty
-line of its own writing (at most 300 characters), skipping quote lines and
+agent's public Ask to people supplies a plain question from the last line
+ending in `?`, or the first nonempty line if there is none, of its own writing
+(at most 300 characters), skipping quote lines and
 stripping leading @names, with no choices, no default, and an explicit reason
 that none were supplied. An ask with no remaining line uses "Please respond to this
 message." Replies read the actual dossier root and cover revision. Explicit

@@ -1670,6 +1670,7 @@ function messageMenuItems(item, say, anchor = say) {
 }
 function moveDossier(id, anchor) {
   openDossierMove({ anchor, messageId: id,
+    apart: topicRail?.pages.apart ?? true,
     read: (name, args) => api.view(name, args, { readClass: 'foreground' }),
     send: envelope => api.command(envelope),
     binding: () => ({ instanceId: bootstrap.instance_id, authority: registry.runtime.current }),
