@@ -289,6 +289,9 @@
 .reply-stack:not([data-compact=true]) .stack-head>.stack-meta>.stack-count::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-weight:400}
 .reply-stack:not([data-compact=true]) .stack-head>.stack-meta>:is(.stack-repliers,.stack-fresh){flex:1 1 0;min-width:0;max-width:max-content;overflow:hidden;text-overflow:ellipsis}
 .stack-fresh{color:var(--stack-new);font-weight:700}
+/* The explicit New act keeps its words reachable as the names give way. */
+.stack-head .stack-new-action{cursor:pointer;white-space:nowrap;flex:none!important}
+.stack-new-action:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:.2rem}
 /* A click anywhere on the tab hides the full message again; its words are kept for a screen reader only. */
 .reply-stack .stack-hide{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 
