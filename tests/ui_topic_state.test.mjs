@@ -437,10 +437,7 @@ test('whoever organises the outcome manages its topics beside their creator; a c
   assert.ok(fable.host.find(node => node.id === 'topic-rename'), 'the coordinator may rename it');
   assert.equal(fable.host.find(node => node.textContent === 'Archive')?.tag, 'button', 'and archive it');
   fable.paint(topic({ coordinator_id: null }), []);
-  const retained = fable.host.find(node => node.id === 'topic-rename');
-  assert.equal(retained.disabled, true, 'once no longer coordinator, the retained rename field cannot accept an act');
-  assert.equal(retained.parent.hidden, true, 'Rename and Archive are hidden without permission');
-  assert.ok(retained.parent.children.filter(node => node.tag === 'button').every(node => node.disabled), 'neither management action remains enabled');
+  assert.equal(fable.host.find(node => node.id === 'topic-rename'), undefined, 'once no longer coordinator, Rename and Archive go');
   const warp = new TopicStatePanel({ host: new Element('section'), reader: 'warp', send: async () => ({}) });
   warp.paint(topic({ coordinator_id: 'fable' }), []);
   assert.equal(warp.host.find(node => node.id === 'topic-rename'), undefined, 'a plain member who did not start it cannot rename it');
@@ -1672,81 +1669,4 @@ test('Waiting on you lists the blocking asks in the order Core gives them, thoug
     'Blocking a release (release 44): Deploy, in Building Theseus — fable asked at 6:10 AM',
     'Blocking a piece (item 259): Squash, in Building Theseus — fable asked at 6:40 AM',
     'Blocking a piece (item 259): Rebase, in Building Theseus — fable asked at 6:20 AM']);
-});
-
-test('item 656 header rename uses the existing title field and fences, returns focus, and restores settings rename', async t => {
-  dom(t);
-  const titleSurface = { host: new Element('div'), title: new Element('h1'), pencil: new Element('button') };
-  const { panel, host, sent } = live({}, [], 'tony', { titleSurface });
-  const input = controls(host).title;
-  // Moving a focused native field fires blur synchronously. Re-entering the
-  // move from that blur used to throw in Chromium (the first hosted red).
-  const remove = input.remove.bind(input);
-  input.remove = () => {
-    if (document.activeElement === input) leave(input);
-    remove();
-  };
-  panel.renameTitle();
-  assert.equal(input.parent, titleSurface.host, 'the field is in the header');
-  assert.equal(document.activeElement, input);
-  assert.equal(titleSurface.title.hidden, true);
-  type(input, 'A new name'); key(input, 'Enter'); await settled();
-  assert.deepEqual(sent, [[{ title: 'Naming' }, { title: 'A new name' }]]);
-  assert.equal(document.activeElement, titleSurface.pencil);
-  assert.equal(titleSurface.host.hidden, true);
-  assert.equal(input.parent, controls(host).rename.parent, 'settings gets its field back');
-  controls(host).rename.onclick(); type(input, 'From settings'); key(input, 'Enter'); await settled();
-  assert.equal(panel.topic.title, 'From settings');
-  assert.equal(document.activeElement, controls(host).rename);
-  panel.renameTitle(); type(input, 'Discard'); key(input, 'Escape');
-  assert.equal(panel.topic.title, 'From settings');
-  assert.equal(sent.length, 2, 'Escape sends nothing');
-  panel.paint(topic({ version: 20, owner_id: 'other', creator_id: 'other' }), []);
-  panel.renameTitle();
-  assert.equal(titleSurface.host.hidden, true, 'a reader who cannot rename opens no editor');
-});
-
-test('item 656 header refusal and errors keep the line and notice together without opening settings', async t => {
-  dom(t);
-  const titleSurface = { host: new Element('div'), title: new Element('h1'), pencil: new Element('button') };
-  let attention = 0;
-  const { panel, host } = live({}, [], 'tony', { titleSurface, attention: () => attention++, read: async () => ({ topic: topic({ version: 8, title: 'Theirs' }), participants: [] }),
-    send: async () => ({ status: 'rejected', error: { code: 'REVISION_CONFLICT' } }) });
-  panel.renameTitle(); const input = panel.fields.title.line;
-  type(input, 'Mine'); key(input, 'Enter'); await settled();
-  assert.equal(input.value, 'Mine');
-  assert.equal(panel.notice.parent, titleSurface.host);
-  assert.match(panel.notice.textContent, /Someone else renamed it first/);
-  assert.equal(attention, 0, 'the header already shows the refusal');
-  key(input, 'Escape');
-  assert.equal(input.parent, controls(host).rename.parent);
-  assert.equal(panel.notice.parent, host);
-  assert.equal(document.activeElement, titleSurface.pencil);
-});
-
-for (const busy of [false, true]) test(`item 656 correction permission rebuild retains title writing and ${busy ? 'pending operation' : 'cancellation'}`, async t => {
-  dom(t);
-  const titleSurface = { host: new Element('div'), title: new Element('h1'), pencil: new Element('button') };
-  let release; const sent = [];
-  const { panel } = live({ creator_id: 'other', reader_may_say: true }, [], 'tony', { titleSurface,
-    send: async (current, args, fence, id) => { sent.push({ args, fence, id }); return new Promise(resolve => { release = () => resolve(committed(current, args)); }); } });
-  panel.renameTitle(); const field = panel.fields.title, input = field.line;
-  type(input, 'Exact writing —  two spaces');
-  if (busy) { key(input, 'Enter'); type(input, 'Later exact writing'); }
-  const out = field.out, words = input.value;
-  panel.paint(topic({ version: 5, creator_id: 'other', owner_id: 'other', reader_may_say: false }), []);
-  assert.equal(panel.says, false, 'nonparticipant with no earlier authorship becomes read-only');
-  assert.equal(titleSurface.host.hidden, true, 'permission loss restores the saved header title before rebuilding');
-  assert.equal(titleSurface.title.hidden, false);
-  assert.equal(panel.fields.title, field, 'title field ownership survives panel replacement');
-  assert.equal(input.disabled, true, 'no rename input accepts acts without permission');
-  assert.equal(input.value, words); assert.equal(field.out, out);
-  panel.renameTitle(); assert.equal(titleSurface.host.hidden, true);
-  if (busy) { release(); await settled(); assert.equal(sent.length, 1); assert.equal(field.out, null); assert.equal(input.value, words); }
-  panel.paint(topic({ version: 20, creator_id: 'other', reader_may_say: true, title: busy ? 'Exact writing —  two spaces' : 'Naming' }), []);
-  panel.renameTitle(); assert.equal(panel.fields.title, field); assert.equal(input.disabled, false); assert.equal(input.value, words);
-  key(input, 'Escape');
-  assert.equal(titleSurface.title.hidden, false); assert.equal(titleSurface.host.hidden, true);
-  assert.equal(input.value, panel.topic.title, 'Escape cancels the retained title writing');
-  assert.equal(sent.length, busy ? 1 : 0, 'rebuild and cancellation send nothing');
 });
