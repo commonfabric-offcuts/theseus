@@ -1109,8 +1109,9 @@ opening takes it back to its row. Explicitly opening it stays open as new agent 
 This presentation is not the reader's saved message fold or saved placement.
 
 Show agent coordination starts **Off** (item467). An explicit flip lasts for
-this reader's tab session across reloads and topic visits; a new tab/device
-starts Off. It changes no unread or delivery records. A message link reveals
+this reader's tab session across reloads and topic visits; a fresh tab/device
+starts Off, and a duplicated session retains its choice (Warp11470).
+It changes no unread or delivery records. A message link reveals
 only its target dossier for that visit without saving On. The pill shares
 the Archived row below the composer, on its right, whenever coordination
 exists. Left/right move between that row's controls; up/down leave the row.

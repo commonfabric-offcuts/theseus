@@ -9,8 +9,7 @@ import { feedKey, onStackControls, messagesSideways } from '../web/panes.mjs';
 
 const tab = (saved = new Map(), name = '') => ({ name, sessionStorage: {
   getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value), removeItem: key => saved.delete(key),
-}, crypto: { randomUUID: () => `tab-${++serial}` }, saved });
-let serial = 0;
+}, saved });
 const agent = (id, seq, extra = {}) => ({ id, seq, author_id: 'builder', author_kind: 'agent', addressees: ['reviewer'], ...extra });
 const person = (id, seq, extra = {}) => ({ id, seq, author_id: 'reader', author_kind: 'human', addressees: [], ...extra });
 function page({ view = tab(), viewer = 'reader', instanceId = 'instance', items = [], news = new Set() } = {}) {
@@ -29,18 +28,17 @@ function page({ view = tab(), viewer = 'reader', instanceId = 'instance', items 
     entry: id => [...r.list.descendants()].find(node => node.dataset.id === id) };
 }
 
-test('467 starts off, an explicit flip survives reload in this tab, a fresh or opener-cloned tab starts off', () => {
+test('467 starts off, an explicit flip survives reload or session duplication, a fresh tab starts off', () => {
   const view = tab(), f = page({ view, items: [agent('a', 1)] });
   assert.equal(f.state.showCoordination, false, 'off is the shipped default');
   assert.equal(drawn(f.list, 'a'), false);
   f.button().onclick(); assert.equal(f.state.showCoordination, true); assert.equal(drawn(f.list, 'a'), true);
   const reload = page({ view: tab(view.saved, view.name), items: [agent('a', 1)] });
   assert.equal(reload.state.showCoordination, true, 'reload retains explicit On');
-  for (const next of [tab(), tab(new Map(view.saved))]) {
-    assert.equal(page({ view: next, items: [agent('a', 1)] }).state.showCoordination, false, 'new tab starts Off, including copied opener storage');
-  }
-  assert.equal(page({ view, viewer: 'another-reader' }).state.showCoordination, false);
-  assert.equal(page({ view, instanceId: 'another-instance' }).state.showCoordination, false);
+  assert.equal(page({ view: tab(), items: [agent('a', 1)] }).state.showCoordination, false, 'a fresh tab starts Off');
+  assert.equal(page({ view: tab(new Map(view.saved)), items: [agent('a', 1)] }).state.showCoordination, true, 'a duplicated session keeps its explicit choice');
+  assert.equal(page({ view, viewer: 'another-reader' }).state.showCoordination, false, 'another reader starts Off');
+  assert.equal(page({ view, instanceId: 'another-instance' }).state.showCoordination, false, 'another instance starts Off');
   reload.button().onclick(); assert.equal(page({ view: tab(view.saved, view.name) }).state.showCoordination, false, 'explicit Off also survives reload');
   assert.deepEqual(f.commands, []);
 });
@@ -114,7 +112,7 @@ test('467 the New line stays above the shared controls and archived dossiers', (
 test('467 blocked tab storage keeps the visit choice without a Core write or an older recalled value', () => {
   const view = tab(); view.name = 'existing-window';
   const f = page({ view, items: [agent('a', 1)] }); f.button().onclick();
-  assert.ok(view.name.startsWith('existing-window;'), 'existing window name is retained');
+  assert.equal(view.name, 'existing-window', 'the browser context name is untouched');
   view.sessionStorage.setItem = () => { throw Error('storage blocked'); };
   f.button().onclick(); assert.equal(f.state.showCoordination, false);
   assert.equal(page({ view: tab(view.saved, view.name) }).state.showCoordination, false, 'failed Off clears only its stale On key');
