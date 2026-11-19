@@ -1281,16 +1281,28 @@ async function readDossierNew(stack, mark) {
   if (!item) return;
   const revision = revisionOf(item), act = marks.capture(item.id);
   const same = () => current() && views.messages.has(item.id) && revisionOf(views.messages.get(item.id)) === revision;
-  const entry = entries($('messages')).find(each => each.dataset.id === item.id);
+  const liveEntry = () => entries($('messages')).find(each => each.dataset.id === item.id);
+  const entry = liveEntry();
   if (!entry) return;
   reveal(entry, { full: true, open: true });
-  const card = opened(entry);
-  const focusBefore = document.activeElement;
-  if (!await cardScroll.showFull(card, item) || !same() || !card.isConnected ||
-      document.activeElement !== focusBefore ||
+  // Select the live node now, before loading whole words. Focus may already
+  // be here (especially the head), so the green light is an explicit act.
+  const select = () => {
+    const live = liveEntry();
+    if (!live?.isConnected) return null;
+    const card = opened(live);
+    revealSelection(card); card.focus({ preventScroll: true }); menu?.light(live);
+    return card;
+  };
+  let card = select();
+  if (!card || !await cardScroll.showFull(card, item) || !same() ||
       (item.preview && cardScroll.revisions.get(item.id) !== revision)) return;
-  revealSelection(card); card.focus({ preventScroll: true });
-  if (!onScreen(card)) return;
+  const after = liveEntry(), afterCard = after && opened(after);
+  // A later user action owns focus. Compare against the chosen message,
+  // never the dossier head that the click's capture listener focused.
+  if (!afterCard?.isConnected || (document.activeElement !== card && document.activeElement !== afterCard)) return;
+  card = select();
+  if (!card || !onScreen(card)) return;
   const key = JSON.stringify([topicId, item.id, revision, authority]);
   let envelope = dossierNewReads.get(key);
   if (!envelope) {
@@ -1314,7 +1326,11 @@ async function readDossierNew(stack, mark) {
       throw Error('The unread mark changed or could not be cleared. Press New to try again.');
   }
   if (!same()) return;
-  openedHere(item.id); stackMessages(); attention?.refresh();
+  const keepSelection = document.activeElement === card;
+  openedHere(item.id); stackMessages();
+  // Re-acquire after the receipt redraw, without stealing a later focus.
+  if (keepSelection) select();
+  attention?.refresh();
   if (commitReload) run(commitReload);
 }
 

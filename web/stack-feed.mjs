@@ -274,7 +274,7 @@ export class StackFeed {
         this.remember(() => { setLevel(this.state, stack, was); this.arrange(); });
       },
       earlier: (stack, count) => this.say(`${count === 1 ? 'The earlier message shows' : `${count} earlier messages show`} as rows, for this visit`),
-      arranged: () => this.arranged(), newest: (stack, mark) => this.newest(stack, mark),
+      arranged: () => this.arranged(), acted: id => this.acted(id), newest: (stack, mark) => this.newest(stack, mark),
       // A title bar's glyphs (item 473): its first message's Reply and menu, and Move below More or Bring back.
       reply: stack => { const head = this.entryFor(stack.id); if (head) this.reply(stack.id, cardIn(head)); },
       aside: (stack, below) => this.setAside(stack, below),
@@ -576,6 +576,7 @@ export class StackFeed {
   // reader, and is not on screen now, folds as it now would.
   cameBack(onScreen) { unkeep(this.list, section => !onScreen(section)); }
   startRename(stack) {
+    this.acted(stack.id);
     this.state.renaming = stack.id; this.arrange();
     const input = renameInput(this.list, stack.id);
     input?.focus({ preventScroll: Boolean(this.acting) }); input?.select?.();

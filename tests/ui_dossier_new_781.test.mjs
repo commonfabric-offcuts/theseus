@@ -38,13 +38,15 @@ test('781 actual header routes New before folding; ordinary tab and words retain
   section.className = 'reply-stack'; section.dataset.stack = root.id; section.dataset.headOpen = 'true';
   card.dataset.id = root.id; list.append(section); section.append(card);
   const row = doc.createElement('span'), mark = doc.createElement('span'); row.className = 'stack-head'; mark.className = 'stack-act stack-new stack-new-action'; mark.dataset.stackAct = 'new'; row.append(mark); card.append(row);
-  const state = stacks.stackState(list), s = stack(), calls = [];
-  Object.assign(state, { stacks: [s], sections: new Map([[s.id, section]]), on: { newest: (...args) => calls.push(args) }, again: () => calls.push('fold') });
+  const state = stacks.stackState(list), s = stack(), calls = [], acted = [];
+  Object.assign(state, { stacks: [s], sections: new Map([[s.id, section]]), on: { newest: (...args) => calls.push(args), acted: id => acted.push(id) }, again: () => calls.push('fold') });
   state.levels.set(s.id, 'open');
   assert.equal(stacks.headClick(list, card, { target: mark }), true);
   assert.deepEqual(calls, [[s, mark]], 'red New performs the explicit message act, never a generic tab fold');
   assert.equal(state.levels.get(s.id), 'open');
+  assert.deepEqual(acted, [], 'New retains its confirmed-receipt action path');
   calls.length = 0; stacks.headClick(list, card, { target: row }); assert.deepEqual(calls, ['fold']);
+  assert.deepEqual(acted, [root.id], 'hiding the first message by its title clears only that message');
   section.dataset.headOpen = 'true'; state.levels.set(s.id, 'open');
   assert.equal(stacks.headClick(list, card, { target: card }), false, 'words still reach their existing Reader handler');
 });
@@ -89,7 +91,7 @@ function appFixture({ headNew = false, failure = false, marked = false, short = 
     registry, getEpoch: () => epoch, views: { messages }, stackState: () => ({ stacks: [s] }), $: id => id === 'messages' ? {} : { open: false, inert: false },
     entries: () => [...entries.values()], reveal: (entry, options) => reveals.push([entry.dataset.id, options]), opened: entry => entry,
     cardScroll: { showFull: async (card, message) => { shown.push([card.dataset.id, message.body]); if (wholeWait) await wholeWait; return true; } },
-    revealSelection() {}, document: doc, onScreen: () => true, marks, api, bootstrap: { instance_id: 'fixture' },
+    revealSelection() {}, menu: { light() {} }, document: doc, onScreen: () => true, marks, api, bootstrap: { instance_id: 'fixture' },
     crypto: { randomUUID: () => 'read-' + ++serial }, revisionOf: each => each.revision ?? 1,
     openedHere: id => { visitNew.clear(id); openedIds.add(id); }, stackMessages: () => { repaints++; }, attention: { refresh() {} }, commitReload: null,
     run: fn => fn(), checkDossierNew: async () => { shown.push('check'); }, status() {}, writing };

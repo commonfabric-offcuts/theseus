@@ -331,6 +331,7 @@ export function headClick(list, entry, event) {
   if (state.earlierRows.has(stack.id) && onEarlierRow(entry, event?.target)) { state.whole.add(stack.id); state.again(); return true; }
   const open = state.levels.get(stack.id) === 'open', row = Boolean(event?.target?.closest?.('.stack-head'));
   if (act === 'hide' || (open && row)) {
+    state.on?.acted?.(stack.id);
     setLevel(state, stack, 'folded'); state.again();
     return true;
   }

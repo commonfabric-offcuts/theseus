@@ -57,3 +57,27 @@ a clean-suite claim. The build is cf48826631ca853585a7;
 all six changed served product files match source bytes. Evidence packet:
 `auditor/evidence/item833-11109`, including native JSON/HTML/screenshots, baseline
 reload comparison, initial test summary and final test output, and served-source hashes.
+
+## Final follow-ups under the no-test instruction
+
+After the initial 833 freeze at 1af92008, source review found that hiding an open
+dossier's first message by clicking its title bypassed the Fold callback. That
+path now reports the same action, clearing only the first message; beginning a
+rename does too. The focused title-fold assertion failed before this hook and
+passed after it, before the later no-test instruction arrived.
+
+Tony then requested that the missing green selection for 781 on both Mac and
+phone ride in this release without testing (781 fixes 11137/11148, Warp11142 and
+11149). New now explicitly focuses and lights the live chosen message before
+awaiting whole words, re-acquires its node after layout, and restores the light
+after the receipt repaint only if focus still belongs to that selected card.
+Already-focused cards no longer depend on another focusin event. The original
+source/revision/authority and exact confirmed-receipt guards remain; a later
+user focus is not reclaimed. The existing extracted-function fixture is supplied
+with the additional menu binding, but has not been run after this selection fix.
+
+No further test or browser run was made for these final changes. The counts,
+served hashes and four browser observations above describe the initial 833
+freeze, not proof of the final selection behavior. Final source review is Warp's;
+Tony tests on live. The trailer is Pipeline: 833 per11151: 781 is already shipped
+in119, and this release body names its follow-up without shipping its item twice.
