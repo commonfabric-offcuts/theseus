@@ -10168,7 +10168,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await dossierTheme(p, theme);
         const feed = `#messages .reply-stack[data-stack="${ids.root}"] > .dossier-cover`;
         const reader = '#reader-cover > .dossier-cover';
-        const look = selector => p.evaluate(`(()=>{const sheets=[...document.querySelectorAll(${JSON.stringify(selector)})],s=sheets[0],w=s?.querySelector('.cover-stands .cover-words');
+        const look = selector => p.evaluate(`(()=>{const sheets=[...document.querySelectorAll(${JSON.stringify(selector)})],s=sheets[0],w=s?.querySelector('.cover-words.cover-stands');
           if(!w)return null;const t=w.firstChild,lines=w.textContent.split('\\n'),box=s.getBoundingClientRect(),rects=[];let at=0;
           for(const line of lines){const r=document.createRange();r.setStart(t,at);r.setEnd(t,at+line.length);const b=r.getBoundingClientRect();
             rects.push({top:b.top,bottom:b.bottom,left:b.left,right:b.right,height:b.height});at+=line.length+1}
