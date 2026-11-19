@@ -26,7 +26,7 @@ export function edges(box) {
 
 export class CardScroll {
   // press: the page's PressHold, which a redraw of the words waits on.
-  constructor({ read, press = null }) { this.read = read; this.press = press; this.loading = new WeakSet(); this.wholes = new Map(); this.revisions = new Map(); this.strikes = new Map(); this.epochs = new Map(); }
+  constructor({ read, press = null, displayRules = () => [] }) { this.read = read; this.press = press; this.displayRules = displayRules; this.loading = new WeakSet(); this.wholes = new Map(); this.revisions = new Map(); this.strikes = new Map(); this.epochs = new Map(); }
   // The whole of a cut-off message, read from its source once (a read that
   // fails is asked again next time); known(id) has it once it has come.
   // readClass: 'background' for what lighting a card reads ahead, which the
@@ -72,7 +72,7 @@ export class CardScroll {
     // the page scrolls by as much as the box's own scroll gives back.
     const top = preview.getBoundingClientRect().top;
     formatWords(preview, body, { copyFences: 'feed', revision: item.preview ? this.revisions.get(item.id) : revisionOf(item),
-      struck: item.preview ? this.strikes.get(item.id) : item.struck?.cuts });
+      struck: item.preview ? this.strikes.get(item.id) : item.struck?.cuts, displayRules: this.displayRules() });
     preview.classList.add('scroll-in-place');
     card.dataset.whole = 'shown'; card.dataset.full = 'shown';
     card.classList.remove('scroll-in-place'); card.classList.add('show-full');
@@ -112,7 +112,7 @@ export class CardScroll {
       // field is outside the source's scrolling room, including on close.
       const height = parseFloat(card.style.getPropertyValue?.('--reply-card-height')) || card.getBoundingClientRect().height;
       card.style.maxHeight = `${Math.ceil(height)}px`;
-      formatWords(preview, body, { copyFences: 'feed', revision: this.revisions.get(item.id), struck: this.strikes.get(item.id) });
+      formatWords(preview, body, { copyFences: 'feed', revision: this.revisions.get(item.id), struck: this.strikes.get(item.id), displayRules: this.displayRules() });
       preview.classList.add('scroll-in-place');
       card.classList.add('scroll-in-place');
       edges(card);

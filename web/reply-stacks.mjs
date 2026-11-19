@@ -807,15 +807,14 @@ function paintStack(section, stack, byId, context) {
     entry.dataset.stackOverlap = 'false'; entry.dataset.stackCovered = 'false';
     entry.dataset.stackFilled = String(Boolean(stack.filled?.has(entry.dataset.id)));
   }
-  // The dossier's cover (item 624, dossier-cover.mjs): the folder's first sheet, right after the head's entry, whose
-  // tab stands above the folder, and before the chevron and the replies; never inside the head's card, which closed
-  // shows its tab alone. Headed by a reply, its first message above the loaded page, the folder takes it from its
-  // place (stackCover). Drawn again only when what it says changes. Singletons have a folder too.
+  // The cover is first in the folder under its tab, before any message face.
+  // A reply-headed or singleton folder takes the same cover from its dossier.
+  // Drawn again only when what it says changes; never duplicated as card pills.
   const cover = state.apart.has(stack.id) ? null : stackCover(stack, { alone: true }), coverContext = { viewer: state.viewer, nameOf, topicId: stack.head.topic_id };
   const key = coverKey(cover, coverContext);
   if (key !== p.coverKey) { p.cover?.remove(); p.cover = cover ? coverSheet(doc, cover, coverContext) : null; p.coverKey = key; }
-  // A cover stands between the first message and the replies, so the first reply overlaps no face of the head's.
-  let previousFace = whole && !p.cover ? head : null;
+  // The cover precedes every message; adjacent message faces overlap as usual.
+  let previousFace = whole ? head : null;
   for (const entry of desired) {
     if (entry.hidden) continue;
     if (!entry.dataset.id || entry.dataset.stackFilled === 'true') { previousFace = null; continue; }
@@ -832,7 +831,7 @@ function paintStack(section, stack, byId, context) {
   const rename = renameField(section, stack, shown, context);
   paintTools(p.tools, stack, shown, context);
   paintFolderColor(section, stack, colorOf);
-  reconcile(section, [...(separate ? [p.header] : []), head, ...(p.cover ? [p.cover] : []), ...(rename ? [rename] : [...(separate ? [] : [p.toggle]), p.tools]), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
+  reconcile(section, [...(separate ? [p.header] : []), ...(p.cover ? [p.cover] : []), head, ...(rename ? [rename] : [...(separate ? [] : [p.toggle]), p.tools]), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
   if (!separate) p.header.remove();
   if (separate || rename) p.toggle.remove();
   if (rename) p.tools.remove();

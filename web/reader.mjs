@@ -12,13 +12,13 @@ import { paintImageRows, openImage } from './image-rows.mjs';
 import { WritingInput, onMac, selectAllKey, copyKey } from './writing-input.mjs';
 import { paintChanges } from './page-changes.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
-import { drawPassages, sourcePosition, rangeOf } from './message-format.mjs';
+import { drawPassages, sourcePosition, rangeOf, hasTextDisplayRules } from './message-format.mjs';
 import { pageImages } from './page-image.mjs';
 import { paintChoice, clearChoice, chosen, naming, unnamed, sending, choiceOf, list } from './whisper-choice.mjs';
 import { addressedTo } from './at-names.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
 import { ComposeBar, revealCardReply } from './compose-bar.mjs';
-import { copyText, COPY_REFUSED } from './message-menu.mjs';
+import { copyText, copySelectedText, COPY_REFUSED, SELECTION_COPY_REFUSED } from './message-menu.mjs';
 import { revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { overhang } from './lit-field.mjs';
 import { coverSheet, coverKey, payloadPill } from './dossier-cover.mjs';
@@ -128,6 +128,7 @@ export class Reader {
     this.$('plus-quote').onclick = () => { this.compose.close(); this.quote(); };
     // A quote pill shows while words are selected or a passage is pressed lit.
     document.addEventListener('selectionchange', () => { if (this.dialog.open) this.paintQuote(); });
+    document.addEventListener('copy', event => this.copySelection(event));
     // A tap on the message on a phone puts the keyboard away and folds the
     // reply to its line, its writing kept. A press that selects words, a
     // long-press, a link or a control is not such a tap.
@@ -545,6 +546,7 @@ export class Reader {
   drawSource(body) {
     const source = this.source, page = source?.source_ref?.kind === 'memory' && this.callbacks.pageImage;
     drawPassages(this.sourceBody, body, document, { copyFences: true, struck: source?.source_ref?.kind === 'message' ? source.struck?.cuts : null,
+      displayRules: source?.source_ref?.kind === 'message' ? this.callbacks.displayRules?.() ?? [] : [],
       images: page ? pageImages(source, attachment => this.callbacks.pageImage(attachment, source.source_ref)) : null });
     this.placeEnd();
   }
@@ -685,6 +687,21 @@ export class Reader {
     const room = this.room(), at = this.kept.passage.getBoundingClientRect().top, top = at + this.kept.top, bottom = at + this.kept.bottom;
     if (bottom > room.bottom && top > room.top) this.moveTo(this.sourceBody.scrollTop + Math.min(bottom - room.bottom, top - room.top));
     else if (top < room.top && bottom < room.bottom) this.moveTo(this.sourceBody.scrollTop + Math.max(top - room.top, bottom - room.bottom));
+  }
+
+  // This feature's selected Copy uses Return's existing endpoint projection.
+  copySelection(event) {
+    if (event.defaultPrevented || !this.dialog.open || this.source?.source_ref?.kind !== 'message' ||
+        this.editing || this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed ||
+        !hasTextDisplayRules(this.sourceBody) ||
+        document.activeElement?.closest('input,textarea,select,[contenteditable]')) return;
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    if (!this.sourceBody.contains(range.startContainer) || !this.sourceBody.contains(range.endContainer)) return;
+    // This is the selection branch of the existing quote projection, with no
+    // trim or hover/whole-message fallback. Native Copy keeps its selection.
+    if (!copySelectedText(event, this.selectedPassage())) this.notice(SELECTION_COPY_REFUSED);
   }
 
   // The source's own words a selection covers, never what the page shows for
