@@ -70,7 +70,7 @@ class Covers:
         """The owner of the topic's outcome: the one whose 👍 or word gives a payload Done."""
         return db.execute("SELECT w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=?", (topic_id,)).fetchone()[0]
 
-    def _cover_payload(self, db, actor, root, message_id):
+    def _cover_payload(self, db, actor, root, message_id, what="payload"):
         """The message a payload names, as its writer reads it: one of the dossier root heads, which everyone who reads
         the cover can read. Refused as one that is not there otherwise, so no refusal names a whisper."""
         message = db.execute("SELECT m.id,m.seq,m.topic_id,m.author_id,m.private_to FROM messages m WHERE m.id=:id AND " + VISIBLE,
@@ -78,12 +78,12 @@ class Covers:
         member = message is not None and message["topic_id"] == root["topic_id"] and db.execute(
             MEMBERS + " SELECT 1 FROM members WHERE id=:payload", {"root": root["id"], "actor": actor, "payload": message_id}).fetchone()
         if not member:
-            raise Refusal("INVALID_ARGUMENT", "A payload names a message of this dossier; nothing was changed")
+            raise Refusal("INVALID_ARGUMENT", "A %s names a message of this dossier; nothing was changed" % what)
         # A cover is read by everyone who reads the dossier's first message: a whisper is a payload only on a whispered
         # dossier between the same two people.
         if message["private_to"] is not None and (root["private_to"] is None or
                                                   {message["author_id"], message["private_to"]} != {root["author_id"], root["private_to"]}):
-            raise Refusal(STAYS, "A whisper stays between the two people in it: it is never a cover's payload on the record; nothing was changed")
+            raise Refusal(STAYS, "A whisper stays between the two people in it: it is never a cover's %s on the record; nothing was changed" % what)
         return message
 
     def _cover_done_by(self, db, actor, owner, payload):
@@ -114,6 +114,10 @@ class Covers:
         if "waiting" in fields:
             fields["waiting"] += [w for w in before["waiting"] if w.get("ask_id")]
         value = dict(before, **fields)
+        if "waiting" in fields:
+            for wait in fields["waiting"]:
+                if wait.get("message_id") is not None:
+                    self._cover_payload(db, actor, message, wait["message_id"], what="wait source")
         owner = self._cover_owner(db, message["topic_id"])
         if value["payload"] is not None:
             payload = value["payload"]

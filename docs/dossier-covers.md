@@ -22,6 +22,10 @@ A cover has three fields. Each is set or cleared on its own.
 - **What waits on the owner**: at most four things, each with its default,
   the thing that happens if the owner says nothing. A thing that waits is at
   most 300 characters, and its default at most 200.
+  A manually written wait may name its source `message_id`. Its pill opens
+  that message when readable, otherwise the recorded `ask_id` of an ask-backed
+  wait when readable, otherwise the dossier's root. Omitted or null adds no
+  source and existing records are never backfilled ([item 770](wait-source-770.md)).
 - **The payload**: what the dossier produced, in at most 500 characters, and
   the message of the dossier that delivered it. It may also carry a link
   (http or https) and a kind: answer, decision, preview, page or release.
@@ -74,7 +78,7 @@ settles Done in the same transaction. Stepping back to 45 is refused
 once any cover was written, even one cleared since.
 
 The stored value is
-`{"stands": TEXT|null, "waiting": [{"text", "default"}…], "payload": null|{"text", "message_id", "seq", "link", "kind", "done_by", "done"}}`,
+`{"stands": TEXT|null, "waiting": [{"text", "default", "message_id"?}…], "payload": null|{"text", "message_id", "seq", "link", "kind", "done_by", "done"}}`,
 where `done_by` is the owner's reply the writer named, or `null`, and `done` is
 `null` or `{"how": "thumb"|"word", "by", "at_ms"}`. A word's `done` also
 carries the reply's `message_id` and `seq`.
@@ -99,6 +103,7 @@ outside the dossier, or one the writer cannot see, is refused with
 `INVALID_ARGUMENT`. Everyone who reads a dossier's first message reads its
 cover, so a whisper can be the payload only of a whispered dossier between the
 same two people. Otherwise it is refused with `WHISPER_STAYS_PRIVATE`.
+The same membership and privacy rules apply to a wait's source message.
 
 ### Reading it
 
@@ -131,6 +136,8 @@ tells everyone who reads the dossier, as any act about a message does.
 (with `--link` and `--kind`), `--no-waits` or `--no-payload` it writes those
 fields ([agent-cli.md](agent-cli.md)). When to write the cover is in
 [agent-guide.md](agent-guide.md), "Keeping a dossier's cover".
+When setting waits, MESSAGE is recorded as their source before the CLI resolves
+the dossier root for its cover write. Existing waits are never backfilled.
 
 ## The page
 

@@ -812,7 +812,7 @@ function paintStack(section, stack, byId, context) {
   // The cover is first in the folder under its tab, before any message face.
   // A reply-headed or singleton folder takes the same cover from its dossier.
   // Drawn again only when what it says changes; never duplicated as card pills.
-  const cover = state.apart.has(stack.id) ? null : stackCover(stack, { alone: true }), coverContext = { viewer: state.viewer, nameOf, topicId: stack.head.topic_id };
+  const cover = state.apart.has(stack.id) ? null : stackCover(stack, { alone: true }), coverContext = { viewer: state.viewer, nameOf, topicId: stack.head.topic_id, rootId: dossierOf(stack) };
   const key = coverKey(cover, coverContext);
   if (key !== p.coverKey) { p.cover?.remove(); p.cover = cover ? coverSheet(doc, cover, coverContext) : null; p.coverKey = key; }
   // The cover precedes every message; adjacent message faces overlap as usual.
