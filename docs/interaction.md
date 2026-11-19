@@ -136,7 +136,11 @@ the pointer's way, the keys' and the phone's.
   The header and outline keep the saved name through reload. (item 656,
   docs/topic-settings.md)
 - **New message.** A quiet ✎ beside the topic's title opens the topic's
-  composer on its own, with no message above it and the cursor in the field;
+  composer floating at the bottom, with the page behind it clear and unblurred,
+  no message above it and the cursor in its one-line field, which grows with
+  the text. Send or Cmd-Return closes it once the send is confirmed; an empty,
+  refused or interrupted send keeps it open. The inline agent menu keeps small
+  gaps and padding, with 44px targets on a phone;
   Escape, ✕ or a press outside puts it back in its place with the writing
   kept. At rest that composer sits among the messages, just above More: under
   the last dossier shown above More, and above the More line (or the end of the

@@ -13856,87 +13856,12 @@
   },
   {
    "item": 400,
-   "act": "On a laptop the New message sheet is as tall as what shows of the window",
-   "break": [
-    [
-     "web/aim.css",
-     "dialog.composer-home[open]{top:auto;bottom:1.5rem;height:calc(var(--vv-height,100dvh) - 3rem);",
-     "dialog.composer-home[open]{top:auto;bottom:1.5rem;height:auto;"
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size laptop 1440×960, empty"
-   }
-  },
-  {
-   "item": 400,
-   "act": "On a phone the New message sheet is as tall as what shows above the keyboard",
-   "break": [
-    [
-     "web/aim.css",
-     "dialog.composer-home[open]{width:100%;max-width:100%;height:calc(var(--vv-height,100dvh) - .75rem);",
-     "dialog.composer-home[open]{width:100%;max-width:100%;height:auto;"
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size phone 320×568, empty"
-   }
-  },
-  {
-   "item": 400,
-   "act": "Alone in the sheet, the composer's field takes the height the rest leaves",
-   "break": [
-    [
-     "web/aim.css",
-     "dialog.composer-home[open] .inline-composer textarea{--fit:none;height:100%;",
-     "dialog.composer-home[open] .inline-composer textarea{--fit:none;"
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size laptop 1440×960, empty"
-   }
-  },
-  {
-   "item": 400,
-   "act": "A draft held at the page's end fills the sheet when ✎ takes it up, not the height it grew to",
-   "break": [
-    [
-     "web/inline-composer.mjs",
-     "    this.bar.fit();\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size laptop 1440×960, a long draft"
-   }
-  },
-  {
-   "item": 400,
    "act": "On a laptop the sheet's who panel opens inside the sheet, under its head",
    "break": [
     [
      "web/aim.css",
      "@media(min-width:761px){dialog.composer-home[open] .inline-composer>.who-panel{position:static;",
      "@media(min-width:761px){dialog.composer-home[open] .inline-composer>.who-panel{"
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size laptop 1440×960, empty"
-   }
-  },
-  {
-   "item": 400,
-   "act": "On a laptop the sheet's + panel opens over the field's foot, inside the sheet",
-   "break": [
-    [
-     "web/aim.css",
-     "dialog.composer-home[open] .inline-composer>.plus-panel{bottom:3.75rem}",
-     "dialog.composer-home[open] .inline-composer>.plus-panel{}"
     ]
    ],
    "check": {
@@ -13976,51 +13901,6 @@
   },
   {
    "item": 400,
-   "act": "Alone in the sheet, the composer taller than the sheet scrolls inside itself rather than past the sheet",
-   "break": [
-    [
-     "web/aim.css",
-     "1fr;align-content:stretch;overflow-y:auto;",
-     "1fr;align-content:stretch;"
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size phone 320×568, a refused image"
-   }
-  },
-  {
-   "item": 400,
-   "act": "Alone in the sheet, the field keeps its line however little the rows above it leave",
-   "break": [
-    [
-     "web/aim.css",
-     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) 1fr;",
-     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(0,1fr);"
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size phone 320×568, a refused image"
-   }
-  },
-  {
-   "item": 400,
-   "act": "In the sheet each row above the field keeps its whole height, so the image's choices are never drawn under Send",
-   "break": [
-    [
-     "web/aim.css",
-     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) 1fr;",
-     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:auto auto auto auto auto 1fr;"
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size phone 320×568, a refused image"
-   }
-  },
-  {
-   "item": 400,
    "act": "In the stacked Reader on a phone each row above the field keeps its whole height, so the image's choices are never drawn over the head or the field",
    "break": [
     [
@@ -14047,21 +13927,6 @@
    "check": {
     "native": "compose",
     "case": "chromium size phone 320×568, a refused image"
-   }
-  },
-  {
-   "item": 400,
-   "act": "On a phone the New message sheet has no ⤢, its field already the sheet's height",
-   "break": [
-    [
-     "web/aim.css",
-     "dialog.composer-home[open] .inline-composer .taller-field{display:none}\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size phone 320×568, empty"
    }
   },
   {
@@ -32570,6 +32435,171 @@
    ],
    "check": {
     "node": "tests/ui_marks.test.mjs"
+   }
+  },
+  {
+   "item": 400,
+   "act": "On a laptop the sheet's + panel opens inside the floating sheet, above the field",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer>.plus-panel{position:static;",
+     "dialog.composer-home[open] .inline-composer>.plus-panel{"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size laptop 1440×960, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "Alone in the sheet, the composer taller than the sheet scrolls inside itself rather than past the sheet",
+   "break": [
+    [
+     "web/aim.css",
+     "minmax(2.5rem,auto);align-content:start;overflow-y:auto;",
+     "minmax(2.5rem,auto);align-content:start;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "Alone in the sheet, the field keeps its line however little the rows above it leave",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer{height:auto;max-height:calc(var(--vv-height,100dvh) - 3rem);grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.5rem,auto);",
+     "dialog.composer-home[open] .inline-composer{height:auto;max-height:calc(var(--vv-height,100dvh) - 3rem);grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(0,1fr);"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "In the sheet each row above the field keeps its whole height, so the image's choices are never drawn under Send",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer{height:auto;max-height:calc(var(--vv-height,100dvh) - 3rem);grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.5rem,auto);",
+     "dialog.composer-home[open] .inline-composer{height:auto;max-height:calc(var(--vv-height,100dvh) - 3rem);grid-template-rows:auto auto auto auto auto minmax(2.5rem,auto);"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "On a phone the New message sheet needs no taller toggle, its field grows with its writing",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer .taller-field{display:none}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, empty"
+   }
+  },
+  {
+   "item": 673,
+   "act": "Confirmed Send or Cmd-Return closes the pencil sheet; an interrupted send stays open",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "result?.status === 'confirmed' && this.admits(p, editor)",
+     "false && this.admits(p, editor)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 673 topic phone-320 light: Send sends once and closes the pencil sheet|item 673 topic phone-320 light: Cmd-Return sends once and closes the pencil sheet"
+   }
+  },
+  {
+   "item": 670,
+   "act": "The pencil field starts at one line and grows and shrinks with its text",
+   "break": [
+    [
+     "web/aim.css",
+     "textarea{--fit:auto;height:auto;max-height:min(40dvh,",
+     "textarea{--fit:none;height:16rem;max-height:min(40dvh,"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 673 topic phone-320 light: starts at one line and grows and shrinks"
+   }
+  },
+  {
+   "item": 671,
+   "act": "The pencil sheet floats at the bottom over an unblurred readable page",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home:not(.notebook-mode)::backdrop{background:transparent;backdrop-filter:none}",
+     "dialog.composer-home:not(.notebook-mode)::backdrop{background:#17252666;backdrop-filter:blur(2px)}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 673 topic phone-320 light: floats at the bottom without blurring"
+   }
+  },
+  {
+   "item": 672,
+   "act": "The inline menu for adding agents uses compact spacing and content height",
+   "break": [
+    [
+     "web/aim.css",
+     "#inline-who-panel{gap:.25rem;padding:.25rem .5rem .35rem}",
+     "#inline-who-panel{gap:1rem;padding:1rem}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 673 topic phone-320 light: inline agent menu keeps compact spacing"
+   }
+  },
+  {
+   "item": 671,
+   "act": "The pencil sheet fits its contents and leaves the page visible above it",
+   "break": [
+    [
+     "web/aim.css",
+     "[open]:not(.notebook-mode){height:auto;",
+     "[open]:not(.notebook-mode){height:calc(var(--vv-height,100dvh) - 3rem);"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 673 topic phone-320 light: floats at the bottom"
+   }
+  },
+  {
+   "item": 673,
+   "act": "An unavailable pencil composer keeps its reason clear of the Retry button",
+   "break": [
+    [
+     "web/aim.css",
+     "#inline-composer>#inline-retry{grid-area:retry}",
+     "#inline-composer>#inline-retry{grid-area:notice}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 673 topic phone-320 light: unavailable composer stays disabled"
    }
   }
  ]
