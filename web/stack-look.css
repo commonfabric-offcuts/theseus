@@ -431,8 +431,11 @@
 /* A touch screen: quiet line buttons keep full tap targets. */
 @media(pointer:coarse){:is(.stack-split,.stack-unplace){min-height:2.75rem;margin-block:-.5rem}}
 
-.stack-more { display:block; width:100%; margin:1.4rem 0; padding:.75rem; color:var(--muted); background:transparent; border:0; border-top:1px solid var(--line); text-align:left; }
+.stack-controls { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; margin:1.4rem 0; padding-top:.75rem; border-top:1px solid var(--line); }
+.stack-controls>#agent-coordination-show { margin-left:auto; }
+.stack-more { display:block; padding:.75rem; color:var(--muted); background:transparent; border:0; text-align:left; }
 .stack-more[hidden] { display:none; }
+.stack-controls .filter-chip[data-news=true] { color:var(--accent); border-color:var(--accent); }
 
 /* Agent-only dossiers start as one quiet row. Opening it steps into the two
    states every dossier has; the compact treatment never means a saved message fold. */
@@ -450,8 +453,7 @@
 .reply-stack[data-compact=true]:not(.only-new *)>.stack-tools{top:0;right:0;height:2.75rem}
 .reply-stack[data-compact=true]:not(.only-new *) .stack-head-card>.stack-head{padding-right:max(.7rem,var(--stack-tools-room))}
 .reply-stack[data-compact=true]:not(.only-new *)>.stack-placed-line{display:none}
-#messages[data-show-coordination=false]>[data-coordination=agents]{display:none}
-#agent-coordination-show:has(~ #messages[hidden]){display:none}
+#messages[data-show-coordination=false]>[data-coordination=agents]:not([data-coordination-revealed=true]){display:none}
 
 /* A dossier's cover (item 624, web/dossier-cover.mjs): first in the folder, under its tab and above the head's
    message, open or closed. It wears the folder's own colour, with a subtle inset shadow. Its pills are one language:

@@ -1108,14 +1108,16 @@ then all messages, and goes on between those two; only ⌘Z right after
 opening takes it back to its row. Explicitly opening it stays open as new agent replies arrive.
 This presentation is not the reader's saved message fold or saved placement.
 
-Show agent coordination above either feed is on initially; turning it off
-hides these rows (including standalone agent coordination). It is a page-local
-view, changes no unread or delivery records, and can always be turned back on.
-A message link reveals its target even with this filter off. The keys
-reach Show agent coordination in the row of filters, one of the rows of
-buttons at the top of the feed (docs/interaction.md): ↓ from it goes to the
-first dossier or message the feed shows, on or off, ↑ from there comes back
-to it, and ↑ from it goes on up to the header's buttons (item 403).
+Show agent coordination starts **Off** (item467). An explicit flip lasts for
+this reader's tab session across reloads and topic visits; a fresh tab/device
+starts Off, and a duplicated session retains its choice (Warp11470).
+It changes no unread or delivery records. A message link reveals
+only its target dossier for that visit without saving On. The pill shares
+the Archived row below the composer, on its right, whenever coordination
+exists. Left/right move between that row's controls; up/down leave the row.
+Arrivals update its count and news colour, never its choice. When On,
+coordination stays in its existing interleaved positions. The contract and
+storage boundaries are in [coordination-467.md](coordination-467.md).
 
 Classification uses addressing, not inferred intent: every message must be
 from a known agent and explicitly addressed only to known agents. Room posts,

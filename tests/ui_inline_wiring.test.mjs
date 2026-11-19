@@ -3449,12 +3449,13 @@ test('the New message composer rests just above More, under the last message sho
   const add = seq => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', author_kind: 'agent', body: 'Body ' + seq, topic_id: 't1' });
   add(1); add(2); add(3);
   f.paintViews('messages');
-  const order = () => f.get('messages').children.map(singleEntry).map(child => child === f.get('new-message-sheet') ? 'composer' : child.className === 'stack-more' ? 'More' : child.dataset.id);
+  const order = () => f.get('messages').children.map(singleEntry).map(child => child === f.get('new-message-sheet') ? 'composer' : child.className === 'stack-controls' ? 'More' : child.dataset.id);
   assert.deepEqual(order(), ['m3', 'm2', 'm1', 'composer'], 'under the last message, with nothing below More');
   // m2 put below More: the composer stays above More, under m1.
   f.views.messages.get('m2').stack_position = { root_id: 'm2', through: 2, aside_revision: 1, below: true, at: { messages: 2, acts: 1 } };
   f.paintViews('acts');
   assert.deepEqual(order(), ['m3', 'm1', 'composer', 'More', 'm2'], 'between the last message above More and the More line');
+  assert.equal(f.get('messages').querySelector(':scope > .stack-controls > .stack-more').textContent, 'Archived (1)');
 });
 
 test('your own message keeps its own style when it arrives live and when More loads it, among agents\' colors', async () => {
