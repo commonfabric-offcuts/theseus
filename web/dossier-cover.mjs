@@ -14,7 +14,7 @@ import { coverAnswers } from './cover-answers.mjs';
 import { glyph } from './glyphs.mjs';
 import { linkNode, writtenLink } from './links.mjs';
 import { timeNode } from './times.mjs';
-import { formatNodes } from './message-format.mjs';
+import { inlineNodes } from './message-format.mjs';
 
 const element = (doc, tag, className, text) => {
   const node = doc.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node;
@@ -110,7 +110,7 @@ export function coverSheet(doc, cover, context) {
   for (const wait of cover.waiting ?? []) {
     const row = line('cover-wait');
     const words = element(doc, 'span', 'cover-words');
-    words.append(...formatNodes(wait.text, { doc }));
+    words.append(...inlineNodes(wait.text, { doc }));
     row.append(waitsLabel(doc, wait.actor_id ?? cover.owner, wait, ctx), ' ', words, element(doc, 'span', 'cover-note', waitWords(wait)));
     const answers = coverAnswers(doc, wait, ctx); if (answers) row.append(answers);
   }

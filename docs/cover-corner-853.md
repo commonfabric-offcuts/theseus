@@ -11,8 +11,9 @@ or contains focus. Opacity, rather than display or visibility, preserves the
 keyboard stop. The named default on touch/no-hover is always visible. A
 singleton's compact pills retain their inline control; they are not a sheet.
 
-Wait words use the existing Markdown renderer, including safe links and
-literal code. Core's words remain unchanged. A wait with no options and no
+Wait words use the existing inline Markdown renderer, including safe links and
+literal code, without a block that would separate them from their label.
+Core's words remain unchanged. A wait with no options and no
 default says only “Waiting for your answer.” in its note; explicit choices,
 defaults and their explanations remain. The same note feeds the compact
 pill's title. Source links and answer controls keep their existing owners.

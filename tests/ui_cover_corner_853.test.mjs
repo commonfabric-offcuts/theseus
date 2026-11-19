@@ -52,6 +52,7 @@ test('853 waits render Markdown while preserving source links, explicit answers 
   const value = { ...f.cover, waiting: [wait] }, before = JSON.stringify(value);
   const sheet = coverSheet(f.doc, value, f.context), words = sheet.querySelector('.cover-words');
   assert.equal(words.text, 'Choose Friday or Saturday — details');
+  assert.equal(words.querySelectorAll('.md-block').length, 0, 'wait words stay inline beside their label');
   assert.equal(words.querySelector('strong').text, 'Choose');
   assert.equal(words.querySelector('code').text, 'Saturday');
   assert.equal(words.querySelector('a').href, 'https://example.test/date');
