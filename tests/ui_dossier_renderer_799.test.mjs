@@ -1,3 +1,4 @@
+import { withReaderArchive } from './fixtures/reader_archive.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { miniDocument, Element } from './fixtures/mini_dom.mjs';
@@ -21,7 +22,7 @@ Object.defineProperties(Element.prototype, {
 Element.prototype.contains = function(node) { return node === this || [...this.descendants()].includes(node); };
 
 test('799 actual renderer draws the real head and reply once, keeps More frontier, transfers paged ownership', () => {
-  const doc = miniDocument(); doc.getElementById = () => null;
+  const doc = miniDocument(); withReaderArchive(doc);
   const list = doc.createElement('div'), messages = new Map(), cards = new Map(); list.root = true;
   const position = { root_id: 'root', at: { acts: 1, messages: 1501 }, name: null };
   const root = { id: 'root', topic_id: 't', seq: 1, author_id: 'a', body: 'Actual first line\nSecond', dossierSource: true, acts: {}, stack_position: position };

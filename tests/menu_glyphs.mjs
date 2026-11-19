@@ -17,7 +17,7 @@ export const GLYPH_OF = Object.freeze({
   'Reply to the first message': 'reply',
   'Copy Link': 'link', 'Show full message': 'full', Edit: 'pencil', 'Edit page': 'pencil', 'Mark unread': 'unread', 'Mark read': 'read',
   // Item 601: an archive act shows the Reader's archive tray, in every menu.
-  'Move below More': 'archive', 'Bring back above More': 'back',
+  'Archive': 'archive', 'Bring back': 'back',
   'Move its stack up': 'up', 'Move its stack down': 'down', 'Fold its stack': 'chevron', 'Open its stack': 'chevdown',
   'Join the stack above': 'joinup', 'Join the stack below': 'joindown', 'Let new replies move it': 'unpin', 'Reset position': 'unpin', Undo: 'undo',
   'Move or join…': 'move', 'Quote selection': 'quote', 'Start a topic from this': 'topic', 'Add to pipeline': 'pipeline',

@@ -7,16 +7,12 @@
 // One meaning keeps one glyph wherever it shows. A glyph a control on the
 // page already draws is that control's own drawing (BORROWED), never a copy
 // of it: Edit, Rename and Edit page take the pencil of the topic's New
-// message, and Move below More the tray of the Reader's archive button. The
+// message, and Archive the tray of the Reader's archive button. The
 // rest are drawn here once, on the 24-unit grid the pencil is drawn on.
 //
-// A dossier's title bar and a message's bar (item 473, docs/reply-stacks.md,
-// "The title bar and the message bar") show glyphs in place of words, the
-// button's name its tooltip: Reply, Show full message, Fold, Unfold and Bring
-// back above More take the drawings below, and Move below More the one of
-// BAR, which no menu item shows. On a phone the title bar's ⋯ offers its
-// Reply and Move below More as items, and they take a menu's glyphs: Reply the
-// title bar's own Reply, Move below More the Reader's tray.
+// A dossier's title bar and a message's bar show glyphs in place of words,
+// with the button's name as its tooltip. Archive uses the Reader's own tray
+// everywhere, including the title bar and its phone menu (item 601).
 const DRAWN = {
   // No agent was notified of this message. It says nothing about read access.
   unwatched: { d: 'M3 3l18 18 M10 5.2a10 10 0 0 1 11 6.8 15 15 0 0 1-3.2 4.4 M6.3 6.3A16 16 0 0 0 3 12s3 7 9 7a9 9 0 0 0 4-.9 M9.2 9.2a4 4 0 0 0 5.6 5.6' },
@@ -24,7 +20,7 @@ const DRAWN = {
   refresh: { d: 'M20 10a8 8 0 1 0-1.8 7 M20 4v6h-6' },
   // Reply, and Reply to the first message: an arrow turning back to the left.
   reply: { d: 'M9.5 7 4.5 12l5 5 M5 12h9.5a5 5 0 0 1 5 5v1' },
-  // Bring back above More: a tray, an arrow coming up out of it.
+  // Bring back: a tray, an arrow coming up out of it.
   back: { d: 'M4 14v4.5h16V14 M12 14V4 M8 8l4-4 4 4' },
   // Show full message: two arrows pointing out, up and down.
   full: { d: 'M12 3v18 M8 7l4-4 4 4 M8 17l4 4 4-4' },
@@ -78,11 +74,6 @@ const DRAWN = {
   kept: { d: 'M5 12.5l4.5 4.5L19 7.5' },
   waits: { d: 'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0 M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5 M12 16.5v.01' },
 };
-// The bars' own glyphs (item 473), drawn as DRAWN's are, outside GLYPH_NAMES, which names a menu's.
-const BAR = {
-  // Move below More: a tray with an arrow going down into it.
-  aside: { d: 'M4 14v4.5h16V14 M12 4v10 M8 10l4 4 4-4' },
-};
 // Glyphs another control of the page draws (index.html), by that control's id: its own drawing, cloned.
 const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };
 // Glyphs that are a character, as the Reader's Quote pill shows ❝. The character is drawn by the
@@ -97,8 +88,8 @@ export const GLYPH_NAMES = Object.freeze([...Object.keys(DRAWN), ...Object.keys(
 export function glyph(name, doc = globalThis.document, size = 18) {
   const ns = 'http://www.w3.org/2000/svg';
   let node;
-  if (Object.hasOwn(DRAWN, name) || Object.hasOwn(BAR, name)) {
-    const { d, vb = '0 0 24 24', sw = '1.8', fill = false } = Object.hasOwn(DRAWN, name) ? DRAWN[name] : BAR[name];
+  if (Object.hasOwn(DRAWN, name)) {
+    const { d, vb = '0 0 24 24', sw = '1.8', fill = false } = DRAWN[name];
     node = doc.createElementNS(ns, 'svg');
     node.setAttribute('viewBox', vb);
     const path = doc.createElementNS(ns, 'path');

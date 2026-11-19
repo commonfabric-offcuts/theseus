@@ -1,3 +1,4 @@
+import { withReaderArchive } from './reader_archive.mjs';
 import { miniDocument, Element } from './mini_dom.mjs';
 import { arrangeStacks, stackState } from '../../web/reply-stacks.mjs';
 // Selector support only; no layout, geometry, hit testing or native input.
@@ -26,7 +27,7 @@ Element.prototype.after = function(...nodes) {
 };
 
 export function renderer799(viewer = 'reader') {
-  const doc = miniDocument(); doc.getElementById = () => null;
+  const doc = miniDocument(); withReaderArchive(doc);
   const list = doc.createElement('div'), messages = new Map(); list.root = true;
   function add(items) {
     for (const item of items) {
