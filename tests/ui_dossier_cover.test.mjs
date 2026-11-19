@@ -10,6 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { coverSheet, coverPills, doneWords, payloadPill, coverKey, coverOf } from '../web/dossier-cover.mjs';
 import { laterActs, stackCover } from '../web/stack-order.mjs';
+import { StackFeed } from '../web/stack-feed.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 
 const NAMES = { owner: 'Ana', 'agent-a': 'Scout', 'agent-b': 'Pilot' };
@@ -139,4 +140,13 @@ test('a dossier\'s cover comes with its place, so a stack of replies whose first
   assert.equal(stackCover({ head: reply('m-r1', 'm-root'), replies: [] }, { alone: true }), COVER, 'a lone reply\'s pills show its dossier\'s');
   assert.equal(stackCover({ head: { ...reply('m-r1', 'm-root'), stack_position: at(4, { cover: null, cover_revision: 0 }) }, replies: [] }), null, 'a dossier with no cover shows none');
   assert.equal(stackCover({ head: { ...reply('m-r1', 'm-root'), stack_position: at(4) }, replies: [] }), null, 'a place from a Core before covers carries none');
+});
+
+
+test('Reader cover lookup uses the actual unloaded-root dossier position', () => {
+  const position = {root_id:'unloaded-root',cover:COVER,cover_revision:3,cover_read_seq:9,at:{acts:4,messages:0}};
+  const reply = {id:'loaded-reply',reply_to:'unloaded-root',topic_id:'actual-topic',acts:{cover:null,cover_revision:0},stack_position:position};
+  const stack = {id:'loaded-reply',head:reply,replies:[],dossier:'unloaded-root'};
+  const result = StackFeed.prototype.dossierCover.call({state:{stacks:[stack]},actsOf:()=>reply.acts},reply.id);
+  assert.deepEqual(result,{cover:COVER,topicId:'actual-topic',rootId:'unloaded-root'},'Reader must use the retained dossier cover above the loaded page');
 });

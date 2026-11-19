@@ -13,6 +13,7 @@ from .outcome_rules import stage_name
 from .pipeline import SECTION_WORDS
 
 SOURCE_COVER_SCHEMA = [
+    "CREATE INDEX source_cover_changes ON changes(scope_kind,scope_id,resource_kind,resource_id,seq)",
     "CREATE INDEX source_cover_items ON pipeline_item_sources(message_id, workspace_id, number) WHERE message_id IS NOT NULL",
     "CREATE INDEX source_cover_topics ON pipeline_item_sources(workspace_id, message_id) WHERE message_id IS NOT NULL",
     "CREATE TABLE source_cover_releases (item INTEGER NOT NULL, release INTEGER NOT NULL REFERENCES releases(number), PRIMARY KEY(item,release))",
@@ -85,7 +86,15 @@ def project(db, actor, root, cover):
     return dict(cover, items=rows)
 
 
-def notify(store, db, workspace, record):
+def read_sequence(db, actor, root):
+    """Newest admitted item/access change on this dossier's visible members."""
+    from .stacks import MEMBERS
+    return db.execute(MEMBERS + " SELECT coalesce(max((SELECT max(seq) FROM changes INDEXED BY source_cover_changes "
+                      "WHERE scope_kind='actor' AND scope_id=:actor AND resource_kind='source_cover_read' AND resource_id=p.id)),0) "
+                      "FROM members p", {"actor": actor, "root": root}).fetchone()[0]
+
+
+def notify(store, db, workspace, record, access_reader=None):
     """Opaque source-topic invalidation, in the record's own transaction.
 
     Item/piece changes seek their sources; configuration seeks that outcome's
@@ -102,9 +111,18 @@ def notify(store, db, workspace, record):
     rows = db.execute("SELECT DISTINCT m.id,m.topic_id,m.author_id,m.private_to FROM pipeline_item_sources s "
                       "JOIN messages m ON m.id=s.message_id WHERE s.workspace_id=? AND s.message_id IS NOT NULL" + clause,
                       values).fetchall()
+    # The source alone never grants destination access. Membership changes
+    # explicitly refresh the affected reader once, including on revocation.
+    admitted = {row[0] for row in db.execute("SELECT owner_id FROM workspaces WHERE id=? UNION "
+                                           "SELECT actor_id FROM workspace_members WHERE workspace_id=?", (workspace, workspace))}
     heard = set()
     for message in rows:
         for reader in store._message_readers(db, message, message['author_id']):
+            if reader != access_reader and (access_reader is not None or reader not in admitted):
+                continue
+            # Retained per-source keys fence only dossiers that contain this
+            # readable member. Topic invalidations stay coalesced for refresh.
+            store._change(db, 'actor', reader, 'source_cover_read', message['id'], 1)
             key = (reader, message['topic_id'])
             if key in heard:
                 continue

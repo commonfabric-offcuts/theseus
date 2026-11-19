@@ -206,7 +206,7 @@ STEPS = (
     ("46", "47", TOPIC_POSITION_SCHEMA, TOPIC_POSITION_DOWN, TOPIC_POSITION_OCCUPIED),
     # Item 757: indexed source covers and reconstructible release-item links.
     ("47", "48", SOURCE_COVER_SCHEMA, ("DROP TRIGGER source_cover_release_insert", "DROP TABLE source_cover_releases",
-                                      "DROP INDEX source_cover_items", "DROP INDEX source_cover_topics"), "SELECT 0"),
+                                      "DROP INDEX source_cover_items", "DROP INDEX source_cover_topics", "DROP INDEX source_cover_changes"), "SELECT 0"),
 )
 
 

@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { coverSheet, coverPills, coverKey, coverSummary } from '../web/dossier-cover.mjs';
-import { laterActs, laterPosition, stackCover } from '../web/stack-order.mjs';
+import { laterActs, laterPosition, stackCover, compareCoverReads } from '../web/stack-order.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 import { Freshness } from '../web/freshness.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
@@ -65,4 +65,18 @@ test('757 opaque source-cover change refreshes only this loaded topic and forces
     { resource_kind: 'source_cover', resource_id: 'elsewhere', version: 1 },
     { resource_kind: 'source_cover', resource_id: 't1', version: 1 }], has_more: false, checkpoint: checkpoint(4) }), () => true);
   assert.deepEqual(invalidated, [['acts', 0, true]], 'only loaded relevant topic refreshes, even without a new cover act');
+});
+
+
+test('757 admitted cover clock orders real split shapes and decimal boundaries without dropping its fence', () => {
+  const old = {root_id:'source',cover,cover_revision:1,cover_read_seq:[9,90,300],at:{acts:9,messages:0}};
+  const split = {...old,cover:{...cover,items:[rows[0]]},cover_read_seq:[10,90,2],at:{acts:10,messages:0}};
+  assert.equal(compareCoverReads(split.cover_read_seq,old.cover_read_seq),1,'later split wins with a smaller newest member sequence');
+  assert.equal(laterPosition(old,split),split);
+  assert.equal(laterPosition(split,old),split);
+  assert.equal(laterActs(split,old).cover,split.cover,'late joined rows cannot reappear after split');
+  const lifecycle = {...split,cover:{...split.cover,items:[{...rows[0],state:'Review'}]},cover_read_seq:[10,100,2]};
+  assert.equal(laterPosition(lifecycle,split),lifecycle,'numeric 100 follows 90, independent of string collation');
+  assert.equal(laterActs(lifecycle,split).cover,lifecycle.cover);
+  assert.equal(stackCover({head:{id:'source',acts:split,stack_position:lifecycle},replies:[{}]}),lifecycle.cover);
 });

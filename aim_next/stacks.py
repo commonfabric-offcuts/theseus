@@ -228,13 +228,17 @@ def current_acts(db, actor, message_ids):
         acts[kind + "_revision"] = row["revision"]
     from .source_item_covers import project
     roots = StackRoots(db, actor)
-    snapshot = int(db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()[0])
+    snapshots = {}
     for mid in message_ids:
         if roots.root(mid) != mid:
             continue
         acts = found.setdefault(mid, dict(EMPTY))
         acts["cover"] = project(db, actor, mid, acts["cover"])
-        acts["cover_read_seq"] = snapshot
+        topic = db.execute("SELECT topic_id FROM messages WHERE id=?", (mid,)).fetchone()[0]
+        if topic not in snapshots:
+            from .source_item_covers import read_sequence
+            snapshots[topic] = _seen_acts(db, actor, topic)
+        acts["cover_read_seq"] = [snapshots[topic], read_sequence(db, actor, mid), _dossier(db, actor, mid)[0] or 0]
     return found
 
 

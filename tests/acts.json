@@ -5827,7 +5827,7 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && answer.at.messages < known.at.messages",
+     "answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && (answer.at.messages < known.at.messages || compareCoverReads(answer.cover_read_seq, known.cover_read_seq) < 0)",
      "answer.at.acts < known.at.acts || answer.at.messages < known.at.messages"
     ]
    ],
@@ -6944,7 +6944,7 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && samePlaces(a, b) && starsOf(a) === starsOf(b) : !b);",
+     "const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && samePlaces(a, b) && starsOf(a) === starsOf(b) && JSON.stringify(a.cover) === JSON.stringify(b.cover) : !b);",
      "const samePlace = (a, b) => JSON.stringify(a) === JSON.stringify(b);"
     ]
    ],
@@ -20653,9 +20653,14 @@
      "(\"45\", \"46\", TOPIC_POSITION_SCHEMA"
     ],
     [
+     "aim_next/migrations.py",
+     "(\"47\", \"48\", SOURCE_COVER_SCHEMA",
+     "(\"46\", \"47\", SOURCE_COVER_SCHEMA"
+    ],
+    [
      "aim_next/store.py",
-     "SCHEMA_VERSION = \"47\"",
-     "SCHEMA_VERSION = \"46\""
+     "SCHEMA_VERSION = \"48\"",
+     "SCHEMA_VERSION = \"47\""
     ]
    ],
    "check": {
@@ -27987,13 +27992,12 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    const cover = stack ? stackCover(stack) : null;",
+     "    const cover = candidate?.items?.length ? candidate : stack ? stackCover(stack) : null;",
      "    const cover = stack?.replies.length ? this.actsOf(stack.head.id, stack.head).cover ?? null : null;"
     ]
    ],
    "check": {
-    "native": "reading",
-    "case": "reading covers a dossier whose first message is more than a page behind"
+    "node": "tests/ui_dossier_cover.test.mjs"
    }
   },
   {

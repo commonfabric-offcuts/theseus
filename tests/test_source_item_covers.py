@@ -48,6 +48,97 @@ class Fixture(PipelineCase):
                               {"workspace_id": "w1"}))["piece_id"]
 
 
+class ReaderFreshnessCase(Fixture):
+    def fresh(self, source):
+        answer = self.store.view("agent-b", "stack_positions", {"topic_id": "t1", "message_ids": [source]})
+        self.assertNotIn("error", answer, answer)
+        return answer["items"][0]["stack_position"]
+
+    def projection(self, source, actor="agent-b"):
+        # Compare every public field, including the fence, across actual writes.
+        return {
+            "cover": self.shown(source, actor),
+            "page": self.store.view(actor, "topic_messages", {"topic_id": "t1", "limit": 100})["items"],
+            "positions": self.store.view(actor, "stack_positions", {"topic_id": "t1", "message_ids": [source]}),
+        }
+
+    def test_hidden_and_unrelated_writes_leave_exact_public_projection_unchanged(self):
+        source = self.post("A public source")
+        before = self.projection(source)
+        self.post("Hidden question", actor="owner", whisper=True, addressees=["agent-a"], reply_to=source)
+        self.assertEqual(self.projection(source), before, "hidden whisper leaves exact public projection unchanged")
+        self.topic("t-other-757")
+        self.post("Unrelated topic work", topic="t-other-757")
+        self.assertEqual(self.projection(source), before, "unrelated topic leaves exact public projection unchanged")
+        self.committed(self.command("workspace.create", {"id": "private-757", "title": "Private destination", "team": []}))
+        self.committed(self.command("pipeline.configure", {"enabled": True}, {"workspace_id": "private-757"}, {"pipeline_revision": 0}))
+        number = self.committed(self.command("pipeline.item_add", {"title": "Private item", "sources": [{"message_id": source}]}, {"workspace_id": "private-757"}))["number"]
+        self.assertEqual(self.projection(source), before, "unreadable destination filing leaves exact public projection unchanged")
+        self.committed(self.command("pipeline.item_edit", {"title": "Private revision"}, {"workspace_id": "private-757", "number": number}, {"item_revision": 1}))
+        self.assertEqual(self.projection(source), before, "private item edit leaves exact public projection unchanged")
+
+    def test_visible_message_item_manual_and_lifecycle_changes_advance_fence(self):
+        source = self.post("A public report")
+        before = self.fresh(source)
+        def advanced(label):
+            nonlocal before
+            after = self.fresh(source)
+            self.assertGreater(after["cover_read_seq"], before["cover_read_seq"], label)
+            before = after
+        self.post("Visible follow-up", reply_to=source)
+        advanced("visible message advances cover freshness")
+        self.cover(source, stands="Cabin is booked", waiting=WAIT)
+        advanced("manual cover advances freshness")
+        number = self.file("Make the reader clearer", source)
+        advanced("readable item filing advances freshness")
+        self.committed(self.edit(number, title="A clearer reader"))
+        advanced("visible item edit advances freshness")
+        self.assertEqual(before["cover"]["items"][0]["title"], "A clearer reader")
+        piece = self.start(number)
+        advanced("piece start advances freshness")
+        self.committed(self.command("pipeline.stage_enter", {"stage_id": "review", "left_outcome": "passed"}, {"piece_id": piece}))
+        advanced("committed lifecycle advances freshness")
+        self.assertEqual(before["cover"]["items"][0]["state"], "Review")
+        self.assertEqual(before["cover"]["waiting"], WAIT)
+
+    def test_other_dossier_item_changes_leave_exact_source_position_unchanged(self):
+        source = self.post("Report with its own dossier")
+        other = self.post("Independent dossier in the same topic")
+        before = self.fresh(source)
+        number = self.file("Other work", other)
+        self.assertEqual(self.fresh(source), before, "another dossier's item filing cannot move this exact projection")
+        self.committed(self.edit(number, title="Other work revised"))
+        self.assertEqual(self.fresh(source), before, "another dossier's item edit cannot move this exact projection")
+
+    def test_split_advances_fence_when_newest_member_leaves(self):
+        source = self.post("Original report")
+        self.file("Original item", source)
+        joined = self.post("Newer independent report")
+        self.file("Other item", joined)
+        self.committed(self.command("stack.join", {"into": source}, {"message_id": joined}, {"join_revision": 0}))
+        before = self.fresh(source)
+        self.committed(self.command("stack.join", {"into": None}, {"message_id": joined}, {"join_revision": 1}))
+        after = self.fresh(source)
+        self.assertGreater(after["cover_read_seq"], before["cover_read_seq"], "split advances despite fewer visible members")
+        self.assertEqual(len(before["cover"]["items"]), 2)
+        self.assertEqual(len(after["cover"]["items"]), 1)
+
+    def test_destination_revocation_and_readmission_advance_redaction_fence(self):
+        source = self.post("Public report")
+        self.committed(self.command("workspace.create", {"id": "destination-757", "title": "Destination", "team": ["agent-b"]}))
+        self.committed(self.command("pipeline.configure", {"enabled": True}, {"workspace_id": "destination-757"}, {"pipeline_revision": 0}))
+        self.committed(self.command("pipeline.item_add", {"title": "Admitted item", "sources": [{"message_id": source}]}, {"workspace_id": "destination-757"}))
+        before = self.fresh(source)
+        self.assertEqual(before["cover"]["items"][0]["title"], "Admitted item")
+        for present in (False, True):
+            revision = self.store.view("owner", "workspace", {"workspace_id": "destination-757"})["workspace"]["version"]
+            self.committed(self.command("workspace.member_set", {"actor_id": "agent-b", "present": present}, {"workspace_id": "destination-757"}, {"workspace_revision": revision}))
+            after = self.fresh(source)
+            self.assertGreater(after["cover_read_seq"], before["cover_read_seq"], "access change advances even when cover rows disappear")
+            self.assertEqual(after["cover"] is not None, present)
+            before = after
+
+
 class SourceRowsCase(Fixture):
     def rows(self, message, actor="owner"):
         return (self.shown(message, actor)["cover"] or {}).get("items", [])

@@ -39,6 +39,36 @@ export async function readingItem757Checks({ check, until, control, view, facts,
     await shot(p, key + '-' + surface);
     observations.push({name:'reading item 757 capture',key,surface,engine,actual,...extra});
   };
+  const opening = async (p, input, f, key) => {
+    const toggle = `#messages .reply-stack[data-stack="${f.root}"] > .stack-toggle`;
+    const state = () => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(f.root))}),
+      t=document.querySelector(${JSON.stringify(toggle)}),w=c?.querySelector(':scope > .message-preview');
+      return {toggle:t?.dataset.state,previewDrawn:!!w?.getClientRects().length,card:c?.outerHTML,
+        active:document.activeElement?.outerHTML,readerOpen:document.querySelector('#reader')?.open}})()`);
+    observations.push({name:'reading item 757 opening preconditions',key,phase:'before',actual:await state()});
+    if ((await state()).toggle !== 'open') {
+      await centre(p,toggle); await press(p,input,toggle);
+      await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(toggle)})?.dataset.state==='open'`),'existing dossier control opens the head before Reader input');
+    }
+    observations.push({name:'reading item 757 opening preconditions',key,phase:'after native control',actual:await state()});
+    await openReader(p,input,f.root,'Which weekend suits the cabin trip?');
+  };
+  const failure = async (p,key,error) => {
+    const record={name:'reading item 757 failure before close',key,primary:{message:String(error),stack:error.stack},secondary:[]};
+    observations.push(record);
+    try { record.state=await p.evaluate(`({url:location.href,ready:document.body?.dataset.ready,
+      active:document.activeElement?.outerHTML,readerOpen:document.querySelector('#reader')?.open,
+      sourceReads:window.item757Sources,dom:document.documentElement?.outerHTML})`); }
+    catch(e) {record.secondary.push({phase:'DOM/state',error:String(e)});}
+    try {await shot(p,key+'-failure-before-close');record.screenshot=key+'-failure-before-close';}
+    catch(e) {record.secondary.push({phase:'screenshot',error:String(e)});}
+  };
+  const close = async (p,key,primary) => {
+    try {await p.close();} catch(error) {
+      observations.push({name:'reading item 757 close failure',key,error:String(error),primary:primary?String(primary):null});
+      if(!primary)throw error;
+    }
+  };
   const confirmReader = async (p, f) => {
     await until(()=>p.evaluate(`window.item757Sources.at(-1)?.source?.id===${JSON.stringify(f.root)}`),'Reader read the actual selected source identity from Core');
     const actual=await p.evaluate(`({read:window.item757Sources.at(-1),text:document.querySelector('#source-body').textContent})`);
@@ -58,6 +88,7 @@ export async function readingItem757Checks({ check, until, control, view, facts,
       observations.push({name:'reading item 757 actual seed',key,...seeded});
       const input=device==='laptop'?'laptop':'phone';
       const p=await openAt(key,device,theme,f);
+      let primary;
       try {
         const before=await inspectSheet(p,sheet(f),cover);
         await noWrong(p,f);
@@ -74,7 +105,7 @@ export async function readingItem757Checks({ check, until, control, view, facts,
         assert.equal(lone.drawn,true,'singleton rows are actually drawn');
         assertRows757(lone.rows,seeded.readback.covers.lone.cover);
         await centre(p,singleton(f)); await picture(p,key,'singleton');
-        await openReader(p,input,f.root,'Which weekend suits the cabin trip?');
+        await opening(p,input,f,key);
         await until(()=>p.evaluate(`!document.querySelector('#reader-cover').hidden`),'Reader has the source dossier cover');
         assert.equal(await p.evaluate(`document.querySelector('#reader-cover').open`),false,'Reader starts with its cover collapsed');
         assert.equal(await p.evaluate(`document.querySelector('#reader-cover .reader-cover-words').textContent`),'Cabin is booked');
@@ -88,24 +119,26 @@ export async function readingItem757Checks({ check, until, control, view, facts,
         await closeReader(p,input);
         // Select by its exact route, independent of where manual rows put it.
         const exact=sheet(f)+` .cover-item a[href="${route757(cover.items[1])}"]`;
+        const documentBeforeNavigation=await p.evaluate('performance.timeOrigin');
         await centre(p,exact); await press(p,input,exact);
-        await until(()=>p.evaluate(`document.body.dataset.ready==='true'&&location.search===${JSON.stringify(route757(cover.items[1]))}`),'native item link opens the existing exact route');
+        await until(()=>p.evaluate(`document.body&&performance.timeOrigin!==${JSON.stringify(documentBeforeNavigation)}&&document.body.dataset.ready==='true'&&location.search===${JSON.stringify(route757(cover.items[1]))}`),'native item link opens the existing exact route');
         const item=(await view('pipeline_item',{workspace_id:f.workspace,number:f.second})).item;
         assert.equal(item.title,'Speed up the feed');
         await until(()=>p.evaluate(`document.querySelector('#pipeline-page')?.textContent.includes('Speed up the feed')`),'item record on screen has its actual title');
         observations.push({name:'reading item 757 exact route',key,href:await p.evaluate('location.search'),workspace:f.workspace,number:item.number});
         assert.deepEqual(p.errors,[]);
-      } finally {await p.close();}
+      } catch(error) {primary=error;await failure(p,key,error);throw error;} finally {await close(p,key,primary);}
     });
   }
 
   await check('reading item 757 loaded lifecycle Review round Wait Done combine stage named Live and actual release',async()=>{
     const key='item757-lifecycle',seeded=await call('seed',key); let f=seeded.fixture;
     const p=await openAt(key,'laptop','light',f);
+    let primary;
     try {
       const origin=await p.evaluate('performance.timeOrigin'),manual=seeded.readback.covers.root;
       await inspectSheet(p,sheet(f),manual.cover);
-      await openReader(p,'laptop',f.root,'Which weekend suits the cabin trip?');
+      await opening(p,'laptop',f,key);
       await press(p,'laptop','#reader-cover > summary');
       for(const [action,states] of [['review-round',['Review, round 2','Review']],['wait',['Wait','Review']],['done',['Wait','Done']],
         ['combine',['Check candidate','Done']],['stage-named-live',['Live','Done']],['record-live',['Live · release 757','Done']]]) {
@@ -133,12 +166,13 @@ export async function readingItem757Checks({ check, until, control, view, facts,
       assert.equal(await p.evaluate('performance.timeOrigin'),origin,'loaded topic and Reader refresh without reloading');
       await centre(p,sheet(f));await picture(p,key,'dossier-actual-release');
       assert.deepEqual(p.errors,[]);
-    }finally{await p.close();}
+    }catch(error){primary=error;await failure(p,key,error);throw error;}finally{await close(p,key,primary);}
   });
 
   await check('reading item 757 current join split multisource and source visible destination private redaction by touch',async()=>{
     const key='item757-join-private',seeded=await call('seed',key);let f=seeded.fixture;
     const p=await openAt(key,'phone','dark',f);
+    let primary;
     try{
       const origin=await p.evaluate('performance.timeOrigin');
       await inspectSheet(p,sheet(f),seeded.readback.covers.root.cover);
@@ -152,7 +186,7 @@ export async function readingItem757Checks({ check, until, control, view, facts,
       assert.equal(await p.evaluate(`!!document.querySelector('#messages a[href*="'+${JSON.stringify(f.private_workspace)}+'"]')`),false,'private destination route is not drawn');
       await noWrong(p,f);
       await centre(p,sheet(f));await picture(p,key,'dossier-joined-redacted',{readback:joined.readback});
-      await openReader(p,'phone',f.root,'Which weekend suits the cabin trip?');
+      await opening(p,'phone',f,key);
       await press(p,'phone','#reader-cover > summary');
       await inspectSheet(p,'#reader-cover > .dossier-cover',joined.readback.covers.root.cover);
       const split=await call('split',f);f=split.fixture;
@@ -167,6 +201,6 @@ export async function readingItem757Checks({ check, until, control, view, facts,
       await noWrong(p,f);
       assert.equal(await p.evaluate('performance.timeOrigin'),origin,'joins/privacy/split refresh the currently loaded document');
       assert.deepEqual(p.errors,[]);
-    }finally{await p.close();}
+    }catch(error){primary=error;await failure(p,key,error);throw error;}finally{await close(p,key,primary);}
   });
 }

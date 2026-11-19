@@ -753,6 +753,8 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
         version = db.execute("SELECT version FROM workspaces WHERE id=?", (workspace["id"],)).fetchone()[0]
         self._outcome_change(db, workspace["id"], version)
         self._change(db, "actor", member, "workspace", workspace["id"], version)
+        from .source_item_covers import notify
+        notify(self, db, workspace["id"], None, access_reader=member)
         return dict(result, version=version), [{"kind": "workspace", "id": workspace["id"], "version": version}]
 
     def _command_workspace_owner_set(self, db, actor, envelope):

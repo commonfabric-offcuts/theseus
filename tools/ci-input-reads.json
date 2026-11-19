@@ -2502,6 +2502,12 @@
         "tests/fixtures/schema_46.sql"
       ],
       "scope": "repository"
+    },
+    "b156dfb45e99e96afb4834c9046f506a1dd8b167f3f5fa662e0f13bbf21b50ad": {
+      "inputs": [
+        "tests/fixtures/schema_47.sql"
+      ],
+      "scope": "repository"
     }
   },
   "tests/test_new_line.py": {
@@ -5004,6 +5010,18 @@
     "b952d48fa80270162e170ab0ce54e58ee61be3331f5dbbe4407e3fa7cf2777ab": {
       "scope": "generated/system/product",
       "inputs": []
+    }
+  },
+  "tests/fixtures/source_item_757.py": {
+    "e954797c92a076a337fe9572d25eb51e8ea433d8af96c689158c11ecef142b32": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_reading_item_757.py": {
+    "d31e410009ecdbfa43c66b8c5cd24ef16e20b38c3c0ece678100bade7a0f83f6": {
+      "inputs": [],
+      "scope": "generated/system/product"
     }
   }
 }
