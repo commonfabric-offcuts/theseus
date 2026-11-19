@@ -86,10 +86,10 @@ class CoverRefresh:
         if envelope["expected"][revision_field] != current:
             raise Refusal("REVISION_CONFLICT", "This changed; read it again before asking for an update", {revision_field: current})
         if is_cover:
-            if acts["cover"] is None:
-                raise Refusal("COVER_MISSING", "There is no cover to refresh")
             recipient = self._refresh_recipient(db, actor, message, topic)
-            body = ("Please rewrite this dossier's cover from its latest facts. "
+            opening = ("Please write this dossier's first cover from its latest facts. "
+                       if acts["cover"] is None else "Please rewrite this dossier's cover from its latest facts. ")
+            body = (opening +
                     "Read the whole dossier and its current cover, retain source attribution, waits and defaults, "
                     "payload kind/link and the owner's Done record. Use aim-next cover %s --expected N with the "
                     "current cover revision. This refresh observed revision %d; only a changed agent cover write "
