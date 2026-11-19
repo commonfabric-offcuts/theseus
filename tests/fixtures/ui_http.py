@@ -521,6 +521,10 @@ def main():
         # Item 645: source-bound page comparisons inside one filtered native run.
         # This private stdin control swaps immutable public Build bytes only;
         # Core, records, origin and authority remain the same isolated fixture.
+        reading785_runtime = None
+        if "--item-785" in sys.argv:
+            from reading_785_runtime import Reading785Runtime
+            reading785_runtime = Reading785Runtime(server, root, server_module.web_build.load)
         item645_candidate = server.build
         item645_candidate_csp = server.csp
         item645_original = None
@@ -786,6 +790,8 @@ def main():
                                   "sources": sources, "media": media, "max_reads": max_reads,
                                   "admission_mode": "partitioned" if getattr(server, "read_admission", None) else "legacy-observation",
                                   "freshness": freshness, "agent": "fixture-notebook-agent" if freshness else None}
+                    elif reading785_runtime is not None and request["method"] == "reading_785_runtime":
+                        answer = reading785_runtime.select(request["phase"])
                     elif request["method"] == "item_674_runtime":
                         answer = item674_runtime(server, item645_candidate, item645_candidate_csp, root,
                                                  request["phase"], server_module.web_build.load)
@@ -1586,6 +1592,12 @@ def main():
             if item645_unrestored:
                 server.build = item645_candidate
                 server.csp = item645_candidate_csp
+            reading785_cleanup_error = None
+            try:
+                if reading785_runtime is not None:
+                    reading785_runtime.close()
+            except AssertionError as error:
+                reading785_cleanup_error = error
             if controls is not None:
                 controls.close()
             if server is not None:
@@ -1597,6 +1609,8 @@ def main():
                 controls.assert_healthy()
             item721_runtime.close()
             assert not item645_unrestored, "Item 645 comparison runtime was not restored"
+            if reading785_cleanup_error is not None:
+                raise reading785_cleanup_error
 
 
 if __name__ == "__main__":

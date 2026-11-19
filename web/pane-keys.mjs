@@ -22,6 +22,18 @@ export function pageItself(at, doc) {
   return !at || at === doc.body || at.id === 'main' || Boolean(at.matches?.('#main h1'));
 }
 
+// Capture before reach tries to focus or scroll. Its true return alone does
+// not prove movement: a control can refuse focus.
+export function readingMovement(doc, within = null, at = doc.activeElement) {
+  const boxes = [doc.scrollingElement, ...(within ?? doc.body).querySelectorAll('*')];
+  for (let box = within ?? doc.body; box; box = box.parentElement) boxes.push(box);
+  const scrollers = boxes
+    .filter(box => box && (box.scrollHeight > box.clientHeight || box.scrollWidth > box.clientWidth))
+    .map(box => ({ box, top: box.scrollTop, left: box.scrollLeft }));
+  return () => Boolean(doc.activeElement !== at && doc.activeElement?.isConnected && !pageItself(doc.activeElement, doc) ||
+    scrollers.some(({ box, top, left }) => box.scrollTop !== top || box.scrollLeft !== left));
+}
+
 // What a key press means, or null when it means nothing here: 'up', 'down',
 // 'first', 'last', 'left', 'right' (plain), 'open' and 'fold' (⌘→ ⌘←),
 // 'open-all' and 'fold-all' (⇧⌘→ ⇧⌘←), 'move-up' and 'move-down' (⌘↑ ⌘↓),

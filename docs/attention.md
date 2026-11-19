@@ -607,11 +607,22 @@ the bottom. When no older page is left to read, there
 is nothing the button could load, so no line is drawn. A message among the
 loaded ones that has no card on the page has no line.
 
-When the reader is at the top of a topic, with the newest card showing from
-its top edge, a message that arrives comes into view above it; the page does
-not scroll to keep the old card in place. Further down the topic, the card the
-reader is looking at stays where it was, a card in an opened reply stack too,
-when a reply arrives above it in its stack. With More messages, or the line's
+The page keeps what sits at the window's top edge at the same height on
+screen, at the top of a topic as well as further down. A message or reply
+arriving above it is absorbed by scrolling in the same frame. The same hold
+covers later height changes owned by that recorded arrival, such as its
+picture finishing loading. Unrelated layout does not acquire that hold.
+Page-made and personal scrolls become the new reading place immediately;
+the sheet, Reader and composer never trigger arrival compensation.
+
+A message arriving above the window leaves a solid, shadowed "New above ↑"
+pill centred over the message column, 12px below the window's top edge.
+Pressing it scrolls to the new message. The pill goes away once the
+reader reaches it, or scrolls up past it. It offers arrivals from others,
+not the reader's own sends or older messages loaded with More. Opening a
+message, sending, New, More and the keys still move the view as the reader
+asks. A field being typed in and the New message composer keep their own
+holds. With More messages, or the line's
 "More new below", first on the screen, the older messages it loads come in
 where it was, under the last card shown before, and the New message composer
 resting above More goes down with More to the list's new end.
@@ -623,7 +634,9 @@ read latest reply (docs/reply-stacks.md). Where the page is scrolled less than
 what above it shrank, so that no scroll can hold the writing, the message list
 keeps the difference as room just above the composer, between what changed and
 the writing, until the next arrival, which gives it back and keeps only what it
-needs (`web/app.mjs`, `keepListAnchor` and `holdRoom`).
+needs (`web/app.mjs`, `keepListAnchor` and `holdRoom`). A card held after a
+shrink that scrolling cannot absorb keeps the missing room at the list's
+top in the same way; the next hold gives it back and keeps only what it needs.
 
 ## In the browser
 
