@@ -364,7 +364,7 @@ export class NotebookPage extends DeckPage {
     for(const node of [this.textPanel,this.list,this.bar,this.keys,this.opening,this.imagePanel,this.views,this.draft,this.conflictPanel]) {
       if(w.deleted)node.hidden=true;
     }
-    if(!w.deleted){this.drawView();this.imagePanel.hidden=false;this.paintDraft();}
+    if(!w.deleted){this.views.hidden=false;this.draft.hidden=false;this.drawView();this.imagePanel.hidden=false;this.paintDraft();}
     if(w.deleted)this.titleBox.hidden=true;
   }
   async captureImage(file) {

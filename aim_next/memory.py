@@ -172,10 +172,6 @@ class Memory:
         item = self._memory_identity(db, actor, target["item_id"])
         if self._memory_deleted(db, item):
             raise Refusal("PAGE_DELETED", "This Notebook page was deleted; nothing was changed")
-        draft = db.execute("SELECT draft FROM memory_revisions WHERE item_id=? AND revision=?",
-                           (item["id"], item["current_revision"])).fetchone()[0]
-        if draft and actor_kind(db, actor) == "agent":
-            raise Refusal("FORBIDDEN", DRAFT_KEPT)
         state = self._memory_star(db, actor, item["id"])
         _revision(envelope["expected"], "star_revision", state["star_revision"])
         cursor = db.execute("INSERT INTO memory_star_acts(actor_id,item_id,scope_kind,scope_id,starred) VALUES (?,?,?,?,?)",
@@ -200,9 +196,9 @@ class Memory:
         rows = sorted([row for kind, scope in scopes for row in db.execute(
             "SELECT a.id AS star,a.item_id,i.scope_kind,i.scope_id,i.current_revision,r.title FROM memory_star_acts a "
             "JOIN memory_items i ON i.id=a.item_id JOIN memory_revisions r ON r.item_id=i.id AND r.revision=i.current_revision "
-            "WHERE a.actor_id=? AND a.scope_kind=? AND a.scope_id=? AND a.id<? AND a.starred=1 AND r.deleted=0 AND (r.draft=0 OR ?=0) "
+            "WHERE a.actor_id=? AND a.scope_kind=? AND a.scope_id=? AND a.id<? AND a.starred=1 AND r.deleted=0 "
             "AND NOT EXISTS (SELECT 1 FROM memory_star_acts n WHERE n.actor_id=a.actor_id AND n.item_id=a.item_id AND n.id>a.id) "
-            "ORDER BY a.id DESC LIMIT ?", (actor, kind, scope, args.get("cursor", 9223372036854775807), int(actor_kind(db, actor) == "agent"), limit+1)).fetchall()],
+            "ORDER BY a.id DESC LIMIT ?", (actor, kind, scope, args.get("cursor", 9223372036854775807), limit+1)).fetchall()],
             key=lambda row: -row["star"])[:limit+1]
         return _bounded_page({"instance_id": self.instance_id, "topic_id": topic["id"]}, rows, limit,
                              lambda row: {"star": row["star"], "item_id": row["item_id"], "topic_id": topic["id"],
