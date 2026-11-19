@@ -42,6 +42,7 @@ test('840 bare original has a cover-plus control before the existing title tools
   assert.equal(f.section().querySelector('.dossier-cover'), null);
   assert.equal(control.querySelector('svg').getAttribute('viewBox'), '0 0 24 24');
   assert.equal(control.querySelector('svg').getAttribute('aria-hidden'), 'true');
+  assert.equal(control.querySelector('path').getAttribute('d'), 'M13 4H4v16h15V11 M7 9h4 M7 13h8 M7 17h6 M18 2v6 M15 5h6');
 });
 
 test('840 existing cover and unloaded original offer no first-cover control or menu act', t => {
@@ -118,4 +119,5 @@ test('840 CSS reserves the fourth title glyph only when drawn, with the same vis
   assert.match(css, /@media\(max-width:760px\)\{\s*\.reply-stack\{--stack-base-tools:1\}/);
   assert.match(css, /opacity:var\(--stack-tools-shown\)/);
   assert.match(css, /\.stack-cover-request>\.cover-refresh-glyph/);
+  assert.match(css, /\.reply-stack>\.stack-tools:has\(\.cover-refresh-status:not\(:empty\)\)\{clip-path:none\}/, 'a refusal can extend below the title controls without being clipped away');
 });

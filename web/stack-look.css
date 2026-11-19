@@ -219,6 +219,7 @@
 .stack-cover-request>.cover-refresh-glyph{width:var(--stack-tool-size);min-width:var(--stack-tool-size);height:var(--stack-tool-size);min-height:var(--stack-tool-size);padding:0;color:var(--stack-meta-ink)}
 .stack-cover-request>.cover-refresh-status:not(:empty){position:absolute;right:0;top:100%;width:max-content;max-width:min(18rem,80vw);padding:.25rem;background:var(--stack-sheet);border:1px solid var(--line)}
 .reply-stack:has(>.stack-tools .cover-refresh-status:not(:empty)){--stack-tools-shown:1;--stack-tools-held:1}
+.reply-stack>.stack-tools:has(.cover-refresh-status:not(:empty)){clip-path:none}
 /* By touch each glyph is 44px square. */
 @media(pointer:coarse){:root{--stack-tool-size:2.75rem}.reply-stack{--stack-tool-gap:0rem}}
 /* In a narrow column (a phone, or a window 760px or narrower, where the tab may reach 85% of the folder), Reply and
