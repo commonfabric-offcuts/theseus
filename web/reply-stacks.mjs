@@ -400,7 +400,7 @@ function makeStack(doc, id) {
   const toggle = element(doc, 'button', 'stack-toggle'); toggle.type = 'button';
   replies.id = `stack-replies-${id}`; toggle.setAttribute('aria-controls', replies.id);
   section.dataset.stack = id; section.setAttribute('role', 'group');
-  parts.set(section, { replies, toggle, tools: makeTools(doc), lines: new Map(), placed: null, rename: null, cover: null, coverKey: '' });
+  parts.set(section, { replies, toggle, tools: makeTools(doc), header: element(doc, 'div', 'stack-frame-head'), lines: new Map(), placed: null, rename: null, cover: null, coverKey: '' });
   return section;
 }
 
@@ -431,14 +431,18 @@ function nameTool(button, words) {
 
 function paintTools(tools, stack, shown, { state, doc }) {
   const [reply, aside, menu] = tools.children, position = positionOf(stack);
+  // A gathered reply is not the original. Its existing source-status link
+  // opens the canonical root; never send the title bar's acts to the reply.
+  const original = stack.id === stack.dossier;
+  reply.disabled = menu.disabled = !original;
   tools.setAttribute('aria-label', `Dossier: ${shown.name}`);
-  nameTool(reply, 'Reply to the first message'); showGlyph(reply, 'reply', doc);
+  nameTool(reply, original ? 'Reply to the first message' : 'First message not shown; use Reply in this dossier when available'); showGlyph(reply, 'reply', doc);
   reply.onclick = () => state.on?.reply?.(stack);
   // Core sends where a dossier sits with its messages; a page from a Core without positions has nowhere to move it.
   aside.hidden = !position;
   nameTool(aside, position?.below ? 'Bring back above More' : 'Move below More'); showGlyph(aside, position?.below ? 'back' : 'aside', doc);
   aside.onclick = () => state.on?.aside?.(stack, !positionOf(stack)?.below);
-  nameTool(menu, 'More for this dossier');
+  nameTool(menu, original ? 'More for this dossier' : 'First message not shown');
   if (menu.textContent !== '⋯') menu.textContent = '⋯';
   // On a phone stack-look.css folds Reply and Move below More into ⋯: its menu then offers them first, by their names,
   // each with the glyph of the button that does the same (item 602): Reply the title bar's own, Move below More the
@@ -455,7 +459,7 @@ function paintTools(tools, stack, shown, { state, doc }) {
 // do: the reader's own choice of colour for it, or its own. A dossier a
 // person began, the reader's own included, keeps the neutral folder.
 function paintFolderColor(section, stack, colorOf) {
-  const color = colorOf(stack.head) ?? null;
+  const color = stack.id === stack.dossier ? colorOf(stack.head) ?? null : null;
   if (color !== null && !AGENT_PALETTE.includes(color)) throw Error(`A folder colour must be one of the palette's, not ${color}.`);
   for (const name of AGENT_PALETTE) section.classList.toggle(`agent-${name}`, name === color);
   const shown = color === null ? '' : 'agent';
@@ -470,7 +474,7 @@ export function paintFolderColors(list) {
   if (!state) return;
   for (const stack of state.stacks ?? []) {
     const section = state.sections.get(stack.id);
-    if (section) paintFolderColor(section, stack, stack.replies.length ? state.colorOf : () => null);
+    if (section) paintFolderColor(section, stack, state.colorOf);
   }
 }
 
@@ -500,17 +504,36 @@ const replies = n => (n === 1 ? 'reply' : 'replies');
 // image, the reader's own note and saved reply: marks.mjs, item 127), how many
 // replied and who, and what is new. starred: the reader starred a message of
 // the dossier, any of them (item 635, starredDossiers), not only its first.
-function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
+function paintHead(card, stack, { open, starred, state, unread, nameOf, doc, separate = false }) {
   let row = headRows.get(card);
   if (!row) { row = element(doc, 'span', 'stack-head'); headRows.set(card, row); }
   if (card.firstElementChild !== row) card.prepend(row);
   card.classList.add('stack-head-card');
-  const head = headOf(stack, { preview: messagePreview, unread });
+  const original = stack.id === stack.dossier;
+  card.dataset.dossierHead = String(original);
+  const head = headOf(stack, { preview: original ? messagePreview : () => 'Dossier', unread });
+  if (!original) {
+    head.count += 1;
+    head.repliers = [...new Set([stack.head.author_id, ...head.repliers])];
+    head.headNew = false;
+    head.fresh = [stack.head, ...stack.replies].filter(unread).length;
+  }
   const act = (name, className, text, title) => {
     const span = element(doc, 'span', `stack-act ${className}`, text); span.dataset.stackAct = name;
     if (title) span.title = title; return span;
   };
-  const name = act('rename', 'stack-name', head.name, head.typed ? `Named by ${nameOf(head.typed.by)}${head.mintedBy ? ' when the first reply landed' : ''} for everyone here. Click to rename.` : 'Click to give it a short name everyone here sees');
+  const name = row.querySelector(':scope > .stack-name') ?? act('rename', 'stack-name');
+  name.textContent = head.name;
+  name.title = head.typed ? `Named by ${nameOf(head.typed.by)}${head.mintedBy ? ' when the first reply landed' : ''} for everyone here. Click to rename.` : 'Click to give it a short name everyone here sees';
+  // A singleton (or Only new) has a title independent of its message's
+  // visibility and between-others fold. Give its rename handle its own keys.
+  if (separate) {
+    name.setAttribute('role', 'button'); name.tabIndex = 0;
+    name.setAttribute('aria-label', `Rename dossier: ${head.name}`);
+    const rename = event => { event.preventDefault(); event.stopPropagation(); state.on?.rename?.(stack); };
+    row.onclick = rename;
+    name.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') rename(event); };
+  } else row.onclick = null;
   const pen = act('rename', 'stack-pen', '', 'Rename'); pen.setAttribute('aria-hidden', 'true');
   // Use the same pencil and direction as the page's New message control.
   const pencil = doc.getElementById('new-message')?.querySelector('svg')?.cloneNode(true);
@@ -524,8 +547,8 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   const minted = head.mintedBy ? element(doc, 'span', 'stack-named', `Named by ${nameOf(head.mintedBy)}`) : null;
   if (minted) minted.title = `Named by ${nameOf(head.mintedBy)} when the first reply landed; a name anyone types replaces it`;
   // Who began it gives way last on a narrow tab (stack-look.css), cut short: its whole name is its tooltip.
-  const who = element(doc, 'span', 'stack-who', nameOf(stack.head.author_id)); who.title = who.textContent;
-  const carried = carriesNode(doc, carriesOf(stack.head));
+  const who = element(doc, 'span', 'stack-who', original ? nameOf(stack.head.author_id) : 'First message not shown'); who.title = who.textContent;
+  const carried = original ? carriesNode(doc, carriesOf(stack.head)) : null;
   // The first message's marks stand beside who began it (paintHeadCarries puts them back there), then a minted name's mark.
   row.replaceChildren(name, pen, who, ...(carried ? [carried] : []),
     ...(minted ? [minted] : []),
@@ -540,6 +563,10 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
 // carries changed (item 127): the row's other parts, the stacks' order and the New line
 // stay as they are, so nothing is arranged again. A card heading no stack has no row.
 export function paintHeadCarries(card, item, doc = card.ownerDocument) {
+  const section = card.closest('.reply-stack');
+  if (section?.dataset.stack !== item.id) return;
+  card = section.querySelector(':scope > .stack-frame-head') ?? card;
+  if (card.dataset.dossierHead !== 'true') return;
   const row = headRows.get(card), who = row?.parentNode === card ? row.querySelector(':scope > .stack-who') : null;
   if (!who) return;
   row.querySelector(':scope > .card-carries')?.remove();
@@ -672,7 +699,7 @@ function paintStack(section, stack, byId, context) {
   // (stack-order.mjs, gather) is headed by one of its replies, a card of its
   // own before 550: folded, it shows whole, as each reply kept in view does,
   // never as its tab alone.
-  const whole = open || (!single && level === 'folded' && stack.dossier !== stack.id);
+  const whole = single || open || stack.dossier !== stack.id;
   if (open && headBefore && !starred && !state.folded.has(stack.id) && !state.whole.has(stack.id)) state.earlierRows.add(stack.id);
   const kept = item => {
     if (state.kept.has(item.id)) return true;
@@ -681,9 +708,11 @@ function paintStack(section, stack, byId, context) {
   };
   head.hidden = false;
   if (!single) opened(head);
-  const shown = single ? { name: messagePreview(stack.head) } : paintHead(cardIn(head), stack, { open, starred: marked, state, unread, nameOf, doc });
+  const separate = single || Boolean(state.only);
+  if (separate) unhead(head);
+  const shown = paintHead(separate ? p.header : cardIn(head), stack, { open: open && !separate, starred: marked, state, unread, nameOf, doc, separate });
   p.toggle.dataset.state = level;
-  Object.assign(section.dataset, { coordination: coordination ? 'agents' : '', compact: String(coordination && level === 'head' && state.renaming !== stack.id) });
+  Object.assign(section.dataset, { coordination: coordination ? 'agents' : '', compact: String(!separate && !whole && coordination && level === 'head' && state.renaming !== stack.id) });
   p.toggle.setAttribute('aria-expanded', String(level !== 'head'));
   p.toggle.setAttribute('aria-label', `${{ head: 'Closed; show latest and unread replies', folded: 'Latest and unread replies; show all messages', open: 'All messages; show latest and unread replies' }[level]}: ${shown.name}`);
   p.toggle.onclick = () => { setLevel(state, stack, LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length]); state.on?.folded?.(stack, level); state.again(); };
@@ -748,8 +777,8 @@ function paintStack(section, stack, byId, context) {
   // The dossier's cover (item 624, dossier-cover.mjs): the folder's first sheet, right after the head's entry, whose
   // tab stands above the folder, and before the chevron and the replies; never inside the head's card, which closed
   // shows its tab alone. Headed by a reply, its first message above the loaded page, the folder takes it from its
-  // place (stackCover). Drawn again only when what it says changes. A card with no folder takes pills instead.
-  const cover = single ? null : stackCover(stack), coverContext = { viewer: state.viewer, nameOf, topicId: stack.head.topic_id };
+  // place (stackCover). Drawn again only when what it says changes. Singletons have a folder too.
+  const cover = state.apart.has(stack.id) ? null : stackCover(stack, { alone: true }), coverContext = { viewer: state.viewer, nameOf, topicId: stack.head.topic_id };
   const key = coverKey(cover, coverContext);
   if (key !== p.coverKey) { p.cover?.remove(); p.cover = cover ? coverSheet(doc, cover, coverContext) : null; p.coverKey = key; }
   // A cover stands between the first message and the replies, so the first reply overlaps no face of the head's.
@@ -767,15 +796,18 @@ function paintStack(section, stack, byId, context) {
     free.type = 'button'; p.placed.append(words, free); p.free = free;
   }
   if (p.placed) p.free.onclick = () => state.on?.unplace?.(stack);
-  const rename = single ? null : renameField(section, stack, shown, context);
-  if (!single) paintTools(p.tools, stack, shown, context);
-  paintFolderColor(section, stack, single ? () => null : colorOf);
-  reconcile(section, [head, ...(p.cover ? [p.cover] : []), ...(rename ? [rename] : single ? [] : [p.toggle, p.tools]), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
-  if (single || rename) { p.toggle.remove(); p.tools.remove(); }
+  const rename = renameField(section, stack, shown, context);
+  paintTools(p.tools, stack, shown, context);
+  paintFolderColor(section, stack, colorOf);
+  reconcile(section, [...(separate ? [p.header] : []), head, ...(p.cover ? [p.cover] : []), ...(rename ? [rename] : [...(separate ? [] : [p.toggle]), p.tools]), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
+  if (!separate) p.header.remove();
+  if (separate || rename) p.toggle.remove();
+  if (rename) p.tools.remove();
   if (stack.placed === null) p.placed?.remove();
   Object.assign(section.dataset, { seq: String(stack.newest), fold: level, headOpen: String(whole), placed: String(stack.placed !== null),
-    single: String(single), renaming: String(state.renaming === stack.id), covered: String(Boolean(p.cover)) });
-  section.setAttribute('aria-label', single ? 'Placed message' : `Reply stack: ${shown.name}`);
+    single: String(single), dossier: stack.dossier, empty: String(Boolean(state.only && ![stack.head, ...stack.replies].some(state.only))),
+    renaming: String(state.renaming === stack.id), covered: String(Boolean(p.cover)) });
+  section.setAttribute('aria-label', `Dossier: ${shown.name}`);
 }
 
 // Gathers the list's entries into stacks and draws them, on every topic page
@@ -829,7 +861,6 @@ export function arrangeStacks(list, messages, options = {}) {
     const below = drawnBelow(stack, item => { const mark = state.here.get(item.id); return mark?.pending ? placeOf(positionOf(stack)) : mark?.place ?? null; });
     if (below) state.below.add(stack.id);
     const destination = below ? aside : top;
-    if (!stack.replies.length && stack.placed === null) { head.hidden = false; destination.push(head); continue; }
     live.add(stack.id);
     if (!state.sections.has(stack.id)) state.sections.set(stack.id, makeStack(doc, stack.id));
     const section = state.sections.get(stack.id);
@@ -862,19 +893,15 @@ export function arrangeStacks(list, messages, options = {}) {
   for (const entry of byId.values()) if (entry.parentElement === list) entry.hidden = false;
   // Only a stack's head carries its row: a message that headed one before a
   // join, or before its replies went, is a card again.
-  const heads = new Set(stacks.filter(stack => stack.replies.length).map(stack => stack.id));
+  const heads = new Set(stacks.filter(stack => stack.replies.length && !state.only).map(stack => stack.id));
   for (const [id, entry] of byId) if (!heads.has(id)) unhead(entry);
   // Every message the reader folded is its one-line row, in a stack or on its own, a stack's first message too.
   for (const [id, entry] of byId) if (messages.get(id)) paintFolded(entry, messages.get(id), state.folded.has(id), { nameOf, doc });
   // An open dossier's earlier messages, once their row is opened, read as rows (item 476).
   for (const [id, entry] of byId) if (messages.get(id)) paintEarlier(entry, messages.get(id), state.earlierRows.has(id), { nameOf, doc });
-  // A card with no folder whose cover says something shows it as pills under who wrote it (item 624): a message on
-  // its own, or a dossier's one reply loaded while its first message is above the page, which takes its dossier's
-  // cover from its place (stackCover). A card More kept apart belongs to the dossier already drawn above it,
-  // not a lone loaded message: it repeats neither that dossier's sheet nor its pills, even on a later press
-  // that loads the first message itself. Any other message shows none: a folder has its cover as its sheet instead.
-  const lone = new Map(stacks.filter(stack => !stack.replies.length && !state.apart.has(stack.id)).map(stack => [stack.id, stack]));
-  for (const [id, entry] of byId) paintCoverPills(cardIn(entry), lone.has(id) ? stackCover(lone.get(id), { alone: true }) : null, { viewer, nameOf, topicId: messages.get(id)?.topic_id });
+  // Every admitted entry now has a folder and its cover sheet. Clear any
+  // pills left from the former standalone rendering, including apart cards.
+  for (const [id, entry] of byId) paintCoverPills(cardIn(entry), null, { viewer, nameOf, topicId: messages.get(id)?.topic_id });
   // A star shows on its card wherever it is (stack-look.css).
   for (const [id, entry] of byId) { const starred = String(Boolean(messages.get(id)?.acts?.starred)); if (cardIn(entry).dataset.starred !== starred) cardIn(entry).dataset.starred = starred; }
   // What is hidden here is what shownView says is hidden: below a closed More,
