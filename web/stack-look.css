@@ -11,6 +11,7 @@
    It styles only these names, which reply-stacks.mjs sets:
 
    .reply-stack              a stack; data-stack (its head's id), data-seq,
+                             data-dossier (its canonical root), data-empty,
                              data-fold = head | folded | open,
                              data-head-open, data-placed, data-single,
                              data-renaming = true | false,
@@ -22,6 +23,7 @@
                              marks, aim.css), .stack-named, .stack-new, .stack-star, .stack-meta
                              (.stack-count, .stack-repliers, .stack-fresh), .stack-hide
      > .stack-rename         the rename field: .stack-rename-input, .stack-rename-hint
+     > .stack-frame-head     an independent title for a singleton or Only new
      > .stack-replies        the replies, oldest first, each an entry; between them
        .stack-join-line      above a joined stack's first message (.stack-join-words, .stack-split)
        .stack-earlier        first, in an open dossier of more than seven messages: one row for
@@ -46,7 +48,7 @@
    message's author) wears that agent's colour across the whole face of its
    body and its tab, the title bar (item 477); a person's keeps the neutral
    folder. Colour covers a whole face only: no coloured edge or bar marks a
-   stack or a card, and under Only new the stacks draw nothing (aim.css). */
+   stack or a card. Only new filters the sheets inside the same folder. */
 
 :root{
   /* the folder: one material for tab and body */
@@ -96,12 +98,13 @@
 }}
 
 /* The folder's body. The sheets inside read on the folder's own sheet colours; a card keeps its tint. */
-.reply-stack:not(.only-new *){--panel:var(--stack-sheet);--read-card:var(--stack-read-sheet);--read-hover:var(--stack-read-hover);
+.reply-stack{--panel:var(--stack-sheet);--read-card:var(--stack-read-sheet);--read-hover:var(--stack-read-hover);
   position:relative;isolation:isolate;display:flex;flex-direction:column;
   margin:calc(var(--stack-gap) + var(--stack-tab-h)) 0 var(--stack-gap);padding:var(--stack-pad);
   border-radius:0 var(--stack-r) var(--stack-r) var(--stack-r);background:var(--stack-folder);box-shadow:var(--stack-lift)}
-/* A message placed on its own is a folder with no tab: the sheet, and the line saying it was placed. */
-.reply-stack[data-single=true]:not(.only-new *){margin-top:var(--stack-gap);border-radius:var(--stack-r)}
+/* Singleton titles live outside the card, so a between-others fold keeps its
+   existing line/card behaviour without hiding the dossier's tab. */
+.reply-stack>.stack-frame-head{position:static;height:0;min-height:0}
 :is(.reply-stack,.stack-replies):not(.only-new *)>:is(.message-card,.message-fold){margin:0}
 .reply-stack:not(.only-new *) .message-card{border-radius:var(--stack-r-sheet)}
 .reply-stack:not(.only-new *) .message-card{--stack-folded-ink:var(--muted);outline:none;border-color:transparent;box-shadow:var(--stack-contact)}
@@ -115,8 +118,15 @@
    resizes. The card in front (the next one, over its bottom edge) covers the
    ring's bottom side as it covers the card's own edge; the ring's top and sides
    show (Tony, on item 430). */
-/* Under Only new the stacks draw nothing (aim.css): each new card reads whole. */
-.only-new :is(.stack-head,.stack-toggle){display:none}
+/* Only new still draws each selected message whole, inside its dossier.
+   Its independent title survives when the first message is filtered out. */
+#messages.only-new>.reply-stack{display:flex}
+#messages.only-new>.reply-stack[data-empty=true]{display:none}
+#messages.only-new>.reply-stack>.stack-replies{display:flex}
+#messages.only-new>.reply-stack>.stack-frame-head{display:block}
+#messages.only-new>.reply-stack>.stack-rename{display:flex}
+#messages.only-new>.reply-stack>.stack-tools{display:flex}
+.only-new .stack-toggle{display:none}
 
 /* The stack owns the ring only on its compact header or its own controls.
    Selecting a message, in any stack, takes that ring away. */
@@ -147,12 +157,13 @@
 .reply-stack[data-single=false]>.message-fold>.fold-line{display:none}
 
 /* The tab: the head row (or, while renaming, the rename field) standing on the folder's top edge, two lines high. */
-.reply-stack:not(.only-new *) :is(.stack-head-card>.stack-head,.reply-stack>.stack-rename){position:absolute;top:calc(-1 * var(--stack-tab-h));left:0;
+.reply-stack :is(.stack-head-card>.stack-head,.reply-stack>.stack-rename){position:absolute;top:calc(-1 * var(--stack-tab-h));left:0;
   box-sizing:border-box;height:var(--stack-tab-h);width:max-content;max-width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - max(var(--stack-r),var(--stack-tools-room))));
   display:flex;flex-wrap:wrap;align-items:baseline;align-content:center;column-gap:.5rem;margin:0;padding:var(--stack-tab-pad);
   border-radius:var(--stack-r-tab) var(--stack-r-tab) 0 0;background:var(--stack-folder);color:var(--stack-folder-ink);
   font-size:.78rem;font-weight:400;line-height:var(--stack-meta-lh);text-align:left;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.reply-stack:not(.only-new *) .stack-head-card>.stack-head{padding-left:calc(var(--stack-toggle-size) + 2 * var(--stack-toggle-inset))}
+.reply-stack:not(.only-new *) .stack-head-card:not(.stack-frame-head)>.stack-head{padding-left:calc(var(--stack-toggle-size) + 2 * var(--stack-toggle-inset))}
+.stack-frame-head .stack-name:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 /* One compact control beside the name replaces the repeated fold bars.
    It is a sibling of the head's message button, never a nested button. */
 .reply-stack:not(.only-new *)>.stack-toggle{position:absolute;z-index:1;left:var(--stack-toggle-inset);top:calc(-1 * var(--stack-tab-h) + var(--stack-toggle-inset));
@@ -180,16 +191,16 @@
    at rest, gives the room back once ⋯ shows (3.9px at 390, 6.1px at 375, 14.4px at 320), so ⋯ stands on the folder,
    inside its right edge, never past it in the page's margin. A dossier being renamed has no glyphs (reply-stacks.mjs
    takes them out), so neither number is 1 there. */
-.reply-stack:not(.only-new *){--stack-tools-shown:0;--stack-tools-held:var(--stack-tools-shown);--stack-tools-room:calc(var(--stack-tools-held) * var(--stack-tools-w))}
-.reply-stack:not(.only-new *):has(>.stack-tools):is(:focus-within,:has(.stack-head-card.lit),:has(>.stack-tools [aria-expanded=true])){--stack-tools-shown:1}
+.reply-stack{--stack-tools-shown:0;--stack-tools-held:var(--stack-tools-shown);--stack-tools-room:calc(var(--stack-tools-held) * var(--stack-tools-w))}
+.reply-stack:has(>.stack-tools):is(:focus-within,:has(.lit),:has(>.stack-tools [aria-expanded=true])){--stack-tools-shown:1}
 @media(hover:hover){
-  .reply-stack:not(.only-new *):has(>.stack-tools){--stack-tools-held:1}
-  .reply-stack:not(.only-new *):has(>.stack-tools):hover{--stack-tools-shown:1}
+  .reply-stack:has(>.stack-tools){--stack-tools-held:1}
+  .reply-stack:has(>.stack-tools):hover{--stack-tools-shown:1}
 }
 /* Hidden, they stay in the keys' reach (Tab finds them, and a glyph holding the focus shows them all). Not held, they
    are clipped to nothing, which by one property both hides them and leaves a press nothing to find there; held, the
    clip reaches past them by .5rem, so a focus ring round a glyph is drawn whole. */
-.reply-stack:not(.only-new *)>.stack-tools{position:absolute;z-index:1;right:0;top:calc(-1 * var(--stack-tab-h));height:var(--stack-tab-h);
+.reply-stack>.stack-tools{position:absolute;z-index:1;right:0;top:calc(-1 * var(--stack-tab-h));height:var(--stack-tab-h);
   display:flex;align-items:center;justify-content:flex-end;gap:.25rem;padding-right:.1rem;
   opacity:var(--stack-tools-shown);clip-path:inset(calc(50% - var(--stack-tools-held) * (50% + .5rem)))}
 .stack-tool{display:grid;place-items:center;flex:none;width:var(--stack-tool-size);height:var(--stack-tool-size);min-height:0;padding:0;
@@ -199,7 +210,7 @@
 .stack-tool:focus-visible{outline:2px solid var(--stack-ring);outline-offset:1px}
 .stack-tool .glyph{width:1.1rem;height:1.1rem}
 /* By touch each glyph is 44px square. */
-@media(pointer:coarse){:root{--stack-tool-size:2.75rem}.reply-stack:not(.only-new *)>.stack-tools{gap:0}:root{--stack-tools-w:calc(3 * var(--stack-tool-size) + .1rem)}}
+@media(pointer:coarse){:root{--stack-tool-size:2.75rem}.reply-stack>.stack-tools{gap:0}:root{--stack-tools-w:calc(3 * var(--stack-tool-size) + .1rem)}}
 /* In a narrow column (a phone, or a window 760px or narrower, where the tab may reach 85% of the folder), Reply and
    Move below More fold into ⋯, whose menu offers them first (reply-stacks.mjs): the paper beside a tab of that reach
    holds one glyph and its corner's curve, not three (three 44px glyphs and the curve need 146px, a 970px folder;
@@ -207,28 +218,28 @@
    beside it. */
 @media(max-width:760px){
   :root{--stack-tools-w:calc(var(--stack-tool-size) + .1rem)}
-  .reply-stack:not(.only-new *)>.stack-tools>.stack-tool:is([data-tool=reply],[data-tool=aside]){display:none}
+  .reply-stack>.stack-tools>.stack-tool:is([data-tool=reply],[data-tool=aside]){display:none}
 }
 
 /* A folder an agent began wears that agent's colour, body and tab alike (item 477): a step deeper than its cards,
    so its sheets still read on it, with the tab's words kept at 4.5:1 or better on it and under the pointer. */
-.reply-stack[data-color=agent]:not(.only-new *){--stack-folder:color-mix(in srgb,var(--agent-tag) 70%,var(--agent-card));--stack-folder-deep:var(--agent-tag);
+.reply-stack[data-color=agent]{--stack-folder:color-mix(in srgb,var(--agent-tag) 70%,var(--agent-card));--stack-folder-deep:var(--agent-tag);
   --stack-folder-ink:#2f363b;--stack-meta-ink:#4a545b;--stack-star:#6b4b12;--stack-new:#9f1f15}
-@media(prefers-color-scheme:dark){.reply-stack[data-color=agent]:not(.only-new *){--stack-folder:color-mix(in srgb,var(--agent-card) 70%,#0b1113);--stack-folder-deep:var(--agent-card);
+@media(prefers-color-scheme:dark){.reply-stack[data-color=agent]{--stack-folder:color-mix(in srgb,var(--agent-card) 70%,#0b1113);--stack-folder-deep:var(--agent-card);
   --stack-folder-ink:#d3dcd9;--stack-meta-ink:#a8b8b5;--stack-star:#e8c67f;--stack-new:#ff8a80}}
 /* Where the tab meets the body, a concave fillet: tab and body are one cut. The ring follows it. The focus ring's tab
    part is a layer under the tab that runs past the seam and drops its own bottom edge, so its sides run on into the
    body's. Both hang off the tab's box: the head row's own ::after breaks its first line, so they sit on its name. */
-.reply-stack:not(.only-new *) :is(.stack-head-card>.stack-head>.stack-name,.reply-stack>.stack-rename)::after{content:"";position:absolute;left:100%;bottom:0;width:var(--stack-r-tab);height:var(--stack-r-tab);pointer-events:none;
+.reply-stack :is(.stack-head-card>.stack-head>.stack-name,.reply-stack>.stack-rename)::after{content:"";position:absolute;left:100%;bottom:0;width:var(--stack-r-tab);height:var(--stack-r-tab);pointer-events:none;
   background:var(--stack-tab-fillet,radial-gradient(circle at 100% 0,transparent calc(var(--stack-r-tab) - .5px),var(--stack-folder) var(--stack-r-tab)))}
-.reply-stack:not(.only-new *) :is(.stack-head-card>.stack-head>.stack-name,.reply-stack>.stack-rename)::before{content:"";position:absolute;inset:0 0 -6px;border-radius:var(--stack-r-tab) var(--stack-r-tab) 0 0;pointer-events:none;
+.reply-stack :is(.stack-head-card>.stack-head>.stack-name,.reply-stack>.stack-rename)::before{content:"";position:absolute;inset:0 0 -6px;border-radius:var(--stack-r-tab) var(--stack-r-tab) 0 0;pointer-events:none;
   clip-path:polygon(-8px -8px,calc(100% + 8px) -8px,calc(100% + 8px) calc(100% - 6px),0 calc(100% - 6px),0 100%,-8px 100%);box-shadow:var(--stack-tab-shadow,none)}
 /* The head row's two lines: the name and its pen, a break, then the rest, which never wraps to a third: who replied
    and what is new give way first, then the first message's marks, then who began it; the count never does (below). */
-.reply-stack:not(.only-new *) .stack-head::after{content:"";order:1;flex-basis:100%;height:0}
-.reply-stack:not(.only-new *) .stack-head>:not(.stack-name,.stack-pen){order:2}
-.reply-stack[data-renaming=true]:not(.only-new *) .stack-head{display:none}
-.reply-stack[data-renaming=true]:not(.only-new *)>.stack-rename{width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r)))}
+.reply-stack .stack-head::after{content:"";order:1;flex-basis:100%;height:0}
+.reply-stack .stack-head>:not(.stack-name,.stack-pen){order:2}
+.reply-stack[data-renaming=true] .stack-head{display:none}
+.reply-stack[data-renaming=true]>.stack-rename{width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r)))}
 
 /* The tab's first line: the short name (a click renames it, for everyone), then the pen; the rest wraps to the second. */
 .stack-name{flex:0 1 auto;min-width:0;max-width:calc(100% - 1.3rem);margin:0 -.3rem;padding:0 .3rem;border-radius:.35rem;
@@ -276,7 +287,7 @@
 .reply-stack:not([data-compact=true]) .stack-head>.stack-meta>:is(.stack-repliers,.stack-fresh){flex:1 1 0;min-width:0;max-width:max-content;overflow:hidden;text-overflow:ellipsis}
 .stack-fresh{color:var(--stack-new);font-weight:700}
 /* A click anywhere on the tab hides the full message again; its words are kept for a screen reader only. */
-.reply-stack:not(.only-new *) .stack-hide{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.reply-stack .stack-hide{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 
 /* Renaming: the short name is typed in the tab. Return saves, Esc cancels. */
 .reply-stack:not(.only-new *) .stack-rename{cursor:default}
@@ -401,7 +412,7 @@
 @media(max-width:760px){
   :root{--stack-pad:.4rem;--stack-r:.85rem;--stack-tab-max:85%;--stack-tab-pad:.4rem .7rem .35rem;--stack-name-lh:1.4rem;--stack-meta-lh:1.15rem;--stack-tab-h:calc(.75rem + var(--stack-name-lh) + var(--stack-meta-lh));--stack-folded-height:56px}
   .stack-name,.stack-rename-input{font-size:.9rem}
-  .reply-stack:not(.only-new *) :is(.stack-head-card>.stack-head,.reply-stack>.stack-rename){font-size:.74rem}
+  .reply-stack :is(.stack-head-card>.stack-head,.reply-stack>.stack-rename){font-size:.74rem}
 }
 @media(pointer:coarse){
   :root{--stack-folded-height:56px}
@@ -461,3 +472,12 @@
   .dossier-cover{font-size:.88rem}
   .cover-stands{font-size:.92rem}
 }
+
+/* A gathered reply whose admitted first message is still being read. */
+.dossier-source-status { display: block; color: var(--muted); font-size: .85rem; }
+.dossier-source-status a { color: var(--accent); }
+.dossier-source-status button { color: var(--accent); background: none; border: 0; font: inherit; }
+/* A folded fallback keeps the source's actual loading/refusal and canonical
+   link visible inside its face, rather than painting outside a fixed row. */
+#messages .reply-stack .message-card:is([data-folded=true],[data-earlier=true]):has(>.dossier-source-status){height:auto;flex-direction:column;align-items:stretch;padding-block:.5rem}
+.message-card:is([data-folded=true],[data-earlier=true])>.dossier-source-status{display:block!important}
