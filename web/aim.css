@@ -73,10 +73,7 @@ html:has(#messages:not([hidden])){overflow-anchor:none}
 .people-add { display: flex; align-items: center; gap: .4rem; flex: 1 1 14rem; }
 .people-add input { flex: 1; min-width: 8rem; background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: .25rem; font-size: .85rem; }
 .people-add button { font-size: .8rem; min-height: 2rem; padding: .2rem .6rem; }
-.participants .notice, #team-people .notice { flex-basis: 100%; margin: .2rem 0 0; }
-.outcome-team { margin: 1.5rem 0; }
-.outcome-team h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: .6rem; }
-#team-people { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.participants .notice { flex-basis: 100%; margin: .2rem 0 0; }
 /* Inviting an agent (agent-invite.mjs): "+ Invite agent", then one name line and two chips; the prompt to paste, with its copy glyph and ×. */
 .team-invite{display:grid;gap:.5rem;margin-top:.5rem;min-width:0}
 .team-invite>.add-chip{justify-self:start}
@@ -1378,9 +1375,10 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
    At 1280px, two 18rem rails and the main padding leave about 602px: two cards.
    The phone breakpoint deliberately keeps one column regardless of title length. */
 .outcome-topic-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
-.outcome-topic-card{display:flex;flex-direction:column;justify-content:space-between;gap:1.25rem;min-width:0;min-height:9rem;padding:1.1rem 1.2rem;border:1px solid var(--stack-sheet-edge);border-radius:.75rem;background:var(--stack-folder);box-shadow:var(--stack-cover-inset);color:var(--stack-folder-ink);text-decoration:none;overflow-wrap:anywhere}
-.outcome-topic-card:hover{background:var(--stack-folder-deep)}
-.outcome-topic-title{font-size:1.05rem;font-weight:650;line-height:1.5}
+.outcome-topic-card{display:flex;flex-direction:column;justify-content:space-between;gap:1.25rem;min-width:0;min-height:9rem;padding:1.1rem 1.2rem;border:1px solid var(--stack-sheet-edge);border-radius:.75rem;background:var(--soft);box-shadow:var(--stack-cover-inset);color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
+.outcome-topic-card:hover{border-color:var(--accent)}
+.outcome-topic-card:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.outcome-topic-title{font-size:1.05rem;font-weight:650;line-height:1.5;color:var(--accent)}
 .outcome-topic-meta{display:flex;flex-wrap:wrap;gap:.25rem .85rem;color:var(--stack-meta-ink);font-size:.75rem}
 .outcome-topic-toggle{margin:.85rem 0 .55rem}
 .outcome-topic-more{margin:.6rem 0}
@@ -1395,10 +1393,12 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 .notebook-document>span{border:1px solid var(--line);background:var(--soft);border-radius:.1rem}
 .notebook-document[data-mode=text]{grid-template-columns:1fr;align-content:center;gap:.35rem}
 .notebook-document[data-mode=text]>span{height:1px;border:0;background:var(--muted)}
-.notebook-document-title{font-size:.85rem;font-weight:600;line-height:1.35}
-/* 852: a title and its badges share one line below the mode icon. */
-.notebook-document-label{display:flex;align-items:baseline;justify-content:center;gap:.3rem;max-width:100%}
+.notebook-document-title{font-size:.85rem;font-weight:600;line-height:1.35;min-width:0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;text-overflow:ellipsis}
+/* 859: the two-line title shrinks beside a count aligned to its first line. */
+.notebook-document-label{display:flex;align-items:flex-start;justify-content:center;gap:.3rem;max-width:100%}
 .notebook-document-label .unread-count{flex:none}
+.selection-page #topic-navigation>.rail-heading{justify-content:flex-start}
+.selection-page #topic-navigation>.rail-heading h2{flex:none}
 .notebook-document[data-mode=cards]{display:block;position:relative;padding:0;border:0;background:transparent;box-shadow:none}
 .notebook-document[data-mode=cards]>span{position:absolute;inset:.5rem .4rem .1rem .2rem;border:1px solid var(--line);border-radius:.25rem;background:var(--panel);box-shadow:0 1px 2px rgb(0 0 0 / .06)}
 .notebook-document[data-mode=cards]>span:nth-child(1){transform:translate(.35rem,-.35rem)}
@@ -1408,5 +1408,3 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 .selection-page #outcome-references-list{grid-column:1;grid-row:1}
 .selection-page #outcome-references>:is(.notice,.rail-line,#more-references){grid-column:1/-1}
 .selection-page #topics-heading{text-transform:none;letter-spacing:normal}
-.outcome-team.topic-people{margin:0 0 1rem auto}
-.outcome-team.topic-people .team-invite{margin:0}

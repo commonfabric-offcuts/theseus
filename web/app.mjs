@@ -2894,7 +2894,7 @@ async function initialize() {
   if (topicTools) { const tools = topicTools; run(() => tools.load()); }
   try {
     const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
-    $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);here.title = workspace.title;
+    $('workspace-name').hidden=false;$('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);here.title = workspace.title;
     // A reached, archived or completed outcome's messages are kept to read: none offers Edit. Read in the background; Core
     // refuses an edit there anyway. Archived or completed (item 404), the header says so, with Bring back for its owner.
     const readKept = () => api.view('outcome_light', { workspace_id: workspace.id }, { readClass: 'background' }).then(answer => {
@@ -3601,9 +3601,9 @@ async function initializeOutcomePage(route) {
     const reload=followCommits(async()=>{const loaded=await outcomeRail.load();await wakeLights.load();return loaded;});
     await reload();
   } else {
-    // The title and its menu stay above the page. Notes, people, topics and
+    // The title, Team and menu share the topic header. Notes, topics and
     // tools come before outcome setup; secondary context follows (item 842).
-    $('outcome-page').append($('outcomes-status'),$('retry-workspaces'),$('outcome-team'),$('outcome-references'),$('page-here'),$('topic-navigation'),$('outcome-tools'),$('outcome-standing'),$('outcome-purpose'),$('target-panel'),$('pipeline-line'),$('also-waiting'),$('loop-panel'),$('problems-panel'));
+    $('outcome-page').append($('outcomes-status'),$('retry-workspaces'),$('team-invite'),$('outcome-references'),$('page-here'),$('topic-navigation'),$('outcome-tools'),$('outcome-standing'),$('outcome-purpose'),$('target-panel'),$('pipeline-line'),$('also-waiting'),$('loop-panel'),$('problems-panel'));
     const cardsHost=document.createElement('div');cardsHost.className='outcome-topic-cards';
     // Keep the shared New topic heading, but let the outline own all lists.
     for(const child of [...$('topic-navigation').children])if(!child.classList.contains('rail-heading'))child.hidden=true;
@@ -3671,7 +3671,7 @@ async function initializeOutcomePage(route) {
         save:(purpose,current)=>setPresence('workspace.update',{workspace_id:current.id},'workspace_revision',current.version,{purpose}).then(receipt=>{run(reload);return receipt;})});
       purposeLine.paint(workspace,organises(workspace,bootstrap.actor));
       onboarding.paint(workspace);
-      $('workspace-name').textContent=workspace.id;enableNewTopic(workspace.id);here.title=workspace.title;
+      $('workspace-name').hidden=true;enableNewTopic(workspace.id);here.title=workspace.title;
       shell.topicChanged();
       await paintTeam(workspace,()=>reload());
       if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
@@ -3898,7 +3898,6 @@ async function paintTeam(workspace,refresh) {
   const send=(id,present)=>setPresence('workspace.member_set',{workspace_id:workspace.id},'workspace_revision',workspace.version,{actor_id:id,present})
     .then(receipt=>{run(refresh);return receipt;});
   if(!teamPanel){
-    const section=$('outcome-team');if(section.parentElement!==$('outcome-page'))$('outcome-page').append(section);
     teamPanel=new PeoplePanel({host:$('team-people'),label:'Add someone to this outcome\'s team',fixed:()=>[teamPanel.owner],light:wakeLight,pill:participantPill,dismissible:true,
       read:()=>readMembers(api,bootstrap.instance_id,workspace.id),candidates:()=>directoryPeople,opened:()=>refreshDirectory()});
   }
@@ -3908,13 +3907,14 @@ async function paintTeam(workspace,refresh) {
   try { members=await readMembers(api,bootstrap.instance_id,workspace.id); }
   catch(error) { teamPanel.error=`The team could not be read: ${error.message}`;members=teamPanel.people; }
   teamPanel.paint(members,organises(workspace,bootstrap.actor));teamPanel.error='';
-  // Inviting a new agent, beside "+ Add" (agent-invite.mjs): a new outcome starts it afresh.
+  // The shared Add popover hosts the existing invitation form; its prompt stays on the page.
   if(teamInvite?.outcome!==workspace.id){
-    teamInvite=new AgentInvite({host:$('team-invite'),invitation:new Invitation({api,bootstrap}),workspace:()=>teamInvite.current,invited:()=>run(refresh)});
+    teamInvite?.dispose();
+    teamInvite=new AgentInvite({host:$('team-invite'),panel:teamPanel,invitation:new Invitation({api,bootstrap}),workspace:()=>teamInvite.current,invited:()=>run(refresh)});
     teamInvite.outcome=workspace.id;
   }
   teamInvite.current={id:workspace.id,version:workspace.version};
-  teamInvite.paint(organises(workspace,bootstrap.actor));
+  teamInvite.paint(organises(workspace,bootstrap.actor));teamPanel.paintChoices();
   $('outcome-team').hidden=false;
 }
 // New topic is one title line in the topic list: Return starts the topic with
