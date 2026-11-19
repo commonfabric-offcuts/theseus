@@ -26,8 +26,11 @@ page or actor starts with no cached titles from the previous one.
 
 Rows join the outline's single Tab stop and native arrow navigation as children
 of their topic. Return, a click or a phone tap opens the canonical root in its
-actual topic. Within the current topic this opens a Reader; leaving the topic
-uses the existing writing guard. Children never reorder their
+actual topic. The topic opens, the dossier is revealed for this visit, scrolled into view
+and selected as by the arrows. No Reader or reply box opens (item 780;
+[landing contract](starred-dossier-landing.md)). Leaving the topic uses the
+existing writing guard. An already-open same-topic Reader retains its source
+and writing; landing opens no additional presentation. Children never reorder their
 parents, act as topics for reorder/write, or expose another reader's stars.
 An empty list adds no heading, placeholder or decorative control. This is a
 read-only navigation surface: it introduces no saving operation. Read-only
