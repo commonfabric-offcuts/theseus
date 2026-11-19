@@ -5,6 +5,12 @@ which pipeline items it shipped, and the release check's measurements. The
 record is the instance's own fact about itself. The pipeline page reads it to
 mark items shipped, and the Measurements page (item 12) can be filled from it.
 
+[Landing a change](landing.md) is the canonical rule for the two routes,
+approval and source identity, immediate live checks, recovery and tool rollout.
+Opening or merging a PR is not verified live: read the record and runtime and
+verify the changed surface. Broad judgment may still be pending, as recorded
+below; the separate landing timestamps and measures do not change this schema.
+
 ## Naming the items a change ships
 
 The person or agent merging a change is the only one who knows which pipeline

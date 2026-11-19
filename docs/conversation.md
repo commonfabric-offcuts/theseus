@@ -11,7 +11,10 @@ act that did it.
 
 `?conversation=OUTCOME` is a topic page like any other: the messages, newest
 first, with the same cards, reply stacks, New line and counts, and the writing
-box below them ("Write to OUTCOME…"). The heading is "Conversation", with what it is for
+box below them ("Write to OUTCOME…"). The pencil opens the same bottom-floating
+sheet as a topic: no blur over the page, one line growing with the text, a
+compact inline agent menu, and Send or Cmd-Return closing it on confirmed
+publication (items 673, 670, 671, 672; docs/reader.md). The heading is "Conversation", with what it is for
 and who answers under it. A card's tags show three quiet dots pulsing in turn while nothing has settled its item ("Waiting for an answer", still under reduced motion; a topic page draws the same dots on the reader's own message until the first reply from anyone else, docs/topic-reading.md, "Waiting for a reply"), then say Answered (with the reply),
 Taken into a topic (with the topic) or On the pipeline, and, beside any of
 them, Waiting on someone (with the ask). One filter chip, "Only new (N)", at

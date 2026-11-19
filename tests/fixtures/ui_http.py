@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from item_674_runtime import runtime as item674_runtime
 from aim_next import Store, initialize
 from aim_next import server as server_module
 from aim_next.server import create_server, RequestError
@@ -577,6 +578,52 @@ def main():
                     "candidate_hashes": hashes(item645_candidate), "restored": server.build is item645_candidate,
                     "csp_sha256": hashlib.sha256(server.csp.encode()).hexdigest()}
 
+        def item731_runtime(phase):
+            # Reuse the existing immutable Build/CSP swap, but only load 731's
+            # exact LIVE94 public source archive for this comparison.
+            nonlocal item645_original
+            prior = item645_original
+            try:
+                if phase == "original":
+                    folder = Path(__file__).parent
+                    manifest = json.loads((folder / "item_731_original_web.json").read_text())
+                    archive = folder / "item_731_original_web.tar.gz"
+                    assert hashlib.sha256(archive.read_bytes()).hexdigest() == manifest["archive_sha256"]
+                    destination = root / "item731-original"
+                    if not destination.exists():
+                        destination.mkdir()
+                        with tarfile.open(str(archive), "r:gz") as packed:
+                            for member in packed.getmembers():
+                                assert member.name == "web" or (member.name.startswith("web/") and ".." not in Path(member.name).parts)
+                                assert member.isdir() or member.isfile()
+                            packed.extractall(str(destination))
+                    item645_original = server_module.web_build.load(destination / "web")
+                    assert {name: hashlib.sha256(data).hexdigest() for name, data in item645_original.files.items()} == manifest["files"]
+                if phase == "small-targets":
+                    destination = root / "item731-small-targets"
+                    destination.mkdir(exist_ok=True)
+                    for name, data in item645_candidate.files.items():
+                        path = destination / name
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_bytes(data)
+                    path = destination / "aim.css"
+                    data = path.read_bytes()
+                    old = b".reader-header>button,#reader-stepping>button,#reader-star,#reader-aside{min-width:2.75rem;min-height:2.75rem}"
+                    new = old.replace(b"2.75rem", b"2rem")
+                    assert data.count(old) == 1
+                    path.write_bytes(data.replace(old, new))
+                    assert path.read_bytes() != data
+                    server.build = server_module.web_build.load(destination)
+                    script_src = " ".join(["'self'"] + ["'%s'" % digest for digest in server.build.script_hashes])
+                    before, rest = item645_candidate_csp.split("script-src ", 1)
+                    server.csp = before + "script-src " + script_src + ";" + rest.split(";", 1)[1]
+                    return {"phase": phase, "stamp": server.build.stamp, "applied": True, "old": old.decode(), "new": new.decode(),
+                            "original_sha256": hashlib.sha256(data).hexdigest(), "mutated_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                            "candidate_hashes": {name: hashlib.sha256(data).hexdigest() for name, data in item645_candidate.files.items()}}
+                return item645_runtime(phase)
+            finally:
+                item645_original = prior
+
         def on_team(operation):
             """The fixture's agent, a member of the outcome w1; adding a member already there changes nothing."""
             agent = "fixture-notebook-agent"
@@ -697,6 +744,14 @@ def main():
                                   "freshness": freshness, "agent": "fixture-notebook-agent" if freshness else None}
                     elif reading785_runtime is not None and request["method"] == "reading_785_runtime":
                         answer = reading785_runtime.select(request["phase"])
+                    elif request["method"] == "item_674_runtime":
+                        answer = item674_runtime(server, item645_candidate, item645_candidate_csp, root,
+                                                 request["phase"], server_module.web_build.load)
+                    elif request["method"] == "item_731_runtime":
+                        answer = item731_runtime(request["phase"])
+                    elif request["method"] == "item_731_mutants":
+                        from item_731_mutants import run
+                        answer = {"proofs": run()}
                     elif request["method"] == "item_645_runtime":
                         answer = item645_runtime(request["phase"])
                     elif request["method"] == "counts":
@@ -1207,10 +1262,15 @@ def main():
                                     "target": {"media_id": media_id}, "args": {}, "expected": {"media_revision": 1,
                                     "authority": {key: binding[key] for key in ("authority_id", "authority_epoch")}}}
                         assert store().publish_media(agent, envelope, io.BytesIO(data))["status"] == "committed"
+                        # Item 653: same source owner and lost-topic permission,
+                        # with an optional verified image beside the text file.
+                        named_attachments = [{"id": media_id}]
+                        if request.get("image"):
+                            named_attachments += published(prefix + "-image", [{"name": "screen.png", "image": "screen.png"}], agent)
                         command("draft.save", prefix + "-save", {
                             "source_ref": {"kind": "new_topic", "id": prefix + "-opening", "workspace_id": workspace},
                             "topic_id": topic_id, "generation": prefix + "-generation", "body": request["body"],
-                            "attachments": [{"id": media_id}],
+                            "attachments": named_attachments,
                             "addressees": [actor], "intent": "tell", "opening": {"workspace_id": workspace, "title": "Elsewhere topic", "participants": [actor]}},
                             {"draft_id": prefix + "-draft"}, {"draft_revision": 0}, sender=agent)
                         command("submission.prepare", prefix + "-prepare", {"draft_id": prefix + "-draft", "submission_id": prefix + "-submission",

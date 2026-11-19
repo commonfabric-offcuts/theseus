@@ -9,6 +9,7 @@ import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 import { typingField } from './writing-input.mjs';
 import { Freshness, initialViews, actorBaseline, readFailure, checkedView, bindingOf } from './freshness.mjs';
+import { DossierHeads } from './stack-order.mjs';
 import { TopicViews, followEdits } from './topic-views.mjs';
 import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, topicTarget, paintChanged, changedSince } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
@@ -34,7 +35,7 @@ import { NotebookCreate } from './notebook-create.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from './quick-create.mjs';
 import { PurposeLine } from './outcome-purpose.mjs';
 import { AgentInvite, Invitation } from './agent-invite.mjs';
-import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf } from './marks.mjs';
+import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf, paintNoteCorner } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, opened } from './fold.mjs';
@@ -62,6 +63,7 @@ import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
 import { ToolPage, OutcomeTools, ToolsRail, TopicTools } from './skills.mjs';
 import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
+import { DossierSelectionQuote } from './dossier-selection-quote.mjs';
 import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions } from './reactions.mjs';
 import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
@@ -69,6 +71,7 @@ import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
 import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries, paintFolderColors, fillFrom, paintFoldedNames } from './reply-stacks.mjs';
 import { paintCardImages, dropCardImages } from './card-images.mjs';
+import { paintThumb } from './image-pick.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { PressHold } from './press-hold.mjs';
@@ -119,7 +122,8 @@ let outcomeReached = false;
 // The Reader's edit of one of the person's messages, while it is open (editMessage).
 let messageEdit = null;
 // What the person does to reply stacks: star, rename, move, join, fold (stack-feed.mjs).
-let stackFeed = null;
+let stackFeed = null, dossierHeads = null;
+const feedMessages = () => dossierHeads?.messages(views.messages) ?? views.messages;
 // A press held down on the page: the repaints that would move the list under it wait for it to end (press-hold.mjs).
 const pressHold = new PressHold(document);
 const guide = new InteractionGuide(document);
@@ -693,8 +697,9 @@ function rechecked(session, ids, page) {
     if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error);
   });
 }
-// One attachment of a source: a button that fetches it, then shows an image
-// in place and offers the file to save. current() says the place it was
+// One attachment of a source: an existing thumbnail beside Open for a verified
+// inline image (653); Open still fetches it, shows it in place and offers the
+// file to save. The thumbnail keeps 651's new-tab act. current() says the place it was
 // offered from still shows that source; a refusal goes to notice, and an open
 // that succeeds sends notice('') to say an earlier refusal no longer holds.
 // Focus pressed onto Open moves to Download, or back to Open on a refusal,
@@ -711,7 +716,7 @@ function attachmentControl(attachment, sourceRef, current, notice) {
       const media = await api.media(bootstrap.instance_id, attachment, sourceRef);
       if (!available()) return;
       const url = URL.createObjectURL(media.blob);
-      mediaURLs.add(url); host.replaceChildren();
+      mediaURLs.add(url); host.replaceChildren(); host.classList.remove('attachment-control');
       if (media.inline) { const image = node('img'); image.alt = attachment.name; image.src = url; host.append(image); }
       const download = node('a', `Download ${attachment.name}`); download.href = url; download.download = attachment.name; host.append(download);
       notice('');
@@ -719,6 +724,20 @@ function attachmentControl(attachment, sourceRef, current, notice) {
     } catch (error) { if (available()) notice(error); }
     finally { if (show.isConnected) { show.disabled = false; if (held && unplaced()) show.focus(); } }
   }); host.append(show);
+  // Unknown/non-inline files keep Open alone. Never discover an image by
+  // speculatively reading a file; use the same verified descriptors as cards.
+  if (attachment.inline === true && ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(attachment.content_type)) {
+    host.classList.add('attachment-control'); show.classList.add('attachment-open');
+    const key = JSON.stringify(['attachment', sourceRef ?? 'own', attachment.id, attachment.sha256]);
+    paintThumb(host, key, async () => {
+      // A queued read belongs only to the control still offering this source.
+      // Open may already have replaced it, or its page may have moved on.
+      const currentImage = () => !retired && available() && show.isConnected;
+      if (!currentImage()) return null;
+      const media = await api.media(bootstrap.instance_id, attachment, sourceRef);
+      return currentImage() && media.inline ? media.blob : null;
+    });
+  }
   return host;
 }
 // One of a Notebook page's images, read through the page at ref (page-image.mjs): the Reader's and a page in place.
@@ -740,12 +759,12 @@ function sourceAttachments(presentation) {
 }
 // act: what the person's act of reading captured (Marks.capture), for a card
 // or Read it; every other open passes none and clears nothing.
-async function openSource(ref, opener, act = null) {
+async function openSource(ref, opener, act = null, mode = 'reply') {
   const request = ++opening;
   const from = registry.interactive;
   views.retain(views.currentItem, ref.kind === 'memory' ? ref.id : null);
   status('');
-  try { await marks.open(registry, ref, { topicId: topic.id, opener }, act); }
+  try { await marks.open(registry, ref, { topicId: topic.id, opener, mode }, act); }
   catch (error) {
     if (request === opening) {
       if (from?.surface !== 'inline' && registry.isCurrent(from)) reader.notice(error);
@@ -758,21 +777,39 @@ async function openSource(ref, opener, act = null) {
 // field, or the first card at the window's top edge, even at the topic's top.
 // More keeps its existing landing rule. A card no longer drawn hands the hold
 // to the next card below it. roomy gives back the room holdRoom kept.
-let roomy = null, listAnchor = null, anchorDepth = 0, anchorWatch = null, anchorActing = false;
+let roomy = null, listAnchor = null, anchorDepth = 0, anchorWatch = null, anchorActing = false, listActAnchor = null;
 const newAbove = new Set();
 let newAboveButton = null;
+// A later gesture owns its own place (including More and keyboard navigation).
+// Reads/settlement have no gesture, so keep the acted identity until then.
+for (const kind of ['pointerdown', 'keydown', 'wheel', 'touchstart']) {
+  document.addEventListener(kind, () => { listActAnchor = null; }, { capture: true, passive: true });
+}
+function actedListCard(mark) {
+  if (!mark || mark.list !== $('messages') || mark.views !== views) return null;
+  const entry = entries(mark.list).find(node => node.dataset.id === mark.id);
+  if (!entry?.isConnected || !drawn(mark.list, mark.id)) return null;
+  const section = entry.closest('.reply-stack'), card = cardIn(entry);
+  const dossier = stackState(mark.list).stacks.find(stack => stack.id === section?.dataset.stack)?.dossier;
+  if (mark.title && dossier !== mark.dossier) return null;
+  const node = mark.title ? [...(section?.querySelectorAll('.stack-rename, .stack-head') ?? [])]
+    .find(node => node.getClientRects().length) : card.getClientRects().length ? card : entry;
+  return node?.getClientRects().length && node.getBoundingClientRect().height > 0 ? { entry, node, mark } : null;
+}
 function captureListAnchor() {
   const at = document.activeElement, list = $('messages');
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
   const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
-  const first = writing || field ? null : firstInView();
+  const acted = !writing && !field ? actedListCard(listActAnchor) : null;
+  const first = writing || field || acted ? null : firstInView();
   const loading = first?.id === 'more-messages' || first?.dataset.line === 'older';
-  const anchor = writing ? inline.field : field ? at : loading ? list : first;
-  const control = anchor === list && (first.id === 'more-messages' || first.dataset.line === 'older') ? first : null;
+  const anchor = writing ? inline.field : field ? at : acted ? acted.node : loading ? list : first;
+  const control = anchor === list && (first?.id === 'more-messages' || first?.dataset.line === 'older') ? first : null;
   const cards = entries(list).filter(entry => drawn(list, entry.dataset.id));
-  const cardHold = !writing && !field && anchor !== list && list.contains(anchor);
-  const held = cardHold ? [anchor, ...cards.filter(card => anchor.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING)] : [anchor];
+  const cardHold = !writing && !field && !acted && anchor !== list && list.contains(anchor);
+  const held = acted ? cards.slice(cards.indexOf(acted.entry)) : cardHold ? [anchor, ...cards.filter(card => anchor.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING)] : [anchor];
   const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
+  if (acted) tops.set(anchor, acted.mark.top);
   // Inside a long card, hold the line crossing the edge, so an image or
   // rewrap above that line is absorbed even when the card's own top stayed.
   let point = null;
@@ -788,19 +825,21 @@ function captureListAnchor() {
   }
   const edge = control?.getBoundingClientRect().top, last = cards.at(-1), present = control ? new Set(entries(list)) : null;
   return { list, anchor, cards, held, tops, point, control, edge, last, present, y: window.scrollY,
-    height: document.documentElement.scrollHeight,
+    acted, height: document.documentElement.scrollHeight,
     newest: entries(list).reduce((seq, card) => Math.max(seq, Number(card.dataset.seq) || 0), 0) };
 }
 function restoreListAnchor(saved) {
   if (!saved || retired || !saved.list.isConnected || saved.list.hidden) return;
-  const { list, anchor, cards, held, tops, point, control, edge, last, present } = saved;
+  const { list, anchor, cards, held, tops, point, control, edge, last, present, acted } = saved;
   // Room an earlier hold kept is given back first; the hold measures without it.
   if (roomy) { roomy(); roomy = null; }
   const landed = control && last ? loadedAfter(list, present, last) : null;
   if (landed) { window.scrollBy({ top: landed.getBoundingClientRect().top - edge, behavior: 'instant' }); return; }
-  const hold = held.find(node => node?.isConnected && (cards.includes(node) ? drawn(list, node.dataset.id) : node.getClientRects().length));
+  const afterAct = acted && actedListCard(acted.mark);
+  if (acted && !afterAct && listActAnchor === acted.mark) listActAnchor = null;
+  const hold = afterAct?.node ?? held.find(node => node?.isConnected && (cards.includes(node) ? drawn(list, node.dataset.id) : node.getClientRects().length));
   const line = hold === anchor && point?.text.isConnected && point.text.data === point.words && point.range.getClientRects().length ? point : null;
-  if (hold) window.scrollBy({ top: holdRoom(list, hold, line ? line.top : tops.get(hold), line ? () => line.range.getBoundingClientRect().top : undefined), behavior: 'instant' });
+  if (hold) window.scrollBy({ top: holdRoom(list, hold, line ? line.top : tops.get(afterAct ? anchor : hold), line ? () => line.range.getBoundingClientRect().top : undefined, Boolean(afterAct)), behavior: 'instant' });
   // Older pages and the person's own writing never make this offer. Remember
   // arrivals by identity, so a later repaint or a new reply cannot lose it.
   if (saved.newest && hold?.isConnected) for (const entry of entries(list)) {
@@ -815,7 +854,18 @@ function rememberListAnchor() {
   anchorWatch?.observe();
   anchorWatch?.mutations.takeRecords();
 }
-function keepListAnchor(paint) {
+function keepListAnchor(paint, act = null) {
+  const list = $('messages');
+  if (act) {
+    const entry = entries(list).find(node => node.dataset.id === act.id);
+    listActAnchor = entry ? { list, views, id: act.id,
+      title: Boolean(act.anchor?.closest?.('.stack-tools, .stack-head')) || entry.getBoundingClientRect().height === 0,
+      dossier: stackState(list).stacks.find(stack => stack.id === entry.closest('.reply-stack')?.dataset.stack)?.dossier } : null;
+    const captured = actedListCard(listActAnchor);
+    if (captured && inView(captured.node)) listActAnchor.top = captured.node.getBoundingClientRect().top;
+    else listActAnchor = null;
+  }
+
   // Nested stack arrangements belong to the same repaint and the same hold.
   if (anchorDepth || anchorActing) return paint();
   if (anchorWatch && listAnchor?.y === window.scrollY) restoreListAnchor(listAnchor);
@@ -921,8 +971,22 @@ function watchListAnchor() {
 // sheet's --hold-room, aim.css), at the list's top for a card, or at the
 // list's end for a hold below it. The
 // next hold gives that room back, and keeps only what it needs.
-function holdRoom(list, hold, top, position = () => hold.getBoundingClientRect().top) {
+function holdRoom(list, hold, top, position = () => hold.getBoundingClientRect().top, acted = false) {
   const moved = position() - top, short = -(window.scrollY + moved);
+  // An acted card can cross More or move to either end. Supply only the
+  // scroll range missing at that end, through the same temporary-room owner.
+  if (acted) {
+    const end = Math.max(0, document.documentElement.scrollHeight - innerHeight);
+    const extra = short > 0 ? short : window.scrollY + moved - end;
+    if (extra > 0) {
+      const side = short > 0 ? 'padding-top' : 'padding-bottom';
+      const before = list.style.getPropertyValue(side), priority = list.style.getPropertyPriority(side);
+      const padding = parseFloat(getComputedStyle(list).getPropertyValue(side)) || 0;
+      list.style.setProperty(side, `${padding + extra}px`);
+      roomy = () => { if (before) list.style.setProperty(side, before, priority); else list.style.removeProperty(side); };
+    }
+    return hold.getBoundingClientRect().top - top;
+  }
   const home = $('new-message-sheet'), resting = home.parentElement === list && !home.open && home.contains(hold);
   if (!(short > 0) || !resting && !list.contains(hold) && !(list.compareDocumentPosition(hold) & Node.DOCUMENT_POSITION_FOLLOWING)) return moved;
   const [room, side] = resting ? [home, '--hold-room'] : [list, list.contains(hold) ? 'padding-top' : 'padding-bottom'];
@@ -974,9 +1038,12 @@ function paintViews(kind) {
   // All but the header and the people, which repaint in place, move the list:
   // under a press held down they wait for it to end, so the click lands where it began.
   if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }
+  if (kind === 'starred') { keepListAnchor(paintStarredStatus); return; }
   // A thumbs-up reads its message (card-reading.mjs, readNow): its card, and its stack's count of new replies, read so.
   if (kind === 'reactions') { keepListAnchor(() => { paintCardReading(); stackMessages(); menu?.paint(); }); paintReaderThumb$(); return; }
   // A star, a stack's name, a join or a place, here or on another device (stack-feed.mjs).
+  // An act changes marks/positions, not the admitted original's body. Keep
+  // its entry for the acted-card anchor; sync retires only changed membership.
   if (kind === 'acts') { keepListAnchor(() => { stackMessages(); menu?.paint(); }); return; }
   // A message edited, here or elsewhere: its card and the lines that read its words (docs/message-edit.md).
   if (kind === 'edited') { keepListAnchor(() => repaintEdited(views.takeRevised(), views.takeEdits())); return; }
@@ -1002,7 +1069,7 @@ function paintViews(kind) {
   keepListAnchor(() => {
   // Newest first, so where each new card goes is at or after where the one before it went.
   let following = $('messages').firstElementChild;
-  for (const item of kind === 'messages' ? [...views.messages.values()].sort((a, b) => b.seq - a.seq) : []) {
+  for (const item of kind === 'messages' ? [...feedMessages().values()].sort((a, b) => b.seq - a.seq) : []) {
     let card = messageEntries.get(item.id);
     if (!card) {
       const ref = { kind: 'message', id: item.id };
@@ -1053,7 +1120,7 @@ function paintViews(kind) {
     learnReply(views.messages, item, bootstrap.actor);
   }
   // The stacks are drawn with the new messages in before any of them is dealt with (stack-feed.mjs, arrived).
-  if (kind === 'messages') { feedOf().arrived([...views.messages.values()]); paintCardReading(); }
+  if (kind === 'messages') { syncDossierHeads(); feedOf().arrived([...views.messages.values()]); paintCardReading(); }
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
     let card = memoryCards.get(item.id);
     if (!card) {
@@ -1072,7 +1139,7 @@ function paintViews(kind) {
     }
     card.onclick = () => run(() => openNotebook(item.id, { opener: card }));
   }
-  if (kind === 'messages') { placeLine(); menu?.paint(); }
+  if (kind === 'messages') { placeLine(); menu?.paint(); paintDossierSourceStatus(); }
   if (kind === 'messages' && here?.page) paintConversationPage();
   });
   paintMoreMessages();
@@ -1109,21 +1176,67 @@ function actorLabel(id) {
 // conversation's included (reply-stacks.mjs). A folded stack keeps in view a
 // reply the person has not read and, in the conversation, one whose card asks
 // something of them: an item nothing has settled, or an ask waiting on them.
-function stackMessages() { feedOf().arrange(); }
+function refreshDossierHeads(id = null) {
+  if (!dossierHeads) return;
+  dossierHeads.invalidate(id);
+  syncDossierHeads();
+}
+function syncDossierHeads() {
+  if (!dossierHeads || topicUnavailable || registry?.disposed || authorityReviewPending()) return;
+  dossierHeads.sync(views.messages);
+  const messages = feedMessages();
+  for (const [id, entry] of messageEntries) if (!messages.has(id)) {
+    cardObserver?.unobserve(entry); middleObserver?.unobserve(entry);
+    entry.remove(); messageEntries.delete(id);
+  }
+}
+function stackMessages() { syncDossierHeads(); feedOf().arrange(); paintDossierSourceStatus(); }
+function paintStarredStatus() {
+  const line = $('starred-status'), words = $('starred-status-words'), retry = $('starred-retry');
+  line.hidden = topicUnavailable || authorityReviewPending() || !views.starredPending;
+  words.textContent = views.starredError ? 'Could not finish loading starred dossiers. ' : 'Loading starred dossiers…';
+  retry.hidden = !views.starredError;
+  retry.onclick = () => { views.resetStars(); freshness?.request({ retry: true }); };
+}
+// The fallback is a real canonical dossier route, guarded by the same writing
+// preservation as all other in-app links. No source body is inferred here.
+function paintDossierSourceStatus() {
+  for (const line of $('messages').querySelectorAll('.dossier-source-status')) line.remove();
+  for (const stack of stackFeed?.state.stacks ?? []) {
+    const record = dossierHeads?.records.get(stack.dossier);
+    if (!record || record.state === 'available') continue;
+    const entry = messageEntries.get(stack.id);
+    if (!entry) continue;
+    const line = node('span', undefined, 'dossier-source-status');
+    const label = stack.head.stack_position?.name?.text || 'this dossier';
+    const link = node('a', `Reply in ${label}`);
+    link.href = routeHref({ kind: 'topic', id: topic.id, message: stack.dossier });
+    link.onclick = event => { event.preventDefault(); event.stopPropagation(); run(() => openSource({ kind: 'message', id: stack.dossier }, link)); };
+    const words = { loading: 'Loading first message… ', error: 'Could not load first message. ', refused: 'First message unavailable. ', missing: 'First message unavailable. ' };
+    line.append(node('span', words[record.state]));
+    if (record.state !== 'loading') line.append(link);
+    if (record.state === 'error') {
+      const retry = node('button', 'Retry'); retry.type = 'button';
+      retry.onclick = event => { event.stopPropagation(); refreshDossierHeads(stack.dossier); stackMessages(); };
+      line.append(retry);
+    }
+    cardIn(entry).prepend(line);
+  }
+}
 // The page's reply stacks and what the person does to them, made with the first messages.
 function feedOf() {
-  stackFeed ??= new StackFeed({ list: $('messages'), messages: () => views.messages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
+  stackFeed ??= new StackFeed({ list: $('messages'), messages: feedMessages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
     authority: () => registry.runtime.current,
     // The page's own act, once Core answers it, tells the Reader's neighbours whether it could have moved them (item 426).
     send: async envelope => { const receipt = await api.command(envelope); if (receipt?.status === 'committed') views.ownAct(envelope.kind, receipt.result); return receipt; },
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
-    hold: paint => keepListAnchor(paint), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
+    hold: (paint, act) => keepListAnchor(paint, act), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); }, home: $('new-message-sheet'),
     // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
     // On a phone its menu offers the title bar's Reply and Move below More first, as the glyphs fold into it (first).
-    menu: (item, anchor, first = []) => openMessageMenu({ anchor, items: [...first, ...messageMenuItems(item, null, anchor)], label: 'This message', sheet: true }),
+    menu: (item, anchor, first = []) => openMessageMenu({ anchor, items: [...cardMenuActs(item, first, anchor), ...messageMenuItems(item, null, anchor)], label: 'This message', sheet: true }),
     // A dossier's folder wears its first poster's colour, as their cards do: an agent's, in the reader's colours (item 477).
     colorOf: item => (item.author_kind === 'agent' && item.author_id !== bootstrap.actor ? agentShown(item.author_id) : null) });
   return stackFeed;
@@ -1138,6 +1251,7 @@ function feedOf() {
 function drawFeed(on, ...parts) {
   const sheet = $('new-message-sheet'), inFeed = $('messages').contains(sheet);
   for (const id of ['messages', 'notebook', 'topic-people', ...parts]) $(id).hidden = !on;
+  if (on) paintStarredStatus(); else $('starred-status').hidden = true;
   if (on === inFeed) return;
   if (!on && sheet.open) sheet.close();
   if (stackFeed) stackFeed.arrange(); else if (!on) $('main').append(sheet);
@@ -1164,6 +1278,9 @@ function paintCardReading() {
     entry.dataset.talk = quiet ? 'agents' : '';
     paintReading(card, item, { read: cardRead(item), quiet, go: goToMessage });
     paintAwaiting(card, item);
+    // The shortcut is the card's last act, after its words and controls.
+    paintNoteCorner(card, item, (id, opener) => run(() =>
+      openSource({ kind: 'message', id }, opener, marks.capture(id), 'note')));
   }
 }
 // A message the page shows, brought into view: its stack opened first when it
@@ -1176,6 +1293,33 @@ function landOn(id, { full = false } = {}) {
   card.scrollIntoView({ block: 'nearest' });
   rememberListAnchor();
   return card;
+}
+// A rail landing can name a card outside the loaded page. Read only its
+// anchored page, preserving the paging gap, without presenting a Reader.
+let landingSerial = 0;
+async function landOnMessage(id, serial = ++landingSerial) {
+  const accessEpoch = listAccessEpoch, generation = registry.generation;
+  const mine = () => !retired && !registry.disposed && !topicUnavailable &&
+    accessEpoch === listAccessEpoch && serial === landingSerial && generation === registry.generation;
+  if (!mine()) return;
+  if (!views.messages.has(id)) {
+    const foreground = registry.cleanup.foreground();
+    try {
+      const source = checkedView(await foreground.read(options => api.view('source', { kind: 'message', id }, options)), bootstrap.instance_id);
+      if (!mine()) return;
+      if (source.source_ref?.kind !== 'message' || source.source_ref.id !== id || source.topic_id !== topic.id ||
+          !Number.isSafeInteger(source.seq) || source.seq < 1) throw Error('This message could not be found in this topic.');
+      const cursor = source.seq + 1;
+      const page = checkedView(await foreground.read(options => api.view('topic_messages', { topic_id: topic.id, audience: 'all', direction: 'before', cursor, limit: 30 }, options)), bootstrap.instance_id);
+      if (!mine()) return;
+      views.messagesPage(page, { anchored: true, cursor });
+    } finally { foreground.release(); }
+  }
+  if (!mine()) return;
+  if (here?.page && here.onlyNew) { here.onlyNew = false; paintConversationPage(); }
+  const card = landOn(id, { full: true });
+  if (!card) throw Error('This message could not be shown. Try its link again.');
+  card.focus({ preventScroll: true });
 }
 // A message a link on the page names (the person's reply, or a tag's), opened
 // in the Reader from its card, landed on first; one not loaded opens alone.
@@ -1577,12 +1721,24 @@ async function toggleMark() {
 function openMessageMore(item, more) {
   openMessageMenu({ anchor: more, items: messageMenuItems(item, more, more), label: 'This message', sheet: true });
 }
+// Capture before any menu callback mutates pending acts, folds or content.
+// Include the title bar's phone-only items and the second Move or join sheet.
+function cardMenuActs(item, items, anchor) {
+  const feed = stackFeed;
+  return feed ? items.map(choice => ({ ...choice, act: () => {
+    const result = feed.cardAct(item.id, choice.act, anchor), mark = listActAnchor;
+    // Show full message can grow/scroll the card after its source read.
+    // A later gesture or another act makes this completion obsolete.
+    if (result?.finally) return result.finally(() => { if (mark && listActAnchor === mark && actedListCard(mark)) keepListAnchor(() => {}); });
+    return result;
+  } })) : items;
+}
 // say: the ⋯ that says "Link copied", or null where none shows. anchor: what
 // the menu opened from, where a phone's "Move or join…" sheet opens too.
 // What the message's stack offers comes first, its moves and joins last (stack-feed.mjs).
 function messageMenuItems(item, say, anchor = say) {
   const phone = Boolean(window.matchMedia?.('(max-width: 760px)').matches);
-  const stack = stackFeed && !topicUnavailable ? stackFeed.menuItems(item, { phone, more: moves => anchor && openMessageMenu({ anchor, items: moves, label: 'Move or join', sheet: true }) }) : { first: [], last: [] };
+  const stack = stackFeed && !topicUnavailable ? stackFeed.menuItems(item, { phone, more: moves => anchor && openMessageMenu({ anchor, items: cardMenuActs(item, moves, anchor), label: 'Move or join', sheet: true }) }) : { first: [], last: [] };
   const items = [...stack.first, { label: 'Copy Link', glyph: 'link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
   const card = cardIn(messageEntries.get(item.id));
   if (cardScroll?.clipped(card, item)) items.push({ label: 'Show full message', glyph: 'full', act: () => run(() => cardScroll.showFull(card, item)) });
@@ -1592,7 +1748,7 @@ function messageMenuItems(item, say, anchor = say) {
     const marked = marks.state(item.id)?.marked === true;
     items.push({ label: marked ? 'Mark read' : 'Mark unread', glyph: marked ? 'read' : 'unread', act: () => run(() => markFromMenu(item.id, !marked)) });
   }
-  return [...items, ...stack.last];
+  return cardMenuActs(item, [...items, ...stack.last], anchor);
 }
 // A right-click on a message opens the same menu where the pointer is. On a
 // link or a selection the browser's own menu stays, to copy what it offers.
@@ -1767,6 +1923,7 @@ function finishEdit(session, state) {
 // unless it is editing that very message: then its next Save is a conflict.
 async function messageEdited(key, version, read, current) {
   const id = key.slice(5);
+  refreshDossierHeads(id);
   // The rails beside the page keep a topic's newest messages by its version, which an edit does not move.
   shell.messageEdited(id);
   const done = await views.refresh(key, version, read, current);
@@ -1956,7 +2113,7 @@ function revisionOffer(presentation) {
   } };
 }
 function updateStatus(state) {
-  if (state.kind === 'authority') ++listAccessEpoch;
+  if (state.kind === 'authority') { ++listAccessEpoch; dossierHeads?.invalidate(); views?.resetStars(); }
   updateState = state;
   const quiet = state.kind === 'current' || state.kind === 'defer';
   $('updates-status').hidden = quiet;
@@ -1972,8 +2129,11 @@ function updateStatus(state) {
   if (state.kind === 'reconnect') run(reconnect);
 }
 async function checkAvailability(read, current, topicDenied = true) {
+  dossierHeads?.invalidate();
+  views.resetStars();
   if (topicDenied) {
     topicUnavailable = true; ++listAccessEpoch;
+    dossierHeads?.invalidate();
     drawFeed(false);
     // Nor the pictures of its messages (card-images.mjs).
     dropCardImages($('messages'));
@@ -2141,6 +2301,8 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
     rebuild: async (_read, current) => { if (current()) for (const item of views.refreshKeys()) freshness.invalidate(item.key, item.version, true); },
     refresh: async (key, version, read, current) => {
       if (key === 'availability') { await checkAvailability(read, current, false); return true; }
+      if (key === 'starred') return views.readStarred(read, () => current() && !topicUnavailable && !authorityReviewPending());
+      if (key === 'acts' || key === 'topic') views.resetStars();
       if (key.startsWith('edit:')) return messageEdited(key, version, read, current);
       // The edit session of one of the person's messages moved (docs/message-edit.md): another device may have taken it.
       if (key.startsWith('edit_session:')) { if (messageEdit?.id === key.slice(13)) messageEdit.writing.sessionChanged(version); return true; }
@@ -2172,6 +2334,7 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
   });
   document.addEventListener('visibilitychange', () => freshness.setVisible(document.visibilityState === 'visible'));
   window.addEventListener('online', () => { if (document.visibilityState === 'visible') freshness.request(); topicState?.reconnected(); });
+  views.resetStars();
   freshness.setVisible(document.visibilityState === 'visible');
 }
 // What could not be done for want of Theseus is done again once Theseus has
@@ -2283,6 +2446,7 @@ async function initialize() {
   let topicId = route.id;
   // A message's link names the message to open once the page is up (docs/links.md).
   const anchored = route.kind === 'topic' ? route.message ?? null : null;
+  const anchoredLand = route.land === true;
   // So does a Notebook page's link, the page and perhaps its revision.
   const pageAnchor = route.kind === 'topic' && route.page ? { id: route.page, revision: route.revision ?? null } : null;
   // A topic's unread count opens it at its oldest unread message (item 613).
@@ -2303,8 +2467,13 @@ async function initialize() {
   const checkpoint = await initialViews({ api, bootstrap, topicId, load: async () => {} });
   const actorCheckpoint = await actorBaseline({ api, bootstrap });
   // The conversation's own items hold messages' words too (followEdits): an edit of one of them, or of one a reply among them answers, is read.
-  const holds = id => Boolean(here?.items.has(id) || [...(here?.items.values() ?? [])].some(item => item.reply_to === id));
-  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version, force) => freshness?.invalidate(key, version, force), holds, reading });
+  const holds = id => Boolean(dossierHeads?.records.has(id) || here?.items.has(id) || [...(here?.items.values() ?? [])].some(item => item.reply_to === id));
+  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version, force) => freshness?.invalidate(key, version, force), holds, reading, actMessages: feedMessages });
+  const headViews = views;
+  dossierHeads = new DossierHeads({ topicId,
+    read: (name, args) => api.view(name, args, { readClass: 'background' }).then(answer => checkedView(answer, bootstrap.instance_id)),
+    current: () => views === headViews && !registry?.disposed && !topicUnavailable && !authorityReviewPending(),
+    changed: () => keepListAnchor(() => paintViews('messages')) });
   const result = validate(await api.view('topic', { topic_id: topicId })); topic = result.topic;
   views.topic = topic; views.participants = result.participants;
   if (topic.id !== topicId) throw Error('The topic identity could not be confirmed.');
@@ -2519,7 +2688,12 @@ async function initialize() {
     const copied = known !== undefined ? copyText(known) : cardScroll.whole(item.id, 'foreground').then(body => copyText(body), () => false);
     copied.then(done => { if (!done) status(COPY_REFUSED); });
   };
-  menu = new MessageMenu({ host: $('messages'), item: id => views.messages.get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
+  new DossierSelectionQuote({ host: $('messages'), template: $('quote-selection'),
+    entryOf: target => menu?.entryOf(target), selected: entry => menu?.passages.selected(entry),
+    eligible: (id, entry) => !retired && !topicUnavailable && !authorityReviewPending() && !registry.disposed &&
+      !freshness?.stopped && views.messages.has(id) && messageEntries.get(id) === entry && drawn($('messages'), id),
+    quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)) });
+  menu = new MessageMenu({ host: $('messages'), item: id => feedMessages().get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
     reply: (id, card) => run(() => replyMessage(id, card)),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)),
     // A thumbs-up on a reply deals with its stack up to it (stack-feed.mjs).
@@ -2660,8 +2834,11 @@ async function initialize() {
   // The older pages begin only after that baseline, as on a card already shown.
   if (atUnread) run(() => firstReading.then(landOnUnread));
   if (anchored) {
-    const card = landOn(anchored);
-    run(async () => { await openSource({ kind: 'message', id: anchored }, card ?? $('main')); if (notebookReturning()) notebookSheetOf().resume(); });
+    if (anchoredLand) run(() => landOnMessage(anchored));
+    else {
+      const card = landOn(anchored);
+      run(async () => { await openSource({ kind: 'message', id: anchored }, card ?? $('main')); if (notebookReturning()) notebookSheetOf().resume(); });
+    }
   } else if (!pageAnchor && notebookReturning()) {
     // Back from a card's reply stack in another topic, by the way back its Reader showed (notebook-sheet.mjs).
     notebookSheetOf().resume();
@@ -2949,12 +3126,12 @@ function topicName(id) {
 nameTopicsWith(topicName);
 // from: the link pressed, which takes the focus back when the Reader closes.
 async function openDestination(target, title, from = null) {
+  const landing = ++landingSerial;
   // A link to a message in the open topic opens it in the Reader, here.
   if (target.kind === 'topic' && target.message && topic && views && target.id === topic.id) {
-    // A message the page shows is landed on first, its stack opened; the
-    // rail's Starred lands on it and opens nothing more.
-    const card = landOn(target.message, { full: target.land === true });
-    if (card && target.land) { card.focus({ preventScroll: true }); return; }
+    if (target.land === true) return run(() => landOnMessage(target.message, landing));
+    // Ordinary message links keep their Reader-opening behavior.
+    landOn(target.message);
     // From the Reader's own text, closing gives the focus to what opened the Reader.
     const opener = from?.closest?.('dialog') ? registry.current?.opener : from;
     return run(() => openSource({ kind: 'message', id: target.message }, opener?.isConnected ? opener : document.activeElement));
