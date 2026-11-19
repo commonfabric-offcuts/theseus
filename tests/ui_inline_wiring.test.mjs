@@ -66,7 +66,14 @@ function loadPageScope(context, root) {
   };
   want(root);
   for (const file of order) {
-    const body = webSource(file).replace(/^import [^;]*;\n/gm, '').replace(/^export (?=(const|let|class|function|async function) )/gm, '');
+    const source = webSource(file);
+    // ES module imports are lexical bindings. Capture them before app.mjs
+    // introduces a same-named local (for example its own paintMarks), so an
+    // imported card renderer still calls topic-navigation's paintMarks.
+    const imports = [...source.matchAll(IMPORTS)].flatMap(([, clause]) => clause.startsWith('* as ')
+      ? [clause.slice(5)] : clause.slice(1, -1).split(',').map(s => s.trim()).filter(Boolean).map(entry => entry.split(/\s+as\s+/).at(-1)));
+    const body = (imports.length ? `const { ${imports.join(', ')} } = globalThis;\n` : '')
+      + source.replace(/^import [^;]*;\n/gm, '').replace(/^export (?=(const|let|class|function|async function) )/gm, '');
     const exports = [...webSource(file).matchAll(/^export (?:const|let|class|function|async function) ([\w$]+)/gm)].map(match => match[1]);
     const names = [...wanted.get(file)].map(([alias, name]) => name === '*' ? alias + ': Object.freeze({ ' + exports.join(', ') + ' })' : alias === name ? name : alias + ': ' + name);
     vm.runInContext('Object.assign(globalThis, (() => {\n' + body + '\nreturn { ' + names.join(', ') + ' }; })())', context, { filename: file });
@@ -106,6 +113,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     get ownerDocument() { return this.owner ?? document; }
     set ownerDocument(value) { this.owner = value; }
     get firstElementChild() { return this.children[0]; }
+    get firstChild() { return this.children[0] ?? null; }
     // What a panel's in-place repaint (web/repaint.mjs) walks; this fixture keeps no attribute list to carry.
     get nodeType() { return 1; }
     get childNodes() { return this.children; }
@@ -145,7 +153,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
       const order = [], walk = node => { order.push(node); for (const child of node.children ?? []) walk(child); }; walk(root);
       const at = order.indexOf(other); return at < 0 ? 1 : at > order.indexOf(this) ? 4 : 2;
     }
-    closest(selector) { for (let at = this; at; at = at.parent) if (selector.startsWith('.') && String(at.className ?? '').split(' ').includes(selector.slice(1))) return at; return null; }
+    closest(selector) { for (let at = this; at; at = at.parent) if (selector.startsWith('.') && isStep(at, selector)) return at; return null; }
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
     // Where it is on screen: wholly in view, unless a check places it (box).
     getBoundingClientRect() {
@@ -159,9 +167,13 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     replaceWith(next) { if (this.parent) { this.parent.insertBefore(next, this); this.remove(); } }
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
-  // One step of a selector: [data-name], or a tag, a .class or both (tag.class).
+  // One step of a selector: a tag or classes, optionally with [data-name].
   const isStep = (el, step) => {
-    if (step.startsWith('[data-')) return el.dataset[step.slice(6, -1).replace(/-(.)/g, (_, c) => c.toUpperCase())] !== undefined;
+    const data = step.match(/\[data-([\w-]+)\]$/);
+    if (data) {
+      if (el.dataset[data[1].replace(/-(.)/g, (_, c) => c.toUpperCase())] === undefined) return false;
+      step = step.slice(0, -data[0].length);
+    }
     const [tag, ...classes] = step.split('.'), names = String(el.className ?? '').split(' ');
     return (tag === '' || el.tagName === tag.toUpperCase()) && classes.every(name => names.includes(name));
   };
@@ -267,6 +279,23 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   return { ...context.wiring, runObservation: source => vm.runInContext(source, context), makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap, views, document, observers, days };
 }
 
+// Outcome cards are a projection of the shell's real outline owner. Mount
+// that owner beside the actual app initializer for the checks which follow
+// its reads; the generic inline fixture otherwise mounts no shell rail.
+function mountOutcomeOutline(f) {
+  f.get('new-message').append(f.document.createElementNS('http://www.w3.org/2000/svg', 'svg'));
+  f.get('topic-navigation').append(f.get('topics'), f.get('topics-status'), f.get('retry-topics'));
+  return f.runObservation(`(() => {
+    const outline = new OutlineRail({ host: document.getElementById('outline'),
+      read: (name, args, readClass) => shell.view(name, args, readClass),
+      open: (target, title) => shell.open(target, title) });
+    shell.follow(outline);
+    return outline;
+  })()`);
+}
+const outcomeCards = f => walk(f.get('topic-navigation')).filter(node => node.classList?.contains('outcome-topic-card'));
+const outcomeCardTitles = f => outcomeCards(f).map(card => card.children[0].textContent);
+
 test('the inline fixture reveals an offscreen card through real window and scroller geometry', () => {
   const geometryTolerance = .5;
   for (const scroller of [false, true]) {
@@ -308,6 +337,7 @@ const commit = async (live, seq) => { live.emit({ kind: 'commit', seq }); await 
 
 test('outcome detail keeps transient choices, hides denied content, and recovers on the next commit', async () => {
   const f = fixture('https://fixture/?workspace=w1'), live = stream();
+  mountOutcomeOutline(f);
   f.inject({ api:f.api, bootstrap:f.bootstrap }); f.useLive(live);
   let failure = null;
   f.api.view = async name => {
@@ -317,16 +347,19 @@ test('outcome detail keeps transient choices, hides denied content, and recovers
     }
     return {instance_id:'fixture',items:name==='workspace_topics'?[{...f.topic,activity_ms:1,list_position:1}]:[],next_cursor:null};
   };
-  await f.initialize();
+  await f.initialize(); await drain();
   assert.equal(f.get('topic-title').textContent,'Real outcome');
-  assert.equal(f.get('topics').children.length,1);
+  assert.equal(f.get('topics').hidden,true,'the retired page topic list is hidden');
+  assert.deepEqual(outcomeCardTitles(f),['Fixture'],'the shared outline supplies the visible card');
   failure = Object.assign(Error('Temporarily offline'),{code:'DATABASE_BUSY'});
   await commit(live, 2);
   assert.equal(f.get('topic-navigation').hidden,false);
   assert.equal(f.get('topic-title').textContent,'Real outcome');
+  assert.deepEqual(outcomeCardTitles(f),['Fixture'],'a transient failure preserves readable cards');
   failure = Object.assign(Error('Access denied'),{code:'FORBIDDEN'});
   await commit(live, 3);
   assert.equal(f.get('topic-navigation').hidden,true,'confirmed denial removes stale topic choices');
+  assert.deepEqual(outcomeCards(f),[],'the outline publishes no cards while the outcome is denied');
   assert.equal(f.get('topic-title').textContent,'Outcome unavailable');
   assert.equal(f.get('topic-description').textContent,'');
   assert.equal(f.get('app-status').hidden,false);
@@ -334,6 +367,7 @@ test('outcome detail keeps transient choices, hides denied content, and recovers
   assert.equal(f.get('topic-navigation').hidden,false);
   assert.equal(f.get('topic-title').textContent,'Real outcome');
   assert.equal(f.get('app-status').hidden,true);
+  assert.deepEqual(outcomeCardTitles(f),['Fixture'],'the recovered outline supplies the card again');
 });
 
 // Back from a refusal, the outcome's page comes back whole: its topics show
@@ -2275,12 +2309,13 @@ test('an outcome\'s owner changes its team on the outcome page; the owner cannot
   assert.deepEqual(sentOf(f, 'workspace.member_set', 'workspace_revision'),
     [[5, { actor_id: 'tony', present: true }], [6, { actor_id: 'ally', present: false }], [7, { actor_id: 'ally', present: false }]]);
   assert.deepEqual(f.pickers.members.map(row => row.actor_id), ['fixture-person', 'tony']);
-  assert.deepEqual(walk(team).filter(node => node.className === 'chip').map(node => node.children[0].textContent), ['Fixture', 'tony'], 'the panel shows the reread team');
+  const people = () => walk(team).filter(node => node.classList?.contains('person-pill')).map(node => node.children[0].textContent);
+  assert.deepEqual(people(), ['Fixture', 'tony'], 'the shared participant pills show the reread team');
 
   // A team that cannot be read keeps the chips it had and says so.
   f.pickers.membersRefused = true;
   await commit(f.live, 2);
-  assert.deepEqual(walk(team).filter(node => node.className === 'chip').map(node => node.children[0].textContent), ['Fixture', 'tony']);
+  assert.deepEqual(people(), ['Fixture', 'tony']);
   assert.match(walk(team).find(node => node.className === 'notice').textContent, /^The team could not be read/);
 
   // Someone else's commit: the page rereads the outcome, so its revision and team stay current.
@@ -2771,22 +2806,33 @@ test('a commit while a reload reads the outcomes is read after it, and a failed 
 
 // The outcome body's list read serves Also waiting; the shell separately owns
 // the visible outline. The main column does not show the old outcomes list.
-test('on an outcome page a commit reads the outcome, its topics and, for the line of other outcomes\' questions, the list of outcomes it never shows', async () => {
-  const f = fixture('https://fixture/?workspace=w1'), live = stream(), o = outcomesPage(f);
+test('on an outcome page a commit refreshes the shared outline and republishes its cards beside the other outcome reads', async () => {
+  const f = fixture('https://fixture/?workspace=w1'), live = stream(), outline = mountOutcomeOutline(f);
   f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
-  o.answers.push(o.page(['w1']), o.page(['w1', 'w2']));
+  const view = f.api.view;
+  let title = 'Before the commit';
+  f.api.view = async (name, args, options) => {
+    if (name === 'workspace') { f.calls.push({ name, args }); return { instance_id: 'fixture', workspace: { id: 'w1', title: 'Outcome', owner_id: 'fixture-person', version: 1 } }; }
+    if (name === 'workspaces') { f.calls.push({ name, args }); return { instance_id: 'fixture', items: [{ id: 'w1', title: 'Outcome', title_truncated: false, owner_id: 'fixture-person', version: 1 }], next_cursor: null }; }
+    if (name === 'workspace_topics') { f.calls.push({ name, args }); return { instance_id: 'fixture', items: [{ ...f.topic, title, list_position: 1, activity_ms: 1 }], next_cursor: null }; }
+    return view(name, args, options);
+  };
   await f.initialize(); await drain();
   const count = name => f.calls.filter(call => call.name === name).length;
   const before = { workspaces: count('workspaces'), workspace: count('workspace'), topics: count('workspace_topics') };
-  assert.equal(before.workspaces, 1, 'the page reads the list of outcomes once as it opens');
+  assert.equal(before.topics, 1, 'only the outline owns the outcome topic read');
+  assert.deepEqual(outcomeCardTitles(f), ['Before the commit']);
+  title = 'After the commit';
   live.emit({ kind: 'commit', seq: 9 }); await drain();
   assert.deepEqual({ workspaces: count('workspaces'), workspace: count('workspace'), topics: count('workspace_topics') },
-    { workspaces: before.workspaces + 1, workspace: before.workspace + 1, topics: before.topics + 1 });
+    { workspaces: before.workspaces + 2, workspace: before.workspace + 1, topics: before.topics + 1 });
+  assert.equal(outline.outcomes.get('w1').rail.pages.items[0].title, title);
+  assert.deepEqual(outcomeCardTitles(f), ['After the commit'], 'the outline republishes its new state to the cards');
   assert.equal(f.get('rail').hidden, false, 'the outcome page keeps the shared rail');
   assert.equal(f.get('outcome-navigation').hidden, true, 'and shows no list of outcomes');
   f.document.visibilityState = 'hidden';
   live.emit({ kind: 'commit', seq: 10 }); await drain();
-  assert.deepEqual([count('workspaces'), count('workspace_topics')], [before.workspaces + 1, before.topics + 1], 'a hidden page waits');
+  assert.deepEqual([count('workspaces'), count('workspace_topics')], [before.workspaces + 2, before.topics + 1], 'a hidden page waits');
 });
 
 // The outcome page with the light and the Also-waiting line together. The
@@ -2942,7 +2988,9 @@ test('a commit\'s rail reload leaves a freshness pass already reading alone', as
 // them: anything saved while it was down changes its first number, which comes
 // as a commit. A topic's page lists no outcome Notebook (item 464); its own
 // Notebook is read with the topic's changes.
-for (const [route, lists] of [['?', ['workspaces']], ['?workspace=w1', ['workspace', 'workspace_topics']], ['?topic=t1', ['workspace_topics']]]) {
+// Outcome topic failures belong to the shell outline, exercised below; the
+// outcome body's reconnect still owes its own failed workspace read.
+for (const [route, lists] of [['?', ['workspaces']], ['?workspace=w1', ['workspace']], ['?topic=t1', ['workspace_topics']]]) {
   test(`the stream coming back rereads the lists on ${route} only after a reload that failed`, async () => {
     const f = fixture('https://fixture/' + route), live = stream(), failing = new Set();
     if (route !== '?topic=t1') f.inject({ api: f.api, bootstrap: f.bootstrap });
@@ -2968,6 +3016,51 @@ for (const [route, lists] of [['?', ['workspaces']], ['?workspace=w1', ['workspa
     }
   });
 }
+
+test('847 the outline republishes failed topic reads, reconnect recovery and Retry to the outcome cards', async () => {
+  const f = fixture('https://fixture/?workspace=w1'), live = stream(), outline = mountOutcomeOutline(f);
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
+  const view = f.api.view, opened = [];
+  let failure = null, title = 'Before disconnection';
+  outline.open = (target, label) => opened.push({ target, label });
+  f.api.view = async (name, args, options) => {
+    if (name === 'workspace') { f.calls.push({ name, args }); return { instance_id: 'fixture', workspace: { id: 'w1', title: 'Outcome', owner_id: 'fixture-person', version: 1 } }; }
+    if (name === 'workspace_topics') {
+      f.calls.push({ name, args }); if (failure) throw failure;
+      return { instance_id: 'fixture', items: [{ ...f.topic, title, unread: 2,
+        asks: [{ actor_id: 'fixture-person', message_id: 'q1' }], list_position: 1, activity_ms: 1 }], next_cursor: null };
+    }
+    return view(name, args, options);
+  };
+  await f.initialize(); await drain();
+  const cardsHost = () => f.get('topic-navigation').children.find(node => node.className === 'outcome-topic-cards');
+  const notice = () => cardsHost().children.find(node => node.className === 'notice');
+  const retry = () => cardsHost().children.find(node => node.textContent === 'Retry topics');
+  const reads = () => f.calls.filter(call => call.name === 'workspace_topics').length;
+  assert.deepEqual(outcomeCardTitles(f), ['Before disconnection']);
+  failure = Object.assign(Error('This read could not enter its bounded lane.'), { status: 503 });
+  await commit(live, 20);
+  assert.deepEqual(outcomeCardTitles(f), ['Before disconnection'], 'a transient failure keeps the readable card');
+  assert.equal(notice().hidden, false); assert.match(notice().textContent, /bounded lane/);
+  assert.equal(retry().hidden, false, 'the cards expose the outline retry');
+  failure = null; title = 'Recovered on reconnect'; const before = reads();
+  live.emit({ kind: 'state', state: 'down' }); live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.equal(reads(), before + 1, 'the outline rereads on reconnect');
+  assert.deepEqual(outcomeCardTitles(f), ['Recovered on reconnect'], 'reconnect republishes the recovered cards');
+  assert.equal(notice().hidden, true); assert.equal(retry().hidden, true);
+  failure = Object.assign(Error('Busy again'), { status: 503 }); await commit(live, 21);
+  assert.equal(retry().hidden, false);
+  failure = null; title = 'Recovered by Retry'; await retry().onclick(); await drain();
+  assert.deepEqual(outcomeCardTitles(f), ['Recovered by Retry']);
+  assert.equal(notice().hidden, true); assert.equal(retry().hidden, true);
+  const card = outcomeCards(f)[0], unread = walk(card).find(node => node.classList?.contains('unread-count'));
+  assert.ok(unread, 'the actual card carries its unread count');
+  assert.equal(unread.dataset.lands, 'unread');
+  card.onclick({ button: 0, target: card, preventDefault() {} });
+  card.onclick({ button: 0, target: unread, preventDefault() {} });
+  assert.deepEqual(JSON.parse(JSON.stringify(opened.map(row => row.target))),
+    [{ kind: 'topic', id: 't1', message: 'q1' }, { kind: 'topic', id: 't1', at: 'unread' }], 'question and unread navigation use the outline activation');
+});
 
 test('a New line read that failed after a commit is read again when the stream returns, and only then', async () => {
   const f = fixture('https://fixture/?topic=t1'), live = stream();
@@ -3449,12 +3542,13 @@ test('the New message composer rests just above More, under the last message sho
   const add = seq => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', author_kind: 'agent', body: 'Body ' + seq, topic_id: 't1' });
   add(1); add(2); add(3);
   f.paintViews('messages');
-  const order = () => f.get('messages').children.map(singleEntry).map(child => child === f.get('new-message-sheet') ? 'composer' : child.className === 'stack-more' ? 'More' : child.dataset.id);
+  const order = () => f.get('messages').children.map(singleEntry).map(child => child === f.get('new-message-sheet') ? 'composer' : child.className === 'stack-controls' ? 'More' : child.dataset.id);
   assert.deepEqual(order(), ['m3', 'm2', 'm1', 'composer'], 'under the last message, with nothing below More');
   // m2 put below More: the composer stays above More, under m1.
   f.views.messages.get('m2').stack_position = { root_id: 'm2', through: 2, aside_revision: 1, below: true, at: { messages: 2, acts: 1 } };
   f.paintViews('acts');
   assert.deepEqual(order(), ['m3', 'm1', 'composer', 'More', 'm2'], 'between the last message above More and the More line');
+  assert.equal(f.get('messages').querySelector(':scope > .stack-controls > .stack-more').textContent, 'Archived (1)');
 });
 
 test('your own message keeps its own style when it arrives live and when More loads it, among agents\' colors', async () => {
@@ -3719,8 +3813,9 @@ test('on an outcome page its Notebook pages precede its topics and read again wi
   o.answers.push(o.page(['w1']), o.page(['w1']));
   await f.initialize(); await drain();
   const page = f.get('outcome-page').children.map(child => child.id);
-  assert.ok(page.indexOf('topic-navigation') === page.indexOf('outcome-references') + 2, 'Notebook and its open page precede topics: ' + page);
-  assert.ok(page.indexOf('page-here') === page.indexOf('outcome-references') + 1, 'and the page that opens in place after them');
+  assert.deepEqual(page.slice(page.indexOf('outcome-references'), page.indexOf('topic-navigation') + 1),
+    ['outcome-references', 'outcome-team', 'page-here', 'topic-navigation'], 'Notebook, Team and the open page precede the topic cards');
+  assert.ok(f.get('topic-navigation').children.some(node => node.className === 'outcome-topic-cards'));
   const pages = () => JSON.parse(JSON.stringify(f.calls.filter(call => call.name === 'memory_items').map(call => call.args.owner_scope)));
   assert.deepEqual(pages(), [{ kind: 'workspace', id: 'w1' }]);
   live.emit({ kind: 'commit', seq: 9 }); await drain();

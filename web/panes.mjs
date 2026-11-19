@@ -46,7 +46,8 @@ export function feedStop(doc, { first = false } = {}) {
 // settings, New message and the rest drawn there; on a phone the line under it
 // saying what is new in the other outcomes (outline-rail.mjs), a row of its
 // own; then the row of view filters just over the messages ("Read it", Only
-// new, Show agent coordination). A row with none shown is left out. The
+// new). Agent coordination shares the Archived row within the feed (467).
+// A row with none shown is left out. The
 // filters were once nobody's, so the keys on one, reached by Tab or a click,
 // moved nothing (item 403); as a row of these the keys leave them like any
 // other: ↑ and ↓ go from row to row, and pass over none of them (item 301).
@@ -113,7 +114,8 @@ export const inMessages = (at, doc) => Boolean(doc.getElementById('messages')?.c
 // along that row to the nearest control that way (arrow-reach.mjs): from ⋯ to Move below More, Reply and the chevron;
 // past its end, on to the pane beside, as from the messages.
 export const onTitleBar = at => Boolean(at?.closest?.('.reply-stack > .stack-tools'));
-export const messagesSideways = (at, doc) => inMessages(at, doc) && !onTitleBar(at);
+export const onStackControls = at => Boolean(at?.closest?.('.stack-controls'));
+export const messagesSideways = (at, doc) => inMessages(at, doc) && !onTitleBar(at) && !onStackControls(at);
 
 // Whether the keys are in the feed: on a message, or on the page itself (pane-keys.mjs).
 export function inFeed(doc) {
@@ -174,6 +176,11 @@ export function feedKey(event, doc, navigate = () => {}) {
     }
     else if (!inFeed(doc)) return false;
     // ← and → from the messages, or the page itself, go on to the pane beside; on a title bar's glyphs, along its row.
+    else if ((action === 'left' || action === 'right') && onStackControls(doc.activeElement)) {
+      const buttons = [...doc.activeElement.closest('.stack-controls').querySelectorAll('button')].filter(button => !button.disabled && shown(button));
+      const next = buttons[buttons.indexOf(doc.activeElement) + (action === 'right' ? 1 : -1)];
+      moved = next ? reach(next, readingDestination) : panes.step('feed', action, doc, readingDestination);
+    }
     else if (action === 'left' || action === 'right') moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc, readingDestination);
     else if (action === 'up' && rows.length && atTop(doc)) moved = reach(landing(rows[rows.length - 1]), readingDestination);
   }

@@ -308,8 +308,9 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   header's buttons (Rename topic where permitted, Topic settings, New message, the Team's pills and "+ Add",
   and the others drawn there, such as "Pipeline & pages" below 1181px), on a phone the line under the
   header saying what is new in the other outcomes, and under them the view filters
-  in the row just over the messages ("Read it", Only new, Show agent
-  coordination), when any of those shows. ↑ on the message at the top of the
+  in the row just over the messages ("Read it", Only new), when any shows.
+  Show agent coordination shares the Archived row below the composer (467):
+  ←/→ move between its buttons and ↑/↓ leave it. ↑ on the message at the top of the
   feed moves the keys onto the row just above it, the filters' when they
   show, else the header's, with the keys' ring on the button they are on.
   ↑ from the filters goes on up to the header's buttons, and ↑ there, the
@@ -642,10 +643,11 @@ puts the focus on the page reached, …"; the steps the arrows take: "rail → o
 open outcome goes into the messages, …" and "rail in the right rail → and ←
 open and fold a section without ⌘: …"; the header's buttons: "rail ↑ from
 the top message reaches the buttons at the top of the feed, …", and the
-filters' row under them: "reading coordination the keys go on from Show agent
+former filters' row under them: "reading coordination the keys go on from Show agent
 coordination: …" and "reading coordination ← and → move along the filters'
 row, Read it among them, …" (`native-reading`, `native-webkit-reading`, at
-both widths) and "conversation the keys go on from Only new: …"
+both widths; the coordination placement expectations predate467 and are not
+a compatibility gate for its new row) and "conversation the keys go on from Only new: …"
 (`native-conversation`); ⌘Return:
 "rail ⌘Return starts a new message in the place the keys are on: …". What
 each key means, and that none acts in writing: `tests/ui_outline_order.test.mjs`.

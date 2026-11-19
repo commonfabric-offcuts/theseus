@@ -56,7 +56,7 @@ export function placeNewLine(list, seq, doc = document, loadOlder, sent = null, 
   // More ends the run the line waits at the bottom of, and the oldest message is the last of that run that is one
   // (a dossier, a card), not the New message composer resting under the messages (item 465): what follows More is
   // the dossiers put below it, each where its newest message sits.
-  const more = cards.find(child => child.classList?.contains('stack-more')) ?? null;
+  const more = cards.find(child => child.classList?.contains('stack-controls') || child.classList?.contains('stack-more')) ?? null;
   const oldest = (more ? cards.slice(0, cards.indexOf(more)) : cards).filter(child => child.dataset?.seq).at(-1);
   const further = Boolean(seq && !card && oldest && seq < Number(oldest.dataset.seq));
   if (further && loadOlder !== null && typeof loadOlder !== 'function') throw Error('A New line for a message further back needs what loads the older messages.');

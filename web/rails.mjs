@@ -6,7 +6,7 @@
 import { shell as host, listen } from './in-place-navigation.mjs';
 import { OutlineRail } from './outline-rail.mjs';
 import { ThingsRail } from './things-rail.mjs';
-import { panes, feedKey, inMessages, messagesSideways } from './panes.mjs';
+import { panes, feedKey, inMessages, messagesSideways, onStackControls } from './panes.mjs';
 import { arrowReach, onNothing } from './arrow-reach.mjs';
 
 const storage = win => { try { return win.localStorage; } catch { return null; } };
@@ -53,7 +53,7 @@ shell.extend((doc, win) => {
   arrowReach(doc, {
     listen,
     managed: (at, way) => feed() && ((way === 'up' || way === 'down') && (onNothing(at, doc) && Boolean(doc.querySelector('#messages [data-id]'))) && !doc.getElementById('main')?.inert
-      || ((way === 'up' || way === 'down') ? inMessages(at, doc) : messagesSideways(at, doc))),
+      || ((way === 'up' || way === 'down') ? inMessages(at, doc) && !onStackControls(at) : messagesSideways(at, doc))),
     // A message's bar is a region of its own, and so is a dossier whose title bar's glyphs hold the keys: ← and → go
     // along the title bar and the chevron, never to a control of the messages below, and past its end on to the pane beside.
     region: at => feed() ? at.closest('.message-bar') ?? at.closest('.reply-stack > .stack-tools')?.parentElement ?? at.closest(PANES.map(([pane]) => pane).join(',')) : null,
