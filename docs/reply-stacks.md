@@ -209,6 +209,22 @@ their acts.
   more of it, and then stays as the reader left it, open or folded, its
   earlier-messages row opened or not, the seven it shows held (`reheaded`,
   `stack-order.mjs`), and where the reader placed it (The stacks, below).
+- **Actual distant heads (item 799).** Gathering still uses only the loaded
+  page for ordering, placement and branch visibility. When its real first
+  message is above that page, the client reads that exact root through the
+  existing admitted `topic_messages` named-message view. An available root
+  decorates the gathered stack as its normal folded head, with its real words,
+  author and dossier name; the former gathered head becomes a visible reply.
+  These supplemental sources stay outside the loaded runs and older cursor,
+  and contribute no sorting key or implied intervening history. More uses the
+  loaded frontier and transfers a source root to the loaded page once, without
+  repeating it or making that already displayed root an apart card. Other
+  filled/apart messages keep item550's placement. Loaded heads and standalone
+  messages retain their rendering. Loading is explicit; an unavailable source
+  uses “Reply in <dossier name>” opening the canonical root, and a read error
+  has Retry. A loading source is never called unavailable. Withheld/private
+  bodies are not used. Revision/access changes discard old source bytes;
+  obsolete root requests and retired page lifetimes cannot repopulate them.
 - **What one stack never loses.** Each way of showing a dossier loses
   nothing in it, and every message stays reachable where it is. So a
   gathered stack keeps, folded, its head whole and each branch in view, as

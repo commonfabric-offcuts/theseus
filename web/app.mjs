@@ -9,6 +9,7 @@ import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 import { typingField } from './writing-input.mjs';
 import { Freshness, initialViews, actorBaseline, readFailure, checkedView, bindingOf } from './freshness.mjs';
+import { DossierHeads } from './stack-order.mjs';
 import { TopicViews, followEdits } from './topic-views.mjs';
 import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, topicTarget, paintChanged, changedSince } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
@@ -121,7 +122,8 @@ let outcomeReached = false;
 // The Reader's edit of one of the person's messages, while it is open (editMessage).
 let messageEdit = null;
 // What the person does to reply stacks: star, rename, move, join, fold (stack-feed.mjs).
-let stackFeed = null;
+let stackFeed = null, dossierHeads = null;
+const feedMessages = () => dossierHeads?.messages(views.messages) ?? views.messages;
 // A press held down on the page: the repaints that would move the list under it wait for it to end (press-hold.mjs).
 const pressHold = new PressHold(document);
 const guide = new InteractionGuide(document);
@@ -866,7 +868,7 @@ function paintViews(kind) {
   // A thumbs-up reads its message (card-reading.mjs, readNow): its card, and its stack's count of new replies, read so.
   if (kind === 'reactions') { keepListAnchor(() => { paintCardReading(); stackMessages(); menu?.paint(); }); paintReaderThumb$(); return; }
   // A star, a stack's name, a join or a place, here or on another device (stack-feed.mjs).
-  if (kind === 'acts') { keepListAnchor(() => { stackMessages(); menu?.paint(); }); return; }
+  if (kind === 'acts') { refreshDossierHeads(); keepListAnchor(() => { stackMessages(); menu?.paint(); }); return; }
   // A message edited, here or elsewhere: its card and the lines that read its words (docs/message-edit.md).
   if (kind === 'edited') { keepListAnchor(() => repaintEdited(views.takeRevised(), views.takeEdits())); return; }
   // The person's own note or saved reply on a message, saved, emptied or sent here or elsewhere: its card's marks (item 127).
@@ -891,7 +893,7 @@ function paintViews(kind) {
   keepListAnchor(() => {
   // Newest first, so where each new card goes is at or after where the one before it went.
   let following = $('messages').firstElementChild;
-  for (const item of kind === 'messages' ? [...views.messages.values()].sort((a, b) => b.seq - a.seq) : []) {
+  for (const item of kind === 'messages' ? [...feedMessages().values()].sort((a, b) => b.seq - a.seq) : []) {
     let card = messageEntries.get(item.id);
     if (!card) {
       const ref = { kind: 'message', id: item.id };
@@ -942,7 +944,7 @@ function paintViews(kind) {
     learnReply(views.messages, item, bootstrap.actor);
   }
   // The stacks are drawn with the new messages in before any of them is dealt with (stack-feed.mjs, arrived).
-  if (kind === 'messages') { feedOf().arrived([...views.messages.values()]); paintCardReading(); }
+  if (kind === 'messages') { syncDossierHeads(); feedOf().arrived([...views.messages.values()]); paintCardReading(); }
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
     let card = memoryCards.get(item.id);
     if (!card) {
@@ -961,7 +963,7 @@ function paintViews(kind) {
     }
     card.onclick = () => run(() => openNotebook(item.id, { opener: card }));
   }
-  if (kind === 'messages') { placeLine(); menu?.paint(); }
+  if (kind === 'messages') { placeLine(); menu?.paint(); paintDossierSourceStatus(); }
   if (kind === 'messages' && here?.page) paintConversationPage();
   });
   paintMoreMessages();
@@ -998,10 +1000,49 @@ function actorLabel(id) {
 // conversation's included (reply-stacks.mjs). A folded stack keeps in view a
 // reply the person has not read and, in the conversation, one whose card asks
 // something of them: an item nothing has settled, or an ask waiting on them.
-function stackMessages() { feedOf().arrange(); }
+function refreshDossierHeads(id = null) {
+  if (!dossierHeads) return;
+  dossierHeads.invalidate(id);
+  syncDossierHeads();
+}
+function syncDossierHeads() {
+  if (!dossierHeads || topicUnavailable || registry?.disposed || authorityReviewPending()) return;
+  dossierHeads.sync(views.messages);
+  const messages = feedMessages();
+  for (const [id, entry] of messageEntries) if (!messages.has(id)) {
+    cardObserver?.unobserve(entry); middleObserver?.unobserve(entry);
+    entry.remove(); messageEntries.delete(id);
+  }
+}
+function stackMessages() { syncDossierHeads(); feedOf().arrange(); paintDossierSourceStatus(); }
+// The fallback is a real canonical dossier route, guarded by the same writing
+// preservation as all other in-app links. No source body is inferred here.
+function paintDossierSourceStatus() {
+  for (const line of $('messages').querySelectorAll('.dossier-source-status')) line.remove();
+  for (const stack of stackFeed?.state.stacks ?? []) {
+    const record = dossierHeads?.records.get(stack.dossier);
+    if (!record || record.state === 'available') continue;
+    const entry = messageEntries.get(stack.id);
+    if (!entry) continue;
+    const line = node('span', undefined, 'dossier-source-status');
+    const label = stack.head.stack_position?.name?.text || 'this dossier';
+    const link = node('a', `Reply in ${label}`);
+    link.href = routeHref({ kind: 'topic', id: topic.id, message: stack.dossier });
+    link.onclick = event => { event.preventDefault(); event.stopPropagation(); run(() => openSource({ kind: 'message', id: stack.dossier }, link)); };
+    const words = { loading: 'Loading first message… ', error: 'Could not load first message. ', refused: 'First message unavailable. ', missing: 'First message unavailable. ' };
+    line.append(node('span', words[record.state]));
+    if (record.state !== 'loading') line.append(link);
+    if (record.state === 'error') {
+      const retry = node('button', 'Retry'); retry.type = 'button';
+      retry.onclick = event => { event.stopPropagation(); refreshDossierHeads(stack.dossier); stackMessages(); };
+      line.append(retry);
+    }
+    cardIn(entry).prepend(line);
+  }
+}
 // The page's reply stacks and what the person does to them, made with the first messages.
 function feedOf() {
-  stackFeed ??= new StackFeed({ list: $('messages'), messages: () => views.messages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
+  stackFeed ??= new StackFeed({ list: $('messages'), messages: feedMessages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
     authority: () => registry.runtime.current,
     // The page's own act, once Core answers it, tells the Reader's neighbours whether it could have moved them (item 426).
     send: async envelope => { const receipt = await api.command(envelope); if (receipt?.status === 'committed') views.ownAct(envelope.kind, receipt.result); return receipt; },
@@ -1658,6 +1699,7 @@ function finishEdit(session, state) {
 // unless it is editing that very message: then its next Save is a conflict.
 async function messageEdited(key, version, read, current) {
   const id = key.slice(5);
+  refreshDossierHeads(id);
   // The rails beside the page keep a topic's newest messages by its version, which an edit does not move.
   shell.messageEdited(id);
   const done = await views.refresh(key, version, read, current);
@@ -1847,7 +1889,7 @@ function revisionOffer(presentation) {
   } };
 }
 function updateStatus(state) {
-  if (state.kind === 'authority') ++listAccessEpoch;
+  if (state.kind === 'authority') { ++listAccessEpoch; dossierHeads?.invalidate(); }
   updateState = state;
   const quiet = state.kind === 'current' || state.kind === 'defer';
   $('updates-status').hidden = quiet;
@@ -1863,8 +1905,10 @@ function updateStatus(state) {
   if (state.kind === 'reconnect') run(reconnect);
 }
 async function checkAvailability(read, current, topicDenied = true) {
+  dossierHeads?.invalidate();
   if (topicDenied) {
     topicUnavailable = true; ++listAccessEpoch;
+    dossierHeads?.invalidate();
     drawFeed(false);
     // Nor the pictures of its messages (card-images.mjs).
     dropCardImages($('messages'));
@@ -2194,8 +2238,13 @@ async function initialize() {
   const checkpoint = await initialViews({ api, bootstrap, topicId, load: async () => {} });
   const actorCheckpoint = await actorBaseline({ api, bootstrap });
   // The conversation's own items hold messages' words too (followEdits): an edit of one of them, or of one a reply among them answers, is read.
-  const holds = id => Boolean(here?.items.has(id) || [...(here?.items.values() ?? [])].some(item => item.reply_to === id));
+  const holds = id => Boolean(dossierHeads?.records.has(id) || here?.items.has(id) || [...(here?.items.values() ?? [])].some(item => item.reply_to === id));
   views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version, force) => freshness?.invalidate(key, version, force), holds, reading });
+  const headViews = views;
+  dossierHeads = new DossierHeads({ topicId,
+    read: (name, args) => api.view(name, args, { readClass: 'background' }).then(answer => checkedView(answer, bootstrap.instance_id)),
+    current: () => views === headViews && !registry?.disposed && !topicUnavailable && !authorityReviewPending(),
+    changed: () => keepListAnchor(() => paintViews('messages')) });
   const result = validate(await api.view('topic', { topic_id: topicId })); topic = result.topic;
   views.topic = topic; views.participants = result.participants;
   if (topic.id !== topicId) throw Error('The topic identity could not be confirmed.');
@@ -2414,7 +2463,7 @@ async function initialize() {
     eligible: (id, entry) => !retired && !topicUnavailable && !authorityReviewPending() && !registry.disposed &&
       !freshness?.stopped && views.messages.has(id) && messageEntries.get(id) === entry && drawn($('messages'), id),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)) });
-  menu = new MessageMenu({ host: $('messages'), item: id => views.messages.get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
+  menu = new MessageMenu({ host: $('messages'), item: id => feedMessages().get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
     reply: (id, card) => run(() => replyMessage(id, card)),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)),
     // A thumbs-up on a reply deals with its stack up to it (stack-feed.mjs).
