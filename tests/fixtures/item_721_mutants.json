@@ -1,0 +1,183 @@
+[
+  {
+    "item": 721,
+    "act": "Reply docks the existing Reader inside the chosen source card",
+    "key": "dock",
+    "break": [
+      [
+        "web/message-menu.mjs",
+        "if (name === 'reply') return this.inlineReply(item.id, card);",
+        "if (name === 'reply') return this.reply(item.id, card);"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 contract dock"
+    }
+  },
+  {
+    "item": 721,
+    "act": "The whole source precedes the bar without clipping or source scrolling",
+    "key": "whole",
+    "break": [
+      [
+        "web/aim.css",
+        ".message-card[data-card-reply]>.message-preview{max-height:none;overflow:visible}",
+        ".message-card[data-card-reply]>.message-preview{display:block;max-height:120px;overflow:auto}"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 contract whole"
+    }
+  },
+  {
+    "item": 721,
+    "act": "Source drag selects text and never opens Reader",
+    "key": "selection",
+    "break": [
+      [
+        "web/app.mjs",
+        "if (event?.detail > 0 && sourcePress?.dragged) return;",
+        "if (false) return; // item 721 source drag mutant"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 contract selection"
+    }
+  },
+  {
+    "item": 721,
+    "act": "The compact title and close control remain visible",
+    "key": "title",
+    "break": [
+      [
+        "web/aim.css",
+        "#reader[data-card-reply] #reader-title{font-size:.8rem;color:var(--muted)}",
+        "#reader[data-card-reply] #reader-title{display:none}"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 contract title"
+    }
+  },
+  {
+    "item": 721,
+    "act": "The reused addressing row remains the named default",
+    "key": "addressing",
+    "break": [
+      [
+        "web/aim.css",
+        "#reader[data-card-reply] .writing-pane{height:auto;max-height:none;overflow:visible;padding-left:0;padding-right:0;background:transparent}",
+        "#reader[data-card-reply] .writing-pane{height:auto;max-height:none;overflow:visible;padding-left:0;padding-right:0;background:transparent} #reader[data-card-reply] #who-chip{display:none}"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 contract addressing"
+    }
+  },
+  {
+    "item": 721,
+    "act": "Clicking and selecting the real writing stays in the card",
+    "key": "writing",
+    "break": [
+      [
+        "web/app.mjs",
+        "if (event?.target?.closest?.('#reader')) return;",
+        "if (false) return; // item 721 writing click mutant"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 contract writing"
+    }
+  },
+  {
+    "item": 721,
+    "act": "Escape closes the nonmodal reply through its preserving owner",
+    "key": "escape",
+    "break": [
+      [
+        "web/reader.mjs",
+        "if (!event.defaultPrevented) { event.preventDefault(); this.escape(); }",
+        "if (!event.defaultPrevented) { event.preventDefault(); }"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 contract escape"
+    }
+  },
+  {
+    "item": 721,
+    "act": "Unavailable source moves the same writing to the full Reader",
+    "key": "unavailable",
+    "break": [
+      [
+        "web/reader.mjs",
+        "  hideUnavailableSource() {\n    this.expandReply();",
+        "  hideUnavailableSource() {\n    // item 721 mutant: leave unavailable writing in its card"
+      ],
+      [
+        "web/reader.mjs",
+        "    this.expandReply();\n  }\n\n  expandReply()",
+        "    return; // item 721 mutant: leave hidden writing in its card\n  }\n\n  expandReply()"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 contract unavailable"
+    }
+  },
+  {
+    "item": 721,
+    "act": "A hidden source moves the same writing to the full Reader",
+    "key": "hidden",
+    "break": [
+      [
+        "web/reader.mjs",
+        "    this.expandReply();\n  }\n\n  expandReply()",
+        "    return; // item 721 mutant: leave hidden writing in its card\n  }\n\n  expandReply()"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 contract hidden"
+    }
+  },
+  {
+    "item": 721,
+    "act": "A source revision stays whole above the same writing",
+    "key": "change",
+    "break": [
+      [
+        "web/app.mjs",
+        "await cardScroll.showFull(card, item, () => reader.card === card && revisionOf(views.messages.get(id)) === revisionOf(item));",
+        "await cardScroll.showFull(card, item, () => reader.card === card && revisionOf(views.messages.get(id)) === revisionOf(item));\n        card.querySelector(':scope > .message-preview').style.maxHeight = '120px'; card.querySelector(':scope > .message-preview').style.overflow = 'auto';"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 contract change"
+    }
+  },
+  {
+    "item": 721,
+    "act": "The durable chooser copy publishes the exact selected image bytes",
+    "key": "image",
+    "break": [
+      [
+        "web/journal.mjs",
+        "const data = await bytes.blob.arrayBuffer();",
+        "const data = new ArrayBuffer(bytes.blob.size); // item 721 corrupt byte-store mutant"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 contract image"
+    }
+  }
+]
