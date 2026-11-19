@@ -16,6 +16,7 @@ export const GLYPH_OF = Object.freeze({
   // A dossier's title bar ⋯ on a phone (item 473): Reply to the first message takes the title bar's own Reply.
   'Reply to the first message': 'reply',
   'Ask for a cover': 'coverplus',
+  'Open the cover request': 'link',
   'Copy Link': 'link', 'Show full message': 'full', Edit: 'pencil', 'Edit page': 'pencil', 'Mark unread': 'unread', 'Mark read': 'read',
   // Item 601: an archive act shows the Reader's archive tray, in every menu.
   'Archive': 'archive', 'Bring back': 'back',

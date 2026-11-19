@@ -27,6 +27,11 @@ envelopes, authority fencing and honest errors. “Asked <recipient> to write a
 cover” is accessible text and a tooltip only. Waiting dots are the only visible
 progress; errors stay visible (Warp11616). No visible progress sentence.
 
+Pending or busy title activity stays visible after hover ends; the other title
+tools keep their existing visibility rule (Warp11706). Opacity and clipping
+belong to each tool so the activity can stay visible independently. A pending
+menu item says “Open the cover request” and follows the same link as the dots.
+
 Checks use isolated real Core records and actual page renderers/handlers.
 Applied mutations must fail and restore exactly. No schema change is expected;
 no browser, native gesture, geometry or full-suite claim is made.

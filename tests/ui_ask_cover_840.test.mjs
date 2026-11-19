@@ -4,10 +4,19 @@ import { readFileSync } from 'node:fs';
 import { renderer799 } from './fixtures/renderer799.mjs';
 import { configureCoverRefresh } from '../web/cover-refresh.mjs';
 import { StackFeed } from '../web/stack-feed.mjs';
+import { openLinksWith } from '../web/links.mjs';
 
 // Actual dossier renderer, menu and request owner. No native layout/input claim.
 function fixture(t, { partial = false, cover = null } = {}) {
   const r = renderer799('owner'), doc = r.list.ownerDocument, storage = new Map(), sent = [];
+  const opened = [], make = doc.createElement;
+  doc.createElement = tag => {
+    const node = make(tag);
+    node.click = () => node.listeners.click?.({ button: 0, stopPropagation() {}, preventDefault() {} });
+    return node;
+  };
+  openLinksWith((route, title, link) => opened.push({ route, href: link.href }));
+  t.after(() => openLinksWith(null));
   doc.querySelectorAll = selector => r.list.querySelectorAll(selector);
   doc.defaultView = { localStorage: { getItem: key => storage.get(key) ?? null,
     setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) } };
@@ -25,7 +34,7 @@ function fixture(t, { partial = false, cover = null } = {}) {
   const feed = { list: r.list, state, doc, undos: [], actsOf: () => ({}),
     entryFor: key => [...r.list.descendants()].find(node => node.dataset.id === key) };
   const menu = phone => StackFeed.prototype.menuItems.call(feed, r.messages.get(id), { phone });
-  return { ...r, doc, state, tools, section, menu, storage, sent, response, bootstrap, id };
+  return { ...r, doc, state, tools, section, menu, storage, sent, response, bootstrap, id, opened };
 }
 const press = { stopPropagation() {} };
 const cover = { root_id: 'root', revision: 1, stands: 'Facts checked', waiting: [], payload: null,
@@ -56,7 +65,9 @@ test('840 existing cover and unloaded original offer no first-cover control or m
 test('840 title and phone menu share exact interrupted retry, pending dots and canonical request link', async t => {
   const f = fixture(t);
   const button = f.tools().querySelector('.cover-refresh-glyph'); assert.ok(button);
-  await button.onclick(press);
+  const sending = button.onclick(press);
+  assert.equal(f.tools().querySelector('.cover-refresh-glyph').dataset.pending, 'true', 'busy shares the persistent activity rule');
+  await sending;
   assert.equal(f.sent.length, 1);
   assert.equal(f.sent[0].kind, 'stack.cover_refresh');
   assert.deepEqual(f.sent[0].target, { message_id: 'root' });
@@ -80,8 +91,9 @@ test('840 title and phone menu share exact interrupted retry, pending dots and c
   assert.equal(link.title, link.getAttribute('aria-label'));
   assert.equal(f.tools().querySelector('.cover-refresh-status').text, '');
   assert.ok(!f.tools().text.includes('Asked writer'), 'no visible progress sentence');
-  const count = f.sent.length; await f.menu(false).first.find(row => row.label === 'Ask for a cover').act();
-  assert.equal(f.sent.length, count, 'pending Core fact coalesces local presses');
+  const count = f.sent.length, openRequest = f.menu(false).first.find(row => row.label === 'Open the cover request');
+  assert.ok(openRequest, 'pending menu opens its request'); await openRequest.act();
+  assert.equal(f.sent.length, count, 'opening a pending request never sends another one');
 });
 
 test('840 pending from Core survives repaint without a cover, then yields to the first real cover', t => {
@@ -119,5 +131,36 @@ test('840 CSS reserves the fourth title glyph only when drawn, with the same vis
   assert.match(css, /@media\(max-width:760px\)\{\s*\.reply-stack\{--stack-base-tools:1\}/);
   assert.match(css, /opacity:var\(--stack-tools-shown\)/);
   assert.match(css, /\.stack-cover-request>\.cover-refresh-glyph/);
-  assert.match(css, /\.reply-stack>\.stack-tools:has\(\.cover-refresh-status:not\(:empty\)\)\{clip-path:none\}/, 'a refusal can extend below the title controls without being clipped away');
+  assert.match(css, /\.stack-cover-request:has\(\.cover-refresh-status:not\(:empty\)\)\{clip-path:none\}/, 'a refusal can extend below the title controls without being clipped away');
+});
+
+test('840 pending and busy title activity has independent visibility while sibling tools retain their rest rule', t => {
+  const f = fixture(t), item = f.messages.get('root');
+  item.acts = { cover: null, cover_revision: 0, cover_refresh_revision: 1,
+    cover_refresh: { state: 'pending', recipient: 'writer', request_message_id: 'kept-request', observed_revision: 0 } };
+  f.state.again();
+  assert.equal(f.tools().querySelector('.cover-refresh-glyph').dataset.pending, 'true');
+  const css = readFileSync(new URL('../web/stack-look.css', import.meta.url), 'utf8');
+  const row = css.match(/^\.reply-stack>\.stack-tools\{([^}]+)\}/m)?.[1];
+  assert.ok(row); assert.doesNotMatch(row, /opacity:|clip-path:/, 'the row cannot hide its pending child');
+  assert.match(css, /\.reply-stack>\.stack-tools>\*\{opacity:var\(--stack-tools-shown\);clip-path:inset/);
+  assert.match(css, /\.reply-stack\{[^}]*--stack-tools-shown:0;/);
+  assert.match(css, /\.stack-cover-request:has\(\.cover-refresh-glyph\[data-pending=true\]\)\{opacity:1;clip-path:none\}/);
+  assert.match(css, /\.reply-stack:has\(>\.stack-tools \.cover-refresh-glyph\[data-pending=true\]\)\{--stack-tools-held:1\}/);
+});
+
+test('840 pending menu opens the dots canonical request through the shared link owner', async t => {
+  const f = fixture(t), item = f.messages.get('root');
+  item.acts = { cover: null, cover_revision: 0, cover_refresh_revision: 1,
+    cover_refresh: { state: 'pending', recipient: 'writer', request_message_id: 'kept-request', observed_revision: 0 } };
+  f.state.again();
+  const dots = f.tools().querySelector('.cover-refresh-glyph');
+  for (const phone of [false, true]) {
+    const menu = f.menu(phone).first;
+    assert.equal(menu.some(row => row.label === 'Ask for a cover'), false);
+    const open = menu.find(row => row.label === 'Open the cover request'); assert.ok(open);
+    assert.equal(open.glyph, 'link'); await open.act();
+    assert.deepEqual(f.opened.at(-1), { route: { kind: 'topic', id: 'topic', message: 'kept-request' }, href: dots.href });
+  }
+  assert.equal(f.sent.length, 0);
 });

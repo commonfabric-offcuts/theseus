@@ -105,6 +105,9 @@ export function refreshRequest(doc, target) {
   return { key, state, send };
 }
 
+const requestLink = (doc, topicId, messageId, words = '') => linkNode(doc, words,
+  { route: { kind: 'topic', id: topicId, message: messageId }, written: true });
+
 function activity(doc, target, context) {
   const request = refreshRequest(doc, target);
   if (!request) return null;
@@ -115,7 +118,7 @@ function activity(doc, target, context) {
     const label = pending ? (isCover ? (target.first ? `Asked ${context.nameOf(refresh.recipient)} to write a cover. Open the request` : `Awaiting ${context.nameOf(refresh.recipient)}’s new cover. Open the request`)
       : `Asked ${context.nameOf(refresh.recipient)} to update this message. Open the request`)
       : busy ? 'Requesting an update' : target.first ? 'Ask for a cover' : 'Ask the writer to refresh this cover';
-    const control = pending ? linkNode(doc, '', { route: { kind: 'topic', id: context.topicId, message: refresh.request_message_id }, written: true })
+    const control = pending ? requestLink(doc, context.topicId, refresh.request_message_id)
       : doc.createElement('button');
     control.className = isCover ? 'cover-refresh-glyph' : 'message-update-activity';
     control.title = label; control.setAttribute('aria-label', label); control.dataset.pending = String(pending || busy);
@@ -150,7 +153,11 @@ export function firstCoverControl(doc, stack, context) {
 }
 export function firstCoverMenuItem(doc, stack) {
   const target = firstCoverTarget(stack), request = target && refreshRequest(doc, target);
-  return request ? { label: 'Ask for a cover', glyph: 'coverplus', act: () => request.send() } : null;
+  if (!request) return null;
+  const { pending, refresh } = request.state();
+  return pending ? { label: 'Open the cover request', glyph: 'link',
+    act: () => requestLink(doc, stack.head.topic_id, refresh.request_message_id, 'Open the cover request').click() }
+    : { label: 'Ask for a cover', glyph: 'coverplus', act: () => request.send() };
 }
 export function updateMenuItem(doc, item, context) {
   if (!mayAskForUpdate(item, context.viewer)) return null;
