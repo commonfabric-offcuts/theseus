@@ -2,8 +2,10 @@
 
 A dossier with no level chosen this visit starts open. Agent-only dossiers
 remain header-only; explicit levels still win. Open retains its seven-message
-window. Head clicks, menus, read-away actions and keys use this effective
-level, including a default that has not yet been saved in the page.
+window. Head clicks, menus and keys use this effective level, including a
+default that has not yet been saved in the page. Returning to the tab releases
+off-screen unread retention, but folds only an open level explicitly chosen
+this visit. A dossier open by default stays open without saving a level.
 
 At collapsed, a reply kept because it was unread brings its loaded parent
 into view, using the cycle-cut join/reply parent from the existing gather.

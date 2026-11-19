@@ -2,7 +2,7 @@ import { withReaderArchive } from './fixtures/reader_archive.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { miniDocument, Element } from './fixtures/mini_dom.mjs';
-import { arrangeStacks, stackState, setLevel, levelOf, foldedClick, drawn, headClick, unkeep } from '../web/reply-stacks.mjs';
+import { arrangeStacks, stackState, setLevel, levelOf, foldedClick, drawn, headClick } from '../web/reply-stacks.mjs';
 const query = Element.prototype.querySelectorAll;
 Element.prototype.querySelectorAll = function(selector) {
   if (selector === '*') return [...this.descendants()];
@@ -76,10 +76,29 @@ test('857 actual context row survives reading, peeks without Core, and follows t
  assert.equal(f.cards.get('m2').hidden,true);assert.equal(f.cards.get('m4').dataset.folded,'true');
  setLevel(f.state,f.state.stacks[0],'folded');f.draw();assert.equal(f.cards.get('m4').hidden,true,'new-view reset clears read context');
 });
-test('857 a read star alone creates no parent context; default-open read-away collapses',()=>{
+test('857 a read star alone creates no parent context',()=>{
  const items=sample();items[2].acts={starred:true};const f=fixture(items);f.read();f.state.levels.set('m1','folded');f.draw();
  assert.equal(f.cards.get('m2').hidden,true);f.messages.set('m3',{...f.messages.get('m3'),acts:{}});f.draw();assert.equal(f.cards.get('m2').hidden,true);
- f.state.levels.clear();f.draw();assert.equal(levelOf(f.state,'m1'),'open');unkeep(f.list,()=>true);assert.equal(levelOf(f.state,'m1'),'folded');
+});
+
+test('857 returning to the tab preserves default open but folds an explicit open off screen',async()=>{
+ const {StackFeed}=await import('../web/stack-feed.mjs');
+ const f=fixture();f.draw();
+ const feed={list:f.list,state:f.state,undos:[],actsOf:()=>({}),entryFor:id=>f.cards.get(id),arrange:f.draw,focusOn(){}};
+ StackFeed.prototype.cameBack.call(feed,()=>false);
+ assert.equal(levelOf(f.state,'m1'),'open');
+ assert.equal(f.state.levels.has('m1'),false,'coming back must not create a level choice');
+ assert.equal(f.state.sections.get('m1').dataset.headOpen,'true');
+ setLevel(f.state,f.state.stacks[0],'folded');f.draw();
+ const menu=StackFeed.prototype.menuItems.call(feed,f.messages.get('m1'));
+ const showAll=menu.first.find(x=>x.label==='Show all messages');assert.ok(showAll);showAll.act();
+ assert.equal(f.state.levels.get('m1'),'open');
+ f.state.unreadKept.add('m3');f.read();
+ StackFeed.prototype.cameBack.call(feed,()=>true);
+ assert.equal(f.state.levels.get('m1'),'open','an on-screen explicit open stays open');
+ StackFeed.prototype.cameBack.call(feed,()=>false);
+ assert.equal(f.state.levels.get('m1'),'folded','off-screen explicit open retains its old behavior');
+ assert.equal(f.state.unreadKept.size,0,'off-screen read retention is released');
 });
 
 test('857 the actual menu and seven-message window agree with default open',async()=>{

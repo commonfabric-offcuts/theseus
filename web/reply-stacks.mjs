@@ -368,7 +368,7 @@ export function unkeep(list, pick) {
     const section = state.sections.get(stack.id);
     if (!section || !pick(section)) continue;
     for (const item of stack.replies) { changed = state.kept.delete(item.id) || changed; changed = state.unreadKept.delete(item.id) || changed; }
-    if (levelOf(state, stack.id) === 'open') { setLevel(state, stack, 'folded'); changed = true; }
+    if (state.levels.get(stack.id) === 'open') { setLevel(state, stack, 'folded'); changed = true; }
   }
   if (changed) state.again();
 }
