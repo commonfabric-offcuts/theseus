@@ -242,7 +242,7 @@ class StarHoldCase(StackCase):
         self.committed(self.star(later))
         refused = self.aside(root, self.latest())
         self.rejected(refused, 'STARRED_IN_DOSSIER')
-        self.assertIn('has a message you starred', refused['error']['message'])
+        self.assertEqual(refused['error']['message'], 'This dossier has a message you starred: unstar it to archive it')
         self.assertEqual(self.rows('aside'), [], 'nothing moved')
         self.assertFalse(self.position(root)['below'])
         self.assertEqual(self.position(root).get('starred'), [later], 'the position names the star the title bar shows')
@@ -425,7 +425,7 @@ class StarHoldCLICase(AgentCLIBase):
         before = self.rows('aside')
         code, result, _ = self.aside_cli(root)
         self.assertEqual((code, result.get('status'), result.get('error', {}).get('code')), (2, 'rejected', 'STARRED_IN_DOSSIER'), result)
-        self.assertIn('has a message you starred', result['error']['message'])
+        self.assertEqual(result['error']['message'], 'This dossier has a message you starred: unstar it to archive it')
         self.assertEqual(self.rows('aside'), before, 'nothing moved')
         # Unstarred, the same command moves it.
         self.committed(self.star(later, on=False, revision=1, actor='agent-a'))

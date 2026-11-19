@@ -1,3 +1,4 @@
+import { withReaderArchive } from './fixtures/reader_archive.mjs';
 // Actual feed/Reader drawing in a minimal DOM; deliberately no layout/gesture claim.
 import assert from 'node:assert/strict';
 import { miniDocument, Element, matches } from './fixtures/mini_dom.mjs';
@@ -39,7 +40,7 @@ export function renderedWords783(sheet) {
     links:sheet.querySelectorAll('a').map(n=>({text:n.text,href:n.getAttribute('href')??n.href})) };
 }
 export function rendererFixture783(rows, actor, arrange = arrangeStacks, getState = stackState, ReaderClass = Reader) {
-  const doc=miniDocument();doc.getElementById=()=>null;
+  const doc=miniDocument();withReaderArchive(doc);
   const list=doc.createElement('div');const messages=new Map(rows.map(m=>[m.id,m]));
   for(const item of rows){const card=doc.createElement('article');card.className='message-card';card.dataset.id=item.id;card.dataset.seq=String(item.seq);
     const author=doc.createElement('div');author.className='message-author';author.textContent=item.author_id;card.append(author);list.append(card);}

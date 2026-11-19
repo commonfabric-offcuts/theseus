@@ -511,4 +511,8 @@
 .no-agent-notified { display:inline-flex; align-items:center; }
 
 /* The same red as dossier New, on each message that arrived this visit. */
-.message-visit-new{color:var(--stack-new);font-weight:700;margin-left:.4em;white-space:nowrap}
+.message-visit-new{color:var(--stack-new);font-weight:700;margin-left:.4em;white-space:nowrap;flex:none}
+/* A between-others row keeps new beside the excerpt, even on a narrow page. */
+.fold-line:has(>.message-visit-new){display:flex;align-items:baseline}
+.fold-line:has(>.message-visit-new)>.fold-author{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.fold-line:has(>.message-visit-new)>.fold-words{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}

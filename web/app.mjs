@@ -1418,7 +1418,7 @@ function feedOf() {
     hold: (paint, act) => keepListAnchor(paint, act), navigate: () => releaseTopArrivals(), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); paintMessageUpdates(); }, home: $('new-message-sheet'),
     // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
-    // On a phone its menu offers the title bar's Reply and Move below More first, as the glyphs fold into it (first).
+    // On a phone its menu offers the title bar's Reply and Archive first, as the glyphs fold into it (first).
     menu: (item, anchor, first = []) => openMessageMenu({ anchor, items: [...cardMenuActs(item, first, anchor), ...messageMenuItems(item, null, anchor)], label: 'This message', sheet: true }),
     // A dossier's folder wears its first poster's colour, as their cards do: an agent's, in the reader's colours (item 477).
     colorOf: item => (item.author_kind === 'agent' && item.author_id !== bootstrap.actor ? agentShown(item.author_id) : null) });
@@ -1671,7 +1671,10 @@ function paintMessageUpdates() {
       if (update) author.append(update);
       // A dossier's tab already has the shared New control. Its message's
       // own header (or folded row) carries the individual arrival mark.
-      const host = author.classList.contains('stack-head') ? card.querySelector(':scope > .message-author') : author;
+      // A between-others entry wraps a button and a hidden card. Its badge
+      // belongs inside the visible button, not below that overlapping row.
+      const host = entry !== card && card.hidden ? entry.querySelector(':scope > .fold-line')
+        : author.classList.contains('stack-head') ? card.querySelector(':scope > .message-author') : author;
       paintVisitNew(entry, host, Boolean(visitNew?.has(id)));
     }
   }
@@ -1856,7 +1859,7 @@ function starFromReader() {
   if (!item) return;
   stackFeed.star(item);
 }
-// The archive button beside the star (item 378): Move below More for the
+// The archive button beside the star (item 378): Archive for the
 // dossier the message is in, the same act as ⋯'s (StackFeed.setAside), with
 // the count of the messages that go with it (StackFeed.asideOffer); Bring back once it is
 // there, pressed. Only for a message the page's stacks hold, as ⋯ offers it.
@@ -1868,7 +1871,7 @@ function paintReaderAside() {
   const button = $('reader-aside'), offer = readerAside();
   button.hidden = !offer;
   if (!offer) return;
-  const words = `${offer.below ? 'Bring back above More' : 'Move below More'}: ${offer.count} ${offer.count === 1 ? 'message' : 'messages'}`;
+  const words = `${offer.below ? 'Bring back' : 'Archive'}: ${offer.count} ${offer.count === 1 ? 'message' : 'messages'}`;
   // The number kept where it has not changed, as the star's glyph is (paintReaderStar).
   const count = button.querySelector('.aside-count'), shown = String(offer.count);
   if (count.textContent !== shown) count.textContent = shown;

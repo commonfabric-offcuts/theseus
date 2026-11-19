@@ -142,7 +142,7 @@ JOIN_DEPTH = 10000
 # A minted name is this many words, from the fewest to the most (item 479).
 MINT_WORDS = (2, 5)
 # Why a dossier holding a message the reader starred is not moved below More for them (item 635): the way out is to unstar.
-HELD_BY_STAR = ("STARRED_IN_DOSSIER", "This dossier has a message you starred: unstar it to move it below More")
+HELD_BY_STAR = ("STARRED_IN_DOSSIER", "This dossier has a message you starred: unstar it to archive it")
 # What an act stands at before anyone has made it.
 NONE = {"aside": {"through": None}, "star": {"starred": False}, "deal": {"dealt": False}, "fold": {"folded": False}, "place": {"key": None}, "name": {"name": ""}, "join": {"into": None},
         "cover": cover_values.EMPTY_COVER}

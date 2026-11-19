@@ -24,10 +24,10 @@ import { revealSelection } from './reveal.mjs';
 import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
 import { contact, heard, notTaken, NOT_TAKEN } from './api.mjs';
 
-// Why Move below More does nothing for a dossier holding a message the reader
+// Why Archive does nothing for a dossier holding a message the reader
 // starred (item 635), as Core says it (aim_next/stacks.py, HELD_BY_STAR): the
 // way out is to unstar.
-export const HELD_BY_STAR = 'This dossier has a message you starred: unstar it to move it below More';
+export const HELD_BY_STAR = 'This dossier has a message you starred: unstar it to archive it';
 // The line a card is pressed by and read from: its title bar on a dossier's
 // first message, else who wrote it, else its folded or earlier row.
 const LINES = [':scope > .stack-head', ':scope > .message-author', ':scope > .message-folded', ':scope > .message-earlier'];
@@ -75,7 +75,7 @@ function learned(kind, result, viewer, now) {
 // the rail.
 const CARD_WORDS = 40;
 const DOING = {
-  'stack.aside': args => args.through === null ? 'bringing back' : 'moving below More',
+  'stack.aside': args => args.through === null ? 'bringing back' : 'archiving',
   'message.star': args => args.starred ? 'starring' : 'unstarring',
   'message.deal': () => 'marking as dealt with',
   'message.fold': args => args.folded ? 'folding' : 'unfolding',
@@ -272,12 +272,16 @@ export class StackFeed {
       coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id), fold: id => this.foldId(id),
       folded: (stack, was) => {
-        if (was === 'open' || levelOf(this.state, stack.id) === 'head') this.acted(stack.id);
+        // Explicitly collapsing this dossier handles its loaded arrivals.
+        // Expanding or restoring its view must not clear unrelated marks.
+        if (was === 'open' || levelOf(this.state, stack.id) === 'head') {
+          for (const item of [stack.head, ...stack.replies]) this.acted(item.id);
+        }
         this.remember(() => { setLevel(this.state, stack, was); this.arrange(); });
       },
       earlier: (stack, count) => this.say(`${count === 1 ? 'The earlier message shows' : `${count} earlier messages show`} as rows, for this visit`),
       arranged: () => this.arranged(), acted: id => this.acted(id), newest: (stack, mark) => this.newest(stack, mark),
-      // A title bar's glyphs (item 473): its first message's Reply and menu, and Move below More or Bring back.
+      // A title bar's glyphs (item 473): its first message's Reply and menu, and Archive or Bring back.
       reply: stack => { const head = this.entryFor(stack.id); if (head) this.reply(stack.id, cardIn(head)); },
       aside: (stack, below) => this.setAside(stack, below),
       menu: (stack, anchor, first) => { const item = this.messages().get(stack.id); if (item) this.menu(item, anchor, first); },
@@ -801,7 +805,7 @@ export class StackFeed {
     return { item, position };
   }
   // What the Reader's archive button offers for the dossier a message is in
-  // (item 378): Move below More, or Bring back once it is there, the same act
+  // (item 378): Archive, or Bring back once it is there, the same act
   // as ⋯'s (setAside), with how many of the page's messages go with it. The
   // act moves Core's whole dossier, which the page draws as one stack, its
   // first message loaded or not (item 550), and the older messages of it More
@@ -836,7 +840,7 @@ export class StackFeed {
     return cover ? { cover, topicId: stack.head.topic_id, rootId: positionOf(stack)?.root_id ?? stack.head.id } : null;
   }
   // Whether the dossier stack is drawn from holds a message the reader
-  // starred, so its title bar shows their star (item 635): Move below More
+  // starred, so its title bar shows their star (item 635): Archive
   // then does nothing, and says why.
   heldByStar(stack) { return this.state.starred.has(dossierOf(stack)); }
   // Says why a move below More did nothing, by the dossier it would have
@@ -889,7 +893,7 @@ export class StackFeed {
       if (below && this.state.more?.isConnected && !shownView(this.state).only) this.state.more.focus({ preventScroll: true });
       else this.focusOn(stack.id);
     }
-    this.say(below ? 'Moved below More, for you only' : 'Brought back');
+    this.say(below ? 'Archived, for you only' : 'Brought back');
     return true;
   }
   // What a swipe over target acts on: the dossier as a whole on its title bar
@@ -1030,8 +1034,8 @@ export class StackFeed {
     else if (!starred) items.push({ label: 'Fold', glyph: 'fold', act: () => this.setFold(item, true) });
     if (stack.joins.has(item.id)) items.push({ label: 'Split back out', glyph: 'split', act: () => this.split(item) });
     const moves = [
-      // Item 601: Move below More shows the Reader's archive tray, Bring back above More the tray with an arrow out.
-      ...(positionOf(stack) ? [{ label: positionOf(stack).below ? 'Bring back above More' : 'Move below More', glyph: positionOf(stack).below ? 'back' : 'archive',
+      // Item 601: Archive shows the Reader's archive tray, Bring back the tray with an arrow out.
+      ...(positionOf(stack) ? [{ label: positionOf(stack).below ? 'Bring back' : 'Archive', glyph: positionOf(stack).below ? 'back' : 'archive',
         act: () => this.setAside(stack, !positionOf(stack).below, { at: line() }) }] : []),
       { label: 'Move its stack up', keys: '⌘↑', glyph: 'up', act: () => this.move(entry, 'up') },
       { label: 'Move its stack down', keys: '⌘↓', glyph: 'down', act: () => this.move(entry, 'down') },

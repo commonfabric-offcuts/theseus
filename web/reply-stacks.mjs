@@ -252,7 +252,7 @@ export function lineSeq(list, seq) {
 // folded opens from its row for this view (a link, search, Starred), and its
 // fold stays theirs in Core: nothing is written; one in a dossier put below
 // More is drawn where the dossier sits (here) while Core holds the dossier at
-// the place it held when the link was followed, until a Move below More or
+// the place it held when the link was followed, until an Archive or
 // Bring back on any device. The page may not yet have heard of a move Core
 // made before then (item 426): until the page has read Core's place again,
 // the dossier is drawn where it sits wherever Core holds it (pending), and
@@ -408,7 +408,7 @@ function makeStack(doc, id) {
 }
 
 // The title bar's glyphs (item 473), at the right of the dossier's title bar:
-// Reply to its first message, Move below More (Bring back above More once it
+// Reply to its first message, Archive (Bring back once it
 // is there) and ⋯, the menu a right-click on its first message opens. Each is
 // a button of its own beside the head's card, never inside it (a card is
 // itself a button), so Tab reaches it; it is named, with that name as its
@@ -443,13 +443,13 @@ function paintTools(tools, stack, shown, { state, doc }) {
   reply.onclick = () => state.on?.reply?.(stack);
   // Core sends where a dossier sits with its messages; a page from a Core without positions has nowhere to move it.
   aside.hidden = !position;
-  nameTool(aside, position?.below ? 'Bring back above More' : 'Move below More'); showGlyph(aside, position?.below ? 'back' : 'aside', doc);
+  nameTool(aside, position?.below ? 'Bring back' : 'Archive'); showGlyph(aside, position?.below ? 'back' : 'archive', doc);
   aside.onclick = () => state.on?.aside?.(stack, !positionOf(stack)?.below);
   nameTool(menu, original ? 'More for this dossier' : 'First message not shown');
   if (menu.textContent !== '⋯') menu.textContent = '⋯';
-  // On a phone stack-look.css folds Reply and Move below More into ⋯: its menu then offers them first, by their names,
-  // each with the glyph of the button that does the same (item 602): Reply the title bar's own, Move below More the
-  // Reader's archive tray (item 601) and Bring back above More the tray with an arrow out.
+  // On a phone stack-look.css folds Reply and Archive into ⋯: its menu then offers them first, by their names,
+  // each with the glyph of the button that does the same (item 602): Reply the title bar's own, Archive the
+  // Reader's archive tray (item 601) and Bring back the tray with an arrow out.
   menu.onclick = () => {
     const folded = !reply.getClientRects().length, below = positionOf(stack)?.below;
     state.on?.menu?.(stack, menu, folded ? [{ label: reply.getAttribute('aria-label'), glyph: 'reply', act: () => state.on?.reply?.(stack) },
@@ -890,7 +890,7 @@ export function arrangeStacks(list, messages, options = {}) {
   const stacks = withDossierHeads(ordered(gather(paged, { viewer, filled: state.filled, apart: state.apart })), messages, { apart: state.apart, sourceRoots });
   for (const [from, to] of reheaded(state.stacks, stacks)) rehead(state, from, to);
   state.stacks = stacks;
-  // The dossiers whose title bar shows the reader's star, and which Move below More refuses (item 635).
+  // The dossiers whose title bar shows the reader's star, and which Archive refuses (item 635).
   state.starred = starredDossiers(stacks, id => messages.has(id));
   state.earlierRows = new Set();
   state.folded = new Set(loaded.filter(item => rowFolded(item, { peeked: each => state.peeked.has(each.id) })).map(item => item.id));
@@ -926,7 +926,7 @@ export function arrangeStacks(list, messages, options = {}) {
   if (resting) top.push(home);
   else if (home && !home.open && home.parentElement === list) list.parentElement.append(home);
   if (shownAside) {
-    state.more.textContent = `${state.moreOpen ? 'Hide' : 'More'} messages · ${shownAside} put aside`;
+    state.more.textContent = `Archived (${shownAside})`;
     state.more.setAttribute('aria-expanded', String(Boolean(state.moreOpen)));
     top.push(state.more, ...aside);
   } else { state.more?.remove(); top.push(...aside); }
