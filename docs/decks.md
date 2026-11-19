@@ -262,8 +262,10 @@ for screen readers; it shows beside the picture while the image uploads or after
 its upload failed, and in the picture's place while the picture does not show:
 before it loads, or when the page holds no such image ("· not on this page").
 Clicking a displayed image opens it in a new tab, leaving the card and its
-writing in place (item 651, docs/images.md). An image smaller than a thumbnail
-shows at a thumbnail's size. The page's list of
+writing in place (item 651, docs/images.md). Item 653's source-only preview
+shows these clickable images as 3rem square thumbnails with `object-fit:contain`,
+the page attachment list's convention: the whole image fits without cropping
+([image-buttons-653.md](image-buttons-653.md)). The page's list of
 images under the head leaves an image a card shows to the card, unless it needs
 Retry. × takes the image off the page too, unless another card still shows it.
 Undo, bringing back the card's line, puts the image back on the page (and so
@@ -287,8 +289,7 @@ there is attached to the page without a line, as before.
 Everywhere else a card's words are drawn, the line is never its markup. Where
 the page is read, the Reader (a page at a revision) and a page opened in place
 on its outcome's page, it is
-the image, as wide as it is up to the width of the words and never taller than
-most of the screen, with its name under it, read through the page at the
+the image, with its name under it, read through the page at the
 revision shown (`web/page-image.mjs`); an image the page does not carry is its
 name alone, "· not on this page", and nothing is read for it. Where only words
 show, the topic's Notebook card (an excerpt of the page), what changed since

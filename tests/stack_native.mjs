@@ -8,6 +8,7 @@
 // engine (webkit_native.mjs --reading). Screenshots are kept as stack-*.png.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { messagePreview } from '../web/message-preview.mjs';
 import { pngPixels } from './png-bands.mjs';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
@@ -26,6 +27,18 @@ export async function settleDialogCapture655(p) {
     return {open:d.open,animations:d.getAnimations().map(a=>a.playState),opacity:Number(getComputedStyle(d).opacity)}})()`);
   assert.equal(qualifyDialogCapture655(settled), true, 'capture requires a settled dialog animation and opaque endpoint');
   return settled;
+}
+
+// Item 799's measured relationships, shared by actual native observations and
+// the crossing control. Half a CSS px admits subpixel paint rounding (auditor10129).
+export function assertDossier799Geometry(at) {
+  const enclosureTolerancePx = 0.5;
+  assert.ok(at.reply.left >= at.folder.left - enclosureTolerancePx && at.reply.right <= at.folder.right + enclosureTolerancePx,
+    'reply stays inside its dossier (enclosureTolerancePx=0.5)');
+  assert.ok(at.reply.top >= at.head.bottom - enclosureTolerancePx,
+    'reply follows the real head (enclosureTolerancePx=0.5)');
+  assert.ok(at.pageRight <= at.width + enclosureTolerancePx,
+    'no sideways overflow (enclosureTolerancePx=0.5)');
 }
 
 // helpers: what topic_reading_native.mjs's checks press and read with.
@@ -50,6 +63,212 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   };
   const dossierTheme = (p, theme) => p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
   const dossierFold = (topic, id, on = true) => control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: id, operation_id: `${topic}-${id}-${on}`, args: { folded: on } });
+
+  // Exactly eight scenario cases, each with its own positive, negative,
+  // paging, placement, source change, privacy and fallback branches.
+  for (const device of ['phone-320', 'phone-375', 'phone', 'laptop']) for (const theme of ['light', 'dark']) {
+    await check(`reading item 799 real distant dossier head at ${device} ${theme}`, async () => {
+      const topic = `head799-${device}-${theme}`, input = device === 'laptop' ? 'laptop' : 'phone';
+      const phases = [], owned = [], receipts = [];
+      let p;
+      const phase = name => phases.push(name);
+      const keepReceipt = (answer, label) => {
+        assert.equal(answer.status, 'committed', `${label}: actual committed receipt`);
+        assert.equal(answer.recorded, true, `${label}: actual recorded receipt`);
+        receipts.push({ label, operation_id: answer.operation_id, message_id: answer.result?.message_id, status: answer.status, recorded: answer.recorded });
+        return answer.result;
+      };
+      try {
+        await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Dossier heads in context' }] });
+        let turn = 0;
+        const post = async (body, extra = {}) => keepReceipt(await control({ method: 'agent_message', topic_id: topic, source: 'topic',
+          operation_id: `${topic}-post-${turn++}`, sender: other, addressees: [facts.actor], body, ...extra }), body).message_id;
+        const rootWords = 'The actual distant first message.\nIts second line belongs to the source.';
+        const root = await post(rootWords, { join: true });
+        const backlogRoot = await post('An older starred original keeps all its loaded branches.');
+        for (let n = 0; n < 35; n++) await post(`Intervening work note ${n}.`, { read: true });
+        const loaded = await post('A loaded original stays unchanged.');
+        const loadedReply = await post('A reply under the loaded original.', { reply_to: loaded });
+        const reply = await post('The loaded reply belongs inside its distant dossier.', { reply_to: root });
+        const single = await post('A standalone message remains a card.', { read: true });
+        const backlogOne = await post('First loaded branch of the older starred original.', { reply_to:backlogRoot });
+        const backlogTwo = await post('Second loaded branch of the older starred original.', { reply_to:backlogRoot });
+        keepReceipt(await control({ method:'stack_act',sender:facts.actor,kind:'message.star',message_id:backlogRoot,operation_id:topic+'-backlog-star',args:{starred:true} }), 'older-root-star');
+        keepReceipt(await control({ method:'stack_act',sender:facts.actor,kind:'message.star',message_id:reply,operation_id:topic+'-reply-star',args:{starred:true} }), 'distant-reply-star');
+        // A real whisper, sent by the other human to an agent: this reader is
+        // not in it. No fake admission response is ever supplied.
+        const secret = await post('Private first-message control never leaks.', { sender: 'fixture-other-person', join: true,
+          addressees: ['aim-core'], whisper: true });
+        keepReceipt(await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.name', message_id: root,
+          operation_id: topic + '-name', args: { name: 'Cabin spring plan' } }), 'name');
+        keepReceipt(await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: root,
+          operation_id: topic + '-place', args: { key: 999999 } }), 'place');
+        const latest = await view('topic_messages', { topic_id: topic, direction: 'before', limit: 30 });
+        assert.ok(latest.items.some(item => item.id === reply) && !latest.items.some(item => item.id === root), 'Core preflight: root outside loaded page');
+        assert.equal(latest.items.find(item => item.id === reply).stack_position.root_id, root, 'Core preflight exact root');
+        const admitted = await view('topic_messages', { topic_id: topic, message_ids: [root] });
+        assert.equal(admitted.items[0].body, rootWords, 'Core preflight admitted actual words');
+        const refused = await view('topic_messages', { topic_id: topic, message_ids: [secret] });
+        assert.equal(refused.error?.code, 'FORBIDDEN', 'Core preflight actual private-source refusal');
+        phase('real-Core-preflight');
+        p = await open(topic, device, topic, reply); owned.push(p); p.recordResponses(); await dossierTheme(p, theme);
+        const folder = `#messages .reply-stack[data-stack="${root}"]`;
+        const present = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(folder)}))`);
+        await until(present, 'admitted actual distant head arrives');
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(folder)})?.dataset.headOpen === 'false'`), 'real head begins folded');
+        const sourceRead = p.calls.find(call => call.payload?.name === 'topic_messages' && call.payload.args.message_ids?.includes(root));
+        assert.ok(sourceRead, 'actual page requested the exact root');
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(root) + ' > .message-preview')}).textContent`), rootWords);
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(reply))}).closest('.reply-stack').dataset.stack`), root);
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(folder + ' .stack-name')}).textContent`), 'Cabin spring plan');
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(loaded))}).closest('.reply-stack').dataset.headOpen`), 'false', 'loaded-head negative retains its tab');
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(single))}).closest('.reply-stack') === null`), true, 'standalone negative remains a card');
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(secret))}) === null && !document.querySelector('#messages').textContent.includes('Private first-message control')`), true, 'private control absent from DOM');
+        assert.ok(!p.calls.some(call => call.payload?.args?.message_ids?.includes(secret)), 'page never guesses a private root');
+        for (const [canonical, branches] of [[root,[reply]],[backlogRoot,[backlogOne,backlogTwo]]]) {
+          const target=`#messages .reply-stack[data-stack="${canonical}"]`;
+          await until(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(target)}))`), 'anonymous admitted starred dossier has its actual head');
+          for (const branch of branches) assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(branch))}).closest('.reply-stack').dataset.stack`),canonical);
+          assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(target)}).hidden`),false,'reader starred dossier stays above More initially');
+        }
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(folder)}).dataset.placed`), 'true', 'dossier keeps its actual Core placement');
+        await centre(p, folder); await away(p);
+        const geometry = () => p.evaluate(`(()=>{const box=e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}},f=document.querySelector(${JSON.stringify(folder)});return {
+          folder:box(f),head:box(f.querySelector('.stack-head')),reply:box(document.querySelector(${JSON.stringify(card(reply))})),pageRight:document.documentElement.scrollWidth,width:innerWidth}})()`);
+        const measured = await geometry(); assertDossier799Geometry(measured);
+        await shot(p, `item-799-${device}-${theme}-actual-distant-head`);
+        phase('default-and-negatives');
+        // An actual CSS mutant crosses all measured enclosure/ordering/overflow
+        // bounds. Restore its exact previous style attribute before the control.
+        const styleBefore = await p.evaluate(`document.querySelector(${JSON.stringify(folder + ' > .stack-replies')}).getAttribute('style')`);
+        await p.evaluate(`document.querySelector(${JSON.stringify(folder + ' > .stack-replies')}).style.transform='translate(1500px,-500px)'`);
+        const styleMutant = await p.evaluate(`document.querySelector(${JSON.stringify(folder + ' > .stack-replies')}).getAttribute('style')`);
+        assert.notEqual(styleMutant, styleBefore, 'actual geometry mutant applied');
+        assert.match(styleMutant, /translate\(1500px,\s*-500px\)/, 'actual mutant crosses both axes');
+        await assert.rejects(async () => assertDossier799Geometry(await geometry()), /Tolerance|dossier|overflow|head/);
+        await p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(folder + ' > .stack-replies')});const old=${JSON.stringify(styleBefore)};old===null?e.removeAttribute('style'):e.setAttribute('style',old)})()`);
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(folder + ' > .stack-replies')}).getAttribute('style')`), styleBefore, 'actual geometry mutant restored exact bytes');
+        observations.push({name:'item799 geometry mutant',device,theme,engine,tolerancePx:0.5,original:styleBefore,mutant:styleMutant,mutant_sha256:createHash('sha256').update(styleMutant).digest('hex'),restored:styleBefore});
+        assertDossier799Geometry(await geometry()); phase('geometry-crossing-mutant-restored');
+        await openReader(p, input, reply, 'The loaded reply belongs');
+        await press(p, input, '#writing-body'); await p.send('Input.insertText', { text: 'Keep this reply exactly.' });
+        assert.equal(await p.evaluate("document.querySelector('#writing-body').value"), 'Keep this reply exactly.');
+        await closeReader(p, input);
+        // A native press expands the actual source head; native pointer/Return
+        // or touch then opens the exact source. The reply's writing stays saved.
+        const headTarget = folder + ' .stack-who';
+        await centre(p, headTarget); await press(p, input, headTarget);
+        const headState = () => p.evaluate(`(()=>{const f=document.querySelector(${JSON.stringify(folder)}),e=document.querySelector(${JSON.stringify(words(root))});
+          return {open:f?.dataset.headOpen==='true',preview:!!e&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden'}})()`);
+        if (input === 'phone' && !(await headState()).open) {
+          // First touch selects an unlit head. Its next genuine activation
+          // opens it under the existing product contract; never tap hidden words.
+          assert.equal((await headState()).preview, false, 'selected head still has no visible body');
+          await centre(p, headTarget); await press(p, input, headTarget);
+        }
+        await until(async () => { const state=await headState(); return state.open&&state.preview; }, 'native head activation actually reveals its preview');
+        if (input === 'laptop') {
+          await centre(p, words(root)); await press(p, input, words(root));
+          await until(async () => (await readerOn(p))?.startsWith('The actual distant first message.'), 'native pointer opens exact source');
+        } else await openReader(p, input, root, 'The actual distant first message.');
+        await settleDialogCapture655(p); await shot(p, `item-799-${device}-${theme}-exact-source`);
+        assert.ok(p.calls.some(call => call.payload?.name === 'source' && call.payload.args.kind === 'message' && call.payload.args.id === root), 'native act requests exact canonical source');
+        const returnedSource = await until(() => p.responses.find(row => row.payload?.name === 'source' && row.payload.args.kind === 'message' && row.payload.args.id === root), 'actual source response observed');
+        assert.deepEqual(returnedSource.body.source_ref, { kind:'message', id:root }, 'returned source identity agrees with native request');
+        assert.equal(returnedSource.body.topic_id, topic, 'returned source keeps exact topic');
+        assert.equal(returnedSource.body.body, rootWords, 'returned actual words agree');
+        await closeReader(p, input); await openReader(p, input, reply, 'The loaded reply belongs');
+        assert.equal(await p.evaluate("document.querySelector('#writing-body').value"), 'Keep this reply exactly.', 'source navigation preserves reply writing');
+        await closeReader(p, input); phase('native-source-writing');
+        const edit = keepReceipt(await control({ method: 'agent_edit', sender: other, message_id: root,
+          operation_id: topic + '-edit', body: 'Revised real distant first message.\nSecond line remains real.' }), 'edit');
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(root) + ' > .message-preview')})?.textContent.startsWith('Revised real distant')`), 'actual root source revision follows');
+        phase('source-revision');
+        await post('The revision has been read; older history is still paged.', { read: true });
+        await until(() => p.evaluate("!document.querySelector('#more-messages').hidden"), 'actual read acknowledgement leaves More available');
+        // More uses the original 30-message page's cursor, never the supplemental root.
+        await centre(p, '#more-messages'); await press(p, input, '#more-messages');
+        await until(() => p.evaluate("document.querySelector('#more-messages').hidden"), 'More reaches actual history end');
+        assert.ok(p.calls.some(call => call.payload?.name === 'topic_messages' && call.payload.args.direction === 'before' && call.payload.args.cursor === latest.next_cursor), 'More sends real loaded frontier');
+        assert.equal(await p.evaluate(`document.querySelectorAll(${JSON.stringify(card(root))}).length`), 1, 'paged root appears once');
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(reply))}).closest('.reply-stack').dataset.stack`), root);
+        for (const canonical of [root,backlogRoot]) {
+          assert.equal(await p.evaluate(`document.querySelectorAll(${JSON.stringify(card(canonical))}).length`),1);
+          assert.equal(await p.evaluate(`document.querySelector('#messages .reply-stack[data-stack="${canonical}"]').hidden`),false,'reader star stays above More after the actual page');
+        }
+        phase('More-frontier-root-once');
+        // These real commands are another device's acts, observed through
+        // the page's normal refresh. They never fabricate a position answer.
+        let actTurn=0;
+        const elsewhere = async (kind,id,args,sender=facts.actor) => keepReceipt(await control({method:'stack_act',sender,kind,message_id:id,operation_id:`${topic}-remote-${actTurn++}`,args}),kind);
+        const position = async id => (await view('stack_positions',{topic_id:topic,message_ids:[id]})).items[0].stack_position;
+        const afterPage=await view('topic_messages',{topic_id:topic,audience:'all',direction:'before',limit:30});
+        const through=Math.max(...afterPage.items.map(item=>item.seq));
+        await elsewhere('message.star',reply,{starred:false});
+        await elsewhere('stack.aside',root,{through});
+        await elsewhere('stack.aside',root,{through},other);
+        assert.equal((await position(reply)).below,true,'ordinary unstarred negative really below More');
+        await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(folder)})?.hidden===true`),'ordinary remote move reaches page below More');
+        const brought=await elsewhere('message.star',reply,{starred:true});
+        assert.equal(brought.brought_back.root_id,root,'another-device star actually brings back canonical dossier');
+        await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(folder)})?.hidden===false`),'remote star refresh keeps dossier above More');
+        const otherActs=(await control({method:'acts_as',reader:other,topic_id:topic})).acts.items;
+        assert.equal(otherActs.find(row=>row.message_id===root).acts.aside,through,'independent readers move remains recorded');
+        await elsewhere('stack.aside',loaded,{through});
+        await elsewhere('stack.join',root,{into:loaded});
+        const joined=await position(reply);
+        assert.equal(joined.root_id,loaded); assert.equal(joined.through,through); assert.equal(joined.below,false);
+        const joinedFolder=`#messages .reply-stack[data-stack="${loaded}"]`;
+        await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(card(reply))})?.closest('.reply-stack')?.dataset.stack===${JSON.stringify(loaded)}&&document.querySelector(${JSON.stringify(joinedFolder)})?.hidden===false`),'joined star follows retained destination move above More');
+        await elsewhere('message.star',reply,{starred:false});
+        assert.equal((await position(reply)).below,true,'explicit unstar restores retained ordinary below-More choice');
+        await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(joinedFolder)})?.hidden===true`),'unstarred joined ordinary dossier is below More');
+        await elsewhere('stack.join',root,{into:null});
+        assert.equal((await position(reply)).root_id,root,'split restores exact canonical original');
+        assert.equal((await position(reply)).below,false,'split retains actual brought-back position');
+        assert.equal((await position(loaded)).below,true,'destination keeps independent retained move');
+        await elsewhere('message.star',reply,{starred:true});
+        await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(card(reply))})?.closest('.reply-stack')?.dataset.stack===${JSON.stringify(root)}&&document.querySelector(${JSON.stringify(folder)})?.hidden===false`),'split starred dossier restores its actual head above More');
+        phase('remote-star-join-split-independent-reader');
+        assert.deepEqual(p.errors, []); await p.close(); owned.splice(owned.indexOf(p), 1);
+        // A transport outage holds and then fails only the exact named root
+        // lookup; admission and source navigation still use the actual Core.
+        const init = `(()=>{const f=window.fetch;window.fetch=function(i,o){let b;try{b=JSON.parse(o?.body)}catch{};
+          if(b?.name==='topic_messages'&&b.args.message_ids?.includes(${JSON.stringify(root)})&&!window.item799Failed){window.item799Failed=true;return new Promise((yes,no)=>{window.item799Fail=()=>no(new TypeError('isolated transport outage'))})}return f.call(this,i,o)}})()`;
+        p = await open(topic + '-fallback', device, topic, reply, init); owned.push(p); await dossierTheme(p, theme);
+        await until(() => p.evaluate("document.querySelector('.dossier-source-status')?.textContent.includes('Loading first message')"), 'source loading is explicit');
+        assert.equal(await p.evaluate("Boolean(document.querySelector('.dossier-source-status a'))"), false, 'loading does not claim unavailable fallback');
+        await p.evaluate('window.item799Fail()');
+        await until(() => p.evaluate("document.querySelector('.dossier-source-status')?.textContent.includes('Could not load first message')"), 'error is distinct from refusal/missing');
+        const fallback = '.dossier-source-status a';
+        assert.equal(await p.evaluate(`document.querySelector('${fallback}').textContent`), 'Reply in Cabin spring plan');
+        assert.ok((await p.evaluate(`document.querySelector('${fallback}').href`)).includes(root), 'fallback canonical href names root');
+        await centre(p, fallback); await press(p, input, fallback);
+        await until(async () => (await readerOn(p))?.startsWith('Revised real distant'), 'actual fallback opens canonical dossier source');
+        await closeReader(p, input);
+        await centre(p, '.dossier-source-status button'); await press(p, input, '.dossier-source-status button');
+        await until(present, 'Retry restores default actual head from Core');
+        phase('loading-error-fallback-native-retry');
+        await centre(p, folder); await shot(p, `item-799-${device}-${theme}-restored-default`);
+        assert.deepEqual(p.errors, []);
+        observations.push({ name: 'item 799 scenario', device, theme, engine, phases, receipts, root, reply, backlogRoot, backlogOne, backlogTwo, loaded, loadedReply, single,
+          cursor: latest.next_cursor, measured, enclosureTolerancePx: 0.5, sourceRevision: edit.revision,
+          limits: 'Emulated CSS viewport and native driver input; no physical phone/OS keyboard proof.' });
+      } catch (error) {
+        const diagnostic = { name: 'item 799 failure before close', device, theme, engine, phases, error: error.stack, captureError: null };
+        if (p) {
+          try { diagnostic.state = await p.evaluate(`(()=>({url:location.pathname+location.search,viewport:[innerWidth,innerHeight],
+            active:{id:document.activeElement?.id,message:document.activeElement?.closest('[data-id]')?.dataset.id},
+            stacks:[...document.querySelectorAll('#messages .reply-stack')].slice(0,40).map(e=>({root:e.dataset.stack,open:e.dataset.headOpen,name:e.querySelector('.stack-name')?.textContent})),
+            status:[...document.querySelectorAll('.dossier-source-status')].slice(0,40).map(e=>e.textContent),
+            reader:{open:document.querySelector('#reader')?.open,words:document.querySelector('#source-body')?.textContent.slice(0,300)}}))()`); }
+          catch (stateError) { diagnostic.stateCaptureError = stateError.stack; }
+          try { await shot(p, `item-799-${device}-${theme}-failure`); } catch (captureError) { diagnostic.captureError = captureError.stack; }
+        }
+        observations.push(diagnostic); throw error;
+      } finally { for (const ownedPage of owned) await ownedPage.close(); }
+    });
+  }
 
   // Item 645: use the same messages in each state, with sender changes and a
   // whole card between folded runs. Capture the base before asserting the new rule.
@@ -9742,6 +9961,117 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await write(ids.lone, { stands: 'Answered in the message itself', payload: { text: 'The lake opens in May', message_id: ids.lone } }, 'lone');
     return ids;
   };
+  // Item 769: source/whitespace assertions are separate from painted line geometry.
+  // The same shared sheet serves the feed and the Reader; neither may lose a wait or payload on a rewrite.
+  for (const [device, width] of [['phone-320', 320], ['phone-375', 375], ['phone', 390], ['laptop', 1280]]) {
+    for (const theme of ['light', 'dark']) await check(`reading item 769 cover lines in feed and Reader at ${width} ${theme}, updates reload and writing kept`, async () => {
+      const lineGeometryTolerancePx = 2; // engine rounding; a collapsed line is ~20px away and fails.
+      const input = device === 'laptop' ? 'laptop' : 'phone';
+      const topic = `cover-lines-769-${width}-${theme}`, ids = await coverSeed(topic);
+      const three = 'Discussed: cabin\nDecisions: none\nNext: choose', one = 'Ready.';
+      const write = async (stands, op) => {
+        const answer = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: ids.root,
+          operation_id: `${topic}-${op}`, args: { stands } });
+        assert.equal(answer.status, 'committed', JSON.stringify(answer));
+        assert.equal(answer.result.cover.stands, stands, 'source: command receipt retains actual LF bytes');
+        const held = await view('dossier_cover', { message_id: ids.note });
+        assert.equal(held.cover.stands, stands, 'source: HTTP view retains actual LF bytes');
+        return held.cover;
+      };
+      const initial = await write(three, 'lines');
+      const p = await open(topic, device, topic, ids.root);
+      try {
+        await dossierTheme(p, theme);
+        const feed = `#messages .reply-stack[data-stack="${ids.root}"] > .dossier-cover`;
+        const reader = '#reader-cover > .dossier-cover';
+        const look = selector => p.evaluate(`(()=>{const sheets=[...document.querySelectorAll(${JSON.stringify(selector)})],s=sheets[0],w=s?.querySelector('.cover-stands .cover-words');
+          if(!w)return null;const t=w.firstChild,lines=w.textContent.split('\\n'),box=s.getBoundingClientRect(),rects=[];let at=0;
+          for(const line of lines){const r=document.createRange();r.setStart(t,at);r.setEnd(t,at+line.length);const b=r.getBoundingClientRect();
+            rects.push({top:b.top,bottom:b.bottom,left:b.left,right:b.right,height:b.height});at+=line.length+1}
+          return {count:sheets.length,text:w.textContent,rects,lineHeight:parseFloat(getComputedStyle(w).lineHeight),
+            box:{top:box.top,bottom:box.bottom,left:box.left,right:box.right},
+            waits:[...s.querySelectorAll('.cover-wait')].map(x=>x.textContent),payloads:[...s.querySelectorAll('.cover-payload')].map(x=>x.textContent),
+            defaults:[...s.querySelectorAll('.cover-note')].map(x=>x.textContent),citations:[...s.querySelectorAll('.cover-src')].map(x=>x.textContent),
+            visible:s.getClientRects().length>0&&getComputedStyle(w).visibility==='visible',sideways:document.documentElement.scrollWidth>innerWidth+${lineGeometryTolerancePx}}})()`);
+        const prove = async (selector, stands, phase) => {
+          await until(async () => (await look(selector))?.text === stands, `${phase}: the new words arrive`);
+          const at = await look(selector);
+          assert.equal(at.text, stands, `${phase}: source text is literal, no label parsing`);
+          assert.equal(at.count, 1, `${phase}: one shared sheet`);
+          assert.equal(at.visible, true, `${phase}: the stands text is shown`);
+          assert.equal(at.sideways, false, `${phase}: no horizontal overflow (lineGeometryTolerancePx=2)`);
+          assert.equal(at.rects.length, stands.split('\n').length, `${phase}: each supplied line is measured`);
+          for (const [i, r] of at.rects.entries()) {
+            assert.ok(Math.abs(r.height - at.rects[0].height) <= lineGeometryTolerancePx, `${phase}: one visual line per supplied line (lineGeometryTolerancePx=2)`);
+            assert.ok(r.height > lineGeometryTolerancePx && r.left >= at.box.left - lineGeometryTolerancePx && r.right <= at.box.right + lineGeometryTolerancePx &&
+              r.top >= at.box.top - lineGeometryTolerancePx && r.bottom <= at.box.bottom + lineGeometryTolerancePx,
+            `${phase}: line is whole inside its sheet (lineGeometryTolerancePx=2): ${JSON.stringify(at)}`);
+            if (i) assert.ok(Math.abs(r.top - at.rects[i - 1].top - at.lineHeight) <= lineGeometryTolerancePx,
+              `${phase}: distinct consecutive painted lines (lineGeometryTolerancePx=2): ${JSON.stringify(at)}`);
+          }
+          assert.equal(at.waits.length, 1, `${phase}: one wait`);
+          assert.match(at.waits[0], /Book the cabin for that weekend\?/);
+          assert.deepEqual(at.defaults, ['Default: booked on Friday if nothing is said.']);
+          assert.equal(at.payloads.length, 1, `${phase}: one payload`);
+          assert.match(at.payloads[0], /The second weekend.*payload proposed/);
+          assert.equal(at.citations.length, 1, `${phase}: payload source retained`);
+          observations.push({ name: 'item 769', engine, width, theme, phase, lineGeometryTolerancePx, ...at });
+        };
+        await centre(p, feed); await prove(feed, three, 'feed initial'); await shot(p, `item-769-${width}-${theme}-feed`);
+        await dossierOpen(p, input, ids.root);
+        await openReader(p, input, ids.note, 'I checked the road report');
+        await press(p, input, '#reader-cover > summary');
+        await prove(reader, three, 'Reader initial'); await settleDialogCapture655(p); await shot(p, `item-769-${width}-${theme}-reader`);
+        // A single-line value remains a single painted line on both surfaces.
+        const single = await write(one, 'single');
+        assert.deepEqual([single.waiting, single.payload], [initial.waiting, initial.payload], 'source: partial write retains waits/defaults/payload');
+        await prove(reader, one, 'Reader one line');
+        await closeReader(p, input);
+        await centre(p, feed); await prove(feed, one, 'feed one line');
+        await openReader(p, input, ids.note, 'I checked the road report');
+        await press(p, input, '#reader-cover > summary');
+        const updated = three.replace('none', 'Friday');
+        await write(updated, 'update');
+        await prove(reader, updated, 'Reader update');
+        await closeReader(p, input);
+        await centre(p, feed); await prove(feed, updated, 'feed before reload');
+        await until(() => p.evaluate('window.fetchesOut === 0'), 'reads finish before cover reload');
+        const coverOrigin = await p.evaluate('performance.timeOrigin');
+        await p.send('Page.reload');
+        await until(() => p.evaluate(`performance.timeOrigin !== ${coverOrigin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(feed)}))`), 'new document retains updated cover');
+        await centre(p, feed); await prove(feed, updated, 'feed cover reload');
+        const toggle = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
+        if (await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state !== 'open'`)) await dossierOpen(p, input, ids.root);
+        await openReader(p, input, ids.note, 'I checked the road report');
+        await press(p, input, '#reader-cover > summary');
+        await prove(reader, updated, 'Reader cover reload');
+        await press(p, input, '#reader-cover > summary');
+        const writing = 'Keep my reply\nexactly as written.';
+        await press(p, input, '#writing-body');
+        await p.send('Input.insertText', { text: writing });
+        await until(() => p.evaluate(`document.querySelector('#writing-body').value === ${JSON.stringify(writing)}`), 'the reply is written by native input');
+        await write(three, 'while-writing');
+        await until(() => p.evaluate(`document.querySelector('#reader-cover .cover-stands')?.textContent === ${JSON.stringify(three)}`), 'the cover updates while writing');
+        assert.equal(await p.evaluate(`document.querySelector('#writing-body').value`), writing, 'cover update keeps unsent writing');
+        await closeReader(p, input);
+        await centre(p, feed); await prove(feed, three, 'feed update');
+        await until(() => p.evaluate('window.fetchesOut === 0'), 'writing and reads finish before reload');
+        const origin = await p.evaluate('performance.timeOrigin');
+        await p.send('Page.reload');
+        await until(() => p.evaluate(`performance.timeOrigin !== ${origin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(feed)}))`), 'new document after reload');
+        await centre(p, feed); await prove(feed, three, 'feed reload');
+        if (await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state !== 'open'`)) await dossierOpen(p, input, ids.root);
+        await openReader(p, input, ids.note, 'I checked the road report');
+        assert.equal(await p.evaluate(`document.querySelector('#writing-body').value`), writing, 'reload keeps unsent writing');
+        assert.equal(await p.evaluate(`window.sent.filter(kind=>kind==='message.send').length`), 0, 'nothing sends the reply');
+        const held = await view('dossier_cover', { message_id: ids.note });
+        assert.deepEqual([held.cover.stands, held.cover.waiting, held.cover.payload], [three, initial.waiting, initial.payload], 'source: reload retains all stored fields');
+        await closeReader(p, input);
+        assert.deepEqual(p.errors, []);
+      } finally { await p.close(); }
+    });
+  }
+
   // What the page draws of a dossier's cover, and where: its sheet's place among the folder's parts, its box against the
   // tab and the first part after it, and its words; null when the folder has none.
   const coverOn = (p, root) => p.evaluate(`(()=>{const s=document.querySelector('#messages .reply-stack[data-stack=${JSON.stringify(root)}]');if(!s)return 'no folder';

@@ -22,7 +22,7 @@ def register(verb):
     cover = verb("cover")
     cover.add_argument("message")
     cover.add_argument("--expected", type=int)
-    # Where it stands, in one line; "" clears it.
+    # Where it stands, retaining its lines; "" clears it.
     cover.add_argument("--stands")
     # What waits on the owner, each with its default: --waits TEXT --default TEXT, once per thing waiting, in order.
     cover.add_argument("--waits", action="append", default=[])
@@ -53,7 +53,9 @@ def cover_lines(root, revision, cover, owner):
         return ["no cover on the dossier of %s (revision %d)" % (root, revision)]
     lines = ["cover of the dossier of %s (revision %d, by %s at %s)" % (root, revision, cover["by"], _at(cover["at_ms"]))]
     if cover["stands"]:
-        lines.append("  stands: %s" % cover["stands"])
+        # Output.plain sanitizes embedded controls, including LF. Emit each
+        # supplied line separately so the terminal readback retains the breaks.
+        lines.extend(("  stands: " + cover["stands"]).split("\n"))
     for wait in cover["waiting"]:
         lines.append("  waits on %s: %s (default: %s)" % (owner, wait["text"], wait["default"]))
     payload = cover["payload"]

@@ -9,6 +9,7 @@ import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 import { typingField } from './writing-input.mjs';
 import { Freshness, initialViews, actorBaseline, readFailure, checkedView, bindingOf } from './freshness.mjs';
+import { DossierHeads } from './stack-order.mjs';
 import { TopicViews, followEdits } from './topic-views.mjs';
 import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, topicTarget, paintChanged, changedSince } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
@@ -34,7 +35,7 @@ import { NotebookCreate } from './notebook-create.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from './quick-create.mjs';
 import { PurposeLine } from './outcome-purpose.mjs';
 import { AgentInvite, Invitation } from './agent-invite.mjs';
-import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf } from './marks.mjs';
+import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf, paintNoteCorner } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, opened } from './fold.mjs';
@@ -62,6 +63,7 @@ import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
 import { ToolPage, OutcomeTools, ToolsRail, TopicTools } from './skills.mjs';
 import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
+import { DossierSelectionQuote } from './dossier-selection-quote.mjs';
 import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions } from './reactions.mjs';
 import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
@@ -69,6 +71,7 @@ import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
 import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries, paintFolderColors, fillFrom, paintFoldedNames } from './reply-stacks.mjs';
 import { paintCardImages, dropCardImages } from './card-images.mjs';
+import { paintThumb } from './image-pick.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { PressHold } from './press-hold.mjs';
@@ -119,7 +122,8 @@ let outcomeReached = false;
 // The Reader's edit of one of the person's messages, while it is open (editMessage).
 let messageEdit = null;
 // What the person does to reply stacks: star, rename, move, join, fold (stack-feed.mjs).
-let stackFeed = null;
+let stackFeed = null, dossierHeads = null;
+const feedMessages = () => dossierHeads?.messages(views.messages) ?? views.messages;
 // A press held down on the page: the repaints that would move the list under it wait for it to end (press-hold.mjs).
 const pressHold = new PressHold(document);
 const guide = new InteractionGuide(document);
@@ -693,8 +697,9 @@ function rechecked(session, ids, page) {
     if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error);
   });
 }
-// One attachment of a source: a button that fetches it, then shows an image
-// in place and offers the file to save. current() says the place it was
+// One attachment of a source: an existing thumbnail beside Open for a verified
+// inline image (653); Open still fetches it, shows it in place and offers the
+// file to save. The thumbnail keeps 651's new-tab act. current() says the place it was
 // offered from still shows that source; a refusal goes to notice, and an open
 // that succeeds sends notice('') to say an earlier refusal no longer holds.
 // Focus pressed onto Open moves to Download, or back to Open on a refusal,
@@ -711,7 +716,7 @@ function attachmentControl(attachment, sourceRef, current, notice) {
       const media = await api.media(bootstrap.instance_id, attachment, sourceRef);
       if (!available()) return;
       const url = URL.createObjectURL(media.blob);
-      mediaURLs.add(url); host.replaceChildren();
+      mediaURLs.add(url); host.replaceChildren(); host.classList.remove('attachment-control');
       if (media.inline) { const image = node('img'); image.alt = attachment.name; image.src = url; host.append(image); }
       const download = node('a', `Download ${attachment.name}`); download.href = url; download.download = attachment.name; host.append(download);
       notice('');
@@ -719,6 +724,20 @@ function attachmentControl(attachment, sourceRef, current, notice) {
     } catch (error) { if (available()) notice(error); }
     finally { if (show.isConnected) { show.disabled = false; if (held && unplaced()) show.focus(); } }
   }); host.append(show);
+  // Unknown/non-inline files keep Open alone. Never discover an image by
+  // speculatively reading a file; use the same verified descriptors as cards.
+  if (attachment.inline === true && ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(attachment.content_type)) {
+    host.classList.add('attachment-control'); show.classList.add('attachment-open');
+    const key = JSON.stringify(['attachment', sourceRef ?? 'own', attachment.id, attachment.sha256]);
+    paintThumb(host, key, async () => {
+      // A queued read belongs only to the control still offering this source.
+      // Open may already have replaced it, or its page may have moved on.
+      const currentImage = () => !retired && available() && show.isConnected;
+      if (!currentImage()) return null;
+      const media = await api.media(bootstrap.instance_id, attachment, sourceRef);
+      return currentImage() && media.inline ? media.blob : null;
+    });
+  }
   return host;
 }
 // One of a Notebook page's images, read through the page at ref (page-image.mjs): the Reader's and a page in place.
@@ -740,12 +759,12 @@ function sourceAttachments(presentation) {
 }
 // act: what the person's act of reading captured (Marks.capture), for a card
 // or Read it; every other open passes none and clears nothing.
-async function openSource(ref, opener, act = null) {
+async function openSource(ref, opener, act = null, mode = 'reply') {
   const request = ++opening;
   const from = registry.interactive;
   views.retain(views.currentItem, ref.kind === 'memory' ? ref.id : null);
   status('');
-  try { await marks.open(registry, ref, { topicId: topic.id, opener }, act); }
+  try { await marks.open(registry, ref, { topicId: topic.id, opener, mode }, act); }
   catch (error) {
     if (request === opening) {
       if (from?.surface !== 'inline' && registry.isCurrent(from)) reader.notice(error);
@@ -846,10 +865,11 @@ function paintViews(kind) {
   // All but the header and the people, which repaint in place, move the list:
   // under a press held down they wait for it to end, so the click lands where it began.
   if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }
+  if (kind === 'starred') { keepListAnchor(paintStarredStatus); return; }
   // A thumbs-up reads its message (card-reading.mjs, readNow): its card, and its stack's count of new replies, read so.
   if (kind === 'reactions') { keepListAnchor(() => { paintCardReading(); stackMessages(); menu?.paint(); }); paintReaderThumb$(); return; }
   // A star, a stack's name, a join or a place, here or on another device (stack-feed.mjs).
-  if (kind === 'acts') { keepListAnchor(() => { stackMessages(); menu?.paint(); }); return; }
+  if (kind === 'acts') { refreshDossierHeads(); keepListAnchor(() => { stackMessages(); menu?.paint(); }); return; }
   // A message edited, here or elsewhere: its card and the lines that read its words (docs/message-edit.md).
   if (kind === 'edited') { keepListAnchor(() => repaintEdited(views.takeRevised(), views.takeEdits())); return; }
   // The person's own note or saved reply on a message, saved, emptied or sent here or elsewhere: its card's marks (item 127).
@@ -874,7 +894,7 @@ function paintViews(kind) {
   keepListAnchor(() => {
   // Newest first, so where each new card goes is at or after where the one before it went.
   let following = $('messages').firstElementChild;
-  for (const item of kind === 'messages' ? [...views.messages.values()].sort((a, b) => b.seq - a.seq) : []) {
+  for (const item of kind === 'messages' ? [...feedMessages().values()].sort((a, b) => b.seq - a.seq) : []) {
     let card = messageEntries.get(item.id);
     if (!card) {
       const ref = { kind: 'message', id: item.id };
@@ -925,7 +945,7 @@ function paintViews(kind) {
     learnReply(views.messages, item, bootstrap.actor);
   }
   // The stacks are drawn with the new messages in before any of them is dealt with (stack-feed.mjs, arrived).
-  if (kind === 'messages') { feedOf().arrived([...views.messages.values()]); paintCardReading(); }
+  if (kind === 'messages') { syncDossierHeads(); feedOf().arrived([...views.messages.values()]); paintCardReading(); }
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
     let card = memoryCards.get(item.id);
     if (!card) {
@@ -944,7 +964,7 @@ function paintViews(kind) {
     }
     card.onclick = () => run(() => openNotebook(item.id, { opener: card }));
   }
-  if (kind === 'messages') { placeLine(); menu?.paint(); }
+  if (kind === 'messages') { placeLine(); menu?.paint(); paintDossierSourceStatus(); }
   if (kind === 'messages' && here?.page) paintConversationPage();
   });
   paintMoreMessages();
@@ -981,10 +1001,56 @@ function actorLabel(id) {
 // conversation's included (reply-stacks.mjs). A folded stack keeps in view a
 // reply the person has not read and, in the conversation, one whose card asks
 // something of them: an item nothing has settled, or an ask waiting on them.
-function stackMessages() { feedOf().arrange(); }
+function refreshDossierHeads(id = null) {
+  if (!dossierHeads) return;
+  dossierHeads.invalidate(id);
+  syncDossierHeads();
+}
+function syncDossierHeads() {
+  if (!dossierHeads || topicUnavailable || registry?.disposed || authorityReviewPending()) return;
+  dossierHeads.sync(views.messages);
+  const messages = feedMessages();
+  for (const [id, entry] of messageEntries) if (!messages.has(id)) {
+    cardObserver?.unobserve(entry); middleObserver?.unobserve(entry);
+    entry.remove(); messageEntries.delete(id);
+  }
+}
+function stackMessages() { syncDossierHeads(); feedOf().arrange(); paintDossierSourceStatus(); }
+function paintStarredStatus() {
+  const line = $('starred-status'), words = $('starred-status-words'), retry = $('starred-retry');
+  line.hidden = topicUnavailable || authorityReviewPending() || !views.starredPending;
+  words.textContent = views.starredError ? 'Could not finish loading starred dossiers. ' : 'Loading starred dossiers…';
+  retry.hidden = !views.starredError;
+  retry.onclick = () => { views.resetStars(); freshness?.request({ retry: true }); };
+}
+// The fallback is a real canonical dossier route, guarded by the same writing
+// preservation as all other in-app links. No source body is inferred here.
+function paintDossierSourceStatus() {
+  for (const line of $('messages').querySelectorAll('.dossier-source-status')) line.remove();
+  for (const stack of stackFeed?.state.stacks ?? []) {
+    const record = dossierHeads?.records.get(stack.dossier);
+    if (!record || record.state === 'available') continue;
+    const entry = messageEntries.get(stack.id);
+    if (!entry) continue;
+    const line = node('span', undefined, 'dossier-source-status');
+    const label = stack.head.stack_position?.name?.text || 'this dossier';
+    const link = node('a', `Reply in ${label}`);
+    link.href = routeHref({ kind: 'topic', id: topic.id, message: stack.dossier });
+    link.onclick = event => { event.preventDefault(); event.stopPropagation(); run(() => openSource({ kind: 'message', id: stack.dossier }, link)); };
+    const words = { loading: 'Loading first message… ', error: 'Could not load first message. ', refused: 'First message unavailable. ', missing: 'First message unavailable. ' };
+    line.append(node('span', words[record.state]));
+    if (record.state !== 'loading') line.append(link);
+    if (record.state === 'error') {
+      const retry = node('button', 'Retry'); retry.type = 'button';
+      retry.onclick = event => { event.stopPropagation(); refreshDossierHeads(stack.dossier); stackMessages(); };
+      line.append(retry);
+    }
+    cardIn(entry).prepend(line);
+  }
+}
 // The page's reply stacks and what the person does to them, made with the first messages.
 function feedOf() {
-  stackFeed ??= new StackFeed({ list: $('messages'), messages: () => views.messages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
+  stackFeed ??= new StackFeed({ list: $('messages'), messages: feedMessages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
     authority: () => registry.runtime.current,
     // The page's own act, once Core answers it, tells the Reader's neighbours whether it could have moved them (item 426).
     send: async envelope => { const receipt = await api.command(envelope); if (receipt?.status === 'committed') views.ownAct(envelope.kind, receipt.result); return receipt; },
@@ -1010,6 +1076,7 @@ function feedOf() {
 function drawFeed(on, ...parts) {
   const sheet = $('new-message-sheet'), inFeed = $('messages').contains(sheet);
   for (const id of ['messages', 'notebook', 'topic-people', ...parts]) $(id).hidden = !on;
+  if (on) paintStarredStatus(); else $('starred-status').hidden = true;
   if (on === inFeed) return;
   if (!on && sheet.open) sheet.close();
   if (stackFeed) stackFeed.arrange(); else if (!on) $('main').append(sheet);
@@ -1036,6 +1103,9 @@ function paintCardReading() {
     entry.dataset.talk = quiet ? 'agents' : '';
     paintReading(card, item, { read: cardRead(item), quiet, go: goToMessage });
     paintAwaiting(card, item);
+    // The shortcut is the card's last act, after its words and controls.
+    paintNoteCorner(card, item, (id, opener) => run(() =>
+      openSource({ kind: 'message', id }, opener, marks.capture(id), 'note')));
   }
 }
 // A message the page shows, brought into view: its stack opened first when it
@@ -1665,6 +1735,7 @@ function finishEdit(session, state) {
 // unless it is editing that very message: then its next Save is a conflict.
 async function messageEdited(key, version, read, current) {
   const id = key.slice(5);
+  refreshDossierHeads(id);
   // The rails beside the page keep a topic's newest messages by its version, which an edit does not move.
   shell.messageEdited(id);
   const done = await views.refresh(key, version, read, current);
@@ -1854,7 +1925,7 @@ function revisionOffer(presentation) {
   } };
 }
 function updateStatus(state) {
-  if (state.kind === 'authority') ++listAccessEpoch;
+  if (state.kind === 'authority') { ++listAccessEpoch; dossierHeads?.invalidate(); views?.resetStars(); }
   updateState = state;
   const quiet = state.kind === 'current' || state.kind === 'defer';
   $('updates-status').hidden = quiet;
@@ -1870,8 +1941,11 @@ function updateStatus(state) {
   if (state.kind === 'reconnect') run(reconnect);
 }
 async function checkAvailability(read, current, topicDenied = true) {
+  dossierHeads?.invalidate();
+  views.resetStars();
   if (topicDenied) {
     topicUnavailable = true; ++listAccessEpoch;
+    dossierHeads?.invalidate();
     drawFeed(false);
     // Nor the pictures of its messages (card-images.mjs).
     dropCardImages($('messages'));
@@ -2039,6 +2113,8 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
     rebuild: async (_read, current) => { if (current()) for (const item of views.refreshKeys()) freshness.invalidate(item.key, item.version, true); },
     refresh: async (key, version, read, current) => {
       if (key === 'availability') { await checkAvailability(read, current, false); return true; }
+      if (key === 'starred') return views.readStarred(read, () => current() && !topicUnavailable && !authorityReviewPending());
+      if (key === 'acts' || key === 'topic') views.resetStars();
       if (key.startsWith('edit:')) return messageEdited(key, version, read, current);
       // The edit session of one of the person's messages moved (docs/message-edit.md): another device may have taken it.
       if (key.startsWith('edit_session:')) { if (messageEdit?.id === key.slice(13)) messageEdit.writing.sessionChanged(version); return true; }
@@ -2070,6 +2146,7 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
   });
   document.addEventListener('visibilitychange', () => freshness.setVisible(document.visibilityState === 'visible'));
   window.addEventListener('online', () => { if (document.visibilityState === 'visible') freshness.request(); topicState?.reconnected(); });
+  views.resetStars();
   freshness.setVisible(document.visibilityState === 'visible');
 }
 // What could not be done for want of Theseus is done again once Theseus has
@@ -2202,8 +2279,13 @@ async function initialize() {
   const checkpoint = await initialViews({ api, bootstrap, topicId, load: async () => {} });
   const actorCheckpoint = await actorBaseline({ api, bootstrap });
   // The conversation's own items hold messages' words too (followEdits): an edit of one of them, or of one a reply among them answers, is read.
-  const holds = id => Boolean(here?.items.has(id) || [...(here?.items.values() ?? [])].some(item => item.reply_to === id));
+  const holds = id => Boolean(dossierHeads?.records.has(id) || here?.items.has(id) || [...(here?.items.values() ?? [])].some(item => item.reply_to === id));
   views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version, force) => freshness?.invalidate(key, version, force), holds, reading });
+  const headViews = views;
+  dossierHeads = new DossierHeads({ topicId,
+    read: (name, args) => api.view(name, args, { readClass: 'background' }).then(answer => checkedView(answer, bootstrap.instance_id)),
+    current: () => views === headViews && !registry?.disposed && !topicUnavailable && !authorityReviewPending(),
+    changed: () => keepListAnchor(() => paintViews('messages')) });
   const result = validate(await api.view('topic', { topic_id: topicId })); topic = result.topic;
   views.topic = topic; views.participants = result.participants;
   if (topic.id !== topicId) throw Error('The topic identity could not be confirmed.');
@@ -2417,7 +2499,12 @@ async function initialize() {
     const copied = known !== undefined ? copyText(known) : cardScroll.whole(item.id, 'foreground').then(body => copyText(body), () => false);
     copied.then(done => { if (!done) status(COPY_REFUSED); });
   };
-  menu = new MessageMenu({ host: $('messages'), item: id => views.messages.get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
+  new DossierSelectionQuote({ host: $('messages'), template: $('quote-selection'),
+    entryOf: target => menu?.entryOf(target), selected: entry => menu?.passages.selected(entry),
+    eligible: (id, entry) => !retired && !topicUnavailable && !authorityReviewPending() && !registry.disposed &&
+      !freshness?.stopped && views.messages.has(id) && messageEntries.get(id) === entry && drawn($('messages'), id),
+    quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)) });
+  menu = new MessageMenu({ host: $('messages'), item: id => feedMessages().get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
     reply: (id, card) => run(() => replyMessage(id, card)),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)),
     // A thumbs-up on a reply deals with its stack up to it (stack-feed.mjs).

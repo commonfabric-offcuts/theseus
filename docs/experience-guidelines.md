@@ -18,9 +18,13 @@ run's results can be searched for it.
 
 The Reader keeps room to read the message and room to write a useful reply.
 Guidance on the page stays compact and folds away. On a phone with the keyboard
-up, the message still shows enough to read while writing. The Reader and the
-New message sheet are as tall as the window and grow with its width up to a
-maximum, and on a phone never reach past the screen.
+up, the message still shows enough to read while writing. The Reader fills the visible window up to its width maximum. The pencil
+sheet floats at the bottom over the unblurred page; its field starts at one
+line and grows with the text, and confirmed sending closes it. Its inline
+agent menu stays compact. Neither surface reaches past a phone screen.
+The `item 673` cases in `tests/reader_compose_native.mjs` hold these rules
+on topics and Conversations in both engines, all three phone widths and laptop,
+light and dark.
 
 - `tests/reader_native.mjs` (`native-reader`): "default stacks, wide keeps
   writing full height, layout switch preserves typing", "divider click is inert,
@@ -311,7 +315,21 @@ press cannot reach.
   group, and the button goes; an active topic shows none", "header ✅ Done is
   reached with Tab and pressed with Return or Space, and the focus lands on the
   subtitle saying Done".
-- Otherwise no automated check. Held by Tony's preview of every new surface.
+- `tests/topic_reading_native.mjs` (`native-reading`, `native-webkit-reading`):
+  the `reading item 649` cases at 320, 375, 390 and laptop, light and dark:
+  the message's own note corner opens the composer to that private note by
+  pointer, keys and first tap; a slow or failed opening retains writing and
+  can be retried, an unavailable source keeps saving held and offers Retry access, and empty
+  or other-reader notes show no corner.
+- `tests/topic_title_native.mjs` (`native-header`, `native-colors`,
+  `native-webkit-colors`): the “item 656” cases keep the Rename topic pencil
+  beside the title, edit there, retain the name in header and rail after
+  reload, preserve settings rename and follow its permission. The “item 656
+  membership-editing” and “membership-busy” cases revoke and regain ownership
+  for a nonparticipant with no previous authorship, retaining exact writing
+  and the pending operation through the read-only rebuild and native Escape. Each state
+  (normal, editing, busy, refused, invalid title, and read-only) is checked
+  at 320, 375, 390 and laptop widths in both themes.
 
 The topic's Team says "Team". + Add becomes Done while the possible agent
 pills and field show; Done or a click outside closes them without adding the

@@ -8,6 +8,7 @@ import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './im
 import { showLine } from './lines.mjs';
 import { ComposeBar } from './compose-bar.mjs';
 import { holdPlace } from './sheet-holder.mjs';
+import { currentImages, imageBarrier } from './upload-state.mjs';
 
 
 // The inline DOM adapter shares the existing registry/session/upload owners.
@@ -114,8 +115,8 @@ export class InlineComposer {
     if (!this.sheet || this.sheet.open || this.root.hidden) return;
     // At rest it is among the dossiers (item 465): a holder keeps its place there, so the feed does not move behind it.
     holdPlace(this.sheet);
-    this.sheet.showModal(); this.popped = true;
-    // The sheet gives the field its height (aim.css): the height it grew to in its place in the feed goes.
+    this.sheet.showModal(); this.popped = true; this.opening = Symbol();
+    // Start at one line and fit the writing at the sheet’s current width.
     this.bar.fit();
     this.field.focus();
     this.field.setSelectionRange(this.field.value.length, this.field.value.length);
@@ -146,6 +147,7 @@ export class InlineComposer {
   // A failure goes to the notice as the error itself (lines.mjs).
   notice(what, p = this.presentation, editor = this.editor) {
     if (this.presentation !== p || this.editor !== editor || !this.admits(p, editor)) return;
+    this.noticeVersion = (this.noticeVersion ?? 0) + 1;
     showLine(this.$('notice'), what);
   }
   cancelPicker() {
@@ -282,7 +284,7 @@ export class InlineComposer {
     finally { this.paintStatus(); }
   }
   async send() {
-    const p = this.presentation, editor = this.editor;
+    const p = this.presentation, editor = this.editor, opening = this.opening;
     if (!this.admits(p, editor) || this.state().sendDisabled) return;
     // A name typed in To and not named: Send waits, and says so (compose-bar.mjs).
     if (this.bar.holdSend()) return;
@@ -293,7 +295,20 @@ export class InlineComposer {
     try {
       const sent = this.callbacks.send(editor, p);
       if (this.admits(p, editor) && editor.draft !== draft) { this.drawEditor(); this.paintRecipients(); this.paintStatus(); this.paintChoice(); this.field.focus(); }
-      await sent;
+      const version = editor.localVersion, cycle = editor.clientCycleId, noticeVersion = this.noticeVersion;
+      const result = await sent;
+      // Only confirmed publication closes this opening. An interrupted or refused
+      // act keeps its recovery controls in front; a later opening or new writing
+      // is never dismissed by an older answer.
+      // Image selection/capture does not edit text. Only selections owned by
+      // the successor count here; the sent submission owns its frozen images.
+      if (result?.status === 'confirmed' && this.admits(p, editor) && this.popped &&
+          this.opening === opening && editor.localVersion === version && editor.clientCycleId === cycle &&
+          !currentImages(editor).length && !imageBarrier(editor) &&
+          !this.imagePicker && !this.images?.open && !this.bar.panel && !this.naming.sheet.open &&
+          this.noticeVersion === noticeVersion) {
+        this.bar.fold(); this.sheet.close();
+      }
     } catch (error) { this.notice(error, p, editor); }
   }
 }

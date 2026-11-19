@@ -381,7 +381,8 @@ export class Reader {
     if (left) this.notice(KEPT);
     this.applyLayout();
     this.moveTo(this.positions.get(this.placeKey()) ?? 0);
-    if (!same) this.sourceBody.focus({ preventScroll: true });
+    if (mode === 'note') this.field.focus({ preventScroll: true });
+    else if (!same) this.sourceBody.focus({ preventScroll: true });
   }
 
   // What changed in the Notebook page shown since the revision the reader
@@ -749,7 +750,7 @@ export class Reader {
     this.disarm();
     this.drawEditor();
     this.field.focus();
-    const caret = this.editor.draft.caret;
+    const caret = this.editor.draft.caret ?? { start: this.field.value.length, end: this.field.value.length };
     this.field.setSelectionRange(caret.start, caret.end);
   }
 

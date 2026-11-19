@@ -55,6 +55,49 @@ class CoverCase(AgentVerbCase):
 
 
 class WritingCase(CoverCase):
+    def test_item_769_three_lines_survive_command_storage_and_every_cover_view(self):
+        root, answer, _ = self.dossier()
+        stands = "Discussed: cabin\nDecisions: second weekend\nNext: book it"
+        result = self.committed(self.cover(root, {
+            "stands": stands, "waiting": [{"text": " Book\n the cabin? ", "default": " booked\tFriday "}],
+            "payload": self.payload(answer, text=" The\nsecond weekend ", kind="answer", link="https://example.test/cabin")}))
+        self.assertEqual(result["cover"]["stands"], stands)
+        value, writer, revision = self.rows()[-1]
+        self.assertEqual((value["stands"], writer, revision), (stands, "agent-a", 1))
+        before = result["cover"]
+        self.assertEqual(before["waiting"], [{"text": "Book the cabin?", "default": "booked Friday"}])
+        self.assertEqual(before["payload"]["text"], "The second weekend")
+        self.assertEqual((before["payload"]["link"], before["payload"]["kind"], before["payload"]["done"]),
+                         ("https://example.test/cabin", "answer", None))
+        for reader in ("owner", "agent-a", "agent-b"):
+            self.assertEqual(self.shown(root, reader), before)
+            self.assertEqual(self.store.view(reader, "dossier_cover", {"message_id": answer})["cover"], before)
+            placed = self.store.view(reader, "stack_positions", {"topic_id": "t1", "message_ids": [answer]})
+            self.assertEqual(placed["items"][0]["stack_position"]["cover"], before)
+        # Partial updates, no-op, stale/invalid writes and owner settlement retain the exact stands and other fields.
+        self.assertFalse(self.committed(self.cover(root, {"stands": stands}, revision=1))["changed"])
+        self.rejected(self.cover(root, {"stands": "Late\nwords"}), "REVISION_CONFLICT")
+        self.rejected(self.cover(root, {"stands": "Changed\nwords", "waiting": [{"text": "No default"}]}, revision=1), "INVALID_ARGUMENT")
+        self.assertEqual(self.rows(), [(value, writer, revision)])
+        self.committed(self.cover(root, {"stands": stands + " again"}, revision=1))
+        after = self.shown(root)
+        self.assertEqual((after["waiting"], after["payload"]), (before["waiting"], before["payload"]))
+        self.committed(self.thumb(answer))
+        self.assertEqual(self.rows()[-1][0]["stands"], stands + " again")
+
+    def test_item_769_line_endings_spaces_empty_and_limit(self):
+        root, _, _ = self.dossier()
+        raw = "  Discussed:\t cabin \r\n\r\n Decisions:  none\n Next: book\rit  "
+        want = "Discussed: cabin\n\nDecisions: none\nNext: book it"
+        self.assertEqual(self.committed(self.cover(root, {"stands": raw}))["cover"]["stands"], want)
+        # LF counts toward the existing 300-character limit; no truncation or partial wait update.
+        boundary = "x" * 149 + "\n" + "y" * 150
+        self.committed(self.cover(root, {"stands": boundary}, revision=1))
+        self.rejected(self.cover(root, {"stands": boundary + "z", "waiting": []}, revision=2), "INVALID_ARGUMENT")
+        self.assertEqual(self.shown(root)["stands"], boundary)
+        self.assertIsNone(self.committed(self.cover(root, {"stands": " \r\n\t "}, revision=2))["cover"])
+        self.assertEqual(self.committed(self.cover(root, {"stands": "  Same\t words  "}, revision=3))["cover"]["stands"], "Same words")
+
     def test_an_agent_writes_every_field_and_everyone_who_reads_the_dossier_reads_it_proposed(self):
         root, answer, _ = self.dossier()
         written = self.committed(self.cover(root, {
@@ -64,7 +107,7 @@ class WritingCase(CoverCase):
         seq = self.sql("SELECT seq FROM messages WHERE id=?", (answer,))[0][0]
         for reader in ("owner", "agent-a", "agent-b"):
             cover = self.shown(root, reader)
-            self.assertEqual(cover["stands"], "Answered: the second weekend", reader)
+            self.assertEqual(cover["stands"], "Answered:\nthe second weekend", reader)
             self.assertEqual(cover["waiting"], [{"text": "Book the cabin?", "default": "booked Friday if nothing is said"}])
             self.assertEqual(cover["payload"], {"text": "The second weekend, with the lake open", "message_id": answer, "seq": seq,
                                                 "link": "https://example.test/cabin", "kind": "answer", "done": None}, reader)
@@ -73,7 +116,7 @@ class WritingCase(CoverCase):
         page = self.store.view("owner", "topic_messages", {"topic_id": "t1", "direction": "before", "limit": 100})["items"]
         self.assertEqual([item["id"] for item in page if item["acts"]["cover"]], [root])
         found = self.store.view("agent-b", "dossier_cover", {"message_id": answer})
-        self.assertEqual((found["root_id"], found["cover_revision"], found["owner"], found["cover"]["stands"]), (root, 1, "owner", "Answered: the second weekend"))
+        self.assertEqual((found["root_id"], found["cover_revision"], found["owner"], found["cover"]["stands"]), (root, 1, "owner", "Answered:\nthe second weekend"))
 
     def test_a_field_set_or_cleared_leaves_the_others_and_a_cover_with_nothing_reads_as_none(self):
         root, answer, _ = self.dossier()
@@ -398,6 +441,20 @@ class OutsiderCase(CoverCase):
 
 
 class VerbCase(CoverCase):
+    def test_item_769_cli_writes_and_reads_three_literal_lines(self):
+        root, answer, _ = self.dossier()
+        stands = "Discussed: cabin\nDecisions: none\nNext: choose"
+        code, out, err = self.run_cli("cover", answer, "--stands", stands, "--waits", "Choose?", "--default", "wait",
+                                      "--payload", "Cabin plan", "--from", answer)
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("  stands: " + stands + "\n", out)
+        self.assertEqual(self.rows()[-1][0]["stands"], stands)
+        before = self.shown(root)
+        code, out, err = self.run_cli("cover", answer)
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("  stands: " + stands + "\n", out)
+        self.assertEqual(self.shown(root), before)
+
     def test_the_verb_writes_the_cover_reads_it_back_and_prints_it(self):
         root, answer, _ = self.dossier()
         code, out, err = self.run_cli("cover", answer, "--stands", "Answered: the second weekend", "--waits", "Book the cabin?",

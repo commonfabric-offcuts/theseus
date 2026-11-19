@@ -10,6 +10,34 @@ saves at once; a line saves on Return or when the person leaves it, by Tab,
 by a press elsewhere, by ✕ or by closing Topic settings. Escape in a line
 puts back what is saved.
 
+## Rename at the title (item 656)
+
+A pencil beside a topic's title, named and titled “Rename topic”, replaces
+that title with its selected, one-line title field. It stays in the header:
+Return or leaving saves, Escape puts back the saved title, and an unchanged
+line sends nothing. The saved title appears in the header and the outline,
+also after reload. The pencil is a quiet 44px target in both themes.
+
+The pencil follows `managesTopic`, the same permission as Rename in Topic
+settings: the outcome's owner and coordinator, and the topic's creator.
+Other members and a Conversation show no pencil. Permission changes update
+it without a reload. Rename in Topic settings remains available as before.
+
+Both entry points use the very same title field and `topic.update`, fenced
+only on the title. While saving it keeps the line; an error or a conflict
+keeps the typed words and notice together in the header, with Return to
+retry and Escape to cancel. Opening Topic settings brings its field back
+there, keeping its words and any save in flight. Nothing else is renamed.
+
+If ownership is lost while editing, the header shows the saved heading and
+the pencil disappears, including when Core also revokes `reader_may_say`
+and the settings panel must rebuild. Before replacing that panel it reclaims
+the lent field. The same field retains exact unsaved words, fences and any
+operation already sent, disabled and hidden in settings while permission is
+absent. An answer still settles that operation. Regaining permission can
+resume those words; Escape cancels them and a subsequent rename works. No
+new title or archive command starts without the current permission.
+
 ## ✅ Done at the top of a topic
 
 A topic Ready for review shows ✅ Done right after its state at the top of the

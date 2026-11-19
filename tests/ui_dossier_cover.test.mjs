@@ -25,6 +25,22 @@ const DONE_BY_WORD = { how: 'word', by: 'owner', at_ms: 1_700_000_200_000, messa
 const of = (node, className) => [...node.descendants()].filter(each => each.classList.contains(className));
 const glyphs = node => [...node.descendants()].map(each => each.getAttribute('data-glyph')).filter(Boolean);
 
+test('item 769 the shared sheet draws literal stands lines without parsing labels or changing other fields', () => {
+  const stands = 'Discussed: cabin\nDecisions: none\nNext: choose';
+  const source = { ...COVER, stands }, original = JSON.stringify(source);
+  const sheet = coverSheet(miniDocument(), source, context());
+  assert.equal(of(sheet, 'cover-stands')[0].text, stands);
+  assert.equal(of(sheet, 'cover-stands')[0].children.length, 1, 'plain text in the existing span');
+  assert.equal(of(sheet, 'cover-wait').length, 1);
+  assert.equal(of(sheet, 'cover-note')[0].text, 'Default: booked Friday.');
+  assert.equal(of(sheet, 'cover-payload').length, 1);
+  assert.equal(of(sheet, 'cover-src')[0].text, '#12');
+  assert.equal(JSON.stringify(source), original, 'drawing leaves source words intact');
+  const oneLine = 'Discussed: cabin Decisions: none Next: choose';
+  assert.equal(of(coverSheet(miniDocument(), { ...COVER, stands: oneLine }, context()), 'cover-stands')[0].text, oneLine);
+  assert.notEqual(coverKey(source, context()), coverKey({ ...COVER, stands: oneLine }, context()), 'new breaks repaint');
+});
+
 test('the sheet says where it stands, its payload with its label, pill and the message that delivered it, and what waits on the owner with its default', () => {
   const doc = miniDocument(), sheet = coverSheet(doc, COVER, context());
   assert.equal(sheet.className, 'dossier-cover');
