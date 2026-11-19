@@ -346,6 +346,8 @@
 .message-card[data-folded=true]>:not(.message-folded,.stack-head){display:none!important}
 .message-folded{display:flex;align-items:baseline;gap:.5rem;min-width:0;width:100%;color:var(--muted);font-size:.85rem;font-weight:400;white-space:nowrap}
 .folded-author{flex:none;color:var(--ink);font-weight:650}
+/* Keep the complete sender in the row's accessible text while it gives the cue room. */
+.message-card[data-folded=true]>.message-folded>.folded-author{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .folded-words{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .folded-thumb{flex:none;align-self:center;padding:0 .4rem;border-radius:1rem;line-height:1.5rem;color:var(--muted);cursor:pointer}
 .folded-thumb:hover{background:var(--stack-folder-deep);color:var(--ink)}
