@@ -234,6 +234,22 @@ def _refused(envelope, code, message):
             "error": {"code": code, "message": message, "retryable": False}}
 
 
+def assignment_text(harness):
+    """One harness-aware assignment for both the invitation and owner onboarding read."""
+    start = {
+        "codex": "After reading the guide, use your supported goal capability to establish a persistent goal for this ongoing assignment. "
+                 "Check the existing goal first; reuse a matching active one, preserve unrelated goals and user pauses, and do not invent a token budget. "
+                 "If that capability is unavailable or conflicts, report the limitation.",
+        "claude-code": "This is an ongoing assignment in Claude Code; follow the guide using your shell tool.",
+    }[harness]
+    return "\n".join([
+        start,
+        "Serve as this named Theseus agent: handle authorized deliveries, verify and report results, and return to waiting until the user explicitly ends the assignment. "
+        "Reading the guide, starting a watcher, an empty inbox, or finishing one delivery does not finish it.",
+        "Use native `watch --once`; when it yields, wait on the same running session. Follow the guide for recovery.",
+    ])
+
+
 def prompt(result, path, database):
     """What to paste into the new agent: who it is, where its sign-in file is, and to read the agent guide first."""
     agent, harness, path = result["agent"], result["harness"], Path(path)
@@ -251,7 +267,7 @@ def prompt(result, path, database):
         room,
         "",
         "Before anything else, read the agent guide: %s" % (CODE_ROOT / "docs" / "agent-guide.md"),
-        "Then wait for work with `watch --once`, as the guide says.",
+        assignment_text(harness),
     ])
 
 
