@@ -231,7 +231,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   context.wiring.inject({ api, bootstrap, registry, reader, inline, topic, views, freshness: fresh,
     marks: new context.Marks({ api, instanceId: 'fixture', authority: () => bootstrap.authority, doc: null, win: null }) });
   const state = (ref = editor.context.sourceRef) => ({ instance_id: 'fixture', source_ref: ref, destination: { topic_id: 't1' }, source_available: true, destination_available: true });
-  return { ...context.wiring, makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap, views, document, observers, days };
+  return { ...context.wiring, runObservation: source => vm.runInContext(source, context), makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap, views, document, observers, days };
 }
 
 test('the inline fixture reveals an offscreen card through real window and scroller geometry', () => {
@@ -4615,6 +4615,58 @@ test('on the conversation page a reply folded in its stack is never reported rea
 });
 
 
+for (const ending of ['confirmed', 'refused', 'unknown', 'new writing', 'new opening', 'closed']) test(`item 673: inline send closes only its confirmed unchanged opening: ${ending}`, async () => {
+  const f = fixture('https://fixture/?topic=t1', { window: { addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }),
+    getComputedStyle: () => ({ getPropertyValue: () => 'none' }) } });
+  const answer=defer(), sheet=f.get('new-message-sheet');
+  f.inline.popped=true;f.inline.opening=Symbol();sheet.open=true;sheet.close=function(){this.open=false;};
+  f.inline.callbacks.send=()=>answer.promise;
+  f.editor.edit=patch=>Object.assign(f.editor.draft,patch);
+  const sending=f.inline.send();
+  if(ending==='new writing')f.editor.localVersion=(f.editor.localVersion??0)+1;
+  if(ending==='new opening')f.inline.opening=Symbol();
+  if(ending==='closed'){f.inline.popped=false;sheet.open=false;}
+  answer.resolve({status:['refused','unknown'].includes(ending)?ending:'confirmed'});
+  await sending;
+  assert.equal(sheet.open,!['confirmed','closed'].includes(ending),ending);
+});
+
+// Independent reviewer reproducer: real Editor and Uploads; only transport and DOM are fixtures.
+for (const newer of ['text', 'picker', 'capturing image', 'image needing a choice', 'memory-only image', 'image recovery error']) test(`review 673: late confirmation keeps newer ${newer} open`, async () => {
+  const { Uploads } = await import('../web/uploads.mjs');
+  const f=fixture('https://fixture/?topic=t1',{window:{addEventListener(){},matchMedia:()=>({matches:false,addEventListener(){}}),getComputedStyle:()=>({getPropertyValue:()=> 'none'})}});
+  const editor=new Editor({...f.editor.context,instanceId:'fixture',actor:'fixture-person'}, {id:'draft',generation:'g',revision:1,body:'First message.'});
+  f.p.editors.reply=editor;
+  const answer=defer(), capture=defer(), sheet=f.get('new-message-sheet');
+  f.inline.popped=true; f.inline.opening=Symbol(); sheet.open=true; sheet.close=function(){this.open=false;};
+  f.inline.callbacks.send=e=>{e.beginPrepare({prepareOperationId:'prepare',sendOperationId:'send',submissionId:'submission'});return answer.promise;};
+  const sending=f.inline.send(), version=editor.localVersion;
+  let choosing;
+  if(newer==='text')editor.edit({body:'Second message.'});
+  else {
+    const authority={authority_id:'a',authority_epoch:'e'};
+    const session={editor,api:{},authority,snapshot:()=>editor.snapshot(),persist:async()=>{},journal:{writerId:'review',capture:async(_key,_snapshot,_bytes,entry)=>{await capture.promise;if(newer==='memory-only image')throw Error('Fixture device capture refused');entry.bytes_state='durable';entry.bytes_ref='review-bytes';}}};
+    const registry={disposed:false,sessions:new Map([[editor.key,session]]),runtime:{current:authority},isCurrent:()=>true,changed(){},bootstrap:{limits:{media_name_utf8_bytes:255,image_bytes:1000000,media_file_bytes:1000000,attachment_count:10,attachment_bytes:10000000}}};
+    const uploads=new Uploads(session,registry);
+    const token=uploads.reserve(f.p);
+    const file=Object.assign(new Blob(['phone photo'],{type:'image/heic'}),{name:'IMG_3307.heic',lastModified:0});
+    if(newer==='picker'){
+      answer.resolve({status:'confirmed'});await sending;const stayed=sheet.open;uploads.cancel(token);assert.equal(stayed,true,'an older Send must not dismiss the reserved successor picker');return;
+    }
+    choosing=uploads.choose(token,file);
+    if(['image needing a choice','memory-only image','image recovery error'].includes(newer)){capture.resolve();await choosing;}
+    if(newer==='memory-only image')assert.equal(uploads.current()[0].bytes_state,'memory-only','actual capture refusal retains the memory-only selection');
+    if(newer==='image recovery error')editor.imageStorageError='The image change could not be kept';
+    assert.equal(uploads.current().length,1,'a real image selection belongs to the successor writing');
+    assert.equal(editor.localVersion,version,'image selection does not advance the text version');
+    console.log(JSON.stringify({newer,version,imageVersion:editor.uploadState.revision,bytes:uploads.current()[0].bytes_state}));
+  }
+  answer.resolve({status:'confirmed'});await sending;
+  const stayed=sheet.open;
+  capture.resolve();if(choosing)await choosing;
+  assert.equal(stayed,true,`an older Send must not dismiss newer ${newer}`);
+});
+
 async function starred655() {
   const f = fixture();
   await f.initialize();
@@ -4746,4 +4798,57 @@ test('item 655 B3 a metadata failure from an abandoned opening cannot paint over
   await old;
   assert.equal(f.reader.presentation, next);
   assert.doesNotMatch(f.get('reader-notice').textContent, /Dossier name could not be read/);
+});
+
+for (const act of ['agent menu', 'image list', 'picker owner', 'new error', 'same error again']) test(`item 673: late confirmation preserves successor presentation ownership: ${act}`, async () => {
+  const f=fixture('https://fixture/?topic=t1',{window:{addEventListener(){},matchMedia:()=>({matches:false,addEventListener(){}}),getComputedStyle:()=>({getPropertyValue:()=> 'none'})}});
+  const answer=defer(),sheet=f.get('new-message-sheet');
+  f.inline.popped=true;f.inline.opening=Symbol();sheet.open=true;sheet.close=function(){this.open=false};
+  f.inline.callbacks.send=()=>answer.promise;
+  f.editor.edit=patch=>Object.assign(f.editor.draft,patch);
+  if(act==='same error again')f.inline.notice('The newer image could not be read.');
+  const sending=f.inline.send();
+  if(act==='agent menu')f.inline.bar.panel='who';
+  if(act==='image list')f.inline.images={open:true};
+  if(act==='picker owner')f.inline.imagePicker={token:{}};
+  if(['new error','same error again'].includes(act))f.inline.notice('The newer image could not be read.');
+  answer.resolve({status:'confirmed'});await sending;
+  assert.equal(sheet.open,true,`older confirmation retains ${act}`);
+});
+
+for (const outcome of ['confirmed', 'refused', 'recovery error']) test(`item 673 final observer: delayed startup and actual send continuation ${outcome}`, async () => {
+  const { PENCIL_OBSERVE } = await import('./pencil-states.mjs');
+  let notify, disconnected = false;
+  const f = fixture('https://fixture/?topic=t1', { MutationObserver: class {
+    constructor(fn) { notify = fn; } observe() {} disconnect() { disconnected = true; }
+  } });
+  // Execute the injected observer in the app's own lexical scope, while begin
+  // still waits on initialization. The actual begin and send bodies run.
+  const owner = f.inline, initialization = defer(), answer = defer();
+  f.runObservation('globalThis.retainedInline=inline; inline=undefined;');
+  f.runObservation(PENCIL_OBSERVE);
+  assert.equal(f.runObservation('window.pencil.inline'), undefined);
+  const original = owner.send;
+  const started = f.begin(async () => {
+    await initialization.promise;
+    f.runObservation('inline=globalThis.retainedInline');
+    f.document.body.dataset.ready = 'true'; notify();
+  });
+  await Promise.resolve(); assert.equal(owner.send, original, 'startup scheduling remains delayed');
+  initialization.resolve(); assert.equal(await started, true); assert.equal(disconnected, true);
+  assert.notEqual(owner.send, original, 'wrapper installs after initialization');
+  owner.callbacks.send = () => answer.promise;
+  f.editor.edit = patch => Object.assign(f.editor.draft, patch);
+  owner.popped = true; owner.opening = Symbol(); const sheet = f.get('new-message-sheet');
+  sheet.open = true; sheet.close = function () { this.open = false; };
+  const sending = owner.send();
+  assert.equal(f.runObservation('window.pencilSendSettled'), false);
+  assert.equal(sheet.open, true);
+  if (outcome === 'recovery error') answer.reject(Error('Real pending send recovery failed'));
+  else answer.resolve({ status: outcome });
+  await sending; await Promise.resolve();
+  assert.equal(f.runObservation('window.pencilSendSettled'), true, 'only the actual send continuation settles observation');
+  assert.equal(f.runObservation('window.pencil.calls.length'), 1);
+  assert.equal(sheet.open, outcome !== 'confirmed');
+  if (outcome === 'recovery error') assert.match(f.get('inline-notice').textContent, /recovery failed/);
 });

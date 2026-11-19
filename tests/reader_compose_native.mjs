@@ -26,18 +26,23 @@ import { imageButtons653 } from './image_buttons_653.mjs';
 import { thumbnailChecks } from './thumbnail_open_native.mjs';
 import { composeSwipe648 } from './compose_swipe_648.mjs';
 import { composeSwipe648Protections, observe648 } from './compose_swipe_648_protections.mjs';
-import { item721Compose } from './item_721_compose.mjs';
+import { pencilInventory } from './pencil-inventory.mjs';
+import { pencilPartition, selectedNativeCase, pencilMutantsEnabled } from './pencil-selection.mjs';
+import { createHash } from 'node:crypto';
+import { assertPencilPlace } from './pencil-layout.mjs';
+import { PENCIL_STATES, PENCIL_LATE_IMAGES, observePencil, pencilModel, holdPencilImage } from './pencil-states.mjs';
 import { spawn } from 'node:child_process';
 import { fixtureControl } from './fixture_control.mjs';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
 import { createRequire } from 'node:module';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cardEditor652 } from './card_editor_652.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const [chrome, evidence, filter = ''] = process.argv.slice(2);
+const partition = pencilPartition(filter);
 assert.ok(chrome && path.isAbsolute(chrome), 'an absolute Chrome for Testing');
 assert.ok(evidence && path.isAbsolute(evidence), 'an absolute evidence directory');
 const playwrightPath = process.env.AIM_PLAYWRIGHT_CORE;
@@ -119,6 +124,8 @@ const SHAPES = {
 const KEYBOARD = 380;
 
 const results = [], measured = [], shots = [], contexts = new Set();
+const pencilCases = new Map(), pencilMutations = [], pencilCleanupEvidence = [], pencilMutationSkips = [], phaseCleanupEvidence = [];
+let pencilPhase = '';
 let browser, engine;
 
 // at: the fixture the page reads, the cases' own unless one says otherwise.
@@ -203,7 +210,7 @@ const messageLines = p => p.evaluate(() => {
   return { lines: Math.floor((bottom - top) / parseFloat(style.lineHeight)), lineHeight: parseFloat(style.lineHeight), visible: Math.round(bottom - top) };
 });
 async function picture(p, name) {
-  const file = path.join(evidence, engine, `${p.shape}-${p.scheme}-${name}.png`);
+  const file = path.join(evidence, engine, `${p.shape}-${p.scheme}-${pencilPhase ? pencilPhase.replaceAll(' ', '-') + '-' : ''}${name}.png`);
   await mkdir(path.dirname(file), { recursive: true });
   await until(p, () => document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a => a.playState !== 'running'), 'a settled page');
   await p.screenshot({ path: file });
@@ -238,8 +245,9 @@ const noticeWords = p => p.evaluate(() => document.querySelector('#reader-notice
 // before it runs.
 let unreset = null;
 async function check(name, action) {
-  const full = `${engine} ${name}`;
-  if (filter && !filter.split('|').some(part => full.includes(part))) return;
+  const full = `${engine} ${pencilPhase ? `item 673 ${pencilPhase}: ` : ''}${name}`;
+  if (partition ? !selectedNativeCase(filter, engine, name, full) : filter && !filter.split('|').some(part => full.includes(part))) return;
+  if (!pencilPhase && name.startsWith('item 673')) pencilCases.set(name, action);
   const failures = [], say = error => error.stack ?? String(error);
   // After a case whose reset was refused, this one begins with that reset,
   // once (its pages are closed; only a save a closed page left on its way
@@ -259,6 +267,7 @@ async function check(name, action) {
     // The case ends with every page closed, each on its own so that one that
     // throws leaves none open to save into later cases, and the drafts reset.
     for (const context of contexts) {
+      for(const p of context.pages()) {try {if(p.pencilReleases||p.pencilRouteRecords||p.pencilObservationProof)await pencilSettlePage(p);}catch(error){failures.push(`Ending pencil routes: ${say(error)}`);}}
       try { await context.close(); } catch (error) { failures.push(`Ending the case, closing a page: ${say(error)}`); }
     }
     contexts.clear();
@@ -267,7 +276,7 @@ async function check(name, action) {
   }
   if (failures.length) {
     if (results.at(-1)?.name === full) results.pop();
-    results.push({ name: full, passed: false, error: failures.join('\nthen, ') }); console.log(`FAIL ${full}\n${failures.join('\nthen, ')}`);
+    results.push({ name: full, passed: false, primaryError: failures[0], cleanupErrors: failures.slice(1), error: failures.join('\nthen, ') }); console.log(`FAIL ${full}\n${failures.join('\nthen, ')}`);
   }
   // A fixture that has exited answers nothing more: the run stops here, its
   // evidence written, rather than failing every case left.
@@ -280,6 +289,7 @@ async function check(name, action) {
 // fixture after the drafts reset, which skips a draft not yet saved, and land
 // as writing already in the next case's reply.
 const close = async p => {
+  if(p.pencilReleases||p.pencilRouteRecords||p.pencilObservationProof)await pencilSettlePage(p);
   assert.deepEqual(p.errors, [], 'no page errors');
   await until(p, () => ![...document.querySelectorAll('[data-save="saving"]')].some(sign => sign.getClientRects().length), 'no save of the writing on its way');
   contexts.delete(p.ctx); await p.ctx.close();
@@ -2193,7 +2203,7 @@ const LONG = Array.from({ length: 120 }, (_, i) => `Line ${i + 1} of a draft lon
 // What one composer's surface measures: its box, its composer's, the field's
 // and Send's, against what shows of the window, and which of its controls, or
 // the page itself, reach past what shows.
-const sized = (p, which) => p.evaluate(which => {
+const sized = (p, which, tolerance = {positionPx:1, overflowPx:4}) => p.evaluate(([which, tolerance]) => {
   const [dialog, composer] = which === 'sheet' ? ['#new-message-sheet', '#inline-composer'] : ['#reader', '#reader-composer'];
   const d = document.querySelector(dialog), c = document.querySelector(composer), field = c.querySelector('textarea'), send = c.querySelector('.compose-send');
   const box = el => { const b = el.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right), width: Math.round(b.width), height: Math.round(b.height) }; };
@@ -2202,27 +2212,27 @@ const sized = (p, which) => p.evaluate(which => {
   // A control in a box of the composer that scrolls (a phone's panel holding more than fits, or the composer itself where it is taller than what it has) is where a finger brings it: that box is what must show.
   const scroller = el => { for (let at = el.parentElement; at && at !== c.parentElement; at = at.parentElement) if (/auto|scroll/.test(getComputedStyle(at).overflowY) && at.scrollHeight > at.clientHeight) return at; return el; };
   const past = [...c.querySelectorAll('button, input, textarea, select, [role=button]')].filter(shown).map(el => [el.id || el.className || el.tagName, box(scroller(el))])
-    .filter(([, b]) => b.left < -1 || b.right > view.width + 1 || b.top < view.top - 1 || b.bottom > view.top + view.height + 1).map(([name]) => name);
+    .filter(([, b]) => b.left < -tolerance.positionPx || b.right > view.width + tolerance.positionPx || b.top < view.top - tolerance.positionPx || b.bottom > view.top + view.height + tolerance.positionPx).map(([name]) => name);
   const panel = c.querySelector('.compose-panel:not([hidden])');
   // Shows itself, not only its scroller: its own box inside what shows and inside every box of the composer that clips it.
-  const seen = el => { const b = el.getBoundingClientRect(); if (b.top < view.top - 1 || b.bottom > view.top + view.height + 1 || b.left < -1 || b.right > view.width + 1) return false;
-    for (let at = el.parentElement; at && at !== c.parentElement; at = at.parentElement) if (getComputedStyle(at).overflowY !== 'visible') { const a = at.getBoundingClientRect(); if (b.top < a.top - 1 || b.bottom > a.bottom + 1) return false; }
+  const seen = el => { const b = el.getBoundingClientRect(); if (b.top < view.top - tolerance.positionPx || b.bottom > view.top + view.height + tolerance.positionPx || b.left < -tolerance.positionPx || b.right > view.width + tolerance.positionPx) return false;
+    for (let at = el.parentElement; at && at !== c.parentElement; at = at.parentElement) if (getComputedStyle(at).overflowY !== 'visible') { const a = at.getBoundingClientRect(); if (b.top < a.top - tolerance.positionPx || b.bottom > a.bottom + tolerance.positionPx) return false; }
     return true; };
   const focus = c.contains(document.activeElement) ? { id: document.activeElement.id || document.activeElement.className, seen: seen(document.activeElement) } : null;
   const notice = c.querySelector('.notice:not([hidden])'), taller = c.querySelector('.taller-field');
   // The composer's rows, top to bottom, are each clear of the others: the notice, the head, a panel in its row, the images, and the foot (+, the field, 👍, Send), which share theirs.
   // A row given less than its height would be drawn over the next (an image's choices under Send).
-  const rows = [...c.children].filter(el => shown(el) && getComputedStyle(el).position === 'static' && el.matches('.notice, .compose-head, .compose-panel, .image-strip, .plus-button, .field-box, .compose-send, #thumb-source')
+  const rows = [...c.children].filter(el => shown(el) && getComputedStyle(el).position === 'static' && el.matches('.notice, #inline-retry, .compose-head, .compose-panel, .image-strip, .plus-button, .field-box, .compose-send, #thumb-source')
     && !(el.matches('.compose-head') && c.dataset.compose !== 'writing')).map(el => [el.id || el.className, box(el), el.matches('.plus-button, .field-box, .compose-send, #thumb-source') ? 'foot' : el]);
-  const over = rows.flatMap(([a, ba, ra], i) => rows.slice(i + 1).filter(([, bb, rb]) => (ra !== 'foot' || rb !== 'foot') && Math.min(ba.bottom, bb.bottom) - Math.max(ba.top, bb.top) > 1).map(([b]) => `${a} / ${b}`));
+  const over = rows.flatMap(([a, ba, ra], i) => rows.slice(i + 1).filter(([, bb, rb]) => (ra !== 'foot' || rb !== 'foot') && Math.min(ba.bottom, bb.bottom) - Math.max(ba.top, bb.top) > tolerance.positionPx).map(([b]) => `${a} / ${b}`));
   // The surface never scrolls, so its own head (the Reader's ✕ and ↑ ↓, the sheet's title and ✕) stays where it is: what is taller scrolls inside the composer.
   const head = d.querySelector(which === 'sheet' ? '.inline-composer>h2' : '.reader-header');
-  return { open: d.open, dialog: box(d), surfaceScrolled: d.scrollTop, head: box(head), composer: { ...box(c), scrolls: c.scrollHeight > c.clientHeight + 1 }, field: { ...box(field), scrolls: field.scrollHeight > field.clientHeight + 4, line: parseFloat(getComputedStyle(field).minHeight) }, send: shown(send) ? { ...box(send), seen: seen(send) } : null, panel: panel && box(panel),
+  return { open: d.open, dialog: box(d), surfaceScrolled: d.scrollTop, head: box(head), composer: { ...box(c), scrolls: c.scrollHeight > c.clientHeight + tolerance.positionPx }, field: { ...box(field), scrolls: field.scrollHeight > field.clientHeight + tolerance.overflowPx, line: parseFloat(getComputedStyle(field).minHeight) }, send: shown(send) ? { ...box(send), seen: seen(send) } : null, panel: panel && box(panel),
     images: c.querySelectorAll('.image-strip .image-choice').length, choices: c.querySelectorAll('.image-strip .image-choice[data-open][data-needs]').length, notice: notice ? notice.textContent : '',
     focus, compose: c.dataset.compose, taller: Boolean(shown(taller)), over, view, past, sideways: document.documentElement.scrollWidth > innerWidth };
-}, which);
+}, [which, tolerance]);
 async function runSizes() {
-  for (const [size, shapes] of Object.entries(SIZES)) for (const [draft, scheme] of Object.entries(DRAFTS)) await check(`size ${size}, ${draft}: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen`, async () => {
+  for (const [size, shapes] of Object.entries(SIZES)) for (const [draft, scheme] of Object.entries(DRAFTS)) await check(`size ${size}, ${draft}: the Reader fills the visible window and the pencil sheet fits its contents, both as wide as allowed up to their maximum and neither past the screen`, async () => {
     for (const shape of shapes) {
       let p = await page(shape, scheme);
       const phone = p.touch, wide = shape.endsWith('wide'), sideways = shape === 'phone-sideways';
@@ -2247,7 +2257,8 @@ async function runSizes() {
           if (which === 'reader') assert.ok(m.head.top >= m.dialog.top - 1, `the Reader's header stays at its top: ${said}`);
           return m;
         }
-        assert.ok(near(m.dialog.height, want.height), `as tall as what shows of the window (${want.height}px), not ${m.dialog.height}px: ${said}`);
+        if (which === 'reader') assert.ok(near(m.dialog.height, want.height), `as tall as what shows of the window (${want.height}px), not ${m.dialog.height}px: ${said}`);
+        else assert.ok(m.dialog.height <= want.height + 2, `the floating sheet fits the visible window: ${said}`);
         assert.ok(near(m.dialog.width, want.width), `as wide as the window allows up to its maximum (${want.width}px), not ${m.dialog.width}px: ${said}`);
         assert.deepEqual([m.dialog.top >= m.view.top - 1, m.dialog.bottom <= m.view.top + m.view.height + 1, m.dialog.left >= 0, m.dialog.right <= width + 1, m.sideways, m.past],
           [true, true, true, true, false, []], `nothing reaches past what shows, sideways or down, Send included: ${said}`);
@@ -2258,7 +2269,7 @@ async function runSizes() {
         // Alone, or side by side, the composer is the surface's whole height,
         // its field taking what the rest leaves; stacked, the reply is as tall
         // as its writing and the message has the rest (docs/reader.md).
-        if (which === 'sheet' || wide) {
+        if (which === 'reader' && wide) {
           assert.ok(m.composer.height >= m.dialog.height - 4, `the composer fills its surface's height: ${said}`);
           // Alone, the field ends at the sheet's foot; side by side the hint's line and + · Send's row are under it.
           // On a phone an open panel is under the field, in the keyboard's place.
@@ -2267,7 +2278,7 @@ async function runSizes() {
         }
         // The field gives way first: a composer holding more than it shows (and so scrolling inside itself) has its
         // field at one line, its own minimum, so as much of the head and the images shows as can.
-        if (m.composer.scrolls) assert.ok(m.field.height <= m.field.line + 1, `the field gives way to one line (${m.field.line}px) before the composer scrolls: ${said}`);
+        if (m.composer.scrolls && which === 'reader') assert.ok(m.field.height <= m.field.line + 1, `the field gives way to one line (${m.field.line}px) before the composer scrolls: ${said}`);
         if (draft === 'a long draft') assert.ok(m.field.scrolls, `a draft longer than the field scrolls inside it: ${said}`);
         if (draft === 'an image' || draft === 'a refused image') assert.equal(m.images, 1, `the image shows in the composer: ${said}`);
         // What has focus shows itself, and with the field in hand Send shows beside it: a composer taller than what shows scrolls inside itself, the focus in view.
@@ -2277,8 +2288,8 @@ async function runSizes() {
           assert.equal(m.choices, 1, `the refused image's choices are open: ${said}`);
           if (which === 'reader') assert.equal(m.notice, `Finish or remove the image ${HEIC.name} before sending.`, `the notice says why Send was refused: ${said}`);
         }
-        // Narrow (a phone, or a narrow window), writing: the Reader's stacked field has ⤢ to make it taller; the sheet's field is already the sheet's height, so it has none.
-        if (narrow && m.compose === 'writing') assert.equal(m.taller, which === 'reader', `⤢ ${which === 'reader' ? 'makes the Reader\'s field taller' : 'is not in the sheet, whose field fills it'}: ${said}`);
+        // Narrow, writing: the stacked Reader has ⤢; the floating sheet grows with its writing and needs none.
+        if (narrow && m.compose === 'writing') assert.equal(m.taller, which === 'reader', `⤢ ${which === 'reader' ? 'makes the Reader\'s field taller' : 'is not in the sheet, whose field grows with its writing'}: ${said}`);
         return m;
       };
       const fill = async (which, field, plus, tile) => {
@@ -2531,41 +2542,751 @@ async function runSending() {
   });
 }
 
+// Items 673/670/671/672 travel together. Every case includes item 673 so
+// the piece's hosted checks select precisely this acceptance in both engines.
+const PENCIL_SHAPES = ['phone-320', 'phone-375', 'phone-390', 'laptop-stacked'];
+const pencilSmallTargets = (p,targetTolerancePx) => p.evaluate(tolerance => [...document.querySelectorAll('#inline-composer :is(button,input,textarea,select,[role=button])')]
+  .filter(el=>el.getClientRects().length&&getComputedStyle(el).visibility!=='hidden')
+  .map(el=>{const r=el.getBoundingClientRect();return [el.id||el.textContent,r.width,r.height]})
+  .filter(([,width,height])=>width < 44-tolerance||height < 44-tolerance),targetTolerancePx);
+const pencilOpen = async p => {
+  await until(p, () => !document.querySelector('#inline-composer').hidden, 'the composer loaded');
+  await press(p, '#new-message');
+  await until(p, () => document.querySelector('#new-message-sheet').open && document.activeElement?.id === 'inline-writing-body', 'the pencil sheet ready to write');
+  await until(p, () => document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'the sheet settled');
+};
+const pencilGeometry = p => p.evaluate(() => {
+  const d = document.querySelector('#new-message-sheet'), f = document.querySelector('#inline-writing-body');
+  const b = el => { const r = el.getBoundingClientRect(); return { top:r.top, bottom:r.bottom, left:r.left, right:r.right, height:r.height, width:r.width }; };
+  const backdrop = getComputedStyle(d, '::backdrop');
+  return { sheet:b(d), field:b(f), line:parseFloat(getComputedStyle(f).lineHeight),
+    blur:backdrop.backdropFilter || backdrop.webkitBackdropFilter || 'none', backdrop:backdrop.backgroundColor,
+    height:visualViewport.height, scroll:scrollY, overflowPx:document.documentElement.scrollWidth-innerWidth };
+});
+// Each branch is a separate case in the full width/theme/page matrix below.
+// A model fixture is named as such in its evidence; boundary holds invoke the
+// original implementation when released. No handler invocation stands in for
+// Send, Cmd-Return, file selection, Retry, or a recovery control gesture.
+const pencilPage = async (shape, scheme, url) => Object.assign(await page(shape, scheme, url, facts, observePencil),{pencilSurface:url.includes('conversation=')?'conversation':'topic'});
+let pencilContextPromise, pencilConversation;
+const pencilContext = () => pencilContextPromise ??= (async () => {
+  const conversation=pencilConversation;
+  assert.ok(conversation?.topic_id,'the phase supplies its one recorded coordinator act');
+  await control({method:'agent_message',operation_id:'compose-pencil-context',topic_id:conversation.topic_id,sender:'person',whole_topic:true,
+    body:Array.from({length:10},(_,i)=>`Conversation context passage ${i+1}, readable behind the pencil sheet.`).join(' ')});
+})();
+
+// Owned route handlers settle before their page/context closes. Route errors
+// wake a boundary wait and remain evidence even if they occur after entry.
+async function pencilRoute(p, pattern, action) {
+  p.pencilRouteErrors ??= [];
+  if (!p.pencilRouteFailure) { p.pencilRouteFailure = new Promise((_yes,no) => p.pencilRouteFailed=no); p.pencilRouteFailure.catch(()=>{}); }
+  await p.route(pattern, async route => {
+    const record={url:route.request().url(),settled:false};
+    (p.pencilRouteRecords ??= []).push(record);
+    try { await action(route); record.settled=true; }
+    catch(error) {
+      record.error=error.stack??String(error);p.pencilRouteErrors.push(record.error);p.pencilRouteFailed(error);
+      try { await route.abort();record.settled=true; } catch(cleanup) { record.cleanupError=cleanup.stack??String(cleanup);p.pencilRouteErrors.push(record.cleanupError); }
+    }
+  });
+}
+async function pencilReached(p, promise) {
+  let timer;
+  try { await Promise.race([promise,p.pencilRouteFailure??new Promise(()=>{}),new Promise((_yes,no)=>{timer=setTimeout(()=>no(Error('Pencil boundary was not reached')),15000);})]); }
+  finally { clearTimeout(timer); }
+}
+async function pencilSettlePage(p) {
+  if (p.pencilPageSettled) return;
+  const errors=[];
+  for(const release of p.pencilReleases??[]) {try {release();}catch(error){errors.push(error.stack??String(error));}}
+  try { await p.unrouteAll({behavior:'wait'}); } catch(error) {errors.push(error.stack??String(error));}
+  errors.push(...(p.pencilRouteErrors??[]));
+  let observedCalls=[];
+  if(p.pencilObservationProof)try {await until(p,()=>window.pencil.calls.every(call=>call.settled),'every observed send continuation settled');observedCalls=await p.evaluate(()=>window.pencil.calls);}catch(error){errors.push(error.stack??String(error));}
+  p.pencilPageSettled=true;
+  pencilCleanupEvidence.push({engine,label:'page routes',observation:p.pencilObservationProof??null,observedCalls,routes:p.pencilRouteRecords??[],cleanup:errors});
+  if(errors.length)throw new AggregateError(errors,errors.join('\n'));
+}
+// Cleanup must never replace the first failing assertion. Both are retained.
+async function pencilCleanup(label, action, cleanup) {
+  let primary; const cleanupErrors=[];
+  try { await action(); } catch(error) { primary=error; }
+  try { await cleanup(); } catch(error) { cleanupErrors.push(error); }
+  pencilCleanupEvidence.push({engine,label,primary:primary?.stack??null,cleanup:cleanupErrors.map(e=>e.stack??String(e))});
+  if(primary||cleanupErrors.length) {
+    const error=new AggregateError([...(primary?[primary]:[]),...cleanupErrors],
+      [primary?.stack,...cleanupErrors.map(e=>'Cleanup: '+e.stack)].filter(Boolean).join('\n'));
+    error.primaryError=primary?.stack??null;error.cleanupErrors=cleanupErrors.map(e=>e.stack??String(e));throw error;
+  }
+}
+// Reach the opener's own center. The Remove target must not cover it. Open
+// only a closed row; a recovery owner may already have opened the choices.
+async function openPencilImage(p, selection) {
+  const row=p.locator('#inline-attachments .image-choice').first();
+  assert.equal(await row.getAttribute('data-selection'),selection,'the exact chosen row is still present');
+  if(!await row.evaluate(el=>el.hasAttribute('data-open'))) {
+    const opener=row.locator('.image-open');
+    await opener.scrollIntoViewIfNeeded();
+    assert.equal(await opener.evaluate(el=>{const r=el.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return !!hit&&(el===hit||el.contains(hit))}),true,'the image opener center is not covered by Remove');
+    await press(p,'#inline-attachments .image-open');
+  }
+  await until(p,()=>document.querySelector('#inline-attachments .image-choice')?.hasAttribute('data-open'),'image choices open');
+  assert.equal(await row.getAttribute('data-selection'),selection,'native opener retains the exact image selection');
+  assert.equal(await p.evaluate(()=>document.querySelector('#new-message-sheet').open),true,'opening image choices preserves the sheet before any confirmation');
+}
+async function pencilHeld(p, label, writing, tolerance, {controls = [], inactive = false} = {}) {
+  assert.equal(await p.locator('#inline-writing-body').inputValue(), writing, `${label}: exact current writing retained`);
+  assert.equal(await p.evaluate(() => document.querySelector('#new-message-sheet').open), true, `${label}: sheet stays open`);
+  const m=await sized(p,'sheet',tolerance);
+  assert.deepEqual(m.over,[],`${label}: status, notice, recovery and writing rows stay separate`);
+  assert.deepEqual(m.past,[],`${label}: controls fit or have a reachable scroller`);
+  assert.ok(Math.abs(m.dialog.bottom-(m.view.top+m.view.height-(p.touch?0:24)))<=tolerance.positionPx,`${label}: sheet bottom stays within the named position tolerance`);
+  assert.ok(m.dialog.left>=-tolerance.positionPx&&m.dialog.right<=m.view.width+tolerance.positionPx,`${label}: sheet width stays within the named position tolerance`);
+  for(const selector of controls) {
+    const control=p.locator(selector).first();
+    assert.equal(await control.isVisible(),true,`${label}: ${selector} is visible`);
+    await control.scrollIntoViewIfNeeded();
+    assert.equal(await control.evaluate(el=>{const r=el.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return !!hit&&(el===hit||el.contains(hit))}),true,`${label}: ${selector} can receive a native press`);
+  }
+  if(p.touch&&!inactive) assert.deepEqual(await pencilSmallTargets(p,tolerance.targetPx),[],`${label}: named 44px target floor (rounded to nearest device CSS pixel)`);
+  measured.push({engine,shape:p.shape,scheme:p.scheme,state:label,surface:p.pencilSurface,tolerance,model:await pencilModel(p),rows:m});
+  await picture(p,`item-673-${p.pencilSurface}-${label.replaceAll(' ','-')}`);
+}
+async function observePencilPersistence(p) {
+  await p.evaluate(() => {
+    const {inline:i,registry:r}=window.pencil,e=i.editor,backend=r.sessionFor(e).journal.backend,put=backend.put,command=r.api.command;
+    window.pencilPersistence=[];
+    backend.put=async function(row,...args) {const result=await Reflect.apply(put,this,[row,...args]);if(row.editorKey===e.key)window.pencilPersistence.push({event:'local',key:row.editorKey,rowId:row.id,stamp:row.stamp,body:row.snapshot.draft.body});return result;};
+    r.api.command=async function(envelope,...args) {const result=await Reflect.apply(command,this,[envelope,...args]);if(envelope.kind==='draft.save')window.pencilPersistence.push({event:'server',operation:envelope.operation_id,body:envelope.args.body,receipt:structuredClone(result)});return result;};
+    window.restorePencilPersistence=()=>{backend.put=put;r.api.command=command;};
+  });
+}
+async function appendPencilWriting(p, before, extra) {
+  await press(p, '#inline-writing-body');
+  await p.keyboard.press('Meta+ArrowDown');
+  const selection = await p.locator('#inline-writing-body').evaluate(el => ({ body: el.value, start: el.selectionStart, end: el.selectionEnd, focused: document.activeElement === el }));
+  assert.deepEqual(selection, { body: before, start: before.length, end: before.length, focused: true }, 'exact before-text and native document-end caret');
+  await p.keyboard.insertText(extra);
+  assert.equal(await p.locator('#inline-writing-body').inputValue(), before + extra, 'whole native insertion result');
+  assert.equal((await pencilModel(p)).body, before + extra, 'whole editor insertion result');
+  return before + extra;
+}
+async function holdPencilJournal(p) {
+  await p.evaluate(() => {
+    const { inline: i, registry: r } = window.pencil, e = i.editor, s = r.sessionFor(e), backend = s.journal.backend, original = backend.put;
+    let refusing = true;
+    window.pencilJournalTrace = [];
+    backend.put = async function (row, ...args) {
+      if (row.editorKey === e.key) {
+        window.pencilJournalTrace.push({ event: refusing ? 'put-refused' : 'put-recovered', key: row.editorKey, rowId: row.id, stamp: row.stamp, writer: s.journal.writerId, cycle: e.clientCycleId, body: row.snapshot.draft.body, attempts: structuredClone(s.attempts) });
+        if (refusing) throw Error('Fixture device journal refused');
+      }
+      return Reflect.apply(original, this, [row, ...args]);
+    };
+    window.releasePencilJournal = async () => {
+      refusing = false;
+      try { await r.persistLocal(e); await r.flush(e); }
+      finally { backend.put = original; }
+    };
+  });
+}
+const choosePencilImage = async (p, file) => {
+  await press(p,'#inline-plus-button');
+  const chooser=p.waitForEvent('filechooser');await press(p,'#inline-add-image');
+  await (await chooser).setFiles(file);
+  await until(p,()=>document.querySelector('#inline-plus-panel').hidden,'native Add image puts its panel away');
+};
+async function pencilPublication(p, state, words, tolerance) {
+  let release,entered;const gate=new Promise(r=>release=r),hit=new Promise(r=>entered=r);(p.pencilReleases??=[]).push(release);
+  await pencilRoute(p,'**/api/command',async route=>{
+    const e=route.request().postDataJSON();if(e?.kind!=='message.send')return route.continue();
+    if(state==='publication pending') {
+      // Execute Core; hold its actual committed answer, not preparation.
+      const response=await route.fetch();assert.equal((await response.json()).status,'committed');
+      entered();await gate;return route.fulfill({response});
+    }
+    entered();
+    if(state==='publication rejected')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({v:1,instance_id:e.instance_id,operation_id:e.operation_id,kind:e.kind,recorded:true,status:'rejected',error:{code:'PUBLICATION_REFUSED',message:'Publication refused; writing kept.'}})});
+    return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:{code:'UNAVAILABLE',message:'Publication answer interrupted',retryable:true}})});
+  });
+  try {
+    await press(p,'#inline-send');await pencilReached(p,hit);
+    if(state!=='publication pending')await until(p,()=>{const {inline:i,registry:r}=window.pencil,e=i.editor,s=r.sessionFor(e);return e.submissions.at(-1)?.preparationConfirmed && !s.underWay(e.submissions.at(-1).id)},'public send settles',undefined,15000);
+    const model=await pencilModel(p),item=model.submissions.at(-1);
+    assert.equal(item.body,words,'prepared A keeps its exact words');assert.equal(item.prepared,true);
+    if(state==='publication pending')assert.equal(item.underWay,true);
+    else {assert.equal(item.underWay,false);assert.equal(item.status,state==='publication rejected'?'refused':'prepared');}
+    const controls=state==='publication pending'?['#inline-send']:['#inline-pending button'];
+    await pencilHeld(p,state,'',tolerance,{controls});
+    if(state!=='publication pending') {
+      await press(p,'#inline-pending button');
+      await until(p,()=>document.querySelector('#version-review').open,'public send recovery opens');
+      assert.ok((await p.locator('#review-content').innerText()).includes(words),'recovery retains exact A writing');
+      await press(p,'#review-close');
+      await until(p,()=>!document.querySelector('#version-review').open,'recovery returns to sheet');
+      assert.equal(await p.locator('#inline-writing-body').inputValue(),'');
+    }
+  } finally { release(); }
+  if(state==='publication pending')await until(p,()=>window.pencil.inline.editor.submissions.at(-1)?.status==='confirmed','held public confirmation released');
+}
+async function pencilBranch(p,state,words,tolerance) {
+  if(state.startsWith('publication '))return pencilPublication(p,state,words,tolerance);
+  if(state==='preparation busy'||state==='preparation unknown') {
+    let release,entered;const gate=new Promise(r=>release=r),hit=new Promise(r=>entered=r);(p.pencilReleases??=[]).push(release);
+    await pencilRoute(p,'**/api/command',async route=>{
+      if(route.request().postDataJSON()?.kind!=='submission.prepare')return route.continue();
+      entered();if(state==='preparation busy')await gate;
+      return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:{code:'UNAVAILABLE',message:'Preparation answer interrupted',retryable:true}})});
+    });
+    try {
+      await press(p,'#inline-send');await pencilReached(p,hit);
+      if(state==='preparation unknown')await until(p,()=>{const {inline:i,registry:r}=window.pencil,e=i.editor;return !r.sessionFor(e).underWay(e.submissions.at(-1)?.id)},'preparation ends unconfirmed',undefined,15000);
+      const m=await pencilModel(p);assert.equal(m.submissions.at(-1).body,words);assert.equal(m.submissions.at(-1).prepared,false);
+      assert.equal(m.submissions.at(-1).underWay,state==='preparation busy');
+      await pencilHeld(p,state,'',tolerance,{controls:state==='preparation unknown'?['#inline-pending button']:[]});
+    }finally{release()}
+    await until(p,()=>{const {inline:i,registry:r}=window.pencil,e=i.editor;return !r.sessionFor(e).underWay(e.submissions.at(-1)?.id)},'preparation released',undefined,15000);return;
+  }
+  if(['empty','normal writing','grown writing','shrunk writing'].includes(state)) {
+    if(state!=='normal writing') {await press(p,'#inline-writing-body');await p.keyboard.press('Meta+A');await p.keyboard.press('Backspace');words='';}
+    if(['grown writing','shrunk writing'].includes(state)) {await p.keyboard.insertText('Line one\nLine two\nLine three');words='Line one\nLine two\nLine three';}
+    if(state==='shrunk writing') {await p.keyboard.press('Meta+A');await p.keyboard.press('Backspace');words='';}
+    assert.equal(await p.locator('#inline-send').isDisabled(),words==='',`${state}: Send follows actual writing`);
+    await pencilHeld(p,state,words,tolerance,{controls:['#inline-writing-body']});return;
+  }
+  if(['agent menu open','name chooser','chosen recipient','agent menu done'].includes(state)) {
+    await press(p,'#inline-who-chip');await until(p,()=>!document.querySelector('#inline-who-panel').hidden,'agent menu open');
+    if(state!=='agent menu open') {
+      if(p.touch) {await press(p,'#inline-recipient-open');await until(p,()=>document.querySelector('#inline-recipient-sheet').open,'native naming sheet');}
+      else if(state==='name chooser')await press(p,'#inline-recipient-input');
+      if(['chosen recipient','agent menu done'].includes(state)) {
+        const choice='#inline-recipient-sheet button.choice-chip[aria-pressed=false]';await until(p,s=>!!document.querySelector(s),'an offered recipient',choice);
+        const chosen=p.locator(choice).first();const attr=await chosen.getAttribute('data-name')?'data-name':'data-answerer',id=await chosen.getAttribute(attr);
+        await press(p,choice);assert.equal(await p.locator(`#inline-recipient-sheet [${attr}="${id}"]`).getAttribute('aria-pressed'),'true','native choice names that exact recipient');
+        if(p.touch)await press(p,'#inline-recipient-done');
+      }
+      if(state==='agent menu done')await press(p,'#inline-who-done');
+    }
+    // The naming sheet is its own top-layer surface; its native Done/Back
+    // controls are tested here without claiming the covered composer is hit.
+    if(state==='name chooser'&&p.touch) {
+      await picture(p,`item-673-${p.pencilSurface}-${state.replaceAll(' ','-')}`);
+      assert.equal(await p.locator('#inline-writing-body').inputValue(),words);assert.equal(await p.evaluate(()=>document.querySelector('#new-message-sheet').open),true);
+      const boxes=await p.evaluate(()=>{
+        const sheet=document.querySelector('#inline-recipient-sheet'),box=el=>{const b=el.getBoundingClientRect();return {top:b.top,bottom:b.bottom,left:b.left,right:b.right}};
+        return {head:box(sheet.querySelector('.naming-head')),field:box(document.querySelector('#inline-recipient-input')),width:innerWidth,height:visualViewport.height};
+      });
+      assert.ok(boxes.head.bottom<=boxes.field.top+tolerance.positionPx,'name chooser head and input are separate within the named tolerance');
+      assert.ok(boxes.field.left>=-tolerance.positionPx&&boxes.field.right<=boxes.width+tolerance.positionPx&&boxes.field.bottom<=boxes.height+tolerance.positionPx,'name chooser input fits within the named tolerance');
+      measured.push({engine,shape:p.shape,scheme:p.scheme,surface:p.pencilSurface,state,tolerance,boxes});
+      await press(p,'#inline-recipient-done');return;
+    }
+    await pencilHeld(p,state,words,tolerance,{controls:state==='agent menu done'?['#inline-writing-body']:['#inline-who-done']});return;
+  }
+  let releaseAccess,accessEntered;
+  if(state==='loaded access checking'||state==='loaded access recovered') {
+    const hit=new Promise(r=>accessEntered=r),gate=new Promise(r=>releaseAccess=r);(p.pencilReleases??=[]).push(releaseAccess);
+    await pencilRoute(p,'**/api/view',async route=>{
+      if(route.request().postDataJSON()?.name!=='editor_state')return route.continue();
+      accessEntered();await gate;return route.continue();
+    });
+    await p.evaluate(()=>{const {inline:i}=window.pencil;i.editor.unavailable=true;i.presentation.availabilityUnconfirmed=true;i.paintStatus()});
+    try {
+      await press(p,'#inline-retry');await pencilReached(p,hit);
+      if(state==='loaded access recovered') {releaseAccess();await until(p,()=>!window.pencil.inline.presentation.availabilityChecking&&!window.pencil.inline.editor.unavailable,'loaded access recovered');}
+      const m=await pencilModel(p);
+      assert.equal(m.checking,state==='loaded access checking');assert.equal(m.retry,false);
+      assert.equal(m.unavailable,state==='loaded access checking');
+      await pencilHeld(p,state,words,tolerance,{controls:state==='loaded access recovered'?['#inline-send']:[]});
+    } finally {releaseAccess();}
+    await until(p,()=>!window.pencil.inline.presentation.availabilityChecking,'access request released');
+    return;
+  }
+  await pencilCleanup(state,async () => {
+  if(['local saving','server saving','journal attention'].includes(state))await observePencilPersistence(p);
+  if(state==='local saving') {
+    await p.evaluate(()=>{const {inline:i,registry:r}=window.pencil,s=r.sessionFor(i.editor),original=s.persist.bind(s);const gate=new Promise(go=>window.releasePencilSave=go);s.persist=async()=>{window.pencilSaveEntered=true;await gate;return original()}});
+    words=await appendPencilWriting(p,words,' Local.');
+    await until(p,()=>window.pencilSaveEntered&&window.pencil.registry.localWrites.get(window.pencil.inline.editor.key)?.pending,'actual local write held');
+  } else if(state==='server saving') {
+    const gate=new Promise(resolve=>p.releaseServerSave=resolve);(p.pencilReleases??=[]).push(p.releaseServerSave);
+    await pencilRoute(p,'**/api/command',async route=>{if(route.request().postDataJSON()?.kind!=='draft.save')return route.continue();await gate;return route.continue()});
+    words=await appendPencilWriting(p,words,' Server.');
+    await until(p,()=>{const {inline:i,registry:r}=window.pencil;return r.serverSaves.has(i.editor.key)&&!r.localWrites.get(i.editor.key)?.pending},'actual server save held',undefined,15000);
+  } else if(state==='journal attention') {
+    await holdPencilJournal(p);
+    words=await appendPencilWriting(p,words,' Attention.');
+    await until(p,()=>window.pencil.inline.editor.journalError==='Fixture device journal refused'&&!window.pencil.registry.localWrites.get(window.pencil.inline.editor.key)?.pending,'real persistence refusal settled');
+    const trace=await p.evaluate(()=>window.pencilJournalTrace);
+    assert.ok(trace.length&&trace.every(x=>x.event==='put-refused'&&x.body===words),'every actual journal attempt refused for this exact writing');
+    measured.push({engine,surface:p.pencilSurface,shape:p.shape,scheme:p.scheme,state,journalTrace:trace});
+  } else if(state==='saved') {
+    await until(p,()=>window.pencil.registry.saveSign(window.pencil.inline.editor).state==='saved','actual saved writing');
+  } else if(state==='plus open') {
+    await press(p,'#inline-plus-button');await until(p,()=>!document.querySelector('#inline-plus-panel').hidden,'plus panel open');
+  } else if(state==='picker reserved') {
+    await press(p,'#inline-plus-button');const chooser=p.waitForEvent('filechooser');await press(p,'#inline-add-image');p.pencilChooser=await chooser;await press(p,'#inline-plus-button');
+    await until(p,()=>!!window.pencil.inline.editor.imageReservation,'native picker reserved');
+  } else if(state.startsWith('image ')&&!['image opaque','image storage error'].includes(state)) {
+    const mode=state.slice(6);await holdPencilImage(p,mode);
+    await choosePencilImage(p,mode==='choice'?HEIC:{name:'successor.png',mimeType:'image/png',buffer:PNG});
+    if(['capturing','uploading'].includes(mode))await until(p,()=>window.pencilImageEntered,'actual image boundary held');
+    else await until(p,mode=>{const {inline:i,registry:r}=window.pencil,u=r.sessionFor(i.editor).uploads,e=u.current()[0];return !!e&&(mode==='memory-only'?e.bytes_state==='memory-only':mode==='choice'?e.bytes_state==='durable':!!e.ready_descriptor)},'image branch ready',mode,20000);
+    if(!['capturing','uploading','memory-only','choice','ready'].includes(mode))await p.evaluate(mode=>{
+      const {inline:i,registry:r}=window.pencil,u=r.sessionFor(i.editor).uploads,e=u.current()[0],a=e.attempts[e.choice];
+      // Fixture branch shapes are drawn by the real status/choice owners.
+      e.ready_descriptor=null;e.association=null;i.editor.draft.attachments=[];
+      if(mode==='retained checking'){e.origin='retained-ref';}
+      else if(mode==='confirmed unattached'){e.ready_descriptor=a.ready_descriptor;}
+      else {a.phase=({'unknown':'publish-unknown','refused':'refused','authority blocked':'authority-blocked','server busy':'begin-unknown'})[mode];a.last_attempt_error=mode==='server busy'?{code:'SERVER_BUSY'}:null;}
+      i.paintStatus();
+    },mode);
+    await openPencilImage(p,(await pencilModel(p)).images[0].id);
+  } else {
+    await p.evaluate(state=>{
+      const {inline:i,registry:r}=window.pencil,e=i.editor;
+      r.cancelSave(e);
+      if(state==='device-only'){e.ackVersion=Math.min(e.ackVersion,e.localVersion-1);}
+      if(state==='authority recovery')e.authorityRecovery={phase:'error',message:'Runtime changed — review saved version'};
+      if(state==='version conflict')e.conflict={error:{code:'REVISION_CONFLICT',message:'Review the other saved version'},attempted:structuredClone(e.draft)};
+      if(state==='recovery discovery'){e.recoveryDiscovery=true;e.localVersion=0;e.draft.body='';i.drawEditor();}
+      if(state==='adopting')e.adopting=true;
+      if(state==='inactive')i.callbacks.admits=()=>false;
+      if(state==='cleanup attention')e.cleanupError='Device cleanup needs attention';
+      if(state==='image opaque')e.uploadOpaque=true;
+      if(state==='image storage error')e.imageStorageError='Fixture image change could not be kept';
+      if(state.startsWith('loaded access')){e.unavailable=true;i.presentation.availabilityUnconfirmed=state==='loaded access visible';}
+      i.notice('The writing and recovery choices are kept here.');i.paintStatus();
+    },state);
+    if(state==='recovery discovery')words='';
+  }
+    const m=await pencilModel(p),controls=[];
+    if(state==='local saving'){assert.equal(m.sign.state,'saving');assert.equal(m.sign.text,'Saving on this device…');}
+    if(state==='server saving'){assert.equal(m.sign.state,'saving');assert.equal(m.sign.text,'Saved on this device — saving to Theseus…');}
+    if(state==='saved')assert.equal(m.sign.state,'saved');
+    if(state==='device-only')assert.equal(m.sign.state,'device');
+    if(['journal attention','authority recovery','version conflict'].includes(state))assert.equal(m.sign.state,'attention');
+    if(['recovery discovery','adopting','inactive'].includes(state))assert.equal(m.readOnly,true);
+    if(state.startsWith('loaded access')){assert.equal(m.retry,true);assert.equal(m.unavailable,true);controls.push('#inline-retry');}
+    if(state==='plus open')controls.push('#inline-add-image');
+    if(state==='picker reserved')controls.push('#inline-cancel-image');
+    if(state.startsWith('image ')&&!['image opaque','image storage error'].includes(state))controls.push('#inline-attachments [data-method="remove"]');
+    const imageStatuses={'image capturing':'Preparing','image uploading':'Uploading','image memory-only':'Bytes not saved on this device','image choice':'Choose Attach as download','image ready':'Ready','image unknown':'Confirmation unknown','image refused':'Could not attach','image authority blocked':'Runtime changed — review image','image server busy':'Server busy','image retained checking':'Checking attachment','image confirmed unattached':'Upload confirmed, not attached'};
+    if(imageStatuses[state])assert.equal(m.images[0]?.status,imageStatuses[state],`${state}: real image status branch reached`);
+    if(state==='image choice')controls.push('#inline-attachments [data-method="asDownload"]');
+    if(state==='image memory-only')controls.push('#inline-attachments [data-method="retry"]');
+    if(['authority recovery','version conflict','recovery discovery'].includes(state))controls.push('#inline-review-versions');
+    await pencilHeld(p,state,words,tolerance,{controls,inactive:state==='inactive'});
+    if(state==='picker reserved'){await press(p,'#inline-cancel-image');assert.equal((await pencilModel(p)).open,true);}
+    if(state==='image choice'){await press(p,'#inline-attachments [data-method="asDownload"]');await until(p,()=>document.querySelector('#inline-attachments .image-choice')?.textContent.includes('Ready'),'download choice works',undefined,20000);}
+  },async () => {
+    if(state==='local saving'){await p.evaluate(()=>window.releasePencilSave());await until(p,()=>!window.pencil.registry.localWrites.get(window.pencil.inline.editor.key)?.pending,'local write released');}
+    if(state==='journal attention'){await p.evaluate(()=>window.releasePencilJournal?.());await until(p,()=>!window.pencil.inline.editor.journalError&&window.pencil.registry.saveSign(window.pencil.inline.editor).state==='saved','actual journal recovery saved');}
+    if(state==='server saving'){p.releaseServerSave?.();await until(p,()=>window.pencil.registry.saveSign(window.pencil.inline.editor).state==='saved','server write released');}
+    if(['local saving','server saving','journal attention'].includes(state)) {
+      await until(p,()=>window.pencil.registry.saveSign(window.pencil.inline.editor).state==='saved','whole writing saved after release',undefined,15000);
+      assert.equal((await pencilModel(p)).body,words,'whole writing survives persistence release');
+      const proof=await p.evaluate(async()=>{const {inline:i,registry:r}=window.pencil,e=i.editor;return {events:window.pencilPersistence,remote:await r.api.view('editor_state',{source_ref:e.sourceRef,topic_id:e.context.topicId})}});
+      assert.ok(proof.events.some(x=>x.event==='local'&&x.body===words),'whole expected writing persisted locally, before any acknowledged-copy retirement');
+      assert.ok(proof.events.some(x=>x.event==='server'&&x.body===words&&x.receipt.status==='committed'&&x.receipt.operation_id===x.operation),'exact server save operation and whole writing committed');
+      assert.equal(proof.remote.draft.body,words,'whole expected server persistence result');
+      measured.push({engine,surface:p.pencilSurface,shape:p.shape,scheme:p.scheme,state,persistence:proof});
+      await p.evaluate(()=>window.restorePencilPersistence?.());
+    }
+    if(['image capturing','image uploading'].includes(state)){await p.evaluate(()=>window.releasePencilImage());await until(p,()=>{const {inline:i,registry:r}=window.pencil;return !!r.sessionFor(i.editor).uploads.current()[0]?.ready_descriptor},'image hold released',undefined,20000);}
+  });
+}
+async function pencilLateImage(p,mode,way,tolerance) {
+  const firstWords='Send A; keep the successor image.';await p.keyboard.insertText(firstWords);
+  let release,entered;const hit=new Promise(r=>entered=r),gate=new Promise(r=>release=r);(p.pencilReleases??=[]).push(release);
+  await pencilRoute(p,'**/api/command',async route=>{
+    if(route.request().postDataJSON()?.kind!=='message.send')return route.continue();
+    const response=await route.fetch();assert.equal((await response.json()).status,'committed','held actual Core message.send answer');entered();await gate;return route.fulfill({response});
+  });
+  await pencilCleanup(`late-${way}-${mode}`,async () => {
+    if(way==='Send')await press(p,'#inline-send');else await p.keyboard.press('Meta+Enter');await pencilReached(p,hit);
+    const before=await pencilModel(p);assert.equal(before.submissions.at(-1).prepared,true);
+    await holdPencilImage(p,mode);
+    if(mode==='picker') {
+      await press(p,'#inline-plus-button');const chooser=p.waitForEvent('filechooser');await press(p,'#inline-add-image');await chooser;await press(p,'#inline-plus-button');
+    } else {
+      await choosePencilImage(p,mode==='choice'?HEIC:{name:'successor.png',mimeType:'image/png',buffer:PNG});
+      if(['capturing','uploading'].includes(mode))await until(p,()=>window.pencilImageEntered,'successor image boundary held');
+      else await until(p,mode=>{const {inline:i,registry:r}=window.pencil,u=r.sessionFor(i.editor).uploads,x=u.current()[0];return !!x&&(mode==='memory-only'?x.bytes_state==='memory-only':mode==='choice'?x.bytes_state==='durable':!!x.ready_descriptor)},'successor image retained',mode,20000);
+      if(mode==='storage error')await p.evaluate(()=>{window.pencil.inline.editor.imageStorageError='Fixture image transition failed';window.pencil.inline.paintStatus()});
+      await openPencilImage(p,(await pencilModel(p)).images[0].id);
+    }
+    const chosen=await pencilModel(p);
+    assert.equal(chosen.open,true,'successor sheet is open before releasing A');
+    assert.equal(chosen.images.length,mode==='picker'?0:1,'native image choices never remove successor writing');
+    if(['capturing','uploading','choice','memory-only','picker'].includes(mode))assert.equal(chosen.version,before.version,'new image work does not change the text version');
+    release();await until(p,()=>window.pencil.inline.editor.submissions.at(-1)?.status==='confirmed','A confirmation delivered');
+    // Wait for the InlineComposer continuation too, not just Editor.acceptSend.
+    await until(p,()=>window.pencilSendSettled===true,'actual InlineComposer send continuation settled');
+    const after=await pencilModel(p);assert.equal(after.open,true,'older confirmation keeps newer image writing open');
+    assert.equal(after.submissions.at(-1).body,firstWords);assert.equal(after.cycle,chosen.cycle);
+    assert.deepEqual(after.images.map(x=>x.id),chosen.images.map(x=>x.id),'exact successor selections retained');
+    await pencilHeld(p,`late-${way}-${mode}`, '',tolerance,{controls:mode==='picker'?['#inline-cancel-image']:['#inline-attachments [data-method="remove"]']});
+    if(mode==='choice')assert.equal(await p.locator('#inline-attachments [data-method="asDownload"]').isVisible(),true);
+    if(mode==='memory-only')assert.equal(await p.locator('#inline-attachments [data-method="retry"]').isVisible(),true);
+  },async () => {
+    release();
+    if(['capturing','uploading'].includes(mode)) {await p.evaluate(()=>window.releasePencilImage?.());await until(p,()=>{const {inline:i,registry:r}=window.pencil;return !!r.sessionFor(i.editor).uploads.current()[0]?.ready_descriptor},'successor image finishes',undefined,20000);}
+    if(mode==='picker')await press(p,'#inline-cancel-image');
+  });
+}
+
+async function pencilLateView(p,state,way,tolerance) {
+  if(state==='repeated image error') {
+    await choosePencilImage(p,{name:'empty.png',mimeType:'image/png',buffer:Buffer.alloc(0)});
+    await until(p,()=>document.querySelector('#inline-notice').textContent.includes('An empty image cannot be attached'),'earlier native empty-file error');
+    await press(p,'#inline-writing-body');
+  }
+  const words='Send A; keep the successor presentation.';await p.keyboard.insertText(words);
+  let release,entered;const gate=new Promise(r=>release=r),hit=new Promise(r=>entered=r);(p.pencilReleases??=[]).push(release);
+  await pencilRoute(p,'**/api/command',async route=>{
+    if(route.request().postDataJSON()?.kind!=='message.send')return route.continue();
+    const response=await route.fetch();assert.equal((await response.json()).status,'committed');entered();await gate;return route.fulfill({response});
+  });
+  await pencilCleanup(`late-${way}-${state}`,async()=>{
+    if(way==='Send')await press(p,'#inline-send');else await p.keyboard.press('Meta+Enter');await pencilReached(p,hit);
+    const before=await pencilModel(p);
+    if(state.endsWith('image error')) {
+      await choosePencilImage(p,{name:'empty.png',mimeType:'image/png',buffer:Buffer.alloc(0)});
+      await until(p,()=>document.querySelector('#inline-notice').textContent.includes('An empty image cannot be attached'),'native empty-file error owned by successor');
+    } else {
+      await press(p,'#inline-who-chip');await until(p,()=>!document.querySelector('#inline-who-panel').hidden,'successor agent menu open');
+      if(state==='name chooser') {
+        if(p.touch) {await press(p,'#inline-recipient-open');await until(p,()=>document.querySelector('#inline-recipient-sheet').open,'successor naming sheet open');}
+        else {await press(p,'#inline-recipient-input');assert.equal(await p.locator('#inline-recipient-input').evaluate(el=>document.activeElement===el),true,'laptop naming owns the native focus');}
+      }
+    }
+    assert.equal((await pencilModel(p)).open,true,'successor presentation open before releasing A');
+    release();await until(p,()=>window.pencilSendSettled===true,'actual InlineComposer send continuation settled');
+    const after=await pencilModel(p);assert.equal(after.open,true,'older confirmation keeps newer presentation open');assert.equal(after.version,before.version);assert.equal(after.cycle,before.cycle);
+    if(state==='name chooser'&&p.touch) {
+      assert.equal(await p.locator('#inline-recipient-done').isVisible(),true,'successor naming owns its Done');
+      await picture(p,`item-673-${p.pencilSurface}-late-${way}-name-chooser`);
+      await press(p,'#inline-recipient-done');
+    }
+    await pencilHeld(p,`late-${way}-${state}`,'',tolerance,{controls:state.endsWith('image error')?['#inline-writing-body']:['#inline-who-done']});
+  },async()=>{release()});
+}
+
+async function runPencil() {
+  for (const shape of PENCIL_SHAPES) for (const scheme of ['light','dark']) for (const surface of ['topic','conversation']) {
+    const url = surface === 'topic' ? '/?topic=t1' : '/?conversation=w1';
+    const name = `item 673 ${surface} ${shape} ${scheme}`;
+    await check(`${name}: floats at the bottom without blurring or moving the readable page`, async () => {
+      const rowTolerance = {positionPx:2, overflowPx:4, targetPx:1};
+      const positionTolerancePx = 2, bottomTolerancePx = 2, contextHeightTolerancePx = 2;
+      await pencilContext();
+      const p = await page(shape, scheme, url);
+      await until(p, () => !document.querySelector('#inline-composer').hidden, 'the loaded composer');
+      if (surface === 'conversation') await until(p, () => Boolean(document.querySelector('#inline-composer .answerer-chips > button')), 'the Conversation header and item states loaded');
+      const before = await p.evaluate(() => ({ scroll:scrollY, cards:[...document.querySelectorAll('#messages .message-card')].map(e=>[e.dataset.id,e.getBoundingClientRect().top]) }));
+      assert.ok(before.cards.length>0,'the displacement check observes actual feed cards');
+      await pencilOpen(p);
+      await picture(p, `item-673-${surface}-float-empty`);
+      const m = await pencilGeometry(p);
+      assert.equal(m.blur, 'none', 'the pencil backdrop does not blur the page');
+      assert.ok(['rgba(0, 0, 0, 0)', 'transparent'].includes(m.backdrop), 'the page keeps its own contrast');
+      assert.ok(m.sheet.height <= m.height * .65 + contextHeightTolerancePx, `empty sheet floats below the context: ${JSON.stringify(m)}`);
+      assert.ok(Math.abs(m.height - m.sheet.bottom - (p.touch ? 0 : 24)) <= bottomTolerancePx, 'sheet sits at the bottom');
+      assert.ok(m.overflowPx <= positionTolerancePx, 'no horizontal overflow beyond the named position tolerance');
+      assertPencilPlace(before, await p.evaluate(() => ({ scroll:scrollY, cards:[...document.querySelectorAll('#messages .message-card')].map(e=>[e.dataset.id,e.getBoundingClientRect().top]) })), positionTolerancePx);
+      if (p.touch) assert.deepEqual(await pencilSmallTargets(p,rowTolerance.targetPx), []);
+      await p.keyboard.press('Escape');
+      await until(p, () => !document.querySelector('#new-message-sheet').open, 'Escape closes the sheet');
+      assert.equal(await p.evaluate(() => document.activeElement.id), 'new-message');
+      await close(p);
+    });
+    await check(`${name}: starts at one line and grows and shrinks with the writing`, async () => {
+      const rowTolerance = {positionPx:2, overflowPx:4, targetPx:1};
+      const p = await page(shape, scheme, url);
+      await pencilOpen(p);
+      const fieldTolerancePx = 2, growthTolerancePx = 4, bottomTolerancePx = 2, oneLinePaddingPx = 20;
+      const empty = await pencilGeometry(p);
+      await picture(p, `item-673-${surface}-one-line`);
+      assert.ok(empty.field.height <= empty.line + oneLinePaddingPx + fieldTolerancePx, `one line initially: ${JSON.stringify(empty)}`);
+      await p.keyboard.insertText('One\nTwo\nThree');
+      const grown = await pencilGeometry(p);
+      await picture(p, `item-673-${surface}-grown`);
+      assert.ok(grown.field.height >= empty.field.height + empty.line * 2 - growthTolerancePx, 'the field grows by the added lines');
+      await p.keyboard.press('Meta+A'); await p.keyboard.press('Backspace');
+      const shrunk = await pencilGeometry(p);
+      assert.ok(Math.abs(shrunk.field.height - empty.field.height) <= fieldTolerancePx, 'deleting returns to one line');
+      assert.ok(Math.abs(shrunk.sheet.bottom - grown.sheet.bottom) <= bottomTolerancePx, 'growth keeps the sheet at the bottom');
+      assert.equal(await p.evaluate(() => document.querySelector('#new-message-sheet').open), true, 'editing does not send or close');
+      await close(p);
+    });
+    await check(`${name}: inline agent menu keeps compact spacing and every choice reachable`, async () => {
+      const rowTolerance = {positionPx:2, overflowPx:4, targetPx:1};
+      const p = await page(shape, scheme, url);
+      await pencilOpen(p); await p.keyboard.insertText('Keep this writing.');
+      await press(p, '#inline-who-chip');
+      await until(p, () => !document.querySelector('#inline-who-panel').hidden, 'the inline agent menu');
+      await picture(p, `item-673-${surface}-agent-menu`);
+      const m = await p.evaluate(() => {
+        const e=document.querySelector('#inline-who-panel'), s=getComputedStyle(e), r=e.getBoundingClientRect();
+        return { gap:parseFloat(s.gap), padding:parseFloat(s.paddingTop)+parseFloat(s.paddingBottom), height:r.height, bottom:r.bottom, width:r.width };
+      });
+      const spacingTolerancePx = 1, menuHeightTolerancePx = 2;
+      assert.ok(m.gap <= 4 + spacingTolerancePx && m.padding <= 16 + spacingTolerancePx, `compact menu spacing: ${JSON.stringify(m)}`);
+      if (p.touch) { assert.ok(m.height <= 248 + menuHeightTolerancePx, `menu takes its content height, rather than a keyboard-sized blank: ${JSON.stringify(m)}`); assert.deepEqual(await pencilSmallTargets(p,rowTolerance.targetPx), []); }
+      const words = await p.locator('#inline-writing-body').inputValue();
+      if (p.touch) {
+        await press(p, '#inline-recipient-open');
+        await until(p, () => document.querySelector('#inline-recipient-sheet').open, 'name someone');
+      }
+      const offered = '#inline-recipient-sheet button.choice-chip:not([hidden])[aria-pressed=false]';
+      await until(p, s => Boolean(document.querySelector(s)), 'an offered person', offered);
+      const attr = surface === 'topic' ? 'data-name' : 'data-answerer';
+      const id = await p.locator(offered).first().getAttribute(attr);
+      const choice = `#inline-recipient-sheet button[${attr}="${id}"]`;
+      await press(p, choice);
+      assert.equal(await p.locator(choice).getAttribute('aria-pressed'), 'true', 'the same menu still names someone');
+      if (p.touch) await press(p, '#inline-recipient-done');
+      await press(p, '#inline-who-done');
+      await until(p, () => document.querySelector('#inline-who-panel').hidden, 'Done puts only the menu away');
+      assert.equal(await p.locator('#inline-writing-body').inputValue(), words);
+      assert.equal(await p.evaluate(() => document.querySelector('#new-message-sheet').open), true);
+      assert.ok(id);
+      await close(p);
+    });
+    for (const way of ['Send','Cmd-Return']) await check(`${name}: ${way} sends once and closes the pencil sheet`, async () => {
+      const rowTolerance = {positionPx:2, overflowPx:4, targetPx:1};
+      const p = await page(shape, scheme, url), sends = [];
+      p.on('request', r => { if (r.url().endsWith('/api/command') && r.postDataJSON()?.kind === 'message.send') sends.push(r.postDataJSON()); });
+      await pencilOpen(p);
+      // Empty Cmd-Return is inert, and Return is still a newline.
+      await p.keyboard.press('Meta+Enter');
+      assert.equal(await p.evaluate(() => document.querySelector('#new-message-sheet').open), true);
+      assert.equal(sends.length, 0);
+      const words = `Pencil ${surface} ${shape} ${scheme} ${way} ${engine}.`;
+      await p.keyboard.insertText(words); await p.keyboard.press('Enter');
+      assert.equal(await p.locator('#inline-writing-body').inputValue(), words+'\n');
+      const response = p.waitForResponse(r => r.url().endsWith('/api/command') && r.request().postDataJSON()?.kind === 'message.send');
+      if (way === 'Send') await press(p, '#inline-send'); else await p.keyboard.press('Meta+Enter');
+      const receipt = await (await response).json();
+      assert.equal(receipt.status, 'committed', 'Core holds the message');
+      await picture(p, `item-673-${surface}-${way}-sent`);
+      await until(p, () => !document.querySelector('#new-message-sheet').open, 'successful send closes the pencil sheet');
+      assert.equal(sends.length, 1, 'exactly one publication');
+      await until(p, () => document.activeElement?.id === 'new-message', 'focus returns to the pencil');
+      await pencilOpen(p);
+      assert.equal(await p.locator('#inline-writing-body').inputValue(), '', 'reopening shows the successor, not sent writing');
+      await close(p);
+    });
+    await check(`${name}: a refused image keeps both recovery controls inside the sheet`, async () => {
+      const rowTolerance = {positionPx:2, overflowPx:4, targetPx:1};
+      const p = await page(shape, scheme, url);
+      await pencilOpen(p); await p.keyboard.insertText('Keep the photo.');
+      await press(p, '#inline-plus-button');
+      const chooser=p.waitForEvent('filechooser'); await press(p, '#inline-add-image');
+      await (await chooser).setFiles(HEIC);
+      await until(p, () => document.querySelector('#inline-attachments .image-choice')?.hasAttribute('data-needs'), 'the refused photo', undefined, 20000);
+      await press(p, '#inline-attachments .image-open');
+      await until(p, () => document.querySelector('#inline-attachments .image-choice')?.hasAttribute('data-open'), 'both image recovery choices');
+      await picture(p, `item-673-${surface}-refused-image`);
+      const m=await sized(p,'sheet',rowTolerance);
+      assert.deepEqual(m.over, [], 'refused image recovery rows never overlap');
+      assert.deepEqual(m.past, [], 'all recovery controls fit or scroll inside the sheet');
+      assert.equal(m.choices,1);
+      assert.equal(await p.locator('#inline-send').isDisabled(), true, 'the refused image cannot be sent');
+      await p.keyboard.press('Meta+Enter');
+      assert.equal(await p.evaluate(() => document.querySelector('#new-message-sheet').open),true,'refused Send never dismisses recovery');
+      if(p.touch) assert.deepEqual(await pencilSmallTargets(p,rowTolerance.targetPx),[]);
+      await close(p);
+    });
+    await check(`${name}: read-only writing keeps the review controls and the sheet open`, async () => {
+      const rowTolerance = {positionPx:2, overflowPx:4, targetPx:1};
+      const p=await page(shape,scheme,url);
+      await pencilOpen(p);
+      await pencilRoute(p,'**/api/command', route => {
+        const e=route.request().postDataJSON();
+        if(e?.kind!=='draft.save') return route.continue();
+        return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({v:1,recorded:true,instance_id:e.instance_id,operation_id:e.operation_id,kind:e.kind,status:'rejected',error:{code:'INVALID_TOPIC_COMPOSITION',message:'Review this writing before sending.'}})});
+      });
+      await p.keyboard.insertText('Read-only writing.');
+      await until(p,()=>document.querySelector('#inline-writing-body').readOnly,'the refused draft becomes read-only',undefined,15000);
+      await picture(p,`item-673-${surface}-read-only`);
+      assert.equal(await p.locator('#inline-send').isDisabled(),true);
+      assert.equal(await p.evaluate(()=>document.querySelector('#new-message-sheet').open),true);
+      const m=await sized(p,'sheet',rowTolerance);assert.deepEqual(m.over,[]);assert.deepEqual(m.past,[]);
+      if(p.touch)assert.deepEqual(await pencilSmallTargets(p,rowTolerance.targetPx),[]);
+      await close(p);
+    });
+    await check(`${name}: unavailable composer stays disabled with Retry in reach`, async () => {
+      const rowTolerance = {positionPx:2, overflowPx:4, targetPx:1};
+      // Refuse the initial load. Reloading a page with reads still in flight
+      // makes WebKit report cancellation errors unrelated to this state.
+      const p=await page(shape,scheme,url,facts, async p => {
+        await pencilRoute(p,'**/api/view', route => route.request().postDataJSON()?.name === 'editor_state'
+          ? route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:{code:'UNAVAILABLE',message:'Composer unavailable for this check.',retryable:true}})})
+          : route.continue());
+      });
+      await until(p,()=>document.querySelector('#inline-writing-body').disabled&&!document.querySelector('#inline-retry').hidden,'the unavailable composer with Retry',undefined,30000);
+      await press(p,'#new-message');
+      await until(p,()=>document.querySelector('#new-message-sheet').open,'the unavailable sheet opens');
+      await picture(p,`item-673-${surface}-unavailable`);
+      const m=await sized(p,'sheet',rowTolerance);assert.deepEqual(m.over,[],'unavailable recovery rows never overlap');assert.deepEqual(m.past,[]);
+      assert.equal(await p.locator('#inline-send').isDisabled(),true);
+      await p.unroute('**/api/view');
+      await press(p,'#inline-retry');
+      await until(p,()=>!document.querySelector('#inline-writing-body').disabled&&document.querySelector('#inline-retry').hidden,'Retry restores writing',undefined,30000);
+      await until(p,()=>!document.querySelector('#new-message-sheet').open,'Retry replaces the unavailable presentation');
+      await until(p,()=>document.activeElement?.id==='new-message','the replaced presentation returns focus to its pencil');
+      await pencilOpen(p);
+      await close(p);
+    });
+    await check(`${name}: an interrupted preparation stays open with its recovery chip`, async () => {
+      const rowTolerance = {positionPx:2, overflowPx:4, targetPx:1};
+      const p = await page(shape, scheme, url);
+      await pencilOpen(p); await p.keyboard.insertText('Keep the interrupted message.');
+      let release, entered;
+      const hit = new Promise(r => { entered=r; }), gate = new Promise(r => { release=r; });(p.pencilReleases??=[]).push(release);
+      await pencilRoute(p,'**/api/command', async route => {
+        if (route.request().postDataJSON()?.kind !== 'submission.prepare') return route.continue();
+        entered(); await gate;
+        return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:{code:'UNAVAILABLE',message:'Try again',retryable:true}})});
+      });
+      try {
+        await press(p, '#inline-send'); await pencilReached(p,hit);
+        assert.equal(await p.evaluate(() => document.querySelector('#new-message-sheet').open), true, 'busy preparation does not close the sheet');
+        await picture(p, `item-673-${surface}-busy`);
+      } finally { release(); }
+      await until(p, () => Boolean(document.querySelector('#inline-pending button')?.getClientRects().length), 'recovery after the interrupted preparation', undefined, 15000);
+      assert.equal(await p.evaluate(() => document.querySelector('#new-message-sheet').open), true, 'an unconfirmed send does not close the sheet');
+      await picture(p, `item-673-${surface}-interrupted`);
+      if (p.touch) assert.deepEqual(await pencilSmallTargets(p,rowTolerance.targetPx), []);
+      await close(p);
+    });
+    for (const state of PENCIL_STATES) await check(`${name}: ${state}`, async () => {
+      const rowTolerance = {positionPx:2, overflowPx:4, targetPx:1};
+      const p=await pencilPage(shape,scheme,url);await pencilOpen(p);
+      const words=`Retained ${state} writing.`;await p.keyboard.insertText(words);
+      // Stabilize normal writing before entering its named branch.
+      await until(p,()=>window.pencil.registry.saveSign(window.pencil.inline.editor).state==='saved','initial writing saved',undefined,15000);
+      await pencilBranch(p,state,words,rowTolerance);await close(p);
+    });
+    for (const state of ['agent menu','name chooser','image error','repeated image error']) for (const way of ['Send','Cmd-Return']) await check(`${name}: ${way} late confirmation keeps newer ${state} presentation`, async () => {
+      const rowTolerance = {positionPx:2, overflowPx:4, targetPx:1};
+      const p=await pencilPage(shape,scheme,url);await pencilOpen(p);
+      await pencilLateView(p,state,way,rowTolerance);await close(p);
+    });
+    for (const mode of PENCIL_LATE_IMAGES) for (const way of ['Send','Cmd-Return']) await check(`${name}: ${way} late confirmation keeps newer ${mode} image writing`, async () => {
+      const rowTolerance = {positionPx:2, overflowPx:4, targetPx:1};
+      const p=await pencilPage(shape,scheme,url);await pencilOpen(p);
+      await pencilLateImage(p,mode,way,rowTolerance);await close(p);
+    });
+  }
+}
+
+// Break one production rule at a time, run the same native gestures, restore
+// the exact bytes, and rerun those controls. Only this piece's cases run here.
+async function runPencilMutants() {
+  if (!pencilMutantsEnabled(filter)) return;
+  if (results.some(r => r.expectedFailure ? !r.mutationCaught : !r.passed)) { pencilMutationSkips.push({engine,reason:'normal or earlier mutation/control failure; unrun is not passing'});return; }
+  const rules = [
+    {name:'blur',file:'web/aim.css',from:'::backdrop{background:transparent;backdrop-filter:none}',to:'::backdrop{background:#17252666;backdrop-filter:blur(2px)}',case:'floats at the bottom',expected:'the pencil backdrop does not blur'},
+    {name:'move-cards',file:'web/aim.css',from:'::backdrop{background:transparent;backdrop-filter:none}',to:'::backdrop{background:transparent;backdrop-filter:none}body:has(#new-message-sheet[open]) #messages .message-card{transform:translateY(12px)}',case:'floats at the bottom',expected:'opening moves no feed card'},
+    {name:'full-height',file:'web/aim.css',from:'[open]:not(.notebook-mode){height:auto;',to:'[open]:not(.notebook-mode){height:calc(var(--vv-height,100dvh) - 3rem);',case:'floats at the bottom',expected:'empty sheet floats below the context'},
+    {name:'fixed-field',file:'web/aim.css',from:'textarea{--fit:auto;height:auto;max-height:min(40dvh,',to:'textarea{--fit:none;height:16rem;max-height:min(40dvh,',case:'starts at one line',expected:'one line initially'},
+    {name:'large-agent-menu',file:'web/aim.css',from:'#inline-who-panel{gap:.25rem;padding:.25rem .5rem .35rem}',to:'#inline-who-panel{gap:1rem;padding:1rem}',case:'inline agent menu keeps compact',expected:'compact menu spacing'},
+    {name:'overlaid-retry',file:'web/aim.css',from:'#inline-composer>#inline-retry{grid-area:retry}',to:'#inline-composer>#inline-retry{grid-area:notice}',case:'unavailable composer stays disabled',expected:'unavailable recovery rows never overlap'},
+    {name:'loaded-overlaid-retry',file:'web/aim.css',from:'#inline-composer>#inline-retry{grid-area:retry}',to:'#inline-composer>#inline-retry{grid-area:notice}',case:'loaded access visible',expected:'rows stay separate'},
+    {name:'overlapping-image-remove',file:'web/aim.css',from:'#inline-composer .image-choice>button[data-method=remove]{position:static;',to:'#inline-composer .image-choice>button[data-method=remove]{position:absolute;top:-1rem;right:-1rem;',case:'late confirmation keeps newer memory-only image',expected:'image opener center is not covered by Remove'},
+    {name:'close-newer-images',file:'web/inline-composer.mjs',from:'!currentImages(editor).length && !imageBarrier(editor)',to:'true',case:'late confirmation keeps newer capturing image',expected:'older confirmation keeps newer image writing open'},
+    {name:'close-newer-presentation',file:'web/inline-composer.mjs',from:'!this.imagePicker && !this.images?.open && !this.bar.panel && !this.naming.sheet.open &&',to:'true &&',case:'late confirmation keeps newer agent menu presentation',expected:'older confirmation keeps newer presentation open'},
+    {name:'ignore-publication-status',file:'web/inline-composer.mjs',from:"result?.status === 'confirmed' && this.admits(p, editor)",to:'true && this.admits(p, editor)',case:'publication rejected',expected:'sheet stays open'},
+    {name:'stay-after-send',file:'web/inline-composer.mjs',from:"result?.status === 'confirmed' && this.admits(p, editor)",to:'false && this.admits(p, editor)',case:'sends once and closes',expected:'successful send closes the pencil sheet'},
+  ];
+  for (const rule of rules) {
+    const file=path.join(root,rule.file),original=await readFile(file,'utf8');
+    assert.equal(original.split(rule.from).length,2,`unique pencil mutation ${rule.name}`);
+    const changed=original.replace(rule.from,rule.to);
+    const sha256=bytes=>createHash('sha256').update(bytes).digest('hex');
+    const proof={engine,name:rule.name,file:rule.file,originalSha256:sha256(original),mutantSha256:sha256(changed),restoredSha256:null,servedMutantSha256:null,servedRestoredSha256:null};
+    const selected=[...pencilCases].filter(([name])=>name.includes(rule.case)&&name.includes(' light:')&&(name.includes('phone-320')||(rule.name!=='overlapping-image-remove'&&name.includes('laptop-stacked'))));
+    assert.ok(selected.length,'the mutant has native cases');
+    await pencilCleanup('mutation '+rule.name,async()=>{
+      await writeFile(file,changed);assert.equal(await readFile(file,'utf8'),changed);
+      // The real server freezes its build at startup; a source edit alone
+      // never changes the bytes it serves. No page remains open here.
+      await control({method:'server_stop'});await control({method:'server_start'});
+      const served=await (await fetch(facts.origin+'/'+path.basename(file))).text();
+      assert.ok(served.includes(rule.to),`the served build contains mutant ${rule.name}`);
+      assert.equal(served,changed,'the complete served mutant bytes match the applied file');proof.servedMutantSha256=sha256(served);
+      pencilPhase=`mutant ${rule.name}`;
+      for(const [name,action] of selected) {
+        const count=results.length;await check(name,action);
+        assert.equal(results.length,count+1,'the actual selected native mutation executed once');
+        const r=results.at(-1);r.expectedFailure=true;r.observedPassed=r.passed;
+        r.mutationCaught=!r.observedPassed&&r.error.includes(rule.expected);
+        // Compose's release counter reads passed. Keep the raw observation
+        // separately; the mutation check passes only when its failure is caught.
+        r.passed=r.mutationCaught;
+        pencilMutations.push({proof,engine,name:rule.name,case:r.name,file:rule.file,applied:true,caught:r.mutationCaught});
+        console.log(`${r.mutationCaught?'CAUGHT':'MISSED'} ${r.name}`);
+      }
+    },async()=>{
+      await writeFile(file,original);assert.equal(await readFile(file,'utf8'),original);
+      await control({method:'server_stop'});await control({method:'server_start'});
+      const served=await (await fetch(facts.origin+'/'+path.basename(file))).text();
+      assert.ok(served.includes(rule.from),`the served build restores ${rule.name}`);
+      assert.equal(served,original,'the complete served restored bytes match the original file');proof.restoredSha256=sha256(await readFile(file,'utf8'));proof.servedRestoredSha256=sha256(served);
+    });
+    pencilPhase=`restored ${rule.name}`;
+    for(const [name,action] of selected) {const count=results.length;await check(name,action);assert.equal(results.length,count+1,'the exact restored native control executed once');}
+    pencilPhase='';
+  }
+}
+
 // How the run ended, which tools/known_reds.py reads from native.json: every browser it opened is closed again
 // (browserClosed); the planned phases, each a function run in each engine, and those that returned and whose browser
 // then closed, in order; harnessCompleted, set only once every planned phase returned; and the fixture's own exit code
 // and signal, held from its launch, with the short dossier's fixture's beside them (shortFixture). Cleanup runs after an
 // interruption too and writes native.json, but leaves harnessCompleted false and the run's own error in place.
-const ENGINES = ['chromium', 'webkit'];
-async function runItem721() {
-  await item721Compose({ check, page, press, until, picture, close, control, facts, engine, measured, contexts, evidence });
-}
-const PHASES = [[runItem721], [run], [runAnswering, () => control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING })], [runSending]];
+const ENGINES = partition ? [partition.engine] : ['chromium', 'webkit'];
+const PHASES = partition ? [[runPencil, async () => { pencilConversation=await control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING }); }], [runPencilMutants]] : [[run], [runAnswering, async () => { pencilConversation=await control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING }); }], [runPencil], [runPencilMutants], [runSending]];
 const plannedPhases = PHASES.flatMap(([phase]) => ENGINES.map(name => `${phase.name}:${name}`)), completedPhases = [];
-let browserClosed = true, harnessCompleted = false;
+let pencilAcceptancePlan=null,pencilInputHashes={};
+const pencilInputFiles = ['tests/pencil-inventory.mjs','tests/reader_compose_native.mjs','tests/pencil-states.mjs','tests/pencil-selection.mjs','tests/pencil-layout.mjs','web/app.mjs','web/inline-composer.mjs','web/aim.css','web/session.mjs','web/app-session.mjs','tests/fixtures/ui_http.py'];
+
+let browserClosed = true, harnessCompleted = false, harnessError = null;
 try {
+  pencilAcceptancePlan=await pencilInventory(await readFile(path.join(root,'tests/reader_compose_native.mjs'),'utf8'),partition?filter:'item 673');
+  pencilInputHashes=Object.fromEntries(await Promise.all(pencilInputFiles.map(async file=>[file,createHash('sha256').update(await readFile(path.join(root,file))).digest('hex')])));
   await seed();
   for (const [phase, before] of PHASES) {
     if (before) await before();
     for (engine of ENGINES) {
       browserClosed = false;
       browser = engine === 'chromium' ? await playwright.chromium.launch({ executablePath: chrome, headless: true }) : await playwright.webkit.launch({ headless: true });
-      try { await phase(); } finally { await browser.close(); browserClosed = true; }
+      let primary=null,closing=null;
+      try { await phase(); } catch(error) { primary=error; }
+      try { await browser.close(); browserClosed = true; } catch(error) { closing=error; }
+      phaseCleanupEvidence.push({phase:phase.name,engine,primary:primary?.stack??null,browserCloseError:closing?.stack??null,browserClosed});
+      if(primary||closing)throw new AggregateError([primary,closing].filter(Boolean),[primary?.stack,closing?'Browser.close: '+closing.stack:null].filter(Boolean).join('\n'));
       completedPhases.push(`${phase.name}:${engine}`);
     }
   }
   harnessCompleted = true;
+} catch(error) { harnessError=error.stack??String(error);throw error;
 } finally {
   fixture.stdin.end(); shortFixture.stdin.end();
   const [{ code: fixtureExitCode, signal: fixtureExitSignal }, { code: shortExitCode, signal: shortExitSignal }] = await Promise.all([fixtureExit, shortExit]);
   await mkdir(evidence, { recursive: true });
   await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ hashes, results, browserClosed, harnessCompleted, plannedPhases, completedPhases,
-    fixtureExitCode, fixtureExitSignal, fixtureErrors: fixtureErrors(), shortFixture: { exitCode: shortExitCode, exitSignal: shortExitSignal, errors: shortErrors() }, measured, shots }, null, 2));
-  const failed = results.filter(r => !r.passed);
+    partition, filter, pencilInputHashes, pencilAcceptancePlan, missingOwnedCases:(pencilAcceptancePlan?.cases??[]).filter(c=>!results.some(r=>r.name===c.name)), registeredNormals:[...pencilCases.keys()], executedCases:results.map(r=>r.name), missingNormals:(pencilAcceptancePlan?.cases??[]).filter(c=>c.phase==='normal'&&!results.some(r=>r.name===c.name)),
+    pencilMutations, pencilMutationSkips, pencilCleanupEvidence, phaseCleanupEvidence, harnessError, fixtureExitCode, fixtureExitSignal, fixtureErrors: fixtureErrors(), shortFixture: { exitCode: shortExitCode, exitSignal: shortExitSignal, errors: shortErrors() }, measured, shots }, null, 2));
+  const failed = results.filter(r => r.expectedFailure ? !r.mutationCaught : !r.passed);
   console.log(`${results.length - failed.length} passed, ${failed.length} failed`);
   for (const m of measured) console.log(`lines ${m.engine} ${m.shape} ${m.scheme} ${m.state}: ${m.lines} (${m.visible}px at ${m.lineHeight}px)`);
   // An interrupted run keeps its own error; asserting here would replace it.
   if (harnessCompleted) assert.equal(fixtureExitCode, 0, `the fixture exited ${fixtureExitCode ?? fixtureExitSignal}: ${fixtureErrors()}`);
   if (harnessCompleted) assert.equal(shortExitCode, 0, `the short dossier's fixture exited ${shortExitCode ?? shortExitSignal}: ${shortErrors()}`);
 }
-assert.ok(results.length && results.every(result => result.passed), 'see native.json for exact failing assertions');
+assert.ok(results.length && results.every(result => result.expectedFailure ? result.mutationCaught : result.passed), 'see native.json for exact failing assertions');
