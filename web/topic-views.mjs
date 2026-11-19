@@ -46,8 +46,8 @@ export class TopicViews {
   // reading(what): a read of what shows the cards ('acts', 'reaction:<id>')
   // begins; the function it returns is called once that read has landed, so
   // what was said of an act on a card goes (stack-feed.mjs answered).
-  constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {}, holds = () => false, reading = () => () => {} }) {
-    Object.assign(this, { instanceId, topicId, reader, paint, invalidate, holds, reading });
+  constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {}, holds = () => false, reading = () => () => {}, actMessages = null }) {
+    Object.assign(this, { instanceId, topicId, reader, paint, invalidate, holds, reading, actMessages });
     this.scope = { kind: 'topic', id: topicId };
     this.messages = new Map(); this.memory = new Map(); this.revisions = new RevisionTargets();
     // Loaded messages form runs, each holding every topic message between its
@@ -364,9 +364,12 @@ export class TopicViews {
   // newest act the change named, which the answer must have reached.
   async readActs(version, read, current) {
     const alone = this.alone;
-    if (!this.messages.size && !alone) return true;
+    // Supplemental admitted originals share current acts/positions without
+    // entering pagination runs or being removed and fetched after a star.
+    const messages = this.actMessages?.() ?? this.messages;
+    if (!messages.size && !alone) return true;
     let oldest = alone?.seq ?? Infinity;
-    for (const item of this.messages.values()) oldest = Math.min(oldest, item.seq);
+    for (const item of messages.values()) oldest = Math.min(oldest, item.seq);
     const found = new Map(), landed = this.reading('acts');
     let cursor = null, reached = null;
     do {
@@ -392,8 +395,9 @@ export class TopicViews {
     // revision: an answer read before a commit the page has since heard of
     // puts back nothing (stack-order.mjs, laterActs).
     let changed = false;
+    const currentMessages = this.actMessages?.() ?? this.messages;
     for (const [id, acts] of found) {
-      const item = this.messages.get(id) ?? (alone?.id === id ? alone : null), later = item && laterActs(item.acts, acts);
+      const item = currentMessages.get(id) ?? (alone?.id === id ? alone : null), later = item && laterActs(item.acts, acts);
       if (item && JSON.stringify(item.acts) !== JSON.stringify(later)) { item.acts = later; changed = true; }
     }
     // A message the answers never named has had no act made.
@@ -420,15 +424,16 @@ export class TopicViews {
   // own row places it (item 470).
   learnPositions(rows) {
     let changed = false;
+    const messages = this.actMessages?.() ?? this.messages;
     const read = new Set(rows.filter(row => row.stack_position).map(row => row.message_id));
     for (const row of rows) {
       if (!row.stack_position) continue;
-      const item = this.messages.get(row.message_id);
+      const item = messages.get(row.message_id);
       if (!item) continue;
       const position = laterPosition(item.stack_position, row.stack_position);
       if (!samePlace(position, item.stack_position)) changed = true;
       item.stack_position = position;
-      for (const [id, other] of this.messages) {
+      for (const [id, other] of messages) {
         if (read.has(id) || other.stack_position?.root_id !== position.root_id) continue;
         const next = laterPosition(other.stack_position, position);
         if (!samePlace(next, other.stack_position)) changed = true;
@@ -440,8 +445,9 @@ export class TopicViews {
   async readPositions(read, current = () => true) {
     // A cached pre-355 Core has no position contract; its ordinary act reads
     // remain usable until the page is reloaded onto the new release.
-    if (![...this.messages.values()].some(item => item.stack_position)) return;
-    const ids = [...this.messages.keys()]; let changed = false;
+    const messages = this.actMessages?.() ?? this.messages;
+    if (![...messages.values()].some(item => item.stack_position)) return;
+    const ids = [...messages.keys()]; let changed = false;
     // A page learned before a later one fails is drawn, as in readActs.
     try {
       for (let start = 0; start < ids.length; start += 100) {

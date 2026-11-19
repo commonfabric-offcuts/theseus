@@ -832,33 +832,24 @@ export function arrangeStacks(list, messages, options = {}) {
   const active = list.contains(doc.activeElement) ? doc.activeElement : null;
   const byId = new Map(entries(list).map(entry => [entry.dataset.id, entry]));
   const loaded = [...byId.keys()].map(id => messages.get(id)).filter(Boolean);
-  // Item 803: a starred dossier is one whole canonical group, including its
-  // original and every loaded reply. More's historical filled-card treatment
-  // remains for other dossiers. The actual acts (including pending acts) own
-  // stars; the discovery loader's older answers never override them.
-  const memberships = dossiersOf(loaded);
-  const priority = starredDossiers(gather(loaded, { viewer }), id => messages.has(id));
   state.sourceRoots ??= new Set();
   for (const item of loaded) if (item.dossierSource) state.sourceRoots.add(item.id);
   for (const id of state.sourceRoots) { state.filled.delete(id); state.apart.delete(id); }
   // A root already displayed as a source keeps the same loaded branch anchor
   // when More reaches it. Otherwise an earlier own branch could jump above
   // the formerly gathered head. The root's actual item now owns its bytes.
-  const sourceRoots = new Set([...state.sourceRoots].filter(id => !priority.has(id)));
+  // Stars never change this presentation-only boundary or the ordinary
+  // filled/apart classification: neither act may rehead or reorder a dossier.
+  const sourceRoots = state.sourceRoots;
   const descendants = loaded.filter(item => !sourceRoots.has(item.id));
   const dossiers = new Set(dossiersOf(descendants).values());
   const paged = loaded.filter(item => !sourceRoots.has(item.id) || !dossiers.has(item.id));
   fill(state, paged);
-  for (const item of loaded) if (priority.has(memberships.get(item.id))) { state.filled.delete(item.id); state.apart.delete(item.id); }
   const stacks = withDossierHeads(ordered(gather(paged, { viewer, filled: state.filled, apart: state.apart })), messages, { apart: state.apart, sourceRoots });
   for (const [from, to] of reheaded(state.stacks, stacks)) rehead(state, from, to);
   state.stacks = stacks;
   // The dossiers whose title bar shows the reader's star, and which Move below More refuses (item 635).
   state.starred = starredDossiers(stacks, id => messages.has(id));
-  // Default: starred dossiers first, newest activity first (including the
-  // reader's replies). Other dossiers retain their existing personal order.
-  stacks.sort((a, b) => Number(state.starred.has(dossierOf(b))) - Number(state.starred.has(dossierOf(a))) ||
-    (state.starred.has(dossierOf(a)) ? b.newest - a.newest : 0));
   state.earlierRows = new Set();
   state.folded = new Set(loaded.filter(item => rowFolded(item, { peeked: each => state.peeked.has(each.id) })).map(item => item.id));
   state.coordination = new Set(stacks.filter(stack => coordinationStack(stack, quiet)).map(stack => stack.id));
