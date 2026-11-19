@@ -1227,6 +1227,9 @@ async function landOnMessage(id, serial = ++landingSerial) {
   }
   if (!mine()) return;
   if (here?.page && here.onlyNew) { here.onlyNew = false; paintConversationPage(); }
+  // A loaded same-topic target can land during the rail's tap handler,
+  // before its bubbling click closes the drawer and removes main's inertness.
+  if (shell.drawer?.isOpen()) shell.drawer.close();
   const card = landOn(id, { full: true });
   if (!card) throw Error('This message could not be shown. Try its link again.');
   card.focus({ preventScroll: true });

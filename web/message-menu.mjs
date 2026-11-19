@@ -38,13 +38,23 @@ import { listen } from './in-place-navigation.mjs';
 // (in-place-navigation.mjs): the light a move makes afresh knows that a
 // finger's tap began the move (item 613: a tap on a topic's count lands on
 // its message, and WebKit's mouse move after the landing's scroll then only
-// places the pointer, lighting no card that came under the finger).
+// places the pointer, lighting no card that came under the finger). Keep the
+// mouse's last position too: WebKit may repeat it after the new topic scrolls,
+// and that stationary event must not clear the landing's selection.
 const presses = new WeakMap();
 function pressOf(doc) {
   let press = presses.get(doc);
   if (press) return press;
-  press = { touch: false }; presses.set(doc, press);
-  if (typeof EventTarget === 'function' && doc instanceof EventTarget) listen(doc, 'pointerdown', event => { press.touch = event.pointerType === 'touch'; }, true);
+  press = { touch: false, pointer: null }; presses.set(doc, press);
+  if (typeof EventTarget === 'function' && doc instanceof EventTarget) {
+    listen(doc, 'pointerdown', event => {
+      press.touch = event.pointerType === 'touch';
+      press.pointer = press.touch ? null : { x: event.screenX, y: event.screenY };
+    }, true);
+    listen(doc, 'pointermove', event => {
+      if (event.pointerType !== 'touch') press.pointer = { x: event.screenX, y: event.screenY };
+    }, true);
+  }
   return press;
 }
 
@@ -102,7 +112,7 @@ export class MessageMenu {
     // Scrolling or a repaint can put another card under a stationary pointer
     // and fire pointerover. Only actual pointer movement takes the light from
     // the keyboard; otherwise repeated arrows can bounce between stacks.
-    let pointer = null, reverseTab = null;
+    let pointer = pressOf(doc).pointer, reverseTab = null;
     doc.addEventListener('pointermove', event => {
       if (event.pointerType === 'touch') return;
       // WebKit also emits pointermove after a scroll with unchanged screen
@@ -125,7 +135,11 @@ export class MessageMenu {
     });
     // What was lit when the press began: the press itself focuses the card,
     // which lights it, before its click arrives.
-    doc.addEventListener('pointerdown', event => { reverseTab = null; this.touch = event.pointerType === 'touch'; this.before = this.lit; }, true);
+    doc.addEventListener('pointerdown', event => {
+      reverseTab = null; this.touch = event.pointerType === 'touch'; this.before = this.lit;
+      // Every tap starts afresh, including the second tap in the rail drawer.
+      pointer = this.touch ? null : { x: event.screenX, y: event.screenY };
+    }, true);
     // A press on a word of the card's own reaction line acts, and opens nothing,
     // but for a tap on the 👍 count: on a phone that lights the card, which
     // names who (the bar's 👍 thumbs it).
