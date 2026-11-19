@@ -18,6 +18,7 @@ const context = (viewer = 'owner') => ({ viewer, nameOf, topicId: 't-1' });
 const COVER = {
   stands: 'Answered: the second weekend', waiting: [{ text: 'Book the cabin?', default: 'booked Friday' }],
   payload: { text: 'The second weekend', message_id: 'm-answer', seq: 12, link: null, kind: 'answer', done: null },
+  refresh: null, refresh_revision: 0,
   by: 'agent-a', at_ms: 1_700_000_000_000, owner: 'owner',
 };
 const DONE_BY_THUMB = { how: 'thumb', by: 'owner', at_ms: 1_700_000_100_000 };
@@ -30,7 +31,10 @@ test('item 769 the shared sheet draws literal stands lines without parsing label
   const source = { ...COVER, stands }, original = JSON.stringify(source);
   const sheet = coverSheet(miniDocument(), source, context());
   assert.equal(of(sheet, 'cover-stands')[0].text, stands);
-  assert.equal(of(sheet, 'cover-stands')[0].children.length, 1, 'plain text in the existing span');
+  const standsSpan = of(sheet, 'cover-stands')[0];
+  assert.equal(standsSpan.tag, 'span', 'literal stands text stays in a span');
+  assert.equal(standsSpan.parent, sheet.children[0], 'the stands span belongs to the shared heading');
+  assert.equal(standsSpan.children.length, 0, 'literal text creates no parsed label elements');
   assert.equal(of(sheet, 'cover-wait').length, 1);
   assert.equal(of(sheet, 'cover-note')[0].text, 'Default: booked Friday.');
   assert.equal(of(sheet, 'cover-payload').length, 1);
@@ -44,7 +48,7 @@ test('item 769 the shared sheet draws literal stands lines without parsing label
 test('the sheet says where it stands, its payload with its label, pill and the message that delivered it, and what waits on the owner with its default', () => {
   const doc = miniDocument(), sheet = coverSheet(doc, COVER, context());
   assert.equal(sheet.className, 'dossier-cover');
-  assert.deepEqual(sheet.children.map(line => line.className), ['cover-line cover-stands', 'cover-line cover-payload', 'cover-line cover-wait'], 'stands, then the payload, then each wait');
+  assert.deepEqual(sheet.children.map(line => line.className), ['cover-line cover-heading', 'cover-line cover-payload', 'cover-line cover-wait'], 'stands, then the payload, then each wait');
   assert.equal(sheet.children[0].text, 'Answered: the second weekend');
   assert.equal(of(sheet, 'cover-label')[0].text, 'Payload · answer');
   assert.equal(of(sheet, 'row-pill')[0].dataset.state, 'proposed');
@@ -66,11 +70,11 @@ test('the sheet says where it stands, its payload with its label, pill and the m
 test('a sheet holds only the lines its cover says, and one done with nothing waiting says so', () => {
   const doc = miniDocument();
   const bare = coverSheet(doc, { ...COVER, stands: null, waiting: [], payload: { ...COVER.payload, kind: null, done: DONE_BY_THUMB } }, context());
-  assert.deepEqual(bare.children.map(line => line.className), ['cover-line cover-payload']);
+  assert.deepEqual(bare.children.map(line => line.className), ['cover-line cover-heading', 'cover-line cover-payload']);
   assert.equal(of(bare, 'cover-label')[0].text, 'Payload', 'no kind, no kind in the label');
   assert.equal(bare.dataset.done, 'true');
   const waits = coverSheet(doc, { ...COVER, payload: null }, context());
-  assert.deepEqual(waits.children.map(line => line.className), ['cover-line cover-stands', 'cover-line cover-wait']);
+  assert.deepEqual(waits.children.map(line => line.className), ['cover-line cover-heading', 'cover-line cover-wait']);
   assert.equal(waits.dataset.done, 'false');
   assert.equal(of(waits, 'row-pill').length, 0, 'no payload, no pill');
 });
