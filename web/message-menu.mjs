@@ -30,6 +30,8 @@ import { entries, entryOf, navigationStops, shownSelected, stopAt, onEarlierRow 
 import { revealSelection } from './reveal.mjs';
 import { showGlyph } from './glyphs.mjs';
 import { FeedPassages } from './feed-passages.mjs';
+import { hasTextDisplayRules } from './message-format.mjs';
+import { noteAt } from './press-note.mjs';
 import { reach } from './arrow-reach.mjs';
 import { glyph } from './glyphs.mjs';
 import { listen } from './in-place-navigation.mjs';
@@ -212,6 +214,7 @@ export class MessageMenu {
       else if (!entry && !pageItself(at, doc) && !this.ownsControls(at)) this.light(null);
     }, true);
     doc.addEventListener('keydown', event => this.key(event));
+    doc.addEventListener('copy', event => this.copySelection(event));
     doc.defaultView.addEventListener('scroll', () => this.place(), { passive: true });
     doc.defaultView.addEventListener('resize', () => this.place());
     // Content above the lit card can grow or shrink without a scroll (the
@@ -480,13 +483,27 @@ export class MessageMenu {
     revealSelection(shownSelected(next));
     this.place();
   }
+  // Native selected Copy only for this feature's drawing. Reuse exactly what
+  // Return quotes at the selected endpoints, even when no passage is lit.
+  copySelection(event) {
+    if (event.defaultPrevented || this.doc.querySelector('dialog[open]:not([data-card-reply])') || this.host.closest('[inert]') ||
+        writing(this.doc.activeElement) || this.doc.activeElement?.isContentEditable) return;
+    const selection = this.doc.getSelection();
+    if (!selection?.rangeCount || selection.isCollapsed) return;
+    const start = selection.getRangeAt(0).startContainer;
+    const entry = this.entryOf(start.nodeType === 1 ? start : start.parentElement);
+    const words = entry && cardIn(entry)?.querySelector(':scope > .message-preview');
+    if (!words || !hasTextDisplayRules(words)) return;
+    const selected = this.passages.selected(entry);
+    if (selected && !copySelectedText(event, selected.text)) noteAt(words, SELECTION_COPY_REFUSED, this.doc);
+  }
   // ⌘C (Ctrl-C off a Mac) with no words selected copies the lit message's
   // words as written, as the Reader's ⇧⌘C copies the message it shows: the
   // message the pointer or the keys lit last, which Return would answer, or
   // the passage of it lit under the pointer, which Return would quote. Words
-  // selected anywhere, the focus in writing or a pop-up, or no lit message
-  // leave the key to the browser, which copies as it always does. Whether it
-  // took the key.
+  // selected anywhere leave the key to native Copy (copySelection handles this
+  // feature's drawing at that event). Writing, a pop-up or no lit message also
+  // leave the key alone. Whether it took the key.
   copies(event) {
     if (event.defaultPrevented || event.isComposing || !copyKey(event, this.mac) || !this.lit?.isConnected) return false;
     if (this.doc.querySelector('dialog[open]:not([data-card-reply])') || this.host.closest('[inert]') || writing(this.doc.activeElement)) return false;
@@ -569,7 +586,13 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
   root.setAttribute('role', 'menu'); root.setAttribute('aria-label', label);
   const buttons = items.map((item, index) => {
     const button = element(doc, 'button', { type: 'button', textContent: item.label });
-    button.setAttribute('role', 'menuitem');
+    button.setAttribute('role', item.checked === undefined ? 'menuitem' : 'menuitemcheckbox');
+    if (item.checked !== undefined) button.setAttribute('aria-checked', String(item.checked));
+    if (item.description) {
+      const words = element(doc, 'span', { className: 'menu-description' });
+      words.append(element(doc, 'span', { textContent: item.label }), element(doc, 'small', { textContent: item.description }));
+      button.replaceChildren(words);
+    }
     // The glyph follows the words in the document and is drawn before them (aim.css), so the row reads as its words.
     button.append(glyphs[index]);
     if (item.keys) { button.append(element(doc, 'span', { className: 'menu-keys', textContent: item.keys })); }
@@ -650,6 +673,17 @@ export function unsay(button) {
 
 // What a copy the clipboard refused says, wherever a message's words are copied.
 export const COPY_REFUSED = 'Could not copy. Select the text and use Copy.';
+export const SELECTION_COPY_REFUSED = 'Could not copy this selection. Turn Break out paragraphs off and use Copy again.';
+// Writes an existing quote projection during native Copy. Cancel even on a
+// refusal so the browser cannot substitute the newly drawn paragraph breaks.
+export function copySelectedText(event, text) {
+  event.preventDefault();
+  try {
+    if (!event.clipboardData) return false;
+    event.clipboardData.setData('text/plain', text);
+    return true;
+  } catch { return false; }
+}
 // Puts text on the clipboard. Settles true when it is there.
 export async function copyText(text, nav = globalThis.navigator) {
   try { await nav.clipboard.writeText(text); return true; } catch { return false; }

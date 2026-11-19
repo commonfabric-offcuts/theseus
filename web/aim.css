@@ -1349,3 +1349,13 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .onboarding-toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); max-width: calc(100vw - 3rem); padding: .6rem 1rem; border: 1px solid var(--line); border-radius: .5rem; background: var(--panel); color: var(--ink); z-index: 100; }
 
 #outcome-menu { min-width: 44px; min-height: 44px; flex: none; }
+
+/* Text display preview: spacing is layout only; no separator characters are
+   inserted into a sentence or into what a selection quotes. */
+.reading-pane article>.sentence-paragraph{display:block}
+.reading-pane article>.sentence-paragraph+.sentence-paragraph{margin-top:.45rem}
+.md-item-words>.sentence-paragraph{display:block}
+.md-item-words>.sentence-paragraph+.sentence-paragraph{margin-top:.45rem}
+.menu-description{display:flex;flex-direction:column;max-width:26rem;white-space:normal}
+.menu-description small{font-size:.78rem;font-weight:400;color:var(--muted)}
+.message-menu-list [aria-checked=true]{background:var(--soft)}

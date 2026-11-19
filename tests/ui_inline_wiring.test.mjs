@@ -46,22 +46,28 @@ const defer = () => { let resolve, reject; const promise = new Promise((yes, no)
 // not already hold (a fake below, a test's override, or a module imported natively above) comes from its module's own source:
 // each module once, its dependencies first, with its imports and exports taken off. A module the page newly imports is wired
 // here as the browser wires it, so the app's wiring stays covered without a line added for it.
-const IMPORTS = /^import \{([^}]*)\} from '\.\/([^']+)';$/gm;
+const IMPORTS = /^import (\{[^}]*\}|\* as [\w$]+) from '\.\/([^']+)';$/gm;
 const webSource = file => readFileSync(new URL('../web/' + file, import.meta.url), 'utf8');
 function loadPageScope(context, root) {
   const wanted = new Map(), order = [];
   const want = file => {
-    for (const [, list, from] of webSource(file).matchAll(IMPORTS)) for (const entry of list.split(',').map(s => s.trim()).filter(Boolean)) {
-      const [name, alias = name] = entry.split(/\s+as\s+/);
-      if (alias in context) continue;
-      if (!wanted.has(from)) { wanted.set(from, new Map()); want(from); order.push(from); }
-      wanted.get(from).set(alias, name);
+    for (const [, clause, from] of webSource(file).matchAll(IMPORTS)) {
+      const entries = clause.startsWith('* as ') ? [['*', clause.slice(5)]]
+        : clause.slice(1, -1).split(',').map(s => s.trim()).filter(Boolean).map(entry => {
+          const [name, alias = name] = entry.split(/\s+as\s+/); return [name, alias];
+        });
+      for (const [name, alias] of entries) {
+        if (alias in context) continue;
+        if (!wanted.has(from)) { wanted.set(from, new Map()); want(from); order.push(from); }
+        wanted.get(from).set(alias, name);
+      }
     }
   };
   want(root);
   for (const file of order) {
     const body = webSource(file).replace(/^import [^;]*;\n/gm, '').replace(/^export (?=(const|let|class|function|async function) )/gm, '');
-    const names = [...wanted.get(file)].map(([alias, name]) => alias === name ? name : alias + ': ' + name);
+    const exports = [...webSource(file).matchAll(/^export (?:const|let|class|function|async function) ([\w$]+)/gm)].map(match => match[1]);
+    const names = [...wanted.get(file)].map(([alias, name]) => name === '*' ? alias + ': Object.freeze({ ' + exports.join(', ') + ' })' : alias === name ? name : alias + ': ' + name);
     vm.runInContext('Object.assign(globalThis, (() => {\n' + body + '\nreturn { ' + names.join(', ') + ' }; })())', context, { filename: file });
   }
 }
