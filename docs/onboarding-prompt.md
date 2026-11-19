@@ -129,3 +129,11 @@ are focused checks, not a browser or complete-suite claim. The final source
 also contains the test-only 832 merge6202e0c3; every Core/web byte is unchanged
 by that rebase, and its inline fixture passed its own396 checks. Evidence is
 coordinator-20261117/790-live120-11182/QUICK-COMPARISON.json.
+
+### Carried onto live 121
+
+After838 and832 shipped, the approved83cb355a feature was merged with actual
+live12124e8114a without conflict. No change was made for Warp11211's withdrawn
+release-bound request;11212 clears the existing bounded behavior. The current
+six Core onboarding checks and138 focused Node checks pass again, with zero
+failures and no browser run. The new121 reply behavior remains present.
