@@ -1,0 +1,17 @@
+effective_cache=/Users/commonfabric/aim-worktrees/codex-790-paste9912/docs/evidence/onboarding-790-paste/cache-viewport-crosses-1px-restored-7bd9210a7b5849da813d42749203dd89
+{"ownedLiteralCases":{"chrome":["reading item 790 clipboard-control: fixture-only raw Meta+V versus native paste editing command","reading item 790 laptop: owner chooses both variants and copies current prompt by native paste","reading item 790 laptop: refused clipboard keeps readable text and retry copies fresh state","reading item 790 laptop: non-owner has no overflow and Core refuses the prompt","reading item 790 phone: owner chooses both variants and copies current prompt by native paste","reading item 790 phone: refused clipboard keeps readable text and retry copies fresh state","reading item 790 phone: non-owner has no overflow and Core refuses the prompt"],"webkit":["reading item 790 laptop: owner chooses both variants and copies current prompt by native paste","reading item 790 laptop: refused clipboard keeps readable text and retry copies fresh state","reading item 790 laptop: non-owner has no overflow and Core refuses the prompt","reading item 790 phone: owner chooses both variants and copies current prompt by native paste","reading item 790 phone: refused clipboard keeps readable text and retry copies fresh state","reading item 790 phone: non-owner has no overflow and Core refuses the prompt"]},"executedBodies":0,"runnerStarts":0}
+✔ safe diagnostics retain hashes, actual focus and native phases on success without text (0.774125ms)
+✔ exact equality rejects different text even at same length and leaves failure diagnostics (1.988417ms)
+✔ wrong clipboard content stops before paste, retains safe product defect classification (0.105541ms)
+✔ native editing command carries no text and raw path preserves original key call (0.273666ms)
+✔ clipboard read denial is diagnostic refusal without exception text or product failure claim (0.151167ms)
+✔ all diagnostic browser expressions parse and viewport tolerance catches actual expression crossing (0.508042ms)
+✔ actual reading entry point enumerates Chromium seven and WebKit original six without execution (33.412084ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 88.37125

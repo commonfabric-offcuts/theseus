@@ -1,0 +1,7 @@
+effective_cache=/Users/commonfabric/.local/share/theseus/fable-tools/checks/790-build9837/focused-final2/core-owner-restored-cache-3b14c4aaefca4f0db7f0fe4a47361a53
+test_owner_only_and_no_context_read_before_authorization (test_onboarding_790.OnboardingCase) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.032s
+
+OK

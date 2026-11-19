@@ -1,0 +1,27 @@
+{
+  "initial_combined": {
+    "tests": 15,
+    "pass": 13,
+    "fail": 2,
+    "retention": "summary in initial-check.json and original tool transcript"
+  },
+  "subsequent_combined_rounds": 3,
+  "subsequent_combined_each": {
+    "tests": 15,
+    "pass": 15,
+    "fail": 0
+  },
+  "mutation_phases": 10,
+  "mutation_cases_per_phase": 7,
+  "local_registered_case_executions": 130,
+  "final_focused": {
+    "tests": 15,
+    "pass": 15,
+    "fail": 0
+  },
+  "mutants": 5,
+  "caught": 5,
+  "restored_passed": 5,
+  "new_native_starts": 0,
+  "caveat": "Final focused log and all ten mutation phase logs retained; intermediate successful focused output was superseded in focused-node.log. No original build9837 evidence changed."
+}
