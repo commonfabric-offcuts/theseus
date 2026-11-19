@@ -13,6 +13,7 @@ import { typingField } from './writing-input.mjs';
 import { Freshness, initialViews, actorBaseline, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { DossierHeads } from './stack-order.mjs';
 import { TopicViews, followEdits } from './topic-views.mjs';
+import { visitNewFor, paintVisitNew } from './visit-new.mjs';
 import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, topicTarget, paintChanged, changedSince } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
 import { LightPeek, paintAlsoWaiting, paintStanding, paintStandingFailed } from './outcome-light.mjs';
@@ -126,7 +127,7 @@ let outcomeReached = false;
 // The Reader's edit of one of the person's messages, while it is open (editMessage).
 let messageEdit = null;
 // What the person does to reply stacks: star, rename, move, join, fold (stack-feed.mjs).
-let stackFeed = null, dossierHeads = null;
+let stackFeed = null, dossierHeads = null, visitNew = null;
 const feedMessages = () => dossierHeads?.messages(views.messages) ?? views.messages;
 // A press held down on the page: the repaints that would move the list under it wait for it to end (press-hold.mjs).
 const pressHold = new PressHold(document);
@@ -765,6 +766,7 @@ function sourceAttachments(presentation) {
 // act: what the person's act of reading captured (Marks.capture), for a card
 // or Read it; every other open passes none and clears nothing.
 async function openSource(ref, opener, act = null, mode = 'reply', replyCard = null) {
+  if (ref.kind === 'message') clearVisitNew(ref.id);
   const request = ++opening;
   const from = registry.interactive;
   views.retain(views.currentItem, ref.kind === 'memory' ? ref.id : null);
@@ -1141,7 +1143,7 @@ function feedOf() {
     // The page's own act, once Core answers it, tells the Reader's neighbours whether it could have moved them (item 426).
     send: async envelope => { const receipt = await api.command(envelope); if (receipt?.status === 'committed') views.ownAct(envelope.kind, receipt.result); return receipt; },
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
-    keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
+    keep: item => newOnPage(item) || stillOwed(item), unread: newOnPage, acted: clearVisitNew, nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     newest: (stack, mark) => run(() => openDossierNew(stack, mark)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
     hold: (paint, act) => keepListAnchor(paint, act), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
@@ -1176,7 +1178,18 @@ const stillOwed = item => Boolean(here?.page && (conversationItem(item.id)?.item
   (here.view?.waits ?? []).some(wait => wait.on === bootstrap.actor && wait.ask_message_id === item.id)));
 // Messages this visit opened in the Reader: each reads as read at once.
 const openedIds = new Set();
-function openedHere(id) { if (openedIds.has(id)) return; openedIds.add(id); paintCardReading(); }
+function openedHere(id) { clearVisitNew(id); if (openedIds.has(id)) return; openedIds.add(id); paintCardReading(); }
+const newOnPage = item => !cardRead(item) || Boolean(visitNew?.has(item.id));
+let visitPaintQueued = false;
+function clearVisitNew(id) {
+  if (!visitNew?.clear(id) || visitPaintQueued) return;
+  visitPaintQueued = true;
+  // Finish the native click before replacing the header it is acting on.
+  queueMicrotask(() => {
+    visitPaintQueued = false;
+    if (!retired && !registry?.disposed && !topicUnavailable) keepListAnchor(() => { stackMessages(); paintMessageUpdates(); });
+  });
+}
 const cardRead = item => readNow(item, { viewer: bootstrap.actor, marked: marks?.state(item.id)?.marked === true, opened: openedIds.has(item.id) });
 // Each loaded card's read look, agent talk, reply arrow and the dots on the
 // reader's own message while it waits for a reply, as they now stand.
@@ -1262,7 +1275,7 @@ async function readDossierNew(stack, mark) {
   // Use the current stack, not a header closure from before a join or a read.
   const now = stackState($('messages')).stacks.find(each => each.id === stack.id);
   if (!now) return;
-  const selected = newestNew(now, item => !cardRead(item));
+  const selected = newestNew(now, newOnPage);
   if (!selected) { await checkDossierNew($('messages'), now, mark); return; }
   const item = views.messages.get(selected.id);
   if (!item) return;
@@ -1377,6 +1390,10 @@ function paintMessageUpdates() {
       for (const old of entry.querySelectorAll('.message-update')) old.remove();
       const update = messageUpdateActivity(document, item, updateContext(item.topic_id));
       if (update) author.append(update);
+      // A dossier's tab already has the shared New control. Its message's
+      // own header (or folded row) carries the individual arrival mark.
+      const host = author.classList.contains('stack-head') ? card.querySelector(':scope > .message-author') : author;
+      paintVisitNew(entry, host, Boolean(visitNew?.has(id)));
     }
   }
   if (reader?.source?.source_ref.kind === 'message') {
@@ -1392,6 +1409,7 @@ function paintCardAuthor(author, item) {
   stackFeed?.paintStar(author, item);
   const update = messageUpdateActivity(document, item, updateContext(item.topic_id));
   if (update) author.append(update);
+  paintVisitNew(author, author, Boolean(visitNew?.has(item.id)));
 }
 // Who the composers may whisper to, and who everyone in this topic is: the
 // topic's participants and the outcome's team, by kind, never the reader.
@@ -1746,6 +1764,7 @@ async function toggleMark() {
 // right-click (docs/links.md, "A message's menu").
 // On a phone it opens as a sheet from the bottom, as a long press does.
 function openMessageMore(item, more) {
+  clearVisitNew(item.id);
   openMessageMenu({ anchor: more, items: messageMenuItems(item, more, more), label: 'This message', sheet: true });
 }
 // Capture before any menu callback mutates pending acts, folds or content.
@@ -2535,7 +2554,8 @@ async function initialize() {
   const actorCheckpoint = await actorBaseline({ api, bootstrap });
   // The conversation's own items hold messages' words too (followEdits): an edit of one of them, or of one a reply among them answers, is read.
   const holds = id => Boolean(dossierHeads?.records.has(id) || here?.items.has(id) || [...(here?.items.values() ?? [])].some(item => item.reply_to === id));
-  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version, force) => freshness?.invalidate(key, version, force), holds, reading, actMessages: feedMessages });
+  visitNew = visitNewFor(document, { instanceId: bootstrap.instance_id, actor: bootstrap.actor, authority: bootstrap.authority });
+  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version, force) => freshness?.invalidate(key, version, force), holds, reading, actMessages: feedMessages, arrived: items => visitNew.arrive(items) });
   const headViews = views;
   dossierHeads = new DossierHeads({ topicId,
     read: (name, args) => api.view(name, args, { readClass: 'background' }).then(answer => checkedView(answer, bootstrap.instance_id)),
@@ -2738,6 +2758,7 @@ async function initialize() {
   // places the New line afresh, as Mark read does, wherever the oldest unread
   // message now is; one on a message already read moves nothing.
   const thumbMessage = async (item, on, said = null) => {
+    clearVisitNew(item.id);
     const receipt = await reactions.thumb(item, on, said);
     if (receipt?.result?.settled === true && receipt.result.topic_id === views?.topicId) { views.placeAfresh(); if (commitReload) run(commitReload); }
     return receipt;
@@ -2760,7 +2781,7 @@ async function initialize() {
     eligible: (id, entry) => !retired && !topicUnavailable && !authorityReviewPending() && !registry.disposed &&
       !freshness?.stopped && views.messages.has(id) && messageEntries.get(id) === entry && drawn($('messages'), id),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)) });
-  menu = new MessageMenu({ host: $('messages'), item: id => feedMessages().get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
+  menu = new MessageMenu({ host: $('messages'), acted: clearVisitNew, item: id => feedMessages().get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
     reply: (id, card) => run(() => replyMessage(id, card)),
     inlineReply: (id, card) => run(() => replyInCard(id, card)),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)),
