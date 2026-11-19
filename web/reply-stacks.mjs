@@ -150,7 +150,7 @@ export function fillFrom(list) {
 
 // Each message this drawing is the first to hold, older than everything
 // loaded when More was pressed, of a dossier drawn then (fillFrom), joins
-// state.filled or state.apart.
+// the existing dossier as state.filled, wherever that dossier is drawn.
 function fill(state, loaded) {
   const filling = state.filling;
   if (!filling) return;
@@ -158,7 +158,7 @@ function fill(state, loaded) {
   for (const item of loaded) {
     if (state.sourceRoots?.has(item.id)) continue;
     const of = dossier.get(item.id);
-    if (!filling.known.has(item.id) && item.seq < filling.below && filling.drawn.has(of)) (of === filling.into ? state.filled : state.apart).add(item.id);
+    if (!filling.known.has(item.id) && item.seq < filling.below && filling.drawn.has(of)) state.filled.add(item.id);
     filling.known.add(item.id);
   }
 }
