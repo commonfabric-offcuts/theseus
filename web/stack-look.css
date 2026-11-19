@@ -267,6 +267,9 @@
   height:var(--stack-meta-lh);overflow:hidden}
 .stack-head>.card-carries::before{content:"";width:0;height:var(--stack-meta-lh)}
 .stack-head .carry{flex:none;background-color:var(--stack-meta-ink)}
+/* Update activity shares the metadata line; its larger tap target overflows
+   this slot without changing the two-line tab or the title's alignment. */
+.stack-head>.message-update{flex:none;height:var(--stack-meta-lh);align-self:center}
 /* A minted name (item 479) says who named it, after the marks of the first message. It keeps its own width ahead of
    the parts that give way, so short of room who began it, the marks and who replied give way first; only a name too
    long for the tab is shortened by its ellipsis. The count, New and the star keep theirs. */
