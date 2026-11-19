@@ -184,6 +184,12 @@ def frozen(statements):
 
 SCHEMA_46 = (Path(__file__).parent / "fixtures" / "schema_46.sql").read_text().splitlines()
 SCHEMA_47 = (Path(__file__).parent / "fixtures" / "schema_47.sql").read_text().splitlines()
+SCHEMA_48 = SCHEMA_47 + [
+    "CREATE TABLE dossier_order (actor_id TEXT NOT NULL REFERENCES actors(id), topic_id TEXT NOT NULL REFERENCES topics(id), "
+    "root_id TEXT NOT NULL REFERENCES messages(id), key REAL NOT NULL, entry_key REAL NOT NULL, tie INTEGER NOT NULL, "
+    "PRIMARY KEY(actor_id,topic_id,root_id))",
+    "CREATE INDEX dossier_order_keys ON dossier_order(actor_id,topic_id,key)",
+]
 
 
 def step_back_by_hand(path, version):
@@ -191,7 +197,29 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Item 738 adds the 49th step. Recover 48's act constraint using the
+        # independently frozen schema-46 definition (unchanged in 47/48), retaining
+        # every old act and its next ID. No production migration is called here.
+        db.execute("DROP TABLE cover_writers")
+        sequence = db.execute("SELECT seq FROM sqlite_sequence WHERE name='message_acts'").fetchone()
+        db.execute("CREATE TEMP TABLE kept_refresh_acts AS SELECT * FROM message_acts")
+        db.execute("DROP TABLE message_acts")
+        db.execute(next(sql for sql in SCHEMA_46 if sql.startswith("CREATE TABLE message_acts ")))
+        db.execute("INSERT INTO message_acts SELECT * FROM kept_refresh_acts")
+        db.execute("DROP TABLE kept_refresh_acts")
+        db.execute("DELETE FROM sqlite_sequence WHERE name='message_acts'")
+        if sequence:
+            db.execute("INSERT INTO sqlite_sequence(name,seq) VALUES ('message_acts',?)", sequence)
+        for statement in SCHEMA_46:
+            if statement.startswith("CREATE INDEX ") and " ON message_acts(" in statement:
+                db.execute(statement)
+        if version == "48":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         db.execute("DROP TABLE dossier_order")
+        if version == "47":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 47 keeps derived stable topic positions, independently checked below.
         db.execute("DROP TRIGGER topic_position_insert")
         db.execute("DROP TABLE topic_position_clock")
@@ -2009,7 +2037,7 @@ def everything(path):
         tables = [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
         rows = {}
         for table in tables:
-            if table in ("metadata", "topic_position_clock", "dossier_order"):
+            if table in ("metadata", "topic_position_clock", "dossier_order", "cover_writers"):
                 continue
             columns = [row[1] for row in db.execute("PRAGMA table_info(" + table + ")") if row[1] != "list_position"]
             rows[table] = sorted(db.execute("SELECT " + ",".join(columns) + " FROM " + table).fetchall(), key=repr)
@@ -2059,7 +2087,7 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_DRAFT, SCHEMA_BEFORE_DRAFT), (BEFORE_EDIT, SCHEMA_BEFORE_EDIT),
                      (BEFORE_SESSION, SCHEMA_BEFORE_SESSION), (BEFORE_JUDGMENT, SCHEMA_BEFORE_JUDGMENT),
                      (BEFORE_INVITES, SCHEMA_BEFORE_INVITES), (BEFORE_TOOLS, SCHEMA_BEFORE_TOOLS), (BEFORE_ENDS, SCHEMA_BEFORE_ENDS),
-                     (BEFORE_COVERS, SCHEMA_BEFORE_COVERS), ("46", SCHEMA_46), ("47", SCHEMA_47))
+                     (BEFORE_COVERS, SCHEMA_BEFORE_COVERS), ("46", SCHEMA_46), ("47", SCHEMA_47), ("48", SCHEMA_48))
 
 
 class Release19ChainCase(MigrationCase):
@@ -4274,7 +4302,7 @@ class CoverStepCase(MigrationCase):
         self.assertEqual(steps[-3:], [(BEFORE_ENDS, ENDS_VERSION), (BEFORE_COVERS, COVERS_VERSION), ("46", "47")])
         self.assertEqual([step for step in steps if step[0] == BEFORE_COVERS or step[1] == COVERS_VERSION],
                          [(BEFORE_COVERS, COVERS_VERSION)], "one step leaves 45 and one reaches 46")
-        self.assertEqual((BEFORE_COVERS, COVERS_VERSION, SCHEMA_VERSION), ("45", "46", "48"))
+        self.assertEqual((BEFORE_COVERS, COVERS_VERSION, SCHEMA_VERSION), ("45", "46", "49"))
 
     def test_item_641_covers_45_to_46_precedes_positions_46_to_47(self):
         message = self.acted()
@@ -4287,7 +4315,7 @@ class CoverStepCase(MigrationCase):
             db.execute("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) "
                        "SELECT 'cover',id,topic_id,seq,'','owner','{}',5,1 FROM messages WHERE id=?", (message,))
         stored = everything(self.path)
-        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], "48")
+        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], SCHEMA_VERSION)
         self.assertEqual(everything(self.path), stored, "positions preserve the cover and every retained record")
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
         self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE list_position>0"), [(2,)])
@@ -4466,7 +4494,7 @@ class TopicPositionStepCase(unittest.TestCase):
         with self.assertRaises(StoreOpenError):
             Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.path.read_bytes(), before, "a read cannot migrate")
-        self.assertEqual(migrations.STEPS[-2][:2], ("46", "47"), "no migration-number collision with the base")
+        self.assertEqual(migrations.STEPS[-3][:2], ("46", "47"), "no migration-number collision with the base")
         self.assertTrue(migrate(self.path, "test-instance", self.binding)["migrated"])
         self.assertEqual(everything(self.path), stored, "all pre-existing records, including saved orders and revisions, survive")
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))

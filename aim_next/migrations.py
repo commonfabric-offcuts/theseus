@@ -47,6 +47,8 @@ from .invite import INVITATIONS_BACKFILL, INVITATIONS_DOWN, INVITATIONS_OCCUPIED
 from .tools_core import TOOLS_DOWN, TOOLS_OCCUPIED, TOOLS_SCHEMA
 from .dossier_order import ORDER_SCHEMA as DOSSIER_ORDER_SCHEMA, ORDER_DOWN as DOSSIER_ORDER_DOWN, ORDER_OCCUPIED as DOSSIER_ORDER_OCCUPIED, freeze as freeze_dossier_order
 from .outcome_end import ENDS_DOWN, ENDS_OCCUPIED, ENDS_SCHEMA
+from .stacks import REFRESH_UP, REFRESH_DOWN
+from .cover_refresh import WRITER_SCHEMA, WRITER_BACKFILL
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -205,6 +207,9 @@ STEPS = (
     # Item 641: default topic positions never move with activity.
     ("46", "47", TOPIC_POSITION_SCHEMA, TOPIC_POSITION_DOWN, TOPIC_POSITION_OCCUPIED),
     ("47", "48", DOSSIER_ORDER_SCHEMA + [freeze_dossier_order], DOSSIER_ORDER_DOWN, DOSSIER_ORDER_OCCUPIED),
+    ("48", "49", REFRESH_UP + WRITER_SCHEMA + WRITER_BACKFILL,
+     ["DROP TABLE cover_writers"] + REFRESH_DOWN,
+     "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='cover_refresh')"),
 )
 
 

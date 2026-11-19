@@ -97,7 +97,7 @@ def freeze(db):
             for item in db.execute("SELECT m.id,m.seq,m.author_id FROM messages m WHERE m.topic_id=:topic AND " + VISIBLE,
                                    {'topic': topic, 'actor': actor}):
                 root = roots.root(item['id'])
-                if item['id'] == root or item['author_id'] != actor or current_acts(db, actor, [item['id']]).get(item['id'], EMPTY)['joined'] is not None:
+                if item['id'] == root or item['author_id'] != actor or current_acts(db, actor, [item['id']], refresh_details=False).get(item['id'], EMPTY)['joined'] is not None:
                     groups[root] = max(groups.get(root, 0), item['seq'])
                 else:
                     groups.setdefault(root, db.execute("SELECT seq FROM messages WHERE id=?", (root,)).fetchone()[0])
@@ -105,6 +105,6 @@ def freeze(db):
             for row in _reader_places(db, actor, topic):
                 legacy.setdefault(roots.root(row['message_id']), row['placed'])
             for root, lifted in groups.items():
-                acts = current_acts(db, actor, [root]).get(root, EMPTY)
+                acts = current_acts(db, actor, [root], refresh_details=False).get(root, EMPTY)
                 key = acts['placed'] if acts['placed'] is not None else legacy.get(root, lifted)
                 put(db, actor, topic, root, key, lifted, entry=True)

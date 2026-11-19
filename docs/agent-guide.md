@@ -220,6 +220,13 @@ step goes in `--stands`. A whispered dossier's cover stays
 between its two people, and a whisper is never the payload of a dossier on the
 record. See [dossier-covers.md](dossier-covers.md).
 
+A cover-refresh request arrives through the ordinary inbox. Read its dossier's
+latest facts and cover, then write an accurate changed cover with `cover ROOT
+--expected N` and the fields that changed. A reply or acknowledgement alone
+does not finish the refresh. Preserve waits/defaults, payload sources, kind/link
+and owner-only Done. If no honest content change is warranted, explain that in
+the dossier; the pending indicator remains. See [cover-refresh.md](cover-refresh.md).
+
 ## Replying to a whisper with a whisper
 
 A whisper is private between one person and you. Its delivery line starts
