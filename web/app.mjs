@@ -994,6 +994,7 @@ function paintViews(kind) {
   }
   // The stacks are drawn with the new messages in before any of them is dealt with (stack-feed.mjs, arrived).
   if (kind === 'messages') { syncDossierHeads(); feedOf().arrived([...views.messages.values()]); paintCardReading(); }
+  if(kind==='memory')for(const [id,card] of memoryCards)if(!views.memory.has(id)){card.remove();memoryCards.delete(id);}
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
     let card = memoryCards.get(item.id);
     if (!card) {
@@ -1565,12 +1566,26 @@ function loadMarks() {
 // stands now, so the Reader offers a revision made since (docs/notebook-pages.md).
 // A page the reader may no longer read has nothing to offer.
 async function loadShownPage() {
-  const ref = registry?.current?.source?.source_ref, id = ref?.kind === 'memory' ? ref.id : null;
-  if (!id || views.memory.has(id) || topicUnavailable) return true;
+  const presentation = registry?.current, generation = registry?.generation, source = presentation?.source;
+  const ref = source?.source_ref, revision = ref?.revision, id = ref?.kind === 'memory' ? ref.id : null;
+  if (!id || topicUnavailable) return true;
   if (authorityReviewPending()) return false;
   try {
     const answer = checkedView(await registry.cleanup.list(options => api.view('memory_current', { item_id: id }, options)), bootstrap.instance_id);
-    if (answer?.source_ref?.id !== id) throw Error('The Notebook page could not be confirmed.');
+    if (answer?.source_ref?.kind !== 'memory' || answer.source_ref.id !== id ||
+        !Number.isSafeInteger(answer.source_ref.revision) || answer.source_ref.revision < 1) throw Error('The Notebook page could not be confirmed.');
+    // A read belongs to the presentation that asked for it. Undo can reopen
+    // this same item while its deletion answer is still on the way, and a
+    // newer revision can also become known without replacing the source.
+    if (registry.current !== presentation || registry.generation !== generation || !registry.isCurrent(presentation) ||
+        presentation.source !== source || source.source_ref?.kind !== 'memory' || source.source_ref.id !== id ||
+        answer.source_ref.revision < Math.max(revision, source.source_ref.revision, source.current_revision ?? 0, views.revisions.values.get(id) ?? 0)) return true;
+    if(answer.deleted) {
+      presentation.sourceUnavailable=true;presentation.accessMessage='This Notebook page was deleted. Your private writing is kept.';
+      source.body='';source.attachments=[];
+      for(const editor of Object.values(presentation.editors)){editor.unavailable=true;registry.cancelSave(editor);}
+      revokeMedia();reader.hideUnavailableSource();paintReaderMark();
+    }
     views.revisions.observe(id, answer.source_ref.revision); reader.paintOffer();
     return true;
   } catch (error) { return readFailure(error).kind === 'forbidden'; }
@@ -1714,6 +1729,10 @@ function openReaderMenu() {
   const update = message && !outcomeReached && updateMenuItem(document, { ...p.source, acts: readerFeedItem()?.acts ?? p.source.acts }, updateContext(p.source.topic_id));
   if (update) items.push(update);
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
+    const act=action=>run(async()=>{const opener=p.opener;$('reader-close').click();if(await openNotebook(ref.id,{opener})){const page=notebookSheetOf().current;if(action==='rename')page.rename();else page.menuItems().find(item=>item.label===action)?.act();}});
+    items.push({label:p.source.starred?'Unstar':'Star',glyph:p.source.starred?'starred':'star',act:()=>act(p.source.starred?'Unstar':'Star')});
+    if(p.source.reader_may_write)items.push({label:'Rename',glyph:'pencil',act:()=>act('rename')});
+    if(p.source.reader_may_delete)items.push({label:'Delete',glyph:'drop',act:()=>act('Delete')});
     items.push({ label: 'Copy Link', glyph: 'link', act: () => run(() => copyPageLink(p.source, null, button)) },
       { label: `Copy Link to Revision ${ref.revision}`, glyph: 'link', act: () => run(() => copyPageLink(p.source, ref.revision, button)) });
     // Edit page only for someone Core lets write the page (its reader_may_write, docs/notebook-pages.md).
@@ -3415,7 +3434,8 @@ function pagesInPlace(workspace,recorded) {
     return api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),kind:'memory.read',
       target:{item_id:id},expected:{authority:{authority_id,authority_epoch}},args:{revision}});
   }});
-  pageHere=new PageHere({host:$('page-here'),reads,read:ref=>pipelineView('source',ref),media:pageImage,cards:id=>routeHref({kind:'cards',id,view:'text'})});pageHereOutcome=workspace;
+  pageHere=new PageHere({host:$('page-here'),reads,read:ref=>pipelineView('source',ref),status:id=>pipelineView('memory_status',{item_id:id}),media:pageImage,cards:id=>routeHref({kind:'cards',id,view:'text'})});pageHereOutcome=workspace;
+  const shown=pageHere;followCommits(()=>shown.follow());
 }
 // The outcome's own page lists its Notebook pages after its topics, each opening
 // in the composer over it; the side rail lists none (docs/notebook-pages.md).

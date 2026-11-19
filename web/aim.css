@@ -1288,3 +1288,12 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
   .reader-header:has(#reader-aside:not([hidden])) #reader-origin { overflow: visible; }
   .reader-header:has(#reader-aside:not([hidden])) .reader-origin-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+
+/* The page menu and inline title, shared by Text and Cards (792). */
+.notebook-rename{width:min(32rem,100%);min-width:0;font:inherit}
+.notebook-page-notice{flex-basis:100%;overflow-wrap:anywhere}
+.notebook-page-notice:empty{display:none}
+.notebook-tools>[aria-label="This page"]{margin-left:auto}
+@media(max-width:760px){
+ .notebook-tools>[aria-label="This page"],.notebook-rename,.notebook-page-notice button{min-width:44px;min-height:44px}
+}

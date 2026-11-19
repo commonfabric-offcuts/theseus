@@ -22,7 +22,7 @@ export function readFailure(value) {
   if (['AUTHORITY_CHANGED', 'INVALID_BINDING'].includes(code)) return result('authority');
   if (code === 'CLEANUP_DEFERRED') return result('defer');
   if (code === 'RESYNC_REQUIRED') return result('resync');
-  if (code === 'FORBIDDEN') return result('forbidden');
+  if (['FORBIDDEN','PAGE_DELETED'].includes(code)) return result('forbidden');
   if (status === 401 || status === 403 || ['SESSION_REQUIRED', 'ORIGIN_REFUSED'].includes(code)) return result('reconnect');
   if (['VIEW_TOO_LARGE', 'INVALID_ARGUMENT', 'INVALID_READ_CLASS', 'INVALID_FRESHNESS_VIEW'].includes(code)) return result('diagnostic');
   if (busyCode(code) || code === 'RESOURCE_NOT_CURRENT' || error?.retryable === true ||

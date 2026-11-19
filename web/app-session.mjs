@@ -233,9 +233,10 @@ export class EditorRegistry {
     // A message the person may not read, such as a whisper they are not in, is
     // refused exactly as one that is not there (docs/whispers.md): a link to
     // either opens nothing of it, and says so in plain words (docs/links.md).
+    if(sourceAnswer?.error?.code==='PAGE_DELETED'&&state?.error?.code==='PAGE_DELETED')throw Error('This Notebook page was deleted. Its history is kept.');
     if (sourceAnswer?.error?.code === 'FORBIDDEN' && state?.error?.code === 'FORBIDDEN') throw Error('This message is not available to you.');
     this.validateState(state, sourceRef, topicId);
-    const sourceUnavailable = sourceAnswer?.error?.code === 'FORBIDDEN' && state.source_available === false && Boolean(state.draft || state.note);
+    const sourceUnavailable = ['FORBIDDEN','PAGE_DELETED'].includes(sourceAnswer?.error?.code) && state.source_available === false && Boolean(state.draft || state.note);
     if (!sourceUnavailable && (sourceAnswer?.error || sourceAnswer?.instance_id !== this.bootstrap.instance_id ||
         !same(sourceAnswer.source_ref, sourceRef))) throw Error('The full source identity could not be confirmed.');
     if (token !== this.generation || this.disposed) return null;

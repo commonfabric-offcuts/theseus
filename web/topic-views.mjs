@@ -49,7 +49,7 @@ export class TopicViews {
   constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {}, holds = () => false, reading = () => () => {}, actMessages = null }) {
     Object.assign(this, { instanceId, topicId, reader, paint, invalidate, holds, reading, actMessages });
     this.scope = { kind: 'topic', id: topicId };
-    this.messages = new Map(); this.memory = new Map(); this.revisions = new RevisionTargets();
+    this.messages = new Map(); this.memory = new Map(); this.deletedMemory = new Map(); this.revisions = new RevisionTargets();
     // Loaded messages form runs, each holding every topic message between its
     // oldest and newest; a gap between runs holds messages never loaded.
     this.runs = new Map(); this.runCount = 0;
@@ -469,6 +469,8 @@ export class TopicViews {
   }
   memoryItem(item) {
     this.validMemory(item);
+    if((this.deletedMemory.get(item.id)?.revision??0)>=item.revision)return;
+    this.deletedMemory.delete(item.id);
     const old = this.memory.get(item.id);
     // A read only moves forward, so an answer older than the one shown, at
     // the same revision, never relights a page the reader has read since.
@@ -606,12 +608,20 @@ export class TopicViews {
       return answer.next_cursor === null;
     }
     if (key.startsWith('memory:')) {
-      const id = key.slice(7), old = this.memory.get(id);
+      const id = key.slice(7), old = this.memory.get(id)??this.deletedMemory.get(id);
       if (!old) return true;
       const answer = this.page(await read('memory_items', { owner_scope: this.scope, cursor: old.seq - 1, limit: 1 }), 'notebook');
       if (!current()) return false;
       const item = answer.items[0];
-      if (answer.items.length !== 1 || item?.id !== id || item.seq !== old.seq) throw invalid('The requested Notebook item was not returned.');
+      if(item?.id!==id) {
+        const latest=checkedView(await read('memory_current',{item_id:id}),this.instanceId);
+        if(!current())return false;
+        if(latest.source_ref?.id!==id||latest.source_ref.revision<Math.max(version,old.revision)||latest.deleted!==true)
+          throw invalid('The requested Notebook item was not returned.');
+        this.deletedMemory.set(id,{seq:old.seq,revision:latest.source_ref.revision});this.memory.delete(id);
+        this.revisions.observe(id,latest.source_ref.revision);this.paint('memory');this.paint('offer');return true;
+      }
+      if (answer.items.length !== 1 || item.seq !== old.seq) throw invalid('The requested Notebook item was not returned.');
       this.validMemory(item);
       if (item.revision < Math.max(version, this.memory.get(id)?.revision ?? 0)) throw behind();
       this.memoryItem(item); this.paint('memory'); this.paint('offer'); return true;

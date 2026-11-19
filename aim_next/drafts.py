@@ -379,7 +379,7 @@ class Drafts:
         try:
             self._validate_source_ref(db, actor, args["source_ref"])
         except Refusal as exc:
-            if exc.code != "FORBIDDEN" or (draft is None and note is None):
+            if exc.code not in ("FORBIDDEN", "PAGE_DELETED") or (draft is None and note is None):
                 raise
             source_available = False
         destination_available = source_available and not note_only

@@ -580,3 +580,18 @@ Item 655 review checks in `tests/stack_native.mjs` (`native-reading` and
 replies, singleton fallback, remote rename/clear/join/split, each failed
 metadata lookup and settled Conversation return through Only new. Each
 state runs at 320, 375, 390 and laptop, with light/dark screenshots.
+
+## A Notebook page's own actions (792)
+
+Text and Cards share Star, Rename and Delete in ⋯. A star is personal and
+appears under the page's topic (or Conversation); Rename keeps the revision
+stream; Delete confirms once and retains history for Undo. The contracts and
+limits are in [notebook-menu-792.md](notebook-menu-792.md).
+
+`tests/notebook_menu_792_native.mjs`, through `tests/topic_reading_native.mjs`
+(`native-reading`, `native-webkit-reading`), names the `reading item 792`
+cases at laptop and 390px touch width, light and dark, in the sheet and full
+page, plus outcome pages under Conversation and an applied/restored indent
+mutant. Geometry tolerances are named in each observation. Core and serial
+Node controls cover refusal, permissions, retries, privacy and retained writing.
+A native run's report, rather than this entry, records which phases ran.

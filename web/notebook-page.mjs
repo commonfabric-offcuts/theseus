@@ -1,3 +1,4 @@
+import { openMessageMenu } from './message-menu.mjs';
 import { DeckPage, UNDO_LIMIT } from './deck-page.mjs';
 import { applyAct, deckBody, parseDeck, cardText, cardImages, imageLine, textCard, findCard } from './deck.mjs';
 import { WritingInput } from './writing-input.mjs';
@@ -46,7 +47,18 @@ export class NotebookPage extends DeckPage {
     this.draftButton.onclick=()=>{this.markDraft(!this.drafted());};
     this.draftNote=this.node('span','notebook-draft-note','Draft');this.draftNote.title=DRAFT.note;this.draftNote.hidden=true;
     this.draft.append(this.draftButton,this.draftNote);
-    const tools=this.node('div','notebook-tools'); tools.append(this.views,this.draft);
+    this.more=this.node('button','notebook-menu quiet','⋯');this.more.type='button';
+    this.more.setAttribute('aria-label','This page');this.more.title='This page';this.more.setAttribute('aria-haspopup','menu');
+    this.more.onclick=()=>openMessageMenu({anchor:this.more,items:this.menuItems(),label:'This page',sheet:true,doc:this.doc});
+    this.titleBox=this.node('input','notebook-rename');this.titleBox.setAttribute('aria-label','Page title');this.titleBox.hidden=true;
+    this.titleBox.addEventListener('keydown',event=>{
+      if(event.isComposing)return;
+      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();this.endRename(false);}
+      if(event.key==='Enter'){event.preventDefault();event.stopPropagation();this.endRename(true);}
+    });
+    this.pageNotice=this.node('div','notebook-page-notice');this.pageNotice.setAttribute('role','status');
+    const tools=this.node('div','notebook-tools'); tools.append(this.views,this.draft,this.more);
+    this.status.before(this.pageNotice);
     this.status.before(tools); this.status.after(this.conflictPanel,this.imagePanel,this.textPanel);
     // An image file dropped on the card being written goes into it, as one pasted there does (item 321); a drag of
     // anything but files is left to the box.
@@ -80,6 +92,7 @@ export class NotebookPage extends DeckPage {
         return true;
       }
       if(this.writing.pending&&!this.writing.running)await this.writing.flush();
+      await this.writing.readStatus();
       if(!this.writing.base)await this.writing.refresh();
       else {
         const notebook=(await this.read('memory_items',{owner_scope:this.writing.base.source.owner_scope,limit:1})).relevant_versions.notebook;
@@ -88,6 +101,7 @@ export class NotebookPage extends DeckPage {
       this.sync();
     }
     if(!this.writing.base)return false;
+    if(this.writing.deleted){this.writingChanged();return true;}
     if(!this.images){
       this.sync(true); await this.paintHeader();
       this.images=new NotebookImages(this.writing);this.images.resume();
@@ -123,7 +137,7 @@ export class NotebookPage extends DeckPage {
     if(this.editing)this.save();
     this.textEdited();
     this.source=w.base.source; this.base={revision:w.base.revision,body:w.base.content.body}; this.readOnly=w.readOnly||w.reading;
-    this.header.title.textContent=w.value.title;
+    if(!this.renameSeen)this.header.title.textContent=w.value.title;
     const drawKept=force || !this.cardsSeen || !this.textSeen;
     if((!w.conflict || drawKept) && (drawKept || deckBody(this.deck)!==w.value.body)) {
       const e=this.editing;
@@ -259,7 +273,8 @@ export class NotebookPage extends DeckPage {
     if (this.editing && !this.readOnly && (w.readOnly || w.reading) && !this.host.closest('dialog[open]')) this.host.style.minHeight = `${this.host.getBoundingClientRect().height}px`;
     if (!w.readOnly && !w.reading) this.host.style.removeProperty('min-height');
     // A person Core does not let write the page reads it: no writing controls, and nothing to pause.
-    this.readOnly=w.readOnly||w.reading; this.text.readOnly=this.readOnly;
+    this.readOnly=w.readOnly||w.reading||w.deleted||Boolean(w.actionPending); this.text.readOnly=this.readOnly;
+    this.paintPageState();
     if(this.editing)this.editing.field.readOnly=this.readOnly;
     this.host.classList.toggle('deck-read-only',this.readOnly);
     this.paintDraft();
@@ -269,7 +284,7 @@ export class NotebookPage extends DeckPage {
       this.conflictRevision=changed.revision;
       const title=this.node('h2','','This page changed elsewhere');
       const words=this.node('p','','Your writing is kept. Review the saved version before choosing which to continue with.');
-      const latest=this.node('pre','notebook-latest',changed.content.body);
+      const latest=this.node('pre','notebook-latest',changed.content.title+'\n\n'+changed.content.body);
       const mine=this.node('button','','Save my version'), saved=this.node('button','','Use saved version');
       mine.type=saved.type='button';
       mine.onclick=async()=>{await w.resolve(true);this.sync();};
@@ -300,8 +315,57 @@ export class NotebookPage extends DeckPage {
       discard.onclick=async()=>{if(await w.discard()){this.finish({discard:true});this.sync(true);}};
       this.status.append(discard);
     }
+    this.paintPageState();
     this.revisionShown();
     putBack();
+  }
+  menuItems() {
+    const w=this.writing,state=w?.pageState;
+    if(!state)return [];
+    if(w.deleted)return state.reader_may_delete?[{label:'Undo delete',glyph:'undo',act:()=>this.pageAction('memory.delete',{deleted:false})}]:[];
+    const items=[{label:state.starred?'Unstar':'Star',glyph:state.starred?'starred':'star',act:()=>this.pageAction('memory.star',{starred:!state.starred})}];
+    if(!this.readOnly)items.push({label:'Rename',glyph:'pencil',act:()=>this.rename()});
+    if(state.reader_may_delete)items.push({label:'Delete',glyph:'drop',act:()=>{
+      if(this.doc.defaultView.confirm('Delete this Notebook page? Its history is kept and you can undo it.'))this.pageAction('memory.delete',{deleted:true});
+    }});
+    return items;
+  }
+  rename() {
+    if(this.readOnly||!this.writing?.value)return;
+    this.renameSeen=this.writing.capture();this.titleBox.value=this.renameSeen.content.title;
+    this.header.title.replaceChildren(this.titleBox);this.titleBox.hidden=false;this.titleBox.focus({preventScroll:true});this.titleBox.select();
+  }
+  async endRename(save) {
+    if(!this.renameSeen)return;
+    const seen=this.renameSeen;this.renameSeen=null;
+    if(save)this.writing.edit({title:this.titleBox.value},seen,this.mode);
+    this.titleBox.hidden=true;this.more.focus({preventScroll:true});
+    this.sync();if(save){await this.writing.flush();this.sync();}
+  }
+  async pageAction(kind,args) {
+    if(!kind&&!this.writing?.actionPending)return;
+    // Capture the actual visible writing before settling the same writer stream.
+    if(this.editing)this.save();this.textEdited();
+    if(this.writing?.actionPending)await this.writing.retryAction();
+    else await this.writing?.action(kind,args);
+    if(!this.writing?.actionPending)await this.load();
+    this.writingChanged();
+  }
+  paintPageState() {
+    const w=this.writing;if(!w)return;
+    this.more.disabled=Boolean(w.actionRunning||w.actionPending);this.more.hidden=!w.pageState;
+    this.pageNotice.replaceChildren();
+    if(w.deleted) {
+      this.pageNotice.append(this.node('p','','This Notebook page was deleted. Its history and your unfinished writing are kept.'));
+      if(w.pageState.reader_may_delete){const undo=this.node('button','','Undo delete');undo.type='button';undo.onclick=()=>this.pageAction('memory.delete',{deleted:false});this.pageNotice.append(undo);}
+    }
+    if(w.actionError){this.pageNotice.append(this.node('p','',w.actionError));if(w.actionPending){const retry=this.node('button','','Retry page action');retry.type='button';retry.onclick=()=>this.pageAction();this.pageNotice.append(retry);}}
+    if(w.actionRunning)this.pageNotice.append(this.node('p','','Saving page action…'));
+    for(const node of [this.textPanel,this.list,this.bar,this.keys,this.opening,this.imagePanel,this.views,this.draft,this.conflictPanel]) {
+      if(w.deleted)node.hidden=true;
+    }
+    if(!w.deleted){this.drawView();this.imagePanel.hidden=false;this.paintDraft();}
+    if(w.deleted)this.titleBox.hidden=true;
   }
   async captureImage(file) {
     try {this.imageError=null;await this.images.capture(file);}

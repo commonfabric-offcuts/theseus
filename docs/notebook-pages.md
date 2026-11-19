@@ -262,3 +262,13 @@ not an autosaved draft across a browser reload.
 page's body is still empty. Existing Cards links and nonempty pages keep their
 normal behavior. This creates a Notebook page; it adds no Cards mode to message
 drafts. The shared Notebook Text/Cards editor is the separate item 302.
+
+## Star, Rename and Delete (792)
+
+The Text/Cards editor's ⋯ offers personal Star/Unstar, inline Rename using
+`memory.revise`, and Delete to the page's creator or outcome owner when Core
+permits it. Delete asks once and appends a retained deletion revision. Undo
+restores it with another revision. A deleted page leaves listings and the
+reader's starred outline, while its immutable history, personal stars and
+private writing remain. Exact old source/attachment links report deletion
+until restored. See [the full contract](notebook-menu-792.md).
