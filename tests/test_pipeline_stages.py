@@ -268,7 +268,7 @@ class StagesCase(PipelineCase):
         self.store.record_release({"release": 23, "commit": "5" * 40, "deployed_at": "2026-11-07T08:00:00-08:00", "items": [1, 2, 3], "source": "deploy"})
         self.assertEqual((self.entries(release)[-1][2], self.entries(piece)[-1][2], self.item(3)["shipped"]["release"]), ("shipped", "shipped", 23))
 
-    def test_finishing_a_piece_marks_its_items_done_and_a_release_pipeline_finishes_by_its_record(self):
+    def test_finishing_a_piece_marks_its_items_done_in_any_pipeline(self):
         piece = self.committed(self.start())["piece_id"]
         self.committed(self.command("pipeline.piece_finish", {"note": "done"}, {"piece_id": piece}))
         self.assertEqual(self.entries(piece), [("build", 1, "done", 1)])
@@ -279,7 +279,9 @@ class StagesCase(PipelineCase):
         self.rejected(self.command("pipeline.piece_finish", {}, {"piece_id": piece}), "PIECE_CLOSED")
         self.committed(self.on(ships_in_releases=True))
         other = self.committed(self.start(numbers=(3,)))["piece_id"]
-        self.rejected(self.command("pipeline.piece_finish", {}, {"piece_id": other}), "RELEASE_PIPELINE_SHIPS_BY_RECORD")
+        self.committed(self.command("pipeline.piece_finish", {"note": "Live in release 94; its record missed it"}, {"piece_id": other}))
+        self.assertEqual(self.entries(other), [("build", 1, "done", 1)])
+        self.assertEqual(self.item(3)["glyph"], "shipped")
 
     def test_combining_pieces_into_a_release_moves_their_items_and_keeps_their_topics_open(self):
         self.release_stages(*STAGES[:3], self.CHECKS)

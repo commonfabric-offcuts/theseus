@@ -1202,10 +1202,10 @@ class Pipeline:
         if set(target) != {"piece_id"} or set(args) - {"note"}:
             raise Refusal("INVALID_ARGUMENT", "Name the piece that is done")
         piece, workspace = self._piece(db, actor, target["piece_id"])
-        pipeline = self._pipeline_on(db, workspace["id"])
+        # Any pipeline's piece can be finished, a release pipeline's too: a record can miss what shipped, and the agent who
+        # knows says so here rather than leaving the board wrong.
+        self._pipeline_on(db, workspace["id"])
         self._check_revision(envelope, "piece_revision", piece["version"])
-        if pipeline["ships_in_releases"]:
-            raise Refusal("RELEASE_PIPELINE_SHIPS_BY_RECORD", "This pipeline's items finish when a release record ships them")
         entry = self._open_entry(db, piece["id"])
         if entry is None:
             raise Refusal("PIECE_CLOSED", "This piece of work has finished")
