@@ -989,13 +989,29 @@ dialog.composer-home:not([open]){display:block;position:static;width:auto;height
 .composer-home:not([open]) .inline-composer{border:1px solid var(--line);border-radius:.9rem;background:var(--paper)}
 dialog.composer-home[open]{top:auto;bottom:1.5rem;height:calc(var(--vv-height,100dvh) - 3rem);max-height:calc(var(--vv-height,100dvh) - 3rem);overflow:visible}
 dialog.composer-home[open] .inline-composer{border:0;border-radius:1rem}
-/* Alone in the sheet the composer is the sheet's height, and its field takes what the head, a panel and the images leave, then scrolls; ⤢ has nothing to add there. Where the rest leaves less than one line (a small phone with the keyboard up, an image's choices open), the field keeps its line, every row above it keeps its whole height (min-content: the image strip and a panel, which scroll, would otherwise give way to nothing and be drawn under the rows beside them), and the composer scrolls inside itself, the field brought into view as the keyboard comes up (compose-bar.mjs), so nothing goes past the sheet. On a laptop the who panel opens in the composer, under the head, and + over the field's foot, as side by side, since a popover above the sheet would be off the screen. */
-dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) 1fr;align-content:stretch;overflow-y:auto;scroll-padding-bottom:calc(.55rem + env(safe-area-inset-bottom))}
-dialog.composer-home[open] .inline-composer>.field-box{align-self:stretch}
-dialog.composer-home[open] .inline-composer textarea{--fit:none;height:100%;max-height:none;padding-right:.9rem}
+/* The pencil's sheet floats over readable context. The Notebook uses the same
+   dialog but keeps its full-height reading surface and backdrop. */
+dialog.composer-home[open]:not(.notebook-mode){height:auto;overflow:hidden}
+dialog.composer-home:not(.notebook-mode)::backdrop{background:transparent;backdrop-filter:none}
+dialog.composer-home[open] .inline-composer{height:auto;max-height:calc(var(--vv-height,100dvh) - 3rem);grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.5rem,auto);align-content:start;overflow-y:auto;scroll-padding-bottom:calc(.55rem + env(safe-area-inset-bottom))}
+dialog.composer-home[open] .inline-composer textarea{--fit:auto;height:auto;max-height:min(40dvh,calc(12 * 1.5em + 1.1rem));padding-right:.9rem}
+dialog.composer-home[open] .inline-composer textarea:placeholder-shown{white-space:nowrap}
 dialog.composer-home[open] .inline-composer .taller-field{display:none}
-@media(min-width:761px){dialog.composer-home[open] .inline-composer>.who-panel{position:static;grid-area:panel;width:auto;max-width:none;max-height:none;margin-bottom:.6rem;box-shadow:none}dialog.composer-home[open] .inline-composer>.plus-panel{bottom:3.75rem}}
-@media(max-width:760px){dialog.composer-home[open]{width:100%;max-width:100%;height:calc(var(--vv-height,100dvh) - .75rem);max-height:calc(var(--vv-height,100dvh) - .75rem);margin:0;top:auto;bottom:calc(100% - var(--vv-top,0px) - var(--vv-height,100dvh));border-radius:1rem 1rem 0 0;border-width:1px 0 0}}
+/* An unavailable composer keeps the reason and its recovery control on separate rows. */
+#inline-composer:has(>#inline-retry:not([hidden])){grid-template-areas:"title title title title" "notice notice notice notice" "retry retry retry retry" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act";grid-template-rows:repeat(6,minmax(min-content,auto)) minmax(2.5rem,auto)}
+#inline-composer>#inline-retry{grid-area:retry}
+/* A thumbnail's center opens its choices. Remove has its own slot, even
+   before those choices open: a finger-sized corner overlay covers that center. */
+#inline-composer .image-choice>button[data-method=remove]{position:static;width:auto;height:auto;min-width:2.75rem;min-height:2.75rem}
+@media(max-width:760px){#inline-composer :is(button,input,textarea,select,[role=button]){min-width:2.75rem!important;min-height:2.75rem!important}}
+/* The inline menu spends room on choices, not padding or a keyboard-sized gap. */
+#inline-who-panel{gap:.25rem;padding:.25rem .5rem .35rem}
+#inline-who-panel .who-row{gap:.25rem}
+#inline-who-panel .who-sentence .audience-line{font-size:.8rem;line-height:1.35}
+#inline-who-panel .intent-row,#inline-who-panel .audience{gap:.25rem}
+#inline-who-panel .choice-chip{padding-inline:.55rem}
+@media(min-width:761px){dialog.composer-home[open] .inline-composer>.who-panel{position:static;grid-area:panel;width:auto;max-width:none;max-height:none;margin-bottom:.35rem;box-shadow:none}dialog.composer-home[open] .inline-composer>.plus-panel{position:static;grid-area:panel;width:auto;max-width:none;margin-bottom:.35rem;box-shadow:none}}
+@media(max-width:760px){dialog.composer-home[open]{width:100%;max-width:100%;height:calc(var(--vv-height,100dvh) - .75rem);max-height:calc(var(--vv-height,100dvh) - .75rem);margin:0;top:auto;bottom:calc(100% - var(--vv-top,0px) - var(--vv-height,100dvh));border-radius:1rem 1rem 0 0;border-width:1px 0 0}dialog.composer-home[open] .inline-composer{max-height:calc(var(--vv-height,100dvh) - .75rem)}#inline-who-panel{height:auto;max-height:var(--keyboard,min(45dvh,22rem));padding-bottom:calc(.5rem + env(safe-area-inset-bottom))}}
 .composer>.sheet-close{grid-area:title;justify-self:end;width:2.5rem;height:2.5rem;min-height:0;padding:0;border-color:transparent;background:transparent;color:var(--ink)}
 .composer-home:not([open]) .sheet-close{display:none}
 /* A new message has no message above it to keep in view: its field grows further. */
