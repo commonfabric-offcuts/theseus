@@ -23,10 +23,12 @@
 import { paintChanges } from './page-changes.mjs';
 import { holdPlace } from './sheet-holder.mjs';
 import { glyph } from './glyphs.mjs';
+import { NotebookDossiers } from './notebook-dossiers.mjs';
 
 const RETURN = 'notebook-return';
 // The card box a page had open when it was let go (another page, a move, a reload), opened again with it.
 const WRITING = 'notebook-writing:';
+const DOCKED = 'notebook-docked';
 const MOVING_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', ' '];
 const here = () => globalThis.location.pathname + globalThis.location.search;
 const take = key => {
@@ -44,8 +46,14 @@ export class NotebookSheet {
   // first message, true when in this page's Reader, false when its topic's page loads instead.
   // goBack(address): opens the page of Theseus at that address again. reads(): the PageReads that
   // records a read and answers the revision read before, or null. source(ref): a page at a revision.
-  constructor({ make, fullHref, openStack, goBack, reads = () => null, source = null, doc = globalThis.document }) {
-    Object.assign(this, { make, fullHref, openStack, goBack, reads, source, doc });
+  constructor({ make, fullHref, openStack, goBack, reads = () => null, source = null, feed = null, doc = globalThis.document }) {
+    Object.assign(this, { make, fullHref, openStack, goBack, reads, source, feed, doc });
+    this.listening = new AbortController();
+    this.docked = false; this.dockWanted = false;
+    try { this.dockWanted = JSON.parse(globalThis.sessionStorage.getItem(DOCKED)) === true; } catch {}
+    this.wide = globalThis.matchMedia?.('(min-width: 1280px)');
+    this.resized = () => this.setDocked(this.dockWanted && this.canDock(), false);
+    this.wide?.addEventListener('change', this.resized);
     this.dialog = doc.getElementById('new-message-sheet');
     this.inline = doc.getElementById('inline-composer');
     this.reader = doc.getElementById('reader');
@@ -65,10 +73,19 @@ export class NotebookSheet {
     this.closer = node('button', 'sheet-glyph notebook-sheet-close', '✕'); this.closer.type = 'button';
     this.closer.setAttribute('aria-label', 'Close, keeping your writing'); this.closer.title = 'Close, keeping your writing';
     this.closer.onclick = () => this.close();
-    head.append(this.title, this.full, this.closer, this.views, this.status);
+    this.dockButton = node('button', 'sheet-glyph notebook-sheet-dock'); this.dockButton.type = 'button';
+    this.dockButton.title = 'Beside the feed'; this.dockButton.setAttribute('aria-label', 'Beside the feed');
+    this.dockButton.append(glyph('layout', doc)); this.dockButton.onclick = () => this.setDocked(!this.docked);
+    this.dossierButton = node('button', 'notebook-sheet-dossiers quiet', 'Choose dossier'); this.dossierButton.type = 'button';
+    this.dossierButton.setAttribute('aria-expanded', 'false'); this.dossierButton.onclick = () => this.dossiers?.toggle();
+    head.append(this.title, this.dockButton, this.full, this.closer, this.views, this.dossierButton, this.status);
     this.body = node('div', 'notebook-sheet-pages');
     this.root.append(head, this.body);
+    if (feed) this.dossiers = new NotebookDossiers({ doc, host: this.root, anchor: this.dossierButton, read: feed.read,
+      topicId: feed.topicId, choose: id => this.openInFeed(feed.topicId, id) });
+    this.paintDock();
     this.dialog.append(this.root);
+    this.dialog.addEventListener('cancel', event => { if (this.showing) { event.preventDefault(); this.close(); } });
     // The sheet is put away as it closes, not when the browser's close event comes: that comes with the browser's
     // next frame, later still on a slow machine, after a key may have moved the focus on from the opener or opened
     // the next page. The event still puts away a sheet the browser closed itself, and moves no focus. The New message
@@ -84,19 +101,57 @@ export class NotebookSheet {
     // moves nothing behind it. Listened for on the window, after the page's own keys (document) have had their turn.
     globalThis.addEventListener('keydown', event => {
       if (!this.showing || event.defaultPrevented) return;
+      const modal = this.doc.querySelector?.('dialog:modal');
+      if (modal && modal !== this.dialog) return;
       // Escape the page did not use (a card being written takes the first) closes the sheet, as ✕ does.
-      if (event.key === 'Escape' && !event.isComposing) { event.preventDefault(); this.close(); return; }
+      if (event.key === 'Escape' && !event.isComposing) {
+        if (this.dossiers?.showing) { event.preventDefault(); this.dossiers.close(true); return; }
+        event.preventDefault(); this.close(); return;
+      }
       if (!this.dialog.contains(event.target) || !MOVING_KEYS.includes(event.key)) return;
       if (event.target.closest?.('textarea, input, select, [contenteditable], button, a[href]') && event.key === ' ') return;
       if (event.target.closest?.('textarea, input, select, [contenteditable]')) return;
       event.preventDefault();
-    });
+    }, { signal: this.listening.signal });
     // The Reader opened from a card's bubble: closing it, by any way, brings the page back.
     this.reader?.addEventListener('close', () => { if (this.aside) this.back(); });
     // A reload or a page that loads: the card box a page has open opens again with it.
-    globalThis.addEventListener('pagehide', () => { for (const page of this.pages()) this.keepWriting(page); });
+    globalThis.addEventListener('pagehide', () => { for (const page of this.pages()) this.keepWriting(page); }, { signal: this.listening.signal });
   }
   pages() { return [...(this.current ? [this.current] : []), ...this.leaving.values()]; }
+  canDock() { return Boolean(this.feed && this.wide?.matches); }
+  paintDock() {
+    this.dockButton.hidden = !this.canDock(); this.dockButton.setAttribute('aria-pressed', String(this.docked));
+    this.dossierButton.hidden = !this.docked;
+    const close = this.docked ? 'Back over the feed' : 'Close, keeping your writing';
+    this.closer.title = close; this.closer.setAttribute('aria-label', close);
+    this.dialog.classList.toggle('notebook-docked', this.docked);
+    this.doc.body.classList.toggle('notebook-docked', this.docked);
+  }
+  setDocked(wanted, remember = true) {
+    if (remember) { this.dockWanted = Boolean(wanted); keep(DOCKED, this.dockWanted); }
+    const next = Boolean(this.showing && wanted && this.canDock());
+    this.dossiers?.close();
+    if (next !== this.docked) {
+      const focused = this.doc.activeElement;
+      // Reading while docked may move the feed. The new modal freezes that
+      // current place, so its eventual close never jumps to the old opener.
+      if (this.docked && this.place) Object.assign(this.place, { x: globalThis.scrollX, y: globalThis.scrollY });
+      this.docked = next;
+      // Reopen the same dialog immediately: delayed close events see it open
+      // and cannot retire its NotebookPage or move focus to the opener.
+      if (this.dialog.open) this.dialog.close();
+      this.paintDock();
+      if (this.docked) this.dialog.show(); else this.dialog.showModal();
+      if (focused?.isConnected && this.dialog.contains(focused)) focused.focus({ preventScroll: true });
+    } else this.paintDock();
+  }
+  async openInFeed(topicId, messageId) {
+    if (!this.docked || !this.feed) return;
+    if (topicId !== this.feed.topicId) return this.setAside(topicId, messageId, true);
+    try { await this.feed.open(topicId, messageId); }
+    catch (error) { this.current?.say?.(`The dossier could not be opened. ${error.message}`, 'attention'); }
+  }
   // Whether a box between the target and the sheet would scroll that way, so the wheel is its own.
   scrolls(target, dx, dy) {
     if (!this.dialog.contains(target)) return false;
@@ -137,6 +192,8 @@ export class NotebookSheet {
       const host = this.node('section', 'deck-page notebook-sheet-page'); host.setAttribute('aria-label', 'Notebook page');
       const header = { eyebrow: this.node('span'), title: this.node('span'), description: this.node('span') };
       page = this.make(id, host, header, '-sheet', () => this.revised(page));
+      page.menuExtras = () => this.canDock() ? [{ label: 'Beside the feed', glyph: 'layout', checked: this.docked, act: () => this.setDocked(!this.docked) }] : [];
+      page.keyScope = target => !this.docked || this.dialog.contains(target);
       page.sheetTitle = header.title;
       page.changes = this.node('div', 'notebook-sheet-changes'); page.changes.hidden = true;
       host.prepend(page.changes);
@@ -147,11 +204,12 @@ export class NotebookSheet {
         const query = new URL(link.href, globalThis.location.href).searchParams, topicId = query.get('topic'), messageId = query.get('message');
         if (!topicId || !messageId) return;
         event.preventDefault(); event.stopPropagation();
-        this.setAside(topicId, messageId);
+        if (this.docked) this.openInFeed(topicId, messageId); else this.setAside(topicId, messageId);
       }, true);
     }
     if (!page.host.isConnected) this.body.append(page.host);
     this.show(page);
+    this.setDocked(this.dockWanted && this.canDock(), false);
     if (!this.dialog.open) this.dialog.showModal();
     const kept = first ? take(WRITING + id) : null;
     page.readAt = undefined;
@@ -188,11 +246,11 @@ export class NotebookSheet {
       this.still = new AbortController();
       const options = { passive: false, signal: this.still.signal };
       let down = null;
-      globalThis.addEventListener('wheel', event => { if (!this.scrolls(event.target, event.deltaX, event.deltaY)) event.preventDefault(); }, options);
+      globalThis.addEventListener('wheel', event => { if (this.docked && !this.dialog.contains(event.target)) return; if (!this.scrolls(event.target, event.deltaX, event.deltaY)) event.preventDefault(); }, options);
       globalThis.addEventListener('touchstart', event => { const at = event.touches[0]; down = event.touches.length === 1 ? { x: at.clientX, y: at.clientY } : null; }, { passive: true, signal: this.still.signal });
       globalThis.addEventListener('touchmove', event => {
         const at = event.touches[0];
-        if (!down || event.touches.length !== 1 || !event.cancelable) return;
+        if (!down || event.touches.length !== 1 || !event.cancelable || this.docked && !this.dialog.contains(event.target)) return;
         const dx = down.x - at.clientX, dy = down.y - at.clientY;
         if ((dx || dy) && !this.scrolls(event.target, dx, dy)) event.preventDefault();
       }, options);
@@ -265,14 +323,17 @@ export class NotebookSheet {
     paintChanges(shown, earlier.body ?? '', source.body ?? '', this.doc);
     page.changes.replaceChildren(changes); page.changes.hidden = false;
   }
-  close() {
+  close(force = false) {
     if (!this.showing) return;
+    if (this.docked && !force) { this.setDocked(false); return; }
     this.dialog.close();
     this.closed();
   }
   closed() {
     if (!this.showing) return;
     this.still?.abort();
+    this.dossiers?.close();
+    const wasDocked = this.docked; this.docked = false; this.paintDock();
     const page = this.current;
     if (page) { this.keep(page); page.host.hidden = true; }
     this.root.hidden = true; this.showing = false;
@@ -285,21 +346,21 @@ export class NotebookSheet {
     // back to what opened the page.
     const place = this.place; this.place = null;
     if (!place) return;
-    if (globalThis.scrollX !== place.x || globalThis.scrollY !== place.y) globalThis.scrollTo({ left: place.x, top: place.y, behavior: 'instant' });
+    if (!wasDocked && (globalThis.scrollX !== place.x || globalThis.scrollY !== place.y)) globalThis.scrollTo({ left: place.x, top: place.y, behavior: 'instant' });
     if (place.opener?.isConnected) place.opener.focus({ preventScroll: true });
   }
 
   // A card's reply stack: the page closes, kept as it is, and the stack opens. Should the stack be in another
   // topic, its page loads with the way back kept for this tab: this address, the feed's place and the page.
-  async setAside(topicId, messageId) {
+  async setAside(topicId, messageId, land = false) {
     const page = this.current;
     if (!page) return;
     this.aside = { id: page.item, title: page.sheetTitle.textContent || 'Notebook page' };
-    keep(RETURN, { ...this.aside, from: here(), x: this.place?.x ?? globalThis.scrollX, y: this.place?.y ?? globalThis.scrollY });
-    this.close();
+    keep(RETURN, { ...this.aside, land, from: here(), x: this.place?.x ?? globalThis.scrollX, y: this.place?.y ?? globalThis.scrollY });
+    this.close(true);
     // here: the stack opened in this page's Reader; otherwise its topic's page is loading.
     let opened = false;
-    try { opened = await this.openStack(topicId, messageId); } catch { opened = true; }
+    try { opened = await this.openStack(topicId, messageId, land); } catch { opened = true; }
     if (!opened) return;
     take(RETURN);
     if (this.reader?.open) this.showBack(); else if (this.aside) this.back();
@@ -309,6 +370,7 @@ export class NotebookSheet {
   resume() {
     const aside = take(RETURN);
     if (!aside?.id) return;
+    if (aside.land) { this.open(aside.id); return; }
     if (aside.back) {
       if (aside.from !== here()) return;
       globalThis.scrollTo(aside.x, aside.y);
@@ -348,5 +410,10 @@ export class NotebookSheet {
   }
   // The run ends without a pagehide (an in-place move): each page's card box is kept for its next opening, and its
   // writing closes as on pagehide.
-  retire() { for (const page of this.pages()) { this.keepWriting(page); page.close?.(); } }
+  retire() {
+    this.listening.abort(); this.showing = false;
+    this.wide?.removeEventListener('change', this.resized); this.still?.abort(); this.dossiers?.close();
+    this.docked = false; this.paintDock();
+    for (const page of this.pages()) { this.keepWriting(page); page.close?.(); }
+  }
 }

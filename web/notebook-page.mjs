@@ -243,6 +243,7 @@ export class NotebookPage extends DeckPage {
   }
   paint() { if(this.mode!=='text')super.paint(); }
   key(event) {
+    if (this.keyScope && !this.keyScope(event.target)) return;
     const picker=this.mode==='text'?this.textImages:this.cardImages;
     if(event.target===picker?.field&&picker.key(event))return;
     if(this.mode==='text') {
@@ -332,7 +333,7 @@ export class NotebookPage extends DeckPage {
     if(state.reader_may_delete)items.push({label:'Delete',glyph:'drop',act:()=>{
       if(this.doc.defaultView.confirm('Delete this Notebook page? Its history is kept and you can undo it.'))this.pageAction('memory.delete',{deleted:true});
     }});
-    return items;
+    return [...items, ...(this.menuExtras?.() ?? [])];
   }
   rename() {
     if(this.readOnly||!this.writing?.value)return;

@@ -163,7 +163,7 @@ function headerKey(action, rows, r, doc, navigate) {
 // Nothing in writing or while a pop-up is open; the feed's ⌘ arrows stay its own.
 export function feedKey(event, doc, navigate = () => {}) {
   const action = keyAction(event);
-  if (!action || doc.querySelector('dialog[open]') || writing(doc.activeElement) ||
+  if (!action || doc.querySelector('dialog[open]:not(.notebook-docked)') || writing(doc.activeElement) ||
       doc.activeElement?.closest?.('input, textarea, select, [contenteditable]') ||
       event.target?.closest?.('input, textarea, select, [contenteditable]')) return false;
   // Focus can collapse a selection: retain the guard from before the move.
