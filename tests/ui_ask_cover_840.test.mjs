@@ -134,7 +134,7 @@ test('840 CSS reserves the fourth title glyph only when drawn, with the same vis
   assert.match(css, /\.stack-cover-request:has\(\.cover-refresh-status:not\(:empty\)\)\{clip-path:none\}/, 'a refusal can extend below the title controls without being clipped away');
 });
 
-test('840 pending and busy title activity has independent visibility while sibling tools retain their rest rule', t => {
+test('840 pending title activity reserves room while touch siblings stay clipped at rest', t => {
   const f = fixture(t), item = f.messages.get('root');
   item.acts = { cover: null, cover_revision: 0, cover_refresh_revision: 1,
     cover_refresh: { state: 'pending', recipient: 'writer', request_message_id: 'kept-request', observed_revision: 0 } };
@@ -146,7 +146,13 @@ test('840 pending and busy title activity has independent visibility while sibli
   assert.match(css, /\.reply-stack>\.stack-tools>\*\{opacity:var\(--stack-tools-shown\);clip-path:inset/);
   assert.match(css, /\.reply-stack\{[^}]*--stack-tools-shown:0;/);
   assert.match(css, /\.stack-cover-request:has\(\.cover-refresh-glyph\[data-pending=true\]\)\{opacity:1;clip-path:none\}/);
-  assert.match(css, /\.reply-stack:has\(>\.stack-tools \.cover-refresh-glyph\[data-pending=true\]\)\{--stack-tools-held:1\}/);
+  // Without hover/focus/selection, held follows shown=0. Pending may reserve
+  // room, but must not unclip invisible Reply, Archive or More controls.
+  assert.match(css, /\.reply-stack\{[^}]*--stack-tools-held:var\(--stack-tools-shown\)/);
+  const pending = css.match(/\.reply-stack:has\(>\.stack-tools \.cover-refresh-glyph\[data-pending=true\]\)\{([^}]+)\}/)?.[1];
+  assert.ok(pending);
+  assert.doesNotMatch(pending, /--stack-tools-held:|--stack-tools-shown:/, 'pending must not make invisible touch siblings pressable');
+  assert.match(pending, /--stack-tools-room:var\(--stack-tools-w\)/, 'pending activity still reserves the title room');
 });
 
 test('840 pending menu opens the dots canonical request through the shared link owner', async t => {

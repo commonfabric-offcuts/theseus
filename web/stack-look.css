@@ -221,7 +221,7 @@
 .reply-stack:has(>.stack-tools .cover-refresh-status:not(:empty)){--stack-tools-shown:1;--stack-tools-held:1}
 .stack-cover-request:has(.cover-refresh-status:not(:empty)){clip-path:none}
 /* Pending activity stays visible independently; sibling tools retain their rest rule. */
-.reply-stack:has(>.stack-tools .cover-refresh-glyph[data-pending=true]){--stack-tools-held:1}
+.reply-stack:has(>.stack-tools .cover-refresh-glyph[data-pending=true]){--stack-tools-room:var(--stack-tools-w)}
 .stack-cover-request:has(.cover-refresh-glyph[data-pending=true]){opacity:1;clip-path:none}
 /* By touch each glyph is 44px square. */
 @media(pointer:coarse){:root{--stack-tool-size:2.75rem}.reply-stack{--stack-tool-gap:0rem}}
