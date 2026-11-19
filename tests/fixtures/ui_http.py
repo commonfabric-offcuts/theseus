@@ -515,7 +515,14 @@ def main():
             factory = server.store_factory
             server.store_factory = lambda: GatedStore(factory(), gate)
             return server
-        server = serve()
+        core_only = "--core-only-783" in sys.argv
+        if core_only:
+            build = server_module.web_build.load(Path(__file__).resolve().parents[2] / "web")
+            server = SimpleNamespace(build=build, csp="default-src 'self';script-src " + " ".join(["'self'"] + ["'%s'" % h for h in build.script_hashes]) + ";style-src 'self';")
+        else:
+            server = serve()
+        from item_783_builds import Builds783
+        item783_builds = Builds783(server, root, server_module.web_build.load)
         from item_721_runtime import Item721Runtime
         item721_runtime = Item721Runtime(server, root, server_module.web_build.load)
         # Item 645: source-bound page comparisons inside one filtered native run.
@@ -778,13 +785,20 @@ def main():
         # The Health checks' runner: one guard this process holds across their
         # acts, as a running runner does, and the token its acquisition gave.
         health_runner = {}
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
+        if not core_only:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
         try:
             for line in sys.stdin:
                 request = json.loads(line)
                 try:
-                    if request["method"] == "ready":
+                    if core_only and request["method"] == "core_ready_783":
+                        assert sys.version_info[:2] == (3, 9)
+                        assert sys.pycache_prefix == os.environ["PYTHONPYCACHEPREFIX"]
+                        answer = {"actor": actor, "core_only": True, "cache_prefix": sys.pycache_prefix, "python_version": "%d.%d" % sys.version_info[:2]}
+                    elif request["method"] == "item_783_runtime":
+                        answer = item783_builds.select(request["phase"])
+                    elif request["method"] == "ready":
                         answer = {"origin": server.origin, "token": server.session_token,
                                   "instance_id": instance, "actor": actor, "topic_id": "t1",
                                   "sources": sources, "media": media, "max_reads": max_reads,
@@ -1588,6 +1602,9 @@ def main():
                 except Exception as error:
                     print(json.dumps({"id": request["id"], "failure": str(error)}), flush=True)
         finally:
+            item783_unrestored = server.build is not item783_builds.candidate
+            if item783_unrestored:
+                item783_builds.select("restored")
             item645_unrestored = item645_original is not None and server is not None and server.build is not item645_candidate
             if item645_unrestored:
                 server.build = item645_candidate
@@ -1600,7 +1617,7 @@ def main():
                 reading785_cleanup_error = error
             if controls is not None:
                 controls.close()
-            if server is not None:
+            if server is not None and not core_only:
                 server.shutdown()
                 server.server_close()
                 thread.join(2)
@@ -1608,6 +1625,7 @@ def main():
             if controls is not None:
                 controls.assert_healthy()
             item721_runtime.close()
+            assert not item783_unrestored, "Item 783 comparison runtime was not restored"
             assert not item645_unrestored, "Item 645 comparison runtime was not restored"
             if reading785_cleanup_error is not None:
                 raise reading785_cleanup_error

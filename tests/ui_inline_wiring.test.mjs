@@ -3530,8 +3530,16 @@ test('B3 More keeps one cover sheet per dossier with no duplicate pills through 
     const descendants = () => walk(f.get('messages'));
     const pills = () => descendants().filter(e => e.classList?.contains('row-pills'));
     const sheets = () => descendants().filter(e => e.classList?.contains('dossier-cover'));
+    const checkOrder = () => {
+      for (const sheet of sheets()) {
+        const siblings = sheet.parentElement.children;
+        const card = siblings.find(e => e.dataset?.id);
+        assert.ok(card && siblings.indexOf(sheet) < siblings.indexOf(card), '783 cover precedes the first message, including a lone reply');
+      }
+    };
     assert.equal(pills().length, 0, `${folder}/${state}: a lone reply is framed and uses its cover sheet`);
     assert.equal(sheets().length, cover ? 1 : 0);
+    checkOrder();
     const view = f.api.view;
     for (const [items, next] of [[[item(2), item(3)], 2], [[item(1)], null]]) {
       f.api.view = async (name, args) => name === 'topic_messages' ? page(items, next)
@@ -3539,6 +3547,7 @@ test('B3 More keeps one cover sheet per dossier with no duplicate pills through 
       await f.get('more-messages').onclick(); await settle(); await settle();
       assert.equal(pills().length, 0, `${folder}/${state}: More never duplicates the dossier cover as pills`);
       assert.equal(sheets().length, cover ? 1 : 0, 'the original sheet stays');
+      checkOrder();
       for (const older of [1, 2, 3]) {
         const entry = entryIn(f, 'm' + older);
         if (entry) assert.equal(walk(entry).some(e => e.classList?.contains('row-pills')), false, 'a reply or arriving root has no duplicate cover pills');
@@ -4543,13 +4552,13 @@ const conversationMessages = () => [
 ];
 const ASKED = [{ ask_message_id: 'm4', on: 'fixture-person', by: 'agent-a', since_ms: TODAY, item_id: 'm1', excerpt: 'which Friday?' }];
 
-test('a covered dossier keeps its first sheet beside the title tools through an edit and a cover rewrite', async () => {
+test('a covered dossier keeps its first sheet above every message through an edit and a cover rewrite', async () => {
   const list = conversationMessages();
   list[0].acts = { cover: { stands: 'Ready for Friday', waiting: [], payload: null, owner: 'fixture-person' }, cover_revision: 1 };
   const { f, stackOf, opens } = await conversationPage(list);
   const parts = () => stackOf('m1').children;
   const checkParts = stands => {
-    const [head, cover, toggle, tools, replies] = parts();
+    const [cover, head, toggle, tools, replies] = parts();
     assert.equal(head.dataset.id, 'm1');
     assert.equal(cover.className, 'dossier-cover');
     assert.equal(cover.children[0].children[0].textContent, stands);
@@ -4560,11 +4569,11 @@ test('a covered dossier keeps its first sheet beside the title tools through an 
     assert.equal(stackOf('m1').dataset.covered, 'true');
   };
   checkParts('Ready for Friday');
-  const original = parts()[1];
+  const original = parts()[0];
   f.views.messages.set('m1', { ...f.views.messages.get('m1'), body: 'The launch now stands at Saturday.', revision: 2 });
   f.paintViews('messages'); await settle();
   checkParts('Ready for Friday');
-  assert.equal(parts()[1], original, 'an edit keeps the existing cover sheet');
+  assert.equal(parts()[0], original, 'an edit keeps the existing cover sheet');
   const root = f.views.messages.get('m1');
   f.views.messages.set('m1', { ...root, acts: { ...root.acts, cover: { ...root.acts.cover, stands: 'Ready for Saturday' }, cover_revision: 2 } });
   f.paintViews('messages'); await settle();
