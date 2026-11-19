@@ -553,7 +553,7 @@ test('a stack left at its header alone shows latest plus unread unless it is an 
   assert.equal(levelOf(state, 'm2'), 'head', 'an agent dossier taken back to its header stays there');
   assert.equal(levelOf(state, 'm3'), 'open');
   assert.equal(levelOf(state, 'm4'), 'head', 'an agent dossier begins as its header alone');
-  assert.equal(levelOf(state, 'm5'), 'folded', 'any other stack begins at latest plus unread');
+  assert.equal(levelOf(state, 'm5'), 'open', 'an ordinary dossier begins expanded (857)');
 });
 
 test('an acts answer read before an act the page has since heard of puts back nothing; a later one, from another device, shows', async () => {

@@ -39,7 +39,7 @@ test('799 actual renderer draws the real head and reply once, keeps More frontie
   draw();
   const state = stackState(list);
   assert.equal(state.stacks[0].id, 'root');
-  assert.equal(state.sections.get('root').dataset.headOpen, 'false');
+  assert.equal(state.sections.get('root').dataset.headOpen, 'true', 'ordinary dossiers begin expanded (857)');
   assert.equal(cards.get('reply').parentElement.className, 'stack-replies');
   assert.equal(cards.get('root').querySelector('.stack-name').textContent, 'Actual first line');
   assert.deepEqual(state.stacks[0].replies.map(item => item.id), ['reply', 'own']);
