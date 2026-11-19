@@ -38,10 +38,10 @@ function page() {
   const outcomes = el('section', 'outcome-navigation', '', rail); el('h2', 'outcomes-heading', '', outcomes); el('button', 'new-outcome', '', outcomes);
   const topics = el('section', 'topic-navigation', '', rail); el('button', 'new-topic', '', topics); el('div', 'topics', '', topics);
   // Sections the conversation, pipeline and skills pieces add, as nodes in the rail.
-  const conversation = el('section', 'conversation-row', '', rail), pipeline = el('section', 'pipeline-row', '', rail), skills = el('section', 'skills-navigation', '', rail);
+  const pipeline = el('section', 'pipeline-row', '', rail), skills = el('section', 'skills-navigation', '', rail);
   // The rail's foot (item 628): who you are on which instance and the Health link, last in the rail.
   const foot = el('div', '', 'rail-foot', rail); el('span', 'instance-label', '', foot); el('a', 'health-link', 'health-link', foot);
-  return { doc, rail, main, brand, wordmark, home, outcomes, topics, conversation, pipeline, skills, foot, byId };
+  return { doc, rail, main, brand, wordmark, home, outcomes, topics, pipeline, skills, foot, byId };
 }
 const ids = host => host.children.map(node => node.id || node.className);
 // lastHere: the outcome the last answer was read about (null: none).
@@ -51,15 +51,15 @@ const attention = () => ({ here: null, last: null, lastHere: null, refreshed: 0,
 test('inside an outcome the rail hides the outcomes list, says "This outcome", and orders its sections', () => {
   const p = page(), opened = [];
   const sections = [{ name: 'skills', node: p.skills }, { name: 'topics', node: p.topics },
-    { name: 'pipeline', node: p.pipeline }, { name: 'conversation', node: p.conversation }];
+    { name: 'pipeline', node: p.pipeline }];
   new OutcomeScope({ workspaceId: 'w1', kind: 'topic', rail: p.rail, home: p.home, sections, open: (target, title) => opened.push([target, title]) });
   assert.equal(p.outcomes.hidden, true, 'no list of outcomes, no Outcomes heading, no New outcome');
   assert.equal(p.topics.hidden, false); assert.equal(p.byId.get('new-topic').hidden, false, 'New topic stays');
   assert.equal(p.rail.getAttribute('aria-label'), 'This outcome');
   // The outcome's Notebook is no section of the side rail (item 464): the right rail and the outcome's own page list it.
-  assert.deepEqual(RAIL_ORDER, ['conversation', 'pipeline', 'topics', 'skills']);
+  assert.deepEqual(RAIL_ORDER, ['pipeline', 'topics', 'skills']);
   assert.deepEqual(ids(p.rail).filter(id => id !== 'outcome-navigation'),
-    ['brand', 'page-notices', 'outcomes-home', 'conversation-row', 'pipeline-row', 'topic-navigation', 'skills-navigation', 'rail-foot']);
+    ['brand', 'page-notices', 'outcomes-home', 'pipeline-row', 'topic-navigation', 'skills-navigation', 'rail-foot']);
   for (const control of [p.home, p.wordmark]) {
     assert.equal(typeof control.onclick, 'function', 'each opens the Outcomes home');
     let prevented = false;

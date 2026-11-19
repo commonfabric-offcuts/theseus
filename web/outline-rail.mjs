@@ -1,11 +1,11 @@
-// The outline on the left of a topic or an outcome's Conversation (pipeline
+// The outline on the left of a topic (pipeline
 // item 272; docs/rails.md): every outcome, folded but for the one being read,
 // so what is new anywhere shows at a glance. An outcome's row is its light,
-// its name and where it stands, and the whole row opens its Conversation and
+// its name and where it stands, and the whole row opens its home and
 // its topics (Opened tidies every other away). On a phone a folded outcome
 // first opens its topics without moving (item 654); folded, it carries
 // the count of everything new inside it; open, its own row counts its
-// Conversation and its Build topics (the right rail's), since each topic row
+// Build topics (the right rail's), since each topic row
 // under it shows its own. The topic rows are today's
 // (TopicRail): unread counts, the work ring, Waiting on you and Ready for
 // review, Done (N) and Archived (N), in the server's order; an outcome's Build
@@ -39,11 +39,10 @@
 // it come from the run of the page that is up, and from nothing before it.
 // Each run's reads and drawing are its own: what a run read lands only while
 // it is still the page, and a run that has gone draws nothing.
-import { TopicRail, TopicPages, WorkspacePages, reread, routeHref, topicTarget, paintUnread, arrange, PAGE } from './topic-navigation.mjs';
+import { readTopicList, TopicRail, TopicPages, WorkspacePages, reread, routeHref, topicTarget, paintUnread, arrange, PAGE } from './topic-navigation.mjs';
 import { paintRowLight } from './outcome-light.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton } from './quick-create.mjs';
 import { readFailure } from './freshness.mjs';
-import { waitsOnReader } from './outcome-conversation.mjs';
 import { reloader } from './live.mjs';
 import { KeyTree } from './key-tree.mjs';
 import { KEY_WORDS, MESSAGE_KEY_WORDS, keyAction } from './pane-keys.mjs';
@@ -59,16 +58,16 @@ export const asksIn = item => item?.light?.light === 'waiting' && item.light.sho
 export const waitingIn = item => asksIn(item) + count(item?.cover_waiting);
 // What an outcome's row counts: folded, everything new inside it, the part
 // sent by name and its questions; open, what has no row of its own under it:
-// its Conversation's, and its Build topics', which the right rail lists in
+// its Build topics', which the right rail lists in
 // place of the outline (item 297; Core counts them apart, item.build). Each
 // topic row under it shows its own.
-export function rowCount(item, { open = false, conversation = null } = {}) {
+export function rowCount(item, { open = false } = {}) {
   if (!open) return { unread: count(item?.unread), addressed: count(item?.addressed) };
-  return { unread: count(conversation?.unread) + count(item?.build?.unread), addressed: count(conversation?.addressed) + count(item?.build?.addressed) };
+  return { unread: count(item?.build?.unread), addressed: count(item?.build?.addressed) };
 }
 // The words a screen reader hears after an open outcome's count: where what it counts is.
-export function countedWhere(item, conversation) {
-  return [count(conversation?.unread) ? 'its Conversation' : '', count(item?.build?.unread) ? 'its Build topics' : ''].filter(Boolean).join(' and ');
+export function countedWhere(item) {
+  return count(item?.build?.unread) ? 'its Build topics' : '';
 }
 // Everything new and every question waiting, across every outcome listed.
 export function totals(items) {
@@ -306,7 +305,7 @@ export class OutlineRail {
     if (failed) this.failed = failed;
     this.paint();
   }
-  // An outcome's Conversation, for its row's count. view: the run's own
+  // An outcome's conversation, for the write shortcut. view: the run's own
   // reads, or by default the outline's, through whichever run is up.
   async readConversation(outcome, view = (name, args) => this.read(name, args, 'foreground')) {
     try {
@@ -323,7 +322,7 @@ export class OutlineRail {
     const doc = this.doc, id = item.id;
     const title = element(doc, 'span', { className: 'ol-title' }), standing = element(doc, 'small', { className: 'standing' });
     const name = element(doc, 'a', { className: 'ol-name' }, element(doc, 'span', { className: 'ol-name-line' }, title), standing);
-    name.dataset.conversationOf = id;
+    name.dataset.workspaceId = id;
     // The whole row (its light, its name and where it stands) is the one thing to press.
     const waiting = element(doc, 'button', { type: 'button', className: 'ol-waiting', hidden: true });
     // Beside the name, the pencil that starts a new topic here; a press on it opens and folds nothing.
@@ -357,11 +356,11 @@ export class OutlineRail {
     outcome = { id, item, li, row, name, title, standing, waiting, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null,
       parts: { host, more, retry, message, done, archived } };
     // On a phone a collapsed outcome first opens its topics here (item 654),
-    // with no move and no drawer close; the next tap opens its Conversation.
-    // On a laptop the name opens its Conversation. A click also folds its topics
+    // with no move and no drawer close; the next tap opens its home.
+    // On a laptop the name opens its home. A click also folds its topics
     // when they are open and opens them when folded (item 320), and that
     // choice holds through the move; Return, the keys' press, opens the
-    // Conversation with its topics as before (⌘→ and ⌘← fold), and the outline
+    // home with its topics as before (⌘→ and ⌘← fold), and the outline
     // tidies itself as on any arrival. The keys stay on the name, as after any
     // press on a row of the outline (key-tree.mjs, in-place-navigation.mjs).
     name.onclick = async event => {
@@ -457,7 +456,7 @@ export class OutlineRail {
         if(el.hidden||!el.getClientRects().length)continue;
         const said = el.dataset.pageId ? 'page:'+el.dataset.pageId : el.dataset.topicId ? 'topic:' + el.dataset.topicId : el.getAttribute('href') ?? el.textContent.replace(/\(\d+\)/g, '').trim();
         const dossiers = el.closest('.ol-dossiers');
-        const parent = dossiers ? [...outcome.topics.querySelectorAll('a[data-topic-id],a[data-page-conversation-id]')].find(a => (a.dataset.topicId??a.dataset.pageConversationId) === dossiers.dataset.parentTopicId) : null;
+        const parent = dossiers ? [...outcome.topics.querySelectorAll('a[data-topic-id]')].find(a => a.dataset.topicId === dossiers.dataset.parentTopicId) : null;
         rows.push({ el, level: dossiers ? (deep ? 4 : 3) : deep ? 3 : 2, set: dossiers ?? (deep ? group : li), key: `${id}|${dossiers ? (el.dataset.pageId?'page:':'dossier:') + (el.dataset.pageId ?? el.dataset.dossierId ?? el.textContent) : said}`, parent: parent ?? (deep ? summary : outcome.name),
           expanded: el === summary ? group.open : undefined, outcome });
       }
@@ -486,8 +485,8 @@ export class OutlineRail {
   write(row) {
     if (row.el.dataset.topicId) { panes.write?.({ kind: 'topic', id: row.el.dataset.topicId }, rowTitle(row.el) || 'the topic'); return; }
     if (row.level !== 1 || !row.outcome) { panes.write?.(null); return; }
-    const target = this.nameTarget(row.outcome);
-    if (target.kind === 'conversation') panes.write?.(target, row.outcome.item.title);
+    const id = row.outcome.conversation?.topic_id;
+    if (id) panes.write?.({kind:'topic', id}, row.outcome.item.title);
   }
   // ⌘↑ ⌘↓: an outcome among the outcomes shown, a topic within the list that
   // holds it in its outcome. The row keeps the focus; a screen reader hears
@@ -561,7 +560,7 @@ export class OutlineRail {
       // An outcome's Build topics are the right rail's (item 297): its open list here leaves them out.
       pages: new TopicPages(this.bootstrap.instance_id, outcome.id, this.currentTopicIn(outcome.id), 'active', true), ...outcome.parts,
       storage: this.storage, area: outcome.own, denied: error => readFailure(error).kind === 'forbidden',
-      read: args => this.read('workspace_topics', args, 'foreground'), open: (topicId, topicTitle, message, at) => this.open(topicTarget(topicId, message, at), topicTitle) });
+      read: args => readTopicList((name, query) => this.read(name, query, 'foreground'), args), open: (topicId, topicTitle, message, at) => this.open(topicTarget(topicId, message, at), topicTitle) });
     return outcome.rail;
   }
   // An outcome's topics, read again: the page's own list reads itself.
@@ -613,9 +612,9 @@ export class OutlineRail {
     outcome.own.hidden = false;
     if (this.isOpen(outcome.id)) this.ownRail(outcome).load();
   }
-  // An outcome's name opens its Conversation; one Core says has none opens its page.
+  // An outcome's name opens its home.
   nameTarget(outcome) {
-    return outcome.conversationRead && !outcome.conversation ? { kind: 'workspace', id: outcome.id } : { kind: 'conversation', id: outcome.id };
+    return { kind: 'workspace', id: outcome.id };
   }
   // The outcome's pencil: one title line under its row, whether it is open or
   // folded; Return starts the topic and opens it.
@@ -665,25 +664,22 @@ export class OutlineRail {
       outcome.topics.setAttribute('aria-label', `Topics in ${item.title}`);
       const target = this.nameTarget(outcome);
       outcome.name.href = routeHref(target);
-      if (route?.kind === 'conversation' && route.id === item.id) outcome.name.setAttribute('aria-current', 'page'); else outcome.name.removeAttribute('aria-current');
+      if (route?.kind === 'workspace' && route.id === item.id) outcome.name.setAttribute('aria-current', 'page'); else outcome.name.removeAttribute('aria-current');
       // The words only when they change, so the pointer's hover stays on what it was on.
-      const counted = rowCount(item, { open, conversation: outcome.conversation });
-      // Open, the row stands for its Conversation as the side rail's row did: its work ring, and Waiting on you.
-      const own = open && outcome.conversation ? { waiting: waitsOnReader(outcome.conversation, this.handles?.bootstrap.actor).length > 0, work: Boolean(outcome.conversation.work?.observed) } : null;
-      const said = JSON.stringify([item.title, item.title_truncated, counted, open && countedWhere(item, outcome.conversation), item.light, open, own]);
+      const counted = rowCount(item, { open });
+      const said = JSON.stringify([item.title, item.title_truncated, counted, open && countedWhere(item), item.light, open]);
       if (outcome.said !== said) {
         outcome.said = said;
         outcome.title.textContent = item.title + (item.title_truncated ? '…' : '');
         paintUnread(outcome.title, { ...counted, unread: counted.unread });
         const spoken = outcome.title.querySelector('.sr-only');
-        if (spoken && open && counted.unread) spoken.textContent += ' in ' + countedWhere(item, outcome.conversation);
+        if (spoken && open && counted.unread) spoken.textContent += ' in ' + countedWhere(item);
         if (item.provisional) outcome.standing.replaceChildren(); else paintRowLight(outcome.standing, item.light);
         // The light leads the name; its words stay on the line under it.
         const lamp = outcome.standing.querySelector('.outcome-light');
         const line = outcome.name.firstChild;
         line.querySelector(':scope > .outcome-light')?.remove(); line.querySelector(':scope > .topic-state')?.remove();
         if (lamp) line.prepend(lamp);
-        if (own?.work) outcome.title.append(element(this.doc, 'span', { className: 'topic-work', ariaHidden: 'true' }));
         // A separate control reaches the question; the name keeps its own toggle.
         const waits = asksIn(item) > 0;
         outcome.waiting.hidden = !waits;

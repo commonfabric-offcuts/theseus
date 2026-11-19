@@ -157,8 +157,8 @@ const plainClick = event => event.button === 0 && !event.metaKey && !event.ctrlK
 const settle = promise => promise.then(value => ({ value }), error => ({ error }));
 
 export class ThingsRail {
-  constructor({ host, backdrop, storage = null, doc = host.ownerDocument, win = doc.defaultView }) {
-    Object.assign(this, { host, backdrop, storage, doc, win });
+  constructor({ host, backdrop, storage = null, doc = host.ownerDocument, win = doc.defaultView, embedded = false }) {
+    Object.assign(this, { host, backdrop, storage, doc, win, embedded });
     this.handles = null; this.scope = 'outcome'; this.unlisten = null; this.stale = false; this.serial = 0; this.folds = null;
     // The Notebook section's pencils, by the scope each writes in ('topic', 'outcome'); how many of its
     // pages the person has asked to see; and the first page More brought, which takes the focus from More.
@@ -174,11 +174,11 @@ export class ThingsRail {
     // section, Return opens a row, ← from a folded section goes back to the
     // messages (panes.mjs); ↑ above the first section goes on to the rail's
     // name and its "Just this topic" and "All of this outcome" (arrow-reach.mjs).
-    this.tree = new KeyTree({ root: this.holder, doc, label: 'The outcome\'s things', column: this.host, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows) });
+    this.tree = embedded ? null : new KeyTree({ root: this.holder, doc, label: 'The outcome\'s things', column: this.host, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows) });
     // The sheet closes with Escape, its ✕ and a tap beside it; the shell keeps these across moves.
-    listen(doc, 'keydown', event => { if (event.key === 'Escape' && this.isOpen()) { event.preventDefault(); this.close(true); } });
-    listen(backdrop, 'click', () => this.close(true));
-    this.wide = win.matchMedia?.('(min-width: 1181px)') ?? null;
+    if (!embedded) listen(doc, 'keydown', event => { if (event.key === 'Escape' && this.isOpen()) { event.preventDefault(); this.close(true); } });
+    if (!embedded) listen(backdrop, 'click', () => this.close(true));
+    this.wide = embedded ? null : win.matchMedia?.('(min-width: 1181px)') ?? null;
     if (this.wide) listen(this.wide, 'change', () => { if (this.wide.matches) this.close(false); if (this.stale && this.shows()) this.reload(); });
   }
   build() {
@@ -209,7 +209,7 @@ export class ThingsRail {
     this.message = element(doc, 'p', { className: 'notice', hidden: true }); this.message.setAttribute('role', 'status');
     this.retry = element(doc, 'button', { type: 'button', textContent: 'Try again', hidden: true });
     this.retry.onclick = () => this.reload();
-    this.host.replaceChildren(element(doc, 'div', { className: 'things-head' }, this.heading, this.closer), this.chips, this.name, holder, this.nothing, this.message, this.retry);
+    this.host.replaceChildren(...(this.embedded ? [] : [element(doc, 'div', { className: 'things-head' }, this.heading, this.closer), this.chips, this.name]), holder, this.nothing, this.message, this.retry);
     this.host.hidden = true;
   }
   // Each section shown, and under an open one what can be pressed in it.
@@ -242,7 +242,7 @@ export class ThingsRail {
   focus() { return this.tree.focus(); }
   isOpen() { return this.doc.documentElement.hasAttribute('data-things-open'); }
   // Whether the rail is on screen: beside the page, or open as a sheet or panel.
-  shows() { return !this.host.hidden && (this.wide?.matches || this.isOpen()); }
+  shows() { return !this.host.hidden && (this.embedded ? Boolean(this.host.closest('details')?.open) : this.wide?.matches || this.isOpen()); }
   open() {
     this.doc.documentElement.setAttribute('data-things-open', '');
     this.backdrop.hidden = false;
@@ -288,7 +288,8 @@ export class ThingsRail {
     }
   }
   ready(handles) {
-    if (!['topic', 'conversation'].includes(handles.route?.kind)) return;
+    if (!['topic', 'conversation', ...(this.embedded ? ['workspace'] : [])].includes(handles.route?.kind)) return;
+    if (this.embedded) this.host.hidden=false;
     this.handles = handles;
     this.folds ??= new SectionFolds(this.storage, `aim-next.things.${handles.bootstrap.instance_id}.${handles.bootstrap.actor}`);
     this.scope = handles.route.kind === 'topic' ? 'topic' : 'outcome';
@@ -371,10 +372,10 @@ export class ThingsRail {
     const readable = id => id !== handles.topic?.id || handles.readable?.() !== false;
     const pipeline = settle(this.readPipeline(view, workspace));
     const stars = settle(view('stars', { limit: 50 }));
-    const tools = byTopic && !readable(topicId) ? settle(Promise.resolve(null))
+    const tools = this.embedded || byTopic && !readable(topicId) ? settle(Promise.resolve(null))
       : settle(byTopic ? view('topic_tools', { topic_id: topicId }).then(answer => answer.linked.map(tool => ({ ...tool, home: tool.home_workspace_id })))
         : view('tools', { workspace_id: workspace }).then(answer => [...answer.own, ...answer.used].map(tool => ({ ...tool, home: tool.home.workspace_id, live: true }))));
-    const notebook = byTopic && !readable(topicId) ? settle(Promise.resolve(null)) : settle(this.readNotebook(view, byTopic ? { kind: 'topic', id: topicId } : { kind: 'workspace', id: workspace }));
+    const notebook = this.embedded || byTopic && !readable(topicId) ? settle(Promise.resolve(null)) : settle(this.readNotebook(view, byTopic ? { kind: 'topic', id: topicId } : { kind: 'workspace', id: workspace }));
     const places = (byTopic ? [this.topicPlace(handles)] : await this.outcomePlaces(view, workspace)).filter(place => readable(place.id));
     if (serial !== this.serial || handles !== this.handles) return true;
     const reads = places.map(place => settle(this.readPlace(view, place, byTopic ? 24 : 12)));
@@ -484,7 +485,7 @@ export class ThingsRail {
     };
     let any = false;
     for (const [key] of SECTIONS) {
-      const part = this.sections.get(key), section = shown[key];
+      const part = this.sections.get(key), section = this.embedded && ['pipeline','notebook','tools'].includes(key) ? null : shown[key];
       if (section === undefined) continue; // not read this time: what showed stays
       const appears = part.details.hidden && Boolean(section);
       part.details.hidden = !section;
@@ -594,6 +595,7 @@ export class ThingsRail {
       const sub = element(doc, 'span', { className: 'sub', textContent: `${star.author_id === reader ? 'you' : star.author_id}${here(star) && found.byTopic ? '' : ` in ${star.conversation ? 'Conversation' : star.topic_title}`}` });
       const off = element(doc, 'button', { type: 'button', className: 'things-unstar', textContent: 'Unstar', title: 'Take the star off' });
       off.setAttribute('aria-label', `Unstar "${firstWords(star.excerpt, 40)}"`);
+      off.hidden = !this.handles.unstar;
       off.onclick = () => this.handles.unstar?.(star);
       return element(doc, 'li', { className: 'things-starred' }, this.placeLink({ kind: 'topic', id: star.topic_id, message: star.message_id }, firstWords(star.excerpt, 70), sub), off);
     };
@@ -648,7 +650,7 @@ export class ThingsRail {
     link.onclick = event => {
       if (!plainClick(event) || !this.handles) return;
       event.preventDefault();
-      if (!this.wide?.matches) this.close(false);
+      if (!this.embedded && !this.wide?.matches) this.close(false);
       this.handles.open(target, tool.name, link);
     };
     return link;
@@ -676,7 +678,7 @@ export class ThingsRail {
       event.preventDefault();
       // A press on a topic's unread count opens it at its oldest unread message (item 613).
       const to = target.kind === 'topic' && landsOnUnread(event.target, event) ? { kind: 'topic', id: target.id, at: 'unread' } : target;
-      if (!this.wide?.matches) this.close(false);
+      if (!this.embedded && !this.wide?.matches) this.close(false);
       this.handles.open(to, title || 'that page', link);
     };
     return link;

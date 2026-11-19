@@ -1974,7 +1974,7 @@ test('a report whose answer is lost after Core recorded it keeps the New line un
 test('no card is read on screen until every fill drawn above the messages has had its first answer, read or refused, and a fill of the rail holds none back', async t => {
   const fills = [
     { fill: 'the marks line', page: 'topic', holds: name => name === 'marks', above: true },
-    { fill: 'the conversation\'s Show row', page: 'conversation', holds: name => name === 'conversation', above: true },
+    { fill: 'conversation reply metadata', page: 'conversation', holds: name => name === 'conversation', above: false },
     { fill: 'the topics rail', page: 'topic', holds: name => name === 'workspace_topics', above: false },
     { fill: 'the conversation row', page: 'topic', holds: name => name === 'conversation', above: false },
     { fill: 'the Pipeline row', page: 'topic', holds: name => name === 'pipeline_row', above: false },
@@ -1997,7 +1997,7 @@ test('no card is read on screen until every fill drawn above the messages has ha
       const ranges = () => f.calls.filter(c => c.kind === 'topic.read_through').map(c => [c.envelope.args.from_seq, c.envelope.args.seq]);
       await f.initialize(); await settle();
       assert.equal(held.length, 1, label + ': the page asked for it once, and it is held');
-      assert.equal(f.document.body.classList.contains('conversation-page'), kind === 'conversation', label + ': the page is the kind it says');
+      assert.equal(f.document.body.classList.contains('conversation-page'), false, label + ': every topic uses the ordinary page');
       for (let seq = 20; seq <= 22; seq++) f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body ' + seq, topic_id: 't1' });
       f.views.newest = 22; f.paintViews('messages'); await settle();
       const card = seq => f.observers[0].targets.find(target => target.dataset.seq === seq);
@@ -2831,7 +2831,7 @@ test('the page starts its attention from the bootstrap\'s number', async () => {
   assert.equal(f.owners().attention.after, 41);
 });
 
-test('a Mark read that fails says so and reads attention again, leaving nothing unhandled', async () => {
+test('835 removes Sent to you by name without marking any delivery read', async () => {
   const f = fixture('https://fixture/?'), o = outcomesPage(f), view = f.api.view;
   o.answers.push(o.page([]));
   const lost = { id: 'd1', seq: 3, topic_readable: false, topic: { id: 't9', title: 'Lost', title_truncated: false }, message: { author_id: 'tony', body: 'Hi' } };
@@ -2839,15 +2839,8 @@ test('a Mark read that fails says so and reads attention again, leaving nothing 
   f.inject({ api: f.api, bootstrap: f.bootstrap });
   await f.initialize(); await drain();
   const nodes = host => host.children.filter(child => typeof child === 'object').flatMap(child => [child, ...nodes(child)]);
-  const mark = nodes(f.get('sent-to-you')).find(node => node.textContent === 'Mark read');
-  assert.ok(mark, 'a lost topic offers Mark read');
-  f.api.command = async () => { throw Object.assign(Error('Connection interrupted. Confirmation is unknown; your writing is kept.'), { status: 0 }); };
-  const reads = f.calls.filter(call => call.name === 'attention').length;
-  await mark.onclick();
-  assert.match(f.get('app-status').textContent, /Connection interrupted/);
-  assert.equal(f.get('app-status').hidden, false);
-  assert.equal(f.calls.filter(call => call.name === 'attention').length, reads + 1, 'what Core holds is read again');
-  assert.equal(mark.disabled, false);
+  assert.equal(nodes(f.get('sent-to-you')).length,0,'835 removes the play-by-play wall even when there are addressed messages');
+  assert.equal(f.calls.filter(call=>call.kind==='delivery.ack').length,0,'hiding the wall acknowledges nothing');
 });
 
 // A topic page whose server keeps the read lanes apart, with the real recovery
@@ -4511,8 +4504,8 @@ test('cards inside a reply stack count as read on screen, and a range breaks at 
 // their words; here each painter records the card it was given and the link it
 // follows, so these checks read what the page hands them for a stacked message.
 async function conversationPage(list, { waits = [], href = 'https://fixture/?topic=t1' } = {}) {
-  const painted = { tags: new Map(), asks: new Map(), about: new Map() };
-  const f = fixture(href, { history: { state: null, replaceState() {} },
+  const painted = { tags: new Map(), asks: new Map(), about: new Map() }, renames=[];
+  const f = fixture(href, { history: { state: null, replaceState(_state,_title,url) {renames.push(url);} },
     paintItemTags: (card, item, shownWaits, _reader, open) => painted.tags.set(card.dataset.id, { card, item, waits: shownWaits, open }),
     paintAsksYou: (author, item, shownWaits, reader) => painted.asks.set(item.id, (shownWaits ?? []).some(wait => wait.on === reader && wait.ask_message_id === item.id)),
     paintAbout: (card, item, _reader, open) => painted.about.set(card.dataset.id, { item, open }) });
@@ -4540,9 +4533,9 @@ async function conversationPage(list, { waits = [], href = 'https://fixture/?top
     return view(name, args, options);
   };
   await f.initialize(); for (let n = 0; n < 6; n++) await settle();
-  assert.equal(f.document.body.classList.contains('conversation-page'), true, 'the page is the conversation');
+  assert.equal(f.document.body.classList.contains('conversation-page'), false, 'the conversation uses the ordinary topic page');
   const stackOf = id => { const folder = entryIn(f, id)?.closest('.reply-stack'); return folder?.dataset.single === 'true' ? null : folder ?? null; };
-  return { f, painted, opens, stackOf };
+  return { f, painted, opens, stackOf, renames };
 }
 // One item answered, asked back about, and replied to, beside a new item of its own:
 // m1 the person's item, answered by the coordinator's m2 and asked back about in m4 (which waits on them);
@@ -4604,10 +4597,8 @@ test('on the conversation page replies stack under the message they answer, as i
     'read asks and unsettled items do not override latest plus unread');
   assert.equal(toggle.getAttribute('aria-expanded'), 'true');
   assert.equal(toggle.className, 'stack-toggle');
-  // The conversation's marks are painted on every message entry, stacked or not, with its item.
-  assert.deepEqual([...painted.tags.keys()].sort(), ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'], 'each card gets its tags, stacked ones included');
-  assert.deepEqual(['m1', 'm3', 'm6', 'm2'].map(id => entryIn(f, id).dataset.item), ['settled', 'new', 'new', 'none'], 'each entry says its item for Only new');
-  assert.deepEqual(painted.tags.get('m1').waits, ASKED, 'the stacked item\'s wait is handed to its tags');
+  assert.equal(painted.tags.size, 0, 'the retired item-tag painter is never called');
+  assert.ok(['m1','m2','m3','m4','m5','m6'].every(id => entryIn(f,id).dataset.item === undefined), 'no Only new markers');
   assert.deepEqual([painted.asks.get('m4'), painted.asks.get('m2')], [true, false], '"Asks you" on the stacked ask, and on no other');
 });
 
@@ -4617,15 +4608,15 @@ test('on the conversation page a link to a message folded in a stack opens its s
   for (const id of ['m2', 'm4']) entryIn(f, id).scrollIntoView = () => scrolled.push(id);
   assert.equal(entryIn(f, 'm2').hidden, true, 'the reply the item\'s Answered tag names is folded away');
   // "agent-a's reply" on m1's Answered tag.
-  painted.tags.get('m1').open('message', 'm2'); await settle();
+  painted.about.get('m1').open('message', 'm2'); await settle();
   assert.equal(stackOf('m2').dataset.fold, 'open', 'its stack opens');
   assert.deepEqual([entryIn(f, 'm2').hidden, scrolled, opens.at(-1)], [false, ['m2'], ['m2', 'm2']],
     'the reply shows, is brought into view, and opens in the Reader from its own card');
   // The ask in m1's "Waiting on you" tag, kept in view: it is brought into view and opened the same way.
-  painted.tags.get('m1').open('message', 'm4'); await settle();
+  painted.about.get('m1').open('message', 'm4'); await settle();
   assert.deepEqual([scrolled, opens.at(-1)], [['m2', 'm4'], ['m4', 'm4']]);
   // A message that is not on the page opens in the Reader alone, from where the person is.
-  painted.tags.get('m1').open('message', 'elsewhere'); await settle();
+  painted.about.get('m1').open('message', 'elsewhere'); await settle();
   assert.equal(opens.at(-1)[0], 'elsewhere');
   // A message's link (docs/links.md) to a folded reply in the conversation.
   const linked = await conversationPage(conversationMessages(), { waits: ASKED, href: 'https://fixture/?topic=t1&message=m2' });
@@ -4643,7 +4634,8 @@ test('on the conversation page More messages brings a stack\'s first message: th
   const stack = stackOf('m1');
   assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => stackOf(id) === stack), [true, true, true, true], 'the older message heads the one stack');
   assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, true, true, true], 'read asks and New items do not add extra messages');
-  assert.deepEqual([painted.tags.get('m1')?.item.item, entryIn(f, 'm1').dataset.item], [ANSWERED, 'settled'], 'the loaded message gets its tags from its item');
+  assert.equal(entryIn(f, 'm1').dataset.item, undefined, 'More paints no retired Only new marker');
+  assert.equal(painted.about.get('m1').item.id, 'm1', 'More keeps ordinary source-link context');
 });
 
 test('on the conversation page a reply folded in its stack is never reported read, as in any topic', async () => {
@@ -4780,23 +4772,7 @@ for (const failedRead of ['stack_positions', 'topic_messages']) test(`item 655 B
   assert.match(f.get('reader-notice').textContent, /Dossier name could not be read/);
 });
 
-test('item 655 B4 title return clears Only new after preservation succeeds, while dismissal and refused close keep it', async () => {
-  const { f, p, source } = await starred655();
-  const here = { page: true, onlyNew: true, items: new Map(), view: null };
-  f.views.messages.set(source.source_ref.id, { id: source.source_ref.id });
-  f.inject({ ...f.owners(), api: f.api, bootstrap: f.bootstrap, reader: f.reader, topic: f.topic, views: f.views, here });
-  f.registry.close = async () => { f.registry.current = null; return true; };
-  f.reader.presentation = p;
-  assert.equal(await f.reader.callbacks.close(null, 'close'), true);
-  assert.equal(here.onlyNew, true, 'ordinary dismissal preserves the filter');
-  f.registry.current = p;
-  f.registry.close = async () => false;
-  assert.equal(await f.reader.callbacks.close(null, 'parent'), false);
-  assert.equal(here.onlyNew, true, 'refused preservation changes no filter');
-  f.registry.close = async () => { f.registry.current = null; return true; };
-  assert.equal(await f.reader.callbacks.close(null, 'parent'), true);
-  assert.equal(here.onlyNew, false, 'an explicit return reveals the settled source by clearing Only new');
-});
+
 
 
 test('item 655 B1 a loaded root whose replies are still outside the page agrees with its scoped title', async () => {
@@ -4898,4 +4874,55 @@ for (const outcome of ['confirmed', 'refused', 'recovery error']) test(`item 673
   assert.equal(f.runObservation('window.pencil.calls.length'), 1);
   assert.equal(sheet.open, outcome !== 'confirmed');
   if (outcome === 'recovery error') assert.match(f.get('inline-notice').textContent, /recovery failed/);
+});
+
+
+test('835 legacy conversation links resolve to the ordinary topic with its actual title and unchanged writing destination',async()=>{
+  const {f,renames}=await conversationPage(conversationMessages(),{waits:ASKED,href:'https://fixture/?conversation=w1'});
+  assert.ok(renames.some(url=>url.startsWith('?topic=t1')), 'legacy address replaced with real topic identity');
+  assert.equal(f.owners().registry.inline.topic.id,'t1');
+  assert.equal(f.owners().registry.inline.editors.reply.context.topicId,'t1');
+  assert.equal(f.owners().registry.inline.editors.reply.draft.body,'kept');
+  assert.equal(f.get('settings-open').hidden,true,'Core still refuses conversation settings');
+  assert.equal(f.get('topic-title').textContent,'Fixture');
+  assert.equal(f.get('conversation-show').children.length,0);
+  assert.equal(f.get('conversation-row').children.length,0);
+});
+
+test('835 outcome home keeps its primary sections and opens the secondary references only on demand',async()=>{
+  const thumbnails=[];
+  const f=fixture('https://fixture/?workspace=w1',{paintThumb:(_host,_key,load)=>thumbnails.push(load)}), original=f.api.view;
+  f.topic.list_position=0;
+  f.api.media=async(instance,attachment,ref)=>{assert.equal(instance,'fixture');assert.equal(attachment.id,'image835');assert.equal(ref.id,'retained835');return {blob:'fixture image bytes'};};
+  f.api.view=async(name,args,options)=>{
+    if(['workspace','pipeline','conversation','stars','topic_messages','topic_images'].includes(name))f.calls.push({name,args});
+    if(name==='workspace')return {instance_id:'fixture',workspace:{id:'w1',title:'Launch',purpose:'Ship',owner_id:'owner'}};
+    if(name==='pipeline')return {instance_id:'fixture',pipeline:null,items:[],next_cursor:null};
+    if(name==='conversation')return {instance_id:'fixture',conversation:{topic_id:'t1',version:1}};
+    if(name==='stars')return {instance_id:'fixture',items:[{workspace_id:'w1',topic_id:'t1',message_id:'retained835',author_id:'fixture-person',excerpt:'Keep this reference',star_revision:1}]};
+    if(name==='topic_messages')return {instance_id:'fixture',items:[{id:'retained835',topic_id:'t1',author_id:'fixture-person',body:'[Preview](https://example.test/preview/835) [Change](https://github.com/example/project/pull/835)',item:{state:'new',takes:[]}}],next_cursor:null};
+    if(name==='topic_images')return {instance_id:'fixture',items:[{topic_id:'t1',author_id:'fixture-person',source_ref:{kind:'message',id:'retained835'},attachment:{id:'image835',name:'Plan.png'}}],next_cursor:null};
+    return original(name,args,options);
+  };
+  f.inject({api:f.api,bootstrap:f.bootstrap});
+  await f.initialize();await drain();
+  const ids=f.get('outcome-page').children.map(node=>node.id);
+  for(const id of ['outcome-standing','target-panel','pipeline-line','topic-navigation','outcome-references','outcome-team','outcome-tools']) assert.ok(ids.includes(id),id+' remains');
+  assert.ok(ids.indexOf('topic-navigation')<ids.indexOf('loop-panel'));
+  assert.ok(ids.indexOf('outcome-team')<ids.indexOf('also-waiting'));
+  assert.equal(f.calls.some(call=>call.name==='stars'),false,'closed references read no stars');
+  const count=name=>f.calls.filter(call=>call.name===name).length, notes=count('memory_items'),tools=count('tools');
+  f.get('outcome-context').open=true;
+  await f.get('outcome-context').ontoggle();await drain();
+  assert.ok(f.calls.some(call=>call.name==='stars'),'opening reads the existing bounded context');
+  assert.equal(count('memory_items'),notes,'does not duplicate the Notebook read');
+  assert.equal(count('tools'),tools,'does not duplicate the tools read');
+  const walk=node=>[node,...(node.children??[]).flatMap(walk)], nodes=walk(f.get('outcome-context-body'));
+  const shown=nodes.filter(node=>node.className==='things-sec'&&!node.hidden).map(node=>node.dataset.key);
+  assert.deepEqual(shown,['starred','waiting','previews','prs','images']);
+  assert.ok(nodes.some(node=>node.href==='https://example.test/preview/835'));
+  assert.ok(nodes.some(node=>node.href==='https://github.com/example/project/pull/835'));
+  assert.equal(nodes.filter(node=>node.href==='?topic=t1&message=retained835').length,3,'star, waiting item and image keep their message destination');
+  assert.equal(thumbnails.length,1);
+  assert.equal(await thumbnails[0](),'fixture image bytes','embedded image uses the current page media reader');
 });

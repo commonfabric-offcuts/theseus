@@ -32,26 +32,16 @@ export class OutlineDossiers {
   }
   parents() {
     const parents=[...this.outline.list.querySelectorAll('a[data-topic-id]')].filter(el => el.getClientRects().length && !el.closest('[inert]'));
-    if(this.pageStars)for(const outcome of this.outline.outcomes.values()) {
-      if(outcome.topics.hidden||outcome.li.hidden||!outcome.topics.getClientRects().length||outcome.topics.closest('[inert]')||!outcome.conversation)continue;
-      let link=outcome.pageConversation;
-      if(!link){
-        link=this.outline.doc.createElement('a');link.className='ol-page-conversation';link.textContent='Conversation';link.tabIndex=-1;link.hidden=true;
-        link.onclick=event=>{if(!plain(event))return;event.preventDefault();this.outline.open({kind:'conversation',id:outcome.id},outcome.item.title);};
-        outcome.topics.prepend(link);outcome.pageConversation=link;
-      }
-      link.dataset.pageConversationId=outcome.conversation.topic_id;link.href=routeHref({kind:'conversation',id:outcome.id});parents.push(link);
-    }
     return parents;
   }
   sync() {
     if (!this.outline.handles) return;
-    const parents = this.parents(), ids = new Set(parents.map(el => el.dataset.topicId ?? el.dataset.pageConversationId));
+    const parents = this.parents(), ids = new Set(parents.map(el => el.dataset.topicId));
     for (const [id, state] of this.states) {
       if (!ids.has(id)) { state.box.remove(); state.visible = false; continue; }
     }
     for (const parent of parents) {
-      const id = (parent.dataset.topicId ?? parent.dataset.pageConversationId);
+      const id = parent.dataset.topicId;
       let state = this.states.get(id);
       if (!state) {
         const box = this.outline.doc.createElement('div');
@@ -70,7 +60,7 @@ export class OutlineDossiers {
   }
   refresh() {
     this.sync();
-    return Promise.all(this.parents().map(parent => this.load(this.states.get((parent.dataset.topicId ?? parent.dataset.pageConversationId)))));
+    return Promise.all(this.parents().map(parent => this.load(this.states.get(parent.dataset.topicId))));
   }
   async load(state, more = false) {
     if (!state || !this.outline.handles) return true;
@@ -139,7 +129,6 @@ export class OutlineDossiers {
       state.links.delete(id);
     }
     const noun=this.pageStars?'pages':'dossiers';
-    if(this.pageStars&&state.parent.dataset.pageConversationId)state.parent.hidden=!nodes.length&&!state.error&&state.next===null;
     if (state.error) {
       const notice = doc.createElement('span'); notice.className='muted'; notice.setAttribute('role','status');
       notice.textContent = state.error.kind === 'forbidden' ? `Starred ${noun} are unavailable.` : `Starred ${noun} could not be read.`;

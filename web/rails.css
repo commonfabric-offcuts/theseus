@@ -6,7 +6,7 @@
 /* The outline takes the place of the outcome's own sections: the outcomes list, "← Outcomes",
    the Conversation row, the Pipeline row, the topics, and Skills and tools (on the right rail here). The page still reads them (a message's
    Add to pipeline follows the Pipeline row); they are not shown. */
-[data-rails] :is(#outcomes-home,#outcome-navigation,#conversation-navigation,#pipeline-navigation,#skills-navigation){display:none!important}
+[data-rails] :is(#outcomes-home,#outcome-navigation,#pipeline-navigation,#skills-navigation){display:none!important}
 /* The page's own topic list moves into the outline, under the outcome being read
    (outline-rail.mjs); until it does it waits out of sight. */
 [data-rails] #rail>#topic-navigation{display:none}
@@ -186,6 +186,3 @@ a.things-name[href]{color:var(--accent)}
 .ol-dossiers>button{display:block;min-height:44px;padding:.35rem .5rem;color:var(--accent);background:transparent;border:0;text-align:left;font-size:.8rem;max-width:100%}
 .ol-dossiers>[role=status]{display:block;font-size:.8rem;overflow-wrap:anywhere}
 .ol-dossiers:empty{margin-bottom:0}
-
-.ol-page-conversation{display:block;padding:.5rem;color:var(--muted);min-height:44px;text-decoration:none}
-.ol-page-conversation[hidden]{display:none}
