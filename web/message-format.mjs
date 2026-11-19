@@ -726,6 +726,13 @@ function edgeFades(box, held) {
 
 const MARKS = { open: '☐', done: '☑' };
 
+// Paint may join display-only paragraph breaks, but never an authored break.
+// This marker changes no words, source positions, layout or passage boundary.
+function sentencePart(node, block) {
+  if (block.sentenceParagraph) node.dataset.sentenceParagraph = block.paragraphEnd === false ? 'more' : 'end';
+  return node;
+}
+
 // One block as nodes. Inside a card (a button), every block is a span shown
 // as a block, but for a table, which needs its own elements. cut: the block
 // ends an excerpt, so its last words may be cut.
@@ -764,7 +771,7 @@ function blockNode(block, doc, cut, meter, copyFences = false) {
       const marker = el(doc, 'span', 'md-marker', [placed(doc.createTextNode(glyph), { start: item.start, end: item.words.left })], { start: item.start, end: item.words.left });
       const last = cut && n === block.items.length - 1;
       const content = item.paragraphs ? item.paragraphs.map((part, k) =>
-        el(doc, 'span', 'sentence-paragraph', inline(part.words, last && k === item.paragraphs.length - 1), { start: part.start, end: part.end }))
+        sentencePart(el(doc, 'span', 'sentence-paragraph', inline(part.words, last && k === item.paragraphs.length - 1), { start: part.start, end: part.end }), part))
         : inline(item.words, last);
       const words = el(doc, 'span', 'md-item-words', content, { start: item.words.left, end: item.words.end() });
       const row = el(doc, 'span', `md-item${item.task ? ' md-task' : ''}${item.task === 'done' ? ' md-done' : ''}`, [marker, words], { start: item.start, end: item.end });
@@ -773,7 +780,7 @@ function blockNode(block, doc, cut, meter, copyFences = false) {
     }), span);
   }
   if (block.kind === 'table') return tableNode(block, doc, meter);
-  return el(doc, 'span', 'md-block md-p', inline(block.words), span);
+  return sentencePart(el(doc, 'span', 'md-block md-p', inline(block.words), span), block);
 }
 
 // A table scrolls inside its own box, so a wide one never widens the card or the page.
