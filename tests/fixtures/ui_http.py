@@ -525,6 +525,8 @@ def main():
         item783_builds = Builds783(server, root, server_module.web_build.load)
         from item_721_runtime import Item721Runtime
         item721_runtime = Item721Runtime(server, root, server_module.web_build.load)
+        from item_650_runtime import Item650Runtime
+        item650_runtime = Item650Runtime(Path(__file__).resolve().parents[2], root, server_module.web_build.load)
         # Item 645: source-bound page comparisons inside one filtered native run.
         # This private stdin control swaps immutable public Build bytes only;
         # Core, records, origin and authority remain the same isolated fixture.
@@ -911,6 +913,8 @@ def main():
                             db.row_factory = sqlite3.Row
                             revision = current_acts(db, actor, [request["message_id"]]).get(request["message_id"], {}).get(field, 0)
                         answer = command(request["kind"], request["operation_id"], request["args"], {"message_id": request["message_id"]}, {field: revision})
+                    elif request["method"] == "item650_runtime":
+                        answer = item650_runtime.select(server, request["phase"])
                     elif request["method"] == "server_stop":
                         # As a deploy stops the server: its live streams end and
                         # the address refuses connections until server_start.
@@ -1602,6 +1606,9 @@ def main():
                 except Exception as error:
                     print(json.dumps({"id": request["id"], "failure": str(error)}), flush=True)
         finally:
+            item650_unrestored = item650_runtime.active is not None
+            if item650_unrestored:
+                item650_runtime.select(server, "restored")
             item783_unrestored = server.build is not item783_builds.candidate
             if item783_unrestored:
                 item783_builds.select("restored")
@@ -1625,6 +1632,7 @@ def main():
             if controls is not None:
                 controls.assert_healthy()
             item721_runtime.close()
+            assert not item650_unrestored, "Item 650 baseline was not restored"
             assert not item783_unrestored, "Item 783 comparison runtime was not restored"
             assert not item645_unrestored, "Item 645 comparison runtime was not restored"
             if reading785_cleanup_error is not None:

@@ -58,6 +58,15 @@ light and dark.
   desktop context at those widths. Native WebKit finger-drag proof is a gap
   in the existing driver, which supplies taps but no drags.
 
+- Historical “item 650” cases in `tests/composer_width_native.mjs` declare
+  resizing either composer edge symmetrically around the centre, only
+  horizontally, at 320, 375, 390 and laptop in both themes and engines, in
+  each affected state ([composer-width.md](composer-width.md)).
+  Review corrections add held-drag reversal, native Tab reach, topic access
+  and conflict/recovery branches. The source composition retains the base
+  native runner without650 registration; this head is UNRUN. Historical976
+  remains bound to1e462, not this phone correction or composition.
+
 ## Keys mean one thing in each place
 
 While reading a source, Return quotes the selected or lit passage, in the

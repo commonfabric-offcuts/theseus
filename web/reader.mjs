@@ -3,6 +3,7 @@ import { messageFoldSwipe } from './message-fold-swipe.mjs';
 import { keyAction, holdsWriting, written } from './editor.mjs';
 import { showLine } from './lines.mjs';
 import { ReaderLayout } from './layout.mjs';
+import { composerWidth } from './composer-width.mjs';
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 import { paintAddress } from './people.mjs';
 import { timeNode } from './times.mjs';
@@ -91,6 +92,7 @@ export class Reader {
     this.narrow = window.matchMedia('(max-width: 760px)');
     this.narrow.addEventListener('change', () => { this.placeEnd(); if (this.dialog.open) this.applyLayout(); });
     this.bind();
+    this.syncWidthPlacement = composerWidth(this.dialog);
   }
   // Capture the source where the gesture began. A step, close or access change
   // during the gesture cannot fold another source or touch private writing.
@@ -438,6 +440,7 @@ export class Reader {
       card.append(this.dialog);
       if (preview && card.dataset.full !== 'shown') { card.scrollTop = 0; preview.scrollTop = scroll; }
     }
+    this.syncWidthPlacement?.();
   }
 
   // A feed/access change must never hide the active writing with its card.
