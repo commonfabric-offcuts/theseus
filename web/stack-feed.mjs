@@ -530,7 +530,8 @@ export class StackFeed {
     return this.cardAct(item.id, () => {
       const on = !this.actsOf(item.id, item).starred;
       const position = on ? positionOf(stackOf(this.list, this.entryFor(item.id))?.stack ?? { head: item, replies: [] }) : null;
-      this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);
+      // A star admits above More at its retained key, including while Core is pending (10322).
+      this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null, ...(typeof position.order_key === 'number' ? { order_key: position.order_key } : {}) }]] : []);
       if (on && this.actsOf(item.id, item).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }
       this.arrange(); this.say(on ? 'Starred, for you only' : 'Star taken off');
     });
