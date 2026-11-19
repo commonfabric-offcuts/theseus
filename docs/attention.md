@@ -610,9 +610,10 @@ loaded ones that has no card on the page has no line.
 The page keeps what sits at the window's top edge at the same height on
 screen, at the top of a topic as well as further down. A message or reply
 arriving above it is absorbed by scrolling in the same frame. The same hold
-covers later changes of height: a picture finishing loading, a cover being
-drawn, or a stack folding or unfolding without the reader acting. Repaints
-and changes heard by the layout observers use that one hold.
+covers later height changes owned by that recorded arrival, such as its
+picture finishing loading. Unrelated layout does not acquire that hold.
+Page-made and personal scrolls become the new reading place immediately;
+the sheet, Reader and composer never trigger arrival compensation.
 
 A message arriving above the window leaves a solid, shadowed "New above ↑"
 pill centred over the message column, 12px below the window's top edge.

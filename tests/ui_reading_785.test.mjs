@@ -20,16 +20,23 @@ function model(s=source) {
  const node=(id,y,h=160)=>{const e={id,dataset:{id,seq:String(nodes.length+1)},isConnected:true,hidden:false,y,h,children:[],style:{setProperty:(k,v)=>{e.y+=parseFloat(v)},removeProperty:()=>{}},contains:n=>n===e||e.children.includes(n),getBoundingClientRect:()=>({top:e.y-win.scrollY,bottom:e.y+e.h-win.scrollY,left:20,right:420,width:400,height:e.h}),getClientRects:()=>e.hidden?[]:[e.getBoundingClientRect()],compareDocumentPosition:n=>nodes.indexOf(n)>nodes.indexOf(e)?4:0,querySelectorAll:()=>[],closest:()=>null,addEventListener:(k,f)=>listen(id,k,f),removeEventListener:(k,f)=>unlisten(id,k,f)};return e;};
  const list=node('messages',100),main=node('main',0),home=node('new-message-sheet',4000);home.parentElement=list;home.open=false;home.contains=()=>false;
  list.contains=n=>nodes.includes(n);list.querySelectorAll=()=>nodes;main.children=[list];main.contains=n=>n===list||nodes.includes(n);main.append=()=>{};
+ const listBox=list.getBoundingClientRect;list.getBoundingClientRect=()=>({...listBox(),height:nodes.reduce((n,e)=>n+(e.hidden?0:e.h),0)});
  nodes.push(node('a',250),node('b',450),node('c',650));
  const document={activeElement:null,documentElement:{scrollHeight:5000},body:{},querySelectorAll:()=>nodes.filter(e=>!e.hidden),addEventListener:(k,f)=>listen('document',k,f),removeEventListener:(k,f)=>unlisten('document',k,f),caretPositionFromPoint:()=>null};
  const Observer=class {constructor(cb){this.cb=cb;this.observed=new Set();this.disconnected=false;observers.push(this)}observe(n){this.observed.add(n)}unobserve(n){this.observed.delete(n)}disconnect(){this.observed.clear();this.disconnected=true}takeRecords(){return []}};
  const context=vm.createContext({window:win,document,innerWidth:600,innerHeight:800,Node:{DOCUMENT_POSITION_FOLLOWING:4,TEXT_NODE:3},inline:null,registry:{},retired:null,topicUnavailable:false,authorityReviewPending:()=>false,entries:()=>nodes,drawn:(l,id)=>nodes.some(n=>n.dataset.id===id&&!n.hidden),typingField:()=>false,views:{messages:new Map()},bootstrap:{actor:'viewer'},messageEntries:new Map(),topic:{id:'isolated-topic'},stackState:()=>({stacks:[]}),cardIn:e=>e,reveal:()=>{},button:(text,activate)=>({activate,style:{},setAttribute:()=>{}}),$:id=>({messages:list,main,'new-message-sheet':home})[id],opened:e=>e,ResizeObserver:Observer,MutationObserver:Observer,requestAnimationFrame:f=>{frames.set(++serial,f);return serial},cancelAnimationFrame:id=>frames.delete(id)});
- vm.runInContext(cut(s)+`;globalThis.api785={captureListAnchor,restoreListAnchor,keepListAnchor,watchListAnchor,rememberListAnchor,paintNewAbove,offers:newAbove,pill:()=>newAboveButton,stop:()=>anchorWatch.stop(),settle:()=>anchorWatch.mutations.cb(),act:()=>[...[]],state:()=>({anchorActing,anchorDepth,listAnchor})};`,context);
- return {context,api:context.api785,win,nodes,list,main,document,scrolls,observers,listeners,frames,node,dispatch:(target,kind)=>{for(const f of events.get(target+':'+kind)??[])f();},flush:()=>{const pending=[...frames.values()];frames.clear();for(const f of pending)f();}};
+ vm.runInContext(cut(s)+`;globalThis.api785={captureListAnchor,recordListArrivals,restoreListAnchor,keepListAnchor,watchListAnchor,rememberListAnchor,paintNewAbove,offers:newAbove,pill:()=>newAboveButton,stop:()=>anchorWatch.stop(),settle:(records=[])=>anchorWatch.mutations.cb(records),act:()=>[...[]],state:()=>({anchorActing,anchorDepth,listAnchor})};`,context);
+ // Real model arrivals populate the same accepted-record and entry maps used
+ // by the product repaint producer. A test-only ownership token grants nothing.
+ const insertArrival=height=>{const seq=Math.max(...nodes.map(n=>Number(n.dataset.seq)))+1,id='arrival-'+seq,e=node(id,nodes[0].y,height);e.dataset.seq=String(seq);for(const n of nodes)n.y+=height;nodes.unshift(e);const item={id,seq,topic_id:'isolated-topic',author_id:'outside'};context.views.messages.set(id,item);context.messageEntries.set(id,e);return e;};
+ return {context,api:context.api785,win,nodes,list,main,document,scrolls,observers,listeners,frames,node,
+  record:(saved,height)=>{const e=insertArrival(height);context.api785.recordListArrivals(saved);return e;},
+  arrive:height=>{let entry;context.api785.keepListAnchor(()=>{entry=insertArrival(height)});return entry;},
+  dispatch:(target,kind)=>{for(const f of events.get(target+':'+kind)??[])f();},flush:()=>{const pending=[...frames.values()];frames.clear();for(const f of pending)f();}};
 }
-function holdControl(s) {const m=model(s),before=m.nodes[0].getBoundingClientRect().top,saved=m.api.captureListAnchor();for(const n of m.nodes)n.y+=135;m.api.restoreListAnchor(saved);assert.equal(m.nodes[0].getBoundingClientRect().top,before,'actual source absorbs 135px displacement');}
+function holdControl(s) {const m=model(s),held=m.nodes[0],before=held.getBoundingClientRect().top,saved=m.api.captureListAnchor();m.record(saved,135);m.api.restoreListAnchor(saved);assert.equal(held.getBoundingClientRect().top,before,'actual source absorbs 135px displacement');}
 test('item 785 source geometry: repaint height changes hold real identity and successor',()=>{
- holdControl(source);const m=model(),saved=m.api.captureListAnchor(),before=m.nodes[1].getBoundingClientRect().top;m.nodes[0].hidden=true;for(const n of m.nodes)n.y+=70;m.api.restoreListAnchor(saved);assert.equal(m.nodes[1].getBoundingClientRect().top,before,'hidden first card hands hold to exact successor');
+ holdControl(source);const m=model(),saved=m.api.captureListAnchor(),before=m.nodes[1].getBoundingClientRect().top;const successor=m.nodes[1];m.nodes[0].hidden=true;m.record(saved,70);m.api.restoreListAnchor(saved);assert.equal(successor.getBoundingClientRect().top,before,'hidden first card hands hold to exact successor');
 });
 function moreControl(s) {
  const m=model(s),more=m.node('more-messages',350,40);more.dataset={};m.document.querySelectorAll=()=>[more,...m.nodes];
@@ -38,20 +45,25 @@ function moreControl(s) {
 }
 test('item 785 More retains requested landing and focused writing stays in its actual field',()=>{
  moreControl(source);const m=model(),field=m.node('writing',400);m.document.activeElement=field;m.context.inline={root:{contains:e=>e===field},field};m.context.registry={inline:{},isCurrent:()=>true};
- const saved=m.api.captureListAnchor(),top=field.getBoundingClientRect().top;assert.equal(saved.anchor,field);field.y+=70;m.api.restoreListAnchor(saved);assert.equal(field.getBoundingClientRect().top,top);
+ const saved=m.api.captureListAnchor(),top=field.getBoundingClientRect().top;assert.equal(saved.anchor,field);m.record(saved,70);field.y+=70;m.api.restoreListAnchor(saved);assert.equal(field.getBoundingClientRect().top,top);
 });
 test('item 785 exact same reading character range holds internal rewrap',()=>{
  const m=model(),text={nodeType:3,isConnected:true,data:'real exact line',length:15};m.nodes[0].children.push(text);let lineY=300;
  const range={setStart:()=>{},setEnd:()=>{},getClientRects:()=>[1],getBoundingClientRect:()=>({top:lineY-m.win.scrollY})};m.document.caretPositionFromPoint=()=>({offsetNode:text,offset:2});m.document.createRange=()=>range;
- const before=m.api.captureListAnchor();assert.equal(before.point.text,text);lineY+=96;m.api.restoreListAnchor(before);assert.equal(range.getBoundingClientRect().top,0);
+ const before=m.api.captureListAnchor();assert.equal(before.point.text,text);m.record(before,96);lineY+=96;m.api.restoreListAnchor(before);assert.equal(range.getBoundingClientRect().top,0);
 });
 test('item 785 stale and hidden source cannot scroll; changed character falls back to card',()=>{
- for(const kind of ['retired','disconnected','hidden']){const m=model(),saved=m.api.captureListAnchor();if(kind==='retired')m.context.retired={};if(kind==='disconnected')m.list.isConnected=false;if(kind==='hidden')m.list.hidden=true;m.nodes[0].y+=100;m.api.restoreListAnchor(saved);assert.equal(m.scrolls.length,0,kind);}
- const m=model(),saved=m.api.captureListAnchor(),top=m.nodes[0].getBoundingClientRect().top;saved.point={text:{isConnected:true,data:'new words'},words:'old words',range:{getClientRects:()=>[1],getBoundingClientRect:()=>({top:500})},top:0};m.nodes[0].y+=90;m.api.restoreListAnchor(saved);assert.equal(m.nodes[0].getBoundingClientRect().top,top,'edited text invalidates stale character range and holds actual card');
+ for(const kind of ['retired','disconnected','hidden']){const m=model(),saved=m.api.captureListAnchor();if(kind==='retired')m.context.retired={};if(kind==='disconnected')m.list.isConnected=false;if(kind==='hidden')m.list.hidden=true;m.record(saved,100);m.api.restoreListAnchor(saved);assert.equal(m.scrolls.length,0,kind);}
+ const m=model(),saved=m.api.captureListAnchor(),top=m.nodes[0].getBoundingClientRect().top;saved.point={text:{isConnected:true,data:'new words'},words:'old words',range:{getClientRects:()=>[1],getBoundingClientRect:()=>({top:500})},top:0};const held=m.nodes[0];m.record(saved,90);m.api.restoreListAnchor(saved);assert.equal(held.getBoundingClientRect().top,top,'edited text invalidates stale character range and holds actual card');
 });
-test('item 785 real source observers share hold, accept deliberate scroll, teardown all resources',()=>{
- const m=model(),standing=m.listeners.size;m.api.watchListAnchor();assert.equal(m.observers.length,2);assert.ok(m.observers.every(o=>o.observed.size));
- for(const n of m.nodes)n.y+=80;m.api.settle();assert.equal(m.nodes[0].getBoundingClientRect().top,-50);
+function unrelatedLayoutControl785(s=source) {
+ const m=model(s);m.api.watchListAnchor();const held=m.nodes[0],y=m.win.scrollY;
+ for(const n of m.nodes)n.y+=80;m.api.settle();
+ assert.equal(held.getBoundingClientRect().top,30,'unrelated layout keeps its own 80px movement');
+ assert.equal(m.win.scrollY,y,'no arrival means no compensation');return m;
+}
+test('item 785 real source observers reject unrelated layout, accept deliberate scroll, teardown all resources',()=>{
+ const standing=model().listeners.size,m=unrelatedLayoutControl785();assert.equal(m.observers.length,2);assert.ok(m.observers[1].observed.size);
  m.dispatch('document','wheel');m.flush();m.win.scrollY+=120;const wanted=m.win.scrollY;m.api.settle();assert.equal(m.win.scrollY,wanted,'own deliberate scroll supersedes old anchor');
  // All event callbacks are capture-owned; invoking here is a model control, never native proof.
  for(const callback of m.listeners)callback();assert.ok(m.frames.size);m.api.stop();assert.ok(m.observers.every(o=>o.disconnected));assert.equal(m.frames.size,0);assert.equal(m.listeners.size,standing);
@@ -63,7 +75,7 @@ test('item 785 applied source mutants are caught and byte restored with restored
   ['wrong-direction',"const delta = holdRoom(list, hold,", "const delta = -holdRoom(list, hold,",holdControl],
   ['More-landing','const landed = control && last ? loadedAfter(list, present, last) : null;','const landed = null;',moreControl],
   ['leaked-resize','mutations.disconnect(); sizes.disconnect();','mutations.disconnect();',s=>{const m=model(s);m.api.watchListAnchor();m.api.stop();assert.ok(m.observers.every(o=>o.disconnected),'both observers disconnected')}],
-  ['stale-guard','if (!saved || retired || !saved.list.isConnected || saved.list.hidden) return;','if (!saved) return;',s=>{const m=model(s),saved=m.api.captureListAnchor();m.context.retired={};m.nodes[0].y+=100;m.api.restoreListAnchor(saved);assert.equal(m.scrolls.length,0,'retired source no-op')}]
+  ['stale-guard','if (!saved || retired || !saved.list.isConnected || saved.list.hidden) return;','if (!saved) return;',s=>{const m=model(s),saved=m.api.captureListAnchor();m.record(saved,100);m.context.retired={};m.api.restoreListAnchor(saved);assert.equal(m.scrolls.length,0,'retired source no-op')}]
  ]){assert.equal(source.split(old).length-1,1);writeFileSync(path,source.replace(old,replacement));const applied=readFileSync(path,'utf8');assert.notEqual(sha(applied),sha(source));assert.ok(applied.includes(replacement));assert.throws(()=>control(applied),{name:'AssertionError'},name+' exact control catches source mutation');history.push({name,applied:sha(applied),caught:true});writeFileSync(path,source);assert.equal(sha(readFileSync(path)),sha(source));control(readFileSync(path,'utf8'));history.push({name,restored:sha(readFileSync(path)),control:true});}
  console.log(JSON.stringify({sourceMutations785:history}));
  }finally{rmSync(dir,{recursive:true,force:true});}
@@ -267,21 +279,40 @@ test('item 785 failure capture preserves primary and secondary errors separately
 
 // These callbacks model event ordering against real product source; the four
 // unchanged native cases remain the browser geometry/gesture proof.
-test('item 785 late nonintent scroll retains restored identity through a newly visible arrival',()=>{
- const m=model();m.win.scrollY=0;for(const [i,n] of m.nodes.entries())n.y=160+i*200;
- m.api.watchListAnchor();const held=m.nodes[0],before=held.getBoundingClientRect().top;
- m.api.keepListAnchor(()=>{for(const n of m.nodes)n.y+=340;const arrival=m.node('new-arrival',160,328);m.nodes.unshift(arrival);});
- assert.equal(held.getBoundingClientRect().top,before,'initial restoration');
- for(const delta of [-50,-35,-20]){m.win.scrollY+=delta;m.dispatch('window','scroll');assert.equal(held.getBoundingClientRect().top,before,'late scroll cannot replace the actual restored card');}
- m.api.stop();
+function recordedArrivalControl785(s=source) {
+ const m=model(s);for(const n of m.nodes)n.y+=210;
+ m.api.watchListAnchor();const held=m.nodes[0],top=held.getBoundingClientRect().top;
+ const arrival=m.arrive(135);
+ assert.equal(m.context.views.messages.get(arrival.dataset.id).seq,Number(arrival.dataset.seq),'arrival record really exists');
+ assert.equal(m.context.messageEntries.get(arrival.dataset.id),arrival,'arrival record owns the painted entry');
+ assert.equal(held.getBoundingClientRect().top,top,'recorded arrival above reading compensates its own height');
+ // An actual recorded arrival owns its later height, without a new DOM record.
+ arrival.h+=40;for(const n of m.nodes)if(n!==arrival)n.y+=40;m.observers[0].cb();
+ assert.equal(held.getBoundingClientRect().top,top,'same arrival owns its later height');return {m,held,arrival};
+}
+function pageScrollControl785(s=source) {
+ const {m,held,arrival}=recordedArrivalControl785(s);
+ for(const delta of [-50,-35,-20]){m.win.scrollY+=delta;const wanted=m.win.scrollY,top=held.getBoundingClientRect().top;m.dispatch('window','scroll');m.api.settle();assert.equal(m.win.scrollY,wanted,'page-made scroll sticks after arrival restoration');assert.equal(held.getBoundingClientRect().top,top,'page scroll chooses the new reading place');}
+ const y=m.win.scrollY;arrival.h+=25;for(const n of m.nodes)if(n!==arrival)n.y+=25;m.observers[0].cb();assert.equal(m.win.scrollY,y,'invalidated arrival cannot reclaim later layout');m.api.stop();
+}
+test('item 785 recorded arrival owns its own height above reading',()=>{const {m}=recordedArrivalControl785();m.api.stop();});
+test('item 785 page-made scrolls stick after arrival restoration',()=>pageScrollControl785());
+test('item 785 causal model faults apply, fail and byte restore all three controls',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'reading785-causal-')),path=join(dir,'app.mjs');
+ const variants=[
+  ['unrelated-layout','else if (changed === null) anchorHold = null;','else { restoreListAnchor(listAnchor); anchorHold = null; }',s=>{const m=unrelatedLayoutControl785(s);m.api.stop();}],
+  ['page-scroll','if (anchorHold?.y !== window.scrollY || event?.target && event.target !== document && event.target !== window) anchorHold = null;','if (anchorHold) { anchorHold.y = window.scrollY; restoreListAnchor(anchorHold); }',pageScrollControl785],
+  ['recorded-arrival','function recordListArrivals(saved, revised = []) {','function recordListArrivals(saved, revised = []) { return;',s=>{const {m}=recordedArrivalControl785(s);m.api.stop();}],
+ ];
+ try{for(const [name,target,replacement,control] of variants){assert.equal(source.split(target).length,2,'unique causal fault target');const changed=source.replace(target,replacement);writeFileSync(path,changed);assert.notEqual(sha(readFileSync(path)),sha(source));assert.ok(readFileSync(path,'utf8').includes(replacement));assert.throws(()=>control(readFileSync(path,'utf8')),{name:'AssertionError'},name+' control catches real product fault');writeFileSync(path,source);assert.equal(sha(readFileSync(path)),sha(source));control(readFileSync(path,'utf8'));console.log(JSON.stringify({causalArrival785:{name,applied:sha(changed),caught:true,restored:sha(source),control:true}}));}}finally{rmSync(dir,{recursive:true,force:true});}
 });
 test('item 785 fresh wheel touch scrollbar keys and explicit landing release the restored hold',()=>{
  for(const kind of ['wheel','touchstart','touchmove','pointerdown','keydown']){
-  const m=model();m.api.watchListAnchor();m.api.keepListAnchor(()=>{for(const n of m.nodes)n.y+=80;});
+  const m=model();m.api.watchListAnchor();m.arrive(80);
   m.dispatch('document',kind);m.flush();m.win.scrollY+=120;const wanted=m.win.scrollY;m.dispatch('window','scroll');m.api.settle();
   assert.equal(m.win.scrollY,wanted,kind+' keeps its own movement');m.api.stop();
  }
- const m=model();m.api.watchListAnchor();m.api.keepListAnchor(()=>{for(const n of m.nodes)n.y+=80;});
+ const m=model();m.api.watchListAnchor();m.arrive(80);
  m.win.scrollY+=120;const wanted=m.win.scrollY;m.api.rememberListAnchor(true);m.dispatch('window','scroll');assert.equal(m.win.scrollY,wanted,'explicit landing keeps its destination');m.api.stop();
 });
 test('item 785 composed acted card survives redraw during the captured personal action frame',()=>{

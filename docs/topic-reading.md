@@ -458,8 +458,12 @@ document-top control waits for observed scroll completion or a bounded quiet
 frame fallback before introducing an arrival; the same-card drift limit stays
 one CSS pixel. This control does not change product anchoring.
 
-A restored reading hold keeps the same card or character through later scroll
-delivery. A scroll event alone does not select a different reading place. The
-next personal pointer, key, wheel or touch act, or an explicit message landing,
-releases that restored hold. This also preserves the acted-card/title identity
-when a dossier redraws during its own action.
+The continuous reading hold belongs to recorded outside arrivals and edited
+message repaints above the reading place. It absorbs only their own height
+changes. It retains the actual message and entry identities, and checks the
+arrival height against the displacement of the reading place and the other
+cards. A later page or person scroll invalidates the hold before any restore;
+so does unrelated layout, including the sheet, Reader or composer. A whole-page
+observer does not grant arrival ownership. Existing synchronous writing,
+caret/selection, acted-card/title and More repaint owners keep their rules.
+Generic writing and card acts still do not accept waiting arrivals.

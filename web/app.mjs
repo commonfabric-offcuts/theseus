@@ -793,8 +793,8 @@ async function openSource(ref, opener, act = null, mode = 'reply', { land = fals
   }
   finally { if (request === opening) { views.retain(views.currentItem, null); reader.paintOffer(); } }
 }
-// One hold for repaints and later layout changes: writing, a visible typing
-// field, or the first card at the window's top edge, even at the topic's top.
+// Synchronous repaint owners retain writing, fields, card acts and More.
+// Only recorded arrivals can own a continuous hold after that repaint.
 // More keeps its existing landing rule. A card no longer drawn hands the hold
 // to the next card below it. roomy gives back the room holdRoom kept.
 let roomy = null, listAnchor = null, anchorDepth = 0, anchorWatch = null, anchorActing = false, listActAnchor = null, anchorHold = null;
@@ -846,11 +846,67 @@ function captureListAnchor() {
   const edge = control?.getBoundingClientRect().top, last = cards.at(-1), present = control ? new Set(entries(list)) : null;
   return { list, anchor, cards, held, tops, point, control, edge, last, present, y: window.scrollY,
     topicViews: views,
-    acted, height: document.documentElement.scrollHeight,
+    acted, baseline: Boolean(writing || field || acted || control || anchor !== cards[0] || tops.get(anchor) < 0),
+    height: document.documentElement.scrollHeight,
     newest: entries(list).reduce((seq, card) => Math.max(seq, Number(card.dataset.seq) || 0), 0) };
+}
+// Called only around a product repaint, after it has placed actual records.
+// Older pages, initial rendering, own sends and generic paints grant no owner.
+function recordListArrivals(saved, revised = []) {
+  if (!saved?.newest || saved.topicViews !== views || retired || topicUnavailable ||
+      authorityReviewPending() || !saved.list.isConnected || saved.list.hidden) return;
+  const changed = new Set(revised);
+  saved.arrivals = new Map(entries(saved.list).flatMap(entry => {
+    const item = views.messages.get(entry.dataset.id);
+    return item && item.topic_id === topic.id && item.author_id !== bootstrap.actor &&
+      messageEntries.get(item.id) === entry &&
+      ((!saved.cards.includes(entry) && item.seq > saved.newest) || changed.has(item.id)) ? [[entry, item]] : [];
+  }));
+}
+// Record geometry in document coordinates: scrolling is a separate owner.
+function arrivalLayout(saved) {
+  const nodes = [saved.list, ...entries(saved.list)];
+  return new Map(nodes.map(node => {
+    const box = node.getBoundingClientRect();
+    return [node, { top: box.top + window.scrollY, left: box.left, width: box.width, height: box.height }];
+  }));
+}
+function retainArrivalAnchor(saved) {
+  anchorHold = null;
+  if (!saved.arrivals?.size || !saved.anchor?.isConnected) return;
+  saved.arrivalOwners = new Map([...saved.arrivals].filter(([entry]) =>
+    entry.isConnected && drawn(saved.list, entry.dataset.id) && entry.getBoundingClientRect().height > 0 &&
+    (entry.compareDocumentPosition(saved.anchor) & Node.DOCUMENT_POSITION_FOLLOWING)));
+  if (!saved.arrivalOwners.size) return;
+  saved.y = window.scrollY;
+  saved.arrivalLayout = arrivalLayout(saved);
+  anchorHold = saved;
+}
+// A size notification is evidence only when the recorded arrivals' own height
+// explains every displaced card and the list. No residual page layout is held.
+function arrivalLayoutChanged(saved) {
+  if (saved.topicViews !== views || saved.y !== window.scrollY || topicUnavailable || authorityReviewPending()) return null;
+  const before = saved.arrivalLayout, after = arrivalLayout(saved), growth = new Map();
+  if (!before || before.size !== after.size) return null;
+  for (const [entry, item] of saved.arrivalOwners) {
+    if (views.messages.get(item.id) !== item || messageEntries.get(item.id) !== entry ||
+        !entry.isConnected || !drawn(saved.list, item.id) || !before.has(entry) || !after.has(entry)) return null;
+    growth.set(entry, after.get(entry).height - before.get(entry).height);
+  }
+  for (const [node, old] of before) {
+    const box = after.get(node);
+    if (!box || box.left !== old.left || box.width !== old.width) return null;
+    const height = node === saved.list ? [...growth.values()].reduce((sum, n) => sum + n, 0) : growth.get(node) ?? 0;
+    const shift = node === saved.list ? 0 : [...growth].reduce((sum, [entry, n]) => sum +
+      (entry !== node && (entry.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) ? n : 0), 0);
+    if (box.height - old.height !== height || box.top - old.top !== shift) return null;
+  }
+  return [...growth.values()].some(n => n !== 0);
 }
 function restoreListAnchor(saved) {
   if (!saved || retired || !saved.list.isConnected || saved.list.hidden) return;
+  // An arrival restoration may not reverse a scroll made since its capture.
+  if (saved.arrivals?.size && saved.y !== window.scrollY) { anchorHold = null; return; }
   const { list, anchor, cards, held, tops, point, control, edge, last, present, acted } = saved;
   // Room an earlier hold kept is given back first; the hold measures without it.
   if (roomy) { roomy(); roomy = null; }
@@ -860,17 +916,15 @@ function restoreListAnchor(saved) {
   if (acted && !afterAct && listActAnchor === acted.mark) listActAnchor = null;
   const hold = afterAct?.node ?? held.find(node => node?.isConnected && (cards.includes(node) ? drawn(list, node.dataset.id) && (!acted || node.getBoundingClientRect().height > 0) : node.getClientRects().length));
   const line = hold === anchor && point?.text.isConnected && point.text.data === point.words && point.range.getClientRects().length ? point : null;
-  if (hold) {
+  if (hold && (saved.baseline || saved.arrivals?.size)) {
     const delta = holdRoom(list, hold, line ? line.top : tops.get(afterAct ? anchor : hold), line ? () => line.range.getBoundingClientRect().top : undefined, Boolean(afterAct));
-    // Keep the restored identity, not whichever new card now crosses the edge.
-    // Later scroll delivery is not itself a fresh act of reading.
-    if (delta) anchorHold = saved;
     window.scrollBy({ top: delta, behavior: 'instant' });
+    retainArrivalAnchor(saved);
   } else if (anchorHold === saved) anchorHold = null;
   // Older pages and the person's own writing never make this offer. Remember
   // arrivals by identity, so a later repaint or a new reply cannot lose it.
   if (saved.newest && hold?.isConnected) for (const entry of entries(list)) {
-    if (Number(entry.dataset.seq) > saved.newest && drawn(list, entry.dataset.id) &&
+    if (saved.arrivals?.has(entry) && Number(entry.dataset.seq) > saved.newest && drawn(list, entry.dataset.id) &&
         views.messages.get(entry.dataset.id)?.author_id !== bootstrap.actor && entry.getBoundingClientRect().top < 0) newAbove.add(entry.dataset.id);
   }
 }
@@ -908,6 +962,7 @@ function releaseTopArrivals(absorb = false) {
   if (!waiting?.size || retired || topicUnavailable || authorityReviewPending() ||
       !list.isConnected || list.hidden) return;
   const saved = absorb ? captureListAnchor() : null;
+  const released = [...waiting];
   anchorHold = null;
   for (const id of waiting) {
     const entry = messageEntries.get(id);
@@ -916,9 +971,12 @@ function releaseTopArrivals(absorb = false) {
   waiting.clear();
   anchorDepth++;
   try { feedOf().arrange(); }
-  finally { anchorDepth--; if (saved) restoreListAnchor(saved); }
+  finally {
+    anchorDepth--;
+    if (saved) { recordListArrivals(saved, released); restoreListAnchor(saved); }
+  }
 }
-function keepListAnchor(paint, act = null) {
+function keepListAnchor(paint, act = null, revised = []) {
   const list = $('messages');
   if (act) {
     anchorHold = null;
@@ -933,11 +991,16 @@ function keepListAnchor(paint, act = null) {
 
   // Nested stack arrangements belong to the same repaint and the same hold.
   if (anchorDepth || anchorActing && !act) return paint();
-  if (!act && anchorWatch && (anchorHold || listAnchor?.y === window.scrollY)) restoreListAnchor(listAnchor);
-  const saved = anchorHold ?? captureListAnchor();
+  // A new paint starts from the current place, never a previous hold's top.
+  anchorHold = null;
+  const saved = captureListAnchor();
   anchorDepth++;
   try { return paint(); }
-  finally { holdTopArrivals(saved); anchorDepth--; restoreListAnchor(saved); rememberListAnchor(); }
+  finally {
+    recordListArrivals(saved, revised);
+    if (saved.arrivals?.size) holdTopArrivals(saved);
+    anchorDepth--; restoreListAnchor(saved); rememberListAnchor();
+  }
 }
 function paintNewAbove() {
   const list = $('messages');
@@ -982,31 +1045,33 @@ function watchListAnchor() {
   const list = $('messages'), main = $('main'), observed = new Set();
   const settle = () => {
     if (retired || anchorDepth) return;
-    // A deliberate scroll (including a send's landing or the keys) has its
-    // own destination. Do not put the old reading place back over it.
-    const clamped = listAnchor && document.documentElement.scrollHeight < listAnchor.height &&
-      window.scrollY >= Math.max(0, document.documentElement.scrollHeight - innerHeight) - 1;
-    if (!anchorActing && (anchorHold || listAnchor?.y === window.scrollY || clamped)) restoreListAnchor(listAnchor);
+    const saved = anchorHold;
+    const changed = saved && !anchorActing && saved.y === window.scrollY ? arrivalLayoutChanged(saved) : null;
+    if (changed) restoreListAnchor(saved);
+    else if (changed === null) anchorHold = null;
     rememberListAnchor();
   };
   const sizes = new ResizeObserver(settle);
   const observe = () => {
-    const wanted = new Set([main, ...main.children, ...list.querySelectorAll('[data-id], .reply-stack, .stack-replies, .dossier-cover')]);
+    const wanted = new Set(anchorHold?.arrivalOwners?.keys() ?? []);
     for (const node of observed) if (!wanted.has(node)) { sizes.unobserve(node); observed.delete(node); }
     for (const node of wanted) if (!observed.has(node)) { sizes.observe(node); observed.add(node); }
   };
-  // Mutation delivery and ResizeObserver both run before paint. The former
-  // also catches equal-height rearrangements; the latter catches image/font
-  // layout with no DOM edit. Both restore exactly the same saved hold.
-  const mutations = new MutationObserver(() => { observe(); settle(); });
-  mutations.observe(main, { subtree: true, childList: true, characterData: true, attributes: true,
-    attributeFilter: ['class', 'style', 'hidden', 'open', 'data-fold', 'data-folded', 'data-compact'] });
-  const scrolled = () => {
+  // This broad observer can INVALIDATE ownership, never create it. Mutation
+  // outside the actual arrival entries includes sheet/Reader/composer layout.
+  const mutations = new MutationObserver((records = []) => {
+    if (records.some(record => record.type === 'attributes' && ['class', 'style'].includes(record.attributeName) ||
+      ![...(anchorHold?.arrivalOwners?.keys() ?? [])].some(entry => entry.contains(record.target)))) anchorHold = null;
+    settle();
+  });
+  mutations.observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true });
+  const scrolled = event => {
     if (anchorDepth) return;
+    // Own compensation's delayed event already has the saved y. Any changed
+    // page offset or nested scroller invalidates; a scroll handler never restores.
+    if (anchorHold?.y !== window.scrollY || event?.target && event.target !== document && event.target !== window) anchorHold = null;
     if (stackState(list).waiting?.size && list.getBoundingClientRect().top < 0) releaseTopArrivals(true);
-    const clamped = listAnchor && document.documentElement.scrollHeight < listAnchor.height &&
-      window.scrollY >= Math.max(0, document.documentElement.scrollHeight - innerHeight) - 1;
-    if (anchorHold || clamped) settle(); else rememberListAnchor();
+    rememberListAnchor();
   };
   // Capture before handlers and accept their final layout before paint.
   // A frame callback also covers handlers that stop the event's bubbling.
@@ -1119,7 +1184,10 @@ function paintViews(kind) {
   // its entry for the acted-card anchor; sync retires only changed membership.
   if (kind === 'acts') { keepListAnchor(() => { stackMessages(); menu?.paint(); }); return; }
   // A message edited, here or elsewhere: its card and the lines that read its words (docs/message-edit.md).
-  if (kind === 'edited') { keepListAnchor(() => repaintEdited(views.takeRevised(), views.takeEdits())); return; }
+  if (kind === 'edited') {
+    const revised = views.takeRevised(), edits = views.takeEdits();
+    keepListAnchor(() => repaintEdited(revised, edits), null, revised); return;
+  }
   // The person's own note or saved reply on a message, saved, emptied or sent here or elsewhere: its card's marks (item 127).
   if (kind === 'yours') { keepListAnchor(() => repaintYours(views.takeYours())); return; }
   // The line moves under the reader's eyes: the card they are looking at stays where it is.
