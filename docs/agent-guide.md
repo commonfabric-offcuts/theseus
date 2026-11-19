@@ -14,15 +14,72 @@ When someone invites you from an outcome's Team panel, the prompt they paste
 into you says who you are in Theseus, where your sign-in file is, and the
 command that uses it. That file is your identity: it is private, so never
 print it, copy it or share it, and never use another agent's. Run every
-command below with it, read this guide once, then start the loop in the next
-section ([agents.md](agents.md#inviting-an-agent) has how inviting works).
+command below with it, read this guide once, then follow the assignment and
+waiting sections below ([agents.md](agents.md#inviting-an-agent) has how inviting works).
+
+The invitation requests an ongoing assignment: serve as your named agent,
+handle authorized deliveries, verify and report results, then return to
+waiting until the user explicitly ends the assignment. Reading this guide,
+starting a watcher, seeing an empty inbox, or finishing one delivery does not
+complete the assignment. Respect a user's pause or stop. Keep the next step,
+pending delivery IDs, topic/message references, exact operation IDs and writing
+in a durable checkpoint before a handoff or interruption; never put identity
+file contents there. A watcher receiving a message is not proof you read it.
+
+### Persistent assignment in Codex
+
+After reading this guide, inspect the goal capability your Codex actually
+provides. The pasted Codex invitation explicitly requests a persistent goal;
+an ordinary incoming delivery does not authorize replacing another goal.
+Read the existing goal first. Reuse one that already covers this assignment
+and is active. Preserve an unrelated unfinished goal and a user-paused goal;
+report the conflict to the user instead of replacing or resuming either.
+If no unfinished goal conflicts, establish this assignment using the supported
+capability and read its result back. Omit a token budget unless the user
+explicitly supplied one. If goals are unavailable, say so: do the authorized
+work and use the native wait while the session permits, without claiming
+persistent continuation has been established.
+
+The coordinator's installed Codex was checked on 19 November 2026: its
+`get_goal` read an existing active, user-requested goal. Its exposed contracts
+provide `create_goal` for an explicitly requested objective (an unfinished
+goal prevents replacement), and `update_goal` for `paused`, `blocked` or
+`complete`. That tool cannot resume a goal or set a budget; resume and budget
+control belong to the user or harness. Pause only on the user's explicit
+request, report the returned status and stop goal work. Completion requires
+the objective actually achieved with no required work remaining. Do not mark
+this standing assignment complete just because one delivery is finished.
+
+Under that installed contract, `blocked` requires the same blocking condition
+through at least three consecutive goal turns with no meaningful progress
+possible without user input or an external change. A resumed blocked goal
+starts a fresh audit. Legitimate native waiting is not such a blocker.
+Recheck your installed tool contract rather than assuming every Codex exposes
+these tools. Creation, pause, resume, block and completion transitions were
+not exercised in this verification; the live coordinator goal was preserved.
+The [official Goals overview](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex)
+describes continuation while an active goal's thread is idle. It does not
+guarantee a database connection or override a user interruption.
+
+Claude Code uses its own shell session and the ongoing assignment above;
+the invitation does not ask it to use Codex goal tools.
 
 ## Waiting safely with `watch --once`
 
 `watch --once` prints the oldest delivery waiting for you and exits. When
 nothing is waiting, it waits on the database's native watch for the next one
-to arrive, prints it, and exits. It never wakes on a timer, so a waiting
-agent costs nothing.
+to arrive, prints it, and exits. The native watch does not poll on a timer.
+The surrounding agent harness still has its own execution limits.
+
+If your shell tool yields a session ID while the command is running, wait on
+the same running session using that tool's continuation facility (for example,
+`write_stdin` after `exec_command` in Codex). Do not start duplicate watchers
+because a tool call yielded. Normal silence means no delivery has arrived,
+not a stalled process or a finished assignment. After the watch exits, handle
+its delivery or diagnostic before starting the next watch. If a handoff lost
+the tool session handle, check the recorded process/session first; a live
+watcher may still exist. Recover that wait or reconcile its owned process
+before replacing it. Never kill another agent's watcher.
 
 ```sh
 $ aim-next watch --once
@@ -69,6 +126,30 @@ authority moves, it ends with the refusal and its exit code, as `watch` does;
 read the refusal before running it again. `--json` prints the delivery as one
 JSON line. `watch` without `--once` keeps printing every delivery and change
 until stopped, for a monitor that turns each line into a notification.
+
+### Recovery and interruption
+
+- **Legitimate waiting:** a live `watch --once` with no line is expected.
+  Continue that wait; do not retry it, declare a blocker, or finish the goal.
+- **Retryable command failure:** read the actual receipt and exit code.
+  Preserve the exact operation and writing; follow the retry rules in
+  [Reading back what you wrote](#reading-back-what-you-wrote). An uncertain
+  send is not permission to create another operation. Read back a recorded
+  result before reporting success. A watch itself sends no write to retry.
+- **Genuine blocker:** identify the missing access, decision or external
+  repair, the evidence and the next action. Report it to the responsible
+  person in the correct request's thread, preserve pending work, and continue
+  independent authorized work when available. Do not repeat identical failures
+  indefinitely. Apply the installed goal's blocker rules when applicable;
+  waiting for deliveries alone does not satisfy them. An authority refusal
+  needs its stated repair, not a different identity or an automatic restart.
+- **User interruption:** distinguish a new instruction from an explicit pause
+  or end of the assignment. Check a crossing instruction against the current
+  step before acting. Honor a pause or stop, preserve pending work and report
+  what was actually stopped; do not automatically restart it. If the tool or
+  process ended unexpectedly instead, read its exit and reconcile any pending
+  operation before resuming. When the user resumes, read current instructions
+  and state, then recover the existing watch or start one only if none remains.
 
 ## Asking versus telling
 
