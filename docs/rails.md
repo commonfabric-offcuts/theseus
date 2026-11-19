@@ -60,11 +60,13 @@ browser").
   it and gives the pencil the keys.
 
 An outcome's Build topics show once, in the right rail (item 297). On an
-outcome whose pipeline is on, a topic some piece is built in (a release's
-among them) is a Build topic, and the outline lists it not: it is a row of the
+outcome whose pipeline is on, an agent-created topic some piece is built in
+(a release's among them) is a Build topic, and the outline lists it not: it is a row of the
 right rail's Pipeline section instead, from when the piece starts until the
 topic is Done, when it folds into the outline's Done (N) as any topic does. An
 archived one is under Archived (N). Reopened, it is the right rail's again.
+Human-created topics stay in the ordinary sidebar even when a piece names
+them; they leave its open list only through Archive or Done (item 837).
 Core says which topics they are (`workspace_topics`, `build`;
 docs/topic-list.md), so the outline asks for its topics without them and the
 right rail for them alone. While the pipeline is off, or on an outcome with

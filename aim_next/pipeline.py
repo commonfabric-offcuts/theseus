@@ -240,11 +240,14 @@ class Pipeline:
         return row
 
     def _build_topics(self, db, workspace_id):
-        """The outcome's Build topics (item 297): every topic a piece of its pipeline is built in, a release's among them,
+        """The outcome's Build topics (items 297, 837): agent-created topics a piece is built in, releases among them.
+        Human-created topics stay in the ordinary sidebar when work is linked to them. Build topics exist only
         while its pipeline is on; none while it is off or there is none, since then there is no pipeline to show them in."""
         if not db.execute("SELECT 1 FROM pipelines WHERE workspace_id=? AND enabled=1", (workspace_id,)).fetchone():
             return set()
-        return {row[0] for row in db.execute("SELECT DISTINCT topic_id FROM pipeline_pieces WHERE workspace_id=?", (workspace_id,))}
+        return {row[0] for row in db.execute(
+            "SELECT DISTINCT p.topic_id FROM pipeline_pieces p JOIN topics t ON t.id=p.topic_id "
+            "JOIN actors a ON a.id=t.creator_id WHERE p.workspace_id=? AND a.kind='agent'", (workspace_id,))}
 
     def _open_build_topics(self, db, workspace_id):
         """The outcome's Build topics the right rail lists (item 297): the ones neither Done nor archived, the Conversation
