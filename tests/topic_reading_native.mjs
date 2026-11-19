@@ -19,6 +19,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { dossierSelectionQuoteChecks } from './dossier_selection_quote_native.mjs';
+import { coverRefreshChecks } from './cover_refresh_native.mjs';
 import { stackChecks } from './stack_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
@@ -175,8 +176,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // A message the person folded (a thumbs-up or a reply of theirs folds it, docs/reply-stacks.md) lights on its one-line row
   // under the pointer, with its bar, but in a dossier with none (item 471); on a phone a tap on that row unfolds it, so it
   // is unfolded first (unfoldRow).
-  const light = async (p, device, id, offWords = false) => {
-    await centre(p, card(id));
+  const light = async (p, device, id, offWords = false, reveal = centre) => {
+    await reveal(p, card(id));
     if (await foldedRow(p, id)) {
       if (device === 'phone') await unfoldRow(p, device, id);
       else {
@@ -3497,6 +3498,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     { seed, open, centre, tap, lit, words });
   await dossierSelectionQuoteChecks({ check, until, view, control, shot, facts, observations, engine, grant },
     { seed, open, becomes, centre, tap, card, words, openReader, closeReader, into });
+  await coverRefreshChecks({ check, until, view, control, shot, facts, observations, engine },
+    { seed, open, centre, tap, press, openReader, closeReader, card });
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
   await editChecks({ check, until, view, control, facts, shot, engine },

@@ -134,6 +134,13 @@ fields ([agent-cli.md](agent-cli.md)). When to write the cover is in
 
 ## The page
 
+A cover's refresh glyph requests a rewrite from its recorded writer, falling
+back only to the configured, eligible outcome coordinator. It turns while Core
+awaits a changed agent cover revision, keeping the existing cover whole, and
+links to the durable request. Reload does not end the wait. A reply, the owner's
+Done, delivery acknowledgement or a timer never ends it. The state, routing,
+retry identity and preview limitations are in [cover-refresh.md](cover-refresh.md).
+
 A dossier's cover is drawn as the folder's first sheet, after the entry of
 its displayed head and before the chevron and the replies, both closed and
 open (`web/dossier-cover.mjs`). It is not drawn inside the head's card,
