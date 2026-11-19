@@ -53,9 +53,11 @@
 :root{
   /* the folder: one material for tab and body */
   --stack-folder:#e9e5da;
+  --stack-cover-inset:inset 0 1px 3px rgb(70 60 40 / .16),inset 0 -1px 0 rgb(255 255 255 / .55);
   --stack-folder-deep:#dcd6c8;            /* the short name under the pointer */
   --stack-folder-ink:#2f363b;
   --stack-meta-ink:#59636a;               /* counts and names */
+  --stack-cover-accent:var(--accent);
   --stack-lift:0 1px 0 rgb(84 70 42 / .14),0 7px 12px -5px rgb(84 70 42 / .16);
   /* the sheets */
   --stack-sheet:var(--panel);             /* an unread card */
@@ -89,6 +91,8 @@
 }
 @media(prefers-color-scheme:dark){:root{
   --stack-folder:#1c2427; --stack-folder-deep:#2a3437; --stack-folder-ink:#d3dcd9; --stack-meta-ink:var(--muted);
+  --stack-cover-inset:inset 0 1px 3px rgb(0 0 0 / .5),inset 0 -1px 0 rgb(255 255 255 / .05);
+  --stack-cover-accent:#79c7ab;
   --stack-lift:0 1px 0 rgb(0 0 0 / .5),0 8px 14px -5px rgb(0 0 0 / .45);
   --stack-sheet:#2a3437; --stack-read-sheet:#232c2f; --stack-read-hover:#2c3639; --stack-sheet-edge:rgb(255 255 255 / .05);
   --stack-input-edge:rgb(255 255 255 / .2);
@@ -449,13 +453,15 @@
 #messages[data-show-coordination=false]>[data-coordination=agents]{display:none}
 #agent-coordination-show:has(~ #messages[hidden]){display:none}
 
-/* A dossier's cover (item 624, web/dossier-cover.mjs): the folder's first sheet, right after the head's entry, whose
-   tab stands above the folder, and before the chevron and the replies. It wears the folder's sheet (--panel is the
-   stack's sheet here), never a card's tint or a coloured edge. Its pills are one language: a line glyph in the text's
-   colour, then a few words; the state is words and weight, never a fill. A message on its own shows its cover's pills
+/* A dossier's cover (item 624, web/dossier-cover.mjs): first in the folder, under its tab and above the head's
+   message, open or closed. It wears the folder's own colour, with a subtle inset shadow. Its pills are one language:
+   a line glyph in the text's colour, then a few words; the state is words and weight, never a fill. A message on its own shows its cover's pills
    under who wrote it instead. Only New, and an agent-only dossier's quiet row, show no cover. */
 .reply-stack>.dossier-cover{display:flex;position:relative;box-sizing:border-box;margin:0 0 .4rem;padding:.7rem .9rem .75rem;
-  border-radius:var(--stack-r-sheet,.6rem);background:var(--panel);box-shadow:var(--stack-contact,none)}
+  --ink:var(--stack-folder-ink);--muted:var(--stack-meta-ink);--accent:var(--stack-cover-accent);--warn:var(--stack-star);
+  border-radius:var(--stack-r-sheet,.6rem);background:var(--stack-folder);box-shadow:var(--stack-cover-inset)}
+/* Small source links keep full-strength ink on the folder too. */
+.reply-stack>.dossier-cover .cover-src{opacity:1}
 .dossier-cover{flex-direction:column;gap:.38rem;font-size:.9rem;line-height:1.4;color:var(--ink);text-align:left;white-space:normal}
 .cover-line{display:block;min-width:0}
 .cover-line>.row-pill,.cover-line>.topic-state{margin:0 .4rem 0 0}

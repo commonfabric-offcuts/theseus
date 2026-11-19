@@ -17,6 +17,7 @@
 // (121), in the topic's composer and in the Reader; and what the keys select
 // coming fully into view, and a click or a tap scrolling nothing (379).
 import assert from 'node:assert/strict';
+import { coverChecks783 } from './cover_783_native.mjs';
 import { reading785Checks } from './reading_785_native.mjs';
 import { createHash } from 'node:crypto';
 import { dossierSelectionQuoteChecks } from './dossier_selection_quote_native.mjs';
@@ -64,14 +65,7 @@ const HEARD = `(()=>{window.sent=[];window.sendReceipts=[];window.taps=0;window.
   return answer};
   addEventListener('click',()=>{window.taps++},true)})()`;
 
-// grant(names): Chrome's own grant of permissions (clipboard-read, ...) to the page's
-// origin, as a person's earlier "Allow" leaves it; Safari's engine has none. engine: 'chrome' or 'webkit'.
-// windows: the browser's own windows, as it opens them: list() gives each page's id and address, close(id) closes one.
-export async function readingChecks({ check, page, until, view, control, shot, facts, observations, grant = null, windows, engine = 'chrome' }) {
-  await onboardingChecks790({check,page,until,control,shot,facts,observations,grant,engine});
-  // A topic of the person's own, with aim-core and aim-ux in it, and messages
-  // said in order: each [name, {sender, body, ...}] as the fixture's agent_message takes it.
-  const seed = async (topic, said) => {
+export const readingSeed = control => async (topic, said) => {
     await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Reading ' + topic }] });
     const ids = {};
     let n = 0;
@@ -82,6 +76,15 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     }
     return ids;
   };
+
+// grant(names): Chrome's own grant of permissions (clipboard-read, ...) to the page's
+// origin, as a person's earlier "Allow" leaves it; Safari's engine has none. engine: 'chrome' or 'webkit'.
+// windows: the browser's own windows, as it opens them: list() gives each page's id and address, close(id) closes one.
+export async function readingChecks({ check, page, until, view, control, shot, facts, observations, grant = null, windows, engine = 'chrome' }) {
+  await onboardingChecks790({check,page,until,control,shot,facts,observations,grant,engine});
+  // A topic of the person's own, with aim-core and aim-ux in it, and messages
+  // said in order: each [name, {sender, body, ...}] as the fixture's agent_message takes it.
+  const seed = readingSeed(control);
   // The page at a device's size; on the phone, with touch from its start. init: more to run before the page's own code.
   // query: the page's address after the origin, the topic's page unless given. before(q): more to do to the page
   // before it is opened, once its size and touch are set (what serves its files, say).
@@ -3498,6 +3501,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   });
 
   await reading785Checks({ check, until, view, control, shot, facts, observations, engine }, { seed, open, tap });
+  await coverChecks783({ check, until, view, control, shot, facts, observations, engine },
+    { seed, open, centre, press, closeReader, readerOn });
   await whisperOutlineReading({ check, until, control, facts, shot, engine, observations },
     { seed, open, centre, tap, lit, words });
   await dossierSelectionQuoteChecks({ check, until, view, control, shot, facts, observations, engine, grant },
