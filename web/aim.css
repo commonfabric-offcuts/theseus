@@ -629,12 +629,15 @@ dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;
 /* Marked unread, agent talk reads at full strength at once, so its Unread pill is never faint, even while the mark arrives. */
 .message-fold[data-talk=agents]:has(.unread-mark)>:is(.fold-line,.message-card),.message-card[data-talk=agents]:has(.unread-mark){opacity:1;transition:none}
 .replied-mark{position:relative;display:inline-flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;margin:-.4rem 0 -.4rem .2rem;vertical-align:middle;border-radius:.5rem;color:var(--muted);font-weight:400;cursor:pointer}
-@media(hover:hover){.replied-mark:hover{color:var(--ink);background:color-mix(in srgb,currentColor 12%,transparent)}.replied-mark:hover .replied-words{opacity:1}}
+@media(hover:hover){.replied-mark:hover{color:var(--ink);background:color-mix(in srgb,currentColor 12%,transparent)}.replied-mark:hover .replied-words{width:max-content;height:auto;padding:.15rem .5rem;opacity:1}}
 .replied-mark[data-shown]{color:var(--ink);background:color-mix(in srgb,currentColor 12%,transparent)}
 .replied-icon{display:inline-flex}
-.replied-words{position:absolute;top:100%;left:0;z-index:2;margin-top:.2rem;padding:.15rem .5rem;border-radius:.4rem;background:var(--tip-bg);color:var(--tip-ink);font-size:.75rem;font-weight:500;line-height:1.5;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s ease}
+/* Hidden reply words still name the card for assistive reading, but their
+   box has no width: an opacity-only tip widened the mobile page (831).
+   Shown tips wrap within the viewport and card-reading.mjs places them. */
+.replied-words{position:absolute;top:100%;left:var(--reply-tip-left,0px);z-index:2;width:0;height:0;max-width:calc(100vw - 2rem);overflow:hidden;margin-top:.2rem;padding:0;border-radius:.4rem;background:var(--tip-bg);color:var(--tip-ink);font-size:.75rem;font-weight:500;line-height:1.5;white-space:normal;overflow-wrap:anywhere;opacity:0;pointer-events:none;transition:opacity .12s ease}
 /* Shown by a tap, the words are the way on: a second tap on them or the arrow opens the reply. */
-.replied-mark[data-shown] .replied-words{opacity:1;pointer-events:auto;padding:.45rem .7rem;font-size:.8rem}
+.replied-mark[data-shown] .replied-words{width:max-content;height:auto;opacity:1;pointer-events:auto;padding:.45rem .7rem;font-size:.8rem}
 .replied-mark[data-shown] .replied-words::after{content:" \203A"}
 /* Beside the time on the author line, clear of the message bar over the card's top corner; a finger's 44px target overhangs the line rather than growing it. */
 @media(pointer:coarse){.replied-mark{width:2.75rem;height:2.75rem;margin:-.9rem -.4rem -.9rem 0}}
