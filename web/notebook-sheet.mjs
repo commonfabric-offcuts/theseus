@@ -78,7 +78,9 @@ export class NotebookSheet {
     this.dockButton.append(glyph('layout', doc)); this.dockButton.onclick = () => this.setDocked(!this.docked);
     this.dossierButton = node('button', 'notebook-sheet-dossiers quiet', 'Choose dossier'); this.dossierButton.type = 'button';
     this.dossierButton.setAttribute('aria-expanded', 'false'); this.dossierButton.onclick = () => this.dossiers?.toggle();
-    head.append(this.title, this.dockButton, this.full, this.closer, this.views, this.dossierButton, this.status);
+    head.append(this.title, this.dockButton, this.full, this.closer);
+    this.toolbar = node('div', 'notebook-sheet-toolbar');
+    this.toolbar.append(this.views, this.dossierButton);
     this.body = node('div', 'notebook-sheet-pages');
     this.root.append(head, this.body);
     if (feed) this.dossiers = new NotebookDossiers({ doc, host: this.root, anchor: this.dossierButton, read: feed.read,
@@ -228,6 +230,10 @@ export class NotebookSheet {
     this.title.replaceChildren(page.sheetTitle);
     this.views.replaceChildren(page.views, page.draft, page.more, page.pageNotice);
     this.status.replaceChildren(page.status);
+    // One fixed title row. Everything else belongs to the existing page
+    // scroller, which also keeps the cards' scroll position across closes.
+    page.host.prepend(this.toolbar, this.status, ...(this.dossiers ? [this.dossiers.root] : []));
+    page.host.querySelector('.notebook-tools')?.remove();
     this.full.href = this.fullHref(page.item, page.mode);
     if (!this.showing) {
       this.inlineHidden = this.inline?.hidden ?? true;
