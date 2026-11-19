@@ -107,6 +107,10 @@ the work; a legible target and measurement against it are what make it land.
   regression caught before merging costs minutes; one caught after deploying
   costs the people using Theseus. Speed measures also run at deploy, against
   a copy of the real data, because that is where size shows.
+  [Landing a change](landing.md) specifies the timing: an ordinary change's own
+  approved checks precede merge, its changed surface is checked immediately on
+  live, and broad judgment follows; judged-first changes complete judgment
+  before deployment.
 
 ## Turn friction into traction
 
