@@ -150,7 +150,8 @@ export class StackFeed {
   // reread(): reads the acts again from Core, after a refusal. starsChanged():
   // the reader's stars moved (the right rail's Starred). status(words): says
   // what became of an act; line(): the element it says it in.
-  // hold(paint): repaints keeping the page where the person is. press: the
+  // hold(paint, act?): repaints keeping the page where the person is; act
+  // names the card before its callback changes anything ({id, anchor}). press: the
   // press held down on the page (press-hold.mjs).
   // thumb(item, on): the message's thumbs-up, as its bar's 👍 gives it (a folded row's 👍).
   // redrawn(): the stacks were drawn again, so what else shows a message's acts (the Reader's star) follows.
@@ -200,6 +201,14 @@ export class StackFeed {
     list.addEventListener('wheel', event => this.wheeled(event), { passive: false });
   }
   get state() { return stackState(this.list); }
+  // A star/menu action owns the hold before any optimistic change, and
+  // includes synchronous focus transfers. Nested arrange calls use that hold.
+  cardAct(id, act, anchor = null) {
+    if (this.acting) return act();
+    this.acting = true;
+    try { return this.hold(act, { id, anchor }); }
+    finally { this.acting = false; }
+  }
   // A message's acts as the page shows them: what Core holds, with each act
   // not yet answered over it. known: the message when the page has not loaded it.
   actsOf(id, known = null) {
@@ -509,6 +518,7 @@ export class StackFeed {
     if (!target) return;
     const card = cardIn(target), stop = card.hidden ? target.querySelector?.('.fold-line') ?? card : card;
     stop.focus({ preventScroll: true });
+    if (this.acting) return;
     if (above) revealSelection(above);
     revealSelection(shownSelected(target));
   }
@@ -516,19 +526,23 @@ export class StackFeed {
   // and starring one in a dossier the reader moved below More brings the
   // dossier back above More, shown at once as Core does it (item 635).
   star(item) {
-    const on = !this.actsOf(item.id, item).starred;
-    const position = on ? positionOf(stackOf(this.list, this.entryFor(item.id))?.stack ?? { head: item, replies: [] }) : null;
-    this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);
-    if (on && this.actsOf(item.id, item).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }
-    this.arrange(); this.say(on ? 'Starred, for you only' : 'Star taken off');
+    return this.cardAct(item.id, () => {
+      const on = !this.actsOf(item.id, item).starred;
+      const position = on ? positionOf(stackOf(this.list, this.entryFor(item.id))?.stack ?? { head: item, replies: [] }) : null;
+      this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);
+      if (on && this.actsOf(item.id, item).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }
+      this.arrange(); this.say(on ? 'Starred, for you only' : 'Star taken off');
+    });
   }
   // The right rail's Unstar, for a message here or in another place: one this
   // page shows takes the star off its card too.
   unstar(star) {
     const item = this.messages().get(star.message_id) ?? { id: star.message_id, acts: { starred: true, star_revision: star.star_revision } };
     if (!this.actsOf(item.id, item).starred) return;
-    this.act('message.star', item, { starred: false });
-    this.arrange(); this.say('Star taken off');
+    return this.cardAct(item.id, () => {
+      this.act('message.star', item, { starred: false });
+      this.arrange(); this.say('Star taken off');
+    });
   }
   // A stack dealt with folds to its newest reply when the reader comes back.
   deal(item) {
@@ -558,7 +572,7 @@ export class StackFeed {
   startRename(stack) {
     this.state.renaming = stack.id; this.arrange();
     const input = renameInput(this.list, stack.id);
-    input?.focus(); input?.select?.();
+    input?.focus({ preventScroll: Boolean(this.acting) }); input?.select?.();
   }
   // A name is the dossier's: it goes on its first message, loaded or not
   // (item 470), fenced on the name Core holds there. A page whose Core sends no
