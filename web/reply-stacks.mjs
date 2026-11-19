@@ -120,7 +120,7 @@ export function topOf(list, entry) {
 // own (apart; stack-order.mjs, gather). None is ever recorded.
 export function stackState(list) {
   if (!states.has(list)) states.set(list, { levels: new Map(), kept: new Set(), peeked: new Set(), here: new Map(), renaming: null,
-    stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: true, below: new Set(), viewer: null, again: () => {},
+    stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: true, below: new Set(), viewer: null, again: () => {}, waiting: new Set(),
     earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set(), filling: null, filled: new Set(), apart: new Set() });
   return states.get(list);
 }
@@ -210,6 +210,7 @@ export const shownStacks = state => shownOrder(state.stacks, shownView(state));
 // messages do not name) is drawn as Only new draws it.
 export function drawn(list, id) {
   const state = stackState(list), view = shownView(state);
+  if (state.waiting.has(id)) return false;
   const stack = state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
   if (stack && view.hidden(stack)) return false;
   const item = !stack ? { id } : stack.id === id ? stack.head : stack.replies.find(each => each.id === id);
@@ -239,7 +240,7 @@ export function lineSeq(list, seq) {
   const state = states.get(list);
   if (!seq || !state) return seq;
   const at = lineUnder(state.stacks, seq, state.viewer);
-  if (at === null) return seq;
+  if (at === null) return entries(list).some(entry => state.waiting.has(entry.dataset.id) && Number(entry.dataset.seq) === seq) ? null : seq;
   const view = shownView(state);
   if (!view.hidden(state.stacks[at])) return state.stacks[at].newest;
   const above = state.stacks.slice(0, at).findLast(stack => !view.below(stack) && !view.hidden(stack));
@@ -831,6 +832,16 @@ export function arrangeStacks(list, messages, options = {}) {
   if (on) state.on = on;
   const active = list.contains(doc.activeElement) ? doc.activeElement : null;
   const byId = new Map(entries(list).map(entry => [entry.dataset.id, entry]));
+  // At document top New above stands for arrivals not drawn yet. Keep their
+  // actual cards connected, without admitting them to dossier layout. Their
+  // records remain in messages; this changes neither unread nor order keys.
+  const waiting = [];
+  for (const id of state.waiting) {
+    const entry = byId.get(id);
+    if (!entry || !messages.has(id)) { state.waiting.delete(id); continue; }
+    entry.hidden = true;
+    waiting.push(entry); byId.delete(id);
+  }
   const loaded = [...byId.keys()].map(id => messages.get(id)).filter(Boolean);
   state.sourceRoots ??= new Set();
   for (const item of loaded) if (item.dossierSource) state.sourceRoots.add(item.id);
@@ -855,7 +866,7 @@ export function arrangeStacks(list, messages, options = {}) {
   state.coordination = new Set(stacks.filter(stack => coordinationStack(stack, quiet)).map(stack => stack.id));
   list.dataset.showCoordination = String(state.showCoordination);
   state.on?.coordinationCount?.(state.coordination.size);
-  const top = [], aside = [], live = new Set(), context = { state, keep, unread, nameOf, colorOf, doc };
+  const top = [...waiting], aside = [], live = new Set(), context = { state, keep, unread, nameOf, colorOf, doc };
   state.below = new Set();
   for (const stack of stacks) {
     const head = byId.get(stack.id);
@@ -876,7 +887,7 @@ export function arrangeStacks(list, messages, options = {}) {
   state.belowCount = shownAside;
   if (shownAside && !state.more) {
     state.more = element(doc, 'button', 'stack-more'); state.more.type = 'button';
-    state.more.onclick = () => { state.moreOpen = !state.moreOpen; state.again(); state.on?.more?.(); };
+    state.more.onclick = () => { state.on?.navigate?.(); state.moreOpen = !state.moreOpen; state.again(); state.on?.more?.(); };
   }
   // Where the feed is not drawn (app.mjs drawFeed), the composer at rest goes
   // to the page's end instead, as a dialog in a box not drawn shows nothing.
@@ -910,7 +921,7 @@ export function arrangeStacks(list, messages, options = {}) {
   // What is hidden here is what shownView says is hidden: below a closed More,
   // unless Only new draws the New items there.
   const { asideShown } = shownView(state);
-  for (const node of top) if (node !== state.more && node !== home) node.hidden = aside.includes(node) && !asideShown;
+  for (const node of top) if (node !== state.more && node !== home) node.hidden = state.waiting.has(node.dataset.id) || aside.includes(node) && !asideShown;
   if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
   state.on?.arranged?.();
   paintFoldedNames(list, messages, state);

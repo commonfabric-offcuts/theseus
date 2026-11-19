@@ -33,7 +33,7 @@ shell.extend((doc, win) => {
   panes.write = (target, title) => shell.write(target, title);
   // → and ← in the messages move to the rails beside them, ↑ from the top
   // message to the header's buttons (panes.mjs); the shell keeps this across moves.
-  listen(doc, 'keydown', event => { if (doc.documentElement.hasAttribute('data-rails')) feedKey(event, doc); });
+  listen(doc, 'keydown', event => { if (doc.documentElement.hasAttribute('data-rails')) feedKey(event, doc, () => shell.handles?.readingNavigation?.()); });
   // An arrow nothing else used lands on the nearest control that way, on
   // every page (arrow-reach.mjs). On a topic and a Conversation the panes'
   // own keys answer first: in the rails' trees, on the buttons at the top of
