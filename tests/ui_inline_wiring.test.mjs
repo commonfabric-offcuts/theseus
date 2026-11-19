@@ -4927,7 +4927,7 @@ test('835 legacy conversation links resolve to the ordinary topic with its actua
   assert.equal(f.get('conversation-row').children.length,0);
 });
 
-test('844 outcome home keeps 842 order and hands retained references to the shared right rail',async()=>{
+test('847 outcome home puts Notebook first and hands retained references to the shared right rail',async()=>{
   const thumbnails=[], live=stream(); let denied=false;
   const f=fixture('https://fixture/?workspace=w1',{paintThumb:(_host,_key,load)=>thumbnails.push(load), listen:(target,type,fn)=>target.addEventListener(type,fn), KeyTree:class {constructor(){} refresh(){} }}), original=f.api.view;
   f.topic.list_position=0;
@@ -4945,11 +4945,13 @@ test('844 outcome home keeps 842 order and hands retained references to the shar
   f.inject({api:f.api,bootstrap:f.bootstrap}); f.useLive(live);
   await f.initialize();await drain();
   const ids=f.get('outcome-page').children.map(node=>node.id);
-  assert.deepEqual(ids,['outcomes-status','retry-workspaces','outcome-team','outcome-references','page-here','topic-navigation','outcome-tools','outcome-standing','outcome-purpose','target-panel','pipeline-line','also-waiting','loop-panel','problems-panel']);
+  assert.deepEqual(ids,['outcomes-status','retry-workspaces','outcome-references','outcome-team','page-here','topic-navigation','outcome-tools','outcome-standing','outcome-purpose','target-panel','pipeline-line','also-waiting','loop-panel','problems-panel']);
   const handles=f.runObservation('shell.handles');
   assert.equal(handles?.workspaceId,'w1','outcome initializes the same shell as topics');
   assert.equal(handles.topic,null);
   assert.equal(handles.api,f.api);
+  assert.equal(Boolean(f.owners().topicRail),false,'the outcome page does not create an independent topic-list owner');
+  assert.equal(typeof handles.outcomeTopics,'function','the outline publishes its current rows to the middle');
   assert.equal(typeof handles.notebookCreate,'function');
   assert.equal(f.calls.some(call=>call.name==='stars'),false,'closed references read no stars');
   const count=name=>f.calls.filter(call=>call.name===name).length, notes=count('memory_items'),tools=count('tools');

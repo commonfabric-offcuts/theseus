@@ -284,7 +284,9 @@ export class OutlineRail {
     this.listRead = true;
     this.paint();
     const reads = [];
-    for (const item of this.pages.items) {
+    // A directly reached outcome can be readable without being in the
+    // person's workspaces list. Its provisional outline row owns its topics too.
+    for (const item of this.shownItems()) {
       if (!this.isOpen(item.id) || !shownUnder(this.filter, item)) continue;
       const outcome = this.outcome(item);
       reads.push(this.loadTopics(outcome), this.readConversation(outcome, view));
@@ -560,8 +562,17 @@ export class OutlineRail {
       // An outcome's Build topics are the right rail's (item 297): its open list here leaves them out.
       pages: new TopicPages(this.bootstrap.instance_id, outcome.id, this.currentTopicIn(outcome.id), 'active', true), ...outcome.parts,
       storage: this.storage, area: outcome.own, denied: error => readFailure(error).kind === 'forbidden',
+      painted: () => this.publishTopics(),
       read: args => readTopicList((name, query) => this.read(name, query, 'foreground'), args), open: (topicId, topicTitle, message, at) => this.open(topicTarget(topicId, message, at), topicTitle) });
     return outcome.rail;
+  }
+  // The outcome page consumes this exact rail; it never creates another
+  // TopicPages or decides independently which topics qualify.
+  publishTopics() {
+    if (this.handles?.route?.kind !== 'workspace') return;
+    const outcome = this.outcomes.get(this.here);
+    const visible = outcome && !outcome.li.hidden && !outcome.topics.hidden && this.handles.readable?.() !== false;
+    this.handles.outcomeTopics?.(visible ? outcome.rail?.presentation() ?? null : null);
   }
   // An outcome's topics, read again: the page's own list reads itself.
   loadTopics(outcome) { return outcome.adopted || outcome.id === this.here && this.handles?.route?.kind !== 'workspace' ? true : this.ownRail(outcome).load(); }
@@ -708,6 +719,7 @@ export class OutlineRail {
     this.place();
     this.dossiers.sync();
     this.notebookStars.sync();
+    this.publishTopics();
   }
   // On a phone: "☰ Outcomes" carries the total and the lit light, and a line
   // under the header says how much is new in the other outcomes. Both are the
