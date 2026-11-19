@@ -1,5 +1,5 @@
 // No page has a header bar or a Refresh button, and nothing the page says
-// asks the person to Refresh: each message that did now reads again on its
+// asks the person to Refresh (apart from item 738's exact cover rewrite words): each message that did now reads again on its
 // own and says what it found (topic state, people and openings have their own
 // checks beside their modules).
 import test from 'node:test';
@@ -13,9 +13,31 @@ const source = name => sources.find(([file]) => file === name)[1];
 // inside; a line comment's apostrophe pairs with nothing on its line.
 const quoted = text => text.split('\n').flatMap(line => [...line.matchAll(/(['"`])((?:\\.|(?!\1)[^\\])*?)\1/g)].map(match => match[2]));
 
-test('no words in any page module ask the person to Refresh; the one status about refreshing stays', () => {
+test('only the approved cover rewrite strings may say refresh; other pages reread themselves', () => {
   const said = sources.flatMap(([name, text]) => quoted(text).filter(words => /\brefresh/i.test(words)).map(words => `${name}: ${words}`));
-  assert.deepEqual(said, ['freshness.mjs: Refreshing this topic after a history change.']);
+  // Item 738 explicitly adds a cover rewrite act. No module-wide exemption:
+  // every permitted instruction, import, selector and storage identifier is exact.
+  assert.deepEqual(said, [
+    "app.mjs: ./cover-refresh.mjs",
+    "cover-refresh.mjs: aim-next-cover-refresh:${JSON.stringify([binding.instance_id, binding.actor, root])}",
+    "cover-refresh.mjs: The saved refresh request could not be read safely.",
+    "cover-refresh.mjs: The cover request is not confirmed. Press refresh to retry the same request.",
+    "cover-refresh.mjs: cover-refresh",
+    "cover-refresh.mjs: [data-cover-refresh]",
+    "cover-refresh.mjs: Awaiting ${context.nameOf(refresh.recipient)}’s new cover. Open the request",
+    "cover-refresh.mjs: Ask the writer to refresh this cover",
+    "cover-refresh.mjs: cover-refresh-glyph",
+    "cover-refresh.mjs: refresh",
+    "cover-refresh.mjs: This saved refresh belongs to an earlier instance binding. It is kept for reconciliation.",
+    "cover-refresh.mjs: ${why.why ?? NOT_TAKEN[why.kind] ?? 'The connection was interrupted'}. The request is not confirmed; press refresh to retry it.",
+    "cover-refresh.mjs: The cover request could not be confirmed. Press refresh to retry the same request.",
+    "cover-refresh.mjs: The cover refresh was refused; the cover is kept.",
+    "cover-refresh.mjs: ${receipt.error?.message ?? 'The request is not confirmed'}. Press refresh to retry it.",
+    "cover-refresh.mjs: cover-refresh-status",
+    "dossier-cover.mjs: ./cover-refresh.mjs",
+    "freshness.mjs: Refreshing this topic after a history change.",
+    "message-menu.mjs: a, .fold-line, .image-thumb, .note-corner, .cover-refresh-glyph"
+  ]);
   assert.doesNotMatch(source('index.html').replace(/<[^>]*>/g, ' '), /\brefresh/i, 'no Refresh in the page\'s own text');
   // The words that took Refresh's place are there.
   for (const [name, words] of [['app.mjs', 'Automatic updates need the updated server. Reload this page to see newer messages.'],
