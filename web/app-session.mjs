@@ -219,7 +219,7 @@ export class EditorRegistry {
         editor.uploadState?.entries.some(e => e.selected && ['memory-only', 'capturing'].includes(e.bytes_state)))) throw new ImageHeld();
   }
 
-  async open(sourceRef, { topicId, opener, mode = 'reply' } = {}) {
+  async open(sourceRef, { topicId, opener, mode = 'reply', replyCard = null } = {}) {
     const foreground = this.cleanup.foreground();
     const token = ++this.generation;
     this.pendingOpen = token;
@@ -257,7 +257,7 @@ export class EditorRegistry {
     const source = sourceUnavailable ? { instance_id: this.bootstrap.instance_id, source_ref: copy(sourceRef),
       topic_id: topicId ?? null, title: 'Source unavailable', body: '', attachments: [] } : sourceAnswer;
     const presentation = { token, source, sourceUnavailable, destinationAvailable: state.destination_available,
-      editors: { reply, note }, mode, opener, mark: state.mark ?? null };
+      editors: { reply, note }, mode, opener, mark: state.mark ?? null, replyCard };
     this.pendingOpen = null;
     this.current = presentation; await this.present(presentation);
     if (token !== this.generation || this.disposed) return null;

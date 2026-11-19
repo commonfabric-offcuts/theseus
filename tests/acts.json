@@ -448,8 +448,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "      else this.act('reply');",
-     "      else return;"
+     "      else if (item) this.reply(item.id, cardIn(this.lit));",
+     "      else if (item) return;"
     ]
    ],
    "check": {
@@ -8826,8 +8826,8 @@
     ],
     [
      "web/message-menu.mjs",
-     "    if (event.buttons || open || this.host.closest('[inert]') || this.doc.querySelector('dialog[open]')) return;",
-     "    if (event.buttons || open || this.host.closest('[inert]') || this.doc.querySelector('dialog[open]') || writing(this.doc.activeElement)) return;"
+     "    if (event.buttons || open || this.host.closest('[inert]') || this.doc.querySelector('dialog[open]:not([data-card-reply])')) return;",
+     "    if (event.buttons || open || this.host.closest('[inert]') || this.doc.querySelector('dialog[open]:not([data-card-reply])') || writing(this.doc.activeElement)) return;"
     ]
    ],
    "check": {
@@ -29032,8 +29032,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "reply: make('reply', '', 'Reply (Return)'),",
-     "reply: make('reply', 'Reply', 'Reply (Return)'),"
+     "reply: make('reply', '', 'Reply'),",
+     "reply: make('reply', 'Reply', 'Reply'),"
     ],
     [
      "web/message-menu.mjs",
@@ -32225,7 +32225,7 @@
    "break": [
     [
      "web/reader.mjs",
-     "if (!this.narrow.matches && this.layout.mode !== 'wide') {",
+     "if (!this.card && !this.narrow.matches && this.layout.mode !== 'wide') {",
      "if (false) {"
     ]
    ],
@@ -32570,6 +32570,176 @@
    ],
    "check": {
     "node": "tests/ui_marks.test.mjs"
+   }
+  },
+  {
+   "item": 721,
+   "act": "Reply docks the existing Reader inside the chosen source card",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (name === 'reply') return this.inlineReply(item.id, card);",
+     "if (name === 'reply') return this.reply(item.id, card);"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 721 contract dock"
+   }
+  },
+  {
+   "item": 721,
+   "act": "The whole source precedes the bar without clipping or source scrolling",
+   "break": [
+    [
+     "web/aim.css",
+     ".message-card[data-card-reply]>.message-preview{max-height:none;overflow:visible}",
+     ".message-card[data-card-reply]>.message-preview{display:block;max-height:120px;overflow:auto}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 721 contract whole"
+   }
+  },
+  {
+   "item": 721,
+   "act": "Source drag selects text and never opens Reader",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (event?.detail > 0 && sourcePress?.dragged) return;",
+     "if (false) return; // item 721 source drag mutant"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 721 contract selection"
+   }
+  },
+  {
+   "item": 721,
+   "act": "The compact title and close control remain visible",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader[data-card-reply] #reader-title{font-size:.8rem;color:var(--muted)}",
+     "#reader[data-card-reply] #reader-title{display:none}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 721 contract title"
+   }
+  },
+  {
+   "item": 721,
+   "act": "The reused addressing row remains the named default",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader[data-card-reply] .writing-pane{height:auto;max-height:none;overflow:visible;padding-left:0;padding-right:0;background:transparent}",
+     "#reader[data-card-reply] .writing-pane{height:auto;max-height:none;overflow:visible;padding-left:0;padding-right:0;background:transparent} #reader[data-card-reply] #who-chip{display:none}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 721 contract addressing"
+   }
+  },
+  {
+   "item": 721,
+   "act": "Clicking and selecting the real writing stays in the card",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (event?.target?.closest?.('#reader')) return;",
+     "if (false) return; // item 721 writing click mutant"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 721 contract writing"
+   }
+  },
+  {
+   "item": 721,
+   "act": "Escape closes the nonmodal reply through its preserving owner",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (!event.defaultPrevented) { event.preventDefault(); this.escape(); }",
+     "if (!event.defaultPrevented) { event.preventDefault(); }"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 721 contract escape"
+   }
+  },
+  {
+   "item": 721,
+   "act": "Unavailable source moves the same writing to the full Reader",
+   "break": [
+    [
+     "web/reader.mjs",
+     "  hideUnavailableSource() {\n    this.expandReply();",
+     "  hideUnavailableSource() {\n    // item 721 mutant: leave unavailable writing in its card"
+    ],
+    [
+     "web/reader.mjs",
+     "    this.expandReply();\n  }\n\n  expandReply()",
+     "    return; // item 721 mutant: leave hidden writing in its card\n  }\n\n  expandReply()"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 721 contract unavailable"
+   }
+  },
+  {
+   "item": 721,
+   "act": "A hidden source moves the same writing to the full Reader",
+   "break": [
+    [
+     "web/reader.mjs",
+     "    this.expandReply();\n  }\n\n  expandReply()",
+     "    return; // item 721 mutant: leave hidden writing in its card\n  }\n\n  expandReply()"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 721 contract hidden"
+   }
+  },
+  {
+   "item": 721,
+   "act": "A source revision stays whole above the same writing",
+   "break": [
+    [
+     "web/app.mjs",
+     "await cardScroll.showFull(card, item, () => reader.card === card && revisionOf(views.messages.get(id)) === revisionOf(item));",
+     "await cardScroll.showFull(card, item, () => reader.card === card && revisionOf(views.messages.get(id)) === revisionOf(item));\n        card.querySelector(':scope > .message-preview').style.maxHeight = '120px'; card.querySelector(':scope > .message-preview').style.overflow = 'auto';"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 721 contract change"
+   }
+  },
+  {
+   "item": 721,
+   "act": "The durable chooser copy publishes the exact selected image bytes",
+   "break": [
+    [
+     "web/journal.mjs",
+     "const data = await bytes.blob.arrayBuffer();",
+     "const data = new ArrayBuffer(bytes.blob.size); // item 721 corrupt byte-store mutant"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 721 contract image"
    }
   }
  ]

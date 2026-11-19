@@ -1736,3 +1736,64 @@ test('continuous typing reaches the maximum save wait without delaying local rec
   assert.equal(f.calls.filter(call => call.type === 'command').length, 1);
   assert.equal(editor.dirty, false);
 });
+
+// Item 721: placement travels through the real registry and real HTTP/Core.
+// A card is an opaque placement value here: native DOM/gestures belong to compose.
+test('item 721 placement reuses the same editor session uploads and exact retained writing', async t => {
+  const f = await fixture(t), ref = f.facts.sources[1], replyCard = { fixturePlacement: 'chosen card' };
+  const p = await f.registry.open(ref, { topicId: f.facts.topic_id, replyCard });
+  assert.equal(p.replyCard, replyCard);
+  const editor = p.editors.reply, session = f.registry.sessionFor(editor), uploads = session.uploads;
+  const words = { body: 'Exact retained words\nwith their newline', quotes: [{ source: ref, excerpt: 'I kept this source' }], caret: { start: 6, end: 14 } };
+  editor.edit(words); await f.registry.edited(editor); await f.registry.flush(editor);
+  const onServer = await f.state(1);
+  assert.equal(onServer.draft.body, words.body);
+  assert.deepEqual(onServer.draft.quotes, words.quotes);
+  assert.equal(await f.registry.close(p, { explicit: true }), true);
+  const full = await f.registry.open(ref, { topicId: f.facts.topic_id });
+  assert.equal(full.replyCard, null);
+  assert.equal(full.editors.reply, editor);
+  assert.equal(f.registry.sessionFor(editor), session);
+  assert.equal(session.uploads, uploads);
+  assert.deepEqual({ body: editor.draft.body, quotes: editor.draft.quotes, caret: editor.draft.caret }, words);
+  const redocked = await f.registry.open(ref, { topicId: f.facts.topic_id, replyCard });
+  assert.equal(redocked.replyCard, replyCard);
+  assert.equal(redocked.editors.reply, editor);
+  assert.equal(f.registry.sessions.size, 2, 'only existing reply and note owners');
+  assert.equal(f.calls.some(c => c.envelope?.kind === 'message.send'), false, 'moving surfaces publishes nothing');
+});
+
+test('item 721 real send holds A apart from B across a lost HTTP answer and publishes once', async t => {
+  const f = await fixture(t), ref = f.facts.sources[1], replyCard = { fixturePlacement: 'same card' };
+  const p = await f.registry.open(ref, { topicId: f.facts.topic_id, replyCard }), editor = p.editors.reply;
+  const entered = deferred(), release = deferred(), command = f.transport.command;
+  t.after(() => release.resolve());
+  let published;
+  f.transport.command = async envelope => {
+    const receipt = await command(envelope);
+    if (envelope.kind === 'message.send') { published = receipt; entered.resolve(); await release.promise; throw Error('Lost real HTTP send answer after Core committed'); }
+    return receipt;
+  };
+  editor.edit({ body: 'A with quote, exact', reply_to: ref.id, quotes: [{ source: ref, excerpt: 'Source 1 exact passage.' }] });
+  const sending = f.registry.send(editor, { stay: true, presentation: p });
+  await entered.promise;
+  editor.edit({ body: 'B written while A answer waits', caret: { start: 2, end: 8 } });
+  await f.registry.edited(editor); await f.registry.flush(editor);
+  const original = editor.submissions[0];
+  assert.equal(original.snapshot.body, 'A with quote, exact');
+  assert.deepEqual(original.snapshot.attachments, []);
+  release.resolve(); await sending;
+  await f.registry.checkConfirmation(editor);
+  assert.equal(published.status, 'committed', JSON.stringify(published.error));
+  assert.equal(original.status, 'confirmed');
+  assert.equal(editor.draft.body, 'B written while A answer waits');
+  assert.deepEqual(editor.draft.caret, { start: 2, end: 8 });
+  const source = await f.api.view('source', { kind: 'message', id: published.result.message_id });
+  assert.equal(source.body, original.snapshot.body);
+  assert.deepEqual(source.attachments, original.snapshot.attachments);
+  assert.deepEqual(source.quotes, original.snapshot.quotes);
+  assert.equal(source.topic_id, f.facts.topic_id);
+  assert.equal(source.reply_to, ref.id);
+  assert.equal(f.calls.filter(c => c.envelope?.kind === 'message.send').length, 1);
+  assert.equal(p.replyCard, replyCard);
+});

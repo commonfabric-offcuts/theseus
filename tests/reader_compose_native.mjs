@@ -26,6 +26,7 @@ import { imageButtons653 } from './image_buttons_653.mjs';
 import { thumbnailChecks } from './thumbnail_open_native.mjs';
 import { composeSwipe648 } from './compose_swipe_648.mjs';
 import { composeSwipe648Protections, observe648 } from './compose_swipe_648_protections.mjs';
+import { item721Compose } from './item_721_compose.mjs';
 import { spawn } from 'node:child_process';
 import { fixtureControl } from './fixture_control.mjs';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
@@ -2536,7 +2537,10 @@ async function runSending() {
 // and signal, held from its launch, with the short dossier's fixture's beside them (shortFixture). Cleanup runs after an
 // interruption too and writes native.json, but leaves harnessCompleted false and the run's own error in place.
 const ENGINES = ['chromium', 'webkit'];
-const PHASES = [[run], [runAnswering, () => control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING })], [runSending]];
+async function runItem721() {
+  await item721Compose({ check, page, press, until, picture, close, control, facts, engine, measured, contexts, evidence });
+}
+const PHASES = [[runItem721], [run], [runAnswering, () => control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING })], [runSending]];
 const plannedPhases = PHASES.flatMap(([phase]) => ENGINES.map(name => `${phase.name}:${name}`)), completedPhases = [];
 let browserClosed = true, harnessCompleted = false;
 try {
