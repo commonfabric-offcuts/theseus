@@ -21,6 +21,8 @@ import { LightPeek, paintAlsoWaiting, paintStanding, paintStandingFailed } from 
 import { keptToRead } from './outcome-light-words.mjs';
 import { paintKeptLine, sendEnd } from './outcome-end.mjs';
 import { OutcomeReferences } from './outcome-references.mjs';
+import { OutcomeTopicCards } from './outcome-topic-cards.mjs';
+import { NotebookViews } from './notebook-view.mjs';
 import { openIntentJournal } from './intent-journal.mjs';
 import { OpeningDraft } from './opening.mjs';
 import { OpeningView, UnfinishedOpenings } from './opening-view.mjs';
@@ -3599,9 +3601,15 @@ async function initializeOutcomePage(route) {
     const reload=followCommits(async()=>{const loaded=await outcomeRail.load();await wakeLights.load();return loaded;});
     await reload();
   } else {
-    // The title and its menu stay above the page. People, notes, topics and
+    // The title and its menu stay above the page. Notes, people, topics and
     // tools come before outcome setup; secondary context follows (item 842).
-    $('outcome-page').append($('outcomes-status'),$('retry-workspaces'),$('outcome-team'),$('outcome-references'),$('page-here'),$('topic-navigation'),$('outcome-tools'),$('outcome-standing'),$('outcome-purpose'),$('target-panel'),$('pipeline-line'),$('also-waiting'),$('loop-panel'),$('problems-panel'));
+    $('outcome-page').append($('outcomes-status'),$('retry-workspaces'),$('outcome-references'),$('outcome-team'),$('page-here'),$('topic-navigation'),$('outcome-tools'),$('outcome-standing'),$('outcome-purpose'),$('target-panel'),$('pipeline-line'),$('also-waiting'),$('loop-panel'),$('problems-panel'));
+    const cardsHost=document.createElement('div');cardsHost.className='outcome-topic-cards';
+    // Keep the shared New topic heading, but let the outline own all lists.
+    for(const child of [...$('topic-navigation').children])if(!child.classList.contains('rail-heading'))child.hidden=true;
+    $('topic-navigation').append(cardsHost);
+    const topicCards=new OutcomeTopicCards({host:cardsHost});
+    topicCards.paint(null);
     // Archived, completed or brought back (item 404): the page reads again, and once it is archived or completed the keys
     // go to Bring back on "Where it stands" (back, the target card gives them to the word that ended it).
     const targets=new OutcomeTargets({hosts:{target:$('target-panel'),loop:$('loop-panel'),problems:$('problems-panel')},workspace:route.id,reader:bootstrap.actor,read:pipelineView,send:pipelineSend,
@@ -3661,13 +3669,8 @@ async function initializeOutcomePage(route) {
       $('workspace-name').textContent=workspace.id;enableNewTopic(workspace.id);here.title=workspace.title;
       shell.topicChanged();
       await paintTeam(workspace,()=>reload());
-      if(!topicRail)topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
-        retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
-        read:async args=>checkedView(await readTopicList((name, query)=>api.view(name,query,{readClass:'foreground'}),args),bootstrap.instance_id),
-        open:(id,title,message,at)=>openDestination(topicTarget(id,message,at),title),
-        updated:()=>{$('outcome-empty').hidden=!topicRail.empty||!$('topics-status').hidden;}});
       if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
-      return (await Promise.all([stands(workspace),targets.load(),topicRail.load(),outcomeTools.load(),outcomeReferences.load(),
+      return (await Promise.all([stands(workspace),targets.load(),outcomeTools.load(),outcomeReferences.load(),
         paintPipelineLine($('pipeline-line'),{workspace:route.id,read:pipelineView})])).every(read=>read!==false);
     };
     // A commit may change the team or the outcome's revision as well as its
@@ -3682,7 +3685,7 @@ async function initializeOutcomePage(route) {
       return reads.every(read=>read.value!==false);
     });
     await reload();
-    readyRails(route.id, { workspaceTitle: here.title, currentWorkspaceTitle: () => here.title, readable: () => permitted });
+    readyRails(route.id, { workspaceTitle: here.title, currentWorkspaceTitle: () => here.title, readable: () => permitted, outcomeTopics: values => topicCards.paint(values) });
     if(shown)run(async()=>(shown.revision?pageHere.open(await pageSource(shown),$('main')):openNotebook(shown.id,{opener:$('main')})));
     else if(notebookReturning())notebookSheetOf().resume();
   }
@@ -3767,7 +3770,7 @@ async function initializeDeckPage(route) {
     catch { return {href,title:'The page'}; }
   };
   const page=new NotebookPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
-    item:route.id,read:pipelineView,send:pipelineSend,place,askIn:notebookAskIn,api,bootstrap,mode:route.view??'cards'});
+    item:route.id,read:pipelineView,send:pipelineSend,place,askIn:notebookAskIn,api,bootstrap,mode:route.view,viewPreference:notebookViewsOf()});
   shell.guard(()=>Boolean(page.writing?.journalPending||page.writing?.journalError));
   $('deck-page').hidden=false;
   await followCommits(()=>page.load())();
@@ -3838,7 +3841,7 @@ function notebookSheetOf() {
   if (notebookSheet) return notebookSheet;
   notebookSheet = new NotebookSheet({
     make: (id, host, header, idSuffix, revisionShown) => {
-      const page = new NotebookPage({ host, header, item: id, read: pipelineView, send: pipelineSend, askIn: notebookAskIn, api, bootstrap, mode: 'cards', idSuffix, shortKeys: true, revisionShown,
+      const page = new NotebookPage({ host, header, item: id, read: pipelineView, send: pipelineSend, askIn: notebookAskIn, api, bootstrap, viewPreference: notebookViewsOf(), idSuffix, shortKeys: true, revisionShown,
         place: async scope => ({ href: routeHref({ kind: scope.kind, id: scope.id, page: id }), title: '' }) });
       followCommits(() => notebookSheet.followed(page));
       return page;
@@ -3870,12 +3873,14 @@ function pagesInPlace(workspace,recorded) {
   pageHere=new PageHere({host:$('page-here'),reads,read:ref=>pipelineView('source',ref),status:id=>pipelineView('memory_status',{item_id:id}),media:pageImage,cards:id=>routeHref({kind:'cards',id,view:'text'})});pageHereOutcome=workspace;
   const shown=pageHere;followCommits(()=>shown.follow());
 }
-// The outcome's own page lists its Notebook pages after its topics, each opening
+// The outcome's own page lists its Notebook pages first, each opening
 // in the composer over it; the side rail lists none (docs/notebook-pages.md).
+let notebookViews=null;
+function notebookViewsOf(){return notebookViews??=new NotebookViews(bootstrap);}
 function outcomePages(workspace,recorded) {
   pagesInPlace(workspace,recorded);
   return new OutcomeReferences({scope:workspace,host:$('outcome-references'),create:()=>notebookCreator($('outcome-references'),{kind:'workspace',id:workspace}),list:$('outcome-references-list'),more:$('more-references'),
-    message:$('outcome-references-status'),pageMax:pageMax(),denied:error=>readFailure(error).kind==='forbidden',
+    message:$('outcome-references-status'),pageMax:pageMax(),viewPreference:notebookViewsOf(),denied:error=>readFailure(error).kind==='forbidden',
     read:args=>pipelineView('memory_items',{owner_scope:{kind:'workspace',id:workspace},...args}),open:(ref,row)=>run(()=>openNotebook(ref.id,{opener:row}))});
 }
 // An outcome's team, which its owner and its coordinator may change. The owner
@@ -3886,7 +3891,7 @@ async function paintTeam(workspace,refresh) {
     .then(receipt=>{run(refresh);return receipt;});
   if(!teamPanel){
     const section=$('outcome-team');if(section.parentElement!==$('outcome-page'))$('outcome-page').append(section);
-    teamPanel=new PeoplePanel({host:$('team-people'),label:'Add someone to this outcome\'s team',fixed:()=>[teamPanel.owner],light:wakeLight,
+    teamPanel=new PeoplePanel({host:$('team-people'),label:'Add someone to this outcome\'s team',fixed:()=>[teamPanel.owner],light:wakeLight,pill:participantPill,dismissible:true,
       read:()=>readMembers(api,bootstrap.instance_id,workspace.id),candidates:()=>directoryPeople,opened:()=>refreshDirectory()});
   }
   Object.assign(teamPanel,{owner:workspace.owner_id,add:id=>send(id,true),remove:id=>send(id,false)});

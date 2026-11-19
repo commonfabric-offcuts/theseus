@@ -6,6 +6,7 @@ import { NotebookWriting, notebookStore, mergeCardContent } from './notebook-wri
 import { NotebookImages } from './notebook-images.mjs';
 import { ImagePick, paintThumb, readInTurn } from './image-pick.mjs';
 import { DRAFT_TIP } from './topic-navigation.mjs';
+import { NotebookViews } from './notebook-view.mjs';
 
 // The draft mark's words (docs/notebook-pages.md, "A draft page").
 const DRAFT = { off: 'Mark as a draft: agents see its title and that it is a draft, never its words',
@@ -16,7 +17,9 @@ const DRAFT = { off: 'Mark as a draft: agents see its title and that it is a dra
 export class NotebookPage extends DeckPage {
   constructor(options) {
     super(options);
-    Object.assign(this, { api: options.api, bootstrap: options.bootstrap, mode: options.mode ?? 'cards' });
+    this.viewPreference = options.viewPreference ?? new NotebookViews(options.bootstrap ?? {});
+    Object.assign(this, { api: options.api, bootstrap: options.bootstrap, mode: options.mode ?? this.viewPreference.get(options.item) });
+    this.viewPreference.set(options.item, this.mode);
     // Told after each change to the writing, so a page in the composer reads a revision that reaches it (notebook-sheet.mjs).
     this.revisionShown = options.revisionShown ?? (() => {});
     this.views = this.node('div', 'notebook-views'); this.views.setAttribute('role', 'group'); this.views.setAttribute('aria-label', 'Notebook view');
@@ -255,6 +258,7 @@ export class NotebookPage extends DeckPage {
     if(this.editing)this.finish();
     this.textImages?.close();this.cardImages?.close();
     this.mode=mode; this.sync(true); this.drawView();
+    this.viewPreference.set(this.item, mode);
     if(mode==='text')this.text.focus(); else this.paint();
   }
   drawView() {
