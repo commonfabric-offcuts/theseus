@@ -92,9 +92,9 @@ test('how many other outcomes wait on the reader', () => {
   assert.equal(elsewhereWords(2), '2 other outcomes are waiting on you');
 });
 
-test('the rail shows on every page inside an outcome but the outcome\'s own, and a tool page the reader cannot see the home of', () => {
+test('the rail shows inside an outcome, including its home, except an unreadable tool home', () => {
   for (const kind of ['topic', 'opening', 'pipeline', 'skill']) assert.equal(railShown(kind), true, kind);
-  assert.equal(railShown('workspace'), false);
+  assert.equal(railShown('workspace'), true);
   assert.equal(railShown('skill', false), false, 'a non-member\'s tool page');
   assert.equal(railShown('skill', true), true, 'a member\'s tool page');
   assert.equal(wordsShown('workspace'), false, 'the outcome page before its Also-waiting line has been read');

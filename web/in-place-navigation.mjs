@@ -32,6 +32,9 @@ import { depart, stay } from './api.mjs';
 // Notebook page, Health, the Outcomes home) loads as before.
 export const FEEDS = new Set(['topic', 'conversation']);
 export const isFeed = route => Boolean(route && FEEDS.has(route.kind));
+// Outcome homes use these same rails and drawers. Their document navigation
+// stays unchanged, including the guards on Notebook writing.
+export const hasRails = route => isFeed(route) || route?.kind === 'workspace';
 export const movesInPlace = (from, to) => isFeed(from) && isFeed(to);
 
 // The history entries this page makes carry their place in its own history
@@ -250,9 +253,10 @@ export class Shell {
     this.placeOfRun = this.places?.index ?? 0;
     this.at = route ? routeKey(route) : null;
     this.feed = isFeed(route);
+    const rails = hasRails(route);
     // The rails' look is the page's from its first paint (rails.css).
-    this.doc?.documentElement?.toggleAttribute('data-rails', this.feed);
-    for (const listener of this.listeners) listener.begin?.(this.feed, route);
+    this.doc?.documentElement?.toggleAttribute('data-rails', rails);
+    for (const listener of this.listeners) listener.begin?.(rails, route);
     return page;
   }
   // The run could not start (app.mjs says why, with a reload): what was

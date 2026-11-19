@@ -232,7 +232,7 @@ export class OutlineRail {
   // live feed. handles: { view(name, args), live, api, bootstrap, workspaceId,
   // topic (the open topic, or null on a Conversation), route }.
   ready(handles) {
-    if (!['topic', 'conversation'].includes(handles.route?.kind)) return;
+    if (!['topic', 'conversation', 'workspace'].includes(handles.route?.kind)) return;
     this.handles = handles;
     const { bootstrap } = handles;
     // What a move of the person's order is sent through, kept for the moments between runs.
@@ -564,7 +564,7 @@ export class OutlineRail {
     return outcome.rail;
   }
   // An outcome's topics, read again: the page's own list reads itself.
-  loadTopics(outcome) { return outcome.adopted || outcome.id === this.here ? true : this.ownRail(outcome).load(); }
+  loadTopics(outcome) { return outcome.adopted || outcome.id === this.here && this.handles?.route?.kind !== 'workspace' ? true : this.ownRail(outcome).load(); }
   // Under the outcome being read, the page's own topic list (its TopicRail,
   // with its guard and its checks) stands in for the outline's, from when it
   // has something to show, so the list never blinks empty on a move. Which

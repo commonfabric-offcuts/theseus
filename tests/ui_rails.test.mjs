@@ -6,8 +6,8 @@
 // (tests/outcome_rail_native.mjs) press the same things in a real browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { asksIn, rowCount, totals, elsewhere, elsewhereWords, shownUnder, Opened } from '../web/outline-rail.mjs';
-import { movesInPlace, Places, Scope, Shell, Superseded, oneAtATime, buildOf, servedBuild } from '../web/in-place-navigation.mjs';
+import { asksIn, rowCount, totals, elsewhere, elsewhereWords, shownUnder, Opened, OutlineRail } from '../web/outline-rail.mjs';
+import { movesInPlace, hasRails, Places, Scope, Shell, Superseded, oneAtATime, buildOf, servedBuild } from '../web/in-place-navigation.mjs';
 import { linksIn, pullRequest, isPreview, thingsIn, waitingFor, SectionFolds } from '../web/things-rail.mjs';
 
 const asks = n => ({ light: 'waiting', short: { kind: 'asks', count: n } });
@@ -720,4 +720,35 @@ test('a press on a Build row\'s unread count opens its topic at the oldest unrea
   assert.deepEqual(closed, [false, false], 'on a phone the drawer closes either way');
   const [, none] = row('t-calm', 0);
   assert.equal(none, null, 'a topic with nothing unread shows no count');
+});
+
+
+test('844 outcome homes use the shared rail shell without changing document navigation', () => {
+  assert.equal(hasRails({kind:'workspace',id:'w1'}),true);
+  assert.equal(hasRails({kind:'topic',id:'t1'}),true);
+  assert.equal(hasRails({kind:'root'}),false);
+  assert.equal(movesInPlace({kind:'topic',id:'t1'},{kind:'workspace',id:'w1'}),false);
+  const {shell}=shellAt('?workspace=w1'), attributes=[], starts=[];
+  shell.doc={documentElement:{toggleAttribute:(name,on)=>attributes.push([name,on])}};
+  shell.follow({begin:(shown,route)=>starts.push([shown,route.kind])});
+  shell.begin({open(){}});
+  assert.equal(shell.feed,false,'Back and forward still use the outcome document navigation');
+  assert.deepEqual(attributes,[['data-rails',true]],'same responsive layout and drawer controls');
+  assert.deepEqual(starts,[[true,'workspace']],'the existing shell followers show on an outcome');
+});
+test('844 the outline reads its own current-outcome topics when the home keeps its list in the middle', () => {
+  const read=[], rail=Object.create(OutlineRail.prototype);
+  const handles={workspaceId:'w1',route:{kind:'workspace',id:'w1'},bootstrap:{instance_id:'fixture',actor:'fixture-person'}};
+  let reloads=0;
+  Object.assign(rail,{started:true,opened:{tidy(){}},outcomes:new Map(),doc:{getElementById:()=>null},paint(){},reload(){reloads++;}});
+  rail.ready(handles);
+  assert.equal(rail.handles,handles,'shared outline accepts the outcome home');
+  assert.equal(reloads,1);
+  rail.ownRail=outcome=>({load:()=>{read.push(outcome.id);return true;}});
+  rail.loadTopics({id:'w1'});
+  assert.deepEqual(read,['w1']);
+  rail.handles.route={kind:'topic',id:'t1'};
+  rail.loadTopics({id:'w1'});
+  rail.loadTopics({id:'w2'});
+  assert.deepEqual(read,['w1','w2'],'topic pages still provide their adoptable current list');
 });
