@@ -258,6 +258,8 @@ class TopicState:
                             "WHERE q.actor_id=:actor AND t." + scope + "=:scope AND NOT " + READABLE,
                             {"actor": member, "scope": scope_id}).fetchall()
         for topic in topics:
+            for link in db.execute("SELECT ask_id FROM ask_cover_links WHERE topic_id=? AND actor_id=? AND active=1", (topic["id"], member)).fetchall():
+                self._set_linked_wait(db, member, link["ask_id"], False)
             db.execute("DELETE FROM topic_waiting WHERE topic_id=? AND actor_id=?", (topic["id"], member))
             if topic["kind"] == "conversation":
                 db.execute("DELETE FROM conversation_waits WHERE actor_id=? AND ask_id IN (SELECT id FROM messages WHERE topic_id=?)",
@@ -281,7 +283,9 @@ class TopicState:
         return newly
 
     def _answered(self, db, topic, author, to=None, reply_to=None):
-        """Writing in a topic answers every ask there that waits on its author; whether one did.
+        """Writing clears the legacy projection; _publish restores any open linked questions.
+
+        New linked asks are settled only by AskCover._linked_reply, never by this broad rule.
 
         A person's whisper (to: the agent it goes to) answers only the ask it replies to (reply_to), when that is an
         ask to its writer from that agent, the one who can read the answer, as their 👍 on it would (item 307): when

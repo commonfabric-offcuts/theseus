@@ -49,7 +49,8 @@ export class TopicViews {
   constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {}, holds = () => false, reading = () => () => {}, actMessages = null }) {
     Object.assign(this, { instanceId, topicId, reader, paint, invalidate, holds, reading, actMessages });
     this.scope = { kind: 'topic', id: topicId };
-    this.messages = new Map(); this.memory = new Map(); this.revisions = new RevisionTargets();
+    this.membershipRevision = 0; this.movedPointers = [];
+    this.messages = new Map(); this.memory = new Map(); this.deletedMemory = new Map(); this.revisions = new RevisionTargets();
     // Loaded messages form runs, each holding every topic message between its
     // oldest and newest; a gap between runs holds messages never loaded.
     this.runs = new Map(); this.runCount = 0;
@@ -210,6 +211,10 @@ export class TopicViews {
   messagesPage(answer, { initial = false, cursor, live = false, anchored = false } = {}) {
     // An explicit return to an old message adds one bounded run without moving the ordinary paging frontier.
     this.page(answer, 'topic');
+    const membership = answer.membership_revision ?? 0;
+    if (membership < this.membershipRevision) return false;
+    if (membership > this.membershipRevision) this.invalidate('dossier_move', membership);
+    this.membershipRevision = membership;
     const moved = this.learnUnread(answer);
     if (!initial && !live && !anchored && cursor !== this.olderCursor || live && cursor !== this.newest) { if (moved) this.paint('line'); return false; }
     let previous = -1;
@@ -469,6 +474,8 @@ export class TopicViews {
   }
   memoryItem(item) {
     this.validMemory(item);
+    if((this.deletedMemory.get(item.id)?.revision??0)>=item.revision)return;
+    this.deletedMemory.delete(item.id);
     const old = this.memory.get(item.id);
     // A read only moves forward, so an answer older than the one shown, at
     // the same revision, never relights a page the reader has read since.
@@ -518,7 +525,39 @@ export class TopicViews {
     if (refused(named)) return true;
     return checkedView(named, this.instanceId);
   }
+  async readMoved(read, current) {
+    let cursor = null, pointers = [], arrivals = [], at = this.membershipRevision;
+    do {
+      const answer = checkedView(await read('dossier_moves', { topic_id: this.topicId, limit: 100, ...(cursor === null ? {} : { cursor }) }), this.instanceId);
+      if (!current()) return false;
+      at = Math.max(at, answer.membership_revision);
+      pointers.push(...answer.items); arrivals.push(...answer.arrivals);
+      cursor = answer.next_cursor;
+    } while (cursor !== null);
+    const ids = [...this.messages.keys()];
+    for (let n = 0; n < ids.length; n += 100) {
+      const batch = ids.slice(n, n + 100), answer = checkedView(await read('topic_membership', { topic_id: this.topicId, message_ids: batch }), this.instanceId);
+      if (!current()) return false;
+      if (answer.membership_revision < at) throw behind();
+      at = Math.max(at, answer.membership_revision);
+      const kept = new Set(answer.message_ids);
+      for (const id of batch) if (!kept.has(id)) { this.messages.delete(id); this.runs.delete(id); this.positions?.delete(id); }
+    }
+    this.membershipRevision = at; this.movedPointers = pointers;
+    // A moved dossier can predate the newest loaded message. Load its root by a bounded page,
+    // keeping the ordinary earlier-messages frontier and any unsent writing.
+    for (const root of arrivals) if (!this.messages.has(root.root_id)) {
+      const answer = await read('topic_messages', { topic_id: this.topicId, direction: 'after', cursor: root.seq - 1, limit: 30 });
+      if (!current()) return false;
+      // Anchored page validation expects an upper cursor. It does not move the paging frontier.
+      if (!this.messagesPage(answer, { anchored: true, cursor: Number.MAX_SAFE_INTEGER })) throw behind();
+    }
+    this.newest = Math.max(0, ...[...this.messages.values()].map(item => item.seq));
+    this.paint('messages');
+    return true;
+  }
   async refresh(key, version, read, current = () => true) {
+    if (key === 'dossier_move') return this.readMoved(read, current);
     if (key === 'topic') {
       const answer = checkedView(await read('topic', { topic_id: this.topicId }), this.instanceId);
       if (!current()) return false;
@@ -606,12 +645,20 @@ export class TopicViews {
       return answer.next_cursor === null;
     }
     if (key.startsWith('memory:')) {
-      const id = key.slice(7), old = this.memory.get(id);
+      const id = key.slice(7), old = this.memory.get(id)??this.deletedMemory.get(id);
       if (!old) return true;
       const answer = this.page(await read('memory_items', { owner_scope: this.scope, cursor: old.seq - 1, limit: 1 }), 'notebook');
       if (!current()) return false;
       const item = answer.items[0];
-      if (answer.items.length !== 1 || item?.id !== id || item.seq !== old.seq) throw invalid('The requested Notebook item was not returned.');
+      if(item?.id!==id) {
+        const latest=checkedView(await read('memory_current',{item_id:id}),this.instanceId);
+        if(!current())return false;
+        if(latest.source_ref?.id!==id||latest.source_ref.revision<Math.max(version,old.revision)||latest.deleted!==true)
+          throw invalid('The requested Notebook item was not returned.');
+        this.deletedMemory.set(id,{seq:old.seq,revision:latest.source_ref.revision});this.memory.delete(id);
+        this.revisions.observe(id,latest.source_ref.revision);this.paint('memory');this.paint('offer');return true;
+      }
+      if (answer.items.length !== 1 || item.seq !== old.seq) throw invalid('The requested Notebook item was not returned.');
       this.validMemory(item);
       if (item.revision < Math.max(version, this.memory.get(id)?.revision ?? 0)) throw behind();
       this.memoryItem(item); this.paint('memory'); this.paint('offer'); return true;

@@ -267,6 +267,9 @@
   height:var(--stack-meta-lh);overflow:hidden}
 .stack-head>.card-carries::before{content:"";width:0;height:var(--stack-meta-lh)}
 .stack-head .carry{flex:none;background-color:var(--stack-meta-ink)}
+/* Update activity shares the metadata line; its larger tap target overflows
+   this slot without changing the two-line tab or the title's alignment. */
+.stack-head>.message-update{flex:none;height:var(--stack-meta-lh);align-self:center}
 /* A minted name (item 479) says who named it, after the marks of the first message. It keeps its own width ahead of
    the parts that give way, so short of room who began it, the marks and who replied give way first; only a name too
    long for the tab is shortened by its ellipsis. The count, New and the star keep theirs. */
@@ -489,3 +492,11 @@
    link visible inside its face, rather than painting outside a fixed row. */
 #messages .reply-stack .message-card:is([data-folded=true],[data-earlier=true]):has(>.dossier-source-status){height:auto;flex-direction:column;align-items:stretch;padding-block:.5rem}
 .message-card:is([data-folded=true],[data-earlier=true])>.dossier-source-status{display:block!important}
+
+/* Direct answers remain real keyboard/touch buttons in covers and singleton pills. */
+.cover-answers { display:inline-flex; align-items:center; flex-wrap:wrap; gap:.35rem; }
+.cover-answer { font:inherit; color:inherit; background:transparent; border:1px solid currentColor; border-radius:.45rem; padding:.4rem .6rem; min-height:44px; cursor:pointer; }
+.cover-answer:focus-visible { outline:2px solid currentColor; outline-offset:3px; }
+.cover-answer:disabled { opacity:.55; cursor:wait; }
+.cover-answer-status:empty { display:none; }
+.no-agent-notified { display:inline-flex; align-items:center; }

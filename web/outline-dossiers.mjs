@@ -17,7 +17,8 @@ export function dossierRows(stars) {
 const plain = e => e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 
 export class OutlineDossiers {
-  constructor(outline) {
+  constructor(outline, {pages = false} = {}) {
+    this.pageStars = pages;
     this.outline = outline; this.states = new Map(); this.epoch = 0;
     this.observer = new outline.doc.defaultView.MutationObserver(() => this.sync());
     this.observer.observe(outline.list, {childList:true, subtree:true, attributes:true, attributeFilter:['hidden','inert','open']});
@@ -30,20 +31,31 @@ export class OutlineDossiers {
     this.states.clear();
   }
   parents() {
-    return [...this.outline.list.querySelectorAll('a[data-topic-id]')].filter(el => el.getClientRects().length && !el.closest('[inert]'));
+    const parents=[...this.outline.list.querySelectorAll('a[data-topic-id]')].filter(el => el.getClientRects().length && !el.closest('[inert]'));
+    if(this.pageStars)for(const outcome of this.outline.outcomes.values()) {
+      if(outcome.topics.hidden||outcome.li.hidden||!outcome.topics.getClientRects().length||outcome.topics.closest('[inert]')||!outcome.conversation)continue;
+      let link=outcome.pageConversation;
+      if(!link){
+        link=this.outline.doc.createElement('a');link.className='ol-page-conversation';link.textContent='Conversation';link.tabIndex=-1;link.hidden=true;
+        link.onclick=event=>{if(!plain(event))return;event.preventDefault();this.outline.open({kind:'conversation',id:outcome.id},outcome.item.title);};
+        outcome.topics.prepend(link);outcome.pageConversation=link;
+      }
+      link.dataset.pageConversationId=outcome.conversation.topic_id;link.href=routeHref({kind:'conversation',id:outcome.id});parents.push(link);
+    }
+    return parents;
   }
   sync() {
     if (!this.outline.handles) return;
-    const parents = this.parents(), ids = new Set(parents.map(el => el.dataset.topicId));
+    const parents = this.parents(), ids = new Set(parents.map(el => el.dataset.topicId ?? el.dataset.pageConversationId));
     for (const [id, state] of this.states) {
       if (!ids.has(id)) { state.box.remove(); state.visible = false; continue; }
     }
     for (const parent of parents) {
-      const id = parent.dataset.topicId;
+      const id = (parent.dataset.topicId ?? parent.dataset.pageConversationId);
       let state = this.states.get(id);
       if (!state) {
         const box = this.outline.doc.createElement('div');
-        box.className = 'ol-dossiers'; box.dataset.parentTopicId = id;
+        box.className = 'ol-dossiers' + (this.pageStars?' ol-pages':''); box.dataset.parentTopicId = id;
         state = {id, parent, box, stars:[], next:null, extent:null, links:new Map(), loaded:false, busy:null, error:null};
         this.states.set(id, state);
       }
@@ -51,13 +63,14 @@ export class OutlineDossiers {
       state.visible = true; state.parent = parent;
       // TopicRail retains its own ordering and rows. Restore this topic's
       // children after its row if that list has just drawn again.
-      if (parent.nextElementSibling !== state.box) parent.after(state.box);
+      const after=this.pageStars&&parent.nextElementSibling?.matches('.ol-dossiers:not(.ol-pages)')?parent.nextElementSibling:parent;
+      if (after.nextElementSibling !== state.box) after.after(state.box);
       if (returned || !state.loaded && !state.busy && !state.error) this.load(state);
     }
   }
   refresh() {
     this.sync();
-    return Promise.all(this.parents().map(parent => this.load(this.states.get(parent.dataset.topicId))));
+    return Promise.all(this.parents().map(parent => this.load(this.states.get((parent.dataset.topicId ?? parent.dataset.pageConversationId)))));
   }
   async load(state, more = false) {
     if (!state || !this.outline.handles) return true;
@@ -74,9 +87,9 @@ export class OutlineDossiers {
       try {
         let cursor = more ? state.next : null, stars = more ? [...state.stars] : [], next;
         do {
-          const answer = checkedView(await this.outline.read('stars', {topic_id:state.id, limit:PAGE, ...(cursor === null ? {} : {cursor})}, 'foreground'), handles.bootstrap.instance_id);
+          const answer = checkedView(await this.outline.read(this.pageStars?'memory_stars':'stars', {topic_id:state.id, limit:PAGE, ...(cursor === null ? {} : {cursor})}, 'foreground'), handles.bootstrap.instance_id);
           if (!mine()) return true;
-          if (!Array.isArray(answer.items) || answer.items.some(s => s.topic_id !== state.id || !s.dossier?.id) ||
+          if (!Array.isArray(answer.items) || answer.items.some(s => s.topic_id !== state.id || (this.pageStars?!s.item_id:!s.dossier?.id)) ||
               !(answer.next_cursor === null || Number.isSafeInteger(answer.next_cursor) && (cursor === null || answer.next_cursor < cursor))) throw Error('The starred dossiers could not be confirmed.');
           stars.push(...answer.items); next = answer.next_cursor; cursor = next;
         } while (!more && next !== null && state.extent !== null && next > state.extent);
@@ -101,35 +114,39 @@ export class OutlineDossiers {
   }
   paint(state) {
     const doc = this.outline.doc, nodes = [], alive = new Set();
-    for (const star of dossierRows(state.stars)) {
-      const item = star.dossier, id = item.id, title = dossierTitle(item);
+    for (const star of this.pageStars?state.stars:dossierRows(state.stars)) {
+      const item = star.dossier, id = this.pageStars?star.item_id:item.id, title = this.pageStars?(star.title||'Notebook page'):dossierTitle(item);
+      const target=this.pageStars?{kind:'topic',id:state.id,page:id}:{kind:'topic',id:state.id,message:id,land:true};
       let link = state.links.get(id);
       if (!link) {
-        link = doc.createElement('a'); link.className = 'ol-dossier'; link.dataset.dossierId = id; link.tabIndex = -1;
+        link = doc.createElement('a'); link.className = 'ol-dossier'; if(this.pageStars){link.classList.add('ol-page');link.dataset.pageId=id;}else link.dataset.dossierId = id; link.tabIndex = -1;
         link.onclick = event => {
           if (!plain(event)) return;
           event.preventDefault();
-          this.outline.open({kind:'topic',id:state.id,message:id,land:true}, link.title);
+          this.outline.open(link.pageTarget, link.title);
         };
         state.links.set(id, link);
       }
+      link.pageTarget=target;
       const text = '★ ' + title;
       if (link.textContent !== text) link.textContent = text;
-      link.title = title; link.setAttribute('aria-label', 'Starred dossier: ' + title);
-      link.href = routeHref({kind:'topic',id:state.id,message:id,land:true});
+      link.title = title; link.setAttribute('aria-label', (this.pageStars?'Starred page: ':'Starred dossier: ') + title);
+      link.href = routeHref(target);
       alive.add(id); nodes.push(link);
     }
     for (const [id, link] of state.links) if (!alive.has(id)) {
       if (link === doc.activeElement) state.parent.focus();
       state.links.delete(id);
     }
+    const noun=this.pageStars?'pages':'dossiers';
+    if(this.pageStars&&state.parent.dataset.pageConversationId)state.parent.hidden=!nodes.length&&!state.error&&state.next===null;
     if (state.error) {
       const notice = doc.createElement('span'); notice.className='muted'; notice.setAttribute('role','status');
-      notice.textContent = state.error.kind === 'forbidden' ? 'Starred dossiers are unavailable.' : 'Starred dossiers could not be read.';
-      const retry = doc.createElement('button'); retry.type='button'; retry.textContent='Retry starred dossiers'; retry.dataset.retry=''; retry.tabIndex=-1;
+      notice.textContent = state.error.kind === 'forbidden' ? `Starred ${noun} are unavailable.` : `Starred ${noun} could not be read.`;
+      const retry = doc.createElement('button'); retry.type='button'; retry.textContent='Retry starred '+noun; retry.dataset.retry=''; retry.tabIndex=-1;
       retry.onclick=()=>this.load(state); nodes.push(notice,retry);
     } else if (state.next !== null) {
-      const more = doc.createElement('button'); more.type='button'; more.textContent='More starred dossiers'; more.tabIndex=-1;
+      const more = doc.createElement('button'); more.type='button'; more.textContent='More starred '+noun; more.tabIndex=-1;
       more.onclick=()=>this.load(state,true); nodes.push(more);
     }
     // Keep each title's element (and its native focus) while its words change.

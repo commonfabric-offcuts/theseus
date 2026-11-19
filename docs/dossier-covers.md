@@ -211,3 +211,49 @@ the step. The page is covered by the `reading covers …` cases in
 message is more than a page behind its newest reply, the Reader's sheet
 opening only where it is pressed (at 320, 375 and 390 and on a laptop), and the
 open Reader's line following a rewrite and the owner's 👍.
+
+## Waiting count in the outline (item 756)
+
+`workspaces` items add `cover_waiting`, one per readable cover with a nonempty
+waiting list whose owner is the bound reader, over all unarchived topics of
+that outcome. Duplicate entries and cover revisions never multiply it.
+`workspace_topics` items carry the same field for that topic. A joined-away
+first message is no longer a cover until it heads its own dossier again.
+Archived topic lists may still display covers, but contribute zero to this
+count. The existing workspace membership/reached/ended lists govern which
+outcomes the outline sums; it reads no additional outcomes.
+
+The outline adds this contribution to its existing said/ask topic count; it
+keeps the light and the question-opening control's meaning. Pressing the same
+Waiting on you pill filters and unfilters as before, retaining topics with
+cover waits as well as topics waiting from said/ask reasons. Cover changes use
+the existing shared act commit notification, so no reload or background
+history reconstruction is needed.
+
+Schema 51 adds `cover_waiting`, a derived index holding only the current
+nonempty waiting covers, keyed by first message with outcome/topic indexes.
+Every cover act updates it in the same transaction. Migration alone fills it
+from the latest recorded cover revisions; downgrade drops only the derived
+index. Counts recheck current owner, archive state, first-message visibility
+and dossier root identity, seeking only this outcome's current candidates or
+a bounded topic page. No read or server migrates a store.
+
+## Question-linked waits (item 759, warp9191)
+
+New agent asks to people append their supplied question/options/default to the
+cover in the publication transaction. Each names the actual asked actor, ask
+message and source revision, independently of the outcome owner. Explicit no
+choices/no default with reason is shown plainly. Manual waiting edits preserve
+these linked waits; eligible per-question answers and attention clear together.
+Schema 54 records links without changing legacy asks. See
+[asking-person-cover.md](asking-person-cover.md) for fields and fences.
+
+## Answer beside a linked wait (782)
+The asked person sees the existing go-ahead choices beside the cover wait,
+including singleton pills and the Reader. Each submits `message.answer` for
+that exact ask with the answer revision observed on the cover. A stale choice
+refuses, and the cover reloads. Core publishes the same answer reply and clears
+the linked wait in that transaction. Other readers receive no answer controls.
+Waiting counts now include a cover once when any wait names the reader; manual
+owner waits still follow the current outcome owner. Dossier moves relocate
+both the derived count index and the linked questions atomically.

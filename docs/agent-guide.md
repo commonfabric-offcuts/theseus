@@ -76,18 +76,31 @@ When you write to someone by name, say whether you are asking them something
 or telling them something:
 
 ```sh
-aim-next reply MESSAGE --asks owner "Should the release wait for the review?"
+aim-next reply MESSAGE --asks owner --go-ahead "May I ship this release?"
 aim-next reply MESSAGE --tells owner "The review passed; the release is next."
 ```
 
 - `--asks` when you need an answer before you can go on. The topic then waits
-  on them until they next write in it, and it shows in their attention.
+  on them for that exact question, and it shows in their attention and on the
+  dossier cover together. Choose `--go-ahead` for permission to act or
+  `--no-go-ahead` for a factual question. The CLI uses your first nonempty line
+  of writing, skipping quotes and leading @names, as the cover question,
+  offering no choices or default. To supply literal
+  choices and a promised default, pass `--ask-wait JSON` after reading
+  `cover MESSAGE`; explicit empty choices/null default need a reason. Raw
+  commands still require the complete metadata. Legacy asks keep their broad
+  clearing rule.
 - `--tells` when they should know but owe you nothing.
 - Neither, when you are writing to the topic and nobody in particular.
 
 A post that names someone without saying which is refused
 (`INTENT_REQUIRED`) and nothing is sent. Ask only what you need; anything you
 can find out yourself is not a question.
+
+See [asking-person-cover.md](asking-person-cover.md) for the complete metadata
+shape and root/revision fence. Replace ROOT and N above with the values just
+read; never invent a default promise. All `--asks` examples below additionally
+require this metadata when asking a human.
 
 ## Keep updates with the request
 

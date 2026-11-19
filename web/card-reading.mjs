@@ -1,3 +1,4 @@
+import { glyph } from './glyphs.mjs';
 // How each card in a topic reads to the person (docs/topic-reading.md):
 // whether they have read it, whether it is talk between agents, and whether
 // they have replied to it. Each is a data attribute on the card, so the
@@ -76,16 +77,24 @@ export function learnAnswered(messages, viewer, kindOf) {
 }
 
 export const AWAITING_WORDS = 'Waiting for a reply';
+export const UNWATCHED_WORDS = 'No agent was woken: no agent was addressed or listening when this message was sent.';
 // The Conversation's three dots at the foot of the card (outcome-conversation.mjs),
 // in the card's own ink, while the message waits for a reply; gone once it does
 // not. Repainting keeps one.
 export function paintAwaiting(card, item, doc = card.ownerDocument) {
   const row = card.querySelector(':scope > .reply-wait');
-  if (item.awaiting_reply !== true) { row?.remove(); return; }
-  if (row) return;
+  const unwatched = item.no_agent_notified === true;
+  if (item.awaiting_reply !== true && !unwatched) { row?.remove(); return; }
+  if (row?.dataset.unwatched === String(unwatched)) return;
+  row?.remove();
   const host = doc.createElement('span'); host.className = 'item-tags reply-wait';
   const group = doc.createElement('span'); group.className = 'item-tag-group';
-  group.append(waitingDots(doc, AWAITING_WORDS));
+  host.dataset.unwatched = String(unwatched);
+  if (unwatched) {
+    const mark = doc.createElement('span'); mark.className = 'no-agent-notified';
+    mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', UNWATCHED_WORDS); mark.title = UNWATCHED_WORDS;
+    mark.append(glyph('unwatched', doc, 18)); group.append(mark);
+  } else group.append(waitingDots(doc, AWAITING_WORDS));
   host.append(group);
   card.append(host);
 }

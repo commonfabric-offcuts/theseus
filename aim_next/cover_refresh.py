@@ -49,33 +49,59 @@ class CoverRefresh:
         raise Refusal("COVER_WRITER_UNAVAILABLE", "No available cover writer or coordinator can read this dossier; the cover is kept")
 
     def _command_stack_cover_refresh(self, db, actor, envelope):
+        return self._refresh_request(db, actor, envelope, "cover")
+
+    def _command_message_refresh(self, db, actor, envelope):
+        return self._refresh_request(db, actor, envelope, "message")
+
+    def _refresh_request(self, db, actor, envelope, target_type):
+        """One request door: adapters select a target, publication/activity stay shared."""
         from .stacks import EMPTY, StackRoots, current_acts
+        from .message_edit import current_words
         message, topic = self._acted_message(db, actor, envelope["target"])
+        is_cover = target_type == "cover"
+        kind = "cover_refresh" if is_cover else "message_refresh"
+        revision_field = "cover_revision" if is_cover else "message_revision"
         if envelope["args"]:
-            raise Refusal("INVALID_ARGUMENT", "A cover refresh takes no writing")
-        if StackRoots(db, actor).root(message["id"]) != message["id"]:
+            raise Refusal("INVALID_ARGUMENT", "An update request takes no writing")
+        if is_cover and StackRoots(db, actor).root(message["id"]) != message["id"]:
             raise Refusal("STACK_CHANGED", "This dossier changed; read its cover again")
         closed = self._closed(db, topic["workspace_id"])
         if closed is not None:
             raise self._closed_refusal(db, actor, topic["workspace_id"], closed)
+        if not is_cover:
+            author = db.execute("SELECT kind,enabled FROM actors WHERE id=?", (message["author_id"],)).fetchone()
+            if author["kind"] != "agent" or message["author_id"] == actor:
+                raise Refusal("UPDATE_AUTHOR_REQUIRED", "Ask for update is only for another agent's message")
+            if not author["enabled"]:
+                raise Refusal("UPDATE_AUTHOR_UNAVAILABLE", "This message's author is unavailable; the message is kept")
+            # No coordinator fallback and no grant of topic or private reach.
+            self._acted_message(db, message["author_id"], {"message_id": message["id"]})
         acts = current_acts(db, actor, [message["id"]]).get(message["id"], EMPTY)
-        pending = acts.get("cover_refresh")
+        pending = acts.get(kind)
         result = {"message_id": message["id"], "topic_id": message["topic_id"]}
-        # One durable prompt per pending dossier, even across tabs/actors and
-        # an intervening owner Done revision. No new delivery on another tap.
         if pending and pending["state"] == "pending":
-            return dict(result, refresh=pending, refresh_revision=acts["cover_refresh_revision"], coalesced=True), []
-        current = acts["cover_revision"]
-        if envelope["expected"]["cover_revision"] != current:
-            raise Refusal("REVISION_CONFLICT", "This cover changed; read it again before refreshing", {"cover_revision": current})
-        if acts["cover"] is None:
-            raise Refusal("COVER_MISSING", "There is no cover to refresh")
-        recipient = self._refresh_recipient(db, actor, message, topic)
-        body = ("Please rewrite this dossier's cover from its latest facts. "
-                "Read the whole dossier and its current cover, retain source attribution, waits and defaults, "
-                "payload kind/link and the owner's Done record. Use aim-next cover %s --expected N with the "
-                "current cover revision. This refresh observed revision %d; only a changed agent cover write "
-                "completes it, not a reply or acknowledgement." % (message["id"], current))
+            return dict(result, refresh=pending, refresh_revision=acts[kind + "_revision"], coalesced=True), []
+        current = acts["cover_revision"] if is_cover else current_words(db, message["id"], plain=True)[1]
+        if envelope["expected"][revision_field] != current:
+            raise Refusal("REVISION_CONFLICT", "This changed; read it again before asking for an update", {revision_field: current})
+        if is_cover:
+            if acts["cover"] is None:
+                raise Refusal("COVER_MISSING", "There is no cover to refresh")
+            recipient = self._refresh_recipient(db, actor, message, topic)
+            body = ("Please rewrite this dossier's cover from its latest facts. "
+                    "Read the whole dossier and its current cover, retain source attribution, waits and defaults, "
+                    "payload kind/link and the owner's Done record. Use aim-next cover %s --expected N with the "
+                    "current cover revision. This refresh observed revision %d; only a changed agent cover write "
+                    "completes it, not a reply or acknowledgement." % (message["id"], current))
+        else:
+            recipient = message["author_id"]
+            body = ("Please bring your same message %s up to date with what has happened since it was written. "
+                    "Read that message and the later facts, then edit that message in place with aim-next edit %s "
+                    "--expected N using its current ordinary message revision. Keep source attribution and exact "
+                    "message identity; do not post a replacement. This request observed revision %d; only a new "
+                    "ordinary revision of that same message completes it, not a reply or acknowledgement."
+                    % (message["id"], message["id"], current))
         private = message["private_to"] is not None
         snapshot = self._writing({"body": body, "addressees": [recipient], "reply_to": message["id"],
                                   "intent": None if private else "ask", "whisper": private})
@@ -83,8 +109,20 @@ class CoverRefresh:
         value = {"state": "pending", "operation_id": envelope["operation_id"], "by": actor,
                  "observed_revision": current, "recipient": recipient, "request_message_id": posted["message_id"],
                  "at_ms": _now_ms(), "completed_revision": None}
-        version = self._record_act(db, "cover_refresh", message, "", actor, value, acts.get("cover_refresh_revision", 0) + 1)
-        return dict(result, refresh=value, refresh_revision=acts.get("cover_refresh_revision", 0) + 1, coalesced=False), affected + [{"kind": "acts", "id": topic["id"], "version": version}]
+        next_revision = acts.get(kind + "_revision", 0) + 1
+        version = self._record_act(db, kind, message, "", actor, value, next_revision)
+        return dict(result, refresh=value, refresh_revision=next_revision, coalesced=False), affected + [{"kind": "acts", "id": topic["id"], "version": version}]
+
+    def _complete_refresh(self, db, actor, message, kind, revision, version=None):
+        pending = self._act_value(db, message["id"], kind, "")
+        if (not pending or pending["state"] != "pending" or revision <= pending["observed_revision"]
+                or self._actor(db, actor)["kind"] != "agent"):
+            return version
+        # message.edit reads a minimal access row; acts also need its immutable sequence.
+        message = db.execute("SELECT id,topic_id,seq,author_id,private_to FROM messages WHERE id=?", (message["id"],)).fetchone()
+        completed = dict(pending, state="completed", completed_revision=revision, completed_by=actor, completed_ms=_now_ms())
+        return self._record_act(db, kind, message, "", actor, completed,
+                                self._act_revision(db, message["id"], kind, "") + 1)
 
     def _cover_refreshed(self, db, actor, message, before, value, revision, version):
         def content(cover):
@@ -96,11 +134,6 @@ class CoverRefresh:
         db.execute("INSERT INTO cover_writers(message_id,actor_id,revision) VALUES (?,?,?) "
                    "ON CONFLICT(message_id) DO UPDATE SET actor_id=excluded.actor_id,revision=excluded.revision",
                    (message["id"], actor, revision))
-        pending = self._act_value(db, message["id"], "cover_refresh", "")
-        if (not pending or pending["state"] != "pending" or revision <= pending["observed_revision"]
-                or self._actor(db, actor)["kind"] != "agent"
-                or not (value["stands"] or value["waiting"] or value["payload"])):
+        if not (value["stands"] or value["waiting"] or value["payload"]):
             return version
-        completed = dict(pending, state="completed", completed_revision=revision, completed_by=actor, completed_ms=_now_ms())
-        return self._record_act(db, "cover_refresh", message, "", actor, completed,
-                                self._act_revision(db, message["id"], "cover_refresh", "") + 1)
+        return self._complete_refresh(db, actor, message, "cover_refresh", revision, version)

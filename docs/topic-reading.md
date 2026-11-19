@@ -425,3 +425,12 @@ and a link's target is read as an address once (brackets that share a target
 that is no address, or sit inside one, are words), so a
 hostile message costs work in proportion to its length, not to its square. What it draws is too: a table draws no more cells
 than were written, plus one a short row, never its rows times its columns.
+
+## A message no agent received (676)
+On the reader's own public messages in an ordinary topic, where reply waiting
+already applies, `no_agent_notified` is true when publication delivered to no
+agent and addressed no agent. The delivery record preserves the audience at
+send time. A static crossed-eye glyph occupies the reply-indicator position,
+with accessible words saying no agent was addressed or listening when sent.
+It makes no claim about read access. Existing addressed/listener reply waiting
+is unchanged. Private messages and the Conversation keep their existing rules.

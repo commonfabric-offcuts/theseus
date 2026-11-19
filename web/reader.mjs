@@ -1,3 +1,4 @@
+import { messageUpdateActivity } from './cover-refresh.mjs';
 import { messageFoldSwipe } from './message-fold-swipe.mjs';
 import { keyAction, holdsWriting, written } from './editor.mjs';
 import { showLine } from './lines.mjs';
@@ -1034,7 +1035,9 @@ export class Reader {
     if (!found) { line.replaceChildren(); return; }
     const { cover } = found, shown = { ...context, owner: cover.owner };
     const words = document.createElement('span'); words.className = 'reader-cover-words';
-    words.textContent = cover.stands || cover.payload?.text || `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${cover.owner === shown.viewer ? 'you' : shown.nameOf(cover.owner)}`;
+    const waitingOn = [...new Set(cover.waiting.map(wait => wait.actor_id ?? cover.owner))]
+      .map(id => id === shown.viewer ? 'you' : shown.nameOf(id)).join(', ');
+    words.textContent = cover.stands || cover.payload?.text || `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${waitingOn}`;
     const label = document.createElement('span'); label.className = 'cover-label'; label.textContent = 'Cover';
     line.replaceChildren(label, ' ', words, ...(cover.payload ? [' ', payloadPill(document, cover.payload, shown)] : []));
     host.append(coverSheet(document, cover, context));
@@ -1048,7 +1051,13 @@ export class Reader {
     // A message whose words were changed after it was sent says so (docs/message-edit.md).
     const edited = source.source_ref.kind === 'message' && wasEdited(source) ? [' · Edited'] : [];
     const author = this.callbacks?.actorName?.(source.author) ?? source.author;
-    this.$('reader-origin').replaceChildren([author, provenance].filter(Boolean).join(' · '), ...sent, ...edited);
+    const originText = node('span', undefined, 'reader-origin-text');
+    originText.append([author, provenance].filter(Boolean).join(' · '), ...sent, ...edited);
+    this.$('reader-origin').replaceChildren(originText);
+    if (source.source_ref.kind === 'message') {
+      const update = messageUpdateActivity(document, source, { viewer: this.callbacks.actor?.(), nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: source.topic_id });
+      if (update) this.$('reader-origin').append(update);
+    }
     this.paintTone(source);
   }
   // The page the source is read on: an agent's message wears its color, as

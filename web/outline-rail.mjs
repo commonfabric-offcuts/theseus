@@ -55,6 +55,8 @@ import { OutlineDossiers } from './outline-dossiers.mjs';
 const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
 // The questions waiting on the reader in one outcome, as its light counts them.
 export const asksIn = item => item?.light?.light === 'waiting' && item.light.short?.kind === 'asks' ? count(item.light.short.count) : 0;
+// Covers are separate from the light's said/ask topics; neither replaces the other.
+export const waitingIn = item => asksIn(item) + count(item?.cover_waiting);
 // What an outcome's row counts: folded, everything new inside it, the part
 // sent by name and its questions; open, what has no row of its own under it:
 // its Conversation's, and its Build topics', which the right rail lists in
@@ -71,7 +73,7 @@ export function countedWhere(item, conversation) {
 // Everything new and every question waiting, across every outcome listed.
 export function totals(items) {
   let fresh = 0, waiting = 0;
-  for (const item of items ?? []) { fresh += count(item.unread); waiting += asksIn(item); }
+  for (const item of items ?? []) { fresh += count(item.unread); waiting += waitingIn(item); }
   return { fresh, waiting };
 }
 // What is new outside the outcome being read: how much, in how many outcomes,
@@ -81,7 +83,7 @@ export function elsewhere(items, here) {
   for (const item of items ?? []) {
     if (item.id === here) continue;
     if (count(item.unread)) { fresh += count(item.unread); where += 1; }
-    waiting += asksIn(item);
+    waiting += waitingIn(item);
   }
   return { fresh, where, waiting };
 }
@@ -93,7 +95,7 @@ export function elsewhereWords({ fresh, where, waiting }) {
 // reader, is shown.
 export function shownUnder(filter, item) {
   if (filter === 'new') return count(item?.unread) > 0;
-  if (filter === 'waiting') return asksIn(item) > 0;
+  if (filter === 'waiting') return waitingIn(item) > 0;
   return true;
 }
 
@@ -151,6 +153,7 @@ export class OutlineRail {
     this.reload = reloader(() => this.load());
     this.build();
     this.dossiers = new OutlineDossiers(this);
+    this.notebookStars = new OutlineDossiers(this,{pages:true});
     // ↑ above its first row (New outcome, the heading's pencil) and ↓ below its last go on in the side rail: up to the
     // chips and the logo block, down to Keys (arrow-reach.mjs).
     this.tree = new KeyTree({ root: this.list, doc: this.doc, column: this.host.closest('.rail') ?? this.host, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows), selectOnPress: true, also: [this.newOutcome] });
@@ -209,6 +212,7 @@ export class OutlineRail {
     this.host.hidden = !feed;
     this.run += 1; this.handles = null;
     this.dossiers.begin();
+    this.notebookStars.begin();
     this.unlisten?.(); this.unlisten = null;
     this.watch?.disconnect(); this.watch = null; this.watched = null;
     // The list the run that went drew stays in view until the next run's own
@@ -289,7 +293,7 @@ export class OutlineRail {
     const settled = await Promise.all(reads.map(read => Promise.resolve(read).catch(() => false)));
     if (!mine()) return true;
     this.paint();
-    const stars = await this.dossiers.refresh();
+    const stars = [...await this.dossiers.refresh(),...await this.notebookStars.refresh()];
     return settled.every(read => read !== false) && stars.every(Boolean);
   }
   async loadMore() {
@@ -450,10 +454,11 @@ export class OutlineRail {
         const group = el.closest('details.topic-group'), summary = group?.querySelector(':scope > summary') ?? null;
         if (group && el !== summary && !group.open) continue;
         const deep = Boolean(group) && el !== summary;
-        const said = el.dataset.topicId ? 'topic:' + el.dataset.topicId : el.getAttribute('href') ?? el.textContent.replace(/\(\d+\)/g, '').trim();
+        if(el.hidden||!el.getClientRects().length)continue;
+        const said = el.dataset.pageId ? 'page:'+el.dataset.pageId : el.dataset.topicId ? 'topic:' + el.dataset.topicId : el.getAttribute('href') ?? el.textContent.replace(/\(\d+\)/g, '').trim();
         const dossiers = el.closest('.ol-dossiers');
-        const parent = dossiers ? [...outcome.topics.querySelectorAll('a[data-topic-id]')].find(a => a.dataset.topicId === dossiers.dataset.parentTopicId) : null;
-        rows.push({ el, level: dossiers ? (deep ? 4 : 3) : deep ? 3 : 2, set: dossiers ?? (deep ? group : li), key: `${id}|${dossiers ? 'dossier:' + (el.dataset.dossierId ?? el.textContent) : said}`, parent: parent ?? (deep ? summary : outcome.name),
+        const parent = dossiers ? [...outcome.topics.querySelectorAll('a[data-topic-id],a[data-page-conversation-id]')].find(a => (a.dataset.topicId??a.dataset.pageConversationId) === dossiers.dataset.parentTopicId) : null;
+        rows.push({ el, level: dossiers ? (deep ? 4 : 3) : deep ? 3 : 2, set: dossiers ?? (deep ? group : li), key: `${id}|${dossiers ? (el.dataset.pageId?'page:':'dossier:') + (el.dataset.pageId ?? el.dataset.dossierId ?? el.textContent) : said}`, parent: parent ?? (deep ? summary : outcome.name),
           expanded: el === summary ? group.open : undefined, outcome });
       }
     }
@@ -653,7 +658,7 @@ export class OutlineRail {
       outcome.li.hidden = !visible;
       outcome.li.toggleAttribute('data-open', open);
       outcome.li.toggleAttribute('data-fresh', count(item.unread) > 0);
-      outcome.li.toggleAttribute('data-waiting', asksIn(item) > 0);
+      outcome.li.toggleAttribute('data-waiting', waitingIn(item) > 0);
       outcome.topics.hidden = !open;
       // The outcome being read waits for the page's own list, unless the outline has shown its topics before.
       outcome.own.hidden = Boolean(outcome.adopted) || (item.id === this.here && !outcome.rail);
@@ -706,6 +711,7 @@ export class OutlineRail {
     this.paintHeader();
     this.place();
     this.dossiers.sync();
+    this.notebookStars.sync();
   }
   // On a phone: "☰ Outcomes" carries the total and the lit light, and a line
   // under the header says how much is new in the other outcomes. Both are the

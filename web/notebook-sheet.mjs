@@ -168,7 +168,7 @@ export class NotebookSheet {
     if (this.current && this.current !== page) this.keep(this.current);
     this.current = page;
     this.title.replaceChildren(page.sheetTitle);
-    this.views.replaceChildren(page.views, page.draft);
+    this.views.replaceChildren(page.views, page.draft, page.more, page.pageNotice);
     this.status.replaceChildren(page.status);
     this.full.href = this.fullHref(page.item, page.mode);
     if (!this.showing) {

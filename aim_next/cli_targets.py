@@ -33,6 +33,7 @@ def register(verb):
     asking = target.add_mutually_exclusive_group()
     asking.add_argument("--ask")
     asking.add_argument("--ask-in", dest="ask_in", metavar="TOPIC")
+    target.add_argument("--ask-wait", help="literal ask_wait JSON for --ask-in")
     target.add_argument("text")
     settle = verb("target-settle")
     settle.add_argument("outcome")
@@ -130,6 +131,13 @@ class TargetVerbs:
         elif options.ask_in:
             # The ask to the owner, sent with the words in one command (D8).
             args["ask"] = {"topic_id": options.ask_in, "body": ASK_WORDS % args["text"]}
+            if options.ask_wait is not None:
+                try:
+                    args["ask"]["ask_wait"] = json.loads(options.ask_wait)
+                except (ValueError, TypeError):
+                    self.refuse("INVALID_ARGUMENT", "--ask-wait needs a JSON object; nothing was sent")
+        if options.ask_wait is not None and not options.ask_in:
+            self.refuse("INVALID_ARGUMENT", "--ask-wait goes with --ask-in; nothing was sent")
         result = self.command("target.propose", {"workspace_id": options.outcome}, args,
                               {"target_revision": current["relevant_versions"]["checks"]})
         self.out.plain("target revision %d %s" % (result["revision"], "is current" if result["current"] else "waits on the owner"))

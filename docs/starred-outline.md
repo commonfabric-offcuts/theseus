@@ -66,3 +66,12 @@ and press the real child. Actor-isolation ends after its own denied-actor
 assertions, and failures capture state and screenshots before owned pages close.
 The route mutant opens a different real root, must fail that identity oracle,
 and is restored byte for byte before a passing control in the same engine run.
+
+## Notebook pages (792)
+
+Personal page stars use a separate bounded `memory_stars` stream. They share
+the loaded topic parent's outline navigation and failure behavior; their row
+opens the actual page as it stands. Outcome-scoped pages appear under an
+explicit Conversation parent within their outcome. Current titles follow
+revisions, and deletion removes the projection without erasing any reader's
+star. See [the page menu contract](notebook-menu-792.md).

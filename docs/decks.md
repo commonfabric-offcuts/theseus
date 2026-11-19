@@ -472,3 +472,13 @@ boxes across every saving-sign branch and during native typing/autosave, at
 real `NotebookPage.writingChanged` branches; the typing case checks Core's
 confirmed words, focus and each painted frame. CSS mutants break the laptop
 row, the phone row and the old status width cap separately and restore each rule.
+
+## The page's menu (792)
+
+Text and Cards share Star, Rename and Delete in the existing ⋯ menu, in the
+composer and on the full page. Rename edits the title in place using the same
+revision journal as the words. Delete confirms once, retains the page's history
+and offers Undo. Core supplies deletion permission: the page's creator or the
+outcome's owner, with access, in an open outcome. A reader's star is personal.
+The command, migration, recovery and old-link rules are in
+[the page menu contract](notebook-menu-792.md).

@@ -122,6 +122,12 @@ REFRESH_DOWN = _rebuilt(ACT_COVERS[0]) + ASIDE_INDEXES[1:]
 REFRESH_DOWN += COVER_INDEXES
 
 
+# 786 uses the same durable refresh act shape for an ordinary message target.
+ACT_MESSAGE_REFRESH = [_act_table(("star", "deal", "fold", "place", "name", "join", "aside", "cover", "cover_refresh", "message_refresh"))] + ACT_INDEXES + ASIDE_INDEXES + COVER_INDEXES
+MESSAGE_REFRESH_UP = _rebuilt(ACT_MESSAGE_REFRESH[0]) + ASIDE_INDEXES[1:] + COVER_INDEXES
+MESSAGE_REFRESH_DOWN = _rebuilt(ACT_REFRESH[0]) + ASIDE_INDEXES[1:] + COVER_INDEXES
+MESSAGE_REFRESH_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='message_refresh')"
+
 PERSONAL = {"star", "deal", "fold", "place", "aside"}
 # The command for each act, and the revision its sender read.
 KINDS = {"message.star": ("star", "star_revision"), "message.deal": ("deal", "deal_revision"),
@@ -142,7 +148,7 @@ NONE = {"aside": {"through": None}, "star": {"starred": False}, "deal": {"dealt"
         "cover": cover_values.EMPTY_COVER}
 EMPTY = {"aside": None, "aside_revision": 0, "starred": False, "star_revision": 0, "dealt": False, "deal_revision": 0, "folded": False, "fold_revision": 0,
          "placed": None, "place_revision": 0,
-         "name": None, "name_revision": 0, "joined": None, "join_revision": 0, "cover": None, "cover_revision": 0, "cover_refresh": None, "cover_refresh_revision": 0}
+         "name": None, "name_revision": 0, "joined": None, "join_revision": 0, "cover": None, "cover_revision": 0, "cover_refresh": None, "cover_refresh_revision": 0, "message_refresh": None, "message_refresh_revision": 0}
 
 
 def _flag(args, name, words):
@@ -231,8 +237,8 @@ def current_acts(db, actor, message_ids):
                 owners[row["topic_id"]] = db.execute("SELECT w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=?",
                                                      (row["topic_id"],)).fetchone()[0]
             acts["cover"] = cover_values.shown(db, actor, cover_values.stored_value(row["value"]), row["actor_id"], row["at_ms"], owners[row["topic_id"]])
-        elif kind == "cover_refresh":
-            acts["cover_refresh"] = json.loads(row["value"])
+        elif kind in ("cover_refresh", "message_refresh"):
+            acts[kind] = json.loads(row["value"])
         else:
             acts.update(_shown(kind, row))
         acts[kind + "_revision"] = row["revision"]
@@ -313,8 +319,15 @@ def awaiting_fields(db, actor, topic, items):
             named = db.execute("SELECT max(n.seq) FROM message_addressees n CROSS JOIN messages m ON m.seq=n.seq "
                                "WHERE n.topic_id=? AND n.actor_id=? AND n.seq>? AND n.seq<=? AND m.author_id<>? AND m.private_to IS NULL",
                                (topic["id"], actor, lowest, newest[0], actor)).fetchone()[0]
+    named_agents = set()
+    if own and topic["kind"] != "conversation":
+        named_agents = {row[0] for row in db.execute(
+            "SELECT m.id FROM messages m JOIN json_each(m.addressees) n JOIN actors a ON a.id=n.value "
+            "WHERE m.id IN (%s) AND a.kind='agent'" % marks, ids)}
+    unattended = {item["id"] for item in own} - received - named_agents if topic["kind"] != "conversation" else set()
     others = {}
     for item in items:
+        item["no_agent_notified"] = item["id"] in unattended
         item["awaiting_reply"] = False
         if item["id"] not in received or item["id"] in answered or named is not None and named > item["seq"]:
             continue
@@ -405,7 +418,8 @@ def source_dossier(db, actor, message_id):
     name = current_acts(db, actor, [root]).get(root, EMPTY)["name"]
     first = db.execute("SELECT " + words("m", chars=OPENING) + " AS body,m.attachments FROM messages m WHERE m.id=?", (root,)).fetchone()
     count = db.execute(MEMBERS + " SELECT count(*) FROM (SELECT id FROM members LIMIT 2)", {"root": root, "actor": actor}).fetchone()[0]
-    return {"root_id": root, "name": name, "first": {"body": first["body"], "attachments": json.loads(first["attachments"])}, "alone": count < 2}
+    from .dossier_move import move_fields
+    return {**move_fields(db, actor, root), "root_id": root, "name": name, "first": {"body": first["body"], "attachments": json.loads(first["attachments"])}, "alone": count < 2}
 
 
 def dossier_namer(db, root, replied=False):
@@ -512,8 +526,9 @@ def stack_positions(db, actor, items):
             latest, others = _dossier(db, actor, root) if through is not None else (0, None)
             # The dossier's name and its cover (items 470, 624) ride with its place, so a page holding only its
             # replies shows them; read as this reader reads its first message, the root they can see.
+            from .dossier_move import move_fields
             order = dossier_order.rank(db, actor, topic, root)
-            positions[root] = {"root_id": root, "through": through, "aside_revision": acts["aside_revision"],
+            positions[root] = {**move_fields(db, actor, root), "root_id": root, "through": through, "aside_revision": acts["aside_revision"],
                                "name": acts["name"], "name_revision": acts["name_revision"], "join_revision": acts["join_revision"],
                                "placed": acts["placed"], "place_revision": acts["place_revision"],
                                "places": [each for each in places.get(root, []) if each["message_id"] != root],
@@ -648,6 +663,8 @@ class Stacks:
         version = db.execute("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) VALUES (?,?,?,?,?,?,?,?,?)",
                              (kind, message["id"], message["topic_id"], message["seq"], owner, actor,
                               json.dumps(value, separators=(",", ":"), ensure_ascii=False), _now_ms(), revision)).lastrowid
+        if kind == "cover":
+            self._index_cover_wait(db, message, value)
         if kind == "place":
             dossier_order.placed(db, actor, message, value)
         elif kind == "aside" and order:

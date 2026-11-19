@@ -22,7 +22,7 @@ export function readFailure(value) {
   if (['AUTHORITY_CHANGED', 'INVALID_BINDING'].includes(code)) return result('authority');
   if (code === 'CLEANUP_DEFERRED') return result('defer');
   if (code === 'RESYNC_REQUIRED') return result('resync');
-  if (code === 'FORBIDDEN') return result('forbidden');
+  if (['FORBIDDEN','PAGE_DELETED'].includes(code)) return result('forbidden');
   if (status === 401 || status === 403 || ['SESSION_REQUIRED', 'ORIGIN_REFUSED'].includes(code)) return result('reconnect');
   if (['VIEW_TOO_LARGE', 'INVALID_ARGUMENT', 'INVALID_READ_CLASS', 'INVALID_FRESHNESS_VIEW'].includes(code)) return result('diagnostic');
   if (busyCode(code) || code === 'RESOURCE_NOT_CURRENT' || error?.retryable === true ||
@@ -184,6 +184,7 @@ export class Freshness {
       const answer = actorPage(await read('changes', { scope: actorScope(this.bootstrap), limit: 50, cursor: input }), this.bootstrap);
       if (!current()) return;
       for (const item of answer.items) {
+        if (item.resource_kind === 'dossier_move' && item.resource_id === this.topicId && integer(item.version)) this.invalidate('dossier_move', item.version);
         if (item.resource_kind === 'whisper' && item.resource_id === this.topicId && integer(item.version)) this.invalidate('whisper:' + item.version, item.version);
         // A thumbs-up or go-ahead answer on a message (docs/thumbs.md): its key names the message.
         if (item.resource_kind === 'reaction' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('reaction:' + item.resource_id, item.version);

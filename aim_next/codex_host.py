@@ -113,7 +113,7 @@ def answer(request):
     if method == "item/tool/requestUserInput":
         return "ask_in_theseus", {"id": request["id"], "error": {
             "code": -32601,
-            "message": "No answer was supplied. Ask the person in Theseus using your bound CLI: post TOPIC --asks PERSON --reply-to MESSAGE -. Read the post back, acknowledge the handled delivery separately, and finish this turn. Their reply arrives as a new delivery in this same saved thread. Never assume consent or an answer."}}
+            "message": "No answer was supplied. Ask the person in Theseus using your bound CLI: post TOPIC --asks PERSON --reply-to MESSAGE --ask-wait JSON -. Read `cover MESSAGE` first; JSON names root_id, cover_revision and questions [{actor_id,text,options,default,reason}]. Supply literal choices/default; explicitly use []/null with a reason when none are offered or promised. Read the post back, acknowledge the handled delivery separately, and finish this turn. Their reply arrives as a new delivery in this same saved thread. Never assume consent or an answer."}}
     if method in ANSWERS:
         label, result = ANSWERS[method]
         return label, {"id": request["id"], "result": result}

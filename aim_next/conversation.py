@@ -11,7 +11,7 @@ from . import whispers
 from .standing_conversation import open_items_clause
 from .reactions import GO_AHEAD_NEEDS_ASK, go_ahead_flag
 from .topic_reading import reading_fields, unread_groups, writing_fields
-from .stacks import act_fields, awaiting_fields, record_wait_start, source_dossier
+from .stacks import current_acts, act_fields, awaiting_fields, record_wait_start, source_dossier
 from .message_edit import (current_words, edited, is_held, mark, plain, quoted_revision, reading, record_agent_exposure_start, revision,
                            struck, words, withheld)
 
@@ -96,7 +96,7 @@ IMAGE_WINDOW = 200
 IMAGE_TYPES = ("image/png", "image/jpeg", "image/gif", "image/webp")
 
 
-POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent", "whisper", "part", "subjects", "go_ahead", "blocks"}
+POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent", "whisper", "part", "subjects", "go_ahead", "blocks", "ask_wait"}
 
 
 def _preview(value, size=1024):
@@ -364,6 +364,7 @@ class Conversation:
             raise Refusal("INVALID_ARGUMENT", "Only a message to someone asks or tells; name who it is to")
         if snapshot.get("go_ahead") and (intent != "ask" or private is not None):
             raise Refusal("INVALID_ARGUMENT", GO_AHEAD_NEEDS_ASK)
+        linked = self._check_ask_wait(db, actor, topic, snapshot, intent, private)
         snapshot["attachments"] = self._attachment_refs(db, actor, snapshot["attachments"], ready=True)
         if not snapshot["body"].strip() and not snapshot["attachments"]:
             raise Refusal("EMPTY_MESSAGE", "A message needs writing or a ready attachment")
@@ -413,6 +414,7 @@ class Conversation:
                    (message_id, topic_id, actor, snapshot["body"], _json(snapshot["attachments"]), _json(snapshot["quotes"]),
                     _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent, private, snapshot.get("about_id"),
                     1 if snapshot.get("go_ahead") else 0)).lastrowid
+        covered = self._link_ask_cover(db, actor, topic, message_id, linked)
         # Positions are part of publication, not a browser observation (item 731).
         from .dossier_order import published
         positioned = {"id": message_id, "topic_id": topic_id, "seq": sequence, "author_id": actor, "private_to": private}
@@ -461,6 +463,7 @@ class Conversation:
             db.execute("UPDATE topic_summaries SET message_count=message_count+1," + OTHER_MESSAGE + ",latest_message_id=?2 WHERE topic_id=?3",
                        (actor, message_id, topic_id))
         if not record_only:
+            covered += self._linked_reply(db, actor, topic, snapshot.get("reply_to"), private)
             self._message_activity(db, topic, actor, message_id, sent_ms)
         if record_only:
             waited = []
@@ -472,8 +475,10 @@ class Conversation:
             # it goes to that it replies to); an ask waits on whoever it asks.
             waited = ([actor] if self._answered(db, topic, actor, private, snapshot.get("reply_to")) else []) + (
                 self._ask(db, topic, actor, message_id, sent_ms, snapshot["addressees"]) if intent == "ask" else [])
+        if not record_only:
+            self._sync_linked_attention(db, topic, actor)
         version = self._touch_topic(db, topic)
-        for member in dict.fromkeys(waited):
+        for member in dict.fromkeys(waited + ([actor] if covered else [])):
             self._change(db, "actor", member, "waiting", topic_id, version)
         result = {"message_id": message_id, "topic": {"id": topic_id, "version": version},
                   "delivery": {"queued": len(audience), "unavailable_subscribers": sorted(unavailable)}}
@@ -481,7 +486,7 @@ class Conversation:
             result["whisper"] = True
         # A person's reply folds the message it answers for them (Stacks._fold_answered).
         folded = self._fold_answered(db, actor, snapshot["reply_to"]) if snapshot.get("reply_to") else []
-        return result, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}] + folded
+        return result, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}] + folded + covered
 
     def _message_access(self, db, actor, message_id):
         row = db.execute("SELECT id,topic_id,author_id,private_to FROM messages WHERE id=?", (_identifier(message_id),)).fetchone()
@@ -527,7 +532,15 @@ class Conversation:
                 "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "intent": row["intent"],
                 "version": current, "current_revision": current, "revision": current, "edited_ms": edited_ms, "struck": seen,
                 "allowed_actions": ["quote", "note.save"], "dossier": self._source_dossier(db, actor, row),
+                "acts": self._source_acts(db, actor, row),
                 **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
+
+    def _source_acts(self, db, actor, row):
+        try:
+            self._topic(db, actor, row["topic_id"])
+        except Refusal:
+            return {}
+        return current_acts(db, actor, [row["id"]]).get(row["id"], {})
 
     def _source_dossier(self, db, actor, row):
         """The dossier the message is in (stacks.source_dossier), for a reader of its topic; None for one who reads only
@@ -668,7 +681,8 @@ class Conversation:
         act_fields(db, actor, items)
         # Whether each of the reader's own messages still waits for a reply (item 475), until the first reply from anyone else.
         awaiting_fields(db, actor, topic, items)
-        return {"instance_id": self.instance_id, "items": items, "next_cursor": last if len(rows) > len(items) else None,
+        from .dossier_move import membership_revision
+        return {"membership_revision": membership_revision(db, topic["id"], actor), "instance_id": self.instance_id, "items": items, "next_cursor": last if len(rows) > len(items) else None,
                 "relevant_versions": {"topic": topic["version"]}, **self._new_line(db, actor, topic["id"])}
 
     def _named_messages(self, db, actor, topic, ids):

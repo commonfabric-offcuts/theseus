@@ -530,6 +530,19 @@ nothing scrolls sideways, and nothing depends on hover.
 
 ## Plain words
 
+Agent questions to people record their targeted dossier wait in the same act
+(item 759, [asking-person-cover.md](asking-person-cover.md)). Missing metadata
+refuses before publication. Literal choices and defaults, or explicit absence
+with the supplied reason, appear on the feed and Reader; each linked answer
+settles that question alone. `tests/asking_person_cover_native.mjs`, via
+`native-reading` and `native-webkit-reading`, names its cases `item 759` and
+checks laptop and 320/375/390 widths in light/dark, native public/private replies,
+and actual Core refusal/settlement effects. WebKit is a desktop engine at phone
+width, not physical-phone evidence. Core oracles live below the browser in
+`tests/test_item759_native_oracles.py` and `tests/test_asking_person_cover.py`;
+the collapsed Reader's person labels have a red/green unit check in
+`tests/ui_asking_person_reader.test.mjs`.
+
 The page says what happened in words a person uses: what was refused and why,
 and what was kept. It never shows an error code or an id.
 
@@ -586,3 +599,18 @@ Item 655 review checks in `tests/stack_native.mjs` (`native-reading` and
 replies, singleton fallback, remote rename/clear/join/split, each failed
 metadata lookup and settled Conversation return through Only new. Each
 state runs at 320, 375, 390 and laptop, with light/dark screenshots.
+
+## A Notebook page's own actions (792)
+
+Text and Cards share Star, Rename and Delete in ⋯. A star is personal and
+appears under the page's topic (or Conversation); Rename keeps the revision
+stream; Delete confirms once and retains history for Undo. The contracts and
+limits are in [notebook-menu-792.md](notebook-menu-792.md).
+
+`tests/notebook_menu_792_native.mjs`, through `tests/topic_reading_native.mjs`
+(`native-reading`, `native-webkit-reading`), names the `reading item 792`
+cases at laptop and 390px touch width, light and dark, in the sheet and full
+page, plus outcome pages under Conversation and an applied/restored indent
+mutant. Geometry tolerances are named in each observation. Core and serial
+Node controls cover refusal, permissions, retries, privacy and retained writing.
+A native run's report, rather than this entry, records which phases ran.

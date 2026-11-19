@@ -421,12 +421,13 @@ class Checks:
 
     def _send_target_ask(self, db, actor, workspace, operation_id, ask):
         """D8: the ask to the owner that new words need, posted in a topic of this outcome; (message id, affected)."""
-        if not isinstance(ask, dict) or set(ask) != {"topic_id", "body"}:
+        if not isinstance(ask, dict) or not {"topic_id", "body"} <= set(ask) <= {"topic_id", "body", "ask_wait", "reply_to"}:
             raise Refusal("INVALID_ARGUMENT", "The ask is the topic it goes in and its words")
         row = db.execute("SELECT workspace_id FROM topics WHERE id=?", (_identifier(ask["topic_id"], "topic_id"),)).fetchone()
         if row is None or row["workspace_id"] != workspace["id"]:
             raise Refusal("ASK_REQUIRED", "The ask goes in a topic of this outcome")
-        snapshot = self._writing({"body": ask["body"], "addressees": [workspace["owner_id"]], "intent": "ask"})
+        snapshot = self._writing(dict({"body": ask["body"], "addressees": [workspace["owner_id"]], "intent": "ask"},
+                                      **{key: ask[key] for key in ("ask_wait", "reply_to") if key in ask}))
         result, affected = self._publish(db, actor, operation_id, ask["topic_id"], snapshot)
         return result["message_id"], affected
 

@@ -194,6 +194,10 @@ class Reactions:
         topic = self._thumb_ask_topic(db, actor, message)
         if topic is None:
             return ("up" if thumbed else None), []
+        link = db.execute("SELECT active FROM ask_cover_links WHERE ask_id=? AND actor_id=?", (message["id"], actor)).fetchone()
+        covered = []
+        if link is not None and not self._answered_since(db, topic, actor, message):
+            covered = self._set_linked_wait(db, actor, message["id"], not thumbed)
         if is_conversation(topic):
             if thumbed:
                 answered = changed = db.execute("DELETE FROM conversation_waits WHERE ask_id=? AND actor_id=?", (message["id"], actor)).rowcount > 0
@@ -209,8 +213,9 @@ class Reactions:
             # Unless their writing has answered the ask since, the 👍 answers it, and taking the 👍 back unanswers it.
             answered = not self._answered_since(db, topic, actor, message)
             changed = answered and (self._topic_ask_answered if thumbed else self._topic_ask_unthumbed)(db, topic, actor, message)
-        affected = []
-        if changed:
+        self._sync_linked_attention(db, topic, actor)
+        affected = covered
+        if changed or covered:
             version = self._touch_topic(db, topic)
             self._change(db, "actor", actor, "waiting", topic["id"], version)
             affected.append({"kind": "topic", "id": topic["id"], "version": version})
@@ -220,12 +225,13 @@ class Reactions:
         """Whether actor, a person, has answered message, an ask in topic, by writing since it was sent: a reply to it,
         on the record or by whisper to whoever asked, the one who can read it (StandingConversation._conversation_record,
         TopicState._answered); and in a topic any writing there on the record, which answers every ask there to its
-        writer. A whisper replying to anything else, or to anyone else, answers nothing."""
+        writer for legacy asks only. Linked asks always require the exact reply. A whisper replying to anything else, or to anyone else, answers nothing."""
         if db.execute("SELECT 1 FROM messages INDEXED BY message_reply_links WHERE reply_to=? AND author_id=? "
                       "AND (private_to IS NULL OR private_to=?) LIMIT 1", (message["id"], actor, message["author_id"])).fetchone():
             return True
-        return not is_conversation(topic) and db.execute(
-            "SELECT 1 FROM messages INDEXED BY topic_messages WHERE topic_id=? AND seq>? AND author_id=? AND private_to IS NULL LIMIT 1",
+        linked = db.execute("SELECT 1 FROM ask_cover_links WHERE ask_id=? AND actor_id=?", (message["id"], actor)).fetchone()
+        return not linked and not is_conversation(topic) and db.execute(
+            "SELECT 1 FROM messages INDEXED BY public_actor_writing WHERE topic_id=? AND seq>? AND author_id=? AND private_to IS NULL LIMIT 1",
             (topic["id"], message["seq"], actor)).fetchone() is not None
 
     def _thumb_ask_topic(self, db, actor, message):
@@ -289,11 +295,16 @@ class Reactions:
         their thumb row, read by the key message.thumb fences on (_reaction_row) and read as every reader reads it
         (answered_yes); whether a record answers it is outcome_asks.record_ask."""
         found = None
-        for row in db.execute("SELECT m.id,m.seq,m.sent_ms FROM message_addressees a CROSS JOIN messages m ON m.seq=a.seq "
+        for row in db.execute("SELECT m.id,m.seq,m.sent_ms,m.author_id FROM message_addressees a CROSS JOIN messages m ON m.seq=a.seq "
                               "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>? AND m.intent='ask' AND NOT EXISTS (SELECT 1 FROM messages w "
                               "INDEXED BY message_reply_links WHERE w.reply_to=m.id AND w.author_id=a.actor_id "
                               "AND w.private_to=m.author_id) ORDER BY a.seq",
                               (topic["id"], member, after_seq)):
+            linked = db.execute("SELECT active FROM ask_cover_links WHERE ask_id=? AND actor_id=?", (row["id"], member)).fetchone()
+            if linked is not None and not linked["active"]:
+                continue
+            if self._answered_since(db, topic, member, row):
+                continue
             if not (answered_yes(self._reaction_row(db, member, row["id"], "thumb"))
                     or record_ask(db, row["id"], topic["workspace_id"], topic["id"])):
                 found = row

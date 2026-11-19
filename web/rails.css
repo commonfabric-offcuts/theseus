@@ -87,7 +87,7 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 .ol-own[hidden]{display:none}
 /* "N new" and "N waiting on you" show only what they count: outcomes that hold some, and in them only those topics. */
 .outline[data-only=new] .ol-topics :is(.topic-list,#topics) a.nav-item:not(:has(.unread-count)),
-.outline[data-only=waiting] .ol-topics :is(.topic-list,#topics) a.nav-item:not(:has(.topic-state.mine)),
+.outline[data-only=waiting] .ol-topics :is(.topic-list,#topics) a.nav-item:not([data-cover-waiting]):not(:has(.topic-state.mine)),
 .outline:is([data-only=new],[data-only=waiting]) .ol-topics :is(.topic-group,.one-line,.rail-heading,#outcome-empty){display:none!important}
 
 /* ---- The outcome's things ---- */
@@ -186,3 +186,6 @@ a.things-name[href]{color:var(--accent)}
 .ol-dossiers>button{display:block;min-height:44px;padding:.35rem .5rem;color:var(--accent);background:transparent;border:0;text-align:left;font-size:.8rem;max-width:100%}
 .ol-dossiers>[role=status]{display:block;font-size:.8rem;overflow-wrap:anywhere}
 .ol-dossiers:empty{margin-bottom:0}
+
+.ol-page-conversation{display:block;padding:.5rem;color:var(--muted);min-height:44px;text-decoration:none}
+.ol-page-conversation[hidden]{display:none}

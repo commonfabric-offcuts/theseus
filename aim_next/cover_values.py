@@ -118,7 +118,7 @@ def written(args):
 
 def stored_value(raw):
     """A stored cover act's value, every field present."""
-    value = dict(EMPTY_COVER)
+    value = dict(EMPTY_COVER, waiting=[])
     if raw:
         value.update(json.loads(raw) if isinstance(raw, str) else raw)
     return value
@@ -162,5 +162,18 @@ def shown(db, actor, value, by, at_ms, owner):
         seen = db.execute("SELECT 1 FROM messages m WHERE m.id=:id AND " + VISIBLE, {"id": done["message_id"], "actor": actor}).fetchone()
         if seen is None:
             payload = dict(payload, done={key: item for key, item in done.items() if key not in ("message_id", "seq")})
-    return {"stands": value["stands"], "waiting": [dict(each) for each in value["waiting"]],
+    waiting = [dict(each) for each in value["waiting"]]
+    # Only the asked person gets the answer fence. Check the recorded recipients
+    # and visibility rather than trusting cover text.
+    human = db.execute("SELECT kind FROM actors WHERE id=?", (actor,)).fetchone()[0] == "human"
+    for wait in waiting:
+        if not human or wait.get("actor_id") != actor or not wait.get("ask_id"):
+            continue
+        ask = db.execute("SELECT m.go_ahead,m.addressees FROM messages m WHERE m.id=:id AND " + VISIBLE,
+                         {"id": wait["ask_id"], "actor": actor}).fetchone()
+        if ask is not None and ask["go_ahead"] and actor in json.loads(ask["addressees"]):
+            answer = db.execute("SELECT revision FROM message_reactions WHERE message_id=? AND actor_id=? AND kind='answer'",
+                                (wait["ask_id"], actor)).fetchone()
+            wait.update(go_ahead=True, answer_revision=answer[0] if answer else 0)
+    return {"stands": value["stands"], "waiting": waiting,
             "payload": dict(payload) if payload is not None else None, "by": by, "at_ms": at_ms, "owner": owner}

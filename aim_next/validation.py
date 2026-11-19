@@ -19,6 +19,7 @@ COMMANDS = {
     "message.send": "_command_message_send",
     "message.post": "_command_message_post",
     "message.edit": "_command_message_edit",
+    "message.refresh": "_command_message_refresh",
     "message.edit_open": "_command_message_edit_open", "message.edit_draft": "_command_message_edit_draft",
     "message.edit_close": "_command_message_edit_close",
     "topic.read_through": "_command_topic_read_through",
@@ -27,6 +28,7 @@ COMMANDS = {
     "delivery.ack": "_command_delivery_ack",
     "memory.create": "_command_memory_create", "memory.revise": "_command_memory_revise",
     "memory.read": "_command_memory_read",
+    "memory.star": "_command_memory_star", "memory.delete": "_command_memory_delete",
     "media.begin": "_command_media_begin", "media.publish": "_command_media_publish",
     "opening.save": "_command_opening_save", "opening.publish": "_command_opening_publish",
     "opening.discard": "_command_opening_discard",
@@ -60,16 +62,16 @@ COMMANDS = {
     "message.star": "_command_message_star", "message.deal": "_command_message_deal", "message.fold": "_command_message_fold",
     "message.fold_through": "_command_message_fold_through",
     "stack.aside": "_command_stack_aside", "stack.place": "_command_stack_place", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
-    "stack.cover": "_command_stack_cover",
+    "stack.cover": "_command_stack_cover", "stack.move": "_command_stack_move",
     "stack.cover_refresh": "_command_stack_cover_refresh",
     "tool.use": "_command_tool_use", "tool.link": "_command_tool_link", "tool.record": "_command_tool_record",
 }
 EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish","renew","abandon")},"agent.execution": {"execution_revision"}, "workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"}, "submission.set_aside": set(),
             "participation.set": {"topic_revision"}, "topic.update": {"topic_revision", "topic_fields"}, "message.send": set(), "topic.create_and_send": set(), "delivery.ack": set(),
-            "message.post": set(), "topic.read_through": set(), "message.edit": {"message_revision"},
+            "message.post": set(), "topic.read_through": set(), "message.edit": {"message_revision"}, "message.refresh": {"message_revision"},
             "message.edit_open": set(), "message.edit_draft": {"session_revision"}, "message.edit_close": set(),
-            "memory.create": {"item_revision"}, "memory.revise": {"item_revision"}, "memory.read": set(),
+            "memory.create": {"item_revision"}, "memory.revise": {"item_revision"}, "memory.read": set(), "memory.star": {"star_revision"}, "memory.delete": {"item_revision"},
             "media.begin": {"media_revision"}, "media.publish": {"media_revision"},
             "workspace.member_set": {"workspace_revision"}, "workspace.owner_set": {"workspace_revision"},
             "workspace.agent_invite": {"workspace_revision"},
@@ -103,23 +105,24 @@ EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish"
             "message.star": {"star_revision"}, "message.deal": {"deal_revision"}, "message.fold": {"fold_revision"}, "message.fold_through": {"fold_revision"}, "stack.aside": {"aside_revision"},
             "stack.place": {"place_revision"}, "stack.name": {"name_revision"}, "stack.join": {"join_revision"},
             "stack.cover": {"cover_revision"}, "stack.cover_refresh": {"cover_revision"},
+            "stack.move": {"move_revision", "source_topic_id"},
             "tool.use": set(), "tool.link": set(), "tool.record": set()}
 REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision",
-                     "memory.create": "item_revision", "memory.revise": "item_revision",
+                     "memory.create": "item_revision", "memory.revise": "item_revision", "memory.star": "star_revision", "memory.delete": "item_revision",
                      "media.begin": "media_revision", "media.publish": "media_revision",
                      "workspace.member_set": "workspace_revision", "workspace.owner_set": "workspace_revision",
                      "workspace.agent_invite": "workspace_revision",
                      "workspace.update": "workspace_revision", "opening.save": "opening_revision",
                      "opening.publish": "opening_revision", "opening.discard": "opening_revision",
-                     "message.mark": "mark_revision", "color.set": "color_revision", "message.edit": "message_revision",
+                     "message.mark": "mark_revision", "color.set": "color_revision", "message.edit": "message_revision", "message.refresh": "message_revision",
                      "message.edit_draft": "session_revision",
                      "message.thumb": "thumb_revision", "message.answer": "answer_revision",
                      "responsibility.set": "responsibility_revision", "workspace.coordinator_set": "workspace_revision",
                      "outline.order_set": "order_revision",
                      "message.star": "star_revision", "message.deal": "deal_revision", "message.fold": "fold_revision", "message.fold_through": "fold_revision", "stack.aside": "aside_revision",
                      "stack.place": "place_revision", "stack.name": "name_revision", "stack.join": "join_revision",
-                     "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
+                     "stack.move": "move_revision", "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
 VIEWS = {
     "assessment": {"assessment_id"}, "assessments": {"topic_id","cursor","limit"},
     "changes": {"scope", "cursor", "limit"},
@@ -129,7 +132,8 @@ VIEWS = {
     "workspace_topics": {"workspace_id", "cursor", "limit", "archived", "done", "build"}, "topic": {"topic_id"},
     "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction", "items", "message_ids"}, "source": {"source_ref", "kind", "id", "revision"},
     "topic_images": {"topic_id", "limit"},
-    "memory_items": {"owner_scope", "cursor", "limit"}, "memory_current": {"item_id"},
+    "memory_stars": {"topic_id", "cursor", "limit"},
+    "memory_items": {"owner_scope", "cursor", "limit"}, "memory_current": {"item_id"}, "memory_status": {"item_id"},
     "media": {"media_id", "source_ref"},
     "editor_state": {"source_ref", "topic_id", "cursor", "limit", "unsent"},
     "submission": {"submission_id"}, "submissions": {"source_ref", "topic_id", "cursor", "limit", "unsent"},
@@ -152,6 +156,7 @@ VIEWS = {
     "outcome_checks": {"workspace_id"},
     "check_readings": {"workspace_id", "check_id", "cursor", "limit"},
     "outcome_live": {"workspace_id", "commit"},
+    "topic_membership": {"topic_id", "message_ids"}, "dossier_move_targets": {"message_id", "cursor", "limit"}, "dossier_moves": {"topic_id", "cursor", "limit"},
     "stack_positions": {"topic_id", "message_ids"}, "stack_namer": {"message_id"}, "dossier_cover": {"message_id"}, "message_acts": {"topic_id", "cursor", "limit"}, "stars": {"topic_id", "cursor", "limit"},
     "tools": {"workspace_id"}, "tool": {"tool_id", "cursor", "limit"}, "topic_tools": {"topic_id"},
 }
@@ -193,6 +198,9 @@ def _command_envelope(envelope):
         raise Refusal("INVALID_ARGUMENT", "An explicit %s is required" % required)
     for key, value in expected.items():
         # topic.update may be fenced on field values instead (topic_state._fenced checks them).
+        if (kind, key) == ("stack.move", "source_topic_id"):
+            _identifier(value, key)
+            continue
         if key == "authority" or (kind, key) == ("topic.update", "topic_fields"):
             continue
         if type(value) is not int or value < 0 or value > 9223372036854775807:
@@ -239,7 +247,7 @@ def _view_arguments(name, args):
             if cursor != "":
                 from .topic_state import order_position
                 order_position(cursor)
-        elif name in ("workspaces", "openings", "workspace_members", "actors", "colors", "source_topics", "assessments"):
+        elif name in ("workspaces", "openings", "workspace_members", "actors", "colors", "source_topics", "assessments", "dossier_move_targets"):
             if cursor != "":
                 _identifier(cursor, "cursor")
             elif not isinstance(cursor, str):

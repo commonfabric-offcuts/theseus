@@ -370,6 +370,8 @@ export class TopicRail {
       link.textContent = item.title;
       paintMarks(link, item, this.reader);
     }
+    if (Number.isSafeInteger(item.cover_waiting) && item.cover_waiting > 0) link.setAttribute('data-cover-waiting', '');
+    else link.removeAttribute('data-cover-waiting');
     link.href = routeHref(topicTarget(item.id, this.question(item.id)));
     if (item.id === this.pages.current?.id) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');

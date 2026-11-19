@@ -617,8 +617,10 @@ class MessageEdit:
         unread_again = self._unread_again(db, message, readers, current) if self._actor_kind(db, actor) == "agent" else 0
         for reader in readers:
             self._change(db, "actor", reader, "edit", message["id"], number)
+        refresh_version = self._complete_refresh(db, actor, message, "message_refresh", number)
         return (dict(result, corrections=len(exposed), unread_again=unread_again),
-                [{"kind": "message", "id": message["id"], "version": number}])
+                [{"kind": "message", "id": message["id"], "version": number}] +
+                ([{"kind": "acts", "id": message["topic_id"], "version": refresh_version}] if refresh_version else []))
 
     def _unread_again(self, db, message, readers, revision):
         """For each person among the readers who had read the message when its agent author edited it (item 614):

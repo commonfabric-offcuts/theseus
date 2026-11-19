@@ -36,11 +36,13 @@ def record_ask(db, message_id, workspace_id, topic_id):
     return db.execute(
         "SELECT 1 FROM outcome_target_revisions WHERE workspace_id=? AND ask_message_id=? "
         "UNION ALL SELECT 1 FROM pipeline_pieces p CROSS JOIN pipeline_stage_entries e INDEXED BY piece_entries ON e.piece_id=p.id "
-        "WHERE p.topic_id=? AND e.ask_message_id=? LIMIT 1", (workspace_id, message_id, topic_id, message_id)).fetchone() is not None
+        "WHERE p.workspace_id=? AND e.ask_message_id=? LIMIT 1", (workspace_id, message_id, workspace_id, message_id)).fetchone() is not None
 
 
 def release_held(store, db, message_id):
     """Clear the wait an ask kept once its record is settled, when nothing else holds it; the owner's change is written."""
+    for link in db.execute("SELECT actor_id FROM ask_cover_links WHERE ask_id=? AND active=1", (message_id,)).fetchall():
+        store._set_linked_wait(db, link["actor_id"], message_id, False)
     rows = db.execute("SELECT topic_id,actor_id,said FROM topic_waiting WHERE ask_message_id=?", (message_id,)).fetchall()
     for row in rows:
         still = held_ask(db, row["topic_id"], row["actor_id"])
@@ -53,5 +55,6 @@ def release_held(store, db, message_id):
         else:
             db.execute("DELETE FROM topic_waiting WHERE topic_id=? AND actor_id=?", (row["topic_id"], row["actor_id"]))
         topic = db.execute("SELECT * FROM topics WHERE id=?", (row["topic_id"],)).fetchone()
+        store._sync_linked_attention(db, topic, row["actor_id"])
         version = store._touch_topic(db, topic)
         store._change(db, "actor", row["actor_id"], "waiting", row["topic_id"], version)
