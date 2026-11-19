@@ -1037,7 +1037,7 @@ export class StackFeed {
     const line = () => lineOf(this.entryFor(item.id) && cardIn(this.entryFor(item.id)));
     if (found.head && stack.replies.length) {
       items.push({ label: 'Rename', glyph: 'pencil', act: () => this.startRename(stack) });
-      const open = state.levels.get(stack.id) === 'open';
+      const open = levelOf(state, stack.id) === 'open';
       items.push({ label: open ? 'Show latest and unread replies' : 'Show all messages', glyph: open ? 'latest' : 'all',
         act: () => { setLevel(state, stack, open ? 'folded' : 'open'); this.arrange(); this.focusOn(stack.id); } });
     }

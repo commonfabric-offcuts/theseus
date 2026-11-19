@@ -67,6 +67,10 @@ with tempfile.TemporaryDirectory(prefix='run-', dir=str(OWNED)) as temporary:
         args = dict(body=body, **extra)
         if reply_to:
             args['reply_to'] = reply_to
+            if actor == 'author':
+                args['reply_without_quote'] = 'This anonymous lineage probe tests parent identity; the parent words are not part of the scenario.'
+        elif actor == 'author':
+            args['divergence_reason'] = 'Separate anonymous lineage fixture: ' + body
         return command('message.post', args, {'topic_id':'t'}, actor=actor)['message_id']
     command('workspace.create', {'id':'w', 'title':'Anonymous structural control', 'team':['author','other'], 'coordinator':'author'})
     command('draft.save', {'source_ref':{'kind':'new_topic','id':'opening','workspace_id':'w'}, 'topic_id':'t', 'body':'Dossier original', 'generation':'g',
