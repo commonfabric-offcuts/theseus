@@ -5,7 +5,7 @@
 // Whisper (or held it while a second name made it a Tell), false when they
 // chose Tell or Ask, and absent or null while they have not chosen; `intent`
 // as ever. With no choice of theirs the default decides (defaultChoice, the
-// one place it lives): a Tell, except a reply to a whisper. Core refuses a
+// one place it lives): Ask when someone is named, except a reply to a whisper. Core refuses a
 // whisper to more than one name whatever the page sends.
 
 const node = (tag, text, className) => {
@@ -28,13 +28,14 @@ export function list(names) {
 
 const canWhisper = (names, kindOf) => names.length === 1 && kindOf(names[0]) === 'agent';
 
-// What a message starts as when the person has not chosen: a Tell, wherever
-// it is written, so nothing goes private unless the person presses Whisper. A
+// What a message starts as when the person has not chosen: Ask when someone
+// is named, wherever it is written; nobody named stays Send. Nothing goes
+// private unless the person presses Whisper. A
 // reply to a whisper (answeringWhisper), to the one agent in it, continues the
 // private exchange as a whisper, since a Tell there would put the person's side
 // on the record unnoticed.
 export function defaultChoice(names, kindOf, { answeringWhisper = false } = {}) {
-  return answeringWhisper && canWhisper(names, kindOf) ? 'whisper' : 'tell';
+  return answeringWhisper && canWhisper(names, kindOf) ? 'whisper' : names.length ? 'ask' : 'tell';
 }
 
 // The choice the writing is sent with, and whether a second name moved a
@@ -58,7 +59,7 @@ export function chosen(choice) {
 
 // Naming someone more: a reply to a whisper that was a whisper by default
 // holds the whisper, so it shows as switched to a Tell and becomes a whisper
-// again when the second name is taken away. Anything else is a Tell by
+// again when the second name is taken away. Other named writing is Ask by
 // default, which naming more leaves as it is.
 export function naming(draft, names, kindOf, options = {}) {
   return choiceOf(draft, names, kindOf, options).choice === 'whisper' && draft.whisper !== true ? { whisper: true } : {};

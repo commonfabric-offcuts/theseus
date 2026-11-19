@@ -195,7 +195,7 @@ export class InlineComposer {
     const p = this.presentation, editor = this.editor;
     if (!this.admits(p, editor) || this.state().readOnly) return false;
     if (!editor.draft.addressees.includes(name)) {
-      // A message here answers nothing, so it is a Tell by default and naming more holds nothing (whisper-choice.mjs).
+      // Named writing defaults to Ask; adding names holds no private choice (whisper-choice.mjs).
       editor.edit({ addressees: [...editor.draft.addressees, name] });
       this.callbacks.edit(editor, p); this.paintRecipients(); this.paintChoice();
     }

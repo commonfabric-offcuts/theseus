@@ -171,12 +171,12 @@ test("Whisper, Tell or Ask is never mixed between drafts: onto writing it stays 
       }
     }
   }
-  // One agent named and no choice made is a Tell in a topic and in the conversation alike, so it arrives as the same Tell.
+  // One agent named and no choice made is Ask in a topic and in the conversation alike, so the default follows the writing.
   for (const [from, to] of [['t1', CONVERSATION], [CONVERSATION, 't1']]) {
     const there = at(to);
     await switched(at(from, { body: 'Status, please.', addressees: one }), there);
     assert.deepEqual([there.draft.whisper ?? null, there.draft.intent ?? null], [null, null], `from ${from}: nothing is written down for it`);
-    assert.deepEqual(sends(there.draft, namesOf(there))[1], { whisper: false, intent: 'tell' }, `from ${from}: a Tell where it was written is sent as a Tell`);
+    assert.deepEqual(sends(there.draft, namesOf(there))[1], { whisper: false, intent: 'ask' }, `from ${from}: Ask where it was written is sent as Ask`);
   }
   // Whisper chosen before a word is written, to the author the reply is offered to: it goes on to that author.
   for (const offeredThere of [true, false]) {
