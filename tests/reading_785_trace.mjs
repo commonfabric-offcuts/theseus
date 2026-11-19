@@ -15,7 +15,7 @@ export const traceInit785 = String.raw`(()=>{
   scrollState(){return {scrollSerial,endSerial,wheelStart}},
   begin(label){events.length=0;dropped=0;serial=0;active=true;record('begin',{label})},
   arrival(id){arrival=id;record('arrival identity',{id})},
-  read(){return {events:[...events],dropped,frontier:api.frontier}},
+  read(){return {events:[...events],dropped,frontier:api.frontier,capabilities:api.capabilities??null}},
   stop(){record('stop');active=false;return api.read()}
  };
  for(const kind of ['scroll','scrollend'])addEventListener(kind,()=>{if(kind==='scroll')scrollSerial++;else endSerial=scrollSerial;record(kind,{target:'window',source:'unknown',knownNativeInput:api.native,latestCompensation:api.compensation,latestDeliberate:api.deliberate})},{passive:true});
@@ -52,6 +52,28 @@ export function sourceProbes785(source) {
 }
 export async function installTrace785(p) {
  const source=readFileSync(new URL('../web/app.mjs',import.meta.url),'utf8');
+ // Only the existing WebKit adapter exposes its Playwright page as p.pw.
+ // Its send() supports init scripts, evaluation and native input, not Debugger.
+ if(p.pw) {
+  assert.equal(typeof p.pw.addInitScript,'function','existing WebKit page adapter supports init scripts');
+  const chromiumOnlyFacts={
+   capture:'lexical anchor, tops and point at captureListAnchor return',
+   'restore enter':'lexical saved snapshot, anchorActing and anchorDepth at restore entry',
+   'restore after scroll':'lexical saved snapshot and hold after compensation',
+   remember:'lexical listAnchor at paintNewAbove call',
+   paint:'lexical paintViews kind at entry',
+   frontier:'TopicViews olderCursor, loaded keys, line and oldestUnread',
+  };
+  const capabilities={path:'WebKit page adapter',
+   available:['DOM mutation/reading-card rectangles','scroll/scrollend and trusted action context','native wheel dispatch/acknowledgment and fixed-frame settlement','topic_messages read start/answer identities','Core receipt observation','actual arrival geometry, focus and marker settlement'],
+   chromiumOnly:sourceProbes785(source).map(({event,target,lineNumber})=>({event,target,lineNumber,fact:chromiumOnlyFacts[event]})),
+   limitation:'No lexical capture/restore/remember/paint/frontier observations on WebKit; compensation and frontier remain null, not inferred from DOM or read answers. Cursor/loaded-frontier assertions in the unselected deliberate/More cases remain Chromium-only.'};
+  // All init scripts run before DOMContentLoaded, regardless of their order.
+  // Fail visibly if the unchanged DOM/read observer was not installed.
+  await p.send('Page.addScriptToEvaluateOnNewDocument',{source:`addEventListener('DOMContentLoaded',()=>{if(!window.__trace785)throw Error('WebKit trace785 DOM/read observer missing');window.__trace785.capabilities=${JSON.stringify(capabilities)}},{once:true})`});
+  return {appSha256:createHash('sha256').update(source).digest('hex'),bindings:[],...capabilities,
+   qualification:'Existing page-adapter DOM/read observations only; every behavioral oracle is unchanged. CDP-only lexical facts are explicitly unavailable; observer timing may be perturbed. No native selection or physical iOS claim.'};
+ }
  await p.send('Debugger.enable');
  const bindings=[];
  for(const probe of sourceProbes785(source)) {
