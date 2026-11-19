@@ -524,7 +524,7 @@ export function positionOf(stack) {
 export class DossierHeads {
   constructor({ topicId, read, changed = () => {}, current = () => true }) {
     Object.assign(this, { topicId, read, changed, current });
-    this.records = new Map(); this.serial = 0;
+    this.records = new Map(); this.serial = 0; this.readTail = Promise.resolve();
   }
   invalidate(id = null) {
     for (const [root, record] of this.records) if (id === null || root === id) {
@@ -537,8 +537,14 @@ export class DossierHeads {
     for (const id of wanted) if (!this.records.has(id)) {
       const record = { state: 'loading', token: ++this.serial };
       this.records.set(id, record);
-      Promise.resolve().then(() => this.read('topic_messages', { topic_id: this.topicId, message_ids: [id] })).then(page => {
-        if (!this.current() || this.records.get(id) !== record) return;
+      // One head at a time leaves the bounded background lane room for the
+      // change feed. A head loaded by history, invalidated or left behind
+      // while queued needs no request, and a stale answer never paints.
+      const pending = this.readTail.then(() => {
+        if (!this.current() || this.records.get(id) !== record) return null;
+        return this.read('topic_messages', { topic_id: this.topicId, message_ids: [id] });
+      }).then(page => {
+        if (page === null || !this.current() || this.records.get(id) !== record) return;
         if (!Array.isArray(page.items)) throw Error('The dossier source could not be read.');
         const item = page.items.find(item => item.id === id);
         if (item && (item.topic_id !== this.topicId || item.stack_position?.root_id !== id)) throw Error('The dossier source identity changed.');
@@ -549,6 +555,7 @@ export class DossierHeads {
         record.state = ['FORBIDDEN', 'SOURCE_UNAVAILABLE', 'NOT_FOUND', 'INVALID_ARGUMENT'].includes(error?.details?.error?.code) ? 'refused' : 'error';
         this.changed();
       });
+      this.readTail = pending;
     }
   }
   messages(loaded) {
