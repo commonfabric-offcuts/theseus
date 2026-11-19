@@ -44,3 +44,23 @@ test('a source arriving after the feed card is retired paints nothing', async ()
   f.card.root = false; resolve(source);
   assert.equal(await loading, false); assert.equal(f.card.dataset.full, undefined);
 });
+
+test('item 721 an invalidated source read never caches or paints over the newer whole revision', async () => {
+  const f = fixture(), reads = [], scroll = new CardScroll({ read: () => new Promise(resolve => reads.push(resolve)) });
+  const old = scroll.showFull(f.card, f.item);
+  const rejected = assert.rejects(old, /changed while it was being read/);
+  scroll.forget('m');
+  const current = scroll.showFull(f.card, f.item);
+  reads[1]({ ...source, body: 'The newer complete source.' }); await current;
+  reads[0](source); await rejected;
+  assert.equal(scroll.known('m'), 'The newer complete source.');
+  assert.ok(f.preview.text.includes('The newer complete source.'));
+});
+
+test('item 721 a whole-source read that lost its reply owner paints nothing', async () => {
+  const f = fixture(); let resolve, owned = true;
+  const scroll = new CardScroll({ read: () => new Promise(done => { resolve = done; }) });
+  const loading = scroll.showFull(f.card, f.item, () => owned);
+  owned = false; resolve(source);
+  assert.equal(await loading, false); assert.equal(f.card.dataset.full, undefined);
+});

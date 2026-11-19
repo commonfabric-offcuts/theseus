@@ -95,9 +95,9 @@ the pointer's way, the keys' and the phone's.
   with the words selected on its card, or else its lit passages, quoted, as
   Return quotes them in the Reader, and nothing quoted when neither (a message
   the keys lit). **Reply** on the bar (a phone's way; its glyph is an arrow
-  turning back, named Reply (Return), docs/reply-stacks.md, "The title bar and
-  the message bar") quotes nothing; to quote
-  part of the message there, select that part in the Reader and press Return. Return on a selected
+  turning back, named Reply) opens the shared reply bar inside that message's
+  card and quotes nothing (item 721, [untested preview contract](card-reply-preview.md)).
+  Return and a card click still open the full Reader. Return on a selected
   dossier (its header or chevron) edits its title instead, as ✎ does: Return
   saves it and Escape cancels; Space folds and opens the dossier. Return in
   writing, on a folded line or on another control does what it does there.

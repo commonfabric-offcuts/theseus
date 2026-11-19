@@ -626,6 +626,7 @@ function takeNeighbors(presentation, core) {
 // stacks are drawn (More opened or closed, Only new, an act, another device):
 // the Reader's ↑ and ↓, the New line and Earlier messages.
 function stacksRedrawn() {
+  reader?.keepReplyVisible();
   const presentation = registry?.current;
   if ($('reader').open && presentation?.core && registry.isSourceCurrent(presentation)) takeNeighbors(presentation, presentation.core);
   if (views) placeLine();
@@ -762,12 +763,12 @@ function sourceAttachments(presentation) {
 }
 // act: what the person's act of reading captured (Marks.capture), for a card
 // or Read it; every other open passes none and clears nothing.
-async function openSource(ref, opener, act = null, mode = 'reply') {
+async function openSource(ref, opener, act = null, mode = 'reply', replyCard = null) {
   const request = ++opening;
   const from = registry.interactive;
   views.retain(views.currentItem, ref.kind === 'memory' ? ref.id : null);
   status('');
-  try { await marks.open(registry, ref, { topicId: topic.id, opener, mode }, act); }
+  try { await marks.open(registry, ref, { topicId: topic.id, opener, mode, replyCard }, act); }
   catch (error) {
     if (request === opening) {
       if (from?.surface !== 'inline' && registry.isCurrent(from)) reader.notice(error);
@@ -952,11 +953,34 @@ function paintViews(kind) {
     if (!card) {
       const ref = { kind: 'message', id: item.id };
       // The revision a click or keypress may clear is the one the card shows.
-      card = button('', () => openSource(ref, card, marks.capture(item.id)));
+      // A reply can live in the card: its controls must not be inside a
+      // native button. Return remains the message menu's; Space opens it.
+      card = node('div'); card.tabIndex = 0; card.setAttribute('role', 'button');
+      card.onclick = () => run(() => openSource(ref, card, marks.capture(item.id)));
+      card.addEventListener('keydown', event => {
+        if (event.target !== card || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
+        if (event.key === ' ') { event.preventDefault(); if (!event.repeat) card.click(); }
+      });
       card.className = cardClass(item, bootstrap.actor, agentShown); card.dataset.id = item.id; card.dataset.seq = item.seq;
       // An agent's name on its card opens its color picker instead of the message.
+      // Decide a source drag from its pointer travel, before the browser has
+      // created any selection. A return to the starting point is still a drag.
+      let sourcePress = null;
+      card.addEventListener('pointerdown', event => {
+        const words = event.target.closest?.('.message-preview');
+        sourcePress = event.button === 0 && words?.parentElement === card ?
+          { id: event.pointerId, x: event.clientX, y: event.clientY, dragged: false } : null;
+      });
+      const sourceTravel = event => {
+        if (sourcePress?.id === event.pointerId && Math.hypot(event.clientX - sourcePress.x, event.clientY - sourcePress.y) > 4) sourcePress.dragged = true;
+      };
+      card.addEventListener('pointermove', sourceTravel);
+      card.addEventListener('pointerup', sourceTravel);
+      card.addEventListener('pointercancel', () => { if (sourcePress) sourcePress.dragged = true; });
       const open = card.onclick;
       card.onclick = event => {
+        if (event?.target?.closest?.('#reader')) return;
+        if (event?.detail > 0 && sourcePress?.dragged) return;
         // A stack's head row shows or hides its full message, or renames it (reply-stacks.mjs).
         if (headClick($('messages'), messageEntries.get(item.id), event)) return;
         // A message the reader folded is one row: a press on it unfolds it (stack-feed.mjs).
@@ -1137,6 +1161,7 @@ function feedOf() {
 function drawFeed(on, ...parts) {
   const sheet = $('new-message-sheet'), inFeed = $('messages').contains(sheet);
   for (const id of ['messages', 'notebook', 'topic-people', ...parts]) $(id).hidden = !on;
+  reader?.keepReplyVisible();
   if (on) paintStarredStatus(); else $('starred-status').hidden = true;
   if (on === inFeed) return;
   if (!on && sheet.open) sheet.close();
@@ -1563,6 +1588,19 @@ async function replyMessage(id, card, chosen = null) {
   if (!reader.dialog.open || registry.current?.source?.source_ref?.id !== id) return;
   if (chosen) reader.quoteFrom({ kind: 'message', id }, chosen); else reader.reply({ kind: 'message', id });
 }
+// Only the hover/touch bar's Reply docks the existing reply in its source
+// card. Quote, Return and explicit Reader-opening controls keep their paths.
+async function replyInCard(id, card) {
+  const request = ++opening, generation = registry.generation;
+  // Reuse the feed's visit-only reveal and Show full message owners. Reply
+  // must leave the whole source above its bar, including a former excerpt
+  // or folded row, without recording a new fold or dossier position.
+  const entry = stackFeed?.land(id) ?? messageEntries.get(id);
+  if (entry) card = opened(entry);
+  if (!await cardScroll.showFull(card, feedMessages().get(id)) || request !== opening || generation !== registry.generation) return;
+  await openSource({ kind: 'message', id }, card, marks.capture(id), 'reply', card);
+  if (reader.dialog.open && registry.current?.source?.source_ref?.id === id) reader.reply({ kind: 'message', id });
+}
 // Every page of the person's marks in this topic.
 function loadMarks() {
   if (!marks || topicUnavailable) return Promise.resolve(true);
@@ -1680,6 +1718,7 @@ function moveDossier(id, anchor) {
 // A right-click on a message opens the same menu where the pointer is. On a
 // link or a selection the browser's own menu stays, to copy what it offers.
 function messageContextMenu(event) {
+  if (event.target.closest('#reader')) return;
   if (event.target.closest('a') || window.getSelection()?.isCollapsed === false) return;
   // A message on its own or in a reply stack (reply-stacks.mjs).
   const entry = entryOf($('messages'), event.target), item = entry && views?.messages.get(entry.dataset.id);
@@ -1910,7 +1949,8 @@ function repaintEdited(ids, edits) {
     const line = card.querySelector(':scope > .message-reply-to'), answers = replyLine(item);
     if (line && answers) linkWords(line, answers, { partial: true });
     const preview = card.querySelector(':scope > .message-preview');
-    if (preview) {
+    const keepingWhole = reader?.card === card && item.preview;
+    if (preview && !keepingWhole) {
       formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts });
       preview.classList.remove('scroll-in-place');
       const cue = card.querySelector(':scope > .message-preview-cue');
@@ -1920,7 +1960,14 @@ function repaintEdited(ids, edits) {
     }
     paintCardImages(card, item, cardImageBytes(id));
     paintFoldWords(entry, item);
-    cardScroll?.forget(id, card);
+    if (keepingWhole) {
+      // Keep the old whole source while its revision is read, rather than
+      // briefly shrinking this reply's source to the arriving excerpt.
+      cardScroll.forget(id);
+      run(async () => {
+        await cardScroll.showFull(card, item, () => reader.card === card && revisionOf(views.messages.get(id)) === revisionOf(item));
+      });
+    } else cardScroll?.forget(id, card);
     // An agent's edit of words the person had read makes the message new to them again (item 614): Core says so
     // (unread), and opening it in the Reader earlier in this visit no longer reads it.
     if (item.unread === true) openedIds.delete(id);
@@ -2520,6 +2567,7 @@ async function initialize() {
   });
   reader = new Reader({
     images: topicImages, imageBytes, pageImage,
+    cardSelection: card => menu?.passages.chosen(messageEntries.get(card.dataset.id)) ?? null,
     actorName: displayActor,
     actorLabel,
     admits: (p, editor) => registry?.isCurrent(p, editor),
@@ -2640,6 +2688,7 @@ async function initialize() {
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)) });
   menu = new MessageMenu({ host: $('messages'), item: id => feedMessages().get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
     reply: (id, card) => run(() => replyMessage(id, card)),
+    inlineReply: (id, card) => run(() => replyInCard(id, card)),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)),
     // A thumbs-up on a reply deals with its stack up to it (stack-feed.mjs).
     // What Theseus answered without taking a card's 👍 or answer is said with its card (stack-feed.mjs notTaken).
@@ -3034,7 +3083,7 @@ async function switchDestination(value) {
   if (!ref || ref.kind !== 'message' || value === p.editors.reply.context.topicId) return;
   if (![topic.id, here?.view?.topic_id].includes(value)) { reader.notice('Choose this topic or the outcome\'s conversation.'); return; }
   const left = p.editors.reply, place = left.context.topicId === topic.id ? 'This topic' : 'the conversation';
-  const next = await registry.open(ref, { topicId: value, opener: p.opener });
+  const next = await registry.open(ref, { topicId: value, opener: p.opener, replyCard: p.replyCard });
   if (!next) return;
   const keep = editor => { if (reader.editor === editor) reader.drawEditor(); return registry.edited(editor); };
   if (await switchWriting(left, next.editors.reply, keep)) reader.notice(`Your writing for ${place} is kept there.`);

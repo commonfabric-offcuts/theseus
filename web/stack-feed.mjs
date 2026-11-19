@@ -887,6 +887,7 @@ export class StackFeed {
   // What a swipe over target acts on: the dossier as a whole on its title bar
   // (its head row or chevron, item 472), else the message under it.
   gestureTarget(target) {
+    if (target?.closest?.('#reader')) return null;
     const entry = entryOf(this.list, target);
     const section = target?.closest?.('.reply-stack');
     const found = stackOf(this.list, entry ?? (section && this.entryFor(section.dataset.stack)));
@@ -942,7 +943,7 @@ export class StackFeed {
   key(event) {
     if (this.renameKey(event)) return;
     const action = keyAction(event);
-    if (!FEED_ACTIONS.includes(action) || this.doc.querySelector('dialog[open]')) return;
+    if (!FEED_ACTIONS.includes(action) || this.doc.querySelector('dialog[open]:not([data-card-reply])')) return;
     const at = this.doc.activeElement;
     if (!at || !this.list.contains(at)) return;
     if (action === 'undo' && at === this.state.more) { event.preventDefault(); this.undo(); return; }
@@ -980,7 +981,7 @@ export class StackFeed {
   // (item 385); Return saves it and Escape cancels, as there. Return on a
   // message, a head shown whole included, still replies.
   renameKey(event) {
-    if (event.key !== 'Enter' || event.isComposing || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey || this.doc.querySelector('dialog[open]')) return false;
+    if (event.key !== 'Enter' || event.isComposing || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey || this.doc.querySelector('dialog[open]:not([data-card-reply])')) return false;
     const at = this.doc.activeElement, section = at && this.list.contains(at) ? at.closest('.reply-stack') : null;
     const head = section && this.entryFor(section.dataset.stack);
     if (!head) return false;
