@@ -1,4 +1,4 @@
-import { configureCoverRefresh } from './cover-refresh.mjs';
+import { configureCoverRefresh, updateMenuItem, messageUpdateActivity, messageUpdateHost } from './cover-refresh.mjs';
 import { mountFeedFences } from './feed-fence-copy.mjs';
 import { keepLineRoom } from './line-room.mjs';
 import { Api, notAnswering, unreached, answeredSince, heard, follow, notTaken, NOT_TAKEN } from './api.mjs';
@@ -917,7 +917,7 @@ function paintViews(kind) {
   // A star, a stack's name, a join or a place, here or on another device (stack-feed.mjs).
   // An act changes marks/positions, not the admitted original's body. Keep
   // its entry for the acted-card anchor; sync retires only changed membership.
-  if (kind === 'acts') { keepListAnchor(() => { stackMessages(); menu?.paint(); }); return; }
+  if (kind === 'acts') { keepListAnchor(() => { stackMessages(); paintMessageUpdates(); menu?.paint(); }); return; }
   // A message edited, here or elsewhere: its card and the lines that read its words (docs/message-edit.md).
   if (kind === 'edited') { keepListAnchor(() => repaintEdited(views.takeRevised(), views.takeEdits())); return; }
   // The person's own note or saved reply on a message, saved, emptied or sent here or elsewhere: its card's marks (item 127).
@@ -1106,7 +1106,7 @@ function feedOf() {
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
     hold: (paint, act) => keepListAnchor(paint, act), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
-    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); }, home: $('new-message-sheet'),
+    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); paintMessageUpdates(); }, home: $('new-message-sheet'),
     // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
     // On a phone its menu offers the title bar's Reply and Move below More first, as the glyphs fold into it (first).
     menu: (item, anchor, first = []) => openMessageMenu({ anchor, items: [...cardMenuActs(item, first, anchor), ...messageMenuItems(item, null, anchor)], label: 'This message', sheet: true }),
@@ -1258,12 +1258,28 @@ function paintHeader(current) {
 // Messages sent before times were kept have none. Beside the time, the marks of
 // what the message carries: an image, the person's private note, a reply they
 // saved and have not sent (carriesOf, item 127).
+function paintMessageUpdates() {
+  for (const [id, entry] of messageEntries) {
+    const item = views.messages.get(id), card = cardIn(entry), author = card && messageUpdateHost(card, entry);
+    if (item && author) {
+      for (const old of entry.querySelectorAll('.message-update')) old.remove();
+      const update = messageUpdateActivity(document, item, updateContext(item.topic_id));
+      if (update) author.append(update);
+    }
+  }
+  if (reader?.source?.source_ref.kind === 'message') {
+    reader.source.acts = readerFeedItem()?.acts ?? reader.source.acts;
+    reader.paintOrigin(reader.source);
+  }
+}
 function paintCardAuthor(author, item) {
   paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true, wasEdited(item), carriesOf(item));
   if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
   if (here?.page) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
   // The star in its header, put back as the line is painted again (StackFeed.paintStar).
   stackFeed?.paintStar(author, item);
+  const update = messageUpdateActivity(document, item, updateContext(item.topic_id));
+  if (update) author.append(update);
 }
 // Who the composers may whisper to, and who everyone in this topic is: the
 // topic's participants and the outcome's team, by kind, never the reader.
@@ -1616,6 +1632,8 @@ function messageMenuItems(item, say, anchor = say) {
   if (cardScroll?.clipped(card, item)) items.push({ label: 'Show full message', glyph: 'full', act: () => run(() => cardScroll.showFull(card, item)) });
   // Edit, on the person's own message (docs/message-edit.md): the Reader opens on it to edit.
   if (mayEdit(item, editRights()) && !messageEdit) items.push({ label: 'Edit', glyph: 'pencil', act: () => run(() => editMessage(item.id, editOpener(item, anchor))) });
+  const update = !topicUnavailable && !outcomeReached && updateMenuItem(document, item, updateContext(item.topic_id));
+  if (update) items.push(update);
   if (marks && item.author_id !== bootstrap.actor && !topicUnavailable) {
     const marked = marks.state(item.id)?.marked === true;
     items.push({ label: marked ? 'Mark read' : 'Mark unread', glyph: marked ? 'read' : 'unread', act: () => run(() => markFromMenu(item.id, !marked)) });
@@ -1693,6 +1711,8 @@ function openReaderMenu() {
   if (message) items.push({ label: 'Copy Link', glyph: 'link', act: () => run(() => copyLink(p.source.topic_id, ref.id, button)) });
   // Edit turns the Reader to its edit mode on the message it shows (docs/message-edit.md).
   if (message && !messageEdit && mayEdit({ author_id: p.source.author }, editRights())) items.push({ label: 'Edit', glyph: 'pencil', act: () => run(() => editMessage(ref.id, button)) });
+  const update = message && !outcomeReached && updateMenuItem(document, { ...p.source, acts: readerFeedItem()?.acts ?? p.source.acts }, updateContext(p.source.topic_id));
+  if (update) items.push(update);
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
     items.push({ label: 'Copy Link', glyph: 'link', act: () => run(() => copyPageLink(p.source, null, button)) },
       { label: `Copy Link to Revision ${ref.revision}`, glyph: 'link', act: () => run(() => copyPageLink(p.source, ref.revision, button)) });
@@ -1712,6 +1732,7 @@ function openReaderMenu() {
   openMessageMenu({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message', sheet: true });
 }
 // Who may edit which message here (message-edit-writing.mjs, mayEdit).
+const updateContext = topicId => ({ viewer: bootstrap.actor, nameOf: displayActor, topicId });
 const editRights = () => ({ actor: bootstrap.actor, actorKind: bootstrap.actor_kind, unavailable: topicUnavailable, reached: outcomeReached });
 // What an Edit chosen from a message's ⋯ gives the focus back to: its card,
 // or the line it is folded to, rather than the bar's ⋯, which goes with the light.
@@ -1811,7 +1832,7 @@ async function messageEdited(key, version, read, current) {
   try { latest ??= await read('source', { source_ref: { kind: 'message', id } }); }
   catch (error) { if (['FORBIDDEN', 'INVALID_ARGUMENT'].includes(error?.details?.error?.code)) return done; throw error; }
   if (!current() || !registry.isSourceCurrent(p) || messageEdit?.id === id || revisionOf(latest) <= revisionOf(p.source)) return done;
-  Object.assign(p.source, { body: latest.body, revision: revisionOf(latest), edited_ms: latest.edited_ms ?? null, struck: latest.struck ?? null });
+  Object.assign(p.source, { body: latest.body, revision: revisionOf(latest), edited_ms: latest.edited_ms ?? null, struck: latest.struck ?? null, acts: latest.acts ?? p.source.acts });
   reader.redrawSource();
   return done;
 }

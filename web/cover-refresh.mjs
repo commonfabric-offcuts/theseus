@@ -1,5 +1,5 @@
-// Core owns pending/completed. This client retains only the exact command
-// whose answer may be lost, under its captured instance/actor/authority.
+// One request/activity owner for cover refreshes (738) and message updates (786).
+// Core owns pending/completed; this keeps only unconfirmed exact envelopes.
 import { glyph } from './glyphs.mjs';
 import { linkNode } from './links.mjs';
 import { notTaken, NOT_TAKEN } from './api.mjs';
@@ -9,94 +9,148 @@ let runtime = null;
 const requests = new Map(), painters = new WeakMap();
 export const configureCoverRefresh = provider => { runtime = provider; };
 const authorityKey = value => JSON.stringify([value?.authority_id, value?.authority_epoch]);
-const storageKey = (binding, root) => `aim-next-cover-refresh:${JSON.stringify([binding.instance_id, binding.actor, root])}`;
+const storageKey = (binding, target) => `aim-next-${target.type === 'cover' ? 'cover' : 'message'}-refresh:${JSON.stringify([binding.instance_id, binding.actor, target.id])}`;
+const commandKind = target => target.type === 'cover' ? 'stack.cover_refresh' : 'message.refresh';
+const revisionField = target => target.type === 'cover' ? 'cover_revision' : 'message_revision';
 
-export function refreshControl(doc, cover, context) {
-  if (!runtime || !cover.root_id || !Number.isSafeInteger(cover.revision)) return null;
-  const { bootstrap } = runtime(), key = storageKey(bootstrap, cover.root_id);
+export function mayAskForUpdate(item, viewer) {
+  const author = item?.author_id ?? item?.author;
+  return Boolean(item && item.author_kind === 'agent' && typeof author === 'string' && author && author !== viewer);
+}
+const messageTarget = item => ({ type: 'message', id: item.id ?? item.source_ref?.id,
+  revision: item.revision ?? item.current_revision ?? 1,
+  refresh: item.acts?.message_refresh, refresh_revision: item.acts?.message_refresh_revision ?? 0 });
+
+// Exported so focused contracts exercise the very same door used by both UIs.
+export function refreshRequest(doc, target) {
+  if (!runtime || !target.id || !Number.isSafeInteger(target.revision)) return null;
+  const { bootstrap } = runtime(), key = storageKey(bootstrap, target);
   let local = requests.get(key);
   if (!local) {
-    local = { busy: false, request: null, confirmed: null, error: '' };
+    local = { busy: false, request: null, confirmed: null, seen: -1, value: null, targetRevision: 0, error: '' };
     try {
       const kept = JSON.parse(doc.defaultView.localStorage.getItem(key) ?? 'null');
       if (kept) {
-        if (kept.instance_id !== bootstrap.instance_id || kept.kind !== 'stack.cover_refresh' ||
-            kept.target?.message_id !== cover.root_id || typeof kept.operation_id !== 'string' ||
-            !Number.isSafeInteger(kept.expected?.cover_revision) || !kept.expected?.authority ||
-            Object.keys(kept.args ?? {}).length) throw Error('The saved refresh request could not be read safely.');
+        if (kept.instance_id !== bootstrap.instance_id || kept.kind !== commandKind(target) ||
+            kept.target?.message_id !== target.id || typeof kept.operation_id !== 'string' ||
+            !Number.isSafeInteger(kept.expected?.[revisionField(target)]) || !kept.expected?.authority ||
+            Object.keys(kept.args ?? {}).length) throw Error('The saved update request could not be read safely.');
         local.request = kept;
-        local.error = 'The cover request is not confirmed. Press refresh to retry the same request.';
+        local.error = 'The update request is not confirmed. Ask again to retry the same request.';
       }
     } catch (error) { local.error = error.message; local.storageFailed = true; }
     requests.set(key, local);
   }
-  const host = doc.createElement('span'); host.className = 'cover-refresh'; host.dataset.coverRefresh = key;
+  local.targetRevision = Math.max(local.targetRevision, target.revision);
+  if ((target.refresh_revision ?? 0) > local.seen) {
+    local.seen = target.refresh_revision ?? 0; local.value = target.refresh;
+  }
   const repaint = () => {
     for (const node of doc.querySelectorAll('[data-cover-refresh]')) if (node.dataset.coverRefresh === key) painters.get(node)?.();
   };
-  const draw = () => {
-    if (local.confirmed && (cover.refresh_revision ?? 0) >= local.confirmed.revision) local.confirmed = null;
-    const refresh = local.confirmed?.value ?? cover.refresh;
+  const state = () => {
+    if (local.confirmed && local.seen >= local.confirmed.revision) local.confirmed = null;
+    const refresh = local.confirmed?.value ?? local.value;
     if (local.request && refresh?.operation_id === local.request.operation_id) {
       local.request = null; local.error = '';
-      try { doc.defaultView.localStorage.removeItem(key); } catch { /* Core has the fact; no replacement command is needed. */ }
+      try { doc.defaultView.localStorage.removeItem(key); } catch { /* Core has the fact. */ }
     }
-    const pending = refresh?.state === 'pending';
-    const label = pending ? `Awaiting ${context.nameOf(refresh.recipient)}’s new cover. Open the request`
-      : local.busy ? 'Requesting a cover update' : 'Ask the writer to refresh this cover';
+    // A late request response cannot revive activity after ordinary edited words arrived.
+    const pending = refresh?.state === 'pending' && !(target.type === 'message' && local.targetRevision > refresh.observed_revision);
+    const busy = local.busy && !(target.type === 'message' && local.targetRevision > local.sendingRevision);
+    return { refresh, pending, busy, error: local.error };
+  };
+  const send = async () => {
+    if (local.busy || state().pending) return;
+    local.sendingRevision = local.request?.expected?.[revisionField(target)] ?? target.revision;
+    local.busy = true; local.error = ''; repaint();
+    const current = runtime();
+    try {
+      if (local.storageFailed) throw Error('Private request storage is unavailable. Reload before asking for an update.');
+      if (!local.request) {
+        const { authority_id, authority_epoch } = current.bootstrap.authority;
+        local.request = { v: 1, instance_id: current.bootstrap.instance_id, operation_id: crypto.randomUUID(),
+          kind: commandKind(target), target: { message_id: target.id },
+          expected: { [revisionField(target)]: target.revision, authority: { authority_id, authority_epoch } }, args: {} };
+        try { doc.defaultView.localStorage.setItem(key, JSON.stringify(local.request)); }
+        catch (error) { local.request = null; throw Error('The update request could not be kept on this device. Nothing was sent.', { cause: error }); }
+      }
+      const request = local.request;
+      if (authorityKey(request.expected.authority) !== authorityKey(current.bootstrap.authority)) {
+        throw Error('This saved update belongs to an earlier instance binding. It is kept for reconciliation.');
+      }
+      let receipt;
+      try { receipt = await current.api.command(structuredClone(request)); }
+      catch (error) {
+        const why = notTaken({ error });
+        throw Error(`${why.why ?? NOT_TAKEN[why.kind] ?? 'The connection was interrupted'}. The request is not confirmed; ask again to retry it.`, { cause: error });
+      }
+      if (receipt?.instance_id !== request.instance_id || receipt.operation_id !== request.operation_id || receipt.kind !== request.kind) {
+        throw Error('The update request could not be confirmed. Ask again to retry the same request.');
+      }
+      if (receipt.status === 'committed' && receipt.recorded === true) {
+        if (!local.confirmed || receipt.result.refresh_revision > local.confirmed.revision) {
+          local.confirmed = { value: receipt.result.refresh, revision: receipt.result.refresh_revision };
+        }
+      } else if (receipt.recorded === true || receipt.error?.code === 'INVALID_ARGUMENT') {
+        local.error = receipt.error?.message ?? 'The update request was refused; the writing is kept.';
+      } else {
+        throw Error(`${receipt.error?.message ?? 'The request is not confirmed'}. Ask again to retry it.`);
+      }
+      doc.defaultView.localStorage.removeItem(key); local.request = null;
+    } catch (error) { local.error = error.message; }
+    finally { local.busy = false; repaint(); current.changed(); }
+  };
+  return { key, state, send };
+}
+
+function activity(doc, target, context) {
+  const request = refreshRequest(doc, target);
+  if (!request) return null;
+  const isCover = target.type === 'cover';
+  const host = doc.createElement('span'); host.className = isCover ? 'cover-refresh' : 'message-update'; host.dataset.coverRefresh = request.key;
+  const draw = () => {
+    const { refresh, pending, busy, error } = request.state();
+    const label = pending ? (isCover ? `Awaiting ${context.nameOf(refresh.recipient)}’s new cover. Open the request`
+      : `Asked ${context.nameOf(refresh.recipient)} to update this message. Open the request`)
+      : busy ? 'Requesting an update' : 'Ask the writer to refresh this cover';
     const control = pending ? linkNode(doc, '', { route: { kind: 'topic', id: context.topicId, message: refresh.request_message_id }, written: true })
       : doc.createElement('button');
-    control.className = 'cover-refresh-glyph'; control.title = label; control.setAttribute('aria-label', label);
-    control.dataset.pending = String(pending || local.busy);
-    control.append(pending || local.busy ? waitingDots(doc, label) : glyph('refresh', doc, 17));
+    control.className = isCover ? 'cover-refresh-glyph' : 'message-update-activity';
+    control.title = label; control.setAttribute('aria-label', label); control.dataset.pending = String(pending || busy);
+    control.append(pending || busy ? waitingDots(doc, label) : glyph('refresh', doc, 17));
     if (!pending) {
-      control.type = 'button'; control.setAttribute('aria-disabled', String(local.busy));
-      control.onclick = async event => {
-        event.stopPropagation();
-        if (local.busy) return;
-        local.busy = true; local.error = ''; repaint();
-        const current = runtime();
-        try {
-          if (local.storageFailed) throw Error('Private request storage is unavailable. Reload before requesting a cover update.');
-          if (!local.request) {
-            const { authority_id, authority_epoch } = current.bootstrap.authority;
-            local.request = { v: 1, instance_id: current.bootstrap.instance_id, operation_id: crypto.randomUUID(),
-              kind: 'stack.cover_refresh', target: { message_id: cover.root_id },
-              expected: { cover_revision: cover.revision, authority: { authority_id, authority_epoch } }, args: {} };
-            // Save before sending. Storage failure starts no network request.
-            try { doc.defaultView.localStorage.setItem(key, JSON.stringify(local.request)); }
-            catch (error) { local.request = null; throw Error('The cover request could not be kept on this device. Nothing was sent.', { cause: error }); }
-          }
-          const request = local.request;
-          if (authorityKey(request.expected.authority) !== authorityKey(current.bootstrap.authority)) {
-            throw Error('This saved refresh belongs to an earlier instance binding. It is kept for reconciliation.');
-          }
-          let receipt;
-          try { receipt = await current.api.command(structuredClone(request)); }
-          catch (error) {
-            const why = notTaken({ error });
-            throw Error(`${why.why ?? NOT_TAKEN[why.kind] ?? 'The connection was interrupted'}. The request is not confirmed; press refresh to retry it.`, { cause: error });
-          }
-          if (receipt?.instance_id !== request.instance_id || receipt.operation_id !== request.operation_id || receipt.kind !== request.kind) {
-            throw Error('The cover request could not be confirmed. Press refresh to retry the same request.');
-          }
-          if (receipt.status === 'committed' && receipt.recorded === true) {
-            local.confirmed = { value: receipt.result.refresh, revision: receipt.result.refresh_revision };
-          } else if (receipt.recorded === true || receipt.error?.code === 'INVALID_ARGUMENT') {
-            local.error = receipt.error?.message ?? 'The cover refresh was refused; the cover is kept.';
-          } else {
-            throw Error(`${receipt.error?.message ?? 'The request is not confirmed'}. Press refresh to retry it.`);
-          }
-          doc.defaultView.localStorage.removeItem(key); local.request = null;
-        } catch (error) { local.error = error.message; }
-        finally { local.busy = false; repaint(); current.changed(); }
-      };
+      control.type = 'button'; control.setAttribute('aria-disabled', String(busy));
+      control.onclick = async event => { event.stopPropagation(); await request.send(); };
     }
-    const status = doc.createElement('span'); status.className = 'cover-refresh-status'; status.setAttribute('role', 'status');
-    status.textContent = local.error;
+    const status = doc.createElement('span'); status.className = 'cover-refresh-status'; status.setAttribute('role', 'status'); status.textContent = error;
     const focused = host.contains(doc.activeElement);
-    host.replaceChildren(control, status);
-    if (focused) control.focus({ preventScroll: true });
+    host.hidden = !isCover && !(pending || busy || error);
+    host.replaceChildren(...(isCover || pending || busy ? [control] : []), status);
+    if (focused && !host.hidden && control.isConnected) control.focus({ preventScroll: true });
   };
   painters.set(host, draw); draw(); return host;
+}
+
+export function refreshControl(doc, cover, context) {
+  return activity(doc, { type: 'cover', id: cover.root_id, revision: cover.revision,
+    refresh: cover.refresh, refresh_revision: cover.refresh_revision }, context);
+}
+export function updateMenuItem(doc, item, context) {
+  if (!mayAskForUpdate(item, context.viewer)) return null;
+  const request = refreshRequest(doc, messageTarget(item));
+  return request ? { label: 'Ask for update', glyph: 'refresh', act: () => request.send() } : null;
+}
+export function messageUpdateActivity(doc, item, context) {
+  if (!mayAskForUpdate(item, context.viewer)) return null;
+  return activity(doc, messageTarget(item), context);
+}
+
+// Ordinary asks fold their source. Activity follows the message's visible row.
+export function messageUpdateHost(card, entry = card) {
+  if (entry !== card && card.hidden) return entry;
+  if (card.classList.contains('stack-head-card') && card.closest('.reply-stack')?.dataset.headOpen === 'false') return card.querySelector(':scope > .stack-head');
+  if (card.dataset.folded === 'true') return card.querySelector(':scope > .message-folded');
+  if (card.dataset.earlier === 'true') return card.querySelector(':scope > .message-earlier');
+  return card.querySelector(':scope > .message-author');
 }
