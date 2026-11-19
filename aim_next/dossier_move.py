@@ -150,9 +150,16 @@ class DossierMove:
         ids = [item["id"] for item in found]
         marks = ",".join("?" * len(ids))
         for table, key in (("messages", "id"), ("message_acts", "message_id"), ("message_marks", "message_id"),
-                           ("message_blocks", "message_id"), ("message_addressees", "seq")):
+                           ("message_blocks", "message_id"), ("message_reactions", "message_id"), ("message_addressees", "seq")):
             values = [item["seq"] for item in found] if key == "seq" else ids
             db.execute("UPDATE %s SET topic_id=? WHERE %s IN (%s)" % (table, key, marks), [destination["id"]] + values)
+        # Preserve each reader's personal position with the dossier. The root
+        # identity stays the same; a previous visit's dormant row is replaced.
+        db.execute("INSERT INTO dossier_order SELECT actor_id,?,root_id,key,entry_key,tie FROM dossier_order "
+                   "WHERE topic_id=? AND root_id IN (%s) "
+                   "ON CONFLICT(actor_id,topic_id,root_id) DO UPDATE SET key=excluded.key,entry_key=excluded.entry_key,tie=excluded.tie" % marks,
+                   [destination["id"], source["id"]] + ids)
+        db.execute("DELETE FROM dossier_order WHERE topic_id=? AND root_id IN (%s)" % marks, [source["id"]] + ids)
         self._move_deliveries(db, ids, destination)
         db.execute("UPDATE ask_cover_links SET topic_id=? WHERE ask_id IN (%s)" % marks,
                    [destination["id"]] + ids)

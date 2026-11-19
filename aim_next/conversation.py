@@ -415,6 +415,10 @@ class Conversation:
                     _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent, private, snapshot.get("about_id"),
                     1 if snapshot.get("go_ahead") else 0)).lastrowid
         covered = self._link_ask_cover(db, actor, topic, message_id, linked)
+        # Positions are part of publication, not a browser observation (item 731).
+        from .dossier_order import published
+        positioned = {"id": message_id, "topic_id": topic_id, "seq": sequence, "author_id": actor, "private_to": private}
+        published(db, set(self._message_readers(db, positioned, actor)) | set(audience), positioned)
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
         # The first post of a release that holds item 475 says where its waiting dots begin (stacks.py).
         record_wait_start(db, sequence)

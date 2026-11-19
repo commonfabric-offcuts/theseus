@@ -230,7 +230,7 @@ cover waits as well as topics waiting from said/ask reasons. Cover changes use
 the existing shared act commit notification, so no reload or background
 history reconstruction is needed.
 
-Schema 50 adds `cover_waiting`, a derived index holding only the current
+Schema 51 adds `cover_waiting`, a derived index holding only the current
 nonempty waiting covers, keyed by first message with outcome/topic indexes.
 Every cover act updates it in the same transaction. Migration alone fills it
 from the latest recorded cover revisions; downgrade drops only the derived
@@ -245,7 +245,7 @@ cover in the publication transaction. Each names the actual asked actor, ask
 message and source revision, independently of the outcome owner. Explicit no
 choices/no default with reason is shown plainly. Manual waiting edits preserve
 these linked waits; eligible per-question answers and attention clear together.
-Schema 53 records links without changing legacy asks. See
+Schema 54 records links without changing legacy asks. See
 [asking-person-cover.md](asking-person-cover.md) for fields and fences.
 
 ## Answer beside a linked wait (782)

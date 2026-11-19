@@ -41,7 +41,7 @@ that carries no ask remains unchanged.
 Core resolves the dossier at publication. A reply must name its current root
 and cover revision; a new root uses null/0. A changed root or stale cover refuses
 the entire act. The linked wait records the generated question message, source
-revision 1, addressed person and publication root in schema 53. Existing asks
+revision 1, addressed person and publication root in schema 54. Existing asks
 have no link rows and retain their legacy meaning; migration never reinterprets
 them. Downgrade refuses once any link exists, even settled. Message edits do
 not retarget or rewrite the linked question. Private asks remain forbidden.
