@@ -21,7 +21,7 @@
 // the earlier ones, which shows them as rows for this visit (item 476): a way
 // of showing it, kept by the page alone, never recorded.
 import { cardIn, opened } from './fold.mjs';
-import { gather, dossiersOf, reheaded, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf, stackCover, starredDossiers, dossierOf } from './stack-order.mjs';
+import { gather, withDossierHeads, dossiersOf, reheaded, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf, stackCover, starredDossiers, dossierOf } from './stack-order.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { shownTime } from './times.mjs';
 import { coordinationStack } from './coordination-stacks.mjs';
@@ -143,7 +143,7 @@ export function fillFrom(list) {
   const state = stackState(list), view = shownView(state);
   const known = new Set();
   let below = Infinity;
-  for (const stack of state.stacks) for (const item of [stack.head, ...stack.replies]) { known.add(item.id); below = Math.min(below, item.seq); }
+  for (const stack of state.stacks) for (const item of [stack.head, ...stack.replies]) { if (!item.dossierSource) { known.add(item.id); below = Math.min(below, item.seq); } }
   const last = shownStacks(state).filter(stack => !view.below(stack)).at(-1);
   state.filling = { into: last && !state.apart.has(last.id) ? last.dossier : null, drawn: new Set(state.stacks.map(stack => stack.dossier)), known, below };
 }
@@ -156,6 +156,7 @@ function fill(state, loaded) {
   if (!filling) return;
   const dossier = dossiersOf(loaded, { filled: state.filled, apart: state.apart });
   for (const item of loaded) {
+    if (state.sourceRoots?.has(item.id)) continue;
     const of = dossier.get(item.id);
     if (!filling.known.has(item.id) && item.seq < filling.below && filling.drawn.has(of)) (of === filling.into ? state.filled : state.apart).add(item.id);
     filling.known.add(item.id);
@@ -799,8 +800,17 @@ export function arrangeStacks(list, messages, options = {}) {
   const active = list.contains(doc.activeElement) ? doc.activeElement : null;
   const byId = new Map(entries(list).map(entry => [entry.dataset.id, entry]));
   const loaded = [...byId.keys()].map(id => messages.get(id)).filter(Boolean);
-  fill(state, loaded);
-  const stacks = ordered(gather(loaded, { viewer, filled: state.filled, apart: state.apart }));
+  state.sourceRoots ??= new Set();
+  for (const item of loaded) if (item.dossierSource) state.sourceRoots.add(item.id);
+  for (const id of state.sourceRoots) { state.filled.delete(id); state.apart.delete(id); }
+  // A root already displayed as a source keeps the same loaded branch anchor
+  // when More reaches it. Otherwise an earlier own branch could jump above
+  // the formerly gathered head. The root's actual item now owns its bytes.
+  const descendants = loaded.filter(item => !state.sourceRoots.has(item.id));
+  const dossiers = new Set(dossiersOf(descendants).values());
+  const paged = loaded.filter(item => !state.sourceRoots.has(item.id) || !dossiers.has(item.id));
+  fill(state, paged);
+  const stacks = withDossierHeads(ordered(gather(paged, { viewer, filled: state.filled, apart: state.apart })), messages, { apart: state.apart, sourceRoots: state.sourceRoots });
   for (const [from, to] of reheaded(state.stacks, stacks)) rehead(state, from, to);
   state.stacks = stacks;
   // The dossiers whose title bar shows the reader's star, and which Move below More refuses (item 635).

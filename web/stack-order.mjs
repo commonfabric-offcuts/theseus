@@ -517,3 +517,53 @@ export function positionOf(stack) {
   return [stack.head, ...stack.replies].map(item => item.stack_position).filter(position => position && fits(position))
     .reduce((known, next) => laterPosition(known, next), null);
 }
+
+// Item 799. Admitted heads are a separate, visit-scoped presentation cache.
+// They never enter the topic's loaded runs or pagination frontiers.
+export class DossierHeads {
+  constructor({ topicId, read, changed = () => {}, current = () => true }) {
+    Object.assign(this, { topicId, read, changed, current });
+    this.records = new Map(); this.serial = 0;
+  }
+  invalidate(id = null) {
+    for (const [root, record] of this.records) if (id === null || root === id) {
+      this.records.delete(root); ++this.serial;
+    }
+  }
+  sync(messages) {
+    const wanted = new Set([...dossiersOf([...messages.values()]).values()].filter(id => !messages.has(id)));
+    for (const id of this.records.keys()) if (!wanted.has(id)) this.records.delete(id);
+    for (const id of wanted) if (!this.records.has(id)) {
+      const record = { state: 'loading', token: ++this.serial };
+      this.records.set(id, record);
+      Promise.resolve().then(() => this.read('topic_messages', { topic_id: this.topicId, message_ids: [id] })).then(page => {
+        if (!this.current() || this.records.get(id) !== record) return;
+        if (!Array.isArray(page.items)) throw Error('The dossier source could not be read.');
+        const item = page.items.find(item => item.id === id);
+        if (item && (item.topic_id !== this.topicId || item.stack_position?.root_id !== id)) throw Error('The dossier source identity changed.');
+        Object.assign(record, item?.withheld ? { state: 'refused' } : item ? { state: 'available', item: { ...item, dossierSource: true } } : { state: 'missing' });
+        this.changed();
+      }).catch(error => {
+        if (!this.current() || this.records.get(id) !== record) return;
+        record.state = ['FORBIDDEN', 'SOURCE_UNAVAILABLE', 'NOT_FOUND', 'INVALID_ARGUMENT'].includes(error?.details?.error?.code) ? 'refused' : 'error';
+        this.changed();
+      });
+    }
+  }
+  messages(loaded) {
+    const result = new Map(loaded);
+    for (const [id, record] of this.records) if (record.state === 'available' && !result.has(id)) result.set(id, record.item);
+    return result;
+  }
+}
+
+// Decorate only after gathering/ordering the actual loaded page. A fetched
+// head contributes neither a sorting key nor an implied intervening message.
+export function withDossierHeads(stacks, sources, { apart = new Set(), sourceRoots = new Set() } = {}) {
+  return stacks.map(stack => {
+    const root = sources.get(stack.dossier);
+    if (!root || !root.dossierSource && !sourceRoots.has(root.id) || stack.id === stack.dossier || apart.has(stack.id)) return stack;
+    return { ...stack, id: root.id, head: root, replies: [stack.head, ...stack.replies],
+      branches: new Set([stack.head.id, ...(stack.branches ?? [])]), sourceHead: true };
+  });
+}
