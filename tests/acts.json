@@ -1461,7 +1461,7 @@
    "break": [
     [
      "web/panes.mjs",
-     "    if (to === 'feed') return onScreen(doc.getElementById('main')) && this.feed(doc);",
+     "    if (to === 'feed') return onScreen(doc.getElementById('main')) && this.feed(doc, undefined, navigate);",
      "    if (to === 'feed') return false;"
     ]
    ],
@@ -2201,7 +2201,7 @@
    "break": [
     [
      "web/panes.mjs",
-     "  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : panes.step('feed', 'right', doc);\n",
+     "  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1], navigate) : panes.step('feed', 'right', doc, navigate);\n",
      ""
     ]
    ],
@@ -2216,8 +2216,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "&& panes.feed(doc, { first: true })) ||",
-     "&& panes.feed(doc)) ||"
+     "panes.feed(doc, { first: true }, navigate)",
+     "panes.feed(doc, undefined, navigate)"
     ]
    ],
    "check": {
@@ -2692,8 +2692,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    const at = this.doc.activeElement;\n    if (!at || !this.list.contains(at)) return;\n    if (action === 'undo' && at === this.state.more) { event.preventDefault(); this.undo(); return; }\n    const toggle = at.classList?.contains('stack-toggle');\n    const entry = toggle ? this.entryFor(at.closest('.reply-stack')?.dataset.stack) : entryOf(this.list, at);\n    if (!entry || !(toggle || at === cardIn(entry) || at.classList?.contains('fold-line'))) return;",
-     "    const entry = this.entryFor(this.list.dataset.lastMessage);\n    if (!entry) return;"
+     "    const at = this.doc.activeElement;\n    if (writing(at) || at?.closest?.('input, textarea, select, [contenteditable]') ||\n        event.target?.closest?.('input, textarea, select, [contenteditable]')) return;\n    if (this.renameKey(event)) return;\n    const action = keyAction(event);\n    if (!FEED_ACTIONS.includes(action) || this.doc.querySelector('dialog[open]:not([data-card-reply])')) return;\n    if (!at || !this.list.contains(at)) return;\n    if (action === 'undo' && at === this.state.more) {\n      event.preventDefault();\n      this.undo(); return;\n    }\n    const toggle = at.classList?.contains('stack-toggle');\n    const entry = toggle ? this.entryFor(at.closest('.reply-stack')?.dataset.stack) : entryOf(this.list, at);\n    if (!entry || !(toggle || at === cardIn(entry) || at.classList?.contains('fold-line'))) return;",
+     "    const at = this.doc.activeElement;\n    if (this.renameKey(event)) return;\n    const action = keyAction(event);\n    if (!FEED_ACTIONS.includes(action) || this.doc.querySelector('dialog[open]:not([data-card-reply])')) return;\n    const entry = this.entryFor(this.list.dataset.lastMessage);\n    if (!entry) return;"
     ],
     [
      "web/pane-keys.mjs",
@@ -6677,8 +6677,8 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "node.hidden = aside.includes(node) && !asideShown;",
-     "node.hidden = aside.includes(node) && !state.moreOpen;"
+     "node.hidden = state.waiting.has(node.dataset.id) || aside.includes(node) && !asideShown;",
+     "node.hidden = state.waiting.has(node.dataset.id) || aside.includes(node) && !state.moreOpen;"
     ]
    ],
    "check": {
@@ -7216,8 +7216,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "const reach = el => { el.focus({ preventScroll: true }); revealSelection(el); return true; };",
-     "const reach = el => { el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'nearest' }); return true; };"
+     "  revealSelection(el);\n  return true;",
+     "  el.scrollIntoView({ block: 'nearest' });\n  return true;"
     ]
    ],
    "check": {
@@ -9284,7 +9284,7 @@
    "break": [
     [
      "web/panes.mjs",
-     "    else if (action === 'up' && rows.length && atTop(doc)) moved = reach(landing(rows[rows.length - 1]));\n",
+     "    else if (action === 'up' && rows.length && atTop(doc)) moved = reach(landing(rows[rows.length - 1]), readingDestination);\n",
      ""
     ]
    ],
@@ -9329,7 +9329,7 @@
    "break": [
     [
      "web/panes.mjs",
-     "  if (action === 'up') return r > 0 && reach(landing(rows[r - 1]));\n",
+     "  if (action === 'up') return r > 0 && reach(landing(rows[r - 1]), navigate);\n",
      ""
     ]
    ],
@@ -9344,7 +9344,7 @@
    "break": [
     [
      "web/panes.mjs",
-     "  if (action === 'up') return r > 0 && reach(landing(rows[r - 1]));\n",
+     "  if (action === 'up') return r > 0 && reach(landing(rows[r - 1]), navigate);\n",
      ""
     ]
    ],
@@ -9359,7 +9359,7 @@
    "break": [
     [
      "web/panes.mjs",
-     "  if (action === 'down' && r < rows.length - 1) return reach(landing(rows[r + 1]));\n",
+     "  if (action === 'down' && r < rows.length - 1) return reach(landing(rows[r + 1]), navigate);\n",
      ""
     ]
    ],
@@ -9404,8 +9404,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : panes.step('feed', 'right', doc);\n",
-     "  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : false;\n"
+     "  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1], navigate) : panes.step('feed', 'right', doc, navigate);\n",
+     "  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1], navigate) : false;\n"
     ]
    ],
    "check": {
@@ -9419,7 +9419,7 @@
    "break": [
     [
      "web/panes.mjs",
-     "  if (action === 'left') return at > 0 ? reach(buttons[at - 1]) : panes.step('feed', 'left', doc);\n",
+     "  if (action === 'left') return at > 0 ? reach(buttons[at - 1], navigate) : panes.step('feed', 'left', doc, navigate);\n",
      ""
     ]
    ],
@@ -20886,8 +20886,8 @@
    "break": [
     [
      "web/panes.mjs",
-     " || reachOn(doc.activeElement, 'down', { within: doc.getElementById('main'), doc });",
-     ";"
+     "const moved = reachOn(doc.activeElement, 'down', { within, doc });",
+     "const moved = false;"
     ]
    ],
    "check": {
@@ -23482,8 +23482,8 @@
    "break": [
     [
      "web/app.mjs",
-     "if (!(short > 0) || !resting && (list.contains(hold) ||",
-     "if (!(short > 0) || (list.contains(hold) ||"
+     "if (!(short > 0) || !resting && !list.contains(hold) &&",
+     "if (!(short > 0) || !list.contains(hold) &&"
     ]
    ],
    "check": {
@@ -29578,8 +29578,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc);",
-     "moved = messagesSideways(doc.activeElement, doc) && panes.step('feed', action, doc);"
+     "moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc, readingDestination);",
+     "moved = messagesSideways(doc.activeElement, doc) && panes.step('feed', action, doc, readingDestination);"
     ]
    ],
    "check": {
@@ -29593,8 +29593,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc);",
-     "moved = messagesSideways(doc.activeElement, doc) && panes.step('feed', action, doc);"
+     "moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc, readingDestination);",
+     "moved = messagesSideways(doc.activeElement, doc) && panes.step('feed', action, doc, readingDestination);"
     ]
    ],
    "check": {
@@ -31346,8 +31346,8 @@
    "break": [
     [
      "web/app.mjs",
-     "run(() => { fillFrom($('messages')); return listPage('messages', true); });",
-     "run(() => listPage('messages', true));"
+     "    fillFrom($('messages'));\n    const outcome = await listPage('messages', true);",
+     "    const outcome = await listPage('messages', true);"
     ]
    ],
    "check": {

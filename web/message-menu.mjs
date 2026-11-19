@@ -23,7 +23,7 @@ import { feedControl, feedFence } from './feed-fence-copy.mjs';
 // the cards themselves (buttons, folded into quiet lines between others) keep
 // their shape. The bar never covers the reply arrow beside a card's time.
 import { cardIn } from './fold.mjs';
-import { pageItself, writing } from './pane-keys.mjs';
+import { pageItself, writing, readingMovement } from './pane-keys.mjs';
 import { copyKey, onMac } from './writing-input.mjs';
 import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
 import { entries, entryOf, navigationStops, shownSelected, stopAt, onEarlierRow } from './reply-stacks.mjs';
@@ -101,9 +101,10 @@ export class MessageMenu {
   // Reader on it with chosen ({start, end, text} of its words) quoted.
   // clipped(card, item): whether the card cuts its message off; showFull(card, item): shows it whole there, as ⋯'s
   // Show full message does. foldState(item): 'fold', 'unfold' or null (none); fold(item): folds or unfolds it.
+  // navigate(): materialize waiting arrivals at a confirmed feed-key destination.
   constructor({ host, item, viewer, kind, reply, inlineReply = reply, quote = (id, card) => reply(id, card), thumb, answer, more, expand = () => {}, copy = () => {},
-    clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {}, acted = () => {}, mac = onMac(), doc = document }) {
-    Object.assign(this, { host, item, viewer, kind, reply, inlineReply, quote, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, acted, mac, doc });
+    clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {}, acted = () => {}, navigate = () => {}, mac = onMac(), doc = document }) {
+    Object.assign(this, { host, item, viewer, kind, reply, inlineReply, quote, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, acted, navigate, mac, doc });
     this.lit = null; this.touch = pressOf(doc).touch; this.before = null;
     // The bar's buttons it has put behind its ⋯ for want of room in the window (fit).
     this.behind = new Set();
@@ -426,9 +427,33 @@ export class MessageMenu {
     if (this.copies(event)) return;
     if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || (event.altKey && event.key !== 'Tab')) return;
     if (event.key === 'Tab') return this.tab(event);
-    // Nor under a drawer or sheet open over the page, which makes the page inert.
-    if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key) || this.doc.querySelector('dialog[open]:not([data-card-reply])') || this.host.closest('[inert]')) return;
     const at = this.doc.activeElement;
+    if (writing(at) || at?.closest?.('input, textarea, select, [contenteditable]') ||
+        event.target?.closest?.('input, textarea, select, [contenteditable]')) return;
+    // Nor under a drawer or sheet open over the page, which makes the page inert.
+    if (this.doc.querySelector('dialog[open]:not([data-card-reply])') || this.host.closest('[inert]')) return;
+    // These keys scroll the feed through the browser's own default action.
+    // A control's Space/Home/End belongs to that control, not to navigation.
+    if (['PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) {
+      const entry = this.host.contains(at) && this.entryOf(at);
+      if (event.isTrusted && !event.shiftKey && this.doc.getSelection?.()?.isCollapsed !== false &&
+          (pageItself(at, this.doc) || entry && (at === cardIn(entry) || at.classList?.contains('fold-line')))) {
+        // Space on a native button activates it; its successful open owns the
+        // release. A scroll key at the end of every scrolling box goes nowhere.
+        if (event.key === ' ' && at?.matches?.('button, input, select, summary')) return;
+        const up = event.key === 'PageUp' || event.key === 'Home', view = this.doc.defaultView;
+        for (let box = at; box; box = box.parentElement) {
+          if (box === this.doc.scrollingElement || box === this.doc.body || box === this.doc.documentElement) continue;
+          const style = view.getComputedStyle(box);
+          if (!/^(auto|scroll|overlay)$/.test(style.overflowY) || box.clientHeight <= 0) continue;
+          if (up ? box.scrollTop > 0 : box.scrollTop < box.scrollHeight - box.clientHeight) { this.navigate(); return; }
+        }
+        const page = this.doc.scrollingElement;
+        if (page && page.clientHeight > 0 && (up ? page.scrollTop > 0 : page.scrollTop < page.scrollHeight - page.clientHeight)) this.navigate();
+      }
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) return;
     if (at?.matches?.(EDITABLE) || at?.closest?.('.rail')) return;
     // The bar's own buttons, and every control in the list but a card itself (a
     // folded line, a link in the words, a reaction, the reply arrow, a stack's
@@ -447,6 +472,8 @@ export class MessageMenu {
       else if (item) this.reply(item.id, cardIn(this.lit));
       return;
     }
+    // Keep the selection guard from before focus can collapse it.
+    const reading = !event.shiftKey && this.doc.getSelection?.()?.isCollapsed !== false;
     const entries = this.entries();
     if (!entries.length) return;
     // A dossier's chevron holding the focus is where the keys are, whether it
@@ -468,7 +495,14 @@ export class MessageMenu {
       // feed), the keys go on to what lies that way in the page's column: More
       // messages, the People row, the Notebook and the reply (arrow-reach.mjs).
       const from = between || !selected ? at : cardIn(selected).hidden ? selected.querySelector('.fold-line') : cardIn(selected);
-      if (from && reach(from, step > 0 ? 'down' : 'up', { within: this.host.closest('#main') ?? null, doc: this.doc })) event.preventDefault();
+      const within = this.host.closest('#main') ?? null;
+      // reach can approach a control by scrolling, or try to focus it. Confirm
+      // the actual movement too: a refused focus is not a reading destination.
+      const moved = readingMovement(this.doc, within, at);
+      if (from && reach(from, step > 0 ? 'down' : 'up', { within, doc: this.doc })) {
+        event.preventDefault();
+        if (reading && moved()) this.navigate();
+      }
       return;
     }
     event.preventDefault();
@@ -477,6 +511,7 @@ export class MessageMenu {
     this.light(next.matches('.stack-toggle') ? null : next);
     const target = cardIn(next).hidden ? next.querySelector('.fold-line') : cardIn(next);
     target?.focus({ preventScroll: true });
+    if (reading && target && target !== at && this.doc.activeElement === target) this.navigate();
     revealSelection(shownSelected(next));
     this.place();
   }
