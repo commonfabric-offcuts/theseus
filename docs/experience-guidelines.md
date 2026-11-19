@@ -18,9 +18,13 @@ run's results can be searched for it.
 
 The Reader keeps room to read the message and room to write a useful reply.
 Guidance on the page stays compact and folds away. On a phone with the keyboard
-up, the message still shows enough to read while writing. The Reader and the
-New message sheet are as tall as the window and grow with its width up to a
-maximum, and on a phone never reach past the screen.
+up, the message still shows enough to read while writing. The Reader fills the visible window up to its width maximum. The pencil
+sheet floats at the bottom over the unblurred page; its field starts at one
+line and grows with the text, and confirmed sending closes it. Its inline
+agent menu stays compact. Neither surface reaches past a phone screen.
+The `item 673` cases in `tests/reader_compose_native.mjs` hold these rules
+on topics and Conversations in both engines, all three phone widths and laptop,
+light and dark.
 
 - `tests/reader_native.mjs` (`native-reader`): "default stacks, wide keeps
   writing full height, layout switch preserves typing", "divider click is inert,
