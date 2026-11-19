@@ -4,6 +4,7 @@ import json
 import unittest
 from unittest.mock import patch
 
+from aim_next.invite import assignment_text
 import test_store as fixtures
 
 
@@ -44,7 +45,9 @@ class OnboardingCase(unittest.TestCase):
         self.topic("t-archived", "ARCHIVED PRIVATE CANARY", archived=1)
         before = self.sql("SELECT count(*) FROM operations"), self.sql("SELECT max(seq) FROM changes")
         a, b = self.read()["prompt"], self.read(variant="claude")["prompt"]
-        self.assertEqual(a.replace("AGENTS.md", "CLAUDE.md"), b)
+        # The context stays identical; only the harness instructions differ.
+        self.assertEqual(a.replace("AGENTS.md", "CLAUDE.md").replace(assignment_text("codex"), "ASSIGNMENT"),
+                         b.replace(assignment_text("claude-code"), "ASSIGNMENT"))
         for words in ("Isolated test", "Exercise one recorded act", "Owner: owner", "agent-a", "agent-b", "Current topic", "Needs a decision", "waits on agent-b", "docs/agent-cli.md", "--operation", "+ Invite agent", "No rules context", "No enabled pipeline context"):
             self.assertIn(words, a)
         for words in ("DONE PRIVATE CANARY", "ARCHIVED PRIVATE CANARY", "Isolated outsider"):

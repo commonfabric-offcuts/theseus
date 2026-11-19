@@ -5,6 +5,7 @@ import json
 import re
 
 from .contract import Refusal
+from . import invite as invitations
 
 ROWS = 100
 # Check only authorized text columns. Never inspect credential files or export records.
@@ -121,7 +122,8 @@ class Onboarding:
                   "  bin/aim-next --profile <OWNER_SUPPLIED_SIGN_IN> reply <MESSAGE> --asks <RECIPIENT> -",
                   "Use the outcome reference above for <OUTCOME>, and actual topic/message references from reads. Read pages with their cursors through view when more context remains. Use --asks for a question and --tells for information; stdin (-) preserves your words. Read back after posting. Reads do not acknowledge deliveries.",
                   "If a send is uncertain, retain its exact operation and writing; use retry on that same operation rather than sending again with a new identity.",
-                  "This is a bounded snapshot read when Copy was pressed. Read current state again before acting. Work interactively with the owner; this prompt starts no autonomous runner."]
+                  "This is a bounded snapshot read when Copy was pressed. Read current state again before acting. Theseus starts no runner when it generates this prompt; begin the assignment only after the owner supplies your own identity and you read the guide.", "",
+                  invitations.assignment_text("codex" if variant == "codex" else "claude-code")]
         if len(json.dumps("\n".join(lines), ensure_ascii=False).encode("utf-8")) > 120000:
             raise Refusal("ONBOARDING_CONTEXT_TOO_LONG", "The current context is too long for an onboarding prompt. Read it through the CLI instead.")
         return {"instance_id": self.instance_id, "workspace_id": workspace_id, "variant": variant, "prompt": "\n".join(lines)}
