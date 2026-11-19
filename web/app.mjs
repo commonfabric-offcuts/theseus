@@ -1165,6 +1165,33 @@ function landOn(id, { full = false } = {}) {
   card.scrollIntoView({ block: 'nearest' });
   return card;
 }
+// A rail landing can name a card outside the loaded page. Read only its
+// anchored page, preserving the paging gap, without presenting a Reader.
+let landingSerial = 0;
+async function landOnMessage(id, serial = ++landingSerial) {
+  const accessEpoch = listAccessEpoch, generation = registry.generation;
+  const mine = () => !retired && !registry.disposed && !topicUnavailable &&
+    accessEpoch === listAccessEpoch && serial === landingSerial && generation === registry.generation;
+  if (!mine()) return;
+  if (!views.messages.has(id)) {
+    const foreground = registry.cleanup.foreground();
+    try {
+      const source = checkedView(await foreground.read(options => api.view('source', { kind: 'message', id }, options)), bootstrap.instance_id);
+      if (!mine()) return;
+      if (source.source_ref?.kind !== 'message' || source.source_ref.id !== id || source.topic_id !== topic.id ||
+          !Number.isSafeInteger(source.seq) || source.seq < 1) throw Error('This message could not be found in this topic.');
+      const cursor = source.seq + 1;
+      const page = checkedView(await foreground.read(options => api.view('topic_messages', { topic_id: topic.id, audience: 'all', direction: 'before', cursor, limit: 30 }, options)), bootstrap.instance_id);
+      if (!mine()) return;
+      views.messagesPage(page, { anchored: true, cursor });
+    } finally { foreground.release(); }
+  }
+  if (!mine()) return;
+  if (here?.page && here.onlyNew) { here.onlyNew = false; paintConversationPage(); }
+  const card = landOn(id, { full: true });
+  if (!card) throw Error('This message could not be shown. Try its link again.');
+  card.focus({ preventScroll: true });
+}
 // A message a link on the page names (the person's reply, or a tag's), opened
 // in the Reader from its card, landed on first; one not loaded opens alone.
 function goToMessage(id) {
@@ -2290,6 +2317,7 @@ async function initialize() {
   let topicId = route.id;
   // A message's link names the message to open once the page is up (docs/links.md).
   const anchored = route.kind === 'topic' ? route.message ?? null : null;
+  const anchoredLand = route.land === true;
   // So does a Notebook page's link, the page and perhaps its revision.
   const pageAnchor = route.kind === 'topic' && route.page ? { id: route.page, revision: route.revision ?? null } : null;
   // A topic's unread count opens it at its oldest unread message (item 613).
@@ -2676,8 +2704,11 @@ async function initialize() {
   // The older pages begin only after that baseline, as on a card already shown.
   if (atUnread) run(() => firstReading.then(landOnUnread));
   if (anchored) {
-    const card = landOn(anchored);
-    run(async () => { await openSource({ kind: 'message', id: anchored }, card ?? $('main')); if (notebookReturning()) notebookSheetOf().resume(); });
+    if (anchoredLand) run(() => landOnMessage(anchored));
+    else {
+      const card = landOn(anchored);
+      run(async () => { await openSource({ kind: 'message', id: anchored }, card ?? $('main')); if (notebookReturning()) notebookSheetOf().resume(); });
+    }
   } else if (!pageAnchor && notebookReturning()) {
     // Back from a card's reply stack in another topic, by the way back its Reader showed (notebook-sheet.mjs).
     notebookSheetOf().resume();
@@ -2965,12 +2996,12 @@ function topicName(id) {
 nameTopicsWith(topicName);
 // from: the link pressed, which takes the focus back when the Reader closes.
 async function openDestination(target, title, from = null) {
+  const landing = ++landingSerial;
   // A link to a message in the open topic opens it in the Reader, here.
   if (target.kind === 'topic' && target.message && topic && views && target.id === topic.id) {
-    // A message the page shows is landed on first, its stack opened; the
-    // rail's Starred lands on it and opens nothing more.
-    const card = landOn(target.message, { full: target.land === true });
-    if (card && target.land) { card.focus({ preventScroll: true }); return; }
+    if (target.land === true) return run(() => landOnMessage(target.message, landing));
+    // Ordinary message links keep their Reader-opening behavior.
+    landOn(target.message);
     // From the Reader's own text, closing gives the focus to what opened the Reader.
     const opener = from?.closest?.('dialog') ? registry.current?.opener : from;
     return run(() => openSource({ kind: 'message', id: target.message }, opener?.isConnected ? opener : document.activeElement));

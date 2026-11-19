@@ -109,14 +109,14 @@ export class OutlineDossiers {
         link.onclick = event => {
           if (!plain(event)) return;
           event.preventDefault();
-          this.outline.open({kind:'topic',id:state.id,message:id}, link.title);
+          this.outline.open({kind:'topic',id:state.id,message:id,land:true}, link.title);
         };
         state.links.set(id, link);
       }
       const text = '★ ' + title;
       if (link.textContent !== text) link.textContent = text;
       link.title = title; link.setAttribute('aria-label', 'Starred dossier: ' + title);
-      link.href = routeHref({kind:'topic',id:state.id,message:id});
+      link.href = routeHref({kind:'topic',id:state.id,message:id,land:true});
       alive.add(id); nodes.push(link);
     }
     for (const [id, link] of state.links) if (!alive.has(id)) {
