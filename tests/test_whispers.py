@@ -943,7 +943,11 @@ MESSAGE_READS = {
     "aim_next/hosted_control.py": ("waiting and pending work filtered by VISIBLE and topic/addressed access before LIMIT, then _message_access checks the link again", 2),
     "aim_next/delivery.py": ("migration backfill or settling, before any whisper exists or of the reader's own deliveries", 8),
     "aim_next/conversation.py": ("the topic page and its images to pick (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations, "
-                                 "and the messages a page names to refresh, each reached through _message_access and read under VISIBLE", 22),
+                                 "and the messages a page names to refresh, each reached through _message_access and read under VISIBLE; "
+                                 "the newly published root read by id to record its initial cover inside the same command transaction, never shown", 23),
+    "aim_next/root_posts.py": ("candidate roots in the destination topic under VISIBLE before LIMIT; effective parent existence "
+                               "in that same topic checked for visibility (public, author or private recipient) before suppressing a root; "
+                               "only readable current root ids, sequences and bounded names are returned, no bodies or hidden counts", 2),
     "aim_next/message_edit.py": ("one message's words, a revision of them or every revision, and its attachments, each read for a message "
                                  "the caller reached through _message_access; the horizon the version 41 step sets, a number; the stored "
                                  "quotes of messages whose marked words an answer already carries, read only to record what was handed; "
@@ -991,6 +995,10 @@ MESSAGE_READS = {
                            "so it never folds a whisper the reader is outside; the reader's own starred messages of a topic, under "
                            "VISIBLE, which keep a dossier above More for them (item 635); and the root of the dossier their star brings "
                            "back, found by the same walk, read only to record their Bring back, never shown; the reader's own places (item 550) under VISIBLE; and the source dossier first message; the scoped stars canonical-root SELECT reads the first message and attachment names only after StackRoots.root walks ancestry checked by visible(), within the readable topic; the outcome owner of a cleared cover with pending refresh, by the exact already-visible message id passed to current_acts (no message content or wider scan)", 29),
+    "aim_next/reply_passages.py": ("immutable reply-basis receipt lookup by message author/operation; source and topic reads "
+                                 "have already checked the message's visibility, and for_reader additionally checks "
+                                 "the parent through _message_access and withholds its basis during an edit hold; "
+                                 "keep_on_edit runs only after ownership/access checks", 1),
     "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
     "aim_next/covers.py": ("a cover's payload message, read under VISIBLE as its writer reads it, then refused as a whisper unless the "
                            "dossier is a whisper between the same two people; the owner's reply a payload names as done_by, read under "

@@ -766,6 +766,7 @@ def main():
             command("draft.save", operation + "-save", dict({
                 "source_ref": source, "topic_id": topic_id, "generation": draft["generation"],
                 "body": request["body"], "addressees": request.get("addressees", [])}, **({"attachments": attached} if attached else {}),
+                **{key: request[key] for key in ("reply_passage", "reply_without_quote") if key in request},
                 # An agent's message to someone says ask or tell; a case that names
                 # no intent tells. With "whisper": true it answers a whisper instead,
                 # which says neither.
@@ -806,6 +807,8 @@ def main():
                                   "sources": sources, "media": media, "max_reads": max_reads,
                                   "admission_mode": "partitioned" if getattr(server, "read_admission", None) else "legacy-observation",
                                   "freshness": freshness, "agent": "fixture-notebook-agent" if freshness else None}
+                        if request.get("runtime_evidence"):
+                            answer["runtime_evidence"] = {"python": sys.version, "pycache_prefix": sys.pycache_prefix}
                     elif reading785_runtime is not None and request["method"] == "reading_785_runtime":
                         answer = reading785_runtime.select(request["phase"])
                     elif request["method"] == "item_674_runtime":
