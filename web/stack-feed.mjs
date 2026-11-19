@@ -150,7 +150,7 @@ export class StackFeed {
   // reread(): reads the acts again from Core, after a refusal. starsChanged():
   // the reader's stars moved (the right rail's Starred). status(words): says
   // what became of an act; line(): the element it says it in.
-  // hold(paint): repaints keeping the page where the person is. press: the
+  // hold(paint, anchor): repaints keeping the page where the person is. press: the
   // press held down on the page (press-hold.mjs).
   // thumb(item, on): the message's thumbs-up, as its bar's 👍 gives it (a folded row's 👍).
   // redrawn(): the stacks were drawn again, so what else shows a message's acts (the Reader's star) follows.
@@ -253,7 +253,7 @@ export class StackFeed {
       return { message_id: id, placed: acts.placed ?? null, place_revision: acts.place_revision ?? 0, at_ms: latest + making.length - index };
     }), ...listed];
   }
-  arrange() {
+  arrange(anchor = {}) {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, colorOf: this.colorOf, home: this.home, doc: this.doc, on: {
       more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
@@ -266,7 +266,7 @@ export class StackFeed {
       aside: (stack, below) => this.setAside(stack, below),
       menu: (stack, anchor, first) => { const item = this.messages().get(stack.id); if (item) this.menu(item, anchor, first); },
       landedBelow: (id, mark) => this.landedBelow(id, mark),
-    } }));
+    } }), anchor);
     for (const entry of entries(this.list)) {
       const card = cardIn(entry), item = this.messages().get(card.dataset.id);
       if (item) { this.paintStar(card.querySelector(':scope > .message-author'), item); this.paintFoldedThumb(card, item); }
@@ -457,7 +457,7 @@ export class StackFeed {
   settled(id) {
     if (!this.messages().has(id)) this.redrawn();
     const changed = this.messages().has(id) ? this.drawn.get(id) !== JSON.stringify(this.actsOf(id)) : this.standIns.has(id);
-    if (changed) this.press.after('stacks', () => this.arrange());
+    if (changed) this.press.after('stacks', () => this.arrange({ keepTop: true }));
   }
   // Sends an act, or sends again the exact request of one not settled (made).
   async send(kind, item, args, made = null) {
@@ -520,7 +520,10 @@ export class StackFeed {
     const position = on ? positionOf(stackOf(this.list, this.entryFor(item.id))?.stack ?? { head: item, replies: [] }) : null;
     this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);
     if (on && this.actsOf(item.id, item).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }
-    this.arrange(); this.say(on ? 'Starred, for you only' : 'Star taken off');
+    // A star below More reveals this dossier in the ordinary run above it.
+    // Hold the message being acted on when visible, rather than another
+    // dossier above it; otherwise the current reading/writing anchor wins.
+    this.arrange({ anchor: this.entryFor(item.id), keepTop: true }); this.say(on ? 'Starred, for you only' : 'Star taken off');
   }
   // The right rail's Unstar, for a message here or in another place: one this
   // page shows takes the star off its card too.
@@ -528,7 +531,7 @@ export class StackFeed {
     const item = this.messages().get(star.message_id) ?? { id: star.message_id, acts: { starred: true, star_revision: star.star_revision } };
     if (!this.actsOf(item.id, item).starred) return;
     this.act('message.star', item, { starred: false });
-    this.arrange(); this.say('Star taken off');
+    this.arrange({ anchor: this.entryFor(item.id), keepTop: true }); this.say('Star taken off');
   }
   // A stack dealt with folds to its newest reply when the reader comes back.
   deal(item) {

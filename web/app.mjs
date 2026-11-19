@@ -782,19 +782,22 @@ async function openSource(ref, opener, act = null, mode = 'reply') {
 // held is one the page draws (drawn, the page's one view) before and after
 // the repaint: when the repaint stops drawing it (put below More on another
 // device), the card drawn next below it is held instead.
+// A visible message's own star/unstar can prefer that message, including
+// when its dossier comes back from below More. Writing still wins. Acts
+// keep the top card too; only the usual arrival draw lets new activity in.
 // roomy: gives back the room a hold kept (holdRoom).
 let roomy = null;
-function keepListAnchor(paint) {
+function keepListAnchor(paint, { anchor: preferred = null, keepTop = false } = {}) {
   const at = document.activeElement, list = $('messages');
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
   const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
-  const first = writing || field ? null : firstInView();
+  const first = writing || field ? null : preferred?.isConnected && list.contains(preferred) && drawn(list, preferred.dataset.id) && inView(preferred) ? preferred : firstInView();
   const anchor = writing ? inline.field : field ? at : first && !first.dataset.seq && !first.classList.contains('memory-card') ? list : first;
   const control = anchor === list && (first.id === 'more-messages' || first.dataset.line === 'older') ? first : null;
   const cards = entries(list).filter(entry => drawn(list, entry.dataset.id));
   const held = cards.includes(anchor) ? cards.slice(cards.indexOf(anchor)) : [anchor];
   const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
-  const atTop = !writing && !field && anchor && anchor === cards[0] && tops.get(anchor) >= 0;
+  const atTop = !keepTop && !writing && !field && anchor && anchor === cards[0] && tops.get(anchor) >= 0;
   const edge = control?.getBoundingClientRect().top, last = cards.at(-1), present = control ? new Set(entries(list)) : null;
   paint();
   // Room an earlier hold kept is given back first; the hold measures without it.
@@ -869,7 +872,7 @@ function paintViews(kind) {
   // A thumbs-up reads its message (card-reading.mjs, readNow): its card, and its stack's count of new replies, read so.
   if (kind === 'reactions') { keepListAnchor(() => { paintCardReading(); stackMessages(); menu?.paint(); }); paintReaderThumb$(); return; }
   // A star, a stack's name, a join or a place, here or on another device (stack-feed.mjs).
-  if (kind === 'acts') { refreshDossierHeads(); keepListAnchor(() => { stackMessages(); menu?.paint(); }); return; }
+  if (kind === 'acts') { keepListAnchor(() => { refreshDossierHeads(); stackMessages(); menu?.paint(); }, { keepTop: true }); return; }
   // A message edited, here or elsewhere: its card and the lines that read its words (docs/message-edit.md).
   if (kind === 'edited') { keepListAnchor(() => repaintEdited(views.takeRevised(), views.takeEdits())); return; }
   // The person's own note or saved reply on a message, saved, emptied or sent here or elsewhere: its card's marks (item 127).
@@ -1057,7 +1060,7 @@ function feedOf() {
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
-    hold: paint => keepListAnchor(paint), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
+    hold: (paint, anchor) => keepListAnchor(paint, anchor), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); }, home: $('new-message-sheet'),
     // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
     // On a phone its menu offers the title bar's Reply and Move below More first, as the glyphs fold into it (first).
