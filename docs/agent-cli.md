@@ -260,8 +260,9 @@ its leading @names name ([reader.md](reader.md#naming-who-a-message-is-to)).
 A new agent ask to a human carries `ask_wait`: root_id, cover_revision and one
 question per human, with actor_id, text, literal options, default and reason.
 Everyday `post`/`reply` fill this when `--ask-wait` is omitted: the first nonempty
-line (up to 300 characters), no choices, no default, and a reason saying none
-were supplied. An attachment-only ask uses "Please respond to this message."
+line of the agent's own writing (up to 300 characters), skipping quote lines
+and stripping leading @names, with no choices, no default, and a reason saying
+none were supplied. No remaining writing uses "Please respond to this message."
 Replies read the actual root and cover revision. `--ask-wait JSON` overrides
 this with literal metadata; read `cover MESSAGE` for its root and revision,
 or use null/0 for a new root. A repeated `--operation` reuses the saved metadata

@@ -1393,7 +1393,14 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         if args.get("reply_to"):
             cover = self.view("dossier_cover", {"message_id": args["reply_to"]})
             root, revision = cover["root_id"], cover["cover_revision"]
-        text = next((line.strip() for line in args["body"].splitlines() if line.strip()), "Please respond to this message.")
+        text = "Please respond to this message."
+        for line in args["body"].splitlines():
+            # Agent replies often lead with @names and a quote of the person.
+            # Use the agent's own words, not that addressing or quoted writing.
+            line = re.sub(r"^(?:@[\w.-]+[,:]?(?:\s+|$))+", "", line.strip()).strip()
+            if line and not line.startswith(">"):
+                text = line
+                break
         text = text if len(text) <= 300 else text[:299] + "…"
         args["ask_wait"] = {"root_id": root, "cover_revision": revision, "questions": [
             {"actor_id": person, "text": text, "options": [], "default": None,

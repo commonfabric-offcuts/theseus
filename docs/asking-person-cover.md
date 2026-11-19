@@ -36,8 +36,9 @@ with a correction before message, delivery or cover effects. Metadata without
 an agent Ask to humans refuses too. Humans acquire no required metadata or UI.
 CLI post/reply accept `--ask-wait JSON`. Since Warp10892, omitting it on an
 agent's public Ask to people supplies a plain question from the first nonempty
-line (at most 300 characters), no choices, no default, and an explicit reason
-that none were supplied. An attachment-only ask uses "Please respond to this
+line of its own writing (at most 300 characters), skipping quote lines and
+stripping leading @names, with no choices, no default, and an explicit reason
+that none were supplied. An ask with no remaining line uses "Please respond to this
 message." Replies read the actual dossier root and cover revision. Explicit
 metadata is preserved. A saved operation reuses its original metadata, so a
 repeat does not pick up a newer cover revision; changed writing or addressing
