@@ -71,6 +71,10 @@ class DossierOrderCase(fixtures.AsideCase):
         self.post('B was the newest active dossier at upgrade', reply_to=b)
         self.committed(self.command('stack.place', {'key': 9000}, target={'message_id': a}, expected={'place_revision': 0}))
         messages, acts = self.sql('SELECT * FROM messages'), self.sql('SELECT * FROM message_acts')
+        # This fixture starts at 49: remove both post-47 tables before replaying
+        # the upgrade. An empty writer table is setup, not old writer history.
+        self.assertEqual(self.sql('SELECT * FROM cover_writers'), [])
+        self.sql('DROP TABLE cover_writers')
         self.sql('DROP TABLE dossier_order')
         self.sql("UPDATE metadata SET value='47' WHERE key='schema_version'")
         result = migrate(self.path, 'test-instance', self.binding)
