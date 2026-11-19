@@ -6,8 +6,12 @@ existing refresh control, including status, occupies the lower-right corner
 beside the final content row. The feed and Reader use the same arrangement.
 It does not create a separate refresh row or overlap the cover's words.
 
-On a fine pointer with hover, the control appears while the cover is hovered
-or contains focus. Opacity, rather than display or visibility, preserves the
+On a fine pointer with hover, the idle control appears while the cover is hovered
+or contains focus. Pending or busy dots and errors stay visible and pressable
+without hover (869, Tony11703 and Warp11707), using the same control and its
+existing data-pending/status state. The override belongs to the same fine-pointer
+media query; no new request or progress owner is introduced.
+Opacity, rather than display or visibility, preserves the
 keyboard stop. The named default on touch/no-hover is always visible. A
 singleton's compact pills retain their inline control; they are not a sheet.
 
@@ -22,3 +26,7 @@ Focused checks cover actual sheet composition, formatting, source routes,
 answer controls and refresh request retention. CSS checks establish intent,
 not rendered geometry or native focus behavior. No browser or native run is
 authorized. Applied mutations must fail and byte-exact restored controls pass.
+
+869's checks hold the existing renderer's pending, busy and error states against
+the matching persistent-visibility declaration, and retain the idle-hover and
+touch defaults. Pending visibility fails against live145 before the rule is added.
