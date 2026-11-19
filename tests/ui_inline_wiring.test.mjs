@@ -3813,8 +3813,8 @@ test('on an outcome page its Notebook pages precede its topics and read again wi
   o.answers.push(o.page(['w1']), o.page(['w1']));
   await f.initialize(); await drain();
   const page = f.get('outcome-page').children.map(child => child.id);
-  assert.deepEqual(page.slice(page.indexOf('outcome-references'), page.indexOf('topic-navigation') + 1),
-    ['outcome-references', 'outcome-team', 'page-here', 'topic-navigation'], 'Notebook, Team and the open page precede the topic cards');
+  assert.deepEqual(page.slice(page.indexOf('outcome-team'), page.indexOf('topic-navigation') + 1),
+    ['outcome-team', 'outcome-references', 'page-here', 'topic-navigation'], 'Team, Notebook and the open page precede the topic cards');
   assert.ok(f.get('topic-navigation').children.some(node => node.className === 'outcome-topic-cards'));
   const pages = () => JSON.parse(JSON.stringify(f.calls.filter(call => call.name === 'memory_items').map(call => call.args.owner_scope)));
   assert.deepEqual(pages(), [{ kind: 'workspace', id: 'w1' }]);
@@ -5022,10 +5022,12 @@ test('835 legacy conversation links resolve to the ordinary topic with its actua
   assert.equal(f.get('conversation-row').children.length,0);
 });
 
-test('847 outcome home puts Notebook first and hands retained references to the shared right rail',async()=>{
+test('847 and 852 outcome home puts Team then Notebook above topics and shares both rails and pencil',async()=>{
   const thumbnails=[], live=stream(); let denied=false;
   const f=fixture('https://fixture/?workspace=w1',{paintThumb:(_host,_key,load)=>thumbnails.push(load), listen:(target,type,fn)=>target.addEventListener(type,fn), KeyTree:class {constructor(){} refresh(){} }}), original=f.api.view;
   f.topic.list_position=0;
+  const pencil=f.get('new-topic-pencil-fixture');
+  f.get('new-message').querySelector=selector=>selector==='svg'?pencil:null;
   f.api.media=async(instance,attachment,ref)=>{assert.equal(instance,'fixture');assert.equal(attachment.id,'image835');assert.equal(ref.id,'retained835');return {blob:'fixture image bytes'};};
   f.api.view=async(name,args,options)=>{
     if(['workspace','pipeline','conversation','stars','topic_messages','topic_images'].includes(name))f.calls.push({name,args});
@@ -5040,13 +5042,18 @@ test('847 outcome home puts Notebook first and hands retained references to the 
   f.inject({api:f.api,bootstrap:f.bootstrap}); f.useLive(live);
   await f.initialize();await drain();
   const ids=f.get('outcome-page').children.map(node=>node.id);
-  assert.deepEqual(ids,['outcomes-status','retry-workspaces','outcome-references','outcome-team','page-here','topic-navigation','outcome-tools','outcome-standing','outcome-purpose','target-panel','pipeline-line','also-waiting','loop-panel','problems-panel']);
+  assert.deepEqual(ids,['outcomes-status','retry-workspaces','outcome-team','outcome-references','page-here','topic-navigation','outcome-tools','outcome-standing','outcome-purpose','target-panel','pipeline-line','also-waiting','loop-panel','problems-panel']);
+  assert.equal(f.get('new-topic').children[0]?.id,pencil.id);
+  assert.notEqual(f.get('new-topic').children[0],pencil);
+  assert.equal(f.get('new-topic').getAttribute('aria-label'),'New topic');
   const handles=f.runObservation('shell.handles');
   assert.equal(handles?.workspaceId,'w1','outcome initializes the same shell as topics');
   assert.equal(handles.topic,null);
   assert.equal(handles.api,f.api);
   assert.equal(Boolean(f.owners().topicRail),false,'the outcome page does not create an independent topic-list owner');
   assert.equal(typeof handles.outcomeTopics,'function','the outline publishes its current rows to the middle');
+  assert.equal(typeof handles.centerPane?.focus,'function');
+  assert.equal(typeof handles.centerPane?.key,'function');
   assert.equal(typeof handles.notebookCreate,'function');
   assert.equal(f.calls.some(call=>call.name==='stars'),false,'closed references read no stars');
   const count=name=>f.calls.filter(call=>call.name===name).length, notes=count('memory_items'),tools=count('tools');

@@ -3603,12 +3603,17 @@ async function initializeOutcomePage(route) {
   } else {
     // The title and its menu stay above the page. Notes, people, topics and
     // tools come before outcome setup; secondary context follows (item 842).
-    $('outcome-page').append($('outcomes-status'),$('retry-workspaces'),$('outcome-references'),$('outcome-team'),$('page-here'),$('topic-navigation'),$('outcome-tools'),$('outcome-standing'),$('outcome-purpose'),$('target-panel'),$('pipeline-line'),$('also-waiting'),$('loop-panel'),$('problems-panel'));
+    $('outcome-page').append($('outcomes-status'),$('retry-workspaces'),$('outcome-team'),$('outcome-references'),$('page-here'),$('topic-navigation'),$('outcome-tools'),$('outcome-standing'),$('outcome-purpose'),$('target-panel'),$('pipeline-line'),$('also-waiting'),$('loop-panel'),$('problems-panel'));
     const cardsHost=document.createElement('div');cardsHost.className='outcome-topic-cards';
     // Keep the shared New topic heading, but let the outline own all lists.
     for(const child of [...$('topic-navigation').children])if(!child.classList.contains('rail-heading'))child.hidden=true;
     $('topic-navigation').append(cardsHost);
     const topicCards=new OutcomeTopicCards({host:cardsHost});
+    const topicPencil = $('new-message').querySelector('svg')?.cloneNode(true);
+    if (topicPencil) $('new-topic').replaceChildren(topicPencil);
+    $('new-topic').classList.add('notebook-create');
+    $('new-topic').setAttribute('aria-label', 'New topic');
+    $('new-topic').title = 'New topic';
     topicCards.paint(null);
     // Archived, completed or brought back (item 404): the page reads again, and once it is archived or completed the keys
     // go to Bring back on "Where it stands" (back, the target card gives them to the word that ended it).
@@ -3685,7 +3690,7 @@ async function initializeOutcomePage(route) {
       return reads.every(read=>read.value!==false);
     });
     await reload();
-    readyRails(route.id, { workspaceTitle: here.title, currentWorkspaceTitle: () => here.title, readable: () => permitted, outcomeTopics: values => topicCards.paint(values) });
+    readyRails(route.id, { workspaceTitle: here.title, currentWorkspaceTitle: () => here.title, readable: () => permitted, outcomeTopics: values => topicCards.paint(values), centerPane: topicCards });
     if(shown)run(async()=>(shown.revision?pageHere.open(await pageSource(shown),$('main')):openNotebook(shown.id,{opener:$('main')})));
     else if(notebookReturning())notebookSheetOf().resume();
   }

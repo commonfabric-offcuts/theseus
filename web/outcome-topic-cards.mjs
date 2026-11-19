@@ -1,5 +1,6 @@
 import { arrange, paintMarks } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
+import { revealSelection } from './reveal.mjs';
 
 // No read function or rail DOM: TopicRail.presentation() supplies values and
 // acts from the outline's one list owner, independent of its markup.
@@ -12,6 +13,24 @@ export class OutcomeTopicCards {
     const node = this.doc.createElement(tag); node.className = className;
     if (text !== undefined) node.textContent = text;
     return node;
+  }
+  stops() { return [...this.host.querySelectorAll('a.outcome-topic-card')]; }
+  reach(card, navigate = () => {}) {
+    if (!card) return false;
+    card.focus({ preventScroll: true });
+    if (this.doc.activeElement !== card) return false;
+    this.lastTopicId = card.dataset.topicId;
+    revealSelection(card); navigate(); return true;
+  }
+  focus({ first = false } = {}, navigate) {
+    const rows = this.stops();
+    return this.reach((!first && rows.find(row => row.dataset.topicId === this.lastTopicId)) || rows[0], navigate);
+  }
+  key(action, navigate) {
+    if (!['up', 'down', 'first', 'last'].includes(action)) return false;
+    const rows = this.stops(), at = rows.indexOf(this.doc.activeElement);
+    const next = action === 'first' ? 0 : action === 'last' ? rows.length - 1 : at < 0 ? 0 : at + (action === 'down' ? 1 : -1);
+    return this.reach(rows[next], navigate);
   }
   paint(presentation) {
     const sections = [], ids = new Set();
@@ -36,6 +55,7 @@ export class OutcomeTopicCards {
         let card = this.cards.get(item.id);
         if (!card) { card = this.node('a', 'outcome-topic-card'); card.dataset.topicId = item.id; this.cards.set(item.id, card); }
         card.href = href; card.onclick = activate;
+        card.onfocus = () => { this.lastTopicId = item.id; };
         const signature = JSON.stringify([item, href]);
         if (card.drawn !== signature) {
           const title = this.node('span', 'outcome-topic-title', item.title);

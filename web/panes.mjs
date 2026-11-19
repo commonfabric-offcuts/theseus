@@ -77,11 +77,13 @@ const reach = (el, navigate = () => {}) => {
 export const panes = {
   // Set by rails.mjs: each rail's { host, focus(), leave()? }, leave closing it when it is open over the page;
   // write(target, title), a new message in the place named, or in the page's own (in-place-navigation.mjs).
-  outline: null, things: null, write: null,
+  outline: null, things: null, write: null, center: null,
   // The button the keys were last on in each row of the buttons at the top of
   // the feed, by the row's element, so coming back to the row finds it.
   button: new WeakMap(),
   feed(doc, options, navigate = () => {}) {
+    const center = this.center?.();
+    if (center && shown(center.host) && !center.host.closest('[inert]') && center.focus(options, navigate)) return true;
     const stop = feedStop(doc, options) ?? doc.getElementById('main');
     if (!stop || stop.closest('[inert]')) return false;
     stop.focus({ preventScroll: true });
@@ -168,6 +170,12 @@ export function feedKey(event, doc, navigate = () => {}) {
   const selecting = doc.getSelection?.()?.isCollapsed === false;
   const readingDestination = () => { if (!selecting) navigate(); };
   let moved = false;
+  const center = panes.center?.();
+  if (action !== 'write' && center && shown(center.host) && !center.host.closest('[inert]') && (pageItself(doc.activeElement, doc) || center.host.contains(doc.activeElement))) {
+    moved = action === 'left' || action === 'right' ? panes.step('feed', action, doc, readingDestination) : center.key(action, readingDestination);
+    if (moved) event.preventDefault();
+    return moved;
+  }
   if (action === 'write') moved = Boolean(panes.write?.(null));
   else {
     const rows = headerRows(doc), r = rows.findIndex(row => row.buttons.includes(doc.activeElement));

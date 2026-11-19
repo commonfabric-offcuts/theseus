@@ -1,4 +1,4 @@
-import { PAGE, paintChanged } from './topic-navigation.mjs';
+import { PAGE, paintChanged, changedSince } from './topic-navigation.mjs';
 import { notebookDocument } from './notebook-view.mjs';
 
 // The outcome's own Notebook pages, first on the outcome's own page:
@@ -29,13 +29,15 @@ export class OutcomeReferences {
       }
       row.textContent = item.title || 'Notebook item';
       if (this.viewPreference) {
-        const mode = this.viewPreference.get(item.id), label = document.createElement('span'), view = document.createElement('span');
+        const mode = this.viewPreference.get(item.id), label = document.createElement('span'), line = document.createElement('span');
         label.className = 'notebook-document-title'; label.textContent = item.title || 'Notebook item';
-        view.className = 'notebook-document-view'; view.textContent = mode === 'text' ? 'Text' : 'Cards';
-        row.replaceChildren(notebookDocument(mode), label, view);
+        line.className = 'notebook-document-label'; line.append(label); paintChanged(line, item);
+        row.replaceChildren(notebookDocument(mode), line);
+        const since = changedSince(item);
+        row.setAttribute('aria-label', `${label.textContent}, ${mode === 'text' ? 'Text' : 'Cards'}${since ? `, ${since} new revisions` : ''}${item.draft ? ', draft' : ''}`);
         row.dataset.mode = mode;
       }
-      paintChanged(row, item);
+      else paintChanged(row, item);
       row.onclick = () => this.open(item.source_ref, row);
       if (this.list.children[index] !== row) this.list.insertBefore(row, this.list.children[index] ?? null);
     });
