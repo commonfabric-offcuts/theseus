@@ -318,8 +318,15 @@ def awaiting_fields(db, actor, topic, items):
             named = db.execute("SELECT max(n.seq) FROM message_addressees n CROSS JOIN messages m ON m.seq=n.seq "
                                "WHERE n.topic_id=? AND n.actor_id=? AND n.seq>? AND n.seq<=? AND m.author_id<>? AND m.private_to IS NULL",
                                (topic["id"], actor, lowest, newest[0], actor)).fetchone()[0]
+    named_agents = set()
+    if own and topic["kind"] != "conversation":
+        named_agents = {row[0] for row in db.execute(
+            "SELECT m.id FROM messages m JOIN json_each(m.addressees) n JOIN actors a ON a.id=n.value "
+            "WHERE m.id IN (%s) AND a.kind='agent'" % marks, ids)}
+    unattended = {item["id"] for item in own} - received - named_agents if topic["kind"] != "conversation" else set()
     others = {}
     for item in items:
+        item["no_agent_notified"] = item["id"] in unattended
         item["awaiting_reply"] = False
         if item["id"] not in received or item["id"] in answered or named is not None and named > item["seq"]:
             continue

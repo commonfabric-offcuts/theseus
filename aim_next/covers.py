@@ -55,7 +55,10 @@ class Covers:
         rows = db.execute("SELECT c.message_id,c.topic_id FROM cover_waiting c "
                           + ("INDEXED BY outcome_cover_waiting " if topics is None else "INDEXED BY topic_cover_waiting ")
                           + "CROSS JOIN topics t ON t.id=c.topic_id JOIN workspaces w ON w.id=t.workspace_id "
-                          "JOIN messages m ON m.id=c.message_id WHERE " + scope + " AND w.owner_id=:actor AND t.archived=0 AND " + VISIBLE,
+                          "JOIN messages m ON m.id=c.message_id WHERE " + scope + " AND t.archived=0 AND EXISTS ("
+                          "SELECT 1 FROM json_each((SELECT a.value FROM message_acts a WHERE a.message_id=c.message_id "
+                          "AND a.kind='cover' AND a.owner='' ORDER BY a.revision DESC LIMIT 1), '$.waiting') wait "
+                          "WHERE coalesce(json_extract(wait.value,'$.actor_id'),w.owner_id)=:actor) AND " + VISIBLE,
                           params)
         counts, roots = {}, StackRoots(db, actor)
         for row in rows:
@@ -108,6 +111,8 @@ class Covers:
         if envelope["expected"]["cover_revision"] != current:
             raise Refusal("REVISION_CONFLICT", "This cover changed since it was read; nothing was changed", {"cover_revision": current})
         before = stored_value(self._act_value(db, message["id"], "cover", ""))
+        if "waiting" in fields:
+            fields["waiting"] += [w for w in before["waiting"] if w.get("ask_id")]
         value = dict(before, **fields)
         owner = self._cover_owner(db, message["topic_id"])
         if value["payload"] is not None:

@@ -1035,7 +1035,9 @@ export class Reader {
     if (!found) { line.replaceChildren(); return; }
     const { cover } = found, shown = { ...context, owner: cover.owner };
     const words = document.createElement('span'); words.className = 'reader-cover-words';
-    words.textContent = cover.stands || cover.payload?.text || `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${cover.owner === shown.viewer ? 'you' : shown.nameOf(cover.owner)}`;
+    const waitingOn = [...new Set(cover.waiting.map(wait => wait.actor_id ?? cover.owner))]
+      .map(id => id === shown.viewer ? 'you' : shown.nameOf(id)).join(', ');
+    words.textContent = cover.stands || cover.payload?.text || `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${waitingOn}`;
     const label = document.createElement('span'); label.className = 'cover-label'; label.textContent = 'Cover';
     line.replaceChildren(label, ' ', words, ...(cover.payload ? [' ', payloadPill(document, cover.payload, shown)] : []));
     host.append(coverSheet(document, cover, context));

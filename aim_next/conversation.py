@@ -96,7 +96,7 @@ IMAGE_WINDOW = 200
 IMAGE_TYPES = ("image/png", "image/jpeg", "image/gif", "image/webp")
 
 
-POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent", "whisper", "part", "subjects", "go_ahead", "blocks"}
+POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent", "whisper", "part", "subjects", "go_ahead", "blocks", "ask_wait"}
 
 
 def _preview(value, size=1024):
@@ -364,6 +364,7 @@ class Conversation:
             raise Refusal("INVALID_ARGUMENT", "Only a message to someone asks or tells; name who it is to")
         if snapshot.get("go_ahead") and (intent != "ask" or private is not None):
             raise Refusal("INVALID_ARGUMENT", GO_AHEAD_NEEDS_ASK)
+        linked = self._check_ask_wait(db, actor, topic, snapshot, intent, private)
         snapshot["attachments"] = self._attachment_refs(db, actor, snapshot["attachments"], ready=True)
         if not snapshot["body"].strip() and not snapshot["attachments"]:
             raise Refusal("EMPTY_MESSAGE", "A message needs writing or a ready attachment")
@@ -413,6 +414,7 @@ class Conversation:
                    (message_id, topic_id, actor, snapshot["body"], _json(snapshot["attachments"]), _json(snapshot["quotes"]),
                     _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent, private, snapshot.get("about_id"),
                     1 if snapshot.get("go_ahead") else 0)).lastrowid
+        covered = self._link_ask_cover(db, actor, topic, message_id, linked)
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
         # The first post of a release that holds item 475 says where its waiting dots begin (stacks.py).
         record_wait_start(db, sequence)
@@ -457,6 +459,7 @@ class Conversation:
             db.execute("UPDATE topic_summaries SET message_count=message_count+1," + OTHER_MESSAGE + ",latest_message_id=?2 WHERE topic_id=?3",
                        (actor, message_id, topic_id))
         if not record_only:
+            covered += self._linked_reply(db, actor, topic, snapshot.get("reply_to"), private)
             self._message_activity(db, topic, actor, message_id, sent_ms)
         if record_only:
             waited = []
@@ -468,8 +471,10 @@ class Conversation:
             # it goes to that it replies to); an ask waits on whoever it asks.
             waited = ([actor] if self._answered(db, topic, actor, private, snapshot.get("reply_to")) else []) + (
                 self._ask(db, topic, actor, message_id, sent_ms, snapshot["addressees"]) if intent == "ask" else [])
+        if not record_only:
+            self._sync_linked_attention(db, topic, actor)
         version = self._touch_topic(db, topic)
-        for member in dict.fromkeys(waited):
+        for member in dict.fromkeys(waited + ([actor] if covered else [])):
             self._change(db, "actor", member, "waiting", topic_id, version)
         result = {"message_id": message_id, "topic": {"id": topic_id, "version": version},
                   "delivery": {"queued": len(audience), "unavailable_subscribers": sorted(unavailable)}}
@@ -477,7 +482,7 @@ class Conversation:
             result["whisper"] = True
         # A person's reply folds the message it answers for them (Stacks._fold_answered).
         folded = self._fold_answered(db, actor, snapshot["reply_to"]) if snapshot.get("reply_to") else []
-        return result, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}] + folded
+        return result, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}] + folded + covered
 
     def _message_access(self, db, actor, message_id):
         row = db.execute("SELECT id,topic_id,author_id,private_to FROM messages WHERE id=?", (_identifier(message_id),)).fetchone()

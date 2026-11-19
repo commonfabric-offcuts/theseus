@@ -524,6 +524,19 @@ nothing scrolls sideways, and nothing depends on hover.
 
 ## Plain words
 
+Agent questions to people record their targeted dossier wait in the same act
+(item 759, [asking-person-cover.md](asking-person-cover.md)). Missing metadata
+refuses before publication. Literal choices and defaults, or explicit absence
+with the supplied reason, appear on the feed and Reader; each linked answer
+settles that question alone. `tests/asking_person_cover_native.mjs`, via
+`native-reading` and `native-webkit-reading`, names its cases `item 759` and
+checks laptop and 320/375/390 widths in light/dark, native public/private replies,
+and actual Core refusal/settlement effects. WebKit is a desktop engine at phone
+width, not physical-phone evidence. Core oracles live below the browser in
+`tests/test_item759_native_oracles.py` and `tests/test_asking_person_cover.py`;
+the collapsed Reader's person labels have a red/green unit check in
+`tests/ui_asking_person_reader.test.mjs`.
+
 The page says what happened in words a person uses: what was refused and why,
 and what was kept. It never shows an error code or an id.
 

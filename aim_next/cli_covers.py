@@ -59,7 +59,13 @@ def cover_lines(root, revision, cover, owner):
         # supplied line separately so the terminal readback retains the breaks.
         lines.extend(("  stands: " + cover["stands"]).split("\n"))
     for wait in cover["waiting"]:
-        lines.append("  waits on %s: %s (default: %s)" % (owner, wait["text"], wait["default"]))
+        details = []
+        if 'options' in wait:
+            details.append('Options: ' + ' | '.join(wait['options']) if wait['options'] else 'No choices')
+        details.append('Default: ' + wait['default'] if wait['default'] is not None else 'No default promised')
+        if wait.get('reason'):
+            details.append(wait['reason'])
+        lines.append("  waits on %s: %s (%s)" % (wait.get('actor_id', owner), wait['text'], '; '.join(details)))
     payload = cover["payload"]
     if payload:
         lines.append("  payload%s: %s  [%s #%s]%s" % (" (%s)" % payload["kind"] if payload.get("kind") else "", payload["text"],

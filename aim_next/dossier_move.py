@@ -154,6 +154,12 @@ class DossierMove:
             values = [item["seq"] for item in found] if key == "seq" else ids
             db.execute("UPDATE %s SET topic_id=? WHERE %s IN (%s)" % (table, key, marks), [destination["id"]] + values)
         self._move_deliveries(db, ids, destination)
+        db.execute("UPDATE ask_cover_links SET topic_id=? WHERE ask_id IN (%s)" % marks,
+                   [destination["id"]] + ids)
+        # Cover waits follow their messages in this same transaction. Their
+        # immutable cover acts remain the source for rebuilding the index.
+        db.execute("UPDATE cover_waiting SET topic_id=?,workspace_id=? WHERE message_id IN (%s)" % marks,
+                   [destination["id"], destination["workspace_id"]] + ids)
         self._move_waits(db, found, source, destination, waiting)
         public = sum(item["private_to"] is None for item in found)
         for topic, delta in ((source, -public), (destination, public)):

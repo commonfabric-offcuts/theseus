@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 
 from .dossier_move import MOVE_SCHEMA, MOVE_DOWN, MOVE_OCCUPIED
+from .ask_cover import ASK_COVER_SCHEMA, ASK_COVER_DOWN, ASK_COVER_OCCUPIED
 from .authority import Authority, AuthorityError, GuardBusy
 from .contract import StoreError, _identifier
 from .openings import OPENING_SCHEMA
@@ -214,6 +215,7 @@ STEPS = (
     ("49", "50", COVER_WAIT_SCHEMA + COVER_WAIT_BACKFILL, COVER_WAIT_DOWN, "SELECT 0"),
     ("50", "51", MEMORY_ACTION_SCHEMA, MEMORY_ACTION_DOWN, MEMORY_ACTION_OCCUPIED),
     ("51", "52", MOVE_SCHEMA, MOVE_DOWN, MOVE_OCCUPIED),
+    ("52", "53", ASK_COVER_SCHEMA, ASK_COVER_DOWN, ASK_COVER_OCCUPIED),
 )
 
 

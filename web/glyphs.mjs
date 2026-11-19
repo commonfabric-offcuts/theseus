@@ -18,6 +18,8 @@
 // Reply and Move below More as items, and they take a menu's glyphs: Reply the
 // title bar's own Reply, Move below More the Reader's tray.
 const DRAWN = {
+  // No agent was notified of this message. It says nothing about read access.
+  unwatched: { d: 'M3 3l18 18 M10 5.2a10 10 0 0 1 11 6.8 15 15 0 0 1-3.2 4.4 M6.3 6.3A16 16 0 0 0 3 12s3 7 9 7a9 9 0 0 0 4-.9 M9.2 9.2a4 4 0 0 0 5.6 5.6' },
   // Ask for a new cover; the same drawing turns while Core awaits it.
   refresh: { d: 'M20 10a8 8 0 1 0-1.8 7 M20 4v6h-6' },
   // Reply, and Reply to the first message: an arrow turning back to the left.

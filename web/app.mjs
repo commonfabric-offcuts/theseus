@@ -1,3 +1,4 @@
+import { configureCoverAnswers } from './cover-answers.mjs';
 import { configureCoverRefresh, updateMenuItem, messageUpdateActivity, messageUpdateHost } from './cover-refresh.mjs';
 import { mountFeedFences } from './feed-fence-copy.mjs';
 import { keepLineRoom } from './line-room.mjs';
@@ -2331,6 +2332,7 @@ async function initialize() {
   // The phone check is a page of its own: no topic, no live updates (docs/device-evidence.md).
   const asked = parseRoute(new URL(location.href));
   if (asked.kind === 'phone-check') { await phoneCheck({ api, bootstrap, topicId: asked.id }); document.body.dataset.ready = 'true'; return; }
+  configureCoverAnswers(() => ({ reactions, changed: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); } }));
   configureCoverRefresh(() => ({ api, bootstrap: { ...bootstrap, authority: registry?.runtime.current ?? bootstrap.authority },
     changed: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); } }));
   shareLinksFrom(bootstrap.links?.origin);

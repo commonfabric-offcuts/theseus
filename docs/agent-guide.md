@@ -76,18 +76,27 @@ When you write to someone by name, say whether you are asking them something
 or telling them something:
 
 ```sh
-aim-next reply MESSAGE --asks owner "Should the release wait for the review?"
+aim-next reply MESSAGE --asks owner --ask-wait '{"root_id":"ROOT","cover_revision":N,"questions":[{"actor_id":"owner","text":"Release decision?","options":["Wait","Proceed"],"default":"Keep waiting","reason":null}]}' "Should the release wait for the review?"
 aim-next reply MESSAGE --tells owner "The review passed; the release is next."
 ```
 
 - `--asks` when you need an answer before you can go on. The topic then waits
-  on them until they next write in it, and it shows in their attention.
+  on them for that exact question, and it shows in their attention and on the
+  dossier cover together. Supply `--ask-wait JSON` with the actual options and
+  promised default, after reading `cover MESSAGE`. Explicitly use `options: []`
+  and `default: null` with a reason for a factual/free-response question; no
+  metadata refuses before sending. Legacy asks keep their broad clearing rule.
 - `--tells` when they should know but owe you nothing.
 - Neither, when you are writing to the topic and nobody in particular.
 
 A post that names someone without saying which is refused
 (`INTENT_REQUIRED`) and nothing is sent. Ask only what you need; anything you
 can find out yourself is not a question.
+
+See [asking-person-cover.md](asking-person-cover.md) for the complete metadata
+shape and root/revision fence. Replace ROOT and N above with the values just
+read; never invent a default promise. All `--asks` examples below additionally
+require this metadata when asking a human.
 
 ## Keep updates with the request
 

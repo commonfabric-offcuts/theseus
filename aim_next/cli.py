@@ -183,8 +183,8 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "{binding | view FILE|- | command FILE|- | outcomes [--reached | --ended] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR | coordinator OUTCOME ACTOR|--none | participant TOPIC ACTOR "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
-         "| inbox | reply MESSAGE [--asks A,B [--go-ahead] | --tells A,B] [--part] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
-         "| post TOPIC [--asks A,B [--go-ahead] | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
+         "| inbox | reply MESSAGE [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--part] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
+         "| post TOPIC [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--reply-to MESSAGE] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
          "| thumb MESSAGE [--off] | mint MESSAGE [--expected N] WORDS|- | edit MESSAGE --expected N TEXT|- "
          "| cover MESSAGE [--refresh [--operation ID]] [--expected N] [--stands TEXT] [--waits TEXT --default TEXT]... [--no-waits] "
          "[--payload TEXT --from MESSAGE [--link URL] [--kind answer|decision|preview|page|release] [--done-by MESSAGE]] [--no-payload] "
@@ -201,7 +201,7 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| add-source OUTCOME N (--from m-… | --page ID | --note TEXT) | move OUTCOME N (--above M | --below M | --to SECTION [--note TEXT] | --undo EVENT) "
          "| piece OUTCOME N,M --topic TOPIC --stage S | enter-stage PIECE STAGE [--round N] [--left approved|sent-back|passed|held] "
          "| stage-note PIECE TEXT | combine OUTCOME --release N --pieces P,Q --topic TOPIC [--ask MSG] | finish PIECE "
-         "| checks OUTCOME [--readings] [--live COMMIT] | target OUTCOME [--origin NOTE] [--ask m-… | --ask-in TOPIC] TEXT|- | target-settle OUTCOME REVISION accepted|declined "
+         "| checks OUTCOME [--readings] [--live COMMIT] | target OUTCOME [--origin NOTE] [--ask m-… | --ask-in TOPIC --ask-wait JSON] TEXT|- | target-settle OUTCOME REVISION accepted|declined "
          "| check-define OUTCOME FILE | check-report OUTCOME FILE | accept-worse OUTCOME CHECK RUN TEXT|- "
          "| problem OUTCOME --kind defect|design-miss (--from m-… | --note TEXT) TEXT|- | problem-cover OUTCOME PROBLEM [--item N] [--test T] TEXT|- "
          "| outcome-kind OUTCOME reach|keep | reached OUTCOME [--unmet] TEXT|- | outcome-end OUTCOME archived|completed|open "
@@ -282,11 +282,14 @@ def _parser():
             post.add_argument("--reply-to")
         # A message to someone asks or tells them; --to, which said neither, is refused by name.
         post.add_argument("--asks")
+        post.add_argument("--ask-wait", help="literal ask_wait JSON with root_id, cover_revision and questions")
         post.add_argument("--tells")
         post.add_argument("--to")
         post.add_argument("--part", action="store_true")
         # An Ask that offers its people ✅ (go ahead) and 🚫 (don't) (docs/thumbs.md).
-        post.add_argument("--go-ahead", action="store_true")
+        decision = post.add_mutually_exclusive_group()
+        decision.add_argument("--go-ahead", dest="go_ahead", action="store_const", const=True, default=None)
+        decision.add_argument("--no-go-ahead", dest="go_ahead", action="store_const", const=False)
         # --blocks piece:p-… | release:N: the one piece or release an ask holds until it is answered (item 259).
         post.add_argument("--blocks")
         # --operation ID: a retry sends the same saved request, not another message.
@@ -1318,6 +1321,10 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         if options.to is not None or (options.asks is not None and options.tells is not None):
             self.refuse("INTENT_REQUIRED", "A message to someone says whether it asks or tells: use --asks A,B or --tells A,B "
                         "(not --to, and not both); nothing was sent")
+        if options.asks is not None and options.go_ahead is None:
+            self.refuse("GO_AHEAD_REQUIRED", "An Ask explicitly chooses --go-ahead or --no-go-ahead; nothing was sent")
+        if options.asks is None and options.go_ahead is not None:
+            self.refuse("INVALID_ARGUMENT", "--go-ahead and --no-go-ahead belong to --asks; nothing was sent")
         named = options.asks if options.asks is not None else options.tells
         addressees = _names(named or "")
         if named is not None and not addressees:
@@ -1325,6 +1332,11 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
             self.refuse("INVALID_ARGUMENT", "%s names who it is to (%s A,B), and these name nobody; nothing was sent" % (flag, flag))
         operation = self.operation_of()
         args = {"body": self.text(), "addressees": addressees}
+        if options.ask_wait is not None:
+            try:
+                args["ask_wait"] = json.loads(options.ask_wait)
+            except (ValueError, TypeError):
+                self.refuse("INVALID_ARGUMENT", "--ask-wait needs a JSON object; nothing was sent")
         if options.attach:
             args["attachments"] = self.attach()
         if addressees:
@@ -1333,8 +1345,8 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
             args["reply_to"] = options.reply_to
         if options.part:
             args["part"] = True
-        if options.go_ahead:
-            args["go_ahead"] = True
+        if options.go_ahead is not None:
+            args["go_ahead"] = options.go_ahead
         if options.subject:
             # --subject item:92,item:31: what the post is about, written with it.
             args["subjects"] = [dict(zip(("kind", "ref"), part.strip().split(":", 1))) for part in options.subject.split(",") if part.strip()]

@@ -489,3 +489,11 @@
    link visible inside its face, rather than painting outside a fixed row. */
 #messages .reply-stack .message-card:is([data-folded=true],[data-earlier=true]):has(>.dossier-source-status){height:auto;flex-direction:column;align-items:stretch;padding-block:.5rem}
 .message-card:is([data-folded=true],[data-earlier=true])>.dossier-source-status{display:block!important}
+
+/* Direct answers remain real keyboard/touch buttons in covers and singleton pills. */
+.cover-answers { display:inline-flex; align-items:center; flex-wrap:wrap; gap:.35rem; }
+.cover-answer { font:inherit; color:inherit; background:transparent; border:1px solid currentColor; border-radius:.45rem; padding:.4rem .6rem; min-height:44px; cursor:pointer; }
+.cover-answer:focus-visible { outline:2px solid currentColor; outline-offset:3px; }
+.cover-answer:disabled { opacity:.55; cursor:wait; }
+.cover-answer-status:empty { display:none; }
+.no-agent-notified { display:inline-flex; align-items:center; }
