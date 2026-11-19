@@ -95,8 +95,8 @@ export class AgentInvite {
   constructor({ host, invitation, workspace, invited = () => {}, copier = copyText }) {
     Object.assign(this, { host, invitation, workspace, invited, copier });
     this.manage = false; this.busy = false; this.harness = HARNESSES[0][0];
-    this.opener = element('button', { type: 'button', id: 'invite-agent', className: 'choice-chip add-chip', textContent: '+ Invite agent',
-      title: 'Invite an agent to this outcome' });
+    this.opener = element('button', { type: 'button', id: 'invite-agent', className: 'choice-chip add-chip',
+      title: 'Invite an agent to this outcome' }, element('span', { textContent: '+ Invite agent' }));
     this.opener.setAttribute('aria-expanded', 'false');
     this.opener.onclick = () => this.toggle();
     this.input = element('input', { id: 'invite-agent-name', type: 'text', autocomplete: 'off', placeholder: 'Agent’s name', spellcheck: false });
