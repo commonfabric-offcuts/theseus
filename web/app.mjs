@@ -85,7 +85,8 @@ import { readerSteps } from './stack-order.mjs';
 import { headerClick } from './reply-stacks.mjs';
 import { revealSelection } from './reveal.mjs';
 import { deferFencePaint } from './fence-copy.mjs';
-import { formatWords } from './message-format.mjs';
+import { formatWords, redrawMessageWords } from './message-format.mjs';
+import { TextDisplayPreferences, textDisplayRules } from './text-display-rules.mjs';
 import { shell } from './rails.mjs';
 import { SessionRenewal } from './session-renewal.mjs';
 import { showLine, lineText } from './lines.mjs';
@@ -1270,7 +1271,7 @@ function paintViews(kind) {
       const answers = replyLine(item);
       // The line a reply quotes is cut, so an address at its end is left as words.
       if (answers) card.append(linkWords(node('span', undefined, 'message-reply-to'), answers, { partial: true }));
-      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts }));
+      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // Its images as thumbnails after its words, each read through the message (card-images.mjs, item 474).
       paintCardImages(card, item, cardImageBytes(item.id));
@@ -2085,6 +2086,7 @@ function messageMenuItems(item, say, anchor = say) {
     const marked = marks.state(item.id)?.marked === true;
     items.push({ label: marked ? 'Mark read' : 'Mark unread', glyph: marked ? 'read' : 'unread', act: () => run(() => markFromMenu(item.id, !marked)) });
   }
+  items.push(...textDisplayMenuItems());
   return cardMenuActs(item, [...items, ...stack.last], anchor);
 }
 function moveDossier(id, anchor) {
@@ -2190,6 +2192,7 @@ function openReaderMenu() {
   if (reader.quotable) items.push({ label: 'Quote selection', glyph: 'quote', act: () => reader.quote() });
   if (!$('start-from-message').hidden) items.push({ label: 'Start a topic from this', glyph: 'topic', act: () => openStartLine() });
   if (!$('add-to-pipeline').hidden) items.push({ label: 'Add to pipeline', glyph: 'pipeline', act: () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true)) });
+  if (message && !messageEdit) items.push(...textDisplayMenuItems());
   if (reader.layoutChoice) items.push({ label: reader.layoutChoice, glyph: 'layout', act: () => reader.toggleLayout() });
   openMessageMenu({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message', sheet: true });
 }
@@ -2332,7 +2335,7 @@ function repaintEdited(ids, edits) {
     const preview = card.querySelector(':scope > .message-preview');
     const keepingWhole = reader?.card === card && item.preview;
     if (preview && !keepingWhole) {
-      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts });
+      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() });
       preview.classList.remove('scroll-in-place');
       const cue = card.querySelector(':scope > .message-preview-cue');
       if (item.preview && !cue) preview.after(node('span', CUE, 'message-preview-cue'));
@@ -2757,6 +2760,26 @@ async function reconnect() {
   }
   return true;
 }
+let textDisplayPreferences = null;
+const displayRules = () => textDisplayPreferences?.enabled ?? [];
+
+function textDisplayMenuItems() {
+  return textDisplayRules.map(rule => ({
+    label: `${rule.name} · ${displayRules().includes(rule.id) ? 'On' : 'Off'}`,
+    checked: displayRules().includes(rule.id), glyph: 'layout',
+    act: () => {
+      textDisplayPreferences.toggle(rule.id);
+      keepListAnchor(() => {
+        for (const host of document.querySelectorAll('.message-preview')) redrawMessageWords(host, displayRules());
+      });
+      // Source-only repaint: no writing, session, read mark or delivery action.
+      if (reader?.dialog.open && reader.source?.source_ref?.kind === 'message' && !reader.presentation?.sourceUnavailable) {
+        reader.redrawSource();
+      }
+    },
+  }));
+}
+
 let startup = null;
 function start() {
   if (!startup) startup = initialize().finally(() => { startup = null; });
@@ -2768,6 +2791,9 @@ async function initialize() {
   api = new Api(token); api.refused = () => run(reconnect);
   bootstrap = await api.bootstrap();
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
+  let displayStorage;
+  try { displayStorage = window.localStorage; } catch { /* device preferences stay in memory */ }
+  textDisplayPreferences = new TextDisplayPreferences(bootstrap.instance_id, bootstrap.actor, displayStorage);
   // Every page, the phone check among them, takes the restarted server's session in place.
   renewal ??= new SessionRenewal({ api, bootstrap, live: () => live, makeApi: fresh => new Api(fresh),
     adopted: fresh => { document.querySelector('meta[name="aim-next-session"]').content = fresh; } });
@@ -2961,7 +2987,7 @@ async function initialize() {
     recipientsPainted: names => { if (here?.page || answering.size) answeredBy(inline, $('inline-composer').querySelector('.audience'), names, Boolean(here?.page)); },
   });
   reader = new Reader({
-    images: topicImages, imageBytes, pageImage,
+    images: topicImages, imageBytes, pageImage, displayRules,
     cardSelection: card => menu?.passages.chosen(messageEntries.get(card.dataset.id)) ?? null,
     actorName: displayActor,
     actorLabel,
@@ -3053,7 +3079,7 @@ async function initialize() {
   mountFeedFences($('messages'));
   keepLineRoom($('main'), $('messages'));
   watchListAnchor();
-  cardScroll = new CardScroll({ read: async (id, readClass) => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass }), bootstrap.instance_id), press: pressHold });
+  cardScroll = new CardScroll({ read: async (id, readClass) => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass }), bootstrap.instance_id), press: pressHold, displayRules });
   const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
   // A thumbs-up reads its message in Core (docs/thumbs.md). One that read it
   // (Core settled the person's delivery of it, or cleared their mark on it)
