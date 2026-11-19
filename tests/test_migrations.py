@@ -184,6 +184,7 @@ def frozen(statements):
 
 SCHEMA_46 = (Path(__file__).parent / "fixtures" / "schema_46.sql").read_text().splitlines()
 SCHEMA_47 = (Path(__file__).parent / "fixtures" / "schema_47.sql").read_text().splitlines()
+SCHEMA_48 = (Path(__file__).parent / "fixtures" / "schema_48.sql").read_text().splitlines()
 
 
 def step_back_by_hand(path, version):
@@ -2083,7 +2084,7 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_DRAFT, SCHEMA_BEFORE_DRAFT), (BEFORE_EDIT, SCHEMA_BEFORE_EDIT),
                      (BEFORE_SESSION, SCHEMA_BEFORE_SESSION), (BEFORE_JUDGMENT, SCHEMA_BEFORE_JUDGMENT),
                      (BEFORE_INVITES, SCHEMA_BEFORE_INVITES), (BEFORE_TOOLS, SCHEMA_BEFORE_TOOLS), (BEFORE_ENDS, SCHEMA_BEFORE_ENDS),
-                     (BEFORE_COVERS, SCHEMA_BEFORE_COVERS), ("46", SCHEMA_46), ("47", SCHEMA_47))
+                     (BEFORE_COVERS, SCHEMA_BEFORE_COVERS), ("46", SCHEMA_46), ("47", SCHEMA_47), ("48", SCHEMA_48))
 
 
 class Release19ChainCase(MigrationCase):

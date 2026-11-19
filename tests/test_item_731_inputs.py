@@ -43,7 +43,7 @@ class ConversationSeedCase(unittest.TestCase):
         import subprocess
         import sys
         self.assertTrue(sys.pycache_prefix)
-        fixture = subprocess.Popen([sys.executable, '-I', '-X', 'pycache_prefix=' + sys.pycache_prefix,
+        fixture = subprocess.Popen([sys.executable, '-X', 'pycache_prefix=' + sys.pycache_prefix,
                                     'tests/fixtures/ui_http.py', '--freshness', '--agent-colors'],
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         serial = 0

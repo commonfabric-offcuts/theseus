@@ -20519,7 +20519,7 @@
     ],
     [
      "aim_next/store.py",
-     "SCHEMA_VERSION = \"48\"",
+     "SCHEMA_VERSION = \"49\"",
      "SCHEMA_VERSION = \"46\""
     ]
    ],

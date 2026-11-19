@@ -2534,6 +2534,12 @@
         "tests/fixtures/schema_47.sql"
       ],
       "scope": "repository"
+    },
+    "54201f108703632fba2d686d6f97a3b18c715f78b3d2514c02d8734c0b6dedc5": {
+      "inputs": [
+        "tests/fixtures/schema_48.sql"
+      ],
+      "scope": "repository"
     }
   },
   "tests/test_new_line.py": {
