@@ -16,7 +16,7 @@ import { pageImages } from './page-image.mjs';
 import { paintChoice, clearChoice, chosen, naming, unnamed, sending, choiceOf, list } from './whisper-choice.mjs';
 import { addressedTo } from './at-names.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
-import { ComposeBar } from './compose-bar.mjs';
+import { ComposeBar, revealCardReply } from './compose-bar.mjs';
 import { copyText, COPY_REFUSED } from './message-menu.mjs';
 import { revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { overhang } from './lit-field.mjs';
@@ -412,15 +412,30 @@ export class Reader {
     if (this.naming?.sheet.open) this.naming.sheet.close();
     if (this.dialog.open) this.dialog.close();
     if (this.card) {
+      const preview = this.card.querySelector?.(':scope > .message-preview');
+      const scroll = preview?.scrollTop ?? 0;
       this.card.removeAttribute('data-card-reply'); this.card.setAttribute('role', 'button');
       this.dialog.removeAttribute('data-card-reply'); this.dialog.removeAttribute('role');
       this.home.parent.insertBefore(this.dialog, this.home.next);
+      this.card.style?.removeProperty('--reply-message-height');
+      this.card.style?.removeProperty('--reply-card-height');
+      if (preview && this.card.dataset.full !== 'shown') { preview.scrollTop = 0; this.card.scrollTop = scroll; }
     }
     this.card = card;
     if (card) {
+      const preview = card.querySelector(':scope > .message-preview'), scroll = card.scrollTop;
+      if (preview && card.dataset.full !== 'shown') {
+        // The outer card must grow to hold the reply, so only its words take
+        // the old scrolling room. Measure before docking, excluding the
+        // header, padding and cue, and retain the old height for a late read.
+        const height = Math.max(1, Math.min(preview.clientHeight, card.clientHeight - (card.scrollHeight - preview.clientHeight)));
+        card.style.setProperty('--reply-message-height', `${height}px`);
+        card.style.setProperty('--reply-card-height', `${card.getBoundingClientRect().height}px`);
+      }
       card.dataset.cardReply = ''; card.setAttribute('role', 'group');
       this.dialog.dataset.cardReply = ''; this.dialog.setAttribute('role', 'region');
       card.append(this.dialog);
+      if (preview && card.dataset.full !== 'shown') { card.scrollTop = 0; preview.scrollTop = scroll; }
     }
   }
 
@@ -791,6 +806,7 @@ export class Reader {
     if (this.mode === 'note') this.switchMode('reply');
     this.field.focus({ preventScroll: Boolean(this.card) });
     this.field.setSelectionRange(this.field.value.length, this.field.value.length);
+    if (this.card) revealCardReply(this.field);
     return true;
   }
 

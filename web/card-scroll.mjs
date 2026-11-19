@@ -108,7 +108,9 @@ export class CardScroll {
       }
       // Measure only while the message is shown, never a closed stack's zero-
       // height root. Keep the whole card's size, including its header and cue.
-      const height = card.getBoundingClientRect().height;
+      // A reply may have docked while the whole source was loading. Its
+      // field is outside the source's scrolling room, including on close.
+      const height = parseFloat(card.style.getPropertyValue?.('--reply-card-height')) || card.getBoundingClientRect().height;
       card.style.maxHeight = `${Math.ceil(height)}px`;
       formatWords(preview, body, { copyFences: 'feed', revision: this.revisions.get(item.id), struck: this.strikes.get(item.id) });
       preview.classList.add('scroll-in-place');

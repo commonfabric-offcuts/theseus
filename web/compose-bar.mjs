@@ -13,6 +13,18 @@ const TYPING = 'textarea, input:not([type]), input[type=text], input[type=search
 // while a text field has focus: smaller changes are the browser's own bars.
 const KEYBOARD_MIN = 120;
 
+// A reply docked in the page needs the page to move, not the full Reader's
+// internal scroll box. Only an opening/focus or a shrinking keyboard viewport
+// asks for this; scrolling the page away never pulls the person back.
+export function revealCardReply(field, win = globalThis.window) {
+  if (!field?.closest?.('#reader[data-card-reply]')) return;
+  const box = field.closest('.field-box');
+  if (!box?.getClientRects().length) return;
+  const rect = box.getBoundingClientRect(), vv = win.visualViewport;
+  const top = vv?.offsetTop ?? 0, bottom = top + (vv?.height ?? win.innerHeight);
+  if (rect.top < top || rect.bottom > bottom) win.scrollBy({ top: rect.bottom - bottom, behavior: 'instant' });
+}
+
 // The keyboard, read from the visual viewport (web/ has one reader of it):
 // --vv-height and --vv-top follow what is visible, so a phone's dialog sits
 // above the keyboard rather than under it, and --keyboard holds the last
@@ -25,7 +37,7 @@ function trackKeyboard(win, doc) {
   if (!vv || !doc) return;
   const root = doc.documentElement;
   let full = 0, width = 0, last = vv.height;
-  const read = () => {
+  const read = event => {
     const typing = doc.activeElement?.matches?.(TYPING) && !doc.activeElement.readOnly;
     if (vv.width !== width) { width = vv.width; full = 0; }
     if (!typing || vv.height > full) full = vv.height;
@@ -39,10 +51,11 @@ function trackKeyboard(win, doc) {
     // scrollTop, so nothing moves, and nothing around it is ever scrolled:
     // the Reader, which clips, stays where it is.
     const field = typing && vv.height < last ? doc.activeElement.closest('.composer .field-box') : null;
-    if (field) {
+    if (field && !field.closest('#reader[data-card-reply]')) {
       const composer = field.closest('.composer'), port = composer.getBoundingClientRect().top + composer.clientTop + composer.clientHeight;
       composer.scrollTop += Math.max(0, field.getBoundingClientRect().bottom + (parseFloat(win.getComputedStyle(composer).scrollPaddingBottom) || 0) - port);
     }
+    if (typing && (event?.type === 'focusin' || vv.height < last)) revealCardReply(doc.activeElement, win);
     last = vv.height;
   };
   vv.addEventListener('resize', read);
