@@ -604,7 +604,7 @@ def main():
                         path.write_bytes(data)
                     path = destination / "aim.css"
                     data = path.read_bytes()
-                    old = b".reader-header>button,#reader-stepping>button,#reader-star,#reader-aside{min-width:2.75rem;min-height:2.75rem}"
+                    old = b".reader-header>button,#reader-stepping>button,#reader-star,#reader-aside,.reader-topic{min-width:2.75rem;min-height:2.75rem}"
                     new = old.replace(b"2.75rem", b"2rem")
                     assert data.count(old) == 1
                     path.write_bytes(data.replace(old, new))

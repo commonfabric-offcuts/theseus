@@ -4214,6 +4214,24 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           await becomes(order,[ids.c,ids.a,ids.b],'split back restores the source position');
         }
         assert.deepEqual(p.errors, []);
+      } catch (error) {
+        // Read failed interaction state while this case still owns its page.
+        // This runs only after the original assertion fails; no pacing changes.
+        if (p) {
+          try {
+            const state = await p.evaluate(`(()=>{
+              const ids=${JSON.stringify(ids)},rect=e=>{if(!e)return null;const r=e.getBoundingClientRect();return {left:r.left,top:r.top,width:r.width,height:r.height}},identity=e=>e?{id:e.id,tag:e.tagName,message:e.closest('[data-id]')?.dataset.id??null}:null;
+              const cards=Object.entries(ids).map(([name,id])=>{const e=document.querySelector('#messages .message-card[data-id='+JSON.stringify(id)+']'),w=e?.querySelector('.message-preview'),b=rect(w),x=b?b.left+b.width/2:0,y=b?Math.max(0,b.top)+Math.max(0,Math.min(innerHeight,b.top+b.height)-Math.max(0,b.top))/2:0;return {name,id,present:!!e,lit:e?.classList.contains('lit')??false,folded:e?.dataset.folded??null,rect:rect(e),words:rect(w),wordsShown:!!w?.getClientRects().length,centerHit:identity(b?document.elementFromPoint(x,y):null)}});
+              const bar=document.querySelector('.message-bar'),reader=document.querySelector('#reader'),controls=[...document.querySelectorAll('.message-bar button,[role=menu] button')];
+              return {viewport:[innerWidth,innerHeight],scroll:[scrollX,scrollY],active:identity(document.activeElement),cards,bar:bar?{hidden:bar.hidden,rect:rect(bar)}:null,reader:{open:reader?.open??false,rect:rect(reader)},controls:controls.slice(0,24).map(e=>({act:e.dataset.act??null,disabled:e.disabled,hidden:e.hidden,rect:rect(e)})),controlsTruncated:controls.length>24,selection:{collapsed:getSelection()?.isCollapsed??null,rangeCount:getSelection()?.rangeCount??0}};
+            })()`);
+            observations.push({name:'item 731 failure before close',key,ids,error:error.stack,state});
+            await shot(p,key+'-failure-before-close');
+          } catch (captureError) {
+            observations.push({name:'item 731 failure capture error',key,error:error.stack,captureError:captureError.stack});
+          }
+        }
+        throw error;
       } finally { if (p) await p.close(); }
     });
   }
