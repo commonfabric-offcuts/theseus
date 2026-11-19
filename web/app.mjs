@@ -3592,11 +3592,9 @@ async function initializeOutcomePage(route) {
     const reload=followCommits(async()=>{const loaded=await outcomeRail.load();await wakeLights.load();return loaded;});
     await reload();
   } else {
-    // Other outcomes' questions in one quiet line, or why the list they are read
-    // from could not be read and Retry, then where this outcome stands, its target
-    // and checks, the pipeline line, topics, Notebook, team and tools. Secondary
-    // questions, loop details, problems and references follow them (item 835).
-    $('outcome-page').append($('outcomes-status'),$('retry-workspaces'),$('outcome-standing'),$('target-panel'),$('pipeline-line'),$('topic-navigation'),$('outcome-references'),$('page-here'),$('outcome-team'),$('outcome-tools'),$('also-waiting'),$('loop-panel'),$('problems-panel'),$('outcome-context'));
+    // The title and its menu stay above the page. People, notes, topics and
+    // tools come before outcome setup; secondary context follows (item 842).
+    $('outcome-page').append($('outcomes-status'),$('retry-workspaces'),$('outcome-team'),$('outcome-references'),$('page-here'),$('topic-navigation'),$('outcome-tools'),$('outcome-standing'),$('outcome-purpose'),$('target-panel'),$('pipeline-line'),$('also-waiting'),$('loop-panel'),$('problems-panel'),$('outcome-context'));
     const context = new ThingsRail({host:$('outcome-context-body'),embedded:true,doc:document,win:window});
     $('outcome-context').hidden=false;
     $('outcome-context').ontoggle=()=>{if($('outcome-context').open)run(()=>context.reload());};
