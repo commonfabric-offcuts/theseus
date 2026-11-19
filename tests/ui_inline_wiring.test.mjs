@@ -138,6 +138,12 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     scrollIntoView() {}
     scrollBy(options) { this.scrollTop += options.top; events.push(['scroll', this.id, options]); }
     contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
+    compareDocumentPosition(other) {
+      if (other === this) return 0;
+      let root = this; while (root.parent) root = root.parent;
+      const order = [], walk = node => { order.push(node); for (const child of node.children ?? []) walk(child); }; walk(root);
+      const at = order.indexOf(other); return at < 0 ? 1 : at > order.indexOf(this) ? 4 : 2;
+    }
     closest(selector) { for (let at = this; at; at = at.parent) if (selector.startsWith('.') && String(at.className ?? '').split(' ').includes(selector.slice(1))) return at; return null; }
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
     // Where it is on screen: wholly in view, unless a check places it (box).
@@ -219,7 +225,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} }, innerHeight: 600, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} unobserve() {} disconnect() {} }, MutationObserver: class { observe() {} disconnect() {} takeRecords() { return []; } }, innerHeight: 600, innerWidth: 1000, Node: { DOCUMENT_POSITION_FOLLOWING: 4, TEXT_NODE: 3 }, requestAnimationFrame: callback => setImmediate(callback), cancelAnimationFrame: clearImmediate, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     // The window's own location and history are the page's, as in a browser (the shell reads them there).
     window: { innerHeight: 600, scrollY: 0,
       getComputedStyle: el => ({ overflowY: 'visible', position: 'static', scrollPaddingTop: '0px', scrollPaddingBottom: '0px', ...el.style }),
@@ -3268,7 +3274,7 @@ test('pressing the older-below line while the page may not read stops at once an
 
 test('during a visit the New line holds as the person reads, fades once nothing above it is unread, moves to show more, and only Mark read places it afresh, the card being read held still', async () => {
   const scrolls = [];
-  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y), matchMedia: () => ({ matches: false, addEventListener() {} }) }, innerHeight: 800 });
+  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => { const delta = typeof x === 'object' ? x.top : y; if (delta) scrolls.push(delta); }, matchMedia: () => ({ matches: false, addEventListener() {} }) }, innerHeight: 800 });
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
   Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
   const live = stream(); f.useLive(live);
@@ -3365,32 +3371,36 @@ test('during a visit the New line holds as the person reads, fades once nothing 
   assert.equal(order(), '26 25 24 new 23 22 21 20');
 });
 
-test('at the top of a topic a new message comes into view; read further down, the page holds still', async () => {
-  const scrolls = [];
-  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y), matchMedia: () => ({ matches: false, addEventListener() {} }) }, innerHeight: 800 });
-  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
-  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
-  await f.initialize(); await settle();
-  // Cards are laid out 100px apart from where the list starts, measured when
-  // asked: a new card above pushes the rest down.
-  let listTop = 0;
-  const cards = () => entries(f.get('messages'));
-  for (const kind of ['querySelectorAll', 'querySelector']) assert.equal(typeof f.document[kind], 'function');
-  f.document.querySelectorAll = () => cards();
-  // The first message entry, on its own or in a reply stack (app.mjs MESSAGE_ENTRIES): here every card is on its own.
-  f.document.querySelector = selector => selector.startsWith('#messages > [data-id]') ? cards()[0] ?? null : selector.startsWith('meta') ? { content: 'fixture-session' } : f.get(selector.slice(1));
-  const add = seq => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
-  const paint = () => { f.paintViews('messages'); for (const card of cards()) card.getBoundingClientRect = () => { const top = listTop + cards().indexOf(card) * 100; return { top, bottom: top + 90 }; }; };
-  for (let seq = 20; seq <= 25; seq++) add(seq);
-  paint();
-  listTop = 120; add(26); paint();
-  assert.deepEqual(scrolls, [], 'the newest card showed from its top edge: the new one comes into view above it');
-  listTop = -450; add(27); paint();
-  assert.deepEqual(scrolls, [100], 'read further down, the card in view is held where it was');
-  listTop = -100; add(28); paint();
-  assert.deepEqual(scrolls, [100, 100], 'the newest card just out of sight above: the card that heads the view is held too');
-  listTop = -50; add(29); paint();
-  assert.deepEqual(scrolls, [100, 100, 100], 'the newest card partly above the top is being read, not shown from its top edge: it is held');
+test('785 a document-top arrival waits behind New above; below the header its displacement is absorbed', async () => {
+  for (const startY of [0, 570]) {
+    const scrolls = [];
+    const win = { scrollY: startY, addEventListener() {}, removeEventListener() {},
+      scrollBy({ top }) { this.scrollY += top; if (top) scrolls.push(top); },
+      matchMedia: () => ({ matches: false, addEventListener() {} }) };
+    const f = fixture(undefined, { window: win, innerHeight: 800 });
+    f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+    Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+    await f.initialize(); await settle();
+    const list = f.get('messages'), cards = () => entries(list), visible = () => cards().filter(card => !card.hidden);
+    const proto = Object.getPrototypeOf(list), originalRect = proto.getBoundingClientRect;
+    proto.getBoundingClientRect = function() {
+      if (!this.dataset.id && this !== list) return originalRect.call(this);
+      const top = this.hidden ? 0 : 120 + (this === list ? 0 : visible().indexOf(this) * 100) - win.scrollY;
+      const height = this.hidden ? 0 : this === list ? visible().length * 100 : 90;
+      return { top, bottom: top + height, height, left: 0, right: 300, width: 300 };
+    };
+    f.document.querySelectorAll = () => visible();
+    const add = seq => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
+    for (let seq = 20; seq <= 25; seq++) add(seq);
+    f.paintViews('messages'); scrolls.length = 0;
+    const held = visible().find(card => card.getBoundingClientRect().bottom > 0), before = held.getBoundingClientRect().top;
+    add(26); f.paintViews('messages');
+    assert.equal(held.getBoundingClientRect().top, before, 'same visible card keeps its position');
+    assert.equal(entryIn(f, 'm26').isConnected, true);
+    assert.equal(entryIn(f, 'm26').hidden, startY === 0);
+    assert.equal(f.runObservation("stackState($('messages')).waiting.has('m26')"), startY === 0);
+    assert.deepEqual(scrolls, startY === 0 ? [] : [100]);
+  }
 });
 
 test('an agent\'s card in the topic log carries its color, and the person\'s own keeps its black', async () => {
@@ -4501,7 +4511,13 @@ async function conversationPage(list, { waits = [], href = 'https://fixture/?top
   f.topic.kind = 'conversation';
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
   const opens = [];
-  f.registry.open = async (ref, options) => { opens.push([ref.id, options.opener?.dataset?.id ?? null]); return null; };
+  f.registry.open = async (ref, options) => {
+    opens.push([ref.id, options.opener?.dataset?.id ?? null]);
+    const presentation = { token: f.registry.generation, source: { instance_id: 'fixture', source_ref: ref }, editors: {} };
+    f.registry.current = presentation;
+    Object.assign(f.reader, { dialog: { open: true }, presentation, source: presentation.source });
+    return presentation;
+  };
   Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
   for (const message of list) f.views.messages.set(message.id, { topic_id: 't1', sent_ms: null, reply_to: null, unread: false, item: null, ...message });
   f.views.newest = Math.max(...list.map(message => message.seq));

@@ -65,7 +65,7 @@ test('781 real header renderer derives count from unread messages and removes it
   unread.add(root.id); paint(); assert.equal(card.querySelector('.stack-new').textContent, 'New');
 });
 
-function appFixture({ headNew = false, failure = false, marked = false, short = false } = {}) {
+function appFixture({ headNew = false, failure = false, marked = false, short = false, waiting = false } = {}) {
   const s = stack(); s.head.unread = headNew; if (short) s.replies = [{ ...oldest, unread: false }];
   const messages = new Map([s.head, ...s.replies].map(each => [each.id, each]));
   const entries = new Map([...messages].map(([id]) => [id, { dataset: { id }, isConnected: true }]));
@@ -87,7 +87,8 @@ function appFixture({ headNew = false, failure = false, marked = false, short = 
   const cardRead = each => readNow(each, { viewer: 'fixture-reader', opened: openedIds.has(each.id), marked: marks.state(each.id)?.marked });
   const registry = { disposed: false, runtime: { current: { authority_id: 'a', authority_epoch: 'e' } } };
   const writing = { body: 'Unsent exact\nwords', destination: 'elsewhere', images: ['kept'], guard: 'retained' }, beforeWriting = structuredClone(writing);
-  const bindings = { newestNew: order.newestNew, cardRead, visitNew, topic: { id: 'fixture-topic' }, topicUnavailable: false, authorityReviewPending: () => false,
+  const pending = waiting ? s.replies.splice(s.replies.findIndex(each => each.id === newest.id), 1) : [];
+  const bindings = { releaseTopArrivals: () => { s.replies.push(...pending.splice(0)); }, newestNew: order.newestNew, cardRead, visitNew, topic: { id: 'fixture-topic' }, topicUnavailable: false, authorityReviewPending: () => false,
     registry, getEpoch: () => epoch, views: { messages }, stackState: () => ({ stacks: [s] }), $: id => id === 'messages' ? {} : { open: false, inert: false },
     entries: () => [...entries.values()], reveal: (entry, options) => reveals.push([entry.dataset.id, options]), opened: entry => entry,
     cardScroll: { showFull: async (card, message) => { shown.push([card.dataset.id, message.body]); if (wholeWait) await wholeWait; return true; } },
@@ -222,4 +223,14 @@ test('833 New selects an already-read live arrival and clears its visit mark onl
   assert.equal(f.focuses.at(-1), newest.id);
   assert.equal(f.visitNew.has(newest.id), false);
   assert.deepEqual(f.sent[1].args, { from_seq: newest.seq, seq: newest.seq });
+});
+
+// A waiting arrival is already recorded and connected, but absent from the
+// visible stack until an explicit reading destination admits it.
+test('785 dossier New admits waiting replies before choosing the newest message', async () => {
+  const f = appFixture({ waiting: true });
+  await f.openDossierNew(f.s, {});
+  assert.equal(f.focuses.at(-1), newest.id);
+  assert.equal(f.sent[0].args.seq, newest.seq);
+  assert.deepEqual(f.writing, f.beforeWriting);
 });
