@@ -7,6 +7,13 @@ On a topic page at least 1280 CSS pixels wide, its head and page menu offer
 right half of the space after the outline; the existing feed occupies the left.
 The things rail gives that space to the Notebook until it is undocked.
 
+Item868 keeps one tight title/glyph row fixed in both docked and modal modes.
+Text/Cards/Draft and Choose dossier share the toolbar inside the existing
+page scroller. Save status, the dossier picker and the deck controls scroll
+with the cards; status retains its accessible announcements. The active
+NotebookPage remains the scroll owner, so docking and closing preserve its
+writing and scroll position. Phone controls retain their 44px minimum.
+
 The control toggles docking. While docked, ✕ or Escape returns to the modal;
 the next close dismisses it normally. A card editor or open picker takes its
 own Escape first. Narrowing the window returns to modal without changing the

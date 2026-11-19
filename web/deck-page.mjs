@@ -500,7 +500,9 @@ export class DeckPage {
   }
   mark() {
     for (const row of this.list.querySelectorAll('.deck-card')) {
-      const index = Number(row.dataset.index), picked = index === this.picked, selected = this.selected.has(index);
+      // A fresh writing row has no saved-card index. It is the current card
+      // while open; picked remains the anchor to return to when it finishes.
+      const index = Number(row.dataset.index), picked = this.editing ? row.classList.contains('deck-writing') : index === this.picked, selected = this.selected.has(index);
       row.tabIndex = picked ? 0 : -1;
       if (picked) row.setAttribute('aria-current', 'true'); else row.removeAttribute('aria-current');
       row.classList.toggle('deck-selected', selected);

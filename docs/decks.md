@@ -401,24 +401,29 @@ showing a page at a revision. Over the outcome's own page, which has no feed,
 it comes up over that page. A link to a page at a revision still opens it in
 the Reader, or in place on its outcome's page, to read.
 
-The sheet's head on a laptop has the page's title, Text and Cards as chips
-with the page's Draft toggle beside them, a Full page glyph (↗, `?cards=ITEM`,
-below) and ✕, each glyph named for screen readers and with a tooltip. On a
-phone the title and glyphs take the first row and the three chips the next;
-each chip, and the Draft mark that stands for the toggle for someone who
-reads the page, is 44 points tall there.
+The sheet keeps only one tight title row fixed (868): the page's title,
+ellipsized when long, the docking glyph where available, Full page (↗,
+`?cards=ITEM`, below) and ✕. Glyphs have screen-reader names and tooltips;
+desktop glyphs are 40 points and phone controls retain their 44-point floor.
+Text, Cards, Draft and the page menu share a wrapping toolbar with Choose
+dossier inside the card scroller. The same controls move with the active
+NotebookPage; neither the writing nor its scroll owner is replaced.
 
-The saving sign always has a row of its own below those controls, on the
+The saving sign has a row of its own below those controls, inside the scroller, on the
 laptop and at every phone width (item 642). "Saved to Theseus", keeping a
 device copy, saving, uploading and every attention or read-only state change
 only that row: Text, Cards and Draft keep identical boxes while the status
 words change. Attention notices wrap whole there. A refusal's Try again and Discard
 my writing follow its words, wrapping when needed, and are 44 points tall on
-touch. An empty sign keeps its row. Below the head is one
-place that scrolls, containing the same vertical card list as the full page
+touch. Its existing role=status keeps announcing save state. Below the fixed
+title is one place that scrolls: the view toolbar, dossier picker, saving sign,
+deck bar and the same vertical card list as the full page
 at every width. The line of keys above the cards is short there (↑ ↓ pick · Return new
 card · ⌘Return edit, and while writing Escape done · ⌘Return next card), the
-full page's line its tooltip.
+full page's line its tooltip. Done, New card and Undo scroll away with the cards;
+their keyboard handlers remain active. While a card is being written, only
+its writing row is current, including the new card opened by ⌘Return. The
+saved picked index remains the return point when an empty new card is finished.
 
 ✕, Escape or a press on the backdrop closes it. While a card is being written
 the first Escape finishes the card and a second closes the sheet; ✕ and a press
