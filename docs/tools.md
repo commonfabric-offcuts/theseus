@@ -487,6 +487,11 @@ brief, and keeps the `--every-feature` switch.
 
 ## Deploy: `tools/deploy.py`
 
+The standing route and timing rule is [Landing a change](landing.md). The
+mechanics below retain their evidence guards: ordinary approved changes may
+deploy with broad judgment pending, with an immediate live surface check and
+broad checks after; judged-first changes complete judgment before deployment.
+
 ```sh
 tools/deploy.py --config INSTANCE/deploy.json --release-check EVIDENCE/release-SHA/summary.json SHA EVIDENCE_DIR \
   [--release N] [--live-since TIME] [--no-items] [--known-reds FILE] [--dry-run]
@@ -517,6 +522,12 @@ After a new release verifies and its records are written, the deploy fast-forwar
 The record is written after the verify, not before the stop, because it states that a commit is live: before the restart the new code, its schema and its admin verb are not there yet, and a deploy that fails after stopping has not put the release live. Everything the records need is read and checked before anything stops. A release that goes live without its record is not lost: the next deploy finds that the live HEAD is not the latest record's commit and records it first. The remote branch result is separate deploy evidence, written after the release record, so a branch failure cannot change the record of what went live.
 
 ### A merged train: `--train FILE`
+
+The path guard below describes mechanical eligibility, not the complete route
+decision. Apply the [semantic classification](landing.md#choose-the-route-from-the-complete-change)
+to the entire actual-predecessor diff as well: unguarded Core or client paths
+can still change stored-data compatibility or server admission policy and
+require judgment before deployment.
 
 A train is a pull request that merges approved heads into the release branch the config names (`release_branch`, on GitHub). GitHub's hosted runners judge it: the Checks workflow produces the evidence and the Verdict check reads it. For an ordinary item the hosted judgment comes after the merge, so the deploy takes the merged train in place of a local release check, and its record says the judgment is pending until it lands. `FILE` is an absolute path to a JSON object:
 
