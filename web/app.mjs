@@ -499,7 +499,10 @@ function changed(editor) {
   if (inline?.editor === editor) inline.paintStatus();
   invalidateComparison(editor);
   const version = registry.localTopicVersion(editor);
-  if (version > localEffectVersion) { localEffectVersion = version; freshness?.invalidate('topic', version); freshness?.request(); }
+  if (version > localEffectVersion) {
+    if (editor.context.topicId === topic?.id) releaseTopArrivals();
+    localEffectVersion = version; freshness?.invalidate('topic', version); freshness?.request();
+  }
 }
 // What the person sees is read: while the page is visible and has focus, and
 // no modal other than the Reader covers it, the message the Reader shows (an
@@ -761,7 +764,7 @@ function sourceAttachments(presentation) {
 // act: what the person's act of reading captured (Marks.capture), for a card
 // or Read it; every other open passes none and clears nothing.
 async function openSource(ref, opener, act = null, mode = 'reply') {
-  releaseTopArrivals();
+  if (ref.kind === 'message') releaseTopArrivals();
   const request = ++opening;
   const from = registry.interactive;
   views.retain(views.currentItem, ref.kind === 'memory' ? ref.id : null);
@@ -872,10 +875,8 @@ function holdTopArrivals(saved) {
       retired || topicUnavailable || authorityReviewPending() || saved.list.hidden ||
       !saved.list.isConnected || !saved.newest || anchorActing) return;
   const incoming = entries(saved.list).filter(entry => Number(entry.dataset.seq) > saved.newest &&
-    views.messages.get(entry.dataset.id)?.topic_id === topic.id);
-  if (incoming.some(entry => views.messages.get(entry.dataset.id).author_id === bootstrap.actor)) {
-    releaseTopArrivals(); return;
-  }
+    views.messages.get(entry.dataset.id)?.topic_id === topic.id &&
+    views.messages.get(entry.dataset.id).author_id !== bootstrap.actor);
   if (!(saved.tops.get(saved.anchor) > 0) || !saved.anchor?.isConnected) return;
   const state = stackState(saved.list), edge = saved.anchor.getBoundingClientRect().top;
   let changed = false;
@@ -905,7 +906,6 @@ function releaseTopArrivals(absorb = false) {
 function keepListAnchor(paint, act = null) {
   const list = $('messages');
   if (act) {
-    releaseTopArrivals();
     anchorHold = null;
     const entry = entries(list).find(node => node.dataset.id === act.id);
     listActAnchor = entry ? { list, views, id: act.id,
@@ -996,14 +996,11 @@ function watchListAnchor() {
   // Capture before handlers and accept their final layout before paint.
   // A frame callback also covers handlers that stop the event's bubbling.
   let actionFrame = 0;
-  const acted = event => {
+  const acted = () => {
     anchorHold = null;
     anchorActing = true;
-    // Wheel/touch and scrollbar movement wait for the actual insertion point
-    // to leave the window. Tab/focus traversal must still reach New above.
-    const marker = event?.target?.closest?.('.new-above');
-    if (!marker && (event?.type === 'click' || event?.type === 'input' ||
-        event?.type === 'keydown' && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', 'Enter', ' '].includes(event.key))) releaseTopArrivals();
+    // This owner only records the action frame. Each deliberate destination
+    // releases its arrivals itself; writing and card acts keep them hidden.
     if (!actionFrame) actionFrame = requestAnimationFrame(() => {
       actionFrame = 0; anchorActing = false; rememberListAnchor();
     });
@@ -1293,7 +1290,7 @@ function feedOf() {
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
-    hold: (paint, act) => keepListAnchor(paint, act), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
+    hold: (paint, act) => keepListAnchor(paint, act), navigate: () => releaseTopArrivals(), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); }, home: $('new-message-sheet'),
     // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
     // On a phone its menu offers the title bar's Reply and Move below More first, as the glyphs fold into it (first).
@@ -2761,6 +2758,7 @@ async function initialize() {
       !freshness?.stopped && views.messages.has(id) && messageEntries.get(id) === entry && drawn($('messages'), id),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)) });
   menu = new MessageMenu({ host: $('messages'), item: id => feedMessages().get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
+    navigate: () => releaseTopArrivals(),
     reply: (id, card) => run(() => replyMessage(id, card)),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)),
     // A thumbs-up on a reply deals with its stack up to it (stack-feed.mjs).
@@ -2874,7 +2872,7 @@ async function initialize() {
     await freshness?.request({ refresh: true, retry: true });
   });
   wakeOnPress($('messages'));
-  $('more-messages').onclick = () => run(() => { fillFrom($('messages')); return listPage('messages', true); }); $('more-memory').onclick = () => run(() => listPage('memory', true));
+  $('more-messages').onclick = () => run(() => { releaseTopArrivals(); fillFrom($('messages')); return listPage('messages', true); }); $('more-memory').onclick = () => run(() => listPage('memory', true));
   window.addEventListener('beforeunload', () => marks.leave());
   shell.guard(() => registry.hasUnprotectedWriting);
   // An edit open in the Reader sends nothing at unload (its hold lapses), and lets its Web Lock go.
@@ -2893,6 +2891,7 @@ async function initialize() {
   shell.ready({ api, bootstrap, live, workspaceId: topic.workspace_id, workspaceTitle: $('workspace-name').textContent, topic, pageMax: pageMax(),
     view: async (name, args, readClass = 'background') => checkedView(await api.view(name, args, { readClass }), bootstrap.instance_id),
     open: (target, title, from) => openDestination(target, title, from), readable: () => !topicUnavailable && !freshness?.stopped, currentTopic: () => topic,
+    readingNavigation: () => releaseTopArrivals(),
     // The rail's Starred takes a star off (stack-feed.mjs); its Notebook section starts the topic's pages and the outcome's.
     unstar: star => stackFeed?.unstar(star), notebookCreate: notebookCreator });
   // A message's link opens its topic, or its outcome's conversation, with that

@@ -434,8 +434,12 @@ Its real card stays connected but hidden, outside dossier layout; its record
 still contributes to header New and Only new. Nothing in view moves. The
 marker draws it and takes the reader to it. Scrolling until the insertion
 point is above the window draws it through the same reading hold. A deliberate
-view change (opening a message, sending, New, More or navigation keys) draws
-it before that destination is chosen. Traversing controls to reach the marker
+view change draws it explicitly at its destination: opening a message,
+a confirmed own send to this topic, New, either More, or feed navigation.
+Feed navigation keys draw it only with focus in the feed, outside writing,
+inputs and contenteditable elements. Typing, caret movement, selection and
+ordinary clicks do not draw it; neither do star, unstar or card-menu actions,
+which retain their pre-action card hold. Traversing controls to reach the marker
 does not itself draw the waiting arrival. Access and current-view checks still
 apply, and a held card is never reported as seen.
 

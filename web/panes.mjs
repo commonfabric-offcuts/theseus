@@ -138,18 +138,24 @@ function headerKey(action, rows, r, doc) {
 // the message at its top onto the row of buttons just above it, and on those headerKey;
 // ⌘Return, from anywhere outside writing, a new message in this page's place.
 // Nothing in writing or while a pop-up is open; the feed's ⌘ arrows stay its own.
-export function feedKey(event, doc) {
+export function feedKey(event, doc, navigate = () => {}) {
   const action = keyAction(event);
-  if (!action || doc.querySelector('dialog[open]') || writing(doc.activeElement)) return false;
+  if (!action || doc.querySelector('dialog[open]') || writing(doc.activeElement) ||
+      doc.activeElement?.closest?.('input, textarea, select, [contenteditable]') ||
+      event.target?.closest?.('input, textarea, select, [contenteditable]')) return false;
+  const readingDestination = () => { if (doc.getSelection?.()?.isCollapsed !== false) navigate(); };
   let moved = false;
   if (action === 'write') moved = Boolean(panes.write?.(null));
   else {
     const rows = headerRows(doc), r = rows.findIndex(row => row.buttons.includes(doc.activeElement));
-    if (r >= 0) { panes.button.set(rows[r].host, doc.activeElement); moved = headerKey(action, rows, r, doc); }
+    if (r >= 0) {
+      if (['up', 'down', 'left', 'right'].includes(action)) readingDestination();
+      panes.button.set(rows[r].host, doc.activeElement); moved = headerKey(action, rows, r, doc);
+    }
     else if (!inFeed(doc)) return false;
     // ← and → from the messages, or the page itself, go on to the pane beside; on a title bar's glyphs, along its row.
-    else if (action === 'left' || action === 'right') moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc);
-    else if (action === 'up' && rows.length && atTop(doc)) moved = reach(landing(rows[rows.length - 1]));
+    else if (action === 'left' || action === 'right') { readingDestination(); moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc); }
+    else if (action === 'up' && rows.length && atTop(doc)) { readingDestination(); moved = reach(landing(rows[rows.length - 1])); }
   }
   if (!moved) return false;
   event.preventDefault();

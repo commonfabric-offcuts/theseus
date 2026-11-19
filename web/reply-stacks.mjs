@@ -887,7 +887,7 @@ export function arrangeStacks(list, messages, options = {}) {
   state.belowCount = shownAside;
   if (shownAside && !state.more) {
     state.more = element(doc, 'button', 'stack-more'); state.more.type = 'button';
-    state.more.onclick = () => { state.moreOpen = !state.moreOpen; state.again(); state.on?.more?.(); };
+    state.more.onclick = () => { state.on?.navigate?.(); state.moreOpen = !state.moreOpen; state.again(); state.on?.more?.(); };
   }
   // Where the feed is not drawn (app.mjs drawFeed), the composer at rest goes
   // to the page's end instead, as a dialog in a box not drawn shows nothing.

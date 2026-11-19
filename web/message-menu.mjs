@@ -90,9 +90,10 @@ export class MessageMenu {
   // Reader on it with chosen ({start, end, text} of its words) quoted.
   // clipped(card, item): whether the card cuts its message off; showFull(card, item): shows it whole there, as ⋯'s
   // Show full message does. foldState(item): 'fold', 'unfold' or null (none); fold(item): folds or unfolds it.
+  // navigate(): materialize waiting arrivals before a feed-key destination is chosen.
   constructor({ host, item, viewer, kind, reply, quote = (id, card) => reply(id, card), thumb, answer, more, expand = () => {}, copy = () => {},
-    clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {}, mac = onMac(), doc = document }) {
-    Object.assign(this, { host, item, viewer, kind, reply, quote, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, mac, doc });
+    clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {}, navigate = () => {}, mac = onMac(), doc = document }) {
+    Object.assign(this, { host, item, viewer, kind, reply, quote, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, navigate, mac, doc });
     this.lit = null; this.touch = pressOf(doc).touch; this.before = null;
     // The bar's buttons it has put behind its ⋯ for want of room in the window (fit).
     this.behind = new Set();
@@ -403,9 +404,20 @@ export class MessageMenu {
     if (this.copies(event)) return;
     if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || (event.altKey && event.key !== 'Tab')) return;
     if (event.key === 'Tab') return this.tab(event);
-    // Nor under a drawer or sheet open over the page, which makes the page inert.
-    if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key) || this.doc.querySelector('dialog[open]') || this.host.closest('[inert]')) return;
     const at = this.doc.activeElement;
+    if (writing(at) || at?.closest?.('input, textarea, select, [contenteditable]') ||
+        event.target?.closest?.('input, textarea, select, [contenteditable]')) return;
+    // Nor under a drawer or sheet open over the page, which makes the page inert.
+    if (this.doc.querySelector('dialog[open]') || this.host.closest('[inert]')) return;
+    // These keys scroll the feed through the browser's own default action.
+    // A control's Space/Home/End belongs to that control, not to navigation.
+    if (['PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) {
+      const entry = this.host.contains(at) && this.entryOf(at);
+      if (!event.shiftKey && this.doc.getSelection?.()?.isCollapsed !== false &&
+          (pageItself(at, this.doc) || entry && (at === cardIn(entry) || at.classList?.contains('fold-line')))) this.navigate();
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) return;
     if (at?.matches?.(EDITABLE) || at?.closest?.('.rail')) return;
     // The bar's own buttons, and every control in the list but a card itself (a
     // folded line, a link in the words, a reaction, the reply arrow, a stack's
@@ -424,6 +436,7 @@ export class MessageMenu {
       else this.act('reply');
       return;
     }
+    if (!event.shiftKey && this.doc.getSelection?.()?.isCollapsed !== false) this.navigate();
     const entries = this.entries();
     if (!entries.length) return;
     // A dossier's chevron holding the focus is where the keys are, whether it
