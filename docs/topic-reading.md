@@ -425,3 +425,45 @@ and a link's target is read as an address once (brackets that share a target
 that is no address, or sit inside one, are words), so a
 hostile message costs work in proportion to its length, not to its square. What it draws is too: a table draws no more cells
 than were written, plus one a short row, never its rows times its columns.
+
+## New arrivals above the reading place (785)
+
+At document top, an outside arrival that would enter between the visible
+header and the card being read waits behind the existing New above marker.
+Its real card stays connected but hidden, outside dossier layout; its record
+still contributes to header New and Only new. Nothing in view moves. The
+marker draws it and takes the reader to it. Scrolling until the insertion
+point is above the window draws it through the same reading hold. A deliberate
+view change draws it explicitly at its destination: opening a message,
+a confirmed own send to this topic, New, either More, or feed navigation.
+Feed navigation keys draw it only with focus in the feed, outside writing,
+inputs and contenteditable elements. Typing, caret movement, selection and
+ordinary clicks do not draw it; neither do star, unstar or card-menu actions,
+which retain their pre-action card hold. Traversing controls to reach the marker
+does not itself draw the waiting arrival. Access and current-view checks still
+apply, and a held card is never reported as seen.
+
+New above remembers arrivals by message identity. Activating it retires the
+arrival actually reached, after its current topic, message and connected card
+are confirmed and focus lands inside it visibly. A fractional scroll edge
+within one CSS pixel counts as a landing. Other arrivals still above sight
+keep their offers. The pill centres on the message column when CSS anchor
+positioning is supported; its fallback keeps the legacy inline left edge.
+
+More new below follows the New line's oldest unread message, loads the real
+older pages until it is available and gives that message visible focus.
+Generic More messages retains its existing first-loaded-card landing rule.
+The focused item 785 native checks distinguish these destinations. Their
+document-top control waits for observed scroll completion or a bounded quiet
+frame fallback before introducing an arrival; the same-card drift limit stays
+one CSS pixel. This control does not change product anchoring.
+
+The continuous reading hold belongs to recorded outside arrivals and edited
+message repaints above the reading place. It absorbs only their own height
+changes. It retains the actual message and entry identities, and checks the
+arrival height against the displacement of the reading place and the other
+cards. A later page or person scroll invalidates the hold before any restore;
+so does unrelated layout, including the sheet, Reader or composer. A whole-page
+observer does not grant arrival ownership. Existing synchronous writing,
+caret/selection, acted-card/title and More repaint owners keep their rules.
+Generic writing and card acts still do not accept waiting arrivals.

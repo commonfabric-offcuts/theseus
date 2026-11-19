@@ -499,7 +499,10 @@ function changed(editor) {
   if (inline?.editor === editor) inline.paintStatus();
   invalidateComparison(editor);
   const version = registry.localTopicVersion(editor);
-  if (version > localEffectVersion) { localEffectVersion = version; freshness?.invalidate('topic', version); freshness?.request(); }
+  if (version > localEffectVersion) {
+    if (editor.context.topicId === topic?.id) releaseTopArrivals();
+    localEffectVersion = version; freshness?.invalidate('topic', version); freshness?.request();
+  }
 }
 // What the person sees is read: while the page is visible and has focus, and
 // no modal other than the Reader covers it, the message the Reader shows (an
@@ -760,12 +763,28 @@ function sourceAttachments(presentation) {
 }
 // act: what the person's act of reading captured (Marks.capture), for a card
 // or Read it; every other open passes none and clears nothing.
-async function openSource(ref, opener, act = null, mode = 'reply') {
+async function openSource(ref, opener, act = null, mode = 'reply', { land = false } = {}) {
   const request = ++opening;
-  const from = registry.interactive;
+  const from = registry.interactive, currentTopic = topic, currentViews = views, accessEpoch = listAccessEpoch;
   views.retain(views.currentItem, ref.kind === 'memory' ? ref.id : null);
   status('');
-  try { await marks.open(registry, ref, { topicId: topic.id, opener, mode }, act); }
+  try {
+    const presentation = await marks.open(registry, ref, { topicId: topic.id, opener, mode }, act);
+    // A cancelled open can resolve null. Even a returned presentation must
+    // still be the current, available source actually shown by the Reader.
+    const source = presentation?.source;
+    if (ref.kind === 'message' && presentation && request === opening && !retired &&
+        topic === currentTopic && views === currentViews && accessEpoch === listAccessEpoch &&
+        presentation.token === registry.generation && registry.isCurrent(presentation) &&
+        !presentation.sourceUnavailable && !presentation.availabilityUnconfirmed &&
+        reader.dialog.open && reader.presentation === presentation && reader.source === source &&
+        source?.instance_id === bootstrap.instance_id && source.source_ref?.kind === ref.kind &&
+        source.source_ref.id === ref.id && source.source_ref.revision === ref.revision) {
+      // A link's feed landing and Reader opening are one destination. Delegate
+      // its sole release to landOn when loaded; otherwise the Reader owns it.
+      if (!land || !landOn(ref.id)) releaseTopArrivals();
+    }
+  }
   catch (error) {
     if (request === opening) {
       if (from?.surface !== 'inline' && registry.isCurrent(from)) reader.notice(error);
@@ -774,18 +793,13 @@ async function openSource(ref, opener, act = null, mode = 'reply') {
   }
   finally { if (request === opening) { views.retain(views.currentItem, null); reader.paintOffer(); } }
 }
-// A repaint leaves in place what the person is at: the inline writing, a
-// field on the page they are typing in, then the card acted on, or else the
-// first card in view. A
-// button, checkbox or other control keeps no place: More would hold itself still and scroll past what
-// it loaded. At the top of the topic, where its newest card drawn shows from
-// its top edge, nothing is held: what arrives comes into view above that
-// card, with the New line under it, instead of landing out of sight. A card
-// held is one the page draws (drawn, the page's one view) before and after
-// the repaint: when the repaint stops drawing it (put below More on another
-// device), the card drawn next below it is held instead.
-// roomy: gives back the room a hold kept (holdRoom).
-let roomy = null, listActAnchor = null;
+// Synchronous repaint owners retain writing, fields, card acts and More.
+// Only recorded arrivals can own a continuous hold after that repaint.
+// More keeps its existing landing rule. A card no longer drawn hands the hold
+// to the next card below it. roomy gives back the room holdRoom kept.
+let roomy = null, listAnchor = null, anchorDepth = 0, anchorWatch = null, anchorActing = false, listActAnchor = null, anchorHold = null;
+const newAbove = new Set();
+let newAboveButton = null;
 // A later gesture owns its own place (including More and keyboard navigation).
 // Reads/settlement have no gesture, so keep the acted identity until then.
 for (const kind of ['pointerdown', 'keydown', 'wheel', 'touchstart']) {
@@ -802,9 +816,170 @@ function actedListCard(mark) {
     .find(node => node.getClientRects().length) : card.getClientRects().length ? card : entry;
   return node?.getClientRects().length && node.getBoundingClientRect().height > 0 ? { entry, node, mark } : null;
 }
-function keepListAnchor(paint, act = null) {
+function captureListAnchor() {
   const at = document.activeElement, list = $('messages');
+  const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
+  const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
+  const acted = !writing && !field ? actedListCard(listActAnchor) : null;
+  const first = writing || field || acted ? null : firstInView();
+  const loading = first?.id === 'more-messages' || first?.dataset.line === 'older';
+  const anchor = writing ? inline.field : field ? at : acted ? acted.node : loading ? list : first;
+  const control = anchor === list && (first?.id === 'more-messages' || first?.dataset.line === 'older') ? first : null;
+  const cards = entries(list).filter(entry => drawn(list, entry.dataset.id));
+  const cardHold = !writing && !field && !acted && anchor !== list && list.contains(anchor);
+  const held = acted ? cards.slice(cards.indexOf(acted.entry)) : cardHold ? [anchor, ...cards.filter(card => anchor.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING)] : [anchor];
+  const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
+  if (acted) tops.set(anchor, acted.mark.top);
+  // Inside a long card, hold the line crossing the edge, so an image or
+  // rewrap above that line is absorbed even when the card's own top stayed.
+  let point = null;
+  if (cardHold && tops.get(anchor) < 0) {
+    const box = anchor.getBoundingClientRect(), x = Math.max(1, Math.min(innerWidth - 1, box.left + box.width / 2));
+    const caret = document.caretPositionFromPoint?.(x, 1), old = caret ? null : document.caretRangeFromPoint?.(x, 1);
+    const text = caret?.offsetNode ?? old?.startContainer, offset = caret?.offset ?? old?.startOffset;
+    if (text?.nodeType === Node.TEXT_NODE && anchor.contains(text)) {
+      const range = document.createRange();
+      range.setStart(text, offset); range.setEnd(text, Math.min(text.length, offset + 1));
+      if (range.getClientRects().length) point = { range, text, words: text.data, top: range.getBoundingClientRect().top };
+    }
+  }
+  const edge = control?.getBoundingClientRect().top, last = cards.at(-1), present = control ? new Set(entries(list)) : null;
+  return { list, anchor, cards, held, tops, point, control, edge, last, present, y: window.scrollY,
+    topicViews: views,
+    acted, baseline: Boolean(writing || field || acted || control || anchor !== cards[0] || tops.get(anchor) < 0),
+    height: document.documentElement.scrollHeight,
+    newest: entries(list).reduce((seq, card) => Math.max(seq, Number(card.dataset.seq) || 0), 0) };
+}
+// Called only around a product repaint, after it has placed actual records.
+// Older pages, initial rendering, own sends and generic paints grant no owner.
+function recordListArrivals(saved, revised = []) {
+  if (!saved?.newest || saved.topicViews !== views || retired || topicUnavailable ||
+      authorityReviewPending() || !saved.list.isConnected || saved.list.hidden) return;
+  const changed = new Set(revised);
+  saved.arrivals = new Map(entries(saved.list).flatMap(entry => {
+    const item = views.messages.get(entry.dataset.id);
+    return item && item.topic_id === topic.id && item.author_id !== bootstrap.actor &&
+      messageEntries.get(item.id) === entry &&
+      ((!saved.cards.includes(entry) && item.seq > saved.newest) || changed.has(item.id)) ? [[entry, item]] : [];
+  }));
+}
+// Record geometry in document coordinates: scrolling is a separate owner.
+function arrivalLayout(saved) {
+  const nodes = [saved.list, ...entries(saved.list)];
+  return new Map(nodes.map(node => {
+    const box = node.getBoundingClientRect();
+    return [node, { top: box.top + window.scrollY, left: box.left, width: box.width, height: box.height }];
+  }));
+}
+function retainArrivalAnchor(saved) {
+  anchorHold = null;
+  if (!saved.arrivals?.size || !saved.anchor?.isConnected) return;
+  saved.arrivalOwners = new Map([...saved.arrivals].filter(([entry]) =>
+    entry.isConnected && drawn(saved.list, entry.dataset.id) && entry.getBoundingClientRect().height > 0 &&
+    (entry.compareDocumentPosition(saved.anchor) & Node.DOCUMENT_POSITION_FOLLOWING)));
+  if (!saved.arrivalOwners.size) return;
+  saved.y = window.scrollY;
+  saved.arrivalLayout = arrivalLayout(saved);
+  anchorHold = saved;
+}
+// A size notification is evidence only when the recorded arrivals' own height
+// explains every displaced card and the list. No residual page layout is held.
+function arrivalLayoutChanged(saved) {
+  if (saved.topicViews !== views || saved.y !== window.scrollY || topicUnavailable || authorityReviewPending()) return null;
+  const before = saved.arrivalLayout, after = arrivalLayout(saved), growth = new Map();
+  if (!before || before.size !== after.size) return null;
+  for (const [entry, item] of saved.arrivalOwners) {
+    if (views.messages.get(item.id) !== item || messageEntries.get(item.id) !== entry ||
+        !entry.isConnected || !drawn(saved.list, item.id) || !before.has(entry) || !after.has(entry)) return null;
+    growth.set(entry, after.get(entry).height - before.get(entry).height);
+  }
+  for (const [node, old] of before) {
+    const box = after.get(node);
+    if (!box || box.left !== old.left || box.width !== old.width) return null;
+    const height = node === saved.list ? [...growth.values()].reduce((sum, n) => sum + n, 0) : growth.get(node) ?? 0;
+    const shift = node === saved.list ? 0 : [...growth].reduce((sum, [entry, n]) => sum +
+      (entry !== node && (entry.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) ? n : 0), 0);
+    if (box.height - old.height !== height || box.top - old.top !== shift) return null;
+  }
+  return [...growth.values()].some(n => n !== 0);
+}
+function restoreListAnchor(saved) {
+  if (!saved || retired || !saved.list.isConnected || saved.list.hidden) return;
+  // An arrival restoration may not reverse a scroll made since its capture.
+  if (saved.arrivals?.size && saved.y !== window.scrollY) { anchorHold = null; return; }
+  const { list, anchor, cards, held, tops, point, control, edge, last, present, acted } = saved;
+  // Room an earlier hold kept is given back first; the hold measures without it.
+  if (roomy) { roomy(); roomy = null; }
+  const landed = control && last ? loadedAfter(list, present, last) : null;
+  if (landed) { anchorHold = null; window.scrollBy({ top: landed.getBoundingClientRect().top - edge, behavior: 'instant' }); return; }
+  const afterAct = acted && actedListCard(acted.mark);
+  if (acted && !afterAct && listActAnchor === acted.mark) listActAnchor = null;
+  const hold = afterAct?.node ?? held.find(node => node?.isConnected && (cards.includes(node) ? drawn(list, node.dataset.id) && (!acted || node.getBoundingClientRect().height > 0) : node.getClientRects().length));
+  const line = hold === anchor && point?.text.isConnected && point.text.data === point.words && point.range.getClientRects().length ? point : null;
+  if (hold && (saved.baseline || saved.arrivals?.size)) {
+    const delta = holdRoom(list, hold, line ? line.top : tops.get(afterAct ? anchor : hold), line ? () => line.range.getBoundingClientRect().top : undefined, Boolean(afterAct));
+    window.scrollBy({ top: delta, behavior: 'instant' });
+    retainArrivalAnchor(saved);
+  } else if (anchorHold === saved) anchorHold = null;
+  // Older pages and the person's own writing never make this offer. Remember
+  // arrivals by identity, so a later repaint or a new reply cannot lose it.
+  if (saved.newest && hold?.isConnected) for (const entry of entries(list)) {
+    if (saved.arrivals?.has(entry) && Number(entry.dataset.seq) > saved.newest && drawn(list, entry.dataset.id) &&
+        views.messages.get(entry.dataset.id)?.author_id !== bootstrap.actor && entry.getBoundingClientRect().top < 0) newAbove.add(entry.dataset.id);
+  }
+}
+function rememberListAnchor(landing = false) {
+  if (landing) anchorHold = null;
+  if (retired || !$('messages')?.isConnected) return;
+  listAnchor = anchorHold ?? captureListAnchor();
+  paintNewAbove();
+  anchorWatch?.observe();
+  anchorWatch?.mutations.takeRecords();
+}
+// The visible page prefix cannot be scrolled away to make room for an arrival
+// while also keeping the card below it still. New above stands for that card
+// until it can enter above the window or the reader chooses another view.
+function holdTopArrivals(saved) {
+  if (!saved || saved.y !== 0 || saved.topicViews !== views ||
+      retired || topicUnavailable || authorityReviewPending() || saved.list.hidden ||
+      !saved.list.isConnected || !saved.newest || anchorActing) return;
+  const incoming = entries(saved.list).filter(entry => Number(entry.dataset.seq) > saved.newest &&
+    views.messages.get(entry.dataset.id)?.topic_id === topic.id &&
+    views.messages.get(entry.dataset.id).author_id !== bootstrap.actor);
+  if (!(saved.tops.get(saved.anchor) > 0) || !saved.anchor?.isConnected) return;
+  const state = stackState(saved.list), edge = saved.anchor.getBoundingClientRect().top;
+  let changed = false;
+  for (const entry of incoming) {
+    const box = entry.getBoundingClientRect();
+    if (!drawn(saved.list, entry.dataset.id) || box.top < 0 || box.top >= edge ||
+        !(entry.compareDocumentPosition(saved.anchor) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
+    state.waiting.add(entry.dataset.id); newAbove.add(entry.dataset.id); changed = true;
+  }
+  if (changed) { anchorHold = saved; feedOf().arrange(); }
+}
+function releaseTopArrivals(absorb = false) {
+  const list = $('messages'), waiting = stackState(list).waiting;
+  if (!waiting?.size || retired || topicUnavailable || authorityReviewPending() ||
+      !list.isConnected || list.hidden) return;
+  const saved = absorb ? captureListAnchor() : null;
+  const released = [...waiting];
+  anchorHold = null;
+  for (const id of waiting) {
+    const entry = messageEntries.get(id);
+    if (entry?.isConnected) entry.hidden = false;
+  }
+  waiting.clear();
+  anchorDepth++;
+  try { feedOf().arrange(); }
+  finally {
+    anchorDepth--;
+    if (saved) { recordListArrivals(saved, released); restoreListAnchor(saved); }
+  }
+}
+function keepListAnchor(paint, act = null, revised = []) {
+  const list = $('messages');
   if (act) {
+    anchorHold = null;
     const entry = entries(list).find(node => node.dataset.id === act.id);
     listActAnchor = entry ? { list, views, id: act.id,
       title: Boolean(act.anchor?.closest?.('.stack-tools, .stack-head')) || entry.getBoundingClientRect().height === 0,
@@ -813,28 +988,117 @@ function keepListAnchor(paint, act = null) {
     if (captured && inView(captured.node)) listActAnchor.top = captured.node.getBoundingClientRect().top;
     else listActAnchor = null;
   }
-  const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
-  const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
-  const acted = !writing && !field ? actedListCard(listActAnchor) : null;
-  const first = writing || field || acted ? null : firstInView();
-  const anchor = writing ? inline.field : field ? at : acted ? acted.node : first && !first.dataset.seq && !first.classList.contains('memory-card') ? list : first;
-  const control = anchor === list && (first?.id === 'more-messages' || first?.dataset.line === 'older') ? first : null;
-  const cards = entries(list).filter(entry => drawn(list, entry.dataset.id));
-  const held = acted ? cards.slice(cards.indexOf(acted.entry)) : cards.includes(anchor) ? cards.slice(cards.indexOf(anchor)) : [anchor];
-  const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
-  tops.set(anchor, acted ? acted.mark.top : anchor?.getBoundingClientRect().top);
-  const atTop = !writing && !field && !acted && anchor && anchor === cards[0] && tops.get(anchor) >= 0;
-  const edge = control?.getBoundingClientRect().top, last = cards.at(-1), present = control ? new Set(entries(list)) : null;
-  const result = paint();
-  // Room an earlier hold kept is given back first; the hold measures without it.
-  if (roomy) { roomy(); roomy = null; }
-  const landed = control && last ? loadedAfter(list, present, last) : null;
-  if (landed) { window.scrollBy(0, landed.getBoundingClientRect().top - edge); return result; }
-  const afterAct = acted && actedListCard(acted.mark);
-  if (acted && !afterAct && listActAnchor === acted.mark) listActAnchor = null;
-  const hold = afterAct?.node ?? (acted || cards.includes(anchor) ? held.find(node => node.isConnected && drawn(list, node.dataset.id) && (!acted || node.getBoundingClientRect().height > 0)) : anchor);
-  if (hold?.isConnected && !atTop) window.scrollBy(0, holdRoom(list, hold, tops.get(afterAct ? anchor : hold), Boolean(afterAct)));
-  return result;
+
+  // Nested stack arrangements belong to the same repaint and the same hold.
+  if (anchorDepth || anchorActing && !act) return paint();
+  // A new paint starts from the current place, never a previous hold's top.
+  anchorHold = null;
+  const saved = captureListAnchor();
+  anchorDepth++;
+  try { return paint(); }
+  finally {
+    recordListArrivals(saved, revised);
+    if (saved.arrivals?.size) holdTopArrivals(saved);
+    anchorDepth--; restoreListAnchor(saved); rememberListAnchor();
+  }
+}
+function paintNewAbove() {
+  const list = $('messages');
+  for (const id of newAbove) {
+    const entry = messageEntries.get(id);
+    if (entry?.isConnected && stackState(list).waiting?.has(id) &&
+        views.messages.get(id)?.topic_id === topic?.id) continue;
+    if (!entry?.isConnected || !drawn(list, id) || entry.getBoundingClientRect().top >= 0) newAbove.delete(id);
+  }
+  if (!newAboveButton && newAbove.size) {
+    newAboveButton = button('New above ↑', () => {
+      const entry = entries(list).find(card => newAbove.has(card.dataset.id));
+      if (!entry || retired || !list.isConnected || list.hidden) return;
+      const id = entry.dataset.id, currentTopic = topic, message = views.messages.get(id);
+      if (!message || message.topic_id !== currentTopic?.id || messageEntries.get(id) !== entry) return;
+      releaseTopArrivals();
+      anchorHold = null;
+      reveal(entry);
+      entry.scrollIntoView({ block: 'start', behavior: 'instant' });
+      const card = opened(entry);
+      card.focus({ preventScroll: true });
+      const rect = entry.getBoundingClientRect();
+      // Retire this arrival once the activation really reaches it. Native
+      // scrolling may round the edge by a fraction of a CSS pixel.
+      if (!retired && topic === currentTopic && views.messages.get(id) === message &&
+          messageEntries.get(id) === entry && list.isConnected && !list.hidden &&
+          entry.isConnected && drawn(list, id) && card.contains(document.activeElement) &&
+          rect.top >= -1 && rect.top < innerHeight && rect.bottom > 0) newAbove.delete(id);
+      rememberListAnchor();
+    });
+    newAboveButton.className = 'new-above';
+    newAboveButton.setAttribute('aria-label', 'Read new messages above');
+    $('main').append(newAboveButton);
+  }
+  if (newAboveButton) {
+    newAboveButton.hidden = !newAbove.size || list.hidden;
+    newAboveButton.style.left = `${list.getBoundingClientRect().left}px`;
+  }
+}
+function watchListAnchor() {
+  anchorWatch?.stop();
+  const list = $('messages'), main = $('main'), observed = new Set();
+  const settle = () => {
+    if (retired || anchorDepth) return;
+    const saved = anchorHold;
+    const changed = saved && !anchorActing && saved.y === window.scrollY ? arrivalLayoutChanged(saved) : null;
+    if (changed) restoreListAnchor(saved);
+    else if (changed === null) anchorHold = null;
+    rememberListAnchor();
+  };
+  const sizes = new ResizeObserver(settle);
+  const observe = () => {
+    const wanted = new Set(anchorHold?.arrivalOwners?.keys() ?? []);
+    for (const node of observed) if (!wanted.has(node)) { sizes.unobserve(node); observed.delete(node); }
+    for (const node of wanted) if (!observed.has(node)) { sizes.observe(node); observed.add(node); }
+  };
+  // This broad observer can INVALIDATE ownership, never create it. Mutation
+  // outside the actual arrival entries includes sheet/Reader/composer layout.
+  const mutations = new MutationObserver((records = []) => {
+    if (records.some(record => record.type === 'attributes' && ['class', 'style'].includes(record.attributeName) ||
+      ![...(anchorHold?.arrivalOwners?.keys() ?? [])].some(entry => entry.contains(record.target)))) anchorHold = null;
+    settle();
+  });
+  mutations.observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true });
+  const scrolled = event => {
+    if (anchorDepth) return;
+    // Own compensation's delayed event already has the saved y. Any changed
+    // page offset or nested scroller invalidates; a scroll handler never restores.
+    if (anchorHold?.y !== window.scrollY || event?.target && event.target !== document && event.target !== window) anchorHold = null;
+    if (stackState(list).waiting?.size && list.getBoundingClientRect().top < 0) releaseTopArrivals(true);
+    rememberListAnchor();
+  };
+  // Capture before handlers and accept their final layout before paint.
+  // A frame callback also covers handlers that stop the event's bubbling.
+  let actionFrame = 0;
+  const acted = () => {
+    anchorHold = null;
+    anchorActing = true;
+    // This owner only records the action frame. Each deliberate destination
+    // releases its arrivals itself; writing and card acts keep them hidden.
+    if (!actionFrame) actionFrame = requestAnimationFrame(() => {
+      actionFrame = 0; anchorActing = false; rememberListAnchor();
+    });
+  };
+  const acts = ['pointerdown', 'click', 'keydown', 'input', 'wheel', 'touchstart', 'touchmove', 'touchend', 'focusin'];
+  for (const kind of acts) document.addEventListener(kind, acted, true);
+  window.addEventListener('scroll', scrolled, { passive: true });
+  main.addEventListener('scroll', scrolled, { capture: true, passive: true });
+  window.addEventListener('resize', acted);
+  anchorWatch = { mutations, observe, stop: () => {
+    mutations.disconnect(); sizes.disconnect();
+    if (actionFrame) cancelAnimationFrame(actionFrame);
+    anchorActing = false; anchorHold = null;
+    for (const kind of acts) document.removeEventListener(kind, acted, true);
+    window.removeEventListener('scroll', scrolled); window.removeEventListener('resize', acted);
+    main.removeEventListener('scroll', scrolled, true);
+  } };
+  observe(); rememberListAnchor();
 }
 // How far the page scrolls to put hold back where it was (top). Where what is
 // drawn above it shrank by more than the page is scrolled (a reply taking the
@@ -842,10 +1106,11 @@ function keepListAnchor(paint, act = null) {
 // would cut it short. Then the list keeps the rest as room between what changed
 // and the writing, so the writing stays exactly where it was (item 363): just
 // above the New message composer resting among the messages (item 465, the
-// sheet's --hold-room, aim.css), or at the list's end for a hold below it. The
+// sheet's --hold-room, aim.css), at the list's top for a card, or at the
+// list's end for a hold below it. The
 // next hold gives that room back, and keeps only what it needs.
-function holdRoom(list, hold, top, acted = false) {
-  const moved = hold.getBoundingClientRect().top - top, short = -(window.scrollY + moved);
+function holdRoom(list, hold, top, position = () => hold.getBoundingClientRect().top, acted = false) {
+  const moved = position() - top, short = -(window.scrollY + moved);
   // An acted card can cross More or move to either end. Supply only the
   // scroll range missing at that end, through the same temporary-room owner.
   if (acted) {
@@ -861,10 +1126,10 @@ function holdRoom(list, hold, top, acted = false) {
     return hold.getBoundingClientRect().top - top;
   }
   const home = $('new-message-sheet'), resting = home.parentElement === list && !home.open && home.contains(hold);
-  if (!(short > 0) || !resting && (list.contains(hold) || !(list.compareDocumentPosition(hold) & Node.DOCUMENT_POSITION_FOLLOWING))) return moved;
-  const [room, side] = resting ? [home, '--hold-room'] : [list, 'padding-bottom'];
+  if (!(short > 0) || !resting && !list.contains(hold) && !(list.compareDocumentPosition(hold) & Node.DOCUMENT_POSITION_FOLLOWING)) return moved;
+  const [room, side] = resting ? [home, '--hold-room'] : [list, list.contains(hold) ? 'padding-top' : 'padding-bottom'];
   room.style.setProperty(side, `${short}px`); roomy = () => room.style.removeProperty(side);
-  return hold.getBoundingClientRect().top - top;
+  return position() - top;
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
 // The first card in view. With More, or the New line that loads older
@@ -880,7 +1145,7 @@ function inView(node) { const box = node.getBoundingClientRect(); return box.bot
 // its stack moves it no more than one above the stack.
 const MESSAGE_ENTRIES = '#messages > [data-id], #messages > .reply-stack > [data-id], #messages > .reply-stack > .stack-replies > [data-id]';
 function firstInView() {
-  return [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages > [data-line=older], #more-messages, #memory-items .memory-card`)].find(inView);
+  return [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages .dossier-cover, #messages .stack-earlier, #messages > [data-line=older], #more-messages, #memory-items .memory-card`)].find(inView);
 }
 // The first card drawn now, after last, that the list did not hold before:
 // one loaded, not one a fold or a join only draws again.
@@ -919,7 +1184,10 @@ function paintViews(kind) {
   // its entry for the acted-card anchor; sync retires only changed membership.
   if (kind === 'acts') { keepListAnchor(() => { stackMessages(); menu?.paint(); }); return; }
   // A message edited, here or elsewhere: its card and the lines that read its words (docs/message-edit.md).
-  if (kind === 'edited') { keepListAnchor(() => repaintEdited(views.takeRevised(), views.takeEdits())); return; }
+  if (kind === 'edited') {
+    const revised = views.takeRevised(), edits = views.takeEdits();
+    keepListAnchor(() => repaintEdited(revised, edits), null, revised); return;
+  }
   // The person's own note or saved reply on a message, saved, emptied or sent here or elsewhere: its card's marks (item 127).
   if (kind === 'yours') { keepListAnchor(() => repaintYours(views.takeYours())); return; }
   // The line moves under the reader's eyes: the card they are looking at stays where it is.
@@ -1105,7 +1373,7 @@ function feedOf() {
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
-    hold: (paint, act) => keepListAnchor(paint, act), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
+    hold: (paint, act) => keepListAnchor(paint, act), navigate: () => releaseTopArrivals(), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); }, home: $('new-message-sheet'),
     // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
     // On a phone its menu offers the title bar's Reply and Move below More first, as the glyphs fold into it (first).
@@ -1161,9 +1429,12 @@ function paintCardReading() {
 function landOn(id, { full = false } = {}) {
   const entry = entries($('messages')).find(child => child.dataset.id === id);
   if (!entry) return null;
+  releaseTopArrivals();
+  anchorHold = null;
   reveal(entry, { full });
   const card = opened(entry);
   card.scrollIntoView({ block: 'nearest' });
+  rememberListAnchor(true);
   return card;
 }
 // A rail landing can name a card outside the loaded page. Read only its
@@ -1194,12 +1465,11 @@ async function landOnMessage(id, serial = ++landingSerial) {
   card.focus({ preventScroll: true });
 }
 // A message a link on the page names (the person's reply, or a tag's), opened
-// in the Reader from its card, landed on first; one not loaded opens alone.
+// in the Reader from its card, landing only once that open succeeds; one not loaded opens alone.
 function goToMessage(id) {
-  const card = landOn(id);
-  if (!card) return run(() => openSource({ kind: 'message', id }, document.activeElement));
+  const entry = entries($('messages')).find(child => child.dataset.id === id), card = entry && cardIn(entry);
   // Opened as its card's click opens it; a click on the card itself would only light it on a phone (message-menu.mjs).
-  run(() => openSource({ kind: 'message', id }, card, marks.capture(id)));
+  run(() => openSource({ kind: 'message', id }, card || document.activeElement, card ? marks.capture(id) : null, 'reply', { land: true }));
 }
 // Every loaded card, the participants and the Reader's page, in the reader's colors as they now stand.
 function paintAgentColors() {
@@ -1884,6 +2154,8 @@ function listPage(kind, more = false) {
   }
   if (listLoads.has(kind)) return listLoads.get(kind);
   const accessEpoch = listAccessEpoch, mayPaint = !topicUnavailable;
+  const currentTopic = topic, currentViews = views, generation = registry.generation;
+  const outcome = { topic: currentTopic, views: currentViews, generation, accessEpoch, applied: false, rowsAdded: 0, cursorAdvanced: false };
   const cursor = kind === 'messages' ? views.olderCursor : views.memoryCursor;
   if (more && cursor === null) return Promise.resolve();
   const foreground = registry.cleanup.foreground();
@@ -1892,8 +2164,15 @@ function listPage(kind, more = false) {
   if (more) args.cursor = cursor;
   const run = foreground.read(options => api.view(kind === 'messages' ? 'topic_messages' : 'memory_items', args, options)).then(page => {
     checkedView(page, bootstrap.instance_id);
-    if (!mayPaint || accessEpoch !== listAccessEpoch || authorityReviewPending()) return;
-    if (kind === 'messages') views.messagesPage(page, { initial: !more, cursor });
+    if (!mayPaint || accessEpoch !== listAccessEpoch || authorityReviewPending()) return outcome;
+    if (kind === 'messages') {
+      // Measure only this synchronous application, not another load that
+      // advanced the same frontier while this request was in flight.
+      const beforeRows = views.messages.size, beforeCursor = views.olderCursor;
+      const applied = views.messagesPage(page, { initial: !more, cursor });
+      return { ...outcome, applied, rowsAdded: applied ? views.messages.size - beforeRows : 0,
+        cursorAdvanced: applied && beforeCursor !== null && (views.olderCursor === null || views.olderCursor < beforeCursor) };
+    }
     else views.memoryPage(page, { initial: !more, cursor });
   }).finally(() => { foreground.release(); listLoads.delete(kind); });
   listLoads.set(kind, run); return run;
@@ -1934,7 +2213,9 @@ let unreadLanding = 0, unreadLandingBusy = false;
 // another device renewing the mark while they run must keep its newer mark.
 async function landUnreadMessage(wanted) {
   const request = ++unreadLanding, act = wanted && marks.capture(wanted.id);
-  const current = () => request === unreadLanding && !registry.disposed;
+  const accessEpoch = listAccessEpoch, generation = registry.generation;
+  const current = () => request === unreadLanding && !registry.disposed && !retired && !topicUnavailable &&
+    accessEpoch === listAccessEpoch && generation === registry.generation;
   // Pagination can briefly put another unread card on screen on the way to
   // this one. Those transient positions are not a person's reading place.
   unreadLandingBusy = true;
@@ -1947,6 +2228,8 @@ async function landUnreadMessage(wanted) {
     if (!current()) return;
     const entry = entries($('messages')).find(child => child.dataset.id === id);
     if (!entry) return;
+    releaseTopArrivals();
+    anchorHold = null;
     reveal(entry, { full: true, open: true });
     const card = opened(entry);
     revealSelection(card);
@@ -2537,6 +2820,7 @@ async function initialize() {
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); }, reading: id => reading('reaction:' + id) });
   mountFeedFences($('messages'));
   keepLineRoom($('main'), $('messages'));
+  watchListAnchor();
   cardScroll = new CardScroll({ read: async (id, readClass) => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass }), bootstrap.instance_id), press: pressHold });
   const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
   // A thumbs-up reads its message in Core (docs/thumbs.md). One that read it
@@ -2567,6 +2851,7 @@ async function initialize() {
       !freshness?.stopped && views.messages.has(id) && messageEntries.get(id) === entry && drawn($('messages'), id),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)) });
   menu = new MessageMenu({ host: $('messages'), item: id => feedMessages().get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
+    navigate: () => releaseTopArrivals(),
     reply: (id, card) => run(() => replyMessage(id, card)),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)),
     // A thumbs-up on a reply deals with its stack up to it (stack-feed.mjs).
@@ -2680,7 +2965,16 @@ async function initialize() {
     await freshness?.request({ refresh: true, retry: true });
   });
   wakeOnPress($('messages'));
-  $('more-messages').onclick = () => run(() => { fillFrom($('messages')); return listPage('messages', true); }); $('more-memory').onclick = () => run(() => listPage('memory', true));
+  $('more-messages').onclick = () => run(async () => {
+    const currentTopic = topic, currentViews = views, generation = registry.generation, accessEpoch = listAccessEpoch;
+    fillFrom($('messages'));
+    const outcome = await listPage('messages', true);
+    if (outcome?.applied && (outcome.rowsAdded > 0 || outcome.cursorAdvanced) &&
+        outcome.topic === currentTopic && outcome.views === currentViews && outcome.generation === generation && outcome.accessEpoch === accessEpoch &&
+        topic === currentTopic && views === currentViews && registry.generation === generation && listAccessEpoch === accessEpoch &&
+        !registry.disposed && !retired && !topicUnavailable && !authorityReviewPending()) releaseTopArrivals();
+  });
+  $('more-memory').onclick = () => run(() => listPage('memory', true));
   window.addEventListener('beforeunload', () => marks.leave());
   shell.guard(() => registry.hasUnprotectedWriting);
   // An edit open in the Reader sends nothing at unload (its hold lapses), and lets its Web Lock go.
@@ -2699,6 +2993,7 @@ async function initialize() {
   shell.ready({ api, bootstrap, live, workspaceId: topic.workspace_id, workspaceTitle: $('workspace-name').textContent, topic, pageMax: pageMax(),
     view: async (name, args, readClass = 'background') => checkedView(await api.view(name, args, { readClass }), bootstrap.instance_id),
     open: (target, title, from) => openDestination(target, title, from), readable: () => !topicUnavailable && !freshness?.stopped, currentTopic: () => topic,
+    readingNavigation: () => releaseTopArrivals(),
     // The rail's Starred takes a star off (stack-feed.mjs); its Notebook section starts the topic's pages and the outcome's.
     unstar: star => stackFeed?.unstar(star), notebookCreate: notebookCreator });
   // A message's link opens its topic, or its outcome's conversation, with that
@@ -2709,8 +3004,8 @@ async function initialize() {
   if (anchored) {
     if (anchoredLand) run(() => landOnMessage(anchored));
     else {
-      const card = landOn(anchored);
-      run(async () => { await openSource({ kind: 'message', id: anchored }, card ?? $('main')); if (notebookReturning()) notebookSheetOf().resume(); });
+      const entry = entries($('messages')).find(child => child.dataset.id === anchored), card = entry && cardIn(entry);
+      run(async () => { await openSource({ kind: 'message', id: anchored }, card || $('main'), null, 'reply', { land: true }); if (notebookReturning()) notebookSheetOf().resume(); });
     }
   } else if (!pageAnchor && notebookReturning()) {
     // Back from a card's reply stack in another topic, by the way back its Reader showed (notebook-sheet.mjs).
@@ -3004,10 +3299,9 @@ async function openDestination(target, title, from = null) {
   if (target.kind === 'topic' && target.message && topic && views && target.id === topic.id) {
     if (target.land === true) return run(() => landOnMessage(target.message, landing));
     // Ordinary message links keep their Reader-opening behavior.
-    landOn(target.message);
     // From the Reader's own text, closing gives the focus to what opened the Reader.
     const opener = from?.closest?.('dialog') ? registry.current?.opener : from;
-    return run(() => openSource({ kind: 'message', id: target.message }, opener?.isConnected ? opener : document.activeElement));
+    return run(() => openSource({ kind: 'message', id: target.message }, opener?.isConnected ? opener : document.activeElement, null, 'reply', { land: true }));
   }
   // A link to a Notebook page this page can show opens it here: in the Reader
   // when it is the open topic's or its outcome's, in place on its outcome's page.
@@ -3523,7 +3817,7 @@ window.addEventListener('pageshow', event => { if (event.persisted) shell.leave(
 const stopDays = watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
 // A run ends as a page unloads, or as a move in place ends it: its live feed,
 // its watchers and its timers stop with it.
-window.addEventListener('pagehide', () => { live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stackFeed?.dispose(); stopDays(); });
+window.addEventListener('pagehide', () => { anchorWatch?.stop(); live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stackFeed?.dispose(); stopDays(); });
 // A start that fails says why, with a way to start again from nothing: the
 // reload runs start afresh. Settles true when the page started.
 // ? opens the short guide to the pointer and keys, on every page (interaction-guide.mjs).

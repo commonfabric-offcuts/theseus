@@ -18,7 +18,7 @@ import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
 import { moveOf, joinShown, joinOf, foldStep, laterActs, positionOf, placeOf, sideOf, headOf, stackCover, dossierOf } from './stack-order.mjs';
 import { noteAt } from './press-note.mjs';
-import { keyAction } from './pane-keys.mjs';
+import { keyAction, writing } from './pane-keys.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { revealSelection } from './reveal.mjs';
 import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
@@ -153,6 +153,8 @@ export class StackFeed {
   // hold(paint, act?): repaints keeping the page where the person is; act
   // names the card before its callback changes anything ({id, anchor}). press: the
   // press held down on the page (press-hold.mjs).
+  // navigate(): materialize waiting arrivals at the put-aside More destination.
+  // Card acts (including star/menu) never invoke it.
   // thumb(item, on): the message's thumbs-up, as its bar's 👍 gives it (a folded row's 👍).
   // redrawn(): the stacks were drawn again, so what else shows a message's acts (the Reader's star) follows.
   // home: the page's New message composer at rest, drawn just above More (arrangeStacks); put back after
@@ -160,9 +162,9 @@ export class StackFeed {
   // reply(id, card): the Reader on a message, the cursor in the reply (a title bar's Reply). menu(item, anchor):
   // the menu a right-click on a message opens, from anchor (a title bar's ⋯). colorOf: as arrangeStacks takes it.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
-    refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
+    refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), navigate = () => {}, press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
     colorOf = () => null, clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, home, reply, menu, colorOf, clock, doc });
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, refreshPositions, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, clock, doc });
     home?.addEventListener('close', () => this.arrange());
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // A stand-in for each message the page has not loaded that an act is on (a
@@ -264,7 +266,7 @@ export class StackFeed {
   }
   arrange() {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, colorOf: this.colorOf, home: this.home, doc: this.doc, on: {
-      more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
+      navigate: () => this.navigate(), more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id), fold: id => this.foldId(id),
       folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
@@ -938,15 +940,22 @@ export class StackFeed {
   // Stack keys on a message or its chevron, never in writing. Plain arrows
   // open/fold first; the pane's document listener handles the boundary.
   key(event) {
+    const at = this.doc.activeElement;
+    if (writing(at) || at?.closest?.('input, textarea, select, [contenteditable]') ||
+        event.target?.closest?.('input, textarea, select, [contenteditable]')) return;
     if (this.renameKey(event)) return;
     const action = keyAction(event);
     if (!FEED_ACTIONS.includes(action) || this.doc.querySelector('dialog[open]')) return;
-    const at = this.doc.activeElement;
     if (!at || !this.list.contains(at)) return;
-    if (action === 'undo' && at === this.state.more) { event.preventDefault(); this.undo(); return; }
+    if (action === 'undo' && at === this.state.more) {
+      event.preventDefault();
+      this.undo(); return;
+    }
     const toggle = at.classList?.contains('stack-toggle');
     const entry = toggle ? this.entryFor(at.closest('.reply-stack')?.dataset.stack) : entryOf(this.list, at);
     if (!entry || !(toggle || at === cardIn(entry) || at.classList?.contains('fold-line'))) return;
+    // These commands change records or their fold, not the reading destination.
+    // At a fold boundary the pane owner confirms any navigation separately.
     if (action === 'right' || action === 'left') {
       if (this.fold(entry, action === 'right' ? 'open' : 'fold')) event.preventDefault();
       return;
