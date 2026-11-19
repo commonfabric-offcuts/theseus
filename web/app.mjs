@@ -1671,7 +1671,10 @@ function paintMessageUpdates() {
       if (update) author.append(update);
       // A dossier's tab already has the shared New control. Its message's
       // own header (or folded row) carries the individual arrival mark.
-      const host = author.classList.contains('stack-head') ? card.querySelector(':scope > .message-author') : author;
+      // A between-others entry wraps a button and a hidden card. Its badge
+      // belongs inside the visible button, not below that overlapping row.
+      const host = entry !== card && card.hidden ? entry.querySelector(':scope > .fold-line')
+        : author.classList.contains('stack-head') ? card.querySelector(':scope > .message-author') : author;
       paintVisitNew(entry, host, Boolean(visitNew?.has(id)));
     }
   }
