@@ -3676,13 +3676,13 @@ test('a Notebook page read at an older revision shows what changed since then; o
   assert.equal(shown.length, 1, 'a Reader showing something else is left alone');
 });
 
-test('on an outcome page its Notebook pages are listed after its topics and read again with them on each commit', async () => {
+test('on an outcome page its Notebook pages precede its topics and read again with them on each commit', async () => {
   const f = fixture('https://fixture/?workspace=w1'), live = stream(), o = outcomesPage(f);
   f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
   o.answers.push(o.page(['w1']), o.page(['w1']));
   await f.initialize(); await drain();
   const page = f.get('outcome-page').children.map(child => child.id);
-  assert.ok(page.indexOf('outcome-references') === page.indexOf('topic-navigation') + 1, 'right after the topics: ' + page);
+  assert.ok(page.indexOf('topic-navigation') === page.indexOf('outcome-references') + 2, 'Notebook and its open page precede topics: ' + page);
   assert.ok(page.indexOf('page-here') === page.indexOf('outcome-references') + 1, 'and the page that opens in place after them');
   const pages = () => JSON.parse(JSON.stringify(f.calls.filter(call => call.name === 'memory_items').map(call => call.args.owner_scope)));
   assert.deepEqual(pages(), [{ kind: 'workspace', id: 'w1' }]);
@@ -4889,7 +4889,7 @@ test('835 legacy conversation links resolve to the ordinary topic with its actua
   assert.equal(f.get('conversation-row').children.length,0);
 });
 
-test('835 outcome home keeps its primary sections and opens the secondary references only on demand',async()=>{
+test('835/842 outcome home puts people and topics before setup and opens references only on demand',async()=>{
   const thumbnails=[];
   const f=fixture('https://fixture/?workspace=w1',{paintThumb:(_host,_key,load)=>thumbnails.push(load)}), original=f.api.view;
   f.topic.list_position=0;
@@ -4907,9 +4907,7 @@ test('835 outcome home keeps its primary sections and opens the secondary refere
   f.inject({api:f.api,bootstrap:f.bootstrap});
   await f.initialize();await drain();
   const ids=f.get('outcome-page').children.map(node=>node.id);
-  for(const id of ['outcome-standing','target-panel','pipeline-line','topic-navigation','outcome-references','outcome-team','outcome-tools']) assert.ok(ids.includes(id),id+' remains');
-  assert.ok(ids.indexOf('topic-navigation')<ids.indexOf('loop-panel'));
-  assert.ok(ids.indexOf('outcome-team')<ids.indexOf('also-waiting'));
+  assert.deepEqual(ids,['outcomes-status','retry-workspaces','outcome-team','outcome-references','page-here','topic-navigation','outcome-tools','outcome-standing','outcome-purpose','target-panel','pipeline-line','also-waiting','loop-panel','problems-panel','outcome-context']);
   assert.equal(f.calls.some(call=>call.name==='stars'),false,'closed references read no stars');
   const count=name=>f.calls.filter(call=>call.name===name).length, notes=count('memory_items'),tools=count('tools');
   f.get('outcome-context').open=true;
