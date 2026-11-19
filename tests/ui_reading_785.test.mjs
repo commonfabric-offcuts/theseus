@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { held785, solid785, capture785, read785, pill785, rect785, frames785, allExpressions785, expressions785, staleInit785 } from './reading_785_oracle.mjs';
 import { reading785Checks, names785, withRestored785 } from './reading_785_native.mjs';
 import { readingChecks } from './topic_reading_native.mjs';
+import { traceInit785, sourceProbes785, installTrace785, traceBegin785, traceMark785, traceReceipt785, traceRead785, frontier785, landing785, settlement785, TRACE_LIMIT785, SETTLEMENT_FRAMES785 } from './reading_785_trace.mjs';
 const source=readFileSync(new URL('../web/app.mjs',import.meta.url),'utf8');
 const cut=s=>s.slice(s.indexOf('let roomy = null, listAnchor'),s.indexOf('// The New line, just below the oldest message'));
 const sha=s=>createHash('sha256').update(s).digest('hex');
@@ -128,4 +129,71 @@ test('item 785 event label survives a separately named mutant phase',()=>{
  const history=vm.runInNewContext(expression,{observations,engine:'model'});
  history('runtime failure',{phase:'no-hold',error:'exact mutant exception'});
  assert.equal(observations[0].event,'runtime failure');assert.equal(observations[0].phase,'no-hold');assert.equal(observations[0].error,'exact mutant exception');
+});
+
+function pillContext785(colour) {
+ const pill={hidden:false,style:{left:'160px'},textContent:'New above ↑',contains:()=>true,getBoundingClientRect:()=>({top:12,bottom:48,left:160,right:280,width:120,height:36})};
+ return vm.createContext({document:{querySelector:()=>pill,elementFromPoint:()=>pill},getComputedStyle:()=>({backgroundColor:colour,opacity:'1',boxShadow:'0 4px 16px rgba(0,0,0,.18)',transform:'none'}),CSS:{supports:()=>true},matchMedia:()=>({matches:false}),innerWidth:600});
+}
+test('item 785 exact generated pill expression reads rgba alpha and solid/transparent/translucent surfaces',()=>{
+ const cases=[['rgba(4, 5, 6, 0)',0],['rgba(4, 5, 6, 0.5)',0.5],['rgba(4, 5, 6, 1)',1],['transparent',0],['rgb(4, 5, 6)',1]];
+ for(const [colour,alpha] of cases){const p=vm.runInContext(pill785,pillContext785(colour));assert.equal(p.alpha,alpha,colour);if(alpha===1)solid785(p);else assert.throws(()=>solid785(p),/pill surface is opaque/);}
+ const file=readFileSync(new URL('./reading_785_oracle.mjs',import.meta.url),'utf8'),original=file.match(/^export const pill785 = (.*);$/m)[1];
+ const dir=mkdtempSync(join(tmpdir(),'reading785-alpha-')),path=join(dir,'pill-source.js');
+ const control=s=>{const expression=vm.runInNewContext(s);assert.throws(()=>solid785(vm.runInContext(expression,pillContext785('rgba(4, 5, 6, 0)'))),/pill surface is opaque/,'actual generated rgba0 must fail surface oracle');solid785(vm.runInContext(expression,pillContext785('rgba(4, 5, 6, 1)')));};
+ try{const mutant=original.replace('String.raw`','`');assert.notEqual(mutant,original);writeFileSync(path,mutant);assert.notEqual(sha(readFileSync(path)),sha(original));assert.throws(()=>control(readFileSync(path,'utf8')),/actual generated rgba0 must fail surface oracle/);writeFileSync(path,original);assert.equal(sha(readFileSync(path)),sha(original));control(readFileSync(path,'utf8'));console.log(JSON.stringify({alphaInstrument785:{applied:sha(mutant),caught:true,restored:sha(original),control:true,generated:pill785}}));}finally{rmSync(dir,{recursive:true,force:true});}
+});
+test('item 785 actual older line selector and unchanged frontier observational expression; applied locator fault caught',()=>{
+ const actual='button.new-line-older[data-line=older]',seen=[],ctx=vm.createContext({window:{__trace785:{frontier:{olderCursor:123,loaded:['real-card']}}},document:{querySelector:s=>{seen.push(s);return s===actual?{hidden:false,disabled:false,getClientRects:()=>[1]}:null},querySelectorAll:()=>[{dataset:{id:'real-card'},getClientRects:()=>[1]}]}});
+ const control=s=>assert.equal(vm.runInContext(s,ctx),actual,'actual next-page button selector');
+ control(expressions785.olderControl);const before=JSON.stringify(ctx.window.__trace785.frontier);const state=vm.runInContext(frontier785,ctx);assert.equal(state.frontier.olderCursor,123);assert.equal(state.controls[1].available,true);assert.equal(JSON.stringify(ctx.window.__trace785.frontier),before,'inspection preserves actual frontier');
+ const dir=mkdtempSync(join(tmpdir(),'reading785-locator-')),path=join(dir,'locator.js'),original=expressions785.olderControl;
+ try{const mutant=original.replace(actual,'#new-line-older');writeFileSync(path,mutant);assert.notEqual(sha(readFileSync(path)),sha(original));assert.throws(()=>control(readFileSync(path,'utf8')),/actual next-page button selector/);writeFileSync(path,original);assert.equal(sha(readFileSync(path)),sha(original));control(readFileSync(path,'utf8'));console.log(JSON.stringify({locatorInstrument785:{applied:sha(mutant),caught:true,restored:sha(original),control:true}}));}finally{rmSync(dir,{recursive:true,force:true});}
+});
+function traceContext785() {
+ let clock=0;const listeners={},observer=[];
+ const node={dataset:{id:'real-anchor'},id:'',tagName:'BUTTON',isConnected:true,getBoundingClientRect:()=>({top:160,bottom:300,left:10,right:410}),getClientRects:()=>[1]};
+ const document={querySelector:()=>node,querySelectorAll:()=>[node],activeElement:node};
+ const win={fetch:async()=>({clone:()=>({json:async()=>({items:[{id:'arrival'}],next_cursor:55})})})};
+ const ctx=vm.createContext({window:win,document,performance:{now:()=>++clock,timeOrigin:1000},scrollY:0,addEventListener:(kind,fn)=>listeners[kind]=fn,MutationObserver:class{constructor(fn){observer.push(fn)}observe(){}},requestAnimationFrame:fn=>fn(),innerHeight:900});
+ vm.runInContext(traceInit785,ctx);return {ctx,win,node,listeners,observer};
+}
+test('item 785 timestamped trace captures scroll/read/render and unchanged lexical anchor projections, bounded and allowlisted',async()=>{
+ const {ctx,win,node,listeners,observer}=traceContext785();vm.runInContext(traceBegin785('test'),ctx);vm.runInContext(traceReceipt785('op','arrival','committed'),ctx);assert.equal(win.__trace785.read().events.find(e=>e.event==='Core receipt observed').id,'arrival');
+ listeners.scroll();listeners.scrollend();await win.fetch('/api/view',{body:JSON.stringify({name:'topic_messages',args:{topic_id:'isolated',direction:'after',cursor:50}})});await new Promise(resolve=>setImmediate(resolve));
+ // The actual source probe conditions execute against lexical values; these
+ // calls are instrument controls, never a synthetic native gesture claim.
+ const saved={anchor:node,tops:new Map([[node,160]]),y:0,newest:50};Object.assign(ctx,{anchor:node,tops:saved.tops,point:null,saved,listAnchor:saved,hold:node,anchorActing:false,anchorDepth:0,kind:'messages',views:{olderCursor:55,messages:new Map([['real-anchor',{}]])}});
+ for(const probe of sourceProbes785(source)){assert.equal(source.split('\n')[probe.lineNumber],probe.target);assert.equal(vm.runInContext(probe.condition,ctx),false);}
+ win.__reading785={e:node};node.querySelectorAll=()=>[node];observer[0]();const trace=vm.runInContext(traceRead785,ctx),events=trace.events;
+ for(const event of ['scroll','scrollend','read start','read answer','capture','restore enter','restore after scroll','remember','paint','frontier','DOM render'])assert.ok(events.some(e=>e.event===event),event);
+ assert.equal(events.find(e=>e.event==='capture').savedTop,160);assert.equal(events.find(e=>e.event==='restore enter').saved.anchor.id,'real-anchor');assert.equal(trace.frontier.olderCursor,55);
+ assert.ok(events.every((e,i)=>Number.isFinite(e.t)&&Number.isFinite(e.epoch)&&(!i||e.t>events[i-1].t)));
+ assert.equal(events.find(e=>e.event==='read answer').ids[0],'arrival');
+ assert.doesNotMatch(JSON.stringify(trace),/headers|Authorization|token|requestId/);
+ for(let i=0;i<TRACE_LIMIT785+10;i++)win.__trace785.record('bounded');assert.equal(win.__trace785.read().events.length,TRACE_LIMIT785);assert.ok(win.__trace785.read().dropped>0);
+ const calls=[];await installTrace785({send:async(method,args)=>{calls.push({method,args});return {breakpointId:'owned'}}});assert.equal(calls.filter(c=>c.method==='Debugger.setBreakpointByUrl').length,6);
+});
+test('item 785 applied trace projection fault fails exact source diagnostic oracle and restores bytes',()=>{
+ const original=sourceProbes785(source).find(p=>p.event==='capture').condition,dir=mkdtempSync(join(tmpdir(),'reading785-trace-')),path=join(dir,'condition.js');
+ const control=s=>{const {ctx,node,win}=traceContext785();win.__trace785.begin('projection');Object.assign(ctx,{anchor:node,tops:new Map([[node,160]]),point:null});vm.runInContext(s,ctx);assert.equal(win.__trace785.read().events.find(e=>e.event==='capture').savedTop,160,'captured source top must equal actual lexical anchor top');};
+ try{const mutant=original.replace('tops.get(anchor)??null','(tops.get(anchor)+8)');writeFileSync(path,mutant);assert.notEqual(sha(readFileSync(path)),sha(original));assert.throws(()=>control(readFileSync(path,'utf8')),/captured source top must equal actual lexical anchor top/);writeFileSync(path,original);assert.equal(sha(readFileSync(path)),sha(original));control(readFileSync(path,'utf8'));console.log(JSON.stringify({traceInstrument785:{applied:sha(mutant),caught:true,restored:sha(original),control:true}}));}finally{rmSync(dir,{recursive:true,force:true});}
+});
+test('item 785 fixed settlement preserves acceptance -1 and retirement 0 as separate predicates',async()=>{
+ const {ctx,node}=traceContext785();let top=-0.5,frames=0;node.getBoundingClientRect=()=>({top,bottom:100,left:10,right:410});node.contains=()=>true;node.closest=()=>node;node.classList={contains:()=>false};node.hidden=true;
+ ctx.document.querySelector=s=>s==='.new-above'?null:node;ctx.requestAnimationFrame=f=>{frames++;f()};
+ const state=vm.runInContext(landing785('arrival'),ctx);assert.equal(state.accepts,true);assert.equal(state.retires,false);const settled=await vm.runInContext(settlement785('arrival'),ctx);assert.equal(frames,SETTLEMENT_FRAMES785);assert.equal(settled.length,12);assert.equal(settled.at(-1).arrival.top,-0.5);
+ top=-8;assert.equal(vm.runInContext(landing785('arrival'),ctx).accepts,false,'8px position fault cannot pass arrivalSightPx=1');
+ top=0.5;assert.equal(vm.runInContext(landing785('arrival'),ctx).retires,true);
+ for(const expr of [traceInit785,traceRead785,traceBegin785('hostile"\\\n'),traceMark785('hostile"\\\n'),traceReceipt785('op"\\\n','id"\\\n','committed'),frontier785,landing785('hostile"\\\n'),settlement785('hostile"\\\n')])new vm.Script(expr);
+});
+test('item 785 applied generated landing and frame faults fail then byte restore their controls',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'reading785-settlement-')),path=join(dir,'generated.js');
+ const context=top=>{const {ctx,node}=traceContext785();node.getBoundingClientRect=()=>({top,bottom:100,left:10,right:410});node.contains=()=>true;node.closest=()=>node;node.classList={contains:()=>false};ctx.document.querySelector=s=>s==='.new-above'?null:node;return ctx;};
+ const controls=[
+  ['landing bound',landing785('arrival'),'r.top>=-1','r.top>=-8',async s=>assert.equal(vm.runInContext(s,context(-8)).accepts,false,'8px fault remains outside arrivalSightPx=1')],
+  ['retirement predicate',landing785('arrival'),'r.top>=0','r.top>=-1',async s=>assert.equal(vm.runInContext(s,context(-0.5)).retires,false,'negative top cannot retire offer')],
+  ['frame budget',settlement785('arrival'),'frame<12','frame<13',async s=>assert.equal((await vm.runInContext(s,context(0.5))).length,12,'fixed frame budget remains twelve')],
+ ];
+ try{for(const [name,original,target,replacement,control] of controls){assert.equal(original.split(target).length,2);const mutant=original.replace(target,replacement);writeFileSync(path,mutant);assert.notEqual(sha(readFileSync(path)),sha(original));await assert.rejects(control(readFileSync(path,'utf8')),{name:'AssertionError'});writeFileSync(path,original);assert.equal(sha(readFileSync(path)),sha(original));await control(readFileSync(path,'utf8'));console.log(JSON.stringify({settlementInstrument785:{name,applied:sha(mutant),caught:true,restored:sha(original),control:true}}));}}finally{rmSync(dir,{recursive:true,force:true});}
 });

@@ -142,6 +142,7 @@
   "tests/reader_quote_mutation.mjs",
   "tests/reading_785_native.mjs",
   "tests/reading_785_oracle.mjs",
+  "tests/reading_785_trace.mjs",
   "tests/reading_785_sources.json",
   "tests/release-rule.mjs",
   "tests/release_rule.test.mjs",
