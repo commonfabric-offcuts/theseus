@@ -45,6 +45,7 @@ from .message_edit import (EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED, EDIT_SESSIO
                            MESSAGE_EDIT_UP)
 from .invite import INVITATIONS_BACKFILL, INVITATIONS_DOWN, INVITATIONS_OCCUPIED, INVITATIONS_SCHEMA
 from .tools_core import TOOLS_DOWN, TOOLS_OCCUPIED, TOOLS_SCHEMA
+from .dossier_order import ORDER_SCHEMA as DOSSIER_ORDER_SCHEMA, ORDER_DOWN as DOSSIER_ORDER_DOWN, ORDER_OCCUPIED as DOSSIER_ORDER_OCCUPIED, freeze as freeze_dossier_order
 from .outcome_end import ENDS_DOWN, ENDS_OCCUPIED, ENDS_SCHEMA
 from .stacks import REFRESH_UP, REFRESH_DOWN
 from .cover_refresh import WRITER_SCHEMA, WRITER_BACKFILL
@@ -208,6 +209,7 @@ STEPS = (
     ("47", "48", REFRESH_UP + WRITER_SCHEMA + WRITER_BACKFILL,
      ["DROP TABLE cover_writers"] + REFRESH_DOWN,
      "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='cover_refresh')"),
+    ("48", "49", DOSSIER_ORDER_SCHEMA + [freeze_dossier_order], DOSSIER_ORDER_DOWN, DOSSIER_ORDER_OCCUPIED),
 )
 
 

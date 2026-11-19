@@ -19,7 +19,7 @@ export const GLYPH_OF = Object.freeze({
   // Item 601: an archive act shows the Reader's archive tray, in every menu.
   'Move below More': 'archive', 'Bring back above More': 'back',
   'Move its stack up': 'up', 'Move its stack down': 'down', 'Fold its stack': 'chevron', 'Open its stack': 'chevdown',
-  'Join the stack above': 'joinup', 'Join the stack below': 'joindown', 'Let new replies move it': 'unpin', Undo: 'undo',
+  'Join the stack above': 'joinup', 'Join the stack below': 'joindown', 'Let new replies move it': 'unpin', 'Reset position': 'unpin', Undo: 'undo',
   'Move or join…': 'move', 'Quote selection': 'quote', 'Start a topic from this': 'topic', 'Add to pipeline': 'pipeline',
   'Wide layout': 'layout', 'Stacked layout': 'layout',
   'Move up': 'up', 'Move down': 'down', 'Open its record': 'openpage', 'Drop…': 'drop',

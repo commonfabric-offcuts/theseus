@@ -22,7 +22,7 @@ message of it; while the reader has a star in it, it stays above More for them
 ## Core
 
 `stack.aside`, target `{message_id: root}`, expected `{aside_revision, authority}`,
-args `{through: integer|null}` records an append-only personal message act.
+args `{through: integer|null, key?: number}` (the optional key restores the exact position on Undo) records an append-only personal message act.
 `through` is the newest message of the dossier the page had seen before the
 move; null brings it back. It cannot be later than the newest message the
 reader can see in the topic. A target which is no longer a
@@ -32,7 +32,7 @@ fencing prevents a late Undo from reversing another device's change.
 
 `stack_positions`, args `{topic_id, message_ids:[up to 100 ids]}`, returns
 `items:[{message_id, stack_position}]`. Topic-message pages also carry
-`stack_position: {root_id, through, aside_revision, below, name, name_revision, join_revision, placed, place_revision, places, cover, cover_revision, starred, at:{messages,acts}}`,
+`stack_position: {order_key, order_tie, order_entry_key, root_id, through, aside_revision, below, name, name_revision, join_revision, placed, place_revision, places, cover, cover_revision, starred, at:{messages,acts}}`,
 where `name` and `name_revision` are the dossier's short name as its first
 message holds it (docs/reply-stacks.md), so a page holding only replies shows it,
 and `join_revision` is its first message's join revision, so such a page joins
