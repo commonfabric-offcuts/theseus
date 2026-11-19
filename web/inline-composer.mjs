@@ -35,7 +35,7 @@ export class InlineComposer {
     document.querySelector('#new-message')?.addEventListener('click', () => this.pop());
     // Put back by the person (✕, Escape, a press outside), the composer folds to its line while still up, so it
     // comes back into its place at the height its holder kept there, and no card behind it moves (item 589).
-    const putBack = () => { this.bar.fold(); this.sheet?.close(); };
+    const putBack = () => { if (this.sheet?.classList.contains('notebook-mode')) return; this.bar.fold(); this.sheet?.close(); };
     document.querySelector('#new-message-close')?.addEventListener('click', putBack);
     this.sheet?.addEventListener('cancel', event => { if (!event.defaultPrevented) this.bar.fold(); });
     // Every close of the sheet folds the composer back to its line. The focus

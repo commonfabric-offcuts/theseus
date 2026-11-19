@@ -34,6 +34,7 @@ function app({loaded=false, readerOpen=false}={}) {
     here:{page:false},reader:{dialog:{open:readerOpen}},
     $:id=>doc.byId(id),entries:()=>views.messages.has('root')?[{dataset:{id:'root'}}]:[],
     reveal:(_entry,opts)=>calls.push(['reveal',opts]),opened:()=>card,
+    releaseTopArrivals:()=>calls.push(['releaseTopArrivals']),anchorHold:null,rememberListAnchor:()=>{},
     run:job=>Promise.resolve().then(job),
     openSource:async ref=>{calls.push(['openSource',copy(ref)]); scope.reader.dialog.open=true;},
     notebookReturning:()=>false,notebookSheetOf:()=>({resume:()=>calls.push(['resume'])}),
@@ -52,13 +53,21 @@ function app({loaded=false, readerOpen=false}={}) {
   return {scope,calls,card,views,doc,presentation,open:route=>context.openDestination(route,'fixture'),
     initial:async route=>{
       scope.route=route;scope.topicId=route.id;scope.location={hash:''};scope.shell.rename=()=>{};
-      vm.runInContext(between("  const anchored = route.kind === 'topic'", "  if (route.kind === 'conversation')"),context);
       // Observe the actual startup branch, including asynchronous work queued by run().
       const queued=[];scope.run=job=>{const promise=Promise.resolve().then(job);queued.push(promise);return promise;};
-      vm.runInContext(between('  if (anchored) {', "  // A Notebook page's link opens the page in the Reader"),context);
+      const start=source.lastIndexOf('  if (anchored) {'),end=source.indexOf("  // A Notebook page's link opens the page in the Reader",start);
+      assert.ok(start>0&&end>start);
+      await vm.runInContext('(async()=>{'+between("  const anchored = route.kind === 'topic'", "  if (route.kind === 'conversation')")+source.slice(start,end)+'})()',context);
       await Promise.all(queued);
     }};
 }
+
+test('854 cross-topic landing resumes the kept Notebook after landing, not in a Reader',async()=>{
+  const f=app();f.scope.notebookReturning=()=>true;
+  await f.initial(target('t'));
+  assert.ok(f.calls.findIndex(call=>call[0]==='resume')>f.calls.findIndex(call=>call[0]==='reveal'));
+  assert.equal(f.calls.filter(call=>call[0]==='openSource').length,0);
+});
 
 test('780 outline emits landing intent for pointer/Return/tap path and native href fallback',()=>{
   const doc=miniDocument(),calls=[],subject=Object.create(OutlineDossiers.prototype);

@@ -1081,6 +1081,19 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .notebook-sheet{display:flex;flex-direction:column;height:100%;min-height:0}
 .notebook-sheet-head{flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;grid-template-areas:"title views full close" "status status status status";align-items:center;gap:.35rem .5rem;padding:.45rem .5rem .45rem 1.1rem;border-bottom:1px solid var(--line)}
 .notebook-sheet-title{grid-area:title;min-width:0;margin:0;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.notebook-sheet-dock{grid-area:dock}.notebook-sheet-dossiers{grid-area:pick;justify-self:start}
+/* The same sheet becomes nonmodal; the existing topic feed keeps scrolling.
+   The outline stays at left and the Notebook takes the things rail's space. */
+@media(min-width:1280px){
+  .notebook-sheet-head:has(.notebook-sheet-dock:not([hidden])){grid-template-columns:minmax(0,1fr) auto auto auto;grid-template-areas:"title dock full close" "views views views views" "pick pick pick pick" "status status status status"}
+  body.notebook-docked .workspace-layout{grid-template-columns:18rem minmax(0,1fr) minmax(0,1fr)}
+  body.notebook-docked #things{display:none}
+  dialog.composer-home.notebook-docked[open]{position:fixed;inset:1rem 1rem 1rem auto;margin:0;width:calc((100vw - 18rem)/2 - 1.5rem);max-width:none;height:calc(100dvh - 2rem);max-height:calc(100dvh - 2rem);z-index:21;animation:none}
+  body.notebook-docked main{min-width:0;padding-inline:1rem}
+}
+.notebook-dossier-picker{flex:none;max-height:35vh;overflow:auto;padding:.5rem 1rem;border-bottom:1px solid var(--line);overscroll-behavior:contain}
+.notebook-dossier-choices{display:flex;flex-direction:column;gap:.2rem}
+.notebook-dossier-choices>button{text-align:left;overflow:hidden;text-overflow:ellipsis;max-width:100%;background:transparent;border-color:transparent}
 .notebook-sheet-views{grid-area:views;display:flex;align-items:center;gap:.25rem}.notebook-sheet-status{grid-area:status;min-width:0;max-width:none}.notebook-sheet-full{grid-area:full}.notebook-sheet-close{grid-area:close}
 .notebook-sheet-status .deck-status{min-height:0;flex-wrap:nowrap}.notebook-sheet-status .deck-status>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Recovery controls follow the whole notice, wrapping below it when needed. */

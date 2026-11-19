@@ -3239,7 +3239,7 @@ async function initialize() {
   if (atUnread) run(() => firstReading.then(landOnUnread));
   freshness.invalidate('dossier_move', 0); freshness.request();
   if (anchored) {
-    if (anchoredLand) run(() => landOnMessage(anchored));
+    if (anchoredLand) run(async () => { await landOnMessage(anchored); if (notebookReturning()) notebookSheetOf().resume(); });
     else {
       const entry = entries($('messages')).find(child => child.dataset.id === anchored), card = entry && cardIn(entry);
       run(async () => { await openSource({ kind: 'message', id: anchored }, card || $('main'), null, 'reply', null, { land: true }); if (notebookReturning()) notebookSheetOf().resume(); });
@@ -3847,10 +3847,13 @@ function notebookSheetOf() {
       return page;
     },
     fullHref: (id, mode) => routeHref({ kind: 'cards', id, ...(mode === 'text' ? { view: 'text' } : {}) }),
+    feed: topic && views ? { topicId: topic.id, read: (name, args) => pipelineView(name, args),
+      open: (id, message) => openDestination({ kind: 'topic', id, message, land: true }, 'the dossier') } : null,
     // A stack in the open topic opens in its Reader over the feed; one elsewhere opens its topic's page.
-    openStack: async (topicId, messageId) => {
+    openStack: async (topicId, messageId, land = false) => {
       if (topic && views && topicId === topic.id) { await openSource({ kind: 'message', id: messageId }, $('main')); return true; }
-      await openDestination({ kind: 'topic', id: topicId, message: messageId }, 'the reply');
+      await openDestination({ kind: 'topic', id: topicId, message: messageId, ...(land ? { land: true } : {}) }, 'the reply');
+      if (land && !retired) return true; // A refused navigation brings the kept sheet back here.
       return false;
     },
     goBack: address => openDestination(parseRoute(new URL(address, location.href)), 'the Notebook page'),
