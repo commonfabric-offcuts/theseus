@@ -1285,6 +1285,19 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 #reader[data-card-reply] :is(.who-chip,.who-panel){--panel:var(--stack-folder);--paper:var(--stack-folder);--ink:var(--stack-folder-ink);--muted:var(--stack-meta-ink);--soft:var(--stack-folder-deep);--accent:color-mix(in srgb,var(--stack-folder) 80%,var(--stack-folder-ink));--on-accent:var(--stack-folder-ink);--line:color-mix(in srgb,var(--stack-folder-ink) 30%,transparent);background:var(--stack-folder);color:var(--stack-folder-ink)}
 #reader[data-card-reply] .who-chip[aria-expanded=true]{background:var(--stack-folder-deep)}
 
+
+/* Item 650: only horizontal width changes; the existing vertical rules hold.
+   The transparent 44px targets carry quiet neutral grips, never card edges. */
+dialog#reader[data-width-edges]{--composer-width:var(--composer-width-stacked,var(--widest))}
+dialog#reader[data-width-edges][data-layout=wide]{--composer-width:var(--composer-width-wide,var(--widest))}
+dialog[data-width-edges][open]:not(.notebook-mode):not([data-card-reply]){width:min(var(--composer-width,var(--widest)),calc(100vw - 3rem));min-width:min(760px,calc(100vw - 3rem));margin-inline:auto}
+.composer-edge{position:absolute;z-index:6;top:calc(50% - 22px);width:44px;height:44px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:ew-resize}
+.composer-edge[data-edge=left]{left:0}.composer-edge[data-edge=right]{right:0}
+.composer-edge::after{content:'';position:absolute;top:10px;bottom:10px;width:3px;border-radius:2px;background:var(--muted);opacity:.55}
+.composer-edge[data-edge=left]::after{left:3px}.composer-edge[data-edge=right]::after{right:3px}
+.composer-edge:hover::after,.composer-edge:focus-visible::after{opacity:1}
+dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[data-card-reply]>.composer-edge{display:none}
+@media(max-width:760px){dialog[data-width-edges][open]:not(.notebook-mode):not([data-card-reply]){width:min(var(--composer-width,100vw),100vw);min-width:min(280px,100vw);margin-inline:auto}}
 /* Item 643: Done occupies the same space as + Add; touch reaches its names. */
 .topic-people .add-chip{display:inline-grid;grid-template-areas:"word"}
 .topic-people .add-chip>span,.topic-people .add-chip::after{grid-area:word}
@@ -1336,3 +1349,13 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .onboarding-toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); max-width: calc(100vw - 3rem); padding: .6rem 1rem; border: 1px solid var(--line); border-radius: .5rem; background: var(--panel); color: var(--ink); z-index: 100; }
 
 #outcome-menu { min-width: 44px; min-height: 44px; flex: none; }
+
+/* Text display preview: spacing is layout only; no separator characters are
+   inserted into a sentence or into what a selection quotes. */
+.reading-pane article>.sentence-paragraph{display:block}
+.reading-pane article>.sentence-paragraph+.sentence-paragraph{margin-top:.45rem}
+.md-item-words>.sentence-paragraph{display:block}
+.md-item-words>.sentence-paragraph+.sentence-paragraph{margin-top:.45rem}
+.menu-description{display:flex;flex-direction:column;max-width:26rem;white-space:normal}
+.menu-description small{font-size:.78rem;font-weight:400;color:var(--muted)}
+.message-menu-list [aria-checked=true]{background:var(--soft)}

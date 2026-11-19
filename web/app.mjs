@@ -86,7 +86,8 @@ import { readerSteps } from './stack-order.mjs';
 import { headerClick } from './reply-stacks.mjs';
 import { revealSelection } from './reveal.mjs';
 import { deferFencePaint } from './fence-copy.mjs';
-import { formatWords } from './message-format.mjs';
+import { formatWords, redrawMessageWords } from './message-format.mjs';
+import { TextDisplayPreferences, textDisplayRules } from './text-display-rules.mjs';
 import { shell } from './rails.mjs';
 import { SessionRenewal } from './session-renewal.mjs';
 import { showLine, lineText } from './lines.mjs';
@@ -1270,7 +1271,7 @@ function paintViews(kind) {
       const answers = replyLine(item);
       // The line a reply quotes is cut, so an address at its end is left as words.
       if (answers) card.append(linkWords(node('span', undefined, 'message-reply-to'), answers, { partial: true }));
-      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts }));
+      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // Its images as thumbnails after its words, each read through the message (card-images.mjs, item 474).
       paintCardImages(card, item, cardImageBytes(item.id));
@@ -2074,6 +2075,7 @@ function messageMenuItems(item, say, anchor = say) {
     const marked = marks.state(item.id)?.marked === true;
     items.push({ label: marked ? 'Mark read' : 'Mark unread', glyph: marked ? 'read' : 'unread', act: () => run(() => markFromMenu(item.id, !marked)) });
   }
+  items.push(...textDisplayMenuItems());
   return cardMenuActs(item, [...items, ...stack.last], anchor);
 }
 function moveDossier(id, anchor) {
@@ -2179,6 +2181,7 @@ function openReaderMenu() {
   if (reader.quotable) items.push({ label: 'Quote selection', glyph: 'quote', act: () => reader.quote() });
   if (!$('start-from-message').hidden) items.push({ label: 'Start a topic from this', glyph: 'topic', act: () => openStartLine() });
   if (!$('add-to-pipeline').hidden) items.push({ label: 'Add to pipeline', glyph: 'pipeline', act: () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true)) });
+  if (message && !messageEdit) items.push(...textDisplayMenuItems());
   if (reader.layoutChoice) items.push({ label: reader.layoutChoice, glyph: 'layout', act: () => reader.toggleLayout() });
   openMessageMenu({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message', sheet: true });
 }
@@ -2320,7 +2323,7 @@ function repaintEdited(ids, edits) {
     const preview = card.querySelector(':scope > .message-preview');
     const keepingWhole = reader?.card === card && item.preview;
     if (preview && !keepingWhole) {
-      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts });
+      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() });
       preview.classList.remove('scroll-in-place');
       const cue = card.querySelector(':scope > .message-preview-cue');
       if (item.preview && !cue) preview.after(node('span', CUE, 'message-preview-cue'));
@@ -2745,6 +2748,26 @@ async function reconnect() {
   }
   return true;
 }
+let textDisplayPreferences = null;
+const displayRules = () => textDisplayPreferences?.enabled ?? [];
+
+function textDisplayMenuItems() {
+  return textDisplayRules.map(rule => ({
+    label: `${rule.name} · ${displayRules().includes(rule.id) ? 'On' : 'Off'}`,
+    checked: displayRules().includes(rule.id), glyph: 'layout',
+    act: () => {
+      textDisplayPreferences.toggle(rule.id);
+      keepListAnchor(() => {
+        for (const host of document.querySelectorAll('.message-preview')) redrawMessageWords(host, displayRules());
+      });
+      // Source-only repaint: no writing, session, read mark or delivery action.
+      if (reader?.dialog.open && reader.source?.source_ref?.kind === 'message' && !reader.presentation?.sourceUnavailable) {
+        reader.redrawSource();
+      }
+    },
+  }));
+}
+
 let startup = null;
 function start() {
   if (!startup) startup = initialize().finally(() => { startup = null; });
@@ -2756,6 +2779,9 @@ async function initialize() {
   api = new Api(token); api.refused = () => run(reconnect);
   bootstrap = await api.bootstrap();
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
+  let displayStorage;
+  try { displayStorage = window.localStorage; } catch { /* device preferences stay in memory */ }
+  textDisplayPreferences = new TextDisplayPreferences(bootstrap.instance_id, bootstrap.actor, displayStorage);
   // Every page, the phone check among them, takes the restarted server's session in place.
   renewal ??= new SessionRenewal({ api, bootstrap, live: () => live, makeApi: fresh => new Api(fresh),
     adopted: fresh => { document.querySelector('meta[name="aim-next-session"]').content = fresh; } });
@@ -2939,7 +2965,7 @@ async function initialize() {
     recipientsPainted: names => { if (here?.conversation || answering.size) answeredBy(inline, $('inline-composer').querySelector('.audience'), names, Boolean(here?.conversation)); },
   });
   reader = new Reader({
-    images: topicImages, imageBytes, pageImage,
+    images: topicImages, imageBytes, pageImage, displayRules,
     cardSelection: card => menu?.passages.chosen(messageEntries.get(card.dataset.id)) ?? null,
     actorName: displayActor,
     actorLabel,
@@ -3030,7 +3056,7 @@ async function initialize() {
   mountFeedFences($('messages'));
   keepLineRoom($('main'), $('messages'));
   watchListAnchor();
-  cardScroll = new CardScroll({ read: async (id, readClass) => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass }), bootstrap.instance_id), press: pressHold });
+  cardScroll = new CardScroll({ read: async (id, readClass) => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass }), bootstrap.instance_id), press: pressHold, displayRules });
   const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
   // A thumbs-up reads its message in Core (docs/thumbs.md). One that read it
   // (Core settled the person's delivery of it, or cleared their mark on it)
@@ -3555,7 +3581,7 @@ async function initializeOutcomePage(route) {
     // an outcome's own page says its questions once, in "Where it stands".
     waitingHost=$('waiting-on-you');
     if(attention?.last)paintWaiting(waitingHost,attention.last,(id,title)=>openDestination({kind:'topic',id},title));
-    // The home has no heading of its own: the list of outcomes is the page, and a press on one opens its Conversation (item 384).
+    // The home has no heading of its own: the list of outcomes is the page, and a press on one opens its home (item 835).
     document.querySelector('#main > .topic-header').hidden=true;
     $('outcomes-heading').textContent='Your outcomes';
     $('outcome-page').append($('outcome-navigation'));document.querySelector('.rail').hidden=true;
@@ -3647,7 +3673,7 @@ async function initializeOutcomePage(route) {
     // A commit may change the team or the outcome's revision as well as its
     // topics, and other outcomes' questions in the line above them. Back from a
     // refusal, the topics show once that commit's reads have painted what stands
-    // above them (those questions, where it stands, its conversation), so a topic
+    // above them (standing, target and Pipeline), so a topic
     // does not move down under a pointer as each lands.
     const reload=followCommits(async()=>{
       const reads=await Promise.allSettled([outcomeRail.load(),refresh()]);
@@ -3670,7 +3696,7 @@ function pipelineSend(kind,target,args,expected={},operation_id=crypto.randomUUI
     expected:{...expected,authority:{authority_id,authority_epoch}},args});
 }
 // The rail's Pipeline row (D19), placed by the outcome's rail between the
-// conversation and the topics, and read with the rail on every commit.
+// topics, and read with the rail on every commit.
 // loaded hears each read (a message's Add to pipeline shows only while the pipeline is on).
 function pipelineSection(workspace,current,loaded=()=>{}) {
   const row=new PipelineRow({section:$('pipeline-navigation'),host:$('pipeline-links'),workspace,current,read:pipelineView,reader:bootstrap.actor});
@@ -3683,7 +3709,7 @@ function skillsSection(workspace,current=null) {
   return {name:'skills',node:$('skills-navigation'),load:()=>rail.load()};
 }
 // An outcome's pipeline, or one item's record in it: the rail shows this
-// outcome as a topic page's does (its conversation, Pipeline row, topics and
+// outcome as a topic page's does (Pipeline row, topics and
 // Notebook pages); the page and the rail read again on every commit.
 async function initializePipelinePage(route) {
   status('');

@@ -236,6 +236,14 @@ Escape is always what is shown now's (`unseen`).
 
 ## Size
 
+The Reader and New message sheet start at their existing widths. Dragging
+either outer edge resizes them symmetrically around the window's centre,
+horizontally only; Left/Right on a focused edge does the same (item650,
+[composer-width.md](composer-width.md)). Stacked and Wide keep separate
+page-lifetime choices through close/reopen; New message has its own choice.
+Reload restores the defaults. The shared in-card reply keeps its card's width
+and offers no resize edges; returning to full Reader restores the mode's choice.
+
 The Reader is as tall as the visible window and grows with its width up to
 72rem (100rem in Wide), keeping 1.5rem around it on a laptop. On a phone,
 it fills the visible window above the keyboard. The Wide reply fills its

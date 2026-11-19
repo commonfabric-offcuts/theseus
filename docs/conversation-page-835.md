@@ -62,3 +62,27 @@ Initial new checks caught fixture assumptions about the ask contract, agent
 exposure writes and the inline presentation callback. The retained-content
 check also exposed a missing media-reader connection in the embedded section;
 that is fixed. Raw failing and restored logs remain in auditor/evidence.
+
+## Frozen comparison on release 126
+
+The candidate carries automatically onto live 126
+`d5c46e3fd3696be586585d9765bfd821049eb461`; no conflict was hand-resolved.
+The same fourteen focused families pass 414/414 on that live baseline. The
+candidate, including the new 835 family, passes 416/416, with zero failures
+or skips. Nine obsolete special-Conversation checks are retired; the old wall
+Mark read check is replaced by a no-ack wall-removal check, and eleven new
+adapter/routing/content checks are added. Existing 768/783/785/650 behavior remains in the combined source.
+
+Five applied mutation controls fail as intended and their separately restored
+controls pass: route an outcome back to Conversation; omit the companion topic;
+retain the legacy address; omit the embedded image reader; corrupt the isolated
+Core fixture's topic record. Each Python phase uses a fresh bytecode-cache
+prefix. The retained-image check reads through the supplied API callback,
+without a browser. Raw evidence: `835-baseline126.tap`, `835-candidate126.tap`,
+`835-mutation-checks.py`, `835-mutations.json`, and each mutant/restored TAP
+under `~/.local/share/theseus/auditor/evidence/`.
+
+No preview, browser, native suite, full suite or CI was run. These checks do
+not prove touch, focus, layout or image rendering in a native browser. Tony's
+live check remains the acceptance of those interactions. Prior native limits
+on 768/783/650 remain source-bound; none is promoted by this comparison.

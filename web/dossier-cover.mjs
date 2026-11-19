@@ -1,6 +1,6 @@
-// A dossier's cover (item 624, docs/dossier-covers.md): the folder's first
-// sheet, right under its tab, saying where the dossier stands, what waits on
-// the outcome's owner (each with the default that holds if they say nothing),
+// A dossier's cover (item 624, docs/dossier-covers.md): first in the folder,
+// right under its tab and above its messages, saying where it stands, what
+// waits on the outcome's owner (each with the default that holds if they say nothing),
 // and its payload, proposed until the owner's own 👍 on the payload's message,
 // or their reply to it that the cover names as the word, makes it done, said
 // with how it was given.

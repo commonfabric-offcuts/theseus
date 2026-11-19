@@ -141,22 +141,21 @@ links to the durable request. Reload does not end the wait. A reply, the owner's
 Done, delivery acknowledgement or a timer never ends it. The state, routing,
 retry identity and preview limitations are in [cover-refresh.md](cover-refresh.md).
 
-A dossier's cover is drawn as the folder's first sheet, after the entry of
-its displayed head and before the chevron and the replies, both closed and
-open (`web/dossier-cover.mjs`). It is not drawn inside the head's card,
-because a closed folder shows that card as its tab alone. When the first
-message is above the loaded page, the reply that heads what is loaded is the
-tab, and the sheet is drawn after it, from the dossier's place
-(`stackCover` in `web/stack-order.mjs`). Earlier messages keeps an already
-displayed stack's head and place, even when it loads the dossier's first
-message; the one sheet stays with that stack and tab. The older messages
-appear where the button was, as described in [reply-stacks.md](reply-stacks.md),
-"What one stack never loses". When the page is read again and the first
-message becomes the stack's head, the one sheet is drawn after that head.
-A dossier whose only loaded message is one reply has no folder to draw a sheet
-in: that card shows its dossier's cover as pills under who wrote it, as a
-message on its own does. A cover sheet appears when the page gathers its
-messages into a folder. The sheet shows:
+A dossier's cover is drawn first in the folder, directly under its name row
+and above the first message's card, both closed and open (`web/dossier-cover.mjs`).
+It has the folder's own colour (`--stack-folder`) in light and dark, with readable
+words, a soft top inner shadow and a faint lighter bottom inner edge. Its pills,
+spacing and rounded corners stay the same. The tab stands above the folder even
+when its head's message is closed.
+
+When the first message is above the loaded page, the folder gets its cover from
+its dossier's place (`stackCover` in `web/stack-order.mjs`). More keeps the existing
+stack's head and place; the one sheet stays above its messages as older messages
+arrive. When the page is read again with its real first message loaded, the cover
+still precedes that card. Singletons also have a folder and one cover sheet under
+the separate name row (items 799/803); they do not repeat the cover as card pills.
+The Reader keeps its cover above the source body.
+The sheet shows:
 
 - where the dossier stands;
 - its payload, with its kind as a label, its words, its link, a pill, and the
