@@ -110,6 +110,22 @@ function arrowIcon(doc) {
 }
 const repliedWords = sent => (sent === null ? 'You replied' : `You replied at ${shownTime(sent)}`);
 
+// Keep the shown tip inside the page's viewport, including when its arrow
+// is near either edge. innerWidth can already include page overflow on a
+// phone; clientWidth is the device-sized layout we must keep (831).
+function placeReplyTip(arrow) {
+  const tip = arrow.querySelector('.replied-words');
+  // Measure off the left edge first: even a temporary right overflow can
+  // enlarge WebKit's page scroll area before the final placement.
+  tip.style.setProperty('--reply-tip-left', '-100vw');
+  const size = tip.getBoundingClientRect().width;
+  if (!size) return;
+  const at = arrow.getBoundingClientRect();
+  const edge = 16, width = arrow.ownerDocument.documentElement.clientWidth;
+  const left = Math.max(edge, Math.min(at.left, width - edge - size));
+  tip.style.setProperty('--reply-tip-left', `${left - at.left}px`);
+}
+
 // The card's read and agent-talk state, and its reply arrow: on the card's
 // author line, beside the time, shown once the person has replied. It sits
 // there, not in a corner, so the message bar (message-menu.mjs), which floats
@@ -140,12 +156,13 @@ export function paintReading(card, item, { read, quiet, go }) {
   arrow.title = sent === null ? words : `You replied at ${datedTime(sent)}`;
   const shown = arrow.querySelector('.replied-words');
   if (shown.textContent !== words) shown.textContent = words;
+  arrow.onpointerenter = () => placeReplyTip(arrow);
   arrow.onpointerdown = event => { arrow.dataset.pointer = event.pointerType; };
   arrow.onclick = event => {
     event.stopPropagation();
     const touched = arrow.dataset.pointer === 'touch' || arrow.dataset.pointer === 'pen';
     delete arrow.dataset.pointer;
-    if (touched && !('shown' in arrow.dataset)) { arrow.dataset.shown = ''; return; }
+    if (touched && !('shown' in arrow.dataset)) { arrow.dataset.shown = ''; placeReplyTip(arrow); return; }
     delete arrow.dataset.shown;
     go(item.replied.id);
   };
@@ -159,6 +176,9 @@ const page = globalThis.document;
 page?.addEventListener?.('pointerdown', event => {
   for (const arrow of page.querySelectorAll('.replied-mark[data-shown]')) if (!arrow.contains(event.target)) delete arrow.dataset.shown;
 }, true);
+page?.defaultView?.addEventListener?.('resize', () => {
+  for (const arrow of page.querySelectorAll('.replied-mark:is([data-shown],:hover)')) placeReplyTip(arrow);
+});
 
 // A quiet message (talk between agents) wakes when the person presses it: a
 // tap or click on its line or card lifts the dim for the rest of the visit,
