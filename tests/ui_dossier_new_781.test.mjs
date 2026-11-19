@@ -7,6 +7,7 @@ import * as stacks from '../web/reply-stacks.mjs';
 import { miniDocument, Element } from './fixtures/mini_dom.mjs';
 import { readNow } from '../web/card-reading.mjs';
 import { Marks } from '../web/marks.mjs';
+import { VisitNew } from '../web/visit-new.mjs';
 
 const app = await readFile(new URL('../web/app.mjs', import.meta.url), 'utf8');
 const file = new URL('../web/reply-stacks.mjs', import.meta.url);
@@ -37,13 +38,15 @@ test('781 actual header routes New before folding; ordinary tab and words retain
   section.className = 'reply-stack'; section.dataset.stack = root.id; section.dataset.headOpen = 'true';
   card.dataset.id = root.id; list.append(section); section.append(card);
   const row = doc.createElement('span'), mark = doc.createElement('span'); row.className = 'stack-head'; mark.className = 'stack-act stack-new stack-new-action'; mark.dataset.stackAct = 'new'; row.append(mark); card.append(row);
-  const state = stacks.stackState(list), s = stack(), calls = [];
-  Object.assign(state, { stacks: [s], sections: new Map([[s.id, section]]), on: { newest: (...args) => calls.push(args) }, again: () => calls.push('fold') });
+  const state = stacks.stackState(list), s = stack(), calls = [], acted = [];
+  Object.assign(state, { stacks: [s], sections: new Map([[s.id, section]]), on: { newest: (...args) => calls.push(args), acted: id => acted.push(id) }, again: () => calls.push('fold') });
   state.levels.set(s.id, 'open');
   assert.equal(stacks.headClick(list, card, { target: mark }), true);
   assert.deepEqual(calls, [[s, mark]], 'red New performs the explicit message act, never a generic tab fold');
   assert.equal(state.levels.get(s.id), 'open');
+  assert.deepEqual(acted, [], 'New retains its confirmed-receipt action path');
   calls.length = 0; stacks.headClick(list, card, { target: row }); assert.deepEqual(calls, ['fold']);
+  assert.deepEqual(acted, [root.id], 'hiding the first message by its title clears only that message');
   section.dataset.headOpen = 'true'; state.levels.set(s.id, 'open');
   assert.equal(stacks.headClick(list, card, { target: card }), false, 'words still reach their existing Reader handler');
 });
@@ -66,6 +69,7 @@ function appFixture({ headNew = false, failure = false, marked = false, short = 
   const s = stack(); s.head.unread = headNew; if (short) s.replies = [{ ...oldest, unread: false }];
   const messages = new Map([s.head, ...s.replies].map(each => [each.id, each]));
   const entries = new Map([...messages].map(([id]) => [id, { dataset: { id }, isConnected: true }]));
+  const visitNew = new VisitNew('fixture-reader');
   const doc = { visibilityState: 'visible', hasFocus: () => true, addEventListener() {} }, openedIds = new Set(), sent = [], shown = [], focuses = [], reveals = [];
   let serial = 0, fail = failure, epoch = 1, blockWhole = null, wholeWait = null, afterSend = null, repaints = 0;
   for (const [id, card] of entries) card.focus = () => { doc.activeElement = card; focuses.push(id); };
@@ -83,20 +87,21 @@ function appFixture({ headNew = false, failure = false, marked = false, short = 
   const cardRead = each => readNow(each, { viewer: 'fixture-reader', opened: openedIds.has(each.id), marked: marks.state(each.id)?.marked });
   const registry = { disposed: false, runtime: { current: { authority_id: 'a', authority_epoch: 'e' } } };
   const writing = { body: 'Unsent exact\nwords', destination: 'elsewhere', images: ['kept'], guard: 'retained' }, beforeWriting = structuredClone(writing);
-  const bindings = { newestNew: order.newestNew, cardRead, topic: { id: 'fixture-topic' }, topicUnavailable: false, authorityReviewPending: () => false,
+  const bindings = { newestNew: order.newestNew, cardRead, visitNew, topic: { id: 'fixture-topic' }, topicUnavailable: false, authorityReviewPending: () => false,
     registry, getEpoch: () => epoch, views: { messages }, stackState: () => ({ stacks: [s] }), $: id => id === 'messages' ? {} : { open: false, inert: false },
     entries: () => [...entries.values()], reveal: (entry, options) => reveals.push([entry.dataset.id, options]), opened: entry => entry,
     cardScroll: { showFull: async (card, message) => { shown.push([card.dataset.id, message.body]); if (wholeWait) await wholeWait; return true; } },
-    revealSelection() {}, document: doc, onScreen: () => true, marks, api, bootstrap: { instance_id: 'fixture' },
+    revealSelection() {}, menu: { light() {} }, document: doc, onScreen: () => true, marks, api, bootstrap: { instance_id: 'fixture' },
     crypto: { randomUUID: () => 'read-' + ++serial }, revisionOf: each => each.revision ?? 1,
-    openedHere: id => openedIds.add(id), stackMessages: () => { repaints++; }, attention: { refresh() {} }, commitReload: null,
+    openedHere: id => { visitNew.clear(id); openedIds.add(id); }, stackMessages: () => { repaints++; }, attention: { refresh() {} }, commitReload: null,
     run: fn => fn(), checkDossierNew: async () => { shown.push('check'); }, status() {}, writing };
   // Execute the real application block, with no module startup, server or fake Reader open.
   const begin = app.indexOf('const dossierNewFlights ='), end = app.indexOf('// A message a link on the page names');
   assert.ok(begin >= 0 && end > begin, 'application must wire an explicit header-New act');
-  const code = app.slice(begin, end).replaceAll('listAccessEpoch', 'getEpoch()');
+  const predicate = app.slice(app.indexOf('const newOnPage ='), app.indexOf('let visitPaintQueued ='));
+  const code = predicate + app.slice(begin, end).replaceAll('listAccessEpoch', 'getEpoch()');
   const actions = new Function(...Object.keys(bindings), code + '\nreturn { openDossierNew };')(...Object.values(bindings));
-  return { ...actions, s, messages, marks, sent, shown, focuses, reveals, writing, beforeWriting, openedIds, cardRead, registry, doc,
+  return { ...actions, s, messages, marks, sent, shown, focuses, reveals, writing, beforeWriting, openedIds, cardRead, visitNew, registry, doc,
     repaintCount: () => repaints, allow: () => { fail = false; }, leave: () => { epoch++; },
     waitWhole: () => { wholeWait = new Promise(resolve => { blockWhole = resolve; }); }, releaseWhole: () => blockWhole(), afterSend: fn => { afterSend = fn; } };
 }
@@ -183,14 +188,17 @@ test('781 stale check survives until actual animation endpoint; arriving New is 
 test('781 actual phone capture listener permits first New tap, ordinary cards still light first', async () => {
   const menuSource = await readFile(new URL('../web/message-menu.mjs', import.meta.url), 'utf8');
   const begin = menuSource.indexOf("    host.addEventListener('click', event => {"), end = menuSource.indexOf('// A click or tap in a message or a dossier also');
-  const doc = miniDocument(), entry = doc.createElement('button'), mark = doc.createElement('span'); mark.className = 'stack-new-action'; entry.append(mark);
-  let listener, stopped = false, lights = 0;
-  const menu = { touch: true, before: null, entryOf: () => entry, light: () => { lights++; } };
+  const doc = miniDocument(), entry = doc.createElement('button'), mark = doc.createElement('span'); mark.className = 'stack-new-action'; entry.dataset.id = 'tapped';
+  const header = doc.createElement('span'); header.className = 'stack-head'; header.append(mark); entry.append(header);
+  let listener, stopped = false, lights = 0; const acted = [];
+  const menu = { acted: id => acted.push(id), touch: true, before: null, entryOf: () => entry, light: () => { lights++; } };
   new Function('host', 'onEarlierRow', 'cardIn', menuSource.slice(begin, end)).call(menu,
     { addEventListener: (kind, fn) => { listener = fn; } }, () => false, each => each);
   const event = target => ({ target, preventDefault() {}, stopPropagation() { stopped = true; } });
   listener(event(mark)); assert.equal(stopped, false, 'first native tap must reach the header action');
+  assert.deepEqual(acted, [], 'New keeps its receipt-confirmed clearing path');
   listener(event(entry)); assert.equal(stopped, true, 'ordinary first tap still only selects'); assert.equal(lights, 1);
+  assert.deepEqual(acted, ['tapped'], 'ordinary first tap clears its visit mark');
 });
 
 test('781 native landing instrument accepts rounding and refuses an offscreen message by 12px', async () => {
@@ -200,4 +208,18 @@ test('781 native landing instrument accepts rounding and refuses an offscreen me
   assert.throws(() => assertLanding781({ ...state, top: -12 }, 'chosen'), /viewportEdgePx/);
   assert.throws(() => assertLanding781({ ...state, active: 'other' }, 'chosen'), /same exact/);
   assert.throws(() => assertLanding781({ ...state, reader: true }, 'chosen'), /Reader/);
+});
+
+test('833 New selects an already-read live arrival and clears its visit mark only after a confirmed receipt', async () => {
+  const f = appFixture({ failure: true });
+  for (const message of f.messages.values()) message.unread = false;
+  f.visitNew.arrive([f.messages.get(newest.id)]);
+  await assert.rejects(f.openDossierNew(f.s, {}));
+  assert.equal(f.visitNew.has(newest.id), true);
+  const retry = structuredClone(f.sent[0]);
+  f.allow(); await f.openDossierNew(f.s, {});
+  assert.deepEqual(f.sent[1], retry, 'unknown result retries the same exact operation');
+  assert.equal(f.focuses.at(-1), newest.id);
+  assert.equal(f.visitNew.has(newest.id), false);
+  assert.deepEqual(f.sent[1].args, { from_seq: newest.seq, seq: newest.seq });
 });

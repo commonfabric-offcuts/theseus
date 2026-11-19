@@ -46,8 +46,8 @@ export class TopicViews {
   // reading(what): a read of what shows the cards ('acts', 'reaction:<id>')
   // begins; the function it returns is called once that read has landed, so
   // what was said of an act on a card goes (stack-feed.mjs answered).
-  constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {}, holds = () => false, reading = () => () => {}, actMessages = null }) {
-    Object.assign(this, { instanceId, topicId, reader, paint, invalidate, holds, reading, actMessages });
+  constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {}, holds = () => false, reading = () => () => {}, actMessages = null, arrived = () => {} }) {
+    Object.assign(this, { instanceId, topicId, reader, paint, invalidate, holds, reading, actMessages, arrived });
     this.scope = { kind: 'topic', id: topicId };
     this.membershipRevision = 0; this.movedPointers = [];
     this.messages = new Map(); this.memory = new Map(); this.deletedMemory = new Map(); this.revisions = new RevisionTargets();
@@ -283,6 +283,7 @@ export class TopicViews {
     if (this.starsLoaded && this.starRoots.size && this.olderCursor !== null) {
       this.starredPending = true; this.invalidate('starred', 0); this.paint('starred');
     }
+    if (live) this.arrived(answer.items);
     if (draw) this.paintMessages();
     return true;
   }

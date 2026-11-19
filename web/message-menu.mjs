@@ -102,8 +102,8 @@ export class MessageMenu {
   // clipped(card, item): whether the card cuts its message off; showFull(card, item): shows it whole there, as ⋯'s
   // Show full message does. foldState(item): 'fold', 'unfold' or null (none); fold(item): folds or unfolds it.
   constructor({ host, item, viewer, kind, reply, inlineReply = reply, quote = (id, card) => reply(id, card), thumb, answer, more, expand = () => {}, copy = () => {},
-    clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {}, mac = onMac(), doc = document }) {
-    Object.assign(this, { host, item, viewer, kind, reply, inlineReply, quote, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, mac, doc });
+    clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {}, acted = () => {}, mac = onMac(), doc = document }) {
+    Object.assign(this, { host, item, viewer, kind, reply, inlineReply, quote, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, acted, mac, doc });
     this.lit = null; this.touch = pressOf(doc).touch; this.before = null;
     // The bar's buttons it has put behind its ⋯ for want of room in the window (fit).
     this.behind = new Set();
@@ -148,6 +148,9 @@ export class MessageMenu {
       if (event.target.closest?.('#reader')) return;
       const entry = this.entryOf(event.target);
       if (!entry) return;
+      // A tap on a message is an action for its visit-only arrival mark.
+      // Stack controls act on their own target; expanding preserves replies.
+      if (this.touch && !event.target.closest?.('.stack-head, .fold-line, .stack-earlier')) this.acted(entry.dataset.id);
       const react = event.target.closest?.('[data-react]');
       if (react && cardIn(entry).contains(react)) {
         event.preventDefault(); event.stopPropagation();
@@ -408,6 +411,7 @@ export class MessageMenu {
   act(name) {
     const entry = this.lit, item = entry && this.item(entry.dataset.id);
     if (!item) return;
+    this.acted(item.id);
     const card = cardIn(entry);
     if (name === 'reply') return this.inlineReply(item.id, card);
     if (name === 'more') return this.more(item, this.buttons.more);

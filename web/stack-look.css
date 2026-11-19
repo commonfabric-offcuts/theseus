@@ -503,3 +503,6 @@
 .cover-answer:disabled { opacity:.55; cursor:wait; }
 .cover-answer-status:empty { display:none; }
 .no-agent-notified { display:inline-flex; align-items:center; }
+
+/* The same red as dossier New, on each message that arrived this visit. */
+.message-visit-new{color:var(--stack-new);font-weight:700;margin-left:.4em;white-space:nowrap}

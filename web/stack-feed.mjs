@@ -160,9 +160,9 @@ export class StackFeed {
   // reply(id, card): the Reader on a message, the cursor in the reply (a title bar's Reply). menu(item, anchor):
   // the menu a right-click on a message opens, from anchor (a title bar's ⋯). colorOf: as arrangeStacks takes it.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
-    newest = () => {}, refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
+    newest = () => {}, refreshPositions = async () => {}, acted = () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
     colorOf = () => null, clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, home, reply, menu, colorOf, clock, doc });
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, acted, moreChanged, arranged, hold, press, thumb, redrawn, home, reply, menu, colorOf, clock, doc });
     home?.addEventListener('close', () => this.arrange());
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // A stand-in for each message the page has not loaded that an act is on (a
@@ -269,9 +269,12 @@ export class StackFeed {
       more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id), fold: id => this.foldId(id),
-      folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
+      folded: (stack, was) => {
+        if (was === 'open' || levelOf(this.state, stack.id) === 'head') this.acted(stack.id);
+        this.remember(() => { setLevel(this.state, stack, was); this.arrange(); });
+      },
       earlier: (stack, count) => this.say(`${count === 1 ? 'The earlier message shows' : `${count} earlier messages show`} as rows, for this visit`),
-      arranged: () => this.arranged(), newest: (stack, mark) => this.newest(stack, mark),
+      arranged: () => this.arranged(), acted: id => this.acted(id), newest: (stack, mark) => this.newest(stack, mark),
       // A title bar's glyphs (item 473): its first message's Reply and menu, and Move below More or Bring back.
       reply: stack => { const head = this.entryFor(stack.id); if (head) this.reply(stack.id, cardIn(head)); },
       aside: (stack, below) => this.setAside(stack, below),
@@ -367,6 +370,7 @@ export class StackFeed {
   act(kind, item, args, also = []) {
     const shown = shownAct(kind, args, this.viewer, this.clock());
     const shows = [[item.id, shown], ...also];
+    if (!QUIET.has(kind)) for (const [id] of shows) this.acted(id);
     for (const [id, mark] of shows) this.pending.set(id, [...this.pending.get(id) ?? [], mark]);
     this.made.set(shown, ++this.makes);
     const sent = this.chain.then(() => this.send(kind, item, args)).finally(() => {
@@ -572,6 +576,7 @@ export class StackFeed {
   // reader, and is not on screen now, folds as it now would.
   cameBack(onScreen) { unkeep(this.list, section => !onScreen(section)); }
   startRename(stack) {
+    this.acted(stack.id);
     this.state.renaming = stack.id; this.arrange();
     const input = renameInput(this.list, stack.id);
     input?.focus({ preventScroll: Boolean(this.acting) }); input?.select?.();
@@ -691,6 +696,7 @@ export class StackFeed {
       setLevel(state, stack, to.level);
       this.arrange(); this.focusOn(entry.dataset.id);
     };
+    if (way === 'fold') this.acted(entry.dataset.id);
     apply(next);
     this.remember(() => apply(now));
     this.say({ open: 'Original message and every reply shown', folded: 'Latest and unread replies shown' }[next.level]);
