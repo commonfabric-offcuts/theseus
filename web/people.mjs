@@ -1,4 +1,5 @@
 import { checkedView } from './freshness.mjs';
+import { closeOnOutsidePress } from './dismiss.mjs';
 
 // Who can be named. Two lists feed every input that names someone, as a
 // datalist the browser offers while the person types: the instance's
@@ -293,31 +294,14 @@ export class PeoplePanel {
     if (dismissible) {
       const doc = host.ownerDocument ?? document;
       const inside = target => this.opener.contains(target) || this.row.contains(target);
-      let outsidePress = null;
-      doc.addEventListener('pointerdown', event => {
-        outsidePress = !this.row.hidden && event.button === 0 && event.isPrimary !== false && !inside(event.target)
-          ? { pointerId: event.pointerId, releasedOutside: false } : null;
-      }, true);
-      doc.addEventListener('pointerup', event => {
-        if (!outsidePress || event.pointerId !== outsidePress.pointerId) return;
-        // A drag's click targets the common ancestor of its endpoints. Touch
-        // may also capture pointerup to the start node: hit-test the release.
-        outsidePress.releasedOutside = !inside(doc.elementFromPoint(event.clientX, event.clientY));
-      }, true);
-      doc.addEventListener('pointercancel', event => {
-        if (event.pointerId === outsidePress?.pointerId) outsidePress = null;
-      }, true);
-      doc.addEventListener('click', event => {
-        const startedOutside = outsidePress?.releasedOutside === true; outsidePress = null;
-        // Close before the outside control acts; keep its focus and default.
-        if (startedOutside && !this.row.hidden && !inside(event.target)) this.toggle(false, false);
-      }, true);
+      closeOnOutsidePress({ doc, inside, isOpen: () => !this.row.hidden, close: () => this.toggle(false, false) });
     }
   }
 
   // open: show or hide the people who can be added; closing gives the focus back to "+ Add".
   toggle(open = this.row.hidden, restoreFocus = true) {
     this.row.hidden = !open; this.opener.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) this.closed?.();
     if (this.openerWord) { this.openerWord.textContent = open ? 'Done' : '+ Add'; this.opener.title = open ? 'Done' : this.label; }
     if (open) { this.opened(); this.paintChoices(); this.input.focus(); } else if (restoreFocus) this.opener.focus();
   }
@@ -355,6 +339,7 @@ export class PeoplePanel {
       this.none.textContent = typed ? 'No one by that name yet. Return adds it as typed.' : 'Everyone is already here.';
       chips.push(this.none);
     }
+    if (this.extraChoice) chips.push(this.extraChoice);
     placeChips(this.choices, chips);
     if (held !== undefined) (chips.find(chip => chip.dataset?.id === held) ?? this.input).focus();
   }
