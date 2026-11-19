@@ -50,9 +50,9 @@ env:
   # The versions the Mac's harnesses run against (the release check's summaries name them).
   CHROME_VERSION: 156.0.8078.47
   PLAYWRIGHT_VERSION: 1.63.0
-  # Item 666: 200.9 measured browser minutes need four shards (about 50.2 each).
+  # Item 813: six browser shards separate the long native-reading suite.
   # Four Python partitions, Node, deploy refusals and replay have independent jobs and limits.
-  BROWSER_SHARDS: 4
+  BROWSER_SHARDS: 6
 
 jobs:
   plan:
@@ -75,11 +75,12 @@ jobs:
     name: ${{ matrix.name }}
     needs: plan
     runs-on: macos-26
-    # Browser limits use ceil(longest dealt minutes * 1.5); replay keeps 45. Unit limits are
+    # Item 813: browser jobs have a named 100-minute cap while measured weights await refresh.
+    # Replay keeps 45. Unit limits are
     # ceil((measured file/step minutes + measured setup) * 1.5), from
     # .github/check-weights.json: file timings 44112970996, Node/setup
     # 44112985174, deploy-refusals train 30 (44007172971). Python 19/18/18/18, Node 5, refusals 3.
-    timeout-minutes: ${{ matrix.timeout_minutes }}
+    timeout-minutes: ${{ startsWith(matrix.name, 'browser ') && 100 || matrix.timeout_minutes }}
     strategy:
       fail-fast: false
       matrix:
