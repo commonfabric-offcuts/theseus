@@ -303,9 +303,9 @@ test('the top of a topic is the eyebrow, the title row with the gear, the subtit
   const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
   const header = main.slice(main.indexOf('<header class="topic-header">'), main.indexOf('</header>'));
   const order = ids => ids.map(id => header.indexOf(`id="${id}"`));
-  const [eyebrow, title, gear, subtitle] = order(['workspace-name', 'topic-title', 'settings-open', 'topic-description']);
-  assert.ok(eyebrow >= 0 && eyebrow < title && title < gear && gear < subtitle, 'eyebrow, title, gear, subtitle');
-  assert.match(header, /<div class="title-row"><h1 id="topic-title"><\/h1><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden>/);
+  const [eyebrow, title, pencil, gear, subtitle] = order(['workspace-name', 'topic-title', 'topic-title-rename', 'settings-open', 'topic-description']);
+  assert.ok(eyebrow >= 0 && eyebrow < title && title < pencil && pencil < gear && gear < subtitle, 'eyebrow, title, rename pencil, gear, subtitle');
+  assert.match(header, /<div class="title-row"><h1 id="topic-title"><\/h1><div id="topic-title-edit" hidden><\/div><button id="topic-title-rename"[^>]*>[\s\S]*?<\/button><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden>/);
   assert.doesNotMatch(main, /This topic/);
   assert.equal(main.includes('id="topic-state"'), false, 'where it stands is not on the page');
   // Item 465: the people are the Team, in the header after the subtitle, which aim.css sets on the title row's right.
