@@ -1,4 +1,4 @@
-import { checkedView, RevisionTargets } from './freshness.mjs';
+import { checkedView, readFailure, RevisionTargets } from './freshness.mjs';
 import { oldestUnreadOf } from './unanswered.mjs';
 import { learnReactions, reactionsOf } from './reactions.mjs';
 import { laterActs, laterPosition } from './stack-order.mjs';
@@ -84,6 +84,53 @@ export class TopicViews {
     this.revised = new Set(); this.edits = new Map(); this.quoted = new Map();
     // yours: the messages whose card's marks of the person's own note and saved reply changed (item 127).
     this.yours = new Set();
+    // Item 803: discovery is by canonical dossier id, never by star count.
+    // History uses the ordinary frontier/runs; there is no supplemental run.
+    this.starRoots = new Set(); this.starCursor = null; this.starsLoaded = false;
+    this.starSerial = 0; this.starredPending = false; this.starredError = null;
+  }
+  resetStars() {
+    ++this.starSerial; this.starRoots.clear(); this.starCursor = null; this.starsLoaded = false;
+    this.starredPending = true; this.starredError = null;
+    this.invalidate('starred', 0, true); this.paint('starred');
+  }
+  // One bounded read per refresh turn. Exhaust history to establish that no
+  // admitted reply is missing, including replies older than a starred root's
+  // currently loaded branches. Foreground reads can interrupt every turn.
+  async readStarred(read, current) {
+    const serial = this.starSerial, mine = () => current() && serial === this.starSerial;
+    try {
+      if (!this.starsLoaded) {
+        const cursor = this.starCursor;
+        const page = checkedView(await read('stars', { topic_id: this.topicId, limit: 50, ...(cursor === null ? {} : { cursor }) }), this.instanceId);
+        if (!mine()) return false;
+        let previous = cursor ?? Infinity;
+        if (!Array.isArray(page.items) || page.items.some(item => {
+          const bad = item?.topic_id !== this.topicId || typeof item?.dossier?.id !== 'string' || !item.dossier.id ||
+            !integer(item.star) || item.star < 1 || item.star >= previous;
+          previous = item?.star; return bad;
+        }) || !(page.next_cursor === null || integer(page.next_cursor) && page.items.length && page.next_cursor === page.items.at(-1).star)) throw invalid('The starred dossiers page is malformed.');
+        for (const item of page.items) this.starRoots.add(item.dossier.id);
+        this.starCursor = page.next_cursor; this.starsLoaded = page.next_cursor === null;
+      } else if (this.starRoots.size && this.olderCursor !== null) {
+        const cursor = this.olderCursor;
+        const page = await read('topic_messages', { topic_id: this.topicId, audience: 'all', direction: 'before', cursor, limit: 30 });
+        if (!mine()) return false;
+        // A simultaneous More or commit reload owns its own frontier. Retry
+        // from that frontier rather than claiming continuity across its gap.
+        if (cursor !== this.olderCursor) return false;
+        this.page(page, 'topic');
+        if (page.next_cursor !== null && (!page.items.length || page.next_cursor !== page.items[0].seq || page.next_cursor >= cursor)) throw invalid('The starred history paging made no progress.');
+        this.messagesPage(page, { cursor });
+      }
+      const complete = this.starsLoaded && (!this.starRoots.size || this.olderCursor === null);
+      this.starredPending = !complete; this.starredError = null; this.paint('starred');
+      return complete;
+    } catch (error) {
+      if (!mine()) return false;
+      if (readFailure(error).kind !== 'defer') { this.starredError = error; this.paint('starred'); }
+      throw error;
+    }
   }
   // The ids whose marks changed since the last call, once.
   takeYours() { const ids = this.yours; this.yours = new Set(); return ids; }
@@ -216,6 +263,9 @@ export class TopicViews {
     if (live && this.reader !== null && answer.items.some(item => item.author_id === this.reader)) this.sight.clear();
     this.newest = Math.max(this.newest, ...answer.items.map(item => item.seq));
     if (!live && !anchored) this.olderCursor = answer.next_cursor;
+    if (this.starsLoaded && this.starRoots.size && this.olderCursor !== null) {
+      this.starredPending = true; this.invalidate('starred', 0); this.paint('starred');
+    }
     this.paint('messages');
     if (this.revised.size) this.paint('edited');
     if (this.yours.size) this.paint('yours');
