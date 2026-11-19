@@ -20,6 +20,9 @@ function parse(selector) {
 export function matches(node, selector) {
   if (!node || typeof node !== 'object') return false;
   return selector.split(',').some(one => {
+    const excluded = [...one.matchAll(/:not\(([^()]+)\)/g)].map(match => match[1]);
+    if (excluded.some(part => matches(node, part))) return false;
+    one = one.replace(/:not\([^()]+\)/g, '');
     const wanted = parse(one);
     return (!wanted.tag || node.tag === wanted.tag) && wanted.classes.every(name => node.classList.contains(name)) &&
       wanted.ids.every(id => node.id === id) &&

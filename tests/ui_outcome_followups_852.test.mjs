@@ -54,7 +54,11 @@ test('852 pane card movement respects writing, dialogs, modifiers, empty lists a
   const press=extra=>feedKey({key:'ArrowDown',target:f.doc.activeElement,preventDefault(){},...extra},f.doc);
   const input=f.doc.createElement('input');f.host.append(input);input.focus();assert.equal(press(),false);
   f.doc.activeElement=f.doc.body;assert.equal(press({metaKey:true}),false);assert.equal(press({shiftKey:true}),false);
-  const dialog=f.doc.createElement('dialog');dialog.setAttribute('open','');f.doc.body.append(dialog);assert.equal(press(),false);dialog.remove();
+  const dialog=f.doc.createElement('dialog');dialog.setAttribute('open','');f.doc.body.append(dialog);assert.equal(press(),false);
+  dialog.classList.add('notebook-docked');assert.equal(press(),true,'a docked Notebook leaves the feed keys available');
+  const modal=f.doc.createElement('dialog');modal.setAttribute('open','');f.doc.body.append(modal);assert.equal(press(),false,'another dialog still owns its keys');modal.remove();dialog.remove();
+  f.doc.body.append(dialog);const notebookButton=f.doc.createElement('button');dialog.append(notebookButton);notebookButton.focus();
+  let notebookWrites=0;panes.write=()=>{notebookWrites++;return true;};assert.equal(press({key:'Enter',metaKey:true}),false,'Notebook keys must not start a feed message');assert.equal(notebookWrites,0);dialog.remove();f.doc.activeElement=f.doc.body;
   let written=0;panes.write=()=>{written++;return true;};assert.equal(press({key:'Enter',metaKey:true}),true);assert.equal(written,1);
   f.host.hidden=true;assert.equal(press(),false);f.host.hidden=false;
   f.paint([]);assert.equal(press(),false);f.paint();panes.center=()=>null;assert.equal(press(),false);
