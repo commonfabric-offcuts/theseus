@@ -65,7 +65,13 @@ function atTop(doc) {
   if (!first || stopAt(list, at, stops) !== first) return false;
   return at.matches('.stack-toggle') || at === cardIn(first) || at === first.querySelector('.fold-line');
 }
-const reach = el => { el.focus({ preventScroll: true }); revealSelection(el); return true; };
+const reach = (el, navigate = () => {}) => {
+  el.focus({ preventScroll: true });
+  if (el.ownerDocument.activeElement !== el) return false;
+  navigate();
+  revealSelection(el);
+  return true;
+};
 
 export const panes = {
   // Set by rails.mjs: each rail's { host, focus(), leave()? }, leave closing it when it is open over the page;
@@ -74,23 +80,28 @@ export const panes = {
   // The button the keys were last on in each row of the buttons at the top of
   // the feed, by the row's element, so coming back to the row finds it.
   button: new WeakMap(),
-  feed(doc, options) {
+  feed(doc, options, navigate = () => {}) {
     const stop = feedStop(doc, options) ?? doc.getElementById('main');
     if (!stop || stop.closest('[inert]')) return false;
     stop.focus({ preventScroll: true });
+    if (doc.activeElement === stop) navigate();
     if (stop !== doc.getElementById('main')) revealSelection(shownSelected(stop.matches('.stack-toggle') ? stop : stop.closest('[data-id]')));
     return true;
   },
   // From the pane named, one step: 'left' or 'right'. Answers whether the keys moved.
-  step(from, way, doc) {
+  step(from, way, doc, navigate = () => {}) {
     const order = ['outline', 'feed', 'things'], at = order.indexOf(from) + (way === 'right' ? 1 : -1);
     const to = order[at];
     if (!to) return false;
     this[from]?.leave?.();
-    if (to === 'feed') return onScreen(doc.getElementById('main')) && this.feed(doc);
+    if (to === 'feed') return onScreen(doc.getElementById('main')) && this.feed(doc, undefined, navigate);
     const rail = this[to];
     // Back from the messages, the outline takes the keys to the place being read.
-    return Boolean(rail && onScreen(rail.host) && rail.focus({ reading: from === 'feed' }));
+    const moved = Boolean(rail && onScreen(rail.host) && rail.focus({ reading: from === 'feed' }));
+    // The rail owns its row choice and can refuse focus even with its host shown.
+    // Its own reveal has run; only an actual landing authorizes materialization.
+    if (moved && rail.host.contains(doc.activeElement)) navigate();
+    return moved;
   },
 };
 
@@ -123,14 +134,21 @@ const landing = row => { const last = panes.button.get(row.host); return row.but
 // from the top row, ← or → past an end with no rail on screen that way) goes
 // on to the nearest control that way in the column (arrow-reach.mjs, by
 // rails.mjs), so on a phone ↑ from Topic settings reaches the right rail's button above it.
-function headerKey(action, rows, r, doc) {
+function headerKey(action, rows, r, doc, navigate) {
   const buttons = rows[r].buttons, at = buttons.indexOf(doc.activeElement);
-  if (action === 'up') return r > 0 && reach(landing(rows[r - 1]));
-  if (action === 'down' && r < rows.length - 1) return reach(landing(rows[r + 1]));
+  if (action === 'up') return r > 0 && reach(landing(rows[r - 1]), navigate);
+  if (action === 'down' && r < rows.length - 1) return reach(landing(rows[r + 1]), navigate);
   // With no message to go to (a Conversation not yet written in), on down the column: the reply.
-  if (action === 'down') return (Boolean(feedStop(doc, { first: true })) && panes.feed(doc, { first: true })) || reachOn(doc.activeElement, 'down', { within: doc.getElementById('main'), doc });
-  if (action === 'left') return at > 0 ? reach(buttons[at - 1]) : panes.step('feed', 'left', doc);
-  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : panes.step('feed', 'right', doc);
+  if (action === 'down') {
+    if (feedStop(doc, { first: true }) && panes.feed(doc, { first: true }, navigate)) return true;
+    // This owner can also scroll toward a control. Its result confirms whether
+    // a destination was reached or approached; a refusal releases nothing.
+    const moved = reachOn(doc.activeElement, 'down', { within: doc.getElementById('main'), doc });
+    if (moved) navigate();
+    return moved;
+  }
+  if (action === 'left') return at > 0 ? reach(buttons[at - 1], navigate) : panes.step('feed', 'left', doc, navigate);
+  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1], navigate) : panes.step('feed', 'right', doc, navigate);
   return false;
 }
 
@@ -143,19 +161,20 @@ export function feedKey(event, doc, navigate = () => {}) {
   if (!action || doc.querySelector('dialog[open]') || writing(doc.activeElement) ||
       doc.activeElement?.closest?.('input, textarea, select, [contenteditable]') ||
       event.target?.closest?.('input, textarea, select, [contenteditable]')) return false;
-  const readingDestination = () => { if (doc.getSelection?.()?.isCollapsed !== false) navigate(); };
+  // Focus can collapse a selection: retain the guard from before the move.
+  const selecting = doc.getSelection?.()?.isCollapsed === false;
+  const readingDestination = () => { if (!selecting) navigate(); };
   let moved = false;
   if (action === 'write') moved = Boolean(panes.write?.(null));
   else {
     const rows = headerRows(doc), r = rows.findIndex(row => row.buttons.includes(doc.activeElement));
     if (r >= 0) {
-      if (['up', 'down', 'left', 'right'].includes(action)) readingDestination();
-      panes.button.set(rows[r].host, doc.activeElement); moved = headerKey(action, rows, r, doc);
+      panes.button.set(rows[r].host, doc.activeElement); moved = headerKey(action, rows, r, doc, readingDestination);
     }
     else if (!inFeed(doc)) return false;
     // ← and → from the messages, or the page itself, go on to the pane beside; on a title bar's glyphs, along its row.
-    else if (action === 'left' || action === 'right') { readingDestination(); moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc); }
-    else if (action === 'up' && rows.length && atTop(doc)) { readingDestination(); moved = reach(landing(rows[rows.length - 1])); }
+    else if (action === 'left' || action === 'right') moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc, readingDestination);
+    else if (action === 'up' && rows.length && atTop(doc)) moved = reach(landing(rows[rows.length - 1]), readingDestination);
   }
   if (!moved) return false;
   event.preventDefault();

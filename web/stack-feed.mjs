@@ -153,7 +153,7 @@ export class StackFeed {
   // hold(paint, act?): repaints keeping the page where the person is; act
   // names the card before its callback changes anything ({id, anchor}). press: the
   // press held down on the page (press-hold.mjs).
-  // navigate(): materialize waiting arrivals at a feed-key or put-aside More destination.
+  // navigate(): materialize waiting arrivals at the put-aside More destination.
   // Card acts (including star/menu) never invoke it.
   // thumb(item, on): the message's thumbs-up, as its bar's 👍 gives it (a folded row's 👍).
   // redrawn(): the stacks were drawn again, so what else shows a message's acts (the Reader's star) follows.
@@ -951,13 +951,13 @@ export class StackFeed {
     if (!at || !this.list.contains(at)) return;
     if (action === 'undo' && at === this.state.more) {
       event.preventDefault();
-      if (this.doc.getSelection?.()?.isCollapsed !== false) this.navigate();
       this.undo(); return;
     }
     const toggle = at.classList?.contains('stack-toggle');
     const entry = toggle ? this.entryFor(at.closest('.reply-stack')?.dataset.stack) : entryOf(this.list, at);
     if (!entry || !(toggle || at === cardIn(entry) || at.classList?.contains('fold-line'))) return;
-    if (this.doc.getSelection?.()?.isCollapsed !== false) this.navigate();
+    // These commands change records or their fold, not the reading destination.
+    // At a fold boundary the pane owner confirms any navigation separately.
     if (action === 'right' || action === 'left') {
       if (this.fold(entry, action === 'right' ? 'open' : 'fold')) event.preventDefault();
       return;
