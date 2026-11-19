@@ -440,6 +440,10 @@ try {
     catch (error) {
       results.push({ name, passed: false, error: error.stack });
       for (const [targetId, p] of connectedPages) {
+        if (/^reading item 790/.test(name)) {
+          observations.push({name:'reading item 790 page health',case:name,targetId,pageErrorCount:p.errors.length});
+          continue; // Owned diagnostics are allowlisted; never serialize request objects/headers.
+        }
         let state;
         try { state = await p.evaluate('({departure:window.departureState?.(),departureTrace:window.departureDiagnostics,snapshot:window.freshSnapshot?.(),evidence:window.freshEvidence,opening:{status:document.querySelector("#inline-save-state")?.textContent,app:document.querySelector("#app-status")?.textContent,review:document.querySelector("#review-content")?.textContent,reviewStatus:document.querySelector("#review-status")?.textContent,reviewOpen:document.querySelector("#version-review")?.open},reader:{open:document.querySelector("#reader")?.open,notice:document.querySelector("#reader-notice")?.textContent,saveState:document.querySelector("#save-state")?.textContent,writingReadOnly:document.querySelector("#writing-body")?.readOnly,focus:document.activeElement?.id},access:{unavailable:window.observedRegistry?.current?.sourceUnavailable,unconfirmed:window.observedRegistry?.current?.availabilityUnconfirmed},updates:document.querySelector("#updates-message")?.textContent,navigation:document.querySelector("#topic-navigation-status")?.textContent,url:location.href,mediaURLs:window.observedMediaURLs?.size})'); }
         catch (error) { state = { diagnosticError: error.message }; }
@@ -481,7 +485,7 @@ try {
             Object.assign(results.at(-1),{passed:false,instrumentError:error.stack});
           }
         }
-        if(p.errors.length)observations.push({name:'interception failure lifecycle',case:name,targetId,errors:p.errors,network:p.network.filter(e=>['Network.loadingFailed','Network.requestWillBeSent'].includes(e.method))});
+        if(p.errors.length&&!/^reading item 790/.test(name))observations.push({name:'interception failure lifecycle',case:name,targetId,errors:p.errors,network:p.network.filter(e=>['Network.loadingFailed','Network.requestWillBeSent'].includes(e.method))});
       }
       // A page or context that will not close fails this case, by name, and
       // the next case still runs in a fresh context of its own.

@@ -1,0 +1,9 @@
+{
+  "command": "node --test --test-concurrency=1 tests/clipboard_790_diagnostics.test.mjs tests/ui_onboarding_790.test.mjs",
+  "exit": 1,
+  "tests": 15,
+  "pass": 13,
+  "fail": 2,
+  "cause": "A control-established guard returned before dry enumeration could register the original six names. No native action ran. Guard moved into the actual control body; dry enumeration now remains side-effect free.",
+  "raw": "Initial raw output retained in tool transcript; this is a summary, not reconstructed raw."
+}

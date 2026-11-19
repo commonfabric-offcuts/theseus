@@ -1271,6 +1271,16 @@ def main():
                         else:
                             answer = command("workspace.member_set", request["operation_id"], {"actor_id": request["member"], "present": request["present"]},
                                              {"workspace_id": workspace}, {"workspace_revision": version}, sender=sender)
+                    elif freshness and request["method"] == "onboarding_790":
+                        # Only item 790's isolated fixture facts. No credential-file access or invitation.
+                        workspace = request["workspace_id"]
+                        if request["action"] == "read":
+                            answer = store().view(request.get("sender", actor), "onboarding_prompt",
+                                                  {"workspace_id": workspace, "variant": request.get("variant", "codex")})
+                        else:
+                            revision = store().view(actor, "workspace", {"workspace_id": workspace})["workspace"]["version"]
+                            answer = command("workspace.update", request["operation_id"],
+                                             {"purpose": request["purpose"]}, {"workspace_id": workspace}, {"workspace_revision": revision})
                     elif freshness and request["method"] == "team_outcome":
                         # An outcome of the person's own, for the Team panel's cases: {"workspace_id", "title"}
                         # ("id" is this control's own), with {"team": [...]} on it; {"owner": id} then hands it to

@@ -20,6 +20,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { dossierSelectionQuoteChecks } from './dossier_selection_quote_native.mjs';
 import { coverRefreshChecks } from './cover_refresh_native.mjs';
+import { onboardingChecks790 } from './onboarding_790_native.mjs';
 import { stackChecks } from './stack_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
@@ -66,6 +67,7 @@ const HEARD = `(()=>{window.sent=[];window.sendReceipts=[];window.taps=0;window.
 // origin, as a person's earlier "Allow" leaves it; Safari's engine has none. engine: 'chrome' or 'webkit'.
 // windows: the browser's own windows, as it opens them: list() gives each page's id and address, close(id) closes one.
 export async function readingChecks({ check, page, until, view, control, shot, facts, observations, grant = null, windows, engine = 'chrome' }) {
+  await onboardingChecks790({check,page,until,control,shot,facts,observations,grant,engine});
   // A topic of the person's own, with aim-core and aim-ux in it, and messages
   // said in order: each [name, {sender, body, ...}] as the fixture's agent_message takes it.
   const seed = async (topic, said) => {

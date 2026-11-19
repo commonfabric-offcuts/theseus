@@ -21,6 +21,7 @@ from . import initialization
 from .runner import Runner, RUNNER_SCHEMA, HOSTED_SCHEMA
 from .memory import MEMORY_ACTION_SCHEMA, Memory, MEMORY_DRAFT_SCHEMA, MEMORY_READ_SCHEMA, MEMORY_SCHEMA
 from .media import Media, MEDIA_SCHEMA
+from .onboarding import Onboarding
 from .route_pins import RoutePins
 from .hosted_control import HostedControl
 from .assessments import Assessments
@@ -175,7 +176,7 @@ class StoreOpenError(StoreError):
 _TOPIC_SUMMARY = "LEFT JOIN topic_summaries s ON s.topic_id=t.id LEFT JOIN messages m ON m.id=s.latest_message_id "
 
 
-class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
+class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
             OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Covers, CoverRefresh, DossierMove, AskCover, Blocking, MessageEdit, Invites, Tools):
     def __init__(self, db_path, expected_instance_id, *, expected_binding, machine=None, tools=None):
         self.path = Path(db_path).resolve()

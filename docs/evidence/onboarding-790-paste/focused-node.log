@@ -1,0 +1,25 @@
+{"ownedLiteralCases":{"chrome":["reading item 790 clipboard-control: fixture-only raw Meta+V versus native paste editing command","reading item 790 laptop: owner chooses both variants and copies current prompt by native paste","reading item 790 laptop: refused clipboard keeps readable text and retry copies fresh state","reading item 790 laptop: non-owner has no overflow and Core refuses the prompt","reading item 790 phone: owner chooses both variants and copies current prompt by native paste","reading item 790 phone: refused clipboard keeps readable text and retry copies fresh state","reading item 790 phone: non-owner has no overflow and Core refuses the prompt"],"webkit":["reading item 790 laptop: owner chooses both variants and copies current prompt by native paste","reading item 790 laptop: refused clipboard keeps readable text and retry copies fresh state","reading item 790 laptop: non-owner has no overflow and Core refuses the prompt","reading item 790 phone: owner chooses both variants and copies current prompt by native paste","reading item 790 phone: refused clipboard keeps readable text and retry copies fresh state","reading item 790 phone: non-owner has no overflow and Core refuses the prompt"]},"executedBodies":0,"runnerStarts":0}
+✔ safe diagnostics retain hashes, actual focus and native phases on success without text (1.1005ms)
+✔ exact equality rejects different text even at same length and leaves failure diagnostics (2.090417ms)
+✔ wrong clipboard content stops before paste, retains safe product defect classification (0.108083ms)
+✔ native editing command carries no text and raw path preserves original key call (0.274542ms)
+✔ clipboard read denial is diagnostic refusal without exception text or product failure claim (0.151583ms)
+✔ all diagnostic browser expressions parse and viewport tolerance catches actual expression crossing (0.536375ms)
+✔ actual reading entry point enumerates Chromium seven and WebKit original six without execution (33.195167ms)
+{"item790NativeCases":["reading item 790 clipboard-control: fixture-only raw Meta+V versus native paste editing command","reading item 790 laptop: owner chooses both variants and copies current prompt by native paste","reading item 790 laptop: refused clipboard keeps readable text and retry copies fresh state","reading item 790 laptop: non-owner has no overflow and Core refuses the prompt","reading item 790 phone: owner chooses both variants and copies current prompt by native paste","reading item 790 phone: refused clipboard keeps readable text and retry copies fresh state","reading item 790 phone: non-owner has no overflow and Core refuses the prompt"],"chromium":7,"runnerStarts":0}
+✔ item 790 only the exact owner has the overflow and opening alone neither reads nor copies (0.603334ms)
+✔ item 790 each variant immediately copies newly read facts, announces success and shows the exact text (0.325708ms)
+✔ item 790 clipboard refusal keeps readable selected text, truthfully offers retry and rereads current facts (0.126958ms)
+✔ item 790 read refusal clears earlier text and never echoes transport or private context (0.111416ms)
+✔ item 790 closed, superseded and newly non-owner reads cannot copy or repaint (0.228ms)
+✔ item 790 native clipboard helper starts promised-data write synchronously and reports refusal accurately (0.215542ms)
+✔ item 790 native case enumeration retains six original literal reading cases plus one Chromium control for laptop and phone (21.40875ms)
+✔ item 790 every generated browser expression parses, state/layout readers execute below browser (0.69775ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 174.846458

@@ -124,6 +124,7 @@ REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "dra
                      "stack.place": "place_revision", "stack.name": "name_revision", "stack.join": "join_revision",
                      "stack.move": "move_revision", "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
 VIEWS = {
+    "onboarding_prompt": {"workspace_id", "variant"},
     "assessment": {"assessment_id"}, "assessments": {"topic_id","cursor","limit"},
     "changes": {"scope", "cursor", "limit"},
     "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},

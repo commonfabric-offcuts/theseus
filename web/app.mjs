@@ -15,6 +15,7 @@ import { DossierHeads } from './stack-order.mjs';
 import { TopicViews, followEdits } from './topic-views.mjs';
 import { visitNewFor, paintVisitNew } from './visit-new.mjs';
 import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, topicTarget, paintChanged, changedSince } from './topic-navigation.mjs';
+import { OnboardingPrompt } from './onboarding.mjs';
 import { OutcomeRail } from './outcomes.mjs';
 import { LightPeek, paintAlsoWaiting, paintStanding, paintStandingFailed } from './outcome-light.mjs';
 import { keptToRead } from './outcome-light-words.mjs';
@@ -3377,6 +3378,7 @@ async function initializeOutcomePage(route) {
     // "← Outcomes" says its words when that line names fewer outcomes than its light counts.
     initializeOutcomeNavigation(route.id,items=>scope.alsoNamed(paintAlsoWaiting($('also-waiting'),items,route.id,(id,title)=>openDestination({kind:'workspace',id},title))));
     // Where it stands, read with the page and again on every commit.
+    const onboarding=new OnboardingPrompt({button:$('outcome-menu'),reader:bootstrap.actor,read:pipelineView});
     let standingSerial=0;
     const stands=async workspace=>{
       const serial=++standingSerial,retry=()=>run(reload);
@@ -3400,7 +3402,7 @@ async function initializeOutcomePage(route) {
       catch(error) {
         if(serial!==refreshSerial)return;
         if(readFailure(error).kind==='forbidden') {
-          permitted=false;$('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
+          onboarding.paint(null);permitted=false;$('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
           $('topic-navigation').hidden=true;$('new-topic').disabled=true;
           // Its Notebook pages, and any open in place, go with it; a recovered read lists them again.
           $('outcome-references').hidden=true;$('page-here').hidden=true;$('outcome-standing').hidden=true;$('also-waiting').hidden=true;$('conversation-navigation').hidden=true;$('outcome-tools').hidden=true;
@@ -3415,6 +3417,7 @@ async function initializeOutcomePage(route) {
       purposeLine??=new PurposeLine({host:$('outcome-purpose'),description:$('topic-description'),
         save:(purpose,current)=>setPresence('workspace.update',{workspace_id:current.id},'workspace_revision',current.version,{purpose}).then(receipt=>{run(reload);return receipt;})});
       purposeLine.paint(workspace,organises(workspace,bootstrap.actor));
+      onboarding.paint(workspace);
       $('workspace-name').textContent=workspace.id;enableNewTopic(workspace.id);here.title=workspace.title;here.has=hasConversation(workspace);
       await paintTeam(workspace,()=>reload());
       if(!topicRail)topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
