@@ -64,3 +64,15 @@ test('item 721 a whole-source read that lost its reply owner paints nothing', as
   owned = false; resolve(source);
   assert.equal(await loading, false); assert.equal(f.card.dataset.full, undefined);
 });
+
+test('838 a late hover read retains the source height measured before the reply docked', async () => {
+  const f = fixture(); let resolve;
+  const scroll = new CardScroll({ read: () => new Promise(done => { resolve = done; }) });
+  const loading = scroll.expand(f.card, f.item);
+  f.card.style.getPropertyValue = name => name === '--reply-card-height' ? '150px' : '';
+  f.card.getBoundingClientRect = () => ({ height: 450 });
+  resolve(source);
+  assert.equal(await loading, true);
+  assert.equal(f.card.style.maxHeight, '150px', 'undocking must not leave a composer-sized message');
+  assert.equal(f.card.dataset.full, undefined, 'loading the whole text does not expand the card');
+});

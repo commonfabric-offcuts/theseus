@@ -1699,13 +1699,11 @@ async function replyMessage(id, card, chosen = null) {
 // Only the hover/touch bar's Reply docks the existing reply in its source
 // card. Quote, Return and explicit Reader-opening controls keep their paths.
 async function replyInCard(id, card) {
-  const request = ++opening, generation = registry.generation;
-  // Reuse the feed's visit-only reveal and Show full message owners. Reply
-  // must leave the whole source above its bar, including a former excerpt
-  // or folded row, without recording a new fold or dossier position.
+  // Reveal a folded row without changing its reading height. Show full is
+  // a separate choice; opening the reply must not make that choice for them.
   const entry = stackFeed?.land(id) ?? messageEntries.get(id);
   if (entry) card = opened(entry);
-  if (!await cardScroll.showFull(card, feedMessages().get(id)) || request !== opening || generation !== registry.generation) return;
+  if (!card?.isConnected) return;
   await openSource({ kind: 'message', id }, card, marks.capture(id), 'reply', card);
   if (reader.dialog.open && registry.current?.source?.source_ref?.id === id) reader.reply({ kind: 'message', id });
 }

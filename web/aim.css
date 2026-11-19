@@ -1269,8 +1269,8 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .note-corner:focus-visible{outline:2px solid var(--focus);outline-offset:-4px}
 .note-corner-glyph{display:block;width:1rem;height:1rem;background:currentColor;-webkit-mask:var(--carry) center/contain no-repeat;mask:var(--carry) center/contain no-repeat}
 @media(forced-colors:active){.note-corner-glyph{background:CanvasText}}
-/* Item 721 preview: the Reader's own phone reply bar, in its source card.
-   The source stays whole in the page above the shared reply bar;
+/* The Reader's own reply bar, in its source card (721, 838).
+   The source keeps its reading height above the shared reply bar;
    the full Reader's layout and the phone composer keep their existing rules. */
 /* Source drags select words; the card's pointer owner prevents their release
    from opening Reader. The embedded Reader and writing keep their own rules. */
@@ -1279,7 +1279,7 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .message-card[data-card-reply]{max-height:none!important;overflow:visible;cursor:default}
 #messages .message-card[data-card-reply]{display:block;height:auto;min-height:0}
 #messages .message-card[data-card-reply]>#reader{display:block!important}
-.message-card[data-card-reply]>.message-preview{max-height:none;overflow:visible}
+.message-card[data-card-reply]:not(.show-full)>.message-preview{display:block;max-height:var(--reply-message-height);overflow-y:auto;overscroll-behavior:auto}
 #reader[data-card-reply]{position:relative;inset:auto;width:100%;max-width:none;height:auto;max-height:none;margin:.65rem 0 0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible;animation:none;cursor:default}
 #reader[data-card-reply] .reader-main{display:grid;height:auto;grid-template-areas:"header" "reading" "writing";grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto}
 #reader[data-card-reply] .reader-header{display:flex;flex-wrap:nowrap;min-height:0;padding:0 0 .25rem;border:0}
@@ -1293,6 +1293,10 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 #reader[data-card-reply] .reading-pane{display:block;padding:0}
 #reader[data-card-reply] .reading-pane>:not(#source-access-status,#source-update,.source-actions){display:none}
 #reader[data-card-reply] .writing-pane{height:auto;max-height:none;overflow:visible;padding-left:0;padding-right:0;background:transparent}
+/* Addressing belongs to the dossier, even when the message has another
+   author's tint. These inherited folder tokens also cover the phone sheet. */
+#reader[data-card-reply] :is(.who-chip,.who-panel){--panel:var(--stack-folder);--paper:var(--stack-folder);--ink:var(--stack-folder-ink);--muted:var(--stack-meta-ink);--soft:var(--stack-folder-deep);--accent:color-mix(in srgb,var(--stack-folder) 80%,var(--stack-folder-ink));--on-accent:var(--stack-folder-ink);--line:color-mix(in srgb,var(--stack-folder-ink) 30%,transparent);background:var(--stack-folder);color:var(--stack-folder-ink)}
+#reader[data-card-reply] .who-chip[aria-expanded=true]{background:var(--stack-folder-deep)}
 
 /* Item 643: Done occupies the same space as + Add; touch reaches its names. */
 .topic-people .add-chip{display:inline-grid;grid-template-areas:"word"}
