@@ -761,6 +761,7 @@ function sourceAttachments(presentation) {
 // act: what the person's act of reading captured (Marks.capture), for a card
 // or Read it; every other open passes none and clears nothing.
 async function openSource(ref, opener, act = null, mode = 'reply') {
+  releaseTopArrivals();
   const request = ++opening;
   const from = registry.interactive;
   views.retain(views.currentItem, ref.kind === 'memory' ? ref.id : null);
@@ -826,6 +827,7 @@ function captureListAnchor() {
   }
   const edge = control?.getBoundingClientRect().top, last = cards.at(-1), present = control ? new Set(entries(list)) : null;
   return { list, anchor, cards, held, tops, point, control, edge, last, present, y: window.scrollY,
+    topicViews: views,
     acted, height: document.documentElement.scrollHeight,
     newest: entries(list).reduce((seq, card) => Math.max(seq, Number(card.dataset.seq) || 0), 0) };
 }
@@ -862,9 +864,48 @@ function rememberListAnchor(landing = false) {
   anchorWatch?.observe();
   anchorWatch?.mutations.takeRecords();
 }
+// The visible page prefix cannot be scrolled away to make room for an arrival
+// while also keeping the card below it still. New above stands for that card
+// until it can enter above the window or the reader chooses another view.
+function holdTopArrivals(saved) {
+  if (!saved || saved.y !== 0 || saved.topicViews !== views ||
+      retired || topicUnavailable || authorityReviewPending() || saved.list.hidden ||
+      !saved.list.isConnected || !saved.newest || anchorActing) return;
+  const incoming = entries(saved.list).filter(entry => Number(entry.dataset.seq) > saved.newest &&
+    views.messages.get(entry.dataset.id)?.topic_id === topic.id);
+  if (incoming.some(entry => views.messages.get(entry.dataset.id).author_id === bootstrap.actor)) {
+    releaseTopArrivals(); return;
+  }
+  if (!(saved.tops.get(saved.anchor) > 0) || !saved.anchor?.isConnected) return;
+  const state = stackState(saved.list), edge = saved.anchor.getBoundingClientRect().top;
+  let changed = false;
+  for (const entry of incoming) {
+    const box = entry.getBoundingClientRect();
+    if (!drawn(saved.list, entry.dataset.id) || box.top < 0 || box.top >= edge ||
+        !(entry.compareDocumentPosition(saved.anchor) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
+    state.waiting.add(entry.dataset.id); newAbove.add(entry.dataset.id); changed = true;
+  }
+  if (changed) { anchorHold = saved; feedOf().arrange(); }
+}
+function releaseTopArrivals(absorb = false) {
+  const list = $('messages'), waiting = stackState(list).waiting;
+  if (!waiting?.size || retired || topicUnavailable || authorityReviewPending() ||
+      !list.isConnected || list.hidden) return;
+  const saved = absorb ? captureListAnchor() : null;
+  anchorHold = null;
+  for (const id of waiting) {
+    const entry = messageEntries.get(id);
+    if (entry?.isConnected) entry.hidden = false;
+  }
+  waiting.clear();
+  anchorDepth++;
+  try { feedOf().arrange(); }
+  finally { anchorDepth--; if (saved) restoreListAnchor(saved); }
+}
 function keepListAnchor(paint, act = null) {
   const list = $('messages');
   if (act) {
+    releaseTopArrivals();
     anchorHold = null;
     const entry = entries(list).find(node => node.dataset.id === act.id);
     listActAnchor = entry ? { list, views, id: act.id,
@@ -881,12 +922,14 @@ function keepListAnchor(paint, act = null) {
   const saved = anchorHold ?? captureListAnchor();
   anchorDepth++;
   try { return paint(); }
-  finally { anchorDepth--; restoreListAnchor(saved); rememberListAnchor(); }
+  finally { holdTopArrivals(saved); anchorDepth--; restoreListAnchor(saved); rememberListAnchor(); }
 }
 function paintNewAbove() {
   const list = $('messages');
   for (const id of newAbove) {
     const entry = messageEntries.get(id);
+    if (entry?.isConnected && stackState(list).waiting?.has(id) &&
+        views.messages.get(id)?.topic_id === topic?.id) continue;
     if (!entry?.isConnected || !drawn(list, id) || entry.getBoundingClientRect().top >= 0) newAbove.delete(id);
   }
   if (!newAboveButton && newAbove.size) {
@@ -895,6 +938,7 @@ function paintNewAbove() {
       if (!entry || retired || !list.isConnected || list.hidden) return;
       const id = entry.dataset.id, currentTopic = topic, message = views.messages.get(id);
       if (!message || message.topic_id !== currentTopic?.id || messageEntries.get(id) !== entry) return;
+      releaseTopArrivals();
       anchorHold = null;
       reveal(entry);
       entry.scrollIntoView({ block: 'start', behavior: 'instant' });
@@ -944,6 +988,7 @@ function watchListAnchor() {
     attributeFilter: ['class', 'style', 'hidden', 'open', 'data-fold', 'data-folded', 'data-compact'] });
   const scrolled = () => {
     if (anchorDepth) return;
+    if (stackState(list).waiting?.size && list.getBoundingClientRect().top < 0) releaseTopArrivals(true);
     const clamped = listAnchor && document.documentElement.scrollHeight < listAnchor.height &&
       window.scrollY >= Math.max(0, document.documentElement.scrollHeight - innerHeight) - 1;
     if (anchorHold || clamped) settle(); else rememberListAnchor();
@@ -951,9 +996,14 @@ function watchListAnchor() {
   // Capture before handlers and accept their final layout before paint.
   // A frame callback also covers handlers that stop the event's bubbling.
   let actionFrame = 0;
-  const acted = () => {
+  const acted = event => {
     anchorHold = null;
     anchorActing = true;
+    // Wheel/touch and scrollbar movement wait for the actual insertion point
+    // to leave the window. Tab/focus traversal must still reach New above.
+    const marker = event?.target?.closest?.('.new-above');
+    if (!marker && (event?.type === 'click' || event?.type === 'input' ||
+        event?.type === 'keydown' && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', 'Enter', ' '].includes(event.key))) releaseTopArrivals();
     if (!actionFrame) actionFrame = requestAnimationFrame(() => {
       actionFrame = 0; anchorActing = false; rememberListAnchor();
     });
@@ -1297,6 +1347,7 @@ function paintCardReading() {
 // A message the page shows, brought into view: its stack opened first when it
 // folds the message away, and its fold opened. Null when it is not loaded.
 function landOn(id, { full = false } = {}) {
+  releaseTopArrivals();
   const entry = entries($('messages')).find(child => child.dataset.id === id);
   if (!entry) return null;
   anchorHold = null;
@@ -2073,6 +2124,7 @@ let unreadLanding = 0, unreadLandingBusy = false;
 // and the same revision-fenced mark clear. Capture before any page loads:
 // another device renewing the mark while they run must keep its newer mark.
 async function landUnreadMessage(wanted) {
+  releaseTopArrivals();
   const request = ++unreadLanding, act = wanted && marks.capture(wanted.id);
   const current = () => request === unreadLanding && !registry.disposed;
   // Pagination can briefly put another unread card on screen on the way to

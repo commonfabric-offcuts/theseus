@@ -428,6 +428,17 @@ than were written, plus one a short row, never its rows times its columns.
 
 ## New arrivals above the reading place (785)
 
+At document top, an outside arrival that would enter between the visible
+header and the card being read waits behind the existing New above marker.
+Its real card stays connected but hidden, outside dossier layout; its record
+still contributes to header New and Only new. Nothing in view moves. The
+marker draws it and takes the reader to it. Scrolling until the insertion
+point is above the window draws it through the same reading hold. A deliberate
+view change (opening a message, sending, New, More or navigation keys) draws
+it before that destination is chosen. Traversing controls to reach the marker
+does not itself draw the waiting arrival. Access and current-view checks still
+apply, and a held card is never reported as seen.
+
 New above remembers arrivals by message identity. Activating it retires the
 arrival actually reached, after its current topic, message and connected card
 are confirmed and focus lands inside it visibly. A fractional scroll edge
