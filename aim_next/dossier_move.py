@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from .contract import READABLE, Refusal, _bounded_page, _identifier, _page_size
+from .contract import READABLE, Refusal, _identifier, _page_size
 from .delivery import _now_ms
 from .stacks import MEMBERS, StackRoots
 from .reactions import answered_yes
@@ -246,11 +246,12 @@ class DossierMove:
 
     def _view_dossier_move_targets(self, db, actor, args):
         _, source, root, fields = self._move_root(db, actor, _identifier(args.get("message_id")))
-        limit = _page_size(args)
-        rows = db.execute("SELECT t.id,t.title FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.workspace_id=:workspace "
-                          "AND t.id<>:source AND t.id>:cursor AND t.archived=0 AND t.kind<>'conversation' AND t.replaced_by IS NULL AND " + READABLE +
-                          " ORDER BY t.id LIMIT :limit", {"workspace": source["workspace_id"], "source": source["id"], "cursor": args.get("cursor", ""), "limit": limit + 1, "actor": actor}).fetchall()
-        return _bounded_page({"instance_id": self.instance_id, "root_id": root, "topic_id": source["id"], **fields}, rows, limit, dict, "id")
+        # One owner of the rail's list, paging and personal order. Leave the raw
+        # page intact; the picker omits its source after arranging the topics.
+        page = self._view_workspace_topics(db, actor, {
+            "workspace_id": source["workspace_id"],
+            **{key: args[key] for key in ("limit", "cursor", "build") if key in args}})
+        return {**page, "workspace_id": source["workspace_id"], "root_id": root, "topic_id": source["id"], **fields}
 
     def _view_topic_membership(self, db, actor, args):
         topic = self._topic(db, actor, args.get("topic_id"))

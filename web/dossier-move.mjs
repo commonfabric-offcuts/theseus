@@ -1,12 +1,14 @@
 // Core owns permission and admission; this picker sends one exact operation per choice.
 import { tabStops } from './topic-settings.mjs';
+import { TopicPages, listArgs } from './topic-navigation.mjs';
+import { book, scopeOf, arrangeItems } from './outline-order.mjs';
 
 export function moveEnvelope({ instanceId, authority, root, source, revision, destination, operationId }) {
   return { v: 1, instance_id: instanceId, operation_id: operationId, kind: 'stack.move', target: { message_id: root },
     expected: { authority: { authority_id: authority.authority_id, authority_epoch: authority.authority_epoch }, source_topic_id: source, move_revision: revision }, args: { topic_id: destination } };
 }
 
-export function openDossierMove({ anchor, messageId, read, send, binding, moved, doc = document, win = window }) {
+export function openDossierMove({ anchor, messageId, read, send, binding, moved, apart = true, doc = document, win = window }) {
   const el = (tag, props = {}) => Object.assign(doc.createElement(tag), props);
   const dialog = el('dialog', { className: 'dossier-move' }); dialog.setAttribute('aria-label', 'Move dossier to topic');
   const title = el('h2', { textContent: 'Move to topic…' }), close = el('button', { type: 'button', textContent: 'Close' });
@@ -14,7 +16,7 @@ export function openDossierMove({ anchor, messageId, read, send, binding, moved,
   const choices = el('div', { className: 'dossier-move-choices' }), more = el('button', { type: 'button', textContent: 'More topics', hidden: true });
   const retry = el('button', { type: 'button', textContent: 'Retry', hidden: true });
   dialog.append(title, close, status, choices, more, retry); doc.body.append(dialog);
-  let current = true, busy = false, cursor = null, info = null, pending = null;
+  let current = true, busy = false, cursor = null, info = null, pages = null, pending = null;
   const finish = () => { current = false; dialog.close(); dialog.remove(); win.removeEventListener('pointerdown', pointer, true); if (anchor?.isConnected) anchor.focus({ preventScroll: true }); };
   close.onclick = finish;
   dialog.addEventListener('cancel', event => { event.preventDefault(); finish(); });
@@ -56,12 +58,18 @@ export function openDossierMove({ anchor, messageId, read, send, binding, moved,
     if (busy) return;
     busy = true; enable(); retry.hidden = true;
     try {
-      const answer = await read('dossier_move_targets', { message_id: messageId, limit: 20, ...(cursor === null ? {} : { cursor }) });
+      const answer = await read('dossier_move_targets', { message_id: messageId, ...listArgs('active', apart), limit: 20, ...(cursor === null ? {} : { cursor }) });
       if (!current) return;
       if (answer.error) throw Error(answer.error.message);
       info ??= answer;
       if (info.root_id !== answer.root_id || info.topic_id !== answer.topic_id || info.move_revision !== answer.move_revision) throw Error('This dossier moved. Close and open its menu again.');
-      for (const topic of answer.items) {
+      pages ??= new TopicPages(binding().instanceId, answer.workspace_id, null, 'active', apart);
+      pages.accept(answer, cursor);
+      const scope = scopeOf(answer.workspace_id), first = choices.children.length === 0;
+      book.learn(scope, pages.order);
+      const focused = doc.activeElement?.dataset.topicId;
+      choices.replaceChildren();
+      for (const topic of arrangeItems(pages.items, book.ids(scope)).filter(topic => topic.id !== info.topic_id)) {
         const button = el('button', { type: 'button', textContent: topic.title }); button.dataset.topicId = topic.id;
         button.onclick = () => {
           if (busy) return;
@@ -72,8 +80,9 @@ export function openDossierMove({ anchor, messageId, read, send, binding, moved,
         choices.append(button);
       }
       cursor = answer.next_cursor; more.hidden = cursor === null;
-      status.textContent = choices.children.length ? 'The whole dossier moves, keeping its replies and cover.' : 'No other open topics in this outcome.';
-      if (choices.children.length === answer.items.length) choices.querySelector('button')?.focus();
+      status.textContent = choices.children.length ? 'The whole dossier moves, keeping its replies and cover.' : cursor === null ? 'No other topics in this list.' : 'More topics are available.';
+      if (focused) [...choices.children].find(button => button.dataset.topicId === focused)?.focus();
+      else if (first) (choices.querySelector('button') ?? (cursor === null ? close : more)).focus();
     } catch (error) { if (current) { status.textContent = error.message; retry.hidden = false; } }
     finally { busy = false; if (current) enable(); }
   };

@@ -156,7 +156,7 @@ VIEWS = {
     "outcome_checks": {"workspace_id"},
     "check_readings": {"workspace_id", "check_id", "cursor", "limit"},
     "outcome_live": {"workspace_id", "commit"},
-    "topic_membership": {"topic_id", "message_ids"}, "dossier_move_targets": {"message_id", "cursor", "limit"}, "dossier_moves": {"topic_id", "cursor", "limit"},
+    "topic_membership": {"topic_id", "message_ids"}, "dossier_move_targets": {"message_id", "cursor", "limit", "build"}, "dossier_moves": {"topic_id", "cursor", "limit"},
     "stack_positions": {"topic_id", "message_ids"}, "stack_namer": {"message_id"}, "dossier_cover": {"message_id"}, "message_acts": {"topic_id", "cursor", "limit"}, "stars": {"topic_id", "cursor", "limit"},
     "tools": {"workspace_id"}, "tool": {"tool_id", "cursor", "limit"}, "topic_tools": {"topic_id"},
 }
@@ -242,12 +242,12 @@ def _view_arguments(name, args):
             if cursor is None:
                 raise Refusal("INVALID_ARGUMENT", "Invalid delivery page cursor")
             _position(cursor)
-        elif name == "workspace_topics":
+        elif name in ("workspace_topics", "dossier_move_targets"):
             # An empty cursor is the start, as for the lists below.
             if cursor != "":
                 from .topic_state import order_position
                 order_position(cursor)
-        elif name in ("workspaces", "openings", "workspace_members", "actors", "colors", "source_topics", "assessments", "dossier_move_targets"):
+        elif name in ("workspaces", "openings", "workspace_members", "actors", "colors", "source_topics", "assessments"):
             if cursor != "":
                 _identifier(cursor, "cursor")
             elif not isinstance(cursor, str):

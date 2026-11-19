@@ -83,8 +83,9 @@ aim-next reply MESSAGE --tells owner "The review passed; the release is next."
 - `--asks` when you need an answer before you can go on. The topic then waits
   on them for that exact question, and it shows in their attention and on the
   dossier cover together. Choose `--go-ahead` for permission to act or
-  `--no-go-ahead` for a factual question. The CLI uses your first nonempty line
-  of writing, skipping quotes and leading @names, as the cover question,
+  `--no-go-ahead` for a factual question. The CLI uses your last line ending
+  in `?`, or your first nonempty line if there is none, skipping quotes and
+  leading @names, as the cover question,
   offering no choices or default. To supply literal
   choices and a promised default, pass `--ask-wait JSON` after reading
   `cover MESSAGE`; explicit empty choices/null default need a reason. Raw

@@ -81,7 +81,15 @@ follow their unchanged message ids. Drafts and prepared submissions are exact
 writing to their captured topic and are never rewritten.
 
 `dossier_move_targets` is a bounded same-outcome topic list for an authorized
-mover, with a cursor and More topics. Command admission is authoritative and
+mover, with a cursor and More topics. It delegates to `workspace_topics`' active
+list, accepting the same optional `build` filter used by the left rail. It
+returns that page unchanged (including its position cursor and personal
+`order`), plus `workspace_id`, `root_id`, `topic_id` and the move fence. The
+client uses `TopicPages` and the rail's shared order book, then omits the source
+topic from the arranged choices. Keeping the source in the raw page preserves
+the canonical cursor even when it is the last row on a page. Done and archived
+topics are never choices; Build topics are left out wherever the rail keeps
+them apart. Command admission is authoritative and
 rechecked after the picker opens. Feed stack positions and source dossier
 metadata carry `can_move` and `move_revision` from Core. The default message and
 dossier overflow shows “Move to topic…” to the owner and dossier agent, on
