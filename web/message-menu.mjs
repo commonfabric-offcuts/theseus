@@ -90,7 +90,7 @@ export class MessageMenu {
   // Reader on it with chosen ({start, end, text} of its words) quoted.
   // clipped(card, item): whether the card cuts its message off; showFull(card, item): shows it whole there, as ⋯'s
   // Show full message does. foldState(item): 'fold', 'unfold' or null (none); fold(item): folds or unfolds it.
-  // navigate(): materialize waiting arrivals before a feed-key destination is chosen.
+  // navigate(): materialize waiting arrivals at a confirmed feed-key destination.
   constructor({ host, item, viewer, kind, reply, quote = (id, card) => reply(id, card), thumb, answer, more, expand = () => {}, copy = () => {},
     clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {}, navigate = () => {}, mac = onMac(), doc = document }) {
     Object.assign(this, { host, item, viewer, kind, reply, quote, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, navigate, mac, doc });
@@ -413,8 +413,21 @@ export class MessageMenu {
     // A control's Space/Home/End belongs to that control, not to navigation.
     if (['PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) {
       const entry = this.host.contains(at) && this.entryOf(at);
-      if (!event.shiftKey && this.doc.getSelection?.()?.isCollapsed !== false &&
-          (pageItself(at, this.doc) || entry && (at === cardIn(entry) || at.classList?.contains('fold-line')))) this.navigate();
+      if (event.isTrusted && !event.shiftKey && this.doc.getSelection?.()?.isCollapsed !== false &&
+          (pageItself(at, this.doc) || entry && (at === cardIn(entry) || at.classList?.contains('fold-line')))) {
+        // Space on a native button activates it; its successful open owns the
+        // release. A scroll key at the end of every scrolling box goes nowhere.
+        if (event.key === ' ' && at?.matches?.('button, input, select, summary')) return;
+        const up = event.key === 'PageUp' || event.key === 'Home', view = this.doc.defaultView;
+        for (let box = at; box; box = box.parentElement) {
+          if (box === this.doc.scrollingElement || box === this.doc.body || box === this.doc.documentElement) continue;
+          const style = view.getComputedStyle(box);
+          if (!/^(auto|scroll|overlay)$/.test(style.overflowY) || box.clientHeight <= 0) continue;
+          if (up ? box.scrollTop > 0 : box.scrollTop < box.scrollHeight - box.clientHeight) { this.navigate(); return; }
+        }
+        const page = this.doc.scrollingElement;
+        if (page && page.clientHeight > 0 && (up ? page.scrollTop > 0 : page.scrollTop < page.scrollHeight - page.clientHeight)) this.navigate();
+      }
       return;
     }
     if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) return;
@@ -436,7 +449,8 @@ export class MessageMenu {
       else this.act('reply');
       return;
     }
-    if (!event.shiftKey && this.doc.getSelection?.()?.isCollapsed !== false) this.navigate();
+    // Keep the selection guard from before focus can collapse it.
+    const reading = !event.shiftKey && this.doc.getSelection?.()?.isCollapsed !== false;
     const entries = this.entries();
     if (!entries.length) return;
     // A dossier's chevron holding the focus is where the keys are, whether it
@@ -458,7 +472,19 @@ export class MessageMenu {
       // feed), the keys go on to what lies that way in the page's column: More
       // messages, the People row, the Notebook and the reply (arrow-reach.mjs).
       const from = between || !selected ? at : cardIn(selected).hidden ? selected.querySelector('.fold-line') : cardIn(selected);
-      if (from && reach(from, step > 0 ? 'down' : 'up', { within: this.host.closest('#main') ?? null, doc: this.doc })) event.preventDefault();
+      const within = this.host.closest('#main') ?? null;
+      // reach can approach a control by scrolling, or try to focus it. Confirm
+      // the actual movement too: a refused focus is not a reading destination.
+      const boxes = [this.doc.scrollingElement, ...(within ?? this.doc.body).querySelectorAll('*')];
+      for (let box = within ?? this.doc.body; box; box = box.parentElement) boxes.push(box);
+      const scrollers = boxes
+        .filter(box => box && (box.scrollHeight > box.clientHeight || box.scrollWidth > box.clientWidth))
+        .map(box => ({ box, top: box.scrollTop, left: box.scrollLeft }));
+      if (from && reach(from, step > 0 ? 'down' : 'up', { within, doc: this.doc })) {
+        event.preventDefault();
+        if (reading && (this.doc.activeElement !== at && this.doc.activeElement?.isConnected && !pageItself(this.doc.activeElement, this.doc) ||
+            scrollers.some(({ box, top, left }) => box.scrollTop !== top || box.scrollLeft !== left))) this.navigate();
+      }
       return;
     }
     event.preventDefault();
@@ -467,6 +493,7 @@ export class MessageMenu {
     this.light(next.matches('.stack-toggle') ? null : next);
     const target = cardIn(next).hidden ? next.querySelector('.fold-line') : cardIn(next);
     target?.focus({ preventScroll: true });
+    if (reading && target && target !== at && this.doc.activeElement === target) this.navigate();
     revealSelection(shownSelected(next));
     this.place();
   }

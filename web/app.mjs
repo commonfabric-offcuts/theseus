@@ -763,13 +763,28 @@ function sourceAttachments(presentation) {
 }
 // act: what the person's act of reading captured (Marks.capture), for a card
 // or Read it; every other open passes none and clears nothing.
-async function openSource(ref, opener, act = null, mode = 'reply') {
-  if (ref.kind === 'message') releaseTopArrivals();
+async function openSource(ref, opener, act = null, mode = 'reply', { land = false } = {}) {
   const request = ++opening;
-  const from = registry.interactive;
+  const from = registry.interactive, currentTopic = topic, currentViews = views, accessEpoch = listAccessEpoch;
   views.retain(views.currentItem, ref.kind === 'memory' ? ref.id : null);
   status('');
-  try { await marks.open(registry, ref, { topicId: topic.id, opener, mode }, act); }
+  try {
+    const presentation = await marks.open(registry, ref, { topicId: topic.id, opener, mode }, act);
+    // A cancelled open can resolve null. Even a returned presentation must
+    // still be the current, available source actually shown by the Reader.
+    const source = presentation?.source;
+    if (ref.kind === 'message' && presentation && request === opening && !retired &&
+        topic === currentTopic && views === currentViews && accessEpoch === listAccessEpoch &&
+        presentation.token === registry.generation && registry.isCurrent(presentation) &&
+        !presentation.sourceUnavailable && !presentation.availabilityUnconfirmed &&
+        reader.dialog.open && reader.presentation === presentation && reader.source === source &&
+        source?.instance_id === bootstrap.instance_id && source.source_ref?.kind === ref.kind &&
+        source.source_ref.id === ref.id && source.source_ref.revision === ref.revision) {
+      // A link's feed landing and Reader opening are one destination. Delegate
+      // its sole release to landOn when loaded; otherwise the Reader owns it.
+      if (!land || !landOn(ref.id)) releaseTopArrivals();
+    }
+  }
   catch (error) {
     if (request === opening) {
       if (from?.surface !== 'inline' && registry.isCurrent(from)) reader.notice(error);
@@ -1344,9 +1359,9 @@ function paintCardReading() {
 // A message the page shows, brought into view: its stack opened first when it
 // folds the message away, and its fold opened. Null when it is not loaded.
 function landOn(id, { full = false } = {}) {
-  releaseTopArrivals();
   const entry = entries($('messages')).find(child => child.dataset.id === id);
   if (!entry) return null;
+  releaseTopArrivals();
   anchorHold = null;
   reveal(entry, { full });
   const card = opened(entry);
@@ -1382,12 +1397,11 @@ async function landOnMessage(id, serial = ++landingSerial) {
   card.focus({ preventScroll: true });
 }
 // A message a link on the page names (the person's reply, or a tag's), opened
-// in the Reader from its card, landed on first; one not loaded opens alone.
+// in the Reader from its card, landing only once that open succeeds; one not loaded opens alone.
 function goToMessage(id) {
-  const card = landOn(id);
-  if (!card) return run(() => openSource({ kind: 'message', id }, document.activeElement));
+  const entry = entries($('messages')).find(child => child.dataset.id === id), card = entry && cardIn(entry);
   // Opened as its card's click opens it; a click on the card itself would only light it on a phone (message-menu.mjs).
-  run(() => openSource({ kind: 'message', id }, card, marks.capture(id)));
+  run(() => openSource({ kind: 'message', id }, card || document.activeElement, card ? marks.capture(id) : null, 'reply', { land: true }));
 }
 // Every loaded card, the participants and the Reader's page, in the reader's colors as they now stand.
 function paintAgentColors() {
@@ -2121,9 +2135,10 @@ let unreadLanding = 0, unreadLandingBusy = false;
 // and the same revision-fenced mark clear. Capture before any page loads:
 // another device renewing the mark while they run must keep its newer mark.
 async function landUnreadMessage(wanted) {
-  releaseTopArrivals();
   const request = ++unreadLanding, act = wanted && marks.capture(wanted.id);
-  const current = () => request === unreadLanding && !registry.disposed;
+  const accessEpoch = listAccessEpoch, generation = registry.generation;
+  const current = () => request === unreadLanding && !registry.disposed && !retired && !topicUnavailable &&
+    accessEpoch === listAccessEpoch && generation === registry.generation;
   // Pagination can briefly put another unread card on screen on the way to
   // this one. Those transient positions are not a person's reading place.
   unreadLandingBusy = true;
@@ -2136,6 +2151,7 @@ async function landUnreadMessage(wanted) {
     if (!current()) return;
     const entry = entries($('messages')).find(child => child.dataset.id === id);
     if (!entry) return;
+    releaseTopArrivals();
     anchorHold = null;
     reveal(entry, { full: true, open: true });
     const card = opened(entry);
@@ -2902,8 +2918,8 @@ async function initialize() {
   if (anchored) {
     if (anchoredLand) run(() => landOnMessage(anchored));
     else {
-      const card = landOn(anchored);
-      run(async () => { await openSource({ kind: 'message', id: anchored }, card ?? $('main')); if (notebookReturning()) notebookSheetOf().resume(); });
+      const entry = entries($('messages')).find(child => child.dataset.id === anchored), card = entry && cardIn(entry);
+      run(async () => { await openSource({ kind: 'message', id: anchored }, card || $('main'), null, 'reply', { land: true }); if (notebookReturning()) notebookSheetOf().resume(); });
     }
   } else if (!pageAnchor && notebookReturning()) {
     // Back from a card's reply stack in another topic, by the way back its Reader showed (notebook-sheet.mjs).
@@ -3197,10 +3213,9 @@ async function openDestination(target, title, from = null) {
   if (target.kind === 'topic' && target.message && topic && views && target.id === topic.id) {
     if (target.land === true) return run(() => landOnMessage(target.message, landing));
     // Ordinary message links keep their Reader-opening behavior.
-    landOn(target.message);
     // From the Reader's own text, closing gives the focus to what opened the Reader.
     const opener = from?.closest?.('dialog') ? registry.current?.opener : from;
-    return run(() => openSource({ kind: 'message', id: target.message }, opener?.isConnected ? opener : document.activeElement));
+    return run(() => openSource({ kind: 'message', id: target.message }, opener?.isConnected ? opener : document.activeElement, null, 'reply', { land: true }));
   }
   // A link to a Notebook page this page can show opens it here: in the Reader
   // when it is the open topic's or its outcome's, in place on its outcome's page.
