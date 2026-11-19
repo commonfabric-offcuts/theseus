@@ -4138,12 +4138,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         // not programmatic scrolling: a reading gesture releases the prior
         // card's hold before the viewport moves. The press remains a touch tap.
         const reveal731 = async (page, selector) => {
+          const visibilityTolerance731Px = 1; // Named viewport rounding tolerance, Warp10522.
           const box = await page.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {top:b.top,bottom:b.bottom,height:b.height,viewport:innerHeight}})()`);
-          if (box.top >= 0 && box.bottom <= box.viewport) return;
+          if (box.top >= -visibilityTolerance731Px && box.bottom <= box.viewport + visibilityTolerance731Px) return;
           const deltaY = box.top + box.height / 2 - box.viewport / 2;
-          observations.push({name:'item 731 alternate-card visibility',key,method:'native wheel',selector,deltaY});
+          observations.push({name:'item 731 alternate-card visibility',key,method:'native wheel',selector,deltaY,visibilityTolerance731Px});
           await page.send('Input.dispatchMouseEvent', {type:'mouseWheel',x:6,y:box.viewport/2,deltaX:0,deltaY});
-          await until(() => page.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return b.top>=0&&b.bottom<=innerHeight})()`), '731 alternate card is visible after native wheel');
+          await until(() => page.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return b.top>=-${visibilityTolerance731Px}&&b.bottom<=innerHeight+${visibilityTolerance731Px}})()`), '731 alternate card is visible after native wheel');
         };
         // The reader still moves a dossier through real keys or the touch menu.
         if (input === 'laptop') { await keyTo(p, ids.b); await p.key('ArrowUp', 4); }
