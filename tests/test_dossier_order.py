@@ -53,14 +53,17 @@ class DossierOrderCase(fixtures.AsideCase):
         self.committed(self.command('stack.aside', {'through': None, 'key': before['order_key']}, target={'message_id': a}, expected={'aside_revision': 1}))
         self.assertEqual(self.order([a,b,c]), [c,a,b], 'Undo restores the exact previous position')
         self.committed(self.aside(a, self.latest(), revision=2))
+        pre_star_key = self.position(a)['order_key']
         starred = self.command('message.star', {'starred': True}, target={'message_id': a}, expected={'star_revision': 0}, op='731-star-once')
         self.committed(starred)
         self.assertEqual(starred, self.command('message.star', {'starred': True}, target={'message_id': a}, expected={'star_revision': 0}, op='731-star-once'))
-        self.assertEqual(self.order([a,b,c]), [c,b,a])
+        self.assertEqual(self.order([a,b,c]), [c,a,b])
+        self.assertEqual(self.position(a)['order_key'], pre_star_key)
         self.rejected(self.aside(a, self.latest(), revision=4), 'STARRED_IN_DOSSIER')
         self.assertFalse(self.position(a)['below'])
         self.post('A starred reply does not move it', reply_to=a)
-        self.assertEqual(self.order([a,b,c]), [c,b,a])
+        self.assertEqual(self.order([a,b,c]), [c,a,b])
+        self.assertEqual(self.position(a)['order_key'], pre_star_key)
 
     def test_item_731_migration_preserves_each_readers_actual_existing_order(self):
         from aim_next.migrations import migrate, MigrationError
