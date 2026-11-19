@@ -4105,7 +4105,7 @@ class InviteStepCase(MigrationCase):
         self.assertEqual([step for step in steps if step[0] == BEFORE_INVITES or step[1] == INVITES_VERSION],
                          [(BEFORE_INVITES, INVITES_VERSION)], "one step leaves 42 and one reaches 43")
         self.assertEqual((BEFORE_INVITES, INVITES_VERSION), ("42", "43"))
-        self.assertEqual(steps[-4], (BEFORE_ENDS, ENDS_VERSION), "the ends' step follows the tools'")
+        self.assertEqual(steps[-3], (BEFORE_ENDS, ENDS_VERSION), "the ends' step follows the tools'")
 
     def test_a_store_release_81_left_at_42_gains_the_invitations_once_upgraded(self):
         # Release 81 (324 live) stores version 42 without agent_invitations: the upgrade must still create it, so a
@@ -4230,7 +4230,7 @@ class EndsStepCase(MigrationCase):
         self.assertEqual([step for step in steps if step[0] == BEFORE_ENDS or step[1] == ENDS_VERSION],
                          [(BEFORE_ENDS, ENDS_VERSION)], "one step leaves 44 and one reaches 45")
         self.assertEqual((BEFORE_ENDS, ENDS_VERSION), ("44", "45"))
-        self.assertEqual(steps[-3], (BEFORE_COVERS, COVERS_VERSION), "the covers' step follows the ends'")
+        self.assertEqual(steps[-2], (BEFORE_COVERS, COVERS_VERSION), "the covers' step follows the ends'")
 
     def test_upgrade_keeps_every_row_reads_every_outcome_open_and_matches_a_fresh_instance(self):
         self.assertEqual((self.metadata()["schema_version"], schema(self.path)), (BEFORE_ENDS, frozen(SCHEMA_BEFORE_ENDS)))
