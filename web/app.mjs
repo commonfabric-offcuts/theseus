@@ -72,9 +72,10 @@ import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
-import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries, paintFolderColors, fillFrom, paintFoldedNames } from './reply-stacks.mjs';
+import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries, paintFolderColors, fillFrom, paintFoldedNames, checkDossierNew } from './reply-stacks.mjs';
 import { paintCardImages, dropCardImages } from './card-images.mjs';
 import { paintThumb } from './image-pick.mjs';
+import { newestNew } from './stack-order.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { PressHold } from './press-hold.mjs';
@@ -1141,6 +1142,7 @@ function feedOf() {
     send: async envelope => { const receipt = await api.command(envelope); if (receipt?.status === 'committed') views.ownAct(envelope.kind, receipt.result); return receipt; },
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
+    newest: (stack, mark) => run(() => openDossierNew(stack, mark)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
     hold: (paint, act) => keepListAnchor(paint, act), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); paintMessageUpdates(); }, home: $('new-message-sheet'),
@@ -1234,6 +1236,75 @@ async function landOnMessage(id, serial = ++landingSerial) {
   if (!card) throw Error('This message could not be shown. Try its link again.');
   card.focus({ preventScroll: true });
 }
+// The header New act is an in-feed open, never an editor navigation. Delivery
+// reads alone leave the visit's New intact; only a confirmed explicit act earns
+// openedHere. Keep an unknown request for an exact retry under the same authority.
+const dossierNewFlights = new Map(), dossierNewReads = new Map();
+let dossierNewSelection = 0;
+function openDossierNew(stack, mark) {
+  const previous = dossierNewFlights.get(stack.id), epoch = listAccessEpoch;
+  const task = (async () => {
+    if (previous) await previous.catch(() => {});
+    if (epoch !== listAccessEpoch) return;
+    return readDossierNew(stack, mark);
+  })();
+  dossierNewFlights.set(stack.id, task);
+  return task.finally(() => { if (dossierNewFlights.get(stack.id) === task) dossierNewFlights.delete(stack.id); });
+}
+async function readDossierNew(stack, mark) {
+  if (topicUnavailable || authorityReviewPending() || registry.disposed ||
+      $('reader').open || $('main').inert || document.visibilityState !== 'visible' || !document.hasFocus()) return;
+  const selection = ++dossierNewSelection;
+  const epoch = listAccessEpoch, topicId = topic.id;
+  const authority = { authority_id: registry.runtime.current.authority_id, authority_epoch: registry.runtime.current.authority_epoch };
+  const current = () => selection === dossierNewSelection && epoch === listAccessEpoch && topic?.id === topicId && !topicUnavailable && !registry.disposed &&
+    !authorityReviewPending() && !$('reader').open && !$('main').inert && document.visibilityState === 'visible' && document.hasFocus();
+  // Use the current stack, not a header closure from before a join or a read.
+  const now = stackState($('messages')).stacks.find(each => each.id === stack.id);
+  if (!now) return;
+  const selected = newestNew(now, item => !cardRead(item));
+  if (!selected) { await checkDossierNew($('messages'), now, mark); return; }
+  const item = views.messages.get(selected.id);
+  if (!item) return;
+  const revision = revisionOf(item), act = marks.capture(item.id);
+  const same = () => current() && views.messages.has(item.id) && revisionOf(views.messages.get(item.id)) === revision;
+  const entry = entries($('messages')).find(each => each.dataset.id === item.id);
+  if (!entry) return;
+  reveal(entry, { full: true, open: true });
+  const card = opened(entry);
+  const focusBefore = document.activeElement;
+  if (!await cardScroll.showFull(card, item) || !same() || !card.isConnected ||
+      document.activeElement !== focusBefore ||
+      (item.preview && cardScroll.revisions.get(item.id) !== revision)) return;
+  revealSelection(card); card.focus({ preventScroll: true });
+  if (!onScreen(card)) return;
+  const key = JSON.stringify([topicId, item.id, revision, authority]);
+  let envelope = dossierNewReads.get(key);
+  if (!envelope) {
+    envelope = { v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'topic.read_through',
+      target: { topic_id: topicId }, expected: { authority }, args: { from_seq: item.seq, seq: item.seq } };
+    dossierNewReads.set(key, envelope);
+  }
+  const receipt = await api.command(envelope);
+  // A recorded refusal ends this operation too; a later explicit press is
+  // a new act. Only an unconfirmed attempt retains its exact request.
+  if (receipt?.recorded === true && receipt.operation_id === envelope.operation_id) dossierNewReads.delete(key);
+  if (receipt?.recorded !== true || receipt.operation_id !== envelope.operation_id || receipt.status !== 'committed' ||
+      receipt.result?.topic_id !== topicId || receipt.result.from_seq !== item.seq || receipt.result.seq !== item.seq)
+    throw Error('Reading this message was not confirmed. Press New to try again.');
+  if (!same()) return;
+  if (act) {
+    const { envelope: clearing } = marks.envelope(act.messageId, false, act.revision);
+    const clear = await marks.send(act.messageId, false, act.revision);
+    if (clear?.recorded !== true || clear.operation_id !== clearing.operation_id || clear.status !== 'committed' ||
+        clear.result?.message_id !== item.id || clear.result.mark_revision !== act.revision + 1)
+      throw Error('The unread mark changed or could not be cleared. Press New to try again.');
+  }
+  if (!same()) return;
+  openedHere(item.id); stackMessages(); attention?.refresh();
+  if (commitReload) run(commitReload);
+}
+
 // A message a link on the page names (the person's reply, or a tag's), opened
 // in the Reader from its card, landed on first; one not loaded opens alone.
 function goToMessage(id) {

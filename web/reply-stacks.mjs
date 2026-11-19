@@ -121,7 +121,7 @@ export function topOf(list, entry) {
 export function stackState(list) {
   if (!states.has(list)) states.set(list, { levels: new Map(), kept: new Set(), peeked: new Set(), here: new Map(), renaming: null,
     stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: true, below: new Set(), viewer: null, again: () => {},
-    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set(), filling: null, filled: new Set(), apart: new Set() });
+    checking: new Map(), earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set(), filling: null, filled: new Set(), apart: new Set() });
   return states.get(list);
 }
 
@@ -324,6 +324,7 @@ export function headClick(list, entry, event) {
   const found = stackOf(list, entry), state = stackState(list);
   if (!found?.head || !found.section || !found.stack.replies.length) return false;
   const { stack } = found, act = event?.target?.closest?.('.stack-act')?.dataset.stackAct;
+  if (act === 'new') { state.on?.newest?.(stack, event.target.closest('.stack-new-action')); return true; }
   if (act === 'rename') { state.on?.rename?.(stack); return true; }
   // The first message drawn as an earlier one's row, under the tab: a press
   // there shows it whole, for this visit (item 476); the tab acts as before.
@@ -542,7 +543,19 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc, sep
   const meta = element(doc, 'span', 'stack-meta');
   meta.append(element(doc, 'span', 'stack-count', `${head.count} ${replies(head.count)}`));
   if (head.repliers.length) meta.append(element(doc, 'span', 'stack-repliers', ` · ${head.repliers.map(nameOf).join(', ')}`));
-  if (head.fresh) meta.append(element(doc, 'span', 'stack-fresh', ` · ${head.fresh} new`));
+  const checking = state.checking.get(stack.id);
+  const newMark = (className, words) => {
+    if (checking) return checking.node;
+    const mark = act('new', className + ' stack-new-action', words, 'Open and read the newest new message');
+    mark.setAttribute('role', 'button'); mark.tabIndex = 0;
+    mark.setAttribute('aria-label', checking ? 'Checked; no new messages' : 'Open and read the newest new message');
+    mark.onkeydown = event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault(); event.stopPropagation(); state.on?.newest?.(stack, mark);
+    };
+    return mark;
+  };
+  if (checking?.kind === 'fresh' || (!checking && head.fresh)) meta.append(newMark('stack-fresh', checking ? '✓' : ' · ' + head.fresh + ' new'));
   // A minted name says who named it, in the row (item 479); a typed one says so in its tooltip.
   const minted = head.mintedBy ? element(doc, 'span', 'stack-named', `Named by ${nameOf(head.mintedBy)}`) : null;
   if (minted) minted.title = `Named by ${nameOf(head.mintedBy)} when the first reply landed; a name anyone types replaces it`;
@@ -552,11 +565,29 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc, sep
   // The first message's marks stand beside who began it (paintHeadCarries puts them back there), then a minted name's mark.
   row.replaceChildren(name, pen, who, ...(carried ? [carried] : []),
     ...(minted ? [minted] : []),
-    ...(head.headNew ? [element(doc, 'span', 'stack-new', 'New')] : []),
+    ...(checking?.kind === 'head' || (!checking && head.headNew) ? [newMark('stack-new', checking ? '✓' : 'New')] : []),
     ...(starred ? [element(doc, 'span', 'stack-star', '★ Starred')] : []),
     meta, ...(open ? [act('hide', 'stack-hide', 'Show latest and unread replies')] : []));
   row.dataset.renaming = String(state.renaming === stack.id);
   return head;
+}
+
+// A stale rendered mark confirms the explicit check, then redraws from the
+// current unread predicate. Keep it through a repaint, including new arrivals.
+export async function checkDossierNew(list, stack, pressed) {
+  const state = stackState(list);
+  if (state.checking.has(stack.id)) return;
+  state.checking.set(stack.id, { kind: pressed.classList.contains('stack-fresh') ? 'fresh' : 'head', node: pressed });
+  pressed.textContent = '✓'; pressed.setAttribute('aria-label', 'Checked; no new messages');
+  state.again();
+  const mark = state.sections.get(stack.id)?.querySelector('.stack-new-action');
+  if (mark) {
+    mark.textContent = '✓';
+    const animation = mark.animate([{ opacity: 1, transform: 'scale(.8)' }, { opacity: 1, transform: 'scale(1)', offset: .4 },
+      { opacity: 0, transform: 'scale(1)' }], { duration: 280, easing: 'ease-out', fill: 'forwards' });
+    await animation.finished.catch(() => {});
+  }
+  state.checking.delete(stack.id); state.again();
 }
 
 // The marks alone on the row of the stack a message heads, when only what that message

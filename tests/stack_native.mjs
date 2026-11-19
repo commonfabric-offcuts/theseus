@@ -11,6 +11,7 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { messagePreview } from '../web/message-preview.mjs';
 import { pngPixels } from './png-bands.mjs';
+import { dossierNew781Checks } from './dossier_new_781_native.mjs';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
 
 // Screenshot qualification, independent of how quickly an engine opens a dialog.
@@ -45,6 +46,7 @@ export function assertDossier799Geometry(at) {
 export async function stackChecks({ check, until, view, control, shot, facts, observations, engine }, helpers) {
   const { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES } = helpers;
   const other = 'aim-core';
+  await dossierNew781Checks({ check, until, view, control, shot, facts, observations, engine }, helpers);
   // Item 429: the static material uses the actual feed renderer and isolated
   // Core records. Palette probes recolor that rendered face only; they do
   // not stand in for native color-picker or fold gestures.
