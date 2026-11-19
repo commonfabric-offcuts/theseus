@@ -14,6 +14,7 @@ import { coverAnswers } from './cover-answers.mjs';
 import { glyph } from './glyphs.mjs';
 import { linkNode, writtenLink } from './links.mjs';
 import { timeNode } from './times.mjs';
+import { formatNodes } from './message-format.mjs';
 
 const element = (doc, tag, className, text) => {
   const node = doc.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node;
@@ -76,9 +77,10 @@ function waitsLabel(doc, owner, wait, context) {
 // link and pill and the message it came from; then each thing waiting on the
 // outcome's owner, with its default. context: { viewer, nameOf, topicId }.
 export function waitWords(wait) {
+  if (!(wait.options?.length) && wait.default == null) return 'Waiting for your answer.';
   const details = [];
   if ('options' in wait) details.push(wait.options.length ? `Options: ${wait.options.join(' | ')}` : 'No choices');
-  details.push(wait.default === null ? 'No default promised' : `Default: ${wait.default}.`);
+  details.push(wait.default == null ? 'No default promised' : `Default: ${wait.default}.`);
   if (wait.reason) details.push(wait.reason);
   return details.join(' · ');
 }
@@ -88,9 +90,7 @@ export function coverSheet(doc, cover, context) {
   const sheet = element(doc, 'div', 'dossier-cover');
   sheet.setAttribute('role', 'note'); sheet.setAttribute('aria-label', 'Dossier cover');
   const line = className => { const node = element(doc, 'div', `cover-line ${className}`); sheet.append(node); return node; };
-  const heading = line('cover-heading');
-  if (cover.stands) heading.append(element(doc, 'span', 'cover-words cover-stands', cover.stands));
-  const refresh = refreshControl(doc, cover, ctx); if (refresh) heading.append(refresh);
+  if (cover.stands) line('cover-heading').append(element(doc, 'span', 'cover-words cover-stands', cover.stands));
   const payload = cover.payload;
   if (payload) {
     const row = line('cover-payload'), words = element(doc, 'span', 'cover-words');
@@ -109,8 +109,16 @@ export function coverSheet(doc, cover, context) {
   }
   for (const wait of cover.waiting ?? []) {
     const row = line('cover-wait');
-    row.append(waitsLabel(doc, wait.actor_id ?? cover.owner, wait, ctx), ' ', element(doc, 'span', 'cover-words', wait.text), element(doc, 'span', 'cover-note', waitWords(wait)));
+    const words = element(doc, 'span', 'cover-words');
+    words.append(...formatNodes(wait.text, { doc }));
+    row.append(waitsLabel(doc, wait.actor_id ?? cover.owner, wait, ctx), ' ', words, element(doc, 'span', 'cover-note', waitWords(wait)));
     const answers = coverAnswers(doc, wait, ctx); if (answers) row.append(answers);
+  }
+  const refresh = refreshControl(doc, cover, ctx);
+  if (refresh) {
+    // The final content row owns the corner; no heading or extra row is needed.
+    refresh.style.gridRow = String(Math.max(1, sheet.children.length));
+    sheet.append(refresh);
   }
   sheet.dataset.done = String(Boolean(payload?.done) && !(cover.waiting ?? []).length);
   return sheet;
