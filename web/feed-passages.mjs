@@ -16,7 +16,7 @@
 // words on the background of the box they show in (the card, or a code block,
 // a table or an excerpt that clips them), which moves nothing on the card and
 // is clipped and scrolled with the words.
-import { drawnRevision, drawnText, passageSpans, rangeOf, sourcePosition } from './message-format.mjs';
+import { drawnDisplayRules, drawnRevision, drawnText, passageSpans, rangeOf, sourcePosition } from './message-format.mjs';
 import { cardIn } from './fold.mjs';
 import { fieldLayers, readerField, wordLines } from './lit-field.mjs';
 
@@ -98,7 +98,7 @@ export class FeedPassages {
     if (position === null) return null;
     // A caret falls between two characters: the passage is the one whose
     // words are under the point, of those either side of it.
-    const spans = passageSpans(text, this.doc).filter(span => span.start <= position && position <= span.end);
+    const spans = passageSpans(text, this.doc, drawnDisplayRules(words)).filter(span => span.start <= position && position <= span.end);
     const under = spans.find(span => {
       const shown = rangeOf(words, span.start, span.end);
       return shown && [...shown.getClientRects()].some(box => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom);
@@ -119,7 +119,7 @@ export class FeedPassages {
   adopt(entry, words) {
     const chosen = this.selected(entry);
     if (!chosen) return;
-    const touched = passageSpans(drawnText(words), this.doc).filter(span => span.start < chosen.end && span.end > chosen.start);
+    const touched = passageSpans(drawnText(words), this.doc, drawnDisplayRules(words)).filter(span => span.start < chosen.end && span.end > chosen.start);
     if (!touched.length) return;
     const anchor = { start: touched[0].start, end: touched.at(-1).end };
     this.lit = { entry, words, anchor, ...anchor };

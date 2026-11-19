@@ -111,6 +111,10 @@ the pointer's way, the keys' and the phone's.
   selected anywhere copy as the browser copies them, and in writing or a
   pop-up ⌘C is theirs; with nothing lit it does nothing of the page's. Nothing
   is said when it copies, as in the Reader; a refusal says how else to copy.
+  Source-only text-display preview exception: a selection wholly inside a
+  message drawn with a display rule on copies the exact existing quote projection
+  at its mapped ends; the rule's layout adds no characters. Off restores native
+  selected Copy. See [the preview contract](text-display-rules-preview.md).
 - **A cut-off message** (the first 1,024 bytes are shown) reads on in place:
   once the pointer rests on it, the keys light it or a finger taps it, the whole
   card scrolls under the wheel, trackpad or a finger, keeping its height (a
