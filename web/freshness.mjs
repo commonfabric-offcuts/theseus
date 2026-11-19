@@ -184,6 +184,7 @@ export class Freshness {
       const answer = actorPage(await read('changes', { scope: actorScope(this.bootstrap), limit: 50, cursor: input }), this.bootstrap);
       if (!current()) return;
       for (const item of answer.items) {
+        if (item.resource_kind === 'dossier_move' && item.resource_id === this.topicId && integer(item.version)) this.invalidate('dossier_move', item.version);
         if (item.resource_kind === 'whisper' && item.resource_id === this.topicId && integer(item.version)) this.invalidate('whisper:' + item.version, item.version);
         // A thumbs-up or go-ahead answer on a message (docs/thumbs.md): its key names the message.
         if (item.resource_kind === 'reaction' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('reaction:' + item.resource_id, item.version);

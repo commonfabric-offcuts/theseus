@@ -672,7 +672,8 @@ class Conversation:
         act_fields(db, actor, items)
         # Whether each of the reader's own messages still waits for a reply (item 475), until the first reply from anyone else.
         awaiting_fields(db, actor, topic, items)
-        return {"instance_id": self.instance_id, "items": items, "next_cursor": last if len(rows) > len(items) else None,
+        from .dossier_move import membership_revision
+        return {"membership_revision": membership_revision(db, topic["id"], actor), "instance_id": self.instance_id, "items": items, "next_cursor": last if len(rows) > len(items) else None,
                 "relevant_versions": {"topic": topic["version"]}, **self._new_line(db, actor, topic["id"])}
 
     def _named_messages(self, db, actor, topic, ids):

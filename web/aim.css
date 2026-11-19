@@ -1297,3 +1297,12 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 @media(max-width:760px){
  .notebook-tools>[aria-label="This page"],.notebook-rename,.notebook-page-notice button{min-width:44px;min-height:44px}
 }
+/* Item 774: the existing message overflow opens one quiet, bounded topic picker. */
+.dossier-move { color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: .5rem; width: min(32rem, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 1rem; overflow: auto; }
+.dossier-move h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
+.dossier-move button { min-height: 44px; color: var(--ink); background: transparent; border: 0; padding: .5rem; text-align: left; }
+.dossier-move-choices { display: flex; flex-direction: column; }
+.dossier-move-choices button { white-space: normal; overflow-wrap: anywhere; min-width: 0; max-width: 100%; }
+.dossier-move button:focus-visible { outline: 2px solid var(--focus); }
+.dossier-move-status { color: var(--muted); max-width: 40rem; }
+.dossier-moved-pointer { display: block; color: var(--muted); padding: .4rem 0; }

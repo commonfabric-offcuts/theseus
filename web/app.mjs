@@ -63,6 +63,7 @@ import { HealthLight } from './health-light.mjs';
 import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
 import { ToolPage, OutcomeTools, ToolsRail, TopicTools } from './skills.mjs';
+import { openDossierMove } from './dossier-move.mjs';
 import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
 import { DossierSelectionQuote } from './dossier-selection-quote.mjs';
 import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions } from './reactions.mjs';
@@ -941,6 +942,9 @@ function paintViews(kind) {
   }
   keepListAnchor(() => {
   // Newest first, so where each new card goes is at or after where the one before it went.
+  if (kind === 'messages') for (const [id, entry] of messageEntries) if (!views.messages.has(id)) {
+    dropCardImages(entry); cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); entry.remove(); messageEntries.delete(id);
+  }
   let following = $('messages').firstElementChild;
   for (const item of kind === 'messages' ? [...feedMessages().values()].sort((a, b) => b.seq - a.seq) : []) {
     let card = messageEntries.get(item.id);
@@ -1013,7 +1017,14 @@ function paintViews(kind) {
     }
     card.onclick = () => run(() => openNotebook(item.id, { opener: card }));
   }
-  if (kind === 'messages') { placeLine(); menu?.paint(); paintDossierSourceStatus(); }
+  if (kind === 'messages') {
+    for (const old of $('messages').querySelectorAll('.dossier-moved-pointer')) old.remove();
+    for (const move of views.movedPointers ?? []) {
+      const link = node('a', `Dossier moved to ${move.title}`, 'dossier-moved-pointer');
+      link.href = routeHref(topicTarget(move.topic_id, move.root_id)); $('messages').append(link);
+    }
+    placeLine(); menu?.paint(); paintDossierSourceStatus();
+  }
   if (kind === 'messages' && here?.page) paintConversationPage();
   });
   paintMoreMessages();
@@ -1642,7 +1653,8 @@ function cardMenuActs(item, items, anchor) {
 function messageMenuItems(item, say, anchor = say) {
   const phone = Boolean(window.matchMedia?.('(max-width: 760px)').matches);
   const stack = stackFeed && !topicUnavailable ? stackFeed.menuItems(item, { phone, more: moves => anchor && openMessageMenu({ anchor, items: cardMenuActs(item, moves, anchor), label: 'Move or join', sheet: true }) }) : { first: [], last: [] };
-  const items = [...stack.first, { label: 'Copy Link', glyph: 'link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
+  const move = item.stack_position?.can_move ? [{ label: 'Move to topic…', glyph: 'topic', act: () => moveDossier(item.id, anchor) }] : [];
+  const items = [...stack.first, ...move, { label: 'Copy Link', glyph: 'link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
   const card = cardIn(messageEntries.get(item.id));
   if (cardScroll?.clipped(card, item)) items.push({ label: 'Show full message', glyph: 'full', act: () => run(() => cardScroll.showFull(card, item)) });
   // Edit, on the person's own message (docs/message-edit.md): the Reader opens on it to edit.
@@ -1654,6 +1666,14 @@ function messageMenuItems(item, say, anchor = say) {
     items.push({ label: marked ? 'Mark read' : 'Mark unread', glyph: marked ? 'read' : 'unread', act: () => run(() => markFromMenu(item.id, !marked)) });
   }
   return cardMenuActs(item, [...items, ...stack.last], anchor);
+}
+function moveDossier(id, anchor) {
+  openDossierMove({ anchor, messageId: id,
+    read: (name, args) => api.view(name, args, { readClass: 'foreground' }),
+    send: envelope => api.command(envelope),
+    binding: () => ({ instanceId: bootstrap.instance_id, authority: registry.runtime.current }),
+    moved: () => { freshness?.invalidate('dossier_move', 0, true); freshness?.request(); }
+  });
 }
 // A right-click on a message opens the same menu where the pointer is. On a
 // link or a selection the browser's own menu stays, to copy what it offers.
@@ -1723,6 +1743,7 @@ async function copyPageLink(source, revision, say) {
 function openReaderMenu() {
   const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = [];
   const message = Boolean(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
+  if (message && p.source.dossier?.can_move) items.push({ label: 'Move to topic…', glyph: 'topic', act: () => moveDossier(ref.id, button) });
   if (message) items.push({ label: 'Copy Link', glyph: 'link', act: () => run(() => copyLink(p.source.topic_id, ref.id, button)) });
   // Edit turns the Reader to its edit mode on the message it shows (docs/message-edit.md).
   if (message && !messageEdit && mayEdit({ author_id: p.source.author }, editRights())) items.push({ label: 'Edit', glyph: 'pencil', act: () => run(() => editMessage(ref.id, button)) });
@@ -2220,6 +2241,10 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
       if (key.startsWith('edit_session:')) { if (messageEdit?.id === key.slice(13)) messageEdit.writing.sessionChanged(version); return true; }
       if (key !== 'neighbors') {
         const done = await views.refresh(key, version, read, current);
+        if (key === 'dossier_move' && done !== false && current() && registry.current?.source?.source_ref?.kind === 'message') {
+          const p = registry.current, source = checkedView(await read('source', p.source.source_ref), bootstrap.instance_id);
+          if (current() && registry.current === p) { Object.assign(p.source, source); paintReaderTitle(); }
+        }
         if (key === 'acts' && done !== false && current()) {
           await readReaderDossier(registry.current, read, current);
           if (current()) paintReaderTitle();
@@ -2365,6 +2390,10 @@ async function initialize() {
   const pageAnchor = route.kind === 'topic' && route.page ? { id: route.page, revision: route.revision ?? null } : null;
   // A topic's unread count opens it at its oldest unread message (item 613).
   const atUnread = route.kind === 'topic' && route.at === 'unread';
+  if (anchored) {
+    const linked = checkedView(await api.view('source', { source_ref: { kind: 'message', id: anchored } }, { readClass: 'foreground' }), bootstrap.instance_id);
+    topicId = linked.topic_id;
+  }
   if (anchored || pageAnchor || atUnread) { route = { kind: 'topic', id: topicId }; shell.rename(route, location.hash); }
   if (route.kind === 'conversation') {
     const found = validate(await api.view('conversation', { workspace_id: route.id })).conversation;
@@ -2746,6 +2775,7 @@ async function initialize() {
   // This run's first marks read establishes what its reading act may clear.
   // The older pages begin only after that baseline, as on a card already shown.
   if (atUnread) run(() => firstReading.then(landOnUnread));
+  freshness.invalidate('dossier_move', 0); freshness.request();
   if (anchored) {
     if (anchoredLand) run(() => landOnMessage(anchored));
     else {

@@ -36,7 +36,7 @@ def record_ask(db, message_id, workspace_id, topic_id):
     return db.execute(
         "SELECT 1 FROM outcome_target_revisions WHERE workspace_id=? AND ask_message_id=? "
         "UNION ALL SELECT 1 FROM pipeline_pieces p CROSS JOIN pipeline_stage_entries e INDEXED BY piece_entries ON e.piece_id=p.id "
-        "WHERE p.topic_id=? AND e.ask_message_id=? LIMIT 1", (workspace_id, message_id, topic_id, message_id)).fetchone() is not None
+        "WHERE p.workspace_id=? AND e.ask_message_id=? LIMIT 1", (workspace_id, message_id, workspace_id, message_id)).fetchone() is not None
 
 
 def release_held(store, db, message_id):

@@ -578,3 +578,14 @@ runs them, over invented records.
 
 Schema upgrades and actor registration are operator acts in
 `bin/aim-next-admin`, not agent commands.
+
+Item 774: the shared command `stack.move` moves an entire dossier within its
+outcome. Read `dossier_move_targets` with any message id for the root, current
+source, move_revision and a paged list of other topics. Send target
+`{"message_id": ROOT}`, args `{"topic_id": DESTINATION}`, expected
+`{"source_topic_id": SOURCE, "move_revision": N, "authority": CAPTURED_PAIR}`
+through `aim-next command FILE`. Keep the exact operation id for a retry.
+Core admits only the outcome owner or dossier's first agent author, and refuses
+new readers or lost reply paths. `dossier_moves {topic_id}` reads the old topic's
+paged pointers. Existing message ids are the links; use `source` to resolve their
+current topic. Full admission and refusal contract: [dossier move](dossier-move-774.md).

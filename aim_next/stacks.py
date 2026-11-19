@@ -410,7 +410,8 @@ def source_dossier(db, actor, message_id):
     name = current_acts(db, actor, [root]).get(root, EMPTY)["name"]
     first = db.execute("SELECT " + words("m", chars=OPENING) + " AS body,m.attachments FROM messages m WHERE m.id=?", (root,)).fetchone()
     count = db.execute(MEMBERS + " SELECT count(*) FROM (SELECT id FROM members LIMIT 2)", {"root": root, "actor": actor}).fetchone()[0]
-    return {"root_id": root, "name": name, "first": {"body": first["body"], "attachments": json.loads(first["attachments"])}, "alone": count < 2}
+    from .dossier_move import move_fields
+    return {**move_fields(db, actor, root), "root_id": root, "name": name, "first": {"body": first["body"], "attachments": json.loads(first["attachments"])}, "alone": count < 2}
 
 
 def dossier_namer(db, root, replied=False):
@@ -517,7 +518,8 @@ def stack_positions(db, actor, items):
             latest, others = _dossier(db, actor, root) if through is not None else (0, None)
             # The dossier's name and its cover (items 470, 624) ride with its place, so a page holding only its
             # replies shows them; read as this reader reads its first message, the root they can see.
-            positions[root] = {"root_id": root, "through": through, "aside_revision": acts["aside_revision"],
+            from .dossier_move import move_fields
+            positions[root] = {**move_fields(db, actor, root), "root_id": root, "through": through, "aside_revision": acts["aside_revision"],
                                "name": acts["name"], "name_revision": acts["name_revision"], "join_revision": acts["join_revision"],
                                "placed": acts["placed"], "place_revision": acts["place_revision"],
                                "places": [each for each in places.get(root, []) if each["message_id"] != root],
