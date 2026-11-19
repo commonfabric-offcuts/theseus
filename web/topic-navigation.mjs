@@ -131,6 +131,23 @@ function compare([doneA, positionA, idA], [doneB, positionB, idB]) {
 }
 const key = item => [doneFlag(item), Number.isSafeInteger(item.list_position) ? item.list_position : 0, item.id];
 
+// Core still lists the standing conversation separately. Carry its one topic
+// beside the first active page, never inside the server's cursor/extent.
+export async function readTopicList(read, args) {
+  const answer = await read('workspace_topics', args);
+  if (args.cursor || args.archived || args.done || args.build === true) return answer;
+  const found = await read('conversation', { workspace_id: args.workspace_id });
+  const conversation = found.conversation;
+  if (found.instance_id !== answer.instance_id) throw Error('The conversation topic identity could not be confirmed. Retry topics.');
+  if (!conversation) return { ...answer, conversation_topic: null };
+  const record = await read('topic', { topic_id: conversation.topic_id });
+  const topic = record.topic;
+  if (found.instance_id !== answer.instance_id || record.instance_id !== answer.instance_id || topic?.id !== conversation.topic_id || topic.workspace_id !== args.workspace_id)
+    throw Error('The conversation topic identity could not be confirmed. Retry topics.');
+  return { ...answer, conversation_topic: { ...topic, unread: conversation.unread ?? 0,
+    addressed: conversation.addressed ?? 0 } };
+}
+
 // Only workspace navigation data lives here. Existing sessions own all writing.
 export class TopicPages {
   // apart: the open topics are listed apart from the outcome's Build topics,
@@ -145,9 +162,11 @@ export class TopicPages {
   // the list where what the page knows of it puts it, in its place there.
   get items() {
     const current = this.current, here = current && listOf(current, this.apart) === this.list;
-    const items = [...this.loaded.values()].filter(item => item.id !== current?.id || here)
+    const loaded = new Map(this.loaded);
+    if (this.conversation && listOf(this.conversation, this.apart) === this.list) loaded.set(this.conversation.id, this.conversation);
+    const items = [...loaded.values()].filter(item => item.id !== current?.id || here)
       .map(item => item.id === current?.id ? { ...item, ...current } : item);
-    if (here && !this.loaded.has(current.id)) items.push(current);
+    if (here && !loaded.has(current.id)) items.push(current);
     return items.sort((a, b) => compare(key(a), key(b)));
   }
   accept(answer, cursor = null) {
@@ -167,7 +186,12 @@ export class TopicPages {
     if (answer.next_cursor !== null && (!answer.items.length || answer.next_cursor !== topicPosition(answer.items.at(-1)))) fail();
     // The person's own order of the outcome's topics, which every page carries (outline-order.mjs).
     const order = orderOf(answer);
-    if (cursor === null) this.loaded.clear();
+    if (cursor === null) {
+      const item = answer.conversation_topic;
+      if (item != null && (typeof item.id !== 'string' || !item.id || item.workspace_id !== this.workspaceId || typeof item.title !== 'string' || !Number.isSafeInteger(item.list_position) || item.list_position < 0)) fail();
+      this.loaded.clear();
+      this.conversation = item == null ? null : structuredClone(item);
+    }
     for (const item of answer.items) this.loaded.set(item.id, structuredClone(item));
     if (order) this.order = order;
     this.next = answer.next_cursor; this.started = true;
@@ -192,7 +216,7 @@ export async function reread(pages, read, pageMax = PAGE) {
     fresh.accept(await read({ limit, ...(cursor === null ? {} : { cursor }) }), cursor);
     cursor = fresh.next;
   } while (cursor !== null && last !== null && fresh.precedes(cursor, last));
-  Object.assign(pages, { loaded: fresh.loaded, next: fresh.next, groups: fresh.groups ?? pages.groups, order: fresh.order ?? pages.order, started: true });
+  Object.assign(pages, { loaded: fresh.loaded, conversation: fresh.conversation, next: fresh.next, groups: fresh.groups ?? pages.groups, order: fresh.order ?? pages.order, started: true });
 }
 
 // The departure guard. A move waits for a send under way and for writing and

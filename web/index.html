@@ -34,10 +34,7 @@
       <button id="more-workspaces" type="button" hidden>More outcomes</button>
       <button id="retry-workspaces" type="button" hidden>Retry outcomes</button>
       </section>
-      <section id="conversation-navigation" aria-labelledby="conversation-heading" hidden>
-      <div class="rail-heading"><h2 id="conversation-heading">Conversation</h2></div>
-      <div id="conversation-row"></div>
-      </section>
+
       <section id="pipeline-navigation" aria-labelledby="pipeline-heading" hidden>
       <div class="rail-heading"><h2 id="pipeline-heading">Pipeline</h2></div>
       <div id="pipeline-links"></div>
@@ -66,7 +63,6 @@
     <div id="light-tip" class="light-tip" role="tooltip" hidden></div>
     <main id="main" tabindex="-1">
       <header class="topic-header"><div><div class="eyebrow-row"><button id="rail-open" type="button" class="rail-open" aria-controls="rail" aria-expanded="false">☰ Topics</button><p id="workspace-name" class="eyebrow"></p></div><div class="title-row"><h1 id="topic-title"></h1><button id="outcome-menu" type="button" class="message-menu" aria-label="More for this outcome" aria-haspopup="menu" hidden>⋯</button><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M10.3 2.8h3.4l.5 2.6 1.6.9 2.5-.9 1.7 2.9-2 1.8v1.8l2 1.8-1.7 2.9-2.5-.9-1.6.9-.5 2.6h-3.4l-.5-2.6-1.6-.9-2.5.9-1.7-2.9 2-1.8v-1.8l-2-1.8 1.7-2.9 2.5.9 1.6-.9z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button><button id="new-message" type="button" class="new-message quiet" aria-label="New message" title="New message"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" d="M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16z M13.5 6.5l4 4"/></svg></button></div><p id="topic-description" class="muted topic-subtitle"></p><p id="outcome-kept" class="muted outcome-kept" hidden></p><section id="topic-people" class="topic-people" aria-labelledby="people-heading"><h2 id="people-heading">Team</h2><div id="participants" class="participants" aria-label="Topic participants"></div></section><div id="outcome-purpose" class="outcome-purpose" hidden></div></div></header>
-      <section id="sent-to-you" class="selection-page" aria-label="Sent to you by name" hidden></section>
       <section id="topic-target" class="topic-target" aria-label="This outcome's target" hidden></section>
       <section id="waiting-on-you" class="waiting-on-you" aria-label="Waiting on you" hidden></section>
       <section id="outcome-page" class="selection-page" hidden></section>
@@ -80,6 +76,7 @@
       <section id="health-page" class="health-page" aria-label="Health" hidden></section>
       <section id="measurements-page" class="measurements-page" aria-label="Measurements" hidden></section>
       <section id="tool-page" class="tool-page" aria-label="Skill or tool" hidden></section>
+      <details id="outcome-context" class="outcome-context" hidden><summary>More from this outcome</summary><div id="outcome-context-body"></div></details>
       <section id="outcome-tools" class="outcome-tools" aria-labelledby="tools-heading" hidden></section>
       <section id="deck-page" class="deck-page" aria-label="Cards" hidden></section>
       <section id="outcome-team" class="outcome-team" aria-labelledby="team-heading" hidden><h2 id="team-heading">Team</h2><div id="team-people"></div><div id="team-invite" class="team-invite" hidden></div></section>
@@ -93,9 +90,7 @@
       <section id="page-here" class="page-here" aria-label="Notebook page" hidden></section>
       <section id="topic-pending" aria-label="Your pending replies"></section>
       <div class="feed-filters"><p id="topic-marks" class="topic-marks" hidden><span id="topic-marks-words"></span><span aria-hidden="true">·</span><button id="read-mark" type="button">Read it</button></p>
-      <div id="conversation-show" class="conversation-show" role="group" aria-label="Show" hidden></div>
-      <div id="agent-coordination-show" class="conversation-show" role="group" aria-label="Agent coordination" hidden></div></div>
-      <div id="conversation-empty" class="conversation-empty" hidden></div>
+      <div id="agent-coordination-show" class="feed-filter" role="group" aria-label="Agent coordination" hidden></div></div>
       <p id="starred-status" class="muted" role="status" hidden><span id="starred-status-words"></span><button id="starred-retry" type="button" hidden>Retry starred dossiers</button></p>
       <section id="messages" aria-label="Conversation">
       <dialog id="new-message-sheet" class="composer-home" aria-labelledby="inline-writing-title">
