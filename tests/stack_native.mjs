@@ -1574,8 +1574,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   const positionIn = async (topic, id) => (await view('stack_positions', { topic_id: topic, message_ids: [id] })).items[0].stack_position;
   // ⋯ of a message again: on a phone a tap on the message already lit opens the Reader (openReader), so another
   // message is lit first, as a person taps elsewhere before coming back to it.
-  const menuAgain = async (p, device, id, elsewhere) => {
-    if (device === 'phone' && (await lit(p)).includes(id)) await light(p, device, elsewhere);
+  const menuAgain = async (p, device, id, elsewhere, reveal) => {
+    if (device === 'phone' && (await lit(p)).includes(id)) await light(p, device, elsewhere, false, reveal);
     return menuOf(p, device, id);
   };
   // What these cases seed is read through at their end, as reading it on screen would, so the cases after them find the
@@ -4063,6 +4063,190 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
+
+  await check('reading item 731 actual record routing and return mutants', async () => {
+    const result = await control({ method: 'item_731_mutants' });
+    observations.push({ name: 'item 731 Core mutations', ...result });
+    assert.deepEqual(result.proofs.map(each => each.name), ['record', 'routing', 'return']);
+    for (const proof of result.proofs) {
+      assert.equal(proof.applied, true);
+      assert.notEqual(proof.original_sha256, proof.mutated_sha256);
+      assert.equal(proof.original_sha256, proof.restored_sha256);
+      assert.notEqual(proof.mutant_exit, 0); assert.equal(proof.control_exit, 0);
+      assert.match(proof.mutant_log, /^FAIL: test_item_731_/m);
+      assert.notEqual(proof.mutant_cache, proof.control_cache);
+    }
+  });
+
+  const targets731 = async (p, tolerance) => {
+    for (const selector of ['#reader-star', '#reader-aside']) {
+      const box = await p.box(selector);
+      assert.ok(box.width >= 44 - tolerance.sizePx && box.height >= 44 - tolerance.sizePx, 'phone controls keep 44px targets');
+    }
+  };
+
+  // Item 731: a reply must not lift an existing dossier, including an unplaced one.
+  for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) for (const theme of ['light', 'dark']) {
+    for (const route of ['topic', 'conversation']) await check(`reading item 731 dossiers stay put ${route} ${device} ${theme}`, async () => {
+      const key = `stay-731-${route}-${device}-${theme}`, input = device === 'laptop' ? 'laptop' : 'phone';
+      let topic = key;
+      if (route === 'conversation') topic = (await control({ method: 'coordinator', operation_id: key + '-coordinator', coordinator: other, team: [facts.agent] })).topic_id;
+      else await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Dossiers stay put' }] });
+      const ids = {};
+      const post = async (name, reply = null) => {
+        ids[name] = (await control({ method: 'agent_message', operation_id: key + '-' + name, topic_id: topic, source: 'topic', sender: other,
+          join: route === 'topic', addressees: [facts.actor], body: `Item 731 ${name}: exact dossier words.`, ...(reply ? { reply_to: ids[reply] } : {}) })).result.message_id;
+        return ids[name];
+      };
+      await post('b'); await post('b1', 'b'); await post('a'); await post('a1', 'a');
+      const query = route === 'conversation' ? '/?conversation=w1' : '/?topic=' + topic;
+      let p;
+      const roots = [ids.a, ids.b];
+      const order = () => p.evaluate(`[...document.querySelector('#messages').children].map(e=>e.dataset.stack??e.dataset.id).filter(id=>${JSON.stringify(roots)}.includes(id))`);
+      try {
+        const original = await control({ method: 'item_731_runtime', phase: 'original' });
+        observations.push({ name: 'item 731 original Build', key, ...original });
+        try {
+          p = await open(key + '-original', device, topic, ids.a, '', query);
+          await dossierTheme(p, theme);
+          assert.equal(await p.evaluate(`document.querySelector('script[type="module"][src]').src.includes('/b/${original.stamp}/')`), true, 'the browser actually runs the unmodified LIVE94 Build');
+          await becomes(order, [ids.a, ids.b], 'A above B before arrival');
+          await away(p); await shot(p, key + '-original-before');
+          await post('b2', 'b');
+          await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.b2))}))`), 'the incoming reply is actually drawn');
+          await away(p); await shot(p, key + '-original-after');
+          assert.deepEqual(await order(), [ids.b, ids.a], 'the actual original Build lifts B');
+          await assert.rejects(async () => assert.deepEqual(await order(), [ids.a, ids.b]), { name: 'AssertionError' }, 'the identity/order assertion catches the original activity ordering');
+        } finally {
+          if (p) { await p.close(); p = null; }
+          const restored = await control({ method: 'item_731_runtime', phase: 'restored' });
+          assert.equal(restored.restored, true);
+          assert.deepEqual(restored.hashes, original.candidate_hashes, 'all candidate Build bytes restored exactly');
+          observations.push({ name: 'item 731 restored Build', key, ...restored });
+        }
+        p = await open(key, device, topic, ids.a, '', query);
+        await dossierTheme(p, theme);
+        await becomes(order, [ids.a, ids.b], 'the candidate preserves A above B with the same records');
+        await away(p); await shot(p, key + '-after');
+        await post('b-live', 'b');
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids['b-live']))}))`), 'candidate live reply is drawn');
+        assert.deepEqual(await order(), [ids.a, ids.b], 'candidate live arrival does not lift B');
+        await p.close(); p = await open(key + '-reload', device, topic, ids.a, '', query);
+        await dossierTheme(p, theme);
+        await becomes(order, [ids.a, ids.b], 'reload keeps A above B');
+        // Visibility for this case's alternate phone card uses a native wheel,
+        // not programmatic scrolling: a reading gesture releases the prior
+        // card's hold before the viewport moves. The press remains a touch tap.
+        const reveal731 = async (page, selector) => {
+          const visibilityTolerance731Px = 1; // Named viewport rounding tolerance, Warp10522.
+          const box = await page.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {top:b.top,bottom:b.bottom,height:b.height,viewport:innerHeight}})()`);
+          if (box.top >= -visibilityTolerance731Px && box.bottom <= box.viewport + visibilityTolerance731Px) return;
+          const deltaY = box.top + box.height / 2 - box.viewport / 2;
+          observations.push({name:'item 731 alternate-card visibility',key,method:'native wheel',selector,deltaY,visibilityTolerance731Px});
+          await page.send('Input.dispatchMouseEvent', {type:'mouseWheel',x:6,y:box.viewport/2,deltaX:0,deltaY});
+          await until(() => page.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return b.top>=-${visibilityTolerance731Px}&&b.bottom<=innerHeight+${visibilityTolerance731Px}})()`), '731 alternate card is visible after native wheel');
+        };
+        // The reader still moves a dossier through real keys or the touch menu.
+        if (input === 'laptop') { await keyTo(p, ids.b); await p.key('ArrowUp', 4); }
+        else { await menuAgain(p, input, ids['b-live'], ids.a1, reveal731); await moveItem(p, input, 'Move its stack up'); }
+        await becomes(order, [ids.b, ids.a], 'the reader moves B above A');
+        await until(async () => typeof (await actsOf(topic, ids.b))?.placed === 'number', 'Core records the native move');
+        assert.equal((await actsOf(topic, ids.b, other))?.placed ?? null, null, 'the move belongs only to the reader');
+        if (input === 'laptop') await p.key('ArrowDown', 4);
+        else { await menuAgain(p, input, ids['b-live'], ids.a1, reveal731); await moveItem(p, input, 'Move its stack down'); }
+        await becomes(order, [ids.a, ids.b], 'the reader can move B down too');
+        if (input === 'laptop') await p.key('z', 4);
+        else { await menuAgain(p, input, ids['b-live'], ids.a1, reveal731); await moveItem(p, input, 'Undo'); }
+        await becomes(order, [ids.b, ids.a], 'native Undo restores the preceding own move');
+        // New roots enter first even above a dossier the reader placed.
+        await post('c'); roots.push(ids.c);
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.c))}))`), 'new dossier C is drawn');
+        await becomes(order, [ids.c, ids.b, ids.a], 'new dossier enters at the top');
+        // A native archive and an incoming reply return B last above More.
+        await openReader(p, input, ids['b-live'], 'Item 731 b-live');
+        await centre(p, '#reader-aside'); await press(p, input, '#reader-aside');
+        await until(async () => (await positionIn(topic, ids.b)).below, 'native archive is recorded');
+        await closeReader(p, input);
+        await post('b3', 'b');
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.b3))}))`), 'the returning reply is drawn');
+        await becomes(order, [ids.c, ids.a, ids.b], 'reawakened B returns immediately above More');
+        await post('b4', 'b');
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.b4))}))`), 'a second reply is drawn');
+        assert.deepEqual(await order(), [ids.c, ids.a, ids.b], 'another reply never lifts the returned dossier');
+        await openReader(p, input, ids.b4, 'Item 731 b4');
+        await centre(p, '#reader-star'); await press(p, input, '#reader-star');
+        await until(async () => (await actsOf(topic, ids.b4))?.starred === true, 'native star is recorded');
+        const targetTolerance731 = { sizePx: 0.5, overflowPx: 1 };
+        for (const selector of ['#reader-star', '#reader-aside']) {
+          if (input === 'phone') await targets731(p, targetTolerance731);
+          assert.ok(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}).getAttribute('aria-label'))`), 'the control has an accessible name');
+        }
+        await press(p, input, '#reader-aside');
+        await until(() => p.evaluate(`document.querySelector('.press-note')?.textContent.includes('has a message you starred')`), 'the actual archive press says why it is held');
+        assert.equal((await positionIn(topic, ids.b)).below, false, '635 star hold refuses the archive');
+        await press(p, input, '#reader-star');
+        await until(async () => (await actsOf(topic, ids.b4))?.starred === false, 'native unstar is recorded');
+        await press(p, input, '#reader-aside');
+        await until(async () => (await positionIn(topic, ids.b)).below, 'unstarred, the native archive works');
+        await press(p, input, '#reader-star');
+        await until(async () => (await actsOf(topic, ids.b4))?.starred === true && !(await positionIn(topic, ids.b)).below, '635 native star returns B from below More');
+        await closeReader(p, input);
+        assert.deepEqual(await order(), [ids.c, ids.a, ids.b], 'star hold leaves the actual dossier identities in order');
+        assert.equal(await p.evaluate(`document.documentElement.scrollWidth>innerWidth+${targetTolerance731.overflowPx}`), false, 'no overflow beyond the named 1px tolerance');
+        await away(p); await shot(p, key + '-returned');
+        observations.push({ name: 'item 731 completed order', key, roots, order: await order(), targetTolerance731 });
+        if (route === 'topic' && device === 'phone-320' && theme === 'light') {
+          const mutant = await control({ method: 'item_731_runtime', phase: 'small-targets' });
+          let q;
+          try {
+            assert.equal(mutant.applied, true); assert.notEqual(mutant.original_sha256, mutant.mutated_sha256);
+            q = await open(key + '-small-targets', device, topic, ids.a, '', query);
+            await openReader(q, input, ids.b4, 'Item 731 b4');
+            await assert.rejects(() => targets731(q, targetTolerance731), {name:'AssertionError'}, 'the named 0.5px size tolerance catches the actual CSS floor mutant');
+            observations.push({name:'item 731 target mutant',...mutant,actual:await q.box('#reader-star'),targetTolerance731});
+          } finally {
+            if (q) await q.close();
+            const restored = await control({method:'item_731_runtime',phase:'restored'});
+            assert.deepEqual(restored.hashes,mutant.candidate_hashes);
+            observations.push({name:'item 731 target restored',...restored});
+          }
+          await openReader(p,input,ids.b4,'Item 731 b4'); await targets731(p,targetTolerance731); await closeReader(p,input);
+        }
+        if (route === 'topic' && device === 'laptop' && theme === 'light') {
+          // The fixture's own opening is between A and the returned B. Join
+          // upward into the actual adjacent C, rather than assuming A/B are adjacent.
+          const allRoots = await p.evaluate(`[...document.querySelector('#messages').children].map(e=>e.dataset.stack??e.dataset.id).filter(Boolean)`);
+          assert.equal(allRoots[allRoots.indexOf(ids.a)-1],ids.c,'the actual adjacent dossier is C');
+          observations.push({name:'item 731 join neighbours',key,allRoots,from:ids.a,into:ids.c});
+          await keyTo(p,ids.a); await p.key('ArrowUp',12);
+          await until(async () => (await positionIn(topic,ids.a)).root_id===ids.c, 'native join records the actual destination dossier');
+          assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a1))}).closest('.reply-stack').dataset.stack`),ids.c,'joined messages are actually under C');
+          await p.key('z',4);
+          await until(async () => (await positionIn(topic,ids.a)).root_id===ids.a,'native Undo splits back to A');
+          await becomes(order,[ids.c,ids.a,ids.b],'split back restores the source position');
+        }
+        assert.deepEqual(p.errors, []);
+      } catch (error) {
+        // Read failed interaction state while this case still owns its page.
+        // This runs only after the original assertion fails; no pacing changes.
+        if (p) {
+          try {
+            const state = await p.evaluate(`(()=>{
+              const ids=${JSON.stringify(ids)},rect=e=>{if(!e)return null;const r=e.getBoundingClientRect();return {left:r.left,top:r.top,width:r.width,height:r.height}},identity=e=>e?{id:e.id,tag:e.tagName,message:e.closest('[data-id]')?.dataset.id??null}:null;
+              const cards=Object.entries(ids).map(([name,id])=>{const e=document.querySelector('#messages .message-card[data-id='+JSON.stringify(id)+']'),w=e?.querySelector('.message-preview'),b=rect(w),x=b?b.left+b.width/2:0,y=b?Math.max(0,b.top)+Math.max(0,Math.min(innerHeight,b.top+b.height)-Math.max(0,b.top))/2:0;return {name,id,present:!!e,lit:e?.classList.contains('lit')??false,folded:e?.dataset.folded??null,rect:rect(e),words:rect(w),wordsShown:!!w?.getClientRects().length,centerHit:identity(b?document.elementFromPoint(x,y):null)}});
+              const bar=document.querySelector('.message-bar'),reader=document.querySelector('#reader'),controls=[...document.querySelectorAll('.message-bar button,[role=menu] button')];
+              return {viewport:[innerWidth,innerHeight],scroll:[scrollX,scrollY],active:identity(document.activeElement),cards,bar:bar?{hidden:bar.hidden,rect:rect(bar)}:null,reader:{open:reader?.open??false,rect:rect(reader)},controls:controls.slice(0,24).map(e=>({act:e.dataset.act??null,disabled:e.disabled,hidden:e.hidden,rect:rect(e)})),controlsTruncated:controls.length>24,selection:{collapsed:getSelection()?.isCollapsed??null,rangeCount:getSelection()?.rangeCount??0}};
+            })()`);
+            observations.push({name:'item 731 failure before close',key,ids,error:error.stack,state});
+            await shot(p,key+'-failure-before-close');
+          } catch (captureError) {
+            observations.push({name:'item 731 failure capture error',key,error:error.stack,captureError:captureError.stack});
+          }
+        }
+        throw error;
+      } finally { if (p) await p.close(); }
+    });
+  }
 
   await check('reading stacks ⌘↑ ⌘↓ move a stack where the reader wants it, kept after a reload; a new reply does not lift it; another reader keeps newest on top', async () => {
     const topic = 'stack-move';
@@ -9984,7 +10168,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await dossierTheme(p, theme);
         const feed = `#messages .reply-stack[data-stack="${ids.root}"] > .dossier-cover`;
         const reader = '#reader-cover > .dossier-cover';
-        const look = selector => p.evaluate(`(()=>{const sheets=[...document.querySelectorAll(${JSON.stringify(selector)})],s=sheets[0],w=s?.querySelector('.cover-stands .cover-words');
+        const look = selector => p.evaluate(`(()=>{const sheets=[...document.querySelectorAll(${JSON.stringify(selector)})],s=sheets[0],w=s?.querySelector('.cover-words.cover-stands');
           if(!w)return null;const t=w.firstChild,lines=w.textContent.split('\\n'),box=s.getBoundingClientRect(),rects=[];let at=0;
           for(const line of lines){const r=document.createRange();r.setStart(t,at);r.setEnd(t,at+line.length);const b=r.getBoundingClientRect();
             rects.push({top:b.top,bottom:b.bottom,left:b.left,right:b.right,height:b.height});at+=line.length+1}

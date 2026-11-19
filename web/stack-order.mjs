@@ -10,17 +10,16 @@
 // dossier Core names for each (item 550). The message it starts with (its head)
 // stays at the top; every other message in it reads as a chat does, oldest
 // first, a joined stack's among the rest, as one run. The
-// stacks themselves keep the topic newest on top: each sits where its newest
-// message would, unless the reader placed it somewhere of their own, where it
-// holds whatever replies arrive. A reply of the reader's own never lifts it:
-// what they answer stays where they were reading it.
+// stacks themselves follow Core's stable personal order (731). Incoming replies
+// never lift one. Older Core responses without an order key retain the legacy
+// activity ordering below.
 
 // Acts recorded about a message (Core's message_acts, as topic_messages
 // carries them): absent on a page from a Core before them, read as none.
 const actsOf = item => item?.acts ?? {};
 
 // Each act and the revision Core counts it by.
-const REVISIONS = { aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision', cover: 'cover_revision' };
+const REVISIONS = { aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision', cover: 'cover_revision', cover_refresh: 'cover_refresh_revision' };
 
 // What Core holds of a message's acts, from what the page knew and an answer
 // it read or was given since: each act as the later of the two by its
@@ -34,6 +33,8 @@ export function laterActs(known, answer) {
     if (!known || !(revision in known)) continue;
     if (!(revision in answer) || answer[revision] < known[revision]) { acts[field] = known[field]; acts[revision] = known[revision]; }
   }
+  if (acts.cover) acts.cover = { ...acts.cover, refresh: acts.cover_refresh ?? acts.cover.refresh,
+    refresh_revision: acts.cover_refresh_revision ?? acts.cover.refresh_revision };
   return acts;
 }
 
@@ -151,7 +152,7 @@ export function gather(items, { has = null, viewer = null, filled = new Set(), a
     const alone = apart.has(head.id), placed = !alone && typeof place === 'number' ? place : null;
     const newest = list => list.reduce((most, item) => Math.max(most, item.seq), 0);
     const own = item => item.id !== head.id && !joins.has(item.id) && viewer !== null && item.author_id === viewer;
-    return { id: head.id, head, replies, joins, newest: newest(members), lifted: newest(members.filter(item => !own(item))), placed, dossier: root,
+    return { id: head.id, head, replies, joins, newest: newest(members), lifted: newest(members.filter(item => !own(item))), placed: typeof position?.order_key === 'number' && position.order_key !== placed ? null : placed, dossier: root, orderKey: alone ? null : position?.order_key, orderTie: position?.order_tie,
       filled: new Set(late.map(item => item.id)), branches: head.id === root || alone ? null : new Set(tops.filter(item => item !== head).map(item => item.id)) };
   });
 }
@@ -183,11 +184,11 @@ export function reheaded(before, after) {
 }
 
 // Where a stack sorts: its own place, else its newest message that lifts it.
-export const keyOf = stack => stack.placed ?? stack.lifted;
+export const keyOf = stack => stack.orderKey ?? stack.placed ?? stack.lifted;
 
 // The stacks newest on top, each placed one where the reader put it.
 export function ordered(stacks) {
-  return [...stacks].sort((a, b) => keyOf(b) - keyOf(a) || b.lifted - a.lifted);
+  return [...stacks].sort((a, b) => keyOf(b) - keyOf(a) || (b.orderTie ?? b.lifted) - (a.orderTie ?? a.lifted));
 }
 
 // The two stack states a person steps between (item 394): latest plus unread

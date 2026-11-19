@@ -217,7 +217,7 @@ const requests = new Map();
 fixture.stderr.on('data', data => { fixtureErrors += data; });
 createInterface({ input: fixture.stdout }).on('line', line => {
   const result = JSON.parse(line), request = requests.get(result.id); requests.delete(result.id);
-  if (result.failure) request.reject(Error(result.failure)); else request.resolve(result.answer);
+  if (Object.hasOwn(result, 'failure')) request.reject(Error(result.failure)); else request.resolve(result.answer);
 });
 const fixtureExit = new Promise(resolve => fixture.once('exit', code => {
   for (const request of requests.values()) request.reject(Error(`Fixture exited ${code}: ${fixtureErrors}`));

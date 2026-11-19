@@ -764,3 +764,15 @@ test('older messages More filled a stack with show at its end, newest first, who
   // The negative: the first message loaded otherwise heads the dossier, as 550 has it.
   assert.equal(ordered(gather([message(1), ...older, ...page]))[0].head.id, 'm1');
 });
+
+test('item 731 Core order wins over replies and old places, including an unloaded canonical root', () => {
+  const at = (key, root) => ({ root_id: root, order_key: key, order_tie: 1, at: { acts: 1, messages: 0 } });
+  const a = message(10, { stack_position: at(20, 'm10') });
+  const b = message(1, { stack_position: at(10, 'm1'), acts: { placed: 900 } });
+  const reply = message(30, { reply_to: 'm1', stack_position: at(10, 'm1') });
+  assert.deepEqual(stacksOf([a,b,reply]).map(stack => stack.dossier), ['m10','m1']);
+  assert.equal(stacksOf([a,b,reply]).find(stack => stack.dossier==='m1').placed,null,'an automatic return does not claim the old place is current');
+  assert.deepEqual(stacksOf([a,reply]).map(stack => stack.dossier), ['m10','m1'], 'partial pages keep the same root key');
+  const fresh = message(31, { stack_position: at(21, 'm31') });
+  assert.deepEqual(stacksOf([a,b,reply,fresh]).map(stack => stack.dossier), ['m31','m10','m1']);
+});
