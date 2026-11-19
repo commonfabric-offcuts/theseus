@@ -9,6 +9,7 @@
 // no cover: what its cover says shows as small pills under who wrote it.
 //
 // Its look is web/stack-look.css's, from the page's semantic tokens.
+import { refreshControl } from './cover-refresh.mjs';
 import { glyph } from './glyphs.mjs';
 import { linkNode, writtenLink } from './links.mjs';
 import { timeNode } from './times.mjs';
@@ -69,7 +70,9 @@ export function coverSheet(doc, cover, context) {
   const sheet = element(doc, 'div', 'dossier-cover');
   sheet.setAttribute('role', 'note'); sheet.setAttribute('aria-label', 'Dossier cover');
   const line = className => { const node = element(doc, 'div', `cover-line ${className}`); sheet.append(node); return node; };
-  if (cover.stands) line('cover-stands').append(element(doc, 'span', 'cover-words', cover.stands));
+  const heading = line('cover-heading');
+  if (cover.stands) heading.append(element(doc, 'span', 'cover-words cover-stands', cover.stands));
+  const refresh = refreshControl(doc, cover, ctx); if (refresh) heading.append(refresh);
   const payload = cover.payload;
   if (payload) {
     const row = line('cover-payload'), words = element(doc, 'span', 'cover-words');
@@ -107,13 +110,14 @@ export function coverPills(doc, cover, context) {
     pill.title = cover.waiting.map(wait => `${wait.text} Default: ${wait.default}.`).join('\n');
     pills.append(pill);
   }
+  const refresh = refreshControl(doc, cover, ctx); if (refresh) pills.append(refresh);
   if (!pills.children.length) return null;
   if (cover.stands) pills.title = cover.stands;
   return pills;
 }
 
 // A key for what a cover shows a reader, so a sheet is drawn again only when it changes.
-export const coverKey = (cover, context) => (cover ? JSON.stringify([cover.stands, cover.waiting, cover.payload, cover.owner, context.viewer, context.topicId]) : '');
+export const coverKey = (cover, context) => (cover ? JSON.stringify([cover.stands, cover.waiting, cover.payload, cover.owner, cover.root_id, cover.revision, cover.writer, cover.refresh, cover.refresh_revision, context.viewer, context.topicId]) : '');
 
 const pillRows = new WeakMap();
 // The pills of a message on its own that carries a cover, set under its

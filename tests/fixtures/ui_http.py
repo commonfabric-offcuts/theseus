@@ -574,6 +574,53 @@ def main():
                     "candidate_hashes": hashes(item645_candidate), "restored": server.build is item645_candidate,
                     "csp_sha256": hashlib.sha256(server.csp.encode()).hexdigest()}
 
+        # Item 738: source-bound comparison/control only in this isolated fixture.
+        def item738_runtime(phase):
+            if phase == "restored":
+                server.build = item645_candidate
+            else:
+                destination = root / ("item738-" + phase)
+                destination.mkdir(exist_ok=True)
+                if phase == "live":
+                    folder = Path(__file__).parent
+                    manifest = json.loads((folder / "item_738_live_web.json").read_text())
+                    archive = folder / "item_738_live_web.tar.gz"
+                    assert hashlib.sha256(archive.read_bytes()).hexdigest() == manifest["archive_sha256"]
+                    with tarfile.open(str(archive), "r:gz") as packed:
+                        for member in packed.getmembers():
+                            assert member.name == "web" or (member.name.startswith("web/") and ".." not in Path(member.name).parts)
+                            assert member.isdir() or member.isfile()
+                        packed.extractall(str(destination))
+                    destination = destination / "web"
+                else:
+                    for name, data in item645_candidate.files.items():
+                        path = destination / name
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_bytes(data)
+                    path = destination / ("reader.mjs" if phase in ("reader-tab-boundary", "reader-source-entry") else "cover-refresh.mjs")
+                    data = path.read_bytes()
+                    mutations = {
+                        "reader-tab-boundary": (b"if (target.closest?.('#reader-cover')) {", b"if (false) {"),
+                        "reader-source-entry": (b"if (event.shiftKey && target === this.sourceBody) {", b"if (false) {"),
+                        "lost-pending": (b"const pending = refresh?.state === 'pending';", b"const pending = false;"),
+                        "visible-text": (b"status.textContent = local.error;", b"status.textContent = local.error || (pending ? 'Awaiting new cover' : 'Requesting update');"),
+                        "keyboard-target": (b"control.className = 'cover-refresh-glyph';", b"control.tabIndex=-1; control.className = 'cover-refresh-glyph';"),
+                        "small-target": (b"control.className = 'cover-refresh-glyph';", b"control.style.cssText='width:1px;min-height:1px;height:1px;padding:0'; control.className = 'cover-refresh-glyph';"),
+                    }
+                    old, new = mutations[phase]
+                    assert data.count(old) == 1, "Item 738 source marker must apply exactly once: " + phase
+                    path.write_bytes(data.replace(old, new))
+                    assert path.read_bytes() == data.replace(old, new)
+                server.build = server_module.web_build.load(destination)
+            script_src = " ".join(["'self'"] + ["'%s'" % digest for digest in server.build.script_hashes])
+            before, rest = item645_candidate_csp.split("script-src ", 1)
+            server.csp = before + "script-src " + script_src + ";" + rest.split(";", 1)[1]
+            hashes = lambda build: {name: hashlib.sha256(data).hexdigest() for name, data in build.files.items()}
+            if phase == "restored":
+                assert server.csp == item645_candidate_csp
+            return {"phase": phase, "stamp": server.build.stamp, "hashes": hashes(server.build),
+                    "candidate_hashes": hashes(item645_candidate), "restored": server.build is item645_candidate}
+
         def on_team(operation):
             """The fixture's agent, a member of the outcome w1; adding a member already there changes nothing."""
             agent = "fixture-notebook-agent"
@@ -695,6 +742,17 @@ def main():
                     elif request["method"] == "item_674_runtime":
                         answer = item674_runtime(server, item645_candidate, item645_candidate_csp, root,
                                                  request["phase"], server_module.web_build.load)
+                    elif request["method"] == "item_738_runtime":
+                        answer = item738_runtime(request["phase"])
+                    elif request["method"] == "item_738_end":
+                        version = store().view(actor, "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+                        answer = command("outcome.end_set", request["operation_id"], {"state": request["state"]},
+                                         {"workspace_id": "w1"}, {"workspace_revision": version})
+                    elif request["method"] == "item_738_audit":
+                        with sqlite3.connect(str(path)) as db:
+                            db.row_factory = sqlite3.Row
+                            answer = {"requests": [dict(row) for row in db.execute("SELECT id,author_id,addressees,reply_to,intent,private_to FROM messages WHERE reply_to=?", (request["root"],))],
+                                      "operations": [dict(row) for row in db.execute("SELECT actor_id,id,kind,outcome FROM operations WHERE kind='stack.cover_refresh'")]}
                     elif request["method"] == "item_645_runtime":
                         answer = item645_runtime(request["phase"])
                     elif request["method"] == "counts":
@@ -930,7 +988,7 @@ def main():
                         # A star, a stack's short name, a join, a place or a dossier's cover, as another person or
                         # an agent makes it through Core (docs/reply-stacks.md, docs/dossier-covers.md), fenced on
                         # what they last read.
-                        field = "cover_revision" if request["kind"] == "stack.cover" else STACK_KINDS[request["kind"]][1]
+                        field = "cover_revision" if request["kind"] in ("stack.cover", "stack.cover_refresh") else STACK_KINDS[request["kind"]][1]
                         with sqlite3.connect(str(path)) as db:
                             db.row_factory = sqlite3.Row
                             revision = current_acts(db, request["sender"], [request["message_id"]]).get(request["message_id"], {}).get(field, 0)
