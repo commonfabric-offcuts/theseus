@@ -41,7 +41,8 @@ test('601 desktop and phone menus name Archive or Bring back and retain their ac
       let moves;
       const menu = StackFeed.prototype.menuItems.call(feed, f.messages.get('a'), { phone, more: items => moves = items });
       if (phone) menu.last[0].act(); else moves = menu.last;
-      const action = moves.find(item => item.label === expected); assert.ok(action, `${phone ? 'phone' : 'desktop'} ${expected}`);
+      const action = menu.first.find(item => item.label === expected); assert.ok(action, `${phone ? 'phone' : 'desktop'} ${expected}`);
+      assert.equal(moves.some(item => item.label === expected), false, '861: archive belongs to the shared message actions');
       assert.equal(drawing(glyph(action.glyph, f.doc)), approved(below ? 'back' : 'archive'));
       action.act();
     }

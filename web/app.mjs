@@ -792,6 +792,7 @@ async function openSource(ref, opener, act = null, mode = 'reply', replyCard = n
       // A link's feed landing and Reader opening are one destination. Delegate
       // its sole release to landOn when loaded; otherwise the Reader owns it.
       if (!land || !landOn(ref.id)) releaseTopArrivals();
+      return presentation;
     }
   }
   catch (error) {
@@ -1421,7 +1422,7 @@ function feedOf() {
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); paintMessageUpdates(); }, home: $('new-message-sheet'),
     // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
     // On a phone its menu offers the title bar's Reply and Archive first, as the glyphs fold into it (first).
-    menu: (item, anchor, first = []) => openMessageMenu({ anchor, items: [...cardMenuActs(item, first, anchor), ...messageMenuItems(item, null, anchor)], label: 'This message', sheet: true }),
+    menu: (item, anchor, first = []) => openMessageMenu({ anchor, items: messageMenuItems(item, null, anchor, first), label: 'This message', sheet: true }),
     // A dossier's folder wears its first poster's colour, as their cards do: an agent's, in the reader's colours (item 477).
     colorOf: item => (item.author_kind === 'agent' && item.author_id !== bootstrap.actor ? agentShown(item.author_id) : null) });
   return stackFeed;
@@ -1744,7 +1745,7 @@ function closeStartLine(focus = false) {
 function openStartLine() {
   if (startLine) { closeStartLine(true); return; }
   const p = registry?.current, source = p?.source, ref = source?.source_ref;
-  if (ref?.kind !== 'message' || !topic || p.sourceUnavailable) return;
+  if (ref?.kind !== 'message' || !topic || p.sourceUnavailable || !mayStartFrom(source)) return;
   let line = startLines.get(ref.id);
   const left = Boolean(line);
   if (!line) {
@@ -2064,23 +2065,77 @@ function cardMenuActs(item, items, anchor) {
 // say: the ⋯ that says "Link copied", or null where none shows. anchor: what
 // the menu opened from, where a phone's "Move or join…" sheet opens too.
 // What the message's stack offers comes first, its moves and joins last (stack-feed.mjs).
-function messageMenuItems(item, say, anchor = say) {
-  const phone = Boolean(window.matchMedia?.('(max-width: 760px)').matches);
-  const stack = stackFeed && !topicUnavailable ? stackFeed.menuItems(item, { phone, more: moves => anchor && openMessageMenu({ anchor, items: cardMenuActs(item, moves, anchor), label: 'Move or join', sheet: true }) }) : { first: [], last: [] };
-  const move = item.stack_position?.can_move ? [{ label: 'Move to topic…', glyph: 'topic', act: () => moveDossier(item.id, anchor) }] : [];
+function messageMenuItems(item, say, anchor = say, first = []) {
+  const items = sharedMessageMenuItems(item, { say, anchor }), shared = new Set(items.map(item => item.label));
+  return cardMenuActs(item, [...first.filter(item => !shared.has(item.label)), ...items], anchor);
+}
+// Every message menu consumes this list. Only arrangement and clipped-card
+// expansion belong to the feed; the Reader adds its selection and layout.
+function sharedMessageMenuItems(item, { say, anchor = say, presentation = null } = {}) {
+  const inReader = Boolean(presentation), phone = Boolean(window.matchMedia?.('(max-width: 760px)').matches);
+  const stack = stackFeed && !topicUnavailable && item.topic_id === topic?.id ? stackFeed.menuItems(item, { phone, reader: inReader, at: inReader ? anchor : null,
+    rename: act => inReader ? run(() => leaveReaderForRename(presentation, act)) : act(),
+    more: moves => anchor && openMessageMenu({ anchor, items: cardMenuActs(item, moves, anchor), label: 'Move or join', sheet: true }) }) : { first: [], last: [] };
+  const move = item.stack_position?.can_move || item.dossier?.can_move
+    ? [{ label: 'Move to topic…', glyph: 'topic', act: () => moveDossier(item.id, anchor) }] : [];
   const items = [...stack.first, ...move, { label: 'Copy Link', glyph: 'link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
-  const card = cardIn(messageEntries.get(item.id));
-  if (cardScroll?.clipped(card, item)) items.push({ label: 'Show full message', glyph: 'full', act: () => run(() => cardScroll.showFull(card, item)) });
-  // Edit, on the person's own message (docs/message-edit.md): the Reader opens on it to edit.
-  if (mayEdit(item, editRights()) && !messageEdit) items.push({ label: 'Edit', glyph: 'pencil', act: () => run(() => editMessage(item.id, editOpener(item, anchor))) });
+  if (!inReader) {
+    const card = cardIn(messageEntries.get(item.id));
+    if (cardScroll?.clipped(card, item)) items.push({ label: 'Show full message', glyph: 'full', act: () => run(() => cardScroll.showFull(card, item)) });
+  }
+  if (mayEdit(item, editRights()) && !messageEdit) items.push({ label: 'Edit', glyph: 'pencil',
+    act: () => run(() => editMessage(item.id, inReader ? anchor : editOpener(item, anchor))) });
   const update = !topicUnavailable && !outcomeReached && updateMenuItem(document, item, updateContext(item.topic_id));
   if (update) items.push(update);
   if (marks && item.author_id !== bootstrap.actor && !topicUnavailable) {
     const marked = marks.state(item.id)?.marked === true;
-    items.push({ label: marked ? 'Mark read' : 'Mark unread', glyph: marked ? 'read' : 'unread', act: () => run(() => markFromMenu(item.id, !marked)) });
+    items.push({ label: marked ? 'Mark read' : 'Mark unread', glyph: marked ? 'read' : 'unread',
+      act: () => run(() => markFromMenu(item.id, !marked)) });
   }
-  items.push(...textDisplayMenuItems());
-  return cardMenuActs(item, [...items, ...stack.last], anchor);
+  if (!topicUnavailable && !outcomeReached && topic) {
+    const fromSource = act => run(() => withMenuSource(item, presentation, anchor, act));
+    if (mayStartFrom(item)) {
+      items.push({ label: 'Start a topic from this', glyph: 'topic', act: () => fromSource(() => openStartLine()) });
+      if (pipelineRow?.on) items.push({ label: 'Add to pipeline', glyph: 'pipeline',
+        act: () => fromSource(() => pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true)) });
+    }
+    if (!messageEdit && item.topic_id === topic.id) items.push({ label: 'Start a new dossier', glyph: 'pencil',
+      act: () => fromSource(p => startNewDossier(p, inReader)) });
+  }
+  if (!messageEdit) items.push(...textDisplayMenuItems());
+  return [...items, ...stack.last];
+}
+// A feed action that needs the full source opens that exact message first.
+// No late open is allowed to act on a different Reader, topic or source.
+async function withMenuSource(item, presentation, anchor, act) {
+  const currentTopic = topic;
+  const p = presentation ?? await openSource({ kind: 'message', id: item.id }, anchor);
+  if (!p || retired || topic !== currentTopic || topicUnavailable || outcomeReached || !registry.isCurrent(p) ||
+      p.sourceUnavailable || p.availabilityUnconfirmed || p.source?.source_ref?.kind !== 'message' ||
+      p.source.source_ref.id !== item.id || p.source.topic_id !== topic?.id ||
+      reader.presentation !== p || reader.source !== p.source) return;
+  return act(p);
+}
+async function startNewDossier(presentation, moveReply) {
+  try {
+    const source = presentation.source, people = whisperPeople();
+    const moved = await registry.startDossier(presentation, {
+      link: messageLink(source.topic_id, source.source_ref.id), moveReply,
+      names: moveReply ? reader.names(presentation.editors.reply) : [], kindOf: people.kindOf,
+    });
+    if (moved && registry.isCurrent(registry.inline)) { inline.show(registry.inline); inline.pop(); }
+  } catch (error) {
+    if (registry.isSourceCurrent(presentation)) reader.notice(error); else status(error);
+  }
+}
+// Rename is the feed's existing inline field. Retain the Reader writing and
+// close its modal before handing focus to that field.
+async function leaveReaderForRename(presentation, act) {
+  const currentTopic = topic, generation = registry.generation;
+  if (!registry.isCurrent(presentation)) return;
+  const closed = await registry.close(presentation);
+  if (closed && !retired && topic === currentTopic && registry.generation === generation + 1 && !registry.current) act();
+  else if (!closed && registry.isCurrent(presentation)) reader.notice('The reply could not be kept before renaming. Finish saving it first.');
 }
 function moveDossier(id, anchor) {
   openDossierMove({ anchor, messageId: id,
@@ -2160,12 +2215,7 @@ async function copyPageLink(source, revision, say) {
 function openReaderMenu() {
   const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = [];
   const message = Boolean(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
-  if (message && p.source.dossier?.can_move) items.push({ label: 'Move to topic…', glyph: 'topic', act: () => moveDossier(ref.id, button) });
-  if (message) items.push({ label: 'Copy Link', glyph: 'link', act: () => run(() => copyLink(p.source.topic_id, ref.id, button)) });
-  // Edit turns the Reader to its edit mode on the message it shows (docs/message-edit.md).
-  if (message && !messageEdit && mayEdit({ author_id: p.source.author }, editRights())) items.push({ label: 'Edit', glyph: 'pencil', act: () => run(() => editMessage(ref.id, button)) });
-  const update = message && !outcomeReached && updateMenuItem(document, { ...p.source, acts: readerFeedItem()?.acts ?? p.source.acts }, updateContext(p.source.topic_id));
-  if (update) items.push(update);
+  if (message) items.push(...sharedMessageMenuItems({ ...p.source, ...readerFeedItem(), id: ref.id, author_id: p.source.author }, { say: button, anchor: button, presentation: p }));
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
     const act=action=>run(async()=>{const opener=p.opener;$('reader-close').click();if(await openNotebook(ref.id,{opener})){const page=notebookSheetOf().current;if(action==='rename')page.rename();else page.menuItems().find(item=>item.label===action)?.act();}});
     items.push({label:p.source.starred?'Unstar':'Star',glyph:p.source.starred?'starred':'star',act:()=>act(p.source.starred?'Unstar':'Star')});
@@ -2176,16 +2226,7 @@ function openReaderMenu() {
     // Edit page only for someone Core lets write the page (its reader_may_write, docs/notebook-pages.md).
     if (p.source.reader_may_write === true) items.push({ label: 'Edit page', glyph: 'pencil', act: () => { const opener = p.opener; $('reader-close').click(); run(() => openNotebook(ref.id, { opener })); } });
   }
-  const state = message && p.mark ? marks.state(ref.id) : null;
-  if (state) items.push({ label: state.marked ? 'Mark read' : 'Mark unread', glyph: state.marked ? 'read' : 'unread', act: () => run(toggleMark) });
-  // Fold message: the reader's own fold, as Fold in the card's ⋯ (StackFeed.setFold); a starred message offers none.
-  const item = message ? readerFeedItem() : null, acts = item ? stackFeed.actsOf(item.id, item) : {};
-  if (item && acts.folded) items.push({ label: 'Unfold message', glyph: 'unfold', act: () => stackFeed.setFold(item, false, { focus: false }) });
-  else if (item && !acts.starred) items.push({ label: 'Fold message', glyph: 'fold', act: () => stackFeed.setFold(item, true, { focus: false }) });
   if (reader.quotable) items.push({ label: 'Quote selection', glyph: 'quote', act: () => reader.quote() });
-  if (!$('start-from-message').hidden) items.push({ label: 'Start a topic from this', glyph: 'topic', act: () => openStartLine() });
-  if (!$('add-to-pipeline').hidden) items.push({ label: 'Add to pipeline', glyph: 'pipeline', act: () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true)) });
-  if (message && !messageEdit) items.push(...textDisplayMenuItems());
   if (reader.layoutChoice) items.push({ label: reader.layoutChoice, glyph: 'layout', act: () => reader.toggleLayout() });
   openMessageMenu({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message', sheet: true });
 }

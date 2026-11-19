@@ -1,4 +1,5 @@
 import { Editor, editorKey, restoreEditor, holdsWriting, noWriting } from './editor.mjs';
+import { dossierImage, dossierOccupied, dossierWriting } from './dossier-writing.mjs';
 import { EditorSession, RuntimeAuthority } from './session.mjs';
 import { RecoveryCleanup, eligible } from './cleanup.mjs';
 import { Uploads } from './uploads.mjs';
@@ -331,6 +332,68 @@ export class EditorRegistry {
     if (editor.unavailable) throw Error('The source or destination is unavailable. Your writing is kept on this device.');
     this.cancelSave(editor);
     return this.sessionFor(editor).send({ ...options, presentation: options.presentation ?? this.interactive });
+  }
+
+  // Move text to the existing topic composer, keeping the destination before
+  // clearing the reply. The close barrier stops typing, sends and image choices;
+  // every await also checks the generation and both registered editor versions.
+  async startDossier(presentation, { link, names = [], kindOf = () => null, moveReply = true } = {}) {
+    const target = this.inline, left = presentation?.editors.reply, there = target?.editors.reply;
+    const source = presentation?.source;
+    if (!this.isCurrent(presentation, left) || presentation.sourceUnavailable || presentation.availabilityUnconfirmed ||
+        source?.source_ref?.kind !== 'message' || !target?.initialized ||
+        source.topic_id !== target.topic.id || typeof link !== 'string' || !link) return false;
+    if (!there.validateComposition() || there.context.topicId !== target.topic.id) {
+      throw Error('Finish reviewing New message before starting a new dossier.');
+    }
+    const ready = (editor, where) => {
+      const session = this.sessionFor(editor);
+      if (dossierImage(editor)) throw Error('Finish or remove the image in ' + where + ' before starting a new dossier.');
+      if (editor.unavailable || editor.conflict || editor.authorityRecovery || session.recovery || editor.journalError ||
+          this.serverSaves.has(editor.key) || session.sends.size || session.unsettledSave() ||
+          editor.submissions.some(item => !item.detached && ['preparing', 'prepared', 'refused'].includes(item.status))) {
+        throw Error('Finish saving or reviewing ' + where + ' before starting a new dossier.');
+      }
+    };
+    ready(left, 'the reply'); ready(there, 'New message');
+    if (dossierOccupied(there)) throw Error('Finish New message first. Your reply has not moved.');
+    const writing = dossierWriting(source, left, { link, names, kindOf, moveReply, actor: this.bootstrap.actor });
+    const generation = this.generation;
+    let leftVersion = left.localVersion, thereVersion = there.localVersion;
+    const stop = this.closing = { presentation };
+    const current = () => !this.disposed && this.generation === generation && this.current === presentation &&
+      this.inline === target && this.closing === stop && !this.pendingOpen &&
+      this.sessions.get(left.key)?.editor === left && this.sessions.get(there.key)?.editor === there &&
+      left.localVersion === leftVersion && there.localVersion === thereVersion;
+    this.cancelSave(left); this.cancelSave(there); this.activity();
+    try {
+      try { await this.keepLocal(presentation); }
+      catch (error) { throw Error('The reply could not be kept on this device. It stays here; keep this page open.', { cause: error }); }
+      if (!current()) return false;
+      ready(left, 'the reply'); ready(there, 'New message');
+      if (dossierOccupied(there)) throw Error('Finish New message first. Your reply has not moved.');
+      there.receive(writing); thereVersion = there.localVersion;
+      try { await this.persistLocal(there); }
+      catch (error) { throw Error('The new dossier could not be kept on this device. Your reply stays here; keep this page open.', { cause: error }); }
+      if (!current()) return false;
+      ready(left, 'the reply'); ready(there, 'New message');
+      // Private notes remain in their own editor. Feed-menu use does not take a
+      // saved reply that the person did not choose to move from the Reader.
+      if (moveReply) {
+        left.edit(noWriting()); leftVersion = left.localVersion;
+        try { await this.persistLocal(left); }
+        catch (error) { throw Error('New message holds your writing, but the old reply could not be cleared on this device. Keep this page open.', { cause: error }); }
+      }
+      if (!current()) return false;
+      this.current = null; ++this.generation; this.closed(presentation);
+      return true;
+    } finally {
+      if (this.closing === stop) this.closing = null;
+      for (const editor of [left, there]) {
+        if (!this.disposed && editor.dirty && !editor.conflict && !editor.authorityRecovery && !editor.unavailable) this.schedule(editor);
+      }
+      this.activity();
+    }
   }
 
   async close(presentation, { explicit = false } = {}) {
