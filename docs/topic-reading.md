@@ -442,3 +442,9 @@ The focused item 785 native checks distinguish these destinations. Their
 document-top control waits for observed scroll completion or a bounded quiet
 frame fallback before introducing an arrival; the same-card drift limit stays
 one CSS pixel. This control does not change product anchoring.
+
+A restored reading hold keeps the same card or character through later scroll
+delivery. A scroll event alone does not select a different reading place. The
+next personal pointer, key, wheel or touch act, or an explicit message landing,
+releases that restored hold. This also preserves the acted-card/title identity
+when a dossier redraws during its own action.
