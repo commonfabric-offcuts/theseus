@@ -196,9 +196,7 @@ main::after{content:"";display:block;height:var(--line-room,0px)}
 /* On an outcome's page its Notebook pages are listed as its topics are, and one opens in place below them. */
 .selection-page #outcome-references-list{display:grid;grid-template-columns:1fr;gap:.35rem;overflow:visible;padding:0}.selection-page #outcome-references-list .nav-item{width:100%;max-width:none;margin:0;background:var(--panel);border-color:var(--line);padding:.85rem}.selection-page #outcome-references-list .nav-item:hover{background:var(--soft)}.page-here{margin-top:1rem;padding:1rem 1.15rem;border:1px solid var(--line);border-radius:.75rem;background:var(--panel)}.page-here h2{margin-bottom:.2rem;overflow-wrap:anywhere}.page-here h2:focus{outline:none}.page-here .notice{margin:.5rem 0}.page-here .source-changes{margin:.8rem 0 0}.page-here-body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;margin:.8rem 0}
 /* The top of a topic: the title with a gear for Topic settings at its upper right, and the topic's note as a plain subtitle under it. */
-.title-row{display:flex;align-items:flex-start;gap:.75rem}/* Item 656: the same title field, in the header while renamed. */
-#topic-title-edit{flex:1;min-width:0;padding-top:.25rem}#topic-title-edit .rename-line{width:100%;min-width:0;margin:0;font:inherit;min-height:2.75rem}#topic-title-edit .notice{font-size:.875rem;overflow-wrap:anywhere;margin:.35rem 0 0}
-.title-row h1{flex:1;min-width:0;overflow-wrap:anywhere;line-height:1.25;padding-top:.4rem}
+.title-row{display:flex;align-items:flex-start;gap:.75rem}.title-row h1{flex:1;min-width:0;overflow-wrap:anywhere;line-height:1.25;padding-top:.4rem}
 /* The gear: a quiet square button, 44 px to touch, its middle level with the title's first line. */
 .settings-gear{flex:0 0 auto;display:inline-grid;place-items:center;width:2.75rem;height:2.75rem;padding:0;color:var(--muted);border-color:transparent;background:transparent}.settings-gear:hover{color:var(--ink);background:var(--soft)}
 .topic-header .topic-subtitle{margin-top:.3rem;font-size:.95rem;overflow-wrap:anywhere}.topic-subtitle .topic-state{margin-right:.25rem;vertical-align:.08em}

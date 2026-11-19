@@ -18,6 +18,7 @@ test('799 native enclosure predicate admits rounding but rejects each crossing a
   const at = { folder: { left: 12, right: 310 }, head: { bottom: 70 }, reply: { left: 11.5, right: 310.5, top: 69.5 }, pageRight: 320.5, width: 320 };
   assertDossier799Geometry(at);
   for (const bad of [
+    { ...at, reply: { ...at.reply, left: 11.4 } },
     { ...at, reply: { ...at.reply, left: 0 } },
     { ...at, reply: { ...at.reply, right: 350 } },
     { ...at, reply: { ...at.reply, top: 50 } },

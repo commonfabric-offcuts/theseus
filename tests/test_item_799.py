@@ -11,6 +11,7 @@ class Item799Preflight(fixtures.ReaderCase):
     def test_real_distant_head_named_admission_revision_and_private_control(self):
         self.assertEqual(sys.version_info[:2], (3, 9))
         self.assertTrue(sys.pycache_prefix)
+        self.assertEqual(sys.pycache_prefix, sys._xoptions.get('pycache_prefix'))
         print('effective_pycache_prefix=' + sys.pycache_prefix)
         receipts = []
 

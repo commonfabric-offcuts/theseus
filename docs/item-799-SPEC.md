@@ -1,95 +1,75 @@
-# Item 799 — real dossier heads above the loaded page
+# Item 799 — real dossier heads and reader stars through More
 
-Seat: codex-799-head10025, under Warp10013. Base: release102,
-602fbb03ec343261e35ffea5e7a561712dc016f6. Ordinary UI design correction.
-Tony9936 reports a Fast Trains reply appearing stray even though Core places it
-in a dossier rooted roughly 1,500 messages earlier. The actual report text and
-picture have not yet been captured; ITEM-ACTIVE's attributed summary is the
-available source. No original screenshot will be manufactured.
+Source-only joined correction under Warp10133/10144. Start frozen799
+6369b24e98c61256d546f4d1ad1bb43f1473e8e6 and compose recovered103
+8285848417bdb837404622af432d4cb08f9ae201 in the owned clone. Preserve
+656 removal and docs102. Full revised pre-edit SPEC and private diagnosis
+lineage stay in the local coordinator packet; no private records enter source.
 
-## Result
+## Required default
 
-An admitted distant first message heads its dossier, folded to the normal head
-row with its real first line and dossier name. All loaded branches, including
-the formerly gathered head, remain replies within the folder. A loaded real
-head and a standalone message retain their existing rendering. This is not
-item796/801 and does not alter item800 private-note folding.
+Every dossier shows its actual admitted first message on top using the existing
+loaded-head treatment. Available heads never silently use fallback. A reader's
+stars keep their canonical dossiers above More on initial30 and each More.
+Exact source identity, admission/privacy, join/split, personal positions and
+branch counts remain. Supplemental heads are presentation only: they never
+invent intervening messages or change TopicViews runs, newest or olderCursor.
+No root/branch duplication, stolen writing/focus/scroll, or product folding
+change to rescue an instrument. Existing fill/apart behavior remains: older
+cards More deliberately keeps apart do not acquire duplicate dossier roots.
 
-## Identity, admission and lifetime
+Named Reply in is only for a root that cannot actually be shown, with explicit
+loading/failure state and canonical destination. Loading does not claim refusal;
+refused/missing never admit bodies, and transport errors offer Retry. Relevant
+source/admission/acts changes invalidate supplemental bytes; stale answers are
+fenced by exact visit and root identity. A paged original takes ownership once.
 
-Use the existing topic_messages view with explicit message_ids, bounded to
-roots named by the loaded messages' Core stack_position.root_id. These are
-admitted ordinary message items, never invented bodies or reply excerpts.
-Keep supplemental heads separate from TopicViews.messages, its runs, newest
-and olderCursor. A supplemental item is presentation-only and cannot imply
-that the intervening history is loaded. A missing/private source is never
-substituted by the oldest loaded reply. Root reads carry a generation and
-exact topic/root identity; obsolete results cannot paint after navigation,
-access changes, root membership changes or a newer read.
+## Diagnosis and anonymous acceptance
 
-Loading is explicit. Errors, refused access and missing sources are separate
-states. Only a source that cannot be shown uses “Reply in <dossier name>”,
-opening the canonical root route through the existing guarded navigation.
-Loading and errors have clear status and a retry, without asserting missing
-or refusal. An available head always uses the default. Revalidate on relevant
-acts, source edits and admission changes; discard supplemental bodies before
-revalidation. Unknown source names use a neutral dossier label, never private
-first-line text.
+The joined investigation uses actual initial30 and each More, with admitted
+Core rows, named heads, full source identity reads, acts and positions on a
+fresh isolated clone. Only the two explicitly authorized topics are queried;
+all private IDs, words and private-to-anonymous maps stay local. The snapshot
+cannot identify a past device cache or a uniquely alleged starred-below row.
+The earlier50/100-page diagnosis does not clear initial30. No competing803
+product patch exists; its distant-head diagnosis belongs in this799 correction.
 
-## Gathering, paging and placement
+Anonymous public-command fixtures preserve two observed shapes: a distant
+original with loaded branches including a starred reply; and a star on an
+unloaded original with multiple loaded branches. Also check another-device
+star refresh, late old positions, retained move plus join, split, independent
+reader, explicit unstar and ordinary below-More negative. Actual Core admission,
+mutation receipts, unique heads/cards, branch counts and frontiers are checked
+below browser. No private snapshot is uploaded, served or committed.
 
-Retain item550 grouping, branch visibility, descendant order, loaded-page
-sorting, placement and More fill/apart policy. Decorate gathered stacks with
-supplemental admitted roots after their loaded grouping and position are
-computed. A supplement contributes no placement key, pagination frontier,
-newest/lifted sequence or implied loaded count. Preserve the former gathered
-head as a visible branch. Root identity is stable across More; when the real
-root is paged in it occurs once, with source ownership handed to the page.
-Supplemental entries never lower fillFrom's loaded frontier. Page read-through
-continues to use TopicViews loaded runs. All redraws use keepListAnchor and
-preserve focus, scroll and writing.
+## Native instruments and remaining proof
 
-## Implementation boundaries
+Exactly eight `^reading item 799` cases per engine:320/375/390 and laptop, each
+light/dark. Keep all original source/writing/edit/More/fallback branches. On a
+phone first touch on an unlit head may only select it: inspect actual headOpen
+and preview visibility, then use the next legitimate native activation before
+touching the body. Source requests use args.kind/args.id; assert returned
+source_ref and topic identity too. Preserve pointer/touch/hit tests; no forced
+focus/visibility or handler invocation. Geometry uses0.5 CSS px bounds and an
+actual applied crossing mutant with exact restoration. No tolerance weakening.
 
-No schema, Core permission or new Core view. Existing declared renderer/app
-and reading test inputs only. Any need to modify protected runner/input
-declarations is returned as a concrete classification boundary before editing
-those files. No live store/tree, credential/profile/session/env reads, board,
-flight, push, PR, deployment, signals, delegation or unowned work.
+Prior native results remain0/8 Chromium and0/8 WebKit; all16 scenarios finished
+only Core preflight/default-head negatives/geometry mutant+restore. Subsequent
+writing/source-edit/More/fallback phases remain UNRUN. Corrected source is not
+native acceptance. No new native/server/pool/hosted/direct runner call now.
+After source freeze and independent review, root may allocate one own call per
+engine; later live advance is composed by root. No full suite before landing
+per10144; own acceptance, actual-live source audit and focused real-Core
+invariants are required. This phase does not land or selfapprove.
 
-## Acceptance and evidence
+## Evidence and budget
 
-Exactly eight own scenario cases named with literal prefix “reading item 799”:
-320/375/390 and laptop, each light/dark, in each engine. Each case exercises
-real isolated Core receipts and view admission before browser; distant root
-and loaded reply, ordinary loaded head and standalone negatives, native
-pointer/touch exact source and canonical dossier navigation with writing kept,
-More without duplicate/frontier invention, meaningful placement, privacy and
-fallback. Own branches live inside those eight cases. Loading/error/missing,
-revision and stale navigation are checked below browser where appropriate.
-Dry-enumerate the actual readingChecks entrypoint before freeze.
-
-Use actual product-source mutants, assert they applied, retain meaningful
-red failure, restore bytes exactly, then pass restored controls. Every measured
-size/position carries a realistic named tolerance and a crossing mutant.
-Failure diagnostics and screenshot precede page close; retain screenshot
-capture error separately. Close owned pages through the harness and preserve
-Browser.close, fixture exit, cleanup and health evidence. Native phone widths
-are emulation, not proof on a physical iPhone or its OS keyboard.
-
-## Budget and delivery
-
-Zero previous starts. Exactly two allocated serial starts: native-reading,
-then native-webkit-reading, both ^reading item 799, max1 each. Sixteen of the
-whole-piece eighteen remain unallocated. Only driver pool_requests may start
-them; freeze clean source before requesting, no interengine edits or retry.
-Read the entire first result before requesting the second; own product failure
-stops spending. No local HTTP/browser/whole suite. Focused Node checks run
-serial with concurrency1; any Python workload uses CPython3.9 and an effective,
-asserted unique PYTHONPYCACHEPREFIX per control/mutant/restoration.
-
-Return whole SPEC/REPORT, exact head/tree/ordered parents, full binary diff,
-all tracked source SHA256, original/local/native artifact hashes and source
-capture bindings/omissions, literal case/phase counts/errors, selected actual
-phone/laptop captures with device limits, and budget. Unrun is never passed.
-Independent review and composition belong to root/auditor, not this builder.
+Focused checks run serial with Node --test-concurrency=1. Every CPython3.9
+workload/mutant/restored process has a distinct effective asserted -X cache.
+Actual source mutants apply and hash, fail meaningfully, restore exact bytes
+and pass controls. Retain original reds and new harness errors. Freeze clean
+head/tree/ordered parents, full diff against recovered103, all tracked Git and
+worktree SHA256s, evidence manifests, whole report and precise unrun phases.
+799:2 prior actual,0 allocated,16 unallocated of18.803:0 actual,0 allocated,
+18 unallocated. No push/PR/deploy, board/stage/flight writes, foreign edits,
+secret/profile/session reads, signals, delegation or predecessor resume.
