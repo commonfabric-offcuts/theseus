@@ -282,7 +282,7 @@ def _parser():
             post.add_argument("--reply-to")
         # A message to someone asks or tells them; --to, which said neither, is refused by name.
         post.add_argument("--asks")
-        post.add_argument("--ask-wait", help="literal ask_wait JSON with root_id, cover_revision and questions")
+        post.add_argument("--ask-wait", help="literal ask_wait JSON; omitted agent asks use the first line, with no choices/default")
         post.add_argument("--tells")
         post.add_argument("--to")
         post.add_argument("--part", action="store_true")
@@ -1354,12 +1354,51 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
             # --blocks release:44, or piece:p-…: Core checks it names this outcome's piece or release, and that the post asks.
             kind, _, ref = options.blocks.partition(":")
             args["blocks"] = {"kind": kind.strip(), "ref": ref.strip()}
+        if options.asks is not None and options.ask_wait is None:
+            self.default_ask_wait(args, operation)
         result = self.command("message.post", {"topic_id": options.topic}, args, operation=operation)
         held = result.get("blocks")
         self.out.plain("posted %s in %s (%s deliveries queued)%s" % (result["message_id"], result["topic"]["id"], result["delivery"]["queued"],
                                                                      "; it holds %s %s until it is answered" % (held["kind"], held["ref"]) if held else ""))
         if options.reply_to:
             self.namer_hint(result["message_id"])
+
+    def default_ask_wait(self, args, operation):
+        """Keep ordinary CLI asks usable without inventing choices or promises.
+
+        The outbox pins derived cover metadata just as it pins the writing.
+        Repeating --operation must not regenerate a now-stale cover fence.
+        """
+        if operation is not None:
+            path = self.outbox() / (operation + ".request.json")
+            if path.exists():
+                saved = _input(str(path), None)
+                envelope = _request(saved, "command")
+                if saved["binding"] != self.binding or envelope["operation_id"] != operation:
+                    self.refuse("BINDING_MISMATCH", "This saved request belongs to another binding or operation")
+                previous = envelope["args"]
+                if (envelope["kind"] != "message.post" or envelope["target"] != {"topic_id": self.options.topic}
+                        or {key: value for key, value in previous.items() if key != "ask_wait"} != args):
+                    self.refuse("OPERATION_PAYLOAD_MISMATCH", "Operation %s already names a different request; nothing was sent" % operation)
+                if "ask_wait" in previous:
+                    args["ask_wait"] = previous["ask_wait"]
+                return
+        if self.view("capabilities", {})["actor_kind"] != "agent":
+            return
+        named = set(args["addressees"]) - {self.actor}
+        people = [person["id"] for person in self.pages("actors", {"kind": "human"}) if person["id"] in named]
+        if not people:
+            return
+        root, revision = None, 0
+        if args.get("reply_to"):
+            cover = self.view("dossier_cover", {"message_id": args["reply_to"]})
+            root, revision = cover["root_id"], cover["cover_revision"]
+        text = next((line.strip() for line in args["body"].splitlines() if line.strip()), "Please respond to this message.")
+        text = text if len(text) <= 300 else text[:299] + "…"
+        args["ask_wait"] = {"root_id": root, "cover_revision": revision, "questions": [
+            {"actor_id": person, "text": text, "options": [], "default": None,
+             "reason": "No choices or default were supplied; waiting for your response."}
+            for person in people]}
 
     def namer_hint(self, message_id):
         """After a reply: when this agent now names its dossier, which nobody has named (item 479), the mint to run.

@@ -257,12 +257,18 @@ whatever its words start with: an "@auditor" at the start of a post changes
 nothing. Only writing from the web page's composers is sent to the members
 its leading @names name ([reader.md](reader.md#naming-who-a-message-is-to)).
 
-A new agent ask to a human supplies `ask_wait` (everyday verbs:
-`--ask-wait JSON`): root_id, cover_revision and one question per human,
-with actor_id, text, literal options, default and reason. Read `cover MESSAGE`
-for a reply's root and revision; a new root uses null/0. Empty options and
-null default explicitly offer no choices and promise no default, and require
-a reason. Missing metadata refuses without publication. Prepared writing and
+A new agent ask to a human carries `ask_wait`: root_id, cover_revision and one
+question per human, with actor_id, text, literal options, default and reason.
+Everyday `post`/`reply` fill this when `--ask-wait` is omitted: the first nonempty
+line (up to 300 characters), no choices, no default, and a reason saying none
+were supplied. An attachment-only ask uses "Please respond to this message."
+Replies read the actual root and cover revision. `--ask-wait JSON` overrides
+this with literal metadata; read `cover MESSAGE` for its root and revision,
+or use null/0 for a new root. A repeated `--operation` reuses the saved metadata
+even if the cover has since changed; different words still refuse. In `--json`
+mode these derived reads add result lines before the publication receipt; a
+view result alone never proves sending. Raw commands
+without metadata refuse without publication. Prepared writing and
 `target --ask-in TOPIC --ask-wait JSON` use the same rule. See
 [asking-person-cover.md](asking-person-cover.md).
 
@@ -604,4 +610,5 @@ current topic. Full admission and refusal contract: [dossier move](dossier-move-
 Every `post` or `reply` with `--asks` must choose `--go-ahead` or
 `--no-go-ahead`. A bare ask refuses before uploads or publication. The two
 flags are mutually exclusive and belong only to asks. An agent asking a person
-also supplies `--ask-wait` as described in asking-person-cover.md.
+may supply literal `--ask-wait` metadata; omitting it uses the plain question
+default described in asking-person-cover.md.

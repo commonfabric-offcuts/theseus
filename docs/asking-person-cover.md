@@ -34,8 +34,17 @@ exception is added to external validation.
 Every publication path shares Core `_publish`. Missing/invalid metadata refuses
 with a correction before message, delivery or cover effects. Metadata without
 an agent Ask to humans refuses too. Humans acquire no required metadata or UI.
-CLI post/reply accept `--ask-wait JSON`; raw CLI commands and HTTP use the same
-Core contract. Prepared snapshots retain the exact object. Opening publication
+CLI post/reply accept `--ask-wait JSON`. Since Warp10892, omitting it on an
+agent's public Ask to people supplies a plain question from the first nonempty
+line (at most 300 characters), no choices, no default, and an explicit reason
+that none were supplied. An attachment-only ask uses "Please respond to this
+message." Replies read the actual dossier root and cover revision. Explicit
+metadata is preserved. A saved operation reuses its original metadata, so a
+repeat does not pick up a newer cover revision; changed writing or addressing
+under that identity still refuses. `--go-ahead`/`--no-go-ahead` remains required.
+Raw CLI commands and HTTP still require the complete Core object; this is an
+everyday-CLI convenience, not a weaker publication contract.
+Prepared snapshots retain the exact object. Opening publication
 that carries no ask remains unchanged.
 
 Core resolves the dossier at publication. A reply must name its current root

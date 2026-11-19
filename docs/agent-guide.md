@@ -76,16 +76,19 @@ When you write to someone by name, say whether you are asking them something
 or telling them something:
 
 ```sh
-aim-next reply MESSAGE --asks owner --ask-wait '{"root_id":"ROOT","cover_revision":N,"questions":[{"actor_id":"owner","text":"Release decision?","options":["Wait","Proceed"],"default":"Keep waiting","reason":null}]}' "Should the release wait for the review?"
+aim-next reply MESSAGE --asks owner --go-ahead "May I ship this release?"
 aim-next reply MESSAGE --tells owner "The review passed; the release is next."
 ```
 
 - `--asks` when you need an answer before you can go on. The topic then waits
   on them for that exact question, and it shows in their attention and on the
-  dossier cover together. Supply `--ask-wait JSON` with the actual options and
-  promised default, after reading `cover MESSAGE`. Explicitly use `options: []`
-  and `default: null` with a reason for a factual/free-response question; no
-  metadata refuses before sending. Legacy asks keep their broad clearing rule.
+  dossier cover together. Choose `--go-ahead` for permission to act or
+  `--no-go-ahead` for a factual question. The CLI uses your first nonempty line
+  as the cover question, offering no choices or default. To supply literal
+  choices and a promised default, pass `--ask-wait JSON` after reading
+  `cover MESSAGE`; explicit empty choices/null default need a reason. Raw
+  commands still require the complete metadata. Legacy asks keep their broad
+  clearing rule.
 - `--tells` when they should know but owe you nothing.
 - Neither, when you are writing to the topic and nobody in particular.
 
