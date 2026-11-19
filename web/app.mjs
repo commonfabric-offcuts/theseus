@@ -30,7 +30,6 @@ import { CreateOutcomeView, showUnfinished } from './creation-view.mjs';
 import { ReadThrough } from './read-through.mjs';
 import { Live, liveOffered, reloader } from './live.mjs';
 import { Attention } from './attention.mjs';
-import { ThingsRail } from './things-rail.mjs';
 import { TopicStatePanel, paintWaiting, managesTopic, organises } from './topic-state.mjs';
 import { paintTopicHeader } from './topic-header.mjs';
 import { TopicSettings } from './topic-settings.mjs';
@@ -3224,12 +3223,10 @@ async function initialize() {
   const firstReading = Promise.allSettled([run(loadMarks)]).then(() => { laidOut = true; noteRead(); });
   document.body.dataset.ready = 'true'; enableFreshness(checkpoint, actorCheckpoint);
   // The rails beside the page read through this run from now on (rails.mjs).
-  shell.ready({ api, bootstrap, live, workspaceId: topic.workspace_id, workspaceTitle: $('workspace-name').textContent, topic, pageMax: pageMax(),
-    view: async (name, args, readClass = 'background') => checkedView(await api.view(name, args, { readClass }), bootstrap.instance_id),
-    open: (target, title, from) => openDestination(target, title, from), readable: () => !topicUnavailable && !freshness?.stopped, currentTopic: () => topic,
+  readyRails(topic.workspace_id, { topic, readable: () => !topicUnavailable && !freshness?.stopped, currentTopic: () => topic,
     readingNavigation: () => releaseTopArrivals(),
     // The rail's Starred takes a star off (stack-feed.mjs); its Notebook section starts the topic's pages and the outcome's.
-    unstar: star => stackFeed?.unstar(star), notebookCreate: notebookCreator });
+    unstar: star => stackFeed?.unstar(star) });
   // A message's link opens its topic, or its outcome's conversation, with that
   // message in the Reader; the address then names the page alone, as any does.
   // This run's first marks read establishes what its reading act may clear.
@@ -3248,6 +3245,13 @@ async function initialize() {
   }
   // A Notebook page's link opens the page in the Reader, as its card or row does.
   if (pageAnchor) run(async () => (pageAnchor.revision ? openSource(await pageSource(pageAnchor), $('main')) : openNotebook(pageAnchor.id, { opener: $('main') })));
+}
+// One handoff to the shell-owned outline, things rail and phone drawers for
+// both topic and outcome pages. The shell owns their lifetime and read queue.
+function readyRails(workspaceId, handles = {}) {
+  shell.ready({ api, bootstrap, live, workspaceId, workspaceTitle: $('workspace-name').textContent, topic: null, pageMax: pageMax(),
+    view: async (name, args, readClass = 'background') => checkedView(await api.view(name, args, { readClass }), bootstrap.instance_id),
+    open: (target, title, from) => openDestination(target, title, from), notebookCreate: notebookCreator, ...handles });
 }
 // A notification opens its readable topic, or Outcomes when access is gone.
 function openSent(item) {
@@ -3594,21 +3598,17 @@ async function initializeOutcomePage(route) {
   } else {
     // The title and its menu stay above the page. People, notes, topics and
     // tools come before outcome setup; secondary context follows (item 842).
-    $('outcome-page').append($('outcomes-status'),$('retry-workspaces'),$('outcome-team'),$('outcome-references'),$('page-here'),$('topic-navigation'),$('outcome-tools'),$('outcome-standing'),$('outcome-purpose'),$('target-panel'),$('pipeline-line'),$('also-waiting'),$('loop-panel'),$('problems-panel'),$('outcome-context'));
-    const context = new ThingsRail({host:$('outcome-context-body'),embedded:true,doc:document,win:window});
-    $('outcome-context').hidden=false;
-    $('outcome-context').ontoggle=()=>{if($('outcome-context').open)run(()=>context.reload());};
+    $('outcome-page').append($('outcomes-status'),$('retry-workspaces'),$('outcome-team'),$('outcome-references'),$('page-here'),$('topic-navigation'),$('outcome-tools'),$('outcome-standing'),$('outcome-purpose'),$('target-panel'),$('pipeline-line'),$('also-waiting'),$('loop-panel'),$('problems-panel'));
     // Archived, completed or brought back (item 404): the page reads again, and once it is archived or completed the keys
     // go to Bring back on "Where it stands" (back, the target card gives them to the word that ended it).
     const targets=new OutcomeTargets({hosts:{target:$('target-panel'),loop:$('loop-panel'),problems:$('problems-panel')},workspace:route.id,reader:bootstrap.actor,read:pipelineView,send:pipelineSend,
       changed:async({state,refused})=>{await reload().catch(()=>{});if(!refused&&state!=='open')$('outcome-standing').querySelector('[data-hold="bring-back"]')?.focus();}});
     // Its skills and tools, and the ones it says it uses (docs/skills-and-tools.md).
     const outcomeTools=new OutcomeTools({host:$('outcome-tools'),workspace:route.id,instanceId:bootstrap.instance_id,read:pipelineView,send:pipelineSend,open:openDestination});
-    // The page lists the outcome's topics and pages itself, so it has no rail:
-    // the logo block, then "← Outcomes", head the main column.
-    const rail=document.querySelector('.rail');rail.hidden=true;
+    // Keep the shell's rails beside this page, just as beside a topic.
+    const rail=document.querySelector('.rail');rail.hidden=false;
     here={workspaceId:route.id,title:route.id,view:null,conversation:false};
-    $('main').prepend($('outcomes-home'));placeBrand($('main'));
+    placeBrand(rail);
     const scope=outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'workspace',rail,home:$('outcomes-home'),attention,open:openDestination});
     // The list of outcomes is read, not shown, for the line naming other outcomes' questions;
     // "← Outcomes" says its words when that line names fewer outcomes than its light counts.
@@ -3641,7 +3641,8 @@ async function initializeOutcomePage(route) {
           onboarding.paint(null);permitted=false;$('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
           $('topic-navigation').hidden=true;$('new-topic').disabled=true;
           // Its Notebook pages, and any open in place, go with it; a recovered read lists them again.
-          $('outcome-references').hidden=true;$('page-here').hidden=true;$('outcome-standing').hidden=true;$('also-waiting').hidden=true;$('outcome-tools').hidden=true;$('outcome-context').hidden=true;context.serial++;context.handles=null;context.clear();
+          $('outcome-references').hidden=true;$('page-here').hidden=true;$('outcome-standing').hidden=true;$('also-waiting').hidden=true;$('outcome-tools').hidden=true;
+          shell.topicChanged();
         }
         throw error;
       }
@@ -3655,10 +3656,8 @@ async function initializeOutcomePage(route) {
       purposeLine.paint(workspace,organises(workspace,bootstrap.actor));
       onboarding.paint(workspace);
       $('workspace-name').textContent=workspace.id;enableNewTopic(workspace.id);here.title=workspace.title;
+      shell.topicChanged();
       await paintTeam(workspace,()=>reload());
-      $('outcome-context').hidden=false;
-      if(!context.handles)context.ready({route,bootstrap,api,inTurn:job=>retired?null:job(),workspaceId:route.id,workspaceTitle:workspace.title,view:pipelineView,open:openDestination,pageMax:pageMax()});
-      else { context.handles.workspaceTitle=workspace.title;context.changed(); }
       if(!topicRail)topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
         retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
         read:async args=>checkedView(await readTopicList((name, query)=>api.view(name,query,{readClass:'foreground'}),args),bootstrap.instance_id),
@@ -3680,6 +3679,7 @@ async function initializeOutcomePage(route) {
       return reads.every(read=>read.value!==false);
     });
     await reload();
+    readyRails(route.id, { workspaceTitle: here.title, currentWorkspaceTitle: () => here.title, readable: () => permitted });
     if(shown)run(async()=>(shown.revision?pageHere.open(await pageSource(shown),$('main')):openNotebook(shown.id,{opener:$('main')})));
     else if(notebookReturning())notebookSheetOf().resume();
   }

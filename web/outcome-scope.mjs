@@ -12,10 +12,10 @@ export const RAIL_ORDER = ['pipeline', 'topics', 'skills'];
 
 // Page kinds inside an outcome: 'workspace' (the outcome's own page), 'topic',
 // 'opening' (a new topic), 'skill' (a tool's page) and 'pipeline'. The
-// outcome's own page lists everything in its main column, so it has no rail;
+// outcome's own page also keeps its content in the main column;
 // a tool's page read by someone outside the tool's home has nothing to put there.
 export function railShown(kind, homeReadable = true) {
-  return kind !== 'workspace' && homeReadable !== false;
+  return homeReadable !== false;
 }
 
 // How many other outcomes wait on the reader, from the server's exact count.

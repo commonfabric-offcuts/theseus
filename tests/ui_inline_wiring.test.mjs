@@ -2732,8 +2732,8 @@ test('a commit while a reload reads the outcomes is read after it, and a failed 
   assert.equal(f.get('retry-workspaces').hidden, true);
 });
 
-// The outcome's own page has no rail, so it shows no list of outcomes; it reads
-// that list only for the line naming other outcomes' questions (item 86).
+// The outcome body's list read serves Also waiting; the shell separately owns
+// the visible outline. The main column does not show the old outcomes list.
 test('on an outcome page a commit reads the outcome, its topics and, for the line of other outcomes\' questions, the list of outcomes it never shows', async () => {
   const f = fixture('https://fixture/?workspace=w1'), live = stream(), o = outcomesPage(f);
   f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
@@ -2745,7 +2745,7 @@ test('on an outcome page a commit reads the outcome, its topics and, for the lin
   live.emit({ kind: 'commit', seq: 9 }); await drain();
   assert.deepEqual({ workspaces: count('workspaces'), workspace: count('workspace'), topics: count('workspace_topics') },
     { workspaces: before.workspaces + 1, workspace: before.workspace + 1, topics: before.topics + 1 });
-  assert.equal(f.get('rail').hidden, true, 'the outcome page has no rail');
+  assert.equal(f.get('rail').hidden, false, 'the outcome page keeps the shared rail');
   assert.equal(f.get('outcome-navigation').hidden, true, 'and shows no list of outcomes');
   f.document.visibilityState = 'hidden';
   live.emit({ kind: 'commit', seq: 10 }); await drain();
@@ -3960,13 +3960,14 @@ for (const route of ['?', '?new=outcome&intent=i1']) {
   });
 }
 
-test('on an outcome\'s own page the logo block heads the main column, then "← Outcomes", and the rail is hidden', async () => {
+test('844 outcome home keeps the brand and navigation in the visible side rail', async () => {
   const f = fixture('https://fixture/?workspace=w1');
   f.inject({ api: f.api, bootstrap: f.bootstrap });
   f.api.view = async name => name === 'workspace' ? { instance_id: 'fixture', workspace: { id: 'w1', title: 'Real outcome', purpose: '' } } : { instance_id: 'fixture', items: [], next_cursor: null };
   await f.initialize(); await drain();
-  assert.deepEqual(f.get('main').children.slice(0, 3).map(child => child.id), ['brand', 'page-notices', 'outcomes-home']);
-  assert.equal(f.get('rail').hidden, true);
+  assert.deepEqual(f.get('rail').children.slice(0, 2).map(child => child.id), ['brand', 'page-notices']);
+  assert.equal(f.get('rail').hidden, false);
+  assert.ok(!f.get('main').children.includes(f.get('brand')));
   let opened = false; await f.get('outcomes-home').onclick({ button: 0, preventDefault() { opened = true; } });
   assert.equal(opened, true, '"← Outcomes" opens the Outcomes home');
 });
@@ -4889,14 +4890,14 @@ test('835 legacy conversation links resolve to the ordinary topic with its actua
   assert.equal(f.get('conversation-row').children.length,0);
 });
 
-test('835/842 outcome home puts people and topics before setup and opens references only on demand',async()=>{
-  const thumbnails=[];
-  const f=fixture('https://fixture/?workspace=w1',{paintThumb:(_host,_key,load)=>thumbnails.push(load)}), original=f.api.view;
+test('844 outcome home keeps 842 order and hands retained references to the shared right rail',async()=>{
+  const thumbnails=[], live=stream(); let denied=false;
+  const f=fixture('https://fixture/?workspace=w1',{paintThumb:(_host,_key,load)=>thumbnails.push(load), listen:(target,type,fn)=>target.addEventListener(type,fn), KeyTree:class {constructor(){} refresh(){} }}), original=f.api.view;
   f.topic.list_position=0;
   f.api.media=async(instance,attachment,ref)=>{assert.equal(instance,'fixture');assert.equal(attachment.id,'image835');assert.equal(ref.id,'retained835');return {blob:'fixture image bytes'};};
   f.api.view=async(name,args,options)=>{
     if(['workspace','pipeline','conversation','stars','topic_messages','topic_images'].includes(name))f.calls.push({name,args});
-    if(name==='workspace')return {instance_id:'fixture',workspace:{id:'w1',title:'Launch',purpose:'Ship',owner_id:'owner'}};
+    if(name==='workspace'){if(denied)throw Object.assign(Error('No access'),{code:'FORBIDDEN'});return {instance_id:'fixture',workspace:{id:'w1',title:'Launch',purpose:'Ship',owner_id:'owner'}};}
     if(name==='pipeline')return {instance_id:'fixture',pipeline:null,items:[],next_cursor:null};
     if(name==='conversation')return {instance_id:'fixture',conversation:{topic_id:'t1',version:1}};
     if(name==='stars')return {instance_id:'fixture',items:[{workspace_id:'w1',topic_id:'t1',message_id:'retained835',author_id:'fixture-person',excerpt:'Keep this reference',star_revision:1}]};
@@ -4904,23 +4905,37 @@ test('835/842 outcome home puts people and topics before setup and opens referen
     if(name==='topic_images')return {instance_id:'fixture',items:[{topic_id:'t1',author_id:'fixture-person',source_ref:{kind:'message',id:'retained835'},attachment:{id:'image835',name:'Plan.png'}}],next_cursor:null};
     return original(name,args,options);
   };
-  f.inject({api:f.api,bootstrap:f.bootstrap});
+  f.inject({api:f.api,bootstrap:f.bootstrap}); f.useLive(live);
   await f.initialize();await drain();
   const ids=f.get('outcome-page').children.map(node=>node.id);
-  assert.deepEqual(ids,['outcomes-status','retry-workspaces','outcome-team','outcome-references','page-here','topic-navigation','outcome-tools','outcome-standing','outcome-purpose','target-panel','pipeline-line','also-waiting','loop-panel','problems-panel','outcome-context']);
+  assert.deepEqual(ids,['outcomes-status','retry-workspaces','outcome-team','outcome-references','page-here','topic-navigation','outcome-tools','outcome-standing','outcome-purpose','target-panel','pipeline-line','also-waiting','loop-panel','problems-panel']);
+  const handles=f.runObservation('shell.handles');
+  assert.equal(handles?.workspaceId,'w1','outcome initializes the same shell as topics');
+  assert.equal(handles.topic,null);
+  assert.equal(handles.api,f.api);
+  assert.equal(typeof handles.notebookCreate,'function');
   assert.equal(f.calls.some(call=>call.name==='stars'),false,'closed references read no stars');
   const count=name=>f.calls.filter(call=>call.name===name).length, notes=count('memory_items'),tools=count('tools');
-  f.get('outcome-context').open=true;
-  await f.get('outcome-context').ontoggle();await drain();
+  const rail=f.runObservation("(() => {const rail=new ThingsRail({host:document.getElementById('things'),backdrop:document.getElementById('things-backdrop'),doc:document,win:window});shell.follow(rail);return rail;})()");
+  rail.begin(true,{kind:'workspace',id:'w1'});
+  rail.ready(handles);
+  assert.equal(rail.handles,handles,'shared rail accepts the outcome home');
+  rail.open(); await rail.reload();await drain();
   assert.ok(f.calls.some(call=>call.name==='stars'),'opening reads the existing bounded context');
-  assert.equal(count('memory_items'),notes,'does not duplicate the Notebook read');
-  assert.equal(count('tools'),tools,'does not duplicate the tools read');
-  const walk=node=>[node,...(node.children??[]).flatMap(walk)], nodes=walk(f.get('outcome-context-body'));
+  assert.ok(count('memory_items')>notes,'the right rail includes its existing Notebook');
+  assert.ok(count('tools')>tools,'the right rail includes its existing tools');
+  const walk=node=>[node,...(node.children??[]).flatMap(walk)], nodes=walk(f.get('things'));
   const shown=nodes.filter(node=>node.className==='things-sec'&&!node.hidden).map(node=>node.dataset.key);
-  assert.deepEqual(shown,['starred','waiting','previews','prs','images']);
+  assert.deepEqual(shown,['starred','pipeline','waiting','previews','prs','images']);
   assert.ok(nodes.some(node=>node.href==='https://example.test/preview/835'));
   assert.ok(nodes.some(node=>node.href==='https://github.com/example/project/pull/835'));
   assert.equal(nodes.filter(node=>node.href==='?topic=t1&message=retained835').length,3,'star, waiting item and image keep their message destination');
   assert.equal(thumbnails.length,1);
-  assert.equal(await thumbnails[0](),'fixture image bytes','embedded image uses the current page media reader');
+  assert.equal(await thumbnails[0](),'fixture image bytes','right-rail image uses the current page media reader');
+  denied=true; live.emit({kind:'commit',seq:20}); await drain();
+  assert.equal(handles.readable(),false);
+  assert.ok([...rail.sections.values()].every(part=>part.details.hidden),'permission loss clears retained outcome context');
+  denied=false; live.emit({kind:'commit',seq:21}); await drain(); await rail.reload();
+  assert.equal(handles.readable(),true);
+  assert.equal(rail.sections.get('images').details.hidden,false,'recovery reads and restores current context');
 });
