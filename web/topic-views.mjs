@@ -89,6 +89,7 @@ export class TopicViews {
     // History uses the ordinary frontier/runs; there is no supplemental run.
     this.starRoots = new Set(); this.starCursor = null; this.starsLoaded = false;
     this.starSerial = 0; this.starredPending = false; this.starredError = null;
+    this.starHistoryChanged = false;
   }
   resetStars() {
     ++this.starSerial; this.starRoots.clear(); this.starCursor = null; this.starsLoaded = false;
@@ -122,14 +123,25 @@ export class TopicViews {
         if (cursor !== this.olderCursor) return false;
         this.page(page, 'topic');
         if (page.next_cursor !== null && (!page.items.length || page.next_cursor !== page.items[0].seq || page.next_cursor >= cursor)) throw invalid('The starred history paging made no progress.');
-        this.messagesPage(page, { cursor });
+        // Keep bounded history reads interruptible, but draw the accumulated
+        // history once it is complete. Redrawing every older page constructs
+        // all its unrelated cards and starts more missing-head reads while
+        // the starred dossiers are still loading.
+        if (this.messagesPage(page, { cursor, draw: false })) this.starHistoryChanged = true;
       }
       const complete = this.starsLoaded && (!this.starRoots.size || this.olderCursor === null);
+      if (complete && this.starHistoryChanged) { this.paintMessages(); this.starHistoryChanged = false; }
       this.starredPending = !complete; this.starredError = null; this.paint('starred');
       return complete;
     } catch (error) {
       if (!mine()) return false;
-      if (readFailure(error).kind !== 'defer') { this.starredError = error; this.paint('starred'); }
+      const failure = readFailure(error);
+      // A failed fill still shows the history it successfully read. Do not
+      // publish cached material while authority or access is being rechecked.
+      if (this.starHistoryChanged && !['authority', 'forbidden', 'reconnect'].includes(failure.kind)) {
+        this.paintMessages(); this.starHistoryChanged = false;
+      }
+      if (failure.kind !== 'defer') { this.starredError = error; this.paint('starred'); }
       throw error;
     }
   }
@@ -208,7 +220,7 @@ export class TopicViews {
         !integer(answer.relevant_versions?.[versionKey])) throw invalid('The list page is malformed.');
     return answer;
   }
-  messagesPage(answer, { initial = false, cursor, live = false, anchored = false } = {}) {
+  messagesPage(answer, { initial = false, cursor, live = false, anchored = false, draw = true } = {}) {
     // An explicit return to an old message adds one bounded run without moving the ordinary paging frontier.
     this.page(answer, 'topic');
     const membership = answer.membership_revision ?? 0;
@@ -271,10 +283,13 @@ export class TopicViews {
     if (this.starsLoaded && this.starRoots.size && this.olderCursor !== null) {
       this.starredPending = true; this.invalidate('starred', 0); this.paint('starred');
     }
+    if (draw) this.paintMessages();
+    return true;
+  }
+  paintMessages() {
     this.paint('messages');
     if (this.revised.size) this.paint('edited');
     if (this.yours.size) this.paint('yours');
-    return true;
   }
   // Whether the line holds: a message at or above it (its own or a newer one)
   // is unread, as the answer that drives the counts and the Unread pills says,
