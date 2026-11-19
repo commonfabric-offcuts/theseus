@@ -1,3 +1,5 @@
+import { closeOnOutsidePress } from './dismiss.mjs';
+
 // Inviting an agent to an outcome, from its Team panel (item 324,
 // docs/agents.md "Inviting an agent"). Whoever organises the outcome (its
 // owner or coordinator) presses "+ Invite agent", types the agent's name, taps
@@ -92,8 +94,8 @@ export class Invitation {
 // it ({ id, version }); invited() runs after Core added an agent, so the team
 // shows it.
 export class AgentInvite {
-  constructor({ host, invitation, workspace, invited = () => {}, copier = copyText }) {
-    Object.assign(this, { host, invitation, workspace, invited, copier });
+  constructor({ host, invitation, workspace, invited = () => {}, copier = copyText, panel = null }) {
+    Object.assign(this, { host, invitation, workspace, invited, copier, panel });
     this.manage = false; this.busy = false; this.harness = HARNESSES[0][0];
     this.opener = element('button', { type: 'button', id: 'invite-agent', className: 'choice-chip add-chip',
       title: 'Invite an agent to this outcome' }, element('span', { textContent: '+ Invite agent' }));
@@ -134,6 +136,18 @@ export class AgentInvite {
     this.prompt = element('div', { className: 'invite-prompt', hidden: true },
       element('div', { className: 'invite-head' }, this.said, this.copyButton, this.closeButton), this.text, this.copied);
     host.replaceChildren(this.opener, this.line, this.prompt);
+    if (panel) {
+      this.opener.className = 'choice-chip'; this.opener.querySelector('span').textContent = '+ Invite';
+      panel.extraChoice = this.opener; panel.closed = () => this.toggle(false, false);
+      panel.row.append(this.line);
+      this.line.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || event.isComposing) return;
+        event.preventDefault(); event.stopPropagation(); this.toggle(false);
+      });
+      this.stopOutside = closeOnOutsidePress({ doc: host.ownerDocument ?? document,
+        inside: target => this.opener.contains(target) || this.line.contains(target),
+        isOpen: () => !this.line.hidden, close: () => this.toggle(false, false) });
+    }
     this.paintChips();
   }
 
@@ -143,7 +157,7 @@ export class AgentInvite {
     this.manage = manage;
     this.opener.hidden = !manage;
     if (!manage && !this.busy && !this.state.textContent) this.toggle(false, false);
-    this.host.hidden = !manage && this.line.hidden && this.prompt.hidden;
+    this.host.hidden = this.panel ? this.prompt.hidden : !manage && this.line.hidden && this.prompt.hidden;
   }
 
   paintChips() {
@@ -156,7 +170,7 @@ export class AgentInvite {
     if (open) { this.input.focus(); return; }
     if (!this.busy) this.show('');
     if (focus && !this.opener.hidden) this.opener.focus();
-    this.host.hidden = !this.manage && this.prompt.hidden;
+    this.host.hidden = this.panel ? this.prompt.hidden : !this.manage && this.prompt.hidden;
   }
 
   show(text, { quiet = false, retry = false } = {}) {
@@ -203,8 +217,13 @@ export class AgentInvite {
 
   closePrompt() {
     this.prompt.hidden = true; this.text.textContent = '';
-    this.host.hidden = !this.manage && this.line.hidden;
-    if (!this.opener.hidden) this.opener.focus();
+    this.host.hidden = this.panel ? true : !this.manage && this.line.hidden;
+    if (!this.opener.hidden) (this.panel?.row.hidden ? this.panel.opener : this.opener).focus();
+  }
+
+  dispose() {
+    this.stopOutside?.(); this.opener.remove(); this.line.remove();
+    if (this.panel?.extraChoice === this.opener) { this.panel.extraChoice = null; this.panel.closed = null; }
   }
 
   async copy() {

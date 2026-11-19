@@ -30,7 +30,7 @@ export class OutcomeReferences {
       row.textContent = item.title || 'Notebook item';
       if (this.viewPreference) {
         const mode = this.viewPreference.get(item.id), label = document.createElement('span'), line = document.createElement('span');
-        label.className = 'notebook-document-title'; label.textContent = item.title || 'Notebook item';
+        label.className = 'notebook-document-title'; label.textContent = item.title || 'Notebook item'; label.title = label.textContent;
         line.className = 'notebook-document-label'; line.append(label); paintChanged(line, item);
         row.replaceChildren(notebookDocument(mode), line);
         const since = changedSince(item);

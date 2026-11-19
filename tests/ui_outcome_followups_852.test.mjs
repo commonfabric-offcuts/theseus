@@ -79,7 +79,7 @@ test('852 Notebook titles hold their count beside them, icons carry the mode, an
 test('852 page wiring shares center-pane routing, Team placement, heading and pencil intent',()=>{
   const source=n=>readFileSync(new URL('../web/'+n,import.meta.url),'utf8'),app=source('app.mjs'),css=source('aim.css'),html=source('index.html');
   assert.match(app,/centerPane: topicCards/);assert.match(source('rails.mjs'),/panes.center = \(\) => shell.handles\?\.centerPane/);
-  assert.ok(app.indexOf("$('outcome-team'),$('outcome-references')")>0);
+  assert.match(html,/<header class="topic-header">[\s\S]*?id="outcome-team" class="topic-people"[\s\S]*?<\/header>/);
   assert.doesNotMatch(css,/\.outcome-team\.topic-people\{[^}]*justify-content:flex-start/);
   assert.doesNotMatch(html,/id="notebook-heading">Outcome Notebook/);
   assert.match(app,/new-topic.*setAttribute\('aria-label', 'New topic'\)/);

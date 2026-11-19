@@ -25,3 +25,27 @@ export function closeOnOutsideClick(dialog, close, win = globalThis) {
     if (started && dialog.open && event.target === dialog && outside(dialog, event)) close();
   });
 }
+
+// A nonmodal field/popover closes only after both ends of a primary press
+// are outside it. A drag's common-ancestor click and touch capture are not
+// evidence of an outside release. Closing preserves the outside control.
+export function closeOnOutsidePress({ doc, inside, isOpen, close }) {
+  let press = null;
+  const listeners = {
+    pointerdown: event => {
+      press = isOpen() && event.button === 0 && event.isPrimary !== false && !inside(event.target)
+        ? { pointerId: event.pointerId, releasedOutside: false } : null;
+    },
+    pointerup: event => {
+      if (press && event.pointerId === press.pointerId)
+        press.releasedOutside = !inside(doc.elementFromPoint(event.clientX, event.clientY));
+    },
+    pointercancel: event => { if (event.pointerId === press?.pointerId) press = null; },
+    click: event => {
+      const outside = press?.releasedOutside === true; press = null;
+      if (outside && isOpen() && !inside(event.target)) close();
+    },
+  };
+  for (const [name, handler] of Object.entries(listeners)) doc.addEventListener(name, handler, true);
+  return () => { for (const [name, handler] of Object.entries(listeners)) doc.removeEventListener(name, handler, true); };
+}
