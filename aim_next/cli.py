@@ -183,8 +183,8 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "{binding | view FILE|- | command FILE|- | outcomes [--reached | --ended] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR | coordinator OUTCOME ACTOR|--none | participant TOPIC ACTOR "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
-         "| inbox | reply MESSAGE [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--part] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
-         "| post TOPIC [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--reply-to MESSAGE] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
+         "| inbox | reply MESSAGE [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--part] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
+         "| post TOPIC [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--reply-to MESSAGE] [--divergence-reason TEXT] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
          "| thumb MESSAGE [--off] | mint MESSAGE [--expected N] WORDS|- | edit MESSAGE --expected N TEXT|- "
          "| cover MESSAGE [--refresh [--operation ID]] [--expected N] [--stands TEXT] [--waits TEXT --default TEXT]... [--no-waits] "
          "[--payload TEXT --from MESSAGE [--link URL] [--kind answer|decision|preview|page|release] [--done-by MESSAGE]] [--no-payload] "
@@ -235,6 +235,14 @@ def _media_type(name, data):
     return guessed
 
 
+def self_quote_options(parser):
+    parser.add_argument("--quote")
+    parser.add_argument("--quote-revision", type=int)
+    parser.add_argument("--quote-start", type=int)
+    parser.add_argument("--quote-end", type=int)
+    parser.add_argument("--without-quote")
+
+
 def _parser():
     parser = Parser(prog="aim-next", add_help=False)
     parser.add_argument("--profile", required=True)
@@ -281,6 +289,8 @@ def _parser():
             post.add_argument("topic")
             post.add_argument("--reply-to")
         # A message to someone asks or tells them; --to, which said neither, is refused by name.
+        self_quote_options(post)
+        post.add_argument("--divergence-reason")
         post.add_argument("--asks")
         post.add_argument("--ask-wait", help="literal ask_wait JSON; omitted agent asks use the last question line, or first line, with no choices/default")
         post.add_argument("--tells")
@@ -314,6 +324,7 @@ def _parser():
     whisper.add_argument("topic")
     whisper.add_argument("--to", required=True)
     whisper.add_argument("--reply-to")
+    self_quote_options(whisper)
     whisper.add_argument("text")
     start = verb("start")
     start.add_argument("outcome")
@@ -1316,6 +1327,28 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         self.options.reply_to = self.options.message
         self.do_post()
 
+    def reply_choice(self, args):
+        options = self.options
+        offsets = (options.quote_revision, options.quote_start, options.quote_end)
+        if options.quote is not None:
+            if not options.reply_to or not options.quote or options.without_quote is not None or any(value is not None for value in offsets):
+                self.refuse("INVALID_REPLY_PASSAGE", "Choose nonempty --quote text with a reply target, without offsets or --without-quote")
+            source = self.view("source", {"source_ref": {"kind": "message", "id": options.reply_to}})
+            if source["withheld"]:
+                self.refuse("MESSAGE_HELD", "Its author is editing this message; read it again before replying")
+            start = source["body"].find(options.quote)
+            if start < 0:
+                self.refuse("INVALID_REPLY_PASSAGE", "That text isn't in the message you're replying to")
+            args["reply_passage"] = {"source": dict(source["source_ref"], revision=source["revision"]),
+                                     "start": start, "end": start + len(options.quote)}
+        if any(value is not None for value in offsets):
+            if not options.reply_to or any(value is None for value in offsets):
+                self.refuse("INVALID_REPLY_PASSAGE", "A quoted reply needs its target, revision, start and end")
+            args["reply_passage"] = {"source": {"kind": "message", "id": options.reply_to,
+                "revision": options.quote_revision}, "start": options.quote_start, "end": options.quote_end}
+        if options.without_quote is not None:
+            args["reply_without_quote"] = options.without_quote
+
     def do_post(self):
         options = self.options
         if options.to is not None or (options.asks is not None and options.tells is not None):
@@ -1337,10 +1370,25 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
                 args["ask_wait"] = json.loads(options.ask_wait)
             except (ValueError, TypeError):
                 self.refuse("INVALID_ARGUMENT", "--ask-wait needs a JSON object; nothing was sent")
+        self.reply_choice(args)
+        if options.attach and options.reply_to and self.view("capabilities", {})["actor_kind"] == "agent":
+            # Refuse invalid passage requests before publishing attachment bytes.
+            from . import reply_passages
+            source = self.view("source", {"kind": "message", "id": options.reply_to})
+            if source.get("whisper"):
+                self.refuse("WHISPER_STAYS_PRIVATE", "Answer a whisper with whisper; nothing was uploaded or sent")
+            if source["topic_id"] != options.topic:
+                self.refuse("INVALID_REPLY", "Reply context must belong to the destination topic")
+            try:
+                reply_passages.select(source, dict(args, reply_to=options.reply_to))
+            except Refusal as error:
+                self.refuse(error.code, error.message)
         if options.attach:
             args["attachments"] = self.attach()
         if addressees:
             args["intent"] = "ask" if options.asks is not None else "tell"
+        if getattr(options, "divergence_reason", None) is not None:
+            args["divergence_reason"] = options.divergence_reason
         if options.reply_to:
             args["reply_to"] = options.reply_to
         if options.part:
@@ -1451,6 +1499,7 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         args = {"body": self.text(), "addressees": _names(options.to), "whisper": True}
         if options.reply_to:
             args["reply_to"] = options.reply_to
+        self.reply_choice(args)
         result = self.command("message.post", {"topic_id": options.topic}, args)
         self.out.plain("whispered %s to %s in %s" % (result["message_id"], ", ".join(args["addressees"]), result["topic"]["id"]))
 

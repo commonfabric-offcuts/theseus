@@ -16,6 +16,15 @@ run's results can be searched for it.
 
 ## Reading and writing come first
 
+Agent replies carry the exact selected parent passage, or a caller's stated
+reason displayed in the reply (item 758, [agent-reply-passages.md](agent-reply-passages.md)).
+`tests/topic_reading_native.mjs` (`native-reading`, `native-webkit-reading`),
+the `reading item 758` cases in `tests/item_758_native.mjs`, check the feed,
+Reader, source navigation and native human manual send at 320, 375, 390 and
+laptop width, light and dark. `tests/test_item_758_fixture.py` checks the same
+native fixture's refusal/retry/publication oracle below the browser. A case
+present here is not a claim it has run; the handoff retains the actual results.
+
 The Reader keeps room to read the message and room to write a useful reply.
 Guidance on the page stays compact and folds away. On a phone with the keyboard
 up, the message still shows enough to read while writing. The Reader fills the visible window up to its width maximum. The pencil

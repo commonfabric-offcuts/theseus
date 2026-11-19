@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from . import reply_passages
+
 import json
 import uuid
 
@@ -7,7 +9,7 @@ from .contract import LIMITS, Refusal, organises, _body, _identifier, _json, _pa
 from .delivery import _now_ms
 from .responsibility import responsibility_note
 from .work import OTHER_MESSAGE, work_by_topic
-from . import whispers
+from . import whispers, root_posts
 from .standing_conversation import open_items_clause
 from .reactions import GO_AHEAD_NEEDS_ASK, go_ahead_flag
 from .topic_reading import reading_fields, unread_groups, writing_fields
@@ -96,7 +98,7 @@ IMAGE_WINDOW = 200
 IMAGE_TYPES = ("image/png", "image/jpeg", "image/gif", "image/webp")
 
 
-POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent", "whisper", "part", "subjects", "go_ahead", "blocks", "ask_wait"}
+POST_FIELDS = {"reply_passage", "reply_without_quote", "body", "attachments", "addressees", "reply_to", "quotes", "intent", "whisper", "part", "subjects", "go_ahead", "blocks", "ask_wait", "divergence_reason"}
 
 
 def _preview(value, size=1024):
@@ -206,13 +208,16 @@ class Conversation:
                 raise Refusal("INVALID_ARGUMENT", "The opening belongs to a different workspace")
             self._open_topic(db, actor, topic_id, workspace_id, creation.get("title", ""), creation.get("participants", []),
                              Refusal("INVALID_ARGUMENT", "A topic needs a title"))
-        # A prepared message to someone says whether it asks or tells, as a post
-        # does: _publish refuses it, unrecorded, when the writing said neither.
-        # Writing about a message in the topic it goes to answers that message,
-        # quoted or not. The frozen source names it, so every send of it does.
-        # A Tell written about a whisper is a new message on the record that
-        # quotes only what its person chose: it answers nothing, so the
-        # whisper itself stays between the two. A whisper about a whisper answers it.
+        source = snapshot["source_ref"]
+        self._resolve_reply(db, snapshot, topic_id)
+        result, affected = self._publish(db, actor, envelope["operation_id"], topic_id, snapshot)
+        self._change(db, "actor", actor, "submission", snapshot["id"], 2)
+        # The reply is sent: its message's card no longer marks it as the writer's unsent reply (topic_reading.py).
+        self._tell_writing(db, actor, source)
+        return dict(result, submission_id=snapshot["id"]), affected
+
+    def _resolve_reply(self, db, snapshot, topic_id):
+        """Resolve the frozen source in the same way at prepare and send."""
         source = snapshot["source_ref"]
         snapshot.pop("about_id", None)
         if source.get("kind") == "message" and snapshot.get("reply_to") is None:
@@ -226,11 +231,6 @@ class Conversation:
                 destination = db.execute("SELECT kind FROM topics WHERE id=?", (topic_id,)).fetchone()
                 if destination is not None and destination["kind"] == "conversation":
                     snapshot["about_id"] = source["id"]
-        result, affected = self._publish(db, actor, envelope["operation_id"], topic_id, snapshot)
-        self._change(db, "actor", actor, "submission", snapshot["id"], 2)
-        # The reply is sent: its message's card no longer marks it as the writer's unsent reply (topic_reading.py).
-        self._tell_writing(db, actor, source)
-        return dict(result, submission_id=snapshot["id"]), affected
 
     def _command_message_post(self, db, actor, envelope):
         target, args = envelope["target"], envelope["args"]
@@ -346,6 +346,7 @@ class Conversation:
         that wakes them. record_only is an internal assessment-report capability:
         it retains the message/freshness, but not work-state or subscription wakes.
         No public message command accepts this flag."""
+        internal_notice = topic is not None
         topic = self._topic(db, actor, topic_id) if topic is None else topic
         parent = None
         if snapshot.get("reply_to"):
@@ -355,6 +356,10 @@ class Conversation:
                 # A state check, not a shape error: it is recorded like the others.
                 raise Refusal("INVALID_REPLY", "Reply context must belong to the destination topic")
         private = whispers.check_publish(db, actor, snapshot, parent)
+        basis = reply_passages.validate(self, db, actor, snapshot)
+        reply_passages.insert(snapshot, basis)
+        divergence = (root_posts.check(db, actor, topic, snapshot)
+                      if not internal_notice and self._actor(db, actor)["kind"] == "agent" else None)
         # In an outcome's conversation an agent answers only the items it answers (standing_conversation.py).
         self._conversation_check_publish(db, actor, topic, snapshot, snapshot.get("reply_to"), private)
         intent = self._intent(db, actor, snapshot)
@@ -414,6 +419,12 @@ class Conversation:
                    (message_id, topic_id, actor, snapshot["body"], _json(snapshot["attachments"]), _json(snapshot["quotes"]),
                     _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent, private, snapshot.get("about_id"),
                     1 if snapshot.get("go_ahead") else 0)).lastrowid
+        cover_affected = []
+        if divergence is not None:
+            root = db.execute("SELECT id,topic_id,seq,author_id,private_to FROM messages WHERE id=?", (message_id,)).fetchone()
+            cover_version = self._record_act(db, "cover", root, "", actor,
+                                             {"stands": divergence, "waiting": [], "payload": None}, 1)
+            cover_affected = [{"kind": "acts", "id": topic_id, "version": cover_version}]
         covered = self._link_ask_cover(db, actor, topic, message_id, linked)
         # Positions are part of publication, not a browser observation (item 731).
         from .dossier_order import published
@@ -455,7 +466,7 @@ class Conversation:
             if not counts:
                 # An agent's whisper answers a person's whisper and changes nothing shared about the topic.
                 return {"message_id": message_id, "topic": {"id": topic_id, "version": topic["version"]},
-                        "delivery": {"queued": len(audience), "unavailable_subscribers": []}, "whisper": True}, [
+                        "delivery": {"queued": len(audience), "unavailable_subscribers": []}, "whisper": True, "reply_basis": basis}, [
                             {"kind": "message", "id": message_id, "version": 1}]
         else:
             # Who wrote the latest message before this one decides whether it is now the latest by someone else (work.py).
@@ -482,11 +493,13 @@ class Conversation:
             self._change(db, "actor", member, "waiting", topic_id, version)
         result = {"message_id": message_id, "topic": {"id": topic_id, "version": version},
                   "delivery": {"queued": len(audience), "unavailable_subscribers": sorted(unavailable)}}
+        if basis is not None:
+            result["reply_basis"] = basis
         if private is not None:
             result["whisper"] = True
         # A person's reply folds the message it answers for them (Stacks._fold_answered).
         folded = self._fold_answered(db, actor, snapshot["reply_to"]) if snapshot.get("reply_to") else []
-        return result, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}] + folded + covered
+        return result, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}] + cover_affected + folded + covered
 
     def _message_access(self, db, actor, message_id):
         row = db.execute("SELECT id,topic_id,author_id,private_to FROM messages WHERE id=?", (_identifier(message_id),)).fetchone()
@@ -528,6 +541,7 @@ class Conversation:
                 "owner_scope": {"kind": "topic", "id": row["topic_id"]}, "topic_id": row["topic_id"],
                 "author": row["author_id"], "author_kind": row["author_kind"], "seq": row["seq"], "title": "", "body": "" if held else body,
                 "attachments": [] if held else json.loads(row["attachments"]), "withheld": held,
+                "reply_basis": None if held else reply_passages.for_reader(self, db, actor, row["id"]),
                 "quotes": quotes, "addressees": json.loads(row["addressees"]),
                 "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "intent": row["intent"],
                 "version": current, "current_revision": current, "revision": current, "edited_ms": edited_ms, "struck": seen,
@@ -654,6 +668,7 @@ class Conversation:
                 item.pop("private_to")
             elif item["author_id"] == actor:
                 item["no_answer"] = whispers.no_answer(db, item)
+            item["reply_basis"] = None if item["withheld"] else reply_passages.for_reader(self, db, actor, item["id"])
             item["addressees"] = json.loads(item["addressees"])
             item["attachments"] = [] if item["withheld"] else json.loads(item["attachments"])
             whole = item["body"]

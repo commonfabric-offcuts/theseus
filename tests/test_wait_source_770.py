@@ -9,6 +9,18 @@ from test_dossier_covers import CoverCase
 
 
 class WaitSource770Case(CoverCase):
+    def weekend_passage(self, root):
+        # This fixture explicitly answers "weekend" in its known opening.
+        return {"source": {"kind": "message", "id": root, "revision": 1}, "start": 6, "end": 13}
+
+    def dossier(self):
+        root = self.post("Which weekend suits the cabin trip?")
+        passage = self.weekend_passage(root)
+        answer = self.post("The second weekend: the lake is open and the road is clear.",
+                           actor="agent-a", reply_to=root, reply_passage=passage)
+        note = self.post("I checked the road report too.", actor="agent-b", reply_to=root, reply_passage=passage)
+        return root, answer, note
+
     def wait(self, **fields):
         return dict(text="Choose a date", default="Keep the current date", **fields)
 
@@ -81,7 +93,8 @@ class WaitSource770Case(CoverCase):
         root, _, _ = self.dossier()
         question = dict(actor_id="owner", text="Choose a date?", options=["Keep", "Move"], default="Keep", reason=None)
         ask = self.post("Choose a date?", actor="agent-a", reply_to=root, intent="ask", addressees=["owner"],
-                        go_ahead=True, ask_wait=dict(root_id=root, cover_revision=0, questions=[question]))
+                        go_ahead=True, ask_wait=dict(root_id=root, cover_revision=0, questions=[question]),
+                        reply_passage=self.weekend_passage(root))
         before = self.shown(root)["waiting"][0]
         self.assertEqual((before["ask_id"], before["go_ahead"], before["answer_revision"]), (ask, True, 0))
         self.committed(self.cover(root, {"waiting": [self.wait(message_id=root)]}, revision=1))

@@ -374,6 +374,8 @@ class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, 
 
     def _refusal(self, envelope, exc, recorded=False):
         error = {"code": exc.code, "message": exc.message, "retryable": False}
+        if exc.details is not None:
+            error["details"] = exc.details
         if exc.current_versions is not None:
             error["current_versions"] = exc.current_versions
         return self._receipt(envelope, "rejected", recorded, error=error)

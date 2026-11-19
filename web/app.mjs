@@ -1932,7 +1932,7 @@ function readerDossierName(source) {
 // The cover of that dossier (item 624), on the same terms: the Reader shows it as one line above the message.
 function readerDossierCover(source) {
   const ref = source?.source_ref;
-  return stackFeed && !topicUnavailable && ref?.kind === 'message' && source.topic_id === topic?.id ? stackFeed.dossierCover(ref.id) : null;
+  return stackFeed && !topicUnavailable && ref?.kind === 'message' && source.topic_id === topic?.id ? stackFeed.dossierCover(ref.id, { alone: true }) : null;
 }
 function paintReaderTitle() {
   const p = registry?.current;

@@ -11,6 +11,7 @@ import * as format from '../web/message-format.mjs';
 import { nameTopicsWith, openLinksWith, wordNodes } from '../web/links.mjs';
 import { routeHref } from '../web/topic-navigation.mjs';
 import { CardScroll } from '../web/card-scroll.mjs';
+import { assertPassagePresentation } from './item_758_oracle.mjs';
 
 // A document whose elements hold child nodes and know their parent, as the browser's do.
 class Text {
@@ -61,6 +62,22 @@ const texts = nodes => nodes.map(n => n.textContent);
 const render = (text, options = {}) => format.formatWords(new Element('span'), text, options);
 const kinds = text => format.parseBlocks(text).map(block => block.kind);
 const webLinksOf = node => byTag(node, 'a').map(a => a.textContent);
+
+test('item 758 native presentation oracle reads the actual quote renderer in feed and Reader', () => {
+  const reason = 'This is a status update about the whole assignment.';
+  for (const [kind, body] of [
+    ['quoted', '>   **Keep these words** 🪴\n\nThe corrected reply is in the same dossier.'],
+    ['exception', 'Reply without a quote:\n\n> ' + reason + '\n\nThis answer concerns the surrounding work.']]) {
+    for (const surface of ['feed', 'Reader']) {
+      const host = new Element('span');
+      if (surface === 'feed') format.formatWords(host, body);
+      else format.drawPassages(host, body, doc);
+      assertPassagePresentation({ raw: format.drawnText(host), text: host.textContent,
+        quoteCount: byClass(host, 'md-quote').length, quote: byClass(host, 'md-quote')[0]?.textContent,
+        bold: byTag(host, 'strong')[0]?.textContent }, body, kind, reason);
+    }
+  }
+});
 
 // AIM's fixture (tests/test_aim_ui.py BOX_TABLE): a table a terminal drew.
 const BOX_TABLE = `Where each lane lives

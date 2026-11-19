@@ -56,7 +56,8 @@ async function fixture(t) {
   });
   let registry;
   t.after(async () => { registry?.dispose(); child.stdin.end(); assert.equal(await exited, 0, errors); });
-  const facts = await control({ method: 'ready' });
+  const facts = await control({ method: 'ready', runtime_evidence: true });
+  t.diagnostic('isolated fixture runtime ' + JSON.stringify(facts.runtime_evidence));
   const api = new Api(facts.token, (url, init) => fetch(new URL(url, facts.origin), { ...init, headers: { ...init.headers, Origin: facts.origin } }));
   const backend = {
     put: async row => { rows.set(row.id, copy(row)); },
@@ -78,9 +79,13 @@ async function fixture(t) {
     doc: screen.doc, win: screen.win });
   // Two messages by an agent: a person's own message is never unread for them,
   // so it offers no mark.
+  const parent = await api.view('source', facts.sources[0]);
+  const excerpt = 'Source 0 exact passage.';
+  assert.equal(parent.body.slice(0, excerpt.length), excerpt);
+  const passage = { source: { ...parent.source_ref, revision: parent.revision }, start: 0, end: excerpt.length };
   const sources = [];
   for (const index of [0, 1]) sources.push({ kind: 'message', id: (await control({ method: 'agent_message', operation_id: 'marks-source-' + index,
-    body: `Source ${index} by an agent. `.repeat(20), join: index === 0 })).result.message_id });
+    body: `Source ${index} by an agent. `.repeat(20), reply_passage: passage, join: index === 0 })).result.message_id });
   const source = index => sources[index];
   const open = (index, act) => marks.open(registry, source(index), { topicId: facts.topic_id }, act);
   const clears = () => calls.filter(c => c.type === 'command' && c.envelope.kind === 'message.mark');

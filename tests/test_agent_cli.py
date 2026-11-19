@@ -280,17 +280,22 @@ class AgentCLICase(AgentCLIBase):
         save, prepare, send = self.reply_commands()
         save["args"]["source_ref"] = old_ref
         save["args"]["quotes"] = [{"source": old_ref, "excerpt": "Exact old @outsider words"}]
+        reason = "This reply forwards the selected Notebook revision rather than a parent passage."
+        save["args"]["reply_without_quote"] = reason
         for act in (save, prepare, send):
             code, receipt, _ = self.invoke("command", act)
             self.assertEqual(code, 0)
             self.committed(receipt)
         sent = self.source({"kind": "message", "id": receipt["result"]["message_id"]})
+        self.assertEqual(sent["body"], "Reply without a quote:\n\n> " + reason + "\n\n" + save["args"]["body"])
         self.assertEqual(sent["quotes"], save["args"]["quotes"])
         self.assertEqual(sent["addressees"], ["owner"])
 
     def test_explicit_reply_is_literal_once_and_newer_private_draft_survives(self):
         before_pending = self.store.view("agent-a", "deliveries", {})
         save, prepare, send = self.reply_commands()
+        passage = {"source": dict(self.opening, revision=1), "start": 0, "end": 7}
+        save["args"]["reply_passage"] = passage
         for act in (save, prepare):
             code, receipt, _ = self.invoke("command", act)
             self.assertEqual(code, 0)
@@ -307,8 +312,8 @@ class AgentCLICase(AgentCLIBase):
         self.assertEqual(self.invoke("command", send)[:2], (0, receipt))
         source = self.source({"kind": "message", "id": result["message_id"]})
         self.assertEqual(source["author"], "agent-a")
-        self.assertEqual(source["body"], save["args"]["body"])
-        self.assertEqual(source["quotes"], save["args"]["quotes"])
+        self.assertEqual(source["body"], "> Opening\n\n" + save["args"]["body"])
+        self.assertEqual(source["quotes"], save["args"]["quotes"] + [dict(passage, excerpt="Opening")])
         self.assertEqual(source["addressees"], ["owner"])
         self.assertEqual(source["reply_to"], self.opening["id"])
         self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE operation_id='cli-send'"), [(1,)])
@@ -650,15 +655,16 @@ class AgentCLICase(AgentCLIBase):
         selected = self.memory_ref()
         namespace = {}
         exec(compile(blocks[0], str(documentation), "exec"), namespace)
+        reason = "This reply forwards the selected Notebook revision rather than a parent passage."
         output = namespace["agent_example"](root / "bin" / "aim-next", self.profiles["agent-a"],
-            Path(self.temp.name) / "example-requests", selected, "doc-act", "Exact documented reply", ["owner"], "tell")
+            Path(self.temp.name) / "example-requests", selected, "doc-act", "Exact documented reply", ["owner"], "tell", reason)
         self.assertTrue(output["exits"])
         self.assertTrue(all(code == 0 for code in output["exits"].values()), output["exits"])
         self.assertEqual(output["selected"]["source_ref"], selected)
         self.assertEqual(output["selected"]["body"], "Selected revision one")
         message = self.source({"kind": "message", "id": output["sent"]["result"]["message_id"]})
         self.assertEqual(message["author"], "agent-a")
-        self.assertEqual(message["body"], "Exact documented reply")
+        self.assertEqual(message["body"], "Reply without a quote:\n\n> " + reason + "\n\nExact documented reply")
         self.assertEqual(message["quotes"], [{"source": selected, "excerpt": "Selected revision one"}])
         self.assertEqual(message["addressees"], ["owner"])
         self.assertEqual(message["intent"], "tell")
