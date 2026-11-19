@@ -97,7 +97,40 @@ reload roundtrips and wrong-mode, undersize and drift mutants with restored
 controls. Fifteen actual native starts remain spent, three remain, zero new.
 The976 pair remains bound to1e462; the phone hit correction has source approval,
 not new native acceptance. The disabled340/240/412 plan remains unrun.
-This composition under Warp10353 is source-only: no new test, syntax/module/
+The historical composition under Warp10353 was source-only: no new test, syntax/module/
 product execution or runtime proof. The complete historical limits remain in
 the650-fix9636 REPORT/SPEC; the returned650-compose10353 packet records conflicts
-and omissions. Landing721 then650 waits731; root reconciles that later base.
+and omissions. That historical landing order is superseded by Warp11225; see the current integration below.
+
+
+## Current live integration — November 19
+
+Warp11225 puts 650 onto current live, with a focused comparison and frozen
+source review before its single-item release. The approved first-parent delta
+of dcfc62fe is carried onto release125 (50215d5875227a1bbb5823304b504a74a7939f7e).
+All four product files merge automatically. The sole hand-resolved conflict
+retains both 650 and 783 fixture restoration and cleanup guards in ui_http.py.
+The current 721 card placement, 838 reply geometry, 768 display-rule namespace
+and 785 arrival ownership remain.
+
+The first quick run records baseline 276 tests, 270 passes and six failures;
+the candidate records 297 tests, 290 passes and seven failures. Six in each
+run stop at the same missing PYTHONPYCACHEPREFIX prerequisite, before opening
+the 721 fixture. Supplying that fixture's named cache prefix gives baseline
+276/276. The extra candidate failure was a stale harness expectation that
+Tab removal should target the constructor: the current integrated adapter
+correctly selects the later placement assignment. The fixture now checks
+both forms separately, rejects duplicate/unknown overwrites, and retains
+its ineffective-constructor and effective-placement mutation controls.
+
+The final candidate has 298/298 passing focused checks, zero failures/skips.
+The new integration check verifies that embedded card replies hide and disable
+both edges, preserve the floating width, and restore working controls on return.
+Two Python full-Build runtime tests also pass, including exact restoration and
+rejection of invalid transitions. These are focused checks, not a full suite
+or browser evidence. Historical native packets and limits above remain bound
+to their original sources; there are zero new native/browser starts.
+
+The existing initial widths remain the defaults. Reader stacked and Wide keep
+separate choices for the page lifetime, New message keeps its own, close/reopen
+retains them and reload restores the defaults. No Core or stored-data change.

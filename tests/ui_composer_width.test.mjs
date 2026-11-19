@@ -34,9 +34,30 @@ function pointerFixture(initial) {
     append(edge) { edges.push(edge); },
     addEventListener(name, fn) { listeners.set(name, fn); },
   };
-  composerWidth(dialog);
-  return { dialog, edges };
+  const syncPlacement = composerWidth(dialog);
+  return { dialog, edges, syncPlacement };
 }
+
+test('item 650 card reply disables both edges and restores the floating layout choice', () => {
+  const { dialog, edges, syncPlacement } = pointerFixture(1152);
+  const drag = (edge, delta) => {
+    edge.fire('pointerdown', 100); edge.fire('pointermove', 100 + delta); edge.fire('pointerup', 100 + delta);
+  };
+  drag(edges[0], 16);
+  assert.equal(dialog.getBoundingClientRect().width, 1120);
+  dialog.dataset.cardReply = ''; syncPlacement();
+  for (const edge of edges) {
+    assert.equal(edge.hidden, true); assert.equal(edge.tabIndex, -1);
+    drag(edge, 32);
+    assert.equal(dialog.dataset.widthDragging, undefined);
+    assert.equal(dialog.getBoundingClientRect().width, 1120, 'embedded events cannot change the floating choice');
+  }
+  delete dialog.dataset.cardReply; syncPlacement();
+  for (const edge of edges) { assert.equal(edge.hidden, false); assert.equal(edge.tabIndex, 0); }
+  assert.equal(dialog.getBoundingClientRect().width, 1120, 'returning to the full Reader retains its width');
+  drag(edges[1], -16);
+  assert.equal(dialog.getBoundingClientRect().width, 1088, 'returned edges resize again');
+});
 
 test('item 650 Reader modes keep independent widths for their element lifetime', () => {
   const { dialog, edges } = pointerFixture(1152);

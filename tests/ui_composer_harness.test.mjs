@@ -24,15 +24,18 @@ test('650 baseline uses one full Build, separate caches and exact restoration ev
 
 test('Tab removal changes effective source state, rejects unknown overwrites and preserves original bytes', async () => {
   const source=readFileSync(new URL('../web/composer-width.mjs',import.meta.url),'utf8');
-  const m=tabRemovalMutation(source);assert.equal(m.old,'edge.tabIndex = 0;');
-  const integrated=source.replace("  dialog.dataset.widthEdges = '';",`  const syncPlacement = () => { const embedded = false; for (const edge of edges) { edge.tabIndex = embedded ? -1 : 0; } }; syncPlacement();\n  dialog.dataset.widthEdges = '';`);
+  const constructor='edge.tabIndex = 0;';
+  const m=tabRemovalMutation(constructor);assert.equal(m.old,constructor);
+  const integrated=source;
   const effective=tabRemovalMutation(integrated);assert.equal(effective.old,'edge.tabIndex = embedded ? -1 : 0;');
   // Execute assignment order to distinguish the historically ineffective mutant.
   const assign=text=>new Function('edge',`const embedded=false; ${text.match(/edge\.tabIndex = [^;]+;/g).join('\n')} return edge.tabIndex;`)({});
   assert.equal(assign(integrated.replace(m.old,m.new)),0,'constructor mutation is overwritten');
   assert.equal(assign(integrated.replace(effective.old,effective.new)),-1,'effective mutation survives placement');
-  assert.throws(()=>tabRemovalMutation(source+'\nedge.tabIndex = 0;'),/one effective/);
+  assert.throws(()=>tabRemovalMutation(constructor+'\n'+constructor),/one effective/);
+  assert.throws(()=>tabRemovalMutation(source+'\n'+effective.old),/one effective/);
   assert.throws(()=>tabRemovalMutation(source+'\nedge.tabIndex = 1;'),/unaccounted/);
+  assert.equal(readFileSync(new URL('../web/composer-width.mjs',import.meta.url),'utf8'),source,'source remains untouched');
   assert.ok(/tabRemovalMutation\(/.test(width()),'native harness uses effective selector');
 });
 
