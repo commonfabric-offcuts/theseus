@@ -16,9 +16,9 @@
 // reader's, on every device, until they unfold it.
 import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
-import { moveOf, joinShown, joinOf, foldStep, laterActs, positionOf, placeOf, sideOf, headOf, stackCover, dossierOf } from './stack-order.mjs';
+import { moveOf, keyOf, joinShown, joinOf, foldStep, laterActs, positionOf, placeOf, sideOf, headOf, stackCover, dossierOf } from './stack-order.mjs';
 import { noteAt } from './press-note.mjs';
-import { keyAction } from './pane-keys.mjs';
+import { keyAction, writing } from './pane-keys.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { revealSelection } from './reveal.mjs';
 import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
@@ -81,7 +81,7 @@ const DOING = {
   'message.fold': args => args.folded ? 'folding' : 'unfolding',
   // Option's fold (item 472): the message and every one before it in its dossier.
   'message.fold_through': () => 'folding every message up to',
-  'stack.place': args => args.key === null ? 'letting new replies move' : 'moving',
+  'stack.place': args => args.key === null ? 'resetting the position of' : 'moving',
   'stack.name': args => args.name ? 'renaming' : 'naming by its first line',
   'stack.join': args => args.into ? 'joining' : 'splitting out',
   'message.thumb': args => args.thumbed ? 'the thumbs-up on' : 'taking back the thumbs-up on',
@@ -134,7 +134,7 @@ function notSaved(what, { kind, why }, again = '') {
 const AGAIN = { 'message.thumb': 'Press again: Core keeps one of each.', 'message.answer': 'Press again: Core keeps one of each.', 'message.mark': 'Choose it again to send the same request.' };
 // What an act shows at once, before Core answers.
 function shownAct(kind, args, viewer, now) {
-  if (kind === 'stack.aside') return { aside: args.through };
+  if (kind === 'stack.aside') return { aside: args.through, ...(typeof args.key === 'number' ? { order_key: args.key } : {}) };
   if (kind === 'message.star') return { starred: args.starred };
   if (kind === 'message.deal') return { dealt: args.dealt };
   if (kind === 'message.fold') return { folded: args.folded };
@@ -153,6 +153,8 @@ export class StackFeed {
   // hold(paint, act?): repaints keeping the page where the person is; act
   // names the card before its callback changes anything ({id, anchor}). press: the
   // press held down on the page (press-hold.mjs).
+  // navigate(): materialize waiting arrivals at the put-aside More destination.
+  // Card acts (including star/menu) never invoke it.
   // thumb(item, on): the message's thumbs-up, as its bar's 👍 gives it (a folded row's 👍).
   // redrawn(): the stacks were drawn again, so what else shows a message's acts (the Reader's star) follows.
   // home: the page's New message composer at rest, drawn just above More (arrangeStacks); put back after
@@ -160,9 +162,9 @@ export class StackFeed {
   // reply(id, card): the Reader on a message, the cursor in the reply (a title bar's Reply). menu(item, anchor):
   // the menu a right-click on a message opens, from anchor (a title bar's ⋯). colorOf: as arrangeStacks takes it.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
-    refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
+    refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), navigate = () => {}, press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
     colorOf = () => null, clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, home, reply, menu, colorOf, clock, doc });
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, refreshPositions, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, clock, doc });
     home?.addEventListener('close', () => this.arrange());
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // A stand-in for each message the page has not loaded that an act is on (a
@@ -228,9 +230,11 @@ export class StackFeed {
       let stack_position = item.stack_position;
       for (const mark of this.pending.get(id) ?? []) if ('stack_position' in mark) stack_position = mark.stack_position;
       for (const pending of this.pending.get(stack_position?.root_id) ?? []) {
-        if ('aside' in pending) stack_position = { ...stack_position, through: pending.aside, below: pending.aside !== null };
+        if ('aside' in pending) stack_position = { ...stack_position, through: pending.aside, below: pending.aside !== null,
+          ...('order_key' in stack_position && pending.aside === null ? { order_key: pending.order_key ?? Math.min(0, ...this.state.stacks.map(keyOf)) - 1 } : {}) };
         if ('name' in pending) stack_position = { ...stack_position, name: pending.name };
-        if ('placed' in pending) stack_position = { ...stack_position, placed: pending.placed };
+        if ('placed' in pending) stack_position = { ...stack_position, placed: pending.placed,
+          ...('order_key' in stack_position ? { order_key: pending.placed ?? stack_position.order_entry_key } : {}) };
       }
       const places = stack_position?.places && this.shownPlaces(stack_position, messages);
       if (places && places !== stack_position.places) stack_position = { ...stack_position, places };
@@ -264,7 +268,7 @@ export class StackFeed {
   }
   arrange() {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, colorOf: this.colorOf, home: this.home, doc: this.doc, on: {
-      more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
+      navigate: () => this.navigate(), more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id), fold: id => this.foldId(id),
       folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
@@ -499,8 +503,7 @@ export class StackFeed {
     // What places a dossier and names it is read again after an act that changes them: a join or a split moves
     // messages to another dossier, whose positions they carry from then on (item 470). A place on a first message
     // the page has not loaded, or on any other message of a dossier, is shown by those positions (item 550).
-    const firstLoaded = this.messages().get(item.id)?.stack_position?.root_id === item.id;
-    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();
+    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place') await this.refreshPositions();
     return receipt.result;
   }
   // The message's entry, its stack and its card.
@@ -529,7 +532,8 @@ export class StackFeed {
     return this.cardAct(item.id, () => {
       const on = !this.actsOf(item.id, item).starred;
       const position = on ? positionOf(stackOf(this.list, this.entryFor(item.id))?.stack ?? { head: item, replies: [] }) : null;
-      this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);
+      // A star admits above More at its retained key, including while Core is pending (10322).
+      this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null, ...(typeof position.order_key === 'number' ? { order_key: position.order_key } : {}) }]] : []);
       if (on && this.actsOf(item.id, item).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }
       this.arrange(); this.say(on ? 'Starred, for you only' : 'Star taken off');
     });
@@ -604,7 +608,7 @@ export class StackFeed {
     const side = this.sideOf(found), changes = moveOf(side.stacks, side.index, way);
     if (!changes) { this.say(way === 'up' ? 'Already at the top' : 'Already at the bottom'); return; }
     const heads = changes.map(change => this.placeOn(side.stacks.find(stack => stack.id === change.id)));
-    const before = heads.map(item => this.actsOf(item.id, item).placed ?? null);
+    const before = changes.map(change => { const stack = side.stacks.find(each => each.id === change.id); return stack.orderKey ?? stack.placed; });
     changes.forEach((change, index) => this.act('stack.place', heads[index], { key: change.key }));
     this.remember(() => { heads.forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); this.focusOn(entry.dataset.id); });
     this.arrange(); this.focusOn(entry.dataset.id);
@@ -638,7 +642,7 @@ export class StackFeed {
     const before = items.map(item => this.actsOf(item.id, item).placed ?? null);
     items.forEach(item => this.act('stack.place', item, { key: null }));
     this.remember(() => { items.forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); });
-    this.arrange(); this.say('New replies move it again');
+    this.arrange(); this.say('Position reset, for you only');
   }
   // A join from the keys, ⋯ or the phone's sheet shows where it went
   // (joinShown): the stack it goes into is drawn open, and the keys stay on the
@@ -855,7 +859,7 @@ export class StackFeed {
   // focus: false leaves the focus where it is, as on the Reader's archive
   // button, whose dialog keeps it while the page behind it changes. at: the
   // control pressed, where a refusal is said.
-  setAside(stack, below, { undoable = true, restoreThrough, focus = true, at = null } = {}) {
+  setAside(stack, below, { undoable = true, restoreThrough, restoreKey, focus = true, at = null } = {}) {
     const found = this.rootOf(stack);
     if (!found) return false;
     // A dossier holding a message the reader starred stays above More for them (item 635): nothing moves.
@@ -870,8 +874,8 @@ export class StackFeed {
     for (const each of this.messages().values()) if (each.stack_position?.root_id === root) { this.state.peeked.delete(each.id); this.state.here.delete(each.id); }
     // Core refuses it too, for a star the page has not read yet (made on another device): its reason is
     // said on the status line as any refusal is (failed), and the dossier shows where Core holds it.
-    this.act('stack.aside', item, { through });
-    if (undoable) this.remember(at => this.setAside(stack, position.through !== null, { undoable: false, restoreThrough: position.through, at }));
+    this.act('stack.aside', item, { through, ...(typeof restoreKey === 'number' ? { key: restoreKey } : {}) });
+    if (undoable) this.remember(at => this.setAside(stack, position.through !== null, { undoable: false, restoreThrough: position.through, restoreKey: position.order_key, at }));
     this.arrange();
     // Focus goes to More where the page's one view draws it (Only new does
     // not); there the dossier keeps it, on the first message the view draws.
@@ -938,15 +942,22 @@ export class StackFeed {
   // Stack keys on a message or its chevron, never in writing. Plain arrows
   // open/fold first; the pane's document listener handles the boundary.
   key(event) {
+    const at = this.doc.activeElement;
+    if (writing(at) || at?.closest?.('input, textarea, select, [contenteditable]') ||
+        event.target?.closest?.('input, textarea, select, [contenteditable]')) return;
     if (this.renameKey(event)) return;
     const action = keyAction(event);
     if (!FEED_ACTIONS.includes(action) || this.doc.querySelector('dialog[open]')) return;
-    const at = this.doc.activeElement;
     if (!at || !this.list.contains(at)) return;
-    if (action === 'undo' && at === this.state.more) { event.preventDefault(); this.undo(); return; }
+    if (action === 'undo' && at === this.state.more) {
+      event.preventDefault();
+      this.undo(); return;
+    }
     const toggle = at.classList?.contains('stack-toggle');
     const entry = toggle ? this.entryFor(at.closest('.reply-stack')?.dataset.stack) : entryOf(this.list, at);
     if (!entry || !(toggle || at === cardIn(entry) || at.classList?.contains('fold-line'))) return;
+    // These commands change records or their fold, not the reading destination.
+    // At a fold boundary the pane owner confirms any navigation separately.
     if (action === 'right' || action === 'left') {
       if (this.fold(entry, action === 'right' ? 'open' : 'fold')) event.preventDefault();
       return;
@@ -1021,7 +1032,7 @@ export class StackFeed {
       ...(stack.replies.length && foldStep({ level: levelOf(state, stack.id) }, 'open') ? [{ label: 'Open its stack', keys: '→', glyph: 'chevdown', act: () => this.fold(entry, 'open') }] : []),
       { label: 'Join the stack above', keys: '⇧⌘↑', glyph: 'joinup', act: () => this.join(entry, 'up') },
       { label: 'Join the stack below', keys: '⇧⌘↓', glyph: 'joindown', act: () => this.join(entry, 'down') },
-      ...(stack.placed !== null ? [{ label: 'Let new replies move it', glyph: 'unpin', act: () => this.unplace(stack) }] : []),
+      ...(stack.placed !== null ? [{ label: 'Reset position', glyph: 'unpin', act: () => this.unplace(stack) }] : []),
       ...(this.undos.length ? [{ label: 'Undo', keys: '⌘Z', glyph: 'undo', act: () => this.undo(line()) }] : []),
     ];
     return { first: items, last: phone ? [{ label: 'Move or join…', glyph: 'move', act: () => more(moves) }] : moves };

@@ -57,7 +57,7 @@ from .contract import READABLE, Refusal, _bounded_page, _identifier, _page_size
 from .delivery import _now_ms
 from .whispers import VISIBLE, visible
 from .message_edit import words, withheld
-from . import cover_values
+from . import cover_values, dossier_order
 
 
 def _act_table(kinds):
@@ -115,6 +115,13 @@ COVER_DOWN = _rebuilt(ACT_FRESH[0]) + ASIDE_INDEXES[1:]
 # Any cover, even one cleared since: version 45 cannot hold its rows, and dropping them would restart its revisions.
 COVER_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='cover')"
 
+# Pipeline 738: refresh is its own act; existing cover values/revisions stay exact.
+ACT_REFRESH = [_act_table(("star", "deal", "fold", "place", "name", "join", "aside", "cover", "cover_refresh"))] + ACT_INDEXES + ASIDE_INDEXES + COVER_INDEXES
+REFRESH_UP = _rebuilt(ACT_REFRESH[0]) + ASIDE_INDEXES[1:] + COVER_INDEXES
+REFRESH_DOWN = _rebuilt(ACT_COVERS[0]) + ASIDE_INDEXES[1:]
+REFRESH_DOWN += COVER_INDEXES
+
+
 PERSONAL = {"star", "deal", "fold", "place", "aside"}
 # The command for each act, and the revision its sender read.
 KINDS = {"message.star": ("star", "star_revision"), "message.deal": ("deal", "deal_revision"),
@@ -135,7 +142,7 @@ NONE = {"aside": {"through": None}, "star": {"starred": False}, "deal": {"dealt"
         "cover": cover_values.EMPTY_COVER}
 EMPTY = {"aside": None, "aside_revision": 0, "starred": False, "star_revision": 0, "dealt": False, "deal_revision": 0, "folded": False, "fold_revision": 0,
          "placed": None, "place_revision": 0,
-         "name": None, "name_revision": 0, "joined": None, "join_revision": 0, "cover": None, "cover_revision": 0}
+         "name": None, "name_revision": 0, "joined": None, "join_revision": 0, "cover": None, "cover_revision": 0, "cover_refresh": None, "cover_refresh_revision": 0}
 
 
 def _flag(args, name, words):
@@ -147,10 +154,11 @@ def _flag(args, name, words):
 def _value(kind, args):
     """The act's stored value, from its command's args, or a refusal saying what it takes."""
     if kind == "aside":
-        through = args.get("through", False) if set(args) == {"through"} else False
+        through = args.get("through", False) if set(args) in ({"through"}, {"through", "key"}) else False
         if through is not None and (isinstance(through, bool) or not isinstance(through, int) or through < 1):
             raise Refusal("INVALID_ARGUMENT", "Name the last observed message sequence, or none to bring the dossier back")
-        return {"through": through}
+        key = _value("place", {"key": args["key"]}) if "key" in args else {}
+        return dict({"through": through}, **key)
     if kind == "star":
         return _flag(args, "starred", "Name one message and whether it is starred")
     if kind == "deal":
@@ -203,7 +211,7 @@ def _shown(kind, row):
     return {"joined": {"into": value["into"], "by": row["actor_id"], "at_ms": row["at_ms"]} if value["into"] else None}
 
 
-def current_acts(db, actor, message_ids):
+def current_acts(db, actor, message_ids, *, refresh_details=True):
     """{message_id: acts} for each message with any act as it stands for actor: their own and the topic's."""
     found = {}
     if not message_ids:
@@ -223,9 +231,25 @@ def current_acts(db, actor, message_ids):
                 owners[row["topic_id"]] = db.execute("SELECT w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=?",
                                                      (row["topic_id"],)).fetchone()[0]
             acts["cover"] = cover_values.shown(db, actor, cover_values.stored_value(row["value"]), row["actor_id"], row["at_ms"], owners[row["topic_id"]])
+        elif kind == "cover_refresh":
+            acts["cover_refresh"] = json.loads(row["value"])
         else:
             acts.update(_shown(kind, row))
         acts[kind + "_revision"] = row["revision"]
+    # The 47→48 order freeze reads before 49 creates cover_writers. Its keys
+    # depend only on the historical act view, never refresh presentation.
+    if not refresh_details:
+        return found
+    for message_id, acts in found.items():
+        if acts["cover"] is None and (acts["cover_refresh"] or {}).get("state") == "pending":
+            acts["cover"] = dict(cover_values.EMPTY_COVER, by=None, at_ms=None, owner=None)
+            # The request remains visible; no cleared words are restored.
+            acts["cover"]["owner"] = db.execute("SELECT w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id JOIN messages m ON m.topic_id=t.id WHERE m.id=?", (message_id,)).fetchone()[0]
+        if acts["cover"] is not None:
+            writer = db.execute("SELECT actor_id FROM cover_writers WHERE message_id=?", (message_id,)).fetchone()
+            acts["cover"].update(root_id=message_id, revision=acts["cover_revision"],
+                                 writer=writer[0] if writer else None, refresh=acts["cover_refresh"],
+                                 refresh_revision=acts["cover_refresh_revision"])
     return found
 
 
@@ -492,12 +516,17 @@ def stack_positions(db, actor, items):
             latest, others = _dossier(db, actor, root) if through is not None else (0, None)
             # The dossier's name and its cover (items 470, 624) ride with its place, so a page holding only its
             # replies shows them; read as this reader reads its first message, the root they can see.
+            order = dossier_order.rank(db, actor, topic, root)
             positions[root] = {"root_id": root, "through": through, "aside_revision": acts["aside_revision"],
                                "name": acts["name"], "name_revision": acts["name_revision"], "join_revision": acts["join_revision"],
                                "placed": acts["placed"], "place_revision": acts["place_revision"],
                                "places": [each for each in places.get(root, []) if each["message_id"] != root],
                                "starred": starred,
+                               "order_key": order["key"],
+                               "order_tie": order["tie"],
+                               "order_entry_key": order["entry_key"],
                                "cover": acts["cover"], "cover_revision": acts["cover_revision"],
+                               "cover_refresh_revision": acts["cover_refresh_revision"],
                                "below": through is not None and not starred and (others is None or others <= through),
                                "at": {"messages": latest, "acts": acts_at[topic]}}
         result[item["id"]] = positions[root]
@@ -584,7 +613,14 @@ class Stacks:
                 code, words = NOT_THE_NAMER[why]
                 raise Refusal(code, words % namer if "%s" in words else words)
         result = {"message_id": message["id"], "topic_id": message["topic_id"], "seq": message["seq"]}
-        if (self._act_value(db, message["id"], kind, owner) or NONE[kind]) == value:
+        same = (self._act_value(db, message["id"], kind, owner) or NONE[kind]) == value
+        if kind == "place":
+            root = StackRoots(db, actor).root(message["id"])
+            order = dossier_order.rank(db, actor, message["topic_id"], root)
+            same = same and order["key"] == (order["entry_key"] if value["key"] is None else value["key"])
+        if kind == "aside" and "key" in value:
+            same = same and dossier_order.rank(db, actor, message["topic_id"], message["id"])["key"] == value["key"]
+        if same:
             return dict(result, **value, **{expected_name: current, "changed": False}), []
         revision = current + 1
         # The newest act in the topic its reader had heard of before this one: a page that read the topic's places at
@@ -594,7 +630,7 @@ class Stacks:
         version = self._record_act(db, kind, message, owner, actor, value, revision, tell=back is None)
         if back:
             # The star and the dossier back above More are one act: one transaction, its reader told once, at the last row.
-            version = self._record_act(db, "aside", back["root"], actor, actor, {"through": None}, back["aside_revision"])
+            version = self._record_act(db, "aside", back["root"], actor, actor, {"through": None}, back["aside_revision"], order=False)
             result["brought_back"] = {"root_id": back["root"]["id"], "aside_revision": back["aside_revision"]}
         return dict(result, **value, **{expected_name: revision, "changed": True, "acts_version": version, "acts_before": before}), [
             {"kind": "acts", "id": message["topic_id"], "version": version}]
@@ -609,13 +645,20 @@ class Stacks:
         return {"root": db.execute("SELECT id,topic_id,seq FROM messages WHERE id=?", (root,)).fetchone(),
                 "aside_revision": self._act_revision(db, root, "aside", actor) + 1}
 
-    def _record_act(self, db, kind, message, owner, actor, value, revision, tell=True):
+    def _record_act(self, db, kind, message, owner, actor, value, revision, tell=True, order=True):
         """Records an act as its next row and tells who hears of it: a personal act its reader, a shared one
         everyone who reads the message. Returns the row's id, the version the change is announced at. tell: False
         leaves the telling to the caller, which records several rows and tells once, at the last."""
         version = db.execute("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) VALUES (?,?,?,?,?,?,?,?,?)",
                              (kind, message["id"], message["topic_id"], message["seq"], owner, actor,
                               json.dumps(value, separators=(",", ":"), ensure_ascii=False), _now_ms(), revision)).lastrowid
+        if kind == "place":
+            dossier_order.placed(db, actor, message, value)
+        elif kind == "aside" and order:
+            # A star returns above More without writing or changing its dossier key (10322).
+            latest, others = _dossier(db, actor, message["id"])
+            if value["through"] is None or (others is not None and others > value["through"]):
+                dossier_order.returning(db, actor, message["topic_id"], message["id"], value.get("key"))
         if not tell:
             return version
         for reader in [actor] if owner else self._message_readers(db, message, actor):

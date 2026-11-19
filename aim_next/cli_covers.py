@@ -22,6 +22,8 @@ def register(verb):
     cover = verb("cover")
     cover.add_argument("message")
     cover.add_argument("--expected", type=int)
+    cover.add_argument("--refresh", action="store_true")
+    cover.add_argument("--operation")
     # Where it stands, retaining its lines; "" clears it.
     cover.add_argument("--stands")
     # What waits on the owner, each with its default: --waits TEXT --default TEXT, once per thing waiting, in order.
@@ -97,7 +99,23 @@ class CoverVerbs:
     def do_cover(self):
         args = self.cover_args()
         found = self.view("dossier_cover", {"message_id": self.options.message})
+        if self.options.operation and not self.options.refresh:
+            self.refuse("INVALID_ARGUMENT", "--operation on cover accompanies --refresh; nothing was sent")
+        if self.options.refresh:
+            if args:
+                self.refuse("INVALID_ARGUMENT", "--refresh requests a new cover; it takes no cover-writing options")
+            expected = found["cover_revision"] if self.options.expected is None else self.options.expected
+            result = self.command("stack.cover_refresh", {"message_id": found["root_id"]}, {},
+                                  {"cover_revision": expected}, operation=self.operation_of())
+            refresh = result["refresh"]
+            self.out.plain("awaiting a new cover from %s (request %s, observed revision %d)" %
+                           (refresh["recipient"], refresh["request_message_id"], refresh["observed_revision"]))
+            return
         if not args:
+            if found.get("refresh"):
+                refresh = found["refresh"]
+                self.out.plain("cover refresh %s: %s (request %s, observed revision %d)" %
+                               (refresh["state"], refresh["recipient"], refresh["request_message_id"], refresh["observed_revision"]))
             for line in cover_lines(found["root_id"], found["cover_revision"], found["cover"], found["owner"]):
                 self.out.plain(line)
             return

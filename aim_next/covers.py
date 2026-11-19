@@ -82,6 +82,7 @@ class Covers:
             acts = current_acts(db, actor, [message["id"]]).get(message["id"], EMPTY)
             return dict(result, cover=acts["cover"], cover_revision=current, changed=False), []
         version = self._record_act(db, "cover", message, "", actor, value, current + 1)
+        version = self._cover_refreshed(db, actor, message, before, value, current + 1, version)
         cover = current_acts(db, actor, [message["id"]])[message["id"]]["cover"]
         return dict(result, cover=cover, cover_revision=current + 1, changed=True, acts_version=version), [
             {"kind": "acts", "id": message["topic_id"], "version": version}]
@@ -121,4 +122,5 @@ class Covers:
         root = StackRoots(db, actor).root(message["id"])
         acts = current_acts(db, actor, [root]).get(root, EMPTY)
         return {"instance_id": self.instance_id, "message_id": message["id"], "topic_id": message["topic_id"], "root_id": root,
-                "cover": acts["cover"], "cover_revision": acts["cover_revision"], "owner": self._cover_owner(db, message["topic_id"])}
+                "cover": acts["cover"], "cover_revision": acts["cover_revision"], "owner": self._cover_owner(db, message["topic_id"]),
+                "refresh": acts.get("cover_refresh"), "refresh_revision": acts.get("cover_refresh_revision", 0)}

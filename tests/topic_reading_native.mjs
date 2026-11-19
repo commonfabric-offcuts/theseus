@@ -17,6 +17,7 @@
 // (121), in the topic's composer and in the Reader; and what the keys select
 // coming fully into view, and a click or a tap scrolling nothing (379).
 import assert from 'node:assert/strict';
+import { reading785Checks } from './reading_785_native.mjs';
 import { createHash } from 'node:crypto';
 import { dossierSelectionQuoteChecks } from './dossier_selection_quote_native.mjs';
 import { stackChecks } from './stack_native.mjs';
@@ -3493,6 +3494,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.close();
   });
 
+  await reading785Checks({ check, until, view, control, shot, facts, observations, engine }, { seed, open, tap });
   await whisperOutlineReading({ check, until, control, facts, shot, engine, observations },
     { seed, open, centre, tap, lit, words });
   await dossierSelectionQuoteChecks({ check, until, view, control, shot, facts, observations, engine, grant },
