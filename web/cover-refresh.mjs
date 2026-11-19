@@ -4,6 +4,7 @@ import { glyph } from './glyphs.mjs';
 import { linkNode } from './links.mjs';
 import { notTaken, NOT_TAKEN } from './api.mjs';
 import { waitingDots } from './outcome-conversation.mjs';
+import { stackCover } from './stack-order.mjs';
 
 let runtime = null;
 const requests = new Map(), painters = new WeakMap();
@@ -104,6 +105,9 @@ export function refreshRequest(doc, target) {
   return { key, state, send };
 }
 
+const requestLink = (doc, topicId, messageId, words = '') => linkNode(doc, words,
+  { route: { kind: 'topic', id: topicId, message: messageId }, written: true });
+
 function activity(doc, target, context) {
   const request = refreshRequest(doc, target);
   if (!request) return null;
@@ -111,14 +115,14 @@ function activity(doc, target, context) {
   const host = doc.createElement('span'); host.className = isCover ? 'cover-refresh' : 'message-update'; host.dataset.coverRefresh = request.key;
   const draw = () => {
     const { refresh, pending, busy, error } = request.state();
-    const label = pending ? (isCover ? `Awaiting ${context.nameOf(refresh.recipient)}’s new cover. Open the request`
+    const label = pending ? (isCover ? (target.first ? `Asked ${context.nameOf(refresh.recipient)} to write a cover. Open the request` : `Awaiting ${context.nameOf(refresh.recipient)}’s new cover. Open the request`)
       : `Asked ${context.nameOf(refresh.recipient)} to update this message. Open the request`)
-      : busy ? 'Requesting an update' : 'Ask the writer to refresh this cover';
-    const control = pending ? linkNode(doc, '', { route: { kind: 'topic', id: context.topicId, message: refresh.request_message_id }, written: true })
+      : busy ? 'Requesting an update' : target.first ? 'Ask for a cover' : 'Ask the writer to refresh this cover';
+    const control = pending ? requestLink(doc, context.topicId, refresh.request_message_id)
       : doc.createElement('button');
     control.className = isCover ? 'cover-refresh-glyph' : 'message-update-activity';
     control.title = label; control.setAttribute('aria-label', label); control.dataset.pending = String(pending || busy);
-    control.append(pending || busy ? waitingDots(doc, label) : glyph('refresh', doc, 17));
+    control.append(pending || busy ? waitingDots(doc, label) : glyph(target.first ? 'coverplus' : 'refresh', doc, 17));
     if (!pending) {
       control.type = 'button'; control.setAttribute('aria-disabled', String(busy));
       control.onclick = async event => { event.stopPropagation(); await request.send(); };
@@ -135,6 +139,25 @@ function activity(doc, target, context) {
 export function refreshControl(doc, cover, context) {
   return activity(doc, { type: 'cover', id: cover.root_id, revision: cover.revision,
     refresh: cover.refresh, refresh_revision: cover.refresh_revision }, context);
+}
+// The header and all dossier menus use this same admission and request owner.
+export function firstCoverTarget(stack) {
+  if (stack.id !== stack.dossier || stackCover(stack, { alone: true })) return null;
+  const acts = stack.head.acts ?? {};
+  return { type: 'cover', first: true, id: stack.id, revision: acts.cover_revision ?? 0,
+    refresh: acts.cover_refresh, refresh_revision: acts.cover_refresh_revision ?? 0 };
+}
+export function firstCoverControl(doc, stack, context) {
+  const target = firstCoverTarget(stack);
+  return target ? activity(doc, target, context) : null;
+}
+export function firstCoverMenuItem(doc, stack) {
+  const target = firstCoverTarget(stack), request = target && refreshRequest(doc, target);
+  if (!request) return null;
+  const { pending, refresh } = request.state();
+  return pending ? { label: 'Open the cover request', glyph: 'link',
+    act: () => requestLink(doc, stack.head.topic_id, refresh.request_message_id, 'Open the cover request').click() }
+    : { label: 'Ask for a cover', glyph: 'coverplus', act: () => request.send() };
 }
 export function updateMenuItem(doc, item, context) {
   if (!mayAskForUpdate(item, context.viewer)) return null;

@@ -22,7 +22,8 @@ class CoverRefreshCase(ReaderCase):
         super().setUp()
         self.participation("agent-b", True)
         self.root = self.post("Which cabin weekend?")
-        self.answer = self.post("The lake opens in May", actor="agent-b", reply_to=self.root)
+        self.answer = self.post("The lake opens in May", actor="agent-b", reply_to=self.root,
+                                reply_passage={"source": {"kind": "message", "id": self.root, "revision": 1}, "start": 6, "end": 11})
         self.written = self.write({"stands": "Road checked", "waiting": [{"text": "Book?", "default": "Friday"}],
                                    "payload": {"text": "May", "message_id": self.answer,
                                                "kind": "answer", "link": "https://example.test/cabin"}})
@@ -99,7 +100,8 @@ class CoverRefreshCase(ReaderCase):
         self.committed(self.command("message.thumb", {"thumbed": True}, target={"message_id": self.answer}, expected={"thumb_revision": 0}))
         self.pending()
         self.assertEqual(self.read()["cover"]["payload"]["done"]["how"], "thumb")
-        self.post("Read the request; still checking", actor="agent-b", reply_to=self.root)
+        self.post("Read the request; still checking", actor="agent-b", reply_to=self.root,
+                  reply_passage={"source": {"kind": "message", "id": self.root, "revision": 1}, "start": 6, "end": 11})
         self.pending()
         deliveries = self.store.view("agent-b", "deliveries", {})["items"]
         for item in deliveries:
@@ -163,13 +165,13 @@ class CoverRefreshCase(ReaderCase):
         self.assertEqual(self.counts(), before)
         self.assertIsNone(self.read()["refresh"])
 
-    def test_stale_missing_nonroot_and_changed_retry_cannot_prompt(self):
+    def test_stale_nonroot_and_changed_retry_cannot_prompt(self):
         before = self.counts()
         self.rejected(self.refresh(revision=0), "REVISION_CONFLICT")
         self.rejected(self.refresh(root=self.answer, revision=1), "STACK_CHANGED")
         bare = self.post("No cover")
         count = self.counts()["messages"]
-        self.rejected(self.refresh(root=bare, revision=0), "COVER_MISSING")
+        self.rejected(self.refresh(root=bare, revision=1), "REVISION_CONFLICT")
         self.assertEqual(self.counts()["messages"], count)
         receipt = self.refresh(op="bound-retry")
         self.committed(receipt)

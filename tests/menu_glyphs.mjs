@@ -15,6 +15,8 @@ export const GLYPH_OF = Object.freeze({
   Fold: 'fold', Unfold: 'unfold', 'Fold message': 'fold', 'Unfold message': 'unfold', 'Split back out': 'split',
   // A dossier's title bar ⋯ on a phone (item 473): Reply to the first message takes the title bar's own Reply.
   'Reply to the first message': 'reply',
+  'Ask for a cover': 'coverplus',
+  'Open the cover request': 'link',
   'Copy Link': 'link', 'Show full message': 'full', Edit: 'pencil', 'Edit page': 'pencil', 'Mark unread': 'unread', 'Mark read': 'read',
   // Item 601: an archive act shows the Reader's archive tray, in every menu.
   'Archive': 'archive', 'Bring back': 'back',
@@ -37,6 +39,8 @@ export const glyphOf = label => (Object.hasOwn(GLYPH_OF, label) ? GLYPH_OF[label
 export const APPROVED = Object.freeze({
   // Item 738's approved cover refresh drawing, frozen independently of its implementation.
   refresh: { d: 'M20 10a8 8 0 1 0-1.8 7 M20 4v6h-6' },
+  // Item 840's cover sheet with a plus, shared by its title button and menu.
+  coverplus: { d: 'M13 4H4v16h15V11 M7 9h4 M7 13h8 M7 17h6 M18 2v6 M15 5h6' },
   archive: { vb: '0 0 20 20', sw: '1.6', d: 'M2.5 3.5h15V7h-15zM3.75 7v9.5h12.5V7M8 10.5h4' },
   reply: { d: 'M9.5 7 4.5 12l5 5 M5 12h9.5a5 5 0 0 1 5 5v1' },
   back: { d: 'M4 14v4.5h16V14 M12 14V4 M8 8l4-4 4 4' },

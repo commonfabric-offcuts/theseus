@@ -243,7 +243,7 @@ def current_acts(db, actor, message_ids):
             acts.update(_shown(kind, row))
         acts[kind + "_revision"] = row["revision"]
     for message_id, acts in found.items():
-        if acts["cover"] is None and (acts["cover_refresh"] or {}).get("state") == "pending":
+        if acts["cover"] is None and acts["cover_revision"] > 0 and (acts["cover_refresh"] or {}).get("state") == "pending":
             acts["cover"] = dict(cover_values.EMPTY_COVER, by=None, at_ms=None, owner=None)
             # The request remains visible; no cleared words are restored.
             acts["cover"]["owner"] = db.execute("SELECT w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id JOIN messages m ON m.topic_id=t.id WHERE m.id=?", (message_id,)).fetchone()[0]

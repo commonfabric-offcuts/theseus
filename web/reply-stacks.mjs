@@ -29,6 +29,7 @@ import { carriesNode, carriesOf } from './marks.mjs';
 import { coverKey, coverSheet, paintCoverPills } from './dossier-cover.mjs';
 import { AGENT_PALETTE } from './author-colors.mjs';
 import { showGlyph } from './glyphs.mjs';
+import { firstCoverTarget, firstCoverControl } from './cover-refresh.mjs';
 
 const ENTRIES = ':scope > [data-id], :scope > .reply-stack > [data-id], :scope > .reply-stack > .stack-replies > [data-id]';
 const states = new WeakMap();
@@ -36,6 +37,7 @@ const parts = new WeakMap();
 const headRows = new WeakMap();
 const foldedRows = new WeakMap();
 const earlierRows = new WeakMap();
+const coverTools = new WeakMap();
 
 // Every message entry in the list, in the page's order: each stack's head,
 // then its replies, folded ones included.
@@ -435,8 +437,19 @@ function nameTool(button, words) {
   if (button.title !== words) button.title = words;
 }
 
-function paintTools(tools, stack, shown, { state, doc }) {
-  const [reply, aside, menu] = tools.children, position = positionOf(stack);
+function paintTools(tools, stack, shown, { state, doc, nameOf }) {
+  const reply = tools.querySelector('[data-tool=reply]'), aside = tools.querySelector('[data-tool=aside]'),
+    menu = tools.querySelector('[data-tool=menu]'), position = positionOf(stack);
+  const target = firstCoverTarget(stack), key = JSON.stringify([target, target?.refresh?.recipient ? nameOf(target.refresh.recipient) : null]);
+  let kept = coverTools.get(tools);
+  if (!kept || kept.key !== key) {
+    const focused = kept?.node?.contains(doc.activeElement);
+    kept?.node?.remove();
+    const node = firstCoverControl(doc, stack, { nameOf, topicId: stack.head.topic_id });
+    if (node) { node.dataset.tool = 'cover'; node.classList.add('stack-cover-request'); tools.prepend(node); }
+    kept = { key, node }; coverTools.set(tools, kept);
+    if (focused) node?.querySelector('.cover-refresh-glyph')?.focus({ preventScroll: true });
+  }
   // A gathered reply is not the original. Its existing source-status link
   // opens the canonical root; never send the title bar's acts to the reply.
   const original = stack.id === stack.dossier;
@@ -835,6 +848,7 @@ function paintStack(section, stack, byId, context) {
   if (p.placed) p.free.onclick = () => state.on?.unplace?.(stack);
   const rename = renameField(section, stack, shown, context);
   paintTools(p.tools, stack, shown, context);
+  section.dataset.askCover = String(Boolean(coverTools.get(p.tools)?.node));
   paintFolderColor(section, stack, colorOf);
   reconcile(section, [...(separate ? [p.header] : []), ...(p.cover ? [p.cover] : []), head, ...(rename ? [rename] : [...(separate ? [] : [p.toggle]), p.tools]), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
   if (!separate) p.header.remove();

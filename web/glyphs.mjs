@@ -18,6 +18,8 @@ const DRAWN = {
   unwatched: { d: 'M3 3l18 18 M10 5.2a10 10 0 0 1 11 6.8 15 15 0 0 1-3.2 4.4 M6.3 6.3A16 16 0 0 0 3 12s3 7 9 7a9 9 0 0 0 4-.9 M9.2 9.2a4 4 0 0 0 5.6 5.6' },
   // Ask for a new cover; the same drawing turns while Core awaits it.
   refresh: { d: 'M20 10a8 8 0 1 0-1.8 7 M20 4v6h-6' },
+  // Ask for a first cover: a sheet, with a plus at its upper-right corner.
+  coverplus: { d: 'M13 4H4v16h15V11 M7 9h4 M7 13h8 M7 17h6 M18 2v6 M15 5h6' },
   // Reply, and Reply to the first message: an arrow turning back to the left.
   reply: { d: 'M9.5 7 4.5 12l5 5 M5 12h9.5a5 5 0 0 1 5 5v1' },
   // Bring back: a tray, an arrow coming up out of it.

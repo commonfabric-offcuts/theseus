@@ -87,7 +87,6 @@
   /* the title bar's glyphs (item 473): each a square this size, three in a row, and the row's width (gaps and its
      end's padding included) */
   --stack-tool-size:1.75rem;
-  --stack-tools-w:calc(3 * var(--stack-tool-size) + .6rem);
 }
 @media(prefers-color-scheme:dark){:root{
   --stack-folder:#1c2427; --stack-folder-deep:#2a3437; --stack-folder-ink:#d3dcd9; --stack-meta-ink:var(--muted);
@@ -195,7 +194,10 @@
    at rest, gives the room back once ⋯ shows (3.9px at 390, 6.1px at 375, 14.4px at 320), so ⋯ stands on the folder,
    inside its right edge, never past it in the page's margin. A dossier being renamed has no glyphs (reply-stacks.mjs
    takes them out), so neither number is 1 there. */
-.reply-stack{--stack-tools-shown:0;--stack-tools-held:var(--stack-tools-shown);--stack-tools-room:calc(var(--stack-tools-held) * var(--stack-tools-w))}
+.reply-stack{--stack-cover-tools:0;--stack-base-tools:3;--stack-tool-gap:.25rem;
+  --stack-tools-w:calc((var(--stack-base-tools) + var(--stack-cover-tools)) * var(--stack-tool-size) + (var(--stack-base-tools) + var(--stack-cover-tools) - 1) * var(--stack-tool-gap) + .1rem);
+  --stack-tools-shown:0;--stack-tools-held:var(--stack-tools-shown);--stack-tools-room:calc(var(--stack-tools-held) * var(--stack-tools-w))}
+.reply-stack[data-ask-cover=true]{--stack-cover-tools:1}
 .reply-stack:has(>.stack-tools):is(:focus-within,:has(.lit),:has(>.stack-tools [aria-expanded=true])){--stack-tools-shown:1}
 @media(hover:hover){
   .reply-stack:has(>.stack-tools){--stack-tools-held:1}
@@ -205,23 +207,31 @@
    are clipped to nothing, which by one property both hides them and leaves a press nothing to find there; held, the
    clip reaches past them by .5rem, so a focus ring round a glyph is drawn whole. */
 .reply-stack>.stack-tools{position:absolute;z-index:1;right:0;top:calc(-1 * var(--stack-tab-h));height:var(--stack-tab-h);
-  display:flex;align-items:center;justify-content:flex-end;gap:.25rem;padding-right:.1rem;
-  opacity:var(--stack-tools-shown);clip-path:inset(calc(50% - var(--stack-tools-held) * (50% + .5rem)))}
+  display:flex;align-items:center;justify-content:flex-end;gap:var(--stack-tool-gap);padding-right:.1rem}
+.reply-stack>.stack-tools>*{opacity:var(--stack-tools-shown);clip-path:inset(calc(50% - var(--stack-tools-held) * (50% + .5rem)))}
 .stack-tool{display:grid;place-items:center;flex:none;width:var(--stack-tool-size);height:var(--stack-tool-size);min-height:0;padding:0;
   border:0;border-radius:.4rem;background:transparent;color:var(--stack-meta-ink);font-size:1.05rem;font-weight:700;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .stack-tool[hidden]{display:none}
 .stack-tool:hover,.stack-tool[aria-expanded=true]{background:var(--stack-folder-deep);color:var(--stack-folder-ink)}
 .stack-tool:focus-visible{outline:2px solid var(--stack-ring);outline-offset:1px}
 .stack-tool .glyph{width:1.1rem;height:1.1rem}
+.stack-cover-request{position:relative;flex:none;width:var(--stack-tool-size);height:var(--stack-tool-size)}
+.stack-cover-request>.cover-refresh-glyph{width:var(--stack-tool-size);min-width:var(--stack-tool-size);height:var(--stack-tool-size);min-height:var(--stack-tool-size);padding:0;color:var(--stack-meta-ink)}
+.stack-cover-request>.cover-refresh-status:not(:empty){position:absolute;right:0;top:100%;width:max-content;max-width:min(18rem,80vw);padding:.25rem;background:var(--stack-sheet);border:1px solid var(--line)}
+.reply-stack:has(>.stack-tools .cover-refresh-status:not(:empty)){--stack-tools-shown:1;--stack-tools-held:1}
+.stack-cover-request:has(.cover-refresh-status:not(:empty)){clip-path:none}
+/* Pending activity stays visible independently; sibling tools retain their rest rule. */
+.reply-stack:has(>.stack-tools .cover-refresh-glyph[data-pending=true]){--stack-tools-room:var(--stack-tools-w)}
+.stack-cover-request:has(.cover-refresh-glyph[data-pending=true]){opacity:1;clip-path:none}
 /* By touch each glyph is 44px square. */
-@media(pointer:coarse){:root{--stack-tool-size:2.75rem}.reply-stack>.stack-tools{gap:0}:root{--stack-tools-w:calc(3 * var(--stack-tool-size) + .1rem)}}
+@media(pointer:coarse){:root{--stack-tool-size:2.75rem}.reply-stack{--stack-tool-gap:0rem}}
 /* In a narrow column (a phone, or a window 760px or narrower, where the tab may reach 85% of the folder), Reply and
    Move below More fold into ⋯, whose menu offers them first (reply-stacks.mjs): the paper beside a tab of that reach
    holds one glyph and its corner's curve, not three (three 44px glyphs and the curve need 146px, a 970px folder;
    three of a pointer's 28px, 106px, a 704px folder). Wider, the tab reaches 70% of the folder, and the three stand
    beside it. */
 @media(max-width:760px){
-  :root{--stack-tools-w:calc(var(--stack-tool-size) + .1rem)}
+  .reply-stack{--stack-base-tools:1}
   .reply-stack>.stack-tools>.stack-tool:is([data-tool=reply],[data-tool=aside]){display:none}
 }
 

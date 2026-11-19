@@ -24,6 +24,7 @@ import { revealSelection } from './reveal.mjs';
 import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
 import { contact, heard, notTaken, NOT_TAKEN } from './api.mjs';
 import { CoordinationChoice } from './coordination-choice.mjs';
+import { firstCoverMenuItem } from './cover-refresh.mjs';
 
 // Why Archive does nothing for a dossier holding a message the reader
 // starred (item 635), as Core says it (aim_next/stacks.py, HELD_BY_STAR): the
@@ -1033,6 +1034,8 @@ export class StackFeed {
     const items = [{ label: starred ? 'Unstar' : 'Star for me', glyph: starred ? 'starred' : 'star', act: () => this.star(item) }];
     if (!found) return { first: items, last: [] };
     const { stack } = found, state = this.state;
+    const askCover = found.head && firstCoverMenuItem(this.list.ownerDocument, stack);
+    if (askCover) items.push(askCover);
     // Where a refusal of the stack's moves is said: the line of the message whose menu it is.
     const line = () => lineOf(this.entryFor(item.id) && cardIn(this.entryFor(item.id)));
     if (found.head && stack.replies.length) {
