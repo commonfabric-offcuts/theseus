@@ -18,6 +18,8 @@
 // Reply and Move below More as items, and they take a menu's glyphs: Reply the
 // title bar's own Reply, Move below More the Reader's tray.
 const DRAWN = {
+  // Ask for a new cover; the same drawing turns while Core awaits it.
+  refresh: { d: 'M20 10a8 8 0 1 0-1.8 7 M20 4v6h-6' },
   // Reply, and Reply to the first message: an arrow turning back to the left.
   reply: { d: 'M9.5 7 4.5 12l5 5 M5 12h9.5a5 5 0 0 1 5 5v1' },
   // Bring back above More: a tray, an arrow coming up out of it.

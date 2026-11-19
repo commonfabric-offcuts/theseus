@@ -19,7 +19,7 @@
 const actsOf = item => item?.acts ?? {};
 
 // Each act and the revision Core counts it by.
-const REVISIONS = { aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision', cover: 'cover_revision' };
+const REVISIONS = { aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision', cover: 'cover_revision', cover_refresh: 'cover_refresh_revision' };
 
 // What Core holds of a message's acts, from what the page knew and an answer
 // it read or was given since: each act as the later of the two by its
@@ -33,6 +33,8 @@ export function laterActs(known, answer) {
     if (!known || !(revision in known)) continue;
     if (!(revision in answer) || answer[revision] < known[revision]) { acts[field] = known[field]; acts[revision] = known[revision]; }
   }
+  if (acts.cover) acts.cover = { ...acts.cover, refresh: acts.cover_refresh ?? acts.cover.refresh,
+    refresh_revision: acts.cover_refresh_revision ?? acts.cover.refresh_revision };
   return acts;
 }
 
