@@ -23,7 +23,7 @@ import { feedControl, feedFence } from './feed-fence-copy.mjs';
 // the cards themselves (buttons, folded into quiet lines between others) keep
 // their shape. The bar never covers the reply arrow beside a card's time.
 import { cardIn } from './fold.mjs';
-import { pageItself, writing } from './pane-keys.mjs';
+import { pageItself, writing, readingMovement } from './pane-keys.mjs';
 import { copyKey, onMac } from './writing-input.mjs';
 import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
 import { entries, entryOf, navigationStops, shownSelected, stopAt, onEarlierRow } from './reply-stacks.mjs';
@@ -475,15 +475,10 @@ export class MessageMenu {
       const within = this.host.closest('#main') ?? null;
       // reach can approach a control by scrolling, or try to focus it. Confirm
       // the actual movement too: a refused focus is not a reading destination.
-      const boxes = [this.doc.scrollingElement, ...(within ?? this.doc.body).querySelectorAll('*')];
-      for (let box = within ?? this.doc.body; box; box = box.parentElement) boxes.push(box);
-      const scrollers = boxes
-        .filter(box => box && (box.scrollHeight > box.clientHeight || box.scrollWidth > box.clientWidth))
-        .map(box => ({ box, top: box.scrollTop, left: box.scrollLeft }));
+      const moved = readingMovement(this.doc, within, at);
       if (from && reach(from, step > 0 ? 'down' : 'up', { within, doc: this.doc })) {
         event.preventDefault();
-        if (reading && (this.doc.activeElement !== at && this.doc.activeElement?.isConnected && !pageItself(this.doc.activeElement, this.doc) ||
-            scrollers.some(({ box, top, left }) => box.scrollTop !== top || box.scrollLeft !== left))) this.navigate();
+        if (reading && moved()) this.navigate();
       }
       return;
     }

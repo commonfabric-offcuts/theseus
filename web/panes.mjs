@@ -10,7 +10,7 @@
 // writing starts a new message (write).
 import { cardIn } from './fold.mjs';
 import { navigationStops, shownSelected, stopAt } from './reply-stacks.mjs';
-import { keyAction, writing, pageItself } from './pane-keys.mjs';
+import { keyAction, writing, pageItself, readingMovement } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
 import { reach as reachOn } from './arrow-reach.mjs';
 
@@ -141,10 +141,11 @@ function headerKey(action, rows, r, doc, navigate) {
   // With no message to go to (a Conversation not yet written in), on down the column: the reply.
   if (action === 'down') {
     if (feedStop(doc, { first: true }) && panes.feed(doc, { first: true }, navigate)) return true;
-    // This owner can also scroll toward a control. Its result confirms whether
-    // a destination was reached or approached; a refusal releases nothing.
-    const moved = reachOn(doc.activeElement, 'down', { within: doc.getElementById('main'), doc });
-    if (moved) navigate();
+    // Share MessageMenu's actual focus/scroll check; reach can report true
+    // even when the control refused focus.
+    const within = doc.getElementById('main'), movement = readingMovement(doc, within);
+    const moved = reachOn(doc.activeElement, 'down', { within, doc });
+    if (moved && movement()) navigate();
     return moved;
   }
   if (action === 'left') return at > 0 ? reach(buttons[at - 1], navigate) : panes.step('feed', 'left', doc, navigate);

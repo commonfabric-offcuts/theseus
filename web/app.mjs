@@ -2086,6 +2086,8 @@ function listPage(kind, more = false) {
   }
   if (listLoads.has(kind)) return listLoads.get(kind);
   const accessEpoch = listAccessEpoch, mayPaint = !topicUnavailable;
+  const currentTopic = topic, currentViews = views, generation = registry.generation;
+  const outcome = { topic: currentTopic, views: currentViews, generation, accessEpoch, applied: false, rowsAdded: 0, cursorAdvanced: false };
   const cursor = kind === 'messages' ? views.olderCursor : views.memoryCursor;
   if (more && cursor === null) return Promise.resolve();
   const foreground = registry.cleanup.foreground();
@@ -2094,8 +2096,15 @@ function listPage(kind, more = false) {
   if (more) args.cursor = cursor;
   const run = foreground.read(options => api.view(kind === 'messages' ? 'topic_messages' : 'memory_items', args, options)).then(page => {
     checkedView(page, bootstrap.instance_id);
-    if (!mayPaint || accessEpoch !== listAccessEpoch || authorityReviewPending()) return;
-    if (kind === 'messages') views.messagesPage(page, { initial: !more, cursor });
+    if (!mayPaint || accessEpoch !== listAccessEpoch || authorityReviewPending()) return outcome;
+    if (kind === 'messages') {
+      // Measure only this synchronous application, not another load that
+      // advanced the same frontier while this request was in flight.
+      const beforeRows = views.messages.size, beforeCursor = views.olderCursor;
+      const applied = views.messagesPage(page, { initial: !more, cursor });
+      return { ...outcome, applied, rowsAdded: applied ? views.messages.size - beforeRows : 0,
+        cursorAdvanced: applied && beforeCursor !== null && (views.olderCursor === null || views.olderCursor < beforeCursor) };
+    }
     else views.memoryPage(page, { initial: !more, cursor });
   }).finally(() => { foreground.release(); listLoads.delete(kind); });
   listLoads.set(kind, run); return run;
@@ -2888,7 +2897,16 @@ async function initialize() {
     await freshness?.request({ refresh: true, retry: true });
   });
   wakeOnPress($('messages'));
-  $('more-messages').onclick = () => run(() => { releaseTopArrivals(); fillFrom($('messages')); return listPage('messages', true); }); $('more-memory').onclick = () => run(() => listPage('memory', true));
+  $('more-messages').onclick = () => run(async () => {
+    const currentTopic = topic, currentViews = views, generation = registry.generation, accessEpoch = listAccessEpoch;
+    fillFrom($('messages'));
+    const outcome = await listPage('messages', true);
+    if (outcome?.applied && (outcome.rowsAdded > 0 || outcome.cursorAdvanced) &&
+        outcome.topic === currentTopic && outcome.views === currentViews && outcome.generation === generation && outcome.accessEpoch === accessEpoch &&
+        topic === currentTopic && views === currentViews && registry.generation === generation && listAccessEpoch === accessEpoch &&
+        !registry.disposed && !retired && !topicUnavailable && !authorityReviewPending()) releaseTopArrivals();
+  });
+  $('more-memory').onclick = () => run(() => listPage('memory', true));
   window.addEventListener('beforeunload', () => marks.leave());
   shell.guard(() => registry.hasUnprotectedWriting);
   // An edit open in the Reader sends nothing at unload (its hold lapses), and lets its Web Lock go.
