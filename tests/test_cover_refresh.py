@@ -12,6 +12,7 @@ import sqlite3
 from aim_next import Store
 from aim_next.contract import StoreError
 from aim_next.migrations import migrate, MigrationError
+from aim_next.store import SCHEMA_VERSION
 from reader_fixture import ReaderCase
 
 
@@ -229,16 +230,30 @@ class CoverRefreshCase(ReaderCase):
         self.committed(self.command("message.thumb", {"thumbed": True}, target={"message_id": self.answer}, expected={"thumb_revision": 0}))
         acts = self.sql("SELECT * FROM message_acts ORDER BY id")
         messages = self.sql("SELECT * FROM messages ORDER BY seq")
+        # This fixture exercises 738's 47->48 step. The later 731 positions
+        # have their own preservation/refusal proof in test_dossier_order.py.
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("DELETE FROM dossier_order")
         self.assertEqual(migrate(self.path, "test-instance", self.binding, "47")["schema_version"], "47")
         with self.assertRaises(StoreError):
             Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='schema_version'"), [("47",)])
         self.assertEqual(migrate(self.path, "test-instance", self.binding, "48")["schema_version"], "48")
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.sql("SELECT * FROM message_acts ORDER BY id"), acts)
         self.assertEqual(self.sql("SELECT * FROM messages ORDER BY seq"), messages)
         self.assertEqual(self.sql("SELECT actor_id,revision FROM cover_writers WHERE message_id=?", (self.root,)), [("agent-b", 1)])
+        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], SCHEMA_VERSION)
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.committed(self.refresh())["refresh"]["recipient"], "agent-b")
-        with self.assertRaises(MigrationError):
+        # Reach48 explicitly, so it is the occupied cover-refresh step that
+        # refuses47 rather than the later dossier-order guard.
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("DELETE FROM dossier_order")
+        self.assertEqual(migrate(self.path, "test-instance", self.binding, "48")["schema_version"], "48")
+        with self.assertRaises(MigrationError) as refused:
             migrate(self.path, "test-instance", self.binding, "47")
+        self.assertEqual(refused.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='schema_version'"), [("48",)])
+        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], SCHEMA_VERSION)
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.pending()

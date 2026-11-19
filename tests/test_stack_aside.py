@@ -447,6 +447,10 @@ class AsideMigrationCase(StackCase):
         rows = self.sql('SELECT * FROM message_acts ORDER BY id')
         with sqlite3.connect(str(self.path)) as db:
             db.execute("UPDATE sqlite_sequence SET seq=17 WHERE name='message_acts'")
+            # This test isolates the historical 37/38 aside step. Remove the
+            # later 731 positions explicitly; test_dossier_order checks the
+            # real schema-48 preservation and downgrade refusal separately.
+            db.execute("DELETE FROM dossier_order")
         migrate(self.path, 'test-instance', self.binding, '37')
         self.assertEqual(self.sql('SELECT * FROM message_acts ORDER BY id'), rows)
         migrate(self.path, 'test-instance', self.binding)

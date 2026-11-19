@@ -5107,5 +5107,35 @@
       "inputs": [],
       "scope": "generated/system/product"
     }
+  },
+  "tests/fixtures/item_731_mutants.py": {
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "inputs": [
+        "aim_next/dossier_order.py",
+        "aim_next/conversation.py"
+      ],
+      "scope": "repository"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:1": {
+      "inputs": [
+        "aim_next/dossier_order.py",
+        "aim_next/conversation.py"
+      ],
+      "scope": "repository"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:2": {
+      "inputs": [
+        "aim_next/dossier_order.py",
+        "aim_next/conversation.py"
+      ],
+      "scope": "repository"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:3": {
+      "inputs": [
+        "aim_next/dossier_order.py",
+        "aim_next/conversation.py"
+      ],
+      "scope": "repository"
+    }
   }
 }

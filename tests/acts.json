@@ -2500,7 +2500,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);",
+     "      this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null, ...(typeof position.order_key === 'number' ? { order_key: position.order_key } : {}) }]] : []);",
      ""
     ]
    ],
@@ -2971,7 +2971,7 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "export const keyOf = stack => stack.placed ?? stack.lifted;",
+     "export const keyOf = stack => stack.orderKey ?? stack.placed ?? stack.lifted;",
      "export const keyOf = stack => stack.lifted;"
     ]
    ],
@@ -6930,8 +6930,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];",
-     "const PLACING = ['root_id', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];",
+     "const PLACING = ['root_id', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];"
     ]
    ],
    "check": {
@@ -13669,8 +13669,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];"
     ]
    ],
    "check": {
@@ -13742,8 +13742,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();",
-     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();"
+     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place') await this.refreshPositions();",
+     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.place') await this.refreshPositions();"
     ]
    ],
    "check": {
@@ -27823,8 +27823,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];",
-     "'aside_revision', 'name_revision', 'place_revision', 'cover_refresh_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];"
     ]
    ],
    "check": {
@@ -30452,7 +30452,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);",
+     "this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null, ...(typeof position.order_key === 'number' ? { order_key: position.order_key } : {}) }]] : []);",
      "this.act('message.star', item, { starred: on }, []);"
     ]
    ],
@@ -30995,7 +30995,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "        if ('placed' in pending) stack_position = { ...stack_position, placed: pending.placed };\n",
+     "        if ('placed' in pending) stack_position = { ...stack_position, placed: pending.placed,\n          ...('order_key' in stack_position ? { order_key: pending.placed ?? stack_position.order_entry_key } : {}) };\n",
      ""
     ]
    ],
@@ -31010,7 +31010,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     " || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();",
+     " || kind === 'stack.place') await this.refreshPositions();",
      ") await this.refreshPositions();"
     ]
    ],
@@ -31054,8 +31054,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];",
-     "'name_revision', 'cover_revision', 'cover_refresh_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];"
     ]
    ],
    "check": {

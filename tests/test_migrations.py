@@ -17,11 +17,25 @@ from aim_next import store as store_module
 from aim_next.authority import Authority, AuthorityError
 from aim_next.contract import StoreError, _json
 from aim_next.invite import invite
-from aim_next.migrations import MigrationError, migrate
+from aim_next.migrations import MigrationError, migrate as migrate_store
 from aim_next.profile import load_profile, write_profile
 from aim_next.store import SCHEMA_VERSION, Store, StoreOpenError
 from aim_next.validation import _command_envelope
 import test_store as fixtures
+
+
+def migrate(path, instance, binding, target=None):
+    """Historical-step fixtures explicitly discard 731 positions before testing older downgrade rules.
+
+    The real 49 downgrade refusal and preserved ordering are checked, without
+    this fixture preparation, in test_dossier_order.py. No product gate is bypassed.
+    """
+    result = migrate_store(path, instance, binding, target)
+    if result['schema_version'] == '49':
+        with sqlite3.connect(str(path)) as db:
+            if db.execute("SELECT 1 FROM dossier_order LIMIT 1").fetchone():
+                db.execute("DELETE FROM dossier_order")
+    return result
 
 
 SCHEMA_8 = (Path(__file__).parent / "fixtures" / "schema_8.sql").read_text().splitlines()
@@ -177,6 +191,10 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        db.execute("DROP TABLE dossier_order")
+        if version == "48":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Item 738 adds the 48th step. Recover 47's act constraint using the
         # independently frozen schema-46 definition (unchanged in 47), retaining
         # every old act and its next ID. No production migration is called here.
@@ -493,6 +511,12 @@ class MigrationCase(fixtures.StoreCase):
     LAYOUT = None  # the hand-built layout, when it is not simply VERSION
 
     def setUp(self):
+        # This file tests pre-731 schema steps. Keep later admission records
+        # out of these fixtures; the real publication/migration is tested in
+        # test_dossier_order.py, without these fixture-only patches.
+        patcher = mock.patch('aim_next.dossier_order.published')
+        patcher.start()
+        self.addCleanup(patcher.stop)
         super().setUp()
         self.create_topic()
         self.assertEqual(self.command("participation.set", {"actor_id": "agent-b", "present": True},
@@ -2009,7 +2033,7 @@ def everything(path):
         tables = [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
         rows = {}
         for table in tables:
-            if table in ("metadata", "topic_position_clock", "cover_writers"):
+            if table in ("metadata", "topic_position_clock", "cover_writers", "dossier_order"):
                 continue
             columns = [row[1] for row in db.execute("PRAGMA table_info(" + table + ")") if row[1] != "list_position"]
             rows[table] = sorted(db.execute("SELECT " + ",".join(columns) + " FROM " + table).fetchall(), key=repr)
@@ -2109,6 +2133,11 @@ class LiveShapedChainCase(MigrationCase):
     TOPICS, POSTS = 20, 26
 
     def setUp(self):
+        # Historical migration fixtures exercise their own records. Item 731's
+        # publication/rank migration is independently checked in test_dossier_order.
+        patcher = mock.patch('aim_next.dossier_order.published')
+        patcher.start()
+        self.addCleanup(patcher.stop)
         fixtures.StoreCase.setUp(self)
         self.write_like_the_live_instance()
         # The layout release 19 wrote, with its reply horizons worked out the way release 19 works them.
@@ -3647,7 +3676,7 @@ class EditStepCase(MigrationCase):
         return receipt["result"]
 
     def test_the_step_follows_the_drafts_and_comes_just_before_the_sessions(self):
-        steps = [step[:2] for step in migrations.STEPS]
+        steps = [step[:2] for step in migrations.STEPS if int(step[1]) <= 47]
         self.assertIn((BEFORE_EDIT, EDIT_VERSION), steps)
         self.assertEqual(steps[steps.index((BEFORE_EDIT, EDIT_VERSION)) + 1], (EDIT_VERSION, SESSION_VERSION),
                          "39->40 is the step before 40->41")
@@ -3724,7 +3753,7 @@ class JudgmentStepCase(MigrationCase):
                                                "audit": "m-audit"})
 
     def test_the_step_follows_the_sessions_and_the_invitations_step_follows_it(self):
-        steps = [step[:2] for step in migrations.STEPS]
+        steps = [step[:2] for step in migrations.STEPS if int(step[1]) <= 47]
         self.assertIn((BEFORE_JUDGMENT, JUDGMENT_VERSION), steps)
         self.assertEqual(steps[steps.index((BEFORE_SESSION, SESSION_VERSION)) + 1], (BEFORE_JUDGMENT, JUDGMENT_VERSION),
                          "40->41 is the step before 41->42")
@@ -3824,7 +3853,7 @@ class SessionStepCase(MigrationCase):
         return receipt["result"]
 
     def test_the_step_follows_the_edits_and_the_judgments_step_follows_it(self):
-        steps = [step[:2] for step in migrations.STEPS]
+        steps = [step[:2] for step in migrations.STEPS if int(step[1]) <= 47]
         self.assertIn((BEFORE_SESSION, SESSION_VERSION), steps)
         self.assertEqual(steps[steps.index((BEFORE_SESSION, SESSION_VERSION)) + 1], (BEFORE_JUDGMENT, JUDGMENT_VERSION))
 
@@ -4071,8 +4100,8 @@ class InviteStepCase(MigrationCase):
         self.assertEqual(tools_taken(after), stored, "every row of every table is kept")
 
     def test_the_step_follows_the_judgments_and_the_tools_step_follows_it(self):
-        steps = [step[:2] for step in migrations.STEPS]
-        self.assertEqual(steps[-7:-4], [(BEFORE_JUDGMENT, JUDGMENT_VERSION), (BEFORE_INVITES, INVITES_VERSION), (BEFORE_TOOLS, TOOLS_VERSION)])
+        steps = [step[:2] for step in migrations.STEPS if int(step[1]) <= 47]
+        self.assertEqual(steps[-6:-3], [(BEFORE_JUDGMENT, JUDGMENT_VERSION), (BEFORE_INVITES, INVITES_VERSION), (BEFORE_TOOLS, TOOLS_VERSION)])
         self.assertEqual([step for step in steps if step[0] == BEFORE_INVITES or step[1] == INVITES_VERSION],
                          [(BEFORE_INVITES, INVITES_VERSION)], "one step leaves 42 and one reaches 43")
         self.assertEqual((BEFORE_INVITES, INVITES_VERSION), ("42", "43"))
@@ -4132,8 +4161,8 @@ class ToolsStepCase(MigrationCase):
         return migrate(self.path, "test-instance", self.binding, BEFORE_TOOLS)
 
     def test_the_step_follows_the_invitations_and_the_ends_step_follows_it(self):
-        steps = [step[:2] for step in migrations.STEPS]
-        self.assertEqual(steps[-6:-3], [(BEFORE_INVITES, INVITES_VERSION), (BEFORE_TOOLS, TOOLS_VERSION), (BEFORE_ENDS, ENDS_VERSION)])
+        steps = [step[:2] for step in migrations.STEPS if int(step[1]) <= 47]
+        self.assertEqual(steps[-5:-2], [(BEFORE_INVITES, INVITES_VERSION), (BEFORE_TOOLS, TOOLS_VERSION), (BEFORE_ENDS, ENDS_VERSION)])
         self.assertEqual([step for step in steps if step[0] == BEFORE_TOOLS or step[1] == TOOLS_VERSION],
                          [(BEFORE_TOOLS, TOOLS_VERSION)], "one step leaves 43 and one reaches 44")
         self.assertEqual((BEFORE_TOOLS, TOOLS_VERSION), ("43", "44"))
@@ -4196,8 +4225,8 @@ class EndsStepCase(MigrationCase):
         return receipt["result"]
 
     def test_the_step_follows_the_tools_and_the_covers_step_follows_it(self):
-        steps = [step[:2] for step in migrations.STEPS]
-        self.assertEqual(steps[-5:-3], [(BEFORE_TOOLS, TOOLS_VERSION), (BEFORE_ENDS, ENDS_VERSION)])
+        steps = [step[:2] for step in migrations.STEPS if int(step[1]) <= 47]
+        self.assertEqual(steps[-4:-2], [(BEFORE_TOOLS, TOOLS_VERSION), (BEFORE_ENDS, ENDS_VERSION)])
         self.assertEqual([step for step in steps if step[0] == BEFORE_ENDS or step[1] == ENDS_VERSION],
                          [(BEFORE_ENDS, ENDS_VERSION)], "one step leaves 44 and one reaches 45")
         self.assertEqual((BEFORE_ENDS, ENDS_VERSION), ("44", "45"))
@@ -4265,11 +4294,11 @@ class CoverStepCase(MigrationCase):
         return receipt["result"]
 
     def test_the_step_follows_the_ends_and_topic_positions_follow_it(self):
-        steps = [step[:2] for step in migrations.STEPS]
-        self.assertEqual(steps[-4:], [(BEFORE_ENDS, ENDS_VERSION), (BEFORE_COVERS, COVERS_VERSION), ("46", "47"), ("47", "48")])
+        steps = [step[:2] for step in migrations.STEPS if int(step[1]) <= 47]
+        self.assertEqual(steps[-3:], [(BEFORE_ENDS, ENDS_VERSION), (BEFORE_COVERS, COVERS_VERSION), ("46", "47")])
         self.assertEqual([step for step in steps if step[0] == BEFORE_COVERS or step[1] == COVERS_VERSION],
                          [(BEFORE_COVERS, COVERS_VERSION)], "one step leaves 45 and one reaches 46")
-        self.assertEqual((BEFORE_COVERS, COVERS_VERSION, SCHEMA_VERSION), ("45", "46", "48"))
+        self.assertEqual((BEFORE_COVERS, COVERS_VERSION, SCHEMA_VERSION), ("45", "46", "49"))
 
     def test_item_641_covers_45_to_46_precedes_positions_46_to_47(self):
         message = self.acted()
@@ -4425,7 +4454,11 @@ for _name in list(Schema11Case.__dict__):
 
 class TopicPositionStepCase(unittest.TestCase):
     """Item 641: the train35 46->47 step preserves facts and saved orders; default positions are durable."""
-    setUp = fixtures.StoreCase.setUp
+    def setUp(self):
+        patcher = mock.patch('aim_next.dossier_order.published')
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        fixtures.StoreCase.setUp(self)
     command = fixtures.StoreCase.command
     sql = fixtures.StoreCase.sql
     workspace = fixtures.StoreCase.workspace
@@ -4457,7 +4490,7 @@ class TopicPositionStepCase(unittest.TestCase):
         with self.assertRaises(StoreOpenError):
             Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.path.read_bytes(), before, "a read cannot migrate")
-        self.assertEqual(migrations.STEPS[-2][:2], ("46", "47"), "no migration-number collision with the base")
+        self.assertEqual(migrations.STEPS[-3][:2], ("46", "47"), "no migration-number collision with the base")
         self.assertTrue(migrate(self.path, "test-instance", self.binding)["migrated"])
         self.assertEqual(everything(self.path), stored, "all pre-existing records, including saved orders and revisions, survive")
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
