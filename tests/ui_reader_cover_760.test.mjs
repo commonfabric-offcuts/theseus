@@ -79,6 +79,18 @@ test('item 760 app Reader cover stays scoped to readable current topic and messa
   assert.equal(f.dossierCover(f.source), null);
 });
 
+test('items 760 and 770: singleton Reader finds a canonical root above the loaded page', t => {
+  const f = fixture(t);
+  f.stack.head.reply_to = 'above-page';
+  f.stack.head.stack_position = { root_id: 'above-page', at: { acts: 1 }, cover: f.cover };
+  f.source.source_ref.id = 'above-page';
+  f.reader.paintCover(f.source);
+  assert.equal(f.host.hidden, false, 'canonical-root lookup reaches the singleton cover');
+  assert.equal(f.reader.coverDossier, 'above-page');
+  assert.equal(f.line.querySelector('.reader-cover-words').textContent, f.cover.stands);
+  assert.equal(f.host.querySelector('.cover-stands').text, f.cover.stands);
+});
+
 import { assertCoverBounds, COVER_EDGE_TOLERANCE_PX, COVER_SIZE_TOLERANCE_PX } from './reader_cover_760.mjs';
 test('item 760 native geometry assertion instrument accepts rounding and rejects overflow and invisible rectangles', () => {
   const viewport = { width: 320, height: 640 };

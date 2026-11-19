@@ -869,7 +869,13 @@ export class Reader {
     if (note) this.$('send-reply').textContent = 'Done';
     else { const word = node('span', 'Send', 'send-word'), keys = node('span', '⌘↵'); keys.setAttribute('aria-hidden', 'true'); this.$('send-reply').replaceChildren(word, ' ', keys); }
     this.$('send-reply').classList.toggle('primary', !note);
+    // Setting value resets the browser's selection even for unchanged words.
+    // Keep a live selection on repaint; a newly opened editor uses its saved one.
+    const caret = document.activeElement === this.field && this.field.value === this.editor.draft.body
+      ? { start: this.field.selectionStart, end: this.field.selectionEnd, direction: this.field.selectionDirection }
+      : this.editor.draft.caret;
     this.field.value = this.editor.draft.body;
+    if (caret) this.field.setSelectionRange(caret.start, caret.end, caret.direction ?? 'none');
     this.paintImages();
     this.paintRecipients();
     this.paintChoice();
@@ -1118,7 +1124,7 @@ export class Reader {
     const host = this.$('reader-cover'), line = this.$('reader-cover-line');
     const dossier = found?.rootId ?? null;
     if (dossier !== (this.coverDossier ?? null)) { host.open = false; this.coverDossier = dossier; }
-    const context = found ? { viewer: this.callbacks.actor?.() ?? null, nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: found.topicId } : null;
+    const context = found ? { viewer: this.callbacks.actor?.() ?? null, nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: found.topicId, rootId: dossier } : null;
     // Drawn again only when what it says changes; a Reader that never showed one has nothing to take away.
     const key = found ? coverKey(found.cover, context) : '';
     if ((this.coverShown ?? '') === key) return;

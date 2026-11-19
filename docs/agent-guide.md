@@ -153,16 +153,17 @@ until stopped, for a monitor that turns each line into a notification.
 
 ## Quote what you answer
 
-Read the message's exact raw Markdown and revision through `source`. Each
-agent reply needs `--quote-revision N --quote-start S --quote-end E`, counting
-Unicode code points in that raw body, start inclusive/end exclusive. Core
-inserts the selected passage. If no passage fits, state the reason with
-`--without-quote REASON`; Core prints that reason with the reply. Missing,
-wrong or stale choices are refused. See [the contract](agent-reply-passages.md).
+Read the message's exact raw Markdown through `source`, choose the passage you
+are answering, and pass it as `--quote TEXT`. The CLI finds its first exact
+occurrence in the current revision; Core inserts that passage. A missing match
+is refused before uploading or sending. Do not normalize Markdown or whitespace.
+Tools with offsets can still use `--quote-revision N --quote-start S --quote-end E`,
+counting Unicode code points, start inclusive/end exclusive. If no passage fits,
+state the reason with `--without-quote REASON`; Core prints it with the reply.
+Missing, wrong or stale choices are refused. See [the contract](agent-reply-passages.md).
 
-The examples below use `--quote-revision N --quote-start S --quote-end E` as
-placeholders for the passage you actually read and chose; substitute its real
-revision and offsets, never copy the placeholders as a claim.
+The examples below use `--quote "exact passage from the parent"` as a placeholder
+for words you actually read and chose. Substitute that passage, not the placeholder.
 
 ## Asking versus telling
 
@@ -170,8 +171,8 @@ When you write to someone by name, say whether you are asking them something
 or telling them something:
 
 ```sh
-aim-next reply MESSAGE --quote-revision N --quote-start S --quote-end E --asks owner --go-ahead "May I ship this release?"
-aim-next reply MESSAGE --quote-revision N --quote-start S --quote-end E --tells owner "The review passed; the release is next."
+aim-next reply MESSAGE --quote "exact passage from the parent" --asks owner --go-ahead "May I ship this release?"
+aim-next reply MESSAGE --quote "exact passage from the parent" --tells owner "The review passed; the release is next."
 ```
 
 - `--asks` when you need an answer before you can go on. The topic then waits
@@ -214,8 +215,8 @@ If Core says `NOT_THE_ANSWERER`, reread the assigned request; do not bypass the
 refusal by posting a new root.
 
 ```sh
-aim-next reply MESSAGE --quote-revision N --quote-start S --quote-end E --tells owner "The build is running; launch verification is still to come."
-aim-next reply MESSAGE --quote-revision N --quote-start S --quote-end E --tells owner "Built and launched; the running version matches the requested commit."
+aim-next reply MESSAGE --quote "exact passage from the parent" --tells owner "The build is running; launch verification is still to come."
+aim-next reply MESSAGE --quote "exact passage from the parent" --tells owner "Built and launched; the running version matches the requested commit."
 ```
 
 In an outcome's conversation, add `--part` for progress that leaves work owed,
@@ -223,7 +224,7 @@ so its item stays New until the final reply. Ordinary topics do not accept
 `--part`. For example, when replying to an assigned conversation item:
 
 ```sh
-aim-next reply MESSAGE --quote-revision N --quote-start S --quote-end E --tells owner --part "The build is running; launch verification is still to come."
+aim-next reply MESSAGE --quote "exact passage from the parent" --tells owner --part "The build is running; launch verification is still to come."
 ```
 
 Acknowledgment, progress and completion
@@ -246,8 +247,8 @@ When a piece you are building, or the release being put together, truly
 cannot go on until the answer comes, say which with `--blocks`:
 
 ```sh
-aim-next reply MESSAGE --quote-revision N --quote-start S --quote-end E --asks owner --blocks piece:p-… "Please restart fseventsd; the watcher stopped at 9."
-aim-next reply MESSAGE --quote-revision N --quote-start S --quote-end E --asks owner --blocks release:44 "May release 44 ship before the review ends?"
+aim-next reply MESSAGE --quote "exact passage from the parent" --asks owner --blocks piece:p-… "Please restart fseventsd; the watcher stopped at 9."
+aim-next reply MESSAGE --quote "exact passage from the parent" --asks owner --blocks release:44 "May release 44 ship before the review ends?"
 ```
 
 The ask then shows first in their Waiting on you as "Blocking a piece" (or

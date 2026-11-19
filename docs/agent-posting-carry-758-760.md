@@ -37,3 +37,19 @@ with the release evidence; each Python run uses its own bytecode cache directory
 
 No browser, preview, full suite or hosted CI is authorized for this carry.
 Local checks and source readback do not claim native interaction acceptance.
+
+Release136 landed during the initial freeze. Its only conflicting hunk is
+`StackFeed.dossierCover`: retain the Reader's `alone` option and 770's lookup by
+canonical root when that root is above the loaded page. The combined Reader
+check opens exactly that case. Removing the fallback or the singleton option
+separately fails a focused assertion. Current136's two privacy-inventory failures
+are compared by their exact missing view names and read-count discrepancies.
+
+Warp11553 adds `--quote TEXT` as the convenient author-selected form. The CLI
+uses the first exact match at the parent's current revision and sends the same
+Core selector as explicit offsets. Three focused checks cover first-match
+Unicode and private replies, a miss before upload, and equal persisted passage
+and body for text versus offset forms. Three actual mutations break first-match
+selection, refusal before upload, and the current source revision separately.
+The seven 770 Core controls now explicitly quote "weekend" in their known
+fixture opening; their wait-source and answer assertions remain unchanged.

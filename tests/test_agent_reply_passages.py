@@ -252,6 +252,73 @@ class ReplyPassageCase(StoreCase):
         self.assertEqual(run("whisper", "t1", "--to", "owner", "--reply-to", private,
                              "--quote-revision", "1", "--quote-start", "0", "--quote-end", "7", "Private answer")[0], 0)
 
+    def quote_cli(self, *args):
+        import io
+        from pathlib import Path
+        from types import SimpleNamespace
+        from aim_next import cli
+        profile = SimpleNamespace(instance_id="test-instance", actor_id="agent-a", db_path=self.path,
+                                  authority_id=self.pin["authority_id"], authority_epoch=self.pin["authority_epoch"],
+                                  store=lambda: self.store)
+        options = cli._parser().parse_args(["--profile", "/synthetic-not-opened.json", "--outbox",
+                                           str(Path(self.temp.name) / "quote-outbox")] + list(args))
+        output, errors = io.StringIO(), io.StringIO()
+        agent = cli.Agent(profile, options, io.BytesIO(b""), cli.Lines(output, errors, False))
+        try:
+            getattr(agent, "do_" + options.verb)()
+            return 0, output.getvalue(), errors.getvalue()
+        except cli.Failed as error:
+            return error.code, output.getvalue(), errors.getvalue()
+
+    def quote_request(self, operation):
+        from pathlib import Path
+        return json.loads((Path(self.temp.name) / "quote-outbox" / (operation + ".request.json")).read_text())["command"]["args"]
+
+    def test_cli_quote_text_matches_first_exact_unicode_occurrence_and_whisper(self):
+        text = "🪴 **chosen** é\nnext"
+        parent = self.parent("prefix " + text + " again " + text)
+        code, out, err = self.quote_cli("reply", parent, "--quote", text, "--operation", "text-first", "Answer")
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(self.quote_request("text-first")["reply_passage"], self.passage(7, 7 + len(text)))
+        private = self.committed(self.command("message.post", {"body": "private words", "whisper": True,
+                    "addressees": ["agent-a"]}, {"topic_id": "t1"}))["message_id"]
+        code, out, err = self.quote_cli("whisper", "t1", "--to", "owner", "--reply-to", private,
+                                      "--quote", "words", "Private answer")
+        self.assertEqual((code, err), (0, ""))
+        quotes = json.loads(self.sql("SELECT quotes FROM messages WHERE author_id='agent-a' ORDER BY seq DESC LIMIT 1")[0][0])
+        self.assertEqual({key: quotes[-1][key] for key in ("source", "start", "end")},
+                         {"source": {"kind": "message", "id": private, "revision": 1}, "start": 8, "end": 13})
+
+    def test_cli_quote_text_missing_refuses_before_upload_or_send(self):
+        parent = self.parent("exact raw **words**")
+        before = {table: self.sql("SELECT * FROM " + table) for table in
+                  ("messages", "deliveries", "media_intents", "operations")}
+        code, out, err = self.quote_cli("post", "t1", "--reply-to", parent, "--quote", "Exact raw words",
+                                      "--attach", "/synthetic-missing-file", "Answer")
+        self.assertEqual(code, 2)
+        self.assertIn("That text isn't in the message you're replying to", err)
+        for table, rows in before.items():
+            self.assertEqual(self.sql("SELECT * FROM " + table), rows, table)
+        for flags in [("--quote", ""), ("--quote", "words", "--without-quote", "reason"),
+                      ("--quote", "words", "--quote-revision", "2", "--quote-start", "12", "--quote-end", "17")]:
+            self.assertEqual(self.quote_cli("reply", parent, *flags, "Answer")[0], 2)
+
+    def test_cli_quote_text_sent_passage_equals_explicit_offset_form(self):
+        parent = self.parent()
+        text = self.parent_text[2:17]
+        for operation, flags in [("text-form", ("--quote", text)),
+                                 ("offset-form", ("--quote-revision", "2", "--quote-start", "2", "--quote-end", "17"))]:
+            code, out, err = self.quote_cli("post", "t1", "--reply-to", parent, *flags,
+                                          "--operation", operation, "Same answer")
+            self.assertEqual((code, err), (0, ""))
+        self.assertEqual(self.quote_request("text-form"), self.quote_request("offset-form"))
+        messages = self.sql("SELECT id,body,quotes FROM messages WHERE author_id='agent-a' ORDER BY seq")
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[0][1:], messages[1][1:])
+        bases = [self.store.view("agent-a", "source", {"kind": "message", "id": row[0]})["reply_basis"] for row in messages]
+        self.assertEqual(bases[0], bases[1])
+        self.assertEqual(bases[0]["excerpt"], text)
+
     def test_generated_body_limit_refuses_without_truncation_or_message(self):
         from aim_next.contract import LIMITS
         parent = self.parent()

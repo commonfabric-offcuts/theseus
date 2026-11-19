@@ -85,7 +85,7 @@ class CoverVerbs:
         if len(options.waits) != len(options.defaults):
             self.refuse("INVALID_ARGUMENT", "Each --waits names its --default, what holds if the owner says nothing; nothing was sent")
         if options.waits:
-            args["waiting"] = [{"text": text, "default": default} for text, default in zip(options.waits, options.defaults)]
+            args["waiting"] = [{"text": text, "default": default, "message_id": options.message} for text, default in zip(options.waits, options.defaults)]
         elif options.no_waits:
             args["waiting"] = []
         named = options.payload is not None or options.payload_from or options.link or options.kind or options.done_by

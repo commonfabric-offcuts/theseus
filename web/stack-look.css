@@ -489,6 +489,8 @@
 .row-pill .pill-words{overflow:hidden;text-overflow:ellipsis}
 .row-pill[data-state=done],.row-pill[data-state=done] svg{color:var(--accent)}
 .row-pill[data-state=waiting]{color:var(--warn)}
+.cover-wait>a.topic-state,a.pill-waits{text-decoration:none}
+.cover-wait>a.topic-state:hover,a.pill-waits:hover{text-decoration:underline}
 .only-new .dossier-cover,.reply-stack[data-compact=true]>.dossier-cover,.message-card[data-folded=true]>.row-pills{display:none}
 @media(max-width:640px){
   .dossier-cover{font-size:.88rem}

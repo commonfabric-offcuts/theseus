@@ -183,8 +183,8 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "{binding | view FILE|- | command FILE|- | outcomes [--reached | --ended] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR | coordinator OUTCOME ACTOR|--none | participant TOPIC ACTOR "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
-         "| inbox | reply MESSAGE [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--part] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
-         "| post TOPIC [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--reply-to MESSAGE] [--divergence-reason TEXT] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
+         "| inbox | reply MESSAGE [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--part] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
+         "| post TOPIC [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--reply-to MESSAGE] [--divergence-reason TEXT] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
          "| thumb MESSAGE [--off] | mint MESSAGE [--expected N] WORDS|- | edit MESSAGE --expected N TEXT|- "
          "| cover MESSAGE [--refresh [--operation ID]] [--expected N] [--stands TEXT] [--waits TEXT --default TEXT]... [--no-waits] "
          "[--payload TEXT --from MESSAGE [--link URL] [--kind answer|decision|preview|page|release] [--done-by MESSAGE]] [--no-payload] "
@@ -236,6 +236,7 @@ def _media_type(name, data):
 
 
 def self_quote_options(parser):
+    parser.add_argument("--quote")
     parser.add_argument("--quote-revision", type=int)
     parser.add_argument("--quote-start", type=int)
     parser.add_argument("--quote-end", type=int)
@@ -1329,6 +1330,17 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
     def reply_choice(self, args):
         options = self.options
         offsets = (options.quote_revision, options.quote_start, options.quote_end)
+        if options.quote is not None:
+            if not options.reply_to or not options.quote or options.without_quote is not None or any(value is not None for value in offsets):
+                self.refuse("INVALID_REPLY_PASSAGE", "Choose nonempty --quote text with a reply target, without offsets or --without-quote")
+            source = self.view("source", {"source_ref": {"kind": "message", "id": options.reply_to}})
+            if source["withheld"]:
+                self.refuse("MESSAGE_HELD", "Its author is editing this message; read it again before replying")
+            start = source["body"].find(options.quote)
+            if start < 0:
+                self.refuse("INVALID_REPLY_PASSAGE", "That text isn't in the message you're replying to")
+            args["reply_passage"] = {"source": dict(source["source_ref"], revision=source["revision"]),
+                                     "start": start, "end": start + len(options.quote)}
         if any(value is not None for value in offsets):
             if not options.reply_to or any(value is None for value in offsets):
                 self.refuse("INVALID_REPLY_PASSAGE", "A quoted reply needs its target, revision, start and end")

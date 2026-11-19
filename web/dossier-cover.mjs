@@ -57,9 +57,18 @@ function cite(doc, topicId, messageId, seq, title) {
   return node;
 }
 
-function waitsLabel(doc, owner, context) {
+// A wait keeps the message it came from. Older/source-free waits open the
+// actual dossier root, including when only a reply is loaded as its tab.
+function waitLink(doc, words, wait, context) {
+  const message = wait?.message_id ?? wait?.ask_id ?? context.rootId;
+  return message ? linkNode(doc, words, { route: { kind: 'topic', id: context.topicId, message }, written: true })
+    : element(doc, 'span', '', words);
+}
+
+function waitsLabel(doc, owner, wait, context) {
   const mine = owner === context.viewer;
-  const label = element(doc, 'span', mine ? 'topic-state mine asks-you' : 'topic-state', mine ? 'Waits on you' : `Waits on ${context.nameOf(owner)}`);
+  const label = waitLink(doc, mine ? 'Waits on you' : `Waits on ${context.nameOf(owner)}`, wait, context);
+  label.className = mine ? 'topic-state mine asks-you' : 'topic-state';
   return label;
 }
 
@@ -100,7 +109,7 @@ export function coverSheet(doc, cover, context) {
   }
   for (const wait of cover.waiting ?? []) {
     const row = line('cover-wait');
-    row.append(waitsLabel(doc, wait.actor_id ?? cover.owner, ctx), ' ', element(doc, 'span', 'cover-words', wait.text), element(doc, 'span', 'cover-note', waitWords(wait)));
+    row.append(waitsLabel(doc, wait.actor_id ?? cover.owner, wait, ctx), ' ', element(doc, 'span', 'cover-words', wait.text), element(doc, 'span', 'cover-note', waitWords(wait)));
     const answers = coverAnswers(doc, wait, ctx); if (answers) row.append(answers);
   }
   sheet.dataset.done = String(Boolean(payload?.done) && !(cover.waiting ?? []).length);
@@ -114,7 +123,7 @@ export function coverPills(doc, cover, context) {
   const pills = element(doc, 'span', 'row-pills');
   if (cover.payload) pills.append(payloadPill(doc, cover.payload, ctx));
   if ((cover.waiting ?? []).length) {
-    const pill = element(doc, 'span', 'row-pill pill-waits'); pill.dataset.state = 'waiting';
+    const pill = waitLink(doc, '', cover.waiting[0], ctx); pill.className = 'row-pill pill-waits'; pill.dataset.state = 'waiting';
     const count = cover.waiting.length;
     pill.append(glyph('waits', doc, 15), element(doc, 'span', 'pill-words', `${count === 1 ? 'waits' : `${count} wait`} on ${[...new Set(cover.waiting.map(wait => whom(wait.actor_id ?? cover.owner, ctx)))].join(', ')}`));
     pill.title = cover.waiting.map(wait => `${wait.text} ${waitWords(wait)}`).join('\n');
@@ -128,7 +137,7 @@ export function coverPills(doc, cover, context) {
 }
 
 // A key for what a cover shows a reader, so a sheet is drawn again only when it changes.
-export const coverKey = (cover, context) => (cover ? JSON.stringify([cover.stands, cover.waiting, cover.payload, cover.owner, cover.root_id, cover.revision, cover.writer, cover.refresh, cover.refresh_revision, context.viewer, context.topicId]) : '');
+export const coverKey = (cover, context) => (cover ? JSON.stringify([cover.stands, cover.waiting, cover.payload, cover.owner, cover.root_id, cover.revision, cover.writer, cover.refresh, cover.refresh_revision, context.viewer, context.topicId, context.rootId]) : '');
 
 const pillRows = new WeakMap();
 // The pills of a message on its own that carries a cover, set under its

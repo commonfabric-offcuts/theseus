@@ -846,7 +846,8 @@ export class StackFeed {
   // message on its own unless alone is requested (the Reader), one no stack
   // drawn holds, and a dossier with no cover.
   dossierCover(id, { alone = false } = {}) {
-    const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
+    const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id))
+      ?? this.state.stacks.find(each => positionOf(each)?.root_id === id);
     const cover = stack ? stackCover(stack, { alone }) : null;
     return cover ? { cover, topicId: stack.head.topic_id, rootId: positionOf(stack)?.root_id ?? stack.head.id } : null;
   }

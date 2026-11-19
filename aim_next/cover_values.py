@@ -71,9 +71,12 @@ def _waiting(value):
         raise Refusal("INVALID_ARGUMENT", "waiting is a list of at most %d things that wait on the owner" % WAITS)
     waits = []
     for each in value:
-        if not isinstance(each, dict) or set(each) != {"text", "default"}:
+        if not isinstance(each, dict) or not {"text", "default"} <= set(each) <= {"text", "default", "message_id"}:
             raise Refusal("INVALID_ARGUMENT", "Each thing waiting names its text and its default: what holds if the owner says nothing")
-        waits.append({"text": _line(each["text"], "What waits", WAIT_CHARS), "default": _line(each["default"], "Its default", DEFAULT_CHARS)})
+        wait = {"text": _line(each["text"], "What waits", WAIT_CHARS), "default": _line(each["default"], "Its default", DEFAULT_CHARS)}
+        if "message_id" in each:
+            wait["message_id"] = None if each["message_id"] is None else _identifier(each["message_id"], "message_id")
+        waits.append(wait)
     return waits
 
 
@@ -167,6 +170,12 @@ def shown(db, actor, value, by, at_ms, owner):
     # and visibility rather than trusting cover text.
     human = db.execute("SELECT kind FROM actors WHERE id=?", (actor,)).fetchone()[0] == "human"
     for wait in waiting:
+        # Both recorded sources are reader-scoped. A hidden first source can
+        # fall through to the visible Ask; neither identifier leaks in a link.
+        for key in ("message_id", "ask_id"):
+            if wait.get(key) and db.execute("SELECT 1 FROM messages m WHERE m.id=:id AND " + VISIBLE,
+                                            {"id": wait[key], "actor": actor}).fetchone() is None:
+                del wait[key]
         if not human or wait.get("actor_id") != actor or not wait.get("ask_id"):
             continue
         ask = db.execute("SELECT m.go_ahead,m.addressees FROM messages m WHERE m.id=:id AND " + VISIBLE,

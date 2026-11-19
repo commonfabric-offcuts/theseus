@@ -59,9 +59,15 @@ after a committed send changes neither its recorded quote nor its basis.
 Assessment finish carries the same optional two request fields and returns the
 same basis, with no internal exemption or invented whole-parent selection.
 
-CLI adds `--quote-revision N --quote-start S --quote-end E` and
-`--without-quote REASON` to reply, post and whisper. It passes offsets through
-without selecting a passage itself. Before uploading reply attachments, the
+CLI accepts `--quote TEXT`, `--quote-revision N --quote-start S --quote-end E`, or
+`--without-quote REASON` on reply, post --reply-to and whisper --reply-to.
+The author chooses TEXT; the CLI reads the parent's current raw body and finds
+its first exact occurrence, filling in the existing source revision and span.
+An absent substring refuses "That text isn't in the message you're replying to"
+before any upload or send. Empty text, a missing parent, or mixed selection
+forms refuse too. Explicit offsets remain available unchanged. Core still
+checks the selected revision and span atomically, including a concurrent edit.
+Before uploading reply attachments, the
 CLI checks the same selector on a bound source read; publication rechecks it
 atomically. Source reads retain existing exposure bookkeeping. Raw Core/HTTP use the fields above.
 Human manual replies continue to send without these fields.
