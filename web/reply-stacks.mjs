@@ -209,7 +209,7 @@ export function setLevel(state, stack, level) {
 // is its own view: More's button goes, every New item shows wherever it sits,
 // put aside or not, and hidden agent coordination stays hidden (aim.css,
 // stack-look.css).
-const coordinationRevealed = (state, stack) => [stack.head, ...stack.replies].some(item => state.coordinationHere.has(item.id));
+const coordinationRevealed = (state, stack) => [stack.head, ...stack.replies].some(item => state.coordinationHere.has(item.id) || item.yours?.note === true);
 export function shownView(state) {
   const only = state.only ?? null, asideShown = Boolean(state.moreOpen || only);
   return { below: stack => state.below.has(stack.id), only, asideShown,
@@ -748,8 +748,8 @@ function paintStack(section, stack, byId, context) {
   // (stack-order.mjs, gather) is headed by one of its replies, a card of its
   // own before 550: folded, it shows whole, as each reply kept in view does,
   // never as its tab alone.
-  const whole = single || open || stack.dossier !== stack.id;
-  if (open && headBefore && !starred && !state.folded.has(stack.id) && !state.whole.has(stack.id)) state.earlierRows.add(stack.id);
+  const whole = single || open || stack.dossier !== stack.id || stack.head.yours?.note === true;
+  if (open && headBefore && stack.head.yours?.note !== true && !starred && !state.folded.has(stack.id) && !state.whole.has(stack.id)) state.earlierRows.add(stack.id);
   const kept = item => {
     if (state.kept.has(item.id)) return true;
     if (!unread(item)) return false;
@@ -761,7 +761,7 @@ function paintStack(section, stack, byId, context) {
   if (separate) unhead(head);
   const shown = paintHead(separate ? p.header : cardIn(head), stack, { open: open && !separate, starred: marked, state, unread, nameOf, doc, separate });
   p.toggle.dataset.state = level;
-  Object.assign(section.dataset, { coordination: coordination ? 'agents' : '', compact: String(!separate && !whole && coordination && level === 'head' && state.renaming !== stack.id) });
+  Object.assign(section.dataset, { coordination: coordination ? 'agents' : '', compact: String(!separate && !whole && coordination && level === 'head' && state.renaming !== stack.id && !stack.replies.some(item => item.yours?.note === true)) });
   p.toggle.setAttribute('aria-expanded', String(level !== 'head'));
   p.toggle.setAttribute('aria-label', `${{ head: 'Closed; show latest and unread replies', folded: 'Latest and unread replies; show all messages', open: 'All messages; show latest and unread replies' }[level]}: ${shown.name}`);
   p.toggle.onclick = () => { setLevel(state, stack, LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length]); state.on?.folded?.(stack, level); state.again(); };
@@ -775,7 +775,7 @@ function paintStack(section, stack, byId, context) {
       const entry = byId.get(row.item.id); entry.hidden = false; desired.push(entry);
       if (row.context && row.folded) { state.contextRows.add(row.item.id); state.folded.add(row.item.id); }
       // An earlier message reads as its row; one the reader folded keeps that row, a starred one stays whole.
-      if (row.earlier && !row.folded && row.item.acts?.starred !== true && !state.whole.has(row.item.id)) state.earlierRows.add(row.item.id);
+      if (row.earlier && !row.folded && row.item.yours?.note !== true && row.item.acts?.starred !== true && !state.whole.has(row.item.id)) state.earlierRows.add(row.item.id);
       continue;
     }
     if (row.kind === 'earlier') {

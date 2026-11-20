@@ -246,7 +246,7 @@ export function earlierOf(stack, level, { held = null } = {}) {
 // the page has not loaded keeps each branch's head in view (branches): before
 // 550 each was a stack of its own, its card in view, and a fold loses none.
 function shownWithoutContext(stack, item, { level = 'folded', kept = () => false, earlier = false, held = null } = {}) {
-  if (stack.filled?.has(item.id)) return true;
+  if (stack.filled?.has(item.id) || item.yours?.note === true) return true;
   if (!earlier && earlierOf(stack, level, { held }).includes(item)) return false;
   if (level === 'open') return true;
   if (level === 'head') return false;
@@ -276,7 +276,7 @@ export function shown(stack, item, options = {}) {
 // (peeked(item)), which shows it whole without unfolding it.
 export function rowFolded(item, { peeked = () => false } = {}) {
   const acts = actsOf(item);
-  return acts.folded === true && acts.starred !== true && !peeked(item);
+  return acts.folded === true && acts.starred !== true && item.yours?.note !== true && !peeked(item);
 }
 const newestReply = stack => stack.replies.reduce((most, item) => Math.max(most, item.seq), 0);
 
@@ -299,7 +299,7 @@ export function rowsOf(stack, { level = 'folded', kept, unread = () => false, ne
   const options = { level, kept, newReply, earlier, held }, context = contextParents(stack, options);
   const rows = [], all = stack.replies, show = item => shown(stack, item, { ...options, context });
   const earliest = earlierOf(stack, level, { held });
-  const hiddenEarlier = headWhole ? earliest.filter(item => item !== stack.head) : earliest;
+  const hiddenEarlier = earliest.filter(item => item.yours?.note !== true && (!headWhole || item !== stack.head));
   if (hiddenEarlier.length && !earlier) rows.push({ kind: 'earlier', items: hiddenEarlier, words: `${hiddenEarlier.length} earlier ${(headWhole ? replies : messages)(hiddenEarlier.length)}`, fresh: hiddenEarlier.filter(unread).length });
   let run = [], before = true;
   const flush = () => {

@@ -28,6 +28,11 @@ import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
 import { whisperOutlineReading } from './whisper_outline_native.mjs';
 
+import { betweenOthers } from '../web/fold.mjs';
+import { gather, ordered } from '../web/stack-order.mjs';
+import { coordinationStack } from '../web/coordination-stacks.mjs';
+import { agentTalk } from '../web/card-reading.mjs';
+
 const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } };
 // A pointer at a phone's widths: a narrow laptop window, or a tablet with a trackpad. open() takes these too; they are
 // kept out of DEVICES, which the checks that run on every device go through.
@@ -65,8 +70,9 @@ const HEARD = `(()=>{window.sent=[];window.sendReceipts=[];window.taps=0;window.
   return answer};
   addEventListener('click',()=>{window.taps++},true)})()`;
 
-export const readingSeed = control => async (topic, said) => {
+export const readingSeed = control => async (topic, said, before = null) => {
     await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Reading ' + topic }] });
+    if (before) await before();
     const ids = {};
     let n = 0;
     for (const [name, more] of said) {
@@ -248,6 +254,288 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   const valueOf = (p, field) => p.evaluate(`document.querySelector(${JSON.stringify(field)}).value`);
   // Each image row under a writing: its words, "name · state".
   const imageRows = (p, host) => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(host + ' .image-choice')})].map(r=>r.firstElementChild.textContent)`);
+
+  // Item 800: eight scenarios, with all own acceptance branches in each.
+  // The runner captures this existing module in both engines; no input-list edit.
+  for (const size of ['phone-320','phone-375','phone','laptop']) for (const theme of ['light','dark']) {
+    const name = `reading item 800 ${size} ${theme}: own note stays whole through every fold route`;
+    await check(name, async () => {
+      const device=size==='laptop'?'laptop':'phone', topic=`note800-${size}-${theme}`;
+      const layoutTolerancePx=1; // Subpixel rounding; 16px and displaced source-rule mutants fail below.
+      const phases=[],captureErrors=[]; let p=null,primary=null,switched=false;
+      const phase=label=>phases.push(label);
+      const note='Own private words — exact.\nTwo  spaces.',noteFor=key=>note+'\nSource '+key+'.',reply='Unsent reply — same destination.\nKeep  this.';
+      const bodies={auto:'Between other readers, keep these exact words.',root:'Dossier original, keep this author and body.',
+        covered:'Earlier covered reply, keep its own corner.',quietRoot:'Quiet dossier original keeps its actual note corner.',quietReply:'Quiet dossier reply keeps its actual note corner.',plain:'Ordinary message without a private note.'};
+      let ids;
+      const snapshot=async label=>{
+        try { observations.push({name,phase:label,state:await p.evaluate(`(()=>{const rect=e=>{const b=e.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height}};
+          return {active:document.activeElement?.className,reader:document.querySelector('#reader')?.open,
+            cards:[...document.querySelectorAll('#messages .message-card')].slice(0,20).map(c=>({id:c.dataset.id,folded:c.dataset.folded,earlier:c.dataset.earlier,hidden:c.hidden,rect:rect(c),corner:Boolean(c.querySelector('.note-corner')?.getClientRects().length)})),
+            stacks:[...document.querySelectorAll('#messages .reply-stack')].map(s=>({id:s.dataset.stack,fold:s.dataset.fold,headOpen:s.dataset.headOpen,compact:s.dataset.compact}))}})()`)}); }
+        catch(error){captureErrors.push({phase:label,kind:'diagnostics',error:error.stack});}
+        try {await shot(p,`reading-item800-${size}-${theme}-${label}`);}
+        catch(error){captureErrors.push({phase:label,kind:'screenshot',error:error.stack});}
+      };
+      const whole=async id=>{
+        await until(()=>p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))}),n=c?.querySelector(':scope > .note-corner'),w=c?.querySelector(':scope > .message-preview');
+          return Boolean(c&&!c.hidden&&c.dataset.folded!=='true'&&c.dataset.earlier!=='true'&&n?.getClientRects().length&&w?.getClientRects().length&&getComputedStyle(n).display!=='none')})()`),name+': actual card and corner remain whole '+id);
+      };
+      const repliesReady=()=>until(()=>p.evaluate(`(()=>{const ids=${JSON.stringify(['auto','root','covered','quietRoot','quietReply'].map(key=>ids[key]))};return ids.every(id=>{const c=document.querySelector('#messages .message-card[data-id="'+id+'"] .card-reply-composer');return c?.getClientRects().length&&c.querySelector('textarea')?.value===${JSON.stringify(reply)}})})()`),'all five saved reply fields finish restoring exact writing before geometry or gestures');
+      const geometry=async id=>{
+        const selector=card(id)+' > .note-corner'; await centre(p,selector);
+        await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+        return p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))}),n=c.querySelector(':scope > .note-corner'),
+          rect=e=>{const b=e.getBoundingClientRect();return {left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width,height:b.height}},b=rect(n),host=rect(c),
+          content=[...c.children].filter(e=>e!==n&&!e.matches('.stack-head')).map(rect).filter(b=>b.width>0&&b.height>0),misses=[];
+          for(let dx=.5;dx<44;dx++)for(let dy=.5;dy<44;dy++){const x=b.left+dx,y=b.top+dy;if(x<0||y<0||x>=innerWidth||y>=innerHeight||!n.contains(document.elementFromPoint(x,y)))misses.push({dx,dy})}
+          return {b,host,contentBottom:Math.max(host.top,...content.map(r=>r.bottom)),missCount:misses.length,misses:misses.slice(0,8)}})()`);
+      };
+      const assertGeometry=g=>{
+        assert.ok(g.b.width>=44-layoutTolerancePx&&g.b.height>=44-layoutTolerancePx,'layoutTolerancePx=1: 44px whole target');
+        assert.ok(g.b.left>=g.host.left-layoutTolerancePx&&g.b.right<=g.host.right+layoutTolerancePx&&g.b.top>=g.host.top-layoutTolerancePx&&g.b.bottom<=g.host.bottom+layoutTolerancePx,
+          'layoutTolerancePx=1: corner within its actual card');
+        assert.ok(g.b.top>=g.contentBottom-layoutTolerancePx,'layoutTolerancePx=1: corner follows all actual content');
+        assert.equal(g.missCount,0,'all 1936 CSS pixel centres hit this corner, including its bottom edge');
+      };
+      const coreFold=async(key,on,suffix,sender=facts.actor)=>{
+        const receipt=await control({method:'stack_act',sender,kind:'message.fold',message_id:ids[key],operation_id:topic+'-'+suffix,args:{folded:on}});
+        assert.equal(receipt.status,'committed',JSON.stringify(receipt));
+      };
+      const writing=async(key,body,suffix)=>{
+        const receipt=await control({method:'private_writing',operation_id:topic+'-'+suffix,topic_id:topic,message_id:ids[key],kind:'note',body});
+        assert.equal(receipt.status,'committed',JSON.stringify(receipt));
+      };
+      const readback=async(key,wantNote)=>{
+        const saved=await view('editor_state',{source_ref:{kind:'message',id:ids[key]},topic_id:topic});
+        assert.equal(saved.note.body,wantNote);assert.equal(saved.draft.body,reply);
+        assert.deepEqual(saved.source_ref,{kind:'message',id:ids[key]});assert.equal(saved.destination.topic_id,topic);
+        return saved;
+      };
+      const nativeFocus=async selector=>{
+        for(let n=0;n<80;n++){
+          if(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`))return;
+          await p.key('Tab',8);
+        }
+        assert.fail('native Shift-Tab did not reach '+selector);
+      };
+      const openNote=async(key,byKey=false,want=noteFor(key))=>{
+        const selector=card(ids[key])+' > .note-corner';await whole(ids[key]);assertGeometry(await geometry(ids[key]));
+        if(byKey){await nativeFocus(selector);await p.key('Enter');}else await press(p,device,selector);
+        await until(()=>p.evaluate(`document.querySelector('#reader').open&&document.querySelector('#writing-label').textContent==='Private note'&&document.querySelector('#writing-body').value===${JSON.stringify(want)}`),'native input opens the exact own note');
+        const shownBody = ['covered','quietReply'].includes(key)
+          ? bodies[key].replace('\n\n> Exercise the actual private-note corner on this reply.\n\n','\nExercise the actual private-note corner on this reply.')
+          : bodies[key]; // Reader textContent renders the already-asserted Markdown quote.
+        assert.equal(await readerOn(p),shownBody);
+        assert.equal(await p.evaluate("document.querySelector('#destination-label').hidden"),true);
+        await readback(key,want);
+      };
+      try {
+        ids=await seed(topic,[
+          ['auto',{sender:'aim-core',join:true,addressees:['aim-ux'],body:bodies.auto}],
+          ['root',{sender:'aim-core',addressees:[facts.actor],body:bodies.root}],
+          ['covered',{sender:'aim-core',reply_to:'root',addressees:[facts.actor],body:bodies.covered}],
+          ...Array.from({length:8},(_,i)=>['later'+i,{sender:'aim-core',reply_to:'root',addressees:[facts.actor],body:'Later ordinary reply '+i,read:i===7}]),
+          ['quietRoot',{sender:'aim-core',addressees:['aim-ux'],body:bodies.quietRoot}],
+          ['quietReply',{sender:'aim-core',reply_to:'quietRoot',addressees:['aim-ux'],body:bodies.quietReply,read:true}],
+          ['plain',{sender:'aim-core',addressees:[facts.actor],body:bodies.plain,read:true}]
+        ].map(([key,args])=>[key,{...args,...(args.reply_to ? {reply_without_quote:'Exercise the actual private-note corner on this reply.'} : {divergence_reason:'Independent private-note fold route: '+key})}]), async()=>{
+          // Real public setup, before the first addressed send. join admits its
+          // sender only; aim-core joining cannot make aim-ux reachable.
+          const operation=topic+'-admit-ux';
+          const admitted=await control({method:'agent_message',operation_id:operation,topic_id:topic,source:'topic',
+            sender:'aim-ux',join:true,body:'Synthetic recipient joins this fixture topic.',divergence_reason:'Admit the private-note fixture recipient.'});
+          assert.equal(admitted.status,'committed');
+          const joined=await view('operation',{operation_id:operation+'-join'});
+          assert.equal(joined.status,'committed');assert.equal(joined.kind,'participation.set');
+          const membership=await view('topic',{topic_id:topic});
+          assert.ok(membership.participants.some(p=>p.actor_id==='aim-ux'&&p.active===1&&p.receiving===true));
+          const recorded=await control({method:'agent_view',actor:'aim-ux',name:'operation',args:{operation_id:operation}});
+          assert.deepEqual(recorded,admitted,'joining message read back under its real author');
+          observations.push({name,phase:'fixture-admission-readback',joined,admitted:recorded,
+            participants:membership.participants.map(p=>({actor_id:p.actor_id,active:p.active,receiving:p.receiving}))});
+        });
+        for(const key of ['auto','root','covered','quietRoot','quietReply']){
+          await writing(key,noteFor(key),'initial-note-'+key);
+          assert.equal((await control({method:'private_writing',operation_id:topic+'-draft-'+key,topic_id:topic,message_id:ids[key],kind:'draft',body:reply})).status,'committed');
+          await coreFold(key,true,'retained-fold-'+key);
+          await readback(key,noteFor(key));
+        }
+        const feed=await view('topic_messages',{topic_id:topic});
+        const addressed=await control({method:'agent_view',actor:'aim-core',name:'operation',args:{operation_id:topic+'-0'}});
+        assert.equal(addressed.status,'committed');assert.equal(addressed.kind,'message.send');
+        assert.equal(addressed.result.message_id,ids.auto,'addressed send committed under its actual author');
+        // Assert the real Core topology and renderer classification explicitly:
+        // the preliminary join is older than every acceptance source and cannot
+        // become their reply parent or change their dossier/order/fold shape.
+        const byId=new Map(feed.items.map(m=>[m.id,m])),stacks=gather(feed.items,{viewer:facts.actor});
+        const main=stacks.find(s=>s.id===ids.root),quiet=stacks.find(s=>s.id===ids.quietRoot);
+        assert.equal(byId.get(ids.auto).reply_to,null);assert.equal(byId.get(ids.auto).stack_position.root_id,ids.auto);
+        assert.equal(betweenOthers(byId.get(ids.auto),facts.actor,'human'),true,'automatic wrapper remains between others');
+        assert.deepEqual(main.replies.map(m=>m.id),[ids.covered,...Array.from({length:8},(_,i)=>ids['later'+i])]);
+        assert.deepEqual(quiet.replies.map(m=>m.id),[ids.quietReply]);
+        for(const m of [main.head,...main.replies])assert.equal(m.stack_position.root_id,ids.root);
+        for(const m of [quiet.head,...quiet.replies])assert.equal(m.stack_position.root_id,ids.quietRoot);
+        const participants=(await view('topic',{topic_id:topic})).participants,kinds=new Map(participants.map(p=>[p.actor_id,p.kind]));
+        const agentExchange=m=>agentTalk(m,facts.actor,'human',id=>kinds.get(id));
+        assert.equal(coordinationStack(main,agentExchange),false);assert.equal(coordinationStack(quiet,agentExchange),true);
+        const sourceIds=new Set([ids.auto,ids.root,ids.quietRoot,ids.plain]);
+        assert.deepEqual(ordered(stacks).filter(s=>sourceIds.has(s.id)).map(s=>s.id),[ids.plain,ids.quietRoot,ids.root,ids.auto]);
+        observations.push({name,phase:'fixture-shape-readback',addressed,
+          sources:[...sourceIds].map(id=>({id,root:byId.get(id).stack_position.root_id,reply_to:byId.get(id).reply_to})),
+          mainReplies:main.replies.map(m=>m.id),quietReplies:quiet.replies.map(m=>m.id)});
+        for(const key of ['auto','root','covered','quietRoot','quietReply']){
+          const m=feed.items.find(m=>m.id===ids[key]);assert.equal(m.yours.note,true);assert.equal(m.acts.folded,true);assert.equal(m.body,['covered','quietReply'].includes(key)?'Reply without a quote:\n\n> Exercise the actual private-note corner on this reply.\n\n'+bodies[key]:bodies[key]);bodies[key]=m.body;assert.equal(m.author_id,'aim-core');
+          assert.equal(JSON.stringify(m).includes('Own private words'),false,'feed carries no private body');
+        }
+        phase('real-Core-setup-and-committed-readback');
+        observations.push({name,phase:'fixture-origin',origin:facts.origin});
+        p=await open(topic,size,topic,ids.auto,'',undefined,q=>q.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]}));
+        await repliesReady();
+        for(const key of ['auto','root','covered','quietRoot','quietReply'])await whole(ids[key]);
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.auto))}).parentElement.className`),'message-fold','automatic between-message wrapper retained');
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.auto))}).previousElementSibling.hidden`),true,'no substitute folded line');
+        const toggle=`#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state`),'open','210 ordinary dossier default');
+        await centre(p,toggle);await press(p,device,toggle);
+        await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state==='folded'`),'native collapse retains own-note cards');
+        for(const key of ['root','covered'])await whole(ids[key]);
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.quietRoot))}).closest('.reply-stack').dataset.fold`),'head','quiet dossier retains closed level');
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.quietRoot))}).closest('.reply-stack').dataset.compact`),'false','own note prevents compact row hiding');
+        for(const key of ['auto','root','covered','quietRoot','quietReply'])assertGeometry(await geometry(ids[key]));
+        phase('automatic-and-retained-fold-and-closed-dossier');
+        // Open/close the actual dossier without discarding its note-bearing original or reply.
+        await centre(p,toggle);await press(p,device,toggle);
+        await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state==='open'`),'native dossier opens');
+        for(const key of ['root','covered'])await whole(ids[key]);
+        assertGeometry(await geometry(ids.covered));
+        phase('open-earlier-dossier-keeps-note-cards');
+        await centre(p,toggle);await press(p,device,toggle);
+        for(const key of ['root','covered'])await whole(ids[key]);
+        await snapshot('folded-dossier-with-note');
+        // Applied source-rule mutants cross the named geometry tolerances; these are
+        // deliberate candidate-page mutations, never labelled original screenshots.
+        for(const [label,rules,pattern] of [
+          ['small-target','.note-corner{width:16px!important;height:16px!important}',/44px/],
+          ['displaced-corner','.note-corner{position:absolute!important;top:0!important;left:-80px!important;right:auto!important}',/within|follows/],
+          ['covered-hit','.note-corner{pointer-events:none!important}',/1936/]
+        ]){
+          await p.evaluate(`(()=>{const e=document.createElement('style');e.id='item800-mutant';e.textContent=${JSON.stringify(rules)};document.head.append(e)})()`);
+          try{
+            assert.equal(await p.evaluate("document.querySelector('#item800-mutant').textContent"),rules,'exact source-rule mutant applied');
+            const reds=[];
+            for(const key of ['auto','root','covered','quietRoot','quietReply']){
+              const red=await geometry(ids[key]);assert.throws(()=>assertGeometry(red),pattern,key+': '+label+' actually fails');reds.push({key,red});
+            }
+            observations.push({name,phase:'applied-'+label,rulesSha256:createHash('sha256').update(rules).digest('hex'),reds});
+            await snapshot('mutant-'+label);
+          }finally{await p.evaluate("document.querySelector('#item800-mutant')?.remove()");}
+          assert.equal(await p.evaluate("Boolean(document.querySelector('#item800-mutant'))"),false);
+          const restored=[];for(const key of ['auto','root','covered','quietRoot','quietReply']){const green=await geometry(ids[key]);assertGeometry(green);restored.push({key,green});}
+          observations.push({name,phase:'restored-'+label,restored});
+        }
+        phase('geometry-mutants-and-exact-restored-controls');
+        // Corner pointer/first-touch opening, then native Tab and Return.
+        await openNote('covered');await snapshot('exact-note-open');await closeReader(p,device);
+        await p.key('Tab',8);await p.key('Tab');await openNote('covered',true);await closeReader(p,device);
+        await nativeFocus(card(ids.covered));
+        await p.key('x'); // Existing retained true becomes false.
+        await until(async()=>!(await view('message_acts',{topic_id:topic})).items.find(m=>m.message_id===ids.covered).acts.folded,'native x unfolds stored act');
+        await p.key('x');
+        await until(async()=>(await view('message_acts',{topic_id:topic})).items.find(m=>m.message_id===ids.covered).acts.folded,'native x commits explicit fold');
+        await whole(ids.covered);phase('native-explicit-fold-command');
+        await coreFold('covered',false,'before-native-swipe');
+        await until(async()=>!(await view('message_acts',{topic_id:topic})).items.find(m=>m.message_id===ids.covered).acts.folded,'Core setup cleared fold before swipe');
+        // Let the real page admit that later stored act before the native swipe.
+        await p.evaluate('window.item800BeforeReload=true');await p.send('Page.reload');
+        await until(async()=>{try{return await p.evaluate("!window.item800BeforeReload&&document.body.dataset.ready==='true'");}catch(error){if(/Inspected target navigated or closed|Execution context was destroyed|Cannot find context/.test(error.message))return false;throw error;}},'new document admits current Core act');
+        await repliesReady();
+        await whole(ids.covered);await centre(p,words(ids.covered));
+        const [x,y]=await within(p,words(ids.covered)); // Gesture belongs to message words, outside its independent reply field.
+        if(device==='phone'&&engine==='chrome'){
+          const start=x-50;
+          await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:start,y}]});
+          for(const dx of [25,50,75,100])await p.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:start+dx,y}]});
+          await p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+        }else{
+          let wheelX,wheelY,aimed=false;
+          for(let aim=0;aim<4&&!aimed;aim++){
+            await centre(p,words(ids.covered));
+            [wheelX,wheelY]=await within(p,words(ids.covered));
+            await p.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:wheelX,y:wheelY});
+            aimed=await p.evaluate(`new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>done(Boolean(document.querySelector(${JSON.stringify(words(ids.covered))})?.contains(document.elementFromPoint(${wheelX},${wheelY})))))))`);
+          }
+          assert.equal(aimed,true,'message words hold under the pointer after native hover and reveal');
+          await p.evaluate("(()=>{window.item800Wheels=[];addEventListener('wheel',e=>window.item800Wheels.push({x:e.deltaX,y:e.deltaY,ctrl:e.ctrlKey,meta:e.metaKey,prevented:e.defaultPrevented,target:e.target.className,message:e.target.closest('[data-id]')?.dataset.id,status:document.querySelector('#stack-said')?.textContent}),{passive:true})})()");
+          await p.send('Input.dispatchMouseEvent',{type:'mouseWheel',x:wheelX,y:wheelY,deltaX:-120,deltaY:0});
+          await until(()=>p.evaluate('window.item800Wheels.length>0'),'native wheel reaches the document');
+          const events=await p.evaluate('window.item800Wheels');
+          observations.push({name,phase:'native-wheel-target',events});
+          assert.equal(events[0].message,ids.covered,'native swipe actually starts on its intended message');
+        }
+        await until(async()=>(await view('message_acts',{topic_id:topic})).items.find(m=>m.message_id===ids.covered).acts.folded,'native swipe committed fold in Core');
+        await whole(ids.covered);phase('native-swipe');
+        observations.push({name,deviceLimit:device==='laptop'?'Software laptop viewport on test browser; no physical device claim':engine==='chrome'?'Emulated phone viewport and native CDP touch; no physical phone/OS keyboard claim':'WebKit touch-enabled desktop at phone width; native taps and wheel, no finger-drag or physical phone claim'});
+        // Exact native edit/save and deletion of the note, retaining saved reply.
+        await openNote('covered');await press(p,device,'#writing-body');await p.key('a',4);
+        const edited=noteFor('covered')+'\nNative edited words.';await p.send('Input.insertText',{text:edited});await p.key('Enter',4);
+        await until(async()=> (await view('editor_state',{source_ref:{kind:'message',id:ids.covered},topic_id:topic})).note.body===edited,'native note edit saved');
+        await readback('covered',edited);await whole(ids.covered);
+        await closeReader(p,device);await openNote('covered',false,edited);
+        await press(p,device,'#writing-body');await p.key('a',4);await p.key('Backspace');await p.key('Enter',4);
+        await until(async()=> (await view('editor_state',{source_ref:{kind:'message',id:ids.covered},topic_id:topic})).note.body==='','native note deletion saved empty');
+        await readback('covered','');await closeReader(p,device);
+        await until(()=>p.evaluate(`!document.querySelector(${JSON.stringify(card(ids.covered)+' > .note-corner')})`),'deletion removes own corner');
+        // A note added after the retained dossier/personal folds is admitted live.
+        await writing('covered',noteFor('covered'),'delayed-add');await whole(ids.covered);
+        await openNote('covered');await readback('covered',noteFor('covered'));await closeReader(p,device);
+        await writing('covered','   \n','delayed-remove');
+        await until(()=>p.evaluate(`!document.querySelector(${JSON.stringify(card(ids.covered)+' > .note-corner')})`),'whitespace-only note removes exception');
+        // With its older replies read, this folded dossier hides it normally.
+        await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(entry(ids.covered))}).hidden===true`),'same reply without note folds normally');
+        for(const key of ['root','auto'])await writing(key,'','clear-'+key);
+        await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).closest('.reply-stack').dataset.headOpen==='false'`),'root without note folds into retained dossier');
+        await until(()=>p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.auto))});return c.dataset.folded==='true'&&!c.getClientRects().length&&!c.querySelector(':scope > .note-corner')})()`),'without the note, stored fold and ordinary quiet filtering both resume');
+        await coreFold('plain',true,'plain-control');
+        await until(()=>foldedRow(p,ids.plain),'separate no-note message folds normally');
+        phase('native-edit-delete-live-add-remove-and-no-note-negatives');
+        // Restore the actual own note, then render the same message in a real
+        // isolated server authenticated as the other existing fixture actor.
+        await writing('auto',noteFor('auto'),'restore-own-for-isolation');await whole(ids.auto);
+        await coreFold('auto',true,'other-reader-fold','aim-core');
+        await p.close();p=null;
+        await control({method:'server_stop'});switched=true;
+        Object.assign(facts,await control({method:'server_start',as_actor:'aim-core'}));
+        observations.push({name,phase:'fixture-origin',origin:facts.origin});
+        p=await open(topic+'-second-reader',size,topic,ids.auto,'',undefined,q=>q.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]}));
+        await until(()=>foldedRow(p,ids.auto),'real second reader without note sees same message folded');
+        assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.auto)+' > .note-corner')}))`),false,'no other reader flag/corner admitted');
+        assert.equal(await p.evaluate("document.querySelectorAll('#messages .note-corner,#messages .carry-note').length"),0,'no other reader note flags admitted');
+        assert.equal(await p.evaluate("document.querySelector('#messages').textContent.includes('Own private words')"),false,'no private body leaked');
+        await nativeFocus(card(ids.auto)); // Settle the new document's native focus before clicking its folded words.
+        assert.equal(await foldedRow(p,ids.auto),true,'focusing does not unfold the other reader\'s row');
+        await unfoldRow(p,device,ids.auto);await nativeFocus(card(ids.auto));await p.key('x');
+        await until(()=>foldedRow(p,ids.auto),'second reader native explicit fold works normally');
+        const theirs=await until(async()=>{const result=await control({method:'acts_as',reader:'aim-core',topic_id:topic});return result.acts.items.find(m=>m.message_id===ids.auto).acts.folded?result:null;},'second-reader native fold commits before readback');
+        assert.equal(theirs.acts.items.find(m=>m.message_id===ids.auto).acts.folded,true,'second-reader fold committed');
+        await snapshot('second-reader-no-note');phase('real-second-reader-no-note-native-fold');
+        assert.deepEqual(p.errors,[]);await p.close();p=null;
+        await control({method:'server_stop'});Object.assign(facts,await control({method:'server_start'}));switched=false;
+        observations.push({name,phase:'fixture-origin',origin:facts.origin});
+        phase('restored-fixture-owner');
+      }catch(error){primary=error;if(p)await snapshot('failure-before-teardown');}
+      finally{
+        if(p)try{await p.close();}catch(error){captureErrors.push({kind:'page-close',error:error.stack});}
+        if(switched){
+          try{await control({method:'server_stop'});}catch(error){captureErrors.push({kind:'stop-second-reader-fixture',error:error.stack});}
+          try{Object.assign(facts,await control({method:'server_start'}));}catch(error){captureErrors.push({kind:'restore-fixture-owner',error:error.stack});}
+        }
+        observations.push({name,phases,primaryError:primary?.stack??null,captureErrors,unrunAfter:primary?phases.at(-1)??'setup':null});
+      }
+      if(primary)throw primary;
+      assert.deepEqual(captureErrors,[],'capture and cleanup errors remain separate from product assertions');
+    });
+  }
 
   // Item 649: the corner opens only this reader's note. Faults below hold or refuse
   // the actual source/editor read; native clicks, taps and keys still start every act.

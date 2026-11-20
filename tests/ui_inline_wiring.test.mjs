@@ -90,7 +90,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const elements = new Map(), events = [], calls = [], paints = [], observers = [], days = [];
   class Element {
     constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true;
-      this.style = {}; this.scrollTop = 0; this.scrollHeight = 600; this.clientHeight = 600; }
+      this.style = { setProperty(name, value) { this[name] = value; }, removeProperty(name) { delete this[name]; } };
+      this.scrollTop = 0; this.scrollHeight = 600; this.clientHeight = 600; }
     addEventListener(name, fn) { this.handlers[name] = fn; }
     // The real selection-quote owner clones the Reader's pill. Clone its
     // content and reflected attributes, without copying event listeners.
