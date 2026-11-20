@@ -1,0 +1,33 @@
+<!doctype html><meta charset="utf-8"><title>914 isolated Cards colors</title>
+<style id="aim"></style><link rel="stylesheet" href="/web/rails.css"><link rel="stylesheet" href="/web/stack-look.css">
+<body><main><section id="full" class="deck-page"></section><article class="message-card whisper">Whisper border control</article></main>
+<dialog id="reader"></dialog><dialog id="new-message-sheet"></dialog>
+<script type="module">
+import {NotebookPage} from '/web/notebook-page.mjs';
+import {NotebookSheet} from '/web/notebook-sheet.mjs';
+import {AGENT_PALETTE} from '/web/author-colors.mjs';
+import {detailsLine} from '/web/card-details.mjs';
+const shipped=new DOMParser().parseFromString(await(await fetch('/web/index.html')).text(),'text/html');
+document.body.append(shipped.getElementById('new-message'));
+const bootstrap={instance_id:'fixture-914',actor:'fixture-reader',authority:{authority_id:'fixture-authority',authority_epoch:'fixture-epoch'}};
+const sources=new Map(),commands=[];
+const body='## First\n\nOrdinary words and [a link](https://example.invalid/).\n\n## Second\n\nOther words.\n\n'+AGENT_PALETTE.map((color,i)=>'## Chosen '+color+'\n\nDeliberate color.\n\n'+detailsLine({id:'c-'+String(i+1).repeat(32),aliases:[],color})+'\n\n').join('');
+const source=id=>{if(!sources.has(id))sources.set(id,{instance_id:bootstrap.instance_id,source_ref:{kind:'memory',id,revision:1},owner_scope:{kind:'topic',id:'fixture-topic'},title:'Fixture page',body,attachments:[],references:[],reader_may_write:true,reader_may_delete:true});return sources.get(id);};
+const read=async(name,args)=>{
+  if(name==='memory_current'||name==='memory_status')return structuredClone(source(args.item_id));
+  if(name==='memory_items')return {relevant_versions:{notebook:1}};
+  if(name==='topic_messages')return {items:[],next_cursor:null};
+  throw Error('Unexpected view '+name);
+};
+const api={view:read,command:async envelope=>{
+  commands.push(envelope);if(envelope.kind!=='memory.revise')throw Error('Unexpected command '+envelope.kind);
+  const s=source(envelope.target.item_id);Object.assign(s,envelope.args);s.source_ref={...s.source_ref,revision:s.source_ref.revision+1};
+  return {instance_id:bootstrap.instance_id,operation_id:envelope.operation_id,kind:envelope.kind,status:'committed',recorded:true,result:{item_id:s.source_ref.id,revision:s.source_ref.revision,source_ref:s.source_ref}};
+}};
+const make=(id,host,header,idSuffix='',revisionShown=()=>{})=>new NotebookPage({item:id,host,header,idSuffix,revisionShown,bootstrap,api,read,send:api.command,mode:'cards',viewPreference:{get:()=> 'cards',set(){}},place:async()=>({title:'Fixture',href:'/'}),askIn:async()=>({topicId:'fixture-topic',agents:['fixture-agent']})});
+const header=Object.fromEntries(['title','description','eyebrow'].map(k=>[k,document.createElement('span')]));
+const full=make('full',document.querySelector('#full'),header);await full.load();
+const sheet=new NotebookSheet({make,fullHref:()=>'/full',openStack:async()=>true,goBack(){},feed:{topicId:'fixture-topic',read,open:async()=>true}});
+await sheet.open('docked',{mode:'cards',beside:true});
+window.fixture={sheet,full,commands};document.body.dataset.ready='true';
+</script>
