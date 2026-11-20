@@ -1724,7 +1724,8 @@ function participantPill(person) {
 function paintHeader(current) {
   // ✅ Done on a topic Ready for review, for a reader who may say where it stands: the Done chip's tap.
   paintTopicHeader({ title: $('topic-title'), subtitle: $('topic-description'), gear: $('settings-open') }, current, bootstrap.actor,
-    { settings: current.kind !== 'conversation', done: current.kind !== 'conversation' && topicState?.says ? () => topicState.markDone() : null });
+    { settings: current.kind !== 'conversation', done: current.kind !== 'conversation' && topicState?.says ? () => topicState.markDone() : null,
+      question: id => run(() => openDestination(topicTarget(current.id, id), current.title)) });
   const menu = $('topic-menu');
   menu.hidden = current.kind === 'conversation' || topicUnavailable; menu.dataset.topicId = current.id;
   menu.onclick = () => {

@@ -26,7 +26,7 @@ from .route_pins import RoutePins
 from .hosted_control import HostedControl
 from .assessments import Assessments
 from .changes import Changes
-from .topic_state import ACTIVITY_SCHEMA, ASK_WAIT_SCHEMA, TopicState, TOPIC_STATE_SCHEMA, WAITING_ORDER_SCHEMA, order_cursor, order_position
+from .topic_state import ACTIVITY_SCHEMA, ASK_WAIT_SCHEMA, TopicState, TOPIC_STATE_SCHEMA, WAITING_ORDER_SCHEMA, derived_conversation, order_cursor, order_position
 from .work import OTHERS_SCHEMA, TURN_ACTIVITY_BACKFILL, WORK_SCHEMA, work_by_topic
 from .marks import Marks, MARK_SCHEMA
 from .colors import Colors, COLOR_SCHEMA
@@ -929,4 +929,4 @@ class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, 
             item["work"] = work[item["id"]]
             item["cover_waiting"] = cover_waits.get(item["id"], 0)
             item["build"] = item["id"] in builds
-        return items
+        return [derived_conversation(item, item["asks"]) for item in items]

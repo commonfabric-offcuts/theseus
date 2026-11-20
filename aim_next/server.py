@@ -317,15 +317,8 @@ class AIMHTTPServer(ThreadingHTTPServer):
 
     def process_request(self, request, client_address):
         if not self.connection_slots.acquire(blocking=False):
-            # Refuse this attempt, without assigning a verdict to its operation.
-            body = b'{"recorded":false,"error":{"code":"SERVER_BUSY","retryable":true}}'
             try:
-                request.settimeout(1)
-                request.sendall(b"HTTP/1.0 503 Service Unavailable\r\nConnection: close\r\n"
-                                b"Content-Type: application/json\r\nContent-Length: "
-                                + str(len(body)).encode("ascii") + b"\r\n\r\n" + body)
-            except OSError:
-                pass
+                self.refuse_connection(request)
             finally:
                 self.shutdown_request(request)
             return
@@ -336,10 +329,30 @@ class AIMHTTPServer(ThreadingHTTPServer):
             raise
 
     def process_request_thread(self, request, client_address):
+        # The handler may return this permit while waiting for a kept socket.
+        # Thread-local ownership lets every exit release only what it owns.
+        self.connection_owner.held = True
         try:
             super().process_request_thread(request, client_address)
         finally:
+            self.release_connection_slot()
+            del self.connection_owner.held
+
+    def release_connection_slot(self):
+        if self.connection_owner.held:
+            self.connection_owner.held = False
             self.connection_slots.release()
+
+    def refuse_connection(self, request):
+        # Refuse this attempt, without assigning a verdict to its operation.
+        body = b'{"recorded":false,"error":{"code":"SERVER_BUSY","retryable":true}}'
+        try:
+            request.settimeout(1)
+            request.sendall(b"HTTP/1.0 503 Service Unavailable\r\nConnection: close\r\n"
+                            b"Content-Type: application/json\r\nContent-Length: "
+                            + str(len(body)).encode("ascii") + b"\r\n\r\n" + body)
+        except OSError:
+            pass
 
     def server_close(self):
         # Live streams end before their threads are joined.
@@ -367,6 +380,45 @@ class Handler(BaseHTTPRequestHandler):
         # Request paths, bodies and authentication never enter an access log.
         pass
 
+    def handle(self):
+        self.close_connection = True
+        self.handle_one_request()
+        while not self.close_connection:
+            if not self._kept_request_ready():
+                self.close_connection = True
+                return
+            self.body_consumed = 0
+            self.binary_headers_started = False
+            self.handle_one_request()
+
+    def _kept_request_ready(self):
+        idle = self.server.idle_connection_slots
+        if not idle.acquire(blocking=False):
+            return False
+        try:
+            self.server.release_connection_slot()
+            # peek also sees requests already buffered by the previous read.
+            # Only waiting for the next byte gets the shorter idle cutoff.
+            raw = self.rfile.raw
+            raw.deadline = min(self.deadline, time.monotonic() + self.server.keep_alive_timeout)
+            try:
+                ready = bool(self.rfile.peek(1))
+            finally:
+                raw.deadline = self.deadline
+            remaining = self.deadline - time.monotonic()
+            if not ready or remaining <= 0:
+                return False
+            if not self.server.connection_slots.acquire(blocking=False):
+                self.server.refuse_connection(self.connection)
+                return False
+            self.server.connection_owner.held = True
+            self.connection.settimeout(remaining)
+            return True
+        except (OSError, ValueError):
+            return False
+        finally:
+            idle.release()
+
     def _send(self, status: int, body: bytes, content_type: str, *, static=False, immutable=False):
         self._headers(status, content_type, len(body), static=static, immutable=immutable)
         try:
@@ -375,11 +427,14 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
     def _headers(self, status: int, content_type: str, length=None, *, static=False, immutable=False):
-        # Only fully framed public assets reuse a connection. Keep the original
-        # absolute input deadline: idle/static clients cannot hold a slot forever.
-        headers = getattr(self, 'headers', {})  # Parser refusals may precede headers.
-        connection = {part.strip().lower() for part in headers.get('Connection', '').split(',')}
-        empty = headers.get('Content-Length', '0') == '0' and not headers.get('Transfer-Encoding')
+        # Only unambiguously empty requests to public assets reuse a connection.
+        # Parser refusals may precede headers; duplicate fields still count.
+        headers = getattr(self, 'headers', None)
+        lengths = headers.get_all('Content-Length', []) if headers is not None else []
+        transfer = headers.get_all('Transfer-Encoding', []) if headers is not None else []
+        values = headers.get_all('Connection', []) if headers is not None else []
+        connection = {part.strip().lower() for value in values for part in value.split(',')}
+        empty = lengths in ([], ['0']) and not transfer
         keep = static and empty and self.request_version == 'HTTP/1.1' and 'close' not in connection
         self.close_connection = not keep
         self.send_response(status)
@@ -391,6 +446,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Connection", "keep-alive" if keep else "close")
+        if keep:
+            self.send_header("Keep-Alive", "timeout=%g" % self.server.keep_alive_timeout)
         self.send_header("Content-Security-Policy", self.server.csp)
         self.end_headers()
 
@@ -1037,6 +1094,9 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     server.upload_slots = threading.BoundedSemaphore(1)
     server.media_read_slots = threading.BoundedSemaphore(1)
     server.connection_slots = threading.BoundedSemaphore(16)
+    server.connection_owner = threading.local()
+    server.idle_connection_slots = threading.BoundedSemaphore(16)
+    server.keep_alive_timeout = 2.0
     server.authority = "%s:%s" % server.server_address
     server.origin = "http://" + server.authority
     server.origins_by_authority = {server.authority: server.origin}
