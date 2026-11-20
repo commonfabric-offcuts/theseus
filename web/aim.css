@@ -573,6 +573,7 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 .message-bar button[hidden]{display:none}
 .message-bar button:hover,.message-bar button[aria-pressed=true]{background:var(--soft)}
 .message-bar button[aria-pressed=true]{font-weight:700}
+.message-bar button[aria-pressed=true],#thumb-source[aria-pressed=true]{box-shadow:var(--stack-cover-inset)}
 .message-reactions{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .45rem;margin-top:.55rem;font-size:.8rem}
 .reaction-count,.reaction-choice{display:inline-flex;align-items:center;gap:.25rem;padding:0 .55rem;border:1px solid color-mix(in srgb,currentColor 30%,transparent);border-radius:1rem;line-height:1.7rem;background:transparent;color:inherit;cursor:pointer;white-space:nowrap}
 .reaction-count:hover,.reaction-choice:hover{background:color-mix(in srgb,currentColor 10%,transparent)}
@@ -1074,7 +1075,7 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .notebook-image-rows{display:grid;gap:.4rem}.notebook-image{display:flex;align-items:center;gap:.65rem;min-width:0;flex-wrap:wrap}
 .notebook-image>span{flex:1;min-width:8rem;overflow-wrap:anywhere}.notebook-image .image-thumb{width:3rem;height:3rem;object-fit:contain}
 /* NotebookSheet keeps only its title and glyphs fixed (868). The page menu joins that title row (873); the existing scroller holds save status, notices, deck controls and cards. */
-dialog.notebook-sheet-dialog[open]{overflow:hidden}
+dialog.notebook-sheet-dialog[open]{overflow:hidden;box-shadow:var(--stack-cover-inset);border-radius:var(--stack-r-sheet)}
 dialog.notebook-sheet-dialog:not([open]){display:none}
 .notebook-sheet{display:flex;flex-direction:column;height:100%;min-height:0}
 .notebook-sheet-head{flex:none;display:flex;align-items:center;gap:.25rem;min-height:2.5rem;padding:0 .35rem 0 .75rem;border-bottom:1px solid var(--line)}
