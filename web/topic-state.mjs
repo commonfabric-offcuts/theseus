@@ -115,6 +115,14 @@ const known = state => STATES.includes(state) ? state : 'active';
 // What Core holds for each field of the topic itself, as last read.
 const HELD = { title: topic => topic.title, archived: topic => topic.archived === true, state: topic => known(topic.state),
   note: topic => topic.state_note ?? '', waiting_on: topic => Array.isArray(topic.waiting_on) ? topic.waiting_on : [] };
+export const topicFieldKeys = (topic, name) => name === 'state' || name === 'people'
+  ? ['state', 'waiting_on', ...(topic.state_message_id ? ['note'] : [])] : [name];
+export const topicFieldFences = (topic, name) => Object.fromEntries(topicFieldKeys(topic, name).map(key => [key, HELD[key](topic)]));
+export function topicUpdateEnvelope(bootstrap, topic, args, fields, operation_id = crypto.randomUUID()) {
+  const { authority_id, authority_epoch } = bootstrap.authority;
+  return { v: 1, instance_id: bootstrap.instance_id, operation_id, kind: 'topic.update', target: { topic_id: topic.id },
+    expected: { topic_fields: fields, authority: { authority_id, authority_epoch } }, args };
+}
 // What Core's answer to a topic.update says of the topic, and what its answer
 // to Your part says of the reader's own row; everything else only a read says.
 const SAID = ['title', 'archived', 'state', 'state_note', 'waiting_on', 'state_by', 'state_ms', 'state_message_id'];
@@ -291,7 +299,7 @@ export class TopicStatePanel {
   // chip where the topic stands and who it waits on, which a state also sets,
   // and the note after a reopen, which Core then starts afresh.
   snapshot(name) {
-    const keys = name === 'state' || name === 'people' ? ['state', 'waiting_on', ...(this.topic.state_message_id ? ['note'] : [])] : [name];
+    const keys = topicFieldKeys(this.topic, name);
     return Object.fromEntries(keys.map(key => [key, { ...this.held(key), version: key === 'duty' ? this.at.duty : this.at.said }]));
   }
 

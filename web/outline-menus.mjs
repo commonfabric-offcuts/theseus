@@ -3,6 +3,8 @@ import { outcomeMenuItems } from './outcome-menu-items.mjs';
 import { routeHref } from './topic-navigation.mjs';
 import { dossierMenuRoute } from './menu-route.mjs';
 import { RailMenuCommands } from './rail-menu-commands.mjs';
+import { topicMenuItems } from './topic-menu-items.mjs';
+import { topicFieldFences, topicUpdateEnvelope } from './topic-state.mjs';
 
 // Shared doors for rail menus. A hold owns only its subsequent synthetic click;
 // moving, scrolling or lifting before the threshold leaves navigation alone.
@@ -50,7 +52,7 @@ export class OutlineMenus {
   }
   row(target) {
     if (!this.outline.handles || target.closest?.('[inert], input, textarea, select, [contenteditable]')) return null;
-    const row = target.closest?.('a.ol-name, a.ol-dossier[data-dossier-id]');
+    const row = target.closest?.('a.ol-name, a.ol-dossier[data-dossier-id], a[data-topic-id], a.ol-page[data-page-id]');
     return row && this.outline.list.contains(row) ? row : null;
   }
   reset() { ++this.serial; this.pending = null; this.cancelDoor(); this.menu?.close(false); this.menu = null; }
@@ -59,9 +61,9 @@ export class OutlineMenus {
     const outline = this.outline, handles = outline.handles, serial = ++this.serial;
     if (!handles || row.isConnected === false || handles.readable?.() === false) return;
     this.menu?.close(false); this.menu = null; this.pending = row;
-    const workspaceId = row.dataset.workspaceId, target = row.pageTarget;
+    const workspaceId = row.dataset.workspaceId, target = row.pageTarget, topicId = row.dataset.topicId, pageId = row.dataset.pageId;
     const current = () => serial === this.serial && outline.handles === handles && handles.readable?.() !== false && row.isConnected !== false &&
-      (workspaceId ? row.dataset.workspaceId === workspaceId : row.pageTarget === target);
+      (workspaceId ? row.dataset.workspaceId === workspaceId : topicId ? row.dataset.topicId === topicId : row.pageTarget === target && row.dataset.pageId === pageId);
     try {
       let items;
       if (workspaceId) {
@@ -70,6 +72,18 @@ export class OutlineMenus {
         if (answer.instance_id !== handles.bootstrap.instance_id || answer.workspace?.id !== workspaceId) throw Error('The outcome could not be confirmed.');
         items = outcomeMenuItems(answer.workspace, { actor: handles.bootstrap.actor,
           act: key => this.perform(handles, () => this.outcomeAction(answer.workspace, key, row, handles)) });
+      } else if (topicId) {
+        const answer = await handles.view('topic', { topic_id: topicId }, 'foreground');
+        if (!current()) return;
+        if (answer.instance_id !== handles.bootstrap.instance_id || answer.topic?.id !== topicId) throw Error('The topic could not be confirmed.');
+        items = topicMenuItems(answer.topic, { actor: handles.bootstrap.actor,
+          act: key => current() && this.perform(handles, () => this.topicAction(answer.topic, key, handles)) });
+      } else if (pageId) {
+        const answer = await handles.view('memory_current', { item_id: pageId }, 'foreground');
+        if (!current()) return;
+        if (answer.instance_id !== handles.bootstrap.instance_id || answer.source_ref?.kind !== 'memory' || answer.source_ref.id !== pageId ||
+            answer.owner_scope?.kind !== 'topic' || answer.owner_scope.id !== target?.id) throw Error('The Notebook page could not be confirmed.');
+        items = handles.notebookMenu(answer, row, (key, label) => current() && this.perform(handles, () => handles.notebookMenuAction(answer, key, label, row, this.commands)));
       } else {
         if (target?.kind !== 'topic' || target.message !== row.dataset.dossierId) return;
         const answer = await handles.view('topic_messages', { topic_id: target.id, message_ids: [target.message] }, 'foreground');
@@ -79,10 +93,31 @@ export class OutlineMenus {
             item.topic_id !== target.id || item.stack_position?.root_id !== target.message) throw Error('The dossier could not be confirmed.');
         items = handles.dossierMenu(item, row, (key, label) => this.perform(handles, () => this.dossierAction(item, key, label, row, handles)));
       }
-      if (current()) this.menu = this.show({ anchor: row, at, items, label: workspaceId ? 'This outcome' : 'This message',
+      if (current()) this.menu = this.show({ anchor: row, at, items, label: workspaceId ? 'This outcome' : topicId ? 'This topic' : pageId ? 'This page' : 'This message',
         sheet: true, doc: outline.doc, win: outline.doc.defaultView });
     } catch (error) { if (current()) this.notice(`The menu could not be opened: ${error.message}`); }
     finally { if (serial === this.serial) this.pending = null; }
+  }
+  async topicAction(topic, key, handles) {
+    if (this.outline.handles !== handles || handles.readable?.() === false) throw Error('The page changed. Open the menu again.');
+    if (key === 'copy') {
+      const link = new URL(routeHref({ kind: 'topic', id: topic.id }), this.outline.doc.defaultView.location.href).href;
+      const copied = await this.copy(link);
+      if (this.outline.handles === handles) this.notice(copied ? 'Link copied.' : `The link could not be copied here: ${link}`); return;
+    }
+    if (key === 'up' || key === 'down') return this.outline.moveTopic(topic.id, key === 'up' ? -1 : 1);
+    if (handles.route?.kind === 'topic' && handles.route.id === topic.id && handles.topicMenuAction &&
+        await handles.topicMenuAction(topic, key) !== false) return;
+    if (this.outline.handles !== handles || handles.readable?.() === false) return;
+    if (key === 'rename' || key === 'settings') return this.outline.open({ kind: 'topic', id: topic.id, act: 'topic-' + key }, topic.title);
+    if (key === 'state' || key === 'archive') {
+      const field = key === 'state' ? 'state' : 'archived';
+      const args = key === 'state' ? { state: topic.state === 'done' ? 'active' : 'done', keep_note: true } : { archived: !topic.archived };
+      await this.commands.send(handles, topicUpdateEnvelope(handles.bootstrap, topic, args, topicFieldFences(topic, field)));
+    } else if (key === 'read') {
+      if (!await this.commands.readTopic(handles, topic.id, () => this.outline.handles === handles && handles.readable?.() !== false)) return;
+    } else return false;
+    if (this.outline.handles === handles) { this.notice('Saved.'); this.outline.reload(); handles.menuChanged?.(); }
   }
   async outcomeAction(workspace, key, row, handles) {
     if (this.outline.handles !== handles) { this.notice('The page changed. Open the menu again.'); return; }
