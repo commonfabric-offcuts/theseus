@@ -87,6 +87,12 @@ test('853 CSS declares one sheet grid, a keyboard-reachable hover control and a 
   assert.ok(/@media\(hover:hover\) and \(pointer:fine\)/.test(css), 'only a fine hover pointer hides the idle control');
   assert.ok(/\.dossier-cover:is\(:hover,:focus-within\)>\.cover-refresh\{opacity:1;pointer-events:auto\}/.test(css), 'hover and keyboard focus reveal the control');
   assert.ok(!/\.dossier-cover>\.cover-refresh\{[^}]*(?:visibility:hidden|display:none)/.test(css), 'the keyboard stop remains');
+  const sheet = css.match(/(?:^|\n)\.dossier-cover\{([^}]+)\}/)?.[1];
+  assert.ok(sheet, '913 uses the shared sheet rule for feed and Reader');
+  assert.match(sheet, /max-height:100vh/, 'viewport fallback keeps long cards bounded');
+  assert.match(sheet, /max-height:100dvh/, 'the current mobile viewport bounds the card');
+  assert.match(sheet, /overflow-y:auto/, 'long content scrolls inside its card');
+  assert.doesNotMatch(reader.match(/#reader-cover>\.dossier-cover\{([^}]+)\}/)?.[1] ?? '', /max-height:none|overflow-y:visible/);
 });
 
 test('853 the no-options/no-default note replaces all redundant explanations with the named default', () => {

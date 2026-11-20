@@ -24,7 +24,7 @@ from .whispers import VISIBLE
 # What an empty cover stands at: the act's value before anyone wrote one, and after every field is cleared.
 EMPTY_COVER = {"stands": None, "waiting": [], "payload": None}
 FIELDS = ("stands", "waiting", "payload")
-STANDS_CHARS = 300
+STANDS_CHARS = 32000
 WAIT_CHARS = 300
 DEFAULT_CHARS = 200
 PAYLOAD_CHARS = 500

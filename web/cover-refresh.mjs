@@ -118,7 +118,9 @@ export function refreshLine(doc, target, context) {
   const line = doc.createElement('span'); line.className = 'refresh-request-line'; line.dataset.coverRefresh = request.key;
   const draw = () => {
     const { refresh } = request.state(), completed = refresh?.state === 'completed';
-    line.hidden = !refresh?.request_id;
+    // A cover's revision owns its completion footer, including direct writes.
+    // Keep the request's timed pending line, without a second completion claim.
+    line.hidden = !refresh?.request_id || (target.type === 'cover' && completed);
     if (line.hidden) { line.replaceChildren(); return; }
     const cover = target.type === 'cover', name = context.nameOf;
     const words = completed ? `${name(refresh.completed_by)} ${cover ? 'refreshed the cover' : 'updated this message'}`

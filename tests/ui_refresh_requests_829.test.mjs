@@ -25,11 +25,12 @@ function fixture(t, viewer = 'owner') {
   return { ...r, doc, kept, sent, response, context };
 }
 const cover = refresh => ({ root_id: 'root', revision: refresh.state === 'pending' ? 1 : 2, stands: 'Facts stay', waiting: [],
-  payload: null, owner: 'owner', refresh, refresh_revision: refresh.state === 'pending' ? 1 : 2 });
+  payload: null, owner: 'owner', by: 'writer', at_ms: refresh.state === 'pending' ? at - 60000 : at + 60000,
+  refresh, refresh_revision: refresh.state === 'pending' ? 1 : 2 });
 const item = refresh => ({ id: 'answer', author_id: 'writer', author_kind: 'agent', topic_id: 't1', revision: refresh.state === 'pending' ? 1 : 2,
   acts: { message_refresh: refresh, message_refresh_revision: refresh.state === 'pending' ? 1 : 2 } });
 
-test('829 cover shows one timed request line and replaces it with the qualifying write time', t => {
+test('829 cover shows one timed pending request line; 913 completion uses the cover revision footer', t => {
   const f = fixture(t); let sheet;
   assert.doesNotThrow(() => { sheet = coverSheet(f.doc, cover(pending), f.context); }, 'typed request needs no fabricated message link');
   assert.equal(sheet.querySelectorAll('.refresh-request-line').length, 1);
@@ -39,8 +40,10 @@ test('829 cover shows one timed request line and replaces it with the qualifying
   assert.equal(sheet.querySelector('.cover-refresh-glyph').tag, 'span', 'a typed request is no fabricated message link');
   const completed = coverSheet(f.doc, cover(done), f.context);
   assert.equal(completed.querySelectorAll('.refresh-request-line').length, 1);
-  assert.match(completed.querySelector('.refresh-request-line').text, /warp refreshed the cover · 5:21 PM/);
-  assert.equal(completed.querySelector('.refresh-request-line').querySelector('time').dataset.ms, String(at + 60000));
+  assert.equal(completed.querySelector('.refresh-request-line').hidden, true, 'no redundant completed request line');
+  assert.equal(completed.querySelector('.refresh-request-line').text, '');
+  assert.match(completed.querySelector('.cover-revision-line').text, /warp refreshed the cover · 5:21 PM/);
+  assert.equal(completed.querySelector('.cover-revision-line').querySelector('time').dataset.ms, String(at + 60000));
   assert.ok(!completed.text.includes('Please rewrite'));
 });
 

@@ -11,7 +11,7 @@ fold under it as they always have.
 
 A cover has three fields. Each is set or cleared on its own.
 
-- **Where it stands**: at most 300 characters, including line breaks. LF
+- **Where it stands**: at most 32,000 characters, including line breaks (913). LF
   separates lines and stays a line break through command, storage and the
   shared cover sheet (item 769). CRLF becomes LF: the CR is folded with the
   other whitespace on its line. Within each LF-separated line, whitespace
