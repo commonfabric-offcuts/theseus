@@ -1,3 +1,5 @@
+import { CardTextProjection, cardTextValue } from './notebook-card-text.mjs';
+import { stripDetails } from './card-details.mjs';
 import { pageLink } from './links.mjs';
 import { openMessageMenu, copyText } from './message-menu.mjs';
 import { DeckPage, UNDO_LIMIT } from './deck-page.mjs';
@@ -39,7 +41,25 @@ export class NotebookPage extends DeckPage {
     const label=this.node('label','sr-only','Notebook writing'); label.htmlFor=textId;
     this.text=this.node('textarea','notebook-text'); this.text.id=textId; this.text.rows=18; this.text.setAttribute('autocomplete','off');
     this.textInput=new WritingInput({field:this.text});
-    this.text.addEventListener('input',()=>this.textEdited());
+    this.textProjection=new CardTextProjection();
+    this.text.addEventListener('beforeinput',event=>{
+      if(event.inputType==='historyUndo'||event.inputType==='historyRedo') {
+        event.preventDefault();this.textHistory(event.inputType==='historyUndo'?-1:1);return;
+      }
+      this.textChange={start:this.text.selectionStart,end:this.text.selectionEnd,inputType:event.inputType};
+    });
+    this.text.addEventListener('input',event=>{
+      this.textChange={...this.textChange,inputType:event.inputType,
+        selection:[this.text.selectionStart,this.text.selectionEnd]};
+      this.textEdited();
+    });
+    // The system clipboard receives the visible textarea selection. Only this
+    // opening remembers its raw cut fragment, for one matching paste.
+    this.text.addEventListener('cut',()=>{
+      if(this.readOnly||!this.textSeen)return;
+      this.textEdited();
+      this.textProjection.rememberCut(this.text.selectionStart,this.text.selectionEnd);
+    });
     this.text.addEventListener('focus',()=>{if(this.writing)this.writing.active=true;});
     this.text.addEventListener('blur',()=>{if(this.writing)this.writing.active=false;});
     this.textPanel.append(label,this.text);
@@ -123,6 +143,7 @@ export class NotebookPage extends DeckPage {
   // as on pagehide, and the page's keys and listeners go with it.
   close() {
     this.listening.abort();
+    this.textProjection?.close();
     if(this.writing&&!this.writing.closed){this.writing.close();this.writing.serial.finally(()=>this.store.close());}
   }
   mergeIncoming(base,mine,theirs) {
@@ -158,13 +179,15 @@ export class NotebookPage extends DeckPage {
       this.picked=Math.min(this.picked,Math.max(0,this.deck.cards.length-1));
       this.paint();
     }
-    if(this.text.value!==w.value.body&&(!w.conflict || drawKept)) {
+    const textBody=cardTextValue(stripDetails(w.value.body));
+    if(this.text.value!==textBody&&(!w.conflict || drawKept)) {
       const focused=this.doc.activeElement===this.text,selection=[this.text.selectionStart,this.text.selectionEnd];
-      this.text.value=w.value.body;
+      this.text.value=textBody;
       if(focused)this.text.setSelectionRange(...selection.map(at=>Math.min(at,this.text.value.length)));
     }
     if(!w.conflict || drawKept) {
-      this.textSeen={revision:w.base.revision,content:{...structuredClone(w.value),body:this.text.value}};
+      (this.textProjection??=new CardTextProjection()).show(w.value.body,w.base.content.body);
+      this.textSeen={revision:w.base.revision,content:structuredClone(w.value)};
       this.cardsSeen={revision:w.base.revision,content:{...structuredClone(w.value),body:this.previewBody()}};
     }
     this.text.readOnly=this.readOnly;
@@ -181,9 +204,29 @@ export class NotebookPage extends DeckPage {
   }
   textEdited() {
     if(!this.writing || !this.textSeen)return;
-    const body=this.text.value,seen=this.textSeen;
-    const edited=this.writing.edit({body},seen,'text');
+    const seen=this.textSeen;
+    const projection=this.textProjection??=new CardTextProjection();
+    if(projection.body===undefined)projection.show(seen.content.body,this.writing.base.content.body);
+    projection.confirm(this.writing.base.content.body);
+    const body=projection.edit(this.text.value,this.textChange);this.textChange=null;
+    if(this.text.value!==projection.text) {
+      this.text.value=projection.text;
+      this.text.setSelectionRange(...projection.selection);
+    }
     this.textSeen={revision:seen.revision,content:{...seen.content,body}};
+    const edited=this.writing.edit({body},seen,'text');
+    if(edited)this.keepNamed(body);
+  }
+  textHistory(direction) {
+    if(this.readOnly||!this.writing||!this.textSeen)return;
+    this.textEdited();
+    const state=this.textProjection.undo(direction);this.textChange=null;
+    if(!state)return;
+    this.text.value=this.textProjection.text;
+    this.text.setSelectionRange(...state.selection);
+    const seen=this.textSeen,body=state.body;
+    this.textSeen={revision:seen.revision,content:{...seen.content,body}};
+    const edited=this.writing.edit({body},seen,'text');
     if(edited)this.keepNamed(body);
   }
   save() {
@@ -212,12 +255,14 @@ export class NotebookPage extends DeckPage {
     this.editing.field.addEventListener('input',()=>this.save());
     this.cardImages=this.imagePicker(this.editing.field,this.editing.input,this.list);
   }
-  finish({discard=false} = {}) {
+  finish({discard=false,target=null} = {}) {
     this.cardImages?.close();this.cardImages?.list?.remove();this.cardImages=null;
     if(this.imageError&&this.editing){this.imageError=null;this.writingChanged();}
+    let at=-1;
     if(discard){this.editing=null;this.paint();this.show(true);}
-    else super.finish();
+    else at=super.finish({target});
     if(this.writing)this.writing.active=false;
+    return at;
   }
   moveWriting(act) { super.moveWriting(act); this.save(); }
   drafted() { return this.writing?.value?.draft === true; }
@@ -261,7 +306,21 @@ export class NotebookPage extends DeckPage {
     if(event.target===picker?.field&&picker.key(event))return;
     if(this.mode==='text') {
       if(event.defaultPrevented||event.isComposing||event.keyCode===229||event.target!==this.text)return;
-      if(this.textInput.writingKey(event))return;
+      const letter=event.key.toLowerCase();
+      if(!event.altKey&&(event.metaKey||event.ctrlKey)&&
+          (letter==='z'||(letter==='y'&&event.ctrlKey&&!event.shiftKey))) {
+        event.preventDefault();this.textHistory(letter==='y'||event.shiftKey?1:-1);return;
+      }
+      const selection=[this.text.selectionStart,this.text.selectionEnd],position=this.textProjection?.position;
+      if(this.textInput.writingKey(event)) {
+        // WritingInput sets a moved line's final caret after its input event.
+        // The Text snapshot owns that actual caret, as it owns the raw body.
+        if(this.textProjection?.position===position+1) {
+          const entry=this.textProjection.history[position];
+          entry.before.selection=selection;entry.after.selection=[this.text.selectionStart,this.text.selectionEnd];
+        }
+        return;
+      }
       if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='s'){event.preventDefault();this.writing?.flush();}
       return;
     }
@@ -269,8 +328,11 @@ export class NotebookPage extends DeckPage {
   }
   switchView(mode) {
     if(mode===this.mode)return;
+    if(this.mode==='text')this.textEdited();
     if(this.editing)this.finish();
     this.textImages?.close();this.cardImages?.close();
+    this.textProjection?.close();this.textChange=null;
+    if(this.textInput)this.textInput.moves={done:[],at:0};
     this.mode=mode; this.sync(true); this.drawView();
     this.viewPreference.set(this.item, mode);
     if(mode==='text')this.text.focus(); else this.paint();
@@ -302,7 +364,7 @@ export class NotebookPage extends DeckPage {
       this.conflictRevision=changed.revision;
       const title=this.node('h2','','This page changed elsewhere');
       const words=this.node('p','','Your writing is kept. Review the saved version before choosing which to continue with.');
-      const latest=this.node('pre','notebook-latest',changed.content.title+'\n\n'+changed.content.body);
+      const latest=this.node('pre','notebook-latest',changed.content.title+'\n\n'+stripDetails(changed.content.body));
       const mine=this.node('button','','Save my version'), saved=this.node('button','','Use saved version');
       mine.type=saved.type='button';
       mine.onclick=async()=>{await w.resolve(true);this.sync();};

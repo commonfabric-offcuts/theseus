@@ -36,6 +36,7 @@ test('an agent\'s card carries its color; the person\'s own and other people\'s 
 
 // The colors as aim.css sets them, read the way a browser would for each theme.
 const css = readFileSync(new URL('../web/aim.css', import.meta.url), 'utf8');
+const stackLook = readFileSync(new URL('../web/stack-look.css', import.meta.url), 'utf8');
 const dark = css.slice(css.indexOf('@media(prefers-color-scheme:dark){.agent-'));
 const tokens = (text, selector) => {
   const at = text.indexOf(selector + '{');
@@ -287,7 +288,16 @@ test('nothing on the page wears a colored left edge or bar', () => {
   const edges = [...css.matchAll(/border-(?:left|inline-start)(?:-color|-width)?\s*:\s*([^;}]+)/g)].map(m => [m[0], m[1].trim()]);
   assert.ok(edges.length > 0, 'the rule finds the left borders aim.css sets');
   for (const [declaration, value] of edges) assert.ok(['0', '1px solid var(--line)'].includes(value), declaration);
-  const insets = [...css.matchAll(/box-shadow\s*:\s*([^;}]+)/g)].flatMap(m => m[1].split(/,(?![^(]*\))/)).map(shadow => shadow.trim()).filter(shadow => /\binset\b/.test(shadow));
+  // The shipped paper treatment has vertical inset shading in both themes.
+  // Resolve its actual declarations; it may never become a left-edge bar.
+  const paper = [...stackLook.matchAll(/--stack-cover-inset\s*:\s*([^;}]+)/g)].flatMap(m => m[1].split(/,(?![^(]*\))/)).map(shadow => shadow.trim());
+  assert.equal(paper.length, 4, 'both theme definitions retain two paper insets');
+  for (const shadow of paper) {
+    const [x] = shadow.split(/\s+/).filter(word => /^-?[\d.]+[a-z%]*$/.test(word)).map(parseFloat);
+    assert.match(shadow, /^inset /);
+    assert.equal(x, 0, 'paper inset never adds a left-edge offset: ' + shadow);
+  }
+  const insets = [...css.matchAll(/box-shadow\s*:\s*([^;}]+)/g)].flatMap(m => m[1].split(/,(?![^(]*\))/)).map(shadow => shadow.trim()).filter(shadow => shadow !== 'var(--stack-cover-inset)' && /\binset\b/.test(shadow));
   for (const shadow of insets) {
     const [x, y] = shadow.split(/\s+/).filter(word => /^-?[\d.]+[a-z%]*$/.test(word)).map(parseFloat);
     assert.ok(x === 0 && y === 0, `no inset shadow draws a bar: ${shadow}`);
