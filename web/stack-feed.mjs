@@ -296,8 +296,11 @@ export class StackFeed {
       },
       earlier: (stack, count) => this.say(`${count === 1 ? 'The earlier message shows' : `${count} earlier messages show`} as rows, for this visit`),
       arranged: () => this.arranged(), acted: id => this.acted(id), newest: (stack, mark) => this.newest(stack, mark),
-      // A title bar's glyphs (item 473): its first message's Reply and menu, and Archive or Bring back.
-      reply: stack => { const head = this.entryFor(stack.id); if (head) this.reply(stack.id, cardIn(head)); },
+      // Reply targets the newest loaded message; the menu remains the dossier's.
+      reply: stack => {
+        const latest = [stack.head, ...stack.replies].reduce((a, b) => b.seq > a.seq ? b : a);
+        const entry = this.entryFor(latest.id); if (entry) this.reply(latest.id, cardIn(entry));
+      },
       aside: (stack, below) => this.setAside(stack, below),
       menu: (stack, anchor, first) => { const item = this.messages().get(stack.id); if (item) this.menu(item, anchor, first); },
       landedBelow: (id, mark) => this.landedBelow(id, mark),

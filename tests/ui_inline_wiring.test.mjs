@@ -224,7 +224,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const editor = { key: 'inline', dirty: true, submissions: [], draft: { body: 'kept', addressees: [], attachments: [], caret: { start: 0, end: 0 } }, context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'topic', id: 't1' } } };
   const p = { surface: 'inline', initialized: true, topic, mode: 'reply', editors: { reply: editor } };
   const uploads = { current: () => [], running: new Map(), status: () => 'Ready' };
-  const registry = { inline: p, current: null, sessions: new Map([[editor.key, { editor, underWay: () => false }]]), disposed: false,
+  const registry = { cards: new Map(), inline: p, current: null, sessions: new Map([[editor.key, { editor, underWay: () => false }]]), disposed: false,
     get interactive() { return this.current ?? this.inline; },
     isCurrent(p) { return !!p && this.interactive === p; }, isSourceCurrent(p) { return !!p && this.current?.source === p.source; },
     cancelSave(e) { events.push(['cancel', e.key]); }, schedule(e) { events.push(['schedule', e.key]); }, resumeHeld() { events.push(['resume-held']); return Promise.resolve(); },
@@ -4791,8 +4791,10 @@ test('a covered dossier keeps its first sheet above every message through an edi
   f.views.messages.set('m1', { ...root, acts: { ...root.acts, cover: { ...root.acts.cover, stands: 'Ready for Saturday' }, cover_revision: 2 } });
   f.paintViews('messages'); await settle();
   checkParts('Ready for Saturday');
+  f.runObservation('replyInCard = async id => { globalThis.latestReply907 = id; }');
   parts()[3].children[0].onclick(); await settle();
-  assert.equal(opens.at(-1)?.[0], 'm1', 'Reply still opens the dossier first message');
+  const latest = list.find(item => item.id === 'm5'); // newest nested reply in m1's dossier
+  assert.equal(f.runObservation('latestReply907'), latest.id, 'Reply opens the latest message in this dossier');
 });
 
 test('on the conversation page replies stack under the message they answer, as in any topic, and its own marks reach every stacked message', async () => {
@@ -5801,6 +5803,12 @@ async function editClick890(options = {}) {
   };
   card.closest = words.closest = overlay.closest = closest;
   let opened = 0, edits = [], pending = null;
+  const cards = f.runObservation('cardReplies = { sync() {}, paint() {} }');
+  let inlineOpens = 0, replyShown = false;
+  cards.open = async () => { ++inlineOpens; if (pending) await pending.promise; replyShown = true; return { surface: 'card', source: { source_ref: { kind: 'message', id: item.id } } }; };
+  cards.shown = () => replyShown && !overlay.open;
+  cards.from = () => ({ wide: false });
+
   f.registry.generation = 1;
   f.reader.dialog = overlay;
   f.owners().marks.open = async (_registry, ref, { opener }) => {
@@ -5824,139 +5832,55 @@ async function editClick890(options = {}) {
   };
   const click = (target = words, props = {}) => { emit('pointerdown', target, props); emit('mousedown', target, props); emit('pointerup', target, props); return emit('click', target, props); };
   const control = (tag, host = words, id = '') => { const node = id ? f.get(id) : f.document.createElement(tag); node.tagName = tag.toUpperCase(); node.closest = closest; host.append(node); return node; };
-  return { f, card, words, overlay, item, edits, emit, click, control, opened: () => opened, hold() { pending = defer(); return pending; } };
+  return { f, card, words, overlay, item, edits, emit, click, control, opened: () => opened, inlineOpens: () => inlineOpens, hold() { pending = defer(); return pending; } };
 }
 
-test('890 first body click opens immediately and a second overlay click enters the shared Edit once', async () => {
+test('907 first body click opens only its reply; the second opens Reader and shared Edit once', async () => {
   const x = await editClick890(); x.click();
-  assert.equal(x.opened(), 1, 'opening starts synchronously, without a timer'); await settle();
-  const second = x.click(x.overlay, { timeStamp: 1400, clientX: 26, detail: 1 }); await settle();
-  assert.equal(second.defaultPrevented, true); assert.equal(second.overlayAction, undefined);
-  assert.equal(x.f.runObservation('selectionClears890'), 1, 'accepted second click replaces word selection');
-  assert.equal(x.edits.length, 1); assert.equal(x.edits[0][0], 'm890'); assert.equal(x.edits[0][1] === x.f.get('reader-menu'), true);
-  x.click(x.overlay, { timeStamp: 1410, detail: 3 }); await settle(); assert.equal(x.edits.length, 1);
+  assert.equal(x.inlineOpens(), 1); assert.equal(x.opened(), 0); await settle();
+  const second = x.click(x.words, { timeStamp: 1400, clientX: 26 }); await settle();
+  assert.equal(second.defaultPrevented, true); assert.equal(x.opened(), 1);
+  assert.equal(x.edits.length, 1); assert.equal(x.edits[0][0], 'm890');
+  assert.equal(x.edits[0][1], x.f.get('reader-menu'));
 });
-test('890 click detail at least two admits the second click beyond 400ms but still requires six pixels', async () => {
-  for (const [distance, expected] of [[6, 1], [6.01, 0]]) {
-    const x = await editClick890(); x.click(); await settle();
-    x.click(x.overlay, { timeStamp: 1800, clientX: 20 + distance, detail: 2 }); await settle(); assert.equal(x.edits.length, expected);
-  }
-});
-test('890 second body click while the source read is held edits only after its own Reader arrives', async () => {
+test('907 double click while the reply read waits opens Reader only after that reply arrives', async () => {
   const x = await editClick890(), held = x.hold(); x.click();
   const second = x.click(x.words, { timeStamp: 1100, detail: 2 });
-  assert.equal(second.defaultPrevented, true); assert.equal(x.opened(), 1); assert.equal(x.edits.length, 0);
-  held.resolve(); await settle(); assert.equal(x.edits.length, 1);
+  assert.equal(second.defaultPrevented, true); assert.equal(x.opened(), 0);
+  held.resolve(); await settle(); assert.equal(x.opened(), 1); assert.equal(x.edits.length, 1);
 });
-test('890 slow or distant second click keeps its normal overlay action', async () => {
-  for (const props of [{ timeStamp: 1401 }, { clientY: 36.01 }]) {
-    const x = await editClick890(); x.click(); await settle();
-    const second = x.click(x.overlay, props); await settle(); assert.equal(x.edits.length, 0); assert.equal(second.overlayAction, true);
+test('907 double-click timing and travel boundaries apply while the first reply read waits', async () => {
+  for (const [props, accepted] of [[{ timeStamp: 1400, clientX: 26 }, true], [{ timeStamp: 1401 }, false],
+    [{ timeStamp: 1800, detail: 2 }, true], [{ clientX: 26.01 }, false]]) {
+    const x = await editClick890(), held = x.hold(); x.click(); const second = x.click(x.words, props);
+    assert.equal(Boolean(second.defaultPrevented), accepted); held.resolve(); await settle();
+    assert.equal(x.opened(), accepted ? 1 : 0);
   }
 });
-test('890 other authors, revoked eligibility, keyboard and touch never enter Edit through body clicks', async () => {
-  for (const mode of ['other', 'reached', 'unavailable', 'active edit', 'keyboard', 'touch']) {
-    const x = await editClick890(mode === 'other' ? { author: 'another-person' } : {});
-    const props = mode === 'keyboard' ? { detail: 0 } : mode === 'touch' ? { pointerType: 'touch' } : {};
-    x.click(x.words, props); await settle();
-    if (mode === 'reached') x.f.runObservation('outcomeReached = true');
-    if (mode === 'unavailable') x.f.runObservation('topicUnavailable = true');
-    if (mode === 'active edit') x.f.runObservation('messageEdit = {}');
-    x.click(x.overlay, { ...props, timeStamp: 1100 }); await settle(); assert.equal(x.edits.length, 0, mode);
+test('907 another author opens Reader without Edit; touch uses the same click model', async () => {
+  for (const own of [true, false]) {
+    const x = await editClick890(own ? {} : { author: 'another-person' });
+    x.click(x.words, { pointerType: 'touch' }); await settle();
+    x.click(x.words, { pointerType: 'touch', timeStamp: 1100 }); await settle();
+    assert.equal(x.opened(), 1); assert.equal(x.edits.length, own ? 1 : 0);
   }
 });
-test('890 first-click card controls retain their own action and cannot start a body gesture', async () => {
+test('907 controls retain their actions and a drag never becomes a body click', async () => {
   for (const tag of ['a', 'button', 'img', 'input', 'textarea', 'select']) {
-    const x = await editClick890(), control = x.control(tag); let acts = 0; control.onclick = event => { acts++; event.stopPropagation(); };
-    const first = x.click(control); await settle();
-    assert.equal(acts, 1, tag); assert.equal(x.opened(), 0, tag); assert.notEqual(first.defaultPrevented, true, tag);
-    x.click(x.overlay, { timeStamp: 1100, detail: 2 }); await settle(); assert.equal(x.edits.length, 0, tag);
-  }
-});
-test('890 a qualifying second click on any Reader control is consumed for Edit', async () => {
-  for (const [id, tag] of [['reader-close', 'button'], ['previous-message', 'button'], ['next-message', 'button'], ['reader-menu', 'button'], ['reader-topic', 'button'], ['writing-body', 'textarea']]) {
-    for (const props of [{ timeStamp: 1400, detail: 1 }, { timeStamp: 1800, detail: 2 }]) {
-      const x = await editClick890(), control = x.control(tag, x.overlay, id === 'reader-topic' ? '' : id);
-      if (id === 'reader-topic') control.className = 'reader-topic'; // the title button is created by Reader.paintTitle
-      let acts = 0; control.onclick = () => acts++;
-      x.click(); await settle(); const second = x.click(control, { ...props, clientX: 26 }); await settle();
-      assert.equal(second.defaultPrevented, true, id); assert.equal(second.immediate, true, id); assert.equal(acts, 0, id);
-      assert.equal(x.edits.length, 1, id); assert.equal(x.edits[0][1] === x.f.get('reader-menu'), true, id);
-    }
-  }
-});
-test('890 dragging either press preserves selection and never becomes Edit', async () => {
-  for (const which of ['first', 'second']) {
-    const x = await editClick890();
-    if (which === 'second') { x.click(); await settle(); }
-    const target = which === 'first' ? x.words : x.overlay;
-    x.emit('pointerdown', target); x.emit('pointermove', target, { clientX: 25 }); x.emit('pointerup', target);
-    const event = x.emit('click', target, { detail: which === 'second' ? 2 : 1 }); await settle();
-    if (which === 'first') { assert.equal(x.opened(), 0); x.click(x.overlay, { timeStamp: 1100 }); }
-    await settle(); assert.equal(x.edits.length, 0); assert.notEqual(event.defaultPrevented, true); assert.equal(x.f.runObservation('selectionClears890'), 0);
-  }
-});
-test('890 a replaced or closed Reader cannot be edited by an old first click', async () => {
-  for (const mode of ['replaced', 'closed', 'retired']) {
     const x = await editClick890(); x.click(); await settle();
-    if (mode === 'closed') x.overlay.open = false; else if (mode === 'retired') x.f.runObservation('retired = new Set()'); else x.f.registry.current = { ...x.f.registry.current };
-    x.click(x.overlay, { timeStamp: 1100 }); await settle(); assert.equal(x.edits.length, 0, mode);
+    const control = x.control(tag); let acts = 0; control.onclick = event => { ++acts; event.stopPropagation(); };
+    const second = x.click(control, { timeStamp: 1100, detail: 2 }); await settle();
+    assert.equal(acts, 1); assert.equal(x.opened(), 0); assert.notEqual(second.defaultPrevented, true);
   }
+  const x = await editClick890(); x.emit('pointerdown'); x.emit('pointermove', x.words, { clientX: 25 }); x.emit('pointerup'); x.emit('click');
+  await settle(); assert.equal(x.inlineOpens(), 0); assert.equal(x.opened(), 0);
 });
-
-test('890 second-click and pencil both execute the real Reader, edit view and writing-session owner', async () => {
-  for (const entry of ['second click', 'pencil']) {
-    const x = await editClick890({ realEdit: true }), f = x.f, commands = [];
-    f.runObservation(`globalThis.device890 = { held: null, get: async () => null, put: async value => { device890.held = value; }, delete: async () => {}, close() {} };
-      messageEditStore = async () => device890;`);
-    Object.assign(f.reader, { $: f.get, sourceBody: f.get('source-body'), disarm() {}, startEdit: RealReader.prototype.startEdit });
-    Object.assign(f.bootstrap.authority, { authority_id: 'a890', authority_epoch: 'e890' });
-    f.api.command = async sent => {
-      commands.push(sent);
-      return { instance_id: sent.instance_id, operation_id: sent.operation_id, kind: sent.kind, status: 'committed', result: {
-        message_id: 'm890', session_revision: 1, base_revision: 1, base_words: x.item.body, draft: x.item.body } };
-    };
-    if (entry === 'second click') { x.click(); await settle(); x.click(x.overlay, { timeStamp: 1100 }); }
-    else { const menu = f.runObservation('menu'); menu.lit = x.card; await menu.act('edit'); }
-    await settle();
-    assert.deepEqual(commands.map(sent => sent.kind), ['message.edit_open'], entry);
-    assert.equal(commands[0].target.message_id, 'm890');
-    assert.equal(f.reader.dialog.dataset.editing, 'true', entry + ': ' + JSON.stringify(f.events.filter(event => event[0] === 'reader-notice')) + '; ' + f.get('app-status').textContent + '; ' + f.get('app-status').children.map(child => child.textContent).join(' | '));
-    assert.equal(f.reader.sourceBody.hidden, true);
-    const field = f.get('message-edit').children[0];
-    assert.equal(field.value, 'My exact words'); assert.equal(field.getAttribute('aria-label'), 'Your message');
-    assert.equal(f.document.activeElement, field);
-    assert.equal(f.runObservation('messageEdit.writing.constructor.name'), 'MessageEditWriting');
-    assert.equal(f.runObservation('device890.held.value'), 'My exact words');
-    assert.equal(f.runObservation('messageEdit.opener') === (entry === 'second click' ? f.get('reader-menu') : x.card), true);
-    f.runObservation('messageEdit.writing.close()');
-  }
-});
-test('890 eligibility is checked again after a held opening and an unsuccessful opening cannot arm Edit', async () => {
-  for (const mode of ['access lost after second click', 'opening failed']) {
-    const x = await editClick890(), held = x.hold(); x.click();
-    if (mode === 'access lost after second click') { x.click(x.words, { timeStamp: 1100 }); x.f.runObservation('topicUnavailable = true'); held.resolve(); }
-    else { held.reject(Error('source refused')); await settle(); const second = x.click(x.overlay, { timeStamp: 1100 }); assert.equal(second.overlayAction, true, 'failed opening leaves the click alone'); }
-    await settle(); assert.equal(x.edits.length, 0, mode);
-  }
-});
-test('890 modifiers, cancelled presses, intervening keys and already-consumed clicks keep their meaning', async () => {
-  for (const mode of ['shiftKey', 'ctrlKey', 'metaKey', 'altKey', 'cancel', 'key', 'consumed']) {
-    const x = await editClick890(); x.click(); await settle();
-    if (mode === 'cancel') x.emit('pointercancel', x.overlay);
-    if (mode === 'key') x.emit('keydown', x.overlay, { key: 'Escape' });
-    const second = x.click(x.overlay, { timeStamp: 1100, ...(mode.endsWith('Key') ? { [mode]: true } : {}), ...(mode === 'consumed' ? { defaultPrevented: true } : {}) });
-    await settle(); assert.equal(x.edits.length, 0, mode); assert.equal(second.overlayAction, true, mode);
-  }
-});
-test('890 a body in a role button card is eligible while nested card controls and writing fields are not', async () => {
-  for (const kind of ['role button', 'contenteditable', 'image-thumb', 'replied-mark']) {
-    const x = await editClick890(), target = x.control('span');
-    if (kind === 'role button') target.setAttribute('role', 'button');
-    else if (kind === 'contenteditable') target.setAttribute('contenteditable', 'true');
-    else target.className = kind;
-    const first = x.click(target); await settle(); x.click(x.overlay, { timeStamp: 1100, detail: 2 }); await settle();
-    assert.equal(x.edits.length, 0, kind); assert.notEqual(first.defaultPrevented, true, kind);
+test('907 a refused or retired first reply cannot open a later Reader', async () => {
+  for (const mode of ['failed', 'retired']) {
+    const x = await editClick890(), held = x.hold(); x.click(); x.click(x.words, { timeStamp: 1100 });
+    if (mode === 'failed') held.reject(Error('source refused'));
+    else { x.f.runObservation('retired = new Set()'); held.resolve(); }
+    await settle(); assert.equal(x.opened(), 0);
   }
 });
 
@@ -5987,9 +5911,9 @@ for (const ending of ['Save', 'Cancel', 'Use saved', 'Escape']) test('890 Build2
   for (const entry of ['Reader More', 'second click']) {
     const x = await editFinish890(), { f } = x;
     try {
-      x.click(); await settle();
-      if (entry === 'second click') x.click(x.overlay, { timeStamp: 1100 });
+      if (entry === 'second click') { x.click(); await settle(); x.click(x.words, { timeStamp: 1100 }); }
       else {
+        await f.owners().marks.open(f.registry, { kind: 'message', id: 'm890' }, { opener: x.card });
         f.runObservation('globalThis.choices890 = null; openMessageMenu = options => { choices890 = options.items; }; openReaderMenu();');
         await f.runObservation("choices890.find(item => item.label === 'Edit').act()");
       }

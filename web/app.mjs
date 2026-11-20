@@ -1,3 +1,4 @@
+import { CardReplies } from './card-replies.mjs';
 import { panes } from './panes.mjs';
 import { stackMenuItems } from './stack-menu-items.mjs';
 import { outcomeMenuItems } from './outcome-menu-items.mjs';
@@ -117,7 +118,7 @@ const status = what => showLine($('app-status'), what);
 const failed = error => { status(error); return null; };
 const run = action => { try { return Promise.resolve(action()).catch(failed); } catch (error) { return Promise.resolve(failed(error)); } };
 let healthLight = null;
-let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, freshness, views, updateState, live = null, attention = null, topicState = null, waitingHost = null;
+let api, bootstrap, journal, registry, reader, inline, cardReplies, topic, opening = 0, freshness, views, updateState, live = null, attention = null, topicState = null, waitingHost = null;
 let localEffectVersion = 0;
 // The open page's outcome and its server-owned reply destination/coordinator.
 let here = null;
@@ -161,8 +162,8 @@ const validate = answer => {
   return answer;
 };
 const reviewStatus = message => { $('review-status').textContent = message; $('review-status').hidden = !message; };
-const presentationFor = editor => [registry?.current, registry?.inline].find(p => p && Object.values(p.editors).includes(editor));
-const writingSurface = p => p?.surface === 'inline' ? inline : reader;
+const presentationFor = editor => [registry?.current, registry?.inline, ...registry?.cards?.values() ?? []].find(p => p && Object.values(p.editors).includes(editor));
+const writingSurface = p => p?.surface === 'card' ? cardReplies.surface(p) : p?.surface === 'inline' ? inline : reader;
 const needsReview = editor => {
   const known = candidates.get(editor.key);
   return Boolean(editor.uploadState || editor.recoveryDiscovery || editor.authorityRecovery || editor.conflict || editor.cleanupError || known?.items.length || known?.nextCursor);
@@ -511,6 +512,7 @@ function changed(editor) {
     $('review-versions').hidden = !needsReview(reader.editor);
   }
   if (inline?.editor === editor) inline.paintStatus();
+  cardReplies?.paint(editor);
   invalidateComparison(editor);
   const version = registry.localTopicVersion(editor);
   if (version > localEffectVersion) {
@@ -573,6 +575,7 @@ const cardsSeen = (shown, test) => entries => {
 };
 function revokeMedia() { for (const url of mediaURLs) URL.revokeObjectURL(url); mediaURLs.clear(); }
 async function present(presentation) {
+  if (presentation.surface === 'card') { cardReplies?.surface(presentation)?.show(presentation); cardReplies?.paint(); return; }
   if (presentation.surface === 'inline') inline.show(presentation);
   else {
     retainRevisionTargets(presentation);
@@ -584,6 +587,11 @@ async function present(presentation) {
     revokeMedia(); reader.presentation = presentation;
     delete $('reader').dataset.discovered;
     reader.show(presentation.source, presentation.editors, { opener: presentation.opener, topics: [topic], presentation, mode: presentation.mode });
+    cardReplies?.paint();
+    if (presentation.fromCardReply) {
+      if (presentation.fromCardReply.wide && !reader.narrow.matches) reader.temporaryWide = true;
+      reader.widenInlineReply?.(); reader.applyLayout();
+    }
     if (presentation.sourceUnavailable) reader.notice('The source is unavailable. Your private writing is kept.');
     else if (dossierError) reader.notice(['Dossier name could not be read. The message and your writing are kept.', dossierError]);
     const shown = presentation.source.source_ref;
@@ -776,9 +784,9 @@ function sourceAttachments(presentation) {
     }));
   }
 }
-// A body click opens Reader at once. Its next nearby desktop click can
-// turn that exact opening into the shared Edit, even on the Reader overlay
-// (item 890). No timer delays opening and no second editing owner is made.
+// A first body click opens its reply immediately. The next nearby click
+// opens the Reader (Edit for an editable own message), even while the first
+// read waits. The 890 timing and travel bounds keep drags out of this act.
 let editBodyClick = null, editPointer = null;
 const editClickControl = target => {
   const control = target?.closest?.('a, button, input, textarea, select, img, [contenteditable], [role="button"], .image-thumb, .feed-fence-copy, .message-bar, .stack-head, .fold-line, .replied-mark, .note-corner, .cover-refresh-glyph, .stack-new-action');
@@ -791,15 +799,16 @@ const editClickChoice = (id, card) => {
 };
 const editClickMatches = event => {
   const first = editBodyClick;
-  return first && !retired && !event.defaultPrevented && event.button === 0 && event.detail > 0 && editPointer?.type === 'mouse' && !editPointer.dragged &&
+  return first && !retired && !event.defaultPrevented && event.button === 0 && event.detail > 0 && ['mouse', 'touch'].includes(editPointer?.type) && !editPointer.dragged &&
     !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey &&
     (event.detail >= 2 || event.timeStamp >= first.time && event.timeStamp - first.time <= 400) &&
     Math.hypot(event.clientX - first.x, event.clientY - first.y) <= 6 &&
-    (!first.shown || reader.dialog.open && registry.current === first.shown) && editClickChoice(first.id, first.card);
+    !editClickControl(event.target) && event.target?.closest?.('.message-preview')?.parentElement === first.card &&
+    (!first.shown || cardReplies?.shown(first.id));
 };
 document.addEventListener('pointerdown', event => {
   editPointer = { type: event.pointerType, id: event.pointerId, x: event.clientX, y: event.clientY, dragged: false };
-  if (event.pointerType !== 'mouse') editBodyClick = null;
+  if (!['mouse', 'touch'].includes(event.pointerType)) editBodyClick = null;
 }, true);
 for (const kind of ['pointermove', 'pointerup']) document.addEventListener(kind, event => {
   if (editPointer?.id === event.pointerId && Math.hypot(event.clientX - editPointer.x, event.clientY - editPointer.y) > 4) editPointer.dragged = true;
@@ -815,29 +824,30 @@ document.addEventListener('click', event => {
   document.defaultView.getSelection?.()?.removeAllRanges();
   run(async () => {
     const p = await first.opened;
-    if (retired || !p || !reader.dialog.open || registry.current !== p || reader.presentation !== p || p.sourceUnavailable) return;
-    // Reads can settle after access or editing availability changed.
-    return readerMessageMenuItems(p).find(choice => choice.label === 'Edit')?.act();
+    if (retired || !p || p.sourceUnavailable || !first.card.isConnected) return;
+    if (registry.current === p && reader.dialog.open) return;
+    if (!cardReplies?.shown(first.id)) return;
+    return openMessageReader(first.id, first.card);
   });
 }, true);
 function rememberEditBodyClick(id, card, event, opened) {
-  if (event?.detail > 0 && event.button === 0 && editPointer?.type === 'mouse' && !editPointer.dragged &&
+  if (event?.detail > 0 && event.button === 0 && ['mouse', 'touch'].includes(editPointer?.type) && !editPointer.dragged &&
       !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey &&
-      event.target?.closest?.('.message-preview')?.parentElement === card && !editClickControl(event.target) && editClickChoice(id, card)) {
+      event.target?.closest?.('.message-preview')?.parentElement === card && !editClickControl(event.target)) {
     const first = editBodyClick = { id, card, x: event.clientX, y: event.clientY, time: event.timeStamp, opened, shown: null };
     opened.then(p => { first.shown = p; if (!p && editBodyClick === first) editBodyClick = null; });
   }
 }
 // act: what the person's act of reading captured (Marks.capture), for a card
 // or Read it; every other open passes none and clears nothing.
-async function openSource(ref, opener, act = null, mode = 'reply', replyCard = null, { land = false } = {}) {
+async function openSource(ref, opener, act = null, mode = 'reply', replyCard = null, { land = false, fromCardReply = false } = {}) {
   if (ref.kind === 'message') clearVisitNew(ref.id);
   const request = ++opening;
   const from = registry.interactive, currentTopic = topic, currentViews = views, accessEpoch = listAccessEpoch;
   views.retain(views.currentItem, ref.kind === 'memory' ? ref.id : null);
   status('');
   try {
-    const presentation = await marks.open(registry, ref, { topicId: topic.id, opener, mode, replyCard }, act);
+    const presentation = await marks.open(registry, ref, { topicId: topic.id, opener, mode, replyCard, fromCardReply }, act);
     // A cancelled open can resolve null. Even a returned presentation must
     // still be the current, available source actually shown by the Reader.
     const source = presentation?.source;
@@ -1293,7 +1303,7 @@ function paintViews(kind) {
       // A reply can live in the card: its controls must not be inside a
       // native button. Return remains the message menu's; Space opens it.
       card = node('div'); card.tabIndex = 0; card.setAttribute('role', 'button');
-      card.onclick = () => run(() => openSource(ref, card, marks.capture(item.id)));
+      card.onclick = () => run(() => cardReplies?.shown(item.id) ? openMessageReader(item.id, card) : replyInCard(item.id, card));
       card.addEventListener('keydown', event => {
         if (event.target !== card || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
         if (event.key === ' ') { event.preventDefault(); if (!event.repeat) card.click(); }
@@ -1316,7 +1326,7 @@ function paintViews(kind) {
       card.addEventListener('pointercancel', () => { if (sourcePress) sourcePress.dragged = true; });
       const open = card.onclick;
       card.onclick = event => {
-        if (event?.target?.closest?.('#reader')) return;
+        if (event?.target?.closest?.('#reader, .card-reply-composer')) return;
         if (event?.detail > 0 && sourcePress?.dragged) return;
         // A stack's head row shows or hides its full message, or renames it (reply-stacks.mjs).
         if (headClick($('messages'), messageEntries.get(item.id), event)) return;
@@ -1370,7 +1380,7 @@ function paintViews(kind) {
     }
     placeLine(); menu?.paint(); paintDossierSourceStatus();
   }
-  if (kind === 'messages') paintMessageContext();
+  if (kind === 'messages') { paintMessageContext(); syncCardReplies(); }
   });
   paintMoreMessages();
   if (kind === 'messages') noteRead();
@@ -1464,7 +1474,7 @@ function feedOf() {
     keep: newOnPage, unread: newOnPage, acted: clearVisitNew, nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     newest: (stack, mark) => run(() => openDossierNew(stack, mark)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
-    hold: (paint, act) => keepListAnchor(paint, act), navigate: () => releaseTopArrivals(), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
+    hold: (paint, act) => keepListAnchor(paint, act), navigate: () => releaseTopArrivals(), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyInCard(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); paintMessageUpdates(); }, home: $('new-message-sheet'),
     // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
     // On a phone its menu offers the title bar's Reply and Archive first, as the glyphs fold into it (first).
@@ -2039,16 +2049,30 @@ async function replyMessage(id, card, chosen = null) {
   if (!reader.dialog.open || registry.current?.source?.source_ref?.id !== id) return;
   if (chosen) reader.quoteFrom({ kind: 'message', id }, chosen); else reader.reply({ kind: 'message', id });
 }
-// Only the hover/touch bar's Reply docks the existing reply in its source
-// card. Quote, Return and explicit Reader-opening controls keep their paths.
+// Reply and the first body click open a message's own composer. A second
+// click opens the Reader with that same registered writing.
+function syncCardReplies() {
+  cardReplies?.sync(feedMessages().values(), id => { const entry = messageEntries.get(id); return entry && opened(entry); });
+}
+async function openMessageReader(id, card) {
+  const fromCardReply = cardReplies?.from(id) ?? false;
+  const p = await openSource({ kind: 'message', id }, card, marks.capture(id), 'reply', null, { fromCardReply });
+  if (p && registry.current === p && reader.dialog.open && !p.sourceUnavailable)
+    await readerMessageMenuItems(p).find(choice => choice.label === 'Edit')?.act();
+  return p;
+}
 async function replyInCard(id, card) {
-  // Reveal a folded row without changing its reading height. Show full is
-  // a separate choice; opening the reply must not make that choice for them.
-  const entry = stackFeed?.land(id) ?? messageEntries.get(id);
+  let entry = messageEntries.get(id);
+  if (!card?.getClientRects?.().length) entry = stackFeed?.land(id) ?? entry;
   if (entry) card = opened(entry);
   if (!card?.isConnected) return;
-  await openSource({ kind: 'message', id }, card, marks.capture(id), 'reply', card);
-  if (reader.dialog.open && registry.current?.source?.source_ref?.id === id) reader.reply({ kind: 'message', id });
+  const act = marks.capture(id);
+  clearVisitNew(id);
+  const p = await cardReplies.open(id, card);
+  if (p && registry.isCurrent(p)) {
+    marks.read(act, () => registry.isCurrent(p)); openedHere(id); releaseTopArrivals();
+  }
+  return p;
 }
 // Every page of the person's marks in this topic.
 function loadMarks() {
@@ -2496,7 +2520,7 @@ function repaintYours(ids) {
     paintHeadCarries(card, item);
   }
   // The reply arrow goes back into each line painted again; the stacks are not arranged again, so the New line stays where it is.
-  paintCardReading(); menu?.paint();
+  paintCardReading(); menu?.paint(); syncCardReplies();
 }
 // Each card whose words an edit changed (TopicViews.takeRevised): the edited
 // message's words, its excerpt cue, its folded line, its author line's
@@ -2710,10 +2734,33 @@ async function checkAvailability(read, current, topicDenied = true) {
     }
   }
   const results = await Promise.allSettled([
-    checkInlineAvailability(read, current), checkSourceAvailability(read, current, topicDenied),
+    checkInlineAvailability(read, current), checkSourceAvailability(read, current, topicDenied), checkCardAvailability(read, current),
   ]);
   const failed = results.find(result => result.status === 'rejected');
   if (failed) throw failed.reason;
+}
+async function checkCardAvailability(read, current) {
+  const queue = [...registry.cards.values()];
+  // A scoped access check, bounded like initial saved-reply restoration.
+  const worker = async () => { while (queue.length && current() && !registry.disposed) await registry.refreshCard(queue.shift(), read, current); };
+  try { await Promise.allSettled([worker(), worker()]).then(results => {
+    const failed = results.find(result => result.status === 'rejected'); if (failed) throw failed.reason;
+  }); }
+  finally { if (!current()) freshness?.invalidate('availability', 0, true); }
+}
+async function retryCard(p) {
+  if (!p || p.availabilityChecking || p.editors.reply.authorityRecovery) return;
+  const foreground = registry.cleanup.foreground(), current = () => !registry.disposed && registry.cards.get(p.source.source_ref.id) === p;
+  try {
+    await registry.refreshCard(p, async (name, args) => checkedView(await foreground.read(options => api.view(name, args, options)), bootstrap.instance_id), current);
+    if (current()) cardReplies.surface(p)?.notice('');
+  } catch (error) {
+    if (current()) {
+      const failure = readFailure(error);
+      if (failure.kind === 'authority') { await registry.parkAuthority(bindingOf(bootstrap), failure.code); updateStatus(failure); }
+      cardReplies.surface(p)?.notice(['Could not confirm reply access. Your writing is kept.', error]);
+    }
+  } finally { foreground.release(); }
 }
 async function checkInlineAvailability(read, current) {
   const p = registry.inline;
@@ -2943,7 +2990,7 @@ async function reconnect() {
       if (editor.dirty && !editor.authorityRecovery && !editor.conflict && !editor.unavailable) registry.schedule(editor);
     }
     // Access a check could not confirm while the session was refused is checked again.
-    if (registry?.current?.availabilityUnconfirmed || registry?.inline?.availabilityUnconfirmed) { freshness?.invalidate('availability', 0, true); freshness?.request(); }
+    if (registry?.current?.availabilityUnconfirmed || registry?.inline?.availabilityUnconfirmed || [...registry.cards.values()].some(p => p.availabilityUnconfirmed)) { freshness?.invalidate('availability', 0, true); freshness?.request(); }
   }
   if (updateState?.kind === 'reconnect' && reconnectRetried !== api.token) {
     reconnectRetried = api.token; await freshness?.request({ refresh: true, retry: true });
@@ -3250,8 +3297,10 @@ async function initialize() {
   // a window that crosses a phone's width shows or hides it again.
   reader.narrow.addEventListener('change', paintReaderMark);
   registry = new EditorRegistry({ api, bootstrap, journal, present, changed,
-    activity: () => { inline.paintStatus(); reader.paintStatus(); },
-    closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } noteRead(); } });
+    activity: () => { inline.paintStatus(); reader.paintStatus(); cardReplies?.paint(); },
+    closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } cardReplies?.paint(); noteRead(); } });
+  cardReplies = new CardReplies({ template: $('inline-composer'), registry, topic: () => topic,
+    callbacks: { ...inline.callbacks, notebook: null, recipientsPainted: null, retry: retryCard }, offer: offerAuthor, discover, say: status });
   registry.cleanup.resumeListeners.add(rechecked);
   // After any recorded answer to a mark, this page shows what Core now holds,
   // with or without the live stream.
@@ -3378,6 +3427,7 @@ async function initialize() {
   topicNavigation = new TopicNavigation({ registry, current: route,
     navigateTarget: (target, still) => { marks.leave(); if (!shell.go(target, still)) shell.leave(routeHref(target)); } });
   await initializeInlineComposer();
+  syncCardReplies();
   // Every ordinary topic row, including the conversation; Build topics stay
   // in the right rail (item 297).
   topicRail = new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic, 'active', true),
@@ -3437,7 +3487,7 @@ async function initialize() {
   window.addEventListener('beforeunload', () => marks.leave());
   shell.guard(() => registry.hasUnprotectedWriting);
   // An edit open in the Reader sends nothing at unload (its hold lapses), and lets its Web Lock go.
-  window.addEventListener('pagehide', () => { freshness?.dispose(); registry.dispose(); journal.close(); revokeMedia(); messageEdit?.writing.close(); });
+  window.addEventListener('pagehide', () => { freshness?.dispose(); registry.dispose(); cardReplies?.dispose(); journal.close(); revokeMedia(); messageEdit?.writing.close(); });
   views.messagesPage(messageAnswer, { initial: true }); views.memoryPage(memoryAnswer, { initial: true });
   // What is drawn above the messages after they paint, in their column: the
   // marks line ("1 marked unread · Read it") and, on a conversation page, its

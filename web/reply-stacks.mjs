@@ -449,12 +449,12 @@ function paintTools(tools, stack, shown, { state, doc, nameOf }) {
     kept = { key, node }; coverTools.set(tools, kept);
     if (focused) node?.querySelector('.cover-refresh-glyph')?.focus({ preventScroll: true });
   }
-  // A gathered reply is not the original. Its existing source-status link
-  // opens the canonical root; never send the title bar's acts to the reply.
+  // Dossier settings still belong to the original; Reply belongs to the
+  // latest loaded message, including in a gathered stack (907).
   const original = stack.id === stack.dossier;
-  reply.disabled = menu.disabled = !original;
+  reply.disabled = false; menu.disabled = !original;
   tools.setAttribute('aria-label', `Dossier: ${shown.name}`);
-  nameTool(reply, original ? 'Reply to the first message' : 'First message not shown; use Reply in this dossier when available'); showGlyph(reply, 'reply', doc);
+  nameTool(reply, 'Reply to the latest message'); showGlyph(reply, 'reply', doc);
   reply.onclick = () => state.on?.reply?.(stack);
   // Core sends where a dossier sits with its messages; a page from a Core without positions has nowhere to move it.
   aside.hidden = !position;

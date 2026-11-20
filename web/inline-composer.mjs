@@ -3,7 +3,7 @@ import { paintAddress } from './people.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, paintSaveTime } from './writing-helpers.mjs';
 import { paintImageRows } from './image-rows.mjs';
 import { WritingInput } from './writing-input.mjs';
-import { paintChoice, chosen, unnamed, sending } from './whisper-choice.mjs';
+import { paintChoice, chosen, unnamed, sending, naming } from './whisper-choice.mjs';
 import { addressedTo } from './at-names.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
 import { showLine } from './lines.mjs';
@@ -17,8 +17,8 @@ import { ReaderLayout } from './layout.mjs';
 // The inline DOM adapter shares the existing registry/session/upload owners.
 // It has no source body, note editor, storage or retry scheduler of its own.
 export class InlineComposer {
-  constructor(callbacks) {
-    this.callbacks = callbacks; this.root = document.querySelector('#inline-composer');
+  constructor(callbacks, { root = document.querySelector('#inline-composer'), prefix = 'inline-', cardReply = false } = {}) {
+    this.callbacks = callbacks; this.root = root; this.prefix = prefix; this.cardReply = cardReply;
     this.field = this.$('writing-body');
     this.kind = this.defaultKind(); this.notebookJobs = new WeakMap();
     this.kinds = ['message', 'note-card'];
@@ -47,14 +47,14 @@ export class InlineComposer {
     // own, ready to type; Escape, ✕ or a press outside puts it back in its
     // place in the feed, just above More (reply-stacks.mjs), its writing kept. Shown only where the composer is
     // (aim.css), so it is never one more row of buttons.
-    this.sheet = document.querySelector('#new-message-sheet');
+    this.sheet = cardReply ? null : document.querySelector('#new-message-sheet');
     this.useLayout(callbacks.instanceId);
-    this.syncWidthPlacement = composerWidth(this.sheet, () => this.layout);
-    document.querySelector('#new-message')?.addEventListener('click', () => this.pop());
+    this.syncWidthPlacement = this.sheet ? composerWidth(this.sheet, () => this.layout) : null;
+    if (!cardReply) document.querySelector('#new-message')?.addEventListener('click', () => this.pop());
     // Put back by the person (✕, Escape, a press outside), the composer folds to its line while still up, so it
     // comes back into its place at the height its holder kept there, and no card behind it moves (item 589).
     const putBack = () => { if (this.sheet?.classList.contains('notebook-mode')) return; this.bar.fold(); this.sheet?.close(); };
-    document.querySelector('#new-message-close')?.addEventListener('click', putBack);
+    if (!cardReply) document.querySelector('#new-message-close')?.addEventListener('click', putBack);
     this.sheet?.addEventListener('cancel', event => { if (!event.defaultPrevented) this.bar.fold(); });
     // Every close of the sheet folds the composer back to its line. The focus
     // goes to New message only when the sheet closing is the one New message
@@ -124,10 +124,10 @@ export class InlineComposer {
     this.$('review-versions').onclick = () => { if (this.admits()) this.callbacks.review(this.editor, this.presentation, this.$('review-versions')); };
     this.$('retry').onclick = async () => {
       this.$('retry').disabled = true;
-      try { await this.callbacks.retry(); } finally { this.$('retry').disabled = false; }
+      try { await this.callbacks.retry(this.presentation); } finally { this.$('retry').disabled = false; }
     };
   }
-  $(name) { return this.root.querySelector(`#inline-${name}`); }
+  $(name) { return this.root.querySelector(`#${this.prefix ?? 'inline-'}${name}`); }
   get editor() { return this.presentation?.editors.reply; }
   admits(p = this.presentation, editor = this.editor) { return Boolean(editor && this.callbacks.admits(p, editor)); }
   pageJobs(editor = this.editor) { return this.notebookJobs.get(editor) ?? []; }
@@ -156,8 +156,8 @@ export class InlineComposer {
     }
     for (const name of ['who-chip', 'plus-button', 'attachments']) this.$(name).hidden = note;
     if (note) for (const name of ['who-panel', 'plus-panel', 'writing-to']) this.$(name).hidden = true;
-    this.$('writing-title').textContent = note ? 'New Notebook page' : 'New message';
-    this.field.setAttribute('aria-label', note ? 'Note' : 'New message');
+    this.$('writing-title').textContent = this.cardReply ? 'Reply' : note ? 'New Notebook page' : 'New message';
+    this.field.setAttribute('aria-label', this.cardReply ? 'Reply' : note ? 'Note' : 'New message');
     if (note) this.$('send').querySelector('.send-word').textContent = 'Start page';
   }
   offerPages(error = null, p = this.presentation, editor = this.editor) {
@@ -252,7 +252,7 @@ export class InlineComposer {
     this.presentation = p; this.root.hidden = false;
     this.useLayout(p.editors.reply.context.instanceId);
     // A name typed in To stays with the new message of the topic it was typed in.
-    this.bar.writes(p.topic.id);
+    this.bar.writes(this.cardReply ? this.editor.key : p.topic.id);
     this.field.disabled = false; showLine(this.$('notice'), '');
     this.$('destination').textContent = `To ${p.topic.title}`;
     this.drawEditor(); this.paintRecipients(); this.paintStatus(); this.paintChoice();
@@ -308,7 +308,8 @@ export class InlineComposer {
     paintChoice(this.$('intent-row'), { draft: editor.draft, names: this.names(editor), kindOf: this.kindOf,
       nameOf: this.callbacks.actorLabel,
       everyone: this.callbacks.people?.().everyone ?? [], send: this.$('send'), field: this.field, chip: this.$('who-chip'), lineHost: this.$('who-sentence'), readOnly,
-      to: this.$('writing-to'), onChoose: choice => this.choose(choice) });
+      answeringWhisper: Boolean(this.cardReply && this.presentation?.source?.whisper),
+      to: this.cardReply ? null : this.$('writing-to'), onChoose: choice => this.choose(choice) });
   }
   choose(choice) {
     const p = this.presentation, editor = this.editor;
@@ -323,7 +324,8 @@ export class InlineComposer {
     if (this.kind !== 'message' || !this.admits(p, editor) || this.state().readOnly) return false;
     if (!editor.draft.addressees.includes(name)) {
       // Named writing defaults to Ask; adding names holds no private choice (whisper-choice.mjs).
-      editor.edit({ addressees: [...editor.draft.addressees, name] });
+      editor.edit({ addressees: [...editor.draft.addressees, name], ...(this.cardReply ?
+        naming(editor.draft, this.names(editor), this.kindOf, { answeringWhisper: Boolean(p.source?.whisper) }) : {}) });
       this.callbacks.edit(editor, p); this.paintRecipients(); this.paintChoice();
     }
     return true;
@@ -423,7 +425,7 @@ export class InlineComposer {
     if (this.bar.holdSend()) return;
     // The writing goes as the choice shows: a whisper, or a tell or ask that says so, to
     // whom the line said; Core records a leading @name's members itself (addressing.py).
-    editor.edit(sending(editor.draft, this.names(editor), this.kindOf));
+    editor.edit(sending(editor.draft, this.names(editor), this.kindOf, { answeringWhisper: Boolean(this.cardReply && p.source?.whisper) }));
     const draft = editor.draft;
     try {
       const sent = this.callbacks.send(editor, p);

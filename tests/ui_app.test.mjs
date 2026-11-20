@@ -1797,3 +1797,85 @@ test('item 721 real send holds A apart from B across a lost HTTP answer and publ
   assert.equal(f.calls.filter(c => c.envelope?.kind === 'message.send').length, 1);
   assert.equal(p.replyCard, replyCard);
 });
+
+test('907 independent card replies share their exact EditorSession with the Reader', async t => {
+  const f = await fixture(t), topic = (await f.api.view('topic', { topic_id: f.facts.topic_id })).topic;
+  const cards = await Promise.all([0, 1].map(i => f.registry.initializeCard(f.facts.sources[i], topic)));
+  assert.equal(f.registry.current, null, 'saved fields do not open a Reader');
+  for (const [i, p] of cards.entries()) {
+    assert.equal(f.registry.isCurrent(p, p.editors.reply), true);
+    p.editors.reply.edit({ body: `Separate writing ${i}`, caret: { start: i, end: i } });
+    await f.registry.edited(p.editors.reply);
+  }
+  const reader = await f.open(1);
+  assert.equal(reader.editors.reply, cards[1].editors.reply);
+  assert.equal(reader.editors.reply.draft.body, 'Separate writing 1');
+  for (const [i, p] of cards.entries()) {
+    assert.equal(f.registry.isCurrent(p), false, 'a modal suspends all cards');
+    assert.equal((await f.journal.own(p.editors.reply.key)).snapshot.draft.body, `Separate writing ${i}`);
+  }
+  await f.registry.close(reader, { explicit: true });
+  for (const p of cards) assert.equal(f.registry.isCurrent(p), true);
+});
+
+test('907 Escape keeps writing; a failed local save leaves the card editable', async t => {
+  const f = await fixture(t), topic = (await f.api.view('topic', { topic_id: f.facts.topic_id })).topic;
+  const p = await f.registry.initializeCard(f.facts.sources[1], topic), editor = p.editors.reply;
+  editor.edit({ body: 'Kept after Escape', caret: { start: 4, end: 4 } });
+  assert.equal(await f.registry.hideCard(p), true);
+  assert.equal(f.registry.isCurrent(p), false);
+  assert.equal((await f.journal.own(editor.key)).snapshot.draft.body, 'Kept after Escape');
+  p.hidden = false; editor.edit({ body: 'Do not lose this' });
+  const put = f.backend.put; f.backend.put = async () => { throw Error('disk unavailable'); };
+  await assert.rejects(f.registry.hideCard(p), /Not closed/);
+  assert.equal(p.hidden, false); assert.equal(f.registry.isCurrent(p), true);
+  f.backend.put = put;
+});
+
+test('907 a card send uses its source and leaves another card writing unchanged', async t => {
+  const f = await fixture(t), topic = (await f.api.view('topic', { topic_id: f.facts.topic_id })).topic;
+  const a = await f.registry.initializeCard(f.facts.sources[1], topic), b = await f.registry.initializeCard(f.facts.sources[0], topic);
+  a.editors.reply.edit({ body: 'Only the first reply sends' }); b.editors.reply.edit({ body: 'Second reply stays', caret: { start: 5, end: 5 } });
+  const sent = await f.registry.send(a.editors.reply, { presentation: a, stay: true });
+  assert.equal(sent.status, 'confirmed');
+  assert.equal(b.editors.reply.draft.body, 'Second reply stays');
+  assert.deepEqual(b.editors.reply.draft.caret, { start: 5, end: 5 });
+  const saved = f.calls.find(c => c.envelope?.kind === 'draft.save').envelope;
+  assert.equal(saved.args.source_ref.id, f.facts.sources[1].id);
+});
+
+test('907 card input stops before a Reader opening keeps it and resumes after a refused open', async t => {
+  const f = await fixture(t), topic = (await f.api.view('topic', { topic_id: f.facts.topic_id })).topic;
+  const p = await f.registry.initializeCard(f.facts.sources[0], topic), editor = p.editors.reply;
+  editor.edit({ body: 'Before stepping', caret: { start: 3, end: 8 } });
+  const entered = deferred(), release = deferred(), read = f.transport.view;
+  t.after(() => release.resolve());
+  f.transport.view = async (name, args, options) => {
+    if (name === 'source') { entered.resolve(); await release.promise; throw Error('source read refused'); }
+    return read(name, args, options);
+  };
+  const opening = f.open(1); const rejected = assert.rejects(opening, /source read refused/);
+  assert.equal(f.registry.isWritable(p, editor), false); await entered.promise;
+  assert.equal((await f.journal.own(editor.key)).snapshot.draft.body, 'Before stepping');
+  release.resolve(); await rejected;
+  assert.equal(f.registry.isWritable(p, editor), true);
+  assert.deepEqual(editor.draft.caret, { start: 3, end: 8 });
+});
+
+test('907 card access retry preserves writing and ignores an older access answer', async t => {
+  const f = await fixture(t), topic = (await f.api.view('topic', { topic_id: f.facts.topic_id })).topic;
+  const p = await f.registry.initializeCard(f.facts.sources[0], topic), editor = p.editors.reply;
+  editor.edit({ body: 'Access may return', caret: { start: 2, end: 7 } });
+  const state = await f.api.view('editor_state', { source_ref: editor.context.sourceRef, topic_id: topic.id });
+  await f.registry.refreshCard(p, async () => ({ ...state, destination_available: false }));
+  assert.equal(editor.unavailable, true); assert.equal(p.availabilityUnconfirmed, false);
+  const old = deferred(), checking = f.registry.refreshCard(p, () => old.promise);
+  await f.registry.refreshCard(p, async () => state);
+  assert.equal(editor.unavailable, false); old.resolve({ ...state, source_available: false }); await checking;
+  assert.equal(editor.unavailable, false, 'old refusal cannot reverse the newer confirmation');
+  await assert.rejects(f.registry.refreshCard(p, async () => ({ ...state, instance_id: 'elsewhere' })), /identity/);
+  assert.equal(editor.unavailable, true); assert.equal(p.availabilityUnconfirmed, true);
+  await f.registry.refreshCard(p, async () => state);
+  assert.equal(editor.unavailable, false); assert.equal(editor.draft.body, 'Access may return');
+  assert.deepEqual(editor.draft.caret, { start: 2, end: 7 });
+});

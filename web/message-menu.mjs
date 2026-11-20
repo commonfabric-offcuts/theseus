@@ -148,7 +148,8 @@ export class MessageMenu {
     // A press on a word of the card's own reaction line acts, and opens nothing,
     // but for a tap on the 👍 count: on a phone that lights the card, which
     // names who (the bar's 👍 thumbs it).
-    // On a phone, the first tap on a card lights it; the next opens it.
+    // A phone tap on the message body goes straight to its reply (907).
+    // Other non-control parts of a card still light it before opening it.
     host.addEventListener('click', event => {
       if (event.target.closest?.('#reader')) return;
       const entry = this.entryOf(event.target);
@@ -167,7 +168,7 @@ export class MessageMenu {
       // drawn whole under Only new, light first as any card's does.
       if (onEarlierRow(entry, event.target)) return;
       // A message folded to its row unfolds at the first tap (reply-stacks.mjs).
-      if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, .image-thumb, .note-corner, .cover-refresh-glyph, .stack-new-action') && cardIn(entry).dataset.folded !== 'true') {
+      if (this.touch && entry !== this.before && !event.target.closest?.('a, .message-preview, .card-reply-composer, .fold-line, .image-thumb, .note-corner, .cover-refresh-glyph, .stack-new-action') && cardIn(entry).dataset.folded !== 'true') {
         this.light(entry);
         // The reply arrow answers its own first tap with its words (card-reading.mjs).
         if (event.target.closest?.('.replied-mark')) return;

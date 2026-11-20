@@ -7,7 +7,7 @@ const { revealCardReply } = compose;
 
 function viewport(top, bottom, vv = null, docked = true) {
   const moves = [], box = { getBoundingClientRect: () => ({ top, bottom }), getClientRects: () => [{}], closest: () => docked };
-  const field = { closest: selector => selector === '#reader[data-card-reply]' ? docked : box };
+  const field = { closest: selector => selector === '#reader[data-card-reply], .card-reply-composer' ? docked : box };
   const win = { innerHeight: 800, visualViewport: vv, scrollBy: move => moves.push(move) };
   return { field, win, moves };
 }
@@ -70,14 +70,12 @@ test('838 docking preserves an explicitly expanded source', () => {
   const f = placement(true); f.reader.placeReply(f.card);
   assert.equal(f.props.size, 0); assert.equal(f.card.dataset.full, 'shown');
 });
-test('838 the actual Reply entry point reveals its card without invoking Show full', async () => {
-  const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
-  const body = app.slice(app.indexOf('async function replyInCard('), app.indexOf('// Every page of the person'));
-  const calls = [], card = { isConnected: true }, registry = { generation: 1, current: { source: { source_ref: { id: 'm' } } } };
-  const reply = new Function('registry', 'stackFeed', 'messageEntries', 'opened', 'cardScroll', 'feedMessages', 'openSource', 'marks', 'reader',
-    `let opening=0; ${body}; return replyInCard;`)(registry, { land: () => ({ card }) }, new Map(), e => e.card,
-    { showFull() { assert.fail('Reply must not expand the source'); } }, () => new Map(),
-    async (...args) => calls.push(args), { capture: () => 'marks' }, { dialog: { open: true }, reply: ref => calls.push(ref) });
-  await reply('m', card);
-  assert.equal(calls[0][4], card); assert.deepEqual(calls[1], { kind: 'message', id: 'm' });
+test('907 the actual Reply entry opens that card without expanding its source', async () => {
+  const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8'), calls = [];
+  const card = { isConnected: true, getClientRects: () => [{}] }, p = { source: { source_ref: { kind: 'message', id: 'm' } } };
+  const reply = new Function('registry', 'stackFeed', 'messageEntries', 'opened', 'marks', 'clearVisitNew', 'cardReplies', 'openedHere', 'releaseTopArrivals',
+    `${app.slice(app.indexOf('async function replyInCard('), app.indexOf('// Every page of the person'))}; return replyInCard;`)(
+    { isCurrent: value => value === p }, { land() { assert.fail('a visible card stays in its dossier'); } }, new Map([['m', card]]), value => value,
+    { capture: id => id, read: id => calls.push(['read', id]) }, () => {}, { open: async (...args) => { calls.push(args); return p; } }, () => {}, () => {});
+  assert.equal(await reply('m', card), p); assert.deepEqual(calls, [['m', card], ['read', 'm']]);
 });
