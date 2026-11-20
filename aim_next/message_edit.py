@@ -539,7 +539,7 @@ BASE = "base_revision is one of the message's revisions"
 
 
 class MessageEdit:
-    def _editable(self, db, actor, message_id, reached=True, people=True):
+    def _editable(self, db, actor, message_id, reached=True, people=True, removed=False):
         """The checks after the words' size, in order: the actor reaches the message (a whisper outside them, or a
         message they cannot read, is refused as an unknown id), is a person when people is true (an edit session's
         commands; message.edit passes False, item 614), wrote it, and its outcome is not kept to read (skipped by
@@ -549,6 +549,8 @@ class MessageEdit:
             raise Refusal("FORBIDDEN", ONLY_PEOPLE)
         if message["author_id"] != actor:
             raise Refusal("FORBIDDEN", ONLY_AUTHOR)
+        if not removed and db.execute('SELECT 1 FROM message_removals WHERE message_id=?', (message_id,)).fetchone():
+            raise Refusal('MESSAGE_REMOVED', 'This message was removed; its original words are kept.', recorded=False)
         if reached:
             # An edit writes only actor-scoped changes, which the guard passes: refused here in an outcome kept to
             # read, reached, archived or completed (item 404).
@@ -835,6 +837,15 @@ class MessageEdit:
         settled = 0
         for row in self._pending_corrections(db, actor):
             if not self._correction_readable(db, actor, row):
+                self._acknowledge(db, actor, row)
+                settled += 1
+        # Retractions use the same durable correction lifecycle, with their own
+        # typed identity. Membership changes and wake claims share this owner.
+        rows = db.execute("SELECT d.* FROM delivery_groups g CROSS JOIN deliveries d INDEXED BY pending_group_deliveries "
+                          "ON d.group_id=g.id AND d.state='pending' WHERE g.recipient_id=? AND g.kind='retraction' AND g.active=1",
+                          (actor,)).fetchall()
+        for row in rows:
+            if not self._retraction_readable(db, actor, row):
                 self._acknowledge(db, actor, row)
                 settled += 1
         return settled

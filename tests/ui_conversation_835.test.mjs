@@ -93,7 +93,18 @@ test('835 reread keeps the loaded extent and refreshes the separately carried co
 test('835 real isolated Core records supply the ordinary conversation row without changing outcome, topic or work records',async()=>{
   const {execFileSync}=await import('node:child_process');
   const {fileURLToPath}=await import('node:url');
-  const core=JSON.parse(execFileSync('/usr/bin/python3',[fileURLToPath(new URL('./fixtures/conversation_835.py',import.meta.url))],{encoding:'utf8'}));
+  const {mkdtempSync,rmSync}=await import('node:fs');
+  const {tmpdir}=await import('node:os');
+  const {join}=await import('node:path');
+  const cache=mkdtempSync(join(tmpdir(),'aim-835-pycache-'));
+  const interpreter='/usr/bin/python3';
+  const childArgs=['-I','-X','pycache_prefix='+cache,fileURLToPath(new URL('./fixtures/conversation_835.py',import.meta.url))];
+  let core;
+  try {
+    // Keep the actual unique cache and launch visible even if this child fails.
+    process.stderr.write('835_CHILD_LAUNCH '+JSON.stringify({interpreter,argv:[interpreter,...childArgs],pycache_prefix:cache})+'\n');
+    core=JSON.parse(execFileSync(interpreter,childArgs,{encoding:'utf8',stdio:['ignore','pipe','inherit']}));
+  } finally { rmSync(cache,{recursive:true,force:true}); }
   const calls=[];
   const answer=await readTopicList(async(name,args)=>{calls.push([name,args]);return core[name];},{workspace_id:'w1',limit:1});
   const pages=new TopicPages(core.topic.instance_id,'w1',core.topic.topic);

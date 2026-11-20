@@ -937,13 +937,13 @@ VIEW_PATHS = {
 }
 # Each read of the messages table outside the visibility rule, and why it shows no whisper to anyone outside it.
 MESSAGE_READS = {
+    "aim_next/drafts.py": ("the actor-owned submission and submission list exclude a published unsent message by the same actor and exact send operation; existence-only checks return no message identity or words; private unsent draft/prepared content remains its owner's", 2),
+    "aim_next/removal.py": ("migration horizon and trigger constraints return no content; first exposure reads only bounded final-projection ids, human non-author rows beyond both horizons; eligibility reads only the checked human author's message and existence of indexed replies; removal starts through _editable/_message_access; notice history and decision receipt lookup use that exact owned message, its original operation and still-current answer revision; wait recovery walks only the removing actor's earlier addressed asks in the same topic, which cannot be whispers; summary repair reads only public surviving messages; no SQL read here returns message words", 14),
     "aim_next/withdrawal.py": ("one ask's id/topic/sequence/author/intent/addressees/private status only, after _editable "
                                 "uses canonical _message_access (visible plus topic/delivered reach), checks its author "
                                 "and open outcome; private messages are then refused as NOT_A_QUESTION, no words read "
                                 "and no hidden identity returned; wait and change recipients derive from this guarded row", 1),
-    "aim_next/dossier_order.py": ("position reads use a canonical root already checked by visible(); publication touches only its "
-                                 "message readers, and its numeric topic ceiling returns no message identity or words; the explicit "
-                                 "migration enumerates readers internally, groups messages under VISIBLE and resolves only visible roots; return detection uses MEMBERS under VISIBLE", 7),
+    "aim_next/dossier_order.py": ("position reads use a canonical root already checked by visible(); publication touches only its message readers, and its numeric topic ceiling returns no message identity or words; the explicit migration enumerates readers internally, groups messages under VISIBLE and resolves only visible roots; return detection uses MEMBERS under VISIBLE; frozen48 migration alone additionally reads each reached message parent/topic, admits each parent only in that topic and under its original whisper rule, and reads only the visible canonical root sequence, never words", 10),
     "aim_next/hosted_control.py": ("waiting and pending work filtered by VISIBLE and topic/addressed access before LIMIT, then _message_access checks the link again", 2),
     "aim_next/delivery.py": ("migration backfill or settling, before any whisper exists or of the reader's own deliveries", 8),
     "aim_next/conversation.py": ("the topic page and its images to pick (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations, "
@@ -959,10 +959,7 @@ MESSAGE_READS = {
                                  "sequence and its author's kind against the horizon or the first post recording agents' messages; "
                                  "and, for an agent's edit (item 614), the edited message's addressees and the author of the message it "
                                  "answers, to leave a message between others as it was; none of them shown", 10),
-    "aim_next/standing_conversation.py": ("a conversation's items and asks, which a whisper never is, the about links of a page already read through VISIBLE, "
-                                          "a pipeline item's message sources, which _source_rows read through _message_access, the message a person's "
-                                          "whisper replies to, to see that it goes to that message's author, and an answer take's reply, "
-                                          "shown through visible()", 10),
+    "aim_next/standing_conversation.py": ("a conversation's items and asks, which a whisper never is, the about links of a page already read through VISIBLE, a pipeline item's message sources, which _source_rows read through _message_access, the message a person's whisper replies to, to see that it goes to that message's author, and an answer take's reply, shown through visible(); removal follows only the checked owned reply's exact parent id to recompute its indexed surviving takes; that internal update returns no message words or hidden identity", 11),
     "aim_next/marks.py": ("the reader's own marks, or a row checked by visible()", 4),
     "aim_next/reactions.py": ("a row checked by visible() before a reaction or its view, the occupied probe, and go-ahead flags of messages the caller checked; "
                               "for a thumb that answers an ask (item 239): the asked person's replies, on the record or whispered to "
@@ -970,7 +967,7 @@ MESSAGE_READS = {
                               "(item 307), never shown, and the asks topic_waiting and held_ask name, which a whisper never is", 10),
     "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
     "aim_next/blocking.py": ("the message just posted, and asks that name what they block, which only an ask can and a whisper never is", 3),
-    "aim_next/store.py": ("the latest message on the record from topic_summaries", 1),
+    "aim_next/store.py": ("the latest message on the record from topic_summaries; the exposure boundary additionally reads ids/revisions only for bounded content identities actually returned by admitted projections, after unsent refusal and excluding held ids; no new words or identities are projected by this read", 2),
     "aim_next/topic_reading.py": ("the reader's own replies (author_id is the reader) to messages on a page already read through VISIBLE; "
                                   "whether the reader's own prepared reply was sent, an EXISTS over their own messages by the send's "
                                   "operation id that shows nothing of any message", 2),
