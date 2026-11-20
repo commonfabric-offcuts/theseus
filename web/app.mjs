@@ -72,7 +72,7 @@ import { ToolPage, OutcomeTools, ToolsRail, TopicTools } from './skills.mjs';
 import { openDossierMove } from './dossier-move.mjs';
 import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
 import { DossierSelectionQuote } from './dossier-selection-quote.mjs';
-import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions, paintReactions } from './reactions.mjs';
+import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions, paintReactions, mayAnswer } from './reactions.mjs';
 import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
@@ -1960,7 +1960,20 @@ function readerItem() {
 function paintReaderThumb$() {
   const item = readerItem();
   paintReaderThumb($('thumb-source'), reactions && item, bootstrap.actor, Boolean(item && reactions?.busy.has(item.id)));
-  paintReaderReactions($('reader-reactions'), item, bootstrap.actor);
+  paintReaderReactions($('reader-reactions'), reactions && item, bootstrap.actor, bootstrap.actor_kind, {
+    busy: Boolean(item && reactions?.busy.has(item.id)), answer: (id, choice) => run(() => answerFromReader(id, choice)) });
+}
+// A decision keeps the Reader and its writing open. Read the current item
+// at the press, so an old button cannot answer a newly opened source.
+async function answerFromReader(id, choice) {
+  const item = readerItem(), presentation = registry.current;
+  if (!reactions || !item || item.id !== id || !mayAnswer(item, bootstrap.actor, bootstrap.actor_kind)) return;
+  try {
+    const pending = reactions.answer(item, choice);
+    paintReaderThumb$();
+    await pending;
+  } catch (error) { if (registry.isCurrent(presentation)) reader.notice(error); }
+  finally { paintReaderThumb$(); }
 }
 // Reply, or Return, on a lit message: the Reader opens on it with the cursor
 // in the reply, and nothing quoted until the reader selects a passage. Return

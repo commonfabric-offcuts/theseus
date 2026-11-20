@@ -55,19 +55,30 @@ export function paintReactions(card, item, viewer, kind, doc = card.ownerDocumen
     count.classList.toggle('mine', thumbed(item, viewer));
     line.append(count);
   }
-  if (item.go_ahead) {
-    const mine = answerOf(item, viewer);
-    if (answerable) {
-      for (const answer of ['yes', 'no']) {
-        const choice = node(doc, 'span', ANSWER_WORDS[answer], 'reaction-choice');
-        choice.dataset.react = answer; choice.classList.toggle('mine', mine === answer);
-        line.append(choice);
-      }
+  line.append(...answerParts(doc, item, viewer, kind));
+}
+
+// One owner of the decision words, eligibility and recorded answers. A card
+// needs spans inside its button; the Reader offers buttons of their own.
+function answerParts(doc, item, viewer, kind, { buttons = false, busy = false, answer = () => {}, prior = [] } = {}) {
+  if (!item?.go_ahead) return [];
+  const value = reactionsOf(item), answerable = mayAnswer(item, viewer, kind), mine = answerOf(item, viewer), parts = [];
+  if (answerable) for (const name of ['yes', 'no']) {
+    // Keep the Reader's controls in place through pending/result repaints.
+    const choice = (buttons && prior.find(part => part.dataset.react === name && part.dataset.messageId === item.id))
+      || node(doc, buttons ? 'button' : 'span', ANSWER_WORDS[name], 'reaction-choice');
+    choice.dataset.react = name; choice.classList.toggle('mine', mine === name);
+    if (buttons) {
+      choice.type = 'button'; choice.dataset.messageId = item.id;
+      choice.setAttribute('aria-pressed', String(mine === name)); choice.disabled = busy;
+      choice.onclick = () => answer(item.id, name);
     }
-    const others = value.answers.filter(answer => answer.actor_id !== viewer || !answerable);
-    if (others.length) line.append(node(doc, 'span', others.map(a => `${a.answer === 'yes' ? '✅' : '🚫'} ${a.actor_id === viewer ? 'you' : a.actor_id}`).join(' · '), 'reaction-said'));
-    else if (!item.withdrawal && !answerable && !value.answers.length) line.append(node(doc, 'span', 'Asks for a go-ahead', 'reaction-said'));
+    parts.push(choice);
   }
+  const others = value.answers.filter(answer => answer.actor_id !== viewer || !answerable);
+  if (others.length) parts.push(node(doc, 'span', others.map(a => `${a.answer === 'yes' ? '✅' : '🚫'} ${a.actor_id === viewer ? 'you' : a.actor_id}`).join(' · '), 'reaction-said'));
+  else if (!item.withdrawal && !answerable && !value.answers.length) parts.push(node(doc, 'span', 'Asks for a go-ahead', 'reaction-said'));
+  return parts;
 }
 
 // The Reader's 👍 beside Send, for the message it shows.
@@ -83,16 +94,21 @@ export function paintReaderThumb(button, item, viewer, busy = false) {
   button.setAttribute('aria-label', button.title);
 }
 
-// The Reader's quiet line under the message it shows: how many thumbed it up
-// and who, whether or not a loaded page holds its card (item 406); its 👍
-// beside Send is the reader's own.
-export function paintReaderReactions(line, item, viewer) {
-  const thumbs = item ? reactionsOf(item).thumbs : [];
-  line.hidden = !thumbs.length;
-  if (!thumbs.length) { line.replaceChildren(); line.removeAttribute('title'); return; }
-  const names = thumbs.map(thumb => thumb.actor_id === viewer ? 'you' : thumb.actor_id).join(', ');
-  line.textContent = `👍 ${thumbs.length} ${names}`;
-  line.title = `👍 ${names}: read and understood`;
+// The Reader's line below the message shares its card's decisions. The
+// separate 👍 beside Send remains the reader's own thumbs-up action.
+export function paintReaderReactions(line, item, viewer, kind, { busy = false, answer = () => {} } = {}) {
+  const doc = line.ownerDocument, thumbs = item ? reactionsOf(item).thumbs : [], parts = [];
+  if (thumbs.length) {
+    const names = thumbs.map(thumb => thumb.actor_id === viewer ? 'you' : thumb.actor_id).join(', ');
+    parts.push(node(doc, 'span', `👍 ${thumbs.length} ${names}`));
+    line.title = `👍 ${names}: read and understood`;
+  } else line.removeAttribute('title');
+  parts.push(...answerParts(doc, item, viewer, kind, { buttons: true, busy, answer, prior: [...line.children] }));
+  // Reuse a decision button while it still answers this exact source. A
+  // result or an unrelated repaint must not replace a control under a press.
+  for (const child of [...line.children]) if (!parts.includes(child)) child.remove();
+  for (const [index, part] of parts.entries()) if (line.children[index] !== part) line.insertBefore(part, line.children[index] ?? null);
+  line.hidden = !parts.length;
 }
 
 // What Core answered of one message's reactions, kept on its loaded item.

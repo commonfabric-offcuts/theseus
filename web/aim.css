@@ -583,7 +583,7 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 .message-card.show-full{max-height:none;overflow:visible}
 .message-card.show-full>.message-preview{max-height:none;overflow:visible}
 #thumb-source{flex-shrink:0;min-width:2.75rem}
-.reader-reactions{margin:0;padding:.3rem .2rem 0;color:var(--muted);font-size:.8rem;overflow-wrap:anywhere}
+.reader-reactions{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .45rem;margin:0;padding:.3rem .2rem 0;color:var(--muted);font-size:.8rem;overflow-wrap:anywhere}
 #thumb-source[aria-pressed=true]{background:var(--soft);font-weight:700}
 .guide-open{min-height:1.6rem;padding:0 .55rem;border-radius:.45rem;color:var(--muted);font-size:.8rem}
 dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;max-height:calc(100dvh - 2rem);padding:1rem 1.25rem 1.25rem;overflow:auto}
