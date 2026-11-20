@@ -22,6 +22,8 @@ from .contract import LIMITS, READABLE, Refusal, organises, _body, _identifier, 
 from .delivery import _now_ms
 from .outcome_asks import held_ask, record_ask
 from .whispers import redact_topic
+from .message_edit import mark, revision, words, withheld
+from .standing_conversation import excerpt
 
 
 STATES = ("active", "waiting", "review", "done")
@@ -101,6 +103,14 @@ ACTIVITY_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM topics WHERE state_message_id 
 REOPENED_NOTE = "Reopened by a new message"
 
 
+def derived_conversation(topic, asks):
+    """A live Conversation has no manual workflow state. Reads do not repair it."""
+    if topic["kind"] == "conversation" and not topic["archived"]:
+        return dict(topic, state="waiting" if asks else "active", state_note="",
+                    state_by=None, state_ms=None, state_message_id=None)
+    return dict(topic)
+
+
 def _fenced(expected, version, held):
     """Refuse a topic update made from what has changed since its sender read it.
 
@@ -135,6 +145,29 @@ def order_position(cursor):
 
 
 class TopicState:
+    def _repair_conversation_waiting(self, db, topic):
+        """Repair only this touched Conversation's projection, inside its commit.
+
+        Open asks already maintain topic_waiting through _sync_waits. Validate
+        those indexed rows against conversation_waits, never reconstructing
+        message history or creating a second resolution/cancellation fact.
+        """
+        if topic["kind"] != "conversation":
+            return []
+        current = db.execute("SELECT archived FROM topics WHERE id=?", (topic["id"],)).fetchone()
+        if current["archived"]:
+            return []
+        changed = [row[0] for row in db.execute(
+            "SELECT q.actor_id FROM topic_waiting q WHERE q.topic_id=? AND (q.said=1 OR NOT EXISTS "
+            "(SELECT 1 FROM conversation_waits c WHERE c.ask_id=q.ask_message_id AND c.actor_id=q.actor_id))", (topic["id"],))]
+        db.execute("DELETE FROM topic_waiting WHERE topic_id=? AND NOT EXISTS "
+                   "(SELECT 1 FROM conversation_waits c WHERE c.ask_id=topic_waiting.ask_message_id AND c.actor_id=topic_waiting.actor_id)", (topic["id"],))
+        db.execute("UPDATE topic_waiting SET said=0,state_ms=(SELECT sent_ms FROM messages WHERE id=ask_message_id) WHERE topic_id=? AND said=1", (topic["id"],))
+        waiting = db.execute("SELECT 1 FROM topic_waiting WHERE topic_id=? AND ask_message_id IS NOT NULL LIMIT 1", (topic["id"],)).fetchone() is not None
+        db.execute("UPDATE topics SET state=?,state_note='',state_by=NULL,state_ms=NULL,state_message_id=NULL WHERE id=?",
+                   ("waiting" if waiting else "active", topic["id"]))
+        return changed
+
     def _command_topic_update(self, db, actor, envelope):
         target = envelope.get("target", {})
         if set(target) != {"topic_id"}:
@@ -327,15 +360,20 @@ class TopicState:
         waits = {topic_id: ([], []) for topic_id in topic_ids}
         if topic_ids:
             marks = ",".join("?" * len(topic_ids))
-            for row in db.execute("SELECT q.topic_id,q.actor_id,q.said,q.ask_message_id,m.author_id,m.sent_ms FROM topic_waiting q "
-                                  "LEFT JOIN messages m ON m.id=q.ask_message_id WHERE q.topic_id IN (%s) ORDER BY q.topic_id,q.actor_id" % marks,
+            for row in db.execute("SELECT q.topic_id,q.actor_id,q.said,q.ask_message_id,t.kind,m.author_id,m.sent_ms,"
+                                  "CASE WHEN m.private_to IS NULL THEN " + words("m", chars=1024, plain=True) + " ELSE '' END AS body," + revision("m") + " AS revision "
+                                  "FROM topic_waiting q JOIN topics t ON t.id=q.topic_id LEFT JOIN messages m ON m.id=q.ask_message_id "
+                                  "WHERE q.topic_id IN (%s) AND (t.kind!='conversation' OR EXISTS "
+                                  "(SELECT 1 FROM conversation_waits c WHERE c.ask_id=q.ask_message_id AND c.actor_id=q.actor_id)) ORDER BY q.topic_id,q.actor_id" % marks,
                                   list(topic_ids)):
                 said, asks = waits[row["topic_id"]]
-                if row["said"]:
+                if row["said"] and row["kind"] != "conversation":
                     said.append(row["actor_id"])
                 if row["ask_message_id"] is not None:
                     asks.append({"actor_id": row["actor_id"], "message_id": row["ask_message_id"],
-                                 "by": row["author_id"], "since_ms": row["sent_ms"]})
+                                 "by": row["author_id"], "since_ms": row["sent_ms"],
+                                 "excerpt": mark(row["ask_message_id"], row["revision"], excerpt(row["body"])),
+                                 "withheld": withheld(row["ask_message_id"])})
         return waits
 
     def _waiting_outcomes(self, db, actor, workspace_id=None):

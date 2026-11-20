@@ -98,7 +98,7 @@ TITLE = "Conversation"
 REPLACED_NOTE = "Replaced by the conversation"
 RULE = "CONVERSATION_RULE"
 NEVER_ENDS = "A conversation never ends; topics do"
-ITEMS_SAY = "In a conversation each item says where it stands. To wait on someone, ask them in a message"
+ITEMS_SAY = "A Conversation waits on its open questions. Ask someone in a message; Waiting clears when those questions are answered or withdrawn"
 FOLLOWS_TEAM = ("Who is in the conversation follows the team: its people and the coordinator. "
                 "Name an agent in a message to have it answer that one")
 NOT_THE_ANSWERER = "NOT_THE_ANSWERER"

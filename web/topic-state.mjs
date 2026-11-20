@@ -17,6 +17,12 @@ const named = (id, reader) => id === reader ? 'you' : id;
 
 // The open asks a topic carries: each waits on the person asked until they write in it.
 const asksOf = item => Array.isArray(item?.asks) ? item.asks.filter(ask => typeof ask?.actor_id === 'string') : [];
+// A Conversation's wait can be inspected by anyone who reads it. Prefer the
+// reader's own question; ordinary topics retain their personal destination.
+export const waitingQuestion = (item, reader) => {
+  const asks = asksOf(item).filter(ask => typeof ask.message_id === 'string');
+  return (asks.find(ask => ask.actor_id === reader) ?? (item?.kind === 'conversation' ? asks[0] : null))?.message_id ?? null;
+};
 
 // Who a topic waits on: those its waiting state names, then those asked and not yet answered.
 export function waitsOn(item) {
@@ -41,8 +47,13 @@ const askParts = (item, reader) => asksOf(item).map(ask => ({ words: `${named(as
 // "fable asked you, since 7:41 AM Thu Nov 5": how long each open ask has
 // waited, dated, for a title.
 export function askLines(item, reader) {
-  return askParts(item, reader).map(({ words, since }) => words + (since === null ? '' : `, since ${datedTime(since)}`));
+  const asks = asksOf(item);
+  return askParts(item, reader).map(({ words, since }, index) => words +
+    (!asks[index].withheld && asks[index].excerpt ? `: ${asks[index].excerpt}` : '') + (since === null ? '' : `, since ${datedTime(since)}`));
 }
+
+export const stateTitle = (item, reader) => [stateLabel(item, reader),
+  ...(typeof item.state_note === 'string' && item.state_note ? [item.state_note] : []), ...askLines(item, reader)].join(' · ');
 
 // Whether work is observed on a topic, by the server's one rule (aim_next/work.py),
 // as a state and a time (item 86): "aim-spec · 6:45 AM" (who worked in it
@@ -97,7 +108,7 @@ export function paintState(host, item, reader) {
   if (waitsOn(item).includes(reader)) mark.classList.add('mine');
   mark.textContent = stateLabel(item, reader);
   // A long state ends in an ellipsis; its title holds the whole of it, and how long each ask has waited.
-  mark.title = [mark.textContent, ...(typeof item.state_note === 'string' && item.state_note ? [item.state_note] : []), ...askLines(item, reader)].join(' · ');
+  mark.title = stateTitle(item, reader);
   host.append(mark);
 }
 
