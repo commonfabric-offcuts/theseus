@@ -2389,7 +2389,7 @@ test('an outcome\'s owner changes its team on the outcome page; the owner cannot
   pickerApi(other, { workspace: { owner_id: 'tony' } });
   await other.initialize();
   assert.equal(walk(other.get('team-people')).find(node => node.className === 'people-add').hidden, true);
-  assert.equal(walk(other.get('team-people')).some(node => node.textContent === '+ Add'), false);
+  assert.equal(walk(other.get('team-people')).some(node => node.textContent === '+ Add'), true, 'a member can open Coordinator; team management and Invite keep their existing rights');
   assert.deepEqual([f.get('outcome-purpose').hidden, other.get('outcome-purpose').hidden], [false, true], 'its owner sets the purpose in place; a member reads it');
 
   // Its coordinator organises it beside the owner, so they set the purpose too.
@@ -5563,4 +5563,293 @@ test('872 app gives New message the verified instance for width preferences even
   assert.equal(inline.callbacks.instanceId, f.bootstrap.instance_id);
   assert.equal(inline.layoutInstance, f.bootstrap.instance_id);
   assert.equal(inline.layout.widthKeys['new-message'], JSON.stringify(['aim-next', f.bootstrap.instance_id, 'composer-width', 'new-message']));
+});
+
+// Item899 exercises actual + Add, command adapter, outcome refresh and topic
+// projection owners. Transport records/receipts and DOM are in memory only.
+async function coordinatorPage899({ owner = 'fixture-person', coordinator = 'ally', member = true, prepare = () => {} } = {}) {
+  const f = fixture('https://fixture/?workspace=w1');
+  // This picker is removed and reoffered as permissions change. Native
+  // remove() clears parentNode; the generic inline fake only unlists it.
+  const create = f.document.createElement.bind(f.document);
+  f.document.createElement = tag => {
+    const element = create(tag), remove = element.remove.bind(element);
+    element.remove = () => { remove(); element.parent = null; };
+    return element;
+  };
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.live = stream(); f.useLive(f.live);
+  Object.assign(f.bootstrap.authority, { authority_id: 'a899', authority_epoch: 'e899' });
+  pickerApi(f, { workspace: { owner_id: owner, coordinator_id: coordinator } });
+  if (!member) f.pickers.members = f.pickers.members.filter(row => row.actor_id !== 'fixture-person');
+  f.pickers.members.push({ actor_id: 'other899', name: 'Other member', kind: 'human', enabled: true });
+  f.pickers.actors.push({ id: 'outside899', name: 'Not on team', kind: 'agent' });
+  const receipts = new Map();
+  const exact = (request, more) => ({ instance_id: 'fixture', operation_id: request.operation_id, kind: request.kind, recorded: true, ...more });
+  const apply = request => {
+    if (receipts.has(request.operation_id)) return receipts.get(request.operation_id);
+    assert.equal(request.kind, 'workspace.coordinator_set');
+    let answer;
+    if (request.expected.workspace_revision !== f.pickers.workspace.version) answer = exact(request, { status: 'rejected', error: { code: 'REVISION_CONFLICT', message: 'The coordinator changed elsewhere. Read it again.', current_versions: { workspace_revision: f.pickers.workspace.version } } });
+    else if (request.args.actor_id !== null && !f.pickers.members.some(row => row.actor_id === request.args.actor_id)) answer = exact(request, { status: 'rejected', error: { code: 'INVALID_RECIPIENT', message: 'The coordinator must belong to the outcome’s team.' } });
+    else {
+      if (f.pickers.workspace.coordinator_id !== request.args.actor_id) { f.pickers.workspace.coordinator_id = request.args.actor_id; f.pickers.workspace.version++; }
+      answer = exact(request, { status: 'committed', result: { workspace_id: 'w1', coordinator_id: request.args.actor_id, version: f.pickers.workspace.version } });
+    }
+    receipts.set(request.operation_id, answer); return answer;
+  };
+  f.api.command = async request => { f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); return apply(request); };
+  await prepare(f, { apply, exact });
+  await f.initialize(); await drain();
+  const panel = () => f.runObservation('teamPanel');
+  const row = () => walk(f.get('team-people')).find(node => node.classList?.contains('coordinator-choice'));
+  const choices = () => walk(f.get('team-people')).filter(node => node.dataset?.coordinator !== undefined);
+  const notice = () => walk(f.get('team-people')).find(node => node.classList?.contains('coordinator-notice'));
+  const open = () => {
+    assert.ok(panel().opener.parentNode, 'this team member can open + Add');
+    panel().toggle(true); assert.ok(row(), 'Coordinator row is offered'); row().onclick();
+    return choices();
+  };
+  const choose = async id => {
+    const button = choices().find(node => node.dataset.coordinator === (id ?? ''));
+    assert.ok(button, 'only an offered member or Nobody can be picked');
+    await button.onclick(); await drain();
+  };
+  const sent = () => f.calls.filter(call => call.kind === 'workspace.coordinator_set').map(call => call.envelope);
+  return { f, panel, row, choices, notice, open, choose, sent, apply, exact };
+}
+
+test('899 Coordinator row names current member above Invite and offers only team plus Nobody', async () => {
+  const p = await coordinatorPage899(); p.open();
+  assert.equal(p.row().textContent, 'Coordinator: Ally');
+  assert.deepEqual(p.choices().map(node => [node.dataset.coordinator, node.textContent]), [['', 'Nobody'], ['fixture-person', 'Fixture'], ['ally', 'Ally'], ['other899', 'Other member']]);
+  const extra = p.panel().choices.children;
+  assert.ok(extra.indexOf(p.row()) >= 0); assert.ok(extra.indexOf(p.row()) < extra.indexOf(p.f.runObservation('teamInvite.opener')));
+  assert.equal(extra.at(-1), p.f.runObservation('teamInvite.opener'), 'Invite remains last');
+  assert.equal(p.sent().length, 0, 'opening makes no change');
+});
+
+test('899 ordinary member may choose coordinator without management controls or Invite', async () => {
+  const p = await coordinatorPage899({ owner: 'someone-else' }); p.open();
+  assert.equal(p.panel().input.hidden, true);
+  assert.equal(walk(p.f.get('team-people')).some(node => node.textContent === '×'), false);
+  assert.equal(p.f.runObservation('teamInvite.opener.hidden'), true);
+  assert.equal(p.f.get('outcome-purpose').hidden, true);
+  await p.choose('other899'); assert.equal(p.row().textContent, 'Coordinator: Other member');
+});
+
+test('899 nonmember receives no coordinator capability', async () => {
+  const p = await coordinatorPage899({ owner: 'someone-else', coordinator: 'ally', member: false });
+  assert.equal(p.panel().opener.parentNode === null, true);
+  assert.ok(!p.row() || p.row().hidden); assert.equal(p.sent().length, 0);
+});
+
+test('899 a pick sends one exact viewed-revision authority command then rereads actual coordinator', async () => {
+  const p = await coordinatorPage899(); p.open(); await p.choose('other899');
+  assert.equal(p.sent().length, 1);
+  const request = p.sent()[0];
+  assert.deepEqual([request.kind, request.target, request.expected, request.args], ['workspace.coordinator_set', { workspace_id: 'w1' }, { workspace_revision: 5, authority: { authority_id: 'a899', authority_epoch: 'e899' } }, { actor_id: 'other899' }]);
+  assert.ok(request.operation_id); assert.equal(p.row().textContent, 'Coordinator: Other member');
+  assert.equal(p.f.calls.filter(call => call.name === 'workspace').length >= 2, true);
+});
+
+test('899 Nobody clears coordinator immediately with null', async () => {
+  const p = await coordinatorPage899(); p.open(); await p.choose(null);
+  assert.equal(p.sent()[0].args.actor_id, null); assert.equal(p.row().textContent, 'Coordinator: Nobody');
+});
+
+test('899 stale pick refuses once, preserves reason and shows actual current coordinator', async () => {
+  const p = await coordinatorPage899(); p.open();
+  p.f.pickers.workspace.version++; p.f.pickers.workspace.coordinator_id = 'fixture-person';
+  await p.choose('other899');
+  assert.equal(p.sent().length, 1, 'no setPresence conflict auto-retry');
+  assert.match(p.notice().textContent, /coordinator changed elsewhere/); assert.equal(p.notice().hidden, false);
+  assert.equal(p.row().textContent, 'Coordinator: Fixture');
+});
+
+test('899 a target who left the team is refused and removed from refreshed choices', async () => {
+  const p = await coordinatorPage899(); p.open();
+  p.f.pickers.members = p.f.pickers.members.filter(row => row.actor_id !== 'other899');
+  await p.choose('other899');
+  assert.match(p.notice().textContent, /must belong/); assert.equal(p.row().textContent, 'Coordinator: Ally');
+  p.open(); assert.equal(p.choices().some(node => node.dataset.coordinator === 'other899'), false);
+});
+
+test('899 pending pick never relabels coordinator or sends a double pick', async () => {
+  const gate = defer();
+  const p = await coordinatorPage899({ prepare(f, { apply }) { f.api.command = async request => { f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); await gate.promise; return apply(request); }; } });
+  p.open(); const target = p.choices().find(node => node.dataset.coordinator === 'other899');
+  const pending = target.onclick(); await settle(); const second = target.onclick(); await settle();
+  try {
+    assert.equal(p.sent().length, 1); assert.equal(p.row().textContent, 'Coordinator: Ally');
+    assert.ok(p.choices().every(node => node.disabled));
+  } finally { gate.resolve(); await Promise.all([pending, second]); await drain(); }
+  assert.equal(p.row().textContent, 'Coordinator: Other member');
+});
+
+test('899 lost response retry keeps exact operation without claiming success', async () => {
+  let attempts = 0;
+  const p = await coordinatorPage899({ prepare(f, { apply }) { f.api.command = async request => { f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); if (++attempts === 1) throw Error('Fixture connection lost'); return apply(request); }; } });
+  p.open(); await p.choose('other899'); assert.match(p.notice().textContent, /connection lost/);
+  assert.equal(p.row().textContent, 'Coordinator: Ally');
+  p.open(); await p.choose('other899');
+  assert.deepEqual(p.sent()[1], p.sent()[0]); assert.equal(p.row().textContent, 'Coordinator: Other member');
+});
+
+test('899 unconfirmed receipt never claims success and a failed reread stays visible', async () => {
+  const p = await coordinatorPage899(); p.open();
+  p.f.api.command = async request => { p.f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); return p.exact(request, { status: 'committed', operation_id: 'some-other-operation', result: { workspace_id: 'w1', coordinator_id: 'other899', version: 6 } }); };
+  const view = p.f.api.view;
+  p.f.api.view = async (name, args) => { if (name === 'workspace') throw Error('Fixture refresh offline'); return view(name, args); };
+  await p.choose('other899');
+  assert.equal(p.row().textContent, 'Coordinator: Ally'); assert.match(p.notice().textContent, /not confirmed/i); assert.match(p.notice().textContent, /refresh offline/);
+});
+
+test('899 actual picker key handlers reach choices and Escape returns to Coordinator then Add', async () => {
+  const p = await coordinatorPage899(); p.panel().toggle(true); assert.ok(p.row(), 'Coordinator row is offered');
+  const key = (node, key) => { const event = { key, isComposing: false, target: p.f.document.activeElement, preventDefault() {}, stopPropagation() {} }; (node.onkeydown ?? node.handlers.keydown)(event); };
+  p.row().focus(); key(p.row(), 'ArrowDown'); assert.equal(p.f.document.activeElement, p.choices()[0]);
+  const list = walk(p.f.get('team-people')).find(node => node.classList?.contains('coordinator-choices'));
+  key(list, 'ArrowDown'); assert.equal(p.f.document.activeElement, p.choices()[1]);
+  key(list, 'End'); assert.equal(p.f.document.activeElement, p.choices().at(-1));
+  key(list, 'Escape'); assert.equal(list.hidden, true); assert.equal(p.f.document.activeElement, p.row());
+  key(p.row(), 'Escape'); assert.equal(p.panel().row.hidden, true); assert.equal(p.f.document.activeElement, p.panel().opener);
+  assert.equal(p.sent().length, 0);
+});
+
+test('899 existing commit refresh updates another open outcome page', async () => {
+  const p = await coordinatorPage899(), other = await coordinatorPage899(); other.open();
+  p.open(); await p.choose('other899');
+  other.f.pickers.workspace = { ...p.f.pickers.workspace };
+  await commit(other.f.live, 7);
+  assert.equal(other.row().textContent, 'Coordinator: Other member');
+});
+
+test('899 duplicate displayed names use the same distinct team labels', async () => {
+  const p = await coordinatorPage899({ prepare(f) { f.pickers.members[1].name = 'Alex'; f.pickers.members[2].name = 'Alex'; } });
+  p.open(); assert.equal(p.row().textContent, 'Coordinator: Alex (ally)');
+  assert.deepEqual(p.choices().filter(node => node.dataset.coordinator === 'ally' || node.dataset.coordinator === 'other899').map(node => node.textContent), ['Alex (ally)', 'Alex (other899)']);
+});
+
+test('899 late command result cannot repaint or refresh a replacement page choice', async () => {
+  const gate = defer();
+  const p = await coordinatorPage899({ prepare(f, { exact }) { f.api.command = async request => { f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); await gate.promise; return exact(request, { status: 'committed', result: { workspace_id: 'w1', coordinator_id: request.args.actor_id, version: 6 } }); }; } });
+  p.open(); const pending = p.choices().find(node => node.dataset.coordinator === 'other899').onclick();
+  p.f.runObservation("coordinatorChoice.paint({id:'w2',version:9,coordinator_id:null}, [{actor_id:'new-member',name:'Replacement'}], true)");
+  const reads = p.f.calls.filter(call => call.name === 'workspace').length;
+  gate.resolve(); await pending; await drain();
+  assert.equal(p.row().textContent, 'Coordinator: Nobody');
+  assert.equal(p.f.calls.filter(call => call.name === 'workspace').length, reads, 'the old command does not refresh a different page');
+  assert.equal(p.notice().hidden, true); assert.equal(p.row().disabled, false);
+});
+
+test('899 older team read cannot restore an obsolete coordinator or choices', async () => {
+  const p = await coordinatorPage899(); p.open(); const gate = defer(), view = p.f.api.view; let count = 0;
+  p.f.api.view = async (name, args) => name === 'workspace_members' && ++count === 1 ? gate.promise : view(name, args);
+  const older = p.f.runObservation("paintTeam({id:'w1',version:6,owner_id:'fixture-person',coordinator_id:'ally'}, async()=>{})");
+  await settle();
+  p.f.pickers.members = p.f.pickers.members.filter(row => row.actor_id !== 'ally');
+  await p.f.runObservation("paintTeam({id:'w1',version:7,owner_id:'fixture-person',coordinator_id:'other899'}, async()=>{})");
+  gate.resolve({ instance_id: 'fixture', items: [{ actor_id: 'fixture-person', name: 'Fixture' }, { actor_id: 'ally', name: 'Old Ally' }], next_cursor: null });
+  await older;
+  assert.equal(p.row().textContent, 'Coordinator: Other member'); p.open();
+  assert.equal(p.choices().some(node => node.dataset.coordinator === 'ally'), false);
+});
+
+test('899 losing membership on refusal keeps its reason visible outside the closed Add popover', async () => {
+  const p = await coordinatorPage899({ owner: 'someone-else' }); p.open();
+  p.f.api.command = async request => { p.f.pickers.members = p.f.pickers.members.filter(row => row.actor_id !== 'fixture-person'); return p.exact(request, { status: 'rejected', error: { message: 'You are no longer on this team.' } }); };
+  await p.choose('other899'); assert.equal(p.panel().opener.parentNode, null);
+  assert.match(p.notice().textContent, /no longer on this team/);
+  for (let at = p.notice(); at && at !== p.f.get('team-people'); at = at.parentElement) assert.equal(at.hidden, false, 'refusal remains readable after the capability goes away');
+});
+
+test('899 closing Add while a pick is pending keeps dismissal focus after success', async () => {
+  const gate = defer();
+  const p = await coordinatorPage899({ prepare(f, { apply }) { f.api.command = async request => { await gate.promise; return apply(request); }; } });
+  p.open(); p.choices()[3].focus(); const pending = p.choices()[3].onclick();
+  p.panel().toggle(false); assert.equal(p.f.document.activeElement, p.panel().opener);
+  gate.resolve(); await pending; await drain();
+  assert.equal(p.panel().row.hidden, true); assert.equal(p.f.document.activeElement === p.panel().opener, true);
+});
+
+test('899 changed authority drops an obsolete pending presentation without freezing the new one', async () => {
+  const gate = defer();
+  const p = await coordinatorPage899({ prepare(f, { exact }) { f.api.command = async request => { f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); await gate.promise; return exact(request, { status: 'committed', result: { workspace_id: 'w1', coordinator_id: request.args.actor_id, version: 6 } }); }; } });
+  p.open(); const pending = p.choices()[3].onclick();
+  p.f.bootstrap.authority.authority_epoch = 'new-epoch';
+  p.f.runObservation('coordinatorChoice.paint()');
+  gate.resolve(); await pending; await drain();
+  assert.equal(p.row().textContent, 'Coordinator: Ally'); assert.equal(p.row().disabled, false);
+  assert.equal(p.notice().hidden, true);
+});
+
+test('899 mismatched committed target is not treated as saved', async () => {
+  const p = await coordinatorPage899(); p.open();
+  p.f.api.command = async request => p.exact(request, { status: 'committed', result: { workspace_id: 'different-outcome', coordinator_id: 'other899', version: 6 } });
+  await p.choose('other899'); assert.equal(p.row().textContent, 'Coordinator: Ally');
+  assert.match(p.notice().textContent, /not confirmed/i);
+});
+
+test('899 existing workspace change key refreshes topic management through actual TopicViews', async () => {
+  const f = fixture(); pickerApi(f, { topic: { owner_id: 'someone-else', creator_id: 'someone-else', coordinator_id: null } });
+  await f.initialize(); await drain();
+  const canAdd = () => Boolean(f.runObservation('participantsPanel.opener.parentNode'));
+  assert.equal(canAdd(), false);
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => { if (kind === 'topic') { Object.assign(f.views, { topic: views.topic, participants: views.participants }); f.paintViews('topic'); } }, invalidate() {} });
+  const keys = views.keys({ resource_kind: 'workspace', resource_id: 'w1', version: 8 });
+  assert.deepEqual(keys, [{ key: 'topic', version: 0 }]);
+  const read = async (name, args) => { assert.equal(name, 'topic'); assert.deepEqual(args, { topic_id: 't1' }); return { instance_id: 'fixture', topic: { ...f.pickers.topic, coordinator_id: 'fixture-person' }, participants: f.pickers.participants, summary: { topic_id: 't1', latest_message_id: null } }; };
+  await views.refresh(keys[0].key, keys[0].version, read, () => true);
+  assert.equal(canAdd(), true, 'existing topic refresh grants current coordinator management');
+});
+
+test('899 loss of outcome access keeps the refused pick reason on the surviving page notice', async () => {
+  const p = await coordinatorPage899({ owner: 'someone-else' }); p.open();
+  const view = p.f.api.view; let denied = false;
+  p.f.api.command = async request => { denied = true; return p.exact(request, { status: 'rejected', error: { message: 'You are no longer on this team.' } }); };
+  p.f.api.view = async (name, args) => {
+    if (denied && name === 'workspace') throw Object.assign(Error('Outcome access was removed.'), { code: 'FORBIDDEN' });
+    return view(name, args);
+  };
+  await p.choose('other899');
+  assert.equal(p.f.get('outcome-team').hidden, true);
+  assert.match(p.f.get('app-status').textContent, /no longer on this team/);
+  assert.match(p.f.get('app-status').textContent, /Outcome access was removed/);
+});
+
+test('899 lost committed response rereads actual state and retry preserves the same operation', async () => {
+  let attempts = 0;
+  const p = await coordinatorPage899({ prepare(f, { apply }) { f.api.command = async request => {
+    f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); const receipt = apply(request);
+    if (++attempts === 1) throw Error('Fixture response lost after record'); return receipt;
+  }; } });
+  p.open(); await p.choose('other899');
+  assert.equal(p.row().textContent, 'Coordinator: Other member', 'the refreshed record, not the transport failure, owns the displayed coordinator');
+  assert.match(p.notice().textContent, /not confirmed/i); const version = p.f.pickers.workspace.version;
+  p.open(); await p.choose('other899');
+  assert.deepEqual(p.sent()[1], p.sent()[0]); assert.equal(p.f.pickers.workspace.version, version);
+  assert.equal(p.notice().hidden, true);
+});
+
+test('899 failed membership read offers no stale choices and a later commit restores the capability', async () => {
+  const p = await coordinatorPage899(); p.open();
+  p.f.pickers.membersRefused = true; await commit(p.f.live, 11);
+  assert.equal(p.row().hidden, true); assert.equal(p.choices().length, 0);
+  assert.match(p.panel().notice.textContent, /team could not be read/i);
+  assert.equal(p.sent().length, 0);
+  p.f.pickers.membersRefused = false; await commit(p.f.live, 12); p.open();
+  assert.equal(p.row().hidden, false); assert.equal(p.choices().length, 4);
+});
+
+test('899 a newer actual coordinator wins over the older successful receipt', async () => {
+  const gate = defer();
+  const p = await coordinatorPage899({ prepare(f, { exact }) { f.api.command = async request => {
+    f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); await gate.promise;
+    return exact(request, { status: 'committed', result: { workspace_id: 'w1', coordinator_id: request.args.actor_id, version: 6 } });
+  }; } });
+  p.open(); const pending = p.choices()[3].onclick();
+  p.f.pickers.workspace.coordinator_id = 'fixture-person'; p.f.pickers.workspace.version = 8;
+  gate.resolve(); await pending; await drain();
+  assert.equal(p.row().textContent, 'Coordinator: Fixture');
+  assert.equal(p.f.pickers.workspace.version, 8);
 });

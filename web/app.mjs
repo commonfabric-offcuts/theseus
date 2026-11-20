@@ -41,7 +41,7 @@ import { TopicStatePanel, paintWaiting, managesTopic, organises, topicUpdateEnve
 import { paintTopicHeader } from './topic-header.mjs';
 import { TopicSettings } from './topic-settings.mjs';
 import { repaintTimes, watchDays } from './times.mjs';
-import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs';
+import { PeoplePanel, CoordinatorChoice, fillNames, readDirectory, readMembers } from './people.mjs';
 import { NotebookCreate } from './notebook-create.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from './quick-create.mjs';
 import { PurposeLine } from './outcome-purpose.mjs';
@@ -4113,8 +4113,9 @@ function outcomePages(workspace,recorded) {
 }
 // An outcome's team, which its owner and its coordinator may change. The owner
 // cannot be removed, so the owner's chip is fixed.
-let teamPanel=null,purposeLine=null,teamInvite=null;
+let teamPanel=null,purposeLine=null,teamInvite=null,coordinatorChoice=null,teamReadSerial=0;
 async function paintTeam(workspace,refresh) {
+  const serial=++teamReadSerial;
   const send=(id,present)=>setPresence('workspace.member_set',{workspace_id:workspace.id},'workspace_revision',workspace.version,{actor_id:id,present})
     .then(receipt=>{run(refresh);return receipt;});
   if(!teamPanel){
@@ -4122,16 +4123,29 @@ async function paintTeam(workspace,refresh) {
       read:()=>readMembers(api,bootstrap.instance_id,workspace.id),candidates:()=>directoryPeople,opened:()=>refreshDirectory()});
   }
   Object.assign(teamPanel,{owner:workspace.owner_id,add:id=>send(id,true),remove:id=>send(id,false)});
-  let members;
+  if(!coordinatorChoice){
+    const page=shell.page;
+    coordinatorChoice=new CoordinatorChoice({panel:teamPanel,instanceId:bootstrap.instance_id,
+      binding:()=>JSON.stringify([bootstrap.instance_id,bootstrap.actor,bootstrap.authority]),
+      current:()=>!retired&&shell.page===page,
+      failed:words=>{if($('outcome-team').hidden)status(words);},
+      send:(current,id,operation)=>pipelineSend('workspace.coordinator_set',{workspace_id:current.id},{actor_id:id},{workspace_revision:current.version},operation)});
+  }
+  let members,failed=null;
   await wakeLights.load();
   try { members=await readMembers(api,bootstrap.instance_id,workspace.id); }
-  catch(error) { teamPanel.error=`The team could not be read: ${error.message}`;members=teamPanel.people; }
+  catch(error) { failed=error;members=teamPanel.people; }
+  if(serial!==teamReadSerial||retired)return;
+  if(failed)teamPanel.error=`The team could not be read: ${failed.message}`;
+  coordinatorChoice.refresh=refresh;
+  coordinatorChoice.paint(workspace,members,!failed&&members.some(person=>person.actor_id===bootstrap.actor));
   teamPanel.paint(members,organises(workspace,bootstrap.actor));teamPanel.error='';
   // The shared Add popover hosts the existing invitation form; its prompt stays on the page.
   if(teamInvite?.outcome!==workspace.id){
     teamInvite?.dispose();
     teamInvite=new AgentInvite({host:$('team-invite'),panel:teamPanel,invitation:new Invitation({api,bootstrap}),workspace:()=>teamInvite.current,invited:()=>run(refresh)});
     teamInvite.outcome=workspace.id;
+    const closed=teamPanel.closed;teamPanel.closed=()=>{closed?.();coordinatorChoice.toggle(false,false);};
   }
   teamInvite.current={id:workspace.id,version:workspace.version};
   teamInvite.paint(organises(workspace,bootstrap.actor));teamPanel.paintChoices();
