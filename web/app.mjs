@@ -434,7 +434,8 @@ function reviewControl(host, entry) {
   let control = host.firstElementChild;
   if (!control) { control = node('button'); control.type = 'button'; host.append(control); }
   // A small chip on the reply's line; what it is about is in its name.
-  control.textContent = entry.label; control.onclick = () => run(() => showPending(entry.editor.key, control));
+  if (control.textContent !== entry.label) control.textContent = entry.label;
+  control.onclick = () => run(() => showPending(entry.editor.key, control));
   const replies = `${entry.count} ${entry.count === 1 ? 'reply' : 'replies'}`;
   control.setAttribute('aria-label', entry.kept ? `${replies} set aside, words kept. Open` : `${replies} may not have sent. Review`);
   control.classList.toggle('kept', Boolean(entry.kept));
