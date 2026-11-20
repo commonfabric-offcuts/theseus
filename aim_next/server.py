@@ -306,6 +306,7 @@ class UploadInput:
 
 
 class AIMHTTPServer(ThreadingHTTPServer):
+    request_queue_size = 128
     live_feed = None
     daemon_threads = False
     block_on_close = True
