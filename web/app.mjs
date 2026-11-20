@@ -3043,8 +3043,28 @@ async function initialize() {
   $('topic-tools').hidden = true; $('topic-tools').replaceChildren();
   topicTools = here.conversation ? null : new TopicTools({ host: $('topic-tools'), topicId: topic.id, instanceId: bootstrap.instance_id, read: pipelineView, send: pipelineSend });
   if (topicTools) { const tools = topicTools; run(() => tools.load()); }
+  // Every independent read starts in this turn after the confirmed topic.
+  // Join them at their first use; fatal lists/journal failures settle even
+  // while optional reads are pending, with no early editor or source wiring.
+  const journalRead = openJournal({ instanceId: bootstrap.instance_id, actor: bootstrap.actor });
+  let messageAnswer, memoryAnswer, workspace;
   try {
-    const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
+    [messageAnswer, memoryAnswer, , journal, workspace, , outcomeMembers] = await Promise.all([
+      api.view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 30 }).then(answer => checkedView(answer, bootstrap.instance_id)),
+      api.view('memory_items', { owner_scope: views.scope, limit: 20 }).then(answer => checkedView(answer, bootstrap.instance_id)),
+      colorsRead,
+      journalRead,
+      api.view('workspace', { workspace_id: topic.workspace_id }).then(answer => validate(answer).workspace).catch(() => null),
+      wakeLights.load(),
+      readMembers(api, bootstrap.instance_id, topic.workspace_id).catch(() => null),
+    ]);
+  } catch (error) {
+    // A refused list may finish before the device opens its journal. Close
+    // that attempt's journal when it arrives, never a newer startup's owner.
+    journalRead.then(opened => opened.close()).catch(() => {});
+    throw error;
+  }
+  try {
     $('workspace-name').hidden=false;$('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);here.title = workspace.title;
     // A reached, archived or completed outcome's messages are kept to read: none offers Edit. Read in the background; Core
     // refuses an edit there anyway. Archived or completed (item 404), the header says so, with Bring back for its owner.
@@ -3067,10 +3087,8 @@ async function initialize() {
     opened: () => { refreshMembers(); refreshDirectory(); },
     add: id => setParticipation(id, true), remove: id => setParticipation(id, false), named: participantName, light: wakeLight, pill: participantPill,
     read: async () => (await readTopic()).participants });
-  await wakeLights.load();
-  // Who can be sent a message here: the topic's participants and the outcome's
-  // members. A reader outside the outcome cannot list its members.
-  outcomeMembers = await readMembers(api, bootstrap.instance_id, topic.workspace_id).catch(() => null);
+  // The joined wake/member reads inform the topic's participants and who
+  // can receive a message. An unreadable member list retains its fallback.
   paintParticipants(topic, result.participants);
   // The topic as the topic view gives it, read once after a change that was not confirmed.
   const readTopic = async () => validate(await registry.cleanup.list(options => api.view('topic', { topic_id: topicId }, options)));
@@ -3090,25 +3108,6 @@ async function initialize() {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault(); return openDestination({ kind: 'workspace', id: topic.workspace_id }, result.outcome_target.workspace_title);
   });
-  // Keep startup retry read-only: no editor or clickable source exists until
-  // both initial list bodies have arrived after the captured feed baseline.
-  // Start the independent reads together and join the color read already in
-  // flight. The journal belongs to this attempt until the whole join succeeds.
-  const journalRead = openJournal({ instanceId: bootstrap.instance_id, actor: bootstrap.actor });
-  let messageAnswer, memoryAnswer;
-  try {
-    [messageAnswer, memoryAnswer, , journal] = await Promise.all([
-      api.view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 30 }).then(answer => checkedView(answer, bootstrap.instance_id)),
-      api.view('memory_items', { owner_scope: views.scope, limit: 20 }).then(answer => checkedView(answer, bootstrap.instance_id)),
-      colorsRead,
-      journalRead,
-    ]);
-  } catch (error) {
-    // A refused list may finish before the device opens its journal. Close
-    // that attempt's journal when it arrives, never a newer startup's owner.
-    journalRead.then(opened => opened.close()).catch(() => {});
-    throw error;
-  }
   // The images #img offers (topic_images, docs/conversation.md), and one image's
   // verified bytes, read through the message that carries it.
   const topicImages = async editor => checkedView(await registry.cleanup.list(options => api.view('topic_images', { topic_id: editor.context.topicId }, options)), bootstrap.instance_id);
