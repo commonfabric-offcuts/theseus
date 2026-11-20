@@ -5809,3 +5809,193 @@ test('891 newer position held by hidden root still places surviving replies belo
   assert.equal(p.f.runObservation("positionOf(stackState($('messages')).stacks[0]).aside_revision"), 1);
   p.state().moreOpen = true; p.arrange(); assert.equal(p.visible('r891'), true); assert.equal(p.visible('q891'), false);
 });
+
+// 891 Build2: preserve questionPage891 and its source reads. This wrapper
+// supplies in-memory response/lifecycle ports, and invokes the imported real
+// Reader title, close and step methods with the actual app callbacks.
+async function questionPage891B2(items, options = {}) {
+  const p = await questionPage891(items, options), { f } = p, r = f.reader;
+  const create = f.document.createElement.bind(f.document);
+  f.document.createElement = tag => {
+    const element = create(tag);
+    element.matches = selector => /^\.[\w-]+$/.test(selector) && element.classList.contains(selector.slice(1));
+    return element;
+  };
+  f.get('reader').close = function () { this.open = false; };
+  const withDocument = action => {
+    const previous = globalThis.document; globalThis.document = f.document;
+    try { return action(); } finally { if (previous === undefined) delete globalThis.document; else globalThis.document = previous; }
+  };
+  Object.assign(r, { $: f.get, dialog: f.get('reader'), sourceBody: f.get('source-body'), positions: new Map(),
+    viewToken: 0, card: null, editor: null, paintPending() {}, paintRecipients() {}, paintQuote() {} });
+  for (const name of ['paintTitle', 'paintCover', 'finishClose', 'disarm']) r[name] = (...args) => withDocument(() => RealReader.prototype[name].apply(r, args));
+  for (const name of ['close', 'step', 'stepTo', 'rememberPlace', 'placeKey', 'placeReply']) r[name] = (...args) => RealReader.prototype[name].apply(r, args);
+  r.show = (source, sessions, { topics, presentation, opener, mode }) => {
+    Object.assign(r, { source, sessions, topics, presentation, opener, mode }); ++r.viewToken;
+    r.dialog.open = true; r.paintTitle(source);
+  };
+  f.registry.close = async presentation => {
+    if (!f.registry.isCurrent(presentation)) return false;
+    f.registry.current = null; f.registry.options.closed(presentation); return true;
+  };
+  const view = f.api.view;
+  f.api.view = async (name, args, options) => {
+    if (name === 'stack_positions') {
+      p.reads.push([name, structuredClone(args)]);
+      return { instance_id: 'fixture', topic_id: 't1', items: args.message_ids.map(id => ({ message_id: id,
+        stack_position: structuredClone(p.sources.get(id)?.stack_position ?? sourcePosition891) })) };
+    }
+    return view(name, args, options);
+  };
+  const open = f.registry.open;
+  f.registry.open = async (...args) => { const presentation = await open(...args); await f.present(presentation); return presentation; };
+  return { ...p, title: () => content891(f.get('reader-title')), open: async id => {
+    await f.openSource({ kind: 'message', id }, entryIn(f, id) ?? f.get('main')); await drain(); return f.registry.current;
+  }, land: id => f.runObservation(`landOnMessage(${JSON.stringify(id)})`) };
+}
+function dossier891B2(name = null) {
+  const position = { ...sourcePosition891, can_move: true, move_revision: 0, aside_revision: 0, through: null,
+    has_other_messages: true, below: false, name, name_revision: name ? 1 : 0 };
+  return [ask891({ stack_position: position, acts: { name } }), reply891('r891', 2, { stack_position: position }), reply891('r891b', 3, { stack_position: position })];
+}
+
+for (const [kind, name, expected] of [
+  ['neutral', null, 'Dossier'],
+  ['explicit', { text: 'Independent title', by: 'fixture-person', at_ms: TODAY }, 'Independent title'],
+  ['minted', { text: 'Minted title', by: 'agent-a', at_ms: TODAY, minted: true }, 'Minted title'],
+]) test(`891 B2 Reader uses the shown ${kind} dossier name without extra metadata reads`, async () => {
+  const p = await questionPage891B2(dossier891B2(name));
+  const section = p.state().sections.get('r891'), tab = section.querySelector('.stack-head');
+  assert.ok(content891(tab).includes(expected), 'the real feed painter shows the expected name');
+  const before = p.reads.length; await p.open('r891');
+  assert.equal(p.title(), expected);
+  assert.deepEqual(p.reads.slice(before).filter(([read]) => ['stack_positions', 'topic_messages'].includes(read)), [], 'a loaded shown name needs no metadata fallback');
+  assert.deepEqual(p.ids(), [['r891', 'r891b']]);
+});
+
+test('891 B2 other reader keeps the question-derived dossier title and visible question', async () => {
+  const p = await questionPage891B2(dossier891B2(), { viewer: 'dan' });
+  await p.open('r891'); assert.equal(p.title(), 'WITHDRAWN QUESTION WORDS');
+  assert.equal(p.visible('q891'), true); assert.deepEqual(p.ids(), [['q891', 'r891', 'r891b']]);
+});
+
+for (const [kind, name, expected] of [['neutral', null, 'Dossier'], ['named', { text: 'Independent title', by: 'fixture-person', at_ms: TODAY }, 'Independent title']])
+  test(`891 B2 refused archive notice uses the shown ${kind} dossier name`, async () => {
+    const p = await questionPage891B2(dossier891B2(name));
+    const sent = []; p.f.api.command = async request => { sent.push(request); return { recorded: true, status: 'rejected', error: { code: 'REVISION_CONFLICT', message: 'The dossier changed elsewhere.' } }; };
+    const feed = p.f.runObservation('stackFeed');
+    assert.equal(feed.setAside(p.state().stacks[0], true, { focus: false }), true);
+    await feed.chain; await drain();
+    assert.equal(sent.length, 1); assert.equal(sent[0].kind, 'stack.aside');
+    assert.equal(sent[0].target.message_id, 'q891', 'the canonical command target stays the root');
+    const words = p.f.get('app-status').textContent;
+    assert.match(words, new RegExp(`Archiving “${expected}” was not saved`));
+    assert.doesNotMatch(words, /WITHDRAWN QUESTION WORDS/);
+    assert.deepEqual(p.ids(), [['r891', 'r891b']]);
+  });
+
+test('891 B2 land-only hidden root focuses the first visible dossier card without opening Reader', async () => {
+  const p = await questionPage891B2(dossier891B2()); const kept = p.f.editor.draft.body;
+  assert.equal(await p.land('q891'), true);
+  assert.equal(p.f.document.activeElement?.dataset.id, 'r891'); assert.equal(p.visible('r891'), true);
+  assert.equal(p.visible('q891'), false); assert.equal(p.opens.length, 0);
+  assert.equal(p.f.editor.draft.body, kept); assert.deepEqual(p.ids(), [['r891', 'r891b']]);
+});
+
+test('891 B2 land-only nested hidden question selects the same dossier first visible card', async () => {
+  const root = { id: 'root891b2', seq: 1, author_id: 'dan', body: 'Visible first message' };
+  const q = ask891({ seq: 2, reply_to: root.id }), reply = reply891('r891', 3);
+  const p = await questionPage891B2([root, q, reply]);
+  assert.equal(await p.land('q891'), true); assert.equal(p.f.document.activeElement?.dataset.id, root.id);
+  assert.equal(p.visible(root.id), true); assert.deepEqual(p.ids(), [[root.id, 'r891']]);
+});
+
+test('891 B2 land-only dossier with no visible card opens its exact question in Reader', async () => {
+  const p = await questionPage891B2([ask891()]);
+  assert.equal(await p.land('q891'), true);
+  assert.equal(p.opens.length, 1); assert.equal(p.f.reader.dialog.open, true);
+  assert.equal(p.f.reader.source.source_ref.id, 'q891'); assert.equal(p.f.reader.source.body, 'WITHDRAWN QUESTION WORDS');
+  assert.equal(p.visible('q891'), false); assert.deepEqual(p.ids(), []);
+});
+
+test('891 B2 Reader title return from the direct hidden question lands on a visible reply', async () => {
+  const p = await questionPage891B2(dossier891B2()); await p.open('q891');
+  assert.equal(p.f.reader.source.source_ref.id, 'q891', 'ordinary direct opening still selects its exact source');
+  const kept = p.f.editor.draft.body, button = p.f.get('reader-title').firstElementChild;
+  assert.ok(button, 'real Reader paintTitle creates its destination button');
+  await button.onclick(); await drain();
+  assert.equal(p.f.reader.dialog.open, false); assert.equal(p.f.document.activeElement?.dataset.id, 'r891');
+  assert.equal(p.f.editor.draft.body, kept); assert.deepEqual(p.ids(), [['r891', 'r891b']]);
+});
+
+test('891 B2 New line stays below its visible dossier when the hidden ask is newest', async () => {
+  const root = { id: 'root891b2', seq: 1, author_id: 'dan', body: 'Visible first message' };
+  const reply = reply891('r891', 2, { reply_to: root.id });
+  const q = ask891({ seq: 9, reply_to: root.id });
+  const other = { id: 'other891b2', seq: 6, author_id: 'dan', body: 'Other dossier' };
+  const p = await questionPage891B2([root, reply, q, other]);
+  p.f.views.line = { seq: 1, id: root.id, sent_ms: null }; p.f.views.held = true; p.arrange();
+  const children = p.f.get('messages').children, section = p.state().sections.get(root.id), line = children.find(node => node.dataset.line === 'new');
+  assert.ok(line, 'actual placeLine paints a New line');
+  assert.equal(section.dataset.seq, '2', 'folder sequence comes from visible messages');
+  assert.equal(children[children.indexOf(section) + 1] === line, true, 'the actual New line follows its folder, not the hidden top entry');
+  assert.equal(p.visible('q891'), false); assert.deepEqual(p.ids(), [[other.id], [root.id, 'r891']]);
+});
+
+for (const [direction, key] of [[1, 'next'], [-1, 'previous']]) test(`891 B2 Reader ${key} at the page edge refuses the loaded hidden question`, async () => {
+  const p = await questionPage891B2(dossier891B2());
+  const id = direction > 0 ? 'r891' : 'r891b'; await p.open(id);
+  p.f.registry.current.core = { next: null, previous: null, [key]: { id: 'q891', position: sourcePosition891 } };
+  const opened = p.opens.length; await p.f.reader.step(direction); await drain();
+  assert.equal(p.opens.length, opened, 'actual Reader step and app onPage do not reopen the hidden loaded question');
+  assert.equal(p.f.registry.current.source.source_ref.id, id); assert.equal(p.visible('q891'), false);
+});
+
+test('891 B2 Reader page edge still opens a genuinely unloaded readable neighbor', async () => {
+  const p = await questionPage891B2(dossier891B2());
+  p.sources.set('outside891b2', { id: 'outside891b2', seq: 20, topic_id: 't1', author_id: 'dan', body: 'Unread outside loaded page', attachments: [], intent: 'tell', stack_position: { ...sourcePosition891, root_id: 'outside891b2', has_other_messages: false } });
+  await p.open('r891');
+  p.f.registry.current.core = { next: { id: 'outside891b2', position: { root_id: 'outside891b2' } }, previous: null };
+  await p.f.reader.step(1); await drain();
+  assert.equal(p.f.registry.current.source.source_ref.id, 'outside891b2'); assert.equal(p.f.reader.dialog.open, true);
+  assert.deepEqual(p.ids(), [['r891', 'r891b']]);
+});
+
+test('891 B2 initial land-only URL lands visibly without opening the hidden source', async () => {
+  const p = await questionPage891(dossier891B2(), { href: 'https://fixture/?topic=t1&message=q891&land=only' });
+  assert.equal(p.f.document.activeElement?.dataset.id, 'r891'); assert.equal(p.visible('r891'), true);
+  assert.equal(p.opens.length, 0); assert.deepEqual(p.ids(), [['r891', 'r891b']]);
+});
+
+test('891 B2 same-topic dossier rail destination uses the visible landing owner', async () => {
+  const p = await questionPage891B2(dossier891B2());
+  await p.f.runObservation("openDestination({kind:'topic',id:'t1',message:'q891',land:true}, 'Fixture dossier')"); await drain();
+  assert.equal(p.f.document.activeElement?.dataset.id, 'r891'); assert.equal(p.visible('r891'), true);
+  assert.equal(p.opens.length, 0); assert.deepEqual(p.ids(), [['r891', 'r891b']]);
+});
+
+test('891 B2 Reader title return with no visible member reopens the exact source', async () => {
+  const p = await questionPage891B2([ask891()]); await p.open('q891');
+  const first = p.f.registry.current, opened = p.opens.length, kept = p.f.editor.draft.body;
+  const button = p.f.get('reader-title').firstElementChild;
+  assert.ok(button, 'real Reader title supplies the parent destination');
+  await button.onclick(); await drain();
+  assert.equal(p.opens.length, opened + 1);
+  assert.equal(p.f.registry.current !== first, true, 'the existing close owner completes before the exact source reopens');
+  assert.equal(p.f.reader.dialog.open, true);
+  assert.equal(p.f.reader.source.source_ref.id, 'q891');
+  assert.equal(p.f.reader.source.body, 'WITHDRAWN QUESTION WORDS');
+  assert.equal(p.f.editor.draft.body, kept); assert.deepEqual(p.ids(), []);
+  assert.equal(p.visible('q891'), false);
+});
+
+test('891 B2 Reader edge refuses a known question in an entirely omitted dossier', async () => {
+  const other = { id: 'visible891b2', seq: 2, author_id: 'dan', body: 'Visible dossier',
+    stack_position: { ...sourcePosition891, root_id: 'visible891b2', has_other_messages: false } };
+  const p = await questionPage891B2([ask891(), other]); await p.open(other.id);
+  p.f.registry.current.core = { next: { id: 'q891', position: sourcePosition891 }, previous: null };
+  const opened = p.opens.length; await p.f.reader.step(1); await drain();
+  assert.equal(p.opens.length, opened);
+  assert.equal(p.f.registry.current.source.source_ref.id, other.id);
+  assert.deepEqual(p.ids(), [[other.id]]); assert.equal(p.visible('q891'), false);
+});

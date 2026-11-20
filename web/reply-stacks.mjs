@@ -232,7 +232,7 @@ export function drawn(list, id) {
   return !stack || item === stack.head || shown(stack, item, { level: levelOf(state, stack.id), kept: each => state.kept.has(each.id), newReply: each => state.unreadKept.has(each.id), earlier: state.earlier.has(stack.id), held: state.held.get(stack.id) ?? null });
 }
 // The page as stepping reads it (stack-order.mjs, pageOf and stepTarget).
-export const stackPage = state => pageOf(state.stacks, shownView(state));
+export const stackPage = (state, messages = null) => pageOf(state.stacks, shownView(state), { known: messages?.values() ?? [], viewer: state.viewer });
 
 // The stack an entry is in, as last drawn: { stack, section (null for a
 // message on its own), head: whether the entry is its head, index }.
