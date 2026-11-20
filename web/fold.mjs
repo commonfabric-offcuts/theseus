@@ -5,6 +5,7 @@
 // folds it away again.
 import { paintAuthor } from './marks.mjs';
 import { linkWords } from './links.mjs';
+import { paintRemoval } from './message-removal.mjs';
 
 // A message that names no addressees is for everyone in the topic. Only a
 // person (kind 'human') has messages between others, as Core settles them only
@@ -39,6 +40,7 @@ export function foldCard(card, item, doc = document) {
   line.onclick = () => show(fold, card.hidden);
   fold.append(line, card);
   folds.set(fold, { line, author, words, card, name: item.author_id, item, open: false });
+  paintFoldWords(fold, item);
   show(fold, false);
   return fold;
 }
@@ -58,7 +60,11 @@ export const cardIn = entry => folds.get(entry)?.card ?? entry;
 // A fold's line says the message's latest words once it is edited (docs/message-edit.md).
 export function paintFoldWords(entry, item) {
   const fold = folds.get(entry);
-  if (fold) linkWords(fold.words, foldWords(item), { partial: cutShort(item) });
+  if (fold) {
+    linkWords(fold.words, foldWords(item), { partial: cutShort(item) });
+    fold.words.classList.toggle('retracted-words', item.removal?.kind === 'retracted');
+    paintRemoval(fold.line, item, fold.line.ownerDocument);
+  }
   paintOwnNoteFold(entry, item);
 }
 

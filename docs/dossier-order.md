@@ -17,6 +17,9 @@ command moves a key, retaining operation retries and Undo. Schema 49 adds `dossi
 Each position carries `order_key`, `order_tie` and `order_entry_key`; partial pages use the same root's key. Changes remain actor scoped.
 No browser storage supplies order authority. The migration and each publication
 keep actor visibility; a private reply never changes an outside reader's key.
+The 48→49 freeze owns its historical whisper, join ancestry and placement
+rules. It does not call current removal-aware projection helpers: those rules
+must still run before the later removal tables exist.
 A new reader with no prior position uses the root's sequence until their own
 move or a new admission. Reset position restores the last admission position;
 it never enables activity ordering. Archive Undo carries the former key as the

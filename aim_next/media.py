@@ -441,10 +441,13 @@ class Media:
                 db.execute("BEGIN")
                 fence.verify()
                 self._check_instance(db)
-                self._actor(db, actor)
-                row = dict(self._media_access(db, actor, args))
-                if row["state"] != "ready":
-                    raise Refusal("ATTACHMENT_NOT_READY", "Media is still pending", recorded=False)
+                kind = self._actor(db, actor)['kind']
+                def projected(connection, reader, arguments):
+                    record = dict(self._media_access(connection, reader, arguments))
+                    if record['state'] != 'ready':
+                        raise Refusal("ATTACHMENT_NOT_READY", "Media is still pending", recorded=False)
+                    return dict(self._media_descriptor(record), _record=record)
+                row = self._hand_over(db, fence, actor, kind, args, projected, None, True)['_record']
             finally:
                 db.close()
         try:

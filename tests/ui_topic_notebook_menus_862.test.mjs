@@ -14,6 +14,7 @@ import { TopicStatePanel, topicUpdateEnvelope } from '../web/topic-state.mjs';
 import { menuRouteValid, consumeMenuRoute } from '../web/menu-route.mjs';
 import { shareLinksFrom } from '../web/links.mjs';
 import { feedKey, headerRows } from '../web/panes.mjs';
+import { paintTopicHeader } from '../web/topic-header.mjs';
 
 function fixture(kind) {
   const r = renderer799(), doc = r.list.ownerDocument, shown = [], reads = [], sent = [];
@@ -71,8 +72,9 @@ test('862 a starred Notebook row opens the existing list from one named read', a
 test('893 title buttons use New message, settings, overflow order for Topic Tab and arrow reach; outcomes keep their order', () => {
   const html = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
   assert.match(html, /id="topic-menu"[^>]*aria-label="This topic"[^>]*aria-haspopup="menu"/);
-  const row = html.match(/<div class="title-row">([\s\S]*?)<\/div>/)[1];
-  const tags = [...row.matchAll(/<button\b[^>]*>/g)].map(match => match[0]);
+  const row = html.match(/<div class="title-row">([\s\S]*?)<\/div><p id="topic-description"/)[1];
+  // These original893 cases are readers without Rename and outcome pages.
+  const tags = [...row.matchAll(/<button\b[^>]*>/g)].map(match => match[0]).filter(tag => !tag.includes('id="topic-title-rename"'));
   assert.equal(tags.length, 4);
   for (const tag of tags) {
     assert.match(tag, /type="button"/);
@@ -102,6 +104,39 @@ test('893 title buttons use New message, settings, overflow order for Topic Tab 
         assert.equal(doc.activeElement.id, id, `${route} ${key}`);
         assert.equal(prevented, true);
       }
+    }
+  }
+});
+
+test('893/805 a renaming reader reaches title, pencil, New message, settings, overflow in template Tab order', () => {
+  const html = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
+  const row = html.match(/<div class="title-row">([\s\S]*?)<\/div><p id="topic-description"/)[1];
+  const r = renderer799(), doc = r.list.ownerDocument, header = doc.createElement('header');
+  r.list.append(header);
+  const controls = [...row.matchAll(/<(h1|button)\b[^>]*>/g)].map(([tag, kind]) => {
+    const node = doc.createElement(kind); node.id = tag.match(/id="([^"]+)"/)[1];
+    node.tabIndex = kind === 'button' ? 0 : -1;
+    node.hidden = node.id === 'outcome-menu'; node.checkVisibility = () => !node.hidden;
+    header.append(node); return node;
+  });
+  const named = id => controls.find(node => node.id === id);
+  doc.querySelector = selector => selector === '#main > .topic-header' ? header : null;
+  // Header buttons are selected in DOM order; title is its own semantic h1
+  // Tab stop, before the pencil, rather than an extra arrow-row button.
+  header.querySelectorAll = () => controls.filter(node => node.tag === 'button');
+  paintTopicHeader({ title: named('topic-title'), pencil: named('topic-title-rename'),
+    gear: named('settings-open'), subtitle: doc.createElement('p') },
+    { title: 'Topic', owner_id: 'reader', creator_id: 'reader', state: 'active', waiting_on: [] }, 'reader', { doc });
+  const expected = ['topic-title', 'topic-title-rename', 'new-message', 'settings-open', 'topic-menu'];
+  assert.deepEqual(controls.filter(node => !node.hidden && node.tabIndex >= 0).map(node => node.id), expected,
+    'the actual permission paint makes the title and its pencil available before893 actions');
+  assert.deepEqual(headerRows(doc)[0].buttons.map(node => node.id), expected.slice(1));
+  for (const [key, order] of [['ArrowRight', expected.slice(1)], ['ArrowLeft', expected.slice(1).reverse()]]) {
+    named(order[0]).focus();
+    for (const id of order.slice(1)) {
+      let prevented = false;
+      assert.equal(feedKey({ key, target: doc.activeElement, preventDefault() { prevented = true; } }, doc), true);
+      assert.equal(doc.activeElement.id, id, key); assert.equal(prevented, true);
     }
   }
 });

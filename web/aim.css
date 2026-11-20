@@ -201,7 +201,13 @@ main::after{content:"";display:block;height:var(--line-room,0px)}
 /* On an outcome's page its Notebook pages open in the existing sheet. */
 .page-here{margin-top:1rem;padding:1rem 1.15rem;border:1px solid var(--line);border-radius:.75rem;background:var(--panel)}.page-here h2{margin-bottom:.2rem;overflow-wrap:anywhere}.page-here h2:focus{outline:none}.page-here .notice{margin:.5rem 0}.page-here .source-changes{margin:.8rem 0 0}.page-here-body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;margin:.8rem 0}
 /* The top of a topic: the title with a gear for Topic settings at its upper right, and the topic's note as a plain subtitle under it. */
-.title-row{display:flex;align-items:flex-start;gap:.75rem}.title-row h1{flex:1;min-width:0;overflow-wrap:anywhere;line-height:1.25;padding-top:.4rem}
+.title-row{display:flex;align-items:flex-start;gap:.75rem}.topic-title-area{flex:1;min-width:0;padding-top:.4rem;line-height:1.875rem}.title-row h1{display:inline;overflow-wrap:anywhere;line-height:1.25}
+/* The pencil follows the title's actual text, including its last wrapped line. */
+.title-row h1.renamable{cursor:pointer}.title-row h1.renamable:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+.topic-title-pencil{display:inline-grid;place-items:center;width:1em;height:1em;min-height:0;padding:0;margin-left:.15rem;border:0;border-radius:0;background:transparent;color:var(--muted);font-size:.8rem;line-height:1;vertical-align:baseline;opacity:0}.topic-title-pencil svg{width:1em;height:1em}.topic-title-area:hover>.topic-title-pencil,.topic-title-area:focus-within>.topic-title-pencil,.topic-title-pencil:focus-visible{opacity:1}.topic-title-pencil:hover{background:transparent;color:var(--ink)}
+#topic-title-edit{min-width:0;padding-top:.25rem}#topic-title-edit .rename-line{width:100%;min-width:0;margin:0;font:inherit;min-height:2.75rem}#topic-title-edit .notice{font-size:.875rem;overflow-wrap:anywhere;margin:.35rem 0 0}
+@media(hover:hover){.title-row h1.renamable:hover{background:var(--soft)}}
+@media(hover:none){.topic-title-pencil{display:none}.title-row h1.renamable{display:inline-block;min-height:2.75rem;max-width:100%}}
 /* The gear: a quiet square button, 44 px to touch, its middle level with the title's first line. */
 .settings-gear{flex:0 0 auto;display:inline-grid;place-items:center;width:2.75rem;height:2.75rem;padding:0;color:var(--muted);border-color:transparent;background:transparent}.settings-gear:hover{color:var(--ink);background:var(--soft)}
 .topic-header .topic-subtitle{margin-top:.3rem;font-size:.95rem;overflow-wrap:anywhere}.topic-subtitle .topic-state{margin-right:.25rem;vertical-align:.08em}
@@ -1348,6 +1354,17 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 #reader-origin { display: flex; align-items: center; gap: .25rem; }
 #reader-origin > .reader-origin-text { min-width: 0; }
 #reader-origin > .message-update { flex: none; }
+#reader-origin > .question-state { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.reader-header:has(#reader-origin > .question-state) .reader-title-row > button { margin: 0; }
+@media(max-width:480px) {
+  .reader-header:has(#reader-origin > .question-state) #reader-stepping { margin-left: auto; }
+  .reader-header:has(#reader-aside:not([hidden])) #reader-origin:has(> .question-state) {
+    order: 2; flex: 1 0 100%; flex-wrap: wrap; white-space: normal;
+  }
+  .reader-header:has(#reader-aside:not([hidden])) #reader-origin:has(> .question-state) > .reader-origin-text {
+    flex: 1 0 100%;
+  }
+}
 @media (max-width: 480px) {
   .reader-header:has(#reader-aside:not([hidden])) #reader-origin { overflow: visible; }
   .reader-header:has(#reader-aside:not([hidden])) .reader-origin-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1467,3 +1484,9 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 /* An interactive document owns its scrolling; it never grows beyond a screen. */
 .html-frame { display: block; width: 100%; min-width: 0; height: 96px; max-height: 100dvh; border: 0; color-scheme: light dark; }
 .html-refusal { display: block; color: var(--muted); }
+/* Retraction keeps the words readable and gives the same terminal treatment
+   to a card's words and the Reader's source. The act's label stays unstruck. */
+.retracted-words,
+.retracted-message > .message-preview,
+#source-body.retracted-message { text-decoration: line-through; opacity: .6; }
+.message-retracted { font-weight: 500; }

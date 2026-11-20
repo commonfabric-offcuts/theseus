@@ -27,6 +27,7 @@ class Element {
   addEventListener(name, fn) { this.handlers[name] = fn; }
   focus() { globalThis.document.activeElement = this; }
   get isConnected() { return true; }
+  contains(node) { return node === this || this.all().includes(node); }
   all() { return this.children.flatMap(node => node instanceof Element ? [node, ...node.all()] : []); }
   find(predicate) { return this.all().find(predicate); }
   filter(predicate) { return this.all().filter(predicate); }
@@ -305,7 +306,7 @@ test('the top of a topic is the eyebrow, the title row with the gear, the subtit
   const order = ids => ids.map(id => header.indexOf(`id="${id}"`));
   const [eyebrow, title, gear, subtitle] = order(['workspace-name', 'topic-title', 'settings-open', 'topic-description']);
   assert.ok(eyebrow >= 0 && eyebrow < title && title < gear && gear < subtitle, 'eyebrow, title, gear, subtitle');
-  assert.match(header, /<div class="title-row"><h1 id="topic-title"><\/h1>/);
+  assert.match(header, /<div class="title-row"><div class="topic-title-area"><h1 id="topic-title"><\/h1>/);
   assert.match(header, /<button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden>/);
   // 862 added the overflow; 893 puts it after New message and settings.
   const [write, settings, menu] = order(['new-message', 'settings-open', 'topic-menu']);

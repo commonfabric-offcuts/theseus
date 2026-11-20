@@ -1,0 +1,68 @@
+✖ item 805 actual title click shares rename and rejects a stale unauthorized click (1.973833ms)
+✖ item 805 settings restoration is immediate before any repair paint (0.167208ms)
+✖ item 805 later paint repairs the original 656 misplaced-field mutation (0.122125ms)
+✖ item 805 touch cancellation returns focus to the visible title handle (0.150541ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 0
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 60.995875
+
+✖ failing tests:
+
+test at tests/ui_topic_state.test.mjs:1675:1
+✖ item 805 actual title click shares rename and rejects a stale unauthorized click (1.973833ms)
+  AssertionError [ERR_ASSERTION]: actual title text has the rename entry point
+  + actual - expected
+  
+  + 'undefined'
+  - 'function'
+  
+      at TestContext.<anonymous> (file:///Users/commonfabric/aim-worktrees/page-lane5-805-title-live210/tests/ui_topic_state.test.mjs:1679:10)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'undefined',
+    expected: 'function',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/ui_topic_state.test.mjs:1695:1
+✖ item 805 settings restoration is immediate before any repair paint (0.167208ms)
+  TypeError [Error]: panel.renameTitle is not a function
+      at TestContext.<anonymous> (file:///Users/commonfabric/aim-worktrees/page-lane5-805-title-live210/tests/ui_topic_state.test.mjs:1699:9)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+
+test at tests/ui_topic_state.test.mjs:1712:1
+✖ item 805 later paint repairs the original 656 misplaced-field mutation (0.122125ms)
+  TypeError [Error]: panel.renameTitle is not a function
+      at TestContext.<anonymous> (file:///Users/commonfabric/aim-worktrees/page-lane5-805-title-live210/tests/ui_topic_state.test.mjs:1716:9)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at tests/ui_topic_state.test.mjs:1726:1
+✖ item 805 touch cancellation returns focus to the visible title handle (0.150541ms)
+  TypeError [Error]: titleSurface.title.onclick is not a function
+      at TestContext.<anonymous> (file:///Users/commonfabric/aim-worktrees/page-lane5-805-title-live210/tests/ui_topic_state.test.mjs:1733:22)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
