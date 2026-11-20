@@ -46,7 +46,7 @@ if __package__ in (None, ""):
 
 from aim_next.contract import Refusal
 from aim_next.releases import release_row
-from tools import checks as outcome_checks, known_reds as known_reds_check, release_check, releases, train as train_check
+from tools import checks as outcome_checks, known_reds as known_reds_check, release_check, releases, train as train_check, runner_runtime
 
 PYTHON = "/usr/bin/python3"
 Config = collections.namedtuple(
@@ -106,14 +106,48 @@ def server_argv(config):
     return argv + (["--tailnet-origin", config.tailnet_origin] if config.tailnet_origin else [])
 
 
-def runner_argv(config):
-    return [config.python, "-I", str(config.live / "bin/aim-next-runner"), "--profile", str(config.runner_profile),
+def runner_policy(config, candidate):
+    """Preflight before an outer seat boundary; only restart policies need it."""
+    try:
+        policy = runner_runtime.policy(config, candidate)
+        if policy['kind'] == 'keep':
+            rows = processes()
+            runner_args = runner_argv(config, policy['source'])
+            supervisors = find(rows, supervisor_argv(config, policy['source'])[1:])
+            children = [pid for pid, parent, _ in rows if parent in supervisors]
+            bare = [pid for pid in find(rows, ['/bin/aim-next-runner'] + runner_args[3:]) if pid not in children]
+            if children or bare:
+                kept_runner(config, policy, pids=children + bare + supervisors)
+            else:
+                policy = dict(policy, kind='restart', reason='host_absent')
+        if policy['kind'] == 'restart':
+            # Export and verify now: a bad candidate, path, route or existing
+            # snapshot must refuse while the old server/runner still run.
+            policy['prepared_source'] = runner_runtime.prepare(config, candidate)
+        return policy
+    except (runner_runtime.Refused, OSError, ValueError, KeyError, TypeError) as error:
+        raise Refused(str(error)) from error
+
+
+_CURRENT_SOURCE = object()
+
+
+def runner_argv(config, source=_CURRENT_SOURCE):
+    try:
+        source = runner_runtime.latest(config) if source is _CURRENT_SOURCE else source
+    except runner_runtime.Refused as error:
+        raise Refused(str(error)) from error
+    root = Path(source['root']) if source else config.live
+    argv = [config.python, "-I", str(root / "bin/aim-next-runner"), "--profile", str(config.runner_profile),
             "--runner-id", config.runner_id, "--routes", str(config.routes)]
+    if source:
+        argv += ['--broker-executable', str(config.live / 'bin/aim-next-codex-broker')]
+    return argv
 
 
-def supervisor_argv(config):
+def supervisor_argv(config, source=_CURRENT_SOURCE):
     """The runner's supervisor, which runs the runner with the same arguments and starts it again when that is safe."""
-    argv = runner_argv(config)
+    argv = runner_argv(config, source)
     return argv[:3] + ["supervise"] + argv[3:]
 
 
@@ -184,10 +218,18 @@ def wait_line(path, proc):
         os.close(fd)
 
 
-def start(config, sha, argv, run_dir, previous):
+def start(config, sha, argv, run_dir, previous, source=None):
+    if source is not None:
+        try:
+            startup = runner_runtime.inputs(config)
+        except (runner_runtime.Refused, OSError, ValueError, KeyError, TypeError) as error:
+            raise Refused('hosted startup inputs cannot be verified: %s' % error) from error
     run_dir.mkdir(mode=0o700)
     launch = {"at": now(), "revision": sha, "argv": argv, "cwd": str(config.live), "previous": previous}
     (run_dir / "launch.json").write_text(json.dumps(launch, indent=1) + "\n")
+    if source is not None:
+        (run_dir / 'source.json').write_text(json.dumps(source, sort_keys=True) + '\n')
+        (run_dir / 'host-inputs.json').write_text(json.dumps(startup, sort_keys=True) + '\n')
     out = open(run_dir / "stdout.log", "wb")
     err = open(run_dir / "stderr.log", "wb")
     proc = subprocess.Popen(argv, cwd=str(config.live), stdin=subprocess.DEVNULL, stdout=out, stderr=err,
@@ -211,6 +253,36 @@ def recorded(config, kind):
     for name in ("pid.json", "observed.json"):
         if (latest / name).exists():
             return json.loads((latest / name).read_text())["pid"]
+
+
+def kept_runner(config, policy, captured=None, pids=None):
+    """Verify the surviving Core owner and exact process, without taking its guard."""
+    try:
+        require(runner_runtime.latest(config) == policy['source'], 'runner source record moved')
+        require(runner_runtime.inputs(config) == policy['inputs'], 'hosted startup inputs moved during deploy')
+    except (runner_runtime.Refused, OSError, ValueError, KeyError, TypeError) as error:
+        raise Refused(str(error)) from error
+    root = policy['source']['root']
+    probe = run([config.python, '-I', '-B', '-c', (
+        'import sys,json; sys.path.insert(0, %r)\n'
+        'from aim_next.profile import load_profile\n'
+        'print(json.dumps(load_profile(%r).store().runner_status()))') % (root, str(config.runner_profile))])
+    require(probe.returncode == 0, 'the surviving runner state cannot be read')
+    try:
+        state = json.loads(probe.stdout)
+        holder = state['holder']
+        pid = holder['runner_pid']
+        watched = captured['processes'] if captured is not None else dict.fromkeys(pids or [pid])
+        identities = {process: identity(process) for process in watched}
+        current = {'version': state['version'], 'pid': pid, 'started_ms': holder['runner_started_ms'],
+                   'identity': identity(pid), 'processes': identities}
+    except (ValueError, KeyError, TypeError) as error:
+        raise Refused('the surviving runner owner cannot be confirmed') from error
+    require(state.get('state') == 'running' and state.get('lease_expired') is False and current['identity'] and
+            all(identities.values()) and
+            (pids is None or pid in pids), 'the surviving runner has lost its lease or process')
+    require(captured is None or current == captured, 'the surviving runner owner changed during deploy')
+    return current
 
 
 def live_records(config):
@@ -744,9 +816,11 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     # Each red is recorded with the line the operator reads (known_reds.SAID), and that line is what is printed.
     for line in known_reds_check.said(known or {}):
         print(line)
+    host_policy = runner_policy(config, sha)
+    keep_host = host_policy['kind'] == 'keep'
     server_args, runner_args, supervisor_args = server_argv(config), runner_argv(config), supervisor_argv(config)
     record(evidence, "00-plan", {"commit": sha, "dry_run": dry, "live": config.live, "instance": config.instance,
-                                 "server": server_args, "runner": supervisor_args})
+                                 "server": server_args, "runner": supervisor_args, "runner_policy": host_policy})
 
     # 1. The live processes, by exact command line, and nothing else matching. The runner runs
     # under its supervisor, or bare as one started before supervision did.
@@ -770,6 +844,7 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     # Each must be the PID its own run record captured at start.
     require(server_pids == [recorded(config, "server")] and stop in ([], [recorded(config, "runner")]),
             "live processes are not the ones their run records started: %s %s" % (server_pids, stop))
+    held_owner = kept_runner(config, host_policy, pids=runner_pids + supervisors) if keep_host else None
     head = run(["git", "-C", str(config.live), "rev-parse", "HEAD"]).stdout.strip()
     dirty = run(["git", "-C", str(config.live), "status", "--porcelain", "--untracked-files=no"]).stdout
     ff = run(["git", "-C", str(config.live), "merge-base", "--is-ancestor", head, sha]).returncode == 0
@@ -848,7 +923,9 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     # 2. Stop the runner, then the server, by captured PID; wait on each exit event. A supervisor
     # passes the stop to its runner and exits only after the runner has.
     stopped = {}
-    for name, pids in (("runner", stop), ("server", server_pids)):
+    if keep_host:
+        kept_runner(config, host_policy, held_owner, runner_pids)
+    for name, pids in (("server", server_pids),) if keep_host else (("runner", stop), ("server", server_pids)):
         for pid in pids:
             os.kill(pid, 15)
             stopped[name] = (pid, wait_exit(pid))
@@ -857,7 +934,7 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     stopped["runner_final"] = final
     record(evidence, "03-stopped", stopped)
     # A paused runner needs a deliberate --resume-version; stop here rather than guess.
-    require(not runner_pids or (final and json.loads(final[0]).get("status") == "stopped"),
+    require(keep_host or not runner_pids or (final and json.loads(final[0]).get("status") == "stopped"),
             "the runner did not stop cleanly; its last line: %s" % final)
 
     # 3. A fresh backup with the code that wrote the database.
@@ -870,6 +947,8 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
         "print(json.dumps(r, default=str))") % (str(config.live), str(config.server_profile), str(backup_dir))])
     record(evidence, "04-backup", {"path": str(backup_dir), "exit": probe.returncode, "stdout": probe.stdout, "stderr": probe.stderr})
     require(probe.returncode == 0, "the backup failed")
+    if keep_host:
+        kept_runner(config, host_policy, held_owner, runner_pids)
 
     # 4. Fast-forward the live checkout.
     merge = run(["git", "-C", str(config.live), "merge", "--ff-only", sha])
@@ -880,10 +959,14 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     # 5. Migrate with the new code; the runner guard is free because the runner is stopped.
     db = str(config.instance / "data.sqlite3")
     binding = json.loads(config.server_profile.read_text())["instance_id"]
-    mig = run([config.python, "-I", "-B", str(config.live / "bin/aim-next-admin"), "migrate", "--db", db,
-               "--instance", binding, "--binding", str(config.server_profile)])
-    record(evidence, "06-migrate", {"exit": mig.returncode, "stdout": mig.stdout, "stderr": mig.stderr})
-    require(mig.returncode == 0, "the migration failed")
+    if keep_host:
+        kept_runner(config, host_policy, held_owner, runner_pids)
+        record(evidence, '06-migrate', {'skipped': True, 'schema': host_policy['source']['schema'], 'why': 'compatible hosted source'})
+    else:
+        mig = run([config.python, "-I", "-B", str(config.live / "bin/aim-next-admin"), "migrate", "--db", db,
+                   "--instance", binding, "--binding", str(config.server_profile)])
+        record(evidence, "06-migrate", {"exit": mig.returncode, "stdout": mig.stdout, "stderr": mig.stderr})
+        require(mig.returncode == 0, "the migration failed")
 
     # 6. Restart the server, wait for its ready line, then the runner.
     numbers = [int(p.name.rsplit("-", 1)[1]) for p in run_dirs(config, "server")]
@@ -895,10 +978,23 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     record(evidence, "07-server", {"pid": server.pid, "run": str(server_dir), "ready": ready})
     require(ready and json.loads(ready).get("status") == "ready", "the server did not report ready: %s" % ready)
     # The team is already in place; its setup matches topics by title, which a rename can change, so it does not run again.
-    runner = start(config, sha, supervisor_args, runner_dir, {"pid": stop[0] if stop else None})
-    first = wait_line(runner_dir / "stdout.log", runner)
-    record(evidence, "09-runner", {"pid": runner.pid, "run": str(runner_dir), "identity": identity(runner.pid), "first": first})
-    require(first and json.loads(first).get("event") == "acquired", "the runner did not acquire its guard: %s" % first)
+    runner = None
+    if keep_host:
+        kept_runner(config, host_policy, held_owner, runner_pids)
+        record(evidence, '09-runner', {'kept': True, 'owner': held_owner, 'source': host_policy['source']['revision']})
+    else:
+        try:
+            source = host_policy['prepared_source']
+            if source is not None:
+                runner_runtime.verify(config.live, config.instance, source)
+        except (runner_runtime.Refused, OSError, ValueError, KeyError, TypeError) as error:
+            raise Refused(str(error)) from error
+        argv = supervisor_argv(config, source)
+        previous = {"pid": stop[0] if stop else None}
+        runner = start(config, sha, argv, runner_dir, previous, source=source) if source else start(config, sha, argv, runner_dir, previous)
+        first = wait_line(runner_dir / "stdout.log", runner)
+        record(evidence, "09-runner", {"pid": runner.pid, "run": str(runner_dir), "identity": identity(runner.pid), "first": first})
+        require(first and json.loads(first).get("event") == "acquired", "the runner did not acquire its guard: %s" % first)
 
     # 7. Verify over HTTP and the CLI.
     base = "http://127.0.0.1:%d" % config.port
@@ -911,9 +1007,10 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     except urllib.error.HTTPError as error:
         root = error.code
     cli = run([config.python, "-I", "-B", str(config.live / "bin/aim-next"), "--profile", str(config.server_profile), "binding"])
+    runner_alive = bool(kept_runner(config, host_policy, held_owner, runner_pids)) if keep_host else runner.poll() is None
     verified = {"root_status": root, "bootstrap_head": boot[:600], "cli_exit": cli.returncode,
                 "cli": cli.stdout[:600], "cli_err": cli.stderr[:600],
-                "server_alive": server.poll() is None, "runner_alive": runner.poll() is None}
+                "server_alive": server.poll() is None, "runner_alive": runner_alive}
     passed_verify = root == 200 and cli.returncode == 0 and verified["server_alive"] and verified["runner_alive"]
     deployed_at = now() if passed_verify else None  # Capture the real transition, before evidence/record I/O.
     verified["deployed_at"] = deployed_at
