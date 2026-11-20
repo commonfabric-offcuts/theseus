@@ -61,8 +61,8 @@ def reading_fields(db, actor, groups, items):
             unread = {row[0] for row in db.execute(
                 "SELECT message_id FROM deliveries WHERE recipient_id=? AND state='pending' AND message_id IN (%s) AND group_id IN (%s)"
                 % (marks, ",".join("?" * len(groups))), [actor] + ids + groups)}
-        for row in db.execute("SELECT reply_to,id,sent_ms FROM messages INDEXED BY message_reply_links "
-                              "WHERE reply_to IN (%s) AND author_id=? ORDER BY seq" % marks, ids + [actor]):
+        for row in db.execute("SELECT reply_to,id,sent_ms FROM messages m INDEXED BY message_reply_links "
+                              "WHERE reply_to IN (%s) AND author_id=? AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) ORDER BY seq" % marks, ids + [actor]):
             replied[row["reply_to"]] = {"id": row["id"], "sent_ms": row["sent_ms"]}
     for item in items:
         item["unread"] = item["id"] in unread and item["author_id"] != actor

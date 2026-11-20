@@ -23,6 +23,7 @@
 import { cardIn, opened } from './fold.mjs';
 import { gather, withDossierHeads, dossiersOf, reheaded, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf, stackCover, starredDossiers, dossierOf } from './stack-order.mjs';
 import { messagePreview } from './message-preview.mjs';
+import { paintRemoval } from './message-removal.mjs';
 import { shownTime } from './times.mjs';
 import { coordinationStack } from './coordination-stacks.mjs';
 import { carriesNode, carriesOf } from './marks.mjs';
@@ -542,6 +543,7 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc, sep
   };
   const name = row.querySelector(':scope > .stack-name') ?? act('rename', 'stack-name');
   name.textContent = head.name;
+  name.classList.toggle('retracted-words', original && !head.typed && stack.head.removal?.kind === 'retracted');
   name.title = head.typed ? `Named by ${nameOf(head.typed.by)}${head.mintedBy ? ' when the first reply landed' : ''} for everyone here. Click to rename.` : 'Click to give it a short name everyone here sees';
   // A singleton (or Only new) has a title independent of its message's
   // visibility and between-others fold. Give its rename handle its own keys.
@@ -585,6 +587,7 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc, sep
     ...(checking?.kind === 'head' || (!checking && head.headNew) ? [newMark('stack-new', checking ? '✓' : 'New')] : []),
     ...(starred ? [element(doc, 'span', 'stack-star', '★ Starred')] : []),
     meta, ...(open ? [act('hide', 'stack-hide', 'Show latest and unread replies')] : []));
+  paintRemoval(row, original ? stack.head : null, doc);
   row.dataset.renaming = String(state.renaming === stack.id);
   return head;
 }
@@ -645,6 +648,8 @@ function paintFolded(entry, item, folded, { nameOf, doc }) {
   const [author, words] = row.children;
   author.textContent = nameOf(item.author_id);
   words.textContent = messagePreview(item);
+  words.classList.toggle('retracted-words', item.removal?.kind === 'retracted');
+  paintRemoval(row, item, doc);
   const title = card.querySelector(':scope > .stack-head'), at = title ? title.nextElementSibling : card.firstElementChild;
   if (at !== row) card.insertBefore(row, at);
   card.dataset.folded = 'true';
@@ -689,6 +694,8 @@ function paintEarlier(entry, item, on, { nameOf, doc }) {
   const [author, said] = row.children;
   author.textContent = nameOf(item.author_id);
   said.textContent = messagePreview(item);
+  said.classList.toggle('retracted-words', item.removal?.kind === 'retracted');
+  paintRemoval(row, item, doc);
   const tab = headRows.get(card)?.parentElement === card ? headRows.get(card) : null;
   if (tab ? tab.nextElementSibling !== row : card.firstElementChild !== row) { if (tab) tab.after(row); else card.prepend(row); }
   card.dataset.earlier = 'true';

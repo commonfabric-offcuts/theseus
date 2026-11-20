@@ -4240,6 +4240,12 @@
     "86b4b501522477e28a3af88cf8731f5d5ca400d2f2e7afced022a266085b957a": {
       "inputs": [],
       "scope": "generated/system/product"
+    },
+    "5d7beca93ce0f663587fb96a295dcd456e08942be8ad5c98854256d52629cfd9": {
+      "inputs": [
+        "web/stack-look.css"
+      ],
+      "scope": "repository"
     }
   },
   "tests/ui_boot.test.mjs": {
@@ -5310,6 +5316,68 @@
       "inputs": [
         "web/app.mjs"
       ]
+    }
+  },
+  "tests/fixtures/removal_151_schema56.py": {
+    "73a67e60fd526487d4af4536be7470eeffd7fefa44686a9c684b037f03d9aae0": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/test_removal_inventory_151.py": {
+    "5d6be2fe3909aac92cac556cd64329f7a923f976df8df67be39af105aaddf067": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/test_removal_migration_151.py": {
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "95cb0cc5e89431eb658b2bada9df13f9d7645d267e92d8648384382324907e8d": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "d11fa29ec7de0ce041d5cd83147200767c30db6297992babd6e5f79cfd5ba1b7": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/ui_message_removal_151.test.mjs": {
+    "d86d5b45b44bcc9209b1876a6bf7898ff87b257e01c7e16a452e95fc13b19eda": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    }
+  },
+  "tests/ui_removal_page_151.test.mjs": {
+    "5d7beca93ce0f663587fb96a295dcd456e08942be8ad5c98854256d52629cfd9": {
+      "scope": "repository",
+      "inputs": [
+        "web/stack-look.css"
+      ]
+    },
+    "d86d5b45b44bcc9209b1876a6bf7898ff87b257e01c7e16a452e95fc13b19eda": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    }
+  },
+  "tests/ui_card_menu_867_contract.test.mjs": {
+    "579771381e131c051465225118564a41c44ff4067d2c84747a625249f2203798": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    },
+    "9aabc603da98cb5c8e5cce1ecef6d28dfda28cc2c0606e563e4413df36e4e735": {
+      "inputs": [
+        "web/app.mjs"
+      ],
+      "scope": "repository"
     }
   }
 }

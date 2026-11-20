@@ -53,6 +53,7 @@ import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, opened } fr
 import { MessageEditWriting, messageEditStore, mayEdit, revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { MessageEdit } from './message-edit.mjs';
 import { withdrawalItem, paintWithdrawal, Withdrawals, learnWithdrawal } from './question-withdrawal.mjs';
+import { removalItem, paintRemoval, readRemoval, Removals } from './message-removal.mjs';
 import { cardClass, paintCardColor, agentColor, paneClass } from './author-colors.mjs';
 import { paintWhisperAuthor, mayStartFrom } from './whisper-choice.mjs';
 import { AgentColors } from './colors.mjs';
@@ -131,7 +132,7 @@ let pipelineRow = null, pipelineAddFor = null;
 // An outcome page's Notebook page shown in place (page-here.mjs), and that outcome.
 let pageHere = null, pageHereOutcome = null;
 // The topic page's light, message bar, thumbs-up and go-ahead answers (message-menu.mjs, reactions.mjs).
-let menu = null, reactions = null, cardScroll = null, withdrawals = null;
+let menu = null, reactions = null, cardScroll = null, withdrawals = null, removals = null;
 // Whether the open topic's outcome is reached, as its light last said: its
 // messages are kept to read, so none offers Edit (Core refuses one too).
 let outcomeReached = false;
@@ -1282,11 +1283,12 @@ function paintViews(kind) {
   }
   keepListAnchor(() => {
   // Newest first, so where each new card goes is at or after where the one before it went.
-  if (kind === 'messages') for (const [id, entry] of messageEntries) if (!views.messages.has(id)) {
+  const renderedMessages = kind === 'messages' ? feedMessages() : null;
+  if (kind === 'messages') for (const [id, entry] of messageEntries) if (!renderedMessages.has(id)) {
     dropCardImages(entry); cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); entry.remove(); messageEntries.delete(id);
   }
   let following = $('messages').firstElementChild;
-  for (const item of kind === 'messages' ? [...feedMessages().values()].sort((a, b) => b.seq - a.seq) : []) {
+  for (const item of kind === 'messages' ? [...renderedMessages.values()].sort((a, b) => b.seq - a.seq) : []) {
     let card = messageEntries.get(item.id);
     if (!card) {
       const ref = { kind: 'message', id: item.id };
@@ -1411,7 +1413,7 @@ function refreshDossierHeads(id = null) {
 }
 function syncDossierHeads() {
   if (!dossierHeads || topicUnavailable || registry?.disposed || authorityReviewPending()) return;
-  dossierHeads.sync(views.messages);
+  dossierHeads.sync(views.messages, views.removals);
   const messages = feedMessages();
   for (const [id, entry] of messageEntries) if (!messages.has(id)) {
     cardObserver?.unobserve(entry); middleObserver?.unobserve(entry);
@@ -1742,8 +1744,10 @@ function paintMessageUpdates() {
 function paintCardAuthor(author, item) {
   paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true, wasEdited(item), carriesOf(item));
   paintWithdrawal(author, item, document);
+  paintRemoval(author, item, document);
+  author.parentElement?.classList.toggle('retracted-message', item.removal?.kind === 'retracted');
   if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
-  if (here?.conversation && !item.withdrawal) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
+  if (here?.conversation && !item.withdrawal && !item.removal) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
   // The star in its header, put back as the line is painted again (StackFeed.paintStar).
   stackFeed?.paintStar(author, item);
   const update = messageUpdateActivity(document, item, updateContext(item.topic_id));
@@ -2004,7 +2008,7 @@ function asideFromReader() {
 function readerItem() {
   const p = registry?.current, source = p?.source, ref = source?.source_ref;
   if (!p || p.sourceUnavailable || ref?.kind !== 'message') return null;
-  return views?.messages.get(ref.id) ?? { id: ref.id, author_id: source.author, addressees: source.addressees, reactions: source.reactions, go_ahead: source.go_ahead, withdrawal: source.withdrawal };
+  return views?.messages.get(ref.id) ?? { id: ref.id, author_id: source.author, addressees: source.addressees, reactions: source.reactions, go_ahead: source.go_ahead, withdrawal: source.withdrawal, removal: source.removal, removal_action: source.removal_action };
 }
 function paintReaderThumb$() {
   const item = readerItem();
@@ -2166,6 +2170,8 @@ function sharedMessageMenuItems(item, { say, anchor = say, presentation = null, 
   if (update) items.push(update);
   const withdraw = withdrawalItem(item, rights, item => run(() => withdrawals.withdraw(item)));
   if (withdraw) items.push(withdraw);
+  const remove = removalItem(item, rights, item => run(() => removals.remove(item)));
+  if (remove) items.push(remove);
   if ((remote || marks) && item.author_id !== bootstrap.actor && available) {
     // A source read carries no mark revision. Offer both explicit choices
     // until the current destination owner can confirm the mark.
@@ -2378,6 +2384,26 @@ function learnQuestionWithdrawal({ message_id, withdrawal }) {
   if (source?.source_ref?.kind === 'message' && source.source_ref.id === message_id) {
     learnWithdrawal(source, withdrawal); reader.paintOrigin(source);
   }
+}
+function learnMessageRemoval({ message_id, removal }) {
+  // Bind the shared terminal map before learnRemoval paints. A separate head
+  // or its pending read then sees the same fact as the loaded page.
+  dossierHeads?.sync(views.messages, views.removals);
+  views?.learnRemoval(message_id, removal);
+  const item = feedMessages().get(message_id), entry = messageEntries.get(message_id), card = cardIn(entry);
+  if (removal.kind === 'unsent') { entry?.remove(); messageEntries.delete(message_id); clearVisitNew(message_id); }
+  else if (card && item) { paintCardAuthor(card.querySelector('.message-author'), item); paintFoldWords(entry, item); paintAwaiting(card, item); paintReactions(card, item, bootstrap.actor, bootstrap.actor_kind, document); }
+  const presentation = registry.current, source = presentation?.source;
+  if (source?.source_ref?.kind === 'message' && source.source_ref.id === message_id) {
+    source.removal = removal; source.removal_action = null;
+    if (removal.kind === 'unsent') {
+      presentation.sourceUnavailable = true; presentation.accessMessage = 'This message was unsent. Your private writing is kept.';
+      source.body = ''; source.attachments = []; source.quotes = [];
+      for (const editor of Object.values(presentation.editors)) { editor.unavailable = true; registry.cancelSave(editor); }
+      revokeMedia(); reader.hideUnavailableSource(); paintReaderMark();
+    } else { reader.paintOrigin(source); paintReaderThumb$(); }
+  }
+  menu?.paint();
 }
 // Who may edit which message here (message-edit-writing.mjs, mayEdit).
 const updateContext = topicId => ({ viewer: bootstrap.actor, nameOf: displayActor, topicId });
@@ -2868,10 +2894,27 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
         const id = key.slice('withdrawal:'.length);
         const source = registry.current?.source;
         if (!views.messages.has(id) && source?.source_ref?.id !== id) return true;
-        const answer = checkedView(await read('source', { kind: 'message', id }), bootstrap.instance_id);
+        let answer;
+        try { answer = checkedView(await read('source', { kind: 'message', id }), bootstrap.instance_id); }
+        catch (error) {
+          if (!current()) return false;
+          // Only this source is unreadable. The separate removal resource
+          // learns its terminal act; availability still owns topic denial.
+          if ((error?.details?.error ?? error?.error ?? error)?.code === 'FORBIDDEN') return true;
+          throw error;
+        }
         if (!current()) return false;
         if (!answer.withdrawal) throw Error('The question withdrawal has not arrived yet.');
         learnQuestionWithdrawal({ message_id: id, withdrawal: answer.withdrawal }); return true;
+      }
+      if (key.startsWith('removal:')) {
+        const id = key.slice('removal:'.length);
+        // The actor-scoped terminal event is enough to discard a no-longer
+        // readable identity; no cache or delayed page can put it back.
+        const removal = await readRemoval(read, id);
+        if (!current()) return false;
+        learnMessageRemoval({ message_id: id, removal });
+        return true;
       }
       if (key.startsWith('edit:')) return messageEdited(key, version, read, current);
       // The edit session of one of the person's messages moved (docs/message-edit.md): another device may have taken it.
@@ -3271,6 +3314,16 @@ async function initialize() {
   const withdrawalPage = shell.page;
   withdrawals = new Withdrawals({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current,
     current: () => shell.page === withdrawalPage, learned: learnQuestionWithdrawal,
+    say: (words, item) => { if (reader.dialog.open && registry.current?.source?.source_ref?.id === item.id) reader.notice(words); else status(words); },
+    recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
+  removals = new Removals({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current,
+    current: () => shell.page === withdrawalPage, learned: learnMessageRemoval, refresh: item => {
+      const held = feedMessages().get(item.id), source = registry.current?.source;
+      if (held && !held.removal) held.removal_action = item.removal_action;
+      if (source?.source_ref?.kind === 'message' && source.source_ref.id === item.id && !source.removal)
+        source.removal_action = item.removal_action;
+      menu?.paint();
+    },
     say: (words, item) => { if (reader.dialog.open && registry.current?.source?.source_ref?.id === item.id) reader.notice(words); else status(words); },
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
   mountFeedFences($('messages'));

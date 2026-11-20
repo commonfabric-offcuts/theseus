@@ -9,6 +9,7 @@ from .delivery import _now_ms
 from .stacks import MEMBERS, StackRoots
 from .reactions import answered_yes
 from .whispers import VISIBLE, visible
+from .removal import VISIBLE as NOT_UNSENT
 
 MAX_MEMBERS = 1000
 MAX_DELIVERIES = 4000
@@ -149,6 +150,8 @@ class DossierMove:
         # Every following write is covered by Store's effect savepoint and BEGIN IMMEDIATE, including the receipt.
         ids = [item["id"] for item in found]
         marks = ",".join("?" * len(ids))
+        removed = {row[0]: row[1] for row in db.execute(
+            "SELECT message_id,kind FROM message_removals WHERE message_id IN (%s)" % marks, ids)}
         for table, key in (("messages", "id"), ("message_acts", "message_id"), ("message_marks", "message_id"),
                            ("message_blocks", "message_id"), ("message_reactions", "message_id"), ("message_addressees", "seq")):
             values = [item["seq"] for item in found] if key == "seq" else ids
@@ -167,11 +170,13 @@ class DossierMove:
         # immutable cover acts remain the source for rebuilding the index.
         db.execute("UPDATE cover_waiting SET topic_id=?,workspace_id=? WHERE message_id IN (%s)" % marks,
                    [destination["id"], destination["workspace_id"]] + ids)
-        self._move_waits(db, found, source, destination, waiting)
-        public = sum(item["private_to"] is None for item in found)
+        self._move_waits(db, found, source, destination, waiting, removed)
+        # Membership retains unsent history, while shared summaries count only
+        # readable public messages. Retractions remain readable original words.
+        public = sum(item["private_to"] is None and removed.get(item["id"]) != "unsent" for item in found)
         for topic, delta in ((source, -public), (destination, public)):
-            latest = db.execute("SELECT id,author_id FROM messages WHERE topic_id=? AND private_to IS NULL ORDER BY seq DESC LIMIT 1", (topic["id"],)).fetchone()
-            other = db.execute("SELECT id FROM messages WHERE topic_id=? AND private_to IS NULL AND author_id<>? ORDER BY seq DESC LIMIT 1",
+            latest = db.execute("SELECT m.id,m.author_id FROM messages m WHERE m.topic_id=? AND m.private_to IS NULL AND " + NOT_UNSENT + " ORDER BY m.seq DESC LIMIT 1", (topic["id"],)).fetchone()
+            other = db.execute("SELECT m.id FROM messages m WHERE m.topic_id=? AND m.private_to IS NULL AND m.author_id<>? AND " + NOT_UNSENT + " ORDER BY m.seq DESC LIMIT 1",
                                (topic["id"], latest["author_id"])).fetchone() if latest else None
             db.execute("UPDATE topic_summaries SET message_count=message_count+?,latest_message_id=?,other_message_id=? WHERE topic_id=?",
                        (delta, latest["id"] if latest else None, other[0] if other else None, topic["id"]))
@@ -217,16 +222,17 @@ class DossierMove:
             db.execute("UPDATE delivery_reasons SET topic_id=? WHERE delivery_id=?", (destination["id"], row["id"]))
             self._change(db, "actor", row["recipient_id"], "delivery", row["id"], row["revision"])
 
-    def _move_waits(self, db, found, source, destination, waiting):
+    def _move_waits(self, db, found, source, destination, waiting, removed):
         ids = {item["id"] for item in found}
         for row in waiting:
             member = row["actor_id"]
-            candidates = [item for item in found if item["intent"] == "ask" and item["seq"] >= row["ask_seq"]
+            candidates = [item for item in found if item["intent"] == "ask" and item["id"] not in removed and item["seq"] >= row["ask_seq"]
                           and member != item["author_id"] and member in json.loads(item["addressees"])
                           and not self._reaction_row(db, member, item["id"], "answer")
                           and not answered_yes(self._reaction_row(db, member, item["id"], "thumb"))]
-            # The original open wait is authoritative even for a held/go-ahead ask.
-            if row["ask_message_id"] in ids:
+            # The original open wait is authoritative for a held/go-ahead ask,
+            # but a terminal ask can never regain a wait from the move.
+            if row["ask_message_id"] in ids and row["ask_message_id"] not in removed:
                 original = next(item for item in found if item["id"] == row["ask_message_id"])
                 if not any(item["id"] == original["id"] for item in candidates): candidates.append(original)
             if candidates:

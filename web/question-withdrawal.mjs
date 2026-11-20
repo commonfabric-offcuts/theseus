@@ -1,6 +1,6 @@
 // Item 366: a separate act on one's own question, in the existing message menus.
 export function withdrawalItem(item, rights, withdraw) {
-  if (!item || item.intent !== 'ask' || item.whisper || item.withdrawal || item.author_id !== rights.actor || rights.unavailable || rights.reached) return null;
+  if (!item || item.intent !== 'ask' || item.whisper || item.withdrawal || item.removal || item.author_id !== rights.actor || rights.unavailable || rights.reached) return null;
   return { label: 'Withdraw question', glyph: 'undo', act: () => withdraw(item) };
 }
 export function paintWithdrawal(line, item, doc = line.ownerDocument, first = false) {

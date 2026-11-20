@@ -7,18 +7,35 @@ import assert from 'node:assert/strict';
 import { webLinks, wordNodes, linkWords, openLinksWith, nameTopicsWith, shareLinksFrom, messageLink, pageLink } from '../web/links.mjs';
 import { parseRoute, routeHref } from '../web/topic-navigation.mjs';
 import { closeOnOutsideClick } from '../web/dismiss.mjs';
-import { foldCard } from '../web/fold.mjs';
+import { foldCard, paintFoldWords } from '../web/fold.mjs';
 
 // A document that makes text nodes and elements, each element listening.
 class Element {
   constructor(tag) { Object.assign(this, { tagName: tag.toUpperCase(), children: [], handlers: {}, dataset: {}, attributes: {}, textContent: '', className: '', href: '', target: '', rel: '' }); }
   addEventListener(name, fn) { (this.handlers[name] ??= []).push(fn); }
-  replaceChildren(...nodes) { this.children = nodes; for (const node of nodes) node.parentNode = this; }
-  append(...nodes) { for (const node of nodes.map(node => typeof node === 'string' ? doc.createTextNode(node) : node)) { node.parentNode = this; this.children.push(node); } }
+  replaceChildren(...nodes) { for (const node of this.children) node.parentNode = null; this.children = []; this.append(...nodes); }
+  append(...nodes) {
+    for (const node of nodes.map(node => typeof node === 'string' ? doc.createTextNode(node) : node)) {
+      if (node.parentNode) node.parentNode.children.splice(node.parentNode.children.indexOf(node), 1);
+      node.parentNode = this; this.children.push(node);
+    }
+  }
   replaceChild(node, old) { this.children[this.children.indexOf(old)] = node; node.parentNode = this; old.parentNode = null; }
   setAttribute(name, value) { this.attributes[name] = String(value); }
   get ownerDocument() { return doc; }
   get text() { return this.children.length ? this.children.map(child => child.text ?? child.data).join('') : this.textContent; }
+  get classList() {
+    return { contains: name => this.className.split(/\s+/).includes(name), toggle: (name, force) => {
+      const names = new Set(this.className.split(/\s+/).filter(Boolean)), on = force ?? !names.has(name);
+      if (on) names.add(name); else names.delete(name);
+      this.className = [...names].join(' '); return Boolean(on);
+    } };
+  }
+  matches(selector) { return selector.startsWith('.') ? this.classList.contains(selector.slice(1)) : this.tagName.toLowerCase() === selector.toLowerCase(); }
+  querySelectorAll(selector) { return this.children.flatMap(node => node instanceof Element ? [...(node.matches(selector) ? [node] : []), ...node.querySelectorAll(selector)] : []); }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
+  closest(selector) { for (let node = this; node; node = node.parentNode) if (node instanceof Element && node.matches(selector)) return node; return null; }
+  remove() { if (this.parentNode) this.parentNode.children.splice(this.parentNode.children.indexOf(this), 1); this.parentNode = null; }
 }
 const doc = { createElement: tag => new Element(tag), createTextNode: data => ({ nodeType: 3, data, text: data }) };
 const words = text => webLinks(text).map(link => text.slice(link.start, link.end));
@@ -207,6 +224,34 @@ test('a folded message\'s line shows its first line\'s web addresses as links, a
       'an excerpt of one line may end inside its address, so the address is words');
     assert.deepEqual(folded({ body: 'Logs: https://ci.example/run/7-and-the-rest', preview: false }).links, ['https://ci.example/run/7-and-the-rest']);
   } finally { globalThis.document = previous; }
+});
+
+test('a retracted folded link keeps its destination and original-word strike outside the terminal label', t => {
+  here(t);
+  const previous = globalThis.document; globalThis.document = doc;
+  t.after(() => { globalThis.document = previous; });
+  const item = { id: 'retracted-link', seq: 1, author_id: 'writer', addressees: ['reader'],
+    body: 'Original link https://other.example/kept', removal: { kind: 'retracted', by: 'writer', at_ms: 1234567890000 } };
+  const fold = foldCard(new Element('article'), item, doc);
+  for (let paint = 0; paint < 2; ++paint) {
+    paintFoldWords(fold, item);
+    const words = fold.querySelector('.fold-words'), link = words.querySelector('a');
+    assert.equal(words.text, ' to reader: ' + item.body);
+    assert.equal(link.href, 'https://other.example/kept');
+    assert.equal(link.closest('.retracted-words'), words, 'the original link is inside the struck word span');
+    const pressed = click(link);
+    assert.deepEqual([pressed.stopped, pressed.prevented, link.target], [true, false, '_blank']);
+    const labels = fold.querySelectorAll('.message-retracted');
+    assert.equal(labels.length, 1, 'repaint retains one terminal label');
+    const time = labels[0].querySelector('time');
+    assert.equal(time.dataset.ms, String(item.removal.at_ms));
+    assert.equal(labels[0].closest('.retracted-words'), null);
+    assert.equal(time.closest('.retracted-words'), null);
+  }
+  paintFoldWords(fold, { ...item, removal: null });
+  assert.equal(fold.querySelector('.fold-words').classList.contains('retracted-words'), false, 'a different fixture state leaves no stale word decoration');
+  assert.equal(fold.querySelector('.message-retracted'), null);
+  assert.equal(fold.querySelector('a').href, 'https://other.example/kept');
 });
 
 // docs/links.md, "A message's link" and "Topics named in a message".

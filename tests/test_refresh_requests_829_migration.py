@@ -63,7 +63,8 @@ class RequestMigrationCase(unittest.TestCase):
                 Store(path, "test-instance", expected_binding=binding)
             self.assertEqual(refused.exception.code, "SCHEMA_MISMATCH")
             self.assertEqual(digest(), unchanged)
-            upgraded = migrate(path, "test-instance", binding)
+            # Keep the historical 55→56 step exact; the final default upgrade below exercises current code.
+            upgraded = migrate(path, "test-instance", binding, "56")
             self.assertEqual((upgraded["from_version"], upgraded["schema_version"]), ("55", "56"))
             self.assertEqual(old_records(), before)
             with sqlite3.connect(str(path)) as db:
@@ -77,7 +78,7 @@ class RequestMigrationCase(unittest.TestCase):
                 with self.assertRaises(sqlite3.IntegrityError):
                     db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,state,topic_id,revision) VALUES (?,?,?,?,?,?,?)", ("duplicate-ordinary", *old[1:]))
             upgraded_hash = digest()
-            self.assertFalse(migrate(path, "test-instance", binding)["migrated"])
+            self.assertFalse(migrate(path, "test-instance", binding, "56")["migrated"])
             self.assertEqual(digest(), upgraded_hash)
             self.assertEqual(original("newer")["error"], "SCHEMA_MISMATCH")
             self.assertEqual(migrate(path, "test-instance", binding, "55")["schema_version"], "55")

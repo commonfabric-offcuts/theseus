@@ -363,7 +363,7 @@
    "break": [
     [
      "aim_next/reactions.py",
-     "body = ANSWERS[answer] + (\" (I changed my answer)\" if row is not None else \"\")",
+     "body = ANSWERS[answer] + (\" (I changed my answer)\" if row is not None and row[\"value\"] is not None else \"\")",
      "body = ANSWERS[answer]"
     ]
    ],
@@ -1303,8 +1303,8 @@
    "break": [
     [
      "aim_next/reactions.py",
-     "\"AND (private_to IS NULL OR private_to=?) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])",
-     "\"AND (1 OR private_to=?) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])"
+     "\"AND (private_to IS NULL OR private_to=?) AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])",
+     "\"AND (1 OR private_to=?) AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])"
     ]
    ],
    "check": {
@@ -1331,7 +1331,7 @@
    "break": [
     [
      "aim_next/reactions.py",
-     "answered=answered_yes(row), changed=False",
+     "answered=answered_yes(row) and removal_value(db, message['id']) is None, changed=False",
      "answered=False, changed=False"
     ]
    ],
@@ -3041,8 +3041,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "        if message is None or not visible(message, actor):",
-     "        if message is None:"
+     "        if message is None or not visible(message, actor) or unsent(db, message_id):",
+     "        if message is None or unsent(db, message_id):"
     ]
    ],
    "check": {
@@ -4817,8 +4817,8 @@
    "break": [
     [
      "aim_next/reactions.py",
-     "\"AND w.private_to=m.author_id) ORDER BY a.seq\"",
-     "\"AND w.private_to='nobody') ORDER BY a.seq\""
+     "\"AND w.private_to=m.author_id AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=w.id)) ORDER BY a.seq\"",
+     "\"AND w.private_to='nobody' AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=w.id)) ORDER BY a.seq\""
     ]
    ],
    "check": {
@@ -4957,8 +4957,8 @@
    "break": [
     [
      "aim_next/reactions.py",
-     "\"AND (private_to IS NULL OR private_to=?) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])",
-     "\"AND (private_to IS NULL OR private_to='nobody' OR ?='') LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])"
+     "\"AND (private_to IS NULL OR private_to=?) AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])",
+     "\"AND (private_to IS NULL OR private_to='nobody' OR ?='') AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])"
     ]
    ],
    "check": {
@@ -10720,8 +10720,8 @@
    "break": [
     [
      "aim_next/conversation.py",
-     "if args.get(\"message_ids\") is not None:",
-     "if False:"
+     "if args.get(\"message_ids\") is not None:\n            # Named messages of this topic, in page shape (a page refreshing one it holds, docs/message-edit.md).",
+     "if False:\n            # Named messages of this topic, in page shape (a page refreshing one it holds, docs/message-edit.md)."
     ]
    ],
    "check": {
@@ -11000,8 +11000,8 @@
    "break": [
     [
      "web/fold.mjs",
-     "if (fold) linkWords(fold.words, foldWords(item), { partial: cutShort(item) });",
-     "void fold;"
+     "    linkWords(fold.words, foldWords(item), { partial: cutShort(item) });",
+     "    void fold;"
     ]
    ],
    "check": {
@@ -12554,7 +12554,7 @@
    "break": [
     [
      "aim_next/store.py",
-     "        if not grows:\n            db.rollback()\n            return answer",
+     "        if not grows and not first:\n            db.rollback()\n            return answer",
      "        if False:\n            db.rollback()\n            return answer"
     ]
    ],
@@ -24703,8 +24703,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "item[\"author_id\"] == actor and not item.get(\"whisper\")\n",
-     "item[\"author_id\"] == actor\n"
+     "item[\"author_id\"] == actor and not item.get(\"whisper\") and not item.get('removal')\n",
+     "item[\"author_id\"] == actor and not item.get('removal')\n"
     ]
    ],
    "check": {
