@@ -5902,3 +5902,66 @@ test('894 B2 a failed page opening keeps its confirmed result for another Open',
   const open = f.get('inline-notice').children.find(n => n.textContent === 'Open started page'); assert.ok(open);
   assert.equal(open.disabled, false); await open.onclick(); assert.equal(opens, 2); assert.equal(f.requests.length, 1);
 });
+
+for (const retry of [false, true]) test(`894 B3 phone panels have their own row below writing and Send (${retry ? 'retry' : 'normal'})`, () => {
+  const css = webSource('aim.css');
+  const template = (retry
+    ? css.match(/#inline-composer:has\(>#inline-retry:not\(\[hidden\]\)\)\{([^}]+)\}/)
+    : css.match(/#inline-composer\{([^}]+)\}/))?.[1];
+  assert.ok(template);
+  const areas = template.match(/grid-template-areas:([^;}]*)/)?.[1]; assert.ok(areas);
+  const rows = [...areas.matchAll(/"([^"]+)"/g)].map(match => match[1].split(/\s+/));
+  const common = css.match(/\.composer>\.compose-panel\{([^}]+)\}/)?.[1]; assert.ok(common);
+  const pencil = css.match(/#inline-composer>\.compose-panel\{([^}]+)\}/)?.[1] ?? '';
+  // The shared phone placement is overridden by the pencil's more specific
+  // rule. Interpret grid-area's row reset as well as an explicit grid-row.
+  let area, row;
+  for (const declaration of (common + ';' + pencil).split(';')) {
+    const [property, value] = declaration.split(':').map(part => part.trim());
+    if (property === 'grid-area') { area = value; row = undefined; }
+    if (property === 'grid-row') row = Number(value) - 1;
+  }
+  const panelRow = row ?? rows.findIndex(cells => cells.includes(area));
+  const writingRow = rows.findIndex(cells => cells.includes('field'));
+  const sendRow = rows.findIndex(cells => cells.includes('act'));
+  assert.ok(writingRow >= 0 && sendRow >= 0);
+  assert.ok(panelRow > Math.max(writingRow, sendRow), `panel row ${panelRow + 1} must follow writing/Send row ${Math.max(writingRow, sendRow) + 1}`);
+  assert.ok(rows[panelRow]?.every(cell => cell === area), 'panel owns a named, full-width row');
+});
+
+for (const kind of ['note-card', 'note-page']) test(`894 B3 ${kind} refuses image reservation through working uploads`, async () => {
+  const f = pencil894(), reservations = [], choices = [];
+  const uploads = { current: () => [], running: new Map(), status: () => 'Ready',
+    reserve: presentation => { const token = { presentation }; reservations.push(token); return token; },
+    choose: async (token, file) => { choices.push({ token, file }); } };
+  f.inline.callbacks.uploads = () => uploads;
+  const file = { name: 'fixture.png', type: 'image/png' };
+  f.choose(kind); await f.inline.addImages([file]);
+  assert.equal(reservations.length, 0, 'Note never reserves an upload');
+  assert.equal(choices.length, 0, 'Note never passes image bytes to uploads');
+  // The same adapter really can accept Message images; a caught fixture error
+  // cannot make the negative half pass accidentally.
+  f.choose('message'); await f.inline.addImages([file]);
+  assert.equal(reservations.length, 1); assert.equal(choices.length, 1);
+  assert.equal(reservations[0].presentation, f.p);
+  assert.equal(choices[0].token, reservations[0]); assert.equal(choices[0].file, file);
+});
+
+for (const permission of [false, undefined]) test(`894 B3 actual app wiring denies Notebook write when permission is ${String(permission)}`, () => {
+  const f = fixture(), app = webSource('app.mjs');
+  const owner = app.slice(app.indexOf('  inline = new InlineComposer({'), app.indexOf('  reader = new Reader({'));
+  const memoryAnswer = JSON.stringify(permission === undefined ? {} : { reader_may_write: permission });
+  const capability = f.runObservation('(() => { const topicImages = () => {}, imageBytes = () => {}, memoryAnswer = ' + memoryAnswer + '; ' + owner + '; return inline.callbacks.notebook; })()');
+  assert.equal(capability.mayWrite, false);
+  assert.equal(capability.api, f.api); assert.equal(capability.bootstrap, f.bootstrap);
+});
+
+test('894 B3 typing in Note page keeps Start page and hides the To line', () => {
+  const f = pencil894(); f.write(''); f.choose('note-page');
+  const field = f.inline.field; field.focus(); field.value = 'x'; field.setSelectionRange(1, 1);
+  assert.equal(typeof field.handlers.input, 'function');
+  field.handlers.input({ inputType: 'insertText', data: 'x' });
+  assert.equal(f.editor.draft.body, 'x'); assert.equal(f.saved.at(-1), 'x');
+  assert.equal(f.get('inline-send').querySelector('.send-word').textContent, 'Start page');
+  assert.equal(f.get('inline-writing-to').hidden, true);
+});

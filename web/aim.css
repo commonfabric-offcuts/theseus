@@ -986,12 +986,14 @@ dialog.composer-home[open] .inline-composer textarea{--fit:auto;height:auto;max-
 dialog.composer-home[open] .inline-composer textarea:placeholder-shown{white-space:nowrap}
 dialog.composer-home[open] .inline-composer .taller-field{display:none}
 /* An unavailable composer keeps the reason and its recovery control on separate rows. */
-#inline-composer:has(>#inline-retry:not([hidden])){grid-template-areas:"title title title title" "kinds kinds kinds kinds" "notice notice notice notice" "retry retry retry retry" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act";grid-template-rows:repeat(7,minmax(min-content,auto)) minmax(2.5rem,auto)}
+#inline-composer:has(>#inline-retry:not([hidden])){grid-template-areas:"title title title title" "kinds kinds kinds kinds" "notice notice notice notice" "retry retry retry retry" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act" "phone-panel phone-panel phone-panel phone-panel";grid-template-rows:repeat(7,minmax(min-content,auto)) minmax(2.5rem,auto)}
 #inline-composer>#inline-retry{grid-area:retry}
 /* A thumbnail's center opens its choices. Remove has its own slot, even
    before those choices open: a finger-sized corner overlay covers that center. */
 #inline-composer .image-choice>button[data-method=remove]{position:static;width:auto;height:auto;min-width:2.75rem;min-height:2.75rem}
 @media(max-width:760px){#inline-composer :is(button,input,textarea,select,[role=button]){min-width:2.75rem!important;min-height:2.75rem!important}}
+/* The pencil has its own phone panel row below writing, including Retry. */
+@media(max-width:760px){#inline-composer>.compose-panel{grid-area:phone-panel}}
 /* The inline menu spends room on choices, not padding or a keyboard-sized gap. */
 #inline-who-panel{gap:.25rem;padding:.25rem .5rem .35rem}
 #inline-who-panel .who-row{gap:.25rem}
@@ -1422,4 +1424,4 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 .pencil-kinds button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* Pencil choices take a full row, never a column beside the writing. */
-#inline-composer{grid-template-areas:"title title title title" "kinds kinds kinds kinds" "notice notice notice notice" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act"}
+#inline-composer{grid-template-areas:"title title title title" "kinds kinds kinds kinds" "notice notice notice notice" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act" "phone-panel phone-panel phone-panel phone-panel"}
