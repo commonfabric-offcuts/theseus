@@ -7492,3 +7492,38 @@ for (const answer of ['refused', 'unreached']) test(`891 B3 ${answer} split-out 
     feed.deafen();
   }
 });
+
+function review931() {
+  const f = fixture();
+  Object.assign(f.editor, { localVersion: 4, ackVersion: 4, clientCycleId: 'cycle931',
+    uploadState: { format: 2, revision: 1, client_cycle_id: 'cycle931', entries: [], submission_links: {} } });
+  Object.assign(f.editor.draft, { id: 'draft931', generation: 'generation931', revision: 3, quotes: [], intent: 'tell', whisper: false });
+  const row = (draft = f.editor.draft) => ({ id: 'copy931', stamp: 'stamp931', availability: 'available',
+    snapshot: { format: 1, draft: structuredClone(draft), localVersion: 4, ackVersion: 4, submissions: [] } });
+  const list = items => f.owners().candidates.set(f.editor.key, { items, nextCursor: null });
+  return { f, row, list, needs: () => f.runObservation('needsReview(registry.inline.editors.reply)') };
+}
+test('931 an empty upload state and ordinary newer typing ask for no version decision', () => {
+  const { f, needs } = review931(); assert.equal(needs(), false);
+  f.editor.draft.body += ' and more'; f.editor.localVersion++; assert.equal(needs(), false);
+});
+test('931 identical saved writing ignores caret and save metadata, before and after more typing', () => {
+  const { f, row, list, needs } = review931(); const saved = row(); saved.snapshot.draft.caret = { start: 2, end: 2 };
+  saved.snapshot.draft.revision = 2; list([saved]); assert.equal(needs(), false);
+  f.editor.draft.body += ' newer'; f.editor.localVersion++; assert.equal(needs(), false, 'a known older saved revision in this generation is not competing writing');
+});
+test('931 unreadable copies and unloaded pages do not claim a known writing difference', () => {
+  const { f, list, needs } = review931(); list([{ id: 'held', availability: 'open-in-another-tab' }]); assert.equal(needs(), false);
+  f.owners().candidates.set(f.editor.key, { items: [], nextCursor: 'later-page' }); assert.equal(needs(), false);
+});
+test('931 a different unsaved copy asks for a decision while an identical unsaved copy does not', () => {
+  const { row, list, needs } = review931(); const saved = row(); saved.snapshot.localVersion = 5;
+  list([saved]); assert.equal(needs(), false);
+  saved.snapshot.draft.body = 'Other words'; assert.equal(needs(), true);
+});
+test('931 the frozen refused writing is compared even when its successor draft matches', () => {
+  const { f, row, list, needs } = review931(); const saved = row();
+  saved.snapshot.format = 2; saved.snapshot.clientCycleId = f.editor.clientCycleId; saved.snapshot.uploadState = structuredClone(f.editor.uploadState);
+  saved.snapshot.submissions = [{ status: 'refused', receipt: { kind: 'submission.prepare' }, snapshot: { ...structuredClone(f.editor.draft), body: 'Earlier refused words' } }];
+  f.editor.recoveryServerDraft = structuredClone(f.editor.draft); list([saved]); assert.equal(needs(), true);
+});
