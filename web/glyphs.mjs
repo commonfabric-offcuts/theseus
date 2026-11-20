@@ -14,6 +14,11 @@
 // with the button's name as its tooltip. Archive uses the Reader's own tray
 // everywhere, including the title bar and its phone menu (item 601).
 const DRAWN = {
+  // Notebook menu: text lines, a draft sheet, an image and a dossier folder (873).
+  text: { d: 'M4 5h16 M4 10h16 M4 15h16 M4 20h10' },
+  draft: { d: 'M14 3H5v18h14V8Z M14 3v5h5 M8 12h8 M8 16h5' },
+  image: { d: 'M3 4h18v16H3Z M3 17l5-5 4 4 4-6 5 7 M8 8h.01' },
+  dossier: { d: 'M3 7V4h7l3 3h8v13H3Z M3 7h18' },
   // Tony's B: three cards fanned slightly, with hidden lines removed (870).
   stack: { vb: '3 15 56 39', sw: '1.6', d: 'M10.6 37.4 4 40 26 53 54 43 47.4 38.8 M13.4 31.7 6 35 29 47 56 35 50.1 31.9 M8 29 32 41 58 28 34 16Z M21.5 29.6 35 23.2 M26.5 32.2 36 27.6' },
   // No agent was notified of this message. It says nothing about read access.

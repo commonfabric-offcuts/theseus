@@ -27,6 +27,7 @@ function documentFor(t) {
       const plain = simple.replace(/\[([\w-]+)="[^"]*"\]/g, '[$1]');
       return (own ? n.children : [...n.descendants()]).filter(el => matches(el,plain) && values.every(([,key,value]) => key.startsWith('data-') ? el.dataset[key.slice(5)] === value : el.getAttribute(key) === value));
     };
+    if(tag==='dialog'){n.close=()=>{n.open=false;};n.show=n.showModal=()=>{n.open=true;};}
     return n;
   };
   doc.createElementNS = (_ns,tag) => doc.createElement(tag);
@@ -93,17 +94,19 @@ async function sheet(t) {
 }
 test('868 only title and glyphs stay outside the active page scroller in modal and docked modes',async t=>{
   const {s,pages}=await sheet(t),page=pages[0],head=s.title.parentElement;
-  assert.deepEqual(head.children.map(n=>n.className),[s.title,s.dockButton,s.full,s.closer].map(n=>n.className));
+  assert.deepEqual(head.children.map(n=>n.className),[s.title,page.more,s.dockButton,s.full,s.closer].map(n=>n.className));
   for(const docked of [true,false]) {
     s.setDocked(docked);
-    for(const control of [s.views,s.dossierButton,s.status,s.dossiers.root,page.bar,page.list])assert.ok(page.host.contains(control),'control shares the cards scroll owner');
-    assert.equal(s.views.parentElement,s.dossierButton.parentElement,'Choose dossier shares the views toolbar');
+    for(const control of [s.status,page.pageNotice,s.dossiers.root,page.bar,page.list])assert.ok(page.host.contains(control),'control shares the cards scroll owner');
+    assert.ok(page.more.parentElement===head,'page menu belongs to the fixed head');
+    assert.equal(page.host.querySelector('.notebook-sheet-toolbar'),null);
     assert.equal(page.status.getAttribute('role'),'status');assert.equal(page.status.textContent,'Saved to Theseus');
   }
 });
 test('868 controls follow page switches without replacing scroll ownership or duplicating status',async t=>{
   const {s,pages}=await sheet(t),first=pages[0];first.host.scrollTop=177;await s.open('two');
-  assert.equal(first.kept.host,177);assert.ok(pages[1].host.contains(s.views));assert.equal(first.host.contains(s.views),false);
+  assert.equal(first.kept.host,177);assert.ok(s.head.contains(pages[1].more));assert.equal(s.head.contains(first.more),false);
+  assert.ok(pages[1].host.contains(pages[1].pageNotice));
   assert.equal(s.status.children.length,1);assert.ok(s.status.children[0]===pages[1].status);
   s.close();await s.open('two');assert.equal(s.current,pages[1]);assert.ok(pages[1].host.contains(s.status));
 });

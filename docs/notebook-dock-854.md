@@ -2,25 +2,28 @@
 
 The existing NotebookSheet can switch between a modal and a nonmodal dialog.
 It keeps the same NotebookPage, writing stream, open card, selection and scroll.
-On a topic page at least 1280 CSS pixels wide, its head and page menu offer
-“Beside the feed” with the shared two-pane glyph. The Notebook occupies the
+It owns a dedicated dialog in both modes (871). On a topic page at least
+1280 CSS pixels wide, no stored choice means docked. Its head and page menu
+offer “Wide” while docked and “Open with Dossiers” while wide, with the shared
+two-pane glyph. An explicit Wide choice persists for the session. The Notebook occupies the
 right half of the space after the outline; the existing feed occupies the left.
 The things rail gives that space to the Notebook until it is undocked.
 
 Item868 keeps one tight title/glyph row fixed in both docked and modal modes.
-Text/Cards/Draft and Choose dossier share the toolbar inside the existing
-page scroller. Save status, the dossier picker and the deck controls scroll
+Item873 moves Text/Cards/Draft, Choose dossier and Add image into the page
+menu, fixed in the title row. The old toolbar is removed. Save status, the dossier picker and the deck controls scroll
 with the cards; status retains its accessible announcements. The active
 NotebookPage remains the scroll owner, so docking and closing preserve its
 writing and scroll position. Phone controls retain their 44px minimum.
 
-The control toggles docking. While docked, ✕ or Escape returns to the modal;
-the next close dismisses it normally. A card editor or open picker takes its
+The layout control toggles docking. ✕ and Escape close either layout, keeping
+writing; they do not change the stored layout preference. A card editor or open picker takes its
 own Escape first. Narrowing the window returns to modal without changing the
 tab's docking preference. Widening restores the preference. Outcome and full
 Notebook pages never offer docking. The preference uses sessionStorage only.
 
-“Choose dossier” opens a list inside the sheet. It reads one bounded topic
+“Choose dossier…” in the page menu appears only while docked and opens a list
+inside the sheet. It reads one bounded topic
 message page at a time and deduplicates the canonical dossier roots supplied
 by Core. One bounded named-message read supplies missing root titles; no
 automatic history scan. “More” explicitly reads the next page. Reopening reads
@@ -40,3 +43,8 @@ removes layout and listeners but retains writing through the existing guard.
 
 Evidence is focused module and handler checks with applied/restored mutations.
 These checks do not establish native focus, gesture or rendered geometry.
+
+The topic pencil stays visible while docked. New message owns its original
+dialog and opens over the feed column; closing or sending it leaves Notebook
+docked with its page, scroll and writing. See
+[Notebook owners and menu](notebook-owners-871-873.md).

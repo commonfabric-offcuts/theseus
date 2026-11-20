@@ -11,6 +11,7 @@
 // (a pipeline item's ⋯) and tests/notebook_pages_native.mjs (the Reader's ⋯ on
 // a Notebook page).
 export const GLYPH_OF = Object.freeze({
+  'Show as text':'text', 'Show as cards':'stack', Draft:'draft', 'Choose dossier…':'dossier', 'Add image…':'image', Wide:'layout', 'Open with Dossiers':'layout', Star:'star', Delete:'drop', 'Undo delete':'undo',
   'Star for me': 'star', Unstar: 'starred', Rename: 'pencil', 'Show all messages': 'all', 'Show latest and unread replies': 'latest',
   Fold: 'fold', Unfold: 'unfold', 'Fold message': 'fold', 'Unfold message': 'unfold', 'Split back out': 'split',
   // A dossier's title bar ⋯ on a phone (item 473): Reply to the first message takes the title bar's own Reply.
@@ -37,6 +38,11 @@ export const glyphOf = label => (Object.hasOwn(GLYPH_OF, label) ? GLYPH_OF[label
 // text. Written out here, not read from web/glyphs.mjs, so a drawing blanked, swapped with another or redrawn there
 // fails the checks that read it (misdrawn below).
 export const APPROVED = Object.freeze({
+  // Notebook menu: text lines, a draft sheet, an image and a dossier folder (873).
+  text: { d: 'M4 5h16 M4 10h16 M4 15h16 M4 20h10' },
+  draft: { d: 'M14 3H5v18h14V8Z M14 3v5h5 M8 12h8 M8 16h5' },
+  image: { d: 'M3 4h18v16H3Z M3 17l5-5 4 4 4-6 5 7 M8 8h.01' },
+  dossier: { d: 'M3 7V4h7l3 3h8v13H3Z M3 7h18' },
   // Item 870, Tony's selected B drawing.
   stack: { vb: '3 15 56 39', sw: '1.6', d: 'M10.6 37.4 4 40 26 53 54 43 47.4 38.8 M13.4 31.7 6 35 29 47 56 35 50.1 31.9 M8 29 32 41 58 28 34 16Z M21.5 29.6 35 23.2 M26.5 32.2 36 27.6' },
   // Item 738's approved cover refresh drawing, frozen independently of its implementation.

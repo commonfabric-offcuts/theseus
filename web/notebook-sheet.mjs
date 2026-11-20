@@ -1,6 +1,6 @@
-// A Notebook page in the composer over the feed (item 396): opening or
-// starting a page brings up the New message sheet with the page's title, a
-// Text / Cards switch with the page's draft mark, its saving sign, Full page and ✕. The page's writing
+// A Notebook page in its own dialog, beside or over the feed (871 + 873).
+// Its title, page menu, layout, Full page and ✕ stay fixed; saving and
+// recovery stay in the page's scroller. The page's writing
 // is the full page's own (NotebookPage: the card gestures, the shared body,
 // the saving and recovery); this only hosts it over the feed.
 //
@@ -21,7 +21,6 @@
 // there, and its way back goes back to this page of Theseus, the feed where it
 // was and the page over it with its card box open. One sheet, never a pile.
 import { paintChanges } from './page-changes.mjs';
-import { holdPlace } from './sheet-holder.mjs';
 import { glyph } from './glyphs.mjs';
 import { NotebookDossiers } from './notebook-dossiers.mjs';
 
@@ -49,22 +48,25 @@ export class NotebookSheet {
   constructor({ make, fullHref, openStack, goBack, reads = () => null, source = null, feed = null, doc = globalThis.document }) {
     Object.assign(this, { make, fullHref, openStack, goBack, reads, source, feed, doc });
     this.listening = new AbortController();
-    this.docked = false; this.dockWanted = false;
-    try { this.dockWanted = JSON.parse(globalThis.sessionStorage.getItem(DOCKED)) === true; } catch {}
+    this.docked = false; this.dockWanted = true;
+    try { const kept = JSON.parse(globalThis.sessionStorage.getItem(DOCKED)); if (typeof kept === 'boolean') this.dockWanted = kept; } catch {}
     this.wide = globalThis.matchMedia?.('(min-width: 1280px)');
     this.resized = () => this.setDocked(this.dockWanted && this.canDock(), false);
     this.wide?.addEventListener('change', this.resized);
-    this.dialog = doc.getElementById('new-message-sheet');
-    this.inline = doc.getElementById('inline-composer');
+    this.messageDialog = doc.getElementById('new-message-sheet');
+    this.dialog = doc.createElement('dialog'); this.dialog.id = 'notebook-sheet-dialog';
+    this.dialog.className = 'notebook-sheet-dialog notebook-mode';
+    this.dialog.setAttribute('aria-labelledby', 'notebook-sheet-title');
+    doc.body.append(this.dialog);
     this.reader = doc.getElementById('reader');
     // current: the page shown or last shown. leaving: pages let go whose writing is still on its way, by id.
     this.current = null; this.leaving = new Map(); this.showing = false; this.place = null; this.aside = null; this.serial = 0;
     const node = (tag, className, text) => { const n = doc.createElement(tag); if (className) n.className = className; if (text !== undefined) n.textContent = text; return n; };
     this.node = node;
     this.root = node('section', 'notebook-sheet'); this.root.hidden = true; this.root.setAttribute('aria-labelledby', 'notebook-sheet-title');
-    const head = node('div', 'notebook-sheet-head');
+    this.head = node('div', 'notebook-sheet-head');
     this.title = node('h2', 'notebook-sheet-title'); this.title.id = 'notebook-sheet-title';
-    this.views = node('div', 'notebook-sheet-views'); this.status = node('div', 'notebook-sheet-status');
+    this.status = node('div', 'notebook-sheet-status');
     this.full = node('a', 'sheet-glyph notebook-sheet-full');
     this.full.setAttribute('aria-label', 'Open as a full page'); this.full.title = 'Open as a full page';
     // The box with an arrow out of it, which a pipeline item's Open its record shows too (glyphs.mjs).
@@ -74,25 +76,19 @@ export class NotebookSheet {
     this.closer.setAttribute('aria-label', 'Close, keeping your writing'); this.closer.title = 'Close, keeping your writing';
     this.closer.onclick = () => this.close();
     this.dockButton = node('button', 'sheet-glyph notebook-sheet-dock'); this.dockButton.type = 'button';
-    this.dockButton.title = 'Beside the feed'; this.dockButton.setAttribute('aria-label', 'Beside the feed');
     this.dockButton.append(glyph('layout', doc)); this.dockButton.onclick = () => this.setDocked(!this.docked);
-    this.dossierButton = node('button', 'notebook-sheet-dossiers quiet', 'Choose dossier'); this.dossierButton.type = 'button';
-    this.dossierButton.setAttribute('aria-expanded', 'false'); this.dossierButton.onclick = () => this.dossiers?.toggle();
-    head.append(this.title, this.dockButton, this.full, this.closer);
-    this.toolbar = node('div', 'notebook-sheet-toolbar');
-    this.toolbar.append(this.views, this.dossierButton);
+    this.head.append(this.title, this.dockButton, this.full, this.closer);
     this.body = node('div', 'notebook-sheet-pages');
-    this.root.append(head, this.body);
-    if (feed) this.dossiers = new NotebookDossiers({ doc, host: this.root, anchor: this.dossierButton, read: feed.read,
+    this.root.append(this.head, this.body);
+    if (feed) this.dossiers = new NotebookDossiers({ doc, host: this.root, anchor: this.dockButton, read: feed.read,
       topicId: feed.topicId, choose: id => this.openInFeed(feed.topicId, id) });
     this.paintDock();
     this.dialog.append(this.root);
     this.dialog.addEventListener('cancel', event => { if (this.showing) { event.preventDefault(); this.close(); } });
     // The sheet is put away as it closes, not when the browser's close event comes: that comes with the browser's
     // next frame, later still on a slow machine, after a key may have moved the focus on from the opener or opened
-    // the next page. The event still puts away a sheet the browser closed itself, and moves no focus. The New message
-    // composer, which shares the sheet, folds on it and moves the focus only on a close of its own (inline-composer.mjs),
-    // so a Tab or a Space pressed since keeps the focus where the person moved it.
+    // the next page. The event still puts away a sheet the browser closed itself, and moves no focus.
+    // New message owns a different dialog, so closing either never retires the other.
     this.dialog.addEventListener('close', () => { if (!this.dialog.open && this.showing) this.closed(); });
     // Only a press that starts and ends on the backdrop closes it, as every pop-up (on every page, the topic's
     // New message handler or not).
@@ -124,9 +120,8 @@ export class NotebookSheet {
   canDock() { return Boolean(this.feed && this.wide?.matches); }
   paintDock() {
     this.dockButton.hidden = !this.canDock(); this.dockButton.setAttribute('aria-pressed', String(this.docked));
-    this.dossierButton.hidden = !this.docked;
-    const close = this.docked ? 'Back over the feed' : 'Close, keeping your writing';
-    this.closer.title = close; this.closer.setAttribute('aria-label', close);
+    const layout = this.docked ? 'Wide' : 'Open with Dossiers';
+    this.dockButton.title = layout; this.dockButton.setAttribute('aria-label', layout);
     this.dialog.classList.toggle('notebook-docked', this.docked);
     this.doc.body.classList.toggle('notebook-docked', this.docked);
   }
@@ -182,8 +177,7 @@ export class NotebookSheet {
     const serial = ++this.serial;
     // The New message sheet, popped up, goes back to its place in the feed first, its writing kept; a page opened from
     // the Reader's words takes the Reader's place, its reply kept, so one window stands over the feed.
-    if (!this.showing) holdPlace(this.dialog);
-    if (this.dialog.open && !this.showing) this.dialog.close();
+    if (!this.showing && this.messageDialog?.open) this.messageDialog.close();
     if (this.reader?.open && !this.aside) this.doc.getElementById('reader-close')?.click();
     if (!this.showing && !this.place) this.place = { x: globalThis.scrollX, y: globalThis.scrollY, opener: opener ?? this.doc.activeElement };
     let page = this.current?.item === id ? this.current : this.leaving.get(id) ?? null;
@@ -194,7 +188,10 @@ export class NotebookSheet {
       const host = this.node('section', 'deck-page notebook-sheet-page'); host.setAttribute('aria-label', 'Notebook page');
       const header = { eyebrow: this.node('span'), title: this.node('span'), description: this.node('span') };
       page = this.make(id, host, header, '-sheet', () => this.revised(page));
-      page.menuExtras = () => this.canDock() ? [{ label: 'Beside the feed', glyph: 'layout', checked: this.docked, act: () => this.setDocked(!this.docked) }] : [];
+      page.menuExtras = position => {
+        if (position === 'beforeImage') return this.docked && this.dossiers ? [{ label: 'Choose dossier…', glyph: 'dossier', act: () => this.dossiers.toggle() }] : [];
+        return position === 'afterImage' && this.canDock() ? [{ label: this.docked ? 'Wide' : 'Open with Dossiers', glyph: 'layout', act: () => this.setDocked(!this.docked) }] : [];
+      };
       page.keyScope = target => !this.docked || this.dialog.contains(target);
       page.sheetTitle = header.title;
       page.changes = this.node('div', 'notebook-sheet-changes'); page.changes.hidden = true;
@@ -225,22 +222,19 @@ export class NotebookSheet {
     return loaded;
   }
   show(page) {
-    if (this.current && this.current !== page) this.keep(this.current);
+    if (this.current && this.current !== page) { this.keep(this.current); this.current.more.remove(); }
     this.current = page;
     this.title.replaceChildren(page.sheetTitle);
-    this.views.replaceChildren(page.views, page.draft, page.more, page.pageNotice);
+    page.more.classList.add('sheet-glyph'); this.head.insertBefore(page.more, this.dockButton);
+    if (this.dossiers) this.dossiers.anchor = page.more;
     this.status.replaceChildren(page.status);
     // One fixed title row. Everything else belongs to the existing page
     // scroller, which also keeps the cards' scroll position across closes.
-    page.host.prepend(this.toolbar, this.status, ...(this.dossiers ? [this.dossiers.root] : []));
+    page.host.prepend(this.status, page.pageNotice, ...(this.dossiers ? [this.dossiers.root] : []));
     page.host.querySelector('.notebook-tools')?.remove();
+    page.addImage?.remove();
     this.full.href = this.fullHref(page.item, page.mode);
     if (!this.showing) {
-      this.inlineHidden = this.inline?.hidden ?? true;
-      if (this.inline) this.inline.hidden = true;
-      this.labelledBy = this.dialog.getAttribute('aria-labelledby');
-      this.dialog.setAttribute('aria-labelledby', 'notebook-sheet-title');
-      this.dialog.classList.add('notebook-mode');
       this.root.hidden = false; this.showing = true;
       // Nor does a wheel, a trackpad or a finger: over the backdrop or the sheet's head, and past the end of what
       // scrolls in the sheet, it moves nothing behind (overscroll-behavior holds a box that scrolls, not one that
@@ -329,9 +323,8 @@ export class NotebookSheet {
     paintChanges(shown, earlier.body ?? '', source.body ?? '', this.doc);
     page.changes.replaceChildren(changes); page.changes.hidden = false;
   }
-  close(force = false) {
+  close() {
     if (!this.showing) return;
-    if (this.docked && !force) { this.setDocked(false); return; }
     this.dialog.close();
     this.closed();
   }
@@ -343,11 +336,8 @@ export class NotebookSheet {
     const page = this.current;
     if (page) { this.keep(page); page.host.hidden = true; }
     this.root.hidden = true; this.showing = false;
-    this.dialog.classList.remove('notebook-mode');
-    if (this.labelledBy) this.dialog.setAttribute('aria-labelledby', this.labelledBy);
-    if (this.inline) this.inline.hidden = this.inlineHidden;
     if (this.aside) return;
-    // Back where the person was reading: the holder, the keys, the wheel and the finger keep the feed still, and
+    // Back where the person was reading: the modal, keys, wheel and finger keep the feed still, and
     // should anything else have moved it while the sheet was up (its scrollbar, say), it goes back; the focus goes
     // back to what opened the page.
     const place = this.place; this.place = null;
@@ -363,7 +353,7 @@ export class NotebookSheet {
     if (!page) return;
     this.aside = { id: page.item, title: page.sheetTitle.textContent || 'Notebook page' };
     keep(RETURN, { ...this.aside, land, from: here(), x: this.place?.x ?? globalThis.scrollX, y: this.place?.y ?? globalThis.scrollY });
-    this.close(true);
+    this.close();
     // here: the stack opened in this page's Reader; otherwise its topic's page is loading.
     let opened = false;
     try { opened = await this.openStack(topicId, messageId, land); } catch { opened = true; }
@@ -420,6 +410,8 @@ export class NotebookSheet {
     this.listening.abort(); this.showing = false;
     this.wide?.removeEventListener('change', this.resized); this.still?.abort(); this.dossiers?.close();
     this.docked = false; this.paintDock();
+    if (this.dialog.open) this.dialog.close();
+    this.dialog.remove();
     for (const page of this.pages()) { this.keepWriting(page); page.close?.(); }
   }
 }

@@ -2,66 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { NotebookSheet } from '../web/notebook-sheet.mjs';
 import { NotebookPage } from '../web/notebook-page.mjs';
 import { dossierPage, NotebookDossiers } from '../web/notebook-dossiers.mjs';
-import { miniDocument, Element } from './fixtures/mini_dom.mjs';
 
-// Actual sheet handlers with a small DOM; not native dialog or layout proof.
-function fixture(t, {feed=true, wide=true, storage=new Map()}={}) {
-  const doc=miniDocument(), calls=[], listeners=new Map(), saved=new Map();
-  const set=(name,value)=>{saved.set(name,Object.getOwnPropertyDescriptor(globalThis,name));Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});};
-  const make=doc.createElement;
-  doc.createElement=tag=>{const n=make(tag);n.style={};n.ownerDocument=doc;n.contains=other=>n===other||[...n.descendants()].includes(other);
-    n.before=other=>n.parent?.insertBefore(other,n);n.getBoundingClientRect=()=>({height:80});return n;};
-  doc.createElementNS=(_ns,tag)=>doc.createElement(tag);
-  doc.body=doc.createElement('body');doc.body.root=true;
-  doc.documentElement=doc.createElement('html');
-  doc.getElementById=id=>doc.byId(id);
-  for(const id of ['new-message-sheet','inline-composer','reader'])doc.body.append(doc.byId(id));
-  const dialog=doc.byId('new-message-sheet');dialog.open=false;
-  dialog.close=()=>{dialog.open=false;calls.push('close');};
-  dialog.showModal=()=>{dialog.open=true;calls.push('modal');};
-  dialog.show=()=>{dialog.open=true;calls.push('nonmodal');};
-  const media={matches:wide,addEventListener:(_type,fn)=>{media.changed=fn;},removeEventListener(){}};
-  doc.defaultView={getComputedStyle:()=>({marginTop:'0px',marginBottom:'0px'})};
-  set('document',doc);set('location',new URL('https://fixture/?topic=t'));
-  set('scrollX',0);set('scrollY',100);set('scrollTo',()=>{});
-  set('getComputedStyle',()=>({overflowY:'visible',overflowX:'visible'}));
-  set('sessionStorage',{getItem:key=>storage.get(key)??null,setItem:(k,v)=>storage.set(k,v),removeItem:key=>storage.delete(key)});
-  set('matchMedia',()=>media);
-  set('addEventListener',(type,fn,options={})=>{const row={fn,options};if(!listeners.has(type))listeners.set(type,[]);listeners.get(type).push(row);});
-  set('removeEventListener',()=>{});
-  const emit=(type,event)=>{for(const {fn,options} of listeners.get(type)??[])if(!options.signal?.aborted)fn(event);};
-  const page={host:doc.createElement('section'),text:doc.createElement('textarea'),mode:'cards',item:'p',sheetTitle:doc.createElement('span'),
-    views:doc.createElement('div'),draft:doc.createElement('span'),more:doc.createElement('button'),pageNotice:doc.createElement('div'),status:doc.createElement('span'),
-    load:async()=>true,paint(){},show(){},close(){calls.push('page-close');},writing:{journalPending:false}};
-  const feedOptions={topicId:'t',read:async()=>({items:[],next_cursor:null}),open:async(...args)=>calls.push(['feed',...args])};
-  const sheet=new NotebookSheet({doc,make:(_id,host)=>{page.host=host;return page;},fullHref:()=>'/p',openStack:async(...args)=>{calls.push(['reader',...args]);return true;},goBack(){},feed:feed?feedOptions:null});
-  t.after(()=>{sheet.retire();for(const [name,descriptor] of saved)descriptor?Object.defineProperty(globalThis,name,descriptor):delete globalThis[name];});
-  return {sheet,page,doc,dialog,calls,media,storage,emit,feedOptions};
-}
+import { notebookFixture as fixture } from './fixtures/notebook_sheet_dom.mjs';
+
 const event=(target,key)=>({target,key,button:0,preventDefault(){this.defaultPrevented=true;},stopPropagation(){}});
 
-test('854 head and menu dock the same writing, close and Escape undock before dismissing',async t=>{
+test('854/871 head and menu switch the same writing; close and Escape dismiss either layout',async t=>{
   const f=fixture(t);await f.sheet.open('p');
   const editor=f.doc.createElement('textarea');editor.value='Exact unsaved card';f.page.host.append(editor);f.page.editing={field:editor};editor.focus();
-  assert.ok(f.sheet.dockButton,'head offers docking');assert.equal(f.sheet.dockButton.hidden,false);
-  f.sheet.dockButton.onclick();assert.equal(f.sheet.docked,true);assert.equal(f.calls.at(-1),'nonmodal');
-  assert.equal(f.sheet.current,f.page);assert.equal(editor.value,'Exact unsaved card');
-  assert.equal(f.doc.activeElement,editor);assert.equal(f.sheet.dossierButton.hidden,false);
-  f.sheet.closer.onclick();assert.equal(f.sheet.docked,false);assert.equal(f.sheet.showing,true);assert.equal(f.calls.at(-1),'modal');
-  const menu=NotebookPage.prototype.menuItems.call({writing:{pageState:{}},readOnly:true,menuExtras:f.page.menuExtras});
-  const dock=menu.find(x=>x.label==='Beside the feed');assert.ok(dock);dock.act();assert.equal(f.sheet.docked,true);
-  f.emit('keydown',event(editor,'Escape'));assert.equal(f.sheet.docked,false);assert.equal(f.sheet.showing,true);
-  f.sheet.close();assert.equal(f.sheet.showing,false);assert.equal(editor.value,'Exact unsaved card');
+  assert.equal(f.sheet.docked,true);assert.equal(f.sheet.dockButton.hidden,false);
+  f.sheet.dockButton.onclick();assert.equal(f.sheet.docked,false);assert.equal(f.calls.at(-1),'modal');
+  assert.ok(f.sheet.current===f.page);assert.equal(editor.value,'Exact unsaved card');assert.ok(f.doc.activeElement===editor);
+  const dock=f.page.menuExtras('afterImage').find(x=>x.label==='Open with Dossiers');assert.ok(dock);dock.act();assert.equal(f.sheet.docked,true);
+  f.sheet.closer.onclick();assert.equal(f.sheet.showing,false);assert.equal(f.sheet.dialog.open,false);
+  await f.sheet.open('p');f.emit('keydown',event(editor,'Escape'));assert.equal(f.sheet.showing,false);assert.equal(f.sheet.dialog.open,false);
+  assert.equal(editor.value,'Exact unsaved card');
 });
 
 test('854 docking is topic-only, width-gated and remembered without losing preference on resize',async t=>{
-  const f=fixture(t);await f.sheet.open('p');f.sheet.dockButton.onclick();
-  assert.equal(JSON.parse(f.storage.get('notebook-docked')),true);
+  const f=fixture(t);await f.sheet.open('p');
+  f.sheet.dockButton.onclick();f.sheet.dockButton.onclick();assert.equal(JSON.parse(f.storage.get('notebook-docked')),true);
   f.media.matches=false;f.media.changed();assert.equal(f.sheet.docked,false);assert.equal(f.sheet.dockButton.hidden,true);
-  assert.deepEqual(f.page.menuExtras(),[]);assert.equal(JSON.parse(f.storage.get('notebook-docked')),true);
+  assert.deepEqual(f.page.menuExtras('afterImage'),[]);assert.equal(JSON.parse(f.storage.get('notebook-docked')),true);
   f.media.matches=true;f.media.changed();assert.equal(f.sheet.docked,true);
   f.sheet.retire();assert.equal(f.doc.body.classList.contains('notebook-docked'),false);
 });
@@ -71,7 +35,7 @@ for(const options of [{feed:false},{wide:false}])test(`854 no dock on ${options.
 });
 
 test('854 docked bubble uses feed, modal bubble uses Reader; feed scrolling is released',async t=>{
-  const f=fixture(t);await f.sheet.open('p');f.sheet.dockButton.onclick();
+  const f=fixture(t);await f.sheet.open('p');
   const link=f.doc.createElement('a');link.className='deck-bubble';link.href='/?topic=t&message=root';f.page.host.append(link);
   f.page.host.listeners.click(event(link));await Promise.resolve();
   assert.deepEqual(f.calls.at(-1),['feed','t','root']);assert.equal(f.sheet.showing,true);
@@ -116,7 +80,7 @@ test('854 dossier discovery is bounded, canonical, named and paged without scann
 });
 
 test('854 picker drops late answers, retries errors, deduplicates More and opens only the selected root',async t=>{
-  const f=fixture(t);await f.sheet.open('p');f.sheet.dockButton.onclick();
+  const f=fixture(t);await f.sheet.open('p');
   const picker=f.sheet.dossiers, selected=[];picker.choose=id=>selected.push(id);
   const row={id:'root',topic_id:'t',body:'Named',stack_position:{root_id:'root',name:{text:'Dossier'}}};
   let resolve;picker.read=()=>new Promise(yes=>resolve=yes);
@@ -130,7 +94,7 @@ test('854 picker drops late answers, retries errors, deduplicates More and opens
 });
 
 test('854 cross-topic bubble keeps return intent and page keys yield outside docked sheet',async t=>{
-  const f=fixture(t);await f.sheet.open('p');f.sheet.dockButton.onclick();
+  const f=fixture(t);await f.sheet.open('p');
   f.sheet.openStack=async(topic,id,land)=>{f.calls.push(['cross',topic,id,land]);return false;};
   await f.sheet.openInFeed('other','reply');
   assert.deepEqual(f.calls.at(-1),['cross','other','reply',true]);
