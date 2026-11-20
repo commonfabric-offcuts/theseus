@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import { OutlineRail, Opened } from '../web/outline-rail.mjs';
 import { Element, matches } from './fixtures/mini_dom.mjs';
 import { book } from '../web/outline-order.mjs';
+import { KEY_WORDS } from '../web/pane-keys.mjs';
+import { RULES } from '../web/interaction-guide.mjs';
 
 class OutlineElement extends Element {
   get ownerDocument() { return this.document; }
@@ -74,7 +76,7 @@ const memory = () => {
 const item = (id, extra = {}) => ({ id, title: 'Outcome ' + id, title_truncated: false, owner_id: 'reader', version: 1, unread: 2, addressed: 0, light: null, ...extra });
 const contexts = new WeakSet();
 
-async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fixture-902', phone = false, here = 'w1' } = {}) {
+async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fixture-902', phone = false, here = 'w1', outcomes = null } = {}) {
   if (!contexts.has(t)) {
     contexts.add(t);
     const previous = globalThis.document, listeners = new Set(book.listeners), scopes = new Map(book.scopes);
@@ -91,12 +93,15 @@ async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fi
   const rail = doc.createElement('aside'); rail.id = 'rail'; rail.className = 'rail'; doc.body.append(rail);
   const host = doc.createElement('div'); host.id = 'outline'; rail.append(host);
   globalThis.document = doc;
-  const reads = [], moves = [], rows = [item('w1'), item('w2'), item('w3', { unread: 0, cover_waiting: 1 })];
+  const reads = [], moves = [], rows = outcomes ?? [item('w1'), item('w2'), item('w3', { unread: 0, cover_waiting: 1 })];
   let refuseTopics = false;
   const read = async (name, args, lane) => {
     reads.push([name, structuredClone(args), lane]);
     const base = { instance_id: instance, next_cursor: null };
-    if (name === 'workspaces') return { ...base, items: rows };
+    if (name === 'workspaces') {
+      const remaining = rows.filter(row => !args.cursor || row.id > args.cursor), page = remaining.slice(0, args.limit);
+      return { ...base, items: page, next_cursor: remaining.length > page.length ? page.at(-1).id : null };
+    }
     if (name === 'workspace_topics') {
       if (refuseTopics) throw Error('Topics unavailable');
       return { ...base, groups: { done: 0, archived: 0 }, items: [{ id: 't-' + args.workspace_id, workspace_id: args.workspace_id,
@@ -180,6 +185,9 @@ test('902 reconstruction restores explicit outcome choices for this reader and i
   const otherInstance = await fixture(t, { storage, instance: 'other-instance' });
   assert.equal(otherInstance.outcome('w2').topics.hidden, true);
   assert.equal(storage.values.size, 3, 'each reader/instance scope has an independent preference');
+  restored.outline.setOpen(restored.outcome('w2'), false); await restored.flush();
+  const foldedLast = await fixture(t, { storage });
+  assert.equal(foldedLast.outcome('w2').topics.hidden, true, 'fold w2 last, then reconstruct: the fold was actually saved');
 });
 
 test('902 malformed or denied storage leaves controls usable and keeps page choices', async t => {
@@ -228,16 +236,79 @@ test('902 actual tree arrows and Command arrows keep their expansion and child-f
   assert.deepEqual(f.moves, []);
 });
 
-test('902 Shift-Command changes every known outcome and a later new outcome stays folded', async t => {
+test('921 Shift-Command sets the default for later outcomes and keeps subsequent fold exceptions', async t => {
   const f = await fixture(t);
   f.key(f.outcome('w2').name, 'ArrowRight', { metaKey: true, shiftKey: true }); await f.flush();
   assert.equal([...f.outline.outcomes.values()].every(o => !o.topics.hidden), true);
   f.rows.push(item('w4')); await f.flush();
-  assert.equal(f.outcome('w4').topics.hidden, true, 'open all is explicit choices, not a default for new outcomes');
+  assert.equal(f.outcome('w4').topics.hidden, false, 'open all includes outcomes first encountered later');
+  f.outline.setOpen(f.outcome('w2'), false); await f.flush();
+  const rebuilt = await fixture(t, { storage: f.storage });
+  assert.equal(rebuilt.outcome('w2').topics.hidden, true, 'a later individual fold is a kept exception');
+  assert.equal(rebuilt.outcome('w3').topics.hidden, false, 'the all-open default is kept too');
   f.key(f.outcome('w2').name, 'ArrowLeft', { metaKey: true, shiftKey: true }); await f.flush();
   assert.equal([...f.outline.outcomes.values()].every(o => o.topics.hidden), true);
   await f.arrive('w3');
   assert.deepEqual(['w1', 'w2', 'w3', 'w4'].map(id => f.outcome(id).topics.hidden), [true, true, false, true]);
+});
+
+test('921 a fold in one tab survives another tab arriving in a different outcome', async t => {
+  const storage = memory(), a = await fixture(t, { storage });
+  a.outline.setOpen(a.outcome('w3'), true); await a.flush();
+  const b = await fixture(t, { storage });
+  assert.equal(b.outcome('w3').topics.hidden, false);
+  a.outline.setOpen(a.outcome('w3'), false); await a.flush();
+  await b.arrive('w2', 'topic');
+  const reconstructed = await fixture(t, { storage });
+  assert.equal(reconstructed.outcome('w3').topics.hidden, true, 'arrival must not write back the other tab’s stale open choice');
+  assert.equal(b.outcome('w3').topics.hidden, true, 'the navigating tab paints the merged choices');
+  assert.equal(reconstructed.outcome('w2').topics.hidden, false);
+});
+
+test('921 Shift-Command open-all includes the five outcomes beyond the first twenty', async t => {
+  const outcomes = Array.from({ length: 25 }, (_, i) => item('w' + String(i + 1).padStart(2, '0')));
+  const f = await fixture(t, { outcomes, here: 'w01' });
+  assert.equal(f.outline.pages.items.length, 20); assert.equal(f.outcome('w21'), undefined);
+  f.key(f.outcome('w02').name, 'ArrowRight', { metaKey: true, shiftKey: true }); await f.flush();
+  assert.equal(f.outline.more.hidden, false); await f.outline.more.onclick();
+  for (const id of ['w21', 'w22', 'w23', 'w24', 'w25']) {
+    assert.equal(f.outcome(id).topics.hidden, false, id + ' arrives open');
+    assert.equal(f.outcome(id).disclosure.getAttribute('aria-expanded'), 'true');
+  }
+  assert.deepEqual(f.reads.filter(([name]) => name === 'workspaces').at(-1)[1], { limit: 20, cursor: 'w20' });
+  assert.equal(f.outline.more.hidden, true); assert.deepEqual(f.moves, []);
+});
+
+test('921 the Keys legend and guide describe arrival without folding other outcomes', () => {
+  const keys = KEY_WORDS.find(([name]) => name === 'Return')[1];
+  const guide = RULES.find(([name]) => name === 'Moving through the panes')[1];
+  for (const words of [keys, guide]) {
+    assert.doesNotMatch(words, /folding every other|tidies/);
+    assert.match(words, /without folding/);
+  }
+});
+
+test('921 legacy choices migrate without reserving an outcome id for the all-open default', () => {
+  const storage = memory(); storage.setItem('outline', JSON.stringify({ every: true, marks: false, '*': true, w2: false }));
+  const opened = new Opened(storage, 'outline');
+  assert.deepEqual(['every', 'marks', '*', 'w2', 'new'].map(id => opened.isOpen(id)), [true, false, true, false, false]);
+  opened.set('w1', true);
+  const rebuilt = new Opened(storage, 'outline');
+  assert.deepEqual(['every', 'marks', '*', 'w2', 'new'].map(id => rebuilt.isOpen(id)), [true, false, true, false, false]);
+  rebuilt.all(true); rebuilt.set('every', false);
+  const all = new Opened(storage, 'outline');
+  assert.equal(all.isOpen('new'), true); assert.equal(all.isOpen('every'), false);
+});
+
+test('921 failed local saves remain on the page and merge other-tab choices when storage recovers', () => {
+  const storage = memory(), save = storage.setItem; let full = false;
+  storage.setItem = (key, value) => { if (full) throw Error('full'); save(key, value); };
+  const a = new Opened(storage, 'outline'), b = new Opened(storage, 'outline');
+  a.set('w1', true); full = true; a.set('w1', false); a.set('w2', true);
+  assert.equal(a.isOpen('w1'), false); assert.equal(a.isOpen('w2'), true);
+  full = false; b.set('w3', false); a.set('w4', true);
+  const rebuilt = new Opened(storage, 'outline');
+  assert.deepEqual(['w1', 'w2', 'w3', 'w4'].map(id => rebuilt.isOpen(id)), [false, true, false, true]);
 });
 
 test('902 name activation retains navigation and never doubles as desktop fold', async t => {
