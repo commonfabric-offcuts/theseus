@@ -5842,7 +5842,8 @@ test('919 starred first card paints its filled star and dossier cue without a po
   const card = entryIn(f, 'star919'), star = card.querySelector(':scope > .message-author > .card-star');
   assert.equal(card.dataset.starred, 'true'); assert.equal(star.textContent, '★'); assert.equal(star.getAttribute('aria-pressed'), 'true');
   const nodes = node => [node, ...(node.children ?? []).flatMap(nodes)];
-  assert.equal(nodes(stackOf('star919')).find(node => node.classList?.contains('stack-star')).textContent, '★ Starred');
+  const headerStar = nodes(stackOf('star919')).find(node => node.classList?.contains('stack-star'));
+  assert.equal(headerStar.textContent, '★'); assert.equal(headerStar.getAttribute('aria-pressed'), 'true');
   f.views.messages.get('star919').acts = { starred: false, star_revision: 2 }; f.paintViews('acts');
   assert.equal(card.dataset.starred, 'false'); assert.equal(star.textContent, '☆');
 });
@@ -7439,7 +7440,7 @@ for (const minted of [false, true]) test(`891 ${minted ? 'minted' : 'explicit'} 
     assert.match(p.words(), /Independent name/); assert.match(p.words(), /Independent dossier state/);
     assert.equal(/Named by/.test(p.words()), minted);
     assert.equal(p.state().starred.has('q891'), true, 'hiding a row does not remove a dossier star');
-    assert.match(p.words(), /★ Starred/, 'the title bar still marks that dossier star');
+    assert.match(p.words(), /★/, 'the title bar still marks that dossier star');
     assert.deepEqual(p.ids(), [viewer === 'fixture-person' ? ['r891'] : ['q891', 'r891']]);
   }
 });

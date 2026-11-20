@@ -180,7 +180,7 @@ export class StackFeed {
     newest = () => {}, refreshPositions = async () => {}, acted = () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), navigate = () => {}, press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
     colorOf = () => null, readNamed = null, clock = () => Date.now(), doc = document }) {
     Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, acted, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, clock, doc });
-    this.readNamed = readNamed;
+    this.readNamed = readNamed; this.headerStars = new Set();
     this.coordinationChoice = new CoordinationChoice({ instanceId, viewer, view: doc.defaultView ?? globalThis.window });
     this.state.showCoordination = this.coordinationChoice.on;
     home?.addEventListener('close', () => this.arrange());
@@ -288,6 +288,7 @@ export class StackFeed {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, colorOf: this.colorOf, home: this.home, coordinationHost: this.filterHost, doc: this.doc, on: {
       navigate: () => this.navigate(), more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       coordinationCount: (count, news) => this.paintCoordination(count, news),
+      star: stack => this.starDossier(stack), firstStarred: stack => this.firstStarred(stack),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id), fold: id => this.foldId(id),
       folded: (stack, was) => {
         // Explicitly collapsing this dossier handles its loaded arrivals.
@@ -401,10 +402,10 @@ export class StackFeed {
   // Answered, refused or not settled, it is no longer drawn over what Core
   // holds: one not settled shows once Core says it is recorded. also: what
   // else it shows at once, as [message id, acts] (Option's fold, on several).
-  act(kind, item, args, also = []) {
+  act(kind, item, args, also = [], { quiet = false } = {}) {
     const shown = shownAct(kind, args, this.viewer, this.clock());
     const shows = [[item.id, shown], ...also];
-    if (!QUIET.has(kind)) for (const [id] of shows) this.acted(id);
+    if (!quiet && !QUIET.has(kind)) for (const [id] of shows) this.acted(id);
     for (const [id, mark] of shows) this.pending.set(id, [...this.pending.get(id) ?? [], mark]);
     this.made.set(shown, ++this.makes);
     const sent = this.chain.then(() => this.send(kind, item, args)).finally(() => {
@@ -534,6 +535,9 @@ export class StackFeed {
       if (known) known.acts = laterActs(known.acts, { aside: null, aside_revision: back.aside_revision });
       await this.refreshPositions();
     }
+    // An unloaded first message is represented by its dossier's position.
+    // Refresh that membership before dropping the pending star (646).
+    if (kind === 'message.star' && !back && !this.messages().has(item.id)) await this.refreshPositions();
     // What places a dossier and names it is read again after an act that changes them: a join or a split moves
     // messages to another dossier, whose positions they carry from then on (item 470). A place on a first message
     // the page has not loaded, or on any other message of a dossier, is shown by those positions (item 550).
@@ -571,6 +575,43 @@ export class StackFeed {
       if (on && this.actsOf(item.id, item).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }
       this.arrange(); this.say(on ? 'Starred, for you only' : 'Star taken off');
     });
+  }
+  // The header toggle belongs to the actual first message; reply stars still
+  // retain the dossier above More, but do not fill this control (646).
+  firstStarred(stack) {
+    const root = dossierOf(stack), item = this.messages().get(root) ?? { acts: { starred: Boolean(positionOf(stack)?.starred?.includes(root)) } };
+    return Boolean(this.actsOf(root, item).starred);
+  }
+  async starDossier(stack) {
+    const root = dossierOf(stack), anchor = stack.head.id;
+    if (this.gone) return;
+    if ([...this.doubts.values()].some(act => act.kind === 'message.star' && act.item.id === root)) { this.paintNotice(); return; }
+    if (this.headerStars.has(root) || this.pending.get(root)?.some(mark => 'starred' in mark)) return;
+    this.headerStars.add(root);
+    try {
+      // Read one named message, without inserting it into the loaded page or
+      // navigating there. Its identity and revision must both come from Core.
+      const page = await this.readNamed('topic_messages', { topic_id: stack.head.topic_id, message_ids: [root] });
+      if (this.gone) return;
+      const current = stackOf(this.list, this.entryFor(anchor))?.stack, item = page.items?.[0];
+      if (page.instance_id !== this.instanceId || page.items?.length !== 1 || !item || item.withheld || item.id !== root ||
+          item.topic_id !== stack.head.topic_id || item.stack_position?.root_id !== root || !current || dossierOf(current) !== root) {
+        throw Error('This dossier’s first message is unavailable or its dossier changed. No star was changed.');
+      }
+      if (this.pending.get(root)?.some(mark => 'starred' in mark)) return;
+      const known = this.messages().get(root) ?? this.standIns.get(root) ?? item;
+      known.acts = laterActs(known.acts, item.acts);
+      if (!this.messages().has(root)) this.standIns.set(root, known);
+      const on = !this.actsOf(root, known).starred;
+      // Keep this header's New mark, folding and focus. Existing message.star
+      // owns the command, revision fence, uncertain-result recovery and More.
+      await this.cardAct(anchor, () => {
+        const sent = this.act('message.star', known, { starred: on }, [], { quiet: true });
+        this.arrange(); return sent;
+      });
+      if (!this.gone) this.say(on ? 'Starred, for you only' : 'Star taken off');
+    } catch (error) { if (!this.gone && !(error instanceof ActFailure)) this.status(error); }
+    finally { this.headerStars.delete(root); }
   }
   // The right rail's Unstar, for a message here or in another place: one this
   // page shows takes the star off its card too.
@@ -1039,7 +1080,11 @@ export class StackFeed {
     if (action === 'fold-message') return this.foldKey(event, entry, toggle);
     event.preventDefault();
     if (action === 'undo') return this.undo();
-    if (action === 'move-up' || action === 'move-down') return this.move(entry, action.slice(5));
+    if (action === 'move-down') {
+      const found = stackOf(this.list, entry);
+      return found ? this.setAside(found.stack, true) : false;
+    }
+    if (action === 'move-up') return this.move(entry, 'up');
     if (action === 'join-up' || action === 'join-down') return this.join(entry, action.slice(5));
   }
   // x on a message (item 388): folds it to its row, as Fold in ⋯ does

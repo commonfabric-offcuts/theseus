@@ -45,6 +45,13 @@ def register(verb):
     item = verb("item")
     item.add_argument("outcome")
     item.add_argument("number", type=int)
+    edit = verb("item-edit")
+    edit.add_argument("outcome")
+    edit.add_argument("number", type=int)
+    edit.add_argument("--title")
+    edit.add_argument("--size", choices=("small", "medium", "large", "none"))
+    edit.add_argument("--group")
+    edit.add_argument("--words", dest="file")
     on = verb("pipeline-on")
     on.add_argument("outcome")
     on.add_argument("--title")
@@ -91,6 +98,10 @@ def register(verb):
     piece.add_argument("--size")
     piece.add_argument("--ask")
     piece.add_argument("--from-release", action="store_true")
+    move_piece = verb("move-piece")
+    move_piece.add_argument("piece")
+    move_piece.add_argument("--topic", required=True)
+    move_piece.add_argument("--expected", type=int, required=True)
     enter = verb("enter-stage")
     enter.add_argument("piece")
     enter.add_argument("stage")
@@ -186,6 +197,31 @@ class PipelineVerbs:
 
     def do_item(self):
         answer = self.view("pipeline_item", {"workspace_id": self.options.outcome, "number": self.options.number})
+        self._print_item(answer)
+
+    def do_item_edit(self):
+        options = self.options
+        args = {}
+        if options.title is not None:
+            args["title"] = options.title
+        if options.size is not None:
+            args["size"] = None if options.size == "none" else options.size
+        if options.group is not None:
+            args["candidate_group"] = options.group
+        if options.file is not None:
+            args["description"] = self.page_words()
+        if not args:
+            self.refuse("INVALID_ARGUMENT", "Give --title, --size, --group or --words; nothing was sent")
+        target = {"workspace_id": options.outcome, "number": options.number}
+        item = self.view("pipeline_item", target)["item"]
+        self.command("pipeline.item_edit", target, args, {"item_revision": item["version"]})
+        answer = self.read_back("pipeline_item", target, {
+            "what": "the edit to item %d in %s was recorded" % (options.number, options.outcome),
+            "kind": "pipeline.item_edit", "it": "the edit"},
+            "`item %s %d` shows the item" % (options.outcome, options.number))
+        self._print_item(answer)
+
+    def _print_item(self, answer):
         item = answer["item"]
         self._item_lines(item)
         if item.get("description"):
@@ -318,6 +354,13 @@ class PipelineVerbs:
             args["ask_message_id"] = options.ask
         result = self.command("pipeline.stage_enter", {"piece_id": options.piece}, args)
         self.out.plain("%s entered %s, round %d" % (options.piece, result["stage_id"], result["round"]))
+
+    def do_move_piece(self):
+        options = self.options
+        result = self.command("pipeline.piece_move", {"piece_id": options.piece}, {"topic_id": options.topic},
+                              {"piece_revision": options.expected})
+        self.out.plain("piece %s moved from %s to %s (revision %d)" %
+                       (options.piece, result["from_topic_id"], result["topic_id"], result["piece_revision"]))
 
     def do_stage_note(self):
         options = self.options

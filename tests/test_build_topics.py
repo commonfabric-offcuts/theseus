@@ -10,6 +10,7 @@ A Build topic Done is in the done list as any topic is, and an archived one in
 the archived list; an outcome with no pipeline on has no Build topics."""
 
 import unittest
+import sqlite3
 
 import test_pipeline_stages as stages
 from test_pipeline_steering import PipelineCase
@@ -17,6 +18,18 @@ from test_pipeline_steering import PipelineCase
 
 class BuildTopicsCase(PipelineCase):
     start = stages.StagesCase.start
+
+    def legacy_start(self, topic, **args):
+        """Pre-632 wrong link, seeded only in this temporary classification DB.
+
+        The public start now refuses it. Retain 837's full classification
+        assertions against existing human-linked records, including history.
+        """
+        receipt = self.start(topic="t1", **args)
+        piece = self.committed(receipt)["piece_id"]
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE pipeline_pieces SET topic_id=? WHERE id=?", (topic, piece))
+        return receipt
 
     def create_topic(self):
         self.workspace()
@@ -102,7 +115,7 @@ class BuildTopicsCase(PipelineCase):
         self.topic("human", "My tracking topic", actor="owner")
         self.assertIn("human", self.ids(build=False))
         before = self.sql("SELECT creator_id,title FROM topics WHERE id='human'")
-        first = self.committed(self.start(numbers=(1,), topic="human", actor="agent-a"))["piece_id"]
+        first = self.committed(self.legacy_start(numbers=(1,), topic="human", actor="agent-a"))["piece_id"]
         self.assertIn("human", self.ids(build=False), "linking work must not remove a human's topic")
         self.assertNotIn("human", self.ids(build=True))
         for actor in ("owner", "agent-a", "agent-b"):
@@ -111,7 +124,7 @@ class BuildTopicsCase(PipelineCase):
         self.committed(self.command("pipeline.piece_finish", {}, {"piece_id": first}))
         self.assertIn("human", self.ids(build=False), "historical links do not hide the topic either")
         second = self.add("Another piece", section="now", size="small")
-        self.committed(self.start(numbers=(second,), topic="human", actor="owner"))
+        self.committed(self.legacy_start(numbers=(second,), topic="human", actor="owner"))
         self.assertIn("human", self.ids(build=False))
         self.committed(self.on(enabled=False))
         self.committed(self.on())
@@ -122,7 +135,7 @@ class BuildTopicsCase(PipelineCase):
 
     def test_human_and_agent_topics_are_paged_and_counted_in_their_own_lists(self):
         self.topic("human", "My tracking topic", actor="owner")
-        self.committed(self.start(numbers=(1,), topic="human", actor="agent-a"))
+        self.committed(self.legacy_start(numbers=(1,), topic="human", actor="agent-a"))
         number = self.add("Agent work", section="now", size="small")
         self.committed(self.start(numbers=(number,), topic="t1", actor="owner"))
         self.post("Human topic update", topic="human", addressees=["owner"], intent="tell")
@@ -152,7 +165,7 @@ class BuildTopicsCase(PipelineCase):
 
     def test_archive_and_done_still_remove_a_linked_human_topic_from_the_open_sidebar(self):
         self.topic("human", "My tracking topic", actor="owner")
-        self.committed(self.start(numbers=(1,), topic="human", actor="agent-a"))
+        self.committed(self.legacy_start(numbers=(1,), topic="human", actor="agent-a"))
         self.say("human", state="review")
         self.assertIn("human", self.ids(build=False), "review is still an ordinary open topic")
         self.say("human", state="done")
@@ -181,7 +194,7 @@ class BuildTopicsCase(PipelineCase):
 
     def test_a_linked_human_created_conversation_keeps_its_separate_row(self):
         conversation = self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["conversation_id"]
-        self.committed(self.start(numbers=(1,), topic=conversation, actor="agent-a"))
+        self.committed(self.legacy_start(numbers=(1,), topic=conversation, actor="agent-a"))
         topic = self.store.view("owner", "topic", {"topic_id": conversation})["topic"]
         self.assertEqual((topic["creator_id"], topic["kind"], topic["build"]), ("owner", "conversation", False))
         self.assertNotIn(conversation, self.ids(build=False), "Conversation retains its separate row")

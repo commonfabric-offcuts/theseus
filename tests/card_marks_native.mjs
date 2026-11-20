@@ -40,7 +40,15 @@ const playwright = createRequire(import.meta.url)(playwrightPath);
 await mkdir(evidence, { recursive: true });
 
 const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', '--freshness', '--images', '--other-person'], { cwd: root });
-const { control, exit: fixtureExit, errors: fixtureErrors } = fixtureControl(fixture);
+const { control: fixtureRequest, exit: fixtureExit, errors: fixtureErrors } = fixtureControl(fixture);
+// Explicit synthetic reasons satisfy today's message contract; never alter Core
+// or the shared fixture to admit a root/reply without its own stated reason.
+const control = request => fixtureRequest(request.method === 'agent_message' ? {
+  ...(request.source === 'topic' && !request.reply_to
+    ? { divergence_reason: 'A separate synthetic card for the native card-marks check' }
+    : { reply_without_quote: 'This synthetic reply checks the whole card dossier' }),
+  ...request,
+} : request);
 
 // Waits on what the page says, read after each animation frame the page draws.
 const until = async (p, expression, description, arg) => {
@@ -139,13 +147,15 @@ const EXPECTED = { plain: [], image: ['image'], note: ['note'], reply: ['reply']
 
 let browser, engine, origin;
 const results = [], contexts = [], shots = [];
-async function open(url, { width = 1280, dark = false } = {}) {
+async function open(url, { width = 1280, dark = false, fixedTime = null } = {}) {
   const phone = width < 760;
   const ctx = await browser.newContext({ viewport: phone ? { width, height: 740 } : { width, height: 900 }, hasTouch: phone, isMobile: phone,
     deviceScaleFactor: phone ? 2 : 1, colorScheme: dark ? 'dark' : 'light' });
   contexts.push(ctx);
   const p = await ctx.newPage(); p.errors = [];
   p.on('pageerror', error => p.errors.push(String(error)));
+  // Item 634: control the formatted label, not the date or Core's clock.
+  if (fixedTime) await p.addInitScript(label => { Date.prototype.toLocaleTimeString = () => label; }, fixedTime);
   await p.goto(origin + url);
   await until(p, () => document.body.dataset.ready === 'true', 'the page ready');
   return p;
@@ -251,8 +261,19 @@ async function run() {
   for (const [width, dark] of VIEWS) {
     const label = `${width}px ${dark ? 'dark' : 'light'}`;
     await check(`marks at ${label}: an image, your note and your saved reply each show a quiet named glyph beside the time; another's never does`, async () => {
-      const p = await open(topic, { width, dark });
+      const p = await open(topic, { width, dark, fixedTime: '12:34 AM' });
       await until(p, all => all.every(id => document.querySelector(`.message-card[data-id="${id}"]`)), 'every card drawn', Object.values(m));
+      // A fixed short time is a negative control for the narrow plain line.
+      const short = await open(topic, { width, dark, fixedTime: '1:11 AM' });
+      await until(short, selector => document.querySelector(selector + ' > .message-author'), 'the short-time plain card', card(m.plain));
+      const shortCard = await readCard(short, m.plain);
+      const wideCard = await readCard(p, m.plain);
+      await writeFile(path.join(evidence, `${engine}-time-${width}-${dark ? 'dark' : 'light'}.json`), JSON.stringify({ wide: wideCard, short: shortCard }, null, 2));
+      if (width === 320) await p.locator(card(m.plain)).screenshot({ path: path.join(evidence, `${engine}-plain-${dark ? 'dark' : 'light'}.png`) });
+      assert.equal(await short.locator(card(m.plain) + ' .message-time time').textContent(), '1:11 AM');
+      assert.equal(await p.locator(card(m.plain) + ' .message-time time').textContent(), '12:34 AM');
+      assert.ok(shortCard.author.height < 24, `short time: the plain author line stays single (${shortCard.shape})`);
+      assert.ok(wideCard.author.height < 24, `wide time at ${width}: the plain author and full time stay on one line (${wideCard.shape})`);
       for (const [name, kinds] of Object.entries(EXPECTED)) {
         const seen = await readCard(p, m[name]);
         assert.deepEqual(seen.marks.map(mark => mark.kind), kinds, `${name}: its marks`);
@@ -270,10 +291,10 @@ async function run() {
         }
       }
       // The names a screen reader hears, as the page's accessibility tree gives them.
-      assert.equal(await p.getByRole('img', { name: WORDS.image, exact: true }).count(), 2, 'the image card and the own card each say Has an image');
-      assert.equal(await p.getByRole('img', { name: 'Has 2 images', exact: true }).count(), 1);
-      assert.equal(await p.getByRole('img', { name: WORDS.note, exact: true }).count(), 3);
-      assert.equal(await p.getByRole('img', { name: WORDS.reply, exact: true }).count(), 2);
+      assert.equal(await p.locator('.message-card > .message-author').getByRole('img', { name: WORDS.image, exact: true }).count(), 2, 'the image card and the own card each say Has an image');
+      assert.equal(await p.locator('.message-card > .message-author').getByRole('img', { name: 'Has 2 images', exact: true }).count(), 1);
+      assert.equal(await p.locator('.message-card > .message-author').getByRole('img', { name: WORDS.note, exact: true }).count(), 3);
+      assert.equal(await p.locator('.message-card > .message-author').getByRole('img', { name: WORDS.reply, exact: true }).count(), 2);
       assert.equal(await p.locator(card(m.all)).getAttribute('aria-label'), null, 'the card keeps the name its words give it');
       // No empty line and no pushed row, at any width: a marked card's line ends where its words and glyphs end, and
       // what follows it starts as far below as on a plain card.
@@ -291,6 +312,30 @@ async function run() {
         assert.ok(Math.abs(all.author.height - plain.author.height) < 1, `the marked line is as tall as a plain one (${all.author.height} vs ${plain.author.height})`);
       }
       assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'nothing scrolls sideways');
+      // Keep the star's reserved place when native input selects a plain card.
+      const author = p.locator(card(m.plain) + ' > .message-author');
+      await author.scrollIntoViewIfNeeded();
+      const before = await readCard(p, m.plain);
+      if (width < 760) await author.tap(); else await author.click();
+      await until(p, selector => getComputedStyle(document.querySelector(selector + ' > .message-author > .card-star')).visibility === 'visible', 'selecting reveals the plain card star', card(m.plain));
+      const after = await readCard(p, m.plain);
+      const layout = seen => [seen.author.height, seen.time.left - seen.card.left, seen.time.top - seen.card.top,
+        seen.star.left - seen.card.left, seen.star.top - seen.card.top];
+      assert.deepEqual(layout(after), layout(before), 'revealing the star leaves its reserved place and time unchanged');
+      const star = p.locator(card(m.plain) + ' > .message-author > .card-star');
+      for (const starred of [true, false]) {
+        const response = p.waitForResponse(answer => {
+          try { return answer.request().postDataJSON()?.kind === 'message.star'; } catch { return false; }
+        });
+        if (width < 760) await star.tap(); else await star.click();
+        const answer = await response, command = answer.request().postDataJSON();
+        assert.equal(command.target.message_id, m.plain, 'the native star act keeps its message target');
+        assert.equal(command.args.starred, starred);
+        assert.equal((await answer.json()).status, 'committed');
+        await until(p, ([selector, want]) => document.querySelector(selector)?.getAttribute('aria-pressed') === String(want),
+          'the recorded star act is drawn', [card(m.plain) + ' > .message-author > .card-star', starred]);
+      }
+      assert.deepEqual(short.errors, []);
       assert.deepEqual(p.errors, []);
       await p.evaluate(() => scrollTo(0, 0));
       await picture(p, `feed-${width}-${dark ? 'dark' : 'light'}`);
@@ -523,7 +568,7 @@ try {
 } finally {
   fixture.stdin.end();
   const { code: fixtureExitCode, signal: fixtureExitSignal } = await fixtureExit;
-  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, browserClosed, harnessCompleted, fixtureExitCode, fixtureExitSignal,
+  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, browserClosed, harnessCompleted, fixtureExitCode, fixtureExitSignal, fixturePid: fixture.pid, origin,
     fixtureErrors: fixtureErrors(), shots }, null, 2));
   const failed = results.filter(r => !r.passed);
   console.log(`${results.length - failed.length} passed, ${failed.length} failed`);
