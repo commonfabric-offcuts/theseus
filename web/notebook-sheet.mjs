@@ -252,7 +252,7 @@ export class NotebookSheet {
     let loaded = false;
     try { loaded = await page.load(); } catch (error) { page.say?.(`${error.message} The page could not be read.`, 'attention'); }
     if (serial !== this.serial || this.current !== page || !this.showing) return loaded;
-    if (mode) { page.switchView(mode); this.full.href = this.fullHref(id, mode); }
+    if (mode) page.switchView(mode);
     if (mode === 'cards') { page.picked = 0; page.paint(); }
     if (kept && page.reopen?.(kept)) { /* the card box it had open, open again */ }
     else if (write === 'new' && page.base && !page.base.body && !page.readOnly && !page.editing) page.start();
