@@ -211,7 +211,7 @@ class DossierMove:
                     self._acknowledge(db, row["recipient_id"], row)
                 elif row["state"] == "held":
                     db.execute("UPDATE deliveries SET state='acknowledged' WHERE id=?", (row["id"],))
-            if row["kind"] == "correction" and row["state"] == "pending" and row["active"] and not self._correction_readable(db, row["recipient_id"], row):
+            if row["kind"] in ("correction", "answer") and row["state"] == "pending" and row["active"] and not self._correction_readable(db, row["recipient_id"], row):
                 self._acknowledge(db, row["recipient_id"], row)
             db.execute("UPDATE deliveries SET topic_id=?,group_id=? WHERE id=?", (destination["id"], group, row["id"]))
             db.execute("UPDATE delivery_reasons SET topic_id=? WHERE delivery_id=?", (destination["id"], row["id"]))

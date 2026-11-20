@@ -818,9 +818,8 @@ class MessageEdit:
                           (agent,) + ((message_id,) if message_id is not None else ())).fetchall()
 
     def _correction_readable(self, db, actor, row):
-        """Whether the actor may be shown this delivery: any delivery but a correction, and a correction of a message
-        the actor can read now."""
-        if row["revision"] == 1:
+        """Ordinary deliveries keep their addressed reach. Corrections and answer receipts require current source access."""
+        if row["revision"] == 1 and row['answer_id'] is None:
             return True
         try:
             self._message_access(db, actor, row["message_id"])
@@ -829,11 +828,13 @@ class MessageEdit:
         return True
 
     def _settle_unreadable_corrections(self, db, actor):
-        """In the write that takes a message from the actor, settle its corrections of messages it can no longer read,
+        """In the write that takes a message from the actor, settle corrections and answer receipts it can no longer read,
         so no count, wake or notice keeps them; the wake's claim does the same before it hands work (runner.py).
-        The walk is the actor's own pending corrections. Returns how many it settled."""
+        The walk is the actor's own pending corrections and answers. Returns how many it settled."""
         settled = 0
-        for row in self._pending_corrections(db, actor):
+        answers = db.execute("SELECT d.* FROM delivery_groups g CROSS JOIN deliveries d INDEXED BY pending_group_deliveries "
+                             "ON d.group_id=g.id AND d.state='pending' WHERE g.recipient_id=? AND g.kind='answer' AND g.active=1", (actor,)).fetchall()
+        for row in self._pending_corrections(db, actor) + answers:
             if not self._correction_readable(db, actor, row):
                 self._acknowledge(db, actor, row)
                 settled += 1
