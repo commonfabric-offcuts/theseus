@@ -30,12 +30,14 @@ export function outcomeInvalidation(workspace, actor) {
 }
 
 export class OutcomeChanges {
-  constructor({ api, bootstrap, workspaceId, current = () => true }) {
+  constructor({ api, bootstrap, workspaceId, current = () => true, outcomesKey = null }) {
     Object.assign(this, { api, bootstrap, current });
     this.scopes = [{ kind: 'workspace', id: workspaceId }, { kind: 'actor', id: bootstrap.actor }];
     this.cursors = null; this.listeners = new Set();
     this.enabled = supportsAdmission(bootstrap);
+    this.outcomesKey = outcomesKey; this.readOutcomesKey = outcomesKey;
   }
+  observe(event) { if (typeof event.outcomes === 'string') this.outcomesKey = event.outcomes; }
   listen(listener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   async notify(dirty) { return (await Promise.all([...this.listeners].map(listener => listener(dirty)))).every(value => value !== false); }
   async read(scope, input = null) {
@@ -53,7 +55,7 @@ export class OutcomeChanges {
   async next() {
     if (!this.enabled) return { dirty: outcomeReads(), accept() {} };
     if (!this.cursors) { await this.baseline(); return { dirty: outcomeReads(), accept() {} }; }
-    const cursors = [], items = [];
+    const cursors = [], items = [], outcomesKey = this.outcomesKey;
     try {
       for (const [index, scope] of this.scopes.entries()) {
         let input = this.cursors[index], keys = [], page;
@@ -68,6 +70,8 @@ export class OutcomeChanges {
       if (readFailure(error).kind === 'resync') this.cursors = null;
       throw error;
     }
-    return { dirty: outcomeInvalidation(...items), accept: () => { if (this.current()) this.cursors = cursors; } };
+    const dirty = outcomeInvalidation(...items);
+    if (outcomesKey !== this.readOutcomesKey) dirty.add('outcomes');
+    return { dirty, accept: () => { if (this.current()) { this.cursors = cursors; this.readOutcomesKey = outcomesKey; } } };
   }
 }

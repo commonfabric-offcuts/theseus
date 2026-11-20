@@ -346,7 +346,7 @@ class AIMHTTPServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    protocol_version = "HTTP/1.0"
+    protocol_version = "HTTP/1.1"
     default_request_version = "HTTP/1.0"
     server_version = "AIMNext"
     sys_version = ""
@@ -364,24 +364,30 @@ class Handler(BaseHTTPRequestHandler):
         # Request paths, bodies and authentication never enter an access log.
         pass
 
-    def _send(self, status: int, body: bytes, content_type: str):
-        self._headers(status, content_type, len(body))
+    def _send(self, status: int, body: bytes, content_type: str, *, static=False, immutable=False):
+        self._headers(status, content_type, len(body), static=static, immutable=immutable)
         try:
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError):
             pass
 
-    def _headers(self, status: int, content_type: str, length=None):
-        self.close_connection = True
+    def _headers(self, status: int, content_type: str, length=None, *, static=False, immutable=False):
+        # Only fully framed public assets reuse a connection. Keep the original
+        # absolute input deadline: idle/static clients cannot hold a slot forever.
+        headers = getattr(self, 'headers', {})  # Parser refusals may precede headers.
+        connection = {part.strip().lower() for part in headers.get('Connection', '').split(',')}
+        empty = headers.get('Content-Length', '0') == '0' and not headers.get('Transfer-Encoding')
+        keep = static and empty and self.request_version == 'HTTP/1.1' and 'close' not in connection
+        self.close_connection = not keep
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         if length is not None:
             self.send_header("Content-Length", str(length))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", "public, max-age=31536000, immutable" if immutable else "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Connection", "close")
+        self.send_header("Connection", "keep-alive" if keep else "close")
         self.send_header("Content-Security-Policy", self.server.csp)
         self.end_headers()
 
@@ -762,7 +768,8 @@ class Handler(BaseHTTPRequestHandler):
         if name.lstrip("/") in ("", "index.html"):
             body = body.replace(b"__AIM_SESSION_TOKEN__", html.escape(self.server.session_token, quote=True).encode())
             name = "index.html"
-        self._send(200, body, mimetypes.guess_type(name)[0] or "application/octet-stream")
+        self._send(200, body, mimetypes.guess_type(name)[0] or "application/octet-stream",
+                   static=True, immutable=name.startswith(web_build.PREFIX + self.server.build.stamp + '/'))
 
     def _live_handshake(self):
         """Accept a WebSocket for the live feed, or refuse it with the usual JSON error.
@@ -826,11 +833,13 @@ class Handler(BaseHTTPRequestHandler):
             self.connection.setblocking(False)
             sent, pending, ping, received = None, b"", None, b""
             while True:
-                seq, light, ended = feed.snapshot()
+                seq, light, outcomes, ended = feed.commit_snapshot()
                 if not pending and ping is not None:
                     pending, ping = _ws_frame(ping, 10), None
                 elif not pending and seq != sent:
-                    message = {"seq": seq} if light is None else {"seq": seq, "health": light}
+                    message = {"seq": seq, "outcomes": outcomes}
+                    if light is not None:
+                        message['health'] = light
                     pending, sent = _ws_frame(json.dumps(message, separators=(",", ":")).encode("ascii")), seq
                 if ended:
                     pending += _ws_frame(json.dumps({"end": ended}, separators=(",", ":")).encode("ascii")) + _ws_frame(b"\x03\xe8", 8)
@@ -1017,7 +1026,7 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
         # at start delays its first message and never disables it.
         try:
             server.live_feed = LiveFeed(*live, runner_gone=runner_gone(store_factory, _stderr),
-                                        health_due=health_due(store_factory, _stderr))
+                                        health_due=health_due(store_factory, _stderr), actor=actor)
         except (WatchError, OSError):
             server.live_feed = None
     return server
