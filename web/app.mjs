@@ -776,6 +776,58 @@ function sourceAttachments(presentation) {
     }));
   }
 }
+// A body click opens Reader at once. Its next nearby desktop click can
+// turn that exact opening into the shared Edit, even on the Reader overlay
+// (item 890). No timer delays opening and no second editing owner is made.
+let editBodyClick = null, editPointer = null;
+const editClickControl = target => {
+  const control = target?.closest?.('a, button, input, textarea, select, img, [contenteditable], [role="button"], .image-thumb, .feed-fence-copy, .message-bar, .stack-head, .fold-line, .replied-mark, .note-corner, .cover-refresh-glyph, .stack-new-action');
+  // The card itself has role=button for Space; its body is still the body.
+  return control && !control.classList.contains('message-card');
+};
+const editClickChoice = (id, card) => {
+  const item = views && feedMessages().get(id);
+  return item && messageMenuItems(item, null, card).find(choice => choice.label === 'Edit');
+};
+const editClickMatches = event => {
+  const first = editBodyClick;
+  return first && !retired && !event.defaultPrevented && event.button === 0 && event.detail > 0 && editPointer?.type === 'mouse' && !editPointer.dragged &&
+    !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey &&
+    (event.detail >= 2 || event.timeStamp >= first.time && event.timeStamp - first.time <= 400) &&
+    Math.hypot(event.clientX - first.x, event.clientY - first.y) <= 6 &&
+    (!first.shown || reader.dialog.open && registry.current === first.shown) && editClickChoice(first.id, first.card);
+};
+document.addEventListener('pointerdown', event => {
+  editPointer = { type: event.pointerType, id: event.pointerId, x: event.clientX, y: event.clientY, dragged: false };
+  if (event.pointerType !== 'mouse') editBodyClick = null;
+}, true);
+for (const kind of ['pointermove', 'pointerup']) document.addEventListener(kind, event => {
+  if (editPointer?.id === event.pointerId && Math.hypot(event.clientX - editPointer.x, event.clientY - editPointer.y) > 4) editPointer.dragged = true;
+}, true);
+document.addEventListener('pointercancel', () => { editBodyClick = null; }, true);
+document.addEventListener('keydown', () => { editBodyClick = null; }, true);
+document.addEventListener('click', event => {
+  const first = editBodyClick, choice = editClickMatches(event);
+  editBodyClick = null;
+  if (!choice) return;
+  event.preventDefault(); event.stopImmediatePropagation();
+  // Only the accepted click replaces word selection; a drag stays a drag.
+  document.defaultView.getSelection?.()?.removeAllRanges();
+  run(async () => {
+    const p = await first.opened;
+    if (retired || !p || !reader.dialog.open || registry.current !== p || reader.presentation !== p || p.sourceUnavailable) return;
+    // Reads can settle after access or editing availability changed.
+    return readerMessageMenuItems(p).find(choice => choice.label === 'Edit')?.act();
+  });
+}, true);
+function rememberEditBodyClick(id, card, event, opened) {
+  if (event?.detail > 0 && event.button === 0 && editPointer?.type === 'mouse' && !editPointer.dragged &&
+      !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey &&
+      event.target?.closest?.('.message-preview')?.parentElement === card && !editClickControl(event.target) && editClickChoice(id, card)) {
+    const first = editBodyClick = { id, card, x: event.clientX, y: event.clientY, time: event.timeStamp, opened, shown: null };
+    opened.then(p => { first.shown = p; if (!p && editBodyClick === first) editBodyClick = null; });
+  }
+}
 // act: what the person's act of reading captured (Marks.capture), for a card
 // or Read it; every other open passes none and clears nothing.
 async function openSource(ref, opener, act = null, mode = 'reply', replyCard = null, { land = false } = {}) {
@@ -1274,7 +1326,9 @@ function paintViews(kind) {
         if (headerClick($('messages'), messageEntries.get(item.id), event)) return;
         const name = event?.target?.closest?.('.author-name');
         if (name && item.author_kind === 'agent' && item.author_id !== bootstrap.actor) return run(() => pickColor(item.author_id, name, card));
-        return open(event);
+        const opened = open(event);
+        rememberEditBodyClick(item.id, card, event, opened);
+        return opened;
       };
       // On its card first, so a whisper's words name the card for a screen reader.
       const author = node('span', undefined, 'message-author');
@@ -2289,10 +2343,15 @@ async function copyPageLink(source, revision, say) {
 // for someone who may write it, Edit page (docs/notebook-writing.md).
 // The message's own acts live here, not in a row under it; on a phone the
 // menu opens as a sheet from the bottom.
+// The Reader's message descriptors also own a body double-click's Edit:
+// ending that edit keeps the Reader open and returns focus to its own More.
+function readerMessageMenuItems(p) {
+  const ref = p?.source?.source_ref, button = $('reader-menu');
+  if (!p || p.sourceUnavailable || ref?.kind !== 'message' || !topic) return [];
+  return sharedMessageMenuItems({ ...p.source, ...readerFeedItem(), id: ref.id, author_id: p.source.author }, { say: button, anchor: button, presentation: p });
+}
 function openReaderMenu() {
-  const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = [];
-  const message = Boolean(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
-  if (message) items.push(...sharedMessageMenuItems({ ...p.source, ...readerFeedItem(), id: ref.id, author_id: p.source.author }, { say: button, anchor: button, presentation: p }));
+  const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = readerMessageMenuItems(p);
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
     const act=action=>run(async()=>{const opener=p.opener;$('reader-close').click();if(await openNotebook(ref.id,{opener})){const page=notebookSheetOf().current;if(action==='rename')page.rename();else page.menuItems().find(item=>item.label===action)?.act();}});
     items.push({label:p.source.starred?'Unstar':'Star',glyph:p.source.starred?'starred':'star',act:()=>act(p.source.starred?'Unstar':'Star')});
@@ -3246,6 +3305,7 @@ async function initialize() {
       !freshness?.stopped && views.messages.has(id) && messageEntries.get(id) === entry && drawn($('messages'), id),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)) });
   menu = new MessageMenu({ host: $('messages'), acted: clearVisitNew, item: id => feedMessages().get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
+    editChoice: (item, card) => messageMenuItems(item, null, card).find(choice => choice.label === 'Edit'),
     navigate: () => releaseTopArrivals(),
     reply: (id, card) => run(() => replyMessage(id, card)),
     inlineReply: (id, card) => run(() => replyInCard(id, card)),
