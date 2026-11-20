@@ -244,6 +244,7 @@ export class ThingsRail {
   // Whether the rail is on screen: beside the page, or open as a sheet or panel.
   shows() { return !this.host.hidden && (this.wide?.matches || this.isOpen()); }
   open() {
+    if (this.host.hidden) return;
     this.doc.documentElement.setAttribute('data-things-open', '');
     this.backdrop.hidden = false;
     this.cover(!this.wide?.matches);
@@ -271,14 +272,15 @@ export class ThingsRail {
   // header gets the button that opens it where it is not beside the page.
   begin(feed, route = null) {
     this.close(false);
-    this.host.hidden = !feed;
+    const shown = feed && route?.kind !== 'workspace';
+    this.host.hidden = !shown;
     this.unlisten?.(); this.unlisten = null; this.handles = null;
     for (const creator of this.creators.values()) creator.remove();
     this.creators.clear(); this.notebookWant = NOTEBOOK_PAGE; this.buildWant = BUILD_PAGE;
     this.serial += 1;
     this.scope = route?.kind === 'topic' ? 'topic' : 'outcome';
     this.paintHead(); this.clear();
-    if (!feed) return;
+    if (!shown) { this.control()?.remove(); return; }
     const row = this.doc.querySelector('#main .eyebrow-row');
     if (row && !this.control()) {
       const button = element(this.doc, 'button', { type: 'button', id: 'things-open', className: 'things-open', textContent: 'Pipeline & pages' });
@@ -288,7 +290,7 @@ export class ThingsRail {
     }
   }
   ready(handles) {
-    if (!['topic', 'conversation', 'workspace'].includes(handles.route?.kind)) return;
+    if (!['topic', 'conversation'].includes(handles.route?.kind)) return;
     this.handles = handles;
     this.folds ??= new SectionFolds(this.storage, `aim-next.things.${handles.bootstrap.instance_id}.${handles.bootstrap.actor}`);
     this.scope = handles.route.kind === 'topic' ? 'topic' : 'outcome';

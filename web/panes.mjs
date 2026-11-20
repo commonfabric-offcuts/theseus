@@ -171,8 +171,11 @@ export function feedKey(event, doc, navigate = () => {}) {
   const readingDestination = () => { if (!selecting) navigate(); };
   let moved = false;
   const center = panes.center?.();
-  if (action !== 'write' && center && shown(center.host) && !center.host.closest('[inert]') && (pageItself(doc.activeElement, doc) || center.host.contains(doc.activeElement))) {
-    moved = action === 'left' || action === 'right' ? panes.step('feed', action, doc, readingDestination) : center.key(action, readingDestination);
+  const cardKeys = center?.ownsKeys?.(doc.activeElement);
+  if (action !== 'write' && center && shown(center.host) && !center.host.closest('[inert]') && (pageItself(doc.activeElement, doc) || (cardKeys ?? center.host.contains(doc.activeElement)))) {
+    // A grid card owns its spatial arrows, including its edges. The page
+    // itself keeps pane crossings; buttons and fields keep their own grammar.
+    moved = (action === 'left' || action === 'right') && !cardKeys ? panes.step('feed', action, doc, readingDestination) : center.key(action, readingDestination);
     if (moved) event.preventDefault();
     return moved;
   }

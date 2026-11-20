@@ -15,6 +15,7 @@ export class OutcomeTopicCards {
     return node;
   }
   stops() { return [...this.host.querySelectorAll('a.outcome-topic-card')]; }
+  ownsKeys(at) { return this.stops().includes(at); }
   reach(card, navigate = () => {}) {
     if (!card) return false;
     card.focus({ preventScroll: true });
@@ -27,10 +28,26 @@ export class OutcomeTopicCards {
     return this.reach((!first && rows.find(row => row.dataset.topicId === this.lastTopicId)) || rows[0], navigate);
   }
   key(action, navigate) {
-    if (!['up', 'down', 'first', 'last'].includes(action)) return false;
-    const rows = this.stops(), at = rows.indexOf(this.doc.activeElement);
-    const next = action === 'first' ? 0 : action === 'last' ? rows.length - 1 : at < 0 ? 0 : at + (action === 'down' ? 1 : -1);
-    return this.reach(rows[next], navigate);
+    if (!['up', 'down', 'left', 'right', 'first', 'last'].includes(action)) return false;
+    const cards = this.stops(), at = this.doc.activeElement;
+    if (action === 'first' || action === 'last' || !cards.includes(at)) {
+      return this.reach(action === 'last' ? cards.at(-1) : cards[0], navigate);
+    }
+    // CSS grid rows share their top edge. Read geometry for every press, so
+    // resizing, filtering and a changed order never leave a cached column count.
+    const tolerance = .5, from = at.getBoundingClientRect(), center = box => (box.left + box.right) / 2;
+    const boxes = cards.filter(card => card !== at).map(card => ({ card, box: card.getBoundingClientRect() }))
+      .filter(({ box }) => box.width > 0 && box.height > 0);
+    const horizontal = action === 'left' || action === 'right', sign = action === 'right' || action === 'down' ? 1 : -1;
+    const ahead = boxes.filter(({ box }) => horizontal
+      ? Math.abs(box.top - from.top) <= tolerance && sign * (center(box) - center(from)) > tolerance
+      : sign * (box.top - from.top) > tolerance);
+    const rowDistance = horizontal ? 0 : Math.min(...ahead.map(({ box }) => Math.abs(box.top - from.top)));
+    const next = ahead.filter(({ box }) => horizontal || Math.abs(Math.abs(box.top - from.top) - rowDistance) <= tolerance)
+      .sort((a, b) => Math.abs(center(a.box) - center(from)) - Math.abs(center(b.box) - center(from)) || a.box.left - b.box.left)[0]?.card;
+    // At an edge the card still owns the arrow; neither a rail nor the
+    // page-wide fallback may take it. No movement notification is sent.
+    return next ? this.reach(next, navigate) : true;
   }
   paint(presentation) {
     const sections = [], ids = new Set();
