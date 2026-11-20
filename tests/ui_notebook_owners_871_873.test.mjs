@@ -85,9 +85,9 @@ test('871 actual composer pop, close and confirmed send preserve docked page, sc
 
 test('873 only page menu joins fixed title controls; toolbar and Add image leave scroller, notices remain',async t=>{
   const f=notebookFixture(t);await f.sheet.open('p');
-  const head=f.sheet.title.parent;
-  assert.equal(head.children.length,5,'title row includes the page menu');
-  assert.ok(head.children.every((n,i)=>n===[f.sheet.title,f.page.more,f.sheet.dockButton,f.sheet.full,f.sheet.closer][i]));
+  const head=f.sheet.heading;
+  assert.deepEqual(head.children,[f.sheet.title,f.sheet.saved,f.sheet.renameButton,f.sheet.starButton]);
+  assert.deepEqual(f.sheet.actions.children,[f.sheet.newButton,f.sheet.dockButton,f.page.more,f.sheet.closer]);
   assert.equal(f.page.host.querySelector('.notebook-sheet-toolbar'),null);assert.equal(f.page.views.isConnected,false);assert.equal(f.page.draft.isConnected,false);
   assert.equal(f.page.addImage.isConnected,false);assert.ok(f.sheet.status.children[0]===f.page.status);
   assert.ok(f.page.host.children[0]===f.sheet.status);assert.ok(f.page.host.contains(f.page.pageNotice));
@@ -100,8 +100,8 @@ test('873 common menu orders checked views, Private Draft, sheet choices and exi
   p.switchView=mode=>{acts.push(['view',mode]);p.mode=mode;};p.markDraft=value=>{acts.push(['draft',value]);p.writing.value.draft=value;};
   p.addImage.onclick=()=>acts.push(['image']);p.rename=()=>acts.push(['rename']);p.pageAction=(...args)=>acts.push(args);f.doc.defaultView.confirm=()=>true;
   let menu=NotebookPage.prototype.menuItems.call(p);
-  assert.deepEqual(menu.map(x=>x.label),['Show as text','Show as cards','Private Draft','Choose dossier…','Add image…','Side by side','Star','Rename','Delete','Copy Link']);
-  assert.deepEqual(menu.slice(0,3).map(x=>x.checked),[false,true,true]);assert.equal(item(p,'Private Draft').description,undefined);
+  assert.deepEqual(menu.map(x=>x.label),['Edit','Undo','Show as text','Show as cards','Private Draft','Choose dossier…','Add image…','Side by side','Open as a full page','Star','Rename','Delete','Copy Link']);
+  assert.deepEqual(menu.slice(2,5).map(x=>x.checked),[false,true,true]);assert.equal(item(p,'Private Draft').description,undefined);
   item(p,'Show as text').act();assert.equal(item(p,'Show as text').checked,true);item(p,'Private Draft').act();item(p,'Add image…').act();
   item(p,'Star').act();item(p,'Rename').act();item(p,'Delete').act();
   assert.deepEqual(acts,[['view','text'],['draft',false],['image'],['memory.star',{starred:true}],['rename'],['memory.delete',{deleted:true}]]);

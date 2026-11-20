@@ -9,6 +9,7 @@ export function notebookFixture(t, {feed=true, wide=true, storage=new Map()}={})
   doc.createElement=tag=>{const n=make(tag);n.style={};n.ownerDocument=doc;n.contains=other=>n===other||[...n.descendants()].includes(other);
     n.before=other=>n.parent?.insertBefore(other,n);
     n.getBoundingClientRect=()=>({top:0,bottom:80,left:0,right:500,height:80,width:500});
+    n.cloneNode=deep=>{const clone=doc.createElement(tag);clone.className=n.className;clone.textContent=n.textContent;for(const [key,value] of Object.entries(n.attributes))clone.setAttribute(key,value);if(deep)clone.append(...n.children.map(c=>c.cloneNode(true)));return clone;};
     n.scrollTop=0;n.style.removeProperty=k=>delete n.style[k];
     n.click=()=>n.onclick?.({stopPropagation(){},preventDefault(){}});
     if(tag==='dialog'){
@@ -24,6 +25,7 @@ export function notebookFixture(t, {feed=true, wide=true, storage=new Map()}={})
   doc.querySelector=selector=>selector==='dialog:modal'?[...doc.body.descendants()].find(n=>n.tag==='dialog'&&n.open&&n.modal)??null:doc.body.querySelector(selector);
   doc.addEventListener=(type,fn)=>{doc.listeners??={};doc.listeners[type]=fn;};
   doc.removeEventListener=()=>{};
+  const pencil=doc.createElement('svg');pencil.setAttribute('viewBox','0 0 24 24');const path=doc.createElement('path');path.setAttribute('d','M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16z M13.5 6.5l4 4');pencil.append(path);doc.byId('new-message').append(pencil);
   const dialog=doc.createElement('dialog');dialog.id='new-message-sheet';doc.body.append(dialog);
   const inline=doc.byId('inline-composer');dialog.append(inline);doc.body.append(doc.byId('reader'));
   const media={matches:wide,addEventListener:(_type,fn)=>{media.changed=fn;},removeEventListener(){}};

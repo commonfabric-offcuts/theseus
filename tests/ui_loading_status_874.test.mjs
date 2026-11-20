@@ -55,7 +55,7 @@ test('dossier loading is a silent status; error/refusal keep the canonical link 
 });
 test('loading is out of flow and cannot activate the folded-card height expansion', () => {
   const css = source('aim.css'), stacks = source('stack-look.css');
-  assert.match(css, /\.sr-only\{[^}]*position:absolute;[^}]*overflow:hidden;[^}]*clip:rect\(0,0,0,0\)/);
+  assert.match(css, /\.sr-only(?:[,\s][^{]*)?\{[^}]*position:absolute;[^}]*overflow:hidden;[^}]*clip:rect\(0,0,0,0\)/);
   assert.match(stacks, /:has\(>\.dossier-source-status:not\(\.sr-only\)\)\{height:auto/);
   assert.doesNotMatch(stacks, /:has\(>\.dossier-source-status\)\{height:auto/);
 });

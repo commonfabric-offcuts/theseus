@@ -419,31 +419,39 @@ showing a page at a revision. Over the outcome's own page, which has no feed,
 it comes up over that page. A link to a page at a revision still opens it in
 the Reader, or in place on its outcome's page, to read.
 
-The sheet keeps only one tight title row fixed (868): the page's title,
-ellipsized when long, the page menu, the layout glyph where available, Full page (↗,
-`?cards=ITEM`, below) and ✕. Glyphs have screen-reader names and tooltips;
-desktop glyphs are 40 points and phone controls retain their 44-point floor.
-The page menu (873) owns Show as text / Show as cards, Draft with its note,
-Choose dossier… while docked, Add image… and Wide/Open with Dossiers, followed
-by the existing page actions and Copy Link. The old toolbar is removed. The
-same controls move with the active NotebookPage; neither the writing nor its
-scroll owner is replaced. New message keeps its own composer, available from
-the pencil while Notebook is docked; its close/send leaves Notebook intact.
+The sheet's fixed header (887) shows the title, save dot and last confirmation
+time, Rename (✎), then a stateful Star (☆/★). Rename is absent for a reader who
+may not write. The actions follow in this order: New card (+, Cards only),
+Side by side where available, the page menu, and ✕. The title takes only its
+own width and truncates before the status and actions move; the header stays
+on one row on a phone. Every pressable retains its 44-point floor. The docked
+frame has no border; the shared `--stack-cover-inset` remains in both themes.
 
-The saving sign has a quiet row at the top of the scroller, on the
-laptop and at every phone width (item 642). "Saved to Theseus", keeping a
-device copy, saving, uploading and every attention or read-only state change
-only that row; page actions stay in the title-row menu. Attention notices wrap whole there. A refusal's Try again and Discard
-my writing follow its words, wrapping when needed, and are 44 points tall on
-touch. Its existing role=status keeps announcing save state. Below the fixed
-title is one place that scrolls: the dossier picker, saving sign, page notices,
-deck bar and the same vertical card list as the full page
-at every width. The line of keys above the cards is short there (↑ ↓ pick · Return new
-card · ⌘Return edit, and while writing Escape done · ⌘Return next card), the
-full page's line its tooltip. Done, New card and Undo scroll away with the cards;
-their keyboard handlers remain active. While a card is being written, only
-its writing row is current, including the new card opened by ⌘Return. The
-saved picked index remains the return point when an empty new card is finished.
+In Cards, the page menu begins with Edit (Done while writing) and Undo,
+showing ⌘Return and ⌘Z. The New card button's tooltip shows Return. Open as a
+full page follows Side by side in the menu (also available when the layout
+choice is absent). Show as text / Show as cards, Private Draft, Choose dossier…
+while docked, Add image…, Rename, Star, Delete and Copy Link retain their
+existing owners. The Cards bar keeps only the card count. Full Notebook pages
+keep their original bar and status words. No keyboard handler changes.
+
+The header's save dot is green only for a confirmed revision and grey while
+writing is being saved, with the last confirmation time retained. The time
+uses `times.mjs` and is observed on this visit, as in the existing full-page
+status: Core does not expose a historical save timestamp. Repainting or
+switching views never advances the time for the same revision. A failed or
+refused save removes the dot; its complete explanation, Try again and Discard
+my writing stay in the scroller, with their existing recovery acts and live
+region. The empty recovery region stays rendered using the shared visually
+hidden pattern; a failure fills that same existing region. The compact dot/time
+has its own live region and an accessible save name. A late response from a
+departing page cannot change the current header.
+
+The same controls move with the active NotebookPage; neither the writing nor
+its scroll owner is replaced. New message keeps its own composer, available
+from the pencil while Notebook is docked; its close/send leaves Notebook intact.
+Below the header the dossier picker, recovery, page notices, card count and
+same vertical cards remain in the scroller. The short keyboard hints remain.
 
 ✕ and Escape close either layout; only the layout control switches between
 beside and over the feed. A press on the modal backdrop also closes it. While a card is being written

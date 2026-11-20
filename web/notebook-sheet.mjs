@@ -1,5 +1,5 @@
 // A Notebook page in its own dialog, beside or over the feed (871 + 873).
-// Its title, page menu, layout, Full page and ✕ stay fixed; saving and
+// Its title, save confirmation and page controls stay fixed; failures and
 // recovery stay in the page's scroller. The page's writing
 // is the full page's own (NotebookPage: the card gestures, the shared body,
 // the saving and recovery); this only hosts it over the feed.
@@ -22,6 +22,8 @@
 // was and the page over it with its card box open. One sheet, never a pile.
 import { paintChanges } from './page-changes.mjs';
 import { glyph } from './glyphs.mjs';
+import { timeNode } from './times.mjs';
+import { DeckPage } from './deck-page.mjs';
 import { NotebookDossiers } from './notebook-dossiers.mjs';
 
 const RETURN = 'notebook-return';
@@ -43,9 +45,25 @@ export function notebookDockWanted() {
   try { const kept = JSON.parse(globalThis.sessionStorage.getItem(DOCKED)); if (typeof kept === 'boolean') return kept; } catch {}
   return true;
 }
-export function notebookSheetMenuItems(sheet, position) {
+const mayWriteCards = (sheet, page) => sheet.current === page && sheet.showing && page.mode === 'cards' &&
+  Boolean(page.writing?.base) && !page.readOnly && !page.writing.readOnly && !page.writing.reading &&
+  !page.writing.deleted && !page.writing.closed && !page.writing.actionPending && !page.writing.actionRunning;
+
+export function notebookSheetMenuItems(sheet, position, page = null) {
+  if (position === 'first') return page?.mode === 'cards' ? [
+    { key: 'edit', label: page.editing ? 'Done' : 'Edit', glyph: 'pencil', keys: '⌘Return', disabled: !mayWriteCards(sheet, page),
+      act: () => { if (!mayWriteCards(sheet, page)) return; if (page.editing) page.finish(); else page.edit(); if (!page.editing) page.show(true); } },
+    { key: 'undo', label: 'Undo', glyph: 'undo', keys: '⌘Z', disabled: !mayWriteCards(sheet, page) || !page.undos?.length,
+      act: () => { if (mayWriteCards(sheet, page)) { page.undo(); if (!page.editing) page.show(true); } } },
+  ] : [];
   if (position === 'beforeImage') return sheet.docked && sheet.dossiers ? [{ key: 'dossiers', label: 'Choose dossier…', glyph: 'dossier', act: () => sheet.dossiers.toggle() }] : [];
-  return position === 'afterImage' && sheet.canDock() ? [{ key: 'layout', label: 'Side by side', glyph: 'layout', checked: sheet.docked, act: () => sheet.setDocked(!sheet.docked) }] : [];
+  if (position !== 'afterImage') return [];
+  return [
+    ...(sheet.canDock() ? [{ key: 'layout', label: 'Side by side', glyph: 'layout', checked: sheet.docked, act: () => sheet.setDocked(!sheet.docked) }] : []),
+    ...(page ? [{ key: 'fullpage', label: 'Open as a full page', glyph: 'openpage', act: () => {
+      if (sheet.current === page) sheet.goBack(sheet.fullHref(page.item, page.mode));
+    } }] : []),
+  ];
 }
 
 export class NotebookSheet {
@@ -76,17 +94,27 @@ export class NotebookSheet {
     this.head = node('div', 'notebook-sheet-head');
     this.title = node('h2', 'notebook-sheet-title'); this.title.id = 'notebook-sheet-title';
     this.status = node('div', 'notebook-sheet-status');
-    this.full = node('a', 'sheet-glyph notebook-sheet-full');
-    this.full.setAttribute('aria-label', 'Open as a full page'); this.full.title = 'Open as a full page';
-    // The box with an arrow out of it, which a pipeline item's Open its record shows too (glyphs.mjs).
-    this.full.append(glyph('openpage', doc));
-    this.full.addEventListener('click', () => { if (this.current) this.full.href = this.fullHref(this.current.item, this.current.mode); });
+    this.heading = node('div', 'notebook-sheet-heading');
+    this.saved = node('span', 'notebook-sheet-saved'); this.saved.setAttribute('role', 'status');
+    this.saved.setAttribute('aria-live', 'polite');
+    const control = (name, icon, act) => {
+      const button = node('button', 'sheet-glyph'); button.type = 'button';
+      button.title = name; button.setAttribute('aria-label', name); if (icon) button.append(glyph(icon, doc)); else button.textContent = '+'; button.onclick = act; return button;
+    };
+    this.renameButton = control('Rename', 'pencil', () => this.pageChoice('rename'));
+    this.starButton = control('Star', 'star', () => this.pageChoice('star'));
+    this.heading.append(this.title, this.saved, this.renameButton, this.starButton);
+    this.newButton = control('New card (Return)', null, () => {
+      const page = this.current; if (mayWriteCards(this, page)) page.start();
+    });
+    this.actions = node('div', 'notebook-sheet-actions');
     this.closer = node('button', 'sheet-glyph notebook-sheet-close', '✕'); this.closer.type = 'button';
     this.closer.setAttribute('aria-label', 'Close, keeping your writing'); this.closer.title = 'Close, keeping your writing';
     this.closer.onclick = () => this.close();
     this.dockButton = node('button', 'sheet-glyph notebook-sheet-dock'); this.dockButton.type = 'button';
     this.dockButton.append(glyph('layout', doc)); this.dockButton.onclick = () => this.setDocked(!this.docked);
-    this.head.append(this.title, this.dockButton, this.full, this.closer);
+    this.actions.append(this.newButton, this.dockButton, this.closer);
+    this.head.append(this.heading, this.actions);
     this.body = node('div', 'notebook-sheet-pages');
     this.root.append(this.head, this.body);
     if (feed) this.dossiers = new NotebookDossiers({ doc, host: this.root, anchor: this.dockButton, read: feed.read,
@@ -197,7 +225,9 @@ export class NotebookSheet {
       const host = this.node('section', 'deck-page notebook-sheet-page'); host.setAttribute('aria-label', 'Notebook page');
       const header = { eyebrow: this.node('span'), title: this.node('span'), description: this.node('span') };
       page = this.make(id, host, header, '-sheet', () => this.revised(page));
-      page.menuExtras = position => notebookSheetMenuItems(this, position);
+      page.menuExtras = position => notebookSheetMenuItems(this, position, page);
+      page.surfaceChanged = () => this.paintHeader(page);
+      page.presentStatus = (words, state, again) => this.presentStatus(page, words, state, again);
       page.keyScope = target => !this.docked || this.dialog.contains(target);
       page.sheetTitle = header.title;
       page.changes = this.node('div', 'notebook-sheet-changes'); page.changes.hidden = true;
@@ -231,15 +261,17 @@ export class NotebookSheet {
     if (this.current && this.current !== page) { this.keep(this.current); this.current.more.remove(); }
     this.current = page;
     this.title.replaceChildren(page.sheetTitle);
-    page.more.classList.add('sheet-glyph'); this.head.insertBefore(page.more, this.dockButton);
+    page.more.classList.add('sheet-glyph'); this.actions.insertBefore(page.more, this.closer);
     if (this.dossiers) this.dossiers.anchor = page.more;
     this.status.replaceChildren(page.status);
-    // One fixed title row. Everything else belongs to the existing page
-    // scroller, which also keeps the cards' scroll position across closes.
+    // The header owns confirmation and actions; recovery stays in the same
+    // scroller as the cards, which keeps its scroll position across closes.
     page.host.prepend(this.status, page.pageNotice, ...(this.dossiers ? [this.dossiers.root] : []));
     page.host.querySelector('.notebook-tools')?.remove();
     page.addImage?.remove();
-    this.full.href = this.fullHref(page.item, page.mode);
+    page.bar?.replaceChildren(page.count);
+    this.paintHeader(page);
+    this.paintSaved(page);
     if (!this.showing) {
       this.root.hidden = false; this.showing = true;
       // Nor does a wheel, a trackpad or a finger: over the backdrop or the sheet's head, and past the end of what
@@ -264,6 +296,50 @@ export class NotebookSheet {
     page.host.hidden = false;
     // The cards' and the writing's own scroll places, kept while the page was closed.
     if (page.kept) { page.host.scrollTop = page.kept.host; page.text.scrollTop = page.kept.text; }
+  }
+  pageChoice(key) {
+    const page = this.current, w = page?.writing;
+    if (!this.showing || !w || w.closed || w.actionRunning || w.actionPending) return;
+    const item = page.menuItems().find(item => item.key === key);
+    if (item && !item.disabled) return item.act();
+  }
+  paintHeader(page) {
+    if (this.current !== page) return;
+    const w = page.writing, available = Boolean(w?.pageState) && !w.closed && !w.deleted;
+    this.renameButton.hidden = !available || page.readOnly;
+    this.newButton.hidden = !available || page.mode !== 'cards' || page.readOnly;
+    this.newButton.disabled = Boolean(w?.actionRunning || w?.actionPending);
+    this.renameButton.disabled = this.newButton.disabled;
+    this.starButton.hidden = !available;
+    this.starButton.disabled = this.newButton.disabled;
+    const starred = Boolean(w?.pageState?.starred), name = starred ? 'Unstar' : 'Star';
+    this.starButton.title = name; this.starButton.setAttribute('aria-label', name);
+    this.starButton.setAttribute('aria-pressed', String(starred));
+    this.starButton.replaceChildren(glyph(starred ? 'starred' : 'star', this.doc));
+  }
+  presentStatus(page, words, state, again) {
+    // The timestamp is the confirmation observed this visit, as on the full page.
+    // Repainting the same confirmed revision must not advance it.
+    if (state === 'saved' && page.writing?.base && page.lastSavedRevision !== page.writing.base.revision) {
+      page.lastSavedRevision = page.writing.base.revision; page.lastSavedAt = Date.now();
+    }
+    page.saveState = state;
+    const compact = state === 'saved' || state === 'saving';
+    DeckPage.prototype.say.call(page, compact ? '' : words, compact ? null : state, again);
+    this.paintSaved(page);
+  }
+  paintSaved(page) {
+    if (this.current !== page) return;
+    const state = page.saveState;
+    const nodes = [];
+    if (state === 'saving' || state === 'saved' && page.lastSavedAt != null) {
+      const dot = this.node('span', 'notebook-save-dot'); dot.dataset.save = state; dot.setAttribute('role', 'img');
+      const time = page.lastSavedAt == null ? null : timeNode(page.lastSavedAt, this.doc);
+      dot.setAttribute('aria-label', state === 'saved' ? `Saved at ${time.textContent}` : 'Saving');
+      dot.title = dot.getAttribute('aria-label'); nodes.push(dot);
+      if (time) { time.classList.add('save-time'); nodes.push(time); }
+    }
+    this.saved.replaceChildren(...nodes);
   }
   keep(page) { page.kept = { host: page.host.scrollTop, text: page.text.scrollTop }; }
   // A page replaced by another: out of the sheet at once, its card box kept for its next opening, and closed once
@@ -295,6 +371,7 @@ export class NotebookSheet {
   // watching an agent revise a page leaves no light on it. It shows on the cards as it comes, so nothing is drawn
   // above them for it. The person's own revisions Core counts as read already.
   revised(page) {
+    this.paintHeader(page);
     const base = page.writing?.base;
     if (!this.showing || this.current !== page || page.readAt === undefined || !base?.source || base.own || base.revision <= page.readAt) return;
     this.readPage(page, this.serial, false);
