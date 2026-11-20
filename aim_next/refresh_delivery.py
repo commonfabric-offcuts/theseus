@@ -3,7 +3,7 @@ from __future__ import annotations
 """Typed refresh requests in the existing delivery queue (docs/refresh-requests-829.md)."""
 
 from .contract import Refusal, _prefix
-from .message_edit import DELIVERY_INDEXES, DELIVERIES_40
+from .message_edit import DELIVERY_COLUMNS, DELIVERIES_40, _rebuilt_deliveries
 
 
 REQUEST_TABLE = [
@@ -31,25 +31,8 @@ REQUEST_GUARD = [
 ]
 
 
-def _delivery_variant(table):
-    # Keep the old unique key, row ids, sequence high-water, reasons, indexes
-    # and trigger verbatim. Existing deliveries gain only a null request_id.
-    columns = "seq,id,message_id,recipient_id,group_id,state,topic_id,revision"
-    return [
-        "CREATE TABLE deliveries_829_kept AS SELECT " + columns + " FROM deliveries",
-        "CREATE TABLE reasons_829_kept AS SELECT delivery_id,reason,topic_id,participant_epoch FROM delivery_reasons",
-        "CREATE TABLE sequence_829_kept AS SELECT seq FROM sqlite_sequence WHERE name='deliveries'",
-        "DELETE FROM delivery_reasons", "DROP TABLE deliveries", table,
-        "INSERT INTO deliveries(" + columns + ") SELECT " + columns + " FROM deliveries_829_kept ORDER BY seq",
-        "DELETE FROM sqlite_sequence WHERE name='deliveries'",
-        "INSERT INTO sqlite_sequence(name,seq) SELECT 'deliveries',seq FROM sequence_829_kept",
-        "INSERT INTO delivery_reasons SELECT * FROM reasons_829_kept",
-        "DROP TABLE sequence_829_kept", "DROP TABLE reasons_829_kept", "DROP TABLE deliveries_829_kept",
-    ] + DELIVERY_INDEXES
-
-
-REQUEST_UP = REQUEST_TABLE + _delivery_variant(REQUEST_DELIVERIES) + REQUEST_GUARD
-REQUEST_DOWN = _delivery_variant(DELIVERIES_40) + ["DROP TABLE refresh_requests"]
+REQUEST_UP = REQUEST_TABLE + _rebuilt_deliveries(REQUEST_DELIVERIES, DELIVERY_COLUMNS + ",revision") + REQUEST_GUARD
+REQUEST_DOWN = _rebuilt_deliveries(DELIVERIES_40, DELIVERY_COLUMNS + ",revision") + ["DROP TABLE refresh_requests"]
 REQUEST_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM refresh_requests)"
 
 

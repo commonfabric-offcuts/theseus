@@ -72,16 +72,16 @@ DELIVERY_INDEXES = [
 ]
 
 
-def _rebuilt_deliveries(table):
+def _rebuilt_deliveries(table, columns=DELIVERY_COLUMNS):
     """Build deliveries again as table, keeping every row, its id and seq, where the next seq goes on from
     (sqlite_sequence), its indexes and trigger. delivery_reasons refers to deliveries, so its rows are kept
     aside first and put back after."""
-    return ["CREATE TABLE deliveries_kept AS SELECT %s FROM deliveries" % DELIVERY_COLUMNS,
+    return ["CREATE TABLE deliveries_kept AS SELECT %s FROM deliveries" % columns,
             "CREATE TABLE delivery_reasons_kept AS SELECT delivery_id,reason,topic_id,participant_epoch FROM delivery_reasons",
             "CREATE TABLE deliveries_sequence AS SELECT seq FROM sqlite_sequence WHERE name='deliveries'",
             "DELETE FROM delivery_reasons",
             "DROP TABLE deliveries", table,
-            "INSERT INTO deliveries(%s) SELECT %s FROM deliveries_kept ORDER BY seq" % (DELIVERY_COLUMNS, DELIVERY_COLUMNS),
+            "INSERT INTO deliveries(%s) SELECT %s FROM deliveries_kept ORDER BY seq" % (columns, columns),
             "DELETE FROM sqlite_sequence WHERE name='deliveries'",
             "INSERT INTO sqlite_sequence(name,seq) SELECT 'deliveries',seq FROM deliveries_sequence",
             "INSERT INTO delivery_reasons(delivery_id,reason,topic_id,participant_epoch) SELECT delivery_id,reason,topic_id,participant_epoch "
