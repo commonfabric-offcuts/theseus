@@ -84,7 +84,10 @@ The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 
 Each card has a named **This card** ⋯ beside its speech bubbles, shown when
 picked, under the pointer, or focused; it is always shown at phone widths.
-The shared menu offers Copy text, Copy link, Delete and Set color. Copy text
+The shared menu offers Chat about this…, Copy text, Copy link, Delete and Set
+color. Chat opens the card's existing chat composer; it replaces the standalone
+chat glyph (927). Context Menu or Shift+F10 opens the focused card's menu;
+Up/Down selects a row, Return runs it and Escape returns to the card. Copy text
 copies the card’s literal title and rendered words as plain text, without
 children, image/reply bookkeeping or the hidden line. Delete takes that card
 and its children, and one Undo brings them back. Set color uses the agents’
@@ -363,7 +366,8 @@ fail that check. This unit control alone does not establish native behavior.
 | remove the card and its children | ⌘⌫ | |
 | take back your last act | ⌘Z | Undo |
 | select several cards, to act on them as one | ⇧↑ ⇧↓, ⌘-click or ⇧-click | |
-| ask an agent about the card, or open its reply stack | → then Return, or a click on its speech bubble | its speech bubble |
+| ask an agent about the card | Context Menu or ⇧F10, then Chat about this… | ⋯, then Chat about this… |
+| open its reply stack | → then Return, or a click on its speech bubble | its speech bubble |
 
 A move and a merge go between cards with the same parent, never out of it: a
 move takes the card past the one beside it with all its children. A merge
@@ -596,13 +600,14 @@ or clearing it is one more act, saved as a revision, which Undo takes back.
 
 ## Asking about a card
 
-Each card has a speech bubble at its right edge. On a laptop it shows on the
+Each card has a ⋯ menu at its right edge. On a laptop it shows on the
 picked card, and under the pointer while the mouse is in use: macOS hides the
 pointer while a person types, so once a key is pressed the card under it
-shows neither its bubble nor the pointer's highlight until the mouse moves.
-→ gives the bubble the focus, from a card with no children folded away, as ⌥→
-does from any card, and ← gives the focus back to the card. On a phone it shows on every card. On a card with no reply
-stack, the bubble asks an agent about it: a box in the card's place takes the
+shows neither its controls nor the pointer's highlight until the mouse moves.
+→ gives the first card control the focus, from a card with no children folded
+away, as ⌥→ does from any card, and ← gives focus back to the card. On a phone
+the menu shows on every card. **Chat about this…** in the menu asks an agent
+about the card: a box in the card's place takes the
 ask, and Ask or ⌘Return sends it as a new message (`message.post`, an ask) in
 the page's topic, or for an outcome's page in its conversation. The message
 quotes the card and says where it is, so the agent can change the card when
@@ -620,8 +625,8 @@ by the words on the page around it, so beside a card about tokens or codes an
 empty box reads as a field for a one-time code. Each box is therefore named by
 a label element of its own, whose words name nothing AutoFill fills.
 
-A draft page's cards offer no speech bubble that asks: its words are kept from
-agents until the mark is cleared, and the bubble comes back with them. A card's
+A draft page's cards disable Chat about this…: its words are kept from
+agents until the mark is cleared, and Chat becomes available with them. A card's
 reply stack, begun before the mark, still opens from its bubble. Nor does
 someone who may not write the page ask from it, since the ask writes the
 stack's link into the card.

@@ -15,12 +15,12 @@ import { revealSelection } from './reveal.mjs';
 import { reach } from './arrow-reach.mjs';
 
 export const UNDO_LIMIT = 50;
-const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · → its speech bubble';
+const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · Context Menu or ⇧F10 card menu · → card controls';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
 const WRITING_KEYS = 'Escape or ⇧⌘Return done · ⌘Return new card below, ⌥Return above · ← at the very start folds children, → at the very end unfolds them · ⌘↑ ⌘↓ move the card · Tab indent lines, ⇧Tab outdent · ⌥↑ ⌥↓ move a line · ↑ at the very start or ↓ at the very end goes on to the card beside';
 // The same lines, short, where the cards stand in the composer over the feed (notebook-sheet.mjs); each keeps its
 // long form as its tooltip.
-const SHORT_KEYS = ['↑ ↓ pick · Return new card · ⌘Return edit', 'Escape done · ⌘Return next card', '⌘Return ask · Escape back'];
+const SHORT_KEYS = ['↑ ↓ pick · Return new card · ⌘Return edit · ⇧F10 menu', 'Escape done · ⌘Return next card', '⌘Return ask · Escape back'];
 // Refusals that say this person can read the page but not change it.
 const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
 
@@ -44,8 +44,8 @@ function mark(doc, d) {
 // not come is sent again exactly as it was, so Core answers with what it
 // recorded ("A retry keeps the same operation identity"). One the page changed
 // under first is made again, under a new operation, on the newer revision,
-// each act finding its card by its words. A card's speech bubble asks an agent
-// about it in a new reply stack, whose link the card keeps as a line of its
+// each act finding its card by its words. Chat about this… in a card's menu asks
+// an agent about it in a new reply stack, whose link the card keeps as a line of its
 // words.
 export class DeckPage {
   // read(name, args): a view's answer. send(kind, target, args, expected, operation_id): a command's receipt.
@@ -382,6 +382,17 @@ export class DeckPage {
       return;
     }
     if (event.target !== this.doc.body && !this.list.contains(event.target)) return;
+    // The same menu door as the outline. Anchor on the actual focused card
+    // so Escape returns to card cursor control, including an unpicked row.
+    if (!command && !event.altKey && (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey)) {
+      const row = event.target.closest?.('.deck-card') ?? this.list.querySelector(`.deck-card[data-index="${this.picked}"]`);
+      if (row) {
+        event.preventDefault();
+        const index = Number(row.dataset.index);this.pick(index, true);
+        this.openCardMenu(index, row);
+      }
+      return;
+    }
     // A speech bubble with the focus presses as a link or a button does, and ← gives the focus back to its card.
     const bubble = event.target.closest?.('.deck-bubble');
     if (bubble && (event.key === 'Enter' || event.key === ' ')) return;
@@ -810,7 +821,10 @@ export class DeckPage {
         const at=this.cardAt(ref);if(at<0||!this.cardWritable())return;
         this.act({kind:'remove',text:cardText(this.deck.cards[at]),near:at});
       }},
-      {label:'Set color',glyph:'palette',disabled:!this.cardWritable(),act:()=>this.cardColors(ref,anchor)}
+      {label:'Set color',glyph:'palette',disabled:!this.cardWritable(),act:()=>this.cardColors(ref,anchor)},
+      {label:'Chat about this…',glyph:'topic',disabled:!this.room?.agents.length||this.readOnly||Boolean(this.asking)||this.drafted(),act:()=>{
+        const at=this.cardAt(ref);if(at>=0)this.ask(at);
+      }}
     ];
   }
   cardColors(ref,anchor) {
@@ -868,7 +882,7 @@ export class DeckPage {
   }
   cardOverflow(index) {
     const more=this.node('button','deck-bubble deck-menu','⋯');more.type='button';more.tabIndex=0;
-    more.title='This card';more.setAttribute('aria-label','This card');more.setAttribute('aria-haspopup','menu');
+    more.title='This card';more.setAttribute('aria-label','This card');more.setAttribute('aria-haspopup','menu');more.setAttribute('aria-keyshortcuts','ContextMenu Shift+F10');
     more.addEventListener('click',event=>{event.stopPropagation();this.openCardMenu(index,more);});
     return more;
   }
@@ -885,20 +899,10 @@ export class DeckPage {
       link.addEventListener('click', event => event.stopPropagation());
       holder.append(link);
     }
-    if (!stacks.length && this.room?.agents.length && !this.readOnly && !this.drafted()) {
-      const ask = this.node('button', 'deck-bubble deck-ask');
-      ask.append(mark(this.doc, BALLOON));
-      ask.type = 'button';
-      ask.tabIndex = -1;
-      ask.setAttribute('aria-label', 'Ask an agent about this card');
-      ask.title = 'Ask an agent about this card';
-      ask.addEventListener('click', event => { event.stopPropagation(); this.ask(index); });
-      holder.append(ask);
-    }
     holder.append(this.cardOverflow(index));
     return holder;
   }
-  // The speech bubble on a card with no stack: an ask about it, written in a box in its place, to one agent:
+  // Chat about this… in the card menu: an ask, written in a box in its place, to one agent:
   // the only one where the deck's asks go, or, of several, the one asked last (kept in this browser), and the
   // person may choose another. One agent and not all, since each one asked would start on the same work.
   ask(index) {
