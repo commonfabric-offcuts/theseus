@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { desktopOutcomeDisclosure944Checks } from './desktop_outcome_disclosure_944_native.mjs';
 import { fileURLToPath } from 'node:url';
 import { withPageCleanup } from './native-page-cleanup.mjs';
 
@@ -101,6 +102,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   const home = p => p.evaluate(`(()=>{const h=document.getElementById('outcomes-home'),l=h.querySelector('.outcome-light'),w=h.querySelector('.elsewhere-words');
     return {lit:Boolean(l)&&l.getClientRects().length>0,words:w&&w.getClientRects().length>0?w.textContent:null,said:w?.textContent??null,label:h.getAttribute('aria-label')}})()`);
 
+  await desktopOutcomeDisclosure944Checks({ check, until, control, facts, shot, observations },
+    { open, tap, settled, drawer, outlineAtRest });
+
   // Item 654: native taps in sequence, with the page and drawer observed through
   // every animation frame, so an intermediate navigation or close cannot hide.
   for (const size of ['w320', 'w375', 'phone', 'laptop']) for (const theme of ['light', 'dark']) {
@@ -150,19 +154,19 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         assert.equal((await outline(p)).outcomes.w1.open, true, 'the outcome being read stays expanded too');
       } else {
         await p.evaluate('window.item654Watching=false');
-        assert.equal(await p.evaluate('location.search'), '?conversation='+oid, 'a collapsed laptop outcome still opens its Conversation on the first click');
+        assert.equal(await p.evaluate('location.search'), '?workspace='+oid, 'a collapsed laptop outcome still opens its Conversation on the first click');
       }
-      assert.equal((await outline(p)).outcomes[oid].open, true, 'the first press shows the topics');
-      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(name)}).getAttribute('aria-expanded')`), 'true', 'the expanded state is announced');
+      assert.equal((await outline(p)).outcomes[oid].open, Boolean(phone), 'the phone expands; desktop navigation keeps the collapsed choice');
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(`#outline .ol-outcome[data-workspace-id="${oid}"] .ol-disclosure`)}).getAttribute('aria-expanded')`), String(Boolean(phone)), 'the disclosure announces its actual state');
       await press(name);
-      await until(() => p.evaluate(`document.body.dataset.ready==='true' && location.search==='?conversation=${oid}' && document.getElementById('topic-title').textContent==='Conversation'`), 'the second press opens the outcome Conversation');
+      await until(() => p.evaluate(`document.body.dataset.ready==='true' && location.search==='?workspace=${oid}' && document.getElementById('topic-title').textContent==='Tap outcome'`), 'the second press opens the outcome Conversation');
       if (phone) assert.equal((await drawer(p)).open, false, 'navigation closes the phone drawer');
       await show();
-      await until(async () => (await outline(p)).outcomes[oid].open === Boolean(phone), 'phone navigation keeps topics open; the laptop click still folds them');
+      await until(async () => (await outline(p)).outcomes[oid].open === Boolean(phone), 'phone navigation keeps topics open; desktop navigation keeps them folded');
       await shot(p, `item-654-${size}-${theme}-conversation`);
       if (!phone) {
-        await press(name);
-        await until(async () => (await outline(p)).outcomes[oid].open, 'the next laptop click still expands');
+        await press(`#outline .ol-outcome[data-workspace-id="${oid}"] .ol-disclosure`);
+        await until(async () => (await outline(p)).outcomes[oid].open, 'the explicit desktop chevron still expands');
       }
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(topic)})?.getClientRects().length)`), 'the topic is visible');
       await press(topic);
