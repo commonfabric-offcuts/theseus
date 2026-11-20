@@ -13,6 +13,12 @@ import { NotebookViews } from './notebook-view.mjs';
 const DRAFT = { off: 'Mark as a draft: agents see its title and that it is a draft, never its words',
   on: DRAFT_TIP + '. Press to clear it', note: DRAFT_TIP };
 
+function refuseUnavailableWriting(page) {
+  if (!page.unavailable) return false;
+  page.say(page.unavailable, 'attention');
+  return true;
+}
+
 // DeckPage supplies the existing card gestures and geometry. This surface
 // supplies one body and one saving stream, shared with the Text view.
 export class NotebookPage extends DeckPage {
@@ -226,7 +232,13 @@ export class NotebookPage extends DeckPage {
     if(!undoing)this.undos=[...this.undos,{kind:'draft',draft:!on}].slice(-UNDO_LIMIT);
     return true;
   }
+  // Keys and clicks share these card editing entry points. A page held in another
+  // tab stays readable, but an attempted edit repeats the opening's explanation.
+  act(...args) { if (refuseUnavailableWriting(this)) return false; return super.act(...args); }
+  edit(...args) { if (!refuseUnavailableWriting(this)) return super.edit(...args); }
+  start(...args) { if (!refuseUnavailableWriting(this)) return super.start(...args); }
   undo() {
+    if (refuseUnavailableWriting(this)) return;
     const last=this.undos.at(-1);
     if(last?.kind!=='draft'||this.editing||this.asking||this.readOnly)return super.undo();
     this.undos=this.undos.slice(0,-1);
