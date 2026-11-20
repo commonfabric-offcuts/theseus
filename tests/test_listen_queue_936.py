@@ -57,7 +57,7 @@ class ListenQueue936Case(unittest.TestCase):
                             break
                         chunks.append(data)
                     response = b''.join(chunks)
-                    self.assertTrue(response.startswith(b'HTTP/1.0 200 OK\r\n'), response)
+                    self.assertTrue(response.startswith(b'HTTP/1.1 200 OK\r\n'), response)
                     self.assertEqual(response.split(b'\r\n\r\n', 1)[1], b'cold-load-document')
             finally:
                 for connection in connections:

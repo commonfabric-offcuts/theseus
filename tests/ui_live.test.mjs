@@ -36,6 +36,17 @@ test('only the advertised version 2 WebSocket is used', () => {
   }
 });
 
+test('904 Live retains and forwards the reader-scoped outcome-list key without fabricating an old-server key', () => {
+  const {live,sockets,events}=fixture();live.start();
+  sockets[0].send({seq:1,outcomes:'first'});
+  assert.equal(live.outcomes,'first');
+  assert.equal(events.at(-1).outcomes,'first');
+  sockets[0].send({seq:2,outcomes:'second'});
+  assert.equal(events.at(-1).outcomes,'second');
+  sockets[0].send({seq:3});
+  assert.equal(events.at(-1).outcomes,undefined);
+});
+
 test('each new commit number is announced once, over the page origin, with the session token as a subprotocol', () => {
   const { live, sockets, events } = fixture();
   live.start();

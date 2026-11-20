@@ -3727,7 +3727,7 @@ function followCommits(load, changes = null, before = Promise.resolve()) {
   });
   const reload = (all = true) => { full ||= all; return pass(); };
   if (live) {
-    live.listen(event => { if ((event.kind === 'commit' || event.state === 'live' && owed) && document.visibilityState === 'visible') run(() => reload(false)); });
+    live.listen(event => { changes?.observe(event); if ((event.kind === 'commit' || event.state === 'live' && owed) && document.visibilityState === 'visible') run(() => reload(false)); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(reload); });
   }
   return reload;
@@ -4041,7 +4041,7 @@ async function initializeOutcomePage(route) {
     };
     // permitted: the latest read of the outcome let the reader see it.
     let refreshSerial=0,permitted=false;
-    const changes = new OutcomeChanges({ api, bootstrap, workspaceId: route.id, current: () => !retired && shell.page === thisRun });
+    const changes = new OutcomeChanges({ api, bootstrap, workspaceId: route.id, outcomesKey: live?.outcomes ?? null, current: () => !retired && shell.page === thisRun });
     const before = changes.baseline().catch(() => false);
     const refresh=async(dirty=null)=>{
       if (retired) return false;
