@@ -188,7 +188,7 @@ class AnswerDelivery625(ReaderCase):
         counts = self.sql("SELECT * FROM recipient_schedule")
         sequence = self.sql("SELECT seq FROM sqlite_sequence WHERE name='deliveries'")
         migrate(self.path, "test-instance", self.binding, "57")
-        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], "58")
+        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], "59")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.sql("SELECT seq,id,message_id,recipient_id,group_id,state,topic_id,revision,request_id FROM deliveries ORDER BY seq"), before)
         self.assertEqual(self.sql("SELECT * FROM delivery_reasons ORDER BY delivery_id,reason"), reasons)

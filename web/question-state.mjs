@@ -4,26 +4,29 @@ import { timeNode } from './times.mjs';
 
 export const terminalQuestion = value => ['resolved', 'superseded', 'withdrawn'].includes(value?.state);
 export class QuestionStates {
-  constructor() { this.closed = new Map(); this.archived = false; }
+  constructor() { this.closed = new Map(); this.removed = new Set(); this.archived = false; }
   learn(id, value) {
     if (id && terminalQuestion(value) && !this.closed.has(id)) this.closed.set(id, value);
     const closed = this.closed.get(id);
     // Closure is immutable; topic archival is current presentation, not a fact to pin.
     return closed && value?.archived !== undefined ? { ...closed, archived: value.archived } : closed ?? value;
   }
+  remove(id) { if (id) this.removed.add(id); }
   of(item) {
     const id = item?.id ?? item?.source_ref?.id;
+    if (item?.removal) this.remove(id);
+    if (this.removed.has(id)) return null;
     return this.learn(id, item?.withdrawal ? { state: 'withdrawn', waiting_on: [], may_resolve: false, ...item.withdrawal } : item?.question);
   }
   cover(cover) {
     if (this.archived && cover?.waiting?.length) return { ...cover, waiting: [] };
-    if (!cover?.waiting?.some(wait => this.closed.has(wait.ask_id ?? wait.message_id))) return cover;
-    return { ...cover, waiting: cover.waiting.filter(wait => !this.closed.has(wait.ask_id ?? wait.message_id)) };
+    if (!cover?.waiting?.some(wait => (this.closed.has(wait.ask_id ?? wait.message_id) || this.removed.has(wait.ask_id ?? wait.message_id)))) return cover;
+    return { ...cover, waiting: cover.waiting.filter(wait => !(this.closed.has(wait.ask_id ?? wait.message_id) || this.removed.has(wait.ask_id ?? wait.message_id))) };
   }
 }
 let states = null;
 export const configureQuestionStates = value => { states = value; };
-export const questionOf = item => states?.of(item) ?? item?.question;
+export const questionOf = item => states ? states.of(item) : item?.removal ? null : item?.question;
 export const currentQuestionCover = cover => states?.cover(cover) ?? cover;
 
 export function questionPill(doc, item, { nameOf = id => id, resolve = null, busy = false } = {}) {

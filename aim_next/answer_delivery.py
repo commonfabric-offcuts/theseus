@@ -8,7 +8,6 @@ import uuid
 from .contract import Refusal
 from .message_edit import DELIVERY_COLUMNS, _rebuilt_deliveries
 from .refresh_delivery import REQUEST_DELIVERIES, REQUEST_GUARD
-from .stacks import StackRoots
 
 
 RECEIPTS = [
@@ -71,6 +70,7 @@ class AnswerDelivery:
     def _check_unread_answers(self, db, actor, topic, snapshot, intent):
         if intent != 'ask' or self._actor_kind(db, actor) != 'agent' or not snapshot.get('reply_to'):
             return
+        from .stacks import StackRoots
         roots = StackRoots(db, actor)
         root = roots.root(snapshot['reply_to'])
         # Only this actor's pending work in this topic, never global history.

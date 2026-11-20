@@ -86,14 +86,15 @@ test('recorded refusal and successful result stay truthful; old reads cannot und
 
 test('the shared menu owner and scoped freshness path wire withdrawal', () => {
   const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
-  assert.match(app, /withdrawalItem\(item, rights,/);
   assert.equal([...app.matchAll(/withdrawalItem\(/g)].length, 1);
   const shared = app.slice(app.indexOf('function sharedMessageMenuItems('), app.indexOf('async function withMenuSource('));
+  assert.match(shared, /const rights = remote \? \{ \.\.\.editRights\(\), unavailable: !available, reached: false \} : editRights\(\)/);
   assert.match(shared, /withdrawalItem\(item, rights,/);
+  const readerHelper = app.slice(app.indexOf('function readerMessageMenuItems('), app.indexOf('function openReaderMenu()'));
+  assert.match(readerHelper, /return sharedMessageMenuItems\(/);
+  assert.doesNotMatch(readerHelper, /withdrawalItem\(/);
   const reader = app.slice(app.indexOf('function openReaderMenu()'), app.indexOf('function learnQuestionWithdrawal('));
-  assert.match(reader, /readerMessageMenuItems\(/);
-  const readerItems = app.slice(app.indexOf('function readerMessageMenuItems('), app.indexOf('function openReaderMenu()'));
-  assert.match(readerItems, /sharedMessageMenuItems\(/);
+  assert.match(reader, /items = readerMessageMenuItems\(p\)/);
   assert.doesNotMatch(reader, /withdrawalItem\(/);
   assert.match(app, /key.startsWith\('withdrawal:'\)/);
   assert.match(app, /paintWithdrawal\(author, item/);
@@ -134,7 +135,7 @@ test('actual private-scope freshness notice invalidates only that withdrawal ide
 
 test('late withdrawal receipt updates only its exact source and preserves newer writing', () => {
   const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
-  const start = app.indexOf('function learnQuestionWithdrawal('), end = app.indexOf('// Who may edit', start);
+  const start = app.indexOf('function learnQuestionWithdrawal('), end = app.indexOf('\nfunction ', start + 1);
   assert.ok(start >= 0 && end > start);
   const original = { ...own }, other = { source_ref: { kind: 'message', id: 'other' }, body: 'Other source words' };
   const writing = { body: 'Newer unsent writing', destination: 'other' }, painted = [];

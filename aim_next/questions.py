@@ -23,6 +23,9 @@ QUESTION_DOWN = ("DROP TABLE question_closures",)
 QUESTION_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM question_closures)"
 
 
+from .removal import value as removal_value
+
+
 class Questions:
     def _question_closed(self, db, message_id):
         return db.execute("SELECT kind,by,at_ms,superseded_by FROM question_closures WHERE message_id=?", (message_id,)).fetchone()
@@ -30,7 +33,7 @@ class Questions:
     def _question_value(self, db, actor, message_id):
         # Callers have already established message visibility. Never read words.
         message = db.execute("SELECT id,topic_id,seq,author_id,private_to,intent,addressees,sent_ms FROM messages WHERE id=?", (message_id,)).fetchone()
-        if message is None or message['intent'] != 'ask' or message['private_to'] is not None:
+        if message is None or message['intent'] != 'ask' or message['private_to'] is not None or removal_value(db, message_id):
             return None
         topic = db.execute("SELECT * FROM topics WHERE id=?", (message['topic_id'],)).fetchone()
         value = dict(state='answered', waiting_on=[], may_resolve=False, by=None, at_ms=None, superseded_by=None,
@@ -106,7 +109,7 @@ class Questions:
         closed = self._question_closed(db, message['id'])
         if closed and closed['kind'] == 'resolved':
             return result, []
-        if closed or self._withdrawal_value(db, message['id']):
+        if closed or self._withdrawal_value(db, message['id']) or removal_value(db, message['id']):
             raise Refusal('QUESTION_CLOSED', 'This question was already closed', recorded=False)
         affected = self._close_question(db, actor, topic, message, 'resolved')
         version = self._touch_topic(db, topic)

@@ -85,3 +85,16 @@ test('receipt is learned before reload callback and mismatched receipt never clo
   receipt = { ...receipt, instance_id: 'fixture' }; await control.resolve('ask');
   assert.deepEqual(events, ['paint', 'reload']); assert.equal(control.pending.size, 0);
 });
+
+test('151 removal suppresses stale question controls and cover waits without inventing a closure', () => {
+  const states = new QuestionStates(); configureQuestionStates(states);
+  const doc = miniDocument(), stale = { ...item };
+  const cover = { waiting: [{ ask_id: 'ask', actor_id: 'person', text: 'Question?' }] };
+  assert.notEqual(questionPill(doc, stale, { resolve() {} }), null);
+  assert.equal(questionPill(doc, { ...stale, removal: { kind: 'retracted', by: 'asker', at_ms: 45 } }, { resolve() {} }), null);
+  assert.equal(questionPill(doc, stale, { resolve() {} }), null, 'a late source cannot restore the question control');
+  assert.deepEqual(states.cover(cover).waiting, []);
+  assert.equal(states.closed.has('ask'), false, 'removal does not manufacture a question closure');
+  assert.equal(cover.waiting.length, 1);
+  configureQuestionStates(new QuestionStates());
+});

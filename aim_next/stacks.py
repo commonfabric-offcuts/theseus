@@ -244,6 +244,9 @@ def current_acts(db, actor, message_ids):
             acts.update(_shown(kind, row))
         acts[kind + "_revision"] = row["revision"]
     for message_id, acts in found.items():
+        from .removal import unsent
+        if acts['joined'] is not None and unsent(db, acts['joined']['into']):
+            acts['joined'] = None
         if acts["cover"] is None and acts["cover_revision"] > 0 and (acts["cover_refresh"] or {}).get("state") == "pending":
             acts["cover"] = dict(cover_values.EMPTY_COVER, by=None, at_ms=None, owner=None)
             # The request remains visible; no cleared words are restored.
@@ -293,7 +296,7 @@ def awaiting_fields(db, actor, topic, items):
     it" (one given counts after it is taken back: the first reply was made). False on every other message. It is read
     from what is stored, never stored: showing it changes nothing."""
     start = db.execute("SELECT value FROM metadata WHERE key=?", (WAIT_FROM_KEY,)).fetchone()
-    own = [item for item in items if item["author_id"] == actor and not item.get("whisper")
+    own = [item for item in items if item["author_id"] == actor and not item.get("whisper") and not item.get('removal')
            and start is not None and item["seq"] >= int(start[0])]
     received, answered, named = set(), set(), None
     if own and topic["kind"] != "conversation":
@@ -356,7 +359,8 @@ class StackRoots:
             if not parent:
                 break
             above = self.db.execute("SELECT id,topic_id,author_id,private_to FROM messages WHERE id=?", (parent,)).fetchone()
-            if not above or above["topic_id"] != row["topic_id"] or not visible(above, self.actor):
+            from .removal import unsent
+            if not above or above["topic_id"] != row["topic_id"] or not visible(above, self.actor) or unsent(self.db, parent):
                 break
             at = parent
         else:
@@ -420,7 +424,8 @@ def source_dossier(db, actor, message_id):
     first = db.execute("SELECT " + words("m", chars=OPENING) + " AS body,m.attachments FROM messages m WHERE m.id=?", (root,)).fetchone()
     count = db.execute(MEMBERS + " SELECT count(*) FROM (SELECT id FROM members LIMIT 2)", {"root": root, "actor": actor}).fetchone()[0]
     from .dossier_move import move_fields
-    return {**move_fields(db, actor, root), "root_id": root, "name": name, "first": {"body": first["body"], "attachments": json.loads(first["attachments"])}, "alone": count < 2}
+    from .removal import value
+    return {**move_fields(db, actor, root), "root_id": root, "name": name, "first": {"body": first["body"], "attachments": [] if withheld(root) else json.loads(first["attachments"]), "withheld": withheld(root), "removal": value(db, root)}, "alone": count < 2}
 
 
 def dossier_namer(db, root, replied=False):
@@ -553,7 +558,8 @@ class Stacks:
         message_id = _identifier(target["message_id"], "message_id")
         message = db.execute("SELECT id,topic_id,seq,author_id,private_to,reply_to,addressees FROM messages WHERE id=?", (message_id,)).fetchone()
         # A whisper someone is not in is refused as an unknown message.
-        if message is None or not visible(message, actor):
+        from .removal import unsent
+        if message is None or not visible(message, actor) or unsent(db, message_id):
             raise Refusal("FORBIDDEN", "No permission for this message")
         # Acts live in a topic the person reads; a message read only because it was sent to them by name has none.
         topic = self._topic(db, actor, message["topic_id"])
@@ -611,7 +617,8 @@ class Stacks:
                 raise self._closed_refusal(db, actor, topic["workspace_id"], closed)
         if kind == "join" and value["into"] is not None:
             into = db.execute("SELECT id,topic_id,author_id,private_to FROM messages WHERE id=?", (value["into"],)).fetchone()
-            if into is None or not visible(into, actor) or into["topic_id"] != message["topic_id"]:
+            from .removal import unsent
+            if into is None or not visible(into, actor) or into["topic_id"] != message["topic_id"] or unsent(db, into['id']):
                 raise Refusal("INVALID_ARGUMENT", "A stack joins another stack in its own topic")
             if into["id"] == message["id"] or self._join_loop(db, message, into["id"]):
                 raise Refusal("INVALID_ARGUMENT", "A stack cannot join a stack inside itself")
@@ -788,7 +795,7 @@ class Stacks:
         if isinstance(cursor, bool) or not isinstance(cursor, int) or cursor < 0:
             raise Refusal("INVALID_ARGUMENT", "Invalid cursor")
         rows = db.execute("SELECT DISTINCT a.message_id AS id,a.seq FROM message_acts a INDEXED BY topic_acts JOIN messages m ON m.id=a.message_id "
-                          "WHERE a.topic_id=:topic AND a.seq<:cursor AND a.owner IN ('',:actor) AND (m.private_to IS NULL OR m.author_id=:actor OR m.private_to=:actor) "
+                          "WHERE a.topic_id=:topic AND a.seq<:cursor AND a.owner IN ('',:actor) AND " + VISIBLE + " "
                           "ORDER BY a.seq DESC LIMIT :limit", {"topic": topic["id"], "cursor": cursor, "actor": actor, "limit": limit + 1}).fetchall()
         found = current_acts(db, actor, [row["id"] for row in rows[:limit]])
         return _bounded_page({"instance_id": self.instance_id, "topic_id": topic["id"], "version": _seen_acts(db, actor, topic["id"])}, rows, limit,
@@ -807,8 +814,9 @@ class Stacks:
             "JOIN messages m ON m.id=a.message_id JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
             "WHERE " + ("a.topic_id=:topic AND " if topic else "") + "a.owner=:actor AND a.kind='star' AND a.id<:cursor AND json_extract(a.value,'$.starred')=1 "
             "AND a.revision=(SELECT max(b.revision) FROM message_acts b WHERE b.message_id=a.message_id AND b.kind='star' AND b.owner=a.owner) "
-            "AND (m.private_to IS NULL OR m.author_id=:actor OR m.private_to=:actor) AND " + READABLE +
+            "AND (m.private_to IS NULL OR m.author_id=:actor OR m.private_to=:actor) AND NOT EXISTS (SELECT 1 FROM message_removals removal WHERE removal.message_id=m.id AND removal.kind='unsent') AND " + READABLE +
             " ORDER BY a.id DESC LIMIT :limit", {"actor": actor, "topic": topic["id"] if topic else None, "cursor": cursor, "limit": limit + 1}).fetchall()
+        from .removal import value
         dossiers = {}
         if topic:
             roots = StackRoots(db, actor)
@@ -817,12 +825,12 @@ class Stacks:
                 if root not in dossiers:
                     first = db.execute("SELECT m.id,m.attachments," + words("m", chars=1024) + " AS preview FROM messages m WHERE m.id=?", (root,)).fetchone()
                     name = current_acts(db, actor, [root]).get(root, {}).get("name")
-                    dossiers[root] = {"id": root, "name": name["text"] if name else "", "body": first["preview"],
-                                      "attachments": [{"name": a.get("name", "a file")} for a in json.loads(first["attachments"])]}
+                    dossiers[root] = {"id": root, "name": name["text"] if name else "", "body": first["preview"], "removal": value(db, root), "withheld": withheld(root),
+                                      "attachments": [] if withheld(root) else [{"name": a.get("name", "a file")} for a in json.loads(first["attachments"])]}
                 dossiers[row["id"]] = dossiers[root]
         return _bounded_page({"instance_id": self.instance_id}, rows, limit, lambda row: dict({
             "message_id": row["id"], "topic_id": row["topic_id"], "seq": row["seq"], "author_id": row["author_id"],
             "sent_ms": row["sent_ms"], "excerpt": row["excerpt"], "withheld": withheld(row["id"]), "topic_title": row["topic_title"],
             "conversation": row["topic_kind"] == "conversation", "workspace_id": row["workspace_id"],
-            "starred_ms": row["starred_ms"], "star_revision": row["revision"], "star": row["star"]},
+            "starred_ms": row["starred_ms"], "star_revision": row["revision"], "star": row["star"], "removal": value(db, row['id'])},
             **({"dossier": dossiers[row["id"]]} if topic else {})), "star")

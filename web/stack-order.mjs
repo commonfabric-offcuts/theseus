@@ -582,14 +582,17 @@ export class DossierHeads {
   constructor({ topicId, read, changed = () => {}, current = () => true }) {
     Object.assign(this, { topicId, read, changed, current });
     this.records = new Map(); this.serial = 0; this.readTail = Promise.resolve();
+    // A reference to TopicViews' terminal knowledge, never another act store.
+    this.removals = null;
   }
   invalidate(id = null) {
     for (const [root, record] of this.records) if (id === null || root === id) {
       this.records.delete(root); ++this.serial;
     }
   }
-  sync(messages) {
-    const wanted = new Set([...dossiersOf([...messages.values()]).values()].filter(id => !messages.has(id)));
+  sync(messages, removals = this.removals) {
+    this.removals = removals;
+    const wanted = new Set([...dossiersOf([...messages.values()]).values()].filter(id => !messages.has(id) && removals?.get(id)?.kind !== 'unsent'));
     for (const id of this.records.keys()) if (!wanted.has(id)) this.records.delete(id);
     const added = [];
     for (const id of wanted) if (!this.records.has(id)) {
@@ -606,6 +609,7 @@ export class DossierHeads {
   async readBatch(queued) {
     const current = ([id, record]) => this.current() && this.records.get(id) === record;
     const batch = queued.filter(current), settled = new Set();
+    let discarded = false;
     if (!batch.length) return;
     const refused = error => ['FORBIDDEN', 'SOURCE_UNAVAILABLE', 'NOT_FOUND', 'INVALID_ARGUMENT'].includes(error?.details?.error?.code);
     const failed = (entry, error) => {
@@ -618,6 +622,9 @@ export class DossierHeads {
       for (const entry of entries) {
         if (!current(entry)) continue;
         const [id, record] = entry, item = page.items.find(item => item.id === id);
+        // Terminal knowledge wins even over an omitted row in a cut answer.
+        // Keep 886's one repaint at the end of this current batch.
+        if (this.removals?.get(id)?.kind === 'unsent') { this.records.delete(id); discarded = true; continue; }
         // Core's byte limit can cut a named-ID answer before all its rows.
         // An omitted head is missing only when the answer is complete.
         if (!item && page.next_cursor != null) { remaining.push(entry); continue; }
@@ -653,11 +660,17 @@ export class DossierHeads {
     }
     // A fallback can await a sibling after settling another head; invalidating
     // that earlier head while waiting must not cause a stale repaint either.
-    if ([...settled].some(current)) this.changed();
+    if (discarded && this.current() || [...settled].some(current)) this.changed();
   }
   messages(loaded) {
     const result = new Map(loaded);
-    for (const [id, record] of this.records) if (record.state === 'available' && !result.has(id)) result.set(id, record.item);
+    for (const [id, record] of this.records) if (record.state === 'available' && !result.has(id)) {
+      const removal = this.removals?.get(id) ?? record.item.removal;
+      if (removal?.kind === 'unsent') continue;
+      if (removal) Object.assign(record.item, { removal, removal_action: null, go_ahead: false,
+        blocks: null, no_answer: false, awaiting_reply: false, no_agent_notified: false });
+      result.set(id, record.item);
+    }
     return result;
   }
 }

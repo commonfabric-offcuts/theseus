@@ -1478,3 +1478,9 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 /* An interactive document owns its scrolling; it never grows beyond a screen. */
 .html-frame { display: block; width: 100%; min-width: 0; height: 96px; max-height: 100dvh; border: 0; color-scheme: light dark; }
 .html-refusal { display: block; color: var(--muted); }
+/* Retraction keeps the words readable and gives the same terminal treatment
+   to a card's words and the Reader's source. The act's label stays unstruck. */
+.retracted-words,
+.retracted-message > .message-preview,
+#source-body.retracted-message { text-decoration: line-through; opacity: .6; }
+.message-retracted { font-weight: 500; }

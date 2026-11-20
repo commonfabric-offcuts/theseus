@@ -137,6 +137,12 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     # Each dossier to name is said once, on its first delivery listed.
     to_name = set()
     for number, item in enumerate(listed, 1):
+        if item.get('retraction'):
+            removed = item['retraction']
+            lines.append('%d. retraction: message %s was retracted by %s; it no longer asks, answers or holds a wait. '
+                         'Its original words remain only as a retracted record. Acknowledge delivery %s.' % (
+                             number, _named(removed['message_id']), _named(removed['by']), _named(item['id'])))
+            continue
         if item.get('answer'):
             answer = item['answer']
             lines.append('%d. answer in topic %s from %s to question %s (seq %d), delivery %s; '
@@ -188,7 +194,7 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
                                           " Titles and previews are in the untrusted context." if PREVIEWS_IN_CONTEXT else ""))
     first = {}
     for item in listed:
-        if item.get("request"):
+        if item.get("request") or item.get('retraction'):
             continue
         topic = item["topic"]["id"]
         if _named(topic) != UNNAMED:
@@ -199,8 +205,8 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     if PREVIEWS_IN_CONTEXT:
         previews = "\n".join("%s: %s" % (_named(item["id"]), json.dumps(
             {"topic": item["topic"]["id"], "title": _title(item["topic"]),
-             "from": item['answer']['actor_id'] if item.get('answer') else item["request"]["requester_id"] if item.get("request") else item["message"]["author_id"],
-             "body": (('%s: %s%s; question: ' % (item['answer']['kind'], item['answer']['value'],
+             "from": item['retraction']['by'] if item.get('retraction') else item['answer']['actor_id'] if item.get('answer') else item["request"]["requester_id"] if item.get("request") else item["message"]["author_id"],
+             "body": 'Message retracted.' if item.get('retraction') else (('%s: %s%s; question: ' % (item['answer']['kind'], item['answer']['value'],
                        '' if item['answer']['stands'] else ' (no longer stands)')) + item['message']['body']) if item.get('answer') else
                      item["request"]["body"] if item.get("request") else item["message"]["body"]}, ensure_ascii=False)) for item in listed)
         context = {"theseus.previews." + attempt_id: {"kind": "untrusted", "value": previews}}
