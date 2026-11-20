@@ -20,16 +20,16 @@ before when the shell declines. It renames its own address through the shell.
 
 ## The outline
 
-Each outcome has one row: its light, its name and the line that says where
-it stands, and the whole row is one thing to press, which opens the
-outcome's Conversation with its topics under it. On a phone (item 654), a
+Each outcome has a row with a disclosure chevron, its light, its name and the
+line that says where it stands (item 902). The chevron opens or folds its
+topics in place, without navigation or reading the outcome page. Several
+outcomes can stay open. The name opens the outcome's home. On a phone (item 654), a
 tap on a collapsed outcome instead opens its topics in the drawer: the drawer,
 its scroll, the current page and every other outcome's fold stay as they were.
-A tap on an open outcome goes to its Conversation, with its topics still open.
+A tap on an open outcome goes to its home, with its topics still open.
 A topic tap goes straight to the topic. On a laptop a click still goes to the
-Conversation and toggles its topics; Return keeps its existing way. When Core
-says the outcome has no Conversation, it opens the outcome's page instead. There is no fold
-triangle: the name has the rail's width. Under an open outcome are its
+outcome's home; Return does the same. The separate chevron only changes
+expansion, on a phone as on a laptop. Under an open outcome are its
 topics. They look as they do today:
 unread counts, the work ring, Waiting on you and Ready for review, bold titles
 while something in them is unread, and Done (N) and Archived (N) below. A
@@ -96,24 +96,27 @@ rail.
   listed. Pressing one shows only the outcomes, and in them only the topics,
   that hold what it counts; what is new in an outcome's Build topics is on
   its row, as above. Pressing it again shows everything.
-- **Open and folded.** The outline tidies itself. Outcomes are folded, with
-  their counts and Waiting on you rolled up into their rows, but for the one
-  being read, whose topics show. Arriving anywhere, by a press on a row,
-  Return, a topic, a link, back or forward, or the phone's drawer, opens the
-  outcome of the place reached and folds every other. The keys can open
-  another outcome for a look, fold the one being read, or open or fold every
-  one (⌘→ ⌘←, → ←, ⇧⌘→ ⇧⌘←; docs/interaction.md, "Keys across the panes");
-  the next place reached tidies those away. While a chip shows only what is
-  new or waiting, every outcome it shows is open. Nothing about folds is
-  kept on the browser. Whether an outcome is open is on its row for a screen
-  reader (`aria-expanded`), and on screen in its topics under it.
+- **Open and folded.** Each outcome keeps its own open or folded state in
+  localStorage on this device, scoped to the reader and instance. A new
+  outcome starts folded except for the one being read. Arriving anywhere
+  opens the current outcome without folding another; an explicit fold of
+  the current outcome lasts until the next arrival. The existing keys open
+  or fold one outcome or all known outcomes (⌘→ ⌘←, → ←, ⇧⌘→ ⇧⌘←;
+  docs/interaction.md, "Keys across the panes"). Open-all records those
+  outcomes individually, so a later new outcome still starts folded.
+  New/Waiting filters temporarily open all outcomes they show and leave the
+  kept choices intact. Each disclosure is an ordinary Tab-reachable button
+  with `aria-expanded` and `aria-controls`; the name row also retains the
+  tree's expanded state. If device storage is unavailable, choices hold for
+  the current page. Cross-device dossier state is separate work (858).
 - **Order.** Outcomes keep the order the `workspaces` view gives them, and
   topics their stable default position, newest topics first, until the reader places them with ⌘↑
   and ⌘↓: then their own order, which Core keeps for them on every device
   (docs/outline-order.md). A new message changes counts and lights, never the
   order. A topic new to the reader appears at the top once and stays there
   until the reader moves it. There is no "Not in an outcome" group.
-- **Keys.** The outline is one tree with one Tab stop: ↑ and ↓ move through
+- **Keys.** The outline's rows keep one roving Tab stop, with a separate Tab
+  stop for each disclosure: ↑ and ↓ move through
   its rows, Return opens one, → and ← take the tree's steps and then move to
   the messages: → on a folded outcome opens it and shows its topics, the next
   lands on its pencil (ringed), and the next goes on into the messages; Return

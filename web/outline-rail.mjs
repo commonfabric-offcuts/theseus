@@ -1,9 +1,9 @@
 import { OutlineMenus } from './outline-menus.mjs';
 // The outline on the left of a topic (pipeline
-// item 272; docs/rails.md): every outcome, folded but for the one being read,
-// so what is new anywhere shows at a glance. An outcome's row is its light,
-// its name and where it stands, and the whole row opens its home and
-// its topics (Opened tidies every other away). On a phone a folded outcome
+// items 272 and 902; docs/rails.md): every outcome, with its own remembered
+// disclosure. A chevron opens or folds its topics in place; its name opens
+// its home. Arriving opens the current outcome without folding another.
+// On a phone a folded outcome
 // first opens its topics without moving (item 654); folded, it carries
 // the count of everything new inside it; open, its own row counts its
 // Build topics (the right rail's), since each topic row
@@ -51,6 +51,7 @@ import { book, scopeOf, arrangeItems, moved, movedWords, orderOf } from './outli
 import { panes } from './panes.mjs';
 import { presses, questionTarget } from './waiting-questions.mjs';
 import { OutlineDossiers } from './outline-dossiers.mjs';
+import { glyph } from './glyphs.mjs';
 
 const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
 // The questions waiting on the reader in one outcome, as its light counts them.
@@ -99,25 +100,34 @@ export function shownUnder(filter, item) {
   return true;
 }
 
-// Which outcomes show their topics. The outline tidies itself: only the
-// outcome being read is open, and every other is folded, with its counts
-// rolled up into its row. The keys can open another for a look (⌘→ or →),
-// fold the one being read (⌘← or ←), or open or fold every one (⇧⌘→ ⇧⌘←);
-// the next place the person arrives at, however they get there (a click or
-// Return in the outline, a link, back or forward, the phone's drawer), tidies
-// those away (tidy). While a chip shows only what is new or waiting, every
-// outcome it shows is open. Nothing is kept on the browser.
+// One fold per outcome, kept for this reader and instance on this device.
+// New outcomes start folded except the current one. Filters temporarily show
+// every matching outcome open; they never replace the remembered choices.
 export class Opened {
-  constructor() { this.marks = new Map(); this.every = null; }
+  constructor(storage = null, key = null) {
+    Object.assign(this, { storage, key }); this.marks = new Map();
+    try {
+      const saved = JSON.parse(storage?.getItem(key) ?? '{}');
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+        for (const [id, open] of Object.entries(saved)) if (typeof open === 'boolean') this.marks.set(id, open);
+      }
+    } catch { /* unavailable or invalid device preference: use the defaults */ }
+  }
   isOpen(id, here = null, filter = null) {
     if (filter) return true;
     if (this.marks.has(id)) return this.marks.get(id);
-    return this.every ?? id === here;
+    return id === here;
   }
-  set(id, open) { this.marks.set(id, open); }
-  // Every outcome, those listed later included, open or folded.
-  all(open) { this.marks.clear(); this.every = open; }
-  tidy() { this.marks.clear(); this.every = null; }
+  save() {
+    try { if (this.key !== null) this.storage?.setItem(this.key, JSON.stringify(Object.fromEntries(this.marks))); }
+    catch { /* the choices still hold in this page */ }
+  }
+  set(id, open) { this.marks.set(id, open); this.save(); }
+  // Only known outcomes: an outcome first encountered later starts folded.
+  all(open, ids) {
+    for (const id of ids) this.marks.set(id, open);
+    this.save();
+  }
 }
 
 const element = (doc, tag, props = {}, ...children) => {
@@ -243,14 +253,12 @@ export class OutlineRail {
     if (!this.started) {
       this.started = true;
       this.bootstrap = bootstrap; this.pageMax = handles.pageMax ?? PAGE;
+      this.opened = new Opened(this.storage, `aim-next.outline-open.${JSON.stringify([bootstrap.instance_id, bootstrap.actor])}`);
       this.pages = new WorkspacePages(bootstrap.instance_id);
       this.newOutcomeLine();
     }
-    // Arriving anywhere tidies the outline: the outcome being read is open, every other folded.
-    this.opened.tidy();
-    const chosen = this.clickedExpansion;
-    this.clickedExpansion = null;
-    if (chosen?.id === this.here) this.opened.set(chosen.id, chosen.open);
+    // Every arrival opens its own outcome and leaves every other choice alone.
+    if (this.here) this.opened.set(this.here, true);
     this.unlisten?.();
     this.unlisten = handles.live?.listen(event => { if ((event.kind === 'commit' || event.state === 'live') && this.doc.visibilityState === 'visible') this.reload(); }) ?? null;
     for (const outcome of this.outcomes.values()) outcome.rail?.updateCurrent(this.currentTopicIn(outcome.id));
@@ -328,16 +336,18 @@ export class OutlineRail {
     const title = element(doc, 'span', { className: 'ol-title' }), standing = element(doc, 'small', { className: 'standing' });
     const name = element(doc, 'a', { className: 'ol-name' }, element(doc, 'span', { className: 'ol-name-line' }, title), standing);
     name.dataset.workspaceId = id;
-    // The whole row (its light, its name and where it stands) is the one thing to press.
+    const disclosure = element(doc, 'button', { type: 'button', className: 'ol-disclosure', tabIndex: 0 }, glyph('chevron', doc));
+    // The name still navigates; disclosure is an independent in-place action.
     const waiting = element(doc, 'button', { type: 'button', className: 'ol-waiting', hidden: true });
     // Beside the name, the pencil that starts a new topic here; a press on it opens and folds nothing.
     const newTopic = pencil(doc, { id: `ol-pencil-${id}`, className: 'ol-new-topic', label: `New topic in ${item.title}`, tip: 'New topic' });
-    const row = element(doc, 'div', { className: 'ol-row' }, name, newTopic, waiting);
+    const row = element(doc, 'div', { className: 'ol-row' }, disclosure, name, newTopic, waiting);
     // The tree's rows are the names and the topics (key-tree.mjs); what holds them is no list of its own.
     row.setAttribute('role', 'none');
     const topics = element(doc, 'div', { className: 'ol-topics', id: `ol-topics-${id}` });
     topics.setAttribute('role', 'group');
     name.setAttribute('aria-controls', topics.id);
+    disclosure.setAttribute('aria-controls', topics.id);
     const li = element(doc, 'li', { className: 'ol-outcome' }, row, topics);
     li.setAttribute('role', 'none');
     li.dataset.workspaceId = id;
@@ -358,21 +368,27 @@ export class OutlineRail {
     const own = part('div', { className: 'ol-own' });
     own.append(message, host, more, retry, done.details, archived.details);
     topics.append(own);
-    outcome = { id, item, li, row, name, title, standing, waiting, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null,
+    outcome = { id, item, li, row, disclosure, name, title, standing, waiting, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null,
       parts: { host, more, retry, message, done, archived } };
+    disclosure.onclick = event => {
+      if (!plainClick(event)) return;
+      event.preventDefault(); event.stopPropagation();
+      if (this.handles) this.setOpen(outcome, !this.isOpen(id));
+    };
+    disclosure.onkeydown = event => {
+      const action = keyAction(event);
+      if (!['right', 'left', 'open', 'fold'].includes(action)) return;
+      event.preventDefault(); event.stopPropagation();
+      if (this.handles) this.setOpen(outcome, action === 'right' || action === 'open');
+    };
     // On a phone a collapsed outcome first opens its topics here (item 654),
     // with no move and no drawer close; the next tap opens its home.
-    // On a laptop the name opens its home. A click also folds its topics
-    // when they are open and opens them when folded (item 320), and that
-    // choice holds through the move; Return, the keys' press, opens the
-    // home with its topics as before (⌘→ and ⌘← fold), and the outline
-    // tidies itself as on any arrival. The keys stay on the name, as after any
-    // press on a row of the outline (key-tree.mjs, in-place-navigation.mjs).
-    name.onclick = async event => {
+    // On a laptop, and with Return, the name opens its home. Folding is the
+    // disclosure's action; the tree keeps its existing name-row keys.
+    name.onclick = event => {
       if (!plainClick(event)) return;
       event.preventDefault();
-      if (event.detail === 0) { this.opened.tidy(); this.paint(); this.open(this.nameTarget(outcome), outcome.item.title); return; }
-      if (this.doc.defaultView.matchMedia('(max-width: 760px)').matches) {
+      if (event.detail !== 0 && this.doc.defaultView.matchMedia('(max-width: 760px)').matches) {
         if (!this.isOpen(outcome.id)) {
           // This link expanded in place: the drawer's bubbling link listener
           // must not close it. The tree has already selected the pressed row.
@@ -380,13 +396,8 @@ export class OutlineRail {
           this.setOpen(outcome, true);
           return;
         }
-        this.open(this.nameTarget(outcome), outcome.item.title);
-        return;
       }
-      const open = !this.isOpen(outcome.id);
-      this.clickedExpansion = {id:outcome.id, open};
-      this.setOpen(outcome, open);
-      if (await this.open(this.nameTarget(outcome), outcome.item.title) === false) this.clickedExpansion = null;
+      this.open(this.nameTarget(outcome), outcome.item.title);
     };
     waiting.onclick = () => this.openQuestion(outcome);
     this.topicLine(outcome);
@@ -414,7 +425,7 @@ export class OutlineRail {
       this.message.textContent = readFailure(error).message; this.message.hidden = false;
     } finally { outcome.asking = false; }
   }
-  // Opens or folds one outcome from the keys, until the next place tidies it (Opened).
+  // Opens or folds one outcome, from its disclosure or the existing keys.
   setOpen(outcome, open) {
     if (this.isOpen(outcome.id) === open && !this.filter) return;
     const run = this.run;
@@ -422,11 +433,11 @@ export class OutlineRail {
     this.paint();
     if (open) Promise.all([this.loadTopics(outcome), this.readConversation(outcome)]).then(() => { if (run === this.run) this.paint(); });
   }
-  // Opens or folds every outcome (⇧⌘→ ⇧⌘←), until the next place tidies them.
+  // Opens or folds every known outcome (⇧⌘→ ⇧⌘←), keeping each choice.
   // Folded, the keys that were on a topic go to its outcome.
   setAll(open, row = null) {
     const run = this.run;
-    this.opened.all(open); this.filter = null;
+    this.opened.all(open, this.shownItems().map(item => item.id)); this.filter = null;
     this.paint();
     if (row && row.level > 1) this.tree.go(this.tree.list().find(each => each.el === row.outcome.name));
     if (!open) return;
@@ -682,6 +693,8 @@ export class OutlineRail {
       outcome.li.toggleAttribute('data-fresh', count(item.unread) > 0);
       outcome.li.toggleAttribute('data-waiting', waitingIn(item) > 0);
       outcome.topics.hidden = !open;
+      outcome.disclosure.setAttribute('aria-expanded', String(open));
+      outcome.disclosure.setAttribute('aria-label', `${open ? 'Fold' : 'Open'} topics in ${item.title}`);
       // The outcome being read waits for the page's own list, unless the outline has shown its topics before.
       outcome.own.hidden = Boolean(outcome.adopted) || (item.id === this.here && !outcome.rail);
       outcome.topics.setAttribute('aria-label', `Topics in ${item.title}`);
@@ -703,7 +716,7 @@ export class OutlineRail {
         const line = outcome.name.firstChild;
         line.querySelector(':scope > .outcome-light')?.remove(); line.querySelector(':scope > .topic-state')?.remove();
         if (lamp) line.prepend(lamp);
-        // A separate control reaches the question; the name keeps its own toggle.
+        // A separate control reaches the question; the name keeps navigation.
         const waits = asksIn(item) > 0;
         outcome.waiting.hidden = !waits;
         outcome.waiting.setAttribute('aria-label', `Open a question waiting on you in ${item.title}`);
