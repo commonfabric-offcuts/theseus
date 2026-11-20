@@ -1323,9 +1323,9 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 /* 786: quiet asked activity shares738 waiting dots; never an execution claim. */
 .message-update { display: inline-flex; align-items: center; vertical-align: middle; }
 .message-update[hidden] { display: none; }
-.refresh-request-line { display: block; color: var(--muted); font-size: .78rem; font-weight: 400; white-space: normal; overflow-wrap: anywhere; }
+.refresh-request-line,.cover-revision-line { display: block; color: var(--muted); font-size: .78rem; font-weight: 400; white-space: normal; overflow-wrap: anywhere; }
 .refresh-request-line[hidden] { display: none; }
-.dossier-cover > .refresh-request-line { grid-column: 1 / -1; }
+.dossier-cover > .refresh-request-line,.dossier-cover > .cover-revision-line { grid-column: 1 / -1; }
 .reply-stack > .refresh-request-line { padding: .3rem .6rem; }
 .message-update:has(> .refresh-request-line:not([hidden])) { flex-wrap: wrap; flex-basis: 100%; min-width: 0; }
 .message-update > .refresh-request-line { flex-basis: 100%; }

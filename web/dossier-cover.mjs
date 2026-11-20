@@ -85,6 +85,13 @@ export function waitWords(wait) {
   return details.join(' · ');
 }
 
+function revisionLine(doc, cover, context) {
+  if (!cover.by || !Number.isSafeInteger(cover.at_ms)) return null;
+  const line = element(doc, 'span', 'cover-revision-line');
+  line.append(`${context.nameOf(cover.by)} refreshed the cover · `, timeNode(cover.at_ms, doc));
+  return line;
+}
+
 export function coverSheet(doc, cover, context) {
   const ctx = { ...context, owner: cover.owner };
   const sheet = element(doc, 'div', 'dossier-cover');
@@ -122,6 +129,8 @@ export function coverSheet(doc, cover, context) {
   }
   const request = coverRequestLine(doc, cover, ctx);
   if (request) sheet.append(request);
+  const revised = revisionLine(doc, cover, ctx);
+  if (revised) sheet.append(revised);
   sheet.dataset.done = String(Boolean(payload?.done) && !(cover.waiting ?? []).length);
   return sheet;
 }
@@ -143,12 +152,13 @@ export function coverPills(doc, cover, context) {
   const refresh = refreshControl(doc, cover, ctx); if (refresh) pills.append(refresh);
   const request = coverRequestLine(doc, cover, ctx); if (request) pills.append(request);
   if (!pills.children.length) return null;
+  const revised = revisionLine(doc, cover, ctx); if (revised) pills.append(revised);
   if (cover.stands) pills.title = cover.stands;
   return pills;
 }
 
 // A key for what a cover shows a reader, so a sheet is drawn again only when it changes.
-export const coverKey = (cover, context) => (cover ? JSON.stringify([cover.stands, cover.waiting, cover.payload, cover.owner, cover.root_id, cover.revision, cover.writer, cover.refresh, cover.refresh_revision, context.viewer, context.topicId, context.rootId]) : '');
+export const coverKey = (cover, context) => (cover ? JSON.stringify([cover.stands, cover.waiting, cover.payload, cover.by, cover.at_ms, cover.owner, cover.root_id, cover.revision, cover.writer, cover.refresh, cover.refresh_revision, context.viewer, context.topicId, context.rootId]) : '');
 
 const pillRows = new WeakMap();
 // The pills of a message on its own that carries a cover, set under its
