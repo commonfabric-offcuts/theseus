@@ -38,6 +38,16 @@ const keep = (key, value) => { try { globalThis.sessionStorage.setItem(key, JSON
 // Whether this tab is on its way to or back from a card's reply stack, so a page of Theseus starting up resumes it.
 export const returning = () => { try { return Boolean(globalThis.sessionStorage.getItem(RETURN)); } catch { return false; } };
 
+// Read-only layout for an unopened page; no sheet, editor or listener is created.
+export function notebookDockWanted() {
+  try { const kept = JSON.parse(globalThis.sessionStorage.getItem(DOCKED)); if (typeof kept === 'boolean') return kept; } catch {}
+  return true;
+}
+export function notebookSheetMenuItems(sheet, position) {
+  if (position === 'beforeImage') return sheet.docked && sheet.dossiers ? [{ key: 'dossiers', label: 'Choose dossier…', glyph: 'dossier', act: () => sheet.dossiers.toggle() }] : [];
+  return position === 'afterImage' && sheet.canDock() ? [{ key: 'layout', label: 'Side by side', glyph: 'layout', checked: sheet.docked, act: () => sheet.setDocked(!sheet.docked) }] : [];
+}
+
 export class NotebookSheet {
   // make(id, host, header, suffix, revisionShown): a NotebookPage drawing into host, calling revisionShown after each
   // change to its writing.
@@ -48,8 +58,7 @@ export class NotebookSheet {
   constructor({ make, fullHref, openStack, goBack, reads = () => null, source = null, feed = null, doc = globalThis.document }) {
     Object.assign(this, { make, fullHref, openStack, goBack, reads, source, feed, doc });
     this.listening = new AbortController();
-    this.docked = false; this.dockWanted = true;
-    try { const kept = JSON.parse(globalThis.sessionStorage.getItem(DOCKED)); if (typeof kept === 'boolean') this.dockWanted = kept; } catch {}
+    this.docked = false; this.dockWanted = notebookDockWanted();
     this.wide = globalThis.matchMedia?.('(min-width: 1280px)');
     this.resized = () => this.setDocked(this.dockWanted && this.canDock(), false);
     this.wide?.addEventListener('change', this.resized);
@@ -188,10 +197,7 @@ export class NotebookSheet {
       const host = this.node('section', 'deck-page notebook-sheet-page'); host.setAttribute('aria-label', 'Notebook page');
       const header = { eyebrow: this.node('span'), title: this.node('span'), description: this.node('span') };
       page = this.make(id, host, header, '-sheet', () => this.revised(page));
-      page.menuExtras = position => {
-        if (position === 'beforeImage') return this.docked && this.dossiers ? [{ label: 'Choose dossier…', glyph: 'dossier', act: () => this.dossiers.toggle() }] : [];
-        return position === 'afterImage' && this.canDock() ? [{ label: 'Side by side', glyph: 'layout', checked: this.docked, act: () => this.setDocked(!this.docked) }] : [];
-      };
+      page.menuExtras = position => notebookSheetMenuItems(this, position);
       page.keyScope = target => !this.docked || this.dialog.contains(target);
       page.sheetTitle = header.title;
       page.changes = this.node('div', 'notebook-sheet-changes'); page.changes.hidden = true;
