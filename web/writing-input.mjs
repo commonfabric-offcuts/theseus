@@ -90,6 +90,30 @@ export class WritingInput {
     const move=lineMove(value,start,end,event.key==='ArrowDown'?1:-1);
     if(!move)return false;
     event.preventDefault();
+    this.lineEdit(move);return true;
+  }
+  // A surface that keeps Tab in its writing box uses this shared line rule (cards, item 866).
+  // Indent each touched line by two spaces; outdent by up to two spaces or one leading tab.
+  // A selection ending at the next line's start does not include that line.
+  indentKey(event) {
+    if(event.key!=='Tab'||event.metaKey||event.ctrlKey||event.altKey||event.isComposing||event.keyCode===229||event.defaultPrevented||this.readOnly())return false;
+    event.preventDefault();
+    const field=this.field,value=field.value,start=field.selectionStart,end=field.selectionEnd;
+    const from=value.slice(0,start).lastIndexOf('\n')+1, last=end>start?end-1:end, newline=value.indexOf('\n',last), to=newline<0?value.length:newline;
+    let offset=from, movedStart=start, movedEnd=end;
+    const text=value.slice(from,to).split('\n').map(line=>{
+      const remove=event.shiftKey?(line.match(/^(?:\t| {1,2})/)?.[0].length??0):0, add=event.shiftKey?0:2;
+      if(start>=offset)movedStart+=add-Math.min(remove,start-offset);
+      if(end>=offset)movedEnd+=add-Math.min(remove,end-offset);
+      offset+=line.length+1;
+      return ' '.repeat(add)+line.slice(remove);
+    }).join('\n');
+    if(text!==value.slice(from,to))this.lineEdit({from,to,text,start:movedStart,end:movedEnd});
+    return true;
+  }
+  // A line edit uses one insertion, the normal input/save path, and the field's existing Undo/Redo caret record.
+  lineEdit(move) {
+    const field=this.field,value=field.value,start=field.selectionStart,end=field.selectionEnd;
     field.setSelectionRange(move.from,move.to);
     this.moving=true;
     try{this.insertText(move.text);}finally{this.moving=false;}

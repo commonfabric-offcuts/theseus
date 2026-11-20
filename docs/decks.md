@@ -115,45 +115,62 @@ fail that check. This unit control alone does not establish native behavior.
 | fold away a card's children, or show them | ← →, or a click on the chevron before its title | a tap on its chevron |
 | fold away every card's children, or show them all | ⇧⌘← ⇧⌘→ | |
 | edit the card | a click where the cursor should go, or ⌘Return | Edit, or a tap where the cursor should go |
-| finish editing | Escape | Done |
+| finish editing | Escape or ⇧⌘Return | Done |
 | finish editing, and write a new card below it | ⌘Return | |
 | finish editing a card with children, and fold them away | ← at the very start | |
+| finish editing a card with folded children, and show them | → at the very end | |
 | while editing, move the card past the one above or below it | ⌘↑ ⌘↓ | |
-| while editing, put the card under the one above it, or take it out of its parent | Tab, ⇧Tab | |
+| while editing, indent or outdent the current line or selected lines | Tab, ⇧Tab | |
 | while editing, move the line the cursor is on past the line above or below it | ⌥↑ ⌥↓ | |
 | while editing, finish the card and go on editing the one above or below | ↑ at the very start, ↓ at the very end | |
 | a new card beside this one | Return while not editing | New card |
-| a new card right above this one | ⌥Return | |
+| a new card right above this one, finishing any current writing first | ⌥Return | |
 | remove the card and its children | ⌘⌫ | |
 | take back your last act | ⌘Z | Undo |
 | select several cards, to act on them as one | ⇧↑ ⇧↓, ⌘-click or ⇧-click | |
 | ask an agent about the card, or open its reply stack | → then Return, or a click on its speech bubble | its speech bubble |
 
 A move and a merge go between cards with the same parent, never out of it: a
-move takes the card past the one beside it with all its children, and a merge
-keeps every word of both cards under the upper card's title, the lower card's
-title a bold line inside it and its children following the upper card's. Tab
-makes the card the last child of the card above it with the same parent, and
-⇧Tab puts it after its parent's children, beside its parent; with nowhere to
-go, Tab and ⇧Tab move the focus as they do elsewhere. A new card goes beside
-the picked one, after its children, or with ⌥Return right above it, at its
-depth.
+move takes the card past the one beside it with all its children. A merge
+keeps the adjacent card's title and appends the picked card's title as a plain
+line, then its words, after the adjacent card's words. The picked card's
+children follow the adjacent card's children. This also applies when merging
+down: the lower card keeps its title, words and children first. The moved
+title is escaped as literal text, so it cannot become another heading or
+formatted block; lists, links, marks and Reply stack lines in the body stay.
+Undo restores both cards and their child groups; Redo keeps the same merge
+direction. While a card is picked, Tab makes it the last child of the card
+above it with the same parent, and ⇧Tab puts it after its parent's children,
+beside its parent; with nowhere to go, Tab and ⇧Tab move the focus as they do
+elsewhere. A new card goes beside the picked one, after its children, or with
+⌥Return right above it, at its depth.
 
-While a card is being written, Tab, ⇧Tab, ⌘↑ and ⌘↓ move it by the same
-rules; what is written, and the cursor, stay where they were. The page drawn
-again (a read of it, a move) gives the box the focus back only where the box or
-the cards had it, so a press outside the sheet as the page is read again leaves
-the box's cursor where it was for the next opening. Both the move
-and unfinished writing autosave through the shared Notebook writer (302,
-notebook-writing.md). A new card with words also saves before Done; an empty
-new card changes only where it will go. The box keeps these keys even with nowhere to go, as
-an outliner does, so a Tab never takes the focus out of a card half written;
-Escape leaves it, and ⌘Return leaves it and opens a new card for writing
-right after it and its children, at its depth, as Return does from a picked
-card; from a box with nothing written ⌘Return only leaves, so it never makes
-an empty card. ← at the very start of a card that has children finishes it
-and folds its children away, the card picked; on a card with none, ← stays
-the box's. ↑ at the very start of what is written finishes
+While a card is being written, ⌘↑ and ⌘↓ move it by the same rules; what is
+written, and the cursor, stay where they were. Tab and ⇧Tab instead indent
+and outdent the current line or selected lines inside the card, through the
+single `WritingInput.indentKey` rule: two spaces in, up to two spaces or one
+leading tab out. A selection ending at the next line's start excludes that
+line. One insertion uses the existing input/autosave path and the field's
+Undo/Redo selection record. Other writing surfaces keep their existing Tab
+routing. No Tab takes focus out of a card half written, including an outdent
+at the left edge or Safari's ⌥Tab.
+
+The page drawn again (a read of it, a move) gives the box the focus back only
+where the box or the cards had it, so a press outside the sheet as the page is
+read again leaves the box's cursor where it was for the next opening. Both
+the move and unfinished writing autosave through the shared Notebook writer
+(302, notebook-writing.md). A new card with words also saves before Done;
+an empty new card changes only where it will go. Escape or ⇧⌘Return leaves
+writing. ⌘Return leaves it and opens a new card right after it and its
+children, at its depth; from a box with nothing written ⌘Return only leaves,
+so it never makes an empty card. ⌥Return finishes the box and opens a fresh
+card directly above the picked card, just as it does outside writing.
+← at the very start of a card that has children finishes it and folds its
+children away, the card picked. → at the very end of a card with folded
+children finishes it and shows its children, keeping the parent picked.
+With no folded children, or away from that end, → stays the box's; a selected
+range or modified arrow also stays the box's. On a card with no children,
+← stays the box's. ↑ at the very start of what is written finishes
 the card and opens the card that shows above it for writing, the cursor at
 its end; ↓ at the very end does the same with the card below, the cursor at
 its start. Anywhere else in the box ↑ and ↓ move the cursor as usual, and at

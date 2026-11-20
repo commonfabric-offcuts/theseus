@@ -15,6 +15,7 @@
 // revision of the page, and it answers the act that takes it back.
 
 import { fenceEnd, fenceOpen } from './fences.mjs';
+import { isEscapable } from './characters.mjs';
 
 const CARD = /^ {0,3}(#{2,6})(?:[ \t]+(.*?))?[ \t]*$/;
 // The deepest a card can be, since a heading has at most six #s.
@@ -202,10 +203,10 @@ export function findCard(deck, text, near = 0) {
 // its parent's children or deeper than DEEPEST, or an edit changes nothing.
 // Every act takes a card's children with it.
 //   {kind: 'move', text, step, near}       moves the card past the one beside it, up (-1) or down (1)
-//   {kind: 'merge', text, step, near}      the card and the one beside it become one under the upper
-//                                          card's title, the lower card's title a bold line in it
-//   {kind: 'split', text, upper, lower, keep, near}  a merged card becomes its two cards again, the
-//                                          first `keep` children staying with the upper
+//   {kind: 'merge', text, step, near}      appends the picked card's plain title, words and children
+//                                          to its neighbour, which keeps its title
+//   {kind: 'split', text, upper, lower, keep, step, near}  restores the two cards and their child groups;
+//                                          `keep` children belonged to the upper, `step` names the merge
 //   {kind: 'edit', text, to, near}         the card's text becomes `to`; no text removes the card
 //   {kind: 'add', after, text, depth, rest, near}  a new card right after the card `after` (null:
 //                                          first), and the cards `rest`, each {text, depth}, after it
@@ -246,16 +247,23 @@ export function applyAct(deck, act) {
       const j = sibling(cards, i, act.step);
       if (j < 0) return null;
       const top = Math.min(i, j), bottom = Math.max(i, j), upper = cards[top], lower = cards[bottom];
-      const merged = { title: upper.title, depth: upper.depth, words: [upper.words, lower.title && `**${lower.title}**`, lower.words].filter(Boolean).join('\n\n'), written: true };
-      cards.splice(bottom, 1);
-      cards[top] = merged;
-      return done(top, { kind: 'split', text: cardText(merged), upper: cardText(upper), lower: cardText(lower), keep: bottom - top - 1, near: top });
+      const target = cards[j], moved = cards[i], targetChildren = cards.slice(j + 1, groupEnd(cards, j)), movedChildren = cards.slice(i + 1, end);
+      const plainTitle = [...moved.title].map(char => isEscapable(char) ? '\\' + char : char).join('');
+      const merged = { title: target.title, depth, words: [target.words, plainTitle, moved.words].filter(Boolean).join('\n\n'), written: true };
+      cards.splice(top, groupEnd(cards, bottom) - top, merged, ...targetChildren, ...movedChildren);
+      return done(top, { kind: 'split', text: cardText(merged), upper: cardText(upper), lower: cardText(lower), upperTitle: upper.title, lowerTitle: lower.title, keep: bottom - top - 1, step: act.step, near: top });
     }
     case 'split': {
       const keep = Math.min(act.keep ?? 0, end - i - 1);
-      cards.splice(i, 1, { ...textCard(act.upper), depth });
-      cards.splice(i + 1 + keep, 0, { ...textCard(act.lower), depth });
-      return done(i, { kind: 'merge', text: act.upper, step: 1, near: i });
+      const children = cards.slice(i + 1, end), down = act.step > 0;
+      const upperChildren = down ? children.slice(children.length - keep) : children.slice(0, keep);
+      const lowerChildren = down ? children.slice(0, children.length - keep) : children.slice(keep);
+      const upper = textCard(act.upper), lower = textCard(act.lower);
+      // Titles are literal on a card, even when they begin with Markdown heading characters.
+      cards.splice(i, end - i, { ...upper, title: act.upperTitle ?? upper.title, depth }, ...upperChildren,
+        { ...lower, title: act.lowerTitle ?? lower.title, depth }, ...lowerChildren);
+      const at = down ? i : i + 1 + keep;
+      return done(at, { kind: 'merge', text: down ? act.upper : act.lower, step: down ? 1 : -1, near: at });
     }
     case 'edit': {
       if (act.to === act.text) return null;
