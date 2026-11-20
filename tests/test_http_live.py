@@ -157,8 +157,9 @@ class LiveStreamTests(unittest.TestCase):
         self.assertEqual(seq, self.seq(), "only the current commit's message can be known")
         with sqlite3.connect(str(self.db)) as db:
             light = json.loads(db.execute("SELECT value FROM metadata WHERE key='health_light'").fetchone()[0])
+            outcomes = db.execute("SELECT value FROM metadata WHERE key='outcome_list:test-human'").fetchone()
         self.assertEqual(light["seq"], seq, "Core keeps what is red with every commit")
-        return {"seq": seq, "health": {"red": light["red"], "seq": seq}}
+        return {"seq": seq, "outcomes": outcomes[0] if outcomes else '0', "health": {"red": light["red"], "seq": seq}}
 
     def bootstrap(self):
         connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
@@ -334,7 +335,7 @@ class LiveStreamTests(unittest.TestCase):
         with sqlite3.connect(str(self.db)) as db:
             # A commit the way an older Core makes one: the number moves, what is red is not kept with it.
             db.execute("UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='commit_seq'")
-        self.assertEqual(self.line(client), {"seq": self.seq()})
+        self.assertEqual(self.line(client), {"seq": self.seq(), "outcomes": '0'})
         self.commit()
         self.assertEqual(self.line(client), self.message(), "the next commit that settles it says it again")
 

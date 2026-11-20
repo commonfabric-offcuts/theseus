@@ -12,6 +12,20 @@ const page = (scope, { cursor = null, seq = 0, items = [], more = false } = {}) 
     continuation: more ? end : null, checkpoint: more ? null : end, covered_versions: more ? null : versions };
 };
 
+test('904 Live list key invalidates only outcomes and a failed or older read cannot accept a later key', async () => {
+  const changes = new OutcomeChanges({ bootstrap, workspaceId:'w', outcomesKey:'first', api:{ view:async(_name,args)=>page(args.scope,{cursor:args.cursor}) } });
+  await changes.baseline();
+  assert.equal(typeof changes.observe,'function');
+  changes.observe({kind:'commit',seq:1,outcomes:'first'});
+  assert.deepEqual([...((await changes.next()).dirty)],[],'ordinary commit has no list refresh');
+  changes.observe({kind:'commit',seq:2,outcomes:'second'});
+  const read=await changes.next();assert.deepEqual([...read.dirty],['outcomes']);
+  assert.deepEqual([...(await changes.next()).dirty],['outcomes'],'a failed list read remains owed');
+  changes.observe({kind:'commit',seq:3,outcomes:'third'});read.accept();
+  const later=await changes.next();assert.deepEqual([...later.dirty],['outcomes'],'older read cannot accept third');
+  later.accept();assert.deepEqual([...(await changes.next()).dirty],[]);
+});
+
 test('923 scoped change keys map to the existing list owners, leaving private writing alone', () => {
   const key = resource_kind => ({ resource_kind });
   assert.deepEqual([...outcomeInvalidation([], [key('draft'), key('note'), key('submission')])], []);

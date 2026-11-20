@@ -7040,6 +7040,37 @@ function scopedOutcome923(options = {}) {
   } };
 }
 
+for (const route of ['workspace', 'topic']) test(`904 actual ${route} outline refreshes a remote rename on its key, not an ordinary message`, async () => {
+  const setup = route === 'workspace' ? scopedOutcome923() : (() => {
+    const f = fixture('https://fixture/?topic=t1');
+    return { f, outline: mountOutcomeOutline(f) };
+  })();
+  const { f, outline } = setup, live = stream(); live.outcomes = 'first'; f.useLive(live);
+  const view = f.api.view; let title = 'First title', reads = 0, fail = false;
+  f.api.view = async (name, args) => {
+    if (name === 'workspaces') {
+      reads++; if (fail) throw Error('List interrupted');
+      return { instance_id: 'fixture', items: [{ id: 'w1', title, title_truncated: false, owner_id: 'fixture-person', version: 1 }], next_cursor: null };
+    }
+    return view(name, args);
+  };
+  await f.initialize(); await drain();
+  assert.equal(outline.pages.items[0].title, title);
+  reads = 0; setup.add?.('workspace', 'topic', 't1');
+  live.emit({ kind: 'commit', seq: 1, outcomes: 'first' }); await drain();
+  assert.equal(reads, 0, 'ordinary message keeps the global list cached');
+  title = 'Renamed elsewhere';
+  live.emit({ kind: 'commit', seq: 2, outcomes: 'second' }); await drain();
+  assert.equal(reads, 1, 'one remote rename commit refreshes the actual list');
+  assert.equal(outline.pages.items[0].title, title);
+  fail = true; title = 'Retried title';
+  live.emit({ kind: 'commit', seq: 3, outcomes: 'third' }); await drain();
+  assert.equal(outline.pages.items[0].title, 'Renamed elsewhere');
+  fail = false;
+  live.emit({ kind: 'commit', seq: 4, outcomes: 'third' }); await drain();
+  assert.equal(outline.pages.items[0].title, title, 'failed key remains owed');
+});
+
 test('923 actual commit refresh leaves unrelated private work alone and refreshes only the changed panels or stars', async () => {
   const { f, calls, changes, add } = scopedOutcome923(), live = stream(); f.useLive(live);
   await f.initialize(); await drain(); calls.length = changes.length = 0;

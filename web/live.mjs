@@ -70,6 +70,9 @@ export class Live {
         // first number keeps counting, so a broken feed is not asked in a loop.
         if (++attempt.lines === 2) this.failures = 0;
         const said = message.health === undefined ? { seq: message.seq } : { seq: message.seq, health: message.health };
+        if (typeof message.outcomes === 'string' && message.outcomes.length <= 64) {
+          this.outcomes = message.outcomes; said.outcomes = message.outcomes;
+        }
         this.setState('live', said);
         if (message.seq !== this.seq) { this.seq = message.seq; this.emit({ kind: 'commit', ...said }); }
       } else {
