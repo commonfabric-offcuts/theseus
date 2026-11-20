@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { miniDocument, matches } from './fixtures/mini_dom.mjs';
+import { resolveLegacyConversation } from './fixtures/legacy_conversation_route.mjs';
 import { OutcomeTopicCards } from '../web/outcome-topic-cards.mjs';
 import { ThingsRail } from '../web/things-rail.mjs';
-import { Shell } from '../web/in-place-navigation.mjs';
+import { Shell, Places } from '../web/in-place-navigation.mjs';
 import { panes, feedKey } from '../web/panes.mjs';
 
 const source = name => readFileSync(new URL('../web/' + name, import.meta.url), 'utf8');
@@ -116,13 +117,16 @@ function railFixture(t) {
   const rail = Object.assign(Object.create(ThingsRail.prototype), { doc: f.doc, host, backdrop, wide: { matches: true },
     handles: null, creators: new Map(), sections: new Map([['notebook', { details: node() }]]), serial: 0,
     paintHead() {}, clear() {}, closer: node(), reload() { loads++; this.stale = false; this.drawnOnce = true; } });
-  const shell = new Shell({ doc: f.doc, win: { location: { href: 'https://fixture/?workspace=w' } } }); shell.install = () => {}; shell.follow(rail);
-  const begin = kind => { shell.win.location.href = kind === 'workspace' ? 'https://fixture/?workspace=w' : kind === 'topic' ? 'https://fixture/?topic=t' : 'https://fixture/?conversation=w'; shell.begin({}); };
-  const ready = () => shell.ready({ bootstrap: { instance_id: 'fixture', actor: 'reader' }, workspaceId: 'w', topic: { id: 't' }, live: { listen() { subscriptions++; return () => { unsubscriptions++; }; } } });
+  const win = { location: new URL('https://fixture/?workspace=w'), history: { state: null, went: [],
+    replaceState(state, title, href) { this.state = state; if (href !== undefined) win.location = new URL(href, win.location); },
+    pushState(state, title, href) { this.replaceState(state, title, href); }, go(delta) { this.went.push(delta); } } };
+  const shell = new Shell({ doc: f.doc, win }); shell.install = () => {}; shell.installed = true; shell.places = new Places(win.history); shell.follow(rail);
+  const begin = (kind, page = {}) => { shell.win.location.href = kind === 'workspace' ? 'https://fixture/?workspace=w' : kind === 'topic' ? 'https://fixture/?topic=t' : 'https://fixture/?conversation=w'; shell.begin(page); };
+  const ready = (topicId = 't') => shell.ready({ bootstrap: { instance_id: 'fixture', actor: 'reader' }, workspaceId: 'w', topic: { id: topicId }, live: { listen() { subscriptions++; return () => { unsubscriptions++; }; } } });
   return { ...f, rail, shell, row, begin, ready, counts: () => [loads, subscriptions, unsubscriptions] };
 }
 
-for (const wide of [true, false]) test('879 outcome home never shows or starts its right rail; topics and conversations keep theirs (' + (wide ? 'wide' : 'narrow') + ')', t => {
+for (const wide of [true, false]) test('879 outcome home never shows or starts its right rail; topics and conversations keep theirs (' + (wide ? 'wide' : 'narrow') + ')', async t => {
   const f = railFixture(t); f.rail.wide.matches = wide;
   f.begin('workspace'); f.ready();
   assert.equal(f.rail.host.hidden, true, 'outcome right rail is hidden');
@@ -131,14 +135,64 @@ for (const wide of [true, false]) test('879 outcome home never shows or starts i
   assert.deepEqual(f.counts(), [0, 0, 0]);
   f.rail.open(); assert.equal(f.doc.documentElement.hasAttribute('data-things-open'), false, 'hidden rail cannot cover the outcome');
   for (const kind of ['topic', 'conversation']) {
-    f.begin(kind); f.ready(); assert.equal(f.rail.host.hidden, false, kind + ' retains right rail'); assert.ok(f.rail.control());
-    assert.equal(f.rail.handles.route.kind, kind); assert.equal(f.rail.shows(), wide);
+    f.begin(kind);
+    const topicId = kind === 'conversation' ? await resolveLegacyConversation(f.shell, async (name, args) => {
+      assert.equal(name, 'conversation'); assert.deepEqual({ ...args }, { workspace_id: 'w' });
+      return { conversation: { topic_id: 'conversation-topic' } };
+    }) : 't';
+    f.ready(topicId); assert.equal(f.rail.host.hidden, false, kind + ' retains right rail'); assert.ok(f.rail.control());
+    assert.equal(f.rail.handles.route.kind, 'topic'); assert.equal(f.rail.handles.route.id, topicId);
+    assert.equal(f.rail.shows(), wide);
     if (!wide) { f.rail.open(); assert.equal(f.rail.shows(), true); assert.equal(f.main.inert, true); }
   }
   assert.deepEqual(f.counts(), [2, 2, 1]);
   f.rail.open(); f.begin('workspace'); f.ready();
   assert.equal(f.rail.host.hidden, true); assert.equal(f.rail.control(), null); assert.equal(f.doc.documentElement.hasAttribute('data-things-open'), false);
   assert.equal(f.main.inert, false); assert.equal(f.rail.backdrop.hidden, true); assert.deepEqual(f.counts(), [2, 2, 2]);
+});
+
+for (const wide of [true, false]) test('788 raw Conversation ready hides the startup rail and clears an existing owner (' + (wide ? 'wide' : 'narrow') + ')', t => {
+  const f = railFixture(t); f.rail.wide.matches = wide;
+  f.begin('conversation'); assert.equal(f.rail.host.hidden, false); assert.ok(f.rail.control(), 'begin provisionally offers the feed rail');
+  f.ready();
+  assert.equal(f.rail.host.hidden, true, 'raw startup route hides the rail at ready');
+  assert.equal(f.rail.control() === null, true, 'raw startup route removes the opener');
+  assert.equal(f.rail.handles, null); assert.deepEqual(f.counts(), [0, 0, 0], 'no subscription or load starts');
+  f.rail.open(); assert.equal(f.doc.documentElement.hasAttribute('data-things-open'), false, 'a hidden rail cannot reopen');
+  // A non-topic ready must also dispose a previously active owner, using the
+  // same cleanup as begin: no old subscription, overlay or read may survive.
+  f.begin('topic'); f.ready(); f.rail.open(); assert.deepEqual(f.counts(), [1, 1, 0]);
+  const serial = f.rail.serial;
+  f.shell.win.location.href = 'https://fixture/?conversation=w'; f.ready();
+  assert.equal(f.rail.host.hidden, true); assert.equal(f.rail.control(), null); assert.equal(f.rail.handles, null);
+  assert.equal(f.doc.documentElement.hasAttribute('data-things-open'), false); assert.equal(f.rail.backdrop.hidden, true);
+  assert.equal(f.main.inert, false); assert.deepEqual(f.counts(), [1, 1, 1], 'old listener ends without another load');
+  assert.ok(f.rail.serial > serial, 'old reads lose their serial fence');
+});
+
+for (const wide of [true, false]) test('788 back during Conversation startup leaves the unresolved ready route hidden (' + (wide ? 'wide' : 'narrow') + ')', async t => {
+  const f = railFixture(t); f.rail.wide.matches = wide;
+  f.shell.places.push('?topic=older'); f.shell.places.push('?conversation=w');
+  const opened = []; f.begin('conversation', { async open(route) { opened.push(route); return false; } });
+  let answer, started;
+  const waiting = new Promise(resolve => { started = resolve; });
+  const resolving = resolveLegacyConversation(f.shell, (name, args) => {
+    assert.equal(name, 'conversation'); assert.deepEqual({ ...args }, { workspace_id: 'w' });
+    started(); return new Promise(resolve => { answer = resolve; });
+  });
+  await waiting;
+  f.shell.win.location.href = 'https://fixture/?topic=older';
+  await f.shell.popstate({ state: { aimPlace: 1 } });
+  assert.equal(f.shell.owed?.pop, true, 'real Shell queues back while the run is starting');
+  answer({ conversation: { topic_id: 'conversation-topic' } });
+  const topicId = await resolving;
+  assert.equal(f.shell.win.location.search, '?topic=older', 'late app rename respects the changed address');
+  f.ready(topicId);
+  assert.equal(f.shell.handles.route.kind, 'conversation', 'ready uses the unresolved begun route while back is owed');
+  assert.equal(f.rail.host.hidden, true, 'startup back cannot leave a shown empty rail');
+  assert.equal(f.rail.control(), null); assert.equal(f.rail.handles, null); assert.deepEqual(f.counts(), [0, 0, 0]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(opened, [{ kind: 'topic', id: 'older' }], 'the deferred back still reaches the existing page guard');
 });
 
 // Restricted CSS source evaluator: braces/media/declarations and exact known
