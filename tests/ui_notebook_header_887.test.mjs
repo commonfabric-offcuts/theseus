@@ -6,6 +6,8 @@ import { NotebookPage, notebookMenuItems } from '../web/notebook-page.mjs';
 import { NotebookWriting } from '../web/notebook-writing.mjs';
 import { DeckPage } from '../web/deck-page.mjs';
 
+const css=readFileSync(new URL('../web/aim.css',import.meta.url),'utf8');
+
 // Real sheet/menu/status handlers, memory-only page action ports. No native/layout claim.
 async function fixture(t, options={}) {
   const f=notebookFixture(t,options), p=f.page, acts=[];
@@ -90,7 +92,7 @@ test('887 full Notebook page keeps its normal status words and menu',async t=>{
   const full=new DeckPage({doc,host,header,item:'full'});assert.deepEqual(full.bar.children.slice(1).map(n=>n.textContent),['Edit','New card','Undo']);full.listening.abort();
 });
 test('887 docked frame removes border while retaining both-theme shared inset and phone time',()=>{
-  const css=readFileSync(new URL('../web/aim.css',import.meta.url),'utf8');
+
   assert.match(css,/dialog\.notebook-sheet-dialog\.notebook-docked\[open\]\{[^}]*border:0/);
   assert.match(css,/dialog\.notebook-sheet-dialog\[open\]\{[^}]*box-shadow:var\(--stack-cover-inset\)/);
   assert.doesNotMatch(css,/@container[^}]*\.save-time\{display:none/);
@@ -134,4 +136,66 @@ test('887 full-page action follows layout and uses the current Text/Cards route'
   const {sheet:s,p}=await fixture(t),routes=[];s.fullHref=(id,mode)=>`/page/${id}/${mode}`;s.goBack=url=>routes.push(url);
   const keys=p.menuItems().map(x=>x.key);assert.equal(keys[keys.indexOf('layout')+1],'fullpage');
   choice(p,'fullpage').act();p.mode='text';choice(p,'fullpage').act();assert.deepEqual(routes,['/page/p/cards','/page/p/text']);
+});
+
+// Source constraints on the actual sheet DOM, not measured browser geometry.
+// Exact selectors are deliberately bounded; collect every occurrence so a
+// later source override cannot silently leave these checks green.
+const cssRule = (selector,width=1280) => {
+  const text=css.replace(/\/\*[\s\S]*?\*\//g,''),stack=[],found=[];let start=0;
+  for(let i=0;i<text.length;i++){
+    if(text[i]==='{'){const head=text.slice(start,i).trim();stack.push({head,start:i+1});start=i+1;}
+    else if(text[i]==='}'){
+      const rule=stack.pop();start=i+1;
+      if(rule.head.startsWith('@')||!rule.head.split(/,\s*(?![^()]*\))/).includes(selector))continue;
+      const applies=stack.every(({head})=>{
+        const match=/^@media\s*\((max-width|min-width):\s*([0-9.]+)px\)$/.exec(head);
+        assert.ok(match,`unhandled header media ${head}`);
+        return match[1]==='max-width'?width<=Number(match[2]):width>=Number(match[2]);
+      });
+      if(applies)found.push(Object.fromEntries(text.slice(rule.start,i).split(';').filter(x=>x.includes(':')).map(x=>{const at=x.indexOf(':');return [x.slice(0,at).trim(),x.slice(at+1).trim()];})));
+    }
+  }
+  assert.ok(found.length,`rule for ${selector}`);return Object.assign({},...found);
+};
+const px = value => value.endsWith('rem') ? parseFloat(value)*16 : parseFloat(value);
+test('887 review metadata sits immediately after the actual short title without a growing gap',async t=>{
+  const {sheet:s,p}=await fixture(t);s.title.textContent='Notes';p.say('Saved to Theseus','saved');
+  assert.equal(s.heading.children.indexOf(s.saved),s.heading.children.indexOf(s.title)+1);
+  const title=cssRule('.'+s.title.className),heading=cssRule('.'+s.heading.className);
+  assert.equal(title.flex,'0 1 auto','title must keep intrinsic width when room remains');
+  assert.equal(title['min-width'],'0');assert.equal(title['text-overflow'],'ellipsis');assert.equal(title.overflow,'hidden');
+  assert.equal(heading.gap,'.25rem');assert.equal(cssRule('.'+s.saved.className).flex,'none');
+});
+test('887 review actual phone header collects heading and actions onto one flex line at375 and390',async t=>{
+  const {sheet:s,p}=await fixture(t,{wide:false});p.say('Saved to Theseus','saved');
+  assert.equal(s.dockButton.hidden,true);assert.deepEqual(s.head.children.map(n=>n.className),['notebook-sheet-heading','notebook-sheet-actions']);
+  const controls=s.actions.children.filter(n=>!n.hidden);assert.equal(controls.length,3);
+  for(const width of [375,390]){
+    const head=cssRule('.'+s.head.className,width),heading=cssRule('.'+s.heading.className,width),actions=cssRule('.'+s.actions.className,width);
+    assert.equal(head.display,'flex');assert.equal(heading.flex,'1 1 0');assert.equal(heading['min-width'],'0');
+    const phone=cssRule('.notebook-sheet :is(button,input,textarea,select,a[href],summary,[role=button],[role=link],[tabindex])',width);
+    assert.equal(phone['min-width'],'2.75rem!important');assert.equal(phone['min-height'],'2.75rem!important');
+    const button=cssRule('.notebook-sheet-head .sheet-glyph',width),floor=px(phone['min-width'].replace('!important',''));
+    const actionWidth=controls.length*Math.max(px(button.width),floor)+(controls.length-1)*px(actions.gap);
+    const padding=head.padding.split(' ').map(px),basis=px(heading.flex.split(' ').at(-1));
+    // The phone dialog uses the viewport width; subtract its head padding.
+    assert.equal(cssRule('dialog',width).width,'100%');assert.equal(cssRule('dialog',width).border,'0');
+    const available=width-padding[1]-padding[3];
+    assert.ok(basis+px(head.gap)+actionWidth<=available,`${width}: actions must fit on the same line before flex growth`);
+    assert.ok(available-actionWidth-px(head.gap)>0,`${width}: heading gets remaining width`);
+  }
+});
+test('887 review empty recovery region remains rendered and fills the same region on refusal',async t=>{
+  const {sheet:s,p}=await fixture(t);
+  const full=new DeckPage({doc:p.doc,host:p.node('div'),header:{title:p.node('span'),description:p.node('span'),eyebrow:p.node('span')},item:'status'});
+  t.after(()=>full.listening.abort());p.status=full.status;s.status.replaceChildren(p.status);
+  p.say('Saved to Theseus','saved');const region=p.status;
+  assert.equal(region.getAttribute('role'),'status');assert.equal(region.children.length,0);assert.ok(region.isConnected);
+  const empty=cssRule('.notebook-sheet-status:has(.deck-status:empty)'),hidden=cssRule('.sr-only');
+  for(const property of ['position','width','height','padding','margin','overflow','clip','white-space','border']) assert.equal(empty[property],hidden[property],property);
+  assert.notEqual(empty.display,'none');assert.notEqual(empty.visibility,'hidden');assert.equal(empty.position,'absolute');
+  p.say('Permission refused. Words kept.','attention',()=>{});
+  assert.ok(p.status===region);assert.ok(s.status.children[0]===region);assert.match(region.text,/Permission refused/);assert.ok(region.querySelector('button'));
+  assert.notEqual(cssRule('.notebook-sheet-status').display,'none');assert.equal(s.status.hidden,false);assert.equal(region.hidden,false);
 });
