@@ -239,7 +239,7 @@ class Reactions:
         ask (no go-ahead, no record's) to actor, a person, in a topic they read that still keeps its waits
         (not replaced by a conversation, its outcome not reached, archived or completed). A whisper never asks (whispers.py's
         whisper_shape), and message.thumb refuses a thumb on one's own message, so neither is asked here."""
-        if (message["intent"] != "ask" or message["go_ahead"] or actor not in json.loads(message["addressees"])
+        if (message["intent"] != "ask" or self._withdrawal_value(db, message["id"]) is not None or message["go_ahead"] or actor not in json.loads(message["addressees"])
                 or self._actor(db, actor)["kind"] != "human"):
             return None
         topic = db.execute("SELECT t.*,w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=:topic AND t.replaced_by IS NULL "
@@ -296,7 +296,7 @@ class Reactions:
         (answered_yes); whether a record answers it is outcome_asks.record_ask."""
         found = None
         for row in db.execute("SELECT m.id,m.seq,m.sent_ms,m.author_id FROM message_addressees a CROSS JOIN messages m ON m.seq=a.seq "
-                              "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>? AND m.intent='ask' AND NOT EXISTS (SELECT 1 FROM messages w "
+                              "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>? AND m.intent='ask' AND NOT EXISTS (SELECT 1 FROM message_withdrawals x WHERE x.message_id=m.id) AND NOT EXISTS (SELECT 1 FROM messages w "
                               "INDEXED BY message_reply_links WHERE w.reply_to=m.id AND w.author_id=a.actor_id "
                               "AND w.private_to=m.author_id) ORDER BY a.seq",
                               (topic["id"], member, after_seq)):

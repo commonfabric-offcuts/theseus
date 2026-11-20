@@ -185,7 +185,7 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
          "| inbox | reply MESSAGE [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--part] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
          "| post TOPIC [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--reply-to MESSAGE] [--divergence-reason TEXT] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
-         "| thumb MESSAGE [--off] | mint MESSAGE [--expected N] WORDS|- | edit MESSAGE --expected N TEXT|- "
+         "| thumb MESSAGE [--off] | withdraw MESSAGE [--operation ID] | mint MESSAGE [--expected N] WORDS|- | edit MESSAGE --expected N TEXT|- "
          "| cover MESSAGE [--refresh [--operation ID]] [--expected N] [--stands TEXT] [--waits TEXT --default TEXT]... [--no-waits] "
          "[--payload TEXT --from MESSAGE [--link URL] [--kind answer|decision|preview|page|release] [--done-by MESSAGE]] [--no-payload] "
          "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] [--attach FILE]... TEXT|- "
@@ -307,6 +307,9 @@ def _parser():
         post.add_argument("--attach", action="append", default=[])
         post.add_argument("--subject")
         post.add_argument("text")
+    withdraw = verb("withdraw")
+    withdraw.add_argument("message")
+    withdraw.add_argument("--operation")
     thumb = verb("thumb")
     thumb.add_argument("message")
     thumb.add_argument("--off", action="store_true")
@@ -1006,6 +1009,8 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
             said = ", ".join("%s %s" % (answer["actor_id"], "✅ go ahead" if answer["answer"] == "yes" else "🚫 don't")
                              for answer in reactions.get("answers", []))
             self.out.plain("  (asks for a go-ahead%s)" % (": " + said if said else "; not answered yet"))
+        if item.get("withdrawal"):
+            self.out.plain("  (Question withdrawn)")
         if reactions.get("thumbs"):
             # A person's 👍 on an ask to them answers it yes (item 239): "(👍 tony (yes))".
             self.out.plain("  (👍 " + ", ".join(thumb["actor_id"] + (" (yes)" if thumb.get("answered") else "")
@@ -1582,6 +1587,10 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
                               {"opening_revision": opening["revision"]})
         self.out.plain('started %s "%s" in %s with %s' % (opening["topic_id"], _one_line(opening.get("title", ""), 60),
                                                           opening["workspace_id"], result["message_id"] or "no message yet"))
+
+    def do_withdraw(self):
+        result = self.command("message.withdraw", {"message_id": self.options.message}, {}, operation=self.operation_of())
+        self.out.plain("Question withdrawn: %s%s" % (result["message_id"], "" if result["changed"] else " (already so)"))
 
     def do_thumb(self):
         """A thumbs-up: read and understood, said without a message (docs/thumbs.md)."""

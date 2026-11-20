@@ -19,6 +19,7 @@ import { addressedTo } from './at-names.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
 import { ComposeBar, revealCardReply } from './compose-bar.mjs';
 import { copyText, copySelectedText, COPY_REFUSED, SELECTION_COPY_REFUSED } from './message-menu.mjs';
+import { paintWithdrawal } from './question-withdrawal.mjs';
 import { revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { overhang } from './lit-field.mjs';
 import { coverSheet, coverKey, payloadPill } from './dossier-cover.mjs';
@@ -1152,6 +1153,7 @@ export class Reader {
     const author = this.callbacks?.actorName?.(source.author) ?? source.author;
     const originText = node('span', undefined, 'reader-origin-text');
     originText.append([author, provenance].filter(Boolean).join(' · '), ...sent, ...edited);
+    paintWithdrawal(originText, source, document, true);
     this.$('reader-origin').replaceChildren(originText);
     if (source.source_ref.kind === 'message') {
       const update = messageUpdateActivity(document, source, { viewer: this.callbacks.actor?.(), nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: source.topic_id });

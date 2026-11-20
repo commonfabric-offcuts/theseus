@@ -22,7 +22,8 @@ def held_ask(db, topic_id, writer):
         (topic_id, topic_id)).fetchall()
     for (message_id,) in rows:
         addressees = db.execute("SELECT addressees FROM messages WHERE id=?", (message_id,)).fetchone()[0]
-        if writer in json.loads(addressees):
+        if writer in json.loads(addressees) and db.execute(
+                "SELECT 1 FROM message_withdrawals WHERE message_id=?", (message_id,)).fetchone() is None:
             return message_id
     return None
 

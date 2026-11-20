@@ -172,6 +172,7 @@ export class TopicViews {
   // the edit, at a lower revision, changes nothing. True when one was taken.
   learnRevision(item, known = this.messages.get(item.id)) {
     if (!known || revisionOf(item) <= revisionOf(known)) return false;
+    item.withdrawal = known.withdrawal ?? item.withdrawal;
     if (known.acts) item.acts = laterActs(known.acts, item.acts);
     item.yours = this.laterYours(known, item);
     item.stack_position = laterPosition(known.stack_position, item.stack_position);
@@ -255,9 +256,11 @@ export class TopicViews {
     // was read, and the latest revision of its words the page has seen.
     for (const item of answer.items) {
       const known = this.messages.get(item.id);
+      item.withdrawal = known?.withdrawal ?? item.withdrawal;
       if (known && revisionOf(item) !== revisionOf(known)) {
         if (!this.learnRevision(item, known)) {
           if (known.acts || item.acts) known.acts = laterActs(known.acts, item.acts);
+          known.withdrawal ??= item.withdrawal;
           known.yours = this.laterYours(known, item);
         }
         this.runs.set(item.id, run); continue;

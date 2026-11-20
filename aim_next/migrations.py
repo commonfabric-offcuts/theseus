@@ -7,6 +7,7 @@ import sqlite3
 
 from .dossier_move import MOVE_SCHEMA, MOVE_DOWN, MOVE_OCCUPIED
 from .ask_cover import ASK_COVER_SCHEMA, ASK_COVER_DOWN, ASK_COVER_OCCUPIED
+from .withdrawal import WITHDRAWAL_SCHEMA, WITHDRAWAL_DOWN, WITHDRAWAL_OCCUPIED
 from .authority import Authority, AuthorityError, GuardBusy
 from .contract import StoreError, _identifier
 from .openings import OPENING_SCHEMA
@@ -218,6 +219,7 @@ STEPS = (
     ("51", "52", MEMORY_ACTION_SCHEMA, MEMORY_ACTION_DOWN, MEMORY_ACTION_OCCUPIED),
     ("52", "53", MOVE_SCHEMA, MOVE_DOWN, MOVE_OCCUPIED),
     ("53", "54", ASK_COVER_SCHEMA, ASK_COVER_DOWN, ASK_COVER_OCCUPIED),
+    ("54", "55", WITHDRAWAL_SCHEMA, WITHDRAWAL_DOWN, WITHDRAWAL_OCCUPIED),
 )
 
 

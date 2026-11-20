@@ -937,6 +937,10 @@ VIEW_PATHS = {
 }
 # Each read of the messages table outside the visibility rule, and why it shows no whisper to anyone outside it.
 MESSAGE_READS = {
+    "aim_next/withdrawal.py": ("one ask's id/topic/sequence/author/intent/addressees/private status only, after _editable "
+                                "uses canonical _message_access (visible plus topic/delivered reach), checks its author "
+                                "and open outcome; private messages are then refused as NOT_A_QUESTION, no words read "
+                                "and no hidden identity returned; wait and change recipients derive from this guarded row", 1),
     "aim_next/dossier_order.py": ("position reads use a canonical root already checked by visible(); publication touches only its "
                                  "message readers, and its numeric topic ceiling returns no message identity or words; the explicit "
                                  "migration enumerates readers internally, groups messages under VISIBLE and resolves only visible roots; return detection uses MEMBERS under VISIBLE", 7),

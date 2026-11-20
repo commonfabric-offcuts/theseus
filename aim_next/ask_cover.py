@@ -100,7 +100,9 @@ class AskCover:
         version = self._record_act(db, 'cover', root, '', actor, value, current + 1)
         return [{'kind': 'acts', 'id': root['topic_id'], 'version': version}]
 
-    def _set_linked_wait(self, db, actor, ask_id, active):
+    def _set_linked_wait(self, db, actor, ask_id, active, *, by=None):
+        # actor identifies the person asked. Withdrawal is the asker's act,
+        # while the ordinary answer/recovery path belongs to that person.
         row = db.execute('SELECT * FROM ask_cover_links WHERE ask_id=? AND actor_id=?', (ask_id, actor)).fetchone()
         if row is None or bool(row['active']) == active:
             return []
@@ -111,7 +113,7 @@ class AskCover:
         if active:
             value['waiting'].append(json.loads(row['value']))
         # Only the public question and the person appear here, never a private answer's identity or words.
-        return self._write_linked_cover(db, actor, root, value)
+        return self._write_linked_cover(db, actor if by is None else by, root, value)
 
     def _linked_reply(self, db, actor, topic, reply_to, private):
         if not reply_to or self._actor(db, actor)['kind'] != 'human':
