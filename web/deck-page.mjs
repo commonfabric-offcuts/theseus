@@ -742,6 +742,13 @@ export class DeckPage {
     if(!this.act({kind:'details',text:cardText(card),near:at,id},true))return null;
     ref.id=id;return id;
   }
+  async saveCardChange() {
+    const w=this.writing;if(!w)return;
+    // flush() joins the current envelope; a later card act needs the next one.
+    const running=w.running;
+    await w.flush();
+    if(running&&!w.error&&!w.closed&&!w.conflict&&w.dirty)await w.flush();
+  }
   async copyCard(ref, link=false) {
     let at=this.cardAt(ref);if(at<0)return;
     let words;
@@ -750,7 +757,7 @@ export class DeckPage {
       const text=(async()=>{
       // A new link must name a revision actually saved, not just an unsaved device copy.
       if(this.writing){
-        await this.writing.flush();
+        await this.saveCardChange();
         if(this.listening?.signal.aborted||this.writing.closed)throw Error('The page is closed.');
         if(this.cardAt(ref)<0||parseDeck(this.writing.base?.content.body??'').cards.filter(card=>cardDetails(card.words).ids.includes(id)).length!==1){
           throw Error('The card link is not saved yet. Try Copy link again after saving.');
@@ -798,7 +805,7 @@ export class DeckPage {
         const id=this.ensureCardId(ref),at=this.cardAt(ref);if(!id||at<0)return {error:{message:'This card is no longer here.'}};
         this.act({kind:'details',text:cardText(this.deck.cards[at]),near:at,color,fromColor:cardDetails(this.deck.cards[at].words).color});
         if(this.writing){
-          await this.writing.flush();
+          await this.saveCardChange();
           const saved=parseDeck(this.writing.base?.content.body??'').cards.filter(card=>cardDetails(card.words).ids.includes(id));
           if(this.listening?.signal.aborted||this.writing.closed||this.cardAt(ref)<0||saved.length!==1||cardDetails(saved[0].words).color!==color||this.writing.dirty||this.writing.busy||this.writing.conflict)
             return {error:{message:'The color is kept here but not confirmed saved. Try again after saving.'}};

@@ -169,7 +169,7 @@ export class NotebookPage extends DeckPage {
       if(focused)this.text.setSelectionRange(...selection.map(at=>Math.min(at,this.text.value.length)));
     }
     if(!w.conflict || drawKept) {
-      (this.textProjection??=new CardTextProjection()).show(w.value.body);
+      (this.textProjection??=new CardTextProjection()).show(w.value.body,w.base.content.body);
       this.textSeen={revision:w.base.revision,content:structuredClone(w.value)};
       this.cardsSeen={revision:w.base.revision,content:{...structuredClone(w.value),body:this.previewBody()}};
     }
@@ -189,7 +189,8 @@ export class NotebookPage extends DeckPage {
     if(!this.writing || !this.textSeen)return;
     const seen=this.textSeen;
     const projection=this.textProjection??=new CardTextProjection();
-    if(projection.body===undefined)projection.show(seen.content.body);
+    if(projection.body===undefined)projection.show(seen.content.body,this.writing.base.content.body);
+    projection.confirm(this.writing.base.content.body);
     const body=projection.edit(this.text.value,this.textChange);this.textChange=null;
     const edited=this.writing.edit({body},seen,'text');
     this.textSeen={revision:seen.revision,content:{...seen.content,body}};

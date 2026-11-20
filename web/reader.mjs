@@ -1,3 +1,4 @@
+import { stripDetails, detailParts } from './card-details.mjs';
 import { messageUpdateActivity, refreshLine } from './cover-refresh.mjs';
 import { messageFoldSwipe } from './message-fold-swipe.mjs';
 import { keyAction, holdsWriting, written } from './editor.mjs';
@@ -703,7 +704,7 @@ export class Reader {
     if (!this.sourceBody.contains(range.startContainer) || !this.sourceBody.contains(range.endContainer)) return;
     // This is the selection branch of the existing quote projection, with no
     // trim or hover/whole-message fallback. Native Copy keeps its selection.
-    if (!copySelectedText(event, this.selectedPassage())) this.notice(SELECTION_COPY_REFUSED);
+    if (!copySelectedText(event, stripDetails(this.selectedPassage()))) this.notice(SELECTION_COPY_REFUSED);
   }
 
   // The source's own words a selection covers, never what the page shows for
@@ -735,7 +736,7 @@ export class Reader {
     // after, and its own writing does not take that away.
     this.notice('');
     this.quoting = true;
-    try { this.quoteInto(excerpt, place, given ? revision : cardWords?.revision ?? held?.revision); } finally { this.quoting = false; }
+    try { this.quoteInto(detailParts(excerpt), place, given ? revision : cardWords?.revision ?? held?.revision); } finally { this.quoting = false; }
   }
 
   quoteInto(excerpt, place, revision = undefined) {
@@ -748,10 +749,12 @@ export class Reader {
       this.layout.setMode('wide'); this.applyLayout();
     }
     const prefix = editor.draft.body ? (editor.draft.body.endsWith('\n\n') ? '' : editor.draft.body.endsWith('\n') ? '\n' : '\n\n') : '';
-    const addition = prefix + excerpt.split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
+    const excerpts = Array.isArray(excerpt) ? excerpt : [excerpt];
+    if (!excerpts.length) return;
+    const addition = prefix + excerpts.join('').split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
     // The quote is writing like any other, so it goes through the editor's
     // edit, which brings in the author a reply is offered to.
-    editor.edit({ quotes: [...editor.draft.quotes, { source: quoteSource(this.source, revision), excerpt }] });
+    editor.edit({ quotes: [...editor.draft.quotes, ...excerpts.map(excerpt => ({ source: quoteSource(this.source, revision), excerpt }))] });
     // The message's selection is let go before the field takes focus: once
     // the field is focused the document's selection is its caret, and
     // clearing it then leaves no caret drawn until the window is refocused.
@@ -1416,10 +1419,10 @@ export class Reader {
     // ⌘C with a passage lit and no words selected copies the passage's words,
     // as Return would quote them, as on the topic page (message-menu.mjs).
     if (!inEditor && copyKey(event, this.mac) && this.hover && window.getSelection()?.isCollapsed !== false && this.source) {
-      event.preventDefault(); copyText(this.selectedPassage().trimEnd()).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
+      event.preventDefault(); copyText(stripDetails(this.selectedPassage()).trimEnd()).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
     }
     if (!inEditor && event.metaKey && event.shiftKey && event.code === 'KeyC' && this.source?.source_ref.kind === 'message') {
-      event.preventDefault(); copyText(this.source.body).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
+      event.preventDefault(); copyText(stripDetails(this.source.body)).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
     }
     const where = Object.keys(STEPPING).find(at => STEPPING[at].key === event.key);
     if (!inEditor && event.metaKey && !event.shiftKey && where) {

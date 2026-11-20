@@ -27,7 +27,7 @@ export function detailLines(text, {partial=false}={}) {
         detailsLine(value);found.push({...value,line:line.trim(),start:offset,end:offset+raw.length+(i<lines.length-1?1:0)});
       }
     }catch{/* An invalid marker remains ordinary writing. */}
-    if(partial&&i===lines.length-1&&!before&&!fence&&/^\s*<!-- theseus-card: \{/.test(line)&&!line.trimEnd().endsWith('-->'))
+    if(partial&&i===lines.length-1&&!before&&!fence&&(line.trim().length>=2&&('<!-- theseus-card: '.startsWith(line.trim())||/^\s*<!-- theseus-card: \{/.test(line)))&&!line.trimEnd().endsWith('-->'))
       found.push({start:offset,end:offset+raw.length,partial:true});
     offset+=raw.length+1;
   });
@@ -76,4 +76,12 @@ export function withCardDetails(words, details) {
 }
 export function mergeDetails(target, moved) {
   return {id:target.id, aliases:[...new Set([...target.aliases,...moved.ids])].filter(id=>id!==target.id),color:target.color};
+}
+
+// Keep each visible part an exact source substring for Core quote validation.
+export function detailParts(text) {
+  const parts=[];let at=0;
+  for(const {start,end} of detailRanges(text)){if(start>at)parts.push(text.slice(at,start));at=end;}
+  if(at<text.length)parts.push(text.slice(at));
+  return parts.filter(part=>/\S/.test(part));
 }

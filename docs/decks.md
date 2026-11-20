@@ -123,20 +123,36 @@ and invalid markers remain words. On an open code fence, new metadata goes
 before the fence so allocation is hidden and repeatable.
 
 Card editing and Text show no metadata line, restoring it through the same
-Notebook writer and revision fence. Text matches settled cards by normalized
-words and title, independent of their position and intermediate heading marks.
-The visit retains the identities of cut writing for a later paste; a removed
-card has no identity in the saved page. Exact duplicate cards use the edit's
-unchanged surrounding text to distinguish which duplicate survived.
-Text Undo/Redo walks the visit's edit history in the requested direction,
-including repeated visible values. History stores text patches, not a full
-page per keystroke. CRLF comparison never rewrites an untouched page.
-An identity or color changed later in Cards stays with the surviving card
-when Text Undo restores deleted writing or separates a merge. This also holds
-for identical cards and cards which had no identity when Text editing began.
-Merely switching views never writes the page. The deterministic checks use
-real card acts, the Notebook writer and shared painters with in-memory
-adapters; they do not claim native touch, focus or layout proof.
+Notebook writer and revision fence. Text recomputes identity from one fixed
+base: the last confirmed saved body, initially the body Text opened on. A
+keystroke never teaches a visit catalog. A confirmed save replaces the base;
+unsaved transient headings do not. Exact unchanged title-and-words pairs form
+ordered anchors, with the edit range distinguishing exact twins. Within each
+gap, pair by title, then by non-empty words, then pair a sole remaining base
+card with a sole remaining current card as a rename or edit. Finally an
+unchanged title-and-words pair may match anywhere to preserve a move. Empty
+words never establish a match.
+
+A Text merge adds an alias only when removing a heading leaves the survivor's
+own base words followed directly by the whole words of the unpaired card.
+Deleting a whole card, even one with matching words or a URL, adds no alias.
+Confirmed aliases ride with the survivor in its hidden line on later edits.
+Both writers place new metadata at the end of the words (before an unfinished
+fence when necessary); Text preserves an existing line's placement. Untouched
+CRLF and visible spacing are kept. Undo/Redo re-align against that same saved
+base; it does not resurrect identities deleted in an already confirmed save.
+A later saved Cards identity/color is part of the next base. Merely switching
+views never writes the page.
+
+Reader Quote splits its source ranges around hidden metadata so each retained
+quote remains an exact substring of the original body. The reply's visible
+quotation and Copy omit the hidden ranges, including a partial final marker
+in an explicitly truncated excerpt. Fenced examples and malformed complete
+markers remain ordinary writing. Copy link and Set color await a save that
+includes their own changes, even when an earlier save is in flight, without
+claiming success on refusal or a closed page. Checks act through the real
+textarea input listeners and the unpicked card's own menu; in-memory DOM
+adapters do not establish native gestures, focus, rendered geometry or speech.
 
 A new identity allocated after a Cards merge stays with the surviving target
 when Undo separates it. A fresh card editor has no inherited tint. Copy link
@@ -571,3 +587,15 @@ and offers Undo. Core supplies deletion permission: the page's creator or the
 outcome's owner, with access, in an open outcome. A reader's star is personal.
 The command, migration, recovery and old-link rules are in
 [the page menu contract](notebook-menu-792.md).
+
+### 867 review 12306: replaced expectations
+
+The fixed saved base replaces four visit-history expectations in
+`ui_card_menu_867.test.mjs`: two restored a deleted id after a later confirmed
+Cards save; one split a confirmed merge's alias back to an obsolete card; one
+restored pre-save identity after a confirmed whole-card replacement. Their
+checks now assert the saved base: deleted identities stay gone, a saved alias
+stays on its survivor, and a sole card aligns as an edit. Unsaved Undo/Redo
+still restores the original base. The surviving-twin check now supplies the
+actual insertion range, as the duplicate rule requires. No other earlier
+assertions are retired.

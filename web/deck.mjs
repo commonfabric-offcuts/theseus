@@ -1,4 +1,4 @@
-import { cardDetails, withCardDetails, stripDetails, mergeDetails } from './card-details.mjs';
+import { cardDetails, withCardDetails, stripDetails, mergeDetails, detailsLine } from './card-details.mjs';
 // A deck of cards is a Notebook page (docs/decks.md). Each card is a heading
 // of two to six #s and the words under it, up to the next such heading; a
 // heading inside a fenced block is not one. A card's depth is its #s past two,
@@ -118,11 +118,11 @@ export function boxText({ written, images = [], stacks = [], details = [], fresh
   const restore = text => {
     if(!details.length)return text;
     const detail=cardDetails(details.join('\n')),restored=withCardDetails(text,detail);
-    if(restored.startsWith(detail.lines[0]+'\n\n')){
+    if(restored.startsWith(detailsLine(detail)+'\n\n')){
       // withCardDetails placed it before an open fence. Keep the editor's
       // first nonblank line as the title, and insert metadata just after it.
       const lines=text.split('\n'),first=lines.findIndex(line=>/\S/.test(line));
-      lines.splice(first+1,0,'',...detail.lines,'');return lines.join('\n');
+      lines.splice(first+1,0,'',detailsLine(detail),'');return lines.join('\n');
     }
     return restored;
   };
@@ -204,9 +204,13 @@ export function writtenAt(written, shown, at) {
 export function findCard(deck, text, near = 0) {
   let found = -1;
   const ids = cardDetails(text).ids;
+  const visible = value => {
+    const at=value.indexOf('\n'),title=at<0?value:value.slice(0,at),words=at<0?'':cardDetails(value.slice(at+1)).words;
+    return words?title+'\n'+words:title;
+  };
   deck.cards.forEach((card, i) => {
     if (ids.length && !cardDetails(card.words).ids.some(id=>ids.includes(id))) return;
-    if (stripDetails(cardText(card)).trimEnd() === stripDetails(text).trimEnd() && (found < 0 || Math.abs(i - near) < Math.abs(found - near))) found = i;
+    if (visible(cardText(card)).trimEnd() === visible(text).trimEnd() && (found < 0 || Math.abs(i - near) < Math.abs(found - near))) found = i;
   });
   return found;
 }
