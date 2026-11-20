@@ -391,8 +391,9 @@ bubble without a count.
 
 ## Where it opens
 
-A page opens in the composer over the feed (item 396, `web/notebook-sheet.mjs`):
-the New message sheet comes up with the page in it, from every place a page is
+A page opens in its own Notebook dialog (871, `web/notebook-sheet.mjs`),
+beside a topic feed by default at 1280px or wider, or over the page otherwise.
+An explicit Wide choice persists for the session. This applies wherever a page is
 opened as it stands: a card of the topic's own Notebook, a row of the right
 rail's Notebook (the topic's, or the outcome's), a row on the
 outcome's own page, a link to a page as it stands, the pencil that starts a
@@ -402,21 +403,23 @@ it comes up over that page. A link to a page at a revision still opens it in
 the Reader, or in place on its outcome's page, to read.
 
 The sheet keeps only one tight title row fixed (868): the page's title,
-ellipsized when long, the docking glyph where available, Full page (↗,
+ellipsized when long, the page menu, the layout glyph where available, Full page (↗,
 `?cards=ITEM`, below) and ✕. Glyphs have screen-reader names and tooltips;
 desktop glyphs are 40 points and phone controls retain their 44-point floor.
-Text, Cards, Draft and the page menu share a wrapping toolbar with Choose
-dossier inside the card scroller. The same controls move with the active
-NotebookPage; neither the writing nor its scroll owner is replaced.
+The page menu (873) owns Show as text / Show as cards, Draft with its note,
+Choose dossier… while docked, Add image… and Wide/Open with Dossiers, followed
+by the existing page actions and Copy Link. The old toolbar is removed. The
+same controls move with the active NotebookPage; neither the writing nor its
+scroll owner is replaced. New message keeps its own composer, available from
+the pencil while Notebook is docked; its close/send leaves Notebook intact.
 
-The saving sign has a row of its own below those controls, inside the scroller, on the
+The saving sign has a quiet row at the top of the scroller, on the
 laptop and at every phone width (item 642). "Saved to Theseus", keeping a
 device copy, saving, uploading and every attention or read-only state change
-only that row: Text, Cards and Draft keep identical boxes while the status
-words change. Attention notices wrap whole there. A refusal's Try again and Discard
+only that row; page actions stay in the title-row menu. Attention notices wrap whole there. A refusal's Try again and Discard
 my writing follow its words, wrapping when needed, and are 44 points tall on
 touch. Its existing role=status keeps announcing save state. Below the fixed
-title is one place that scrolls: the view toolbar, dossier picker, saving sign,
+title is one place that scrolls: the dossier picker, saving sign, page notices,
 deck bar and the same vertical card list as the full page
 at every width. The line of keys above the cards is short there (↑ ↓ pick · Return new
 card · ⌘Return edit, and while writing Escape done · ⌘Return next card), the
@@ -425,13 +428,14 @@ their keyboard handlers remain active. While a card is being written, only
 its writing row is current, including the new card opened by ⌘Return. The
 saved picked index remains the return point when an empty new card is finished.
 
-✕, Escape or a press on the backdrop closes it. While a card is being written
+✕ and Escape close either layout; only the layout control switches between
+beside and over the feed. A press on the modal backdrop also closes it. While a card is being written
 the first Escape finishes the card and a second closes the sheet; ✕ and a press
 outside close it with the card still open. The feed comes back where it was
 read and the focus to what opened the page, at once, so a page opened from the
 keys straight after (Tab to the next card, Return) stays open; should anything
-have moved the feed while the sheet was up (its scrollbar, say), closing puts it
-back. The feed keeps
+have moved the feed while the modal sheet was up (its scrollbar, say), closing
+puts it back. Closing a docked Notebook keeps the feed where the person moved it. The feed keeps
 its length while the sheet is up, so one read to its end does not move behind
 the backdrop. Unfinished writing keeps saving
 (notebook-writing.md), and the page keeps its picked card, its place in the

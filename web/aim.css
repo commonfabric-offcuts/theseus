@@ -1073,35 +1073,30 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .notebook-images{display:grid;gap:.5rem}.notebook-images>button{justify-self:start}
 .notebook-image-rows{display:grid;gap:.4rem}.notebook-image{display:flex;align-items:center;gap:.65rem;min-width:0;flex-wrap:wrap}
 .notebook-image>span{flex:1;min-width:8rem;overflow-wrap:anywhere}.notebook-image .image-thumb{width:3rem;height:3rem;object-fit:contain}
-/* NotebookSheet keeps only its title and glyphs fixed (868). The existing page scroller holds views, dossier choice, save status, deck controls and cards. */
-dialog.composer-home.notebook-mode[open]{overflow:hidden}
+/* NotebookSheet keeps only its title and glyphs fixed (868). The page menu joins that title row (873); the existing scroller holds save status, notices, deck controls and cards. */
+dialog.notebook-sheet-dialog[open]{overflow:hidden}
+dialog.notebook-sheet-dialog:not([open]){display:none}
 .notebook-sheet{display:flex;flex-direction:column;height:100%;min-height:0}
 .notebook-sheet-head{flex:none;display:flex;align-items:center;gap:.25rem;min-height:2.5rem;padding:0 .35rem 0 .75rem;border-bottom:1px solid var(--line)}
 .notebook-sheet-title{flex:1;min-width:0;margin:0;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.notebook-sheet-dossiers{flex:none;white-space:nowrap}
-.notebook-sheet-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .5rem;padding-top:.5rem}
 /* The same sheet becomes nonmodal; the existing topic feed keeps scrolling.
    The outline stays at left and the Notebook takes the things rail's space. */
 @media(min-width:1280px){
   body.notebook-docked .workspace-layout{grid-template-columns:18rem minmax(0,1fr) minmax(0,1fr)}
   body.notebook-docked #things{display:none}
-  dialog.composer-home.notebook-docked[open]{position:fixed;inset:1rem 1rem 1rem auto;margin:0;width:calc((100vw - 18rem)/2 - 1.5rem);max-width:none;height:calc(100dvh - 2rem);max-height:calc(100dvh - 2rem);z-index:21;animation:none}
+  dialog.notebook-sheet-dialog.notebook-docked[open]{position:fixed;inset:1rem 1rem 1rem auto;margin:0;width:calc((100vw - 18rem)/2 - 1.5rem);max-width:none;height:calc(100dvh - 2rem);max-height:calc(100dvh - 2rem);z-index:21;animation:none}
   body.notebook-docked main{min-width:0;padding-inline:1rem}
 }
 .notebook-dossier-picker{flex:none;max-height:35vh;overflow:auto;padding:.5rem 1rem;border-bottom:1px solid var(--line);overscroll-behavior:contain}
 .notebook-dossier-choices{display:flex;flex-direction:column;gap:.2rem}
 .notebook-dossier-choices>button{text-align:left;overflow:hidden;text-overflow:ellipsis;max-width:100%;background:transparent;border-color:transparent}
-.notebook-sheet-views{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem}.notebook-sheet-status{min-width:0;max-width:none}
+.notebook-sheet-status{min-width:0;max-width:none}
 .notebook-sheet-status .deck-status{min-height:0;flex-wrap:nowrap}.notebook-sheet-status .deck-status>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Recovery controls follow the whole notice, wrapping below it when needed. */
 .notebook-sheet-status:has(.deck-status>[data-save=attention]){max-width:none}
 .notebook-sheet-status .deck-status:has(>[data-save=attention]){flex-wrap:wrap;justify-content:flex-start;gap:.35rem .5rem}
 .notebook-sheet-status .deck-status>[data-save=attention]{flex:1 1 12rem;white-space:normal;overflow:visible;overflow-wrap:anywhere}
 .notebook-sheet-status .deck-status>button{min-height:2rem;padding:.1rem .6rem;font-size:.78rem}
-.notebook-sheet-views .notebook-views{gap:.25rem}
-.notebook-sheet-views .notebook-views button{min-height:2.25rem;padding:.2rem .8rem;border-radius:999px;font-size:.85rem;background:transparent}
-.notebook-sheet-views .notebook-draft-toggle,.notebook-sheet-views .notebook-draft-note{min-height:2.25rem;padding:.2rem .8rem;border-radius:999px;font-size:.85rem}
-.notebook-sheet-views .notebook-views button[aria-pressed=true]{background:var(--soft);border-color:var(--accent);color:var(--ink);font-weight:600}
 .sheet-glyph{display:inline-grid;place-items:center;width:2.75rem;height:2.75rem;min-height:0;padding:0;border:0;border-radius:.5rem;background:transparent;color:var(--muted);font-size:1.05rem;text-decoration:none}
 .sheet-glyph:hover{background:var(--soft);color:var(--ink)}
 .notebook-sheet-head .sheet-glyph{flex:none;width:2.5rem;height:2.5rem}
@@ -1111,12 +1106,11 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .notebook-sheet-page>.deck-bar{padding:.55rem 0 .35rem}
 .notebook-sheet-page>.notebook-text-panel:not([hidden]){flex:1 1 auto;display:flex;min-height:10rem;padding-top:.75rem}
 .notebook-sheet-page .notebook-text{flex:1;min-height:0;height:auto;resize:none}
-.notebook-sheet-page>.notebook-images:has(.notebook-image-rows:empty){display:flex;justify-content:flex-end;margin-bottom:-.4rem}
-.notebook-sheet-page>.notebook-images>button{min-height:2.25rem;padding:.15rem .7rem;font-size:.8rem;border-color:transparent;background:transparent;color:var(--muted)}
+.notebook-sheet-page>.notebook-images:has(.notebook-image-rows:empty){display:none}
 .notebook-sheet-changes{padding-top:.75rem}.notebook-sheet-changes>.source-changes{margin:0}.notebook-sheet-changes-body{padding:0 .7rem .6rem;overflow-wrap:anywhere}.notebook-sheet-changes>.notice{margin:0}
 .notebook-sheet-page .deck-keys>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .notebook-back{max-width:16rem;min-height:2.75rem;padding:.3rem .6rem;overflow:hidden;text-overflow:ellipsis;color:var(--accent);font-size:.88rem;font-weight:600}
-@media(pointer:coarse){.notebook-sheet-views .notebook-views button,.notebook-sheet-views .notebook-draft-toggle,.notebook-sheet-views .notebook-draft-note,.notebook-sheet-status .deck-status>button{min-height:2.75rem}.notebook-sheet-page>.notebook-images>button{min-height:2.75rem}}
+@media(pointer:coarse){.notebook-sheet-status .deck-status>button{min-height:2.75rem}}
 @media(max-width:760px){
   /* Item 652: every pressable in the Notebook editor sheet keeps a 44px floor,
      regardless of pointer media or state-specific sizing (including refusals).
@@ -1132,7 +1126,6 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
   .notebook-sheet-status{max-width:none;container-type:inline-size}.notebook-sheet-status .deck-status{justify-content:flex-end}
   @container (max-width:12rem){.notebook-sheet-status .save-time{display:none}}
   .notebook-sheet-page{padding:0 .75rem .75rem}
-  .notebook-sheet-views .notebook-views button,.notebook-sheet-views .notebook-draft-toggle,.notebook-sheet-views .notebook-draft-note,.notebook-sheet-page>.notebook-images>button{min-height:2.75rem}
   .notebook-sheet-page>.deck-bar button{flex:none;padding-inline:.9rem}
   .notebook-back{max-width:9rem}
 }
@@ -1405,3 +1398,7 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 .selection-page #outcome-references-list{grid-column:1;grid-row:1}
 .selection-page #outcome-references>:is(.notice,.rail-line,#more-references){grid-column:1/-1}
 .selection-page #topics-heading{text-transform:none;letter-spacing:normal}
+/* New message keeps its own dialog and width preference in the docked feed column (871). */
+@media(min-width:1280px){
+  body.notebook-docked #new-message-sheet[open][data-width-edges]{inset:auto auto 1.5rem 19rem;margin:0;width:min(var(--composer-width,var(--widest)),calc((100vw - 18rem)/2 - 2rem));max-width:calc((100vw - 18rem)/2 - 2rem);min-width:min(280px,calc((100vw - 18rem)/2 - 2rem))}
+}

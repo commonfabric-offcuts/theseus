@@ -1,4 +1,5 @@
-import { openMessageMenu } from './message-menu.mjs';
+import { pageLink } from './links.mjs';
+import { openMessageMenu, copyText } from './message-menu.mjs';
 import { DeckPage, UNDO_LIMIT } from './deck-page.mjs';
 import { applyAct, deckBody, parseDeck, cardText, cardImages, imageLine, textCard, findCard } from './deck.mjs';
 import { WritingInput } from './writing-input.mjs';
@@ -40,7 +41,7 @@ export class NotebookPage extends DeckPage {
     this.imagePanel=this.node('div','notebook-images'); this.imageRows=this.node('div','notebook-image-rows'); this.imageNodes=new Map();
     this.addImage=this.node('button','','Add image');this.addImage.type='button';
     this.imageFile=this.node('input');this.imageFile.type='file';this.imageFile.accept='image/png,image/jpeg,image/gif,image/webp';this.imageFile.hidden=true;
-    this.addImage.onclick=()=>{this.imageFile.value='';this.imageFile.click();};
+    this.addImage.onclick=()=>{if(this.readOnly||this.writing?.reading)return;this.imageFile.value='';this.imageFile.click();};
     this.imageFile.onchange=()=>{if(this.imageFile.files?.[0])this.captureImage(this.imageFile.files[0]);};
     this.imagePanel.append(this.imageRows,this.addImage,this.imageFile);
     // The draft mark: a toggle beside Text / Cards for someone Core lets write the page, a quiet mark for someone
@@ -328,12 +329,35 @@ export class NotebookPage extends DeckPage {
     const w=this.writing,state=w?.pageState;
     if(!state)return [];
     if(w.deleted)return state.reader_may_delete?[{label:'Undo delete',glyph:'undo',act:()=>this.pageAction('memory.delete',{deleted:false})}]:[];
-    const items=[{label:state.starred?'Unstar':'Star',glyph:state.starred?'starred':'star',act:()=>this.pageAction('memory.star',{starred:!state.starred})}];
+    // Read the current writer again when a menu action runs: permission or recovery
+    // may have changed since this list opened. The ordinary buttons use the same owners.
+    const canWrite=()=>this.writing===w&&!this.readOnly&&!w.readOnly&&!w.reading&&!w.deleted&&!w.closed&&!w.actionPending&&!w.actionRunning;
+    const items=[
+      {label:'Show as text',glyph:'text',checked:this.mode==='text',act:()=>this.switchView('text')},
+      {label:'Show as cards',glyph:'stack',checked:this.mode==='cards',act:()=>this.switchView('cards')},
+      {label:'Draft',glyph:'draft',checked:this.drafted(),description:DRAFT.note,disabled:!canWrite(),act:()=>{if(canWrite())this.markDraft(!this.drafted());}},
+      ...(this.menuExtras?.('beforeImage')??[]),
+      {label:'Add image…',glyph:'image',disabled:!canWrite(),act:()=>{if(canWrite())this.addImage.onclick();}},
+      ...(this.menuExtras?.('afterImage')??[]),
+      {label:state.starred?'Unstar':'Star',glyph:state.starred?'starred':'star',act:()=>this.pageAction('memory.star',{starred:!state.starred})}];
     if(!this.readOnly)items.push({label:'Rename',glyph:'pencil',act:()=>this.rename()});
     if(state.reader_may_delete)items.push({label:'Delete',glyph:'drop',act:()=>{
       if(this.doc.defaultView.confirm('Delete this Notebook page? Its history is kept and you can undo it.'))this.pageAction('memory.delete',{deleted:true});
     }});
-    return [...items, ...(this.menuExtras?.() ?? [])];
+    items.push({label:'Copy Link',glyph:'link',act:()=>this.copyLink()});
+    return items;
+  }
+  async copyLink() {
+    const w=this.writing,source=w?.base?.source;
+    if(!source||w.closed)return;
+    const serial=this.copySerial=(this.copySerial??0)+1;
+    const link=pageLink(source.owner_scope,source.source_ref.id);
+    const copied=await copyText(link);
+    if(this.writing!==w||w.closed||this.copySerial!==serial)return;
+    this.copyNotice?.remove();
+    this.copyNotice=this.node('p','',copied?'Link copied.':`Could not copy. Select this link and use Copy: ${link}`);
+    // Do not replace a deletion, failed action or recovery control with this receipt.
+    this.pageNotice.append(this.copyNotice);
   }
   rename() {
     if(this.readOnly||!this.writing?.value)return;

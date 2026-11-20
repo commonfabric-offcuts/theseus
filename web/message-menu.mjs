@@ -621,6 +621,7 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
   root.setAttribute('role', 'menu'); root.setAttribute('aria-label', label);
   const buttons = items.map((item, index) => {
     const button = element(doc, 'button', { type: 'button', textContent: item.label });
+    button.disabled = Boolean(item.disabled);
     button.setAttribute('role', item.checked === undefined ? 'menuitem' : 'menuitemcheckbox');
     if (item.checked !== undefined) button.setAttribute('aria-checked', String(item.checked));
     if (item.description) {
@@ -631,19 +632,21 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
     // The glyph follows the words in the document and is drawn before them (aim.css), so the row reads as its words.
     button.append(glyphs[index]);
     if (item.keys) { button.append(element(doc, 'span', { className: 'menu-keys', textContent: item.keys })); }
-    button.onclick = event => { event.stopPropagation(); menu.close(true); item.act(); };
+    button.onclick = event => { event.stopPropagation(); if (button.disabled) return; menu.close(true); item.act(); };
     return button;
   });
   root.append(...buttons);
+  const enabled = buttons.filter(button => !button.disabled);
   const keys = event => {
     event.stopPropagation();
     if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); menu.close(true); return; }
     const step = { ArrowDown: 1, ArrowUp: -1, Home: -Infinity, End: Infinity }[event.key];
     if (step === undefined) return;
     event.preventDefault();
-    const now = buttons.indexOf(doc.activeElement);
-    const next = step === -Infinity ? 0 : step === Infinity ? buttons.length - 1 : ((now < 0 ? 0 : now) + step + buttons.length) % buttons.length;
-    buttons[next].focus({ preventScroll: true });
+    if (!enabled.length) return;
+    const now = enabled.indexOf(doc.activeElement);
+    const next = step === -Infinity ? 0 : step === Infinity ? enabled.length - 1 : ((now < 0 ? 0 : now) + step + enabled.length) % enabled.length;
+    enabled[next].focus({ preventScroll: true });
   };
   const outside = event => { if (!root.contains(event.target) && !(at === null && anchor.contains(event.target))) menu.close(false); };
   const scrolled = event => {
@@ -670,7 +673,7 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
   const box = anchor.getBoundingClientRect();
   if (sheet && win.matchMedia?.('(max-width: 760px)').matches) {
     root.classList.add('menu-sheet');
-    buttons[0].focus({ preventScroll: true });
+    enabled[0]?.focus({ preventScroll: true });
     return menu;
   }
   const width = root.offsetWidth || 0, height = root.offsetHeight || 0;
@@ -679,7 +682,7 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
   const x = at ? at.x : box.right - width, below = at ? at.y : box.bottom + 4, above = (at ? at.y : box.top - 4) - height;
   const top = below + height + 8 <= H || above < 8 ? below : above;
   Object.assign(root.style, { position: 'fixed', top: `${Math.round(Math.max(8, top))}px`, left: `${Math.round(Math.max(8, Math.min(x, W - width - 8)))}px` });
-  buttons[0].focus({ preventScroll: true });
+  enabled[0]?.focus({ preventScroll: true });
   return menu;
 }
 
