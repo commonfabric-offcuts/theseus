@@ -425,7 +425,8 @@ class Conversation:
             cover_version = self._record_act(db, "cover", root, "", actor,
                                              {"stands": divergence, "waiting": [], "payload": None}, 1)
             cover_affected = [{"kind": "acts", "id": topic_id, "version": cover_version}]
-        covered = self._link_ask_cover(db, actor, topic, message_id, linked)
+        covered = self._supersede_questions(db, actor, topic, message_id) if not record_only else []
+        covered += self._link_ask_cover(db, actor, topic, message_id, linked)
         # Positions are part of publication, not a browser observation (item 731).
         from .dossier_order import published
         positioned = {"id": message_id, "topic_id": topic_id, "seq": sequence, "author_id": actor, "private_to": private}
@@ -546,6 +547,7 @@ class Conversation:
                 "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "intent": row["intent"],
                 "version": current, "current_revision": current, "revision": current, "edited_ms": edited_ms, "struck": seen,
                 "withdrawal": self._withdrawal_value(db, row["id"]),
+                "question": self._question_value(db, actor, row["id"]) if row["intent"] == "ask" else None,
                 "allowed_actions": ["quote", "note.save"], "dossier": self._source_dossier(db, actor, row),
                 "acts": self._source_acts(db, actor, row),
                 **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
@@ -691,6 +693,7 @@ class Conversation:
         self._reaction_fields(db, actor, items)
         self._block_fields(db, items)
         self._withdrawal_fields(db, items)
+        self._question_fields(db, actor, items)
         reading_fields(db, actor, unread_groups(db, actor, topic["id"]), items)
         # The reader's own private note and saved, unsent reply on each message (docs/topic-reading.md, item 127).
         writing_fields(db, actor, items)

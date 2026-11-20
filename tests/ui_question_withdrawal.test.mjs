@@ -86,12 +86,14 @@ test('recorded refusal and successful result stay truthful; old reads cannot und
 
 test('the shared menu owner and scoped freshness path wire withdrawal', () => {
   const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
-  assert.match(app, /withdrawalItem\(item, editRights\(\)/);
+  assert.match(app, /withdrawalItem\(item, rights,/);
   assert.equal([...app.matchAll(/withdrawalItem\(/g)].length, 1);
   const shared = app.slice(app.indexOf('function sharedMessageMenuItems('), app.indexOf('async function withMenuSource('));
-  assert.match(shared, /withdrawalItem\(item, editRights\(\)/);
+  assert.match(shared, /withdrawalItem\(item, rights,/);
   const reader = app.slice(app.indexOf('function openReaderMenu()'), app.indexOf('function learnQuestionWithdrawal('));
-  assert.match(reader, /sharedMessageMenuItems\(/);
+  assert.match(reader, /readerMessageMenuItems\(/);
+  const readerItems = app.slice(app.indexOf('function readerMessageMenuItems('), app.indexOf('function openReaderMenu()'));
+  assert.match(readerItems, /sharedMessageMenuItems\(/);
   assert.doesNotMatch(reader, /withdrawalItem\(/);
   assert.match(app, /key.startsWith\('withdrawal:'\)/);
   assert.match(app, /paintWithdrawal\(author, item/);
@@ -138,7 +140,7 @@ test('late withdrawal receipt updates only its exact source and preserves newer 
   const writing = { body: 'Newer unsent writing', destination: 'other' }, painted = [];
   const registry = { current: { source: other, writing } };
   const learned = runInNewContext('(' + app.slice(start, end).trim() + ')', {
-    views: { messages: new Map([['ask', original]]) }, learnWithdrawal, cardIn: () => null,
+    paintViews() {}, paintReaderTitle() {}, questionStates: { learn() {} }, views: { messages: new Map([['ask', original]]) }, learnWithdrawal, cardIn: () => null,
     feedMessages: () => new Map([['ask', original]]), stackMessages() {},
     messageEntries: new Map(), menu: { paint() {} }, registry, reader: { paintOrigin: source => painted.push(source) },
   });

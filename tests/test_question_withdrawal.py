@@ -224,7 +224,7 @@ class WithdrawalCase(fixtures.ReaderCase):
     def test_explicit_migration_and_immutable_history_and_closed_outcome(self):
         from aim_next.migrations import migrate
         self.assertEqual(migrate(self.path, "test-instance", self.binding, "54")["schema_version"], "54")
-        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], "55")
+        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], store_module.SCHEMA_VERSION)
         ask = self.ask()
         self.committed(self.withdraw(ask))
         with sqlite3.connect(str(self.path)) as db:
