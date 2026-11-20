@@ -269,3 +269,17 @@ test('894 NotebookStart cannot replace an uncertain body while keeping the title
   await assert.rejects(start.create('Page', 'Edited'), /First confirm/);
   assert.equal(api.sent.length, 1);
 });
+
+test('926 NotebookStart freezes image refs and refuses a different attachment retry', async () => {
+  let lost = true;
+  const api = core(request => { if (lost) { lost = false; throw Error('offline'); }
+    return committed(request, { item_id: request.target.item_id, revision: 1, owner_scope: request.target.owner_scope }); });
+  const start = new NotebookStart({ api, bootstrap, scope: { kind: 'topic', id: 't1' } }), refs = [{ id: 'ready-image' }];
+  await assert.rejects(start.create('Photo', '## Photo\n![photo](attachment:ready-image)\n', refs), /Not confirmed/);
+  refs[0].id = 'different';
+  assert.equal(start.pending.args.attachments[0].id, 'ready-image', 'the captured command owns its own immutable refs');
+  await assert.rejects(start.create('Photo', '## Photo\n![photo](attachment:ready-image)\n', refs), /First confirm/);
+  assert.equal(api.sent.length, 1);
+  await start.create('Photo', '## Photo\n![photo](attachment:ready-image)\n', [{ id: 'ready-image' }]);
+  assert.deepEqual(api.sent[1], api.sent[0]);
+});
