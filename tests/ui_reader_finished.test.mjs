@@ -167,8 +167,9 @@ test('item 644 quoting opens a laptop reply wide; a phone, empty selection and r
     if (state === 'adopting') f.reply.adopting=true;
     if (state === 'recovery') {f.reply.recoveryDiscovery=true; f.reply.localVersion=0;}
     f.r.quote();
-    assert.deepEqual(layouts, state === 'laptop' ? ['wide','painted'] : [], state);
-    assert.equal(f.r.layout.mode, ['laptop','wide'].includes(state) ? 'wide' : 'stacked', state);
+    assert.deepEqual(layouts, state === 'laptop' ? ['painted'] : [], state);
+    assert.equal(f.r.layout.mode, state === 'wide' ? 'wide' : 'stacked', '906 keeps the saved preference');
+    assert.equal(Boolean(f.r.temporaryWide), state === 'laptop', state);
     assert.equal(f.field.value, ['laptop','wide','phone'].includes(state) ? '> Quoted passage\n\n' : '', state);
   }
 });
