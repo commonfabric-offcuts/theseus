@@ -1552,10 +1552,10 @@ function landOn(id, { full = false } = {}) {
 // anchored page, preserving the paging gap. With no visible card, the exact
 // source opens through the ordinary Reader owner instead.
 let landingSerial = 0;
-async function landOnMessage(id, serial = ++landingSerial) {
+async function landOnMessage(id, serial = ++landingSerial, current = () => true) {
   const accessEpoch = listAccessEpoch, generation = registry.generation;
   const mine = () => !retired && !registry.disposed && !topicUnavailable &&
-    accessEpoch === listAccessEpoch && serial === landingSerial && generation === registry.generation;
+    accessEpoch === listAccessEpoch && serial === landingSerial && generation === registry.generation && current();
   if (!mine()) return false;
   if (!views.messages.has(id)) {
     const foreground = registry.cleanup.foreground();
@@ -3328,7 +3328,8 @@ async function initialize() {
     activity: () => { inline.paintStatus(); reader.paintStatus(); cardReplies?.paint(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } cardReplies?.paint(); noteRead(); } });
   cardReplies = new CardReplies({ template: $('inline-composer'), registry, topic: () => topic,
-    callbacks: { ...inline.callbacks, notebook: null, recipientsPainted: null, retry: retryCard }, offer: offerAuthor, discover, say: status });
+    callbacks: { ...inline.callbacks, notebook: null, recipientsPainted: null, retry: retryCard,
+      sent: (result, current) => landOnMessage(result.receipt.result.message_id, ++landingSerial, current) }, offer: offerAuthor, discover, say: status });
   registry.cleanup.resumeListeners.add(rechecked);
   // After any recorded answer to a mark, this page shows what Core now holds,
   // with or without the live stream.
