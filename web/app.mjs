@@ -1,5 +1,10 @@
+import { panes } from './panes.mjs';
+import { stackMenuItems } from './stack-menu-items.mjs';
+import { outcomeMenuItems } from './outcome-menu-items.mjs';
+import { consumeMenuRoute } from './menu-route.mjs';
+import { menuDoor } from './outline-menus.mjs';
 import { configureCoverAnswers } from './cover-answers.mjs';
-import { configureCoverRefresh, updateMenuItem, messageUpdateActivity, messageUpdateHost } from './cover-refresh.mjs';
+import { configureCoverRefresh, firstCoverMenuItem, updateMenuItem, messageUpdateActivity, messageUpdateHost } from './cover-refresh.mjs';
 import { mountFeedFences } from './feed-fence-copy.mjs';
 import { keepLineRoom } from './line-room.mjs';
 import { Api, notAnswering, unreached, answeredSince, heard, follow, notTaken, NOT_TAKEN } from './api.mjs';
@@ -1415,6 +1420,7 @@ function paintDossierSourceStatus() {
 // The page's reply stacks and what the person does to them, made with the first messages.
 function feedOf() {
   stackFeed ??= new StackFeed({ list: $('messages'), messages: feedMessages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
+    readNamed: (name, args) => api.view(name, args, { readClass: 'foreground' }),
     authority: () => registry.runtime.current,
     // The page's own act, once Core answers it, tells the Reader's neighbours whether it could have moved them (item 426).
     send: async envelope => { const receipt = await api.command(envelope); if (receipt?.status === 'committed') views.ownAct(envelope.kind, receipt.result); return receipt; },
@@ -1500,27 +1506,28 @@ async function landOnMessage(id, serial = ++landingSerial) {
   const accessEpoch = listAccessEpoch, generation = registry.generation;
   const mine = () => !retired && !registry.disposed && !topicUnavailable &&
     accessEpoch === listAccessEpoch && serial === landingSerial && generation === registry.generation;
-  if (!mine()) return;
+  if (!mine()) return false;
   if (!views.messages.has(id)) {
     const foreground = registry.cleanup.foreground();
     try {
       const source = checkedView(await foreground.read(options => api.view('source', { kind: 'message', id }, options)), bootstrap.instance_id);
-      if (!mine()) return;
+      if (!mine()) return false;
       if (source.source_ref?.kind !== 'message' || source.source_ref.id !== id || source.topic_id !== topic.id ||
           !Number.isSafeInteger(source.seq) || source.seq < 1) throw Error('This message could not be found in this topic.');
       const cursor = source.seq + 1;
       const page = checkedView(await foreground.read(options => api.view('topic_messages', { topic_id: topic.id, audience: 'all', direction: 'before', cursor, limit: 30 }, options)), bootstrap.instance_id);
-      if (!mine()) return;
+      if (!mine()) return false;
       views.messagesPage(page, { anchored: true, cursor });
     } finally { foreground.release(); }
   }
-  if (!mine()) return;
+  if (!mine()) return false;
   // A loaded same-topic target can land during the rail's tap handler,
   // before its bubbling click closes the drawer and removes main's inertness.
   if (shell.drawer?.isOpen()) shell.drawer.close();
   const card = landOn(id, { full: true });
   if (!card) throw Error('This message could not be shown. Try its link again.');
   card.focus({ preventScroll: true });
+  return true;
 }
 // The header New act is an in-feed open, never an editor navigation. Delivery
 // reads alone leave the visit's New intact; only a confirmed explicit act earns
@@ -2076,41 +2083,46 @@ function messageMenuItems(item, say, anchor = say, first = []) {
 }
 // Every message menu consumes this list. Only arrangement and clipped-card
 // expansion belong to the feed; the Reader adds its selection and layout.
-function sharedMessageMenuItems(item, { say, anchor = say, presentation = null } = {}) {
+function sharedMessageMenuItems(item, { say, anchor = say, presentation = null, remote = null } = {}) {
   const inReader = Boolean(presentation), phone = Boolean(window.matchMedia?.('(max-width: 760px)').matches);
-  const stack = stackFeed && !topicUnavailable && item.topic_id === topic?.id ? stackFeed.menuItems(item, { phone, reader: inReader, at: inReader ? anchor : null,
+  const available = remote ? Boolean(item.stack_position) : !topicUnavailable, ended = remote ? false : outcomeReached;
+  const rights = remote ? { ...editRights(), unavailable: !available, reached: false } : editRights();
+  const stack = remote ? stackMenuItems(remote.stack, () => {}) : stackFeed && !topicUnavailable && item.topic_id === topic?.id ? stackFeed.menuItems(item, { phone, reader: inReader, at: inReader ? anchor : null,
     rename: act => inReader ? run(() => leaveReaderForRename(presentation, act)) : act(),
     more: moves => anchor && openMessageMenu({ anchor, items: cardMenuActs(item, moves, anchor), label: 'Move or join', sheet: true }) }) : { first: [], last: [] };
   const move = item.stack_position?.can_move || item.dossier?.can_move
     ? [{ label: 'Move to topic…', glyph: 'topic', act: () => moveDossier(item.id, anchor) }] : [];
   const items = [...stack.first, ...move, { label: 'Copy Link', glyph: 'link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
-  if (!inReader) {
+  if (!inReader && !remote) {
     const card = cardIn(messageEntries.get(item.id));
     if (cardScroll?.clipped(card, item)) items.push({ label: 'Show full message', glyph: 'full', act: () => run(() => cardScroll.showFull(card, item)) });
   }
-  if (mayEdit(item, editRights()) && !messageEdit) items.push({ label: 'Edit', glyph: 'pencil',
+  if (mayEdit(item, rights) && (remote || !messageEdit)) items.push({ label: 'Edit', glyph: 'pencil',
     act: () => run(() => editMessage(item.id, inReader ? anchor : editOpener(item, anchor))) });
-  const update = !topicUnavailable && !outcomeReached && updateMenuItem(document, item, updateContext(item.topic_id));
+  const update = available && !ended && updateMenuItem(document, item, updateContext(item.topic_id));
   if (update) items.push(update);
-  const withdraw = withdrawalItem(item, editRights(), item => run(() => withdrawals.withdraw(item)));
+  const withdraw = withdrawalItem(item, rights, item => run(() => withdrawals.withdraw(item)));
   if (withdraw) items.push(withdraw);
-  if (marks && item.author_id !== bootstrap.actor && !topicUnavailable) {
-    const marked = marks.state(item.id)?.marked === true;
-    items.push({ label: marked ? 'Mark read' : 'Mark unread', glyph: marked ? 'read' : 'unread',
+  if ((remote || marks) && item.author_id !== bootstrap.actor && available) {
+    // A source read carries no mark revision. Offer both explicit choices
+    // until the current destination owner can confirm the mark.
+    const states = remote ? [true, false] : [marks.state(item.id)?.marked === true];
+    for (const marked of states) items.push({ label: marked ? 'Mark read' : 'Mark unread', glyph: marked ? 'read' : 'unread',
       act: () => run(() => markFromMenu(item.id, !marked)) });
   }
-  if (!topicUnavailable && !outcomeReached && topic) {
+  if (available && !ended && (remote || topic)) {
     const fromSource = act => run(() => withMenuSource(item, presentation, anchor, act));
     if (mayStartFrom(item)) {
       items.push({ label: 'Start a topic from this', glyph: 'topic', act: () => fromSource(() => openStartLine()) });
-      if (pipelineRow?.on) items.push({ label: 'Add to pipeline', glyph: 'pipeline',
+      if (remote || pipelineRow?.on) items.push({ label: 'Add to pipeline', glyph: 'pipeline',
         act: () => fromSource(() => pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true)) });
     }
-    if (!messageEdit && item.topic_id === topic.id) items.push({ label: 'Start a new dossier', glyph: 'pencil',
+    if (remote || !messageEdit && item.topic_id === topic.id) items.push({ label: 'Start a new dossier', glyph: 'pencil',
       act: () => fromSource(p => startNewDossier(p, inReader)) });
   }
-  if (!messageEdit) items.push(...textDisplayMenuItems());
-  return [...items, ...stack.last];
+  if (remote || !messageEdit) items.push(...textDisplayMenuItems());
+  return [...items, ...stack.last].map(choice => ({ ...choice, key: choice.key ?? choice.label,
+    ...(remote ? { act: () => remote.choose(choice.key ?? choice.label, choice.label) } : {}) }));
 }
 // A feed action that needs the full source opens that exact message first.
 // No late open is allowed to act on a different Reader, topic or source.
@@ -2153,19 +2165,69 @@ function moveDossier(id, anchor) {
     moved: () => { freshness?.invalidate('dossier_move', 0, true); freshness?.request(); }
   });
 }
+// The rail reads one source; it does not open it to construct this list.
+function railDossierMenu(item, anchor, choose) {
+  const loaded = item.topic_id === topic?.id && views?.messages.get(item.id);
+  if (loaded && !topicUnavailable) return messageMenuItems(loaded, null, anchor).map(choice => ({ ...choice,
+    act: () => choose(choice.key ?? choice.label, choice.label) }));
+  const acts = item.acts ?? {}, position = item.stack_position;
+  return sharedMessageMenuItems(item, { anchor, remote: { choose, stack: {
+    cover: firstCoverMenuItem(document, { id: item.id, dossier: item.id, head: item, replies: [] }),
+    starred: Boolean(acts.starred) || position.starred?.length > 0, folded: Boolean(acts.folded), head: true, hasReplies: true,
+    position: true, below: position.below, found: true, reader: false,
+    phone: Boolean(window.matchMedia?.('(max-width: 760px)').matches), open: false,
+    joined: Boolean(acts.joined), placed: position.placed != null, undo: true,
+    foldable: true, openable: true,
+  } } });
+}
+let railMarks = null;
+async function markFromRail(item, marked) {
+  const handles = shell.handles;
+  const owner = marks ?? (railMarks ??= new Marks({ api, instanceId: bootstrap.instance_id, authority: () => bootstrap.authority }));
+  if (!await owner.load(item.topic_id, args => api.view('marks', args, { readClass: 'foreground' }))) throw Error('The message marks could not be read. Try again.');
+  if (retired || shell.handles !== handles || handles.readable?.() === false) throw Error('The page changed before the mark could be saved.');
+  const receipt = await owner.send(item.id, marked, owner.state(item.id)?.mark_revision ?? 0);
+  if (receipt?.status !== 'committed') throw Error(receipt?.error?.message ?? 'The mark was not confirmed. Choose it again to retry the same request.');
+}
+function runDossierMenuChoice(id, key, label, anchor) {
+  if (retired || topicUnavailable) return false;
+  const item = views?.messages.get(id);
+  if (!item || item.topic_id !== topic?.id) return false;
+  const choice = messageMenuItems(item, null, anchor).find(choice => (choice.key ?? choice.label) === key && choice.label === label);
+  if (!choice || choice.disabled) return false;
+  choice.act(); return true;
+}
+function openDossierMenuRoute(id, route) {
+  const item = views?.messages.get(id), entry = messageEntries.get(id), anchor = entry && cardIn(entry);
+  if (retired || topicUnavailable || !item || item.topic_id !== topic?.id || !anchor) return status('That dossier action is no longer available here.');
+  const items = messageMenuItems(item, null, anchor), key = route.act === 'rename' ? 'rename' : route.choice;
+  const choice = items.find(item => item.key === key);
+  if (!choice || choice.disabled) return status('That action is no longer available. Open the dossier menu to choose again.');
+  if (route.act === 'rename' || route.act === 'ui') return choice.act();
+  return openMessageMenu({ anchor, items, focusKey: key, label: 'This message', sheet: true });
+}
 // A right-click on a message opens the same menu where the pointer is. On a
 // link or a selection the browser's own menu stays, to copy what it offers.
 function messageContextMenu(event) {
+  if (retired || event.defaultPrevented) return;
   if (event.target.closest('#reader')) return;
-  if (event.target.closest('a') || window.getSelection()?.isCollapsed === false) return;
+  if (event.target.closest('a, input, textarea, select, [contenteditable]') || window.getSelection()?.isCollapsed === false) return;
   // A message on its own or in a reply stack (reply-stacks.mjs).
-  const entry = entryOf($('messages'), event.target), item = entry && views?.messages.get(entry.dataset.id);
+  const section = event.target.closest('.reply-stack');
+  const header = section?.parentElement === $('messages') && (event.target === section || event.target.closest('.stack-head, .stack-frame-head, .stack-toggle'));
+  const entry = header ? section.querySelector(':scope > [data-id]') : entryOf($('messages'), event.target), item = entry && views?.messages.get(entry.dataset.id);
   if (!item) return;
+  if (header && item.stack_position?.root_id && item.stack_position.root_id !== item.id) return;
   event.preventDefault();
   const card = cardIn(entry), shown = !card.hidden, anchor = shown ? card : entry.querySelector('.fold-line') ?? entry;
   const at = event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : null;
   // "Link copied" shows on the bar's ⋯ while its message is lit, as it is under the pointer.
   openMessageMenu({ anchor, at, items: messageMenuItems(item, menu?.moreFor(entry) ?? null, anchor), label: 'This message', sheet: true });
+}
+async function copyOutcomeLink(id) {
+  const link = new URL(routeHref({ kind: 'workspace', id }), location.href).href;
+  if (await copyText(link)) status('Link copied.');
+  else status(`The link could not be copied here. Select it to copy it: ${link}`);
 }
 // The link names the message's own topic, which the Reader may show on a page of another.
 async function copyLink(topicId, messageId, say) {
@@ -2916,6 +2978,7 @@ async function initialize() {
   // A message's link names the message to open once the page is up (docs/links.md).
   const anchored = route.kind === 'topic' ? route.message ?? null : null;
   const anchoredLand = route.land === true;
+  const menuArrival = route.act ? { ...route } : null;
   // So does a Notebook page's link, the page and perhaps its revision.
   const pageAnchor = route.kind === 'topic' && route.page ? { id: route.page, revision: route.revision ?? null } : null;
   // A topic's unread count opens it at its oldest unread message (item 613).
@@ -2924,7 +2987,7 @@ async function initialize() {
     const linked = checkedView(await api.view('source', { source_ref: { kind: 'message', id: anchored } }, { readClass: 'foreground' }), bootstrap.instance_id);
     topicId = linked.topic_id;
   }
-  if (anchored || pageAnchor || atUnread) { route = { kind: 'topic', id: topicId }; shell.rename(route, location.hash); }
+  if (anchored || pageAnchor || atUnread) { route = { kind: 'topic', id: topicId }; if (!menuArrival) shell.rename(route, location.hash); }
   if (route.kind === 'conversation') {
     const found = validate(await api.view('conversation', { workspace_id: route.id })).conversation;
     if (!found) throw Error('This outcome has no conversation yet.');
@@ -3203,7 +3266,13 @@ async function initialize() {
   $('reader-menu').onclick = () => openReaderMenu();
   $('reader-star').onclick = () => starFromReader();
   $('reader-aside').onclick = () => asideFromReader();
+  const cancelDossierHold = menuDoor($('messages'), target => {
+    if (target.closest('a, input, textarea, select, [contenteditable]')) return null;
+    const section = target.closest('.reply-stack');
+    return section?.parentElement === $('messages') && (target === section || target.closest('.stack-head, .stack-frame-head, .stack-toggle')) ? section : null;
+  }, (target, at) => messageContextMenu({ target, clientX: at?.x ?? 0, clientY: at?.y ?? 0, preventDefault() {} }));
   $('messages').addEventListener('contextmenu', messageContextMenu);
+  window.addEventListener('pagehide', cancelDossierHold);
   $('start-from-message').setAttribute('aria-expanded', 'false');
   $('start-from-message').onclick = () => openStartLine();
   $('read-mark').onclick = () => run(() => {
@@ -3313,7 +3382,7 @@ async function initialize() {
   if (atUnread) run(() => firstReading.then(landOnUnread));
   freshness.invalidate('dossier_move', 0); freshness.request();
   if (anchored) {
-    if (anchoredLand) run(async () => { await landOnMessage(anchored); if (notebookReturning()) notebookSheetOf().resume(); });
+    if (anchoredLand) run(async () => { const arrival = menuArrival && consumeMenuRoute(menuArrival); if (!await landOnMessage(anchored)) return; if (retired || topicUnavailable) return; if (arrival) openDossierMenuRoute(anchored, menuArrival); else if (notebookReturning()) notebookSheetOf().resume(); });
     else {
       const entry = entries($('messages')).find(child => child.dataset.id === anchored), card = entry && cardIn(entry);
       run(async () => { await openSource({ kind: 'message', id: anchored }, card || $('main'), null, 'reply', null, { land: true }); if (notebookReturning()) notebookSheetOf().resume(); });
@@ -3330,7 +3399,8 @@ async function initialize() {
 function readyRails(workspaceId, handles = {}) {
   shell.ready({ api, bootstrap, live, workspaceId, workspaceTitle: $('workspace-name').textContent, topic: null, pageMax: pageMax(),
     view: async (name, args, readClass = 'background') => checkedView(await api.view(name, args, { readClass }), bootstrap.instance_id),
-    open: (target, title, from) => openDestination(target, title, from), notebookCreate: notebookCreator, ...handles });
+    open: (target, title, from) => openDestination(target, title, from), notebookCreate: notebookCreator, dossierMenu: railDossierMenu, dossierMenuChoice: runDossierMenuChoice,
+    markMenu: markFromRail, menuChanged: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, ...handles });
 }
 // A notification opens its readable topic, or Outcomes when access is gone.
 function openSent(item) {
@@ -3556,7 +3626,7 @@ async function openDestination(target, title, from = null) {
   const landing = ++landingSerial;
   // A link to a message in the open topic opens it in the Reader, here.
   if (target.kind === 'topic' && target.message && topic && views && target.id === topic.id) {
-    if (target.land === true) return run(() => landOnMessage(target.message, landing));
+    if (target.land === true) return run(async () => { if (!await landOnMessage(target.message, landing)) return false; if (landing === landingSerial && target.act) return openDossierMenuRoute(target.message, target); });
     // Ordinary message links keep their Reader-opening behavior.
     // From the Reader's own text, closing gives the focus to what opened the Reader.
     const opener = from?.closest?.('dialog') ? registry.current?.opener : from;
@@ -3704,7 +3774,14 @@ async function initializeOutcomePage(route) {
     // "← Outcomes" says its words when that line names fewer outcomes than its light counts.
     initializeOutcomeNavigation(route.id,items=>scope.alsoNamed(paintAlsoWaiting($('also-waiting'),items,route.id,(id,title)=>openDestination({kind:'workspace',id},title))));
     // Where it stands, read with the page and again on every commit.
-    const onboarding=new OnboardingPrompt({button:$('outcome-menu'),reader:bootstrap.actor,read:pipelineView});
+    const outcomeChoices = workspace => outcomeMenuItems(workspace, { actor: bootstrap.actor, act: key => {
+      if (key === 'new-topic') return $('new-topic').click();
+      if (key === 'copy') return run(() => copyOutcomeLink(workspace.id));
+      if (key === 'up' || key === 'down') return panes.outline?.moveOutcome(workspace.id, key === 'up' ? -1 : 1);
+      if (key === 'onboarding') return onboarding.open();
+      return run(() => targets.endAs(key));
+    } });
+    const onboarding=new OnboardingPrompt({button:$('outcome-menu'),reader:bootstrap.actor,read:pipelineView,menuItems:outcomeChoices});
     let standingSerial=0;
     const stands=async workspace=>{
       const serial=++standingSerial,retry=()=>run(reload);
@@ -3764,7 +3841,14 @@ async function initializeOutcomePage(route) {
       return reads.every(read=>read.value!==false);
     });
     await reload();
-    readyRails(route.id, { workspaceTitle: here.title, currentWorkspaceTitle: () => here.title, readable: () => permitted, outcomeTopics: values => topicCards.paint(values), centerPane: topicCards });
+    readyRails(route.id, { workspaceTitle: here.title, currentWorkspaceTitle: () => here.title, readable: () => permitted, outcomeTopics: values => topicCards.paint(values), centerPane: topicCards, outcomeMenuChoice: key => {
+      const choice = outcomeChoices(onboarding.workspace).find(choice => choice.key === key);
+      if (!choice) return false; choice.act(); return true;
+    } });
+    if (route.act === 'onboarding' && consumeMenuRoute(route)) {
+      if (permitted && onboarding.workspace?.owner_id === bootstrap.actor) onboarding.open();
+      else status('The onboarding prompt is no longer available to you.');
+    }
     if(shown)run(async()=>(shown.revision?pageHere.open(await pageSource(shown),$('main')):openNotebook(shown.id,{opener:$('main')})));
     else if(notebookReturning())notebookSheetOf().resume();
   }

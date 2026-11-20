@@ -1,3 +1,4 @@
+import { OutlineMenus } from './outline-menus.mjs';
 // The outline on the left of a topic (pipeline
 // item 272; docs/rails.md): every outcome, folded but for the one being read,
 // so what is new anywhere shows at a glance. An outcome's row is its light,
@@ -151,6 +152,7 @@ export class OutlineRail {
     this.pages = null; this.opened = new Opened(); this.failed = false; this.listRead = false; this.run = 0; this.watch = null; this.watched = null;
     this.reload = reloader(() => this.load());
     this.build();
+    this.menus = new OutlineMenus(this);
     this.dossiers = new OutlineDossiers(this);
     this.notebookStars = new OutlineDossiers(this,{pages:true});
     // ↑ above its first row (New outcome, the heading's pencil) and ↓ below its last go on in the side rail: up to the
@@ -208,6 +210,7 @@ export class OutlineRail {
   // before is forgotten: until the run is up, the outline knows no outcome as
   // the one being read, and nothing the run before read is drawn.
   begin(feed) {
+    this.menus.reset();
     this.host.hidden = !feed;
     this.run += 1; this.handles = null;
     this.dossiers.begin();
@@ -517,6 +520,10 @@ export class OutlineRail {
     this.save(scope, next, shown);
     const order = next.filter(each => visible.has(each));
     this.tree.say(movedWords(title, order.indexOf(id) + 1, order.length));
+  }
+  moveOutcome(id, delta) {
+    const outcome = this.outcomes.get(id);
+    if (outcome && this.handles) this.reorder({ level: 1, outcome, el: outcome.name }, delta);
   }
   // ⌘Z: the last move put back.
   undo() {
