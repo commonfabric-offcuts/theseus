@@ -32,6 +32,7 @@ from .work import work_by_topic
 from .standing_conversation import partial
 from .whispers import actor_kind, private_source_refused
 from .message_edit import held_refusal, is_held, words as message_words, withheld
+from .removal import value as removal_value
 
 
 # A stage entry keeps its past: once left, nothing in it changes, but (version 30) the derived end _settle wrote on a
@@ -962,7 +963,9 @@ class Pipeline:
         row = db.execute("SELECT m.author_id,m.sent_ms," + message_words("m", plain=True) + " AS body,m.reply_to,t.workspace_id FROM messages m JOIN topics t ON t.id=m.topic_id "
                          "WHERE m.id=?", (message["id"],)).fetchone()
         words = dict(SECTION_WORDS, **_loads(pipeline["section_words"], {}), dropped="Dropped")
-        if row["workspace_id"] != workspace["id"]:
+        if removal_value(db, message["id"]) is not None:
+            why = "it was retracted"
+        elif row["workspace_id"] != workspace["id"]:
             why = "it is in another outcome"
         elif row["author_id"] != owner:
             why = "it is %s's message" % row["author_id"]
@@ -1316,7 +1319,7 @@ class Pipeline:
                           "substr(CAST(r.title AS BLOB),1,257) AS page_prefix FROM pipeline_item_sources s "
                           "LEFT JOIN messages m ON m.id=s.message_id LEFT JOIN topics t ON t.id=m.topic_id "
                           "LEFT JOIN memory_items i ON i.id=s.memory_item_id LEFT JOIN memory_revisions r ON r.item_id=i.id AND r.revision=i.current_revision "
-                          "WHERE s.workspace_id=? AND s.number=? ORDER BY s.position", (workspace_id, number)).fetchall()
+                          "WHERE s.workspace_id=? AND s.number=? AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=s.message_id AND r.kind='unsent') ORDER BY s.position", (workspace_id, number)).fetchall()
         shown, topics, messages, notes, yours = [], [], 0, 0, 0
         for row in rows:
             if row["message_id"] is not None:
@@ -1352,6 +1355,9 @@ class Pipeline:
         if not value:
             return None
         if "message_id" in value:
+            from .removal import unsent
+            if unsent(db, value['message_id']):
+                return None
             try:
                 row = self._message_access(db, actor, value["message_id"])
             except Refusal:
