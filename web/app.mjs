@@ -3607,6 +3607,7 @@ async function loadConversation() {
   try {
     const answer = checkedView(await api.view('conversation', { workspace_id: here.workspaceId }, { readClass: 'background' }), bootstrap.instance_id);
     here.view = answer.conversation;
+    if (reader?.sessions) { reader.paintRecipients(); reader.paintChoice(); }
     if (inline?.editor && here.conversation) answeredBy(inline, $('inline-composer').querySelector('.audience'), inline.editor.draft.addressees, true);
     paintMessageContext();
     return true;
