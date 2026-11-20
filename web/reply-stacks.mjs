@@ -260,8 +260,9 @@ export function lineSeq(list, seq) {
 // made before then (item 426): until the page has read Core's place again,
 // the dossier is drawn where it sits wherever Core holds it (pending), and
 // that read's place is the one it holds to (stack-feed.mjs, landedBelow).
-// One among an open dossier's earlier messages opens their row and shows
-// whole (item 476), for this visit; its first message only when full is asked.
+// An earlier reply opens their row and shows whole for this visit (476).
+// A full landing on the first message shows it whole without opening the
+// earlier replies (875); an already-opened row stays as the reader left it.
 // open: the dossier is drawn open whatever its level, as a topic's unread
 // count lands on a message (item 613), so the row is expanded as far as it.
 export function reveal(entry, { full = false, open = false } = {}) {
@@ -284,7 +285,7 @@ export function reveal(entry, { full = false, open = false } = {}) {
   if (section && open && state.levels.get(id) !== 'open') { state.levels.set(id, 'open'); changed = true; }
   const stack = state.stacks.find(each => each.id === own || each.replies.some(item => item.id === own));
   if (section && stack && (own !== id || full) && earlierOf(stack, levelOf(state, id), { held: state.held.get(id) ?? null }).some(item => item.id === own)) {
-    if (!state.earlier.has(id)) { state.earlier.add(id); changed = true; }
+    if (own !== id && !state.earlier.has(id)) { state.earlier.add(id); changed = true; }
     if (!state.whole.has(own)) { state.whole.add(own); changed = true; }
   }
   if (state.folded.has(own)) { state.peeked.add(own); changed = true; }
@@ -741,7 +742,7 @@ function paintStack(section, stack, byId, context) {
   const before = drawnOpen ? earlierOf(stack, level, { held: state.held.get(stack.id) ?? null }) : [], earlierOpen = state.earlier.has(stack.id), headBefore = before.includes(stack.head);
   if (drawnOpen) state.held.set(stack.id, [stack.head, ...stack.replies][before.length].id);
   const held = state.held.get(stack.id) ?? null;
-  const starred = Boolean(stack.head.acts?.starred), open = !single && level === 'open' && (!headBefore || earlierOpen);
+  const starred = Boolean(stack.head.acts?.starred), open = !single && level === 'open' && (!headBefore || earlierOpen || state.whole.has(stack.id));
   // The title bar shows the reader's star when any message of the dossier is starred by them (item 635).
   const marked = state.starred.has(dossierOf(stack));
   // Item 550: a stack gathered under a first message the page has not loaded
@@ -767,7 +768,7 @@ function paintStack(section, stack, byId, context) {
   p.toggle.onclick = () => { setLevel(state, stack, LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length]); state.on?.folded?.(stack, level); state.again(); };
   const desired = [];
   const newReply = item => { if (unread(item)) state.unreadKept.add(item.id); return state.unreadKept.has(item.id); };
-  const rows = single ? [] : rowsOf(stack, { level, kept, unread, newReply, peeked: item => state.peeked.has(item.id), earlier: earlierOpen, held });
+  const rows = single ? [] : rowsOf(stack, { level, kept, unread, newReply, peeked: item => state.peeked.has(item.id), earlier: earlierOpen, held, headWhole: open });
   // A reply drawn starred stays as an unread one does: its star taken off, here or elsewhere, never folds it away under the reader (item 413).
   for (const row of rows) if (row.kind === 'reply' && row.item.acts?.starred === true) state.kept.add(row.item.id);
   for (const row of rows) {
