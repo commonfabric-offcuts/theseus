@@ -32,6 +32,9 @@ from . import web_build
 MEDIA_CHUNK = 65536
 MEDIA_HEADER_BYTES = 8192
 MEDIA_RATE = 256 * 1024
+HTML_SANDBOX_CSP = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+                    "connect-src 'none'; frame-src about:; form-action 'none'; base-uri 'none'; "
+                    "sandbox allow-scripts; frame-ancestors 'self'")
 COMMAND_FIELDS = {"v", "instance_id", "operation_id", "kind", "target", "expected", "args"}
 
 
@@ -708,6 +711,27 @@ class Handler(BaseHTTPRequestHandler):
     def _get(self):
         self._host()
         path = urlsplit(self.path).path
+        if path == "/interactive-html":
+            # Public and content-free: no session interpolation or Store call.
+            script = self.server.build.files.get("interactive-html-bootstrap.js")
+            if script is None:
+                raise RequestError(404, "NOT_FOUND", "No such public asset.")
+            body = (b'<!doctype html><meta charset="utf-8"><title>Interactive HTML</title>'
+                    b'<style>html,body{margin:0;width:100%;height:100%;overflow:hidden}</style>'
+                    b'<body><script>' + script + b'</script>')
+            self.close_connection = True
+            self.send_response(200)
+            for name, value in (("Content-Type", "text/html; charset=utf-8"),
+                                ("Content-Length", str(len(body))), ("Cache-Control", "no-store"),
+                                ("X-Content-Type-Options", "nosniff"), ("Referrer-Policy", "no-referrer"),
+                                # The local ReportingObserver needs a named report group;
+                                # no Reporting-Endpoints URL is exposed or contacted.
+                                ("Connection-Allowlist", "(); report-to=html-sandbox"), ("X-DNS-Prefetch-Control", "off"),
+                                ("Connection", "close"), ("Content-Security-Policy", HTML_SANDBOX_CSP)):
+                self.send_header(name, value)
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path == "/api/bootstrap":
             self._authorize()
             capabilities = self._store_call(lambda store: store.view(self.server.actor, "capabilities", {}))
