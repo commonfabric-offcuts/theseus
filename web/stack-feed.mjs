@@ -1039,7 +1039,11 @@ export class StackFeed {
     if (action === 'fold-message') return this.foldKey(event, entry, toggle);
     event.preventDefault();
     if (action === 'undo') return this.undo();
-    if (action === 'move-up' || action === 'move-down') return this.move(entry, action.slice(5));
+    if (action === 'move-down') {
+      const found = stackOf(this.list, entry);
+      return found ? this.setAside(found.stack, true) : false;
+    }
+    if (action === 'move-up') return this.move(entry, 'up');
     if (action === 'join-up' || action === 'join-down') return this.join(entry, action.slice(5));
   }
   // x on a message (item 388): folds it to its row, as Fold in ⋯ does

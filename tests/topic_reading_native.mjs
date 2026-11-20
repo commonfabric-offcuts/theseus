@@ -17,6 +17,7 @@
 // (121), in the topic's composer and in the Reader; and what the keys select
 // coming fully into view, and a click or a tap scrolling nothing (379).
 import assert from 'node:assert/strict';
+import { dossierCommandDown705Checks } from './dossier_command_down_705_native.mjs';
 import { coverChecks783 } from './cover_783_native.mjs';
 import { reading785Checks } from './reading_785_native.mjs';
 import { createHash } from 'node:crypto';
@@ -3788,6 +3789,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.close();
   });
 
+  await dossierCommandDown705Checks({ check, until, view, control, facts, shot, observations, engine },
+    { seed, open, centre, press, card, words, into });
   await reading785Checks({ check, until, view, control, shot, facts, observations, engine }, { seed, open, tap });
   await coverChecks783({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, centre, press, closeReader, readerOn });
