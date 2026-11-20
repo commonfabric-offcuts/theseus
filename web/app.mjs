@@ -24,6 +24,7 @@ import { OutcomeChanges, outcomeReads } from './outcome-refresh.mjs';
 import { DossierHeads } from './stack-order.mjs';
 import { TopicViews, followEdits } from './topic-views.mjs';
 import { visitNewFor, paintVisitNew } from './visit-new.mjs';
+import { resolveTopicLink, topicLinkNeedsLookup } from './topic-link-route.mjs';
 import { readTopicList, TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, topicTarget, paintChanged, changedSince } from './topic-navigation.mjs';
 import { OnboardingPrompt } from './onboarding.mjs';
 import { OutcomeRail } from './outcomes.mjs';
@@ -138,7 +139,7 @@ let settings = null, topicTools = null, topicRail, topicNavigation, outcomeRail,
 let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null, pageReads = null;
 let pipelineRow = null, pipelineAddFor = null;
 // An outcome page's Notebook page shown in place (page-here.mjs), and that outcome.
-let pageHere = null, pageHereOutcome = null;
+let pageHere = null, pageHereOutcome = null, linkOwnerScope = null, linkNotice = null;
 // The topic page's light, message bar, thumbs-up and go-ahead answers (message-menu.mjs, reactions.mjs).
 let menu = null, reactions = null, cardScroll = null, withdrawals = null, removals = null, resolutions = null, questionStates = null;
 // Whether the open topic's outcome is reached, as its light last said: its
@@ -3281,6 +3282,8 @@ async function initialize() {
     if (list === 'addressable-names') refreshMembers();
   });
   let route = parseRoute(new URL(location.href));
+  if (topicLinkNeedsLookup(route)) route = await resolveTopicLink(route, { read: (name, args) => api.view(name, args, { readClass: 'foreground' }), instanceId: bootstrap.instance_id });
+  if (!route) return;
   if (!['topic', 'conversation'].includes(route.kind)) {
     await initializeOutcomePage(route);
     if(['root','workspace'].includes(route.kind))run(()=>initializeUnfinished(route));
@@ -4036,6 +4039,22 @@ nameTopicsWith(topicName);
 // from: the link pressed, which takes the focus back when the Reader closes.
 async function openDestination(target, title, from = null) {
   const landing = ++landingSerial;
+  if (topicLinkNeedsLookup(target)) {
+    topicNavigation?.cancelPending();
+    try {
+      target = await resolveTopicLink(target, { read: (name, args) => api.view(name, args, { readClass: 'foreground' }),
+        instanceId: bootstrap.instance_id, workspaceId: topic?.workspace_id ?? shell.handles?.workspaceId ?? pageHereOutcome,
+        ownerScope: linkOwnerScope?.(), current: () => !retired && landing === landingSerial });
+      if (!target || retired || landing !== landingSerial) return false;
+    } catch (error) {
+      if (!retired && landing === landingSerial) {
+        if (notebookSheet?.showing && notebookSheet.current) notebookSheet.current.say(error.message, 'attention');
+        else if (linkNotice) linkNotice(error.message);
+        else stayedWhy(error);
+      }
+      return false;
+    }
+  }
   // A link to a message in the open topic opens it in the Reader, here.
   if (target.kind === 'topic' && target.message && topic && views && target.id === topic.id) {
     if (target.land === true) return run(async () => { if (!await landOnMessage(target.message, landing)) return false; if (landing === landingSerial && target.act) return openDossierMenuRoute(target.message, target); });
@@ -4368,6 +4387,8 @@ async function initializeDeckPage(route) {
   };
   const page=new NotebookPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
     item:route.id,read:pipelineView,send:pipelineSend,place,askIn:notebookAskIn,api,bootstrap,mode:route.card?'cards':route.view,viewPreference:notebookViewsOf()});
+  linkOwnerScope = () => page.source?.owner_scope;
+  linkNotice = words => page.say(words, 'attention');
   shell.guard(()=>Boolean(page.writing?.journalPending||page.writing?.journalError));
   $('deck-page').hidden=false;
   await followCommits(()=>page.load())();

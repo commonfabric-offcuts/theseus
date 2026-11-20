@@ -204,12 +204,19 @@ function topicLink(doc, words, link, place) {
 }
 
 // The link its author wrote as [words](target), as { href, route, written },
-// or null when the target is not an http or https address written out. It
+// or null when the target is neither a full http(s) address nor a query
+// naming one of this instance’s existing places. It
 // goes to the target as written, whole: none of a bare address's endings
 // apply, and a link to a topic keeps its words rather than showing the
 // topic's name. Where such a link starts and ends is Markdown's to say
 // (message-format.mjs).
 export function writtenLink(target, { meter } = {}) {
+  if (target.startsWith('?')) {
+    tick(meter, target.length);
+    let url; try { url = new URL(target, globalThis.location.origin + '/'); } catch { return null; }
+    const route = ownPlace(url);
+    return route ? { href: url.href, route, written: true } : null;
+  }
   const url = /^https?:\/\//i.test(target) ? webAddress(target, meter) : null;
   return url ? { href: url.href, route: ownPlace(url), written: true } : null;
 }
