@@ -15,9 +15,10 @@ page or lost access. Unknown feed-dependent choices are offered and checked
 again by the destination owner.
 
 Complete/Archive/Bring back use `sendEnd`; outcome ordering uses the existing
-outline owner. Dossier star/fold/archive commands use the same revision
-envelope as `StackFeed`, and marks use `Marks`. They run against the named
-record without navigating. Unconfirmed command results retain their exact
+outline owner. In the loaded topic, dossier choices use the feed's own menu
+owner, preserving its display, undo and peek state. Elsewhere, star/fold use
+the same revision envelope as `StackFeed`, and marks use `Marks`. These run
+against the named record without navigating. Unconfirmed results retain their exact
 operation for another explicit choice; refusals are said in words. Commands
 cannot report success into a different page run.
 
@@ -32,8 +33,10 @@ Rename and other UI-only choices travel through the ordinary guarded route
 with an address act; Onboarding does the same on an outcome. Arrival clears
 the act with `history.replaceState` before opening UI and rechecks current
 eligibility. Reload cannot replay it. An address never runs a record-changing
-command: feed-dependent move/join/undo choices instead open the exact dossier
+command: feed-dependent Archive/Bring back and move/join/undo choices open the exact dossier
 menu with that choice focused. Only a new explicit press changes the record.
+The feed alone determines Archive's boundary from the newest dossier message
+it has seen; a named root read cannot supply that boundary.
 Outcome navigation remains a document load; no continuation store is added.
 
 Checks are in `tests/ui_siderail_menus_863.test.mjs`,

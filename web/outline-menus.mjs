@@ -103,13 +103,13 @@ export class OutlineMenus {
       const copied = await this.copy(link);
       if (this.outline.handles === handles) this.notice(copied ? 'Link copied.' : `The link could not be copied here. Select it to copy it: ${link}`); return;
     }
-    if (['star', 'fold', 'aside'].includes(key)) {
+    if (handles.route?.kind === 'topic' && handles.route.id === item.topic_id && handles.dossierMenuChoice &&
+        await handles.dossierMenuChoice(item.id, key, label, row) !== false) return;
+    if (['star', 'fold'].includes(key)) {
       await this.commands.message(handles, item, key, label);
       if (this.outline.handles === handles) { this.notice('Saved.'); handles.menuChanged?.(); this.outline.dossiers.refresh(); } return;
     }
     if (key === 'Mark read' || key === 'Mark unread') return handles.markMenu(item, key === 'Mark unread');
-    if (handles.route?.kind === 'topic' && handles.route.id === item.topic_id && handles.dossierMenuChoice &&
-        await handles.dossierMenuChoice(item.id, key, label, row) !== false) return;
     return this.outline.open({ kind: 'topic', id: item.topic_id, message: item.id, land: true, ...dossierMenuRoute(key) }, row.title);
   }
   async perform(handles, act) {
