@@ -14,6 +14,7 @@ import { routeHref, parseRoute, TopicNavigation } from '../web/topic-navigation.
 import { consumeMenuRoute, dossierMenuRoute } from '../web/menu-route.mjs';
 import { OutlineDossiers } from '../web/outline-dossiers.mjs';
 import { unstarDossier } from '../web/dossier-unstar.mjs';
+import { stackMenuItems } from '../web/stack-menu-items.mjs';
 
 const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
 const contextCode = app.slice(app.indexOf('function messageContextMenu(event)'), app.indexOf('// The link names the message'));
@@ -187,12 +188,71 @@ test('863 id commands stay in place, fence the named record and keep one request
   assert.equal(requests[0].kind, 'message.star'); assert.deepEqual(requests[0].target, { message_id: 'm-target' });
   assert.equal(requests[0].expected.star_revision, 3); assert.equal(requests[0].args.starred, false);
   assert.equal(f.doc.defaultView.location.href, href);
-  assert.throws(() => commands.message(f.handles, f.item, 'aside', 'Archive'), /unstar it to archive it/);
+  assert.equal(await commands.message(f.handles, f.item, 'aside', 'Archive'), false, 'archive belongs to the feed');
   await commands.end(f.handles, { id: 'w-target', version: 7 }, 'archived');
   assert.equal(requests[2].kind, 'outcome.end_set'); assert.deepEqual(requests[2].target, { workspace_id: 'w-target' });
   assert.equal(requests[2].expected.workspace_revision, 7);
   assert.equal(f.doc.defaultView.location.href, href);
 });
+
+for (const label of ['Archive', 'Bring back']) {
+  test('863 a stale unstarred rail row hands ' + label + ' to the focused feed menu without sending', async () => {
+    const f = railFixture(), requests = [], destinations = [], arrivals = [];
+    // The row was listed while starred, but another device removed its star.
+    f.item.acts.starred = false; f.item.stack_position.starred = [];
+    f.item.stack_position.below = label === 'Bring back';
+    f.handles.api = { command: async request => { requests.push(request); return { status: 'committed' }; } };
+    f.outline.dossiers = { refresh() {} };
+    f.handles.dossierMenu = (item, _row, choose) => stackMenuItems({ position: true, below: item.stack_position.below },
+      key => choose(key, label)).first;
+    f.outline.open = target => destinations.push(target);
+    await f.menus.open(f.row); await f.shown[0].items.find(choice => choice.label === label).act();
+    assert.deepEqual(requests, [], 'a root-only read cannot supply the archive boundary');
+    assert.deepEqual(destinations, [{ kind: 'topic', id: 't-target', message: 'm-target', land: true, act: 'menu', choice: 'aside' }]);
+    const url = new URL(routeHref(destinations[0]), 'https://fixture.invalid/'), route = parseRoute(url);
+    assert.equal(consumeMenuRoute(route, { location: url, history: { replaceState(_state, _title, href) { url.href = href; } } }), true);
+    const anchor = f.list.querySelector('[data-id]');
+    const choices = [{ key: 'aside', label, act: () => requests.push('fresh press') }];
+    const at = app.indexOf('function openDossierMenuRoute('), end = app.indexOf('// A right-click on a message', at);
+    const env = { views: { messages: new Map([[f.item.id, f.item]]) }, messageEntries: new Map([[f.item.id, anchor]]), cardIn,
+      retired: false, topicUnavailable: false, topic: { id: f.item.topic_id }, status: assert.fail,
+      messageMenuItems: () => choices, openMessageMenu: options => arrivals.push(options) };
+    const open = new Function(...Object.keys(env), app.slice(at, end) + '; return openDossierMenuRoute;')(...Object.values(env));
+    open(f.item.id, route);
+    assert.equal(arrivals[0].focusKey, 'aside'); assert.equal(arrivals[0].items[0].label, label);
+    assert.deepEqual(requests, [], 'arrival focuses the choice without executing it');
+    arrivals[0].items[0].act(); assert.deepEqual(requests, ['fresh press']);
+  });
+}
+
+for (const [key, label, expected] of [
+  ['star', 'Star for me', [['message.star', { starred: true }]]],
+  ['fold', 'Fold', [['message.fold', { folded: true }]]],
+  ['aside', 'Archive', [['stack.aside', { through: 23 }]]],
+]) {
+  test('863 loaded-topic ' + label + ' uses the feed owner, including its local state', async () => {
+    const f = railFixture(), root = f.messages.get('m-root'), acts = [], undos = [], arranged = [], bypassed = [];
+    const position = { root_id: root.id, starred: [], below: false, through: null, at: { messages: 0, acts: 0 } };
+    Object.assign(root, { acts: { starred: false, folded: false }, stack_position: position });
+    const state = f.add([{ id: 'm-reply', seq: 23, topic_id: root.topic_id, reply_to: root.id, stack_position: position }]);
+    state.peeked.add(root.id);
+    const feed = Object.assign(Object.create(StackFeed.prototype), { list: f.list, undos,
+      messages: () => f.messages, actsOf: id => f.messages.get(id).acts ?? {},
+      act: (kind, _item, args) => acts.push([kind, args]), cardAct: (_id, act) => act(),
+      arrange: () => arranged.push(true), remember: undo => undos.push(undo), say() {}, focusOn() {} });
+    f.handles.route = { kind: 'topic', id: root.topic_id };
+    f.handles.api = { command: async request => { bypassed.push(request); return { status: 'committed' }; } };
+    f.outline.dossiers = { refresh() {} };
+    const at = app.indexOf('function runDossierMenuChoice('), end = app.indexOf('function openDossierMenuRoute(', at);
+    const env = { retired: false, topicUnavailable: false, views: { messages: f.messages }, topic: { id: root.topic_id },
+      messageMenuItems: (item, _more, anchor) => feed.menuItems(item, { at: anchor }).first };
+    f.handles.dossierMenuChoice = new Function(...Object.keys(env), app.slice(at, end) + '; return runDossierMenuChoice;')(...Object.values(env));
+    await f.menus.dossierAction(root, key, label, f.row, f.handles);
+    assert.deepEqual(bypassed, [], 'loaded actions must not bypass the feed');
+    assert.deepEqual(acts, expected); assert.equal(arranged.length, 1);
+    if (key !== 'star') { assert.equal(undos.length, 1); assert.equal(state.peeked.has(root.id), false); }
+  });
+}
 
 test('863 a stale page cannot send an id command and a recorded refusal is visible', async () => {
   const f = railFixture(); let sent = 0;

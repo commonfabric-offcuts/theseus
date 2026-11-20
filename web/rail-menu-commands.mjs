@@ -1,4 +1,4 @@
-import { stackActEnvelope, HELD_BY_STAR } from './stack-feed.mjs';
+import { stackActEnvelope } from './stack-feed.mjs';
 import { sendEnd } from './outcome-end.mjs';
 import { unstarDossier } from './dossier-unstar.mjs';
 
@@ -39,10 +39,7 @@ export class RailMenuCommands {
     let kind, args;
     if (key === 'star') { kind = 'message.star'; args = { starred: label !== 'Unstar' }; }
     else if (key === 'fold') { kind = 'message.fold'; args = { folded: label !== 'Unfold' }; }
-    else if (key === 'aside') {
-      if (label === 'Archive' && item.stack_position?.starred?.length) throw Error(HELD_BY_STAR);
-      kind = 'stack.aside'; args = { through: label === 'Bring back' ? null : Math.max(item.seq, item.stack_position?.at?.messages ?? 0) };
-    } else return false;
+    else return false;
     const sent = this.send(handles, stackActEnvelope({ instanceId: handles.bootstrap.instance_id,
       authority: handles.bootstrap.authority, kind, item, args }));
     if (key === 'star' && args.starred && item.acts?.folded) return sent.then(() => {
