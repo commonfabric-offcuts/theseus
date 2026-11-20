@@ -2,7 +2,8 @@ import { OutlineMenus } from './outline-menus.mjs';
 // The outline on the left of a topic (pipeline
 // items 272 and 902; docs/rails.md): every outcome, with its own remembered
 // disclosure. A chevron opens or folds its topics in place; its name opens
-// its home. Arriving opens the current outcome without folding another.
+// its home. Desktop arrival keeps manual disclosure; phone arrival opens its
+// current outcome without folding another.
 // On a phone a folded outcome
 // first opens its topics without moving (item 654); folded, it carries
 // the count of everything new inside it; open, its own row counts its
@@ -280,8 +281,10 @@ export class OutlineRail {
       this.pages = new WorkspacePages(bootstrap.instance_id);
       this.newOutcomeLine();
     }
-    // Every arrival opens its own outcome and leaves every other choice alone.
-    if (this.here) this.opened.set(this.here, true);
+    // Desktop navigation reads other tabs' choices without changing one.
+    // Phone arrival retains654's open-current behavior.
+    if (this.here && this.phone) this.opened.set(this.here, true);
+    else this.opened.read();
     this.unlisten?.();
     this.unlisten = handles.outcomeChanges ? handles.outcomeChanges.listen(dirty => this.reload(dirty))
       : handles.live?.listen(event => {
@@ -303,9 +306,10 @@ export class OutlineRail {
   shown() { if (this.handles && this.doc.visibilityState === 'visible') this.reload(); }
   topicChanged() { this.paint(); }
   get here() { return this.handles?.workspaceId ?? null; }
+  get phone() { return this.doc.defaultView.matchMedia('(max-width: 760px)').matches; }
   currentTopicIn(id) { const topic = this.handles?.route?.kind === 'topic' ? this.handles.topic : null; return topic && topic.workspace_id === id ? topic : null; }
   // Whether an outcome shows its topics (Opened): the one being read, a peek, or every one a chip shows.
-  isOpen(id) { return this.opened.isOpen(id, this.here, this.filter); }
+  isOpen(id) { return this.opened.isOpen(id, this.phone ? this.here : null, this.filter); }
   // The outline is how a person moves, so it reads in the foreground lane, as
   // the side rail did. A run's own reads go through that run (handles.view):
   // one still waiting for its turn when the run goes is never sent.

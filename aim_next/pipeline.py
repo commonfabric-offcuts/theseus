@@ -1063,6 +1063,7 @@ class Pipeline:
         topic = self._topic(db, actor, args.get("topic_id"))
         if topic["workspace_id"] != workspace["id"]:
             raise Refusal("TOPIC_OUTSIDE_OUTCOME", "The topic doing the work belongs to this outcome")
+        self._piece_topic(db, topic)
         if db.execute("SELECT 1 FROM pipeline_pieces p JOIN pipeline_stage_entries e ON e.piece_id=p.id AND e.left_ms IS NULL WHERE p.topic_id=?",
                       (topic["id"],)).fetchone():
             raise Refusal("TOPIC_HAS_PIECE", "That topic already holds a piece of work under way")
@@ -1099,6 +1100,42 @@ class Pipeline:
             raise Refusal("NOT_FOUND", "No such piece of work")
         workspace = self._workspace(db, actor, row["workspace_id"])
         return row, workspace
+
+    def _piece_topic(self, db, topic):
+        """The opening actor is retained as creator, even when dossiers move (632)."""
+        if topic["kind"] != "topic":
+            raise Refusal("PIECE_TOPIC_REQUIRED", "Create a separate topic for this piece of work")
+        if self._actor(db, topic["creator_id"])["kind"] != "agent":
+            raise Refusal("PERSON_TOPIC", "A person's topic stays theirs; create a separate topic for the piece")
+
+    def _command_pipeline_piece_move(self, db, actor, envelope):
+        target, args = envelope["target"], envelope["args"]
+        if set(target) != {"piece_id"} or set(args) != {"topic_id"} or "piece_revision" not in envelope["expected"]:
+            raise Refusal("INVALID_ARGUMENT", "Name the piece, its new topic and the piece revision read")
+        piece, workspace = self._piece(db, actor, target["piece_id"])
+        self._steerer(db, actor, workspace["id"])
+        self._pipeline_on(db, workspace["id"])
+        self._check_revision(envelope, "piece_revision", piece["version"])
+        if piece["kind"] != "piece":
+            raise Refusal("INVALID_ARGUMENT", "Move a piece of work, not a release")
+        topic = self._topic(db, actor, args["topic_id"])
+        if topic["workspace_id"] != workspace["id"]:
+            raise Refusal("TOPIC_OUTSIDE_OUTCOME", "The topic doing the work belongs to this outcome")
+        self._piece_topic(db, topic)
+        before = piece["topic_id"]
+        if before == topic["id"]:
+            return {"piece_id": piece["id"], "from_topic_id": before, "topic_id": before,
+                    "piece_revision": piece["version"], "pipeline_revision": self._pipeline_row(db, workspace["id"])["version"]}, []
+        if db.execute("SELECT 1 FROM pipeline_pieces p JOIN pipeline_stage_entries e ON e.piece_id=p.id AND e.left_ms IS NULL "
+                      "WHERE p.topic_id=? AND p.id!=?", (topic["id"], piece["id"])).fetchone():
+            raise Refusal("TOPIC_HAS_PIECE", "That topic already holds a piece of work under way")
+        db.execute("UPDATE pipeline_pieces SET topic_id=?,version=version+1 WHERE id=?", (topic["id"], piece["id"]))
+        self._settle(db, workspace["id"])
+        self._build_moved(db, {before, topic["id"]})
+        version = self._bump(db, workspace["id"], piece["id"])
+        return {"piece_id": piece["id"], "from_topic_id": before, "topic_id": topic["id"],
+                "piece_revision": db.execute("SELECT version FROM pipeline_pieces WHERE id=?", (piece["id"],)).fetchone()[0],
+                "pipeline_revision": version}, []
 
     def _command_pipeline_stage_enter(self, db, actor, envelope):
         target, args = envelope["target"], envelope["args"]

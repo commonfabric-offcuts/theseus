@@ -2536,7 +2536,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks ⌘↑ ⌘↓ move a stack"
+    "case": "stacks reorder up by key and down by menu"
    }
   },
   {
@@ -2551,7 +2551,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks ⌘↑ ⌘↓ move a stack"
+    "case": "stacks reorder up by key and down by menu"
    }
   },
   {
@@ -2566,7 +2566,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks ⌘↑ ⌘↓ move a stack"
+    "case": "stacks reorder up by key and down by menu"
    }
   },
   {
@@ -2581,7 +2581,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks ⌘↑ ⌘↓ move a stack"
+    "case": "stacks reorder up by key and down by menu"
    }
   },
   {
@@ -2596,7 +2596,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks ⌘↑ ⌘↓ move a stack"
+    "case": "stacks reorder up by key and down by menu"
    }
   },
   {

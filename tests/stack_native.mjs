@@ -1714,6 +1714,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
     await choose(p, device, label);
   };
+  //705 assigns Command Down to archive. These existing reorder controls
+  // retain every position/Undo assertion through the actual menu action.
+  const reorderDown = async p => {
+    const id = await focusedOn(p); assert.ok(id, 'reorder menu has its actual focused message');
+    await menuOf(p, 'laptop', id); await moveItem(p, 'laptop', 'Move its stack down');
+  };
   const moreOpened = async (p, device) => {
     if (await p.evaluate(`document.querySelector('#messages .stack-more')?.getAttribute('aria-expanded')!=='true'`)) { await centre(p, '#messages .stack-more'); await press(p, device, '#messages .stack-more'); }
   };
@@ -4142,7 +4148,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await becomes(order, [ids.b, ids.a], 'the reader moves B above A');
         await until(async () => typeof (await actsOf(topic, ids.b))?.placed === 'number', 'Core records the native move');
         assert.equal((await actsOf(topic, ids.b, other))?.placed ?? null, null, 'the move belongs only to the reader');
-        if (input === 'laptop') await p.key('ArrowDown', 4);
+        if (input === 'laptop') await reorderDown(p);
         else { await menuAgain(p, input, ids['b-live'], ids.a1); await moveItem(p, input, 'Move its stack down'); }
         await becomes(order, [ids.a, ids.b], 'the reader can move B down too');
         if (input === 'laptop') await p.key('z', 4);
@@ -4220,7 +4226,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     });
   }
 
-  await check('reading stacks ⌘↑ ⌘↓ move a stack where the reader wants it, kept after a reload; a new reply does not lift it; another reader keeps newest on top', async () => {
+  await check('reading stacks reorder up by key and down by menu where the reader wants it, kept after a reload; a new reply does not lift it; another reader keeps newest on top', async () => {
     const topic = 'stack-move';
     const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.' }],
       ['b', { sender: other, addressees: [facts.actor], body: 'Stack B.' }],
@@ -4245,8 +4251,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const all = { ...ids, late, d: fresh };
     await becomes(() => stacks(p, all), ['d', 'c', 'a', 'b'], 'the late reply leaves A where it was placed; the new stack lands on top');
     await keyTo(p, ids.a);
-    await p.key('ArrowDown', 4);
-    await becomes(() => stacks(p, all), ['d', 'c', 'b', 'a'], '⌘↓ moves it down');
+    await reorderDown(p);
+    await becomes(() => stacks(p, all), ['d', 'c', 'b', 'a'], 'Move its stack down moves it down');
     await p.key('z', 4);
     await becomes(() => stacks(p, all), ['d', 'c', 'a', 'b'], '⌘Z puts it back');
     await p.point(`#messages .reply-stack[data-stack="${ids.a}"] .stack-unplace`);
@@ -4319,13 +4325,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.release(early);
     await until(async () => (await look(p, ids, 'c')).name === 'Named by them', 'the early answer is read: it names C');
     assert.deepEqual(await stacks(p, ids), ['c', 'a', 'b'], 'the early answer puts back none of the move it was read before');
-    await p.key('ArrowDown', 4);
-    await becomes(() => stacks(p, ids), ['c', 'b', 'a'], '⌘↓ after it moves A back below B');
+    await reorderDown(p);
+    await becomes(() => stacks(p, ids), ['c', 'b', 'a'], 'Move its stack down after it moves A back below B');
     await until(async () => (await actsOf(topic, ids.a))?.place_revision === 2, 'Core takes the move sent after the early answer, fenced on the revision it confirmed');
     assert.deepEqual(p.errors, []);
     p.intercept(null);
     for (const entry of p.held.splice(0)) await p.release(entry);
-    // ⌘↑ ⌘↓ ⌘Z at once, Core's answers held and let go one at a time, with the page drawn again between them.
+    // up key, down menu, Undo at once, Core's answers held and let go one at a time, with the page drawn again between them.
     // Each act reaches Core as it is sent; only its answer is held, and the next is sent once it lands. The page
     // first has the answer to every move it sent before: Core holding a move says nothing of its answer reaching
     // the page, and one reaching it later would be held here as the first of these.
@@ -4333,8 +4339,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(() => sentMoves().length === 2 && sentMoves().every(sent => p.network.some(e => e.method === 'Network.loadingFinished' && e.params.requestId === sent.params.requestId)),
       'the page has the answers to the two moves sent before');
     p.intercept(payload => places(payload));
-    await p.key('ArrowUp', 4); await p.key('ArrowDown', 4); await p.key('z', 4);
-    await becomes(() => stacks(p, ids), ['c', 'a', 'b'], '⌘↑ ⌘↓ ⌘Z: A above B, as ⌘Z left it');
+    await p.key('ArrowUp', 4); await reorderDown(p); await p.key('z', 4);
+    await becomes(() => stacks(p, ids), ['c', 'a', 'b'], 'up key, down menu, Undo: A above B, as ⌘Z left it');
     for (const step of [1, 2]) {
       const answer = await until(() => heldOf(places)[0], `act ${step} reached Core`);
       const said = await p.response(answer.event);
@@ -4749,7 +4755,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
   });
 
-  await check('reading stacks ⌘↑ ⌘↓ move a stack past the one shown beside it, stepping over a dossier below More', async () => {
+  await check('reading stacks reorder up by key and down by menu past the one shown beside it, stepping over a dossier below More', async () => {
     const topic = 'stack-aside-moves';
     const { ids, p, shown } = await besideMore(topic);
     await keyTo(p, ids.a);
@@ -4759,8 +4765,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await keyTo(p, ids.c);
     await p.key('ArrowUp', 4);
     await becomes(shown, ['c', 'a', 'More'], '⌘↑ moves C back above A');
-    await p.key('ArrowDown', 4);
-    await becomes(shown, ['a', 'c', 'More'], '⌘↓ moves C below A, still above More');
+    await reorderDown(p);
+    await becomes(shown, ['a', 'c', 'More'], 'Move its stack down moves C below A, still above More');
     await press(p, 'laptop', '#messages .stack-more');
     await becomes(shown, ['a', 'c', 'More', 'b'], 'More shows B');
     await keyTo(p, ids.b);
@@ -4839,8 +4845,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await closeReader(p, 'laptop');
     // C moved to the bottom, past the opening: ↓ from it goes nowhere, not on to X below More.
     await keyTo(p, ids.c);
-    await p.key('ArrowDown', 4); await becomes(() => shown(p), ['a', 'c', 'opening', 'More'], '⌘↓ moves C below A');
-    await p.key('ArrowDown', 4); await becomes(() => shown(p), ['a', 'opening', 'c', 'More'], '⌘↓ again moves C below the opening');
+    await reorderDown(p); await becomes(() => shown(p), ['a', 'c', 'opening', 'More'], 'Move its stack down moves C below A');
+    await reorderDown(p); await becomes(() => shown(p), ['a', 'opening', 'c', 'More'], 'Move its stack down again moves C below the opening');
     await openReader(p, 'laptop', ids.c, 'Stack C.');
     await readerEnd(p, 'laptop', 'below', '↓ from C, the bottom of what shows, goes nowhere: not on to X below More');
     await closeReader(p, 'laptop');
@@ -8145,7 +8151,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.folded) + ' .reaction-count.mine')}))`), 'the page learns the thumbs-up: the card counts it as yours');
     // ⌘↓ is sent only once the unfold's answer has been taken in and the stacks drawn from it: acts go one at a time.
     await keyTo(p, ids.folded);
-    await p.key('ArrowDown', 4);
+    await reorderDown(p);
     await p.evaluate(`window.letAnswers('message.fold')`);
     await until(async () => await kindsSent(p, 'stack.place') === 1, 'the unfold\'s answer is taken in, and the move after it sent');
     await twoFrames(p);

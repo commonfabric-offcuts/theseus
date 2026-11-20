@@ -100,10 +100,11 @@ rail.
 - **Open and folded.** Each outcome keeps its own open or folded state in
   localStorage on this device, scoped to the reader and instance. Each change
   merges with the latest stored choices, so another tab's navigation cannot
-  overwrite a fold. Before an all command, a new outcome starts folded except
-  for the one being read. Arriving anywhere
-  opens the current outcome without folding another; an explicit fold of
-  the current outcome lasts until the next arrival. The existing keys open
+  overwrite a fold. On desktop, a name click opens the outcome without changing
+  its disclosure, and navigation or reload preserves every manual choice (944).
+  Before an all command, outcomes without a saved choice start folded there.
+  A phone retains its open-current arrival and first-tap expansion behavior.
+  The existing keys open
   or fold one outcome or all outcomes (⌘→ ⌘←, → ←, ⇧⌘→ ⇧⌘←;
   docs/interaction.md, "Keys across the panes"). Open-all and Fold-all keep a
   default for outcomes loaded later too; later individual choices are kept
