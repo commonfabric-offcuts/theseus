@@ -2,7 +2,8 @@ import { feedControl, feedFence } from './feed-fence-copy.mjs';
 // The topic page's light and message bar (docs/interaction.md).
 //
 // The message under the pointer lights, as a passage lights in the Reader,
-// and a small bar of buttons sits over its top corner: 👍 (read and
+// and a small bar of buttons sits over its top corner: Edit for an editable
+// own message, then 👍 (read and
 // understood), ✅ and 🚫 when the message asks the reader for a go-ahead,
 // Reply's glyph (the shared reply bar opens inside that message's card),
 // Show full message while the card cuts the message off, Fold (Unfold
@@ -98,15 +99,16 @@ export class MessageMenu {
   // thumb(item, on) and answer(item, yes|no): the person's acts.
   // expand(card, item): reads a cut-off card on in place. more(item, button):
   // the message's ⋯ menu, opened from the bar's ⋯ (openMessageMenu).
+  // editChoice(item, card): the shared menu's current Edit descriptor, or none.
   // copy(item, words): puts the message's words on the clipboard, or the
   // words given, a passage of them (⌘C, copies). quote(id, card, chosen): the
   // Reader on it with chosen ({start, end, text} of its words) quoted.
   // clipped(card, item): whether the card cuts its message off; showFull(card, item): shows it whole there, as ⋯'s
   // Show full message does. foldState(item): 'fold', 'unfold' or null (none); fold(item): folds or unfolds it.
   // navigate(): materialize waiting arrivals at a confirmed feed-key destination.
-  constructor({ host, item, viewer, kind, reply, inlineReply = reply, quote = (id, card) => reply(id, card), thumb, answer, more, expand = () => {}, copy = () => {},
+  constructor({ host, item, viewer, kind, reply, inlineReply = reply, quote = (id, card) => reply(id, card), thumb, answer, more, editChoice = () => null, expand = () => {}, copy = () => {},
     clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {}, acted = () => {}, navigate = () => {}, mac = onMac(), doc = document }) {
-    Object.assign(this, { host, item, viewer, kind, reply, inlineReply, quote, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, acted, navigate, mac, doc });
+    Object.assign(this, { host, item, viewer, kind, reply, inlineReply, quote, thumb, answer, more, editChoice, expand, copy, clipped, showFull, foldState, fold, acted, navigate, mac, doc });
     this.lit = null; this.touch = pressOf(doc).touch; this.before = null;
     // The bar's buttons it has put behind its ⋯ for want of room in the window (fit).
     this.behind = new Set();
@@ -249,6 +251,7 @@ export class MessageMenu {
       return button;
     };
     this.buttons = {
+      edit: make('edit', '', 'Edit'),
       thumb: make('thumb', '👍', 'Thumbs-up: read and understood'),
       yes: make('yes', '✅', 'Go ahead'),
       no: make('no', '🚫', "Don't"),
@@ -328,6 +331,10 @@ export class MessageMenu {
     // viewport to measure until the original card becomes visible.
     const card = cardIn(this.lit);
     if (item.preview && !card.hidden) this.expand(card, item);
+    // The shared menu owns whether Edit exists. Borrow its pencil only when
+    // offered; the bar and activation do not maintain a second permissions rule.
+    this.buttons.edit.hidden = !this.editChoice?.(item, card);
+    if (!this.buttons.edit.hidden) showGlyph(this.buttons.edit, 'pencil', this.doc);
     const { thumb, yes, no } = this.buttons;
     thumb.hidden = !mayThumb(item, this.viewer);
     thumb.setAttribute('aria-pressed', String(thumbed(item, this.viewer)));
@@ -415,8 +422,14 @@ export class MessageMenu {
   act(name) {
     const entry = this.lit, item = entry && this.item(entry.dataset.id);
     if (!item) return;
-    this.acted(item.id);
     const card = cardIn(entry);
+    if (name === 'edit') {
+      const choice = this.editChoice?.(item, card);
+      if (!choice) return;
+      this.acted(item.id);
+      return choice.act();
+    }
+    this.acted(item.id);
     if (name === 'reply') return this.inlineReply(item.id, card);
     if (name === 'more') return this.more(item, this.buttons.more);
     if (name === 'full') return Promise.resolve(this.showFull(card, item)).then(() => { if (this.lit === entry) this.paintBar(); });
