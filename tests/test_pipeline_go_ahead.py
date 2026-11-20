@@ -237,6 +237,7 @@ class GoAheadCase(PipelineCase):
     def test_a_go_ahead_naming_each_item_the_owner_placed_lets_the_coordinator_set_its_piece_aside(self):
         # Items 170 and 183 together: setting a piece aside moves every item of it, so the coordinator's go-ahead names
         # each item of the piece the owner placed; it lifts OWNER_PLACED, never the owner's word on a gated stage.
+        self.build_topic("piece-topic")
         self.stages({"stage_id": "build", "name": "Build", "rounds": "together"},
                     {"stage_id": "reads", "name": "Owner reads it", "gate": {"owner": True, "words": "Owner says when"}})
         theirs = self.add("The owner's", section="now", actor="owner", size="small")
@@ -245,11 +246,8 @@ class GoAheadCase(PipelineCase):
         self.tick()
         start = lambda numbers, topic: self.committed(self.command(
             "pipeline.piece_start", {"numbers": numbers, "topic_id": topic, "stage_id": "build"}, {"workspace_id": "w1"}, actor="agent-a"))["piece_id"]
-        piece = start([mine, theirs], "t1")
-        self.committed(self.save_draft("t2-draft", {"kind": "new_topic", "id": "opening-t2", "workspace_id": "w1"}, "t2", "Opening",
-                                       opening={"workspace_id": "w1", "title": "Another", "participants": ["agent-a"]}))
-        self.committed(self.prepare("t2-draft", "t2", submission="t2-sub", send_op="open-t2"))
-        self.committed(self.command("topic.create_and_send", {"submission_id": "t2-sub"}, target={"topic_id": "t2"}, op="open-t2"))
+        piece = start([mine, theirs], "piece-topic")
+        self.build_topic("t2", "Another")
         gated = start([held], "t2")
         ask = self.say("Would you read it?", actor="agent-a", topic="t2", addressees=["owner"], intent="ask")
         self.committed(self.command("pipeline.stage_enter", {"stage_id": "reads", "left_outcome": "approved", "ask_message_id": ask},
@@ -284,9 +282,10 @@ class GoAheadCase(PipelineCase):
                          [("dropped", "Set aside: " + note, "agent-a")])
 
     def test_a_set_aside_on_a_word_records_no_go_ahead_where_the_owner_placed_nothing_or_moved_it_themselves(self):
+        self.build_topic("piece-topic")
         self.stages({"stage_id": "build", "name": "Build", "rounds": "together"})
         numbers = [self.add("Now %d" % n, section="now", actor="agent-a", size="small") for n in (1, 2)]
-        start = lambda number: self.committed(self.command("pipeline.piece_start", {"numbers": [number], "topic_id": "t1", "stage_id": "build"},
+        start = lambda number: self.committed(self.command("pipeline.piece_start", {"numbers": [number], "topic_id": "piece-topic", "stage_id": "build"},
                                                             {"workspace_id": "w1"}, actor="agent-a"))
         for number, actor in zip(numbers, ("agent-a", "owner")):
             with self.subTest(actor=actor):

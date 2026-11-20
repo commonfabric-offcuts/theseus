@@ -200,7 +200,7 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| stages OUTCOME [--set FILE] | add OUTCOME --title T [--size S] [--section S] [--group G] [--from m-…] [--note TEXT] TEXT|- "
          "| add-source OUTCOME N (--from m-… | --page ID | --note TEXT) | move OUTCOME N (--above M | --below M | --to SECTION [--note TEXT] | --undo EVENT) "
          "| piece OUTCOME N,M --topic TOPIC --stage S | enter-stage PIECE STAGE [--round N] [--left approved|sent-back|passed|held] "
-         "| stage-note PIECE TEXT | combine OUTCOME --release N --pieces P,Q --topic TOPIC [--ask MSG] | finish PIECE "
+         "| move-piece PIECE --topic TOPIC --expected N | stage-note PIECE TEXT | combine OUTCOME --release N --pieces P,Q --topic TOPIC [--ask MSG] | finish PIECE "
          "| checks OUTCOME [--readings] [--live COMMIT] | target OUTCOME [--origin NOTE] [--ask m-… | --ask-in TOPIC --ask-wait JSON] TEXT|- | target-settle OUTCOME REVISION accepted|declined "
          "| check-define OUTCOME FILE | check-report OUTCOME FILE | accept-worse OUTCOME CHECK RUN TEXT|- "
          "| problem OUTCOME --kind defect|design-miss (--from m-… | --note TEXT) TEXT|- | problem-cover OUTCOME PROBLEM [--item N] [--test T] TEXT|- "
