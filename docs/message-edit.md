@@ -432,6 +432,25 @@ agent's edit, at the revision the person had read.
 
 ## The web page
 
+On a lit own editable message, the first bar button is Edit's pencil, borrowed
+from the shared glyph owner. It invokes that same menu's Edit and follows its
+availability. Tab reaches it before the other bar buttons (item 890).
+
+A desktop body click still opens Reader immediately. A second click, including
+on the Reader overlay, enters that Reader's existing Edit when its click detail
+is at least two **or** it arrives within **400 ms**, and it is within **6 px**
+of the first. A slow second click with reset detail leaves the Reader open;
+Edit remains one menu choice away. The first click on a link, image or control,
+keyboard activation, other authors and noneditable messages keep their actions.
+A qualifying second click is consumed wherever it lands, including on a Reader
+control or its reply field. It uses the Reader More menu's own Edit descriptor:
+Save, Cancel, Use saved and Escape return focus to that More button while
+keeping the Reader open (review12296). A stale pencil whose Edit is no longer
+offered disappears when its press rechecks availability. A drag keeps its
+selection; an accepted own-body second click replaces word selection. Phone
+taps keep their existing behavior. A stale or unsuccessful opening never
+edits another Reader.
+
 Edit is in the ⋯ menu of a message the person wrote themselves, on a feed card,
 a row of a reply stack (dossier) and in the Reader. Only people see it, and not
 when the topic can no longer be read or its outcome is reached (the outcome's

@@ -11,7 +11,7 @@ import { stackMenuItems } from '../web/stack-menu-items.mjs';
 
 const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
 const menuCode = app.slice(app.indexOf('function messageMenuItems(item,'), app.indexOf('function moveDossier(id,'));
-const readerCode = app.slice(app.indexOf('function openReaderMenu()'), app.indexOf('// Who may edit which message here'));
+const readerCode = app.slice(app.indexOf('function readerMessageMenuItems(p)'), app.indexOf('// Who may edit which message here'));
 const labels = items => items.map(item => item.label);
 const later = () => { let resolve; const promise = new Promise(done => resolve = done); return { promise, resolve }; };
 function fixture({ phone = false, below = false, starred = false, folded = false, unavailable = false } = {}) {
