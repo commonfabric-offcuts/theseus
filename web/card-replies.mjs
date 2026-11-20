@@ -3,6 +3,8 @@ import { revealCardReply } from './compose-bar.mjs';
 import { holdsWriting } from './editor.mjs';
 import { uploadWork } from './upload-state.mjs';
 
+const keepsReply = editor => holdsWriting(editor.draft) || uploadWork(editor) || editor.submissions?.length;
+
 // Keep the writing's bottom where it was when its image strip changes. Ignore
 // an offscreen reply: an upload finishing there must not pull the page away.
 export function holdReplyImages(field, delta, win = window) {
@@ -34,31 +36,37 @@ export class CardReplies {
     this.rows = new Map(); this.closed = new Set(); this.loads = new Map(); this.queue = new Map(); this.loading = 0;
   }
   surface(p) { return this.rows.get(p?.source?.source_ref?.id)?.ui; }
-  dispose() { for (const row of this.rows.values()) row.observer?.disconnect(); this.queue.clear(); }
+  retire(id) {
+    const row = this.rows.get(id); if (!row) return;
+    row.observer?.disconnect(); row.ui.dispose(); row.ui.root.remove(); this.rows.delete(id);
+  }
+  dispose() { this.disposed = true; for (const id of this.rows.keys()) this.retire(id); this.queue.clear(); }
   shown(id) { const row = this.rows.get(id); return Boolean(row && !row.ui.root.hidden && row.card.isConnected); }
   sync(items, cardOf) {
+    if (this.disposed) return;
     for (const item of items) {
       if (!this.rows.has(item.id) && (!item.yours?.reply || this.closed.has(item.id))) continue;
       const row = this.rows.get(item.id), card = cardOf(item.id);
       if (row && card && row.card !== card) { row.card = card; card.append(row.ui.root); }
       if (item.yours?.reply && card && !this.rows.has(item.id) && !this.closed.has(item.id)) this.queue.set(item.id, card);
     }
+    for (const [id, row] of this.rows) if (!row.card.isConnected) this.retire(id);
     this.drain();
   }
   drain() {
-    while (this.loading < 2 && this.queue.size && !this.registry.disposed) {
+    while (this.loading < 2 && this.queue.size && !this.disposed && !this.registry.disposed) {
       const [id, card] = this.queue.entries().next().value; this.queue.delete(id); ++this.loading;
       this.open(id, card, { focus: false }).catch(error => this.say(error)).finally(() => { --this.loading; this.drain(); });
     }
   }
   async open(id, card, { focus = true } = {}) {
-    if (!card?.isConnected || this.registry.disposed) return null;
+    if (!card?.isConnected || this.disposed || this.registry.disposed) return null;
     let row = this.rows.get(id);
     if (!row) {
       let load = this.loads.get(id);
       if (!load) {
         load = this.registry.initializeCard({ kind: 'message', id }, this.topic()).then(async p => {
-          if (!p || !card.isConnected || this.registry.disposed) return null;
+          if (!p || !card.isConnected || this.disposed || this.registry.disposed) return null;
           this.offer(p);
           const root = this.template.cloneNode(true), prefix = `reply-${id}-`;
           const ids = new Map([...root.querySelectorAll('[id]')].map(el => [el.id, el.id.replace(/^inline-/, prefix)]));
@@ -104,13 +112,12 @@ export class CardReplies {
       }
       row = await load;
     }
-    if (!row || this.registry.disposed) return null;
+    if (!row || this.disposed || this.registry.disposed) return null;
     if (focus) {
       row.ui.opening = Symbol();
       for (const [otherId, other] of this.rows) {
         const editor = other.p.editors.reply;
-        if (other !== row && other.clickOpened && !other.p.hidden && !holdsWriting(editor.draft) &&
-            !uploadWork(editor) && !editor.submissions?.length) await this.close(otherId, { focus: false });
+        if (other !== row && other.clickOpened && !other.p.hidden && !keepsReply(editor)) await this.close(otherId, { focus: false });
       }
       row.clickOpened = true;
     }
@@ -131,6 +138,12 @@ export class CardReplies {
     this.closed.add(id); row.ui.bar.close(); row.ui.root.hidden = true; row.card.removeAttribute('data-card-reply');
     row.ui.root.removeAttribute('data-tall'); row.ui.$('taller-field').setAttribute('aria-pressed', 'false'); row.paintHeight?.();
     if (focus) row.card.focus({ preventScroll: true }); this.changed(); return true;
+  }
+  readerClosed(p) {
+    // Registry.close has already kept this Reader's registered writing. Only
+    // its empty click-opened card changes visibility; writing stays visible.
+    const id = p?.source?.source_ref?.id, row = this.rows.get(id);
+    if (p?.fromCardReply && row?.clickOpened && row.p.editors.reply === p.editors.reply && !keepsReply(p.editors.reply)) this.hide(id, row, { focus: false });
   }
   sent(id, p, result) {
     const row = this.rows.get(id);
