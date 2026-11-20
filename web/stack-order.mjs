@@ -274,12 +274,15 @@ const messages = n => (n === 1 ? 'message' : 'messages');
 // words, fresh }, one row for its earlier messages (earlierOf, the first
 // message among them, held as earlierOf takes it), and their replies are
 // drawn only once it is opened (earlier), each { kind: 'reply', item,
-// earlier: true } in its place.
-export function rowsOf(stack, { level = 'folded', kept, unread = () => false, newReply = unread, peeked = () => false, earlier = false, held = null } = {}) {
+// earlier: true } in its place. A first message shown whole by a landing
+// (headWhole, 875) is omitted from that row's count and press target, without
+// moving the held boundary for the newest seven.
+export function rowsOf(stack, { level = 'folded', kept, unread = () => false, newReply = unread, peeked = () => false, earlier = false, held = null, headWhole = false } = {}) {
   const options = { level, kept, newReply, earlier, held }, context = contextParents(stack, options);
   const rows = [], all = stack.replies, show = item => shown(stack, item, { ...options, context });
   const earliest = earlierOf(stack, level, { held });
-  if (earliest.length && !earlier) rows.push({ kind: 'earlier', items: earliest, words: `${earliest.length} earlier ${messages(earliest.length)}`, fresh: earliest.filter(unread).length });
+  const hiddenEarlier = headWhole ? earliest.filter(item => item !== stack.head) : earliest;
+  if (hiddenEarlier.length && !earlier) rows.push({ kind: 'earlier', items: hiddenEarlier, words: `${hiddenEarlier.length} earlier ${(headWhole ? replies : messages)(hiddenEarlier.length)}`, fresh: hiddenEarlier.filter(unread).length });
   let run = [], before = true;
   const flush = () => {
     if (!run.length) return;

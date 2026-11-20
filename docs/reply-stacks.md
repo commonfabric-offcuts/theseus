@@ -380,7 +380,12 @@ their acts.
   there it opens in the Reader as any card does. Under Only new, which shows
   such a message as a whole card with no row in it, a press on it acts as on
   any card. A link, search or Starred
-  that lands on an earlier message opens the row and shows that message whole.
+  that lands on an earlier reply opens the row and shows that message whole.
+  A full landing on the first message instead shows it whole and keeps the
+  earlier row closed (875, [first-message-landing-875.md](first-message-landing-875.md)).
+  The row then counts only hidden replies: fourteen messages give the first
+  message, the newest seven and "6 earlier replies". A row already opened
+  stays open; pressing a closed row keeps its existing behavior.
   A topic's unread count lands the same way (item 613, docs/attention.md, "In
   the browser"), and draws the dossier open first whatever its level
   (`reveal`'s `open`), so a message waiting deep in a dossier at latest and
