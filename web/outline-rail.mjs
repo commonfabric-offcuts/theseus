@@ -270,7 +270,7 @@ export class OutlineRail {
         if (this.doc.visibilityState !== 'visible') return;
         if (event.state === 'live') this.reload();
         else if (event.kind === 'commit') {
-          const dirty = new Set(['topics', 'stars', 'pages']);
+          const dirty = new Set(['topics', 'stars', 'pages', 'counts']);
           if (this.outcomesKey === null || this.outcomesKey !== this.readOutcomesKey) dirty.add('outcomes');
           this.reload(dirty);
         }
@@ -312,6 +312,10 @@ export class OutlineRail {
       // The outcome being read is in the outline, however far down the list it is.
       while (wants('outcomes') && mine() && !this.pages.loaded.has(here) && this.pages.next !== null) this.pages.accept(await read({ limit: max, cursor: this.pages.next }), this.pages.next);
       if (!mine()) return true;
+      // A list read already carries these facts. Ordinary commits refresh only
+      // the loaded rows' counts, leaving list metadata and paging untouched.
+      if (!wants('outcomes') && wants('counts')) await this.loadCounts(view, handles, mine);
+      if (!mine()) return true;
       if (wants('outcomes')) this.readOutcomesKey = outcomesKey;
       this.failed = false;
     }
@@ -335,6 +339,31 @@ export class OutlineRail {
     const stars = [...(wants('topics') || wants('stars') ? await this.dossiers.refresh(starReads) : []),
       ...(wants('topics') || wants('pages') ? await this.notebookStars.refresh(starReads) : [])];
     return firstRead !== false && settled.every(read => read !== false) && stars.every(Boolean);
+  }
+  async loadCounts(view, handles, mine) {
+    const ids = [...this.pages.loaded.keys()], updates = [];
+    const max = handles.bootstrap.limits?.page_max ?? PAGE;
+    const validCount = value => Number.isSafeInteger(value) && value >= 0;
+    const fields = ['id', 'unread', 'addressed', 'build', 'cover_waiting', 'light'];
+    const fail = () => { throw Error('The outcome counts could not be confirmed. Retry outcomes.'); };
+    for (let start = 0; start < ids.length; start += max) {
+      const wanted = new Set(ids.slice(start, start + max));
+      const answer = await view('workspace_counts', { workspace_ids: [...wanted] });
+      if (!mine()) return;
+      if (answer?.instance_id !== handles.bootstrap.instance_id || !Array.isArray(answer.items) || answer.items.length !== wanted.size) fail();
+      for (const item of answer.items) {
+        if (!item || Object.keys(item).length !== fields.length || !fields.every(key => Object.hasOwn(item, key)) || !wanted.delete(item.id) ||
+          ![item.unread, item.addressed, item.cover_waiting, item.build?.unread, item.build?.addressed].every(validCount) ||
+          !(item.light === null || typeof item.light === 'object' && typeof item.light.light === 'string')) fail();
+        updates.push(structuredClone(item));
+      }
+    }
+    if (!mine()) return;
+    // All chunks succeeded. A failed or retired read publishes no partial sum.
+    for (const item of updates) {
+      const current = this.pages.loaded.get(item.id);
+      if (current) this.pages.loaded.set(item.id, { ...current, ...item });
+    }
   }
   async loadMore() {
     const handles = this.handles, run = this.run;

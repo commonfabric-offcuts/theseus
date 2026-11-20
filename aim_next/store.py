@@ -699,6 +699,41 @@ class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, 
         return _bounded_page({"instance_id": self.instance_id, "reached_count": reached_count, "ended_count": ended_count,
                               "order": self._outline_order(db, actor)}, rows, limit, item, "id")
 
+    def _view_workspace_counts(self, db, actor, args):
+        """Count/light refresh for already loaded outline rows; no list traversal."""
+        ids = args.get("workspace_ids")
+        if not isinstance(ids, list) or not 1 <= len(ids) <= LIMITS["page_max"]:
+            raise Refusal("INVALID_ARGUMENT", "Name one bounded page of outcome IDs")
+        for ident in ids:
+            _identifier(ident, "workspace_id")
+        if len(set(ids)) != len(ids):
+            raise Refusal("INVALID_ARGUMENT", "Outcome IDs must be distinct")
+        # Project only identity/authority fields; even long outcome titles are
+        # outside this read. Check every membership before computing any count.
+        rows = db.execute("SELECT w.id,w.owner_id,w.coordinator_id,w.version FROM workspaces w "
+                          "WHERE w.id IN (%s) AND (w.owner_id=? OR EXISTS ("
+                          "SELECT 1 FROM workspace_members m WHERE m.workspace_id=w.id AND m.actor_id=?))"
+                          % ",".join("?" * len(ids)), tuple(ids) + (actor, actor)).fetchall()
+        if len(rows) != len(ids):
+            raise Refusal("FORBIDDEN", "No permission for this workspace")
+        counts = self._unread(db, actor, workspaces=ids)
+        totals = {}
+        for unread, addressed, workspace_id in counts.values():
+            total = totals.setdefault(workspace_id, [0, 0])
+            total[0] += unread
+            total[1] += addressed
+        items = []
+        for row in rows:
+            unread, addressed = totals.get(row["id"], (0, 0))
+            items.append({"id": row["id"], "unread": unread, "addressed": addressed,
+                          "build": self._build_counts(counts, self._open_build_topics(db, row["id"])),
+                          "cover_waiting": sum(self._cover_wait_counts(db, actor, workspace_id=row["id"]).values()),
+                          "light": self._outcome_stands(db, actor, row)["light"]})
+        answer = {"instance_id": self.instance_id, "items": items}
+        if len(_json(answer).encode("utf-8")) > LIMITS["summary_utf8_bytes"]:
+            raise Refusal("VIEW_TOO_LARGE", "The named counts cannot fit in one bounded response")
+        return answer
+
     def _view_actors(self, db, actor, args):
         """The instance's enabled people and agents, in id order: who can be added to a team or topic.
 
