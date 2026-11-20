@@ -1,3 +1,5 @@
+import { CardTextProjection } from './notebook-card-text.mjs';
+import { stripDetails } from './card-details.mjs';
 import { pageLink } from './links.mjs';
 import { openMessageMenu, copyText } from './message-menu.mjs';
 import { DeckPage, UNDO_LIMIT } from './deck-page.mjs';
@@ -39,7 +41,9 @@ export class NotebookPage extends DeckPage {
     const label=this.node('label','sr-only','Notebook writing'); label.htmlFor=textId;
     this.text=this.node('textarea','notebook-text'); this.text.id=textId; this.text.rows=18; this.text.setAttribute('autocomplete','off');
     this.textInput=new WritingInput({field:this.text});
-    this.text.addEventListener('input',()=>this.textEdited());
+    this.textProjection=new CardTextProjection();
+    this.text.addEventListener('beforeinput',event=>{this.textChange={start:this.text.selectionStart,end:this.text.selectionEnd,inputType:event.inputType};});
+    this.text.addEventListener('input',event=>{this.textChange={...this.textChange,inputType:event.inputType};this.textEdited();});
     this.text.addEventListener('focus',()=>{if(this.writing)this.writing.active=true;});
     this.text.addEventListener('blur',()=>{if(this.writing)this.writing.active=false;});
     this.textPanel.append(label,this.text);
@@ -158,13 +162,15 @@ export class NotebookPage extends DeckPage {
       this.picked=Math.min(this.picked,Math.max(0,this.deck.cards.length-1));
       this.paint();
     }
-    if(this.text.value!==w.value.body&&(!w.conflict || drawKept)) {
+    const textBody=stripDetails(w.value.body);
+    if(this.text.value!==textBody&&(!w.conflict || drawKept)) {
       const focused=this.doc.activeElement===this.text,selection=[this.text.selectionStart,this.text.selectionEnd];
-      this.text.value=w.value.body;
+      this.text.value=textBody;
       if(focused)this.text.setSelectionRange(...selection.map(at=>Math.min(at,this.text.value.length)));
     }
     if(!w.conflict || drawKept) {
-      this.textSeen={revision:w.base.revision,content:{...structuredClone(w.value),body:this.text.value}};
+      (this.textProjection??=new CardTextProjection()).show(w.value.body);
+      this.textSeen={revision:w.base.revision,content:structuredClone(w.value)};
       this.cardsSeen={revision:w.base.revision,content:{...structuredClone(w.value),body:this.previewBody()}};
     }
     this.text.readOnly=this.readOnly;
@@ -181,7 +187,10 @@ export class NotebookPage extends DeckPage {
   }
   textEdited() {
     if(!this.writing || !this.textSeen)return;
-    const body=this.text.value,seen=this.textSeen;
+    const seen=this.textSeen;
+    const projection=this.textProjection??=new CardTextProjection();
+    if(projection.body===undefined)projection.show(seen.content.body);
+    const body=projection.edit(this.text.value,this.textChange);this.textChange=null;
     const edited=this.writing.edit({body},seen,'text');
     this.textSeen={revision:seen.revision,content:{...seen.content,body}};
     if(edited)this.keepNamed(body);
@@ -302,7 +311,7 @@ export class NotebookPage extends DeckPage {
       this.conflictRevision=changed.revision;
       const title=this.node('h2','','This page changed elsewhere');
       const words=this.node('p','','Your writing is kept. Review the saved version before choosing which to continue with.');
-      const latest=this.node('pre','notebook-latest',changed.content.title+'\n\n'+changed.content.body);
+      const latest=this.node('pre','notebook-latest',changed.content.title+'\n\n'+stripDetails(changed.content.body));
       const mine=this.node('button','','Save my version'), saved=this.node('button','','Use saved version');
       mine.type=saved.type='button';
       mine.onclick=async()=>{await w.resolve(true);this.sync();};

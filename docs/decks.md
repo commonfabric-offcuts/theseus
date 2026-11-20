@@ -80,6 +80,51 @@ reads and writes it with `note read` and `note revise` like any other page.
 
 The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 
+## A card’s menu, identity and color (item 867)
+
+Each card has a named **This card** ⋯ beside its speech bubbles, shown when
+picked, under the pointer, or focused; it is always shown at phone widths.
+The shared menu offers Copy text, Copy link, Delete and Set color. Copy text
+copies the card’s literal title and rendered words as plain text, without
+children, image/reply bookkeeping or the hidden line. Delete takes that card
+and its children, and one Undo brings them back. Set color uses the agents’
+eight-color palette plus No color; the tint appears in Cards and in the dock.
+Copy text uses overlapping-sheet ink and Set color a palette outline; Copy
+link and Delete reuse the shared chain and cross glyphs.
+Opening the menu and Copy text do not allocate an identity or rewrite a page.
+
+The first Copy link or Set color allocates a random `c-` plus 32 lowercase
+hexadecimal digits, kept in the card’s Notebook words in one line:
+`<!-- theseus-card: {"id":"c-11111111111111111111111111111111","aliases":[],"color":"blue"} -->`.
+`id` may be null for an alias-only card; `aliases` is a list of unique card
+ids distinct from the primary, and `color` is a palette name or null. At least
+one identity is present. Only a complete valid line outside a code fence is
+metadata. Invalid markers and examples inside fences remain ordinary words.
+Older cards are unchanged until they need an identity. No Core schema changes.
+
+Copy link waits for that identity to be saved and opens `cards` with `card`
+and `view=cards`, revealing, picking and bringing that card into view even
+when Text was the last view. Renaming or moving preserves the link. Missing
+or ambiguous identities do not select a different card. Read-only cards can
+copy their text and an already saved primary link; they cannot allocate an
+identity, delete, or change color. A refusal leaves writing in the existing
+Notebook recovery flow and does not claim that a new link or color was saved.
+
+A merge keeps the neighbor’s primary identity and color, including null. It
+adds the moved identities as aliases in the same line, so both old links
+resolve. An unidentified neighbor stays without a primary until Copy link or
+Set color needs one; an alias alone still resolves. Merge Undo restores both
+original identities, colors and child groups, and Redo repeats that merge.
+Word-edit and color Undo preserve an identity already allocated for a link.
+
+Card editing and Text show no metadata line, restoring it through the same
+Notebook writer and revision fence. Text edits attach metadata to surviving
+card writing; removing an entire card removes its metadata. Text Undo/Redo
+restores the corresponding metadata for writing from the current visit.
+Merely switching views never writes the page. The deterministic checks use
+real card acts, the Notebook writer and shared painters with in-memory
+adapters; they do not claim native touch, focus or layout proof.
+
 ## Acts
 
 Whatever card a key leaves picked comes into view by the one rule for what

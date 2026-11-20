@@ -1,3 +1,8 @@
+import { openMessageMenu, copyText } from './message-menu.mjs';
+import { openColorPicker } from './color-picker.mjs';
+import { AGENT_PALETTE } from './author-colors.mjs';
+import { plainCardText } from './card-menu.mjs';
+import { cardDetails } from './card-details.mjs';
 import { applyAct, boxText, cardImages, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, imageStandIns, parseDeck, placeNew, stackLine, textCard, writtenAt } from './deck.mjs';
 import { messageLink, messageOf, placeLink } from './links.mjs';
 import { deferFencePaint } from './fence-copy.mjs';
@@ -506,6 +511,7 @@ export class DeckPage {
       row.tabIndex = picked ? 0 : -1;
       if (picked) row.setAttribute('aria-current', 'true'); else row.removeAttribute('aria-current');
       row.classList.toggle('deck-selected', selected);
+      const more=row.querySelector('.deck-menu');if(more)more.tabIndex=picked?0:-1;
       row.querySelector(':scope > .deck-selected-note')?.remove();
       if (selected) row.prepend(this.node('span', 'sr-only deck-selected-note', 'Selected. '));
     }
@@ -530,7 +536,7 @@ export class DeckPage {
   edit(at = null) {
     const card = this.deck.cards[this.picked];
     if (!card || this.readOnly || this.asking) return;
-    const { words, stacks, images } = this.written(card), row = this.list.querySelector(`.deck-card[data-index="${this.picked}"]`);
+    const { words, stacks, images, details } = this.written(card), row = this.list.querySelector(`.deck-card[data-index="${this.picked}"]`);
     // The box keeps the height of the card's words; its images stand under it at the heights they showed at.
     const pictures = row ? [...row.querySelectorAll(':scope > .deck-images > .deck-image')] : [];
     const height = Math.max(0, (row?.getBoundingClientRect().height ?? 0) - (row?.querySelector(':scope > .deck-images')?.getBoundingClientRect().height ?? 0));
@@ -545,14 +551,15 @@ export class DeckPage {
       const lines = [...range.getClientRects()], extra = lines.length ? lines[lines.length - 1].top - lines[0].top : 0;
       bodyStart = body.getBoundingClientRect().top - title.getBoundingClientRect().top - extra;
     }
-    this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, images, kept: images.join('\n'), shownAt, depth: card.depth, near: this.picked, fresh: false, at, height, bodyStart });
+    this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, images, details, kept: images.join('\n'), shownAt, depth: card.depth, near: this.picked, fresh: false, at, height, bodyStart });
   }
   written(card) {
-    const { words, stacks } = cardStacks(card.words, address => (messageOf(address) ? stackLine(address) : null)), shown = cardImages(words);
-    return { words: shown.words, stacks, images: shown.images.map(image => image.line) };
+    const meta = cardDetails(card.words);
+    const { words, stacks } = cardStacks(meta.words, address => (messageOf(address) ? stackLine(address) : null)), shown = cardImages(words);
+    return { words: shown.words, stacks, images: shown.images.map(image => image.line), details: meta.lines };
   }
   // What a card box makes of the card (boxText in deck.mjs).
-  boxText(editing) { return boxText({ written: editing.field.value, images: editing.images, stacks: editing.stacks, fresh: editing.fresh }); }
+  boxText(editing) { return boxText({ written: editing.field.value, images: editing.images, stacks: editing.stacks, details: editing.details, fresh: editing.fresh }); }
   // Whether a card box changes its card: its words, or the images kept with it.
   boxChanged(editing) { return editing.field.value !== (editing.shown ?? editing.text) || (editing.images ?? []).join('\n') !== (editing.kept ?? ''); }
   // A card box left open when the page was let go (another page opened, a move, a reload), opened again: on the
@@ -704,6 +711,126 @@ export class DeckPage {
   // and then counting them, and marked only while one waits unread; or, on a card with none, one that asks an
   // agent about it. A stack begun before the messages read says nothing. A draft page asks nothing: its words
   // are kept from agents until its mark is cleared (docs/notebook-pages.md, "A draft page").
+  cardRef(index) {
+    const card=this.deck.cards[index];
+    return card ? {text:cardText(card),near:index,id:cardDetails(card.words).ids[0]??null} : null;
+  }
+  cardAt(ref) {
+    if(!ref||this.listening?.signal.aborted)return -1;
+    if(!ref.id)return findCard(this.deck,ref.text,ref.near);
+    const matches=this.deck.cards.flatMap((card,i)=>cardDetails(card.words).ids.includes(ref.id)?[i]:[]);
+    return matches.length===1?matches[0]:-1;
+  }
+  cardWritable() {
+    const w=this.writing;
+    return Boolean(this.base&&!this.readOnly&&!this.listening?.signal.aborted&&(!w||
+      (!w.readOnly&&!w.reading&&!w.deleted&&!w.closed&&!w.actionPending&&!w.actionRunning&&!w.conflict)));
+  }
+  cardNotice(words) {
+    if(this.listening?.signal.aborted)return;
+    if(!this.pageNotice){this.say(words);return;}
+    this.cardNoticeNode?.remove();this.cardNoticeNode=this.node('p','',words);this.pageNotice.append(this.cardNoticeNode);
+  }
+  ensureCardId(ref) {
+    const at=this.cardAt(ref);if(at<0)return null;
+    const card=this.deck.cards[at],details=cardDetails(card.words);
+    if(details.id){ref.id=details.id;return ref.id;}
+    if(!this.cardWritable())return null;
+    const id='c-'+crypto.randomUUID().replaceAll('-','');
+    // Identity allocation isn't an Undo step: undoing a later color or word edit keeps a copied link alive.
+    if(!this.act({kind:'details',text:cardText(card),near:at,id},true))return null;
+    ref.id=id;return id;
+  }
+  async copyCard(ref, link=false) {
+    let at=this.cardAt(ref);if(at<0)return;
+    let words;
+    if(link){
+      const id=this.ensureCardId(ref);if(!id)return;
+      // A new link must name a revision actually saved, not just an unsaved device copy.
+      if(this.writing){
+        await this.writing.flush();
+        if(this.listening?.signal.aborted||this.writing.closed)return;
+        if(this.cardAt(ref)<0||parseDeck(this.writing.base?.content.body??'').cards.filter(card=>cardDetails(card.words).ids.includes(id)).length!==1){
+          this.cardNotice('The card link is not saved yet. Try Copy link again after saving.');return;
+        }
+      } else {
+        if(this.sending)await this.flush();else if(this.acts.length)await this.save();
+        if(this.acts.length||this.sending||this.held||this.cardAt(ref)<0)return;
+      }
+      words=placeLink({kind:'cards',id:this.item,card:id,view:'cards'});
+    }else{
+      const card=this.deck.cards[at],written=this.written(card);
+      words=plainCardText(card.title,written.words,this.doc);
+    }
+    const copied=await copyText(words);
+    this.cardNotice(copied?(link?'Card link copied.':'Card text copied.'):`Could not copy. Select this text and use Copy: ${words}`);
+  }
+  cardMenuItems(ref,anchor) {
+    const at=this.cardAt(ref);if(at<0)return [];
+    const hasId=Boolean(cardDetails(this.deck.cards[at].words).id);
+    return [
+      {label:'Copy text',glyph:'copy',act:()=>this.copyCard(ref)},
+      {label:'Copy link',glyph:'link',disabled:!hasId&&!this.cardWritable(),act:()=>this.copyCard(ref,true)},
+      {label:'Delete',glyph:'drop',disabled:!this.cardWritable(),act:()=>{
+        const at=this.cardAt(ref);if(at<0||!this.cardWritable())return;
+        this.act({kind:'remove',text:cardText(this.deck.cards[at]),near:at});
+      }},
+      {label:'Set color',glyph:'palette',disabled:!this.cardWritable(),act:()=>this.cardColors(ref,anchor)}
+    ];
+  }
+  cardColors(ref,anchor) {
+    const at=this.cardAt(ref);if(at<0||!this.cardWritable())return;
+    const card=this.deck.cards[at];
+    const page=this;
+    const picker=openColorPicker({anchor,back:{get isConnected(){return !page.listening?.signal.aborted;},focus:()=>this.show(true)},agent:card.title||'Untitled card',
+      palette:AGENT_PALETTE,chosen:cardDetails(card.words).color,own:null,resetLabel:'No color',doc:this.doc,
+      choose:async color=>{
+        if(!this.cardWritable()||!(color===null||AGENT_PALETTE.includes(color)))return {error:{message:'This card cannot be changed.'}};
+        const id=this.ensureCardId(ref),at=this.cardAt(ref);if(!id||at<0)return {error:{message:'This card is no longer here.'}};
+        this.act({kind:'details',text:cardText(this.deck.cards[at]),near:at,color,fromColor:cardDetails(this.deck.cards[at].words).color});
+        if(this.writing){
+          await this.writing.flush();
+          const saved=parseDeck(this.writing.base?.content.body??'').cards.filter(card=>cardDetails(card.words).ids.includes(id));
+          if(this.listening?.signal.aborted||this.writing.closed||this.cardAt(ref)<0||saved.length!==1||cardDetails(saved[0].words).color!==color||this.writing.dirty||this.writing.busy||this.writing.conflict)
+            return {error:{message:'The color is kept here but not confirmed saved. Try again after saving.'}};
+        }
+        else {
+          if(this.sending)await this.flush();else if(this.acts.length)await this.save();
+          if(this.acts.length||this.sending||this.held)return {error:{message:'The color is not confirmed saved. Try again.'}};
+        }
+        return {status:'committed'};
+      }});
+    this.listening?.signal.addEventListener('abort',()=>picker?.close(false),{once:true});
+    return picker;
+  }
+  openCardMenu(index,anchor) {
+    let ref=this.cardRef(index);if(!ref)return;
+    if(this.editing){
+      const e=this.editing,own=!e.fresh&&findCard(this.deck,e.text,e.near)===index,empty=!cardText(textCard(e.field.value));
+      this.finish();if(this.editing||own&&empty)return;
+      if(own)ref=this.cardRef(this.picked);
+      const at=this.cardAt(ref);if(at<0)return;anchor=this.list.querySelector(`.deck-card[data-index="${at}"] .deck-menu`)??anchor;
+    }
+    const menu=openMessageMenu({anchor,items:this.cardMenuItems(ref,anchor),label:'This card',sheet:true,doc:this.doc});
+    this.listening?.signal.addEventListener('abort',()=>menu?.close(false),{once:true});
+    return menu;
+  }
+  pickCardId(id) {
+    const at=this.cardAt({id});if(at<0){this.cardNotice('This card is no longer on the page.');return false;}
+    this.reveal(at);this.paint();const keyed=this.keyed;this.keyed=true;
+    try{this.pick(at);}finally{this.keyed=keyed;}
+    return true;
+  }
+  paintCardTint(row,card) {
+    const color=cardDetails(card?.words??'').color;
+    if(color){row.classList.add('deck-tinted','agent-'+color);}
+  }
+  cardOverflow(index) {
+    const more=this.node('button','deck-bubble deck-menu','⋯');more.type='button';more.tabIndex=0;
+    more.title='This card';more.setAttribute('aria-label','This card');more.setAttribute('aria-haspopup','menu');
+    more.addEventListener('click',event=>{event.stopPropagation();this.openCardMenu(index,more);});
+    return more;
+  }
   bubbles(index, stacks) {
     const holder = this.node('div', 'deck-bubbles');
     for (const { topicId, messageId } of stacks) {
@@ -727,6 +854,7 @@ export class DeckPage {
       ask.addEventListener('click', event => { event.stopPropagation(); this.ask(index); });
       holder.append(ask);
     }
+    holder.append(this.cardOverflow(index));
     return holder;
   }
   // The speech bubble on a card with no stack: an ask about it, written in a box in its place, to one agent:
@@ -781,7 +909,7 @@ export class DeckPage {
       if (!words || !agent) { asking.field.focus(); return; }
       // The agent is told where the card is, so it can change the card when the ask is to: a heading on a
       // Notebook page, with the line naming this stack kept under it. Its images are quoted by name, as words.
-      const card = textCard(asking.text), quoted = [`**${card.title || 'Untitled'}**`, ...imageStandIns(cardStacks(card.words, messageOf).words).split('\n')];
+      const card = textCard(asking.text), quoted = [`**${card.title || 'Untitled'}**`, ...imageStandIns(cardStacks(cardDetails(card.words).words, messageOf).words).split('\n')];
       const body = `${words}\n\n${quoted.map(line => (line ? `> ${line}` : '>')).join('\n')}\n\n` +
         `The card is a ${'#'.repeat(asking.depth + 2)} heading on the Notebook page ${this.item}, “${this.source.title || 'Notebook page'}”, seen as cards at ` +
         `${placeLink({ kind: 'cards', id: this.item })}. To change it, revise that page and keep its Reply stack line.`;
@@ -813,9 +941,10 @@ export class DeckPage {
   // The card asked about, as it was when its bubble was pressed, with the ask under it.
   askRow(asking) {
     const card = textCard(asking.text), row = this.node('li', 'deck-card deck-asking');
+    this.paintCardTint(row,card);
     row.style.setProperty('--depth', String(asking.depth));
     row.append(this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled'),
-      formatWords(this.node('div', 'deck-words'), cardImages(cardStacks(card.words, messageOf).words).words, { copyFences: true }), asking.form);
+      formatWords(this.node('div', 'deck-words'), cardImages(cardStacks(cardDetails(card.words).words, messageOf).words).words, { copyFences: true }), asking.form);
     return row;
   }
 
@@ -874,9 +1003,10 @@ export class DeckPage {
     const { shown, parents } = this.layout();
     while (!shown[this.picked] && parents[this.picked] >= 0) this.picked = parents[this.picked];
     const rows = cards.map((card, index) => {
-      const row = this.node('li', 'deck-card'), { words: all, stacks } = cardStacks(card.words, messageOf), { words, images } = cardImages(all);
+      const row = this.node('li', 'deck-card'), { words: all, stacks } = cardStacks(cardDetails(card.words).words, messageOf), { words, images } = cardImages(all);
       const title = this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled');
       if (groupEnd(cards, index) > index + 1) title.prepend(this.foldButton(index));
+      this.paintCardTint(row,card);
       row.dataset.index = String(index);
       row.hidden = !shown[index];
       row.style.setProperty('--depth', String(card.depth));
@@ -910,6 +1040,7 @@ export class DeckPage {
       const at = editing.fresh ? (editing.after === null ? 0 : findCard(this.deck, editing.after, editing.near) + 1) : findCard(this.deck, editing.text, editing.near);
       // The box stands in its card's place at its card's depth, wherever an act or a read of the page has put it.
       if (!editing.fresh && at >= 0) Object.assign(editing, { near: at, depth: cards[at].depth });
+      this.paintCardTint(holder,cards[at]);
       holder.style.setProperty('--depth', String(editing.depth ?? 0));
       // Replacing a card with its shared editor must not shorten the document under it.
       if (editing.height) holder.style.minHeight = `${editing.height}px`;
@@ -918,10 +1049,11 @@ export class DeckPage {
       // box leaves the writing its focus.
       const parent = !editing.fresh && at >= 0 && groupEnd(cards, at) > at + 1;
       holder.classList.toggle('deck-parent', parent);
-      holder.classList.toggle('deck-worded', !editing.fresh && at >= 0 && Boolean(cardImages(cardStacks(cards[at].words, messageOf).words).words));
+      holder.classList.toggle('deck-worded', !editing.fresh && at >= 0 && Boolean(cardImages(cardStacks(cardDetails(cards[at].words).words, messageOf).words).words));
       const chevron = parent ? this.node('span', 'deck-title deck-chevron') : null;
       if (chevron) { chevron.append(this.foldButton(at)); holder.append(chevron); }
       holder.append(editing.field);
+      if(!editing.fresh&&at>=0){const controls=this.node('div','deck-bubbles');controls.append(this.cardOverflow(at));holder.append(controls);}
       if (editing.images?.length) holder.append(this.pictures(editing.images.map(line => cardImages(line).images[0]), editing));
       holder.addEventListener('mousedown', event => { if (event.target === holder) event.preventDefault(); });
       if (editing.fresh) rows.splice(at > 0 ? at : editing.after === null ? 0 : rows.length, 0, holder);
