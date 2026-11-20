@@ -24,3 +24,14 @@ record the choice leaves the review outstanding.
 Checks exercise empty state, ordinary typing after a save, identical copies,
 refused writing, images, title/first comparison, exact-stamp choices, failure,
 reload, and retained record/byte ownership. Native checks use isolated storage.
+
+The native harness seeds synthetic refused-submission and image-selection rows;
+it proves real Core draft saving, comparison UI, strict IndexedDB transactions,
+reload, exact retained bytes and ephemeral hashes, not a public refusal or file
+picker/upload gesture. Aborting an issued strict write must retain the previous
+choice; a stamp changed during hashing must invalidate that comparison.
+
+The relevant cohort's exact188 Item783 teardown failure is retained as red
+evidence. Its fixture must bind comparison controls to the newly loaded build
+after a server restart, while refusing restart of an unrestored comparison.
+The real fixture restart and unrestored-mutation controls verify both paths.
