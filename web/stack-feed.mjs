@@ -101,7 +101,10 @@ const DOING = {
   'message.mark': args => args.marked ? 'marking unread' : 'marking read',
 };
 function doing(kind, item, args, name = null) {
-  const line = name ?? messagePreview(item), short = line.length > CARD_WORDS ? `${line.slice(0, CARD_WORDS - 1).trimEnd()}…` : line;
+  // Splitting removes this message from its containing dossier; that
+  // dossier's name still belongs to the messages which stay there.
+  const line = kind === 'stack.join' && args.into === null ? messagePreview(item) : name ?? messagePreview(item);
+  const short = line.length > CARD_WORDS ? `${line.slice(0, CARD_WORDS - 1).trimEnd()}…` : line;
   return `${DOING[kind](args)} ${!short ? 'a message' : short.startsWith('“') ? short : `“${short}”`}`;
 }
 const upper = words => words[0].toUpperCase() + words.slice(1);

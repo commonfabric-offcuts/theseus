@@ -69,3 +69,16 @@ This correction is prepared for a separate green02 grant. Existing
 test/assertion bytes and source read expressions are unchanged. Controls and
 applied mutations remain unrun. Native focus/layout and Core reads are not
 proof here.
+
+## Review return: landing harnesses and split-out wording
+
+Build 3 starts from the frozen Build 2 source, 334a2bda. The isolated landing
+harnesses must supply the existing feed projection dependency; their route,
+writing, selection and first-message-window assertions stay intact. The actual
+app keeps one landing owner and its hidden-question projection unchanged.
+
+A refused or unconfirmed split-out names the message being split, using its
+existing message preview. Archive, name, place and join-into notices still use
+the shown dossier name. The command target, revision, retry identity and
+refusal/recovery behavior do not change. Focused in-memory checks exercise the
+actual split command and failure owner; they do not prove native input or Core.

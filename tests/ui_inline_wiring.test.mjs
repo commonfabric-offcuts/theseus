@@ -5999,3 +5999,31 @@ test('891 B2 Reader edge refuses a known question in an entirely omitted dossier
   assert.equal(p.f.registry.current.source.source_ref.id, other.id);
   assert.deepEqual(p.ids(), [[other.id]]); assert.equal(p.visible('q891'), false);
 });
+
+for (const answer of ['refused', 'unreached']) test(`891 B3 ${answer} split-out names the split message, not its containing dossier`, async () => {
+  const p = await questionPage891([
+    { id: 'rootB3', seq: 1, author_id: 'dan', body: 'Root words', acts: { name: { text: 'Bravo dossier', by: 'dan', at_ms: TODAY } } },
+    { id: 'joinedB3', seq: 2, author_id: 'dan', body: 'Message to split', acts: { joined: { into: 'rootB3', by: 'dan', at_ms: TODAY }, join_revision: 7 } },
+  ]);
+  const feed = p.f.runObservation('stackFeed'), item = p.f.views.messages.get('joinedB3'), sent = [];
+  assert.equal(feed.dossierName(item.id), 'Bravo dossier');
+  p.f.api.command = async request => {
+    sent.push(structuredClone(request));
+    if (answer === 'unreached') throw new AttemptError('Connection interrupted');
+    return { recorded: true, status: 'rejected', error: { code: 'REVISION_CONFLICT', message: 'The dossier changed elsewhere.' } };
+  };
+  feed.split(item); await feed.chain; await drain();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].kind, 'stack.join'); assert.equal(sent[0].target.message_id, 'joinedB3');
+  assert.equal(sent[0].args.into, null); assert.equal(sent[0].expected.join_revision, 7);
+  const words = p.f.get('app-status').textContent;
+  assert.match(words, answer === 'refused' ? /^Splitting out “Message to split” was not saved:/ : /^Not known yet whether splitting out “Message to split” was saved:/);
+  assert.doesNotMatch(words, /Bravo dossier/);
+  assert.equal(item.acts.joined.into, 'rootB3', 'a failed split leaves the recorded join intact');
+  assert.equal(feed.doubts.size, answer === 'unreached' ? 1 : 0);
+  if (answer === 'unreached') {
+    const kept = [...feed.doubts.values()][0].envelope;
+    assert.equal(kept.operation_id, sent[0].operation_id, 'recovery retains this exact operation');
+    feed.deafen();
+  }
+});

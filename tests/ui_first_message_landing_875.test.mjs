@@ -8,6 +8,7 @@ import { miniDocument, Element } from './fixtures/mini_dom.mjs';
 import { arrangeStacks, entries, reveal, stackState, setLevel } from '../web/reply-stacks.mjs';
 import { opened } from '../web/fold.mjs';
 import { OutlineDossiers } from '../web/outline-dossiers.mjs';
+import { StackFeed } from '../web/stack-feed.mjs';
 
 // Same renderer capabilities as ui_dossier_renderer_799; these only model DOM data.
 const query = Element.prototype.querySelectorAll;
@@ -70,7 +71,8 @@ const app = await readFile(new URL('../web/app.mjs', import.meta.url), 'utf8');
 const landingSource = app.slice(app.indexOf('function landOn(id,'), app.indexOf('// The header New act'));
 test('875 actual starred rail handler and app landing draw newest seven and the earlier-replies row', async () => {
   const f = fixture(); let result, requested;
-  const context = vm.createContext({ entries, reveal, opened, $: () => f.list, releaseTopArrivals() {},
+  const stackFeed = Object.assign(Object.create(StackFeed.prototype), { list: f.list });
+  const context = vm.createContext({ entries, reveal, opened, stackFeed, $: () => f.list, releaseTopArrivals() {},
     anchorHold: null, rememberListAnchor() {}, listAccessEpoch: 1, registry: { generation: 1, disposed: false },
     retired: false, topicUnavailable: false, views: { messages: f.messages }, shell: { drawer: { isOpen: () => false } } });
   vm.runInContext(landingSource, context);
