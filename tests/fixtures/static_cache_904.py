@@ -14,7 +14,7 @@ from aim_next import Store, initialize
 from aim_next.server import create_server
 
 with tempfile.TemporaryDirectory(prefix='theseus-cache-904-') as temporary:
-    root = Path(temporary)
+    root = Path(temporary).resolve()
     web = root / 'web'
     shutil.copytree(source / 'web', web)
     db, authority = root / 'records.sqlite3', root / 'authority.json'

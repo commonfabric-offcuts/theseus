@@ -26,7 +26,10 @@ async function world(source, name) {
   const read = async () => {
     const value = await lines.next(); assert.equal(value.done, false, stderr); return JSON.parse(value.value);
   };
-  const ready = await read(), runtime = { name, argv: ['/usr/bin/python3', ...argv], ...ready }; runtimes.push(runtime);
+  const runtime = { name, pid: child.pid, argv: ['/usr/bin/python3', ...argv] }; runtimes.push(runtime);
+  let ready;
+  try { ready = await read(); Object.assign(runtime, ready); }
+  catch (error) { child.stdin.end(); runtime.exitAfterEOF = await exit; await writeFile(path.join(out, `${name}-fixture-stderr.log`), stderr); throw error; }
   let id = 0;
   return { ...ready,
     async call(method) { child.stdin.write(JSON.stringify({ id: ++id, method }) + '\n'); const value = await read(); assert.equal(value.id, id); return value.answer; },
