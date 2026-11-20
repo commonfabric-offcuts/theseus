@@ -298,6 +298,8 @@ class Drafts:
 
     def _view_submission(self, db, actor, args):
         row, snapshot = self._submission(db, actor, args.get("submission_id"))
+        if db.execute("SELECT 1 FROM messages m JOIN message_removals r ON r.message_id=m.id WHERE m.author_id=? AND m.operation_id=? AND r.kind='unsent'", (actor, row['send_operation_id'])).fetchone():
+            raise Refusal('FORBIDDEN', 'No private submission for this actor')
         receipt = db.execute("SELECT outcome FROM operations WHERE actor_id=? AND id=?", (actor, row["send_operation_id"])).fetchone()
         # Its shape stays as it was: a page checks it field for field (cleanup.mjs), so whether the reply is set
         # aside is said only by the unsent list leaving it out.
@@ -351,6 +353,7 @@ class Drafts:
         if not isinstance(unsent, bool):
             raise Refusal("INVALID_ARGUMENT", "unsent is true or false")
         where, values = "s.actor_id=?", [actor]
+        where += " AND NOT EXISTS (SELECT 1 FROM messages m JOIN message_removals r ON r.message_id=m.id WHERE m.author_id=s.actor_id AND m.operation_id=s.send_operation_id AND r.kind='unsent')"
         if "source_ref" in args:
             key = _source_key(args["source_ref"])
             _topic_composition(args["source_ref"], args.get("topic_id"))

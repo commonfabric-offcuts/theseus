@@ -598,9 +598,9 @@ class Health:
     def _on_record_waiting(db, agent):
         """Pending deliveries on the record for agent, in live groups, and the oldest one's send time."""
         return tuple(db.execute(
-            "SELECT count(*),min(m.sent_ms) FROM delivery_groups g INDEXED BY eligible_groups "
+            "SELECT count(*),min(coalesce(ar.at_ms,m.sent_ms)) FROM delivery_groups g INDEXED BY eligible_groups "
             "CROSS JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
-            "JOIN messages m ON m.id=d.message_id WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0 AND m.private_to IS NULL",
+            "JOIN messages m ON m.id=d.message_id LEFT JOIN answer_receipts ar ON ar.id=d.answer_id WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0 AND m.private_to IS NULL",
             (agent,)).fetchone())
 
     def _health_reds(self, db, now, routes=None):
@@ -860,9 +860,9 @@ class Health:
             # What waits, as the reader may see it: an agent's whispers count for that agent itself, and each for the
             # person who wrote it (whispers.READ_BY).
             waiting, oldest = db.execute(
-                "SELECT count(*),min(m.sent_ms) FROM delivery_groups g INDEXED BY eligible_groups "
+                "SELECT count(*),min(coalesce(ar.at_ms,m.sent_ms)) FROM delivery_groups g INDEXED BY eligible_groups "
                 "CROSS JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
-                "JOIN messages m ON m.id=d.message_id WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0"
+                "JOIN messages m ON m.id=d.message_id LEFT JOIN answer_receipts ar ON ar.id=d.answer_id WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0"
                 + ("" if row["id"] == actor else " AND " + READ_BY), (row["id"],) if row["id"] == actor else (row["id"], actor)).fetchone()
             item = {"actor_id": row["id"], "name": row["name"], "route": route, "waiting": waiting, "waiting_since_ms": oldest}
             if row["scheduled"]:

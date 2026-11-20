@@ -22,6 +22,9 @@ const behind = () => Object.assign(Error('The requested version is not available
 // A reply's line reads how the message it answers begins: its first 120
 // characters, as Core cuts it (aim_next/conversation.py, reply_to_excerpt).
 const excerptOf = body => Array.from(body).slice(0, 120).join('');
+const terminalFields = item => {
+  if (item.removal) Object.assign(item, { removal_action: null, go_ahead: false, blocks: null, no_answer: false, awaiting_reply: false, no_agent_notified: false });
+};
 // What else on the page holds messages' words (the conversation's own items,
 // keyed by id) follows each edited message: its later revision, and the line
 // of each reply to it that shows one. edits: id -> the message as read.
@@ -51,6 +54,7 @@ export class TopicViews {
     this.scope = { kind: 'topic', id: topicId };
     this.membershipRevision = 0; this.movedPointers = [];
     this.messages = new Map(); this.memory = new Map(); this.deletedMemory = new Map(); this.revisions = new RevisionTargets();
+    this.removals = new Map();
     // Loaded messages form runs, each holding every topic message between its
     // oldest and newest; a gap between runs holds messages never loaded.
     this.runs = new Map(); this.runCount = 0;
@@ -112,7 +116,7 @@ export class TopicViews {
             !integer(item.star) || item.star < 1 || item.star >= previous;
           previous = item?.star; return bad;
         }) || !(page.next_cursor === null || integer(page.next_cursor) && page.items.length && page.next_cursor === page.items.at(-1).star)) throw invalid('The starred dossiers page is malformed.');
-        for (const item of page.items) this.starRoots.add(item.dossier.id);
+        for (const item of page.items) if (![item.message_id, item.dossier.id].some(id => this.removals.get(id)?.kind === 'unsent')) this.starRoots.add(item.dossier.id);
         this.starCursor = page.next_cursor; this.starsLoaded = page.next_cursor === null;
       } else if (this.starRoots.size && this.olderCursor !== null) {
         const cursor = this.olderCursor;
@@ -157,6 +161,24 @@ export class TopicViews {
   // The ids repainted for an edit since the last call, once.
   takeRevised() { const ids = this.revised; this.revised = new Set(); return ids; }
   takeEdits() { const edits = this.edits; this.edits = new Map(); return edits; }
+  learnRemoval(id, removal) {
+    if (!removal || this.removals.has(id)) return;
+    this.removals.set(id, removal);
+    if (removal.kind === 'unsent') {
+      this.messages.delete(id); this.runs.delete(id); this.starRoots.delete(id);
+      this.edits.delete(id); this.quoted.delete(id); this.revised.delete(id);
+      if (this.alone?.id === id) this.alone = null;
+    } else {
+      const item = this.messages.get(id);
+      if (item) { item.removal = removal; terminalFields(item); this.revised.add(id); }
+    }
+    for (const item of this.messages.values()) {
+      if (item.reply_to === id && typeof item.reply_to_excerpt === 'string' && !item.reply_to_withheld) {
+        item.reply_to_removal = removal; this.revised.add(item.id);
+      }
+    }
+    this.paintMessages();
+  }
   // A loaded reply's line shows how message id begins.
   quotes(id) { for (const other of this.messages.values()) if (other.reply_to === id && typeof other.reply_to_excerpt === 'string') return true; return false; }
   // The reply line of each loaded reply to an edited message reads its latest words.
@@ -171,8 +193,11 @@ export class TopicViews {
   // and a loaded reply to it reads its new first words. An answer read before
   // the edit, at a lower revision, changes nothing. True when one was taken.
   learnRevision(item, known = this.messages.get(item.id)) {
+    if (this.removals.get(item.id)?.kind === 'unsent') return false;
     if (!known || revisionOf(item) <= revisionOf(known)) return false;
     item.withdrawal = known.withdrawal ?? item.withdrawal;
+    item.removal = this.removals.get(item.id) ?? known.removal ?? item.removal;
+    terminalFields(item);
     if (known.acts) item.acts = laterActs(known.acts, item.acts);
     item.yours = this.laterYours(known, item);
     item.stack_position = laterPosition(known.stack_position, item.stack_position);
@@ -182,6 +207,7 @@ export class TopicViews {
   }
   // An edited message no loaded page holds: the lines that show it read its words, unless a later revision was read.
   learnQuoted(item) {
+    if (this.removals.get(item.id)?.kind === 'unsent') return false;
     if (revisionOf(item) <= (this.quoted.get(item.id) ?? 1)) return false;
     this.quoted.set(item.id, revisionOf(item)); this.requote(item);
     return true;
@@ -190,7 +216,7 @@ export class TopicViews {
   // it, its acts are kept as the loaded messages' are. True when that asks for
   // a read of the acts. The item, once its acts are read: aloneItem.
   showAlone(id, seq) {
-    if (id === null || this.messages.has(id) || !integer(seq)) { this.alone = null; return false; }
+    if (id === null || this.removals.get(id)?.kind === 'unsent' || this.messages.has(id) || !integer(seq)) { this.alone = null; return false; }
     if (this.alone?.id === id) return false;
     this.alone = { id, seq }; return true;
   }
@@ -256,11 +282,20 @@ export class TopicViews {
     // was read, and the latest revision of its words the page has seen.
     for (const item of answer.items) {
       const known = this.messages.get(item.id);
+      if (this.removals.get(item.id)?.kind === 'unsent') continue;
+      const parentRemoval = typeof item.reply_to_excerpt === 'string' && !item.reply_to_withheld
+        ? this.removals.get(item.reply_to) ?? known?.reply_to_removal ?? item.reply_to_removal ?? null : null;
+      if (known && JSON.stringify(parentRemoval) !== JSON.stringify(known.reply_to_removal ?? null)) this.revised.add(item.id);
+      item.reply_to_removal = parentRemoval;
+      if (known) known.reply_to_removal = parentRemoval;
       item.withdrawal = known?.withdrawal ?? item.withdrawal;
+      item.removal = this.removals.get(item.id) ?? known?.removal ?? item.removal;
+      if (item.removal) { this.removals.set(item.id, item.removal); terminalFields(item); }
       if (known && revisionOf(item) !== revisionOf(known)) {
         if (!this.learnRevision(item, known)) {
           if (known.acts || item.acts) known.acts = laterActs(known.acts, item.acts);
           known.withdrawal ??= item.withdrawal;
+          known.removal ??= item.removal;
           known.yours = this.laterYours(known, item);
         }
         this.runs.set(item.id, run); continue;

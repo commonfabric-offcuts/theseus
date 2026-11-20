@@ -16,7 +16,7 @@ import { ReadThrough } from '../web/read-through.mjs';
 import { Live, liveOffered, reloader } from '../web/live.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 import { RecoveryCleanup } from '../web/cleanup.mjs';
-import { replyLine } from '../web/replies.mjs';
+import { replyLine, paintReplyLine } from '../web/replies.mjs';
 import { placeNewLine } from '../web/unanswered.mjs';
 import { revealSelection } from '../web/reveal.mjs';
 import { cardClass, paintCardColor, agentColor, AGENT_PALETTE } from '../web/author-colors.mjs';
@@ -90,7 +90,10 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const elements = new Map(), events = [], calls = [], paints = [], observers = [], days = [];
   class Element {
     constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true;
-      this.style = {}; this.scrollTop = 0; this.scrollHeight = 600; this.clientHeight = 600; }
+      this.style = {
+        setProperty(name, value) { this[name] = String(value); },
+        removeProperty(name) { const previous = this[name] ?? ''; delete this[name]; return previous; },
+      }; this.scrollTop = 0; this.scrollHeight = 600; this.clientHeight = 600; }
     addEventListener(name, fn) { this.handlers[name] = fn; }
     // The real selection-quote owner clones the Reader's pill. Clone its
     // content and reflected attributes, without copying event listeners.
@@ -132,6 +135,15 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     // elements keep the fixture's existing id lookup.
     querySelector(selector) {
       if (selector.startsWith(':scope') || selector.startsWith('[data-')) return this.querySelectorAll(selector)[0] ?? null;
+      // 151's star painter finds its nested words in this link; an absent
+      // descendant must not fabricate a document-level fixture element.
+      if (selector === '.ol-dossier-words') {
+        for (const child of this.children) {
+          if (child.classList?.contains('ol-dossier-words')) return child;
+          const inner = child.querySelector?.(selector); if (inner) return inner;
+        }
+        return null;
+      }
       if (!/^[a-z][a-z0-9]*$/.test(selector)) return get(selector.slice(1));
       for (const child of this.children) { if (child.tagName?.toLowerCase() === selector) return child; const inner = child.querySelector?.(selector); if (inner) return inner; }
       return null;
@@ -255,7 +267,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     observe(target) { this.targets.push(target); }
     unobserve(target) { this.targets = this.targets.filter(each => each !== target); }
   }
-  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} unobserve() {} disconnect() {} }, MutationObserver: class { observe() {} disconnect() {} takeRecords() { return []; } }, innerHeight: 600, innerWidth: 1000, Node: { DOCUMENT_POSITION_FOLLOWING: 4, TEXT_NODE: 3 }, requestAnimationFrame: callback => setImmediate(callback), cancelAnimationFrame: clearImmediate, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, paintReplyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} unobserve() {} disconnect() {} }, MutationObserver: class { observe() {} disconnect() {} takeRecords() { return []; } }, innerHeight: 600, innerWidth: 1000, Node: { DOCUMENT_POSITION_FOLLOWING: 4, TEXT_NODE: 3 }, requestAnimationFrame: callback => setImmediate(callback), cancelAnimationFrame: clearImmediate, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     // The window's own location and history are the page's, as in a browser (the shell reads them there).
     window: { innerHeight: 600, scrollY: 0,
       getComputedStyle: el => ({ overflowY: 'visible', position: 'static', scrollPaddingTop: '0px', scrollPaddingBottom: '0px', ...el.style }),
@@ -2681,8 +2693,10 @@ test('a reply card says quietly which message it answers, and a message answerin
     reply_to: 'm1', reply_to_author: 'fable', reply_to_excerpt: 'Ship the table' });
   f.paintViews('messages');
   const card = id => entryIn(f, id);
-  // A line's words are its text and link nodes' (links.mjs).
-  const lines = id => card(id).children.filter(node => node.className === 'message-reply-to').map(node => node.children.map(child => child.textContent).join(''));
+  // This DOM stores appended strings and nested elements separately. Read
+  // through the parent-word span and links as a browser's textContent does.
+  const words = node => typeof node === 'string' ? node : (node.textContent ?? '') + (node.children ?? []).map(words).join('');
+  const lines = id => card(id).children.filter(node => node.className === 'message-reply-to').map(words);
   assert.deepEqual(lines('m2'), ['Replying to fable: Ship the table']);
   assert.deepEqual(lines('m1'), []);
   // The ⋯ is on the one bar over a lit card (message-menu.mjs), not on the card; the words are formatted (message-format.mjs).
@@ -5002,6 +5016,36 @@ test('item 655 B2 freshness follows unloaded rename clear join split and loaded 
   p.dossierName = 'Old cached name';
   f.views.messages.set(source.source_ref.id, { id: source.source_ref.id });
   assert.equal(f.readerDossierName(source), null, 'a loaded singleton never falls back to a cached old dossier name');
+});
+
+test('item 932 remote question state invalidates acts without painting an unloaded dossier', async () => {
+  const { f, p, source } = await starred655();
+  await f.present(p);
+  f.enableFreshness({});
+  const invalidations = [];
+  f.fresh.invalidate = (...args) => invalidations.push(args);
+  const question = { state: 'resolved', waiting_on: [], may_resolve: false, by: 'asker', at_ms: 42, superseded_by: null };
+  await assert.doesNotReject(f.fresh.options.refresh('question:' + source.source_ref.id, 1,
+    async name => { assert.equal(name, 'source'); return { ...source, question }; }, () => true));
+  assert.equal(source.question.state, 'resolved', 'the open Reader learns its exact source');
+  assert.deepEqual(invalidations, [['acts', 0, true]], 'the view redraw follows ordinary freshness instead of a direct paint');
+});
+
+test('item 932 topic freshness updates only its open Reader question without reopening it', async () => {
+  const { f, p, source } = await starred655();
+  source.question = { state: 'waiting', waiting_on: ['answerer'], may_resolve: true, archived: false };
+  await f.present(p);
+  f.enableFreshness({});
+  const reads = [];
+  f.views.refresh = async () => true;
+  await f.fresh.options.refresh('topic', 2, async (name, ref) => {
+    reads.push([name, ref.id]);
+    return { ...source, question: { state: 'answered', waiting_on: [], may_resolve: false, archived: true } };
+  }, () => true);
+  assert.deepEqual(reads, [['source', source.source_ref.id]]);
+  assert.equal(source.question.archived, true);
+  assert.equal(f.reader.dialog.open, true);
+  assert.equal(f.reader.presentation.source, source);
 });
 
 for (const failedRead of ['stack_positions', 'topic_messages']) test(`item 655 B3 ${failedRead} lookup failure opens the exact source and shows a notice`, async () => {
@@ -7949,7 +7993,9 @@ test('923 B2 a star commit during More reads a fresh star page before settling',
   assert.equal(reads[1].cursor, undefined); assert.equal(done, false);
   fresh.resolve({ instance_id: 'fixture', items: [{ topic_id: 't1', star: 11, dossier: { id: 'star-923', name: 'New star' } }], next_cursor: null });
   await more; await drain();
-  assert.equal(state.links.get('star-923').textContent, '★ New star');
+  // 151 wraps original star words so a retracted name can be decorated.
+  const words = node => typeof node === 'string' ? node : (node.textContent ?? '') + (node.children ?? []).map(words).join('');
+  assert.equal(words(state.links.get('star-923')), '★ New star');
 });
 
 for (const conversation of [false, true]) test(`923 actual app read trace reaches topics in bounded rounds (${conversation ? 'Conversation' : 'no Conversation'})`, async t => {

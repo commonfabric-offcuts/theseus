@@ -3,6 +3,7 @@
 import { messagePreview } from './message-preview.mjs';
 import { routeHref } from './topic-navigation.mjs';
 import { checkedView, readFailure } from './freshness.mjs';
+import { paintRemoval } from './message-removal.mjs';
 
 const PAGE = 50;
 export const dossierTitle = item => item.name || messagePreview({ ...item, preview: true }) || 'Untitled dossier';
@@ -130,8 +131,14 @@ export class OutlineDossiers {
         state.links.set(id, link);
       }
       link.pageTarget=target;
-      const text = '★ ' + title;
-      if (link.textContent !== text) link.textContent = text;
+      let words = link.querySelector('.ol-dossier-words');
+      if (!words) {
+        words = doc.createElement('span'); words.className = 'ol-dossier-words';
+        link.replaceChildren('★ ', words);
+      }
+      if (words.textContent !== title) words.textContent = title;
+      words.classList.toggle('retracted-words', item?.removal?.kind === 'retracted');
+      paintRemoval(link, item, doc);
       link.title = title; link.setAttribute('aria-label', (this.pageStars?'Starred page: ':'Starred dossier: ') + title);
       link.href = routeHref(target);
       alive.add(id); nodes.push(link);
