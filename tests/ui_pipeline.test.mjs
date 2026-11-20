@@ -1087,3 +1087,18 @@ test('a piece\'s Held lines keep the order Core gives them, newest first, not th
   const box = page.stageBox(piece, { owner: 'tony', unit_many: 'items' }, now, false);
   assert.deepEqual(walk(box).filter(node => node.className === 'pl-held').map(node => node['data-message']), ['m2', 'm1']);
 });
+
+test('864 item record description admits authored query links and keeps surrounding text literal', async t => {
+  const { miniDocument } = await import('./fixtures/mini_dom.mjs');
+  const doc = miniDocument(), oldDocument = globalThis.document, oldLocation = globalThis.location;
+  globalThis.document = doc; globalThis.location = new URL('https://theseus.example/?pipeline=w1&item=1');
+  t.after(() => { globalThis.document = oldDocument; globalThis.location = oldLocation; });
+  const header = { eyebrow: doc.createElement('p'), title: doc.createElement('h1'), description: doc.createElement('p') };
+  // mini_dom keeps own text separate; native replaceChildren removes it too.
+  const replace = header.description.replaceChildren.bind(header.description);
+  header.description.replaceChildren = (...nodes) => { header.description.textContent = ''; replace(...nodes); };
+  PipelinePage.prototype.paintHeader.call({ header }, 'Outcome', '1. Written record', 'Keep **literal**: [The smoke checks](?topic=Landing&page=n-864)');
+  const links = [...header.description.descendants()].filter(node => node.tag === 'a');
+  assert.equal(links.length, 1); assert.equal(links[0].text, 'The smoke checks');
+  assert.equal(header.description.text, 'Keep **literal**: The smoke checks');
+});

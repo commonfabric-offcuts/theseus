@@ -15,7 +15,7 @@ const node = (tag, text, className) => {
   return el;
 };
 
-const CHOICES = [['whisper', 'Whisper'], ['tell', 'Tell'], ['ask', 'Ask']];
+const CHOICES = [['ask', 'Ask'], ['tell', 'Tell'], ['whisper', 'Whisper']];
 const WORDS = Object.fromEntries(CHOICES);
 const WHISPER_NEEDS_ONE = 'Name one agent to whisper to them.';
 const WHISPER_TO_ONE = 'A whisper goes to one agent. With more than one name, choose Tell or Ask.';

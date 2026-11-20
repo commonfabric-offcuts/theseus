@@ -1,0 +1,73 @@
+/* The look of the three surfaces (designer prototype): the rail is where you are, the conversation is the talk,
+   the Notebook is the document, and each has its own material. Two looks, chosen at the rail's foot and kept on
+   this device (look.mjs, data-look on <html>):
+   - Bookends (the default): the rail and the Notebook are one black material, in both themes, and the
+     conversation is the one lit, raised surface between them.
+   - Paper: the Notebook is warm paper set in a book face, on a quiet bench; the rail sinks into the bench.
+   A surface that changes material redefines the tokens on itself, so what is inside it follows; the docked
+   Notebook's page sets its own tokens (aim.css), so a look sets them on that page too. Wider than a phone only. */
+.look-switch{display:none}
+@media (min-width:761px){
+  .rail-foot .look-switch{display:inline-flex;gap:1px;margin-top:.35rem;padding:1px;border:1px solid var(--line);border-radius:.4rem;background:var(--panel)}
+  :root .rail-foot .look-switch.look-switch button{min-height:0;height:1.25rem;padding:0 .45rem;border:0;border-radius:.3rem;background:transparent;color:var(--muted);font-size:.68rem}
+  :root .rail-foot .look-switch.look-switch button:hover{color:var(--ink);background:transparent}
+  :root .rail-foot .look-switch.look-switch button[aria-pressed=true]{background:var(--soft);color:var(--ink);font-weight:600}
+
+  /* ---------- Bookends ---------- */
+  :root:not([data-look=paper]){
+    --look-black:#000;
+    --look-bench:#1d2629; --look-bench-top:#232d30;
+    :is(body){background:var(--look-black)}
+    /* The ends: one black material, in both themes. */
+    .rail,#things,dialog.notebook-sheet-dialog{
+      --paper:#000;--panel:#0b0f10;--ink:#e3eae7;--muted:#97a6a3;--line:#252c2e;--soft:#18241f;--accent:#5fae96;--focus:#5fae96;
+      --rail-ink-2:#c3ccc9;--rail-hair:#1e2426;--rail-hover:#111617;
+      color:var(--ink);background:#000}
+    .rail{border-right-color:transparent}
+    #things{border-left-color:transparent}
+    .rail .nav-item[aria-current]{background:#162019}
+    /* The bench. */
+    main#main{background:linear-gradient(180deg,var(--look-bench-top),var(--look-bench) 22rem);border-radius:1.1rem;
+      margin-block:.6rem;min-height:calc(100dvh - 1.2rem);box-shadow:inset 0 1px 0 rgb(255 255 255/.06),0 0 0 1px rgb(255 255 255/.04)}
+    &{--stack-ring-gap:var(--look-bench);}
+    &{--stack-folder:#2a3538;--stack-lift:0 1px 0 rgb(255 255 255/.05) inset,0 14px 26px -16px rgb(0 0 0/.9),0 2px 4px -2px rgb(0 0 0/.5);}
+    dialog.notebook-sheet-dialog .notebook-sheet-pages{background:#000}
+    dialog.notebook-sheet-dialog .notebook-sheet-head{border-bottom-color:#1a1f20}
+    dialog.notebook-sheet-dialog .deck-card{background:transparent;border-color:#1c2224}
+    dialog.notebook-sheet-dialog .deck-card[aria-current=true]{background:#0e1513}
+  }
+  @media(prefers-color-scheme:light){:root:not([data-look=paper]){
+    --look-bench:#f6f7f4;--look-bench-top:#fbfbf9;
+    main#main{box-shadow:0 0 0 1px rgb(0 0 0/.04)}
+    &{--stack-ring-gap:var(--look-bench);}
+    &{--stack-folder:#ebe8df;--stack-lift:0 1px 0 rgb(84 70 42/.14),0 10px 18px -8px rgb(84 70 42/.22);}
+  }}
+
+  /* ---------- Paper ---------- */
+  :root[data-look=paper]{
+    --look-deep:#0c1011;--look-floor:#161d20;
+    --look-book:"Iowan Old Style","Charter","Palatino Linotype",Georgia,serif;
+    body{background:var(--look-deep)}
+    .rail,#things{--paper:var(--look-deep);background:transparent;border-right-color:transparent}
+    main#main{background:var(--look-floor);border-radius:1.1rem;margin-block:.5rem;min-height:calc(100dvh - 1rem)}
+    &{--stack-ring-gap:var(--look-floor);}
+    dialog.notebook-sheet-dialog{--paper:#f2eee5;--panel:#f2eee5;--ink:#27241f;--muted:#7a7468;--line:#e0dacd;--soft:#e8e2d4;
+      --accent:#3d7a62;--focus:#3d7a62;color:var(--ink);background:#f2eee5;border-radius:.45rem;overflow:hidden;
+      box-shadow:0 34px 70px -24px rgb(0 0 0/.85),0 2px 0 #d6cfc0}
+    dialog.notebook-sheet-dialog .notebook-sheet-head{border-bottom-color:#e2dccf}
+    dialog.notebook-sheet-dialog .notebook-sheet-title{font-family:var(--look-book);font-weight:700;font-size:1.25rem;letter-spacing:0}
+    dialog.notebook-sheet-dialog :is(.deck-opening,.deck-words){font-family:var(--look-book);font-size:1.04rem;line-height:1.6}
+    dialog.notebook-sheet-dialog .deck-opening{font-size:1.12rem}
+    dialog.notebook-sheet-dialog .deck-card{background:transparent;border-color:transparent;border-bottom-color:#e2dccf;border-radius:0}
+    dialog.notebook-sheet-dialog .deck-card[aria-current=true]{background:#e9e3d5;border-color:transparent;box-shadow:none;border-radius:.4rem}
+    dialog.notebook-sheet-dialog .deck-words{color:#4a463e}
+  }
+  @media(prefers-color-scheme:light){:root[data-look=paper]{
+    --look-deep:#e7e6e1;--look-floor:#f4f4f1;
+    main#main{box-shadow:0 0 0 1px rgb(0 0 0/.05)}
+    dialog.notebook-sheet-dialog{--paper:#fbf8f1;--panel:#fbf8f1;background:#fbf8f1;box-shadow:0 30px 60px -24px rgb(60 50 30/.35),0 2px 0 #e4ddcd}
+  }}
+  :root[data-look=paper] dialog.notebook-sheet-dialog .notebook-sheet-page{--paper:#f2eee5;--panel:#f2eee5;--ink:#27241f;--muted:#7a7468;
+    --line:#e0dacd;--soft:#e8e2d4;--accent:#3d7a62;--focus:#3d7a62;background:var(--paper);color:var(--ink)}
+  @media(prefers-color-scheme:light){:root[data-look=paper] dialog.notebook-sheet-dialog .notebook-sheet-page{--paper:#fbf8f1;--panel:#fbf8f1}}
+}

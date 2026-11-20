@@ -44,7 +44,10 @@ function opening655(present) {
   Object.assign(registry, { generation: 0, disposed: false, bootstrap: { instance_id: 'i', actor: 'reader' }, activity() {},
     cleanup: { foreground: () => ({ read: work => work({}), release() {} }) },
     keepBeforeStep: async () => {}, api: { view: async name => name === 'source' ? source : { submissions: [], destination_available: true } },
-    validateState() {}, setPending() {}, register: async () => ({ read() {} }), present });
+    validateState() {}, setPending() {}, register: async () => ({ read() {} }),
+    // Real registered editors have a session; this presentation-only fixture
+    // does not construct them.800 reads the note's session before presenting.
+    sessionFor: () => ({ unsettledSave: () => false }), present });
   return { registry, open: () => registry.open(ref, { topicId: 't' }) };
 }
 test('item 655 B3 open waits for presentation and reports a presentation failure', async () => {

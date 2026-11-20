@@ -9,6 +9,7 @@ import { parseRoute, routeHref, routeKey, TopicNavigation } from '../web/topic-n
 import { TopicViews } from '../web/topic-views.mjs';
 import { StackFeed } from '../web/stack-feed.mjs';
 import { checkedView } from '../web/freshness.mjs';
+import { topicLinkNeedsLookup, resolveTopicLink } from '../web/topic-link-route.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 const source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
 const between = (start, end) => {
@@ -30,8 +31,9 @@ function app({loaded=false, readerOpen=false}={}) {
   if(loaded) views.messages.set('root',item);
   const presentation=readerOpen?{source:'existing',writing:'exact unsaved words'}:null;
   const registry={disposed:false,generation:0,current:presentation,cleanup:{foreground:()=>({read:job=>job({readClass:'foreground'}),release:()=>calls.push(['release'])})}};
-  const scope={console,structuredClone,checkedView,document:doc,routeHref,
-    registry,topic:{id:'t'},views,topicUnavailable:false,listAccessEpoch:0,retired:null,landingSerial:0,
+  const scope={console,structuredClone,checkedView,document:doc,routeHref,topicLinkNeedsLookup,resolveTopicLink,
+    registry,topic:{id:'t',workspace_id:'w1'},views,topicUnavailable:false,listAccessEpoch:0,retired:null,landingSerial:0,
+    linkOwnerScope:null,pageHereOutcome:null,
     here:{page:false},reader:{dialog:{open:readerOpen}},
     $:id=>doc.byId(id),entries:()=>views.messages.has('root')?[{dataset:{id:'root'}}]:[],
     reveal:(_entry,opts)=>calls.push(['reveal',opts]),opened:()=>card,
@@ -41,11 +43,12 @@ function app({loaded=false, readerOpen=false}={}) {
     notebookReturning:()=>false,notebookSheetOf:()=>({resume:()=>calls.push(['resume'])}),
     paintConversationPage:()=>calls.push(['conversation']),
     api:{view:async(name,args,options)=>{calls.push(['read',name,copy(args),options]);
+      if(name==='topic')return {instance_id:'i',topic:{id:args.topic_id,workspace_id:'w1'}};
       if(name==='source')return {instance_id:'i',source_ref:{kind:'message',id:'root'},topic_id:'t',seq:4};
       if(name==='topic_messages')return {instance_id:'i',items:[item],next_cursor:4,relevant_versions:{topic:1}};
       throw Error(name);
     }},bootstrap:{instance_id:'i'},
-    topicNavigation:{serial:0,openTarget:async value=>{calls.push(['navigate',copy(value)]);return true;}},
+    topicNavigation:{serial:0,cancelPending(){this.serial++;},openTarget:async value=>{calls.push(['navigate',copy(value)]);return true;}},
     showLine:()=>{},shell:{leave:href=>calls.push(['leave',href]),stayed:()=>calls.push(['stayed'])},stayedWhy:error=>{throw error;}
   };
   // This route fixture models one loaded card. Supply that projection to the

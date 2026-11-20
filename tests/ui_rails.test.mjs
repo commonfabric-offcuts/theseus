@@ -744,7 +744,7 @@ test('844 the outline reads its own current-outcome topics when the home keeps i
   const read=[], rail=Object.create(OutlineRail.prototype);
   const handles={workspaceId:'w1',route:{kind:'workspace',id:'w1'},bootstrap:{instance_id:'fixture',actor:'fixture-person'}};
   let reloads=0;
-  Object.assign(rail,{started:true,opened:new Opened(),outcomes:new Map(),doc:{getElementById:()=>null},paint(){},reload(){reloads++;}});
+  Object.assign(rail,{started:true,opened:new Opened(),outcomes:new Map(),doc:{getElementById:()=>null,defaultView:{matchMedia:()=>({matches:false})}},paint(){},reload(){reloads++;}});
   rail.ready(handles);
   assert.equal(rail.handles,handles,'shared outline accepts the outcome home');
   assert.equal(reloads,1);

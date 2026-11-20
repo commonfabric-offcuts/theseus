@@ -522,9 +522,8 @@ const replies = n => (n === 1 ? 'reply' : 'replies');
 // The head's row, set into its card: its short name (renamed in place), who
 // started the stack and the marks of what that first message carries (an
 // image, the reader's own note and saved reply: marks.mjs, item 127), how many
-// replied and who, and what is new. starred: the reader starred a message of
-// the dossier, any of them (item 635, starredDossiers), not only its first.
-function paintHead(card, stack, { open, starred, state, unread, nameOf, doc, separate = false }) {
+// replied and who, and what is new. The 646 star toggles its actual first message.
+function paintHead(card, stack, { open, state, unread, nameOf, doc, separate = false }) {
   let row = headRows.get(card);
   if (!row) { row = element(doc, 'span', 'stack-head'); headRows.set(card, row); }
   if (card.firstElementChild !== row) card.prepend(row);
@@ -582,12 +581,30 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc, sep
   // Who began it gives way last on a narrow tab (stack-look.css), cut short: its whole name is its tooltip.
   const who = element(doc, 'span', 'stack-who', original ? nameOf(stack.head.author_id) : 'First message not shown'); who.title = who.textContent;
   const carried = original ? carriesNode(doc, carriesOf(stack.head)) : null;
-  // The first message's marks stand beside who began it (paintHeadCarries puts them back there), then a minted name's mark.
-  row.replaceChildren(name, pen, who, ...(carried ? [carried] : []),
+  // Keep the star attached through repaint so its keyboard focus survives.
+  let star = row.querySelector(':scope > .stack-star');
+  if (!star) {
+    star = element(doc, 'span', 'stack-act stack-star');
+    star.setAttribute('role', 'button'); star.tabIndex = 0; star.dataset.stackAct = 'star';
+    star.onpointerdown = event => event.preventDefault();
+    star.onkeydown = event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault(); event.stopPropagation(); star.click();
+    };
+  }
+  star.onclick = event => { event.preventDefault(); event.stopPropagation(); state.on?.star?.(stack); };
+  const firstStarred = state.on?.firstStarred?.(stack) ?? (original ? Boolean(stack.head.acts?.starred) : Boolean(positionOf(stack)?.starred?.includes(dossierOf(stack))));
+  const starWords = firstStarred ? 'Unstar' : 'Star for me';
+  star.textContent = firstStarred ? '★' : '☆';
+  star.setAttribute('aria-label', starWords); star.title = starWords;
+  star.setAttribute('aria-pressed', String(firstStarred));
+  // The first message's marks stand beside who began it, then its minted name.
+  for (const child of [...row.children]) if (child !== star) child.remove();
+  row.prepend(name, pen, who, ...(carried ? [carried] : []),
     ...(minted ? [minted] : []),
-    ...(checking?.kind === 'head' || (!checking && head.headNew) ? [newMark('stack-new', checking ? '✓' : 'New')] : []),
-    ...(starred ? [element(doc, 'span', 'stack-star', '★ Starred')] : []),
-    meta, ...(open ? [act('hide', 'stack-hide', 'Show latest and unread replies')] : []));
+    ...(checking?.kind === 'head' || (!checking && head.headNew) ? [newMark('stack-new', checking ? '✓' : 'New')] : []));
+  if (star.parentNode !== row) row.append(star);
+  row.append(meta, ...(open ? [act('hide', 'stack-hide', 'Show latest and unread replies')] : []));
   paintRemoval(row, original ? stack.head : null, doc);
   row.dataset.renaming = String(state.renaming === stack.id);
   return head;
@@ -749,8 +766,6 @@ function paintStack(section, stack, byId, context) {
   if (drawnOpen) state.held.set(stack.id, [stack.head, ...stack.replies][before.length].id);
   const held = state.held.get(stack.id) ?? null;
   const starred = Boolean(stack.head.acts?.starred), open = !single && level === 'open' && (!headBefore || earlierOpen || state.whole.has(stack.id));
-  // The title bar shows the reader's star when any message of the dossier is starred by them (item 635).
-  const marked = state.starred.has(dossierOf(stack));
   // Item 550: a stack gathered under a first message the page has not loaded
   // (stack-order.mjs, gather) is headed by one of its replies, a card of its
   // own before 550: folded, it shows whole, as each reply kept in view does,
@@ -766,7 +781,7 @@ function paintStack(section, stack, byId, context) {
   if (!single) opened(head);
   const separate = single || Boolean(state.only);
   if (separate) unhead(head);
-  const shown = paintHead(separate ? p.header : cardIn(head), stack, { open: open && !separate, starred: marked, state, unread, nameOf, doc, separate });
+  const shown = paintHead(separate ? p.header : cardIn(head), stack, { open: open && !separate, state, unread, nameOf, doc, separate });
   p.toggle.dataset.state = level;
   Object.assign(section.dataset, { coordination: coordination ? 'agents' : '', compact: String(!separate && !whole && coordination && level === 'head' && state.renaming !== stack.id && !stack.replies.some(item => item.yours?.note === true)) });
   p.toggle.setAttribute('aria-expanded', String(level !== 'head'));

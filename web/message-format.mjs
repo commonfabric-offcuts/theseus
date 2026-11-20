@@ -667,6 +667,19 @@ export function inlineNodes(input, options = {}) {
   return line.draw(line.items, 0, m.text.length);
 }
 
+// Literal fields keep every character outside explicit authored links. Reuse
+// the same bracket/code/escape reader, without enabling unrelated formatting.
+export function literalLinkNodes(input, options = {}) {
+  const text = String(input ?? ''), m = Mapped.of(text), doc = options.doc ?? globalThis.document;
+  const spans = readInlineSpans(m, options), nodes = []; let at = 0;
+  for (const span of spans) if (span?.kind === 'link' && span.link.written && span.start >= at) {
+    if (span.start > at) nodes.push(doc.createTextNode(text.slice(at, span.start)));
+    nodes.push(...inlineNodes(m.slice(span.start, span.end), options)); at = span.end;
+  }
+  if (at < text.length || !nodes.length) nodes.push(doc.createTextNode(text.slice(at)));
+  return nodes;
+}
+
 // Sentence reading shared by the light and display rules. No nodes or source
 // characters are changed here. Inline spans at the top protect all nested marks.
 function paragraphReading(block, { partial = false, meter } = {}) {

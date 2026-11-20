@@ -15,6 +15,7 @@ import { feedFence } from './feed-fence-copy.mjs';
 // beside the card. Opening it still shows it whole.
 import { formatWords } from './message-format.mjs';
 import { revisionOf } from './message-edit-writing.mjs';
+import { isBusy } from './api.mjs';
 
 export const SCROLL_CUE = 'Open to read it whole';
 
@@ -89,9 +90,21 @@ export class CardScroll {
     if (!item?.preview || card.dataset.whole === 'shown' || this.loading.has(card)) return false;
     const preview = card.querySelector(':scope > .message-preview');
     if (!preview?.getBoundingClientRect().height) return false;
+    const epoch = this.epochs.get(item.id);
     this.loading.add(card);
     try {
-      const body = await this.whole(item.id);
+      let body;
+      try { body = await this.whole(item.id); }
+      catch (error) {
+        // A busy read-ahead lane must not strand the card the person is
+        // reading. Only its current focus may borrow one foreground attempt;
+        // leaving, hiding or editing it ends that claim before another read.
+        const active = card.ownerDocument?.activeElement;
+        if (!isBusy(error) || !card.isConnected || this.epochs.get(item.id) !== epoch ||
+            !preview.getBoundingClientRect().height || card.dataset.full === 'shown' ||
+            active !== card && !card.contains(active)) throw error;
+        body = await this.whole(item.id, 'foreground');
+      }
       // The whole words replace the excerpt's elements. Lighting the card reads
       // them, so they can come while a press on the card is held, and the
       // browser sends no click for a press whose element went from under it:

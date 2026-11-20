@@ -162,3 +162,16 @@ test('a dossier\'s cover comes with its place, so a stack of replies whose first
   assert.equal(stackCover({ head: { ...reply('m-r1', 'm-root'), stack_position: at(4, { cover: null, cover_revision: 0 }) }, replies: [] }), null, 'a dossier with no cover shows none');
   assert.equal(stackCover({ head: { ...reply('m-r1', 'm-root'), stack_position: at(4) }, replies: [] }), null, 'a place from a Core before covers carries none');
 });
+
+
+test('864 cover written query link is active without interpreting literal labels or unrelated markup', t => {
+  const previous = globalThis.location; globalThis.location = new URL('https://theseus.example/?topic=t1');
+  t.after(() => { globalThis.location = previous; });
+  const text = 'Discussed: **literal**\nNext: [The smoke checks](?topic=Landing&page=n-864)';
+  const sheet = coverSheet(miniDocument(), { ...COVER, stands: text }, context());
+  const words = of(sheet, 'cover-stands')[0], links = [...words.descendants()].filter(node => node.tag === 'a');
+  assert.equal(links.length, 1, 'the accepted written query target is a cover link');
+  assert.equal(links[0].text, 'The smoke checks');
+  assert.equal(words.text, 'Discussed: **literal**\nNext: The smoke checks', 'all other literal cover characters remain exact');
+  assert.equal([...words.descendants()].some(node => node.tag === 'strong'), false);
+});

@@ -5842,7 +5842,8 @@ test('919 starred first card paints its filled star and dossier cue without a po
   const card = entryIn(f, 'star919'), star = card.querySelector(':scope > .message-author > .card-star');
   assert.equal(card.dataset.starred, 'true'); assert.equal(star.textContent, '★'); assert.equal(star.getAttribute('aria-pressed'), 'true');
   const nodes = node => [node, ...(node.children ?? []).flatMap(nodes)];
-  assert.equal(nodes(stackOf('star919')).find(node => node.classList?.contains('stack-star')).textContent, '★ Starred');
+  const headerStar = nodes(stackOf('star919')).find(node => node.classList?.contains('stack-star'));
+  assert.equal(headerStar.textContent, '★'); assert.equal(headerStar.getAttribute('aria-pressed'), 'true');
   f.views.messages.get('star919').acts = { starred: false, star_revision: 2 }; f.paintViews('acts');
   assert.equal(card.dataset.starred, 'false'); assert.equal(star.textContent, '☆');
 });
@@ -7439,7 +7440,7 @@ for (const minted of [false, true]) test(`891 ${minted ? 'minted' : 'explicit'} 
     assert.match(p.words(), /Independent name/); assert.match(p.words(), /Independent dossier state/);
     assert.equal(/Named by/.test(p.words()), minted);
     assert.equal(p.state().starred.has('q891'), true, 'hiding a row does not remove a dossier star');
-    assert.match(p.words(), /★ Starred/, 'the title bar still marks that dossier star');
+    assert.match(p.words(), /★/, 'the title bar still marks that dossier star');
     assert.deepEqual(p.ids(), [viewer === 'fixture-person' ? ['r891'] : ['q891', 'r891']]);
   }
 });
@@ -8374,4 +8375,48 @@ test('931 R2 every conflict review rereads the remote, including its first compa
   }
   assert.equal(reads, 2);
   assert.equal(f.editor.draft.body, currentWords, 'fresh reads never overwrite current writing');
+});
+
+
+for (const failed of [false, true]) test(`864 startup ${failed ? 'unconfirmed' : 'empty'} lookup retains the original initializer`, async () => {
+  const f = fixture('https://fixture/?topic=t1', { resolveTopicLink: async () => {
+    if (failed) throw Error('Destination could not be confirmed');
+    return null;
+  } });
+  await f.initialize(); await drain();
+  assert.equal(f.get('body').dataset.ready, 'true');
+  assert.equal(f.get('topic-title').textContent, 'Fixture');
+  assert.equal(f.runObservation('topic.id'), 't1');
+});
+
+test('864 ordinary internal destinations do not request topic-name lookup', async () => {
+  let lookups = 0;
+  const f = fixture('https://fixture/', { resolveTopicLink: async () => { lookups++; throw Error('Unconfirmed'); } });
+  await f.initialize(); await drain();
+  f.runObservation('shell.go = () => true');
+  await f.runObservation("openDestination({ kind: 'topic', id: 't2' }, 'Known route')");
+  assert.equal(lookups, 0);
+});
+
+test('864 an unconfirmed authored query uses the existing departure guard and keeps writing', async () => {
+  const assigned = [], location = { href: 'https://fixture/?topic=t1', origin: 'https://fixture', assign: href => assigned.push(href), reload() {} };
+  const f = fixture('https://fixture/?topic=t1', { location });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  f.registry.keepEditorsLocal = async () => {};
+  Object.assign(f.editor, { localVersion: 1, ackVersion: 0 });
+  Object.defineProperty(f.editor, 'dirty', { get: () => f.editor.ackVersion < f.editor.localVersion });
+  f.registry.flush = async () => ({ recorded: false, status: 'unknown' });
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize(); await drain();
+  f.views.messages.set('m864', { id: 'm864', seq: 1, author_id: 'fable', body: '[Next](?topic=t2)', topic_id: 't1', sent_ms: null, reply_to: null });
+  f.paintViews('messages');
+  const [a] = linksIn(entryIn(f, 'm864'));
+  assert.equal(a.href, '?topic=t2');
+  clicked(a); await drain();
+  assert.deepEqual(assigned, []);
+  assert.equal(f.editor.draft.body, 'kept');
+  assert.match(f.get('topic-navigation-status').textContent, /not confirmed saved/);
+  f.registry.flush = async () => { f.editor.ackVersion = 1; return { recorded: true, status: 'committed' }; };
+  clicked(a); await drain();
+  assert.deepEqual(assigned, ['?topic=t2']);
 });

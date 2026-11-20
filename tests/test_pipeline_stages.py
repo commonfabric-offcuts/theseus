@@ -18,6 +18,10 @@ STAGES = ({"stage_id": "build", "name": "Build", "rounds": "together"},
 
 
 class StagesCase(PipelineCase):
+    def create_topic(self):
+        self.workspace()
+        return self.topic("t1", "Topic")
+
     def setUp(self):
         super().setUp()
         self.committed(self.on())
@@ -37,11 +41,10 @@ class StagesCase(PipelineCase):
         return self.sql("SELECT stage_id,round,left_outcome,left_ms IS NOT NULL FROM pipeline_stage_entries WHERE piece_id=? ORDER BY seq", (piece,))
 
     def topic(self, topic_id, title="Another topic"):
-        source = {"kind": "new_topic", "id": "opening-" + topic_id, "workspace_id": "w1"}
-        self.committed(self.save_draft("draft-" + topic_id, source, topic_id, "Opening " + title,
-                                       opening={"workspace_id": "w1", "title": title, "participants": ["agent-a"]}))
-        self.committed(self.prepare("draft-" + topic_id, topic_id, submission="sub-" + topic_id, send_op="open-" + topic_id))
-        self.committed(self.command("topic.create_and_send", {"submission_id": "sub-" + topic_id}, target={"topic_id": topic_id}, op="open-" + topic_id))
+        # 632: stage fixtures build in agent-opened topics. Keep the shared
+        # ReaderCase's person-opened writing fixtures unchanged.
+        from test_build_topics import BuildTopicsCase
+        return BuildTopicsCase.topic(self, topic_id, title)
 
     def test_a_piece_starts_only_on_now_items_not_already_in_work_in_a_topic_of_this_outcome(self):
         before = self.sql("SELECT count(*) FROM pipeline_pieces")

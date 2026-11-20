@@ -233,6 +233,7 @@ export class TopicNavigation {
   constructor({ registry, topicId, current = topicId ? {kind:'topic',id:topicId} : {kind:'root'}, navigate, navigateTarget, beforeLeave }) {
     Object.assign(this, { registry, topicId, current, navigate, navigateTarget, beforeLeave }); this.serial = 0;
   }
+  cancelPending() { this.serial++; }
   open(topicId, title = topicId) { return this.openTarget({kind:'topic',id:topicId},title); }
   async openTarget(destination, title = destination.kind) {
     const destinationKey=routeKey(destination);
