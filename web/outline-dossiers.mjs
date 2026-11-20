@@ -58,9 +58,14 @@ export class OutlineDossiers {
       if (returned || !state.loaded && !state.busy && !state.error) this.load(state);
     }
   }
-  refresh() {
+  refresh(alreadyReading = null) {
     this.sync();
-    return Promise.all(this.parents().map(parent => this.load(this.states.get(parent.dataset.topicId))));
+    return Promise.all(this.parents().map(parent => {
+      const state = this.states.get(parent.dataset.topicId);
+      // A sync read begun during this refresh window is already fresh enough.
+      // One that predates the window may have missed its change and must queue.
+      return state?.busy && alreadyReading && !alreadyReading.has(state.busy) ? state.busy : this.load(state);
+    }));
   }
   async load(state, more = false) {
     if (!state || !this.outline.handles) return true;
@@ -74,6 +79,7 @@ export class OutlineDossiers {
     state.box.setAttribute('aria-busy','true');
     // Defer the read to a microtask so busy is set before sync can run again.
     state.busy = Promise.resolve().then(async () => {
+      let accepted = false;
       try {
         let cursor = more ? state.next : null, stars = more ? [...state.stars] : [], next;
         do {
@@ -87,18 +93,24 @@ export class OutlineDossiers {
         state.stars = stars; state.next = next;
         state.extent = stars.at(-1)?.star ?? null;
         state.loaded = true; state.error = null;
-        this.paint(state); return true;
+        this.paint(state); accepted = true;
       } catch(error) {
         if (!mine()) return true;
         state.error = readFailure(error);
         if (state.error.kind === 'forbidden' || state.error.kind === 'reconnect') state.stars = [];
-        this.paint(state); return false;
+        this.paint(state);
       } finally {
         if (mine()) {
           state.busy = null; state.box.setAttribute('aria-busy','false');
-          if (state.again) {state.again=false; if (state.visible !== false) this.load(state);}
         }
       }
+      // The waiting refresh must include this newer read's result. Otherwise
+      // its change cursor could advance while a stale answer is still shown.
+      if (mine() && state.again) {
+        state.again = false;
+        if (state.visible !== false) return this.load(state);
+      }
+      return accepted;
     });
     return state.busy;
   }

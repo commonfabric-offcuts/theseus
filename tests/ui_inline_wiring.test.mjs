@@ -441,6 +441,7 @@ test('outcome detail keeps transient choices, hides denied content, and recovers
 // not move down under a pointer as each read lands.
 test('an outcome page back from a refusal shows its topics only once what stands above them is painted again', async () => {
   const f = fixture('https://fixture/?workspace=w1'), live = stream();
+  mountOutcomeOutline(f);
   f.inject({ api:f.api, bootstrap:f.bootstrap }); f.useLive(live);
   let denied = false;
   const held = new Map();
@@ -1337,8 +1338,11 @@ test('property: after every step of any interleaving of requests, the live feed 
   };
   const words = { refusal: 'This topic is closed.', nothing: 'Connection interrupted. Confirmation is unknown; your writing is kept.',
     proxy: 'AIM returned an unreadable response. Confirmation is unknown.', session: 'Open this instance to establish a session.', ranOut: timedOut };
-  const SEEDS = 40, STEPS = 60;
-  let checked = 0, shown = 0, hidden = 0, doubted = 0, renewed = 0;
+  // Leave one of the document's four foreground places for renewal/bootstrap.
+  // Held reads still overlap; an arbitrary queued read cannot finish before
+  // the earlier gates which this same sequential driver alone can release.
+  const SEEDS = 40, STEPS = 60, MAX_HELD_READS = 3;
+  let checked = 0, shown = 0, hidden = 0, doubted = 0, renewed = 0, peakHeld = 0;
   const seen = new Set();
   for (let seed = 1; seed <= SEEDS; seed++) {
     const random = seeded(seed), pick = list => list[Math.floor(random() * list.length)];
@@ -1360,7 +1364,7 @@ test('property: after every step of any interleaving of requests, the live feed 
     const pending = [], history = [];
     let seq = 0;
     for (let step = 1; step <= STEPS; step++) {
-      const kinds = ['start', 'start', 'renew', ...(pending.length ? ['end', 'end', 'end'] : []), ...(live.state === 'live' ? ['message', 'down'] : ['up', 'up'])];
+      const kinds = [...(pending.length < MAX_HELD_READS ? ['start', 'start'] : []), 'renew', ...(pending.length ? ['end', 'end', 'end'] : []), ...(live.state === 'live' ? ['message', 'down'] : ['up', 'up'])];
       const kind = pick(kinds);
       let did = kind;
       if (kind === 'start') {
@@ -1371,6 +1375,7 @@ test('property: after every step of any interleaving of requests, the live feed 
           entry.done = f.run(() => entry.gate.promise.then(() => deadline.bound(request)));
         } else entry.done = f.run(() => new RealApi('fixture-session', async () => { await entry.gate.promise; return endings[entry.ending](); }).view('topic', {}));
         pending.push(entry); did = entry.bounded ? 'start a bounded read' : 'start a request';
+        peakHeld = Math.max(peakHeld, pending.length);
       } else if (kind === 'end') {
         const entry = pending.splice(Math.floor(random() * pending.length), 1)[0];
         entry.ending = entry.bounded ? 'ranOut' : pick(Object.keys(endings));
@@ -1415,6 +1420,7 @@ test('property: after every step of any interleaving of requests, the live feed 
     await new Promise(resolve => setTimeout(resolve, 2)); await Promise.all(pending.map(entry => entry.done)); await drain();
   }
   assert.equal(checked, SEEDS * STEPS);
+  assert.equal(peakHeld, MAX_HELD_READS, 'the driver still reaches overlapping held reads');
   // Every kind of step ran, and connection lines both showed and were hidden.
   assert.deepEqual([...seen].sort(), ['down', 'end: nothing', 'end: proxy', 'end: ranOut', 'end: refusal', 'end: session', 'end: success', 'message',
     'renewal answered', 'renewal not answered', 'start a bounded read', 'start a request', 'up']);
@@ -2883,8 +2889,8 @@ test('a commit while a reload reads the outcomes is read after it, and a failed 
   assert.equal(f.get('retry-workspaces').hidden, true);
 });
 
-// The outcome body's list read serves Also waiting; the shell separately owns
-// the visible outline. The main column does not show the old outcomes list.
+// The shell's single outcome-list answer also serves the body's Also waiting.
+// The main column does not show the old outcomes list.
 test('on an outcome page a commit refreshes the shared outline and republishes its cards beside the other outcome reads', async () => {
   const f = fixture('https://fixture/?workspace=w1'), live = stream(), outline = mountOutcomeOutline(f);
   f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
@@ -2904,14 +2910,14 @@ test('on an outcome page a commit refreshes the shared outline and republishes i
   title = 'After the commit';
   live.emit({ kind: 'commit', seq: 9 }); await drain();
   assert.deepEqual({ workspaces: count('workspaces'), workspace: count('workspace'), topics: count('workspace_topics') },
-    { workspaces: before.workspaces + 2, workspace: before.workspace + 1, topics: before.topics + 1 });
+    { workspaces: before.workspaces + 1, workspace: before.workspace + 1, topics: before.topics + 1 });
   assert.equal(outline.outcomes.get('w1').rail.pages.items[0].title, title);
   assert.deepEqual(outcomeCardTitles(f), ['After the commit'], 'the outline republishes its new state to the cards');
   assert.equal(f.get('rail').hidden, false, 'the outcome page keeps the shared rail');
   assert.equal(f.get('outcome-navigation').hidden, true, 'and shows no list of outcomes');
   f.document.visibilityState = 'hidden';
   live.emit({ kind: 'commit', seq: 10 }); await drain();
-  assert.deepEqual([count('workspaces'), count('workspace_topics')], [before.workspaces + 2, before.topics + 1], 'a hidden page waits');
+  assert.deepEqual([count('workspaces'), count('workspace_topics')], [before.workspaces + 1, before.topics + 1], 'a hidden page waits');
 });
 
 // The outcome page with the light and the Also-waiting line together. The
@@ -2920,6 +2926,7 @@ test('on an outcome page a commit refreshes the shared outline and republishes i
 // outcome rows the reader can list, each { id, asks }.
 const lightAndLine = async (waits, listed) => {
   const f = fixture('https://fixture/?workspace=w5'), live = stream();
+  mountOutcomeOutline(f);
   f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
   const state = { waits, listed, failing: null };
   const lit = asks => asks ? { light: 'waiting', label: 'Waiting on you', short: { kind: 'asks', count: asks }, unreadable: false }
@@ -7491,4 +7498,204 @@ for (const answer of ['refused', 'unreached']) test(`891 B3 ${answer} split-out 
     assert.equal(kept.operation_id, sent[0].operation_id, 'recovery retains this exact operation');
     feed.deafen();
   }
+});
+
+function outcomeReads923({ conversation = false } = {}) {
+  const f = fixture('https://fixture/?workspace=w1');
+  const outline = mountOutcomeOutline(f), calls = [], original = f.api.view;
+  const conversationTopic = { ...f.topic, id: 'conversation-923', kind: 'conversation', version: 1, activity_ms: 1, list_position: 1 };
+  f.api.view = async (name, args) => {
+    calls.push({ name, args });
+    if (name === 'workspace') return { instance_id: 'fixture', workspace: { id: 'w1', title: 'Outcome 923', owner_id: 'fixture-person', version: 1 } };
+    if (name === 'workspace_topics') return { instance_id: 'fixture', items: [{ ...f.topic, activity_ms: 2, list_position: 2 }], next_cursor: null };
+    if (name === 'conversation') return { instance_id: 'fixture', conversation: conversation ? { topic_id: conversationTopic.id } : null };
+    if (name === 'topic' && args.topic_id === conversationTopic.id) return { instance_id: 'fixture', topic: conversationTopic, participants: [] };
+    return original(name, args);
+  };
+  return { f, outline, calls };
+}
+
+test('923 actual outcome topics are asked before outcomes and paint while team and panels are held', async () => {
+  const { f, calls } = outcomeReads923(), gate = defer(), view = f.api.view;
+  const withheld = new Set(['wakes', 'workspace_members', 'outcome_checks', 'outcome_light', 'tools', 'memory_items', 'pipeline']);
+  f.api.view = async (name, args) => { if (withheld.has(name)) await gate.promise; return view(name, args); };
+  const opening = f.initialize(); await drain();
+  const early = { cards: outcomeCardTitles(f), names: calls.map(call => call.name) };
+  gate.resolve(); await opening; await drain();
+  assert.deepEqual(early.cards, ['Fixture'], 'actual shared topic rows paint without waiting for the team or panels');
+  assert.ok(early.names.indexOf('workspace_topics') >= 0);
+  assert.ok(early.names.indexOf('workspaces') < 0 || early.names.indexOf('workspace_topics') < early.names.indexOf('workspaces'), 'current topics enter the lane first: ' + early.names.join(', '));
+});
+
+for (const conversation of [false, true]) test(`923 actual outline shares its one Conversation answer (${conversation ? 'present' : 'absent'})`, async () => {
+  const { f, outline, calls } = outcomeReads923({ conversation });
+  await f.initialize(); await drain();
+  assert.equal(calls.filter(call => call.name === 'conversation').length, 1);
+  assert.deepEqual(outcomeCardTitles(f), conversation ? ['Fixture', 'Fixture'] : ['Fixture']);
+  assert.equal(outline.outcomes.get('w1').conversationRead, true);
+  assert.equal(outline.outcomes.get('w1').conversation?.topic_id ?? null, conversation ? 'conversation-923' : null);
+});
+
+test('923 reopening an outcome shares its list Conversation answer too', async () => {
+  const { f, outline, calls } = outcomeReads923({ conversation: true });
+  await f.initialize(); await drain();
+  const outcome = outline.outcomes.get('w1');
+  outline.setOpen(outcome, false); calls.length = 0;
+  outline.setOpen(outcome, true); await drain();
+  assert.equal(calls.filter(call => call.name === 'conversation').length, 1);
+  assert.equal(outcome.conversation.topic_id, 'conversation-923');
+});
+
+function scopedOutcome923(options = {}) {
+  const setup = outcomeReads923(options), { f } = setup, history = { workspace: [], actor: [] };
+  let seq = 0, denied = false;
+  Object.assign(f.bootstrap, { authority: { authority_id: 'a', authority_epoch: 'e' }, transport: { read_admission: {
+    version: 1, header: 'X-AIM-Read-Class', foreground: { slots: 1, max_waiters: 8, queue_timeout_ms: 5000 },
+    background: { slots: 1, max_waiters: 2, queue_timeout_ms: 500 } } } });
+  const view = f.api.view, changes = [];
+  f.api.view = async (name, args) => {
+    if (denied && (name === 'workspace' || name === 'changes' && args.scope.kind === 'workspace')) throw Object.assign(Error('No permission for this workspace'), { code: 'FORBIDDEN' });
+    if (name !== 'changes') return view(name, args);
+    changes.push(args);
+    const { scope, cursor } = args, versions = scope.kind === 'actor' ? {} : { workspace: 1, notebook: 0 };
+    return { instance_id: 'fixture', scope, baseline: !cursor, items: cursor ? history[scope.kind].filter(item => item.seq > cursor.after_seq) : [],
+      has_more: false, continuation: null, covered_versions: versions,
+      checkpoint: { v: 1, kind: 'checkpoint', instance_id: 'fixture', authority_id: 'a', authority_epoch: 'e', actor_id: f.bootstrap.actor, scope, after_seq: seq } };
+  };
+  return { ...setup, changes, deny: value => { denied = value; }, add: (scope, kind, id = 'w1') => {
+    history[scope].push({ seq: ++seq, resource_kind: kind, resource_id: id, version: 1 }); return seq;
+  } };
+}
+
+test('923 actual commit refresh leaves unrelated private work alone and refreshes only the changed panels or stars', async () => {
+  const { f, calls, changes, add } = scopedOutcome923(), live = stream(); f.useLive(live);
+  await f.initialize(); await drain(); calls.length = changes.length = 0;
+  add('actor', 'draft', 'private-draft'); await commit(live, 10);
+  const lists = new Set(['workspaces', 'workspace', 'workspace_topics', 'conversation', 'workspace_members', 'outcome_checks', 'outcome_light', 'tools', 'memory_items', 'pipeline_row', 'stars', 'memory_stars']);
+  assert.deepEqual(calls.filter(call => lists.has(call.name)), [], 'a private writing key changes none of these lists');
+  assert.equal(changes.length, 2, 'both exact scopes are checked');
+  calls.length = 0;
+  add('workspace', 'checks', 'check-1'); await commit(live, 11);
+  assert.deepEqual(calls.filter(call => lists.has(call.name)).map(call => call.name).sort(), ['outcome_checks', 'outcome_light']);
+  calls.length = 0;
+  add('actor', 'acts', 't1'); await commit(live, 12);
+  assert.deepEqual(calls.filter(call => lists.has(call.name)).map(call => call.name), ['stars'], 'personal dossier changes refresh their actual star owner, once');
+});
+
+test('923 scoped access refusal hides the outcome and its cards, and a later permitted change recovers', async () => {
+  const { f, deny, add } = scopedOutcome923(), live = stream(); f.useLive(live);
+  await f.initialize(); await drain();
+  assert.deepEqual(outcomeCardTitles(f), ['Fixture']);
+  deny(true); await commit(live, 20);
+  assert.equal(f.get('topic-title').textContent, 'Outcome unavailable');
+  assert.equal(f.get('topic-navigation').hidden, true);
+  assert.deepEqual(outcomeCardTitles(f), []);
+  deny(false); add('workspace', 'workspace'); await commit(live, 21);
+  assert.equal(f.get('topic-title').textContent, 'Outcome 923');
+  assert.equal(f.get('topic-navigation').hidden, false);
+  assert.deepEqual(outcomeCardTitles(f), ['Fixture']);
+});
+
+test('923 a failed full refresh remains owed even when the next change window is empty', async () => {
+  const { f } = scopedOutcome923(), live = stream(); f.useLive(live);
+  await f.initialize(); await drain();
+  const view = f.api.view; let tools = 0;
+  f.api.view = async (name, args) => {
+    if (name === 'tools' && ++tools === 1) throw Error('The tools read was interrupted');
+    return view(name, args);
+  };
+  for (const event of f.events.filter(event => event[0] === 'document-handler' && event[1] === 'visibilitychange')) event[2]({});
+  await drain(); assert.equal(tools, 1);
+  live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.equal(tools, 2, 'the failed full read is retried without needing a new resource key');
+});
+
+test('923 B2 ordinary commit refreshes do not read the global list, but explicit workspace and visibility changes do', async () => {
+  const { f, calls, add } = scopedOutcome923(), live = stream(); f.useLive(live);
+  await f.initialize(); await drain();
+  for (const [scope, kind] of [['workspace', 'topic'], ['workspace', 'pipeline'], ['actor', 'mark'], ['actor', 'delivery'], ['actor', 'waiting']]) {
+    calls.length = 0; await commit(live, add(scope, kind));
+    assert.equal(calls.filter(call => call.name === 'workspaces').length, 0, scope + ':' + kind);
+    assert.ok(calls.some(call => call.name === 'workspace_topics'), 'local topic owner still refreshes');
+  }
+  calls.length = 0; await commit(live, add('workspace', 'workspace'));
+  assert.equal(calls.filter(call => call.name === 'workspaces').length, 1);
+  calls.length = 0;
+  for (const event of f.events.filter(event => event[0] === 'document-handler' && event[1] === 'visibilitychange')) event[2]({});
+  await drain(); assert.equal(calls.filter(call => call.name === 'workspaces').length, 1);
+});
+
+test('923 B2 failed changes read falls back to full lists and retries the same checkpoint', async () => {
+  const { f, calls, changes, add } = scopedOutcome923(), live = stream(); f.useLive(live);
+  await f.initialize(); await drain(); const view = f.api.view; let fail = true, refusedCursor;
+  f.api.view = async (name, args) => {
+    if (name === 'changes' && args.cursor && fail) { refusedCursor = args.cursor.after_seq; throw Error('Changes interrupted'); }
+    return view(name, args);
+  };
+  calls.length = 0; await commit(live, add('workspace', 'checks'));
+  assert.ok(calls.some(call => call.name === 'workspace'), 'failed scoped changes must not silently suppress the refresh');
+  assert.ok(calls.some(call => call.name === 'outcome_checks'));
+  fail = false; changes.length = 0; calls.length = 0; await commit(live, 50);
+  assert.equal(changes[0].cursor.after_seq, refusedCursor, 'failed changes were never accepted');
+  assert.ok(calls.some(call => call.name === 'outcome_checks'));
+});
+
+test('923 B2 a star commit during More reads a fresh star page before settling', async () => {
+  const { f, outline, add } = scopedOutcome923(), live = stream(); f.useLive(live);
+  await f.initialize(); await drain();
+  // The outcome's center cards are not rail anchors. Model one visible topic
+  // row while retaining the actual outline refresh and star sync/read/paint.
+  const parent = f.document.createElement('a'); parent.dataset.topicId = 't1'; outline.list.append(parent);
+  outline.dossiers.parents = () => [parent]; outline.dossiers.sync();
+  await outline.dossiers.states.get('t1').busy;
+  const view = f.api.view, old = defer(), fresh = defer(), reads = [];
+  f.api.view = async (name, args) => {
+    if (name !== 'stars') return view(name, args);
+    reads.push(args); return reads.length === 1 ? old.promise : fresh.promise;
+  };
+  const state = outline.dossiers.states.get('t1'); state.next = 10;
+  let done = false; const more = outline.dossiers.load(state, true).then(() => { done = true; });
+  await drain(); await commit(live, add('actor', 'acts', 't1'));
+  old.resolve({ instance_id: 'fixture', items: [], next_cursor: null }); await drain();
+  assert.equal(reads.length, 2, 'the commit needs a newer page than the held More response');
+  assert.equal(reads[1].cursor, undefined); assert.equal(done, false);
+  fresh.resolve({ instance_id: 'fixture', items: [{ topic_id: 't1', star: 11, dossier: { id: 'star-923', name: 'New star' } }], next_cursor: null });
+  await more; await drain();
+  assert.equal(state.links.get('star-923').textContent, '★ New star');
+});
+
+for (const conversation of [false, true]) test(`923 actual app read trace reaches topics in bounded rounds (${conversation ? 'Conversation' : 'no Conversation'})`, async t => {
+  const { f, calls } = scopedOutcome923({ conversation }), pending = [], trace = [];
+  let round = 0, active = 0, max = 0, complete = false, failed = null, painted = null;
+  const actual = new RealApi('fixture', (path, options) => {
+    const body = options.body ? JSON.parse(options.body) : null, foreground = options.headers['X-AIM-Read-Class'] !== 'background';
+    if (foreground) max = Math.max(max, ++active);
+    trace.push({ round, name: body?.name ?? 'bootstrap' });
+    return new Promise(resolve => pending.push(async () => {
+      const value = path === '/api/bootstrap' ? f.bootstrap : await f.api.view(body.name, body.args);
+      resolve({ ok: true, json: async () => { if (foreground) active--; return value; } });
+    }));
+  });
+  // The only substituted boundary is the network: app, Api, Shell and Outline
+  // retain their actual queues and call sites. No socket or store is opened.
+  f.runObservation('globalThis.makeApi923 = null');
+  f.runObservation('Api = class { constructor() { return globalThis.makeApi923(); } }');
+  // Pass this real API through the existing VM observation door, without a
+  // second app body or a different source loader.
+  f.runObservation('globalThis.apiDoor923 = value => { globalThis.makeApi923 = () => value; }')(actual);
+  const opening = f.initialize().then(() => { complete = true; }, error => { failed = error; complete = true; });
+  for (let step = 0; step < 35; step++) {
+    await drain();
+    if (outcomeCardTitles(f).length && painted === null) painted = round;
+    if (complete && !pending.length) break;
+    const batch = pending.splice(0); round++;
+    await Promise.all(batch.map(release => release()));
+  }
+  await opening; await drain();
+  if (failed) throw failed;
+  t.diagnostic(JSON.stringify({ conversation, roundsToTopics: painted, totalReads: trace.length, foregroundMaximum: max, trace }));
+  assert.ok(complete);
+  assert.equal(painted, conversation ? 6 : 5, 'actual dependent rounds to first topic cards, including bootstrap and scoped baselines');
+  assert.ok(max <= 4, `actual API foreground maximum ${max}`);
+  assert.equal(trace.filter(call => call.name === 'conversation').length, 1);
 });

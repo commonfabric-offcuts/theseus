@@ -52,3 +52,19 @@ test('a forbidden read clears titles, a transient error keeps them, and Retry re
   f.queue.push(f.page([star(2,'new')]));await f.subject.load(f.state);
   assert.equal(f.state.stars[0].dossier.id,'new');assert.equal(f.state.error,null);
 });
+
+for (const fails of [false, true]) test(`923 B2 refresh waits for a queued star read and returns its ${fails ? 'failure' : 'success'}`, async () => {
+  const f = fixture(); let first, second, settled = false;
+  f.subject.sync = () => {}; f.subject.parents = () => [{ dataset: { topicId: 't' } }];
+  f.subject.states = new Map([['t', f.state]]);
+  f.queue.push(() => new Promise(resolve => { first = resolve; }), () => new Promise((resolve, reject) => { second = fails ? reject : resolve; }));
+  const busy = f.subject.load(f.state); await Promise.resolve();
+  const refreshed = f.subject.refresh().then(value => { settled = true; return value; });
+  first(f.page([star(1, 'old')])());
+  await new Promise(setImmediate);
+  assert.equal(f.calls.length, 2, 'a star change queues a newer read');
+  assert.equal(settled, false, 'the dirty window cannot accept the stale read while the newer read is held');
+  second(fails ? Error('Star read interrupted') : f.page([star(2, 'new')])());
+  assert.deepEqual(await refreshed, [!fails]); await busy;
+  assert.equal(f.state.stars[0].dossier.id, fails ? 'old' : 'new');
+});
