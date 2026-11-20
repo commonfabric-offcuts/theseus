@@ -5261,3 +5261,147 @@ test('860 late refusal cannot replace another Reader source or its notice and wr
   assert.equal(f.get('reader-notice').textContent, 'Current source notice');
   assert.equal(f.get('reader-reactions').hidden, true); assert.equal(d.answer('yes'), null); assert.equal(d.closes, 0);
 });
+
+// 880 uses this file's actual app loader and the real TopicViews renderer.
+// Only transport and the device journal are held in memory; no store opens.
+function startup880(t, { answers = {}, journalError = null } = {}) {
+  const names = ['topic_messages', 'memory_items', 'colors', 'journal'];
+  const gates = new Map(names.map(name => [name, defer()])), asked = [], baselines = [];
+  let closes = 0, settled = false, f;
+  const opened = { close() { closes++; } };
+  f = fixture('https://fixture/?topic=t1', {
+    TopicViews,
+    initialViews: async () => { baselines.push('feed'); return {}; },
+    actorBaseline: async () => { baselines.push('actor'); return null; },
+    openJournal: async options => {
+      asked.push({ name: 'journal', args: options });
+      await gates.get('journal').promise;
+      if (journalError) throw journalError;
+      return opened;
+    },
+  });
+  const message = { id: 'm880', seq: 1, topic_id: 't1', author_id: 'fixture-writer', body: 'Message words 880', sent_ms: null, reply_to: null };
+  const note = { id: 'n880', seq: 1, title: 'Notebook 880', body: 'Notebook words 880', revision: 2,
+    owner_scope: { kind: 'topic', id: 't1' }, source_ref: { kind: 'memory', id: 'n880', revision: 2 } };
+  const values = {
+    topic_messages: { instance_id: 'fixture', items: [message], next_cursor: null, relevant_versions: { topic: 1 } },
+    memory_items: { instance_id: 'fixture', items: [note], next_cursor: null, relevant_versions: { notebook: 1 } },
+    colors: { instance_id: 'fixture', palette: [...AGENT_PALETTE], items: [], next_cursor: null },
+    ...answers,
+  };
+  const read = f.api.view;
+  f.api.view = async (name, args, options) => {
+    if (!gates.has(name)) return read(name, args, options);
+    asked.push({ name, args, options, baselines: [...baselines] });
+    await gates.get(name).promise;
+    const value = values[name]; if (value instanceof Error) throw value;
+    return structuredClone(value);
+  };
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  // The normal fixture has an already-present editor for its other checks;
+  // this scenario begins with no startup owner and observes its construction.
+  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  const started = f.initialize().then(() => { settled = true; return { ok: true }; }, error => { settled = true; return { ok: false, error }; });
+  const release = name => gates.get(name).resolve();
+  const releaseAll = () => names.forEach(release);
+  t.after(async () => { releaseAll(); await started; await drain(); });
+  const unpublished = () => {
+    assert.equal(f.events.filter(e => e[0] === 'registry').length, 0, 'no editor registry before the startup join');
+    assert.equal(f.get('messages').querySelector('[data-id]'), null, 'no clickable message source');
+    assert.equal(f.get('memory-items').querySelector('[data-id]'), null, 'no clickable Notebook source');
+    assert.equal(f.get('body').dataset.ready, undefined, 'page is not marked ready');
+  };
+  const text = node => typeof node === 'string' ? node : node?.textContent || (node?.children ?? []).map(text).join('');
+  const page = () => {
+    const views = f.runObservation('views');
+    return { title: f.get('topic-title').textContent, messages: [...views.messages.values()].map(x => [x.id, x.body]),
+      memory: [...views.memory.values()].map(x => [x.id, x.title, x.body, x.revision]),
+      messageText: text(entryIn(f, 'm880')?.querySelector(':scope > .message-preview')),
+      memoryText: text(f.get('memory-items').querySelector('[data-id=n880]')?.children[1]),
+      sourceClickable: typeof entryIn(f, 'm880')?.onclick, memoryClickable: typeof f.get('memory-items').querySelector('[data-id=n880]')?.onclick,
+      ready: f.get('body').dataset.ready };
+  };
+  return { f, names, asked, gates, opened, started, release, releaseAll, unpublished, page, closes: () => closes, settled: () => settled };
+}
+const expected880 = { title: 'Fixture', messages: [['m880', 'Message words 880']], memory: [['n880', 'Notebook 880', 'Notebook words 880', 2]],
+  messageText: 'Message words 880', memoryText: 'Notebook words 880', sourceClickable: 'function', memoryClickable: 'function', ready: 'true' };
+
+test('880 all four startup reads are already asked while messages are held, with exact bounds and baselines', async t => {
+  const s = startup880(t); await drain();
+  assert.deepEqual(s.asked.map(x => x.name).sort(), ['colors', 'journal', 'memory_items', 'topic_messages']);
+  const one = name => s.asked.find(x => x.name === name);
+  assert.deepEqual(JSON.parse(JSON.stringify(one('topic_messages').args)), { topic_id: 't1', audience: 'all', direction: 'before', limit: 30 });
+  assert.deepEqual(JSON.parse(JSON.stringify(one('memory_items').args)), { owner_scope: { kind: 'topic', id: 't1' }, limit: 20 });
+  assert.deepEqual(JSON.parse(JSON.stringify(one('colors').args)), { limit: 100 });
+  assert.deepEqual(JSON.parse(JSON.stringify(one('colors').options)), { readClass: 'foreground' });
+  assert.deepEqual(JSON.parse(JSON.stringify(one('journal').args)), { instanceId: 'fixture', actor: 'fixture-person' });
+  for (const name of ['topic_messages', 'memory_items']) assert.deepEqual(one(name).baselines, ['feed', 'actor']);
+  s.unpublished();
+  for (const name of ['memory_items', 'colors', 'journal']) s.release(name);
+  await drain(); assert.equal(s.settled(), false); s.unpublished();
+  s.release('topic_messages'); assert.equal((await s.started).ok, true); await drain();
+  assert.deepEqual(s.page(), expected880); assert.equal(s.closes(), 0, 'successful startup keeps its journal');
+  assert.equal(s.f.events.filter(e => e[0] === 'registry').length, 1);
+  assert.equal(s.f.registry.options.journal === s.opened, true, 'the startup owner adopts this exact journal');
+  assert.deepEqual(s.asked.map(x => x.name).sort(), ['colors', 'journal', 'memory_items', 'topic_messages'], 'no extra startup read was introduced');
+});
+
+const permutations880 = values => values.length ? values.flatMap((value, index) => permutations880(values.filter((_, at) => at !== index)).map(rest => [value, ...rest])) : [[]];
+for (const order of permutations880(['topic_messages', 'memory_items', 'colors', 'journal'])) {
+  test('880 release order ' + order.join(' > ') + ' paints the same page without early sources', async t => {
+    const s = startup880(t); await drain(); s.unpublished();
+    for (const [index, name] of order.entries()) {
+      s.release(name); await drain();
+      if (index < order.length - 1) { assert.equal(s.settled(), false); s.unpublished(); }
+    }
+    assert.equal((await s.started).ok, true); await drain(); assert.deepEqual(s.page(), expected880);
+    assert.equal(s.closes(), 0); assert.equal(s.f.events.filter(e => e[0] === 'registry').length, 1);
+  });
+}
+
+for (const name of ['topic_messages', 'memory_items']) for (const failure of ['refused answer', 'wrong instance', 'transport refusal']) {
+  test('880 ' + name + ' ' + failure + ' refuses startup and leaves no sources', async t => {
+    const refused = Object.assign(Error('Transport refused880'), { status: 403, code: 'FORBIDDEN' });
+    const answer = failure === 'wrong instance' ? { instance_id: 'other-instance', items: [], next_cursor: null } :
+      failure === 'refused answer' ? { instance_id: 'fixture', error: { code: 'FORBIDDEN', message: 'List refused880' } } : refused;
+    const s = startup880(t, { answers: { [name]: answer } }); s.releaseAll();
+    const result = await s.started; assert.equal(result.ok, false);
+    if (failure === 'wrong instance') assert.match(result.error.message, /another instance or is malformed/);
+    else if (failure === 'transport refusal') assert.equal(result.error, refused);
+    else { assert.equal(result.error.message, 'List refused880'); assert.equal(result.error.details.error.code, 'FORBIDDEN'); }
+    s.unpublished();
+  });
+}
+
+test('880 rejected journal refuses startup; rejected colors keep their existing fallback', async t => {
+  const error = Error('Device journal refused880'), failed = startup880(t, { journalError: error });
+  failed.releaseAll(); const result = await failed.started;
+  assert.equal(result.ok, false); assert.equal(result.error, error); failed.unpublished();
+  const colorFailure = startup880(t, { answers: { colors: Error('Color read refused880') } });
+  colorFailure.releaseAll(); assert.equal((await colorFailure.started).ok, true); await drain();
+  assert.deepEqual(colorFailure.page(), expected880); assert.equal(colorFailure.closes(), 0);
+});
+
+for (const name of ['topic_messages', 'memory_items']) for (const when of ['before', 'after']) test('880 journal resolved ' + when + ' refused ' + name + ' is closed exactly once', async t => {
+  const refused = Object.assign(Error('List refused880'), { status: 403 });
+  const s = startup880(t, { answers: { [name]: refused } }); await drain();
+  assert.equal(s.asked.filter(x => x.name === 'journal').length, 1, 'journal was opened concurrently');
+  if (when === 'before') { s.release('journal'); await drain(); assert.equal(s.closes(), 0); }
+  s.release(name); await drain();
+  assert.equal(s.settled(), true, 'a refusal settles without waiting for held sibling reads');
+  const result = await s.started;
+  assert.equal(result.ok, false); assert.equal(result.error, refused); s.unpublished();
+  if (when === 'after') { assert.equal(s.closes(), 0); s.release('journal'); }
+  await drain(); assert.equal(s.closes(), 1); s.releaseAll(); await drain(); assert.equal(s.closes(), 1);
+});
+
+test('880 confirmed topic precedes the startup join; the existing color read keeps its early start', async t => {
+  const held = defer(), s = startup880(t), read = s.f.api.view;
+  s.f.api.view = async (name, args, options) => { if (name === 'topic') await held.promise; return read(name, args, options); };
+  try {
+    await drain(); assert.deepEqual(s.asked.map(x => x.name), ['colors']); s.unpublished();
+    held.resolve(); await drain();
+    assert.deepEqual(s.asked.map(x => x.name).sort(), ['colors', 'journal', 'memory_items', 'topic_messages']);
+  } finally { held.resolve(); s.releaseAll(); }
+  assert.equal((await s.started).ok, true); await drain(); assert.deepEqual(s.page(), expected880);
+});

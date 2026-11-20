@@ -3027,10 +3027,23 @@ async function initialize() {
   });
   // Keep startup retry read-only: no editor or clickable source exists until
   // both initial list bodies have arrived after the captured feed baseline.
-  const messageAnswer = checkedView(await api.view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 30 }), bootstrap.instance_id);
-  const memoryAnswer = checkedView(await api.view('memory_items', { owner_scope: views.scope, limit: 20 }), bootstrap.instance_id);
-  await colorsRead;
-  journal = await openJournal({ instanceId: bootstrap.instance_id, actor: bootstrap.actor });
+  // Start the independent reads together and join the color read already in
+  // flight. The journal belongs to this attempt until the whole join succeeds.
+  const journalRead = openJournal({ instanceId: bootstrap.instance_id, actor: bootstrap.actor });
+  let messageAnswer, memoryAnswer;
+  try {
+    [messageAnswer, memoryAnswer, , journal] = await Promise.all([
+      api.view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 30 }).then(answer => checkedView(answer, bootstrap.instance_id)),
+      api.view('memory_items', { owner_scope: views.scope, limit: 20 }).then(answer => checkedView(answer, bootstrap.instance_id)),
+      colorsRead,
+      journalRead,
+    ]);
+  } catch (error) {
+    // A refused list may finish before the device opens its journal. Close
+    // that attempt's journal when it arrives, never a newer startup's owner.
+    journalRead.then(opened => opened.close()).catch(() => {});
+    throw error;
+  }
   // The images #img offers (topic_images, docs/conversation.md), and one image's
   // verified bytes, read through the message that carries it.
   const topicImages = async editor => checkedView(await registry.cleanup.list(options => api.view('topic_images', { topic_id: editor.context.topicId }, options)), bootstrap.instance_id);
