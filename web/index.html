@@ -97,6 +97,11 @@
       <section id="inline-composer" class="inline-composer composer" aria-labelledby="inline-writing-title" hidden>
         <h2 id="inline-writing-title">New message</h2>
         <button id="new-message-close" type="button" class="sheet-close" aria-label="Put the new message back in its place, above More" title="Close, keeping the writing">✕</button>
+        <div id="inline-kind" class="pencil-kinds" role="radiogroup" aria-label="Create" hidden>
+          <button id="inline-kind-message" type="button" role="radio" aria-checked="true" tabindex="0">Message</button>
+          <button id="inline-kind-note-card" type="button" role="radio" aria-checked="false" tabindex="-1">Note card</button>
+          <button id="inline-kind-note-page" type="button" role="radio" aria-checked="false" tabindex="-1">Note page</button>
+        </div>
         <div id="inline-notice" class="notice" role="status" hidden></div>
         <button id="inline-retry" type="button" hidden>Retry composer</button>
         <div class="compose-head">

@@ -1,3 +1,4 @@
+import { deckBody } from './deck.mjs';
 import { hasTitle } from './creation.mjs';
 import { routeHref } from './topic-navigation.mjs';
 
@@ -46,16 +47,26 @@ export class OutcomeStart {
   }
 }
 
-// A new Notebook page starts empty. The exact identity, title and scope stay
+// The pencil sheet's writing, through the same page command as the rail pencil.
+// The first line names the page/card; the Text body retains all remaining bytes.
+export function notebookWriting(writing, mode) {
+  const end = writing.indexOf('\n');
+  const title = (end < 0 ? writing : writing.slice(0, end)).trim() || 'Notebook page';
+  const words = end < 0 ? '' : writing.slice(end + 1);
+  return { title, body: mode === 'note-card'
+    ? deckBody({ opening: '', cards: [{ title, words, depth: 0, written: true }] }) : words };
+}
+
+// A new Notebook page may start with writing. The exact identity, title and scope stay
 // together until Core confirms or refuses the creation, even after a lost answer.
 export class NotebookStart {
   constructor({ api, bootstrap, scope }) { Object.assign(this, { api, bootstrap, scope }); this.pending = null; }
-  async create(title) {
+  async create(title, body = '') {
     if (!hasTitle(title)) throw Error('Type the page’s title, then press Return.');
-    if (this.pending && this.pending.args.title !== title) throw Error(`First confirm “${this.pending.args.title}”: restore that title and press Return.`);
+    if (this.pending && (this.pending.args.title !== title || this.pending.args.body !== body)) throw Error(`First confirm “${this.pending.args.title}”: restore that title and writing, then try again.`);
     this.pending ??= envelope(this.bootstrap, 'memory.create',
       { item_id: 'n-' + crypto.randomUUID().replaceAll('-', ''), owner_scope: copy(this.scope) }, { item_revision: 0 },
-      { title, body: '', attachments: [], references: [] });
+      { title, body, attachments: [], references: [] });
     const request = this.pending;
     try {
       const result = await sent(this.api, request, () => {});

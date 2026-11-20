@@ -181,7 +181,7 @@ export class NotebookSheet {
   }
 
   // opener: what takes the focus back on close. write: 'new' opens the first card of an empty page.
-  async open(id, { opener = null, write = null } = {}) {
+  async open(id, { opener = null, write = null, mode = null, beside = false } = {}) {
     if (!this.dialog) return false;
     const serial = ++this.serial;
     // The New message sheet, popped up, goes back to its place in the feed first, its writing kept; a page opened from
@@ -214,6 +214,7 @@ export class NotebookSheet {
     }
     if (!page.host.isConnected) this.body.append(page.host);
     this.show(page);
+    if (beside) this.dockWanted = true;
     this.setDocked(this.dockWanted && this.canDock(), false);
     if (!this.dialog.open) this.dialog.showModal();
     const kept = first ? take(WRITING + id) : null;
@@ -221,6 +222,8 @@ export class NotebookSheet {
     let loaded = false;
     try { loaded = await page.load(); } catch (error) { page.say?.(`${error.message} The page could not be read.`, 'attention'); }
     if (serial !== this.serial || this.current !== page || !this.showing) return loaded;
+    if (mode) { page.switchView(mode); this.full.href = this.fullHref(id, mode); }
+    if (mode === 'cards') { page.picked = 0; page.paint(); }
     if (kept && page.reopen?.(kept)) { /* the card box it had open, open again */ }
     else if (write === 'new' && page.base && !page.base.body && !page.readOnly && !page.editing) page.start();
     else this.focus(page, first);

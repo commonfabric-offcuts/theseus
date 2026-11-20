@@ -1414,3 +1414,9 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 @media(min-width:1280px){
   body.notebook-docked #new-message-sheet[open][data-width-edges]{inset:auto auto 1.5rem 19rem;margin:0;width:min(var(--composer-width,var(--widest)),calc((100vw - 18rem)/2 - 2rem));max-width:calc((100vw - 18rem)/2 - 2rem);min-width:min(280px,calc((100vw - 18rem)/2 - 2rem))}
 }
+
+/* Pencil choices share one writing field. Only the popped sheet offers kinds. */
+.pencil-kinds{display:flex;align-self:flex-start;gap:2px;padding:3px;border:1px solid var(--line);border-radius:9px;background:var(--soft)}
+.pencil-kinds button{min-height:44px;padding:.35rem .8rem;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--ink);white-space:nowrap}
+.pencil-kinds [aria-checked=true]{background:#234b3d;border-color:#41856b;color:#fff}
+.pencil-kinds button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
