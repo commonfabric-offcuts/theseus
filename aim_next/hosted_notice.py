@@ -22,15 +22,15 @@ SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 UNNAMED = "(not shown: run inbox)"
 
 
-def cli_command(cli, profile_path):
-    return "/usr/bin/python3 -I %s --profile %s" % (cli, profile_path)
+def cli_command(cli, profile_path, broker=None):
+    return "/usr/bin/python3 -I %s --%s %s" % (cli, 'broker' if broker else 'profile', broker or profile_path)
 
 
-def developer_instructions(actor_id, cli, profile_path):
+def developer_instructions(actor_id, cli, profile_path, broker=None):
     """The thread-level instructions (design §3.8); identical on start and on every resume."""
     return "\n".join((
         "You are Theseus actor %s. Your work arrives as Theseus deliveries." % actor_id,
-        "Your CLI: %s" % cli_command(cli, profile_path),
+        "Your CLI: %s" % cli_command(cli, profile_path, broker),
         "  inbox                      pending deliveries (does not acknowledge)",
         "  read TOPIC --after SEQ     full messages",
         "  reply MESSAGE [--asks A | --tells A] [--part] -   reply in that message's stack (body on stdin);",

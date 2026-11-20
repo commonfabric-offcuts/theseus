@@ -1,0 +1,231 @@
+from __future__ import annotations
+
+"""Actor-bound Core transport for sandboxed CLI processes (662).
+
+Only bytes and Core requests cross this boundary. Client paths never do.
+"""
+
+import io
+import json
+import os
+from pathlib import Path
+import shutil
+import socket
+import socketserver
+import struct
+import tempfile
+import threading
+import time
+
+from .contract import LIMITS, Refusal
+from .media import VerifiedMedia
+
+
+HEADER_LIMIT = LIMITS['http_envelope_bytes'] + 8192
+BODY_LIMIT = LIMITS['media_file_bytes']
+DEADLINE = 10.0
+
+
+def _read(sock, count, deadline):
+    chunks = []
+    while count:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise OSError('broker deadline')
+        sock.settimeout(remaining)
+        part = sock.recv(min(count, 65536))
+        if not part:
+            raise OSError('broker response unavailable')
+        chunks.append(part)
+        count -= len(part)
+    return b''.join(chunks)
+
+
+def _receive(sock):
+    deadline = time.monotonic() + DEADLINE
+    size, body = struct.unpack('!IQ', _read(sock, 12, deadline))
+    if size > HEADER_LIMIT or body > BODY_LIMIT:
+        raise OSError('broker frame too large')
+    header = json.loads(_read(sock, size, deadline).decode('utf-8'))
+    if type(header) is not dict:
+        raise OSError('invalid broker frame')
+    return header, _read(sock, body, deadline)
+
+
+def _send(sock, header, body=b''):
+    data = json.dumps(header, ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode('utf-8')
+    if len(data) > HEADER_LIMIT or len(body) > BODY_LIMIT:
+        raise OSError('broker frame too large')
+    sock.settimeout(DEADLINE)
+    sock.sendall(struct.pack('!IQ', len(data), len(body)) + data)
+    if body:
+        sock.sendall(body)
+
+
+def exchange(path, request, data=b''):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        sock.settimeout(DEADLINE)
+        sock.connect(path)
+        _send(sock, request, data)
+        response, body = _receive(sock)
+    if response.get('refusal'):
+        refusal = response['refusal']
+        raise Refusal(refusal['code'], refusal['message'])
+    if set(response) != {'result'}:
+        raise OSError('invalid broker response')
+    return response['result'], body
+
+
+def _binding(profile):
+    return dict(instance_id=profile.instance_id, actor_id=profile.actor_id, db_path=str(profile.db_path),
+                authority_id=profile.authority_id, authority_epoch=profile.authority_epoch)
+
+
+class _Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+    daemon_threads = False
+    block_on_close = True
+
+    def process_request(self, request, address):
+        if not self.owner.slots.acquire(blocking=False):
+            request.close()
+            return
+        with self.owner.lock:
+            self.owner.connections.add(request)
+        try:
+            super().process_request(request, address)
+        except Exception:
+            self.owner.finished(request)
+            raise
+
+    def process_request_thread(self, request, address):
+        try:
+            super().process_request_thread(request, address)
+        finally:
+            self.owner.finished(request)
+
+    def handle_error(self, request, address):
+        # No request bodies, paths or Core diagnostics in a process traceback.
+        pass
+
+
+class _Handler(socketserver.BaseRequestHandler):
+    def handle(self):
+        try:
+            request, data = _receive(self.request)
+            response, body = self.server.owner._execute(request, data)
+            _send(self.request, {'result': response}, body)
+        except Refusal as error:
+            _send(self.request, {'refusal': {'code': error.code, 'message': error.message}})
+        except (OSError, ValueError, KeyError, TypeError):
+            return
+
+
+class HostedCLI:
+    def __init__(self, config):
+        self.profile, self.destination = config.profile, dict(config.destination)
+        self.binding = _binding(self.profile)
+        self.outbox = str(Path(config.profile_path).parent / (self.profile.actor_id + '.outbox'))
+        self.lock, self.slots = threading.Lock(), threading.BoundedSemaphore(8)
+        self.connections = set()
+        self.directory = tempfile.mkdtemp(prefix='theseus-core-', dir='/private/tmp' if os.path.isdir('/private/tmp') else None)
+        self.path = str(Path(self.directory) / 'core.sock')
+        self.server = _Server(self.path, _Handler)
+        self.server.owner = self
+        os.chmod(self.path, 0o600)
+        self.worker = threading.Thread(target=lambda: self.server.serve_forever(poll_interval=0.05), name='theseus-core-broker')
+        self.worker.start()
+        self.closed = False
+
+    def finished(self, connection):
+        with self.lock:
+            self.connections.discard(connection)
+        self.slots.release()
+
+    def _execute(self, request, data):
+        method = request.get('method')
+        fields = {'binding': {'method'}, 'view': {'method', 'binding', 'name', 'args'},
+                  'command': {'method', 'binding', 'envelope'}, 'publish': {'method', 'binding', 'envelope'},
+                  'open_media': {'method', 'binding', 'args'}}
+        if method not in fields or set(request) != fields[method] or data and method != 'publish':
+            raise Refusal('INVALID_REQUEST', 'Use a bounded Core request, never a filesystem path')
+        if method != 'binding' and request['binding'] != self.binding:
+            raise Refusal('BINDING_MISMATCH', 'Retain the original actor and authority binding')
+        # A route change/recovery invalidates the endpoint; never rebind it.
+        store = self.profile.store()
+        pin = store.read_route_pin(self.profile.actor_id, self.destination)
+        if pin.get('destination') != self.destination:
+            raise OSError('broker route changed')
+        if method == 'binding':
+            return {'binding': self.binding, 'outbox': self.outbox}, b''
+        if method == 'view':
+            return store.view(self.profile.actor_id, request['name'], request['args']), b''
+        if method == 'command':
+            return store.command(self.profile.actor_id, request['envelope']), b''
+        if method == 'publish':
+            return store.publish_media(self.profile.actor_id, request['envelope'], io.BytesIO(data)), b''
+        with store.open_media(self.profile.actor_id, request['args']) as resource:
+            return dict(resource.descriptor), b''.join(iter(lambda: resource.read(65536), b''))
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+        self.server.shutdown()
+        with self.lock:
+            connections = list(self.connections)
+        for connection in connections:
+            try:
+                connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+        self.server.server_close()
+        self.worker.join()
+        shutil.rmtree(self.directory)
+
+
+class RemoteProfile:
+    authority_path = None
+
+    @classmethod
+    def connect(cls, path):
+        result, body = exchange(path, {'method': 'binding'})
+        if body or set(result) != {'binding', 'outbox'}:
+            raise OSError('invalid broker binding')
+        self = cls()
+        self.path, self.transport_binding = path, dict(result['binding'])
+        for key in ('instance_id', 'actor_id', 'authority_id', 'authority_epoch'):
+            setattr(self, key, self.transport_binding[key])
+        self.db_path, self.outbox_path = Path(self.transport_binding['db_path']), Path(result['outbox'])
+        return self
+
+    def store(self):
+        return RemoteStore(self)
+
+
+class RemoteStore:
+    def __init__(self, profile):
+        self.profile = profile
+
+    def _call(self, actor, method, values, data=b''):
+        if actor != self.profile.actor_id:
+            raise Refusal('BINDING_MISMATCH', 'Only the bound actor may use this endpoint')
+        return exchange(self.profile.path, dict(method=method, binding=self.profile.transport_binding, **values), data)
+
+    def view(self, actor, name, args):
+        try:
+            return self._call(actor, 'view', {'name': name, 'args': args})[0]
+        except Refusal as error:
+            return {'instance_id': self.profile.instance_id, 'error': {'code': error.code, 'message': error.message}}
+
+    def command(self, actor, envelope):
+        return self._call(actor, 'command', {'envelope': envelope})[0]
+
+    def publish_media(self, actor, envelope, stream):
+        data = stream.read(BODY_LIMIT + 1)
+        if len(data) > BODY_LIMIT:
+            raise Refusal('MEDIA_TOO_LARGE', 'Keep the media within the existing file limit')
+        return self._call(actor, 'publish', {'envelope': envelope}, data)[0]
+
+    def open_media(self, actor, args):
+        descriptor, data = self._call(actor, 'open_media', {'args': args})
+        return VerifiedMedia(descriptor, data)

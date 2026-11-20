@@ -146,7 +146,12 @@ class HostedRouteCase(unittest.TestCase):
     def test_v1_routes_stay_restricted_and_v2_rejects_unknown_capabilities(self):
         config = broker_routes.load_hosted_config(self.config)
         self.assertEqual(config.permission_mode, 'workspace')
-        self.assertEqual(codex_host.thread_settings(config)['sandbox'], 'workspace-write')
+        settings = codex_host.thread_settings(config)
+        self.assertNotIn('sandbox', settings)
+        policy = settings['config']['permissions'][settings['permissions']]
+        self.assertEqual(policy['extends'], ':workspace')
+        self.assertEqual(policy['filesystem'][str(config.profile.db_path)], 'read')
+        self.assertEqual(policy['filesystem'][str(Path(config.profile_path).parent)], 'deny')
         for field, value, reason in [('permission_mode', 'anything', 'invalid_permission_mode'),
                                      ('reasoning_effort', 'whatever', 'invalid_reasoning_effort'),
                                      ('instructions', 'x' * 16385, 'invalid_instructions')]:

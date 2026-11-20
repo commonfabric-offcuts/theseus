@@ -188,11 +188,18 @@ class Fake:
         record = self.state["threads"][thread_id]
         roots = params.get("config", {}).get("sandbox_workspace_write", {}).get("writable_roots", [])
         widened = widened or self.script.get("echo_widened")
-        return {"thread": self.thread(thread_id, status or {"type": "idle"}), "approvalPolicy": params.get("approvalPolicy", "on-request"),
+        profile_id = params.get('permissions')
+        profile = params.get('config', {}).get('permissions', {}).get(profile_id)
+        if profile:
+            roots = [path for path, access in profile['filesystem'].items() if access == 'write' and path != record['cwd']]
+        result = {"thread": self.thread(thread_id, status or {"type": "idle"}), "approvalPolicy": params.get("approvalPolicy", "on-request"),
                 "approvalsReviewer": "user", "cwd": record["cwd"], "model": params.get("model", "fake-model"), "modelProvider": "openai",
                 "reasoningEffort": params.get("config", {}).get("model_reasoning_effort"),
-                "sandbox": {"type": "dangerFullAccess"} if params.get("sandbox") == "danger-full-access" and not widened else {"type": "workspaceWrite", "writableRoots": ["/"] if widened else roots, "networkAccess": bool(widened),
+                "sandbox": {"type": "dangerFullAccess"} if params.get("sandbox") == "danger-full-access" and not widened else {"type": "workspaceWrite", "writableRoots": ["/"] if widened else roots, "networkAccess": bool(widened or profile and profile['network']['enabled']),
                             "excludeSlashTmp": True, "excludeTmpdirEnvVar": True}}
+        if profile:
+            result['activePermissionProfile'] = {'id': profile_id, 'extends': profile['extends']}
+        return result
 
     def once(self, key):
         """True the first time a once-only script setting applies, across restarts."""

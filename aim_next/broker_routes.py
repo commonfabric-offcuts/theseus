@@ -185,7 +185,12 @@ def _load_config(path, *, expected_binding=None, profile_path=None, applications
 
 
 def writable_roots(profile_path, profile):
-    """The only directories a hosted agent's sandbox may write: the database's and its outbox."""
+    """Legacy config roots, retained to validate existing pinned route files.
+
+    Workspace execution uses hosted_permissions' narrower native profile:
+    only cwd/outbox writes, an exact store read and denied credential roots.
+    The database-directory entry here is never sent as an execution grant.
+    """
     return (str(profile.db_path.parent), str(Path(profile_path).parent/(profile.actor_id+'.outbox')))
 
 
