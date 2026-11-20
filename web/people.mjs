@@ -497,7 +497,8 @@ export class CoordinatorChoice {
     const binding = this.binding(), epoch = this.epoch, workspace = this.workspace;
     const current = () => this.current() && epoch === this.epoch && binding === this.binding() && workspace.id === this.workspace?.id;
     if (!this.pending || this.pending.id !== id || this.pending.binding !== binding) this.pending = { id, binding, workspace: { id: workspace.id, version: workspace.version }, operation: crypto.randomUUID() };
-    const request = this.pending;
+    // Disabling the focused choice can move focus to the body before we settle.
+    const request = this.pending, heldFocus = this.list.contains(document.activeElement);
     this.busy = true; this.say('Changing coordinator…'); this.paint();
     let words = '', committed = false;
     try {
@@ -507,7 +508,9 @@ export class CoordinatorChoice {
       committed = exact && receipt.recorded === true && receipt.status === 'committed' &&
         receipt.result?.workspace_id === request.workspace.id && receipt.result.coordinator_id === id && Number.isSafeInteger(receipt.result.version);
       if (committed || exact && receipt.recorded === true && receipt.status === 'rejected') this.pending = null;
-      if (!committed) words = exact && receipt?.error?.message || 'The coordinator change was not confirmed. Choose again to retry.';
+      if (!committed) words = exact && receipt.recorded === true && receipt.status === 'rejected' && receipt.error?.code === 'REVISION_CONFLICT'
+        ? 'Someone else changed this at the same moment. Try again.'
+        : exact && receipt?.error?.message || 'The coordinator change was not confirmed. Choose again to retry.';
     } catch (error) { if (!current()) return; words = `The coordinator change was not confirmed: ${error.message}`; }
     finally {
       if (current()) {
@@ -516,7 +519,11 @@ export class CoordinatorChoice {
         if (current()) {
           this.busy = false; this.paint(); this.say(words);
           if (words) this.failed(words);
-          if (committed && !words) this.toggle(false, !this.panel.row.hidden && this.list.contains(document.activeElement));
+          const returnFocus = this.available && !this.panel.row.hidden &&
+            (this.list.contains(document.activeElement) || heldFocus && document.activeElement === document.body);
+          if (committed && !words) this.toggle(false, returnFocus);
+          else if (returnFocus) (this.list.hidden ? this.opener :
+            [...this.list.children].find(button => !button.disabled) ?? this.opener).focus();
         }
       }
     }
