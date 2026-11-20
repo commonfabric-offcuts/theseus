@@ -35,6 +35,8 @@ The script may also set:
 
 A turn behaviour (consumed in order across restarts) may hold:
   reply      text posted in each topic ("{history}" is this thread's previous reply)
+  reply_to_delivery  reply to the named delivery message through the current
+             quoted-reply CLI contract instead of starting a new dossier
   commands   how many non-CLI commandExecution items to report first
   hold       "steer": stay active until one steer arrives; "die": SIGKILL itself
              once the turn's input is seen; "interrupt": stay active until interrupted;
@@ -358,7 +360,7 @@ class Fake:
         for line in params["input"][0]["text"].splitlines():
             match = DELIVERY.match(line)
             if match:
-                turn["deliveries"].append({"topic": match.group(1), "delivery": match.group(4)})
+                turn["deliveries"].append({"topic": match.group(1), "message": match.group(2), "delivery": match.group(4)})
         self.notify("item/completed", {"threadId": thread_id, "turnId": turn["id"], "completedAtMs": 0,
                                        "item": {"type": "userMessage", "id": "item-" + uuid.uuid4().hex,
                                                 "clientId": params.get("clientUserMessageId"), "content": params["input"]}})
@@ -430,7 +432,12 @@ class Fake:
                     topics.append(item["topic"])
             reply = behaviour.get("reply", "ok").format(history=(record["history"] or [""])[-1])
             for topic in topics:
-                self.cli(thread_id, turn, ["post", topic, "-"], reply)
+                if behaviour.get('reply_to_delivery'):
+                    message = next(item['message'] for item in turn['deliveries'] if item['topic'] == topic)
+                    self.cli(thread_id, turn, ['reply', message, '--tells', 'lead', '--without-quote',
+                                              'Scripted scratch deploy fixture tests execution.', '-'], reply)
+                else:
+                    self.cli(thread_id, turn, ["post", topic, "-"], reply)
             if turn["deliveries"]:
                 self.cli(thread_id, turn, ["ack"] + [item["delivery"] for item in turn["deliveries"]])
             record["history"].append(reply)
