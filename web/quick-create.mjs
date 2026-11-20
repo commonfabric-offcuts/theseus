@@ -1,4 +1,4 @@
-import { deckBody, textCard, imageLine } from './deck.mjs';
+import { deckBody, textCard, cardText, imageLine } from './deck.mjs';
 import { hasTitle } from './creation.mjs';
 import { routeHref } from './topic-navigation.mjs';
 
@@ -53,7 +53,7 @@ export function notebookWriting(writing, mode, images = []) {
   // Before the first card's words: later headings or an unclosed code fence
   // in those words cannot move its images into another card or into code.
   if (images.length) card.words = [images.map(image => imageLine(image.name, image.id)).join('\n'), card.words].filter(Boolean).join('\n\n');
-  return { title, body: mode === 'note-card'
+  return { title, card: cardText({ ...card, title }), body: mode === 'note-card'
     ? deckBody({ opening: '', cards: [{ ...card, title, depth: 0 }] }) : card.words };
 }
 

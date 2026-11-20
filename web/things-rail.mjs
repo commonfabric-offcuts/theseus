@@ -370,14 +370,24 @@ export class ThingsRail {
   // (NOTEBOOK_PAGE, and as many again for each More pages), in Core's pages;
   // next says whether there are more, and whether the reader may write in it
   // comes with the first page.
-  async readNotebook(view, owner_scope) {
-    const items = [], want = this.notebookWant, most = this.handles?.pageMax ?? NOTEBOOK_PAGE;
+  async readNotebook(view, owner_scope, want = this.notebookWant) {
+    const items = [], most = this.handles?.pageMax ?? NOTEBOOK_PAGE;
     let cursor = null, mayWrite;
     do {
       const answer = await view('memory_items', { owner_scope, limit: Math.max(1, Math.min(most, want - items.length)), ...(cursor === null ? {} : { cursor }) });
       items.push(...(answer.items ?? [])); cursor = answer.next_cursor ?? null; mayWrite ??= answer.reader_may_write;
     } while (cursor !== null && items.length < want);
     return { items, next: cursor, reader_may_write: mayWrite };
+  }
+  notebookName(item) { return item.title || 'Notebook page'; }
+  // A deliberate Note choice needs every destination, including pages beyond
+  // the rail's More boundary. Same scoped reader/order, bounded calls, no poll.
+  async notebookPages(topicId) {
+    const handles = this.handles;
+    if (!handles || this.topicId !== topicId || handles.readable?.() === false) throw Error('This topic is no longer available.');
+    const answer = await this.readNotebook((name, args) => handles.view(name, args, 'foreground'), { kind: 'topic', id: topicId }, Infinity);
+    if (handles !== this.handles || handles.readable?.() === false) throw Error('This topic is no longer available.');
+    return answer.items.map(item => ({ id: item.id, name: this.notebookName(item) }));
   }
   async readPipeline(view, workspace) {
     const now = await view('pipeline', { workspace_id: workspace, section: 'now', limit: 100 });
@@ -520,7 +530,7 @@ export class ThingsRail {
     const doc = this.doc, scope = { kind: 'topic', id: found.topicId }, more = found.notebookNext !== null;
     return { sum: `${items.length}${more ? '+' : ''}`, key: JSON.stringify(['note', scope, more, items.map(item => [item.id, item.title, item.revision, item.read_revision, item.draft === true])]), node: () => {
       const list = element(doc, 'ul', { className: 'things-list' }, ...items.map(item => {
-        const link = this.placeLink({ ...scope, page: item.id }, item.title || 'Notebook page');
+        const link = this.placeLink({ ...scope, page: item.id }, this.notebookName(item));
         paintChanged(link, item);
         return element(doc, 'li', {}, link);
       }));

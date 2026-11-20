@@ -6468,6 +6468,94 @@ function receipt894(request) {
     result: { item_id: request.target.item_id, revision: 1, owner_scope: request.target.owner_scope } };
 }
 
+function target911(f, value) {
+  const select = f.get('inline-note-page'); select.value = value;
+  select.handlers.change?.({ target: select });
+}
+function destinations911(f, append = async () => {}) {
+  const added = [];
+  Object.assign(f.inline.callbacks.notebook, {
+    pages: async () => [{ id: 'n-newer', name: 'Newest page' }, { id: 'n-older', name: 'Notebook page' }],
+    append: async (id, job) => { added.push({ id, job }); await append(id, job); job.card = 'c-added'; },
+  });
+  return added;
+}
+test('911 Note offers rail names with New page first; Message hides the selector', async () => {
+  const f = pencil894(); destinations911(f);
+  assert.equal(f.get('inline-note-page').hidden, true);
+  f.choose('note-card'); await drain();
+  const select = f.get('inline-note-page');
+  assert.equal(select.hidden, false);
+  assert.deepEqual(select.children.map(option => [option.value, option.textContent]), [['', 'New page'], ['n-newer', 'Newest page'], ['n-older', 'Notebook page']]);
+  assert.equal(select.value, '');
+  f.choose('message'); assert.equal(select.hidden, true);
+});
+test('911 chosen page appends and opens the confirmed card without creating a page', async () => {
+  const f = pencil894(), added = destinations911(f);
+  f.choose('note-card'); await drain(); target911(f, 'n-older');
+  assert.equal(f.get('inline-send').querySelector('.send-word').textContent, 'Add card');
+  await f.inline.send();
+  assert.equal(added.length, 1); assert.equal(added[0].id, 'n-older'); assert.equal(added[0].job.body, 'Title\nBody');
+  assert.equal(f.requests.length, 0); assert.equal(f.editor.draft.body, '');
+  assert.equal(f.opened[0].id, 'n-older'); assert.equal(f.opened[0].options.card, 'c-added');
+  assert.equal(f.opened[0].options.mode, 'cards'); assert.equal(f.opened[0].options.beside, true);
+});
+test('911 vanished page refuses with writing kept and no fallback creation', async () => {
+  const f = pencil894(); destinations911(f, async () => { throw Error('This Notebook page is no longer available.'); });
+  f.choose('note-card'); await drain(); target911(f, 'n-older'); await f.inline.send();
+  assert.equal(f.editor.draft.body, 'Title\nBody'); assert.equal(f.sheet.open, true);
+  assert.equal(f.requests.length, 0); assert.equal(f.opened.length, 0);
+  assert.match(f.get('inline-notice').textContent, /no longer available/);
+});
+test('911 each sheet opening resets the target to New page while retaining writing', async () => {
+  const f = pencil894(); destinations911(f);
+  f.choose('note-card'); await drain(); target911(f, 'n-older');
+  f.sheet.close(); f.inline.pop(); f.choose('note-card'); await drain();
+  assert.equal(f.get('inline-note-page').value, '');
+  await f.inline.send(); assert.equal(f.requests.length, 1); assert.equal(f.requests[0].kind, 'memory.create');
+});
+test('911 an append answering after another opening cannot consume newer writing', async () => {
+  const gate = defer(), f = pencil894(), added = destinations911(f, () => gate.promise);
+  f.choose('note-card'); await drain(); target911(f, 'n-older'); const saving = f.inline.send();
+  f.sheet.close(); f.inline.pop(); f.write('Later writing'); gate.resolve(); await saving;
+  assert.equal(added.length, 1); assert.equal(f.requests.length, 0);
+  assert.equal(f.editor.draft.body, 'Later writing'); assert.equal(f.sheet.open, true); assert.equal(f.opened.length, 0);
+});
+test('911 empty topic keeps only New page and a stale list cannot repaint a later opening', async () => {
+  const f = pencil894(null, { popped: false }), gate = defer();
+  f.inline.callbacks.notebook.pages = () => gate.promise;
+  f.choose('note-card');
+  assert.deepEqual(f.get('inline-note-page').children.map(option => option.textContent), ['New page']);
+  f.inline.pop(); gate.resolve([{ id: 'stale', name: 'Old opening' }]); await drain();
+  assert.equal(f.get('inline-note-page').hidden, true);
+  assert.equal(f.inline.notePages.length, 0);
+  f.inline.callbacks.notebook.pages = async () => []; f.choose('note-card'); await drain();
+  assert.deepEqual(f.get('inline-note-page').children.map(option => option.textContent), ['New page']);
+});
+test('911 actual app connects the current topic rail and existing Notebook sheet append owner', async () => {
+  const added = [], opened = [];
+  const f = fixture(undefined, { NotebookSheet: class {
+    appendNote(id, job) { added.push({ id, job }); }
+    canDock() { return true; } holds() { return false; }
+    open(id, options) { opened.push({ id, options }); }
+  } });
+  const view = f.api.view;
+  f.api.view = async (name, args, options) => {
+    const result = await view(name, args, options);
+    return name === 'memory_items' ? { ...result, items: [{ id: 'p-real', title: 'Rail name' }] } : result;
+  };
+  f.registry.initializeInline = async () => f.p;
+  await f.initialize(); await drain();
+  // initialize() starts a page run without begin()'s persistent shell DOM.
+  // Supply that shell-owned rail with its actual list methods and page port.
+  f.runObservation('panes.things = Object.create(ThingsRail.prototype); panes.things.handles = { topic, view: pipelineView };');
+  const notebook = f.owners().inline.callbacks.notebook, job = { words: 'Exact writing' };
+  assert.deepEqual(JSON.parse(JSON.stringify(await notebook.pages())), [{ id: 'p-real', name: 'Rail name' }]);
+  await notebook.append('p-real', job); assert.equal(added[0].id, 'p-real'); assert.ok(added[0].job === job);
+  await notebook.open('p-real', { mode: 'cards', beside: true, card: 'c-target' });
+  assert.equal(opened[0].id, 'p-real'); assert.equal(opened[0].options.card, 'c-target');
+});
+
 test('925 two choices use one writing field, keep caret and default to Message on every opening', () => {
   const f = pencil894();
   assert.equal(f.get('inline-kind').hidden, false);
@@ -7082,6 +7170,25 @@ async function imageNote926(answer, options) {
   f.choose('note-card');
   return { ...f, uploads, file, bytes };
 }
+test('911 Add card receives the shared ready images and consumes them only after confirmation', async () => {
+  const f = await imageNote926(), added = destinations911(f);
+  await f.uploads.add(f.file); f.choose('note-card'); await drain(); target911(f, 'n-older');
+  const before = structuredClone(f.editor.draft.attachments);
+  await f.inline.send();
+  assert.equal(added.length, 1); assert.deepEqual(added[0].job.attachments, before);
+  assert.equal(added[0].job.images.length, 1); assert.ok(added[0].job.cardWords.includes(`](attachment:${before[0].id})`));
+  assert.equal(f.requests.length, 0); assert.equal(f.editor.draft.body, '');
+  assert.equal(currentImages(f.editor).length, 0); assert.equal(f.opened[0].id, 'n-older');
+});
+test('911 refused Add card keeps the shared ready images and words', async () => {
+  const f = await imageNote926(); destinations911(f, async () => { throw Error('This page was deleted.'); });
+  await f.uploads.add(f.file); f.choose('note-card'); await drain(); target911(f, 'n-older');
+  const before = structuredClone(f.editor.draft);
+  await f.inline.send();
+  assert.deepEqual(f.editor.draft, before); assert.equal(currentImages(f.editor).length, 1);
+  assert.equal(f.requests.length, 0); assert.equal(f.opened.length, 0);
+  assert.match(f.get('inline-notice').textContent, /deleted/);
+});
 
 for (const popped of [false, true]) test(`926 Note paste creates the first card with its image (${popped ? 'sheet' : 'feed'})`, async () => {
   const f = await imageNote926(null, { popped });
