@@ -12,6 +12,7 @@ import { paintAuthor, carriesOf } from '../web/marks.mjs';
 import { wasEdited } from '../web/message-edit-writing.mjs';
 import { paintWithdrawal, withdrawalItem, Withdrawals } from '../web/question-withdrawal.mjs';
 import { removalItem, paintRemoval, readRemoval, Removals } from '../web/message-removal.mjs';
+import { questionOf, questionPill, Resolutions } from '../web/question-state.mjs';
 import { replyLine, paintReplyLine } from '../web/replies.mjs';
 import { Freshness, checkedView, bindingOf } from '../web/freshness.mjs';
 
@@ -99,10 +100,10 @@ function cardEnvironment(t, { views, heads = null, entries = new Map(), registry
   registry ??= { current: null, disposed: false, cancelSave() {} };
   const counts = { author: 0, origin: 0, menu: 0, hidden: 0 };
   const env = { views, dossierHeads: heads, messageEntries: entries, registry, document: doc, bootstrap: identity,
-    topicUnavailable: false, authorityReviewPending: () => false,
+    questionStates: null, topicUnavailable: false, authorityReviewPending: () => false,
     feedMessages: () => heads?.messages(views.messages) ?? views.messages,
     cardIn, clearVisitNew() {}, paintFoldWords, paintAwaiting() {}, paintReactions() {},
-    paintAuthor, displayActor: id => id, marks: null, wasEdited, carriesOf, paintWithdrawal, paintRemoval,
+    questionOf, questionPill, paintAuthor, displayActor: id => id, marks: null, wasEdited, carriesOf, paintWithdrawal, paintRemoval,
     here: null, stackFeed: null, messageUpdateActivity: () => null, updateContext: () => ({}),
     visitNew: null, paintVisitNew() {}, cardObserver: null, middleObserver: null,
     menu: { paint() { counts.menu++; } },
@@ -345,7 +346,7 @@ function readerFixture(t, { loaded = true, command = async () => ({ status: 'rej
   const registry = { current: p, runtime: { current: identity.authority }, cancelSave() {}, disposed: false };
   const shell = { page: {} }, sent = [], notices = [], anchor = doc.createElement('button'); let shown;
   const base = cardEnvironment(t, { views, registry, doc });
-  const env = { ...base.env, shell, topic: { id: 'topic' }, removals: null, withdrawals: null, Removals, Withdrawals,
+  const env = { ...base.env, shell, topic: { id: 'topic' }, removals: null, withdrawals: null, resolutions: null, Removals, Withdrawals, Resolutions,
     api: { command: async request => { sent.push(structuredClone(request)); return command(request); } },
     window: { matchMedia: () => ({ matches: false }) }, outcomeReached: false,
     editRights: () => ({ actor: 'owner', actorKind: 'human', unavailable: false, reached: false }),

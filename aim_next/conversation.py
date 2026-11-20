@@ -132,14 +132,16 @@ class Conversation:
         return list(dict.fromkeys(recipients))
 
     def _touch_topic(self, db, topic):
+        topic = db.execute("SELECT * FROM topics WHERE id=?", (topic["id"],)).fetchone()
         repaired = self._repair_conversation_waiting(db, topic)
         db.execute("UPDATE topics SET version=version+1 WHERE id=?", (topic["id"],))
+        version = db.execute("SELECT version FROM topics WHERE id=?", (topic["id"],)).fetchone()[0]
         db.execute("UPDATE workspaces SET version=version+1 WHERE id=?", (topic["workspace_id"],))
-        self._change(db, "topic", topic["id"], "topic", topic["id"], topic["version"] + 1)
-        self._change(db, "workspace", topic["workspace_id"], "topic", topic["id"], topic["version"] + 1)
+        self._change(db, "topic", topic["id"], "topic", topic["id"], version)
+        self._change(db, "workspace", topic["workspace_id"], "topic", topic["id"], version)
         for member in repaired:
-            self._change(db, "actor", member, "waiting", topic["id"], topic["version"] + 1)
-        return topic["version"] + 1
+            self._change(db, "actor", member, "waiting", topic["id"], version)
+        return version
 
     def _command_participation_set(self, db, actor, envelope):
         args = envelope.get("args", {})
@@ -355,7 +357,7 @@ class Conversation:
         parent = None
         if snapshot.get("reply_to"):
             # A message the writer cannot see is refused as one that does not exist.
-            parent = db.execute("SELECT topic_id,author_id,private_to FROM messages WHERE id=?", (snapshot["reply_to"],)).fetchone()
+            parent = db.execute("SELECT id,seq,topic_id,author_id,private_to,intent FROM messages WHERE id=?", (snapshot["reply_to"],)).fetchone()
             from .removal import unsent
             if not parent or parent["topic_id"] != topic_id or not whispers.visible(parent, actor) or unsent(db, snapshot['reply_to']):
                 # A state check, not a shape error: it is recorded like the others.
@@ -368,6 +370,7 @@ class Conversation:
         # In an outcome's conversation an agent answers only the items it answers (standing_conversation.py).
         self._conversation_check_publish(db, actor, topic, snapshot, snapshot.get("reply_to"), private)
         intent = self._intent(db, actor, snapshot)
+        self._check_unread_answers(db, actor, topic, snapshot, intent)
         if snapshot["addressees"] and intent is None and private is None:
             raise Refusal("INTENT_REQUIRED", INTENT_REQUIRED, recorded=False)
         if intent is not None and not snapshot["addressees"]:
@@ -430,7 +433,8 @@ class Conversation:
             cover_version = self._record_act(db, "cover", root, "", actor,
                                              {"stands": divergence, "waiting": [], "payload": None}, 1)
             cover_affected = [{"kind": "acts", "id": topic_id, "version": cover_version}]
-        covered = self._link_ask_cover(db, actor, topic, message_id, linked)
+        covered, superseded = self._supersede_questions(db, actor, topic, message_id) if not record_only else ([], [])
+        covered += self._link_ask_cover(db, actor, topic, message_id, linked)
         # Positions are part of publication, not a browser observation (item 731).
         from .dossier_order import published
         positioned = {"id": message_id, "topic_id": topic_id, "seq": sequence, "author_id": actor, "private_to": private}
@@ -494,6 +498,12 @@ class Conversation:
         if not record_only:
             self._sync_linked_attention(db, topic, actor)
         version = self._touch_topic(db, topic)
+        for question in superseded:
+            self._question_changed(db, actor, question, version)
+            waited += [member for member in json.loads(question['addressees']) if member != question['author_id']]
+        if (not record_only and parent is not None and parent['intent'] == 'ask' and parent['private_to'] is None
+                and parent['id'] not in {question['id'] for question in superseded}):
+            self._question_changed(db, actor, parent, version)
         for member in dict.fromkeys(waited + ([actor] if covered else [])):
             self._change(db, "actor", member, "waiting", topic_id, version)
         result = {"message_id": message_id, "topic": {"id": topic_id, "version": version},
@@ -555,6 +565,7 @@ class Conversation:
                 "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "intent": row["intent"],
                 "version": current, "current_revision": current, "revision": current, "edited_ms": edited_ms, "struck": seen,
                 "withdrawal": self._withdrawal_value(db, row["id"]),
+                "question": self._question_value(db, actor, row["id"]) if row["intent"] == "ask" else None,
                 "allowed_actions": ["quote", "note.save"], "dossier": self._source_dossier(db, actor, row),
                 "acts": self._source_acts(db, actor, row),
                 **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
@@ -714,6 +725,7 @@ class Conversation:
         self._block_fields(db, items)
         self._withdrawal_fields(db, items)
         self._removal_fields(db, actor, items)
+        self._question_fields(db, actor, items)
         reading_fields(db, actor, unread_groups(db, actor, topic["id"]), items)
         # The reader's own private note and saved, unsent reply on each message (docs/topic-reading.md, item 127).
         writing_fields(db, actor, items)

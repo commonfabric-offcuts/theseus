@@ -64,7 +64,8 @@ class WaitCase(fixtures.ReaderCase):
         revision = self.store.view('owner', 'dossier_cover', {'message_id': root})['cover_revision']
         self.committed(self.command('stack.cover', {'waiting': [explicit]}, target={'message_id': root}, expected={'cover_revision': revision}, actor='agent-a'))
         first = self.ask(asked=['owner'], reply_to=root)
-        second = self.ask(asked=['owner'], reply_to=root)
+        # 932 supersedes an identical addressee set; keep this separate question live.
+        second = self.ask(asked=['owner', 'agent-b'], reply_to=root)
         answer = self.post(reply_to=first)
         self.assertEqual(self.links(), [(first, 0), (second, 1)])
         self.committed(self.remove(answer))

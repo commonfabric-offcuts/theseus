@@ -19,7 +19,7 @@ REFERENCE_OR_PRIVATE_VIEWS = {'assessment', 'assessments', 'dossier_cover', 'dos
     'opening', 'openings', 'source_topics', 'stack_namer', 'stack_positions', 'submission', 'submissions', 'topic_membership'}
 METADATA_VIEWS = {'actors', 'changes', 'colors', 'health', 'health_light', 'marks', 'onboarding_prompt',
     'outcome_live', 'pipeline_row', 'reactions', 'releases', 'tool', 'tools', 'topic_tools', 'topic_unread',
-    'wakes', 'workspace', 'workspace_members', 'workspace_topics', 'workspaces', 'topic', 'outcome_light'}
+    'wakes', 'workspace_counts', 'workspace', 'workspace_members', 'workspace_topics', 'workspaces', 'topic', 'outcome_light'}
 
 
 class BoundaryCase(fixtures.ReaderCase):
@@ -31,7 +31,7 @@ class BoundaryCase(fixtures.ReaderCase):
         message = self.post()
         routes = [('topic', {'topic_id': 't1'}), ('topic_unread', {'topic_id': 't1'}),
             ('marks', {'topic_id': 't1'}), ('workspace_topics', {'workspace_id': 'w1'}),
-            ('workspace', {'workspace_id': 'w1'}), ('workspace_members', {'workspace_id': 'w1'}),
+            ('workspace', {'workspace_id': 'w1'}), ('workspace_counts', {'workspace_ids': ['w1']}), ('workspace_members', {'workspace_id': 'w1'}),
             ('actors', {}), ('reactions', {'message_id': message}),
             ('source_topics', {'message_id': message}),
             ('stack_positions', {'topic_id': 't1', 'message_ids': [message]}), ('message_acts', {'topic_id': 't1'}),

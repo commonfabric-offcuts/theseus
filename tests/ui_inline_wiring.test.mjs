@@ -90,7 +90,10 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const elements = new Map(), events = [], calls = [], paints = [], observers = [], days = [];
   class Element {
     constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true;
-      this.style = {}; this.scrollTop = 0; this.scrollHeight = 600; this.clientHeight = 600; }
+      this.style = {
+        setProperty(name, value) { this[name] = String(value); },
+        removeProperty(name) { const previous = this[name] ?? ''; delete this[name]; return previous; },
+      }; this.scrollTop = 0; this.scrollHeight = 600; this.clientHeight = 600; }
     addEventListener(name, fn) { this.handlers[name] = fn; }
     // The real selection-quote owner clones the Reader's pill. Clone its
     // content and reflected attributes, without copying event listeners.
@@ -132,6 +135,15 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     // elements keep the fixture's existing id lookup.
     querySelector(selector) {
       if (selector.startsWith(':scope') || selector.startsWith('[data-')) return this.querySelectorAll(selector)[0] ?? null;
+      // 151's star painter finds its nested words in this link; an absent
+      // descendant must not fabricate a document-level fixture element.
+      if (selector === '.ol-dossier-words') {
+        for (const child of this.children) {
+          if (child.classList?.contains('ol-dossier-words')) return child;
+          const inner = child.querySelector?.(selector); if (inner) return inner;
+        }
+        return null;
+      }
       if (!/^[a-z][a-z0-9]*$/.test(selector)) return get(selector.slice(1));
       for (const child of this.children) { if (child.tagName?.toLowerCase() === selector) return child; const inner = child.querySelector?.(selector); if (inner) return inner; }
       return null;
@@ -5006,6 +5018,36 @@ test('item 655 B2 freshness follows unloaded rename clear join split and loaded 
   assert.equal(f.readerDossierName(source), null, 'a loaded singleton never falls back to a cached old dossier name');
 });
 
+test('item 932 remote question state invalidates acts without painting an unloaded dossier', async () => {
+  const { f, p, source } = await starred655();
+  await f.present(p);
+  f.enableFreshness({});
+  const invalidations = [];
+  f.fresh.invalidate = (...args) => invalidations.push(args);
+  const question = { state: 'resolved', waiting_on: [], may_resolve: false, by: 'asker', at_ms: 42, superseded_by: null };
+  await assert.doesNotReject(f.fresh.options.refresh('question:' + source.source_ref.id, 1,
+    async name => { assert.equal(name, 'source'); return { ...source, question }; }, () => true));
+  assert.equal(source.question.state, 'resolved', 'the open Reader learns its exact source');
+  assert.deepEqual(invalidations, [['acts', 0, true]], 'the view redraw follows ordinary freshness instead of a direct paint');
+});
+
+test('item 932 topic freshness updates only its open Reader question without reopening it', async () => {
+  const { f, p, source } = await starred655();
+  source.question = { state: 'waiting', waiting_on: ['answerer'], may_resolve: true, archived: false };
+  await f.present(p);
+  f.enableFreshness({});
+  const reads = [];
+  f.views.refresh = async () => true;
+  await f.fresh.options.refresh('topic', 2, async (name, ref) => {
+    reads.push([name, ref.id]);
+    return { ...source, question: { state: 'answered', waiting_on: [], may_resolve: false, archived: true } };
+  }, () => true);
+  assert.deepEqual(reads, [['source', source.source_ref.id]]);
+  assert.equal(source.question.archived, true);
+  assert.equal(f.reader.dialog.open, true);
+  assert.equal(f.reader.presentation.source, source);
+});
+
 for (const failedRead of ['stack_positions', 'topic_messages']) test(`item 655 B3 ${failedRead} lookup failure opens the exact source and shows a notice`, async () => {
   const { f, p, source } = await starred655();
   source.source_ref.id = 'old-reply';
@@ -7951,7 +7993,9 @@ test('923 B2 a star commit during More reads a fresh star page before settling',
   assert.equal(reads[1].cursor, undefined); assert.equal(done, false);
   fresh.resolve({ instance_id: 'fixture', items: [{ topic_id: 't1', star: 11, dossier: { id: 'star-923', name: 'New star' } }], next_cursor: null });
   await more; await drain();
-  assert.equal(state.links.get('star-923').textContent, '★ New star');
+  // 151 wraps original star words so a retracted name can be decorated.
+  const words = node => typeof node === 'string' ? node : (node.textContent ?? '') + (node.children ?? []).map(words).join('');
+  assert.equal(words(state.links.get('star-923')), '★ New star');
 });
 
 for (const conversation of [false, true]) test(`923 actual app read trace reaches topics in bounded rounds (${conversation ? 'Conversation' : 'no Conversation'})`, async t => {

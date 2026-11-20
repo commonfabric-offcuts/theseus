@@ -157,7 +157,7 @@ class HistoricalFreezeCase(CorrectionFixture):
             upgraded = migrate(self.path, "test-instance", self.binding)
         except MigrationError as error:
             self.fail("the historical48 freeze must work before removal tables exist: " + str(error))
-        self.assertEqual(upgraded["schema_version"], "57")
+        self.assertEqual(upgraded["schema_version"], "59")
         self.assertEqual(self.sql("SELECT key FROM dossier_order WHERE topic_id='t1' AND actor_id='owner' AND root_id=?", (first,)), [(9000,)])
         self.assertEqual(self.sql("SELECT key FROM dossier_order WHERE topic_id='t1' AND actor_id='agent-b' AND root_id=?", (first,)), [(reply_seq,)])
         self.assertEqual(self.sql("SELECT root_id FROM dossier_order WHERE topic_id='t1' AND root_id=?", (joined,)), [])

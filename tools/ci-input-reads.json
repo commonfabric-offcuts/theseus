@@ -5425,5 +5425,11 @@
       ],
       "scope": "repository"
     }
+  },
+  "tests/fixtures/removal_151_schema58.py": {
+    "73a67e60fd526487d4af4536be7470eeffd7fefa44686a9c684b037f03d9aae0": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
   }
 }

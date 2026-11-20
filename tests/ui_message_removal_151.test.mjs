@@ -1,3 +1,4 @@
+import { QuestionStates } from '../web/question-state.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -127,16 +128,17 @@ test('late removal updates only its source and keeps newer private writing', () 
   assert.ok(start >= 0 && end > start);
   const source = { source_ref: { kind: 'message', id: 'other' }, body: 'Other source' };
   const writing = { body: 'My newer private reply' }, registry = { current: { source, editors: { reply: writing } } };
-  const removed = [], painted = [], decisions = [];
+  const removed = [], painted = [], decisions = [], questionStates = new QuestionStates();
   const views = { learnRemoval: (...args) => removed.push(args), messages: new Map() };
   const learned = runInNewContext('(' + app.slice(start, end).trim() + ')', {
-    views, dossierHeads: null, feedMessages: () => views.messages, messageEntries: new Map(), cardIn: () => null,
+    questionStates, views, dossierHeads: null, feedMessages: () => views.messages, messageEntries: new Map(), cardIn: () => null,
     clearVisitNew() {}, registry, menu: { paint() {} }, reader: { paintOrigin: item => painted.push(item) },
     paintReaderThumb$: () => decisions.push(source.source_ref.id),
   });
   const removalValue = { kind: 'retracted', by: 'owner', at_ms: 123 };
   learned({ message_id: 'message', removal: removalValue });
   assert.deepEqual(removed, [['message', removalValue]]);
+  assert.equal(questionStates.removed.has('message'), true, 'the real page owner retires stale question controls before repaint');
   assert.equal(source.removal, undefined); assert.deepEqual(painted, []);
   assert.deepEqual(decisions, []);
   assert.equal(writing.body, 'My newer private reply');

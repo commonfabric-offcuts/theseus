@@ -12,7 +12,9 @@ caller. Existing topic access and closed-outcome rules still apply. A second
 Unsend with another operation id returns the original terminal act with
 `changed: false`, without another removal or work effect. Ordinary reads and
 editing still refuse an unsent source; other people and agents gain no access.
-No schema change is needed beyond 151's existing 57.
+924 adds no schema of its own. In the current carry, 151 uses schema 59 after
+932's question closures (57) and 625's answer receipts (58); see
+[the combined carry](removal-carry-151-924-59.md).
 
 Checks cover public and private parent projections, shared DOM decoration and
 late-read repainting, repeated operation ids, another person's refusal, edit

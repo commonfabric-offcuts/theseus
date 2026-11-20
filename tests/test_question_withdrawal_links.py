@@ -31,7 +31,9 @@ class LinkedWithdrawalCase(WithdrawalCase):
                                     expected={"cover_revision": 0}, actor="agent-a"))
         first = self.ask(asked=["owner"], reply_to=root)
         second = self.ask(asked=["owner"], reply_to=root)
-        # An answered thumb predates withdrawal, making thumb-off a real recovery attempt.
+        # 932: the second identical-set ask has already superseded the first.
+        # A later thumb and thumb-off cannot reopen that closed question.
+        self.assertEqual(self.sql("SELECT kind,superseded_by FROM question_closures WHERE message_id=?", (first,)), [("superseded", second)])
         self.thumb(first, True)
         self.thumb(first, False)
         before = self.unchanged_records()
@@ -41,13 +43,13 @@ class LinkedWithdrawalCase(WithdrawalCase):
         result = self.committed(receipt)
         self.assertEqual(self.unchanged_records(), before)
         rows = self.sql("SELECT * FROM message_acts WHERE kind='cover' ORDER BY id")
-        self.assertEqual(rows[:-1], history)
+        self.assertEqual(rows, history, "withdrawal retains its own record but no already-removed cover wait is changed again")
         self.assertEqual(self.sql("SELECT actor_id FROM message_acts WHERE kind='cover' ORDER BY id DESC LIMIT 1"), [("agent-a",)])
         self.assertEqual(self.sql("SELECT ask_id,active FROM ask_cover_links ORDER BY ask_seq"), [(first, 0), (second, 1)])
         self.assertEqual(self.cover(root)["cover"]["waiting"][0], explicit)
         self.assertEqual([row.get("ask_id") for row in self.cover(root)["cover"]["waiting"]], [None, second])
         self.assertEqual(self.waits(), [("t1", 0, second)])
-        self.assertTrue(any(row["kind"] == "acts" for row in receipt["affected"]))
+        self.assertFalse(any(row["kind"] == "acts" for row in receipt["affected"]))
         # A thumb can still acknowledge the retained words, but cannot answer/reopen this question.
         self.thumb(first, True)
         self.thumb(first, False)

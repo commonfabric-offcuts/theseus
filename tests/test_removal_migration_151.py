@@ -22,12 +22,16 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 class MigrationCase(unittest.TestCase):
+    source_head = BASE
+    source_version = '56'
+    fixture_script = 'removal_151_schema56.py'
+
     def test_actual162_preserves_all_old_rows_indexes_request_keys_sequence_and_rollback(self):
         with tempfile.TemporaryDirectory(prefix='removal151-migration-') as temporary:
             root = Path(temporary).resolve()
             source, fixture = root / 'source56', root / 'fixture-records'
             source.mkdir(); fixture.mkdir()
-            archive = subprocess.check_output(['git', 'archive', BASE, 'aim_next', 'skills', 'tests/reader_fixture.py', 'tests/test_store.py'], cwd=REPO)
+            archive = subprocess.check_output(['git', 'archive', self.source_head, 'aim_next', 'skills', 'tests/reader_fixture.py', 'tests/test_store.py'], cwd=REPO)
             with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
                 self.assertTrue(all(not Path(p.name).is_absolute() and '..' not in Path(p.name).parts for p in tar))
                 tar.extractall(source)
@@ -35,7 +39,7 @@ class MigrationCase(unittest.TestCase):
             def original(mode):
                 cache = str(root / ('cache-' + uuid.uuid4().hex))
                 argv = [sys.executable, '-I', '-X', 'pycache_prefix=' + cache,
-                        str(REPO / 'tests/fixtures/removal_151_schema56.py'), str(source), str(fixture), mode]
+                        str(REPO / 'tests/fixtures' / self.fixture_script), str(source), str(fixture), mode]
                 result = subprocess.run(argv, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 children.append(dict(argv=argv, exit=result.returncode, stdout=result.stdout, stderr=result.stderr))
                 self.assertEqual(result.returncode, 0, children[-1])
@@ -43,7 +47,7 @@ class MigrationCase(unittest.TestCase):
                 self.assertEqual(answer['cache'], cache)
                 return answer
             try:
-                self.assertEqual(original('seed')['schema'], '56')
+                self.assertEqual(original('seed')['schema'], self.source_version)
                 path = fixture / 'instance.sqlite3'
                 seed = json.loads((fixture / 'seed.json').read_text()); binding = seed['binding']
                 def digest(): return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -62,18 +66,29 @@ class MigrationCase(unittest.TestCase):
                     with sqlite3.connect(str(path)) as db:
                         return {name: db.execute('SELECT ' + ','.join('"' + col + '"' for col in cols) + ' FROM "' + name + '" ORDER BY ' + ('name' if name == 'sqlite_sequence' else 'rowid')).fetchall()
                             for name, cols in columns.items()}
+                if self.source_version == '58':
+                    with sqlite3.connect(str(path)) as db:
+                        self.assertTrue(db.execute('SELECT 1 FROM question_closures').fetchone())
+                        self.assertTrue(db.execute('SELECT 1 FROM answer_receipts').fetchone())
+                        self.assertTrue(db.execute('SELECT 1 FROM deliveries WHERE answer_id IS NOT NULL').fetchone())
                 before, unchanged = old_records(), digest()
                 with self.assertRaises(StoreOpenError) as refused: Store(path, 'test-instance', expected_binding=binding)
                 self.assertEqual(refused.exception.code, 'SCHEMA_MISMATCH'); self.assertEqual(digest(), unchanged)
                 upgrade = migrate(path, 'test-instance', binding)
-                self.assertEqual((upgrade['from_version'], upgrade['schema_version']), ('56', '57'))
+                self.assertEqual((upgrade['from_version'], upgrade['schema_version']), (self.source_version, '59'))
                 self.assertEqual(old_records(), before)
                 with sqlite3.connect(str(path)) as db:
                     self.assertEqual(db.execute("SELECT sql FROM sqlite_master WHERE name='topic_reopen_message'").fetchone(),
                                      ("CREATE INDEX topic_reopen_message ON topics(state_message_id) WHERE state_message_id IS NOT NULL",))
                     for name, expected in indexes.items():
-                        self.assertEqual((db.execute('SELECT sql FROM sqlite_master WHERE name=?', (name,)).fetchone()[0],
-                                          list(db.execute('PRAGMA index_info("' + name + '")'))), expected)
+                        if expected[0] is None and self.source_version == '56':
+                            # 625 replaces the ordinary-message UNIQUE constraint with a partial
+                            # unique index so one question can also have answer deliveries.
+                            unique = [row[1] for row in db.execute('PRAGMA index_list(deliveries)') if row[2]]
+                            self.assertIn(expected[1], [list(db.execute('PRAGMA index_info("' + key + '")')) for key in unique])
+                        else:
+                            self.assertEqual((db.execute('SELECT sql FROM sqlite_master WHERE name=?', (name,)).fetchone()[0],
+                                              list(db.execute('PRAGMA index_info("' + name + '")'))), expected)
                     for name, sql in triggers:
                         self.assertEqual(db.execute('SELECT sql FROM sqlite_master WHERE name=?', (name,)).fetchone()[0], sql)
                     self.assertEqual(db.execute('SELECT count(*) FROM deliveries WHERE retraction_id IS NOT NULL').fetchone(), (0,))
@@ -86,10 +101,10 @@ class MigrationCase(unittest.TestCase):
                 upgraded_hash = digest()
                 self.assertFalse(migrate(path, 'test-instance', binding)['migrated']); self.assertEqual(digest(), upgraded_hash)
                 self.assertEqual(original('newer')['error'], 'SCHEMA_MISMATCH'); self.assertEqual(digest(), upgraded_hash)
-                self.assertEqual(migrate(path, 'test-instance', binding, '56')['schema_version'], '56')
+                self.assertEqual(migrate(path, 'test-instance', binding, self.source_version)['schema_version'], self.source_version)
                 with sqlite3.connect(str(path)) as db:
                     self.assertIsNone(db.execute("SELECT 1 FROM sqlite_master WHERE name='topic_reopen_message'").fetchone())
-                self.assertEqual(old_records(), before); self.assertEqual(original('read')['schema'], '56')
+                self.assertEqual(old_records(), before); self.assertEqual(original('read')['schema'], self.source_version)
                 migrate(path, 'test-instance', binding)
                 store = Store(path, 'test-instance', expected_binding=binding)
                 # This existing schema56 pending message has no independent
@@ -126,11 +141,17 @@ class MigrationCase(unittest.TestCase):
                     for statement in ('UPDATE message_removals SET at_ms=0', 'DELETE FROM message_removals', 'UPDATE message_removal_horizon SET seq=0'):
                         with self.assertRaises(sqlite3.IntegrityError): db.execute(statement)
                 occupied = digest()
-                with self.assertRaises(MigrationError) as refusal: migrate(path, 'test-instance', binding, '56')
+                with self.assertRaises(MigrationError) as refusal: migrate(path, 'test-instance', binding, self.source_version)
                 self.assertEqual(refusal.exception.code, 'RECORDS_WOULD_BE_LOST'); self.assertEqual(digest(), occupied)
-                print('MIGRATION151_PROOF ' + json.dumps(dict(source56=BASE, upgrade=upgrade,
+                print('MIGRATION151_PROOF ' + json.dumps(dict(source_head=self.source_head, from_schema=self.source_version, upgrade=upgrade,
                     old_counts={key: len(value) for key, value in before.items()}, indexes=indexes,
                     old_records_sha256=hashlib.sha256(json.dumps(before, sort_keys=True).encode()).hexdigest(),
                     notice_seq=notice_seq, occupied_before=occupied, occupied_after=digest(), receipt=receipt)), flush=True)
             finally:
                 print('MIGRATION151_CHILDREN ' + json.dumps(children), flush=True)
+
+
+class Migration58Case(MigrationCase):
+    source_head = '6066c9780ce3c1212d4562ff43ea37d843177eb1'
+    source_version = '58'
+    fixture_script = 'removal_151_schema58.py'

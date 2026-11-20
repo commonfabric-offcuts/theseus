@@ -1348,6 +1348,17 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 #reader-origin { display: flex; align-items: center; gap: .25rem; }
 #reader-origin > .reader-origin-text { min-width: 0; }
 #reader-origin > .message-update { flex: none; }
+#reader-origin > .question-state { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.reader-header:has(#reader-origin > .question-state) .reader-title-row > button { margin: 0; }
+@media(max-width:480px) {
+  .reader-header:has(#reader-origin > .question-state) #reader-stepping { margin-left: auto; }
+  .reader-header:has(#reader-aside:not([hidden])) #reader-origin:has(> .question-state) {
+    order: 2; flex: 1 0 100%; flex-wrap: wrap; white-space: normal;
+  }
+  .reader-header:has(#reader-aside:not([hidden])) #reader-origin:has(> .question-state) > .reader-origin-text {
+    flex: 1 0 100%;
+  }
+}
 @media (max-width: 480px) {
   .reader-header:has(#reader-aside:not([hidden])) #reader-origin { overflow: visible; }
   .reader-header:has(#reader-aside:not([hidden])) .reader-origin-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

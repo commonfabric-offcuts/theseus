@@ -1,3 +1,4 @@
+import { questionOf, terminalQuestion } from './question-state.mjs';
 // Thumbs-up and go-ahead answers on a message (docs/thumbs.md).
 //
 // A thumbs-up says "I read it and I understand", never "do it". An Ask an
@@ -26,7 +27,7 @@ export function reactionsOf(item) {
 // Whether the reader may thumb it: anyone's message but their own.
 export const mayThumb = (item, viewer) => Boolean(item) && item.author_id !== viewer;
 // Whether the reader may answer it: a person it asks for a go-ahead.
-export const mayAnswer = (item, viewer, kind) => item?.go_ahead === true && !item.withdrawal && !item.removal && kind === 'human' &&
+export const mayAnswer = (item, viewer, kind) => item?.go_ahead === true && !item.withdrawal && !item.removal && !terminalQuestion(questionOf(item)) && kind === 'human' &&
   Array.isArray(item.addressees) && item.addressees.includes(viewer);
 export const thumbed = (item, viewer) => reactionsOf(item).thumbs.some(thumb => thumb.actor_id === viewer);
 export const answerOf = (item, viewer) => reactionsOf(item).answers.find(answer => answer.actor_id === viewer)?.answer ?? null;
@@ -39,7 +40,7 @@ export const answerOf = (item, viewer) => reactionsOf(item).answers.find(answer 
 // offers every act as a real button in the bar over the lit card.
 export function paintReactions(card, item, viewer, kind, doc = card.ownerDocument) {
   const value = reactionsOf(item), answerable = mayAnswer(item, viewer, kind);
-  const key = JSON.stringify([value.version, item.go_ahead === true, Boolean(item.withdrawal), Boolean(item.removal), answerable, value.thumbs.map(t => t.actor_id)]);
+  const key = JSON.stringify([value.version, item.go_ahead === true, Boolean(item.withdrawal), Boolean(item.removal), questionOf(item)?.state, answerable, value.thumbs.map(t => t.actor_id)]);
   let line = card.querySelector(':scope > .message-reactions');
   if (line?.dataset.key === key) return;
   const empty = !value.thumbs.length && !item.go_ahead;
@@ -77,7 +78,7 @@ function answerParts(doc, item, viewer, kind, { buttons = false, busy = false, a
   }
   const others = value.answers.filter(answer => answer.actor_id !== viewer || !answerable);
   if (others.length) parts.push(node(doc, 'span', others.map(a => `${a.answer === 'yes' ? '✅' : '🚫'} ${a.actor_id === viewer ? 'you' : a.actor_id}`).join(' · '), 'reaction-said'));
-  else if (!item.withdrawal && !answerable && !value.answers.length) parts.push(node(doc, 'span', 'Asks for a go-ahead', 'reaction-said'));
+  else if (!item.withdrawal && !terminalQuestion(questionOf(item)) && !answerable && !value.answers.length) parts.push(node(doc, 'span', 'Asks for a go-ahead', 'reaction-said'));
   return parts;
 }
 

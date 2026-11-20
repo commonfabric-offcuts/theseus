@@ -234,9 +234,10 @@ def current_acts(db, actor, message_ids):
         if kind == "cover":
             # A dossier's cover (item 624): as this reader reads it, with the outcome's owner, whose 👍 or word gives Done.
             if row["topic_id"] not in owners:
-                owners[row["topic_id"]] = db.execute("SELECT w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=?",
-                                                     (row["topic_id"],)).fetchone()[0]
-            acts["cover"] = cover_values.shown(db, actor, cover_values.stored_value(row["value"]), row["actor_id"], row["at_ms"], owners[row["topic_id"]])
+                owners[row["topic_id"]] = db.execute("SELECT w.owner_id,t.archived FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=?",
+                                                     (row["topic_id"],)).fetchone()
+            owner = owners[row["topic_id"]]
+            acts["cover"] = cover_values.shown(db, actor, cover_values.stored_value(row["value"]), row["actor_id"], row["at_ms"], owner['owner_id'], archived=bool(owner['archived']))
         elif kind in ("cover_refresh", "message_refresh"):
             acts[kind] = json.loads(row["value"])
         else:

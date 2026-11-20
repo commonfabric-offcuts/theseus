@@ -196,6 +196,7 @@ export class Freshness {
         if (item.resource_kind === 'acts' && item.resource_id === this.topicId && integer(item.version)) this.invalidate('acts', item.version);
         // A message edited, by the person here or on another device (docs/message-edit.md): its key names the
         // message and the revision; a message this page has not loaded is read with its page.
+        if (item.resource_kind === 'question' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('question:' + item.resource_id, item.version);
         if (item.resource_kind === 'withdrawal' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('withdrawal:' + item.resource_id, item.version);
         if (item.resource_kind === 'removal' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('removal:' + item.resource_id, item.version);
         if (item.resource_kind === 'edit' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('edit:' + item.resource_id, item.version);

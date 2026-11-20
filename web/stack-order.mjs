@@ -1,3 +1,4 @@
+import { currentQuestionCover } from './question-state.mjs';
 // How a topic's loaded messages read as reply stacks (docs/reply-stacks.md):
 // which stack each message is in, the order inside a stack and of the stacks,
 // what a fold shows, which messages read as one line because the reader
@@ -356,8 +357,8 @@ export function newestNew(stack, unread) {
 export function stackCover(stack, { alone = false } = {}) {
   if (stack.sourceStack) return stackCover(stack.sourceStack, { alone });
   const position = positionOf(stack);
-  if (position && position.root_id !== stack.head.id) return position.cover ?? null;
-  return stack.replies.length || alone ? actsOf(stack.head).cover ?? null : null;
+  if (position && position.root_id !== stack.head.id) return currentQuestionCover(position.cover ?? null);
+  return stack.replies.length || alone ? currentQuestionCover(actsOf(stack.head).cover ?? null) : null;
 }
 
 // The index, in the stacks as shown, of the lowest one holding anything new

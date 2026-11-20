@@ -1,3 +1,4 @@
+import { questionPill } from './question-state.mjs';
 import { detailParts } from './card-details.mjs';
 import { messageUpdateActivity, refreshLine } from './cover-refresh.mjs';
 import { messageFoldSwipe } from './message-fold-swipe.mjs';
@@ -1195,6 +1196,9 @@ export class Reader {
     paintRemoval(originText, source, document, true);
     this.sourceBody.classList.toggle('retracted-message', source.removal?.kind === 'retracted');
     this.$('reader-origin').replaceChildren(originText);
+    const question = questionPill(document, source, { nameOf: id => this.callbacks.actorName?.(id) ?? id,
+      resolve: this.callbacks.resolveQuestion, busy: this.callbacks.resolvingQuestion?.(source.source_ref.id) });
+    if (question) this.$('reader-origin').append(' ', question);
     if (source.source_ref.kind === 'message') {
       const context = { viewer: this.callbacks.actor?.(), nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: source.topic_id };
       const update = messageUpdateActivity(document, source, context);

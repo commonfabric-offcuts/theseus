@@ -141,7 +141,7 @@ test('late withdrawal receipt updates only its exact source and preserves newer 
   const writing = { body: 'Newer unsent writing', destination: 'other' }, painted = [];
   const registry = { current: { source: other, writing } };
   const learned = runInNewContext('(' + app.slice(start, end).trim() + ')', {
-    views: { messages: new Map([['ask', original]]) }, learnWithdrawal, cardIn: () => null,
+    paintViews() {}, paintReaderTitle() {}, questionStates: { learn() {} }, views: { messages: new Map([['ask', original]]) }, learnWithdrawal, cardIn: () => null,
     feedMessages: () => new Map([['ask', original]]), stackMessages() {},
     messageEntries: new Map(), menu: { paint() {} }, registry, reader: { paintOrigin: source => painted.push(source) },
   });

@@ -1,5 +1,10 @@
 # Unsend and Retract (151)
 
+> Current carry: schema **59**, after 932's schema 57 and 625's schema 58.
+> The original approval below used schema 57. Current composition and evidence
+> are in [Removal carry 151+924](removal-carry-151-924-59.md).
+
+
 Fresh Build 1 on live 162, `f41d682691c5a99c177538a87a30f04916ed6e1e`,
 schema 56. Tony 11760 and Warp 11846 / 11915 / 11937 / 12091 / 12095 govern. This contract
 precedes implementation. The existing 829 request and 863 shared menu owners

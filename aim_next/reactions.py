@@ -168,6 +168,8 @@ class Reactions:
         value, waits = self._thumb_answer(db, actor, message, thumbed, answered_yes(row))
         # A thumb given reads the message; one taken back reads and clears nothing.
         version, settled, cleared = self._react(db, actor, message, "thumb", value, current + 1, _now_ms(), thumbed)
+        if value == 'yes':
+            self._record_answer_receipt(db, actor, message, 'thumb', current + 1, value)
         # A thumbs-up given folds the message for its giver (Stacks._fold_answered); one taken back unfolds nothing.
         folded = self._fold_answered(db, actor, message["id"]) if thumbed else []
         # The owner's 👍 on a cover's payload makes it Done, and taking it back takes Done back (Covers._cover_settle).
@@ -241,7 +243,7 @@ class Reactions:
         ask (no go-ahead, no record's) to actor, a person, in a topic they read that still keeps its waits
         (not replaced by a conversation, its outcome not reached, archived or completed). A whisper never asks (whispers.py's
         whisper_shape), and message.thumb refuses a thumb on one's own message, so neither is asked here."""
-        if (message["intent"] != "ask" or self._withdrawal_value(db, message["id"]) is not None or removal_value(db, message["id"]) is not None or message["go_ahead"] or actor not in json.loads(message["addressees"])
+        if (message["intent"] != "ask" or self._question_closed(db, message["id"]) is not None or self._withdrawal_value(db, message["id"]) is not None or removal_value(db, message["id"]) is not None or message["go_ahead"] or actor not in json.loads(message["addressees"])
                 or self._actor(db, actor)["kind"] != "human"):
             return None
         topic = db.execute("SELECT t.*,w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=:topic AND t.replaced_by IS NULL "
@@ -298,7 +300,7 @@ class Reactions:
         (answered_yes); whether a record answers it is outcome_asks.record_ask."""
         found = None
         for row in db.execute("SELECT m.id,m.seq,m.sent_ms,m.author_id FROM message_addressees a CROSS JOIN messages m ON m.seq=a.seq "
-                              "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>? AND m.intent='ask' AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) AND NOT EXISTS (SELECT 1 FROM message_withdrawals x WHERE x.message_id=m.id) AND NOT EXISTS (SELECT 1 FROM messages w "
+                              "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>? AND m.intent='ask' AND NOT EXISTS (SELECT 1 FROM question_closures c WHERE c.message_id=m.id) AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) AND NOT EXISTS (SELECT 1 FROM message_withdrawals x WHERE x.message_id=m.id) AND NOT EXISTS (SELECT 1 FROM messages w "
                               "INDEXED BY message_reply_links WHERE w.reply_to=m.id AND w.author_id=a.actor_id "
                               "AND w.private_to=m.author_id AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=w.id)) ORDER BY a.seq",
                               (topic["id"], member, after_seq)):
@@ -329,6 +331,8 @@ class Reactions:
             raise Refusal("NOT_ASKED", "Only a person this message asks can answer it")
         if self._withdrawal_value(db, message["id"]) is not None or removal_value(db, message["id"]) is not None:
             raise Refusal("QUESTION_WITHDRAWN", "This question was withdrawn; reply in words instead", recorded=False)
+        if self._question_closed(db, message["id"]) is not None:
+            raise Refusal("QUESTION_CLOSED", "This question is closed; reply in words instead", recorded=False)
         row = self._reaction_row(db, actor, message["id"], "answer")
         current = row["revision"] if row else 0
         if envelope["expected"]["answer_revision"] != current:
@@ -344,6 +348,7 @@ class Reactions:
         said, affected = self._publish(db, actor, envelope["operation_id"], message["topic_id"], {
             "body": body, "attachments": [], "quotes": [], "addressees": [message["author_id"]],
             "reply_to": message["id"], "intent": "tell"})
+        self._record_answer_receipt(db, actor, message, 'answer', current + 1, answer, said['message_id'])
         return self._read_by(dict(result, answer_revision=current + 1, reaction_version=version, reply_id=said["message_id"], changed=True), affected + [
             {"kind": "reaction", "id": message["id"], "version": version}], message, cleared)
 

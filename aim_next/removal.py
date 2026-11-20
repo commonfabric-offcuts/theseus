@@ -6,7 +6,8 @@ import json
 
 from .contract import Refusal
 from .message_edit import DELIVERY_COLUMNS, _rebuilt_deliveries
-from .refresh_delivery import REQUEST_DELIVERIES, REQUEST_GUARD
+from .refresh_delivery import REQUEST_GUARD
+from .answer_delivery import ANSWER_DELIVERIES, ANSWER_INDEX, ANSWER_GUARD
 
 
 REMOVAL_TABLES = [
@@ -25,19 +26,19 @@ REMOVAL_TABLES += [
     "CREATE INDEX topic_reopen_message ON topics(state_message_id) WHERE state_message_id IS NOT NULL",
     "CREATE TRIGGER first_exposure_other BEFORE INSERT ON message_first_exposures WHEN EXISTS (SELECT 1 FROM messages WHERE id=NEW.message_id AND author_id=NEW.by) BEGIN SELECT RAISE(ABORT,'only another reader exposes a message'); END",
 ]
-REMOVAL_DELIVERIES = REQUEST_DELIVERIES.replace(
-    "request_id TEXT REFERENCES refresh_requests(id),", "request_id TEXT REFERENCES refresh_requests(id), retraction_id TEXT REFERENCES message_removals(message_id),").replace(
+REMOVAL_DELIVERIES = ANSWER_DELIVERIES.replace(
+    "answer_id TEXT UNIQUE REFERENCES answer_receipts(id),", "answer_id TEXT UNIQUE REFERENCES answer_receipts(id), retraction_id TEXT REFERENCES message_removals(message_id),").replace(
     "UNIQUE(request_id),", "UNIQUE(request_id), UNIQUE(retraction_id,recipient_id),").replace(
     "(request_id IS NOT NULL)=1)", "(request_id IS NOT NULL)+(retraction_id IS NOT NULL)=1)").replace(
-    "CHECK(request_id IS NULL OR revision=1))", "CHECK(request_id IS NULL OR revision=1), CHECK(retraction_id IS NULL OR revision=1))")
+    "CHECK(request_id IS NULL OR revision=1),", "CHECK(request_id IS NULL OR revision=1), CHECK(retraction_id IS NULL OR revision=1),")
 REMOVAL_GUARD = [
     "CREATE TRIGGER retraction_delivery_recipient BEFORE INSERT ON deliveries WHEN NEW.retraction_id IS NOT NULL AND NOT EXISTS "
     "(SELECT 1 FROM message_removals r JOIN messages m ON m.id=r.message_id JOIN actors a ON a.id=NEW.recipient_id JOIN delivery_groups g ON g.id=NEW.group_id "
     "WHERE r.message_id=NEW.retraction_id AND r.kind='retracted' AND m.topic_id=NEW.topic_id AND a.kind='agent' AND g.recipient_id=NEW.recipient_id AND g.kind='retraction') "
     "BEGIN SELECT RAISE(ABORT,'a retraction notice belongs to its agent'); END",
 ]
-REMOVAL_UP = REMOVAL_TABLES + _rebuilt_deliveries(REMOVAL_DELIVERIES, DELIVERY_COLUMNS + ',revision,request_id') + REQUEST_GUARD + REMOVAL_GUARD
-REMOVAL_DOWN = _rebuilt_deliveries(REQUEST_DELIVERIES, DELIVERY_COLUMNS + ',revision,request_id') + REQUEST_GUARD + [
+REMOVAL_UP = REMOVAL_TABLES + _rebuilt_deliveries(REMOVAL_DELIVERIES, DELIVERY_COLUMNS + ',revision,request_id,answer_id') + REQUEST_GUARD + [ANSWER_INDEX, ANSWER_GUARD] + REMOVAL_GUARD
+REMOVAL_DOWN = _rebuilt_deliveries(ANSWER_DELIVERIES, DELIVERY_COLUMNS + ',revision,request_id,answer_id') + REQUEST_GUARD + [ANSWER_INDEX, ANSWER_GUARD] + [
     'DROP TRIGGER published_message_quotes', 'DROP TABLE message_quote_sources',
     'DROP INDEX topic_reopen_message', 'DROP INDEX removal_agent_exposures', 'DROP TABLE message_first_exposures', 'DROP TABLE message_removal_horizon', 'DROP TABLE message_removals']
 REMOVAL_OCCUPIED = 'SELECT EXISTS (SELECT 1 FROM message_removals)'
@@ -256,7 +257,8 @@ class Removal:
         # existing broad-writing rule. A record-held ask is settled by its record.
         asks = db.execute('SELECT m.id,m.topic_id,m.author_id,m.private_to,m.seq,m.sent_ms,m.intent,m.addressees FROM message_addressees a JOIN messages m ON m.seq=a.seq '
                           "WHERE a.topic_id=? AND a.actor_id=? AND a.seq<? AND m.intent='ask' AND " + ACTIVE +
-                          ' AND NOT EXISTS (SELECT 1 FROM message_withdrawals w WHERE w.message_id=m.id) ORDER BY a.seq',
+                          ' AND NOT EXISTS (SELECT 1 FROM message_withdrawals w WHERE w.message_id=m.id)'
+                          ' AND NOT EXISTS (SELECT 1 FROM question_closures c WHERE c.message_id=m.id) ORDER BY a.seq',
                           (topic['id'], actor, message['seq'])).fetchall()
         for ask in asks:
             linked = db.execute('SELECT 1 FROM ask_cover_links WHERE ask_id=? AND actor_id=?', (ask['id'], actor)).fetchone()

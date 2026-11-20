@@ -216,7 +216,7 @@ class DossierMove:
                     self._acknowledge(db, row["recipient_id"], row)
                 elif row["state"] == "held":
                     db.execute("UPDATE deliveries SET state='acknowledged' WHERE id=?", (row["id"],))
-            if row["kind"] == "correction" and row["state"] == "pending" and row["active"] and not self._correction_readable(db, row["recipient_id"], row):
+            if row["kind"] in ("correction", "answer") and row["state"] == "pending" and row["active"] and not self._correction_readable(db, row["recipient_id"], row):
                 self._acknowledge(db, row["recipient_id"], row)
             db.execute("UPDATE deliveries SET topic_id=?,group_id=? WHERE id=?", (destination["id"], group, row["id"]))
             db.execute("UPDATE delivery_reasons SET topic_id=? WHERE delivery_id=?", (destination["id"], row["id"]))
@@ -224,16 +224,17 @@ class DossierMove:
 
     def _move_waits(self, db, found, source, destination, waiting, removed):
         ids = {item["id"] for item in found}
+        open_questions = [item for item in found if item['intent'] == 'ask' and item['id'] not in removed
+                          and not self._question_closed(db, item['id']) and not self._withdrawal_value(db, item['id'])]
         for row in waiting:
             member = row["actor_id"]
-            candidates = [item for item in found if item["intent"] == "ask" and item["id"] not in removed and item["seq"] >= row["ask_seq"]
+            candidates = [item for item in open_questions if item["seq"] >= row["ask_seq"]
                           and member != item["author_id"] and member in json.loads(item["addressees"])
                           and not self._reaction_row(db, member, item["id"], "answer")
                           and not answered_yes(self._reaction_row(db, member, item["id"], "thumb"))]
-            # The original open wait is authoritative for a held/go-ahead ask,
-            # but a terminal ask can never regain a wait from the move.
-            if row["ask_message_id"] in ids and row["ask_message_id"] not in removed:
-                original = next(item for item in found if item["id"] == row["ask_message_id"])
+            # The original open wait is authoritative even for a held/go-ahead ask.
+            original = next((item for item in open_questions if item['id'] == row['ask_message_id']), None)
+            if original is not None:
                 if not any(item["id"] == original["id"] for item in candidates): candidates.append(original)
             if candidates:
                 ask = min(candidates, key=lambda item: item["seq"])
