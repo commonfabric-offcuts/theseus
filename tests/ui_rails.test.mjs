@@ -51,23 +51,24 @@ const memory = (initial = {}) => {
   return { getItem: key => held.get(key) ?? null, setItem: (key, value) => held.set(key, value), held };
 };
 
-test('the outline tidies itself: only the outcome being read is open, a key\'s open or fold or every one lasts until the next place, and nothing is kept on the browser', () => {
-  const opened = new Opened();
+test('902 the outline keeps each choice; arriving opens its current outcome and never folds another', () => {
+  const storage = memory(), opened = new Opened(storage, 'outline-fixture');
   assert.deepEqual([opened.isOpen('w1', 'w1'), opened.isOpen('w2', 'w1')], [true, false], 'the outcome being read is open, every other folded');
   opened.set('w2', true); opened.set('w1', false);
   assert.deepEqual([opened.isOpen('w1', 'w1'), opened.isOpen('w2', 'w1')], [false, true], '⌘→ opens another, ⌘← folds the one being read');
-  opened.tidy();
-  assert.deepEqual([opened.isOpen('w1', 'w2'), opened.isOpen('w2', 'w2')], [false, true], 'arriving at another place tidies to it alone');
-  opened.all(true);
-  assert.deepEqual(['w1', 'w2', 'w9'].map(id => opened.isOpen(id, 'w2')), [true, true, true], '⇧⌘→ opens every one, those listed later too');
+  opened.set('w2', true);
+  assert.deepEqual([opened.isOpen('w1', 'w2'), opened.isOpen('w2', 'w2')], [false, true], 'arrival retains the other explicit fold');
+  opened.all(true, ['w1', 'w2', 'w9']);
+  assert.deepEqual(['w1', 'w2', 'w9'].map(id => opened.isOpen(id, 'w2')), [true, true, true], '⇧⌘→ opens every known outcome');
+  assert.equal(opened.isOpen('new', 'w2'), false, 'a later new outcome starts folded');
   opened.set('w9', false);
   assert.equal(opened.isOpen('w9', 'w2'), false, 'one folded after stays folded');
-  opened.all(false);
+  opened.all(false, ['w1', 'w2', 'w9']);
   assert.deepEqual(['w1', 'w2', 'w9'].map(id => opened.isOpen(id, 'w2')), [false, false, false], '⇧⌘← folds every one, the one being read too');
-  opened.tidy();
-  assert.deepEqual(['w1', 'w2'].map(id => opened.isOpen(id, 'w2')), [false, true], 'and the next place tidies back to it alone');
+  opened.set('w2', true);
+  assert.deepEqual(['w1', 'w2'].map(id => opened.isOpen(id, 'w2')), [false, true], 'the next arrival opens just its current outcome');
   assert.deepEqual(['w1', 'w2'].map(id => opened.isOpen(id, 'w2', 'new')), [true, true], 'while a chip shows only some, each shown is open');
-  assert.equal(new Opened().isOpen('w2', 'w1'), false, 'a new page starts tidy: no fold is kept');
+  assert.equal(new Opened(storage, 'outline-fixture').isOpen('w2', 'w1'), true, 'a new page restores the kept open choice');
 });
 
 test('only moves between an outcome Conversation and topics are made in place', () => {
@@ -737,7 +738,7 @@ test('844 the outline reads its own current-outcome topics when the home keeps i
   const read=[], rail=Object.create(OutlineRail.prototype);
   const handles={workspaceId:'w1',route:{kind:'workspace',id:'w1'},bootstrap:{instance_id:'fixture',actor:'fixture-person'}};
   let reloads=0;
-  Object.assign(rail,{started:true,opened:{tidy(){}},outcomes:new Map(),doc:{getElementById:()=>null},paint(){},reload(){reloads++;}});
+  Object.assign(rail,{started:true,opened:new Opened(),outcomes:new Map(),doc:{getElementById:()=>null},paint(){},reload(){reloads++;}});
   rail.ready(handles);
   assert.equal(rail.handles,handles,'shared outline accepts the outcome home');
   assert.equal(reloads,1);
