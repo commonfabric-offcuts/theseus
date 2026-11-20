@@ -71,7 +71,7 @@ test('852 Notebook titles hold their count beside them, icons carry the mode, an
   await refs.load();const row=list.children[0],line=row.querySelector('.notebook-document-label');
   assert.ok(line);assert.equal(line.querySelector('.notebook-document-title').textContent,'Notes');assert.equal(line.querySelector('.unread-count').textContent,'2');
   assert.equal(row.querySelector('.notebook-document-view'),null);assert.equal(row.getAttribute('aria-label'),'Notes, Cards, 2 new revisions');
-  assert.equal(notebookDocument('cards',doc).children.length,3);assert.equal(notebookDocument('text',doc).children.length,4);
+  const picture=notebookDocument('cards',doc);assert.equal(picture.children.length,1);assert.equal(picture.children[0].getAttribute('data-glyph'),'stack');assert.equal(notebookDocument('text',doc).children.length,4);
   views.set('p','text');assert.equal(row.getAttribute('aria-label'),'Notes, Text, 2 new revisions');assert.equal(row.querySelector('.notebook-document').dataset.mode,'text');
   const invite=new AgentInvite({host:node(),invitation:{},workspace:()=>({id:'w'})});assert.equal(invite.opener.querySelector('span').textContent,'+ Invite agent');
 });
