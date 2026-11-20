@@ -1,4 +1,4 @@
-import { stripDetails, detailParts } from './card-details.mjs';
+import { detailParts } from './card-details.mjs';
 import { messageUpdateActivity, refreshLine } from './cover-refresh.mjs';
 import { messageFoldSwipe } from './message-fold-swipe.mjs';
 import { keyAction, holdsWriting, written } from './editor.mjs';

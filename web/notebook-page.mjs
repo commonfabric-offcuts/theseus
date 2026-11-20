@@ -222,12 +222,14 @@ export class NotebookPage extends DeckPage {
     this.editing.field.addEventListener('input',()=>this.save());
     this.cardImages=this.imagePicker(this.editing.field,this.editing.input,this.list);
   }
-  finish({discard=false} = {}) {
+  finish({discard=false,target=null} = {}) {
     this.cardImages?.close();this.cardImages?.list?.remove();this.cardImages=null;
     if(this.imageError&&this.editing){this.imageError=null;this.writingChanged();}
+    let at=-1;
     if(discard){this.editing=null;this.paint();this.show(true);}
-    else super.finish();
+    else at=super.finish({target});
     if(this.writing)this.writing.active=false;
+    return at;
   }
   moveWriting(act) { super.moveWriting(act); this.save(); }
   drafted() { return this.writing?.value?.draft === true; }

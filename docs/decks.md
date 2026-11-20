@@ -126,8 +126,10 @@ Card editing and Text show no metadata line, restoring it through the same
 Notebook writer and revision fence. Text recomputes identity from one fixed
 base: the last confirmed saved body, initially the body Text opened on. A
 keystroke never teaches a visit catalog. A confirmed save replaces the base;
-unsaved transient headings do not. Exact unchanged title-and-words pairs form
-the longest ordered set of anchors, with the edit range distinguishing exact
+its hidden identities carry the old-to-new correspondence, with content matching
+only for rows without identities. Unsaved transient headings do not replace it.
+Edit-range-preferred pairs are fixed; exact unchanged title-and-words pairs form
+the longest ordered set of anchors between them. This distinguishes exact
 twins even when a save confirms between keystrokes. Within each
 gap, pair by title, then by non-empty words, then pair a sole remaining base
 card with a sole remaining current card as a rename or edit. Finally an
@@ -138,22 +140,29 @@ A Text merge adds an alias only when removing a heading leaves the survivor's
 own base words followed directly by the whole words of the unpaired card.
 Deleting a whole card, even one with matching words or a URL, adds no alias.
 Confirmed aliases ride with the survivor in its hidden line on later edits.
+An unconfirmed merge alias returns to its separate base card when Text Undo
+restores that card; it cannot remain on both cards.
 Both writers place new metadata at the end of the words (before an unfinished
 fence when necessary); Text preserves an existing line's placement. Untouched
 CRLF and visible spacing are kept. Undo/Redo re-align against that same saved
 base; it does not resurrect identities deleted in an already confirmed save.
-Unchanged cards retain metadata from the current value, including unsaved Cards
-color and Undo changes; the confirmed base governs pairing. Equal words cannot
+Cards retain their own metadata from the current value while their words change,
+including unsaved Cards color and Undo changes; the confirmed base governs pairing.
+An unconfirmed restored card follows its own current row through the edit.
+Equal words cannot
 transfer current metadata between different confirmed cards. Hidden lines go
 after exact visible words, including trailing spaces. A metadata-only sync
-leaves the textarea value and native undo untouched.
+leaves the textarea value and native undo untouched. Unchanged visible rows and
+opening text retain their original raw bytes, including CRLF, so typing followed
+by Undo owes no revision when the content and metadata are back where they began.
 A later saved Cards identity/color is part of the next base. Merely switching
 views never writes the page.
 
 A painted menu resolves its card from the pressed row, including the writing
-holder after an incoming revision. Finishing another editor rebases that row
-through the changed span before resolving the menu reference; picked state
-never supplies its target.
+holder after an incoming revision. Finishing follows that card through the actual
+applied act, then resolves its identity or words at the resulting position.
+The insertion fallback for a deleted editor or anchor follows the same rule;
+picked state and an estimated insertion point never supply the menu's target.
 
 Reader Quote computes hidden ranges on the whole memory source, then intersects
 those ranges with the selection, retaining the preceding fence state. Message

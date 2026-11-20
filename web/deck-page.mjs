@@ -231,10 +231,11 @@ export class DeckPage {
   }
 
   // An act on the deck: made at once, then saved.
-  act(act, undoing = false) {
+  act(act, undoing = false, applied = null) {
     if (this.readOnly || !this.base) return false;
     const done = applyAct(this.deck, act);
     if (!done) return false;
+    applied?.(done);
     const before = this.deck.cards;
     this.deck = parseDeck(deckBody(done.deck)); this.acts.push(act);
     this.reselect(before);
@@ -685,7 +686,7 @@ export class DeckPage {
     return true;
   }
   // Escape, ⌘Return or Done: what was written becomes the card; a new card with nothing written is not made.
-  finish() {
+  finish({target=null} = {}) {
     const editing = this.editing;
     if (!editing) return;
     // Finishing writing is not navigation. Subsequent move/new-card acts keep their own key.
@@ -693,20 +694,30 @@ export class DeckPage {
     this.keyed = false;
     this.editing = null;
     const to = this.boxText(editing);
+    let at=this.deck.cards.indexOf(target);
+    const editingTarget=!editing.fresh&&target===this.deck.cards[findCard(this.deck,editing.text,editing.near)];
+    // Follow the actual card object through the applied act, before parsing
+    // expanded headings. This also covers both missing-anchor fallbacks.
+    const apply=act=>this.act(act,false,target?done=>{
+      let i=done.deck.cards.indexOf(target);
+      if(i<0&&editingTarget&&cardText(textCard(to)))i=done.at;
+      at=i<0?-1:parseDeck(deckBody({...done.deck,cards:done.deck.cards.slice(0,i)})).cards.length;
+    }:null);
     let made = false;
-    if (editing.fresh) made = this.act({ kind: 'add', after: editing.after, text: to, depth: editing.depth, near: editing.near });
+    if (editing.fresh) made = apply({ kind: 'add', after: editing.after, text: to, depth: editing.depth, near: editing.near });
     else if (this.boxChanged(editing)) {
-      made = this.act({ kind: 'edit', text: editing.text, to, near: editing.near });
+      made = apply({ kind: 'edit', text: editing.text, to, near: editing.near });
       // Its card changed elsewhere while it was written: what was written goes beside it, over nothing.
       if (!made && findCard(this.deck, editing.text, editing.near) < 0 && /\S/.test(to)) {
         const before = this.deck.cards[Math.min(editing.near, this.deck.cards.length) - 1];
-        made = this.act({ kind: 'add', after: before ? cardText(before) : null, text: to, depth: editing.depth, near: editing.near - 1 });
+        made = apply({ kind: 'add', after: before ? cardText(before) : null, text: to, depth: editing.depth, near: editing.near - 1 });
         if (made) this.say('That card changed elsewhere while you wrote, so what you wrote is a card of its own beside it.', 'attention');
       }
     }
     if (!made) this.paint();
     this.show(true);
     putBack(); this.keyed = keyed;
+    return at;
   }
   // A card's speech bubbles: one for each of its reply stacks, which opens it, saying Sent until its first reply
   // and then counting them, and marked only while one waits unread; or, on a card with none, one that asks an
@@ -821,18 +832,15 @@ export class DeckPage {
   }
   openCardMenu(index,anchor) {
     // The pressed row owns the target, including the holder after sync moved
-    // it. Finishing changes only the editor's span; rebase this row across it
-    // before taking a ref, so identical siblings cannot steal the menu.
+    // it. Follow the actual applied act before re-finding its identity/words.
     const row=anchor.closest?.('.deck-card');
     if(row){if(!row.isConnected)return;index=Number(row.dataset.index);}
     if(!this.deck.cards[index])return;
     if(this.editing){
-      const e=this.editing,count=this.deck.cards.length;
-      const at=e.fresh?(e.after===null?0:findCard(this.deck,e.after,e.near)+1):findCard(this.deck,e.text,e.near);
-      const empty=!cardText(textCard(e.field.value));
-      const removed=!e.fresh&&empty&&at>=0&&index>=at&&index<groupEnd(this.deck.cards,at);
-      this.finish();if(this.editing||removed)return;
-      if(at>=0&&(index>at||e.fresh&&index>=at))index+=this.deck.cards.length-count;
+      const e=this.editing,target=this.deck.cards[index],ref=this.cardRef(index);
+      const editingTarget=!e.fresh&&index===findCard(this.deck,e.text,e.near);
+      const at=this.finish({target});if(this.editing||at<0)return;
+      index=editingTarget?at:this.cardAt({...ref,near:at});if(index<0)return;
       anchor=this.list.querySelector(`.deck-card[data-index="${index}"]`)?.querySelector('.deck-menu')??anchor;
     }
     const ref=this.cardRef(index);if(!ref)return;

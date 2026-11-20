@@ -615,3 +615,92 @@ test('867 R4 Reader actual hold retains the selected occurrence of equal markers
  const raw='```\n'+line()+'\n```\n\n'+line()+'\n';const start=raw.lastIndexOf(line()),{p,editor}=reader867(t,raw,'memory',start,raw.length);
  Object.defineProperty(p,'chosen',{value:true});p.paintQuote=()=>{};p.hold('quote-selection');p.hover=null;p.quote();assert.deepEqual(editor.draft.quotes,[]);
 });
+
+// Review 12516: real input, writer confirmation, Cards acts and painted menus.
+const C867='c-33333333333333333333333333333333';
+test('867 R5 an in-flight twin save cannot duplicate ids after a later edit and paste',async t=>{
+ const raw=card('Same','same',details(A))+card('Same','same',details(B,'rose'))+card('Same','same',details(C867,'green'));
+ const {p,w,api,input}=await text867(t,raw),send=api.command;let release,arrive,first=true;
+ const arrived=new Promise(r=>arrive=r);
+ api.command=async e=>{const receipt=await send(e);if(first){first=false;arrive();await new Promise(r=>release=r);}return receipt;};
+ const second=p.text.value.indexOf('same',p.text.value.indexOf('same')+4);input(second,second+4,'changed two');
+ const saving=w.flush();await arrived;
+ try {const third=p.text.value.lastIndexOf('same');input(third,third+4,'changed three');}
+ finally {release();await saving;}
+ const third=p.text.value.lastIndexOf('## Same');input(third,third,card('Same','same',null),'insertFromPaste');await w.flush();
+ const rows=metaOf(w.base.content.body);assert.deepEqual(rows.map(r=>r.id),[A,B,null,C867]);
+ assert.equal(new Set(rows.flatMap(r=>r.ids)).size,3);p.sync();p.pick=at=>{p.picked=at;};
+ for(const [id,at] of [[A,0],[B,1],[C867,3]]){assert.equal(p.pickCardId(id),true);assert.equal(p.picked,at);}
+});
+test('867 R5 a pasted twin cannot replace the preferred anchor beside an unsaved rename',async t=>{
+ const {p,w,input}=await text867(t,card('Same','same',details(A))+card('Same','same',details(B,'rose')));
+ input(3,7,'Renamed');input(p.text.value.length,p.text.value.length,card('Same','same',null),'insertFromPaste');await w.flush();
+ assert.deepEqual(metaOf(w.base.content.body).map(r=>r.id),[A,B,null]);
+ assert.deepEqual(parseDeck(w.base.content.body).cards.map(r=>r.title),['Renamed','Same','Same']);
+});
+test('867 R5 CRLF typing then Undo restores every original byte and owes no revision',async t=>{
+ const raw=('Opening\n\n'+card('One','one',null)+card('Two','two',details(B,'rose'))+card('Three','three',null)).replaceAll('\n','\r\n');
+ const {p,w,input,calls,source}=await text867(t,raw),at=p.text.value.indexOf('one');
+ input(at,at,'x');input(at,at+1,'','historyUndo');await w.flush();
+ assert.equal(w.value.body,raw);assert.equal(source().body,raw);assert.equal(calls.length,0);assert.equal(source().source_ref.revision,1);
+});
+for(const state of ['offline','in-flight','Cards Undo'])test('867 R5 typing in a card keeps its unconfirmed metadata: '+state,async t=>{
+ const raw=card('One','one',details(A))+card('Two','typo',state==='Cards Undo'?details(B,'green'):null);
+ const {p,w,api,input,calls}=await text867(t,raw),send=api.command;let release,choosing,picker,id;
+ p.header.description=p.doc.createElement('p');
+ p.switchView('cards');
+ if(state==='Cards Undo'){
+  p.act({kind:'remove',text:cardText(p.deck.cards[1]),near:1});await w.flush();p.key({key:'z',metaKey:true,target:p.list,preventDefault(){}});id=B;
+ }else {
+  let arrive;const arrived=new Promise(r=>arrive=r);
+  api.command=state==='offline'?async()=>{throw Error('offline');}:async e=>{const receipt=await send(e);arrive();await new Promise(r=>release=r);return receipt;};
+  picker=p.cardColors(p.cardRef(1),p.text);t.after(()=>picker.close(false));choosing=picker.root.querySelectorAll('.swatch').find(n=>n.getAttribute('aria-label')==='green').onclick();
+  if(state==='offline')await choosing;else await Promise.race([arrived,choosing.then(()=>{throw Error('Color fixture ended before reaching the command: '+picker.root.querySelector('.notice')?.textContent);})]);
+  id=metaOf(w.value.body)[1].id;
+ }
+ const pending=state==='offline'?structuredClone(w.pending):null;let edited;
+ if(state==='offline')assert.ok(pending,'offline color leaves its exact request pending');
+ try {p.switchView('text');const at=p.text.value.indexOf('typo');input(at,at+4,'fixed');edited=metaOf(w.value.body)[1];}
+ finally {api.command=send;if(release)release();if(choosing)await choosing;}
+ assert.ok(id);assert.deepEqual([edited.id,edited.color],[id,'green']);
+ if(pending){
+  // Retry the frozen failed color request before saving the newer words.
+  assert.deepEqual(w.pending,pending);await w.flush();assert.deepEqual(calls[0],pending);
+  assert.equal(cardDetails(parseDeck(w.base.content.body).cards[1].words).words,'typo');
+  assert.equal(cardDetails(parseDeck(w.value.body).cards[1].words).words,'fixed');
+ }
+ await w.flush();
+ assert.deepEqual(metaOf(w.base.content.body).map(r=>[r.id,r.color]),[[A,'blue'],[id,'green']]);
+ assert.equal(cardDetails(parseDeck(w.base.content.body).cards[1].words).words,'fixed');
+});
+function fresh867(p,at,written){edit867(p,at,written);Object.assign(p.editing,{fresh:true,after:cardText(p.deck.cards[at]),near:at,details:[],stacks:[],images:[]});}
+function pressExisting867(p,index){
+ const row=p.list.children.find(n=>!n.classList.contains('deck-writing')&&n.dataset.index===String(index)),button=row?.querySelector('.deck-menu');
+ assert.ok(button,'the pressed existing card is painted');button.listeners.click({target:button,stopPropagation(){}});
+ const menu=p.doc.body.querySelector('[role="menu"]');assert.ok(menu,'real shared menu');return menu;
+}
+for(const state of ['fresh anchor deleted','edited card deleted'])test('867 R5 menu keeps its target when '+state,async t=>{
+ const p=painted867(t,menuPage(card('Anchor','anchor',null)+card('Target','target',details(B))+card('End','end',null)));
+ if(state==='fresh anchor deleted')fresh867(p,0,'New\nnew writing');else edit867(p,0,'New\nnew writing');
+ // A later read deleted the anchor/editor card while its box was kept open.
+ p.deck=parseDeck(card('Target','target',details(B))+card('End','end',null));p.paint();
+ choice867(pressExisting867(p,0),'Delete');
+ assert.deepEqual(p.deck.cards.map(c=>c.title),['New','End']);assert.equal(p.deck.cards[0].words,'new writing');assert.equal(p.cardAt({id:B}),-1);
+ p.undo();assert.equal(p.cardAt({id:B}),state==='fresh anchor deleted'?0:1);
+});
+test('867 R5 a menu above the editor keeps its target after the editor adds a card',t=>{
+ const p=painted867(t,menuPage(card('Target','target',details(A))+card('Editing','words',null)));
+ edit867(p,1,'Changed\nnew\n\n## Added\nmore');p.paint();choice867(pressExisting867(p,0),'Delete');
+ assert.deepEqual(p.deck.cards.map(c=>c.title),['Changed','Added']);assert.equal(p.cardAt({id:A}),-1);
+});
+test('867 R5 a menu beside a fresh card keeps the pressed identical twin',t=>{
+ const p=painted867(t,menuPage(card('Anchor','anchor',null)+card('Same','same',null)+card('Same','same',null)));
+ fresh867(p,0,'New\nnew');p.paint();choice867(pressExisting867(p,2),'Delete');
+ assert.deepEqual(p.deck.cards.map(c=>c.title),['Anchor','New','Same']);assert.equal(p.undos.at(-1).near,2);
+});
+for(const child of [false,true])test('867 R5 a menu on the cleared editor opens no replacement menu, child='+child,t=>{
+ const p=painted867(t,menuPage(card('Cleared','words',details(A))+(child?'### Child\n\nchild\n\n':'')+card('Survivor','stay',details(B))));
+ edit867(p,0,'');p.paint();const button=p.list.children[0].querySelector('.deck-menu');assert.ok(button);
+ button.listeners.click({target:button,stopPropagation(){}});
+ assert.equal(p.doc.body.querySelector('[role="menu"]'),null);assert.deepEqual(p.deck.cards.map(c=>c.title),['Survivor']);assert.equal(p.cardAt({id:B}),0);
+});
