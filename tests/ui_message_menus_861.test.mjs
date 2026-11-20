@@ -6,6 +6,7 @@ import { StackFeed } from '../web/stack-feed.mjs';
 import { mayStartFrom } from '../web/whisper-choice.mjs';
 import { configureCoverRefresh } from '../web/cover-refresh.mjs';
 import { openLinksWith } from '../web/links.mjs';
+import { withdrawalItem } from '../web/question-withdrawal.mjs';
 
 const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
 const menuCode = app.slice(app.indexOf('function messageMenuItems(item,'), app.indexOf('function moveDossier(id,'));
@@ -41,6 +42,7 @@ function fixture({ phone = false, below = false, starred = false, folded = false
     cardIn: () => ({}), cardMenuActs: (_item, items) => items, run: fn => fn(),
     marks: { state: () => ({ marked: false }) }, mayEdit: () => true, editRights: () => ({}), editOpener: () => anchor,
     updateMenuItem: () => ({ label: 'Ask for update', glyph: 'refresh', act: () => calls.push(['update']) }), updateContext: () => ({}),
+    withdrawalItem, withdrawals: { withdraw: item => calls.push(['withdraw', item.id]) },
     copyLink: (...args) => calls.push(['copy', ...args.slice(0, 2)]), editMessage: id => calls.push(['edit', id]),
     markFromMenu: (id, marked) => calls.push(['mark', id, marked]), moveDossier: id => calls.push(['move', id]), mayStartFrom,
     textDisplayMenuItems: () => [{ label: 'Text display', glyph: 'text', act: () => {} }],
@@ -65,6 +67,30 @@ test('feed and Reader consume the same actions; arrangement, full message, quote
     assert.equal(labels(reader).some(label => /stack|latest|Show all|Show full|Move or join/.test(label)), false);
     assert.ok(labels(feed).includes('Show full message')); assert.ok(labels(reader).includes('Quote selection')); assert.ok(labels(reader).includes('Wide'));
     assert.equal(labels(feed).includes('Quote selection'), false); assert.equal(labels(feed).includes('Wide'), false);
+  }
+});
+
+test('366 card, dossier and Reader use one shared withdrawal action with the exact source', () => {
+  for (const phone of [false, true]) {
+    const f = fixture({ phone });
+    Object.assign(f.item, { author_id: 'fixture-human', intent: 'ask' });
+    Object.assign(f.p.source, { author: 'fixture-human', author_id: 'fixture-human', intent: 'ask' });
+    const methods = f.make({ editRights: () => ({ actor: 'fixture-human' }) });
+    const card = methods.messageMenuItems(f.item, f.anchor);
+    const dossier = methods.messageMenuItems(f.item, null, f.anchor, [
+      { label: 'Reply', glyph: 'reply', act() {} },
+      { label: 'Withdraw question', glyph: 'undo', act() { throw Error('duplicate withdrawal owner'); } },
+    ]);
+    methods.openReaderMenu();
+    for (const items of [card, dossier, f.menu().items]) {
+      const offered = items.filter(item => item.label === 'Withdraw question');
+      assert.equal(offered.length, 1);
+      offered[0].act();
+    }
+    assert.deepEqual(f.calls, [['withdraw', 'm-first'], ['withdraw', 'm-first'], ['withdraw', 'm-first']]);
+    f.item.withdrawal = f.p.source.withdrawal = { by: 'fixture-human', at_ms: 42 };
+    assert.equal(labels(methods.messageMenuItems(f.item, f.anchor)).includes('Withdraw question'), false);
+    methods.openReaderMenu(); assert.equal(labels(f.menu().items).includes('Withdraw question'), false);
   }
 });
 

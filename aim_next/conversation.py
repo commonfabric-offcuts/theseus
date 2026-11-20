@@ -545,6 +545,7 @@ class Conversation:
                 "quotes": quotes, "addressees": json.loads(row["addressees"]),
                 "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "intent": row["intent"],
                 "version": current, "current_revision": current, "revision": current, "edited_ms": edited_ms, "struck": seen,
+                "withdrawal": self._withdrawal_value(db, row["id"]),
                 "allowed_actions": ["quote", "note.save"], "dossier": self._source_dossier(db, actor, row),
                 "acts": self._source_acts(db, actor, row),
                 **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
@@ -689,6 +690,7 @@ class Conversation:
         self._item_fields(db, actor, topic, items)
         self._reaction_fields(db, actor, items)
         self._block_fields(db, items)
+        self._withdrawal_fields(db, items)
         reading_fields(db, actor, unread_groups(db, actor, topic["id"]), items)
         # The reader's own private note and saved, unsent reply on each message (docs/topic-reading.md, item 127).
         writing_fields(db, actor, items)
