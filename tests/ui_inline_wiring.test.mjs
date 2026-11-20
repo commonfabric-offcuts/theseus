@@ -6307,7 +6307,7 @@ test('899 a newer actual coordinator wins over the older successful receipt', as
 });
 
 // 894: actual composer, editor, creation owner and memory command adapter.
-function pencil894(answer) {
+function pencil894(answer, { popped = true } = {}) {
   const f = fixture(), requests = [], opened = [], saved = [];
   const editor = new Editor({ ...f.editor.context, instanceId: 'fixture', actor: 'fixture-person' }, { id: 'draft-894', generation: 'g', revision: 1, body: 'Title\nBody' });
   f.p.editors.reply = editor;
@@ -6318,7 +6318,7 @@ function pencil894(answer) {
   } };
   f.inline.callbacks.notebook = { api, bootstrap: f.bootstrap, mayWrite: true, open: async (id, options) => opened.push({ id, options }) };
   f.inline.callbacks.edit = e => { saved.push(e.draft.body); return Promise.resolve(); };
-  const sheet = f.inline.sheet;
+  const sheet = f.inline.sheet; sheet.open = false;
   sheet.showModal = () => { sheet.open = true; };
   sheet.close = () => { sheet.open = false; sheet.handlers.close?.(); };
   sheet.getBoundingClientRect = () => ({ height: 80 }); sheet.before = () => {};
@@ -6345,12 +6345,12 @@ function pencil894(answer) {
   const fieldBox = f.document.createElement('div'); fieldBox.className = 'field-box'; fieldBox.append(f.inline.field);
   root.append(group, f.get('inline-notice'), f.get('inline-who-chip'), f.get('inline-who-panel'),
     f.get('inline-plus-button'), f.get('inline-plus-panel'), f.get('inline-attachments'), fieldBox, f.get('inline-send'));
-  for (const kind of ['message', 'note-card', 'note-page']) group.append(f.get('inline-kind-' + kind));
+  for (const kind of ['message', 'note-card']) group.append(f.get('inline-kind-' + kind));
   for (const node of [f.inline.field, ...group.children]) {
     node.focus = () => { f.document.activeElement = node; root.handlers.focusin({ target: node }); };
     node.blur = () => { if (f.document.activeElement === node) f.document.activeElement = null; };
   }
-  f.inline.show(f.p); f.inline.pop();
+  f.inline.presentation = null; f.inline.show(f.p); if (popped) f.inline.pop();
   const choose = kind => { const button = f.get('inline-kind-' + kind); button.focus();
     assert.ok(root.contains(button)); assert.equal(typeof button.handlers.click, 'function'); return button.handlers.click(); };
   const write = body => { editor.edit({ body, caret: { start: body.length, end: body.length } }); f.inline.drawEditor(); };
@@ -6361,21 +6361,21 @@ function receipt894(request) {
     result: { item_id: request.target.item_id, revision: 1, owner_scope: request.target.owner_scope } };
 }
 
-test('894 kinds use one writing field, keep caret and default to Message on every opening', () => {
+test('910 two choices use one writing field, keep caret and default to Note on every opening', () => {
   const f = pencil894();
   assert.equal(f.get('inline-kind').hidden, false);
-  assert.equal(f.get('inline-kind-message').getAttribute('aria-checked'), 'true');
+  assert.equal(f.get('inline-kind-note-card').getAttribute('aria-checked'), 'true');
   const words = f.editor.draft.body, caret = f.editor.draft.caret;
-  for (const kind of ['note-card', 'note-page', 'message']) {
+  for (const kind of ['note-card', 'message']) {
     f.choose(kind); assert.equal(f.editor.draft.body, words); assert.deepEqual(f.editor.draft.caret, caret);
     assert.equal(f.get('inline-kind-' + kind).getAttribute('aria-checked'), 'true');
   }
   f.choose('note-card'); f.sheet.close(); f.inline.pop();
-  assert.equal(f.get('inline-kind-message').getAttribute('aria-checked'), 'true');
+  assert.equal(f.get('inline-kind-note-card').getAttribute('aria-checked'), 'true');
   assert.equal(f.requests.length, 0);
   const html = webSource('index.html');
   assert.match(html, /id="inline-kind"[^>]*role="radiogroup"[^>]*aria-label="Create"/);
-  assert.equal((html.match(/id="inline-kind-[^"]+"[^>]*role="radio"/g) ?? []).length, 3);
+  assert.equal((html.match(/id="inline-kind-[^"]+"[^>]*role="radio"/g) ?? []).length, 2);
 });
 
 test('894 radio arrows and Home/End select, focus and wrap with one tab stop', () => {
@@ -6386,13 +6386,13 @@ test('894 radio arrows and Home/End select, focus and wrap with one tab stop', (
     f.get('inline-kind-' + from).handlers.keydown({ key, preventDefault() { stopped = true; }, stopPropagation() {} });
     assert.ok(stopped); assert.equal(f.document.activeElement, f.get('inline-kind-' + to));
     assert.equal(f.get('inline-kind-' + to).tabIndex, 0);
-    for (const kind of ['message', 'note-card', 'note-page'].filter(k => k !== to)) assert.equal(f.get('inline-kind-' + kind).tabIndex, -1);
+    for (const kind of ['message', 'note-card'].filter(k => k !== to)) assert.equal(f.get('inline-kind-' + kind).tabIndex, -1);
   };
-  press('message', 'ArrowLeft', 'note-page'); press('note-page', 'ArrowRight', 'message');
-  press('message', 'ArrowDown', 'note-card'); press('note-card', 'End', 'note-page'); press('note-page', 'Home', 'message');
+  press('message', 'ArrowLeft', 'note-card'); press('note-card', 'ArrowRight', 'message');
+  press('message', 'ArrowDown', 'note-card'); press('message', 'End', 'note-card'); press('note-card', 'Home', 'message');
 });
 
-for (const kind of ['note-card', 'note-page']) test(`894 ${kind} sends only memory.create and opens the intended view after confirmed save`, async () => {
+for (const kind of ['note-card']) test(`894 ${kind} sends only memory.create and opens the intended view after confirmed save`, async () => {
   const f = pencil894(); f.choose(kind);
   await f.inline.send();
   assert.equal(f.requests.length, 1);
@@ -6405,7 +6405,7 @@ for (const kind of ['note-card', 'note-page']) test(`894 ${kind} sends only memo
   assert.equal(f.opened[0].options.mode, kind === 'note-card' ? 'cards' : 'text'); assert.equal(f.opened[0].options.beside, true);
 });
 
-for (const kind of ['note-card', 'note-page']) test(`894 empty ${kind} starts Notebook page`, async () => {
+for (const kind of ['note-card']) test(`894 empty ${kind} starts Notebook page`, async () => {
   const f = pencil894(); f.write(''); f.choose(kind);
   assert.equal(f.get('inline-send').disabled, false);
   await f.inline.send(); assert.equal(f.requests.length, 1); assert.equal(f.requests[0].args.title, 'Notebook page');
@@ -6414,7 +6414,7 @@ for (const kind of ['note-card', 'note-page']) test(`894 empty ${kind} starts No
 
 test('894 Notebook controls stay hidden on status repaint; their handlers cannot alter message recipients or capture images', async () => {
   const f = pencil894(); f.editor.edit({ addressees: ['fable'], intent: 'ask' });
-  f.choose('note-page'); f.inline.paintStatus();
+  f.choose('note-card'); f.inline.paintStatus();
   for (const name of ['who-chip', 'who-panel', 'plus-button', 'plus-panel', 'attachments', 'writing-to']) assert.equal(f.get('inline-' + name).hidden, true, name);
   assert.equal(f.get('inline-send').querySelector('.send-word').textContent, 'Start page');
   f.inline.addName('warp'); f.inline.choose('tell'); f.inline.chooseFile();
@@ -6453,7 +6453,7 @@ test('894 a late confirmation keeps a reopened sheet and newer writing, and offe
 });
 
 test('894 Message retains its publication callback and never creates a Notebook page', async () => {
-  const f = pencil894(); let sends = 0;
+  const f = pencil894(); f.choose('message'); let sends = 0;
   f.inline.callbacks.send = async () => { sends++; return { status: 'confirmed' }; };
   await f.inline.send(); assert.equal(sends, 1); assert.equal(f.requests.length, 0); assert.equal(f.opened.length, 0);
 });
@@ -6461,7 +6461,7 @@ test('894 Message retains its publication callback and never creates a Notebook 
 test('894 another opening during the writing save cannot be dismissed by completion', async () => {
   const f = pencil894(), saved = defer();
   f.inline.callbacks.edit = () => saved.promise;
-  f.choose('note-page'); const sending = f.inline.send();
+  f.choose('note-card'); const sending = f.inline.send();
   await new Promise(setImmediate); // create confirmed; clearing exact writing now awaits its existing save owner
   f.sheet.close(); f.inline.pop(); f.editor.edit({ body: 'Fresh words' });
   saved.resolve(); await sending;
@@ -6472,7 +6472,7 @@ test('894 another opening during the writing save cannot be dismissed by complet
 test('894 changing kind cancels only an outstanding file reservation and cannot capture its late file', async () => {
   const f = pencil894(), calls = [];
   f.inline.imagePicker = { token: 'pending', uploads: { cancel: id => calls.push(['cancel', id]), choose: () => calls.push(['choose']) } };
-  f.choose('note-page'); await f.get('inline-image-file').onchange({ target: { files: [{}] } });
+  f.choose('note-card'); await f.get('inline-image-file').onchange({ target: { files: [{}] } });
   assert.deepEqual(calls, [['cancel', 'pending']]); assert.equal(f.editor.draft.body, 'Title\nBody');
 });
 
@@ -6486,7 +6486,7 @@ test('894 real app constructor wires the existing command client and bootstrap i
 
 test('894 a confirmation for an inactive presentation never clears writing or navigates', async () => {
   const d = defer(), f = pencil894(r => d.promise.then(() => receipt894(r)));
-  f.choose('note-page'); const sending = f.inline.send(); f.registry.current = { surface: 'reader' };
+  f.choose('note-card'); const sending = f.inline.send(); f.registry.current = { surface: 'reader' };
   d.resolve(); await sending;
   assert.equal(f.editor.draft.body, 'Title\nBody'); assert.equal(f.opened.length, 0);
   f.registry.current = null; f.inline.show(f.p);
@@ -6495,7 +6495,7 @@ test('894 a confirmation for an inactive presentation never clears writing or na
 });
 
 test('894 empty Notebook starts still honor access, recovery, conflict and in-flight message preparation', async () => {
-  const f = pencil894(); f.write(''); f.choose('note-page');
+  const f = pencil894(); f.write(''); f.choose('note-card');
   for (const flag of ['adopting', 'unavailable', 'authorityRecovery', 'conflict']) {
     f.editor[flag] = true; await f.inline.send(); assert.equal(f.requests.length, 0, flag); f.editor[flag] = null;
   }
@@ -6505,14 +6505,14 @@ test('894 empty Notebook starts still honor access, recovery, conflict and in-fl
 
 test('894 a reopened unchanged draft is not consumed or closed by its earlier create', async () => {
   const d = defer(), f = pencil894(r => d.promise.then(() => receipt894(r)));
-  f.choose('note-page'); const sending = f.inline.send(); f.sheet.close(); f.inline.pop();
+  f.choose('note-card'); const sending = f.inline.send(); f.sheet.close(); f.inline.pop();
   d.resolve(); await sending;
   assert.equal(f.sheet.open, true); assert.equal(f.editor.draft.body, 'Title\nBody'); assert.equal(f.opened.length, 0);
 });
 
 test('894 a recovered newer version in the same opening is not dismissed by an older create', async () => {
   const d = defer(), f = pencil894(r => d.promise.then(() => receipt894(r)));
-  f.choose('note-page'); const sending = f.inline.send(); f.editor.edit({ body: 'Recovered newer writing' });
+  f.choose('note-card'); const sending = f.inline.send(); f.editor.edit({ body: 'Recovered newer writing' });
   d.resolve(); await sending;
   assert.equal(f.sheet.open, true); assert.equal(f.editor.draft.body, 'Recovered newer writing'); assert.equal(f.opened.length, 0);
 });
@@ -6532,7 +6532,7 @@ test('894 openNotebook is the single opening door for docked and phone/full-page
 // Build 2: the mounted owner catches folding/blur, and the actual image gate is driven.
 test('894 B2 mounted radio clicks preserve writing state, caret, and focus', () => {
   const f = pencil894(); f.editor.edit({ caret: { start: 2, end: 4 } }); f.inline.drawEditor();
-  for (const kind of ['note-card', 'note-page', 'message']) {
+  for (const kind of ['note-card', 'message']) {
     f.choose(kind);
     assert.equal(f.inline.root.dataset.compose, 'writing');
     assert.equal(f.document.activeElement, f.get('inline-kind-' + kind));
@@ -6544,7 +6544,7 @@ test('894 B2 Message restores its label, recipients, intent and images after Not
   const f = pencil894(); f.editor.edit({ addressees: ['fable'], intent: 'ask' });
   const image = { selection_id: 'image', file: { name: 'kept.png' }, attempts: [], choice: 0, bytes_state: 'durable', version: 1 };
   f.inline.callbacks.uploads = () => ({ current: () => [image], running: new Map(), status: () => 'Ready' });
-  for (const kind of ['note-card', 'note-page']) {
+  for (const kind of ['note-card']) {
     f.choose(kind); f.choose('message');
     assert.equal(f.get('inline-attachments').hidden, false);
     assert.ok(f.get('inline-attachments').children.length, 'retained image is painted');
@@ -6554,13 +6554,14 @@ test('894 B2 Message restores its label, recipients, intent and images after Not
     const ask = f.get('inline-intent-row').querySelectorAll('button[data-intent]').find(button => button.dataset.intent === 'ask');
     assert.ok(ask); assert.equal(ask.getAttribute('aria-pressed'), 'true'); assert.equal(ask.disabled, false);
   }
-  f.choose('note-page'); f.sheet.close();
-  assert.equal(f.get('inline-attachments').hidden, false); assert.equal(f.get('send-word').textContent, 'Ask');
-  f.inline.pop(); assert.equal(f.get('inline-attachments').hidden, false);
+  f.choose('note-card'); f.sheet.close();
+  assert.equal(f.get('inline-attachments').hidden, true); assert.equal(f.get('send-word').textContent, 'Start page');
+  f.inline.pop(); assert.equal(f.get('inline-attachments').hidden, true);
+  f.choose('message'); assert.equal(f.get('inline-attachments').hidden, false); assert.equal(f.get('send-word').textContent, 'Ask');
 });
 
-test('894 B2 kind selector stays hidden in the resting feed and without explicit Notebook write access', () => {
-  const f = pencil894(); f.sheet.close(); f.inline.paintStatus(); assert.equal(f.get('inline-kind').hidden, true);
+test('910 kind selector shows in the resting feed but requires explicit Notebook write access', () => {
+  const f = pencil894(); f.sheet.close(); f.inline.paintStatus(); assert.equal(f.get('inline-kind').hidden, false);
   for (const permission of [false, undefined, 'true']) {
     f.inline.callbacks.notebook.mayWrite = permission; f.inline.pop();
     assert.equal(f.get('inline-kind').hidden, true); f.choose('note-card'); assert.equal(f.inline.kind, 'message'); f.sheet.close();
@@ -6569,16 +6570,16 @@ test('894 B2 kind selector stays hidden in the resting feed and without explicit
 });
 
 test('894 B2 actual ImagePick admission rejects Notebook kinds and admits Message again', () => {
-  const f = pencil894(); f.inline.callbacks.images = async () => [];
+  const f = pencil894(); f.inline.callbacks.images = async () => []; f.choose('message');
   assert.equal(f.inline.images.admits(), true);
   f.choose('note-card'); assert.equal(f.inline.images.admits(), false);
-  f.choose('note-page'); assert.equal(f.inline.images.admits(), false);
+  f.choose('note-card'); assert.equal(f.inline.images.admits(), false);
   f.choose('message'); assert.equal(f.inline.images.admits(), true);
 });
 
 test('894 B2 late refusal reaches the reopened same editor', async () => {
   const d = defer(), f = pencil894(r => d.promise.then(() => ({ ...receipt894(r), status: 'rejected', error: { code: 'FORBIDDEN', message: 'Notebook access was removed.' } })));
-  f.choose('note-page'); const sending = f.inline.send(); f.sheet.close(); f.inline.pop();
+  f.choose('note-card'); const sending = f.inline.send(); f.sheet.close(); f.inline.pop();
   d.resolve(); await sending;
   assert.match(f.get('inline-notice').textContent, /Notebook access was removed/); assert.equal(f.sheet.open, true);
   assert.equal(f.editor.draft.body, 'Title\nBody');
@@ -6586,7 +6587,7 @@ test('894 B2 late refusal reaches the reopened same editor', async () => {
 
 test('894 B2 a confirmed earlier page does not take over Start page for new writing', async () => {
   const d = defer(), f = pencil894((r, n) => n === 1 ? d.promise.then(() => receipt894(r)) : receipt894(r));
-  f.choose('note-page'); const sending = f.inline.send(); f.editor.edit({ body: 'New title\nNew body' });
+  f.choose('note-card'); const sending = f.inline.send(); f.editor.edit({ body: 'New title\nNew body' });
   d.resolve(); await sending;
   const earlier = f.get('inline-notice').children.find(n => n.textContent === 'Open started page'); assert.ok(earlier);
   await f.inline.send(); assert.equal(f.requests.length, 2); assert.equal(f.requests[1].args.title, 'New title');
@@ -6598,7 +6599,7 @@ test('894 B2 a confirmed earlier page does not take over Start page for new writ
 test('894 B2 uncertain earlier writing allows a new page and keeps an exact retry action', async () => {
   const f = pencil894((r, n) => { if (n === 1) throw Error('offline'); return receipt894(r); });
   f.choose('note-card'); await f.inline.send();
-  f.write('New page\nDifferent words'); f.choose('note-page'); await f.inline.send();
+  f.write('New page\nDifferent words'); f.choose('note-card'); await f.inline.send();
   assert.equal(f.requests.length, 2); assert.equal(f.requests[1].args.title, 'New page');
   f.inline.show(f.p); f.inline.pop(); f.write('Writing after both attempts');
   const retry = f.get('inline-notice').children.find(n => /Retry earlier page/.test(n.textContent)); assert.ok(retry); assert.equal(retry.disabled, false);
@@ -6608,7 +6609,7 @@ test('894 B2 uncertain earlier writing allows a new page and keeps an exact retr
 });
 
 test('894 B2 image-only barriers hold Message but not an attachment-free Notebook start', async () => {
-  const f = pencil894(); f.editor.imageStorageError = Error('image still saving'); f.inline.paintStatus();
+  const f = pencil894(); f.choose('message'); f.editor.imageStorageError = Error('image still saving'); f.inline.paintStatus();
   assert.equal(f.get('inline-send').disabled, true);
   f.choose('note-card'); assert.equal(f.get('inline-send').disabled, false);
   await f.inline.send(); assert.equal(f.requests.length, 1); assert.deepEqual(f.requests[0].args.attachments, []);
@@ -6622,7 +6623,7 @@ test('894 B2 kind controls occupy a full grid row in normal and retry layouts', 
   for (const rule of [normal, retry]) assert.match(rule, /"kinds kinds kinds kinds"/);
 });
 
-for (const kind of ['note-card', 'note-page']) test(`894 B2 ${kind} uses the card box first-line rule`, async () => {
+for (const kind of ['note-card']) test(`894 B2 ${kind} uses the card box first-line rule`, async () => {
   const f = pencil894(); f.write('\r\n  \r\n## A title\r\n\r\nSome words\r\n'); f.choose(kind); await f.inline.send();
   assert.equal(f.requests[0].args.title, 'A title');
   assert.equal(f.requests[0].args.body, kind === 'note-card' ? '## A title\n\nSome words\n' : 'Some words');
@@ -6670,7 +6671,7 @@ for (const retry of [false, true]) test(`894 B3 phone panels have their own row 
   assert.ok(rows[panelRow]?.every(cell => cell === area), 'panel owns a named, full-width row');
 });
 
-for (const kind of ['note-card', 'note-page']) test(`894 B3 ${kind} refuses image reservation through working uploads`, async () => {
+for (const kind of ['note-card']) test(`894 B3 ${kind} refuses image reservation through working uploads`, async () => {
   const f = pencil894(), reservations = [], choices = [];
   const uploads = { current: () => [], running: new Map(), status: () => 'Ready',
     reserve: presentation => { const token = { presentation }; reservations.push(token); return token; },
@@ -6697,12 +6698,50 @@ for (const permission of [false, undefined]) test(`894 B3 actual app wiring deni
   assert.equal(capability.api, f.api); assert.equal(capability.bootstrap, f.bootstrap);
 });
 
-test('894 B3 typing in Note page keeps Start page and hides the To line', () => {
-  const f = pencil894(); f.write(''); f.choose('note-page');
+test('894 B3 typing in Note keeps Start page and hides the To line', () => {
+  const f = pencil894(); f.write(''); f.choose('note-card');
   const field = f.inline.field; field.focus(); field.value = 'x'; field.setSelectionRange(1, 1);
   assert.equal(typeof field.handlers.input, 'function');
   field.handlers.input({ inputType: 'insertText', data: 'x' });
   assert.equal(f.editor.draft.body, 'x'); assert.equal(f.saved.at(-1), 'x');
   assert.equal(f.get('inline-send').querySelector('.send-word').textContent, 'Start page');
   assert.equal(f.get('inline-writing-to').hidden, true);
+});
+
+
+test('910 resting composer defaults to Note and starts a new page in Cards without opening the sheet', async () => {
+  const f = pencil894(undefined, { popped: false });
+  assert.equal(f.sheet.open, false); assert.equal(f.inline.kind, 'note-card');
+  assert.equal(f.get('inline-kind').hidden, false);
+  assert.equal(f.get('inline-send').querySelector('.send-word').textContent, 'Start page');
+  await f.get('inline-send').onclick();
+  assert.equal(f.requests.length, 1); assert.equal(f.requests[0].kind, 'memory.create');
+  assert.equal(f.requests[0].args.body, '## Title\n\nBody\n');
+  assert.equal(f.opened.length, 1); assert.equal(f.opened[0].options.mode, 'cards');
+  assert.equal(f.editor.draft.body, '');
+});
+
+test('910 resting selector keeps exact writing and Message still uses the existing send owner', async () => {
+  const f = pencil894(undefined, { popped: false }), sent = [];
+  f.inline.callbacks.send = (editor, presentation) => { sent.push({ body: editor.draft.body, presentation }); return Promise.resolve({}); };
+  f.editor.edit({ caret: { start: 1, end: 4 } }); f.inline.drawEditor();
+  f.choose('message'); f.choose('note-card'); f.choose('message');
+  assert.equal(f.inline.field.value, 'Title\nBody'); assert.equal(f.inline.field.selectionStart, 1); assert.equal(f.inline.field.selectionEnd, 4);
+  await f.inline.send(); assert.equal(sent.length, 1); assert.equal(sent[0].body, 'Title\nBody'); assert.equal(sent[0].presentation, f.p);
+  assert.equal(f.requests.length, 0);
+});
+
+test('910 opening the sheet while an inline Note saves keeps the later opening and writing', async () => {
+  const d = defer(), f = pencil894(r => d.promise.then(() => receipt894(r)), { popped: false });
+  const sending = f.inline.send(); f.inline.pop(); d.resolve(); await sending;
+  assert.equal(f.sheet.open, true); assert.equal(f.editor.draft.body, 'Title\nBody'); assert.equal(f.opened.length, 0);
+  assert.ok(f.get('inline-notice').children.find(n => n.textContent === 'Open started page'));
+});
+
+test('910 removed Note page cannot be selected; the title remains a screen-reader label', () => {
+  const f = pencil894(); assert.equal(f.inline.chooseKind('note-page'), false); assert.equal(f.inline.kind, 'note-card');
+  const html = webSource('index.html');
+  assert.doesNotMatch(html, /id="inline-kind-note-page"/);
+  assert.match(html, /<h2 id="inline-writing-title" class="sr-only">New Notebook page<\/h2>/);
+  assert.match(html, /id="new-message-sheet"[^>]*aria-labelledby="inline-writing-title"/);
 });

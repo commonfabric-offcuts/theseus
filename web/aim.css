@@ -986,7 +986,7 @@ dialog.composer-home[open] .inline-composer textarea{--fit:auto;height:auto;max-
 dialog.composer-home[open] .inline-composer textarea:placeholder-shown{white-space:nowrap}
 dialog.composer-home[open] .inline-composer .taller-field{display:none}
 /* An unavailable composer keeps the reason and its recovery control on separate rows. */
-#inline-composer:has(>#inline-retry:not([hidden])){grid-template-areas:"title title title title" "kinds kinds kinds kinds" "notice notice notice notice" "retry retry retry retry" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act" "phone-panel phone-panel phone-panel phone-panel";grid-template-rows:repeat(7,minmax(min-content,auto)) minmax(2.5rem,auto)}
+#inline-composer:has(>#inline-retry:not([hidden])){grid-template-areas:"kinds kinds kinds kinds" "notice notice notice notice" "retry retry retry retry" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act" "phone-panel phone-panel phone-panel phone-panel";grid-template-rows:repeat(7,minmax(min-content,auto)) minmax(2.5rem,auto)}
 #inline-composer>#inline-retry{grid-area:retry}
 /* A thumbnail's center opens its choices. Remove has its own slot, even
    before those choices open: a finger-sized corner overlay covers that center. */
@@ -1423,11 +1423,13 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
   body.notebook-docked #new-message-sheet[open][data-width-edges]{inset:auto auto 1.5rem 19rem;margin:0;width:min(var(--composer-width,var(--widest)),calc((100vw - 18rem)/2 - 2rem));max-width:calc((100vw - 18rem)/2 - 2rem);min-width:min(280px,calc((100vw - 18rem)/2 - 2rem))}
 }
 
-/* Pencil choices share one writing field. Only the popped sheet offers kinds. */
-.pencil-kinds{grid-area:kinds;justify-self:start;max-width:100%;display:flex;align-self:flex-start;gap:2px;padding:3px;border:1px solid var(--line);border-radius:9px;background:var(--soft)}
-.pencil-kinds button{min-height:44px;padding:.35rem .8rem;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--ink);white-space:nowrap}
+/* The same centered pill chooses Message or Note in the feed and the sheet (910).
+   Its outline adds no height to the chip-sized buttons, including the phone floor. */
+.pencil-kinds{grid-area:kinds;justify-self:center;max-width:100%;display:flex;align-self:start;gap:0;padding:0;border:0;border-radius:1.2rem;outline:1px solid var(--line);outline-offset:-1px;background:var(--soft)}
+.pencil-kinds button{min-height:2.25rem;padding:.15rem .8rem;border:1px solid transparent;border-radius:1.2rem;background:transparent;color:var(--ink);font-size:.85rem;font-weight:600;white-space:nowrap}
 .pencil-kinds [aria-checked=true]{background:#234b3d;border-color:#41856b;color:#fff}
 .pencil-kinds button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* Pencil choices take a full row, never a column beside the writing. */
-#inline-composer{grid-template-areas:"title title title title" "kinds kinds kinds kinds" "notice notice notice notice" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act" "phone-panel phone-panel phone-panel phone-panel"}
+#inline-composer{grid-template-areas:"kinds kinds kinds kinds" "notice notice notice notice" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act" "phone-panel phone-panel phone-panel phone-panel"}
+#inline-composer>.sheet-close{grid-area:kinds;align-self:start;z-index:1}
