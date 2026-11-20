@@ -75,7 +75,7 @@ export class InlineComposer {
       changed:editor=>{this.callbacks.edit(editor,this.presentation);this.paintStatus();this.paintChoice();this.images?.update();}});
     // #img lists the topic's recent images under the writing (image-pick.mjs).
     this.images = new ImagePick({ field: this.field, host: this.field,
-      admits: () => this.kind === 'message' && this.admits() && !this.state().readOnly && Boolean(this.callbacks.images),
+      admits: () => this.admits() && !this.state().readOnly && Boolean(this.callbacks.images),
       load: () => this.callbacks.images(this.editor), thumb: item => this.callbacks.imageBytes(item),
       choose: item => this.pickImage(item) });
     this.field.addEventListener('focus', () => this.checkClipboard());
@@ -87,6 +87,14 @@ export class InlineComposer {
       }
     });
     this.field.addEventListener('paste', event => this.paste(event));
+    this.field.addEventListener('dragover', event => {
+      if (this.admits() && !this.state().addDisabled && [...(event.dataTransfer?.items ?? [])].some(item => item.type.startsWith('image/'))) event.preventDefault();
+    });
+    this.field.addEventListener('drop', event => {
+      const files = [...(event.dataTransfer?.files ?? [])].filter(file => file.type.startsWith('image/'));
+      if (!files.length) return;
+      event.preventDefault(); return this.addImages(files);
+    });
     this.$('send').onclick = () => this.send();
     // Add image, or Paste image when the clipboard is known to hold one;
     // Choose file beside it then still opens the picker.
@@ -135,15 +143,16 @@ export class InlineComposer {
   state() {
     const note = this.kind !== 'message', busy = this.pageBusy();
     const state = writingState(this.editor, { active: this.admits(), note, status: this.callbacks.status, sign: this.callbacks.sign });
+    const barrier = note && imageBarrier(this.editor);
+    if (barrier) { state.sendDisabled = true; state.message = barrier; state.sign = ''; }
     state.sendDisabled ||= Boolean(busy || (note && (this.callbacks.notebook?.mayWrite !== true || state.readOnly || !this.editor.context.topicId || this.editor.submissions.some(s => s.status === 'preparing' && !s.detached))));
-    state.readOnly ||= Boolean(busy); state.addDisabled ||= note || Boolean(busy);
+    state.readOnly ||= Boolean(busy); state.addDisabled ||= Boolean(busy);
     return state;
   }
   defaultKind() { return this.callbacks.notebook?.mayWrite === true ? 'note-card' : 'message'; }
   chooseKind(kind) {
     if (!this.callbacks.notebook || (kind !== 'message' && this.callbacks.notebook.mayWrite !== true) || !this.admits() || this.pageBusy() || !this.kinds.includes(kind)) return false;
     this.kind = kind; this.bar.close(); this.images?.close();
-    if (kind !== 'message' && this.imagePicker) this.cancelPicker();
     this.paintStatus(); return true;
   }
   paintKind() {
@@ -154,8 +163,9 @@ export class InlineComposer {
       button.setAttribute('aria-checked', String(kind === this.kind)); button.tabIndex = kind === this.kind ? 0 : -1;
       button.disabled = this.pageBusy() || (kind !== 'message' && this.callbacks.notebook?.mayWrite !== true);
     }
-    for (const name of ['who-chip', 'plus-button', 'attachments']) this.$(name).hidden = note;
-    if (note) for (const name of ['who-panel', 'plus-panel', 'writing-to']) this.$(name).hidden = true;
+    this.$('who-chip').hidden = note;
+    for (const name of ['plus-button', 'attachments']) this.$(name).hidden = false;
+    if (note) for (const name of ['who-panel', 'writing-to']) this.$(name).hidden = true;
     this.$('writing-title').textContent = note ? 'New Notebook page' : 'New message';
     this.field.setAttribute('aria-label', note ? 'Note' : 'New message');
     if (note) this.$('send').querySelector('.send-word').textContent = 'Start page';
@@ -183,9 +193,12 @@ export class InlineComposer {
     if (job.editor !== editor || !this.admits(p, editor) || !job.id || job.busy) return;
     job.busy = true; this.paintStatus();
     try {
-      if (editor.localVersion === job.version && editor.clientCycleId === job.cycle && editor.draft.body === job.body) {
-        editor.edit({ body: '', caret: { start: 0, end: 0, direction: 'none' } });
-        const version = editor.localVersion;
+      if (this.pageUnchanged(job)) {
+        let version;
+        const clear = () => { editor.edit({ body: '', attachments: [], caret: { start: 0, end: 0, direction: 'none' } }); version = editor.localVersion; };
+        if (job.images.length) {
+          if (!await this.callbacks.uploads(editor).consume(job.images.map(image => image.selection), () => this.pageUnchanged(job), clear)) { this.offerPages(); return; }
+        } else clear();
         await this.callbacks.edit(editor, p);
         if (!this.admits(p, editor)) return;
         if (this.opening !== opening || editor.localVersion !== version || editor.clientCycleId !== job.cycle) { this.offerPages(); return; }
@@ -196,30 +209,38 @@ export class InlineComposer {
       this.notebookJobs.set(editor, this.pageJobs(editor).filter(other => other !== job));
     } finally { job.busy = false; if (this.admits(p, editor)) this.paintStatus(); }
   }
+  pageUnchanged(job) {
+    const editor = job.editor;
+    return editor.localVersion === job.version && editor.clientCycleId === job.cycle && editor.draft.body === job.body &&
+      (editor.uploadState?.revision ?? 0) === job.uploadVersion && !editor.imageReservation && !editor.imageStorageError &&
+      JSON.stringify(editor.draft.attachments) === JSON.stringify(job.attachments);
+  }
   async startPage() {
     const editor = this.editor, kind = this.kind, body = editor.draft.body;
     const jobs = this.pageJobs(editor);
     if (this.pageBusy()) return;
     // Each changed writing gets its own creation owner. Earlier uncertain requests
     // keep their exact envelope; confirmed pages remain separate opening actions.
-    let job = jobs.find(job => job.body === body && job.kind === kind && job.cycle === editor.clientCycleId);
+    const attachments = structuredClone(editor.draft.attachments), images = currentImages(editor).map(image => ({
+      selection: image.selection_id, id: image.association.media_id, name: image.ready_descriptor.name }));
+    let job = jobs.find(job => job.body === body && job.kind === kind && job.cycle === editor.clientCycleId && JSON.stringify(job.attachments) === JSON.stringify(attachments));
     if (job?.id) return this.finishPage(job);
     if (!job) {
-      const writing = notebookWriting(body, kind);
-      job = { editor, body, kind, title: writing.title, words: writing.body,
+      const writing = notebookWriting(body, kind, images);
+      job = { editor, body, kind, attachments, images, title: writing.title, words: writing.body,
         starter: new NotebookStart({ ...this.callbacks.notebook, scope: { kind: 'topic', id: editor.context.topicId }, again: ' Choose Start page to try once more.' }) };
       this.notebookJobs.set(editor, [...jobs, job]);
     }
-    Object.assign(job, { version: editor.localVersion, cycle: editor.clientCycleId });
+    Object.assign(job, { version: editor.localVersion, cycle: editor.clientCycleId, uploadVersion: editor.uploadState?.revision ?? 0 });
     return this.createPage(job, true);
   }
   async createPage(job, automatic) {
     const p = this.presentation, editor = this.editor, opening = this.opening;
     job.busy = true; this.paintStatus();
     try {
-      job.id = await job.starter.create(job.title, job.words); job.busy = false;
+      job.id = await job.starter.create(job.title, job.words, job.attachments); job.busy = false;
       if (!this.admits(p, editor)) return;
-      if (automatic && this.opening === opening && editor.localVersion === job.version && editor.clientCycleId === job.cycle) await this.finishPage(job);
+      if (automatic && this.opening === opening && this.pageUnchanged(job)) await this.finishPage(job);
       else this.offerPages();
     } catch (error) {
       job.busy = false;
@@ -340,7 +361,7 @@ export class InlineComposer {
     const active = this.admits(p, editor) && !this.state().readOnly;
     paintImageRows(host, imageChoices(uploads, active), active, async (action, choice, control) => {
       try {
-        if (this.kind !== 'message' || !this.admits(p, editor) || this.state().readOnly) return;
+        if (!this.admits(p, editor) || this.state().readOnly) return;
         await uploads[action.method](choice.id);
         // Remove takes its own button away; focus lands in the writing only
         // if it was still there. Where the person has since put it, it stays.
@@ -388,7 +409,7 @@ export class InlineComposer {
   // pasted image does, a copy of its own in this message.
   async pickImage(item) {
     const p = this.presentation, editor = this.editor;
-    if (this.kind !== 'message' || !this.admits(p, editor) || this.state().readOnly) return;
+    if (!this.admits(p, editor) || this.state().readOnly) return;
     this.input.deleteSelection();
     let file;
     try {
@@ -402,7 +423,6 @@ export class InlineComposer {
   async addImages(files) {
     const p = this.presentation, editor = this.editor;
     try {
-      if (this.kind !== 'message') throw Error('Switch to Message to add images. Your message images are kept.');
       const refusal = pasteImageError(editor, 'reply', !this.admits(p, editor) || this.state().readOnly);
       if (refusal) throw Error(refusal);
       if (files.some(file => !file)) throw Error('Could not read the pasted image. Try Add image to choose the file.');

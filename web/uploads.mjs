@@ -247,6 +247,20 @@ export class Uploads {
     this.aborters.get(id)?.abort();
     this.registry.schedule(this.editor);
   }
+  // A confirmed Notebook creation consumes the exact ready selections with
+  // its writing. One journal transition checks the caller's current writing
+  // before changing either; retained bytes keep their normal cleanup owner.
+  async consume(ids, current, clearWriting) {
+    const entries = ids.map(id => this.find(id));
+    let consumed = false;
+    await this.transition(() => {
+      if (!current() || entries.some(e => !this.selected(e) || !e.ready_descriptor || !e.association)) return;
+      for (const e of entries) { e.selected = false; e.version++; e.association = null; }
+      clearWriting(); consumed = true;
+    });
+    if (consumed) this.registry.schedule(this.editor);
+    return consumed;
+  }
   async discard(id) {
     const e = this.find(id);
     if (this.selected(e) || this.running.has(id) || e.bytes_state === 'capturing') throw Error('Remove the current image and wait for its attempt before discarding retained bytes.');

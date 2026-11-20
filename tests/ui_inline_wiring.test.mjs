@@ -6433,13 +6433,13 @@ for (const kind of ['note-card']) test(`894 empty ${kind} starts Notebook page`,
   assert.equal(f.requests[0].args.body, kind === 'note-card' ? '## Notebook page\n' : '');
 });
 
-test('894 Notebook controls stay hidden on status repaint; their handlers cannot alter message recipients or capture images', async () => {
+test('894 Notebook recipient controls stay hidden; 926 image controls remain available', async () => {
   const f = pencil894(); f.editor.edit({ addressees: ['fable'], intent: 'ask' });
   f.choose('note-card'); f.inline.paintStatus();
-  for (const name of ['who-chip', 'who-panel', 'plus-button', 'plus-panel', 'attachments', 'writing-to']) assert.equal(f.get('inline-' + name).hidden, true, name);
+  for (const name of ['who-chip', 'who-panel', 'writing-to']) assert.equal(f.get('inline-' + name).hidden, true, name);
+  for (const name of ['plus-button', 'attachments']) assert.equal(f.get('inline-' + name).hidden, false, name);
   assert.equal(f.get('inline-send').querySelector('.send-word').textContent, 'Start page');
-  f.inline.addName('warp'); f.inline.choose('tell'); f.inline.chooseFile();
-  await f.inline.addImages([{}]);
+  f.inline.addName('warp'); f.inline.choose('tell');
   assert.deepEqual(f.editor.draft.addressees, ['fable']); assert.equal(f.editor.draft.intent, 'ask');
   assert.equal(f.inline.imagePicker, undefined); assert.equal(f.requests.length, 0);
   f.choose('message'); assert.equal(f.get('inline-who-chip').hidden, false); assert.equal(f.get('inline-plus-button').hidden, false);
@@ -6490,11 +6490,11 @@ test('894 another opening during the writing save cannot be dismissed by complet
   assert.ok(f.get('inline-notice').children.find(n => n.textContent === 'Open started page'));
 });
 
-test('894 changing kind cancels only an outstanding file reservation and cannot capture its late file', async () => {
+test('926 changing kind preserves the shared file reservation for the same writing', async () => {
   const f = pencil894(), calls = [];
   f.inline.imagePicker = { token: 'pending', uploads: { cancel: id => calls.push(['cancel', id]), choose: () => calls.push(['choose']) } };
   f.choose('note-card'); await f.get('inline-image-file').onchange({ target: { files: [{}] } });
-  assert.deepEqual(calls, [['cancel', 'pending']]); assert.equal(f.editor.draft.body, 'Title\nBody');
+  assert.deepEqual(calls, [['choose']]); assert.equal(f.editor.draft.body, 'Title\nBody');
 });
 
 test('894 real app constructor wires the existing command client and bootstrap into Notebook creation', () => {
@@ -6576,8 +6576,8 @@ test('894 B2 Message restores its label, recipients, intent and images after Not
     assert.ok(ask); assert.equal(ask.getAttribute('aria-pressed'), 'true'); assert.equal(ask.disabled, false);
   }
   f.choose('note-card'); f.sheet.close();
-  assert.equal(f.get('inline-attachments').hidden, true); assert.equal(f.get('send-word').textContent, 'Start page');
-  f.inline.pop(); assert.equal(f.get('inline-attachments').hidden, true);
+  assert.equal(f.get('inline-attachments').hidden, false); assert.equal(f.get('send-word').textContent, 'Start page');
+  f.inline.pop(); assert.equal(f.get('inline-attachments').hidden, false);
   f.choose('message'); assert.equal(f.get('inline-attachments').hidden, false); assert.equal(f.get('send-word').textContent, 'Ask');
 });
 
@@ -6590,11 +6590,11 @@ test('910 kind selector shows in the resting feed but requires explicit Notebook
   f.inline.callbacks.notebook.mayWrite = true; f.inline.pop(); assert.equal(f.get('inline-kind').hidden, false);
 });
 
-test('894 B2 actual ImagePick admission rejects Notebook kinds and admits Message again', () => {
+test('926 actual ImagePick admission serves Note and Message', () => {
   const f = pencil894(); f.inline.callbacks.images = async () => []; f.choose('message');
   assert.equal(f.inline.images.admits(), true);
-  f.choose('note-card'); assert.equal(f.inline.images.admits(), false);
-  f.choose('note-card'); assert.equal(f.inline.images.admits(), false);
+  f.choose('note-card'); assert.equal(f.inline.images.admits(), true);
+  f.choose('note-card'); assert.equal(f.inline.images.admits(), true);
   f.choose('message'); assert.equal(f.inline.images.admits(), true);
 });
 
@@ -6629,10 +6629,12 @@ test('894 B2 uncertain earlier writing allows a new page and keeps an exact retr
   assert.ok(f.get('inline-notice').children.find(n => n.textContent === 'Open started page'));
 });
 
-test('894 B2 image-only barriers hold Message but not an attachment-free Notebook start', async () => {
+test('926 image storage barriers hold both Message and Note until recovery', async () => {
   const f = pencil894(); f.choose('message'); f.editor.imageStorageError = Error('image still saving'); f.inline.paintStatus();
   assert.equal(f.get('inline-send').disabled, true);
-  f.choose('note-card'); assert.equal(f.get('inline-send').disabled, false);
+  f.choose('note-card'); assert.equal(f.get('inline-send').disabled, true);
+  await f.inline.send(); assert.equal(f.requests.length, 0);
+  f.editor.imageStorageError = null; f.inline.paintStatus();
   await f.inline.send(); assert.equal(f.requests.length, 1); assert.deepEqual(f.requests[0].args.attachments, []);
 });
 
@@ -6692,7 +6694,7 @@ for (const retry of [false, true]) test(`894 B3 phone panels have their own row 
   assert.ok(rows[panelRow]?.every(cell => cell === area), 'panel owns a named, full-width row');
 });
 
-for (const kind of ['note-card']) test(`894 B3 ${kind} refuses image reservation through working uploads`, async () => {
+for (const kind of ['note-card']) test(`926 ${kind} and Message share image reservation through working uploads`, async () => {
   const f = pencil894(), reservations = [], choices = [];
   const uploads = { current: () => [], running: new Map(), status: () => 'Ready',
     reserve: presentation => { const token = { presentation }; reservations.push(token); return token; },
@@ -6700,12 +6702,10 @@ for (const kind of ['note-card']) test(`894 B3 ${kind} refuses image reservation
   f.inline.callbacks.uploads = () => uploads;
   const file = { name: 'fixture.png', type: 'image/png' };
   f.choose(kind); await f.inline.addImages([file]);
-  assert.equal(reservations.length, 0, 'Note never reserves an upload');
-  assert.equal(choices.length, 0, 'Note never passes image bytes to uploads');
-  // The same adapter really can accept Message images; a caught fixture error
-  // cannot make the negative half pass accidentally.
+  assert.equal(reservations.length, 1, 'Note reserves through the upload owner');
+  assert.equal(choices.length, 1, 'Note passes image bytes to the same owner');
   f.choose('message'); await f.inline.addImages([file]);
-  assert.equal(reservations.length, 1); assert.equal(choices.length, 1);
+  assert.equal(reservations.length, 2); assert.equal(choices.length, 2);
   assert.equal(reservations[0].presentation, f.p);
   assert.equal(choices[0].token, reservations[0]); assert.equal(choices[0].file, file);
 });
@@ -6964,4 +6964,133 @@ test('905 B2 an unchanged coordinator does not repaint the real Reader again', a
   await p.refresh();
   assert.equal(recipientPaints, 1, 'an unchanged coordinator already painted by the real Reader is not repainted');
   assert.equal(choicePaints, 1, 'the already painted destination note is not repainted');
+});
+
+// 926: the real upload owner, with only byte storage and transport in memory.
+async function imageNote926(answer, options) {
+  const f = pencil894(answer, options), { Uploads } = await import('../web/uploads.mjs');
+  const pin = { authority_id: 'fixture-authority', authority_epoch: 'fixture-epoch' }, bytes = new Map(), begins = new Map();
+  const receipt = (request, result) => ({ ...receipt894(request), result });
+  const api = {
+    command: async request => { begins.set(request.target.media_id, request.args); return receipt(request, { media_id: request.target.media_id, media_revision: 1, state: 'pending' }); },
+    upload: async (request, blob) => { const file = begins.get(request.target.media_id); assert.equal(blob.size, file.size_bytes);
+      return receipt(request, { instance_id: 'fixture', media_id: request.target.media_id, media_revision: 2, state: 'ready', ...file, inline: true }); }
+  };
+  const journal = { writerId: 'fixture-926',
+    capture: async (_key, _snapshot, row, entry, current) => { assert.ok(current()); bytes.set(row.id, row); entry.bytes_ref = row.id; entry.bytes_state = 'durable'; },
+    readBytes: async (_key, id) => bytes.get(id),
+    transition: async (_key, _snapshot, mutate, current) => { assert.ok(current()); mutate(); }
+  };
+  const session = { editor: f.editor, api, journal, authority: pin, snapshot: () => f.editor.snapshot(), persist: async () => {},
+    envelope: (kind, operation_id, target, expected, args) => ({ v: 1, instance_id: 'fixture', kind, operation_id, target, expected, args }) };
+  const registry = { sessions: new Map([[f.editor.key, session]]), runtime: { current: pin }, disposed: false,
+    isCurrent: p => p === f.p, changed() {}, schedule() {}, bootstrap: { limits: { media_name_utf8_bytes: 255,
+      image_bytes: 1000000, media_file_bytes: 1000000, attachment_count: 10, attachment_bytes: 10000000 } } };
+  const uploads = new Uploads(session, registry); f.inline.callbacks.uploads = () => uploads;
+  const file = Object.assign(new Blob(['fixture image bytes'], { type: 'image/png' }), { name: 'photo.png', lastModified: 0 });
+  f.choose('note-card');
+  return { ...f, uploads, file, bytes };
+}
+
+for (const popped of [false, true]) test(`926 Note paste creates the first card with its image (${popped ? 'sheet' : 'feed'})`, async () => {
+  const f = await imageNote926(null, { popped });
+  assert.equal(f.get('inline-plus-button').hidden, false);
+  assert.equal(f.get('inline-attachments').hidden, false);
+  let prevented = false;
+  await f.inline.field.handlers.paste({ clipboardData: { items: [{ type: f.file.type, getAsFile: () => f.file }] }, preventDefault() { prevented = true; } });
+  assert.equal(prevented, true); assert.equal(f.uploads.current().length, 1);
+  const media = f.editor.draft.attachments[0].id;
+  f.write('First card\nWords\n\n## Another card\nOther words'); await f.inline.send();
+  assert.equal(f.requests.length, 1); assert.deepEqual(f.requests[0].args.attachments, [{ id: media }]);
+  const { parseDeck, cardImages } = await import('../web/deck.mjs');
+  const cards = parseDeck(f.requests[0].args.body).cards;
+  assert.equal(cards.length, 2); assert.equal(cards[0].title, 'First card');
+  assert.deepEqual(cardImages(cards[0].words).images.map(image => image.id), [media]);
+  assert.deepEqual(cardImages(cards[1].words).images, []);
+  assert.equal(f.opened[0].options.mode, 'cards');
+  assert.equal(f.editor.draft.body, ''); assert.deepEqual(f.editor.draft.attachments, []); assert.equal(f.uploads.current().length, 0);
+});
+
+test('926 a refused Note start keeps exact words and ready image selections', async () => {
+  const f = await imageNote926(request => ({ ...receipt894(request), status: 'rejected', error: { code: 'FORBIDDEN', message: 'This topic is read-only.' } }));
+  await f.uploads.add(f.file); const images = structuredClone(f.editor.draft.attachments);
+  await f.inline.send();
+  assert.deepEqual(f.requests[0].args.attachments, images);
+  assert.equal(f.editor.draft.body, 'Title\nBody'); assert.deepEqual(f.editor.draft.attachments, images);
+  assert.equal(f.uploads.current().length, 1); assert.equal(f.sheet.open, true);
+  assert.match(f.get('inline-notice').textContent, /read-only/);
+});
+
+test('926 pending image bytes hold Start page until the shared upload barrier clears', async () => {
+  const f = await imageNote926(); await f.uploads.add(f.file, { start: false });
+  f.inline.paintStatus(); await f.inline.send();
+  assert.equal(f.requests.length, 0); assert.equal(f.get('inline-send').disabled, true);
+  assert.equal(f.uploads.current().length, 1); assert.equal(f.editor.draft.body, 'Title\nBody');
+});
+
+for (const kind of ['note-card', 'message']) test(`926 ${kind} drop and file choice share the actual image owner`, async () => {
+  const f = await imageNote926(); f.choose(kind);
+  let prevented = 0;
+  assert.equal(typeof f.inline.field.handlers.drop, 'function');
+  await f.inline.field.handlers.drop({ dataTransfer: { files: [f.file] }, preventDefault() { prevented++; } });
+  assert.equal(prevented, 1); assert.equal(f.uploads.current().length, 1);
+  f.inline.chooseFile(); assert.ok(f.inline.imagePicker);
+  await f.get('inline-image-file').onchange({ target: { files: [f.file] } });
+  assert.equal(f.uploads.current().length, 2); assert.equal(f.editor.draft.attachments.length, 2);
+  const first = f.uploads.current()[0].selection_id;
+  await f.uploads.remove(first); f.inline.paintStatus();
+  assert.equal(f.editor.draft.attachments.length, 1); assert.equal(f.uploads.current().length, 1);
+});
+
+test('926 lost creation retries the identical image envelope and confirms only once', async () => {
+  const f = await imageNote926((request, n) => { if (n === 1) throw Error('connection lost'); return receipt894(request); });
+  await f.uploads.add(f.file); const images = structuredClone(f.editor.draft.attachments);
+  await f.inline.send(); assert.equal(f.uploads.current().length, 1); assert.deepEqual(f.editor.draft.attachments, images);
+  await f.inline.send(); assert.equal(f.requests.length, 2); assert.deepEqual(f.requests[1], f.requests[0]);
+  assert.equal(f.opened.length, 1); assert.equal(f.uploads.current().length, 0);
+});
+
+test('926 an older creation cannot consume a newer image whose capture changed no text version', async () => {
+  const gate = defer(), f = await imageNote926(request => gate.promise.then(() => receipt894(request)));
+  await f.uploads.add(f.file); const sending = f.inline.send(), version = f.editor.localVersion;
+  await f.uploads.add(f.file, { start: false }); // A recovered/new selection; capture itself does not edit the draft.
+  assert.equal(f.editor.localVersion, version); assert.equal(f.uploads.current().length, 2);
+  gate.resolve(); await sending;
+  assert.equal(f.editor.draft.body, 'Title\nBody'); assert.equal(f.uploads.current().length, 2);
+  assert.equal(f.opened.length, 0); assert.equal(f.sheet.open, true);
+});
+
+test('926 an image cleanup persistence wait cannot dismiss newer writing', async () => {
+  const f = await imageNote926(); await f.uploads.add(f.file);
+  const gate = defer(), entered = defer(), transition = f.uploads.journal.transition;
+  f.uploads.journal.transition = async (...args) => { await transition(...args); entered.resolve(); await gate.promise; };
+  const sending = f.inline.send(); await entered.promise;
+  f.editor.edit({ body: 'Newer writing after the journal mutation' });
+  gate.resolve(); await sending;
+  assert.equal(f.editor.draft.body, 'Newer writing after the journal mutation');
+  assert.equal(f.sheet.open, true); assert.equal(f.opened.length, 0);
+});
+
+test('926 first-card images survive the actual Text projection and an unfinished code fence', async () => {
+  const f = await imageNote926(); await f.uploads.add(f.file);
+  const media = f.editor.draft.attachments[0].id;
+  f.write('Code example\n```js\nconst kept = true;'); await f.inline.send();
+  const { parseDeck, cardImages } = await import('../web/deck.mjs');
+  const { CardTextProjection } = await import('../web/notebook-card-text.mjs');
+  const projection = new CardTextProjection(), body = f.requests[0].args.body;
+  projection.show(body, body);
+  assert.match(projection.text, new RegExp('attachment:' + media));
+  assert.deepEqual(cardImages(parseDeck(projection.text).cards[0].words).images.map(image => image.id), [media]);
+  assert.equal(projection.edit(projection.text, null), body);
+});
+
+test('926 changed writing before the image journal mutation keeps every selection', async () => {
+  const f = await imageNote926(); await f.uploads.add(f.file);
+  const before = structuredClone(f.editor.draft.attachments), entered = defer(), gate = defer(), transition = f.uploads.journal.transition;
+  f.uploads.journal.transition = async (...args) => { entered.resolve(); await gate.promise; return transition(...args); };
+  const sending = f.inline.send(); await entered.promise;
+  f.editor.edit({ body: 'Recovered while cleanup waits' }); gate.resolve(); await sending;
+  assert.equal(f.editor.draft.body, 'Recovered while cleanup waits');
+  assert.deepEqual(f.editor.draft.attachments, before); assert.equal(f.uploads.current().length, 1);
+  assert.equal(f.sheet.open, true); assert.equal(f.opened.length, 0);
 });
