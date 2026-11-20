@@ -2673,8 +2673,10 @@ test('a reply card says quietly which message it answers, and a message answerin
     reply_to: 'm1', reply_to_author: 'fable', reply_to_excerpt: 'Ship the table' });
   f.paintViews('messages');
   const card = id => entryIn(f, id);
-  // A line's words are its text and link nodes' (links.mjs).
-  const lines = id => card(id).children.filter(node => node.className === 'message-reply-to').map(node => node.children.map(child => child.textContent).join(''));
+  // This DOM stores appended strings and nested elements separately. Read
+  // through the parent-word span and links as a browser's textContent does.
+  const words = node => typeof node === 'string' ? node : (node.textContent ?? '') + (node.children ?? []).map(words).join('');
+  const lines = id => card(id).children.filter(node => node.className === 'message-reply-to').map(words);
   assert.deepEqual(lines('m2'), ['Replying to fable: Ship the table']);
   assert.deepEqual(lines('m1'), []);
   // The ⋯ is on the one bar over a lit card (message-menu.mjs), not on the card; the words are formatted (message-format.mjs).
