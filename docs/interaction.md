@@ -361,13 +361,17 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   the page's heading; Return on such a row keeps the keys on it.
 - **The messages.** Incoming replies keep every dossier in the reader's order;
   new dossiers enter first and reawakened dossiers return last above More (731).
-  On a message (its card holding the keys), ⌘↑ and ⌘↓
-  move its reply stack up or down in the reader's own order, → and ←
+  On a message (its card holding the keys), ⌘↑ moves its reply stack up
+  in the reader's own order; Move its stack down in ⋯ moves it down.
+  ⌘↓ moves the selected dossier below More; a selected message moves its
+  containing dossier. This uses Return's pointer, keyboard or last-touch
+  selection. With nothing selected it does nothing. → and ←
   switch it between its two states (latest plus unread, and all messages), x
   folds the message to its row for the reader alone (x again unfolds it), ⇧⌘↑ and
   ⇧⌘↓ join it to the stack above or below for everyone, and ⌘Z puts the
-  last of these back (docs/reply-stacks.md). The keys stay on the message
-  that moved, and a screen reader hears what happened.
+  last of these back (docs/reply-stacks.md). After a reorder the keys stay
+  on its message; after an archive they move to More. A screen reader hears
+  what happened.
 - **Put a dossier aside.** Swipe its header or last visible message right,
   on a phone or with two fingers on a trackpad, to move it below More messages
   for you on every device. The menu offers Move below More and Bring back
@@ -551,7 +555,7 @@ page painted. Its checks, by rule:
 - How cards read (docs/topic-reading.md): "reading read cards sit back on the
   read fill …", "reading the reply arrow says "You replied at" …" and
   "reading replies gather into a stack …"; every act on a reply stack (the
-  head's row, rename, Star and the rail's Starred, Fold and Unfold, ⌘↑ ⌘↓, ⇧⌘↑ ⇧⌘↓ and Split
+  head's row, rename, Star and the rail's Starred, Fold and Unfold, ⌘↑ and the down menu, ⌘↓ below More, ⇧⌘↑ ⇧⌘↓ and Split
   back out, → ← and ⌘Z, the New line, the Reader's ↑ ↓, the phone's sheet
   and swipe, the trackpad's two-finger swipe): the "reading stacks …" cases in `tests/stack_native.mjs`
   (docs/reply-stacks.md).

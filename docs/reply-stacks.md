@@ -262,7 +262,7 @@ their acts.
   including a partial page whose first message is not loaded. The migration
   preserves each existing reader's effective order, including saved and legacy
   placements. Incoming replies never change it. New dossiers enter first;
-  reawakened dossiers enter last above More. ⌘↑ and ⌘↓ still place a dossier
+  reawakened dossiers enter last above More. ⌘↑ and Move its stack down in ⋯ still place a dossier
   halfway past its neighbour, and ⌘Z restores its previous key. Reset position
   returns it to its last admission position and still permits no reply to lift
   it. A join uses its destination's position; a split restores the source.
@@ -532,7 +532,8 @@ On a message (its card focused, never in writing), these keys work:
 
 | Keys | Act |
 | --- | --- |
-| ⌘↑ ⌘↓ | move its stack up or down, for you alone |
+| ⌘↑ | move its stack up, for you alone |
+| ⌘↓ | move the selected dossier below More; a selected message moves its containing dossier, with Return’s selection |
 | → ← | show every message of its stack, or only its latest and unread; past either, move to the siderail at that end |
 | ⇧⌘↑ ⇧⌘↓ | join its stack to the stack above or below, for everyone |
 | Return | reply to it; on a dossier's header or chevron, edit the dossier's title (Return saves, Escape cancels) |
@@ -1038,7 +1039,7 @@ bar, Move below More and the Reader's archive button show as ever, and a
 press says why where it was, moving nothing; starring a message in a dossier
 below More brings it back above More, for you. Links can
 show its messages without clearing your choice. More is a boundary for the
-stack keys and their menu items: ⌘↑ ⌘↓ move a stack past, and ⇧⌘↑ ⇧⌘↓ join
+reorder controls: ⌘↑ and Move its stack down move a stack past, and ⇧⌘↑ ⇧⌘↓ join
 it to, the stack shown beside it on its own side of More (`sideOf`), so a
 stack above More steps over a dossier put aside, and none moves or joins
 across More into or out of one. The Reader's ↑ and ↓ (and a phone's
