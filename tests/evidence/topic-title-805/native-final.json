@@ -1,0 +1,1186 @@
+[
+  {
+    "engine": "chromium",
+    "browserVersion": "156.0.8078.47",
+    "profile": "/var/folders/y8/b2hrtp5904l5cvxxlth7t2zr0000gn/T/playwright_chromiumdev_profile-blBIXf"
+  },
+  {
+    "key": "chromium-1280-light",
+    "shape": "short",
+    "geometry": {
+      "text": [
+        {
+          "left": 315.1875,
+          "right": 392.546875,
+          "top": 63.375,
+          "bottom": 91.375,
+          "width": 77.359375
+        }
+      ],
+      "pencil": {
+        "left": 394.9375,
+        "right": 407.734375,
+        "top": 73.578125,
+        "bottom": 86.375,
+        "width": 12.796875
+      },
+      "viewport": {
+        "left": 0,
+        "right": 1280
+      },
+      "flowRight": 780.8125,
+      "pencilMarginPx": 2.4,
+      "wrapped": false,
+      "controls": [
+        {
+          "left": 792.8125,
+          "right": 836.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 848.8125,
+          "right": 892.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 904.8125,
+          "right": 940.8125,
+          "top": 55.984375,
+          "bottom": 91.984375,
+          "width": 36
+        }
+      ],
+      "opacity": "1"
+    }
+  },
+  {
+    "key": "chromium-1280-light",
+    "shape": "wrapped",
+    "geometry": {
+      "text": [
+        {
+          "left": 315.1875,
+          "right": 772.796875,
+          "top": 63.375,
+          "bottom": 91.375,
+          "width": 457.609375
+        },
+        {
+          "left": 315.1875,
+          "right": 757.203125,
+          "top": 96.375,
+          "bottom": 124.375,
+          "width": 442.015625
+        },
+        {
+          "left": 315.1875,
+          "right": 378.546875,
+          "top": 129.375,
+          "bottom": 157.375,
+          "width": 63.359375
+        }
+      ],
+      "pencil": {
+        "left": 380.9375,
+        "right": 393.734375,
+        "top": 139.578125,
+        "bottom": 152.375,
+        "width": 12.796875
+      },
+      "viewport": {
+        "left": 0,
+        "right": 1280
+      },
+      "flowRight": 780.8125,
+      "pencilMarginPx": 2.4,
+      "wrapped": true,
+      "controls": [
+        {
+          "left": 792.8125,
+          "right": 836.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 848.8125,
+          "right": 892.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 904.8125,
+          "right": 940.8125,
+          "top": 55.984375,
+          "bottom": 91.984375,
+          "width": 36
+        }
+      ],
+      "opacity": "1"
+    }
+  },
+  {
+    "key": "chromium-1280-light",
+    "shape": "unbroken",
+    "geometry": {
+      "text": [
+        {
+          "left": 315.1875,
+          "right": 779.328125,
+          "top": 63.375,
+          "bottom": 91.375,
+          "width": 464.140625
+        },
+        {
+          "left": 315.1875,
+          "right": 779.328125,
+          "top": 96.375,
+          "bottom": 124.375,
+          "width": 464.140625
+        },
+        {
+          "left": 315.1875,
+          "right": 779.328125,
+          "top": 129.375,
+          "bottom": 157.375,
+          "width": 464.140625
+        },
+        {
+          "left": 315.1875,
+          "right": 779.328125,
+          "top": 162.375,
+          "bottom": 190.375,
+          "width": 464.140625
+        },
+        {
+          "left": 315.1875,
+          "right": 392.546875,
+          "top": 195.375,
+          "bottom": 223.375,
+          "width": 77.359375
+        }
+      ],
+      "pencil": {
+        "left": 394.9375,
+        "right": 407.734375,
+        "top": 205.578125,
+        "bottom": 218.375,
+        "width": 12.796875
+      },
+      "viewport": {
+        "left": 0,
+        "right": 1280
+      },
+      "flowRight": 780.8125,
+      "pencilMarginPx": 2.4,
+      "wrapped": true,
+      "controls": [
+        {
+          "left": 792.8125,
+          "right": 836.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 848.8125,
+          "right": 892.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 904.8125,
+          "right": 940.8125,
+          "top": 55.984375,
+          "bottom": 91.984375,
+          "width": 36
+        }
+      ],
+      "opacity": "1"
+    }
+  },
+  {
+    "key": "chromium-1280-light",
+    "activationCancelSaveReloadRefusalRestorePermissionsConversation": "pass"
+  },
+  {
+    "key": "chromium-1280-dark",
+    "shape": "short",
+    "geometry": {
+      "text": [
+        {
+          "left": 315.1875,
+          "right": 392.546875,
+          "top": 63.375,
+          "bottom": 91.375,
+          "width": 77.359375
+        }
+      ],
+      "pencil": {
+        "left": 394.9375,
+        "right": 407.734375,
+        "top": 73.578125,
+        "bottom": 86.375,
+        "width": 12.796875
+      },
+      "viewport": {
+        "left": 0,
+        "right": 1280
+      },
+      "flowRight": 780.8125,
+      "pencilMarginPx": 2.4,
+      "wrapped": false,
+      "controls": [
+        {
+          "left": 792.8125,
+          "right": 836.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 848.8125,
+          "right": 892.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 904.8125,
+          "right": 940.8125,
+          "top": 55.984375,
+          "bottom": 91.984375,
+          "width": 36
+        }
+      ],
+      "opacity": "1"
+    }
+  },
+  {
+    "key": "chromium-1280-dark",
+    "shape": "wrapped",
+    "geometry": {
+      "text": [
+        {
+          "left": 315.1875,
+          "right": 772.796875,
+          "top": 63.375,
+          "bottom": 91.375,
+          "width": 457.609375
+        },
+        {
+          "left": 315.1875,
+          "right": 757.203125,
+          "top": 96.375,
+          "bottom": 124.375,
+          "width": 442.015625
+        },
+        {
+          "left": 315.1875,
+          "right": 378.546875,
+          "top": 129.375,
+          "bottom": 157.375,
+          "width": 63.359375
+        }
+      ],
+      "pencil": {
+        "left": 380.9375,
+        "right": 393.734375,
+        "top": 139.578125,
+        "bottom": 152.375,
+        "width": 12.796875
+      },
+      "viewport": {
+        "left": 0,
+        "right": 1280
+      },
+      "flowRight": 780.8125,
+      "pencilMarginPx": 2.4,
+      "wrapped": true,
+      "controls": [
+        {
+          "left": 792.8125,
+          "right": 836.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 848.8125,
+          "right": 892.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 904.8125,
+          "right": 940.8125,
+          "top": 55.984375,
+          "bottom": 91.984375,
+          "width": 36
+        }
+      ],
+      "opacity": "1"
+    }
+  },
+  {
+    "key": "chromium-1280-dark",
+    "shape": "unbroken",
+    "geometry": {
+      "text": [
+        {
+          "left": 315.1875,
+          "right": 779.328125,
+          "top": 63.375,
+          "bottom": 91.375,
+          "width": 464.140625
+        },
+        {
+          "left": 315.1875,
+          "right": 779.328125,
+          "top": 96.375,
+          "bottom": 124.375,
+          "width": 464.140625
+        },
+        {
+          "left": 315.1875,
+          "right": 779.328125,
+          "top": 129.375,
+          "bottom": 157.375,
+          "width": 464.140625
+        },
+        {
+          "left": 315.1875,
+          "right": 779.328125,
+          "top": 162.375,
+          "bottom": 190.375,
+          "width": 464.140625
+        },
+        {
+          "left": 315.1875,
+          "right": 392.546875,
+          "top": 195.375,
+          "bottom": 223.375,
+          "width": 77.359375
+        }
+      ],
+      "pencil": {
+        "left": 394.9375,
+        "right": 407.734375,
+        "top": 205.578125,
+        "bottom": 218.375,
+        "width": 12.796875
+      },
+      "viewport": {
+        "left": 0,
+        "right": 1280
+      },
+      "flowRight": 780.8125,
+      "pencilMarginPx": 2.4,
+      "wrapped": true,
+      "controls": [
+        {
+          "left": 792.8125,
+          "right": 836.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 848.8125,
+          "right": 892.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 904.8125,
+          "right": 940.8125,
+          "top": 55.984375,
+          "bottom": 91.984375,
+          "width": 36
+        }
+      ],
+      "opacity": "1"
+    }
+  },
+  {
+    "key": "chromium-1280-dark",
+    "activationCancelSaveReloadRefusalRestorePermissionsConversation": "pass"
+  },
+  {
+    "key": "chromium-390-light",
+    "shape": "short",
+    "touchTitleBox": {
+      "x": 16,
+      "y": 74.375,
+      "width": 77.359375,
+      "height": 44
+    }
+  },
+  {
+    "key": "chromium-390-light",
+    "shape": "wrapped",
+    "touchTitleBox": {
+      "x": 16,
+      "y": 74.375,
+      "width": 198,
+      "height": 180
+    }
+  },
+  {
+    "key": "chromium-390-light",
+    "shape": "unbroken",
+    "touchTitleBox": {
+      "x": 16,
+      "y": 74.375,
+      "width": 198,
+      "height": 300
+    }
+  },
+  {
+    "key": "chromium-390-light",
+    "activationCancelSaveReloadRefusalRestorePermissionsConversation": "pass"
+  },
+  {
+    "key": "chromium-390-dark",
+    "shape": "short",
+    "touchTitleBox": {
+      "x": 16,
+      "y": 74.375,
+      "width": 77.359375,
+      "height": 44
+    }
+  },
+  {
+    "key": "chromium-390-dark",
+    "shape": "wrapped",
+    "touchTitleBox": {
+      "x": 16,
+      "y": 74.375,
+      "width": 198,
+      "height": 180
+    }
+  },
+  {
+    "key": "chromium-390-dark",
+    "shape": "unbroken",
+    "touchTitleBox": {
+      "x": 16,
+      "y": 74.375,
+      "width": 198,
+      "height": 300
+    }
+  },
+  {
+    "key": "chromium-390-dark",
+    "activationCancelSaveReloadRefusalRestorePermissionsConversation": "pass"
+  },
+  {
+    "browserClosed": true,
+    "profile": "/var/folders/y8/b2hrtp5904l5cvxxlth7t2zr0000gn/T/playwright_chromiumdev_profile-blBIXf",
+    "ownedPids": [
+      40808,
+      40816,
+      40817,
+      40818,
+      41091,
+      41093,
+      41094
+    ],
+    "remainingPids": [],
+    "remaining": []
+  },
+  {
+    "engine": "webkit",
+    "browserVersion": "26.6",
+    "profile": "/var/folders/y8/b2hrtp5904l5cvxxlth7t2zr0000gn/T/theseus-805-40800-webkit-M5KFIV"
+  },
+  {
+    "key": "webkit-1280-light",
+    "shape": "short",
+    "geometry": {
+      "text": [
+        {
+          "left": 315.1875,
+          "right": 392.5536193847656,
+          "top": 63.2421875,
+          "bottom": 91.5078125,
+          "width": 77.36611938476562
+        }
+      ],
+      "pencil": {
+        "left": 394.9375,
+        "right": 407.734375,
+        "top": 73.640625,
+        "bottom": 86.4375,
+        "width": 12.796875
+      },
+      "viewport": {
+        "left": 0,
+        "right": 1280
+      },
+      "flowRight": 780.8125,
+      "pencilMarginPx": 2.4,
+      "wrapped": false,
+      "controls": [
+        {
+          "left": 792.8125,
+          "right": 836.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 848.8125,
+          "right": 892.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 904.8125,
+          "right": 940.8125,
+          "top": 55.984375,
+          "bottom": 91.984375,
+          "width": 36
+        }
+      ],
+      "opacity": "1"
+    }
+  },
+  {
+    "key": "webkit-1280-light",
+    "shape": "wrapped",
+    "geometry": {
+      "text": [
+        {
+          "left": 315.1875,
+          "right": 772.8256225585938,
+          "top": 63.2421875,
+          "bottom": 91.5078125,
+          "width": 457.63812255859375
+        },
+        {
+          "left": 315.1875,
+          "right": 757.196533203125,
+          "top": 96.265625,
+          "bottom": 124.53125,
+          "width": 442.009033203125
+        },
+        {
+          "left": 315.1875,
+          "right": 378.53985595703125,
+          "top": 129.2890625,
+          "bottom": 157.5546875,
+          "width": 63.35235595703125
+        }
+      ],
+      "pencil": {
+        "left": 380.921875,
+        "right": 393.71875,
+        "top": 139.6875,
+        "bottom": 152.484375,
+        "width": 12.796875
+      },
+      "viewport": {
+        "left": 0,
+        "right": 1280
+      },
+      "flowRight": 780.8125,
+      "pencilMarginPx": 2.4,
+      "wrapped": true,
+      "controls": [
+        {
+          "left": 792.8125,
+          "right": 836.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 848.8125,
+          "right": 892.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 904.8125,
+          "right": 940.8125,
+          "top": 55.984375,
+          "bottom": 91.984375,
+          "width": 36
+        }
+      ],
+      "opacity": "1"
+    }
+  },
+  {
+    "key": "webkit-1280-light",
+    "shape": "unbroken",
+    "geometry": {
+      "text": [
+        {
+          "left": 315.1875,
+          "right": 779.3839111328125,
+          "top": 63.2421875,
+          "bottom": 91.5078125,
+          "width": 464.1964111328125
+        },
+        {
+          "left": 315.1875,
+          "right": 779.3839111328125,
+          "top": 96.265625,
+          "bottom": 124.53125,
+          "width": 464.1964111328125
+        },
+        {
+          "left": 315.1875,
+          "right": 779.3839111328125,
+          "top": 129.2890625,
+          "bottom": 157.5546875,
+          "width": 464.1964111328125
+        },
+        {
+          "left": 315.1875,
+          "right": 779.3839111328125,
+          "top": 162.3125,
+          "bottom": 190.578125,
+          "width": 464.1964111328125
+        },
+        {
+          "left": 315.1875,
+          "right": 392.5589904785156,
+          "top": 195.3359375,
+          "bottom": 223.6015625,
+          "width": 77.37149047851562
+        }
+      ],
+      "pencil": {
+        "left": 394.9375,
+        "right": 407.734375,
+        "top": 205.734375,
+        "bottom": 218.53125,
+        "width": 12.796875
+      },
+      "viewport": {
+        "left": 0,
+        "right": 1280
+      },
+      "flowRight": 780.8125,
+      "pencilMarginPx": 2.4,
+      "wrapped": true,
+      "controls": [
+        {
+          "left": 792.8125,
+          "right": 836.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 848.8125,
+          "right": 892.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 904.8125,
+          "right": 940.8125,
+          "top": 55.984375,
+          "bottom": 91.984375,
+          "width": 36
+        }
+      ],
+      "opacity": "1"
+    }
+  },
+  {
+    "key": "webkit-1280-light",
+    "activationCancelSaveReloadRefusalRestorePermissionsConversation": "pass"
+  },
+  {
+    "key": "webkit-1280-dark",
+    "shape": "short",
+    "geometry": {
+      "text": [
+        {
+          "left": 315.1875,
+          "right": 392.5536193847656,
+          "top": 63.2421875,
+          "bottom": 91.5078125,
+          "width": 77.36611938476562
+        }
+      ],
+      "pencil": {
+        "left": 394.9375,
+        "right": 407.734375,
+        "top": 73.640625,
+        "bottom": 86.4375,
+        "width": 12.796875
+      },
+      "viewport": {
+        "left": 0,
+        "right": 1280
+      },
+      "flowRight": 780.8125,
+      "pencilMarginPx": 2.4,
+      "wrapped": false,
+      "controls": [
+        {
+          "left": 792.8125,
+          "right": 836.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 848.8125,
+          "right": 892.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 904.8125,
+          "right": 940.8125,
+          "top": 55.984375,
+          "bottom": 91.984375,
+          "width": 36
+        }
+      ],
+      "opacity": "1"
+    }
+  },
+  {
+    "key": "webkit-1280-dark",
+    "shape": "wrapped",
+    "geometry": {
+      "text": [
+        {
+          "left": 315.1875,
+          "right": 772.8256225585938,
+          "top": 63.2421875,
+          "bottom": 91.5078125,
+          "width": 457.63812255859375
+        },
+        {
+          "left": 315.1875,
+          "right": 757.196533203125,
+          "top": 96.265625,
+          "bottom": 124.53125,
+          "width": 442.009033203125
+        },
+        {
+          "left": 315.1875,
+          "right": 378.53985595703125,
+          "top": 129.2890625,
+          "bottom": 157.5546875,
+          "width": 63.35235595703125
+        }
+      ],
+      "pencil": {
+        "left": 380.921875,
+        "right": 393.71875,
+        "top": 139.6875,
+        "bottom": 152.484375,
+        "width": 12.796875
+      },
+      "viewport": {
+        "left": 0,
+        "right": 1280
+      },
+      "flowRight": 780.8125,
+      "pencilMarginPx": 2.4,
+      "wrapped": true,
+      "controls": [
+        {
+          "left": 792.8125,
+          "right": 836.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 848.8125,
+          "right": 892.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 904.8125,
+          "right": 940.8125,
+          "top": 55.984375,
+          "bottom": 91.984375,
+          "width": 36
+        }
+      ],
+      "opacity": "1"
+    }
+  },
+  {
+    "key": "webkit-1280-dark",
+    "shape": "unbroken",
+    "geometry": {
+      "text": [
+        {
+          "left": 315.1875,
+          "right": 779.3839111328125,
+          "top": 63.2421875,
+          "bottom": 91.5078125,
+          "width": 464.1964111328125
+        },
+        {
+          "left": 315.1875,
+          "right": 779.3839111328125,
+          "top": 96.265625,
+          "bottom": 124.53125,
+          "width": 464.1964111328125
+        },
+        {
+          "left": 315.1875,
+          "right": 779.3839111328125,
+          "top": 129.2890625,
+          "bottom": 157.5546875,
+          "width": 464.1964111328125
+        },
+        {
+          "left": 315.1875,
+          "right": 779.3839111328125,
+          "top": 162.3125,
+          "bottom": 190.578125,
+          "width": 464.1964111328125
+        },
+        {
+          "left": 315.1875,
+          "right": 392.5589904785156,
+          "top": 195.3359375,
+          "bottom": 223.6015625,
+          "width": 77.37149047851562
+        }
+      ],
+      "pencil": {
+        "left": 394.9375,
+        "right": 407.734375,
+        "top": 205.734375,
+        "bottom": 218.53125,
+        "width": 12.796875
+      },
+      "viewport": {
+        "left": 0,
+        "right": 1280
+      },
+      "flowRight": 780.8125,
+      "pencilMarginPx": 2.4,
+      "wrapped": true,
+      "controls": [
+        {
+          "left": 792.8125,
+          "right": 836.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 848.8125,
+          "right": 892.8125,
+          "top": 55.984375,
+          "bottom": 99.984375,
+          "width": 44
+        },
+        {
+          "left": 904.8125,
+          "right": 940.8125,
+          "top": 55.984375,
+          "bottom": 91.984375,
+          "width": 36
+        }
+      ],
+      "opacity": "1"
+    }
+  },
+  {
+    "key": "webkit-1280-dark",
+    "activationCancelSaveReloadRefusalRestorePermissionsConversation": "pass"
+  },
+  {
+    "key": "webkit-390-light",
+    "shape": "short",
+    "touchTitleBox": {
+      "x": 16,
+      "y": 74.375,
+      "width": 77.375,
+      "height": 44
+    }
+  },
+  {
+    "key": "webkit-390-light",
+    "shape": "wrapped",
+    "touchTitleBox": {
+      "x": 16,
+      "y": 74.375,
+      "width": 198,
+      "height": 180
+    }
+  },
+  {
+    "key": "webkit-390-light",
+    "shape": "unbroken",
+    "touchTitleBox": {
+      "x": 16,
+      "y": 74.375,
+      "width": 198,
+      "height": 300
+    }
+  },
+  {
+    "key": "webkit-390-light",
+    "activationCancelSaveReloadRefusalRestorePermissionsConversation": "pass"
+  },
+  {
+    "key": "webkit-390-dark",
+    "shape": "short",
+    "touchTitleBox": {
+      "x": 16,
+      "y": 74.375,
+      "width": 77.375,
+      "height": 44
+    }
+  },
+  {
+    "key": "webkit-390-dark",
+    "shape": "wrapped",
+    "touchTitleBox": {
+      "x": 16,
+      "y": 74.375,
+      "width": 198,
+      "height": 180
+    }
+  },
+  {
+    "key": "webkit-390-dark",
+    "shape": "unbroken",
+    "touchTitleBox": {
+      "x": 16,
+      "y": 74.375,
+      "width": 198,
+      "height": 300
+    }
+  },
+  {
+    "key": "webkit-390-dark",
+    "activationCancelSaveReloadRefusalRestorePermissionsConversation": "pass"
+  },
+  {
+    "browserClosed": true,
+    "profile": "/var/folders/y8/b2hrtp5904l5cvxxlth7t2zr0000gn/T/theseus-805-40800-webkit-M5KFIV",
+    "ownedPids": [
+      41155,
+      41161
+    ],
+    "remainingPids": [],
+    "remaining": []
+  },
+  {
+    "fixture": {
+      "code": 0,
+      "signal": null
+    },
+    "fixturePid": 40807,
+    "absent": true,
+    "port": "54003",
+    "portClosed": true,
+    "errors": [
+      {
+        "key": "webkit-1280-dark",
+        "error": "/127.0.0.1:54003/api/view due to access control checks.",
+        "stack": "Fetch API cannot load http://127.0.0.1:54003/api/view due to access control checks.\n    at attempt (http://127.0.0.1:54003/b/79ecce828ec16ca7eb87/api.mjs:291:36)\n    at attempted (http://127.0.0.1:54003/b/79ecce828ec16ca7eb87/api.mjs:230:37)",
+        "url": "http://127.0.0.1:54003/?topic=t1"
+      },
+      {
+        "key": "webkit-390-light",
+        "error": "/127.0.0.1:54003/api/view due to access control checks.",
+        "stack": "Fetch API cannot load http://127.0.0.1:54003/api/view due to access control checks.\n    at attempt (http://127.0.0.1:54003/b/79ecce828ec16ca7eb87/api.mjs:291:36)\n    at attempted (http://127.0.0.1:54003/b/79ecce828ec16ca7eb87/api.mjs:230:37)",
+        "url": "http://127.0.0.1:54003/?topic=t1"
+      },
+      {
+        "key": "webkit-390-light",
+        "error": "/127.0.0.1:54003/api/view due to access control checks.",
+        "stack": "Fetch API cannot load http://127.0.0.1:54003/api/view due to access control checks.\n    at attempt (http://127.0.0.1:54003/b/79ecce828ec16ca7eb87/api.mjs:291:36)\n    at attempted (http://127.0.0.1:54003/b/79ecce828ec16ca7eb87/api.mjs:230:37)",
+        "url": "http://127.0.0.1:54003/?topic=t1"
+      },
+      {
+        "key": "webkit-390-light",
+        "error": "/127.0.0.1:54003/api/view due to access control checks.",
+        "stack": "Fetch API cannot load http://127.0.0.1:54003/api/view due to access control checks.\n    at attempt (http://127.0.0.1:54003/b/79ecce828ec16ca7eb87/api.mjs:291:36)\n    at attempted (http://127.0.0.1:54003/b/79ecce828ec16ca7eb87/api.mjs:230:37)",
+        "url": "http://127.0.0.1:54003/?topic=t1"
+      },
+      {
+        "key": "webkit-390-dark",
+        "error": "/127.0.0.1:54003/api/view due to access control checks.",
+        "stack": "Fetch API cannot load http://127.0.0.1:54003/api/view due to access control checks.\n    at attempt (http://127.0.0.1:54003/b/79ecce828ec16ca7eb87/api.mjs:291:36)\n    at attempted (http://127.0.0.1:54003/b/79ecce828ec16ca7eb87/api.mjs:230:37)",
+        "url": "http://127.0.0.1:54003/?topic=t1"
+      },
+      {
+        "key": "webkit-390-dark",
+        "error": "/127.0.0.1:54003/api/view due to access control checks.",
+        "stack": "Fetch API cannot load http://127.0.0.1:54003/api/view due to access control checks.\n    at attempt (http://127.0.0.1:54003/b/79ecce828ec16ca7eb87/api.mjs:291:36)\n    at attempted (http://127.0.0.1:54003/b/79ecce828ec16ca7eb87/api.mjs:230:37)",
+        "url": "http://127.0.0.1:54003/?topic=t1"
+      },
+      {
+        "key": "webkit-390-dark",
+        "error": "/127.0.0.1:54003/api/view due to access control checks.",
+        "stack": "Fetch API cannot load http://127.0.0.1:54003/api/view due to access control checks.\n    at attempt (http://127.0.0.1:54003/b/79ecce828ec16ca7eb87/api.mjs:291:36)\n    at attempted (http://127.0.0.1:54003/b/79ecce828ec16ca7eb87/api.mjs:230:37)",
+        "url": "http://127.0.0.1:54003/?topic=t1"
+      }
+    ],
+    "networkFailures": [
+      {
+        "key": "webkit-1280-light",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-1280-light",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-1280-light",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-1280-light",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-1280-light",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-1280-light",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-1280-dark",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-1280-dark",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-1280-dark",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-1280-dark",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-1280-dark",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-390-light",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-390-light",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-390-light",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-390-dark",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-390-dark",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-390-dark",
+        "url": "http://127.0.0.1:54003/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      }
+    ],
+    "navigationControl": false
+  }
+]

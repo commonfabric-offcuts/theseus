@@ -3,7 +3,7 @@
 // note, as a subtitle. Where the topic stands in full, and the form that
 // changes it, are in Topic settings (topic-settings.mjs); the topic's people
 // are its Team, on the title row's right, under the title (item 465).
-import { STATES, stateLabel, stateTitle, waitingQuestion, waitsOn } from './topic-state.mjs';
+import { STATES, stateLabel, stateTitle, waitingQuestion, waitsOn, managesTopic } from './topic-state.mjs';
 
 // Active, and waiting on nobody: the state that needs no word of its own.
 export const plainActive = topic => (STATES.includes(topic?.state) ? topic.state : 'active') === 'active' && !waitsOn(topic).length;
@@ -85,8 +85,11 @@ export function paintSubtitle(subtitle, topic, reader, doc = document, done = nu
 // The title, the subtitle and whether the gear shows. settings is false where
 // no Topic settings apply (a conversation refuses every change they make).
 // done marks the topic Done from ✅ Done (paintSubtitle).
-export function paintTopicHeader({ title, subtitle, gear }, topic, reader, { settings = true, doc = document, done = null, question = null } = {}) {
+export function paintTopicHeader({ title, subtitle, gear, pencil }, topic, reader, { settings = true, doc = document, done = null, question = null } = {}) {
   title.textContent = topic.title;
+  const renamable = settings && managesTopic(topic, reader);
+  title.classList.toggle('renamable', renamable); title.tabIndex = renamable ? 0 : -1;
   paintSubtitle(subtitle, topic, reader, doc, settings ? done : null, question);
   gear.hidden = !settings;
+  if (pencil) pencil.hidden = !renamable || title.hidden;
 }

@@ -1,0 +1,105 @@
+[
+  {
+    "engine": "webkit",
+    "browserVersion": "26.6",
+    "profile": "/var/folders/y8/b2hrtp5904l5cvxxlth7t2zr0000gn/T/theseus-805-39811-webkit-SXF6cb"
+  },
+  {
+    "key": "webkit-1280-light",
+    "navigationControl": true
+  },
+  {
+    "key": "webkit-1280-dark",
+    "navigationControl": true
+  },
+  {
+    "key": "webkit-390-light",
+    "navigationControl": true
+  },
+  {
+    "key": "webkit-390-dark",
+    "navigationControl": true
+  },
+  {
+    "browserClosed": true,
+    "profile": "/var/folders/y8/b2hrtp5904l5cvxxlth7t2zr0000gn/T/theseus-805-39811-webkit-SXF6cb",
+    "remaining": []
+  },
+  {
+    "fixture": {
+      "code": 0,
+      "signal": null
+    },
+    "fixturePid": 39818,
+    "absent": true,
+    "port": "51741",
+    "portClosed": true,
+    "errors": [
+      {
+        "key": "webkit-1280-dark",
+        "error": "/127.0.0.1:51741/api/view due to access control checks.",
+        "stack": "Fetch API cannot load http://127.0.0.1:51741/api/view due to access control checks.\n    at attempt (http://127.0.0.1:51741/b/477377d48a7af8de438f/api.mjs:291:36)\n    at attempted (http://127.0.0.1:51741/b/477377d48a7af8de438f/api.mjs:230:37)",
+        "url": "http://127.0.0.1:51741/?topic=t1"
+      }
+    ],
+    "networkFailures": [
+      {
+        "key": "webkit-1280-light",
+        "url": "http://127.0.0.1:51741/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-1280-light",
+        "url": "http://127.0.0.1:51741/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-1280-dark",
+        "url": "http://127.0.0.1:51741/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-390-light",
+        "url": "http://127.0.0.1:51741/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-390-light",
+        "url": "http://127.0.0.1:51741/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-390-dark",
+        "url": "http://127.0.0.1:51741/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      },
+      {
+        "key": "webkit-390-dark",
+        "url": "http://127.0.0.1:51741/api/view",
+        "failure": {
+          "errorText": "cancelled"
+        },
+        "method": "POST"
+      }
+    ],
+    "navigationControl": true
+  }
+]
