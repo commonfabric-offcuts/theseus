@@ -37,7 +37,7 @@ try {
   });
   page = await context.newPage(); const pageErrors = []; page.on('pageerror', e => pageErrors.push(e.message));
   const html = (await readFile('web/index.html', 'utf8')).replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
-  await page.route('**/unit931', route => route.fulfill({ contentType: 'text/html', body: html }));
+  await context.route('**/unit931', route => route.fulfill({ contentType: 'text/html', body: html }));
   const app = facts.origin + '/?topic=t1', unit = facts.origin + '/unit931';
   await page.goto(app); const field = page.locator('#inline-writing-body'), pill = page.locator('#inline-review-versions');
   await field.waitFor(); await field.fill('Chosen current words');
@@ -47,6 +47,39 @@ try {
   assert.equal(await pill.isVisible(), false, 'ordinary newer typing is quiet');
   await page.waitForFunction(() => document.querySelector('#inline-save-state').dataset.save === 'saved');
   const currentWords = await field.inputValue();
+  const holder = await context.newPage(); await holder.goto(unit);
+  const held = await holder.evaluate(async token => {
+    const { Api } = await import('/api.mjs'), { openJournal } = await import('/journal.mjs'), { Editor } = await import('/editor.mjs');
+    const api = new Api(token), b = await api.bootstrap(), ref = { kind: 'topic', id: 't1' };
+    const state = await api.view('editor_state', { source_ref: ref, topic_id: 't1' });
+    const journal = window.heldJournal931 = await openJournal({ instanceId: b.instance_id, actor: b.actor });
+    const editor = new Editor({ instanceId: b.instance_id, actor: b.actor, kind: 'reply', sourceRef: ref, topicId: 't1' }, state.draft);
+    await journal.save({ ...editor.snapshot(), activeAuthority: b.authority, authorityRecovery: null, attempts: [] });
+    const row = await journal.own(editor.key);
+    return { id: row.id, key: editor.key, format: row.snapshot.format, hasUploads: Object.hasOwn(row.snapshot, 'uploadState') };
+  }, facts.token);
+  assert.equal(held.format, 1); assert.equal(held.hasUploads, false, 'plain reply row has no upload state');
+  await page.reload(); await field.waitFor();
+  await page.waitForFunction(() => !document.querySelector('#inline-review-versions').hidden && document.querySelector('#inline-review-versions').textContent === 'Check recovery');
+  const heldShape = await page.evaluate(async ({ token, held }) => {
+    const { Api } = await import('/api.mjs'), { openJournal } = await import('/journal.mjs');
+    const b = await new Api(token).bootstrap(), journal = await openJournal({ instanceId: b.instance_id, actor: b.actor });
+    try {
+      const rows = await journal.current(held.key, [held.id]);
+      return { availability: rows[0]?.availability, hasSnapshot: Object.hasOwn(rows[0] ?? {}, 'snapshot'), uploadPresent: rows[0]?.uploadPresent };
+    } finally { journal.close(); }
+  }, { token: facts.token, held });
+  assert.deepEqual(heldShape, { availability: 'open-in-another-tab', hasSnapshot: false, uploadPresent: false });
+  await pill.click();
+  await page.locator('#review-content h3').filter({ hasText: /^Open in another tab$/ }).waitFor();
+  assert.equal(await page.locator('#review-retry').isVisible(), true);
+  assert.equal(await field.inputValue(), currentWords);
+  await page.screenshot({ path: `${evidence}/other-tab-recovery.png` });
+  await holder.evaluate(() => window.heldJournal931.close()); await holder.close();
+  await page.locator('#review-retry').click();
+  await page.waitForFunction(() => document.querySelector('#inline-review-versions').hidden);
+  await page.locator('#review-close').click();
+  results.push({ passed: true, scope: 'real plain journal row held in another tab has no snapshot, exposes Check recovery and Retry, then becomes quiet after its owner closes', heldShape });
   async function seed(refused, image = null) {
     await page.goto(unit);
     return page.evaluate(async ({ token, refused, image }) => {

@@ -8217,6 +8217,7 @@ test('933 bounded chunks publish atomically and reject missing, duplicate or for
 
 function review931() {
   const f = fixture('https://fixture/?topic=t1', { refusedAtDraft: uploadState931.refusedAtDraft, refusedCopyAtDraft: uploadState931.refusedCopyAtDraft, readableUploads: uploadState931.readableUploads });
+  f.editor.sourceRef = structuredClone(f.editor.context.sourceRef);
   Object.assign(f.editor, { localVersion: 4, ackVersion: 4, clientCycleId: 'cycle931',
     uploadState: { format: 2, revision: 1, client_cycle_id: 'cycle931', entries: [], submission_links: {} } });
   Object.assign(f.editor.draft, { id: 'draft931', generation: 'generation931', revision: 3, quotes: [], intent: 'tell', whisper: false });
@@ -8270,4 +8271,61 @@ test('931 identical writing with an unknown public send keeps a recovery action'
   assert.equal(needs(), false);
   const state = f.runObservation('reviewState(registry.inline.editors.reply)'); assert.equal(state.hidden, false); assert.equal(state.text, 'Check recovery');
   assert.equal(saved.snapshot.submissions[0].status, 'prepared');
+});
+
+test('931 R2 a plain other-tab journal row without snapshot keeps the recovery door', () => {
+  const { f, list, needs } = review931();
+  const held = { id: 'held', editorKey: f.editor.key, writerId: 'other-tab', stamp: 's', availability: 'open-in-another-tab', uploadPresent: false };
+  assert.equal(Object.hasOwn(held, 'snapshot'), false);
+  list([held]); assert.equal(needs(), false);
+  let state = f.runObservation('reviewState(registry.inline.editors.reply)');
+  assert.equal(state.hidden, false); assert.equal(state.text, 'Check recovery');
+  list([{ ...held, availability: 'unreadable' }]);
+  assert.equal(f.runObservation('reviewState(registry.inline.editors.reply)').hidden, false);
+  list([{ ...held, active: 0, superseded_by: 'new-writer' }]);
+  assert.equal(f.runObservation('reviewState(registry.inline.editors.reply)').hidden, true, 'retired rows need no recovery action');
+});
+test('931 R2 cleanup failure keeps the only door to retry', () => {
+  const { f, needs } = review931(); f.editor.cleanupError = 'Could not check the saved writing';
+  assert.equal(needs(), false);
+  const state = f.runObservation('reviewState(registry.inline.editors.reply)');
+  assert.equal(state.hidden, false); assert.equal(state.text, 'Check recovery');
+});
+test('931 R2 own retained bytes and unsettled image attempts keep recovery reachable', () => {
+  const { f, needs } = review931();
+  for (const entry of [
+    { selected: false, bytes_ref: 'retained-file', attempts: [] },
+    { selected: false, bytes_ref: null, attempts: [{ phase: 'publish-unknown', begin_response: { recorded: true }, publish_response: null }] },
+  ]) {
+    f.editor.uploadState.entries = [entry]; assert.equal(needs(), false);
+    const state = f.runObservation('reviewState(registry.inline.editors.reply)');
+    assert.equal(state.hidden, false); assert.equal(state.text, 'Check recovery');
+  }
+  f.editor.uploadState.entries = [{ selected: false, bytes_ref: null, attempts: [{ phase: 'ready', publish_response: { recorded: true } }] }];
+  assert.equal(f.runObservation('reviewState(registry.inline.editors.reply)').hidden, true, 'receipted work without bytes is quiet');
+});
+test('931 R2 opaque upload metadata keeps recovery reachable without reading malformed entries', () => {
+  const { f } = review931(); f.editor.uploadOpaque = true;
+  for (const entries of [undefined, {}, [null]]) {
+    f.editor.uploadState = { format: 2, entries };
+    const state = f.runObservation('reviewState(registry.inline.editors.reply)');
+    assert.equal(state.hidden, false); assert.equal(state.text, 'Check recovery');
+  }
+});
+test('931 R2 every conflict review rereads the remote, including its first comparison', async () => {
+  const { f } = review931();
+  const currentWords = f.editor.draft.body;
+  const remote = body => ({ ...structuredClone(f.editor.draft), body });
+  f.editor.conflict = { remote: remote('Obsolete remote'), attempted: structuredClone(f.editor.draft) };
+  f.registry.recoveryCandidates = async (_editor, _options, shown) => { const page = { items: [], nextCursor: null }; shown(page, false); return page; };
+  f.get('version-review').showModal = function() { this.open = true; };
+  let latest = 'Fresh remote one', reads = 0; const view = f.api.view;
+  f.api.view = async (name, args) => name === 'editor_state'
+    ? (++reads, { ...f.state(), draft: remote(latest) }) : view(name, args);
+  for (const words of ['Fresh remote one', 'Fresh remote two']) {
+    latest = words; await f.showVersions(f.editor, f.get('opener'), f.p);
+    assert.equal(f.get('review-content').children[0].children.at(-1).textContent, words);
+  }
+  assert.equal(reads, 2);
+  assert.equal(f.editor.draft.body, currentWords, 'fresh reads never overwrite current writing');
 });

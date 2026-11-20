@@ -8,9 +8,10 @@ export const equalWritingValue = (a, b) => {
 };
 export function writingValue(draft) {
   if (typeof draft?.body !== 'string') return null;
+  const addressees = draft.addressees ?? [];
   return { body: draft.body, attachments: (draft.attachments ?? []).map(r => ({ id: r.id })),
-    quotes: draft.quotes ?? [], addressees: draft.addressees ?? [], intent: draft.intent ?? null,
-    whisper: draft.whisper ?? null, reply_to: draft.reply_to ?? null, exchange_id: draft.exchange_id ?? null,
+    quotes: draft.quotes ?? [], addressees, intent: draft.intent ?? null,
+    whisper: draft.whisper === false && !addressees.length ? null : draft.whisper ?? null, reply_to: draft.reply_to ?? null, exchange_id: draft.exchange_id ?? null,
     opening: draft.opening ?? null };
 }
 export function imageValues(draft, uploadState, cycle, digests = {}) {

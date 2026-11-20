@@ -35,3 +35,12 @@ The relevant cohort's exact188 Item783 teardown failure is retained as red
 evidence. Its fixture must bind comparison controls to the newly loaded build
 after a server restart, while refusing restart of an unrestored comparison.
 The real fixture restart and unrestored-mutation controls verify both paths.
+
+Round two keeps Check recovery reachable for active unavailable journal rows,
+cleanup failures, retained local image bytes and unsettled local image attempts.
+These states do not claim a writing difference. An acknowledged older revision
+of the same draft slot is history across generations; while preparation leaves
+the successor revision unknown, its pending frozen snapshot retains the last
+confirmed integer revision. Unnamed public false/null whisper values compare
+alike, blank space alone is not writing, and every conflict review reads the
+current remote before presenting its first comparison.

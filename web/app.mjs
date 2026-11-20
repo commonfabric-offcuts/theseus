@@ -175,10 +175,13 @@ const reviewState = editor => {
   if (first) return { hidden: false, text: 'Review versions', title: first.label };
   // Recovery still owns its write gates. Unknown contents are not a version
   // difference, and an empty upload-state object is not a recovery action.
-  const unsettled = candidates.get(editor.key)?.items.some(row => row.snapshot?.authorityRecovery ||
+  const unsettled = candidates.get(editor.key)?.items.some(row => row.active !== 0 && !row.superseded_by && (row.availability !== 'available' || row.snapshot?.authorityRecovery ||
     row.snapshot?.attempts?.some(attempt => !attempt.detached && !attempt.receipt) ||
-    row.snapshot?.submissions?.some(item => !item.detached && ['preparing', 'prepared'].includes(item.status)));
-  const recovery = editor.authorityRecovery || editor.conflict || editor.uploadOpaque || editor.imageStorageError || editor.recoveryDiscovery || unsettled;
+    row.snapshot?.submissions?.some(item => !item.detached && ['preparing', 'prepared'].includes(item.status))));
+  const retained = Array.isArray(editor.uploadState?.entries) && editor.uploadState.entries.some(entry => entry && (!entry.selected && entry.bytes_ref ||
+    Array.isArray(entry.attempts) && entry.attempts.some(attempt => !attempt.detached && !attempt.receipt && attempt.publish_response?.recorded !== true &&
+      !(attempt.begin_response?.recorded === true && attempt.begin_response.status === 'rejected'))));
+  const recovery = editor.authorityRecovery || editor.conflict || editor.uploadOpaque || editor.imageStorageError || editor.recoveryDiscovery || editor.cleanupError || unsettled || retained;
   return { hidden: !recovery, text: 'Check recovery', title: recovery ? 'Check the saved writing or connection before sending' : '' };
 };
 const paintVersionButton = (button, editor) => {
@@ -221,13 +224,29 @@ function invalidateComparison(editor) {
 }
 async function showVersions(editor, opener = $('review-versions'), presentation = presentationFor(editor)) {
   if (!registry.isCurrent(presentation, editor)) throw Error('Open this writing before reviewing its versions.');
-  const first = differences(editor)[0];
-  const serial = beginReview(first ? 'Review versions' : 'Saved writing and recovery', opener), session = registry.sessionFor(editor);
+  const serial = beginReview(differences(editor).length ? 'Review versions' : 'Saved writing and recovery', opener), session = registry.sessionFor(editor);
   const current = () => serial === reviewSerial && review.open && registry.isCurrent(presentation);
   const action = run => () => { if (current() && registry.isCurrent(presentation, editor)) return run(); };
   const make = (label, run) => button(label, action(run));
   const localVersion = editor.localVersion, recovery = structuredClone(editor.authorityRecovery);
   const destination = editor.context.kind === 'note' ? 'Private note · only you' : `Reply to ${editor.context.topicId}`;
+  // Each opening reads the current remote before choosing the first difference.
+  // A failed read leaves it unknown, never displays a stale cached comparison.
+  const conflict = editor.conflict;
+  let remote = recovery ? (recovery.authority ? recovery.remote : undefined) : undefined;
+  if (!recovery && conflict) {
+    conflict.remote = undefined;
+    try {
+      const state = validate(await api.view('editor_state', { source_ref: editor.sourceRef, topic_id: editor.context.topicId }));
+      registry.validateState(state, editor.sourceRef, editor.context.topicId);
+      if (!current() || editor.conflict !== conflict) return;
+      remote = editor.context.kind === 'note' ? state.note : state.draft;
+      conflict.remote = remote; changed(editor);
+    } catch (error) { if (current()) reviewStatus(error.message); }
+  }
+  if (!current()) return;
+  const first = differences(editor)[0];
+  $('review-title').textContent = first ? 'Review versions' : 'Saved writing and recovery';
   if (first) $('review-content').append(version(first.label, first.draft?.body ?? null, first.draft ? imageSummary(editor, first.draft.attachments ?? []) : ''));
   $('review-content').append(version('Your current writing', editor.draft.body, destination));
   if (editor.context.kind === 'reply') {
@@ -251,15 +270,6 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
   // undefined: not read (say so and offer Retry); null: read, and nothing is
   // saved there. A runtime review records its authority only once it has read
   // both the runtime and the saved version, whether it is then ready or blocked.
-  let remote = recovery ? (recovery.authority ? recovery.remote : undefined) : editor.conflict?.remote;
-  if (!recovery && editor.conflict && remote === undefined) {
-    try {
-      const state = validate(await api.view('editor_state', { source_ref: editor.sourceRef, topic_id: editor.context.topicId }));
-      registry.validateState(state, editor.sourceRef, editor.context.topicId);
-      remote = editor.context.kind === 'note' ? state.note : state.draft;
-    } catch (error) { if (current()) reviewStatus(error.message); }
-  }
-  if (!current()) return;
   if ((recovery || editor.conflict) && !first?.remote) $('review-content').append(version('Saved private version', remote === undefined ? 'Saved version unavailable. Retry to read it; your writing is kept.' : remote?.body ?? null,
     remote ? `Revision ${remote.revision} · ${destination}` : destination));
   if (recovery) {
