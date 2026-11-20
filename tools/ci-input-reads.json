@@ -4240,6 +4240,12 @@
     "86b4b501522477e28a3af88cf8731f5d5ca400d2f2e7afced022a266085b957a": {
       "inputs": [],
       "scope": "generated/system/product"
+    },
+    "5d7beca93ce0f663587fb96a295dcd456e08942be8ad5c98854256d52629cfd9": {
+      "inputs": [
+        "web/stack-look.css"
+      ],
+      "scope": "repository"
     }
   },
   "tests/ui_boot.test.mjs": {
