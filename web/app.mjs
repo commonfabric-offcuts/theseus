@@ -2016,9 +2016,29 @@ function paintReaderThumb$() {
 // close/save owner after Core records success. A late answer owns only the
 // presentation captured at its press, never a Reader opened meanwhile (889).
 async function closeReaderAfterAnswer(presentation, receipt) {
-  if (receipt?.status !== 'committed' || !registry.isCurrent(presentation) ||
+  if (receipt?.status === 'committed') return closeReaderAfterAction(presentation);
+}
+async function closeReaderAfterAction(presentation) {
+  if (!registry.isCurrent(presentation) ||
       reader.presentation !== presentation || !reader.dialog.open) return;
   return reader.close();
+}
+// A swipe waits for the same personal fold the feed uses. Only its recorded
+// answer may close this presentation; the normal close owner keeps writing.
+async function foldReaderMessage(source) {
+  const presentation = registry.current, feed = stackFeed;
+  if (!feed || reader.presentation !== presentation || reader.source !== source) return;
+  const current = readerFeedItem();
+  const item = source?.source_ref?.kind === 'message' && current?.id === source.source_ref.id ? current : null;
+  const reason = feed.foldReason(item, true);
+  if (reason) { feed.refuseFold(reason); reader.notice(reason); return; }
+  try {
+    await feed.setFold(item, true, { focus: false });
+    await closeReaderAfterAction(presentation);
+  } catch (error) {
+    if (registry.isCurrent(presentation) && reader.presentation === presentation)
+      reader.notice(feed.notices.get(error.envelope?.operation_id)?.words ?? error);
+  }
 }
 // Read the current item at the press: an old button cannot answer a new source.
 async function answerFromReader(id, choice) {
@@ -3239,12 +3259,7 @@ async function initialize() {
     dossierName: source => readerDossierName(source),
     dossierCover: source => readerDossierCover(source),
     answered: closeReaderAfterAnswer,
-    // Item 648: same personal fold as the Reader's menu. Core and StackFeed
-    // retain starred/already folded, optimistic and refused/recovery behavior.
-    foldMessage: source => {
-      const item = readerFeedItem();
-      if (item && item.id === source.source_ref.id) stackFeed.setFold(item, true, { focus: false });
-    },
+    foldMessage: foldReaderMessage,
     people: whisperPeople, actor: () => bootstrap.actor,
   });
   // The Reader's ⋯ offers Wide or Stacked only where the window can choose, so

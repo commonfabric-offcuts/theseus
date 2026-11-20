@@ -21,8 +21,8 @@ export function messageFoldSwipe(surface, prepare) {
     const began = finger; finger = null;
     const touch = [...(event.changedTouches ?? [])].find(each => each.identifier === began?.id);
     if (!began?.act || !touch || touch.clientX - began.x < ACROSS || Math.abs(touch.clientY - began.y) > VERTICAL) return;
-    if (window.getSelection()?.isCollapsed !== false) began.act();
-  }, { passive: true });
+    if (window.getSelection()?.isCollapsed !== false) { event.preventDefault(); began.act(); }
+  }, { passive: false });
   surface.addEventListener('wheel', event => {
     if (event.ctrlKey || event.metaKey) { wheel = null; return; }
     const unitX = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? surface.clientWidth : 1;

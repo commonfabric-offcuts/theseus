@@ -5650,6 +5650,154 @@ async function decisionPage889(options) {
     configureCover() { configureCoverAnswers(() => ({ reactions: f.runObservation('reactions'), changed() {} })); } };
 }
 
+// 908 reuses the actual close/save chain, and binds the actual Reader gesture
+// to the app's existing callback. Only event/transport/device ports are fake.
+async function foldPage908(acts = {}) {
+  const d = await decisionPage889(), { f } = d;
+  f.views.ownAct = TopicViews.prototype.ownAct;
+  const item = f.views.messages.get(d.item.id); item.acts = { fold_revision: 3, ...acts };
+  d.presentation.source.topic_id = 't1';
+  Object.assign(f.reader, { source: d.presentation.source, sourceBody: f.get('source-body') });
+  f.paintViews('messages');
+  await drain(); d.commands.length = 0; // Finish the initial reading mark before measuring the swipe.
+  let pending;
+  const fold = f.reader.callbacks.foldMessage;
+  f.reader.callbacks.foldMessage = source => { pending = fold(source); return pending; };
+  const target = { parentElement: f.reader.sourceBody, scrollWidth: 100, clientWidth: 100, closest: () => null };
+  RealReader.prototype.bindSwipe.call(f.reader);
+  const swipe = () => {
+    const before = globalThis.window; globalThis.window = { getSelection: () => ({ isCollapsed: true }) };
+    let prevented = false;
+    try { f.reader.sourceBody.handlers.wheel({ target, deltaX: -100, deltaY: 0, deltaMode: 0, timeStamp: 500, preventDefault() { prevented = true; } }); }
+    finally { if (before === undefined) delete globalThis.window; else globalThis.window = before; }
+    assert.equal(prevented, true); return pending;
+  };
+  return { ...d, item, swipe, feed: f.runObservation('stackFeed') };
+}
+
+test('908 Reader swipe waits for the committed fold and existing writing save before closing', async () => {
+  const d = await foldPage908(), answer = defer(), device = d.holdDevice();
+  d.setCommand(() => answer.promise); const done = d.swipe(); await drain();
+  assert.equal(d.commands.length, 1); assert.equal(d.commands[0].kind, 'message.fold');
+  assert.equal(d.commands[0].expected.fold_revision, 3); assert.equal(d.commands[0].args.folded, true);
+  assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0);
+  d.f.editor.draft.body = 'new writing while the fold waits';
+  answer.resolve({ status: 'committed', result: { message_id: d.item.id, folded: true, fold_revision: 4 } }); await drain();
+  assert.equal(d.saved.length, 1, d.f.get('reader-notice').textContent); assert.equal(d.closes.length, 0);
+  assert.equal(d.saved[0].draft.body, 'new writing while the fold waits');
+  assert.deepEqual(d.saved[0].draft.attachments, [{ id: 'fixture-image-889' }]);
+  device.resolve(); await done; await drain();
+  assert.equal(d.closes.length, 1); assert.equal(d.f.reader.dialog.open, false);
+  assert.equal(d.item.acts.folded, true); assert.equal(d.f.editor.draft.body, 'new writing while the fold waits');
+});
+
+for (const kind of ['refused', 'lost']) test(`908 ${kind} fold keeps Reader writing and shows its notice`, async () => {
+  const d = await foldPage908();
+  d.setCommand(async () => { if (kind === 'lost') throw new AttemptError('Connection interrupted');
+    return { status: 'rejected', error: { code: 'FORBIDDEN', message: 'Folding is not allowed here' } }; });
+  await d.swipe(); await drain();
+  assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0);
+  assert.equal(d.f.reader.dialog.open, true); assert.equal(d.f.editor.draft.body, 'unsent exact words');
+  assert.match(d.f.get('reader-notice').textContent, kind === 'lost' ? /connection was interrupted/i : /Folding is not allowed here/);
+  assert.notEqual(d.item.acts.folded, true); d.feed.deafen();
+});
+
+test('908 a late committed fold cannot close a replacement Reader', async () => {
+  const d = await foldPage908(), answer = defer(); d.setCommand(() => answer.promise);
+  const done = d.swipe(); await drain();
+  const next = { source: { source_ref: { kind: 'memory', id: 'next908' } }, editors: { reply: d.f.editor } };
+  d.f.registry.current = next; d.f.reader.presentation = next; d.f.reader.viewToken++;
+  answer.resolve({ status: 'committed', result: { message_id: d.item.id, folded: true, fold_revision: 4 } }); await done; await drain();
+  assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0); assert.equal(d.f.registry.current, next);
+  assert.equal(d.item.acts.folded, true, 'the original fold really committed');
+});
+
+test('908 a failed device save after the fold keeps Reader and writing open', async () => {
+  const d = await foldPage908(); d.refuseDevice();
+  d.setCommand(async () => ({ status: 'committed', result: { message_id: d.item.id, folded: true, fold_revision: 4 } }));
+  await d.swipe(); await drain();
+  assert.equal(d.item.acts.folded, true); assert.equal(d.saved.length, 1);
+  assert.equal(d.closes.length, 0); assert.equal(d.f.reader.dialog.open, true);
+  assert.equal(d.f.editor.draft.body, 'unsent exact words');
+  assert.match(d.f.get('reader-notice').textContent, /kept|save|device/i);
+});
+
+test('908 a feed fold still leaves the open Reader and writing alone', async () => {
+  const d = await foldPage908();
+  d.setCommand(async () => ({ status: 'committed', result: { message_id: d.item.id, folded: true, fold_revision: 4 } }));
+  await d.feed.swipeAct(entryIn(d.f, d.item.id), true);
+  assert.equal(d.item.acts.folded, true); assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0);
+});
+
+for (const [acts, reason] of [[{ starred: true }, 'Starred messages stay in view; unstar it to fold.'], [{ folded: true }, 'Already folded.']])
+  test(`917 Reader refused swipe says ${reason}`, async () => {
+    const d = await foldPage908(acts); await d.swipe(); await drain();
+    assert.equal(d.commands.length, 0); assert.equal(d.closes.length, 0);
+    assert.equal(d.f.get('app-status').textContent, reason); assert.equal(d.f.get('reader-notice').textContent, reason);
+  });
+
+test('917 a qualifying feed swipe with no message is consumed and says what happened', async () => {
+  const d = await foldPage908(); let prevented = false;
+  d.feed.wheeled({ target: d.f.get('messages'), deltaX: -100, deltaY: 0, deltaMode: 0, timeStamp: 500, preventDefault() { prevented = true; } });
+  assert.equal(prevented, true); assert.equal(d.commands.length, 0);
+  assert.equal(d.f.get('app-status').textContent, 'Nothing to fold here'); assert.equal(d.closes.length, 0);
+});
+
+test('917 a Reader without a message consumes its swipe and gives the existing notice', async () => {
+  const d = await foldPage908(); d.f.reader.source = null; RealReader.prototype.bindSwipe.call(d.f.reader);
+  await d.swipe(); await drain();
+  assert.equal(d.commands.length, 0); assert.equal(d.closes.length, 0);
+  assert.equal(d.f.get('reader-notice').textContent, 'Nothing to fold here');
+  assert.equal(d.f.get('app-status').textContent, 'Nothing to fold here');
+});
+
+test('917 a starred feed message consumes wheel and touch refusals without a command', async () => {
+  const d = await foldPage908({ starred: true }), card = entryIn(d.f, d.item.id);
+  d.f.document.getSelection = () => ({ isCollapsed: true });
+  let consumed = 0;
+  d.feed.wheeled({ target: card, deltaX: -100, deltaY: 0, deltaMode: 0, timeStamp: 500, preventDefault() { consumed++; } });
+  d.feed.swipe = { x: 0, y: 0, target: card };
+  d.feed.swiped({ changedTouches: [{ clientX: 100, clientY: 0 }], preventDefault() { consumed++; } });
+  assert.equal(consumed, 2); assert.equal(d.commands.length, 0);
+  assert.equal(d.f.get('app-status').textContent, 'Starred messages stay in view; unstar it to fold.');
+});
+
+test('919 the Reader star agrees on first paint and immediately after unstar', async () => {
+  const d = await foldPage908({ starred: true });
+  d.f.runObservation('paintReaderStar()');
+  assert.equal(d.f.get('reader-star').hidden, false); assert.equal(d.f.get('reader-star').getAttribute('aria-pressed'), 'true');
+  assert.equal(d.f.get('reader-star').textContent, '★');
+  d.item.acts = { starred: false, star_revision: 2 }; d.f.paintViews('acts');
+  assert.equal(d.f.get('reader-star').getAttribute('aria-pressed'), 'false');
+  assert.equal(d.f.get('reader-star').textContent, '☆');
+});
+
+test('917 a starred message retains a disabled Fold menu row with the same reason', async () => {
+  const d = await foldPage908({ starred: true });
+  const choice = d.feed.menuItems(d.item, { reader: true }).first.find(item => item.key === 'fold');
+  assert.ok(choice); assert.equal(choice.disabled, true);
+  assert.match(choice.label, /Starred messages stay in view; unstar it to fold\./);
+});
+
+test('919 starred first card paints its filled star and dossier cue without a pointer event', async () => {
+  const { f, stackOf } = await conversationPage([
+    { id: 'star919', seq: 1, author_id: 'agent-a', body: 'Starred first message', acts: { starred: true, star_revision: 1 } },
+    { id: 'reply919', seq: 2, author_id: 'dan', reply_to: 'star919', body: 'A reply' },
+  ]);
+  const card = entryIn(f, 'star919'), star = card.querySelector(':scope > .message-author > .card-star');
+  assert.equal(card.dataset.starred, 'true'); assert.equal(star.textContent, '★'); assert.equal(star.getAttribute('aria-pressed'), 'true');
+  const nodes = node => [node, ...(node.children ?? []).flatMap(nodes)];
+  assert.equal(nodes(stackOf('star919')).find(node => node.classList?.contains('stack-star')).textContent, '★ Starred');
+  f.views.messages.get('star919').acts = { starred: false, star_revision: 2 }; f.paintViews('acts');
+  assert.equal(card.dataset.starred, 'false'); assert.equal(star.textContent, '☆');
+});
+
+test('919 a starred first card has no CSS exception hiding its painted star until hover', () => {
+  const look = webSource('stack-look.css');
+  assert.match(look, /\[data-starred=true\] \.card-star\{visibility:visible\}/);
+  assert.doesNotMatch(look, /\.stack-head-card\[data-starred=true\][^{]*\{[^}]*visibility:hidden/);
+});
+
 test('889 both Reader decisions wait for recorded success and the real device-save barrier before closing', async () => {
   for (const choice of ['yes', 'no']) {
     const d = await decisionPage889(), { f } = d, answer = defer(); d.setCommand(() => answer.promise);

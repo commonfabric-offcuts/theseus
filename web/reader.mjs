@@ -101,7 +101,7 @@ export class Reader {
   bindSwipe() {
     messageFoldSwipe(this.sourceBody, () => {
       const source = this.source;
-      const available = () => this.dialog.open && this.source === source && source?.source_ref?.kind === 'message'
+      const available = () => this.dialog.open && this.source === source
         && !this.presentation?.sourceUnavailable && !this.presentation?.availabilityUnconfirmed;
       return available() ? () => { if (available()) this.callbacks.foldMessage?.(source); } : null;
     });
