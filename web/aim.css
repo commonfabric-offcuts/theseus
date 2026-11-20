@@ -1100,6 +1100,7 @@ dialog.notebook-sheet-dialog:not([open]){display:none}
 .sheet-glyph{display:inline-grid;place-items:center;width:2.75rem;height:2.75rem;min-height:0;padding:0;border:0;border-radius:.5rem;background:transparent;color:var(--muted);font-size:1.05rem;text-decoration:none}
 .sheet-glyph:hover{background:var(--soft);color:var(--ink)}
 .notebook-sheet-head .sheet-glyph{flex:none;width:2.5rem;height:2.5rem}
+.notebook-sheet-dock[aria-pressed=true]{background:var(--soft);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
 .notebook-sheet-pages{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--paper)}
 .notebook-sheet-page{flex:1;min-height:0;max-width:none;scroll-padding-top:.75rem;display:flex;flex-direction:column;gap:.6rem;overflow:auto;overscroll-behavior:contain;padding:0 1.1rem 1.1rem}
 .notebook-sheet-page>*{flex:none}

@@ -347,7 +347,7 @@ export class NotebookPage extends DeckPage {
     const items=[
       {label:'Show as text',glyph:'text',checked:this.mode==='text',act:()=>this.switchView('text')},
       {label:'Show as cards',glyph:'stack',checked:this.mode==='cards',act:()=>this.switchView('cards')},
-      {label:'Draft',glyph:'draft',checked:this.drafted(),description:DRAFT.note,disabled:!canWrite(),act:()=>{if(canWrite())this.markDraft(!this.drafted());}},
+      {label:'Private Draft',glyph:'draft',checked:this.drafted(),disabled:!canWrite(),act:()=>{if(canWrite())this.markDraft(!this.drafted());}},
       ...(this.menuExtras?.('beforeImage')??[]),
       {label:'Add image…',glyph:'image',disabled:!canWrite(),act:()=>{if(canWrite())this.addImage.onclick();}},
       ...(this.menuExtras?.('afterImage')??[]),

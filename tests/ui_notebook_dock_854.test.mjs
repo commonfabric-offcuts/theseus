@@ -15,7 +15,7 @@ test('854/871 head and menu switch the same writing; close and Escape dismiss ei
   assert.equal(f.sheet.docked,true);assert.equal(f.sheet.dockButton.hidden,false);
   f.sheet.dockButton.onclick();assert.equal(f.sheet.docked,false);assert.equal(f.calls.at(-1),'modal');
   assert.ok(f.sheet.current===f.page);assert.equal(editor.value,'Exact unsaved card');assert.ok(f.doc.activeElement===editor);
-  const dock=f.page.menuExtras('afterImage').find(x=>x.label==='Open with Dossiers');assert.ok(dock);dock.act();assert.equal(f.sheet.docked,true);
+  const dock=f.page.menuExtras('afterImage').find(x=>x.label==='Side by side');assert.ok(dock);dock.act();assert.equal(f.sheet.docked,true);
   f.sheet.closer.onclick();assert.equal(f.sheet.showing,false);assert.equal(f.sheet.dialog.open,false);
   await f.sheet.open('p');f.emit('keydown',event(editor,'Escape'));assert.equal(f.sheet.showing,false);assert.equal(f.sheet.dialog.open,false);
   assert.equal(editor.value,'Exact unsaved card');

@@ -120,7 +120,7 @@ export class NotebookSheet {
   canDock() { return Boolean(this.feed && this.wide?.matches); }
   paintDock() {
     this.dockButton.hidden = !this.canDock(); this.dockButton.setAttribute('aria-pressed', String(this.docked));
-    const layout = this.docked ? 'Wide' : 'Open with Dossiers';
+    const layout = 'Side by side';
     this.dockButton.title = layout; this.dockButton.setAttribute('aria-label', layout);
     this.dialog.classList.toggle('notebook-docked', this.docked);
     this.doc.body.classList.toggle('notebook-docked', this.docked);
@@ -190,7 +190,7 @@ export class NotebookSheet {
       page = this.make(id, host, header, '-sheet', () => this.revised(page));
       page.menuExtras = position => {
         if (position === 'beforeImage') return this.docked && this.dossiers ? [{ label: 'Choose dossier…', glyph: 'dossier', act: () => this.dossiers.toggle() }] : [];
-        return position === 'afterImage' && this.canDock() ? [{ label: this.docked ? 'Wide' : 'Open with Dossiers', glyph: 'layout', act: () => this.setDocked(!this.docked) }] : [];
+        return position === 'afterImage' && this.canDock() ? [{ label: 'Side by side', glyph: 'layout', checked: this.docked, act: () => this.setDocked(!this.docked) }] : [];
       };
       page.keyScope = target => !this.docked || this.dialog.contains(target);
       page.sheetTitle = header.title;

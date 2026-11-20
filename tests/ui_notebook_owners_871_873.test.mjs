@@ -8,7 +8,6 @@ import { openMessageMenu } from '../web/message-menu.mjs';
 import { shareLinksFrom } from '../web/links.mjs';
 import { glyph } from '../web/glyphs.mjs';
 import { APPROVED } from './menu_glyphs.mjs';
-import { DRAFT_TIP } from '../web/topic-navigation.mjs';
 
 const event=(target,key)=>({target,key,preventDefault(){this.defaultPrevented=true;},stopPropagation(){}});
 const item=(page,label)=>{const found=NotebookPage.prototype.menuItems.call(page).find(x=>x.label===label);assert.ok(found,`menu offers ${label}`);return found;};
@@ -33,8 +32,8 @@ test('871 default dock, Wide preference, resize and close retain one page and un
   const f=notebookFixture(t);await f.sheet.open('p');
   const edit=f.doc.createElement('textarea');edit.value='Exact unsaved card';f.page.host.append(edit);f.page.editing={field:edit};f.page.host.scrollTop=421;
   assert.equal(f.sheet.docked,true,'eligible opening defaults beside Dossiers');
-  assert.equal(f.sheet.dockButton.title,'Wide');f.sheet.dockButton.onclick();
-  assert.equal(f.sheet.docked,false);assert.equal(f.sheet.dockButton.title,'Open with Dossiers');assert.equal(f.storage.get('notebook-docked'),'false');
+  assert.equal(f.sheet.dockButton.title,'Side by side');f.sheet.dockButton.onclick();
+  assert.equal(f.sheet.docked,false);assert.equal(f.sheet.dockButton.title,'Side by side');assert.equal(f.storage.get('notebook-docked'),'false');
   f.sheet.close();await f.sheet.open('p');assert.equal(f.sheet.docked,false);assert.equal(f.page.host.scrollTop,421);
   f.sheet.dockButton.onclick();f.media.matches=false;f.media.changed();assert.equal(f.sheet.docked,false);
   f.media.matches=true;f.media.changed();assert.equal(f.sheet.docked,true);assert.ok(f.sheet.current===f.page);assert.equal(edit.value,'Exact unsaved card');
@@ -96,26 +95,26 @@ test('873 only page menu joins fixed title controls; toolbar and Add image leave
   f.sheet.close();await f.sheet.open('p');assert.equal(f.page.status.textContent,'Could not save. Retry');assert.equal(f.page.pageNotice.textContent,'Action refused');
 });
 
-test('873 common menu orders checked views, described Draft, sheet choices and existing acts',async t=>{
+test('873 common menu orders checked views, Private Draft, sheet choices and existing acts',async t=>{
   const f=notebookFixture(t);await f.sheet.open('p');f.sheet.setDocked(true);const p=menuPage(f),acts=[];
   p.switchView=mode=>{acts.push(['view',mode]);p.mode=mode;};p.markDraft=value=>{acts.push(['draft',value]);p.writing.value.draft=value;};
   p.addImage.onclick=()=>acts.push(['image']);p.rename=()=>acts.push(['rename']);p.pageAction=(...args)=>acts.push(args);f.doc.defaultView.confirm=()=>true;
   let menu=NotebookPage.prototype.menuItems.call(p);
-  assert.deepEqual(menu.map(x=>x.label),['Show as text','Show as cards','Draft','Choose dossier…','Add image…','Wide','Star','Rename','Delete','Copy Link']);
-  assert.deepEqual(menu.slice(0,3).map(x=>x.checked),[false,true,true]);assert.equal(item(p,'Draft').description,DRAFT_TIP);
-  item(p,'Show as text').act();assert.equal(item(p,'Show as text').checked,true);item(p,'Draft').act();item(p,'Add image…').act();
+  assert.deepEqual(menu.map(x=>x.label),['Show as text','Show as cards','Private Draft','Choose dossier…','Add image…','Side by side','Star','Rename','Delete','Copy Link']);
+  assert.deepEqual(menu.slice(0,3).map(x=>x.checked),[false,true,true]);assert.equal(item(p,'Private Draft').description,undefined);
+  item(p,'Show as text').act();assert.equal(item(p,'Show as text').checked,true);item(p,'Private Draft').act();item(p,'Add image…').act();
   item(p,'Star').act();item(p,'Rename').act();item(p,'Delete').act();
   assert.deepEqual(acts,[['view','text'],['draft',false],['image'],['memory.star',{starred:true}],['rename'],['memory.delete',{deleted:true}]]);
   item(p,'Choose dossier…').act();assert.equal(f.sheet.dossiers.showing,true);assert.ok(f.sheet.dossiers.anchor===p.more);
-  item(p,'Wide').act();menu=NotebookPage.prototype.menuItems.call(p);assert.ok(!menu.some(x=>x.label==='Choose dossier…'));assert.ok(item(p,'Open with Dossiers'));
+  item(p,'Side by side').act();menu=NotebookPage.prototype.menuItems.call(p);assert.ok(!menu.some(x=>x.label==='Choose dossier…'));assert.ok(item(p,'Side by side'));
 });
 
 test('873 read-only/deleted menu and disabled shared-menu keyboard preserve Draft without a write',async t=>{
   const f=notebookFixture(t),p=menuPage(f);p.readOnly=true;let writes=0;p.markDraft=()=>writes++;p.addImage.onclick=()=>writes++;
-  assert.equal(item(p,'Draft').checked,true);assert.equal(item(p,'Draft').disabled,true);assert.equal(item(p,'Add image…').disabled,true);
-  item(p,'Draft').act();item(p,'Add image…').act();assert.equal(writes,0,'stale direct actions also enforce read-only');
+  assert.equal(item(p,'Private Draft').checked,true);assert.equal(item(p,'Private Draft').disabled,true);assert.equal(item(p,'Add image…').disabled,true);
+  item(p,'Private Draft').act();item(p,'Add image…').act();assert.equal(writes,0,'stale direct actions also enforce read-only');
   f.doc.body.append(p.more);const menu=openMessageMenu({anchor:p.more,doc:f.doc,win:{innerWidth:1000,innerHeight:1000},items:[
-    {label:'Draft',glyph:'star',checked:true,disabled:true,description:DRAFT_TIP,act:()=>writes++},
+    item(p,'Private Draft'),
     {label:'Enabled',glyph:'link',act:()=>{}}]});
   t.after(()=>menu.close(false));assert.equal(menu.root.children[0].disabled,true);assert.ok(f.doc.activeElement===menu.root.children[1]);
   menu.root.children[0].onclick(event(p.more));assert.equal(writes,0);assert.equal(menu.root.isConnected,true);
@@ -147,7 +146,7 @@ test('873 menu Draft uses the same captured revision and Undo owner as its old t
   p.textSeen={revision:2,content:{body:'Text',draft:true}};p.cardsSeen={revision:2,content:{body:'Card',draft:true}};
   p.markDraft=NotebookPage.prototype.markDraft;
   p.writing.edit=(change,seen,mode)=>{edits.push({change,revision:seen.revision,body:seen.content.body,mode});Object.assign(p.writing.value,change);return true;};
-  item(p,'Draft').act();assert.deepEqual(edits,[{change:{draft:false},revision:2,body:'Card',mode:'cards'}]);
+  item(p,'Private Draft').act();assert.deepEqual(edits,[{change:{draft:false},revision:2,body:'Card',mode:'cards'}]);
   assert.deepEqual(p.undos,[{kind:'draft',draft:true}]);assert.equal(p.textSeen.content.draft,false);assert.equal(p.cardsSeen.content.draft,false);
   NotebookPage.prototype.undo.call(p);assert.equal(p.drafted(),true);assert.equal(p.undos.length,0);
 });
@@ -160,7 +159,7 @@ test('871 retirement removes only Notebook and closing a docked page preserves m
 
 test('873 menu glyphs keep the chosen card drawing and draw the four new meanings',t=>{
   const f=notebookFixture(t),p=menuPage(f);
-  for(const [label,name] of [['Show as text','text'],['Show as cards','stack'],['Draft','draft'],['Add image…','image']])assert.equal(item(p,label).glyph,name);
+  for(const [label,name] of [['Show as text','text'],['Show as cards','stack'],['Private Draft','draft'],['Add image…','image']])assert.equal(item(p,label).glyph,name);
   for(const name of ['text','draft','image','dossier']){
     const drawing=glyph(name,f.doc);assert.equal(drawing.getAttribute('aria-hidden'),'true');assert.equal(drawing.children[0].getAttribute('d'),APPROVED[name].d);assert.ok(APPROVED[name].d.length>15);
   }
