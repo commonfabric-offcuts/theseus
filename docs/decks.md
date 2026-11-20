@@ -422,9 +422,10 @@ the Reader, or in place on its outcome's page, to read.
 The sheet's fixed header (887) shows the title, save dot and last confirmation
 time, Rename (✎), then a stateful Star (☆/★). Rename is absent for a reader who
 may not write. The actions follow in this order: New card (+, Cards only),
-Side by side where available, the page menu, and ✕. The header can wrap on a
-phone; every pressable retains its 44-point floor. The docked frame has no
-border; the shared `--stack-cover-inset` remains in both themes.
+Side by side where available, the page menu, and ✕. The title takes only its
+own width and truncates before the status and actions move; the header stays
+on one row on a phone. Every pressable retains its 44-point floor. The docked
+frame has no border; the shared `--stack-cover-inset` remains in both themes.
 
 In Cards, the page menu begins with Edit (Done while writing) and Undo,
 showing ⌘Return and ⌘Z. The New card button's tooltip shows Return. Open as a
@@ -441,8 +442,10 @@ status: Core does not expose a historical save timestamp. Repainting or
 switching views never advances the time for the same revision. A failed or
 refused save removes the dot; its complete explanation, Try again and Discard
 my writing stay in the scroller, with their existing recovery acts and live
-region. The compact dot/time has its own live region and an accessible save
-name. A late response from a departing page cannot change the current header.
+region. The empty recovery region stays rendered using the shared visually
+hidden pattern; a failure fills that same existing region. The compact dot/time
+has its own live region and an accessible save name. A late response from a
+departing page cannot change the current header.
 
 The same controls move with the active NotebookPage; neither the writing nor
 its scroll owner is replaced. New message keeps its own composer, available
