@@ -166,10 +166,10 @@ const styles = (selectors, width = 1440, dark = false) => Object.assign({}, ...s
 const resolve = (value, tokens) => value?.replace(/var\((--[\w-]+)\)/g, (_, name) => resolve(tokens[name], tokens));
 
 test('879 source layout gives the rail space back and fits four or more cards at 1440, one on phones', () => {
-  const outcomeLayout = ['.workspace-layout', '[data-rails] .workspace-layout', '[data-rails] .workspace-layout:has(>#things[hidden])'];
+  const outcomeLayout = ['.workspace-layout', '[data-rails] .workspace-layout', '[data-rails] .workspace-layout:has(#outcome-page)'];
   assert.equal(styles(outcomeLayout)['grid-template-columns'], '18rem minmax(0,1fr)', 'no empty right-rail column on an outcome');
   assert.equal(styles(['.workspace-layout', '[data-rails] .workspace-layout'])['grid-template-columns'], '18rem minmax(0,1fr) 18rem', 'topics keep both rails');
-  assert.equal(styles(['main', '[data-rails] .workspace-layout:has(>#things[hidden]) #main'])['max-width'], 'none');
+  assert.equal(styles(['main', '[data-rails] .workspace-layout:has(#outcome-page) #main'])['max-width'], 'none');
   assert.equal(styles(['.selection-page', '[data-rails] #outcome-page'])['max-width'], 'none');
   const grid = styles(['.outcome-topic-grid']), pattern = /^repeat\(auto-fit,minmax\(min\(100%,([\d.]+)rem\),1fr\)\)$/;
   assert.match(grid['grid-template-columns'], pattern, 'columns fit the available width');
@@ -189,4 +189,13 @@ test('879 source title and meta resolve to white only in dark mode; light colors
     assert.equal(title, dark ? '#fff' : '#23695e', 'title ' + (dark ? 'dark' : 'light'));
     assert.equal(meta, dark ? '#fff' : '#59636a', 'meta ' + (dark ? 'dark' : 'light'));
   }
+});
+
+test('879 a non-outcome page with its right rail hidden retains three columns and the main cap', () => {
+  // This page matches the hidden-rail selector, but has no #outcome-page.
+  // Evaluate the actual matching source rules; this is not a layout measurement.
+  const layout = ['.workspace-layout', '[data-rails] .workspace-layout', '[data-rails] .workspace-layout:has(>#things[hidden])'];
+  const main = ['main', '[data-rails] .workspace-layout:has(>#things[hidden]) #main'];
+  assert.deepEqual({ columns: styles(layout)['grid-template-columns'], mainMax: styles(main)['max-width'] },
+    { columns: '18rem minmax(0,1fr) 18rem', mainMax: '75rem' });
 });
