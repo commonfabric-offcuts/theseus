@@ -72,13 +72,15 @@ class LiveFeed:
     same moment.
     """
 
-    def __init__(self, db_path, companions=(), max_streams=8, runner_gone=None, health_due=None):
+    def __init__(self, db_path, companions=(), max_streams=8, runner_gone=None, health_due=None, actor=None):
         self.db_path = Path(db_path)
         self.lock = threading.Lock()
         self.slots = threading.BoundedSemaphore(max_streams)
         self.wakers = {}  # each stream's read end: its write end
         self.seq = None  # until the thread's first read
         self.light = None  # what is red at self.seq, or None when Core kept none for it
+        self.actor = actor
+        self.outcomes = '0'
         self.ended = None
         self.stopped = False
         self.reading = False  # the thread is in a read that may wait on a writer's lock
@@ -112,7 +114,8 @@ class LiveFeed:
         try:
             db.execute("PRAGMA query_only=ON")
             # One statement, so the number and what is red with it are one snapshot.
-            values = dict(db.execute("SELECT key,value FROM metadata WHERE key IN ('commit_seq','health_due','health_light')"))
+            outcome_key = 'outcome_list:' + (self.actor or '')
+            values = dict(db.execute("SELECT key,value FROM metadata WHERE key IN ('commit_seq','health_due','health_light',?)", (outcome_key,)))
             runner = db.execute("SELECT runner_pid FROM runner_state WHERE id=1 AND state='running'").fetchone()
         finally:
             db.close()
@@ -120,7 +123,8 @@ class LiveFeed:
         if not isinstance(row, str) or not row.isascii() or not row.isdigit():
             raise ValueError("commit_seq is unreadable")
         due = due if isinstance(due, str) and due.isascii() and due.isdigit() else None
-        return int(row), runner[0] if runner else None, None if due is None else int(due), _light(values.get("health_light"), int(row))
+        return (int(row), runner[0] if runner else None, None if due is None else int(due),
+                _light(values.get("health_light"), int(row)), values.get(outcome_key, '0'))
 
     def _settled_seq(self):
         """The commit number, the running runner's pid and Core's next health moment once no writer holds the lock, or None if the feed is stopping.
@@ -150,10 +154,10 @@ class LiveFeed:
                     read = self._settled_seq()
                     if read is None:
                         break
-                    seq, runner, due, light = read
+                    seq, runner, due, light, outcomes = read
                     with self.lock:
                         if seq != self.seq:
-                            self.seq, self.light = seq, light
+                            self.seq, self.light, self.outcomes = seq, light, outcomes
                             self._wake_all()
                     if not self._watch_runner(runner):
                         break
@@ -278,6 +282,11 @@ class LiveFeed:
         """(latest commit number, what is red at it or None, why the feed ended or None), read together."""
         with self.lock:
             return self.seq, self.light, self.ended
+
+    def commit_snapshot(self):
+        """The same commit's light and this reader's outcome-list key."""
+        with self.lock:
+            return self.seq, self.light, self.outcomes, self.ended
 
     def subscribe(self):
         """A descriptor that becomes readable on each new commit and when the feed ends,

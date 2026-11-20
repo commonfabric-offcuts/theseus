@@ -5311,5 +5311,37 @@
         "web/app.mjs"
       ]
     }
+  },
+  "tests/test_outcome_live_key_904.py": {
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_static_cache_904.py": {
+    "5d8d24f269986a98678e899ed883c558c18e36947a3177de9b9538860861b003": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "5e70d7423f056fc5d4235264dd6ee7245931eb07679925fbc0e83374d36ae510": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "8d12e9ec83314f0009f316032076a2c9ebe739b70b53c3f75c22a93b92cc25a9": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "8d12e9ec83314f0009f316032076a2c9ebe739b70b53c3f75c22a93b92cc25a9:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "8d12e9ec83314f0009f316032076a2c9ebe739b70b53c3f75c22a93b92cc25a9:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "a5814a4d26f2dae2bea36604a91929b3550f7f78921c3b9f009ed3fafb7f070e": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
   }
 }

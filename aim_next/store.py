@@ -579,6 +579,16 @@ class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, 
     def _change(self, db, scope_kind, scope_id, kind, record_id, version):
         db.execute("INSERT INTO changes(scope_kind,scope_id,resource_kind,resource_id,version) VALUES (?,?,?,?,?)",
                    (scope_kind, scope_id, kind, record_id, version))
+        # An opaque, reader-scoped list hint travels with Live. No history scan,
+        # and private outcomes never change an unrelated reader's key.
+        readers = []
+        if scope_kind == 'workspace' and kind == 'workspace':
+            readers = [row[0] for row in db.execute('SELECT actor_id FROM workspace_members WHERE workspace_id=?', (scope_id,))]
+        elif scope_kind == 'actor' and kind in ('workspace', 'outcome_order'):
+            readers = [scope_id]
+        for reader in readers:
+            db.execute("INSERT INTO metadata(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                       ('outcome_list:' + reader, uuid.uuid4().hex))
 
     def _outcome_change(self, db, workspace_id, version):
         """The outcome's own record changed: its team, owner or coordinator. Open outcome

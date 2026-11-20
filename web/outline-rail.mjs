@@ -249,6 +249,7 @@ export class OutlineRail {
   ready(handles) {
     if (!['topic', 'conversation', 'workspace'].includes(handles.route?.kind)) return;
     this.handles = handles;
+    this.outcomesKey = handles.live?.outcomes ?? null; this.readOutcomesKey = null;
     this.starting = handles.route?.kind === 'workspace';
     const { bootstrap } = handles;
     // What a move of the person's order is sent through, kept for the moments between runs.
@@ -264,7 +265,16 @@ export class OutlineRail {
     if (this.here) this.opened.set(this.here, true);
     this.unlisten?.();
     this.unlisten = handles.outcomeChanges ? handles.outcomeChanges.listen(dirty => this.reload(dirty))
-      : handles.live?.listen(event => { if ((event.kind === 'commit' || event.state === 'live') && this.doc.visibilityState === 'visible') this.reload(); }) ?? null;
+      : handles.live?.listen(event => {
+        if (typeof event.outcomes === 'string') this.outcomesKey = event.outcomes;
+        if (this.doc.visibilityState !== 'visible') return;
+        if (event.state === 'live') this.reload();
+        else if (event.kind === 'commit') {
+          const dirty = new Set(['topics', 'stars', 'pages']);
+          if (this.outcomesKey === null || this.outcomesKey !== this.readOutcomesKey) dirty.add('outcomes');
+          this.reload(dirty);
+        }
+      }) ?? null;
     for (const outcome of this.outcomes.values()) outcome.rail?.updateCurrent(this.currentTopicIn(outcome.id));
     this.doc.getElementById('rail')?.setAttribute('aria-label', 'Outcomes');
     this.paint();
@@ -285,7 +295,7 @@ export class OutlineRail {
   // for the run that is up. Settles false when any of them could not be read;
   // what it read lands only while its run is still the page.
   async load(dirty = null) {
-    const handles = this.handles, run = this.run, mine = () => run === this.run;
+    const handles = this.handles, run = this.run, outcomesKey = this.outcomesKey, mine = () => run === this.run;
     if (!handles) return true;
     const starReads = new Set([...this.dossiers.states.values(), ...this.notebookStars.states.values()].map(state => state.busy).filter(Boolean));
     const view = this.own(handles), read = args => view('workspaces', args), here = handles.workspaceId, max = handles.pageMax ?? PAGE;
@@ -302,6 +312,7 @@ export class OutlineRail {
       // The outcome being read is in the outline, however far down the list it is.
       while (wants('outcomes') && mine() && !this.pages.loaded.has(here) && this.pages.next !== null) this.pages.accept(await read({ limit: max, cursor: this.pages.next }), this.pages.next);
       if (!mine()) return true;
+      if (wants('outcomes')) this.readOutcomesKey = outcomesKey;
       this.failed = false;
     }
     catch (error) { if (!mine()) return true; this.failed = error; this.listRead = true; this.paint(); return false; }
