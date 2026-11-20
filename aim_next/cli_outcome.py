@@ -98,6 +98,10 @@ def register(verb):
     piece.add_argument("--size")
     piece.add_argument("--ask")
     piece.add_argument("--from-release", action="store_true")
+    move_piece = verb("move-piece")
+    move_piece.add_argument("piece")
+    move_piece.add_argument("--topic", required=True)
+    move_piece.add_argument("--expected", type=int, required=True)
     enter = verb("enter-stage")
     enter.add_argument("piece")
     enter.add_argument("stage")
@@ -350,6 +354,13 @@ class PipelineVerbs:
             args["ask_message_id"] = options.ask
         result = self.command("pipeline.stage_enter", {"piece_id": options.piece}, args)
         self.out.plain("%s entered %s, round %d" % (options.piece, result["stage_id"], result["round"]))
+
+    def do_move_piece(self):
+        options = self.options
+        result = self.command("pipeline.piece_move", {"piece_id": options.piece}, {"topic_id": options.topic},
+                              {"piece_revision": options.expected})
+        self.out.plain("piece %s moved from %s to %s (revision %d)" %
+                       (options.piece, result["from_topic_id"], result["topic_id"], result["piece_revision"]))
 
     def do_stage_note(self):
         options = self.options

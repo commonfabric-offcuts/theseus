@@ -545,6 +545,11 @@ are absolute local times.
   (docs/pipeline.md, "Who changes what"), and sets aside a piece holding one
   only with a go-ahead naming each such item; `item` then shows the move as
   `on OWNER's word (MSG)`.
+- `move-piece PIECE --topic T --expected N` repairs a piece's topic, by its
+  owner or coordinator, fenced on the piece version N from a JSON pipeline/item
+  read. Both topics refresh on open pages; writing and stage history stay put.
+  The destination is an agent-opened topic in the same outcome. A person's
+  topic and the outcome's Conversation cannot hold a new piece (632).
 - `piece OUTCOME N[,N...] --topic T --stage S [--size S] [--ask MSG]` starts
   work on items in a topic; `enter-stage PIECE STAGE [--round R] [--left approved|sent-back|passed|held] [--note N] [--ask MSG]`,
   `stage-note PIECE TEXT`, `combine OUTCOME --pieces P,... --topic T [--release N] [--commit SHA] [--ask MSG]`
