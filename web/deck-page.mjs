@@ -11,7 +11,7 @@ import { reach } from './arrow-reach.mjs';
 export const UNDO_LIMIT = 50;
 const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · → its speech bubble';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
-const WRITING_KEYS = 'Escape done · ⌘Return done and a new card below · ← at the very start folds the card away · ⌘↑ ⌘↓ move · Tab under the card above, ⇧Tab out · ⌥↑ ⌥↓ move a line · ↑ at the very start or ↓ at the very end goes on to the card beside';
+const WRITING_KEYS = 'Escape or ⇧⌘Return done · ⌘Return new card below, ⌥Return above · ← at the very start folds children, → at the very end unfolds them · ⌘↑ ⌘↓ move the card · Tab indent lines, ⇧Tab outdent · ⌥↑ ⌥↓ move a line · ↑ at the very start or ↓ at the very end goes on to the card beside';
 // The same lines, short, where the cards stand in the composer over the feed (notebook-sheet.mjs); each keeps its
 // long form as its tooltip.
 const SHORT_KEYS = ['↑ ↓ pick · Return new card · ⌘Return edit', 'Escape done · ⌘Return next card', '⌘Return ask · Escape back'];
@@ -342,23 +342,23 @@ export class DeckPage {
     if (this.host.hidden || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
     if (event.target.closest?.('.fence-copy')) return;
     const command = event.metaKey || event.ctrlKey, up = event.key === 'ArrowUp', down = event.key === 'ArrowDown';
-    // A card's box keeps every key but these: Escape finishes the card, and ⌘Return finishes it and opens a new card
-    // below it; Tab, ⇧Tab, ⌘↑ and ⌘↓ move it as they move a picked card; ↑ at the box's very start or ↓ at its very
-    // end goes on into the card beside, and ← at its very start, on a card with children, finishes it and folds
-    // them away. Tab stays the box's where there is nowhere to go, as in an outliner, and so does ⌥Tab, Safari's Tab
-    // for every item, so no Tab takes the focus out of a card half written.
+    // The box's line keys come first. Escape and ⇧⌘Return finish; ⌘Return adds below and ⌥Return above.
+    // ⌘↑/↓ move the card. At the text boundaries, ↑/↓ continue writing beside it and ←/→ fold/unfold children.
+    // Tab indents lines through WritingInput; even an unchanged ⇧Tab or Safari's ⌥Tab keeps the box's focus.
     if (this.editing) {
       const field = this.editing.field, plain = !command && !event.shiftKey && !event.altKey;
       if (event.target !== field) return;
       // The composer's writing keys come first: ⌥↑ and ⌥↓ move a line, and the line keys of a Mac (writing-input.mjs).
-      if (this.editing.input.writingKey(event)) return;
-      if (event.key === 'Escape') this.finish();
+      if (this.editing.input.writingKey(event) || this.editing.input.indentKey(event)) return;
+      if (event.key === 'Escape' || event.key === 'Enter' && command && event.shiftKey && !event.altKey) this.finish();
       else if (event.key === 'Enter' && command) this.writeNext();
-      else if (event.key === 'Tab' && !command) this.moveWriting({ kind: event.shiftKey ? 'outdent' : 'indent' });
+      else if (event.key === 'Enter' && event.altKey && !event.shiftKey) { this.finish(); if (!this.editing) this.start(true); }
+      else if (event.key === 'Tab' && !command) { /* Keep focus even when the line cannot change. */ }
       else if ((up || down) && command && !event.shiftKey && !event.altKey) this.moveWriting({ kind: 'move', step: up ? -1 : 1 });
       else if (plain && up && field.selectionEnd === 0) { if (!this.writeBeside(-1)) return; }
       else if (plain && down && field.selectionStart === field.value.length) { if (!this.writeBeside(1)) return; }
       else if (plain && event.key === 'ArrowLeft' && field.selectionEnd === 0) { if (!this.foldWriting()) return; }
+      else if (plain && event.key === 'ArrowRight' && field.selectionStart === field.value.length) { if (!this.foldWriting(false)) return; }
       else return;
       event.preventDefault();
       return;
@@ -626,7 +626,7 @@ export class DeckPage {
     if (keyed) revealSelection(field.closest('li'));
     putBack();
   }
-  // Tab, ⇧Tab, ⌘↑ or ⌘↓ while a card is written: the card moves by the rules of a picked card, and is saved there,
+  // ⌘↑ or ⌘↓ while a card is written: the card moves by the rules of a picked card, and is saved there,
   // while the writing and the cursor stay as they were; the writing is saved when the card is finished. A new card
   // not yet made only changes where it will go.
   moveWriting(act) {
@@ -660,17 +660,20 @@ export class DeckPage {
     this.finish();
     if (!this.editing) this.start();
   }
-  // ← at the very start of a card being written that has children: the card is finished and shows, picked, with
-  // its children folded away. False on a card with none (a new card, or one cleared of its text), where ← is the box's.
-  foldWriting() {
+  // ← at the start folds children; → at the end unfolds folded children. Finishing keeps their parent picked.
+  // A new/cleared card or one without children keeps the key in its box, as does → with nothing folded.
+  foldWriting(fold = true) {
     const editing = this.editing;
     if (editing.fresh || !cardText(textCard(editing.field.value))) return false;
     const at = findCard(this.deck, editing.text, editing.near);
     if (at < 0 || groupEnd(this.deck.cards, at) === at + 1) return false;
+    const title = this.deck.cards[at].title;
+    if (!fold && !this.folded.has(title)) return false;
     this.picked = at;
     this.finish();
     const i = this.picked, card = this.deck.cards[i];
-    if (card && groupEnd(this.deck.cards, i) > i + 1 && !this.folded.has(card.title)) this.fold(i);
+    if (!fold && title !== card?.title) { this.folded.delete(title); this.keepFolds(); }
+    if (card && groupEnd(this.deck.cards, i) > i + 1 && this.folded.has(card.title) !== fold) this.fold(i);
     return true;
   }
   // Escape, ⌘Return or Done: what was written becomes the card; a new card with nothing written is not made.
