@@ -727,7 +727,7 @@ try {
     } else if (mode === '--list') {
       await listChecks({check,page,until,control,view,shot});
     } else if (mode === '--notebook') {
-      await notebookChecks({check,page,until,control,view,facts,shot});
+      await notebookChecks({check,page,until,control,view,facts,shot,observations});
     } else if (mode === '--duties') {
       await dutiesChecks({check,page,until,control,view,facts,shot});
     } else if (mode === '--sources') {

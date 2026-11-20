@@ -561,7 +561,7 @@ try {
     await whispersChecks({ check, page, until, facts, view, control, replace, shot });
   } else if (mode === '--notebook') {
     await untilChecks({ check, page });
-    await notebookChecks({ check, page, until, control, view, facts, shot });
+    await notebookChecks({ check, page, until, control, view, facts, shot, observations, engine: 'webkit' });
   } else if (mode === '--pipeline') {
     await pipelineChecks({ check, page, until, control, view, facts, shot });
   } else if (mode === '--rail') {
