@@ -47,7 +47,7 @@ export class CardReplies {
     for (const item of items) {
       if (!this.rows.has(item.id) && (!item.yours?.reply || this.closed.has(item.id))) continue;
       const row = this.rows.get(item.id), card = cardOf(item.id);
-      if (row && card && row.card !== card) { row.card = card; card.append(row.ui.root); }
+      if (row && card && row.card !== card) { row.card = card; card.insertBefore(row.ui.root, card.querySelector(':scope > .note-corner')); }
       if (item.yours?.reply && card && !this.rows.has(item.id) && !this.closed.has(item.id)) this.queue.set(item.id, card);
     }
     for (const [id, row] of this.rows) if (!row.card.isConnected) this.retire(id);
@@ -81,7 +81,7 @@ export class CardReplies {
           const ui = new InlineComposer({ ...this.callbacks, sent: (p, result) => this.sent(id, p, result) }, { root, prefix, cardReply: true });
           const preview = card.querySelector(':scope > .message-preview');
           const sourceHeight = preview?.clientHeight ? Math.max(24, Math.min(preview.clientHeight, card.clientHeight - (card.scrollHeight - preview.clientHeight))) : 240;
-          row = { ui, card, p, sourceHeight }; this.rows.set(id, row); card.append(root);
+          row = { ui, card, p, sourceHeight }; this.rows.set(id, row); card.insertBefore(root, card.querySelector(':scope > .note-corner'));
           root.addEventListener('click', event => event.stopPropagation());
           root.addEventListener('keydown', event => {
             if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || ui.bar.panel || ui.naming.sheet.open) return;

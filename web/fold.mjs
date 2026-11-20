@@ -39,7 +39,7 @@ export function foldCard(card, item, doc = document) {
   card.id = `card-${item.id}`; line.setAttribute('aria-controls', card.id);
   line.onclick = () => show(fold, card.hidden);
   fold.append(line, card);
-  folds.set(fold, { line, author, words, card, name: item.author_id });
+  folds.set(fold, { line, author, words, card, name: item.author_id, item, open: false });
   paintFoldWords(fold, item);
   show(fold, false);
   return fold;
@@ -47,8 +47,11 @@ export function foldCard(card, item, doc = document) {
 
 // Opens (true) or folds (false) the card in fold.
 export function show(fold, open) {
-  const { line, card } = folds.get(fold);
-  card.hidden = !open; line.setAttribute('aria-expanded', String(open));
+  const state = folds.get(fold), { line, card, item } = state;
+  state.open = open;
+  const ownNote = item.yours?.note === true;
+  line.hidden = ownNote;
+  card.hidden = !open && !ownNote; line.setAttribute('aria-expanded', String(open || ownNote));
 }
 
 // The card a list entry shows: a fold's card, or the entry itself.
@@ -62,6 +65,16 @@ export function paintFoldWords(entry, item) {
     fold.words.classList.toggle('retracted-words', item.removal?.kind === 'retracted');
     paintRemoval(fold.line, item, fold.line.ownerDocument);
   }
+  paintOwnNoteFold(entry, item);
+}
+
+// Reader metadata can arrive after the card. Keep the requested fold for
+// when its note is cleared; the note only overrides how it reads (800).
+export function paintOwnNoteFold(entry, item) {
+  const fold = folds.get(entry);
+  if (!fold) return;
+  fold.item = item;
+  show(entry, fold.open);
 }
 
 // A fold's line carries the Unread pill of a message marked unread; any other entry has no line.

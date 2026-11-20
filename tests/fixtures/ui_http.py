@@ -769,7 +769,7 @@ def main():
             command("draft.save", operation + "-save", dict({
                 "source_ref": source, "topic_id": topic_id, "generation": draft["generation"],
                 "body": request["body"], "addressees": request.get("addressees", [])}, **({"attachments": attached} if attached else {}),
-                **{key: request[key] for key in ("reply_passage", "reply_without_quote") if key in request},
+                **{key: request[key] for key in ("reply_passage", "reply_without_quote", "divergence_reason") if key in request},
                 # An agent's message to someone says ask or tell; a case that names
                 # no intent tells. With "whisper": true it answers a whisper instead,
                 # which says neither.

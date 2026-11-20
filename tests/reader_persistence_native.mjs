@@ -1807,7 +1807,7 @@ try {
     await rm(downloadPath, { recursive: true, force: true });
   }
   phases.reportingStarted = Date.now();
-  await writeFile(path.join(evidencePath, 'native.json'), JSON.stringify({ mode, baseline, legacyAdmission, hashes, results, observations, finalHealth, fixtureExitCode, fixtureErrors, browserClosed: chrome?.exitCode !== null, teardown }, null, 2));
+  await writeFile(path.join(evidencePath, 'native.json'), JSON.stringify({ mode, baseline, legacyAdmission, hashes, results, observations, owned: { fixturePid: fixture.pid, origin: facts?.origin, browserPid: chrome?.pid, profile }, finalHealth, fixtureExitCode, fixtureErrors, browserClosed: chrome?.exitCode !== null, teardown }, null, 2));
   phases.reportingEnded = Date.now();
   await writeFile(path.join(evidencePath, 'phases.json'), JSON.stringify(phases, null, 2));
   assert.deepEqual(teardown, [], 'the browser and the fixture closed within their bounds');

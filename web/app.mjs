@@ -54,7 +54,7 @@ import { AgentInvite, Invitation } from './agent-invite.mjs';
 import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf, paintNoteCorner } from './marks.mjs';
 import { replyLine, paintReplyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
-import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, opened } from './fold.mjs';
+import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, paintOwnNoteFold, opened } from './fold.mjs';
 import { MessageEditWriting, messageEditStore, mayEdit, revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { MessageEdit } from './message-edit.mjs';
 import { withdrawalItem, paintWithdrawal, Withdrawals, learnWithdrawal } from './question-withdrawal.mjs';
@@ -1580,6 +1580,7 @@ function paintCardReading() {
     entry.dataset.talk = quiet ? 'agents' : '';
     paintReading(card, item, { read: cardRead(item), quiet, go: goToMessage });
     paintAwaiting(card, item);
+    paintOwnNoteFold(entry, item);
     // The shortcut is the card's last act, after its words and controls.
     paintNoteCorner(card, item, (id, opener) => run(() =>
       openSource({ kind: 'message', id }, opener, marks.capture(id), 'note')));
@@ -2672,7 +2673,9 @@ function repaintYours(ids) {
     paintCardAuthor(card.querySelector(':scope > .message-author'), item);
     paintHeadCarries(card, item);
   }
-  // The reply arrow goes back into each line painted again; the stacks are not arranged again, so the New line stays where it is.
+  // A private note keeps its card whole, including when its flag arrives
+  // after the dossier was folded. The arrangement retains its visit state.
+  stackFeed?.arrange();
   paintCardReading(); menu?.paint(); syncCardReplies();
 }
 // Each card whose words an edit changed (TopicViews.takeRevised): the edited
