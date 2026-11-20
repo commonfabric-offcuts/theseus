@@ -1,4 +1,4 @@
-import { deckBody, textCard } from './deck.mjs';
+import { deckBody, textCard, imageLine } from './deck.mjs';
 import { hasTitle } from './creation.mjs';
 import { routeHref } from './topic-navigation.mjs';
 
@@ -48,8 +48,11 @@ export class OutcomeStart {
 }
 
 // The pencil sheet follows the card box's first-line and newline rules.
-export function notebookWriting(writing, mode) {
+export function notebookWriting(writing, mode, images = []) {
   const card = textCard(writing), title = card.title || 'Notebook page';
+  // Before the first card's words: later headings or an unclosed code fence
+  // in those words cannot move its images into another card or into code.
+  if (images.length) card.words = [images.map(image => imageLine(image.name, image.id)).join('\n'), card.words].filter(Boolean).join('\n\n');
   return { title, body: mode === 'note-card'
     ? deckBody({ opening: '', cards: [{ ...card, title, depth: 0 }] }) : card.words };
 }
@@ -58,12 +61,12 @@ export function notebookWriting(writing, mode) {
 // together until Core confirms or refuses the creation, even after a lost answer.
 export class NotebookStart {
   constructor({ api, bootstrap, scope, again = AGAIN }) { Object.assign(this, { api, bootstrap, scope, again }); this.pending = null; }
-  async create(title, body = '') {
+  async create(title, body = '', attachments = []) {
     if (!hasTitle(title)) throw Error('Type the page’s title, then press Return.');
-    if (this.pending && (this.pending.args.title !== title || this.pending.args.body !== body)) throw Error(`First confirm “${this.pending.args.title}”: restore that title and writing, then try again.`);
+    if (this.pending && (this.pending.args.title !== title || this.pending.args.body !== body || JSON.stringify(this.pending.args.attachments) !== JSON.stringify(attachments))) throw Error(`First confirm “${this.pending.args.title}”: restore that title and writing, then try again.`);
     this.pending ??= envelope(this.bootstrap, 'memory.create',
       { item_id: 'n-' + crypto.randomUUID().replaceAll('-', ''), owner_scope: copy(this.scope) }, { item_revision: 0 },
-      { title, body, attachments: [], references: [] });
+      { title, body, attachments: copy(attachments), references: [] });
     const request = this.pending;
     try {
       const result = await sent(this.api, request, () => {}, this.again);
