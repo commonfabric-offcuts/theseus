@@ -7,7 +7,8 @@ import net from 'node:net';
 import { fixtureControl } from './fixture_control.mjs';
 const { chromium } = await import(process.env.AIM_PLAYWRIGHT_CORE);
 const evidence = process.argv[2]; await mkdir(evidence, { recursive: true });
-const child = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--freshness', '--as-actor', 'fixture-notebook-agent']);
+const answersOnly = process.argv.includes('--answers-only');
+const child = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--freshness', ...(answersOnly ? [] : ['--as-actor', 'fixture-notebook-agent'])]);
 const { control, exit, errors: fixtureErrors } = fixtureControl(child);
 const results = [], cleanup = {};
 const questionFits = async page => {
@@ -46,13 +47,45 @@ try {
             questions: [{ actor_id: facts.actor, text: body, options: ['Yes', 'No'], default: 'No', reason: null }] } } });
       assert.equal(sent.status, 'committed'); return sent.result.message_id;
     };
-    const first = await ask(`932-first-${key}`, `Older question ${key}?`);
-    const question = await ask(`932-second-${key}`, words, first);
-    const superseded = await control({ method: 'agent_view', actor: facts.agent, name: 'source', args: { kind: 'message', id: first } });
-    assert.equal(superseded.question.state, 'superseded');
+    let first, question;
+    if (!answersOnly) {
+      first = await ask(`932-first-${key}`, `Older question ${key}?`);
+      question = await ask(`932-second-${key}`, words, first);
+      const superseded = await control({ method: 'agent_view', actor: facts.agent, name: 'source', args: { kind: 'message', id: first } });
+      assert.equal(superseded.question.state, 'superseded');
+    } else {
+      const joined = await control({ method: 'agent_message', sender: facts.agent, join: true, whole_topic: true,
+        operation_id: `932-answerer-joins-${key}`, body: 'Ready to answer.', post_args: { divergence_reason: 'Isolated answer freshness case' } });
+      assert.equal(joined.status, 'committed');
+    }
     const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme, hasTouch: width === 390 });
     const page = await context.newPage(); activePage = page; page.setDefaultTimeout(10000);
     const errors = []; page.on('pageerror', error => errors.push(error.message));
+    const personAsk = await control({ method: 'agent_message', sender: 'person', whole_topic: true,
+      operation_id: `932-person-ask-${key}`, body: `Person question ${key}?`,
+      post_args: { addressees: [facts.agent], intent: 'ask' } });
+    assert.equal(personAsk.status, 'committed');
+    const personQuestion = personAsk.result.message_id;
+    await page.goto(origin + `/?topic=t1&message=${personQuestion}`);
+    await page.locator('#reader-origin .question-state').waitFor({ state: 'visible' });
+    assert.match(await page.locator('#reader-origin .question-state').innerText(), /Waiting on/);
+    const personWords = await page.locator('#source-body').innerText();
+    // Let initial Reader/dossier freshness finish before the independent reply.
+    // Otherwise an in-flight opening read can mask the missing invalidation.
+    await page.waitForTimeout(1000);
+    const reply = await control({ method: 'agent_message', sender: facts.agent, whole_topic: true,
+      operation_id: `932-answer-${key}`, body: `Answer ${key}.`,
+      post_args: { reply_to: personQuestion, reply_without_quote: 'Answering the whole synthetic question' } });
+    assert.equal(reply.status, 'committed');
+    await page.locator('#reader-origin .question-state').waitFor({ state: 'detached' });
+    assert.equal(await page.locator('#reader[open]').count(), 1, 'answer refresh leaves the existing Reader open');
+    assert.equal(await page.locator('#source-body').innerText(), personWords, 'answer refresh retains the source words');
+    if (answersOnly) {
+      assert.deepEqual(errors, []);
+      await page.screenshot({ path: `${evidence}/${key}-answered.png` });
+      results.push({ width, colorScheme, personQuestion, askerReader: true, answeredPillGoneWithoutReopening: true, wordsKept: true, errors });
+      await context.close(); continue;
+    }
     await page.goto(origin + '/?topic=t1');
     const waiting = page.locator(`#messages a[href*="${question}"].topic-state`).first();
     await waiting.waitFor({ state: 'visible' });
@@ -105,7 +138,7 @@ try {
     assert.equal(old.question.state, 'superseded'); assert.deepEqual(old.reactions.answers, []);
     assert.deepEqual(errors, []);
     results.push({ width, colorScheme, question, first, nativeCoverOpen: true, nativeResolve: width === 390 ? 'tap' : 'Enter',
-      heldReadCount: heldReads.length, coverGoneBeforeBackgroundRead: true, wordsKept: true, reloadTerminal: true, nativeSuccessorLink: true, headerFits: true, errors });
+      answeredPillGoneWithoutReopening: true, heldReadCount: heldReads.length, coverGoneBeforeBackgroundRead: true, wordsKept: true, reloadTerminal: true, nativeSuccessorLink: true, headerFits: true, errors });
     await context.close();
   }
 } catch (error) {

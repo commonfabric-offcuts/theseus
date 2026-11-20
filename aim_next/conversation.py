@@ -132,14 +132,16 @@ class Conversation:
         return list(dict.fromkeys(recipients))
 
     def _touch_topic(self, db, topic):
+        topic = db.execute("SELECT * FROM topics WHERE id=?", (topic["id"],)).fetchone()
         repaired = self._repair_conversation_waiting(db, topic)
         db.execute("UPDATE topics SET version=version+1 WHERE id=?", (topic["id"],))
+        version = db.execute("SELECT version FROM topics WHERE id=?", (topic["id"],)).fetchone()[0]
         db.execute("UPDATE workspaces SET version=version+1 WHERE id=?", (topic["workspace_id"],))
-        self._change(db, "topic", topic["id"], "topic", topic["id"], topic["version"] + 1)
-        self._change(db, "workspace", topic["workspace_id"], "topic", topic["id"], topic["version"] + 1)
+        self._change(db, "topic", topic["id"], "topic", topic["id"], version)
+        self._change(db, "workspace", topic["workspace_id"], "topic", topic["id"], version)
         for member in repaired:
-            self._change(db, "actor", member, "waiting", topic["id"], topic["version"] + 1)
-        return topic["version"] + 1
+            self._change(db, "actor", member, "waiting", topic["id"], version)
+        return version
 
     def _command_participation_set(self, db, actor, envelope):
         args = envelope.get("args", {})
@@ -355,7 +357,7 @@ class Conversation:
         parent = None
         if snapshot.get("reply_to"):
             # A message the writer cannot see is refused as one that does not exist.
-            parent = db.execute("SELECT topic_id,author_id,private_to FROM messages WHERE id=?", (snapshot["reply_to"],)).fetchone()
+            parent = db.execute("SELECT id,seq,topic_id,author_id,private_to,intent FROM messages WHERE id=?", (snapshot["reply_to"],)).fetchone()
             if not parent or parent["topic_id"] != topic_id or not whispers.visible(parent, actor):
                 # A state check, not a shape error: it is recorded like the others.
                 raise Refusal("INVALID_REPLY", "Reply context must belong to the destination topic")
@@ -429,7 +431,7 @@ class Conversation:
             cover_version = self._record_act(db, "cover", root, "", actor,
                                              {"stands": divergence, "waiting": [], "payload": None}, 1)
             cover_affected = [{"kind": "acts", "id": topic_id, "version": cover_version}]
-        covered = self._supersede_questions(db, actor, topic, message_id) if not record_only else []
+        covered, superseded = self._supersede_questions(db, actor, topic, message_id) if not record_only else ([], [])
         covered += self._link_ask_cover(db, actor, topic, message_id, linked)
         # Positions are part of publication, not a browser observation (item 731).
         from .dossier_order import published
@@ -494,6 +496,12 @@ class Conversation:
         if not record_only:
             self._sync_linked_attention(db, topic, actor)
         version = self._touch_topic(db, topic)
+        for question in superseded:
+            self._question_changed(db, actor, question, version)
+            waited += [member for member in json.loads(question['addressees']) if member != question['author_id']]
+        if (not record_only and parent is not None and parent['intent'] == 'ask' and parent['private_to'] is None
+                and parent['id'] not in {question['id'] for question in superseded}):
+            self._question_changed(db, actor, parent, version)
         for member in dict.fromkeys(waited + ([actor] if covered else [])):
             self._change(db, "actor", member, "waiting", topic_id, version)
         result = {"message_id": message_id, "topic": {"id": topic_id, "version": version},

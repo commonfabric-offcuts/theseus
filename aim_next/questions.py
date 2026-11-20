@@ -32,14 +32,15 @@ class Questions:
         message = db.execute("SELECT id,topic_id,seq,author_id,private_to,intent,addressees,sent_ms FROM messages WHERE id=?", (message_id,)).fetchone()
         if message is None or message['intent'] != 'ask' or message['private_to'] is not None:
             return None
-        value = dict(state='answered', waiting_on=[], may_resolve=False, by=None, at_ms=None, superseded_by=None)
+        topic = db.execute("SELECT * FROM topics WHERE id=?", (message['topic_id'],)).fetchone()
+        value = dict(state='answered', waiting_on=[], may_resolve=False, by=None, at_ms=None, superseded_by=None,
+                     archived=bool(topic['archived']))
         closed = self._question_closed(db, message_id)
         if closed:
             return dict(value, state=closed['kind'], by=closed['by'], at_ms=closed['at_ms'], superseded_by=closed['superseded_by'])
         withdrawn = self._withdrawal_value(db, message_id)
         if withdrawn:
             return dict(value, state='withdrawn', **withdrawn)
-        topic = db.execute("SELECT * FROM topics WHERE id=?", (message['topic_id'],)).fetchone()
         if self._closed(db, topic['workspace_id']) is not None:
             return value
         waiting = [who for who in json.loads(message['addressees']) if self._ask_waits(db, topic, message, who)]
@@ -78,12 +79,12 @@ class Questions:
             for member in members:
                 self._topic_ask_answered(db, topic, member, message)
                 self._sync_linked_attention(db, topic, member)
-        version = self._touch_topic(db, topic)
+        # The command touches once, after all closure/publication effects.
+        return affected
+
+    def _question_changed(self, db, actor, message, version):
         for reader in self._message_readers(db, message, actor):
-            self._change(db, 'actor', reader, 'question', message['id'], 1)
-        for member in members:
-            self._change(db, 'actor', member, 'waiting', topic['id'], version)
-        return affected + [{'kind': 'topic', 'id': topic['id'], 'version': version}]
+            self._change(db, 'actor', reader, 'question', message['id'], version)
 
     def _command_message_resolve(self, db, actor, envelope):
         message = self._reacted_message(db, actor, envelope['target'])
@@ -102,30 +103,37 @@ class Questions:
             raise Refusal('RECORD_OWNS_QUESTION', 'This question is settled by its target or stage record')
         value = self._question_value(db, actor, message['id'])
         result = dict(message_id=message['id'], topic_id=topic['id'], question=value, changed=False)
-        if value['state'] == 'resolved':
+        closed = self._question_closed(db, message['id'])
+        if closed and closed['kind'] == 'resolved':
             return result, []
-        if value['state'] != 'waiting':
-            raise Refusal('QUESTION_CLOSED', 'This question no longer has an open wait', recorded=False)
+        if closed or self._withdrawal_value(db, message['id']):
+            raise Refusal('QUESTION_CLOSED', 'This question was already closed', recorded=False)
         affected = self._close_question(db, actor, topic, message, 'resolved')
-        return dict(result, question=self._question_value(db, actor, message['id']), changed=True), affected
+        version = self._touch_topic(db, topic)
+        self._question_changed(db, actor, message, version)
+        for member in set(json.loads(message['addressees'])) - {message['author_id']}:
+            self._change(db, 'actor', member, 'waiting', topic['id'], version)
+        return dict(result, question=self._question_value(db, actor, message['id']), changed=True), affected + [
+            {'kind': 'topic', 'id': topic['id'], 'version': version}]
 
     def _supersede_questions(self, db, actor, topic, message_id):
         message = db.execute("SELECT id,author_id,addressees,intent,private_to FROM messages WHERE id=?", (message_id,)).fetchone()
         if message['intent'] != 'ask' or message['private_to'] is not None:
-            return []
+            return [], []
         root = StackRoots(db, actor).root(message_id)
         if root == message_id:
-            return []
+            return [], []
         recipients = set(json.loads(message['addressees'])) - {actor}
         candidates = db.execute(MEMBERS + " SELECT m.id,m.seq,m.topic_id,m.author_id,m.addressees,m.private_to,m.intent,m.sent_ms "
             "FROM members p JOIN messages m ON m.id=p.id WHERE m.id<>:new AND m.author_id=:actor AND m.intent='ask' AND m.private_to IS NULL",
             {'root': root, 'actor': actor, 'new': message_id}).fetchall()
-        affected = []
+        affected, closed = [], []
         for older in candidates:
             if set(json.loads(older['addressees'])) - {actor} != recipients:
                 continue
             if record_ask(db, older['id'], topic['workspace_id'], topic['id']):
                 continue
-            if self._question_value(db, actor, older['id'])['state'] == 'waiting':
+            if not self._question_closed(db, older['id']) and not self._withdrawal_value(db, older['id']):
                 affected += self._close_question(db, actor, topic, older, 'superseded', message_id)
-        return affected
+                closed.append(older)
+        return affected, closed

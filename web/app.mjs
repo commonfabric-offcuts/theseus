@@ -1326,6 +1326,10 @@ function paintViews(kind) {
     if (authorityReviewPending()) return;
     topicUnavailable = false;
     topic = views.topic;
+    if (questionStates && questionStates.archived !== Boolean(topic.archived)) {
+      questionStates.archived = Boolean(topic.archived);
+      freshness?.invalidate('acts', 0, true);
+    }
     shell.topicChanged();
     // The panel paints the header with the newest topic it has seen.
     if (topicState) topicState.paint(topic, views.participants); else paintHeader(topic);
@@ -3067,6 +3071,15 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
               if (current() && registry.current?.source === source) learnQuestionState({ message_id: source.source_ref.id, question: answer.question });
             }
             if (current()) paintReaderTitle();
+          }
+        }
+        if (key === 'topic' && done !== false && current()) {
+          const source = registry.current?.source;
+          // Archival and legacy waits can change without an exact question act.
+          // Read only the question in the open Reader, never unloaded history.
+          if (source?.source_ref?.kind === 'message' && source.question) {
+            const answer = checkedView(await read('source', source.source_ref), bootstrap.instance_id);
+            if (current() && registry.current?.source === source) learnQuestionState({ message_id: source.source_ref.id, question: answer.question });
           }
         }
         return done;

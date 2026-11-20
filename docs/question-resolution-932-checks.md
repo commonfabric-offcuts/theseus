@@ -1,7 +1,74 @@
 # Item 932 verification
 
-Base: release 205, `6e5d2098b178e6fbaf3d2591d1393bdf7923557c`.
+Current integration base: release 210, `9808c5171eaeea5ab1bcd0b4bd9ec34e6d20849a`.
+The original reviewed source was built on release 205, `6e5d2098b178e6fbaf3d2591d1393bdf7923557c`.
 The contract is in [question-resolution-932.md](question-resolution-932.md).
+
+## Final six-point returned round (13500, 13527, 13540)
+
+Release 210 was merged into the isolated branch, retaining the original
+reviewed commit. The one conflict was the first import in `web/app.mjs`;
+question state, Review differences and rail density imports are all retained.
+928's repair remains in `_touch_topic` and now sees the final publication
+state once. The six findings are addressed:
+
+1. Remote question freshness invalidates acts through the normal loaded-view
+   path. The unchanged 655 check stays intact.
+2. Withdrawing an already superseded question keeps its withdrawal record,
+   words and links without inventing a second cover act for a removed wait.
+3. Replies announce the exact question at the committed topic version. The
+   open Reader also reads its own question on topic changes, covering archive
+   and legacy writing-driven wait changes without scanning unloaded history.
+4. Supersession records closure and wait removal; publication touches once,
+   after registering its successor. The stored version, receipt and changes
+   agree, including with a stale caller row. Conversation repair runs once
+   with only the final wait set.
+5. Resolve and supersession consult closure/withdrawal facts, independently
+   of answered or archived presentation. Archived question and cover-wait
+   pills are hidden, including cached covers, and unarchiving preserves the
+   current facts. Closed outcomes still refuse closure commands.
+6. Dossier moves exclude resolved, superseded and withdrawn questions from
+   rebuilt waits. Each probe preserves the other topic's real wait and its
+   attention count, without a destination ghost.
+
+Final checks on this integration: **93 Core cases, 681 Node cases in 12 files,
+and eight native cases**. Core includes 20 question-resolution cases plus
+withdrawal, linked withdrawal, ask-cover, Conversation/928 and kept-idle 934.
+Node includes the prior eight files plus 928,935,931 and uploads. The four
+asker-Reader cases prove a reply removes the pill without reopening or
+changing the retained words. Four resolution cases cover 1280/390 light/dark,
+Enter/tap, successor navigation, reload, and immediate cover removal while
+three real refresh requests per case are held. Resolved desktop/phone
+screenshots were inspected. Both Browser.close calls disconnected; fixtures
+31850/32864 exited 0 through EOF, their PIDs and owned profile processes were
+absent, and their ports closed. No live browser or physical phone claim.
+
+Evidence under the raw directory below: `932-r3-core-red.txt` has the four
+new review assertions failing; `932-r3-move-red.txt` has all three move probes
+failing. `932-r3-core02.txt` is 93/93 and `932-r3-node02.txt` is 681/681.
+`932-r3-asker-red/results.json` captures the exact human asker's stale pill
+after 10 seconds, with verified cleanup. Final native results are
+`932-r3-asker-green/results.json` and `932-r3-native-final/results.json`.
+The earlier recipient-Reader browser run passed before the fix and is retained
+without being claimed as a red reproduction.
+
+The expanded first Node run hit the new 935 rail module's CSS methods missing
+from the inline test DOM. The unchanged 655 case fails with that same
+`style.removeProperty` error on untouched 210 in
+`932-live210-inline-baseline.txt`. The test DOM now implements `setProperty`
+and `removeProperty`; all existing assertions remain. All failures in that
+first run are cleared by the final681/681 result.
+
+Applied removal of the move closure filter fails all three move probes;
+exact byte restoration passes 3/3 with separate Python caches. Hashes and
+outputs are `932-r3-move-mutation02.json`, `932-r3-move-mutation02.txt` and
+`932-r3-move-restored02.txt`. The first temporary mutant had a syntax error;
+it was restored in `finally`, retained as a harness error, and the premature
+mutation claim was corrected in 13559 before the valid rerun.
+
+Warp 13540 completed the review and permits the next freeze on green. Two
+follow-ons remain outside this item: pending deliveries survive supersession
+as they do withdrawal, and the agent CLI has no resolve verb/closure marker.
 
 ## Returned review round (13500)
 
@@ -33,8 +100,8 @@ exited 0, PID 92985 was absent and its port was closed. Evidence is
 `932-r2-native01/results.json` under the raw evidence directory below.
 The initial expanded Node attempt had one extraction-fixture error because
 invalidation was in the learned-state helper; moving it to the freshness
-handler restored the unchanged withdrawal check. The remaining independent
-review findings must arrive before the next freeze.
+handler restored the unchanged withdrawal check. The remaining findings
+subsequently arrived in 13527/13540 and are covered above.
 
 ## Core
 

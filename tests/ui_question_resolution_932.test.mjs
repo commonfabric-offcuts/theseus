@@ -39,6 +39,20 @@ test('receipt removes wait from every cover immediately and stale reads cannot r
   assert.notEqual(coverPills(miniDocument(), cover, context), null, 'another page/instance has a fresh cache');
 });
 
+test('archived question projections hide pills even after a terminal fact was cached', () => {
+  const states = new QuestionStates(); configureQuestionStates(states);
+  const doc = miniDocument();
+  assert.equal(questionPill(doc, { ...item, question: { ...waiting, archived: true } }), null);
+  states.learn('ask', resolved);
+  assert.equal(questionPill(doc, { ...item, question: { ...resolved, archived: true } }), null);
+  assert.match(questionPill(doc, { ...item, question: { ...resolved, archived: false } }).text, /Resolved/);
+  const cover = { waiting: [{ ask_id: 'unclosed', text: 'Question?' }] };
+  states.archived = true;
+  assert.deepEqual(states.cover(cover).waiting, []);
+  states.archived = false;
+  assert.equal(states.cover(cover), cover, 'archival hides cached pills without destroying their records');
+});
+
 test('superseded question links to successor; withdrawal filters cover without freezing ordinary thumb Undo', () => {
   const states = new QuestionStates(); configureQuestionStates(states);
   const doc = miniDocument();
