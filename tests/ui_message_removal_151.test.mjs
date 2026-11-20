@@ -176,13 +176,25 @@ test('both Starred owners show the original excerpt, Retracted and the act time'
   const rail = Object.assign(Object.create(ThingsRail.prototype), { doc, handles: { workspaceId: 'workspace' } });
   const section = rail.starredSection([star], { byTopic: true, topicId: 'topic' }, 'owner');
   const right = section.node();
-  const outline = { doc }, state = { id: 'topic', stars: [star], links: new Map(), box: doc.createElement('div'), next: null, loaded: true };
+  const opened = [], outline = { doc, open: (...args) => opened.push(args) }, state = { id: 'topic', stars: [star], links: new Map(), box: doc.createElement('div'), next: null, loaded: true };
   OutlineDossiers.prototype.paint.call({ outline, pageStars: false }, state);
+  const link = state.links.get('message'), href = link.href;
+  link.focus();
+  OutlineDossiers.prototype.paint.call({ outline, pageStars: false }, state);
+  assert.equal(state.links.get('message'), link, 'repaint keeps the link identity');
+  assert.equal(doc.activeElement, link, 'repaint keeps focus on that link');
+  assert.equal(link.href, href);
+  let prevented = false;
+  link.onclick({ button: 0, preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.deepEqual(opened, [[{ kind: 'topic', id: 'topic', message: 'message', land: true }, 'Original starred words']]);
   for (const host of [right, state.box]) {
     assert.match(host.text, /Original starred words/);
     assert.equal(host.querySelectorAll('.message-retracted').length, 1);
     assert.equal(host.querySelector('time').dataset.ms, '123');
-    assert.ok(host.querySelector('.retracted-words'));
+    assert.match(host.querySelector('.retracted-words').text, /Original starred words/);
+    for (const node of [host.querySelector('.message-retracted'), host.querySelector('time')])
+      assert.equal(node.closest('.retracted-words'), null, 'terminal label and time have no struck/dimmed ancestor');
   }
   assert.notEqual(section.key, rail.starredSection([{ ...star, removal: null }], { byTopic: true, topicId: 'topic' }, 'owner').key);
 });

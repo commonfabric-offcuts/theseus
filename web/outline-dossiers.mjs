@@ -119,9 +119,13 @@ export class OutlineDossiers {
         state.links.set(id, link);
       }
       link.pageTarget=target;
-      const text = '★ ' + title;
-      if (link.textContent !== text) link.textContent = text;
-      link.classList.toggle('retracted-words', item?.removal?.kind === 'retracted');
+      let words = link.querySelector('.ol-dossier-words');
+      if (!words) {
+        words = doc.createElement('span'); words.className = 'ol-dossier-words';
+        link.replaceChildren('★ ', words);
+      }
+      if (words.textContent !== title) words.textContent = title;
+      words.classList.toggle('retracted-words', item?.removal?.kind === 'retracted');
       paintRemoval(link, item, doc);
       link.title = title; link.setAttribute('aria-label', (this.pageStars?'Starred page: ':'Starred dossier: ') + title);
       link.href = routeHref(target);
