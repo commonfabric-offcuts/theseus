@@ -562,29 +562,55 @@ export class DossierHeads {
   sync(messages) {
     const wanted = new Set([...dossiersOf([...messages.values()]).values()].filter(id => !messages.has(id)));
     for (const id of this.records.keys()) if (!wanted.has(id)) this.records.delete(id);
+    const added = [];
     for (const id of wanted) if (!this.records.has(id)) {
       const record = { state: 'loading', token: ++this.serial };
-      this.records.set(id, record);
-      // One head at a time leaves the bounded background lane room for the
-      // change feed. A head loaded by history, invalidated or left behind
-      // while queued needs no request, and a stale answer never paints.
-      const pending = this.readTail.then(() => {
-        if (!this.current() || this.records.get(id) !== record) return null;
-        return this.read('topic_messages', { topic_id: this.topicId, message_ids: [id] });
-      }).then(page => {
-        if (page === null || !this.current() || this.records.get(id) !== record) return;
-        if (!Array.isArray(page.items)) throw Error('The dossier source could not be read.');
-        const item = page.items.find(item => item.id === id);
-        if (item && (item.topic_id !== this.topicId || item.stack_position?.root_id !== id)) throw Error('The dossier source identity changed.');
-        Object.assign(record, item?.withheld ? { state: 'refused' } : item ? { state: 'available', item: { ...item, dossierSource: true } } : { state: 'missing' });
-        this.changed();
-      }).catch(error => {
-        if (!this.current() || this.records.get(id) !== record) return;
-        record.state = ['FORBIDDEN', 'SOURCE_UNAVAILABLE', 'NOT_FOUND', 'INVALID_ARGUMENT'].includes(error?.details?.error?.code) ? 'refused' : 'error';
-        this.changed();
-      });
-      this.readTail = pending;
+      this.records.set(id, record); added.push([id, record]);
     }
+    // At most one request occupies the background lane, leaving room for
+    // the change feed. Core admits up to100 named messages in one read.
+    for (let at = 0; at < added.length; at += 100) {
+      const batch = added.slice(at, at + 100);
+      this.readTail = this.readTail.then(() => this.readBatch(batch));
+    }
+  }
+  async readBatch(queued) {
+    const current = ([id, record]) => this.current() && this.records.get(id) === record;
+    const batch = queued.filter(current), settled = new Set();
+    if (!batch.length) return;
+    const refused = error => ['FORBIDDEN', 'SOURCE_UNAVAILABLE', 'NOT_FOUND', 'INVALID_ARGUMENT'].includes(error?.details?.error?.code);
+    const failed = (entry, error) => {
+      if (!current(entry)) return;
+      entry[1].state = refused(error) ? 'refused' : 'error'; settled.add(entry);
+    };
+    const accept = (entries, page) => {
+      if (!Array.isArray(page?.items)) throw Error('The dossier source could not be read.');
+      for (const entry of entries) {
+        if (!current(entry)) continue;
+        const [id, record] = entry, item = page.items.find(item => item.id === id);
+        if (item && (item.topic_id !== this.topicId || item.stack_position?.root_id !== id)) {
+          failed(entry, Error('The dossier source identity changed.')); continue;
+        }
+        Object.assign(record, item?.withheld ? { state: 'refused' } : item ? { state: 'available', item: { ...item, dossierSource: true } } : { state: 'missing' });
+        settled.add(entry);
+      }
+    };
+    const read = entries => this.read('topic_messages', { topic_id: this.topicId, message_ids: entries.map(([id]) => id) });
+    try { accept(batch, await read(batch)); }
+    catch (error) {
+      // A refused batch identifies no particular head. Read each still-wanted
+      // head once, serially, so one refusal cannot hide admitted siblings.
+      // Transport/malformed failures do not fan out into another request run.
+      if (refused(error) && batch.length > 1) {
+        for (const entry of batch) {
+          if (!current(entry)) continue;
+          try { accept([entry], await read([entry])); } catch (failure) { failed(entry, failure); }
+        }
+      } else for (const entry of batch) failed(entry, error);
+    }
+    // A fallback can await a sibling after settling another head; invalidating
+    // that earlier head while waiting must not cause a stale repaint either.
+    if ([...settled].some(current)) this.changed();
   }
   messages(loaded) {
     const result = new Map(loaded);
