@@ -1,3 +1,4 @@
+import { railDensity } from './rail-density.mjs';
 import { CardReplies } from './card-replies.mjs';
 import { panes } from './panes.mjs';
 import { stackMenuItems } from './stack-menu-items.mjs';
@@ -109,6 +110,8 @@ let retired = null, notebookSheet = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
 const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; notebookSheet?.retire(); },
   updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
+// The901 shell restores the foot and separator from copies for each run.
+railDensity();
 const node = (tag, text, className) => {
   const element = document.createElement(tag); if (text !== undefined) element.textContent = text;
   if (className) element.className = className; return element;
