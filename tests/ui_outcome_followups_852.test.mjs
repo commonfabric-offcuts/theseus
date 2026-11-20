@@ -28,11 +28,15 @@ function fixture(t) {
   globalThis.document=doc;t.after(()=>{globalThis.document=previous;});
   const main=doc.createElement('main');main.id='main';const host=doc.createElement('div');main.append(host);doc.body.append(main);
   const cards=new OutcomeTopicCards({host}), opened=[];
-  const paint=(ids=['a','b','c'])=>cards.paint({reader:'reader',groups:[{name:'active',rows:ids.map(id=>({href:'?topic='+id,activate:()=>opened.push(id),item:{id,title:id,message_count:0}}))}]});
+  const paint=(ids=['a','b','c'])=>{
+    cards.paint({reader:'reader',groups:[{name:'active',rows:ids.map(id=>({href:'?topic='+id,activate:()=>opened.push(id),item:{id,title:id,message_count:0}}))}]});
+    // A one-column layout: the card owner now reads actual rectangles (879).
+    ids.forEach((id,index)=>{cards.cards.get(id).getBoundingClientRect=()=>({top:100+index*120,bottom:200+index*120,left:200,right:500,width:300,height:100});});
+  };
   paint();return{doc,main,host,cards,opened,paint};
 }
 
-test('852 actual pane keys land on the first topic, traverse cards and preserve both rail round trips', t=>{
+test('852 and 879 pane keys traverse cards, keep card edges, and preserve page-level rail round trips', t=>{
   const f=fixture(t), kept={center:panes.center,outline:panes.outline,things:panes.things};t.after(()=>Object.assign(panes,kept));
   panes.center=()=>f.cards;
   f.host.getBoundingClientRect=()=>({top:1100,bottom:1500,left:200,right:500,width:300,height:400});
@@ -42,6 +46,8 @@ test('852 actual pane keys land on the first topic, traverse cards and preserve 
   assert.equal(press('ArrowDown').result,true);assert.equal(f.doc.activeElement.dataset.topicId,'b');
   f.doc.activeElement.onclick({});assert.deepEqual(f.opened,['b']);
   for(const [name,out,back] of [['outline','ArrowLeft','right'],['things','ArrowRight','left']]){
+    assert.equal(press(out).result,true);assert.equal(f.doc.activeElement.dataset.topicId,'b','879 card edge stays');
+    f.doc.body.focus(); // The page still has the old pane-crossing grammar.
     assert.equal(press(out).result,true);assert.equal(panes[name].host.contains(f.doc.activeElement),true);
     assert.equal(panes.step(name,back,f.doc),true);assert.equal(f.doc.activeElement.dataset.topicId,'b');
   }

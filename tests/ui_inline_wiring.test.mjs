@@ -5095,7 +5095,7 @@ test('835 legacy conversation links resolve to the ordinary topic with its actua
   assert.equal(f.get('conversation-row').children.length,0);
 });
 
-test('847 and 852 outcome home puts Team then Notebook above topics and shares both rails and pencil',async()=>{
+test('847, 852 and 879 outcome home keeps Team, Notebook and pencil without a right rail; topic context remains',async()=>{
   const thumbnails=[], live=stream(); let denied=false;
   const f=fixture('https://fixture/?workspace=w1',{paintThumb:(_host,_key,load)=>thumbnails.push(load), listen:(target,type,fn)=>target.addEventListener(type,fn), KeyTree:class {constructor(){} refresh(){} }}), original=f.api.view;
   f.topic.list_position=0;
@@ -5134,7 +5134,24 @@ test('847 and 852 outcome home puts Team then Notebook above topics and shares b
   const rail=f.runObservation("(() => {const rail=new ThingsRail({host:document.getElementById('things'),backdrop:document.getElementById('things-backdrop'),doc:document,win:window});shell.follow(rail);return rail;})()");
   rail.begin(true,{kind:'workspace',id:'w1'});
   rail.ready(handles);
-  assert.equal(rail.handles,handles,'shared rail accepts the outcome home');
+  assert.equal(rail.handles,null,'879 outcome home starts no right-rail owner');
+  assert.equal(rail.host.hidden,true);
+  rail.open(); await rail.reload(); await drain();
+  assert.equal(f.calls.some(call=>call.name==='stars'),false);
+  assert.equal(count('memory_items'),notes);assert.equal(count('tools'),tools);
+  denied=true; live.emit({kind:'commit',seq:20}); await drain();
+  assert.equal(handles.readable(),false);
+  assert.ok([...rail.sections.values()].every(part=>part.details.hidden),'permission loss leaves no retained outcome context');
+  denied=false; live.emit({kind:'commit',seq:21}); await drain(); await rail.reload();
+  assert.equal(handles.readable(),true);
+  assert.equal(rail.host.hidden,true,'recovery does not restore a removed home rail');
+  // Retain the existing bounded context assertions on a real topic route,
+  // where 879 keeps the rail and its whole-outcome scope.
+  f.runObservation("location.href='https://fixture/?topic=t1'");
+  await f.initialize(); await drain();
+  const topicHandles=f.runObservation('shell.handles');
+  assert.equal(rail.handles,topicHandles);assert.equal(topicHandles.route.kind,'topic');
+  rail.choose('outcome');
   rail.open(); await rail.reload();await drain();
   assert.ok(f.calls.some(call=>call.name==='stars'),'opening reads the existing bounded context');
   assert.ok(count('memory_items')>notes,'the right rail includes its existing Notebook');
@@ -5147,12 +5164,7 @@ test('847 and 852 outcome home puts Team then Notebook above topics and shares b
   assert.equal(nodes.filter(node=>node.href==='?topic=t1&message=retained835').length,3,'star, waiting item and image keep their message destination');
   assert.equal(thumbnails.length,1);
   assert.equal(await thumbnails[0](),'fixture image bytes','right-rail image uses the current page media reader');
-  denied=true; live.emit({kind:'commit',seq:20}); await drain();
-  assert.equal(handles.readable(),false);
-  assert.ok([...rail.sections.values()].every(part=>part.details.hidden),'permission loss clears retained outcome context');
-  denied=false; live.emit({kind:'commit',seq:21}); await drain(); await rail.reload();
-  assert.equal(handles.readable(),true);
-  assert.equal(rail.sections.get('images').details.hidden,false,'recovery reads and restores current context');
+  assert.equal(rail.sections.get('images').details.hidden,false,'the topic rail still reads current context');
 });
 
 // 860: initialized page's actual Reader handler, Reactions and card callback.

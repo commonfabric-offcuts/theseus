@@ -1372,16 +1372,17 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 .message-menu-list [aria-checked=true]{background:var(--soft)}
 
 
-/* Outcome home (847): the outline's topics, presented as plain dossier covers.
-   At 1280px, two 18rem rails and the main padding leave about 602px: two cards.
-   The phone breakpoint deliberately keeps one column regardless of title length. */
-.outcome-topic-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+/* Outcome home (879): the outline's topics fill the width beside the left
+   rail. The phone breakpoint keeps one column regardless of title length. */
+.outcome-topic-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:1rem}
 .outcome-topic-card{display:flex;flex-direction:column;justify-content:space-between;gap:1.25rem;min-width:0;min-height:9rem;padding:1.1rem 1.2rem;border:1px solid var(--stack-sheet-edge);border-radius:.75rem;background:var(--soft);box-shadow:var(--stack-cover-inset);color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
 @media(prefers-color-scheme:dark){.outcome-topic-card{background:#000}}
 .outcome-topic-card:hover{border-color:var(--accent)}
 .outcome-topic-card:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .outcome-topic-title{font-size:1.05rem;font-weight:650;line-height:1.5;color:var(--accent)}
 .outcome-topic-meta{display:flex;flex-wrap:wrap;gap:.25rem .85rem;color:var(--stack-meta-ink);font-size:.75rem}
+/* Named default: white card words in dark mode only; light keeps its ink. */
+@media(prefers-color-scheme:dark){:root{--outcome-topic-ink:#fff}.outcome-topic-title,.outcome-topic-meta{color:var(--outcome-topic-ink)}}
 .outcome-topic-toggle{margin:.85rem 0 .55rem}
 .outcome-topic-more{margin:.6rem 0}
 .outcome-topic-cards>.empty{margin:.8rem 0}
