@@ -27,6 +27,7 @@ export function notebookMenuItems(page) {
     // may have changed since this list opened. The ordinary buttons use the same owners.
     const canWrite=()=>page.writing===w&&!page.readOnly&&!w.readOnly&&!w.reading&&!w.deleted&&!w.closed&&!w.actionPending&&!w.actionRunning;
     const items=[
+      ...(page.menuExtras?.('first')??[]),
       {key:'text',label:'Show as text',glyph:'text',checked:page.mode==='text',act:()=>page.switchView('text')},
       {key:'cards',label:'Show as cards',glyph:'stack',checked:page.mode==='cards',act:()=>page.switchView('cards')},
       {key:'draft',label:'Private Draft',glyph:'draft',checked:page.drafted(),disabled:!canWrite(),act:()=>{if(canWrite())page.markDraft(!page.drafted());}},
@@ -277,7 +278,11 @@ export class NotebookPage extends DeckPage {
     if(this.paintedDraft!==undefined&&this.paintedDraft!==on)this.paint();
     this.paintedDraft=on;
   }
-  paint() { if(this.mode!=='text')super.paint(); }
+  paint() { if(this.mode!=='text')super.paint(); this.surfaceChanged?.(); }
+  say(words, state = null, again = null) {
+    if (this.presentStatus) this.presentStatus(words, state, again);
+    else super.say(words, state, again);
+  }
   key(event) {
     if (this.keyScope && !this.keyScope(event.target)) return;
     const picker=this.mode==='text'?this.textImages:this.cardImages;
@@ -303,6 +308,7 @@ export class NotebookPage extends DeckPage {
     this.textPanel.hidden=!text;
     for(const node of [this.list,this.bar,this.keys,this.opening])node.hidden=text || (node===this.opening&&!/\S/.test(this.deck.opening));
     this.viewButtons.forEach((b,i)=>b.setAttribute('aria-pressed',String((i===0)===text)));
+    this.surfaceChanged?.();
   }
   writingChanged() {
     const w=this.writing;

@@ -13,6 +13,7 @@ function documentFor(t) {
   const make = doc.createElement;
   doc.createElement = tag => {
     const n = make(tag); n.ownerDocument = doc; n.style = { setProperty(k,v) { this[k]=v; }, removeProperty(k) { delete this[k]; } };
+    n.cloneNode=deep=>{const clone=doc.createElement(tag);clone.className=n.className;clone.textContent=n.textContent;for(const [key,value] of Object.entries(n.attributes))clone.setAttribute(key,value);if(deep)clone.append(...n.children.map(c=>c.cloneNode(true)));return clone;};
     n.scrollTop = 0; n.scrollHeight = n.clientHeight = n.offsetHeight = 100;
     Object.defineProperty(n, 'parentElement', { get: () => n.parent });
     n.contains = other => n === other || [...n.descendants()].includes(other);
@@ -33,6 +34,7 @@ function documentFor(t) {
   doc.createElementNS = (_ns,tag) => doc.createElement(tag);
   doc.body = doc.createElement('body'); doc.body.root = true; doc.activeElement=doc.body;
   doc.documentElement=doc.createElement('html'); doc.getElementById=id=>doc.byId(id);
+  const pencil=doc.createElement('svg');pencil.setAttribute('viewBox','0 0 24 24');const path=doc.createElement('path');path.setAttribute('d','M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16z M13.5 6.5l4 4');pencil.append(path);doc.byId('new-message').append(pencil);
   doc.querySelector=()=>null; doc.getSelection=()=>({isCollapsed:true});
   doc.addEventListener=(type,fn)=>{if(!listeners.has(type))listeners.set(type,[]);listeners.get(type).push(fn);};
   doc.defaultView={getComputedStyle:()=>({marginTop:'0px',marginBottom:'0px'}),addEventListener(){}};
@@ -88,17 +90,18 @@ async function sheet(t) {
   const dialog=doc.byId('new-message-sheet');dialog.close=()=>{dialog.open=false;};dialog.show=dialog.showModal=()=>{dialog.open=true;};
   const pages=[];
   const s=new NotebookSheet({doc,fullHref:()=>'/p',openStack:async()=>true,goBack(){},feed:{topicId:'t',read:async()=>({items:[],next_cursor:null}),open(){}},
-    make:(id,host)=>{const page={item:id,host,mode:'cards',text:doc.createElement('textarea'),sheetTitle:doc.createElement('span'),views:doc.createElement('div'),draft:doc.createElement('button'),more:doc.createElement('button'),pageNotice:doc.createElement('p'),status:doc.createElement('p'),bar:doc.createElement('div'),list:doc.createElement('ol'),load:async()=>true,show(){},paint(){},close(){},writing:{journalPending:false,flush:async()=>{}}};
+    make:(id,host)=>{const page={item:id,host,mode:'cards',text:doc.createElement('textarea'),sheetTitle:doc.createElement('span'),views:doc.createElement('div'),draft:doc.createElement('button'),more:doc.createElement('button'),pageNotice:doc.createElement('p'),status:doc.createElement('p'),bar:doc.createElement('div'),count:doc.createElement('span'),list:doc.createElement('ol'),load:async()=>true,show(){},paint(){},close(){},writing:{journalPending:false,flush:async()=>{}}};
       page.status.setAttribute('role','status');page.status.textContent='Saved to Theseus';page.bar.className='deck-bar';page.list.className='deck-cards';host.append(page.bar,page.list);pages.push(page);return page;}});
   t.after(()=>s.retire());await s.open('one');return {s,doc,pages};
 }
 test('868 only title and glyphs stay outside the active page scroller in modal and docked modes',async t=>{
   const {s,pages}=await sheet(t),page=pages[0],head=s.title.parentElement;
-  assert.deepEqual(head.children.map(n=>n.className),[s.title,page.more,s.dockButton,s.full,s.closer].map(n=>n.className));
+  assert.deepEqual(head.children,[s.title,s.saved,s.renameButton,s.starButton]);
+  assert.deepEqual(s.actions.children,[s.newButton,s.dockButton,page.more,s.closer]);
   for(const docked of [true,false]) {
     s.setDocked(docked);
     for(const control of [s.status,page.pageNotice,s.dossiers.root,page.bar,page.list])assert.ok(page.host.contains(control),'control shares the cards scroll owner');
-    assert.ok(page.more.parentElement===head,'page menu belongs to the fixed head');
+    assert.ok(page.more.parentElement===s.actions,'page menu belongs to the fixed head');
     assert.equal(page.host.querySelector('.notebook-sheet-toolbar'),null);
     assert.equal(page.status.getAttribute('role'),'status');assert.equal(page.status.textContent,'Saved to Theseus');
   }
@@ -114,7 +117,7 @@ test('868 stylesheet keeps one compact header row and lets the deck bar scroll',
   const css=readFileSync(new URL('../web/aim.css',import.meta.url),'utf8');
   const rules=selector=>[...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([,s])=>s.trim()===selector).map(([,s,b])=>b).join(';');
   assert.doesNotMatch(rules('.notebook-sheet-page>.deck-bar'),/position:sticky/);
-  assert.doesNotMatch(rules('.notebook-sheet-head'),/flex-wrap:wrap|grid-template-areas/);
+  assert.match(rules('.notebook-sheet-head'),/flex-wrap:wrap/);
   assert.match(rules('.notebook-sheet-head .sheet-glyph'),/height:2\.5rem/);
   assert.match(rules('.notebook-sheet-title'),/text-overflow:ellipsis/);
   assert.match(rules('.notebook-sheet-page'),/overflow:auto/);

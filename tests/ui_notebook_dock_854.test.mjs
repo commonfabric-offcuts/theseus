@@ -25,7 +25,7 @@ test('854 docking is topic-only, width-gated and remembered without losing prefe
   const f=fixture(t);await f.sheet.open('p');
   f.sheet.dockButton.onclick();f.sheet.dockButton.onclick();assert.equal(JSON.parse(f.storage.get('notebook-docked')),true);
   f.media.matches=false;f.media.changed();assert.equal(f.sheet.docked,false);assert.equal(f.sheet.dockButton.hidden,true);
-  assert.deepEqual(f.page.menuExtras('afterImage'),[]);assert.equal(JSON.parse(f.storage.get('notebook-docked')),true);
+  assert.deepEqual(f.page.menuExtras('afterImage').map(x=>x.key),['fullpage']);assert.equal(JSON.parse(f.storage.get('notebook-docked')),true);
   f.media.matches=true;f.media.changed();assert.equal(f.sheet.docked,true);
   f.sheet.retire();assert.equal(f.doc.body.classList.contains('notebook-docked'),false);
 });

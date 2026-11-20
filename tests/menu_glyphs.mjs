@@ -13,7 +13,7 @@
 import { shippedUnwatched } from './fixtures/shipped_unwatched_865.mjs';
 
 export const GLYPH_OF = Object.freeze({
-  'Show as text':'text', 'Show as cards':'stack', 'Private Draft':'draft', 'Choose dossier…':'dossier', 'Add image…':'image', 'Side by side':'layout', Star:'star', Delete:'drop', 'Undo delete':'undo',
+  'Open as a full page':'openpage', Done:'pencil', 'Show as text':'text', 'Show as cards':'stack', 'Private Draft':'draft', 'Choose dossier…':'dossier', 'Add image…':'image', 'Side by side':'layout', Star:'star', Delete:'drop', 'Undo delete':'undo',
   'Star for me': 'star', Unstar: 'starred', Rename: 'pencil', 'Show all messages': 'all', 'Show latest and unread replies': 'latest',
   Fold: 'fold', Unfold: 'unfold', 'Fold message': 'fold', 'Unfold message': 'unfold', 'Split back out': 'split',
   // A dossier's title bar ⋯ on a phone (item 473): Reply to the first message takes the title bar's own Reply.
