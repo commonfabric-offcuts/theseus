@@ -1,0 +1,158 @@
+/* The dense side rail (designer prototype, "A · Ledger"): one line per outcome and per topic, wherever there
+   is a fine pointer and the window is wider than a phone. "Roomy" at the rail's foot puts today's spacing back
+   (data-rail-roomy on <html>, rail-density.mjs). A phone and a touch screen keep today's targets. */
+/* A released list loses its ids; keep the adopted list's legend hidden. */
+.ol-adopted>.topics-key{display:none!important}
+@media (pointer:fine) and (min-width:761px){
+:root:not([data-rail-roomy]){
+  --rail-ink-2:color-mix(in srgb,var(--ink) 78%,var(--paper));
+  --rail-hair:color-mix(in srgb,var(--line) 75%,var(--paper));
+  --rail-hover:color-mix(in srgb,var(--ink) 5%,var(--paper));
+
+  .workspace-layout{grid-template-columns:16.5rem minmax(0,1fr)}
+  @media (min-width:1181px){
+    &[data-rails] .workspace-layout{grid-template-columns:16.5rem minmax(0,1fr) 18rem}
+    &[data-rails] .workspace-layout:has(#outcome-page:not([hidden]) .outcome-topic-cards){grid-template-columns:16.5rem minmax(0,1fr)}
+  }
+  .rail{padding:1rem .55rem 1rem .2rem}
+  .rail .brand{margin:0 0 .7rem .35rem;gap:.25rem}
+  .rail .wordmark{font-size:1.05rem}
+  .rail .presence-dot{width:.38rem;height:.38rem}
+
+  /* The totals: two small chips, on one line with room to spare. */
+  .ol-sums{gap:.3rem;margin:0 0 .55rem .3rem}
+  .ol-sums .chip{min-height:0;height:1.4rem;padding:0 .5rem;font-size:.72rem;gap:.2rem}
+  .ol-sums .chip .outcome-light{width:.45rem;height:.45rem;margin-right:.15rem;box-shadow:none}
+  .ol-heading{margin:0 0 .25rem .35rem!important;min-height:1.5rem}
+  .ol-heading h2{font-size:.66rem}
+  .ol-heading-tools{margin:0}
+  .ol-heading .ol-pencil{width:1.4rem;height:1.4rem;min-height:0;opacity:.7}
+  .ol-heading .ol-pencil svg{width:.8rem;height:.8rem}
+
+  /* An outcome: chevron, light, name, count, on one 26px line. */
+  .ol-outcome{margin:0}
+  .ol-row{position:relative;grid-template-columns:.85rem minmax(0,1fr) 0;align-items:center;border-radius:.4rem}
+  .ol-row:hover{background:var(--rail-hover)}
+  .ol-row:has(>.ol-name[aria-current=page]){background:var(--soft)}
+  .ol-disclosure{width:.85rem;height:1.625rem;min-height:0;border-radius:.3rem;justify-self:end}
+  .ol-disclosure:hover{background:transparent}
+  .ol-disclosure svg{width:.7rem;height:.7rem;transition:transform .12s}
+  .ol-name{display:flex;align-items:center;min-height:1.625rem;padding:0 .4rem 0 .25rem;border:0;font-size:.8125rem;overflow-wrap:normal;background:transparent!important;position:static}
+  .ol-name[aria-current=page]{border:0}
+  .ol-name-line{display:flex;align-items:center;min-width:0;width:100%;font-weight:560}
+  .ol-name-line .outcome-light{width:.5rem;height:.5rem;margin-right:.45rem;flex:none}
+  .ol-name-line .outcome-light[data-light=waiting]{box-shadow:0 0 0 .12rem color-mix(in srgb,var(--accent) 28%,transparent)}
+  .ol-title{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .ol-name:has(.unread-count) .ol-title{padding-right:1.9rem}
+  .ol-name small.standing{display:none}
+  /* The count sits flush right, so counts line up down the rail. */
+  .ol-name .unread-count,.ol-topics a.nav-item .unread-count,.ol-adopted a.nav-item .unread-count{position:absolute;right:.35rem;top:50%;transform:translateY(-50%);margin:0;min-width:1.15rem;height:1rem;padding:0 .3rem;font-size:.66rem;line-height:1rem;font-variant-numeric:tabular-nums}
+  /* The light already says a question waits: the boxed line under the outcome goes. */
+  .ol-row>.ol-waiting{display:none}
+  /* The pencil covers the end of the name while the row has the pointer, never the count. */
+  .ol-row>.ol-new-topic{position:absolute;right:.25rem;top:50%;transform:translateY(-50%);width:1.5rem;height:1.4rem;min-height:0;border-radius:.3rem;background:var(--rail-hover)!important}
+  .ol-row:has(.unread-count)>.ol-new-topic{right:1.85rem}
+  .ol-row:has(>.ol-name[aria-current=page])>.ol-new-topic{background:var(--soft)!important}
+  .ol-row>.ol-new-topic svg{width:.8rem;height:.8rem}
+
+  /* A New topic or New outcome title line: one quiet field the height of a row, under the name. */
+  .ol-outcome>.rail-line,.outline>.rail-line,.ol-heading~.rail-line{margin:.1rem .3rem .3rem 1.1rem;gap:.15rem}
+  .rail-line input{max-width:none;min-height:0;height:1.6rem;padding:0 .5rem;border-radius:.35rem;font-size:.78rem;background:var(--panel);border-color:var(--line)}
+  .rail-line input:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent)}
+  .rail-line input::placeholder{color:var(--muted)}
+  .rail-line .one-line-state{font-size:.7rem;padding-left:.1rem}
+  /* The pencil whose line is open: its glyph in the accent, no box. */
+  .ol-row>.ol-new-topic[aria-expanded=true]{color:var(--accent);background:transparent!important}
+  .ol-row:hover>.ol-new-topic[aria-expanded=true]{background:var(--rail-hover)!important}
+
+  /* Its topics: indented under the name, a hairline down the chevron's column. */
+  .ol-topics,.ol-adopted{position:relative}
+  .ol-topics{margin:.05rem 0 .3rem .85rem}
+  .ol-topics::before{content:"";position:absolute;left:-.45rem;top:.1rem;bottom:.4rem;width:1px;background:var(--rail-hair)}
+  .ol-topics :is(.topic-list,#topics) a.nav-item{position:relative;display:block;min-height:0;height:1.5rem;margin:0;padding:0 .4rem 0 1.05rem;border:0;border-radius:.35rem;
+    font-size:.78rem;line-height:1.5rem;font-weight:400;color:var(--rail-ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
+  .ol-topics :is(.topic-list,#topics) a.nav-item:hover{background:var(--rail-hover);color:var(--ink)}
+  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.unread-count){color:var(--ink);font-weight:620;padding-right:1.9rem}
+  .ol-topics :is(.topic-list,#topics) a.nav-item[aria-current=page]{background:var(--soft);color:var(--ink);font-weight:650;border:0}
+  /* An agent at work: its ring in the gutter under the outcome's light. */
+  .ol-topics a.nav-item .topic-work{position:absolute;left:.32rem;top:50%;transform:translateY(-50%);width:.4rem;height:.4rem;margin:0;border-width:1.2px}
+  /* A question waiting on you: a small filled ?, before the count. Other states: a quiet word. */
+  .ol-topics a.nav-item .topic-state{position:absolute;right:.35rem;top:50%;transform:translateY(-50%);margin:0;max-width:5.5rem;height:1rem;padding:0 .35rem;font-size:.62rem;line-height:.9rem;background:var(--rail-hover)}
+  .ol-topics a.nav-item:has(.unread-count) .topic-state{right:1.85rem}
+  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state){padding-right:6.4rem}
+  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state.mine){padding-right:1.9rem}
+  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state.mine):has(.unread-count){padding-right:3.1rem}
+  .ol-topics a.nav-item .topic-state.mine{width:.95rem;height:.95rem;padding:0;border:0;border-radius:50%;background:var(--accent);font-size:0;line-height:.95rem;text-align:center}
+  .ol-topics a.nav-item .topic-state.mine::before{content:"?";font-size:.6rem;font-weight:800;color:var(--on-accent)}
+  .ol-topics a.nav-item .unread-count.addressed{background:var(--accent);color:var(--on-accent)}
+  .ol-topics a.nav-item:has(.topic-state.mine) .unread-count.addressed{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--rail-ink-2)}
+
+  /* Done and Archived: one quiet line. */
+  .ol-topics .topic-group{display:inline-block;margin:0 .6rem 0 0}
+  .ol-topics .topic-group[open]{display:block}
+  .ol-topics .topic-group>summary{min-height:0;height:1.4rem;padding:0 0 0 1.05rem;font-size:.7rem;list-style:none}
+  .ol-topics .topic-group>summary::-webkit-details-marker{display:none}
+  .ol-adopted #outcome-empty{padding:.1rem 1.05rem;font-size:.75rem}
+  .ol-keys{margin:.6rem 0 0 .4rem;font-size:.72rem}
+  .ol-keys>summary{min-height:0;padding:.2rem 0}
+  .ol-key{display:none!important}
+
+  /* The foot: one quiet line. */
+  .rail-foot{flex-direction:row;flex-wrap:wrap;align-items:center;gap:.2rem .8rem;margin:.9rem .4rem 0;padding-top:.6rem;border-top:1px solid var(--rail-hair);font-size:.72rem}
+  .rail-foot>*{margin:0}.rail-foot #instance-label{flex:1 0 100%}
+  .rail-foot #instance-label,.rail-foot a,.rail-foot button{font-size:.72rem;min-height:0;padding:0}
+  .rail-foot .rail-density button{padding:0 .45rem;font-size:.68rem}
+}
+}
+/* Roomy keeps today's row heights and words, without the deep left indent: the chevron sits near the rail's
+   edge in a narrow column, the name right after it, and topics step in by that column alone. A phone keeps its
+   finger-sized chevron. */
+@media (pointer:fine) and (min-width:761px){
+:root[data-rail-roomy]{
+  .rail{padding-left:.45rem;padding-right:.55rem}
+  .ol-row>.ol-new-topic{width:1.9rem;min-width:0;height:2.5rem;min-height:0;border-radius:.4rem}
+  .ol-row>.ol-new-topic svg{width:.95rem;height:.95rem}
+  .rail .brand,.ol-sums,.ol-heading{margin-left:.45rem}
+  .ol-row{grid-template-columns:1.15rem minmax(0,1fr) auto}
+  .ol-disclosure{width:1.15rem;min-width:0;justify-self:end;border-radius:.35rem}
+  .ol-disclosure:hover{background:transparent;color:var(--ink)}
+  .ol-name{padding-left:.4rem}
+  .ol-row>.ol-waiting{margin-left:.4rem}
+  .ol-topics{margin-left:1.15rem}
+  .ol-outcome>.rail-line{margin-left:1.55rem}
+}
+}
+/* "Roomy" at the foot (rail-density.mjs): only where the dense rail applies. */
+.rail-density{display:none}
+@media (pointer:fine) and (min-width:761px){
+  .rail-density{display:inline-flex;gap:1px;padding:1px;border:1px solid var(--line);border-radius:.4rem;background:var(--panel)}
+  .rail-density button{min-height:0;height:1.25rem;padding:0 .45rem;border:0;border-radius:.3rem;background:transparent;color:var(--muted);font-size:.68rem}
+  .rail-density button:hover{color:var(--ink);background:transparent}
+  .rail-density button[aria-pressed=true]{background:var(--soft);color:var(--ink);font-weight:600}
+  /* The rail's width, dragged at its edge and kept on this device (rail-density.mjs). */
+  .rail-resize{grid-column:1;grid-row:1;justify-self:end;align-self:start;position:sticky;top:0;z-index:4;width:7px;height:100dvh;margin-right:-4px;cursor:col-resize;touch-action:none}
+  .rail-resize::after{content:"";position:absolute;inset:0 3px;background:transparent;transition:background .12s}
+  .rail-resize:hover::after,.rail-resize:focus-visible::after,.rail-resize[data-dragging]::after{background:var(--accent)}
+  .rail-resize:focus-visible{outline:none}
+  :root[data-rail-w] .workspace-layout{grid-template-columns:var(--rail-w) minmax(0,1fr)}
+  :root[data-rail-w][data-rails] .workspace-layout:has(#outcome-page:not([hidden]) .outcome-topic-cards){grid-template-columns:var(--rail-w) minmax(0,1fr)}
+  @media (min-width:1181px){:root[data-rail-w][data-rails] .workspace-layout{grid-template-columns:var(--rail-w) minmax(0,1fr) 18rem}
+    :root[data-rail-w][data-rails] .workspace-layout:has(#outcome-page:not([hidden]) .outcome-topic-cards){grid-template-columns:var(--rail-w) minmax(0,1fr)}}
+  body.rail-resizing{cursor:col-resize;user-select:none}
+}
+.rail-resize{display:none}
+@media (pointer:fine) and (min-width:761px){.rail-resize{display:block}.workspace-layout>.rail:not([hidden]){grid-column:1;grid-row:1}.rail[hidden]+.rail-resize{display:none}}
+
+/* The docked Notebook (aim.css, 1280px and wider) splits what the rail leaves in two, measured for an 18rem rail;
+   a Compact or dragged rail is another width, so the split is measured from the rail's own width. */
+@media (pointer:fine) and (min-width:1280px){
+  :root:not([data-rail-roomy]){--rail-col:16.5rem}
+  :root[data-rail-w]{--rail-col:var(--rail-w)}
+  :root:is(:not([data-rail-roomy]),[data-rail-w]){
+    body.notebook-docked .workspace-layout{grid-template-columns:var(--rail-col) minmax(0,1fr) minmax(0,1fr)}
+    dialog.notebook-sheet-dialog.notebook-docked[open]{width:calc((100vw - var(--rail-col))/2 - 1.5rem)}
+    body.notebook-docked #new-message-sheet[open][data-width-edges]{left:calc(var(--rail-col) + 1rem);
+      width:min(var(--composer-width,var(--widest)),calc((100vw - var(--rail-col))/2 - 2rem));max-width:calc((100vw - var(--rail-col))/2 - 2rem);
+      min-width:min(280px,calc((100vw - var(--rail-col))/2 - 2rem))}
+  }
+}

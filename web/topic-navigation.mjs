@@ -1,6 +1,6 @@
 import { validCardId } from './card-details.mjs';
 import { currentImages } from './upload-state.mjs';
-import { paintState, paintWork } from './topic-state.mjs';
+import { paintState, paintWork, waitingQuestion } from './topic-state.mjs';
 import { book, scopeOf, arrangeItems, orderOf } from './outline-order.mjs';
 import { menuRouteHash, menuRouteRead, menuRouteValid } from './menu-route.mjs';
 
@@ -396,6 +396,9 @@ export class TopicRail {
       drawn.set(link, shows);
       link.textContent = item.title;
       paintMarks(link, item, this.reader);
+      // On hover, the whole title (a one-line row may cut it short), then what was seen there, if anything.
+      const seen = link.title;
+      link.title = seen ? `${item.title} · ${seen}` : item.title;
     }
     if (Number.isSafeInteger(item.cover_waiting) && item.cover_waiting > 0) link.setAttribute('data-cover-waiting', '');
     else link.removeAttribute('data-cover-waiting');
@@ -567,7 +570,7 @@ const drawn = new WeakMap();
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 // The message of the question a topic waits on the reader for, or null: its
 // row opens the topic there, so the Reader shows the question (item 148).
-export const questionOf = (item, reader) => (Array.isArray(item?.asks) ? item.asks : []).find(ask => ask?.actor_id === reader && typeof ask.message_id === 'string')?.message_id ?? null;
+export const questionOf = waitingQuestion;
 // What a topic's row carries after its title, in the outline and in the right
 // rail alike (item 297): its unread count (marked when part of it was sent to
 // the reader by name), where it stands (Waiting on you, Ready for review…) and

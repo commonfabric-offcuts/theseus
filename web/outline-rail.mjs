@@ -444,7 +444,7 @@ export class OutlineRail {
     const own = part('div', { className: 'ol-own' });
     own.append(message, host, more, retry, done.details, archived.details);
     topics.append(own);
-    outcome = { id, item, li, row, disclosure, name, title, standing, waiting, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null,
+    outcome = { id, item, li, row, disclosure, name, title, standing, waiting, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null, held: null,
       parts: { host, more, retry, message, done, archived } };
     disclosure.onclick = event => {
       if (!plainClick(event)) return;
@@ -537,15 +537,15 @@ export class OutlineRail {
       const open = li.hasAttribute('data-open'), id = outcome.id;
       rows.push({ el: outcome.name, level: 1, set: this.list, key: 'outcome:' + id, parent: null, expanded: open, outcome });
       const pen = outcome.newTopic;
-      if (open || pen === this.doc.activeElement || pen.getAttribute('aria-expanded') === 'true') rows.push({ el: pen, level: 2, set: outcome.li, key: 'pencil:' + id, parent: outcome.name, outcome });
-      if (!outcome.waiting.hidden) rows.push({el:outcome.waiting, level:2, set:outcome.li, key:'waiting:'+id, parent:outcome.name, outcome});
+      if (open || pen === this.doc.activeElement || pen.getAttribute('aria-expanded') === 'true') rows.push({ el: pen, level: 2, set: outcome.li, key: 'pencil:' + id, parent: outcome.name, outcome, byRight: true });
+      if (!outcome.waiting.hidden && outcome.waiting.getClientRects().length) rows.push({el:outcome.waiting, level:2, set:outcome.li, key:'waiting:'+id, parent:outcome.name, outcome});
       if (!open) continue;
       for (const el of outcome.topics.querySelectorAll('a[href], button, summary')) {
         if (el.closest('.one-line')) continue;
         const group = el.closest('details.topic-group'), summary = group?.querySelector(':scope > summary') ?? null;
         if (group && el !== summary && !group.open) continue;
         const deep = Boolean(group) && el !== summary;
-        if(el.hidden||!el.getClientRects().length)continue;
+        if(el.hidden||el.closest('[inert]')||!el.getClientRects().length)continue;
         const said = el.dataset.pageId ? 'page:'+el.dataset.pageId : el.dataset.topicId ? 'topic:' + el.dataset.topicId : el.getAttribute('href') ?? el.textContent.replace(/\(\d+\)/g, '').trim();
         const dossiers = el.closest('.ol-dossiers');
         const parent = dossiers ? [...outcome.topics.querySelectorAll('a[data-topic-id]')].find(a => a.dataset.topicId === dossiers.dataset.parentTopicId) : null;
@@ -706,7 +706,7 @@ export class OutlineRail {
   // The page's topic list goes under its outcome, and any list held for another goes back.
   adopt(fresh, outcome) {
     for (const other of this.outcomes.values()) if (other.adopted && other !== outcome) this.release(other);
-    outcome.adopted?.remove();
+    outcome.adopted?.remove(); outcome.held?.remove(); outcome.held = null;
     // Its heading and the page's own New topic stay out of sight (rails.css): the outcome's pencil starts a topic.
     fresh.dataset.pagePart = ''; fresh.classList.add('ol-adopted');
     outcome.own.hidden = true;
@@ -723,10 +723,19 @@ export class OutlineRail {
     return [...items, here].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
   // An outcome no longer read gets the outline's own lists back.
+  // Its rows stay drawn, as a still copy, until the outline's own list has
+  // read and painted them, so the list never blinks empty and nothing below
+  // it jumps (designer prototype).
   release(outcome) {
-    outcome.adopted.remove(); outcome.adopted = null;
-    outcome.own.hidden = false;
-    if (this.isOpen(outcome.id)) this.ownRail(outcome).load();
+    const old = outcome.adopted; outcome.adopted = null;
+    if (!this.isOpen(outcome.id)) { old.remove(); outcome.own.hidden = false; return; }
+    const still = old.cloneNode(true);
+    // Ids go, so none is doubled; the list keeps its look through the class every topic list shares.
+    for (const node of [still, ...still.querySelectorAll('[id]')]) { if (node.id === 'topics') node.classList.add('topic-list'); node.removeAttribute('id'); }
+    still.inert = true; still.setAttribute('aria-hidden', 'true');
+    old.replaceWith(still); outcome.held = still;
+    const done = () => { if (outcome.held === still) { still.remove(); outcome.held = null; outcome.own.hidden = Boolean(outcome.adopted); } };
+    Promise.resolve(this.ownRail(outcome).load()).then(done, done);
   }
   // An outcome's name opens its home.
   nameTarget(outcome) {
@@ -778,7 +787,7 @@ export class OutlineRail {
       outcome.disclosure.setAttribute('aria-expanded', String(open));
       outcome.disclosure.setAttribute('aria-label', `${open ? 'Fold' : 'Open'} topics in ${item.title}`);
       // The outcome being read waits for the page's own list, unless the outline has shown its topics before.
-      outcome.own.hidden = Boolean(outcome.adopted) || (item.id === this.here && !outcome.rail);
+      outcome.own.hidden = Boolean(outcome.adopted || outcome.held) || (item.id === this.here && !outcome.rail);
       outcome.topics.setAttribute('aria-label', `Topics in ${item.title}`);
       const target = this.nameTarget(outcome);
       outcome.name.href = routeHref(target);
@@ -789,6 +798,8 @@ export class OutlineRail {
       if (outcome.said !== said) {
         outcome.said = said;
         outcome.title.textContent = item.title + (item.title_truncated ? '…' : '');
+        // On hover, the whole name, which a one-line row may cut short.
+        if (outcome.name.title !== item.title) outcome.name.title = item.title;
         paintUnread(outcome.title, { ...counted, unread: counted.unread });
         const spoken = outcome.title.querySelector('.sr-only');
         if (spoken && open && counted.unread) spoken.textContent += ' in ' + countedWhere(item);

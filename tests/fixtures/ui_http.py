@@ -925,6 +925,7 @@ def main():
                         # As a deploy stops the server: its live streams end and
                         # the address refuses connections until server_start.
                         assert server is not None, "The server is already stopped"
+                        assert server.build is item783_builds.candidate, "Restore Item 783 comparison runtime before restarting"
                         port = server.server_address[1]
                         server.shutdown()
                         server.server_close()
@@ -935,6 +936,11 @@ def main():
                     elif request["method"] == "server_start":
                         assert server is None, "Stop the server before starting it again"
                         server = serve(port, request.get("web"), request.get("as_actor"))
+                        # A restart loads a new immutable Build, even for the
+                        # same bytes. Comparison controls now belong to that
+                        # server; server_stop refuses an unrestored comparison.
+                        item783_builds.server = server
+                        item783_builds.candidate, item783_builds.csp = server.build, server.csp
                         thread = threading.Thread(target=server.serve_forever, daemon=True)
                         thread.start()
                         answer = {"origin": server.origin, "token": server.session_token}

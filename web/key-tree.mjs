@@ -34,7 +34,7 @@ export class KeyTree {
   // each { el, level, set, key, parent (a row's el, or null), expanded (true,
   // false, or undefined for a row that does not open), and aside: true for a
   // row never taken as the Tab stop for want of another (the outline's heading
-  // pencil) }. act(action, row,
+  // pencil), and byRight: true for a row ↑ and ↓ pass over, reached by → alone }. act(action, row,
   // rows): what the pane does for a key the tree does not answer itself. The
   // tree speaks through a polite status of its own (say). also: rows drawn
   // outside root (the outline's heading pencil), which the tree owns
@@ -194,11 +194,13 @@ export class KeyTree {
     const at = rows.indexOf(row);
     // Past the first row or the last, on to what lies that way in its column;
     // while that is out of sight, the column scrolls toward it (arrow-reach.mjs).
-    const beyond = (action === 'up' && at === 0) || (action === 'down' && at === rows.length - 1);
+    // A row only → reaches (byRight: an outline pencil) is passed over by ↑ and ↓.
+    const step = by => { let i = at + by; while (rows[i]?.byRight) i += by; return rows[i] ?? null; };
+    const next = action === 'up' ? step(-1) : action === 'down' ? step(1) : null;
+    const beyond = (action === 'up' || action === 'down') && !next;
     if (beyond) { if (reach(row.el, action, { within: this.column, doc: this.doc })) event.preventDefault(); return; }
     event.preventDefault();
-    if (action === 'up') return this.go(rows[at - 1]);
-    if (action === 'down') return this.go(rows[at + 1]);
+    if (next) return this.go(next);
     if (action === 'first') return this.go(rows[0]);
     if (action === 'last') return this.go(rows.at(-1));
     this.act(action, row, rows);
