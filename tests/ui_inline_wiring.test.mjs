@@ -5564,3 +5564,248 @@ test('872 app gives New message the verified instance for width preferences even
   assert.equal(inline.layoutInstance, f.bootstrap.instance_id);
   assert.equal(inline.layout.widthKeys['new-message'], JSON.stringify(['aim-next', f.bootstrap.instance_id, 'composer-width', 'new-message']));
 });
+
+// Item 891 uses the actual app, withdrawal, grouping and stack painters. Only
+// the transport, registry persistence and DOM are in memory; source records
+// remain available even when this viewer's visible projection omits a row.
+const content891 = node => typeof node === 'string' ? node : String(node?.textContent ?? '') + (node?.children ?? []).map(content891).join('');
+const withdrawn891 = { by: 'fixture-person', at_ms: TODAY, revision: 1 };
+const ask891 = (more = {}) => ({ id: 'q891', seq: 1, author_id: 'fixture-person', author_kind: 'human',
+  intent: 'ask', body: 'WITHDRAWN QUESTION WORDS', go_ahead: true, addressees: ['dan'], withdrawal: withdrawn891, ...more });
+const reply891 = (id = 'r891', seq = 2, more = {}) => ({ id, seq, author_id: 'dan', author_kind: 'human',
+  intent: 'tell', body: 'Authored reply survives', reply_to: 'q891', reply_to_author: 'fixture-person', reply_to_excerpt: 'WITHDRAWN QUESTION WORDS', ...more });
+async function questionPage891(items, { viewer = 'fixture-person', heads = [], href = 'https://fixture/?topic=t1' } = {}) {
+  const f = fixture(href, { history: { state: null, replaceState() {} } }), reads = [], opens = [];
+  // The generic inline fake maps named page lookups by id. These message
+  // checks need real descendant class lookups, including a genuinely absent
+  // withdrawal marker; no product painter or eligibility decision is mocked.
+  const create = f.document.createElement.bind(f.document);
+  f.document.createElement = tag => {
+    const element = create(tag), query = element.querySelector.bind(element);
+    element.querySelector = selector => /^\.[\w-]+$/.test(selector)
+      ? walk(element).find(child => child.classList?.contains(selector.slice(1))) ?? null : query(selector);
+    return element;
+  };
+  f.runObservation('window.localStorage = { getItem() { return null; }, setItem() {}, removeItem() {} }');
+  f.bootstrap.actor = viewer;
+  Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
+  f.registry.generation = 1;
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  f.reader.dialog = { open: false };
+  Object.assign(f.views, { messages: new Map(items.map(item => [item.id, { topic_id: 't1', sent_ms: null, reply_to: null, unread: false, ...structuredClone(item) }])), memory: new Map(), olderCursor: null, memoryCursor: null, newest: Math.max(0, ...items.map(item => item.seq)) });
+  const sources = new Map([...f.views.messages, ...heads.map(item => [item.id, { topic_id: 't1', sent_ms: null, unread: false, ...structuredClone(item) }])]);
+  f.views.messagesPage = () => f.paintViews('messages');
+  const view = f.api.view;
+  f.api.view = async (name, args, options) => {
+    reads.push([name, structuredClone(args)]);
+    if (name === 'source') {
+      const item = sources.get((args.source_ref ?? args).id);
+      return { instance_id: 'fixture', source_ref: args.source_ref ?? args, topic_id: 't1', attachments: [], ...structuredClone(item), author: item?.author_id };
+    }
+    if (name === 'topic_messages') return { instance_id: 'fixture', items: (args.message_ids ?? []).map(id => structuredClone(sources.get(id))).filter(Boolean), next_cursor: null };
+    return view(name, args, options);
+  };
+  f.registry.open = async (ref, options) => {
+    const source = checkedView(await f.api.view('source', { source_ref: ref }), 'fixture');
+    const p = { token: f.registry.generation, source, editors: { reply: f.editor }, mode: 'reply' };
+    opens.push({ ref, options, p }); f.registry.current = p;
+    Object.assign(f.reader, { presentation: p, source }); f.reader.dialog.open = true;
+    return p;
+  };
+  await f.initialize(); for (let i = 0; i < 6; i++) await settle();
+  const state = () => f.runObservation("stackState($('messages'))");
+  const ids = () => Array.from(state().stacks, stack => [stack.head.id, ...stack.replies.map(item => item.id)]);
+  const visible = id => {
+    let entry = entryIn(f, id);
+    if (!entry || !f.get('messages').contains(entry)) return false;
+    while (entry && entry !== f.get('messages')) { if (entry.hidden) return false; entry = entry.parentElement; }
+    return true;
+  };
+  const text = node => !node || node.hidden ? '' : [typeof node === 'string' ? node : node.textContent ?? '', ...(node.children ?? []).map(text)].join(' ');
+  const words = () => text(f.get('messages'));
+  const arrange = () => f.runObservation('stackMessages()');
+  return { f, sources, reads, opens, state, ids, visible, words, arrange };
+}
+
+test('891 own withdrawn root leaves feed and dossier projection but retains its exact record', async () => {
+  const p = await questionPage891([ask891()]);
+  assert.deepEqual(p.ids(), [], 'the withdrawn question supplies no head, tab or row');
+  assert.equal(p.visible('q891'), false); assert.doesNotMatch(p.words(), /WITHDRAWN QUESTION WORDS/);
+  assert.equal(p.f.views.messages.get('q891').body, 'WITHDRAWN QUESTION WORDS');
+  p.arrange(); assert.deepEqual(p.ids(), [], 'a second arrangement cannot admit the retained record');
+});
+
+test('891 other viewer keeps withdrawn question and cue with no answer action', async () => {
+  const p = await questionPage891([ask891()], { viewer: 'dan' });
+  assert.deepEqual(p.ids(), [['q891']]); assert.equal(p.visible('q891'), true);
+  assert.match(p.words(), /WITHDRAWN QUESTION WORDS/); assert.match(p.words(), /Question withdrawn/);
+  assert.equal(p.f.runObservation("mayAnswer(views.messages.get('q891'), bootstrap.actor, bootstrap.actor_kind)"), false);
+});
+
+test('891 unwithdrawn own asks and nonquestions are not hidden by the author rule', async () => {
+  const p = await questionPage891([ask891({ withdrawal: null }), ask891({ id: 'tell891', seq: 2, intent: 'tell' })]);
+  assert.deepEqual(p.ids(), [['tell891'], ['q891']]); assert.equal(p.visible('q891'), true); assert.equal(p.visible('tell891'), true);
+});
+
+test('891 replies survive hidden root with neutral tab, author cue and unchanged authored quotation', async () => {
+  const p = await questionPage891([ask891(), reply891('r891', 2, { body: 'I explicitly quote WITHDRAWN QUESTION WORDS.' })]);
+  assert.deepEqual(p.ids(), [['r891']]); assert.equal(p.visible('q891'), false); assert.equal(p.visible('r891'), true);
+  const folder = entryIn(p.f, 'r891').closest('.reply-stack');
+  assert.equal(folder.querySelector(':scope > .stack-header')?.querySelector(':scope > .stack-head')?.querySelector(':scope > .stack-name')?.textContent
+    ?? walk(folder).find(node => node.classList?.contains('stack-name'))?.textContent, 'Dossier');
+  assert.equal(content891(entryIn(p.f, 'r891').querySelector(':scope > .message-reply-to')), 'Replying to fixture-person');
+  assert.equal(content891(entryIn(p.f, 'r891').querySelector(':scope > .message-preview')), 'I explicitly quote WITHDRAWN QUESTION WORDS.');
+  assert.equal(p.state().stacks[0].dossier, 'q891');
+});
+
+for (const minted of [false, true]) test(`891 ${minted ? 'minted' : 'explicit'} dossier name and independent cover survive for own and other viewers`, async () => {
+  const cover = { stands: 'Independent dossier state', waiting: [], owner: 'fixture-person', payload: null };
+  const root = ask891({ acts: { name: { text: 'Independent name', minted, by: 'agent-a' }, cover, starred: true } });
+  for (const viewer of ['fixture-person', 'dan']) {
+    const p = await questionPage891([root, reply891()], { viewer });
+    assert.match(p.words(), /Independent name/); assert.match(p.words(), /Independent dossier state/);
+    assert.equal(/Named by/.test(p.words()), minted);
+    assert.equal(p.state().starred.has('q891'), true, 'hiding a row does not remove a dossier star');
+    assert.match(p.words(), /★ Starred/, 'the title bar still marks that dossier star');
+    assert.deepEqual(p.ids(), [viewer === 'fixture-person' ? ['r891'] : ['q891', 'r891']]);
+  }
+});
+
+test('891 nested withdrawn ask keeps descendant ancestry and original dossier order across arrangements', async () => {
+  const p = await questionPage891([
+    { id: 'root891', seq: 1, author_id: 'dan', body: 'Visible ancestor' },
+    ask891({ seq: 3, reply_to: 'root891' }), reply891('r891', 4),
+    { id: 'separate891', seq: 2, author_id: 'dan', body: 'Separate dossier' },
+  ]);
+  assert.deepEqual(p.ids(), [['root891', 'r891'], ['separate891']]);
+  p.arrange(); p.arrange(); assert.deepEqual(p.ids(), [['root891', 'r891'], ['separate891']]);
+  assert.doesNotMatch(p.words(), /WITHDRAWN QUESTION WORDS/);
+});
+
+test('891 fold, Earlier and Only new cannot restore a hidden question while replies remain', async () => {
+  const p = await questionPage891([ask891({ acts: { folded: true, starred: true } }), ...Array.from({ length: 10 }, (_, n) => reply891('reply' + n, n + 2, { unread: true }))]);
+  const expected = Array.from({ length: 10 }, (_, n) => 'reply' + n);
+  for (const level of ['folded', 'open']) for (const only of [false, true]) {
+    const s = p.state(), id = s.stacks[0].id; s.levels.set(id, level); s.earlier.add(id); s.only = only ? item => item.unread === true : null; p.arrange();
+    assert.deepEqual(p.ids(), [expected]); assert.equal(p.visible('q891'), false); assert.doesNotMatch(p.words(), /WITHDRAWN QUESTION WORDS/);
+  }
+});
+
+const sourcePosition891 = { root_id: 'q891', order_key: 100, order_tie: 1, at: { acts: 0, messages: 8 }, name: null, cover: null };
+test('891 supplemental withdrawn root never promotes back into head or generated reply excerpt', async () => {
+  const p = await questionPage891([reply891('r891', 8, { stack_position: sourcePosition891 })], { heads: [ask891({ stack_position: sourcePosition891 })] });
+  assert.ok(p.reads.some(([name, args]) => name === 'topic_messages' && args.message_ids?.includes('q891')));
+  assert.equal(p.f.views.messages.has('q891'), false, 'source head does not enter loaded page or frontier');
+  assert.deepEqual(p.ids(), [['r891']]); assert.doesNotMatch(p.words(), /WITHDRAWN QUESTION WORDS/);
+  assert.equal(p.f.runObservation("dossierHeads.records.get('q891').item.body"), 'WITHDRAWN QUESTION WORDS');
+});
+
+test('891 scoped withdrawal refresh reaches cached-only root and suppresses its existing reply excerpt', async () => {
+  const p = await questionPage891([reply891('r891', 8, { stack_position: sourcePosition891 })], { heads: [ask891({ withdrawal: null, stack_position: sourcePosition891 })] });
+  assert.deepEqual(p.ids(), [['q891', 'r891']]);
+  const reads = [];
+  const answer = await p.f.fresh.options.refresh('withdrawal:q891', 1, async (name, args) => {
+    reads.push([name, args.id]); return { instance_id: 'fixture', withdrawal: withdrawn891 };
+  }, () => true);
+  assert.equal(answer, true); assert.deepEqual(reads, [['source', 'q891']]);
+  assert.deepEqual(p.ids(), [['r891']]); assert.doesNotMatch(p.words(), /WITHDRAWN QUESTION WORDS/);
+  assert.equal(p.f.views.messages.has('q891'), false);
+});
+
+test('891 committed withdrawal updates same Reader but preserves writing and removes visible ask only after success', async () => {
+  const p = await questionPage891([ask891({ withdrawal: null }), reply891()]);
+  await p.f.openSource({ kind: 'message', id: 'q891' }, entryIn(p.f, 'q891'));
+  const shown = p.f.registry.current, kept = p.f.editor.draft.body, gate = defer();
+  p.f.api.command = async request => { assert.equal(request.kind, 'message.withdraw'); return gate.promise; };
+  const pending = p.f.runObservation("withdrawals.withdraw(views.messages.get('q891'))");
+  assert.deepEqual(p.ids(), [['q891', 'r891']], 'in-flight command does not hide a question');
+  gate.resolve({ recorded: true, status: 'committed', result: { message_id: 'q891', withdrawal: withdrawn891 } });
+  await pending; await settle();
+  assert.deepEqual(p.ids(), [['r891']]); assert.doesNotMatch(p.words(), /WITHDRAWN QUESTION WORDS/);
+  assert.equal(p.f.registry.current, shown); assert.equal(p.f.reader.source, shown.source);
+  assert.deepEqual(shown.source.withdrawal, withdrawn891); assert.equal(p.f.editor.draft.body, kept);
+});
+
+test('891 refused withdrawal leaves question and generated reply excerpt visible', async () => {
+  const p = await questionPage891([ask891({ withdrawal: null }), reply891()]);
+  p.f.api.command = async () => ({ recorded: true, status: 'refused', error: { message: 'Ask cannot be withdrawn' } });
+  assert.equal(await p.f.runObservation("withdrawals.withdraw(views.messages.get('q891'))"), null);
+  assert.deepEqual(p.ids(), [['q891', 'r891']]); assert.match(p.words(), /WITHDRAWN QUESTION WORDS/);
+  assert.equal(p.f.views.messages.get('q891').withdrawal, null);
+});
+
+test('891 direct message link opens exact hidden question in Reader without putting it back in feed', async () => {
+  const p = await questionPage891([ask891(), reply891()], { href: 'https://fixture/?topic=t1&message=q891' });
+  assert.equal(p.opens.length, 1); assert.equal(p.f.reader.dialog.open, true);
+  assert.equal(p.f.reader.source.source_ref.id, 'q891'); assert.equal(p.f.reader.source.body, 'WITHDRAWN QUESTION WORDS');
+  assert.deepEqual(p.f.reader.source.withdrawal, withdrawn891);
+  assert.deepEqual(p.ids(), [['r891']]); assert.equal(p.visible('q891'), false);
+});
+
+test('891 other viewers and unknown parents keep generated context, independent of author bodies', async () => {
+  const p = await questionPage891([ask891(), reply891()], { viewer: 'dan' });
+  assert.equal(content891(entryIn(p.f, 'r891').querySelector(':scope > .message-reply-to')), 'Replying to fixture-person: WITHDRAWN QUESTION WORDS');
+  const unknown = await questionPage891([reply891()]);
+  assert.equal(content891(entryIn(unknown.f, 'r891').querySelector(':scope > .message-reply-to')), 'Replying to fixture-person: WITHDRAWN QUESTION WORDS');
+});
+
+test('891 late loaded parent and actual edit repaint keep only the reply author cue', async () => {
+  const p = await questionPage891([reply891()]);
+  assert.match(content891(entryIn(p.f, 'r891').querySelector(':scope > .message-reply-to')), /WITHDRAWN QUESTION WORDS/);
+  p.f.views.messages.set('q891', { topic_id: 't1', ...ask891() });
+  p.f.paintViews('messages');
+  assert.equal(content891(entryIn(p.f, 'r891').querySelector(':scope > .message-reply-to')), 'Replying to fixture-person');
+  const reply = p.f.views.messages.get('r891'); reply.body = 'Revised authored words'; reply.revision = 2;
+  p.f.runObservation("repaintEdited(['r891'], [])");
+  assert.equal(content891(entryIn(p.f, 'r891').querySelector(':scope > .message-reply-to')), 'Replying to fixture-person');
+  assert.equal(content891(entryIn(p.f, 'r891').querySelector(':scope > .message-preview')), 'Revised authored words');
+  assert.deepEqual(p.ids(), [['r891']]);
+});
+
+test('891 joined descendants keep canonical grouping and original explicit position with hidden root', async () => {
+  const position = { ...sourcePosition891, order_key: 40, order_tie: 1, name: { text: 'Position name' }, cover: { stands: 'Position cover', waiting: [], payload: null } };
+  const p = await questionPage891([
+    ask891({ stack_position: position, acts: { name: position.name, cover: position.cover } }), reply891('r891', 2, { stack_position: position }),
+    { id: 'joined891', seq: 3, author_id: 'dan', body: 'Joined content', acts: { joined: { into: 'q891', by: 'dan', at_ms: TODAY } }, stack_position: position },
+    { id: 'joined-reply891', seq: 4, author_id: 'dan', body: 'Joined descendant', reply_to: 'joined891', stack_position: position },
+    { id: 'above891', seq: 5, author_id: 'dan', body: 'Above by position', stack_position: { ...position, root_id: 'above891', order_key: 90 } },
+  ]);
+  assert.deepEqual(p.ids(), [['above891'], ['r891', 'joined891', 'joined-reply891']]);
+  assert.equal(p.state().stacks[1].orderKey, 40); assert.equal(p.state().stacks[1].dossier, 'q891');
+  assert.match(p.words(), /Position name/); assert.match(p.words(), /Position cover/);
+  p.arrange(); assert.deepEqual(p.ids(), [['above891'], ['r891', 'joined891', 'joined-reply891']]);
+});
+
+test('891 stale withdrawal answer cannot hide or mutate cached source', async () => {
+  const p = await questionPage891([reply891('r891', 8, { stack_position: sourcePosition891 })], { heads: [ask891({ withdrawal: null, stack_position: sourcePosition891 })] });
+  let current = true; const gate = defer(), read = [];
+  const pending = p.f.fresh.options.refresh('withdrawal:q891', 1, async (name, args) => { read.push([name, args.id]); return gate.promise; }, () => current);
+  current = false; gate.resolve({ instance_id: 'fixture', withdrawal: withdrawn891 });
+  assert.equal(await pending, false); assert.deepEqual(read, [['source', 'q891']]);
+  assert.deepEqual(p.ids(), [['q891', 'r891']]); assert.equal(p.f.runObservation("dossierHeads.records.get('q891').item.withdrawal"), null);
+});
+
+test('891 withdrawal refresh refusal leaves visible question and reply context intact', async () => {
+  const p = await questionPage891([ask891({ withdrawal: null }), reply891()]);
+  await assert.rejects(p.f.fresh.options.refresh('withdrawal:q891', 1, async () => { throw Error('Fixture source refused'); }, () => true), /Fixture source refused/);
+  assert.deepEqual(p.ids(), [['q891', 'r891']]); assert.match(p.words(), /WITHDRAWN QUESTION WORDS/);
+});
+
+test('891 withdrawn ask adds no answer or waiting cue while another active question still asks', async () => {
+  const p = await questionPage891([ask891(), ask891({ id: 'active891', seq: 2, author_id: 'dan', addressees: ['fixture-person'], withdrawal: null, body: 'Still waiting on you' })]);
+  assert.deepEqual(p.ids(), [['active891']]);
+  assert.equal(p.f.runObservation("mayAnswer(views.messages.get('q891'), 'dan', 'human')"), false);
+  assert.equal(p.f.runObservation("mayAnswer(views.messages.get('active891'), bootstrap.actor, 'human')"), true);
+  assert.equal(walk(entryIn(p.f, 'q891')).some(node => node.classList?.contains('reaction-choice')), false);
+  assert.equal(walk(entryIn(p.f, 'active891')).some(node => node.classList?.contains('reaction-choice')), true);
+});
+
+test('891 newer position held by hidden root still places surviving replies below More', async () => {
+  const old = { ...sourcePosition891, below: false, at: { acts: 1, messages: 8 }, aside_revision: 0 };
+  const latest = { ...old, below: true, at: { acts: 2, messages: 8 }, aside_revision: 1 };
+  const p = await questionPage891([ask891({ stack_position: latest }), reply891('r891', 8, { stack_position: old })]);
+  assert.deepEqual(p.ids(), [['r891']]);
+  assert.equal(p.state().below.has('r891'), true); assert.equal(p.visible('r891'), false);
+  assert.equal(p.f.runObservation("positionOf(stackState($('messages')).stacks[0]).aside_revision"), 1);
+  p.state().moreOpen = true; p.arrange(); assert.equal(p.visible('r891'), true); assert.equal(p.visible('q891'), false);
+});

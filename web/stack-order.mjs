@@ -14,6 +14,8 @@
 // never lift one. Older Core responses without an order key retain the legacy
 // activity ordering below.
 
+import { ownWithdrawnQuestion } from './question-withdrawal.mjs';
+
 // Acts recorded about a message (Core's message_acts, as topic_messages
 // carries them): absent on a page from a Core before them, read as none.
 const actsOf = item => item?.acts ?? {};
@@ -154,6 +156,21 @@ export function gather(items, { has = null, viewer = null, filled = new Set(), a
     const own = item => item.id !== head.id && !joins.has(item.id) && viewer !== null && item.author_id === viewer;
     return { id: head.id, head, replies, joins, newest: newest(members), lifted: newest(members.filter(item => !own(item))), placed: typeof position?.order_key === 'number' && position.order_key !== placed ? null : placed, dossier: root, orderKey: alone ? null : position?.order_key, orderTie: position?.order_tie,
       parents: new Map(members.map(item => [item.id, up(item.id)?.id ?? null])), filled: new Set(late.map(item => item.id)), branches: head.id === root || alone ? null : new Set(tops.filter(item => item !== head).map(item => item.id)) };
+  });
+}
+
+// Group and order original records first, including supplemental heads. The
+// author's withdrawn asks contribute no visible row, tab, excerpt or count.
+// Keep the original stack only for independent dossier metadata and position;
+// it is never used as the list of messages to paint (item 891).
+export function visibleStacks(stacks, viewer) {
+  return stacks.flatMap(stack => {
+    const all = [stack.head, ...stack.replies], visible = all.filter(item => !ownWithdrawnQuestion(item, viewer));
+    if (visible.length === all.length) return [stack];
+    if (!visible.length) return [];
+    const [head, ...replies] = visible;
+    return [{ ...stack, id: head.id, head, replies, sourceStack: stack,
+      sourceHead: head === stack.head && stack.sourceHead }];
   });
 }
 
@@ -310,8 +327,8 @@ export function rowsOf(stack, { level = 'folded', kept, unread = () => false, ne
 // message, its own acts say it. mintedBy: the agent that minted the name
 // (item 479), which the row says as "Named by"; null for a typed name or none.
 export function headOf(stack, { preview = item => String(item.body ?? '').split('\n')[0], unread = () => false } = {}) {
-  const position = positionOf(stack);
-  const typed = position && position.root_id !== stack.head.id && 'name' in position ? position.name : actsOf(stack.head).name;
+  const naming = stack.sourceStack ?? stack, position = positionOf(naming);
+  const typed = position && position.root_id !== naming.head.id && 'name' in position ? position.name : actsOf(naming.head).name;
   const repliers = [];
   for (const item of stack.replies) if (!repliers.includes(item.author_id)) repliers.push(item.author_id);
   const headNew = unread(stack.head);
@@ -333,6 +350,7 @@ export function newestNew(stack, unread) {
 // dossier with none, and for a message on its own unless alone: true asks for
 // the cover its pills show (dossier-cover.mjs).
 export function stackCover(stack, { alone = false } = {}) {
+  if (stack.sourceStack) return stackCover(stack.sourceStack, { alone });
   const position = positionOf(stack);
   if (position && position.root_id !== stack.head.id) return position.cover ?? null;
   return stack.replies.length || alone ? actsOf(stack.head).cover ?? null : null;
@@ -394,7 +412,7 @@ export function drawnBelow(stack, here = () => null) {
 // The dossier a stack is drawn from: Core's first message of it (positionOf),
 // or the stack's own head where Core sent no position. A dossier whose first
 // message the page has not loaded is drawn as more than one stack.
-export const dossierOf = stack => positionOf(stack)?.root_id ?? stack.id;
+export const dossierOf = stack => positionOf(stack)?.root_id ?? (stack.sourceStack ? dossierOf(stack.sourceStack) : stack.id);
 
 // The dossiers the reader starred a message in (item 635), by dossierOf: one
 // a stack drawn from it shows a starred message of (its acts as the page shows
@@ -540,6 +558,7 @@ export function laterPosition(known, answer) {
 // positions Core sent before it on the messages it moved; such a position is
 // another dossier's, and null where none fits.
 export function positionOf(stack) {
+  if (stack.sourceStack) return positionOf(stack.sourceStack);
   const inside = new Set(stack.replies.map(item => item.id));
   const hangs = Boolean(actsOf(stack.head).joined?.into || stack.head.reply_to);
   const fits = position => ('dossier' in stack ? position.root_id === stack.dossier : position.root_id === stack.head.id || hangs && !inside.has(position.root_id));
