@@ -755,7 +755,7 @@ export class StackFeed {
     if (undoable) this.remember(() => { this.setFold(item, !on, { undoable: false }); });
     this.arrange();
     if (focus) this.focusOn(item.id);
-    this.say(on ? 'Folded to one line, for you only' : 'Unfolded');
+    this.say(on ? item.yours?.note === true ? 'Fold saved; your private note keeps this message whole' : 'Folded to one line, for you only' : 'Unfolded');
     return sent;
   }
   foldReason(item, on) {
@@ -821,7 +821,7 @@ export class StackFeed {
       .then(result => result.folds.map(({ message_id }) => this.messages().get(message_id) ?? this.standIns.get(message_id)));
     folded.then(each => {
       for (const one of each) this.settled(one.id);
-      this.say(!each.length ? 'Nothing to fold' : each.length === 1 ? 'Folded to one line, for you only' : `${each.length} messages folded to one line, for you only`);
+      this.say(!each.length ? 'Nothing to fold' : each.some(one => one.yours?.note === true) ? 'Folds saved; messages with your private notes stay whole' : each.length === 1 ? 'Folded to one line, for you only' : `${each.length} messages folded to one line, for you only`);
     }, () => {});
     this.remember(() => folded.then(each => { for (const one of each) this.setFold(one, false, { focus: false, undoable: false }); }, () => {}));
     this.arrange();

@@ -1,3 +1,4 @@
+import { currentQuestionCover } from './question-state.mjs';
 // How a topic's loaded messages read as reply stacks (docs/reply-stacks.md):
 // which stack each message is in, the order inside a stack and of the stacks,
 // what a fold shows, which messages read as one line because the reader
@@ -246,7 +247,7 @@ export function earlierOf(stack, level, { held = null } = {}) {
 // the page has not loaded keeps each branch's head in view (branches): before
 // 550 each was a stack of its own, its card in view, and a fold loses none.
 function shownWithoutContext(stack, item, { level = 'folded', kept = () => false, earlier = false, held = null } = {}) {
-  if (stack.filled?.has(item.id)) return true;
+  if (stack.filled?.has(item.id) || item.yours?.note === true) return true;
   if (!earlier && earlierOf(stack, level, { held }).includes(item)) return false;
   if (level === 'open') return true;
   if (level === 'head') return false;
@@ -276,7 +277,7 @@ export function shown(stack, item, options = {}) {
 // (peeked(item)), which shows it whole without unfolding it.
 export function rowFolded(item, { peeked = () => false } = {}) {
   const acts = actsOf(item);
-  return acts.folded === true && acts.starred !== true && !peeked(item);
+  return acts.folded === true && acts.starred !== true && item.yours?.note !== true && !peeked(item);
 }
 const newestReply = stack => stack.replies.reduce((most, item) => Math.max(most, item.seq), 0);
 
@@ -299,7 +300,7 @@ export function rowsOf(stack, { level = 'folded', kept, unread = () => false, ne
   const options = { level, kept, newReply, earlier, held }, context = contextParents(stack, options);
   const rows = [], all = stack.replies, show = item => shown(stack, item, { ...options, context });
   const earliest = earlierOf(stack, level, { held });
-  const hiddenEarlier = headWhole ? earliest.filter(item => item !== stack.head) : earliest;
+  const hiddenEarlier = earliest.filter(item => item.yours?.note !== true && (!headWhole || item !== stack.head));
   if (hiddenEarlier.length && !earlier) rows.push({ kind: 'earlier', items: hiddenEarlier, words: `${hiddenEarlier.length} earlier ${(headWhole ? replies : messages)(hiddenEarlier.length)}`, fresh: hiddenEarlier.filter(unread).length });
   let run = [], before = true;
   const flush = () => {
@@ -356,8 +357,8 @@ export function newestNew(stack, unread) {
 export function stackCover(stack, { alone = false } = {}) {
   if (stack.sourceStack) return stackCover(stack.sourceStack, { alone });
   const position = positionOf(stack);
-  if (position && position.root_id !== stack.head.id) return position.cover ?? null;
-  return stack.replies.length || alone ? actsOf(stack.head).cover ?? null : null;
+  if (position && position.root_id !== stack.head.id) return currentQuestionCover(position.cover ?? null);
+  return stack.replies.length || alone ? currentQuestionCover(actsOf(stack.head).cover ?? null) : null;
 }
 
 // The index, in the stacks as shown, of the lowest one holding anything new
@@ -581,14 +582,17 @@ export class DossierHeads {
   constructor({ topicId, read, changed = () => {}, current = () => true }) {
     Object.assign(this, { topicId, read, changed, current });
     this.records = new Map(); this.serial = 0; this.readTail = Promise.resolve();
+    // A reference to TopicViews' terminal knowledge, never another act store.
+    this.removals = null;
   }
   invalidate(id = null) {
     for (const [root, record] of this.records) if (id === null || root === id) {
       this.records.delete(root); ++this.serial;
     }
   }
-  sync(messages) {
-    const wanted = new Set([...dossiersOf([...messages.values()]).values()].filter(id => !messages.has(id)));
+  sync(messages, removals = this.removals) {
+    this.removals = removals;
+    const wanted = new Set([...dossiersOf([...messages.values()]).values()].filter(id => !messages.has(id) && removals?.get(id)?.kind !== 'unsent'));
     for (const id of this.records.keys()) if (!wanted.has(id)) this.records.delete(id);
     const added = [];
     for (const id of wanted) if (!this.records.has(id)) {
@@ -605,6 +609,7 @@ export class DossierHeads {
   async readBatch(queued) {
     const current = ([id, record]) => this.current() && this.records.get(id) === record;
     const batch = queued.filter(current), settled = new Set();
+    let discarded = false;
     if (!batch.length) return;
     const refused = error => ['FORBIDDEN', 'SOURCE_UNAVAILABLE', 'NOT_FOUND', 'INVALID_ARGUMENT'].includes(error?.details?.error?.code);
     const failed = (entry, error) => {
@@ -617,6 +622,9 @@ export class DossierHeads {
       for (const entry of entries) {
         if (!current(entry)) continue;
         const [id, record] = entry, item = page.items.find(item => item.id === id);
+        // Terminal knowledge wins even over an omitted row in a cut answer.
+        // Keep 886's one repaint at the end of this current batch.
+        if (this.removals?.get(id)?.kind === 'unsent') { this.records.delete(id); discarded = true; continue; }
         // Core's byte limit can cut a named-ID answer before all its rows.
         // An omitted head is missing only when the answer is complete.
         if (!item && page.next_cursor != null) { remaining.push(entry); continue; }
@@ -652,11 +660,17 @@ export class DossierHeads {
     }
     // A fallback can await a sibling after settling another head; invalidating
     // that earlier head while waiting must not cause a stale repaint either.
-    if ([...settled].some(current)) this.changed();
+    if (discarded && this.current() || [...settled].some(current)) this.changed();
   }
   messages(loaded) {
     const result = new Map(loaded);
-    for (const [id, record] of this.records) if (record.state === 'available' && !result.has(id)) result.set(id, record.item);
+    for (const [id, record] of this.records) if (record.state === 'available' && !result.has(id)) {
+      const removal = this.removals?.get(id) ?? record.item.removal;
+      if (removal?.kind === 'unsent') continue;
+      if (removal) Object.assign(record.item, { removal, removal_action: null, go_ahead: false,
+        blocks: null, no_answer: false, awaiting_reply: false, no_agent_notified: false });
+      result.set(id, record.item);
+    }
     return result;
   }
 }

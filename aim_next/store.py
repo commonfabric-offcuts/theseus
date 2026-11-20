@@ -58,11 +58,14 @@ from .invite import Invites, INVITATIONS_SCHEMA
 from .tools_core import Tools, TOOLS_SCHEMA
 from .tool_records import Records as ToolRecords
 from .withdrawal import Withdrawal, WITHDRAWAL_SCHEMA
+from .questions import Questions, QUESTION_SCHEMA
+from .answer_delivery import AnswerDelivery, ANSWER_UP
 from .refresh_delivery import RefreshDelivery, REQUEST_UP
-from . import message_edit
+from . import message_edit, removal
+from .removal import Removal, REMOVAL_UP
 
 
-SCHEMA_VERSION = "56"
+SCHEMA_VERSION = "59"
 
 
 def commit_identity_intact(metadata):
@@ -138,7 +141,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_MESSAGE_REFRESH + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA + TOPIC_POSITION_SCHEMA + WRITER_SCHEMA + COVER_WAIT_SCHEMA + MEMORY_ACTION_SCHEMA + MOVE_SCHEMA + ASK_COVER_SCHEMA + DOSSIER_ORDER_SCHEMA + WITHDRAWAL_SCHEMA + REQUEST_UP:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_MESSAGE_REFRESH + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA + TOPIC_POSITION_SCHEMA + WRITER_SCHEMA + COVER_WAIT_SCHEMA + MEMORY_ACTION_SCHEMA + MOVE_SCHEMA + ASK_COVER_SCHEMA + DOSSIER_ORDER_SCHEMA + WITHDRAWAL_SCHEMA + REQUEST_UP + QUESTION_SCHEMA + ANSWER_UP + REMOVAL_UP:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -179,7 +182,7 @@ _TOPIC_SUMMARY = "LEFT JOIN topic_summaries s ON s.topic_id=t.id LEFT JOIN messa
 
 
 class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
-            OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Covers, CoverRefresh, DossierMove, AskCover, Blocking, MessageEdit, Invites, Tools, Withdrawal, RefreshDelivery):
+            OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Covers, CoverRefresh, DossierMove, AskCover, Blocking, MessageEdit, Invites, Tools, Withdrawal, RefreshDelivery, Questions, AnswerDelivery, Removal):
     def __init__(self, db_path, expected_instance_id, *, expected_binding, machine=None, tools=None):
         self.path = Path(db_path).resolve()
         # The skills' and tools' records, read once from this code's own checkout (or the directory a test passes in):
@@ -528,6 +531,15 @@ class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, 
         finally:
             message_edit.reading.reset(token)
         answer, pairs = message_edit.handed(db, current, answer)
+        removal.refuse_unsent_projection(db, removal.content_ids(answer, pairs, args))
+        # Empty image/attachment projections have no words marker. Their final
+        # content identities cross this same boundary, including raw media.
+        if agent and marks:
+            extra = set(removal.content_ids(answer, pairs, args)) - {identity for identity, _ in pairs} - current.held
+            if extra:
+                pairs.extend((row[0], row[1]) for row in db.execute(
+                    "SELECT m.id," + message_edit.revision('m') + " FROM messages m WHERE m.id IN (SELECT value FROM json_each(?))",
+                    (json.dumps(sorted(extra)),)))
         return answer, pairs, now
 
     def _hand_over(self, db, fence, actor, kind, args, handler, between, marks):
@@ -540,7 +552,9 @@ class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, 
         commit between the words it returns and the exposure it records; if the second run grows nothing (another
         read recorded it, or the message became held) it rolls back with no write."""
         answer, pairs, now = self._read_once(db, actor, kind, args, handler, marks)
-        if not marks or not message_edit.growing(db, actor, pairs):
+        first = removal.first_exposures(db, actor, removal.content_ids(answer, pairs, args)) if marks else []
+        grows = message_edit.growing(db, actor, pairs) if kind == 'agent' and marks else []
+        if not first and not grows:
             return answer
         db.rollback()
         if between is not None:
@@ -550,13 +564,15 @@ class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, 
         self._check_instance(db)
         kind = self._actor(db, actor)["kind"]
         answer, pairs, now = self._read_once(db, actor, kind, args, handler, marks)
-        grows = message_edit.growing(db, actor, pairs)
-        if not grows:
+        grows = message_edit.growing(db, actor, pairs) if kind == 'agent' else []
+        first = removal.first_exposures(db, actor, removal.content_ids(answer, pairs, args))
+        if not grows and not first:
             db.rollback()
             return answer
         db.executemany("INSERT INTO message_exposures(actor_id,message_id,revision) VALUES (?,?,?) "
                        "ON CONFLICT(actor_id,message_id) DO UPDATE SET revision=max(revision,excluded.revision)",
                        [(actor, message_id, number) for message_id, number in grows])
+        db.executemany("INSERT INTO message_first_exposures VALUES (?,?,?)", [(identity, actor, now) for identity in first])
         # Every commit keeps what is red with it (health.py), at the clock this run read.
         self._health_commit(db, now)
         db.commit()

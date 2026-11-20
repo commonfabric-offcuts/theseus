@@ -5,6 +5,7 @@
 // folds it away again.
 import { paintAuthor } from './marks.mjs';
 import { linkWords } from './links.mjs';
+import { paintRemoval } from './message-removal.mjs';
 
 // A message that names no addressees is for everyone in the topic. Only a
 // person (kind 'human') has messages between others, as Core settles them only
@@ -38,15 +39,19 @@ export function foldCard(card, item, doc = document) {
   card.id = `card-${item.id}`; line.setAttribute('aria-controls', card.id);
   line.onclick = () => show(fold, card.hidden);
   fold.append(line, card);
-  folds.set(fold, { line, author, words, card, name: item.author_id });
+  folds.set(fold, { line, author, words, card, name: item.author_id, item, open: false });
+  paintFoldWords(fold, item);
   show(fold, false);
   return fold;
 }
 
 // Opens (true) or folds (false) the card in fold.
 export function show(fold, open) {
-  const { line, card } = folds.get(fold);
-  card.hidden = !open; line.setAttribute('aria-expanded', String(open));
+  const state = folds.get(fold), { line, card, item } = state;
+  state.open = open;
+  const ownNote = item.yours?.note === true;
+  line.hidden = ownNote;
+  card.hidden = !open && !ownNote; line.setAttribute('aria-expanded', String(open || ownNote));
 }
 
 // The card a list entry shows: a fold's card, or the entry itself.
@@ -55,7 +60,21 @@ export const cardIn = entry => folds.get(entry)?.card ?? entry;
 // A fold's line says the message's latest words once it is edited (docs/message-edit.md).
 export function paintFoldWords(entry, item) {
   const fold = folds.get(entry);
-  if (fold) linkWords(fold.words, foldWords(item), { partial: cutShort(item) });
+  if (fold) {
+    linkWords(fold.words, foldWords(item), { partial: cutShort(item) });
+    fold.words.classList.toggle('retracted-words', item.removal?.kind === 'retracted');
+    paintRemoval(fold.line, item, fold.line.ownerDocument);
+  }
+  paintOwnNoteFold(entry, item);
+}
+
+// Reader metadata can arrive after the card. Keep the requested fold for
+// when its note is cleared; the note only overrides how it reads (800).
+export function paintOwnNoteFold(entry, item) {
+  const fold = folds.get(entry);
+  if (!fold) return;
+  fold.item = item;
+  show(entry, fold.open);
 }
 
 // A fold's line carries the Unread pill of a message marked unread; any other entry has no line.
