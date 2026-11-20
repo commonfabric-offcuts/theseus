@@ -17,7 +17,7 @@ const KEYBOARD_MIN = 120;
 // internal scroll box. Only an opening/focus or a shrinking keyboard viewport
 // asks for this; scrolling the page away never pulls the person back.
 export function revealCardReply(field, win = globalThis.window) {
-  if (!field?.closest?.('#reader[data-card-reply]')) return;
+  if (!field?.closest?.('#reader[data-card-reply], .card-reply-composer')) return;
   const box = field.closest('.field-box');
   if (!box?.getClientRects().length) return;
   const rect = box.getBoundingClientRect(), vv = win.visualViewport;
@@ -51,7 +51,7 @@ function trackKeyboard(win, doc) {
     // scrollTop, so nothing moves, and nothing around it is ever scrolled:
     // the Reader, which clips, stays where it is.
     const field = typing && vv.height < last ? doc.activeElement.closest('.composer .field-box') : null;
-    if (field && !field.closest('#reader[data-card-reply]')) {
+    if (field && !field.closest('#reader[data-card-reply], .card-reply-composer')) {
       const composer = field.closest('.composer'), port = composer.getBoundingClientRect().top + composer.clientTop + composer.clientHeight;
       composer.scrollTop += Math.max(0, field.getBoundingClientRect().bottom + (parseFloat(win.getComputedStyle(composer).scrollPaddingBottom) || 0) - port);
     }

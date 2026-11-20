@@ -1435,3 +1435,20 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 /* Pencil choices take a full row, never a column beside the writing. */
 #inline-composer{grid-template-areas:"kinds kinds kinds kinds" "notice notice notice notice" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act" "phone-panel phone-panel phone-panel phone-panel"}
 #inline-composer>.sheet-close{grid-area:kinds;align-self:start;z-index:1}
+
+/* Message replies share the composer; each keeps its own field and controls. */
+.card-reply-composer{position:relative;background:transparent;padding:.5rem 0;margin-top:.5rem;overflow-anchor:none;grid-template-columns:2rem 2.5rem minmax(0,1fr) auto;grid-template-areas:"title title title title" "notice notice notice notice" "head head head head" "panel panel panel panel" "images images images images" "height plus field send" "phone-panel phone-panel phone-panel phone-panel"}
+.card-reply-composer>.compose-head{grid-area:head;padding-right:2rem}
+.card-reply-composer>.image-strip{grid-area:images}
+.card-reply-composer>.field-box{grid-area:field}
+.card-reply-composer>.compose-send{grid-area:send;margin-left:.35rem}
+.card-reply-composer>.plus-button{grid-area:plus}
+.card-reply-composer>.reply-height{grid-area:height;position:static;display:grid;place-items:center;width:2rem;padding:0}
+.card-reply-composer>.card-reply-close{position:absolute;right:0;top:0;border:0;background:transparent;color:var(--muted);min-height:2rem;padding:0 .4rem}
+.card-reply-composer .to-note{display:none!important}
+.card-reply-composer[data-tall][data-compose=writing] textarea{max-height:calc(8 * 1.5em + 1.1rem)}
+.card-reply-composer[data-compose=writing]>.field-box textarea{padding-right:.9rem}
+@media(max-width:760px){.card-reply-composer[data-tall][data-compose=writing] textarea{max-height:calc(6 * 1.5em + 1.1rem)}}
+
+.message-card[data-card-reply]>.card-reply-composer:not([hidden]){display:grid!important}
+.card-reply-composer{color:var(--ink);--paper:var(--stack-folder);--panel:var(--stack-folder);--ink:var(--stack-folder-ink);--muted:var(--stack-meta-ink);--soft:var(--stack-folder-deep);--line:color-mix(in srgb,var(--stack-folder-ink) 30%,transparent)}

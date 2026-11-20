@@ -50,6 +50,7 @@ export class EditorRegistry {
     this.pendingDetails = new Map(); this.pendingReceipts = new Map(); this.registering = new Map();
     // The replies this page set aside (setAside), which are in doubt no more.
     this.asides = new Set();
+    this.cards = new Map(); this.cardOpenings = new Map();
     this.current = null; this.inline = null; this.generation = 0; this.disposed = false; this.leaving = null; this.closing = null;
     this.neighborGeneration = 0;
     this.cleanup = new RecoveryCleanup({ api, bootstrap: this.bootstrap, journal, runtime: this.runtime,
@@ -67,7 +68,8 @@ export class EditorRegistry {
   // The presentation in front, holding this registered editor, whether or not
   // an open is under way.
   holds(presentation, editor) {
-    return Boolean(presentation && this.interactive === presentation && !this.disposed &&
+    return Boolean(presentation && (this.interactive === presentation || !this.current && presentation?.surface === 'card' &&
+      this.cards.get(presentation.source.source_ref.id) === presentation && !presentation.hidden && !presentation.closing) && !this.disposed &&
       (presentation.surface !== 'inline' || presentation.initialized) &&
       (!editor || Object.values(presentation.editors).includes(editor) && this.sessions.get(editor.key)?.editor === editor));
   }
@@ -84,7 +86,7 @@ export class EditorRegistry {
   // so what it keeps is all there is when the Reader goes.
   isWritable(presentation, editor) {
     return this.holds(presentation, editor) && !this.closing &&
-      (!this.pendingOpen || presentation.surface !== 'inline' && this.leaving !== this.pendingOpen);
+      (!this.pendingOpen || !['inline', 'card'].includes(presentation.surface) && this.leaving !== this.pendingOpen);
   }
   // A close under way is keeping this presentation's writing on this device.
   isClosing(presentation) { return Boolean(presentation && this.closing?.presentation === presentation); }
@@ -115,6 +117,65 @@ export class EditorRegistry {
     };
     this.initializingInline = initialize();
     try { return await this.initializingInline; } finally { this.initializingInline = null; }
+  }
+
+  // Each message reply has its own presentation, but its registered writing is
+  // the same EditorSession the Reader uses. Loading a saved reply opens no Reader.
+  async initializeCard(sourceRef, topic) {
+    const id = sourceRef.id;
+    if (this.cards.has(id)) return this.cards.get(id);
+    if (this.cardOpenings.has(id)) return this.cardOpenings.get(id);
+    const foreground = this.cleanup.foreground();
+    const load = async () => {
+      const [source, state] = await foreground.read(options => pairedReads([
+        this.api.view('source', sourceRef, options),
+        this.api.view('editor_state', { source_ref: sourceRef, topic_id: topic.id, limit: this.pendingPageSize, unsent: true }, options),
+      ]));
+      this.validateState(state, sourceRef, topic.id);
+      if (source?.error || source?.instance_id !== this.bootstrap.instance_id || !same(source.source_ref, sourceRef) || !state.source_available)
+        throw Error('This message is not available to you.');
+      if (this.disposed) return null;
+      const context = { instanceId: this.bootstrap.instance_id, actor: this.bootstrap.actor, sourceRef, topicId: topic.id, kind: 'reply' };
+      this.setPending(editorKey(context), copy(state.submissions));
+      const reply = await this.register(context, state.draft);
+      if (this.disposed) return null;
+      reply.unavailable = !state.destination_available; reply.read(sourceRef);
+      const p = { surface: 'card', source, topic: copy(topic), editors: { reply }, mode: 'reply',
+        destinationAvailable: state.destination_available, hidden: false };
+      this.cards.set(id, p); this.activity(); return p;
+    };
+    const loading = load(); this.cardOpenings.set(id, loading);
+    try { return await loading; }
+    finally { foreground.release(); if (this.cardOpenings.get(id) === loading) this.cardOpenings.delete(id); }
+  }
+  async hideCard(p) {
+    if (!p || this.cards.get(p.source.source_ref.id) !== p || this.disposed || p.closing) return false;
+    p.closing = true; this.activity();
+    try {
+      await this.keepLocal(p);
+      if (this.disposed) return false;
+      p.hidden = true; return true;
+    } catch (error) { throw this.closeRefusal(error); }
+    finally { p.closing = false; this.activity(); }
+  }
+
+  async refreshCard(p, read, current = () => true) {
+    const editor = p.editors.reply, serial = p.accessSerial = (p.accessSerial ?? 0) + 1;
+    const sameCard = () => !this.disposed && this.cards.get(p.source.source_ref.id) === p &&
+      p.accessSerial === serial && this.sessions.get(editor.key)?.editor === editor;
+    p.availabilityChecking = true; p.availabilityUnconfirmed = true;
+    editor.unavailable = true; this.cancelSave(editor); this.changed(editor);
+    try {
+      const state = await read('editor_state', { source_ref: editor.context.sourceRef, topic_id: p.topic.id });
+      if (!sameCard() || !current()) return;
+      this.validateState(state, editor.context.sourceRef, p.topic.id);
+      p.availabilityUnconfirmed = false; p.sourceUnavailable = !state.source_available;
+      p.destinationAvailable = state.destination_available;
+      editor.unavailable = !state.source_available || !state.destination_available;
+      if (!editor.unavailable && editor.dirty && !editor.authorityRecovery && !editor.conflict) this.schedule(editor);
+    } finally {
+      if (sameCard()) { p.availabilityChecking = false; this.changed(editor); }
+    }
   }
 
   validateState(state, sourceRef, topicId) {
@@ -220,13 +281,14 @@ export class EditorRegistry {
         editor.uploadState?.entries.some(e => e.selected && ['memory-only', 'capturing'].includes(e.bytes_state)))) throw new ImageHeld();
   }
 
-  async open(sourceRef, { topicId, opener, mode = 'reply', replyCard = null } = {}) {
+  async open(sourceRef, { topicId, opener, mode = 'reply', replyCard = null, fromCardReply = false } = {}) {
     const foreground = this.cleanup.foreground();
     const token = ++this.generation;
     this.pendingOpen = token;
     this.activity();
     try {
     await this.keepBeforeStep(this.interactive);
+    if (this.cards?.size) await this.keepEditorsLocal([...this.cards.values()].flatMap(p => Object.values(p.editors)));
     const [sourceAnswer, state] = await foreground.read(options => pairedReads([
       this.api.view('source', sourceRef, options),
       this.api.view('editor_state', { source_ref: sourceRef, topic_id: topicId ?? null, limit: this.pendingPageSize, unsent: true }, options),
@@ -259,7 +321,7 @@ export class EditorRegistry {
     const source = sourceUnavailable ? { instance_id: this.bootstrap.instance_id, source_ref: copy(sourceRef),
       topic_id: topicId ?? null, title: 'Source unavailable', body: '', attachments: [] } : sourceAnswer;
     const presentation = { token, source, sourceUnavailable, destinationAvailable: state.destination_available,
-      editors: { reply, note }, mode, opener, mark: state.mark ?? null, replyCard };
+      editors: { reply, note }, mode, opener, mark: state.mark ?? null, replyCard, fromCardReply };
     this.pendingOpen = null;
     this.current = presentation; await this.present(presentation);
     if (token !== this.generation || this.disposed) return null;
@@ -673,7 +735,9 @@ export class EditorRegistry {
       await this.journal.adopt(editor.key, { id: candidate.id, stamp: candidate.stamp }, current);
       this.sessions.delete(editor.key);
       const restored = await this.register(editor.context, editor.context.kind === 'note' ? state.note : state.draft);
-      presentation.editors[editor.context.kind] = restored;
+      for (const shown of new Set([presentation, this.current, this.inline, ...this.cards.values()])) {
+        if (shown?.editors[editor.context.kind] === editor) shown.editors[editor.context.kind] = restored;
+      }
       if (this.isCurrent(presentation)) await this.present(presentation);
       return restored;
     } finally { editor.adopting = false; this.changed(editor); }
