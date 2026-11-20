@@ -39,7 +39,7 @@ export function checkedView(answer, instance) {
 }
 
 function validateCursor(value, bootstrap, scope, kind) {
-  const versions = scope.kind === 'actor' ? v => v && Object.keys(v).length === 0 : topicVersions;
+  const versions = scopeVersions(scope);
   const identity = bindingOf(bootstrap);
   if (!value || value.v !== 1 || value.kind !== kind || !integer(value.after_seq) ||
       !sameBinding(identity, value) || !equal(value.scope, scope)) throw diagnostic('The changes cursor has a different binding or scope.');
@@ -48,32 +48,36 @@ function validateCursor(value, bootstrap, scope, kind) {
   if (kind === 'continuation' && (!integer(value.through_seq) || value.through_seq < value.after_seq || !versions(value.covered_versions))) throw diagnostic('The changes window is malformed.');
 }
 const topicVersions = v => v && Object.keys(v).length === 2 && integer(v.topic) && integer(v.notebook);
-export function changesPage(answer, bootstrap, topicId, input = null) {
+const scopeVersions = scope => scope.kind === 'actor' ? v => v && Object.keys(v).length === 0
+  : scope.kind === 'workspace' ? v => v && Object.keys(v).length === 2 && integer(v.workspace) && integer(v.notebook) : topicVersions;
+export function scopedChangesPage(answer, bootstrap, scope, input = null) {
   checkedView(answer, bootstrap.instance_id);
-  const scope = { kind: 'topic', id: topicId };
+  const versions = scopeVersions(scope);
   if (!equal(answer.scope, scope) || answer.baseline !== (input === null) || !Array.isArray(answer.items) || answer.items.length > 50 ||
       typeof answer.has_more !== 'boolean') throw diagnostic('The changes page is malformed.');
   const end = answer.has_more ? answer.continuation : answer.checkpoint;
   validateCursor(end, bootstrap, scope, answer.has_more ? 'continuation' : 'checkpoint');
   if (answer.has_more ? answer.checkpoint !== null || answer.covered_versions !== null || !answer.items.length
-    : answer.continuation !== null || !topicVersions(answer.covered_versions)) throw diagnostic('A partial changes page cannot be a checkpoint.');
+    : answer.continuation !== null || !versions(answer.covered_versions)) throw diagnostic('A partial changes page cannot be a checkpoint.');
   if (input === null && (answer.items.length || answer.has_more)) throw diagnostic('The baseline must precede view loading.');
   let previous = input?.after_seq ?? 0;
   const upper = answer.has_more ? end.through_seq : end.after_seq;
   if (upper < previous || input?.kind === 'continuation' && upper !== input.through_seq) throw diagnostic('The changes window moved backwards or changed.');
   const covered = answer.has_more ? end.covered_versions : answer.covered_versions;
-  if (input?.kind === 'continuation' && ['topic', 'notebook'].some(key => covered[key] !== input.covered_versions[key])) {
+  if (input?.kind === 'continuation' && Object.keys(covered).some(key => covered[key] !== input.covered_versions[key])) {
     throw diagnostic('The captured changes version window changed.');
   }
   for (const item of answer.items) {
     if (!integer(item.seq) || item.seq <= previous || item.seq > upper || !integer(item.version) || item.version < 1 ||
-        typeof item.resource_id !== 'string' || !item.resource_id || !['topic', 'memory', 'workspace'].includes(item.resource_kind) ||
-        item.resource_kind === 'topic' && item.resource_id !== topicId) throw diagnostic('The change key is malformed or outside this topic.');
+        typeof item.resource_id !== 'string' || !item.resource_id || typeof item.resource_kind !== 'string' || !item.resource_kind ||
+        scope.kind === 'topic' && (!['topic', 'memory', 'workspace'].includes(item.resource_kind) || item.resource_kind === 'topic' && item.resource_id !== scope.id) ||
+        scope.kind === 'workspace' && item.resource_kind === 'workspace' && item.resource_id !== scope.id) throw diagnostic('The change key is malformed or outside this topic.');
     previous = item.seq;
   }
   if (answer.has_more && end.after_seq !== previous) throw diagnostic('The continuation does not follow its keys.');
   return answer;
 }
+export const changesPage = (answer, bootstrap, topicId, input = null) => scopedChangesPage(answer, bootstrap, { kind: 'topic', id: topicId }, input);
 
 export async function initialViews({ api, bootstrap, topicId, load }) {
   let checkpoint = null;
