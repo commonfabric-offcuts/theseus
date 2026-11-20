@@ -96,13 +96,14 @@ test('Whisper greys out unless exactly one agent is named, and Ask while nobody 
   // An arrow moves the choice along the chips, as on round buttons, wrapping at either end, and passes over one that cannot be chosen.
   f.paint({ intent: 'tell' }, ['fable']);
   const key = (value, name) => { let stopped = false; f.row.querySelector('.intent-choice').listeners.keydown({ key: name, target: chip(value), preventDefault: () => { stopped = true; } }); return stopped; };
-  assert.equal(key('ask', 'ArrowRight'), true); assert.equal(key('whisper', 'ArrowLeft'), true); assert.equal(key('tell', 'ArrowRight'), true);
+  assert.equal(key('whisper', 'ArrowRight'), true); assert.equal(key('ask', 'ArrowLeft'), true); assert.equal(key('tell', 'ArrowRight'), true);
   assert.equal(key('tell', 'Enter'), false, 'other keys are the button\'s own');
-  assert.deepEqual(f.chosenBy, ['whisper', 'whisper', 'ask', 'ask']);
-  assert.equal(f.document.activeElement, chip('ask'), 'the focus goes with the choice');
-  f.paint({ intent: 'ask' }, ['cynthia']);
-  key('ask', 'ArrowRight');
-  assert.deepEqual(f.chosenBy.at(-1), 'tell', 'Whisper cannot be chosen for a person, so the arrow goes on to Tell');
+  // The chips run Ask, Tell, Whisper.
+  assert.deepEqual(f.chosenBy, ['whisper', 'ask', 'whisper', 'whisper']);
+  assert.equal(f.document.activeElement, chip('whisper'), 'the focus goes with the choice');
+  f.paint({ intent: 'tell' }, ['cynthia']);
+  key('tell', 'ArrowRight');
+  assert.deepEqual(f.chosenBy.at(-1), 'ask', 'Whisper cannot be chosen for a person, so the arrow goes on, round to Ask');
 });
 
 test('the who chip says in words what Send does and who sees it, in the short form of the line the panel shows, and a whisper\'s chip is dashed', t => {
