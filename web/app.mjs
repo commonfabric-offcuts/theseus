@@ -4030,10 +4030,11 @@ async function initializeDeckPage(route) {
     catch { return {href,title:'The page'}; }
   };
   const page=new NotebookPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
-    item:route.id,read:pipelineView,send:pipelineSend,place,askIn:notebookAskIn,api,bootstrap,mode:route.view,viewPreference:notebookViewsOf()});
+    item:route.id,read:pipelineView,send:pipelineSend,place,askIn:notebookAskIn,api,bootstrap,mode:route.card?'cards':route.view,viewPreference:notebookViewsOf()});
   shell.guard(()=>Boolean(page.writing?.journalPending||page.writing?.journalError));
   $('deck-page').hidden=false;
   await followCommits(()=>page.load())();
+  if(route.card && page.base)page.pickCardId(route.card);
   if(route.write==='new' && page.base && !page.base.body && !page.readOnly) page.start();
   document.body.dataset.ready='true';
 }

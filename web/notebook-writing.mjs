@@ -452,10 +452,17 @@ export function mergeCardContent(base, mine, theirs) {
   const original=chunks(base.body),left=cardEdits(original,chunks(mine.body)),right=cardEdits(original,chunks(theirs.body));
   if(!left||!right)return null;
   const all=[...left];
-  for(const r of right) {
+  // An identical replacement can begin a larger hunk that also removes its
+  // neighbour. Keep the shared replacement once and merge the remaining edit.
+  const startsWithEdit=(whole,part)=>part.start===whole.start&&part.end<=whole.end&&
+    part.end>part.start&&part.put.length===part.end-part.start&&
+    part.put.every((chunk,i)=>chunk===whole.put[i]);
+  for(let r of right) {
     let identical=false;
     for(const l of left) {
       if(same(l,r)){identical=true;break;}
+      if(startsWithEdit(l,r)){identical=true;break;}
+      if(startsWithEdit(r,l)){r={...r,start:l.end,put:r.put.slice(l.put.length)};continue;}
       const li=l.start===l.end,ri=r.start===r.end;
       if((li&&ri&&l.start===r.start)||(!li&&!ri&&l.start<r.end&&r.start<l.end)||
         (li&&l.start>r.start&&l.start<r.end)||(ri&&r.start>l.start&&r.start<l.end))return null;

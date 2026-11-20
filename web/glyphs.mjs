@@ -14,6 +14,8 @@
 // with the button's name as its tooltip. Archive uses the Reader's own tray
 // everywhere, including the title bar and its phone menu (item 601).
 const DRAWN = {
+  copy: { d: 'M8 8h13v13H8Z M4 16H3V3h13v1' },
+  palette: { d: 'M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-3.7 1.5 1.5 0 0 1 1-2.8h2a4 4 0 0 0 4-4A9 9 0 0 0 12 3 M7 8h.01 M12 6h.01 M17 9h.01 M6 13h.01' },
   // Notebook menu: text lines, a draft sheet, an image and a dossier folder (873).
   text: { d: 'M4 5h16 M4 10h16 M4 15h16 M4 20h10' },
   draft: { d: 'M14 3H5v18h14V8Z M14 3v5h5 M8 12h8 M8 16h5' },

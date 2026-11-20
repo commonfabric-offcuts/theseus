@@ -12,7 +12,7 @@ const element = (doc, tag, props = {}) => Object.assign(doc.createElement(tag), 
 // by Escape or a choice (the anchor, or the card a name sits in). choose(color)
 // sends the choice (a palette name, or null for the agent's own) and answers
 // the receipt; the picker closes when it is committed and says why when not.
-export function openColorPicker({ anchor, back = anchor, agent, palette, chosen, own, choose, doc = globalThis.document, win = globalThis }) {
+export function openColorPicker({ anchor, back = anchor, agent, palette, chosen, own, choose, resetLabel = `Default (${own})`, doc = globalThis.document, win = globalThis }) {
   if (open?.anchor === anchor) { open.close(true); return null; }
   open?.close(false);
   const root = element(doc, 'div', { className: 'color-picker' });
@@ -42,7 +42,7 @@ export function openColorPicker({ anchor, back = anchor, agent, palette, chosen,
     swatch.append(element(doc, 'span', { className: 'swatch-tag' }), element(doc, 'span', { className: 'swatch-name', textContent: name }));
     press(swatch, name); swatches.append(swatch);
   }
-  const reset = element(doc, 'button', { type: 'button', className: `swatch-default agent-${own}`, textContent: `Default (${own})` });
+  const reset = element(doc, 'button', { type: 'button', className: `swatch-default${own ? " agent-" + own : ""}`, textContent: resetLabel });
   reset.setAttribute('aria-pressed', String(chosen === null));
   press(reset, null);
   root.append(title, swatches, reset, notice);
