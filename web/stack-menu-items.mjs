@@ -1,5 +1,6 @@
 // One descriptor list for a loaded stack and a dossier read from the rail.
 // Unknown arrangement is offered; its actual owner checks again after a choice.
+export const STARRED_FOLD_REASON = 'Starred messages stay in view; unstar it to fold.';
 export function stackMenuItems(s, act) {
   const choice = (key, label, glyph, args = [], extra = {}) => ({ key, label, glyph, ...extra, act: () => act(key, ...args) });
   const items = [choice('star', s.starred ? 'Unstar' : 'Star for me', s.starred ? 'starred' : 'star', [!s.starred])];
@@ -7,7 +8,7 @@ export function stackMenuItems(s, act) {
   if (s.head) items.push(choice('rename', 'Rename', 'pencil'));
   if (s.position) items.push(choice('aside', s.below ? 'Bring back' : 'Archive', s.below ? 'back' : 'archive', [!s.below]));
   if (s.folded) items.push(choice('fold', 'Unfold', 'unfold', [false]));
-  else if (!s.starred) items.push(choice('fold', 'Fold', 'fold', [true]));
+  else items.push(choice('fold', s.starred ? `Fold — ${STARRED_FOLD_REASON}` : 'Fold', 'fold', [true], { disabled: Boolean(s.starred) }));
   if (s.reader || !s.found) return { first: items, last: [] };
   if (s.head && s.hasReplies) items.push(choice('level', s.open ? 'Show latest and unread replies' : 'Show all messages', s.open ? 'latest' : 'all', [s.open ? 'folded' : 'open']));
   if (s.joined) items.push(choice('split', 'Split back out', 'split'));

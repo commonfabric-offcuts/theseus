@@ -139,8 +139,10 @@ function swipeCheck(method){
   const swipe=vm.runInNewContext('({'+method+'}).swiped');
   for(const selected of [true,false]){
     const acts=[],controller={swipe:{x:0,y:10,target:'reply'},doc:{getSelection:()=>({isCollapsed:!selected})},swipeAct:(...args)=>acts.push(args)};
-    swipe.call(controller,{changedTouches:[{clientX:110,clientY:10}],altKey:false});
+    let prevented=false;
+    swipe.call(controller,{changedTouches:[{clientX:110,clientY:10}],altKey:false,preventDefault(){prevented=true;}});
     assert.equal(acts.length,selected?0:1,'selection takes priority, ordinary swipe retains its owner');assert.equal(controller.swipe,null);
+    assert.equal(prevented,!selected,'only the qualifying swipe is consumed');
   }
 }
 test('item 674 swipe selection priority mutant red then restored ordinary swipe contract',()=>{
