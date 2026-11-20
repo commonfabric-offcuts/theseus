@@ -6,8 +6,8 @@ import { TopicViews } from '../web/topic-views.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 
 test('item 655 Starred emits a valid cross-topic message route', () => {
-  const targets = [];
-  const rail = { doc: miniDocument(), handles: { workspaceId: 'w' }, placeLink: target => { targets.push(target); return 'link'; } };
+  const targets = [], doc = miniDocument();
+  const rail = { doc, handles: { workspaceId: 'w' }, placeLink: target => { targets.push(target); return doc.createElement('a'); } };
   const section = ThingsRail.prototype.starredSection.call(rail,
     [{ topic_id: 'second-topic', workspace_id: 'w', message_id: 'reply', excerpt: 'Reply', author_id: 'agent' }], { byTopic: true, topicId: 'first-topic' }, 'reader');
   section.node();

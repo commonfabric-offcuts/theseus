@@ -1002,10 +1002,12 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
             heading += " (edited, revision %d)" % item["revision"]
         self.out.plain("")
         self.out.plain(heading)
+        if item.get('removal'):
+            self.out.plain('  (Retracted at %s by %s)' % (time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item['removal']['at_ms'] / 1000.0)), item['removal']['by']))
         if item.get("blocks"):
             self.out.plain("  (holds %s %s until it is answered)" % (item["blocks"]["kind"], item["blocks"]["ref"]))
         reactions = item.get("reactions") or {}
-        if item.get("go_ahead"):
+        if item.get("go_ahead") and not item.get('removal'):
             said = ", ".join("%s %s" % (answer["actor_id"], "✅ go ahead" if answer["answer"] == "yes" else "🚫 don't")
                              for answer in reactions.get("answers", []))
             self.out.plain("  (asks for a go-ahead%s)" % (": " + said if said else "; not answered yet"))
@@ -1289,6 +1291,10 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
 
     @staticmethod
     def delivery_line(item):
+        if item.get('retraction'):
+            removed = item['retraction']
+            return 'retraction "%s" %s retracted %s; it no longer asks, answers or holds a wait.  [%s in %s]' % (
+                _one_line(item['topic']['title'], 60), removed['by'], removed['message_id'], item['id'], item['topic']['id'])
         if item.get("request"):
             request = item["request"]
             return 'request "%s" %s from %s, source %s, dossier %s, observed revision %s: %s  [%s in %s]' % (

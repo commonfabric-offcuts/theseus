@@ -24,6 +24,7 @@
 // goes at once, and a read for a place or scope left behind draws nothing.
 import { paintChanged, paintMarks, questionOf, landsOnUnread } from './topic-navigation.mjs';
 import { paintThumb } from './image-pick.mjs';
+import { paintRemoval } from './message-removal.mjs';
 import { clock, shownTime, datedTime } from './times.mjs';
 import { readFailure } from './freshness.mjs';
 import { pipelineHref } from './pipeline.mjs';
@@ -602,9 +603,12 @@ export class ThingsRail {
       off.setAttribute('aria-label', `Unstar "${firstWords(star.excerpt, 40)}"`);
       off.hidden = !this.handles.unstar;
       off.onclick = () => this.handles.unstar?.(star);
-      return element(doc, 'li', { className: 'things-starred' }, this.placeLink({ kind: 'topic', id: star.topic_id, message: star.message_id }, firstWords(star.excerpt, 70), sub), off);
+      const words = element(doc, 'span', { className: star.removal?.kind === 'retracted' ? 'retracted-words' : '', textContent: firstWords(star.excerpt, 70) });
+      const link = this.placeLink({ kind: 'topic', id: star.topic_id, message: star.message_id }, '', words, sub);
+      paintRemoval(link, star, doc);
+      return element(doc, 'li', { className: 'things-starred' }, link, off);
     };
-    return { sum: String(stars.length), key: JSON.stringify(['star', stars.map(star => [star.message_id, star.star_revision, here(star)])]), node: () => element(doc, 'div', {},
+    return { sum: String(stars.length), key: JSON.stringify(['star', stars.map(star => [star.message_id, star.star_revision, star.removal, here(star)])]), node: () => element(doc, 'div', {},
       ...(mine.length ? [element(doc, 'ul', { className: 'things-list' }, ...mine.map(row))] : []),
       ...(elsewhere.length ? [element(doc, 'div', { className: 'pipe-label', textContent: 'Elsewhere' }), element(doc, 'ul', { className: 'things-list' }, ...elsewhere.map(row))] : []),
       element(doc, 'p', { className: 'things-quiet', textContent: 'Only you see your stars.' })) };

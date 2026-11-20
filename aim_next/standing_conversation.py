@@ -312,6 +312,9 @@ class StandingConversation:
             raise Refusal("INVALID_ARGUMENT", "A take answers, takes into a topic or puts on the pipeline")
         if self._item(db, item_id) is None:
             return False
+        from .removal import value
+        if kind == 'answer' and value(db, item_id) is not None:
+            return False
         db.execute("INSERT INTO conversation_takes(item_id,kind,ref,added,part,actor_id,at_ms) VALUES (?,?,?,?,?,?,?)",
                    (item_id, kind, ref if isinstance(ref, str) else json.dumps(ref), int(bool(added)), int(bool(part)), actor, _now_ms()))
         if not part:

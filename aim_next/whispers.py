@@ -22,6 +22,7 @@ two gets an actor-scoped `whisper` change naming the topic.
 """
 
 from .contract import Refusal
+from .removal import VISIBLE as NOT_UNSENT
 
 
 # Version 27: the one other person a whisper is between (NULL for every message
@@ -40,7 +41,7 @@ WHISPER_DOWN = ("DROP TRIGGER whisper_shape", "DROP INDEX message_reply_links", 
 WHISPER_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM messages WHERE private_to IS NOT NULL)"
 
 # A message is visible to a reader when it is on the record, or the reader is in the whisper.
-VISIBLE = "(m.private_to IS NULL OR m.author_id = :actor OR m.private_to = :actor)"
+VISIBLE = "(m.private_to IS NULL OR m.author_id = :actor OR m.private_to = :actor) AND " + NOT_UNSENT
 
 
 # A delivery to an agent a reader may count (wake health): one on the record, or the reader's own whisper to it. A
@@ -176,10 +177,11 @@ def redact_topic(db, actor, topic):
     reader who may see that message. Anyone outside a person's whisper that reopened or started the topic reads null,
     so the topic says it was reopened (its note) or started from something, and names nothing."""
     topic = dict(topic)
+    from .removal import unsent
     for field in TOPIC_MESSAGES:
         if topic.get(field) is not None:
             row = db.execute("SELECT author_id,private_to FROM messages WHERE id=?", (topic[field],)).fetchone()
-            if row is not None and not visible(row, actor):
+            if row is not None and (not visible(row, actor) or unsent(db, topic[field])):
                 topic[field] = None
     return topic
 

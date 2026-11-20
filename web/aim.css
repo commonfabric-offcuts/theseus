@@ -1414,3 +1414,9 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 @media(min-width:1280px){
   body.notebook-docked #new-message-sheet[open][data-width-edges]{inset:auto auto 1.5rem 19rem;margin:0;width:min(var(--composer-width,var(--widest)),calc((100vw - 18rem)/2 - 2rem));max-width:calc((100vw - 18rem)/2 - 2rem);min-width:min(280px,calc((100vw - 18rem)/2 - 2rem))}
 }
+/* Retraction keeps the words readable and gives the same terminal treatment
+   to a card's words and the Reader's source. The act's label stays unstruck. */
+.retracted-words,
+.retracted-message > .message-preview,
+#source-body.retracted-message { text-decoration: line-through; opacity: .6; }
+.message-retracted { font-weight: 500; }

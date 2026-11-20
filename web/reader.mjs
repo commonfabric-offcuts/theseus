@@ -20,6 +20,7 @@ import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './im
 import { ComposeBar, revealCardReply } from './compose-bar.mjs';
 import { copyText, copySelectedText, COPY_REFUSED, SELECTION_COPY_REFUSED } from './message-menu.mjs';
 import { paintWithdrawal } from './question-withdrawal.mjs';
+import { paintRemoval } from './message-removal.mjs';
 import { revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { overhang } from './lit-field.mjs';
 import { coverSheet, coverKey, payloadPill } from './dossier-cover.mjs';
@@ -1154,6 +1155,8 @@ export class Reader {
     const originText = node('span', undefined, 'reader-origin-text');
     originText.append([author, provenance].filter(Boolean).join(' · '), ...sent, ...edited);
     paintWithdrawal(originText, source, document, true);
+    paintRemoval(originText, source, document, true);
+    this.sourceBody.classList.toggle('retracted-message', source.removal?.kind === 'retracted');
     this.$('reader-origin').replaceChildren(originText);
     if (source.source_ref.kind === 'message') {
       const context = { viewer: this.callbacks.actor?.(), nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: source.topic_id };

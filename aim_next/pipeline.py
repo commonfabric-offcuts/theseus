@@ -1316,7 +1316,7 @@ class Pipeline:
                           "substr(CAST(r.title AS BLOB),1,257) AS page_prefix FROM pipeline_item_sources s "
                           "LEFT JOIN messages m ON m.id=s.message_id LEFT JOIN topics t ON t.id=m.topic_id "
                           "LEFT JOIN memory_items i ON i.id=s.memory_item_id LEFT JOIN memory_revisions r ON r.item_id=i.id AND r.revision=i.current_revision "
-                          "WHERE s.workspace_id=? AND s.number=? ORDER BY s.position", (workspace_id, number)).fetchall()
+                          "WHERE s.workspace_id=? AND s.number=? AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=s.message_id AND r.kind='unsent') ORDER BY s.position", (workspace_id, number)).fetchall()
         shown, topics, messages, notes, yours = [], [], 0, 0, 0
         for row in rows:
             if row["message_id"] is not None:
@@ -1352,6 +1352,9 @@ class Pipeline:
         if not value:
             return None
         if "message_id" in value:
+            from .removal import unsent
+            if unsent(db, value['message_id']):
+                return None
             try:
                 row = self._message_access(db, actor, value["message_id"])
             except Refusal:
