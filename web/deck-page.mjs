@@ -1,4 +1,5 @@
 import { openMessageMenu, copyText } from './message-menu.mjs';
+import { copyPrompt } from './onboarding.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { AGENT_PALETTE } from './author-colors.mjs';
 import { plainCardText } from './card-menu.mjs';
@@ -746,18 +747,26 @@ export class DeckPage {
     let words;
     if(link){
       const id=this.ensureCardId(ref);if(!id)return;
+      const text=(async()=>{
       // A new link must name a revision actually saved, not just an unsaved device copy.
       if(this.writing){
         await this.writing.flush();
-        if(this.listening?.signal.aborted||this.writing.closed)return;
+        if(this.listening?.signal.aborted||this.writing.closed)throw Error('The page is closed.');
         if(this.cardAt(ref)<0||parseDeck(this.writing.base?.content.body??'').cards.filter(card=>cardDetails(card.words).ids.includes(id)).length!==1){
-          this.cardNotice('The card link is not saved yet. Try Copy link again after saving.');return;
+          throw Error('The card link is not saved yet. Try Copy link again after saving.');
         }
       } else {
         if(this.sending)await this.flush();else if(this.acts.length)await this.save();
-        if(this.acts.length||this.sending||this.held||this.cardAt(ref)<0)return;
+        if(this.acts.length||this.sending||this.held||this.cardAt(ref)<0)throw Error('The card link is not saved yet. Try Copy link again after saving.');
       }
-      words=placeLink({kind:'cards',id:this.item,card:id,view:'cards'});
+      return placeLink({kind:'cards',id:this.item,card:id,view:'cards'});
+      })();
+      // Start the clipboard write before yielding the click's activation.
+      const copying=copyPrompt(text);
+      try{words=await text;}catch(error){await copying;this.cardNotice(error.message);return;}
+      const copied=await copying;
+      this.cardNotice(copied?'Card link copied.':`Could not copy. Select this text and use Copy: ${words}`);
+      return;
     }else{
       const card=this.deck.cards[at],written=this.written(card);
       words=plainCardText(card.title,written.words,this.doc);
@@ -1040,7 +1049,7 @@ export class DeckPage {
       const at = editing.fresh ? (editing.after === null ? 0 : findCard(this.deck, editing.after, editing.near) + 1) : findCard(this.deck, editing.text, editing.near);
       // The box stands in its card's place at its card's depth, wherever an act or a read of the page has put it.
       if (!editing.fresh && at >= 0) Object.assign(editing, { near: at, depth: cards[at].depth });
-      this.paintCardTint(holder,cards[at]);
+      if(!editing.fresh)this.paintCardTint(holder,cards[at]);
       holder.style.setProperty('--depth', String(editing.depth ?? 0));
       // Replacing a card with its shared editor must not shorten the document under it.
       if (editing.height) holder.style.minHeight = `${editing.height}px`;

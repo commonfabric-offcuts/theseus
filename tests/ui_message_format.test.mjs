@@ -992,3 +992,18 @@ test('a card read on in place, or shown full, strikes what the whole message too
     assert.deepEqual([tall.preview.textContent, struckOf(tall.preview)], [shown, words], `a whole card shown full, ${name}`);
   }
 });
+
+test('867 Notebook hidden lines preserve Reader source offsets and do not hide ordinary message examples',()=>{
+ const line='<!-- theseus-card: {"id":"c-11111111111111111111111111111111","aliases":[],"color":"blue"} -->';
+ for(const newline of ['\n','\r\n']){
+  const body=['## First','',line,'','Before words.','','## Second','','After words.'].join(newline);
+  const host=passages(body,{notebook:true});assert.doesNotMatch(host.textContent,/theseus-card|aliases/);
+  for(const word of ['Before words.','After words.']){
+   const node=walk(host).find(n=>n.nodeType===3&&n.data.includes(word));assert.ok(node);
+   const start=format.sourcePosition(node,node.data.indexOf(word)),end=format.sourcePosition(node,node.data.indexOf(word)+word.length,true);
+   assert.equal(body.slice(start,end),word);
+  }
+  assert.match(passages(body).textContent,/theseus-card/);
+  assert.equal(passages(line,{notebook:true}).textContent,'');
+ }
+});

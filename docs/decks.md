@@ -117,16 +117,31 @@ Set color needs one; an alias alone still resolves. Merge Undo restores both
 original identities, colors and child groups, and Redo repeats that merge.
 Word-edit and color Undo preserve an identity already allocated for a link.
 
+Every Notebook reader uses the same valid hidden-line rule, including the
+Reader, changed-page comparison, excerpts and conflict panel. Code examples
+and invalid markers remain words. On an open code fence, new metadata goes
+before the fence so allocation is hidden and repeatable.
+
 Card editing and Text show no metadata line, restoring it through the same
-Notebook writer and revision fence. Text edits attach metadata to surviving
-card writing; removing an entire card removes its metadata. Text Undo/Redo
-restores the corresponding metadata for writing from the current visit.
+Notebook writer and revision fence. Text matches settled cards by normalized
+words and title, independent of their position and intermediate heading marks.
+The visit retains the identities of cut writing for a later paste; a removed
+card has no identity in the saved page. Exact duplicate cards use the edit's
+unchanged surrounding text to distinguish which duplicate survived.
+Text Undo/Redo walks the visit's edit history in the requested direction,
+including repeated visible values. History stores text patches, not a full
+page per keystroke. CRLF comparison never rewrites an untouched page.
 An identity or color changed later in Cards stays with the surviving card
 when Text Undo restores deleted writing or separates a merge. This also holds
 for identical cards and cards which had no identity when Text editing began.
 Merely switching views never writes the page. The deterministic checks use
 real card acts, the Notebook writer and shared painters with in-memory
 adapters; they do not claim native touch, focus or layout proof.
+
+A new identity allocated after a Cards merge stays with the surviving target
+when Undo separates it. A fresh card editor has no inherited tint. Copy link
+starts a promised clipboard write during the click; its data resolves only
+after the link's identity is confirmed saved.
 
 ## Acts
 

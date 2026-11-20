@@ -89,7 +89,7 @@ export const IMAGE_GLYPH = '🖼';
 const standIn = name => `${IMAGE_GLYPH} ${name.trim() || 'Image'}`;
 const CUT_LINE = /^[ \t]*!\[([^\]\n]*)\]\(([A-Za-z0-9._:-]*)$/;
 export function imageStandIns(text, { partial = false } = {}) {
-  const lines = String(text ?? '').split('\n');
+  const lines = stripDetails(String(text ?? ''), {partial}).split('\n');
   let fence = null;
   return lines.map((line, i) => {
     const before = fence;
@@ -113,12 +113,23 @@ export function imageLine(name, id) {
 // new card holding only images is named for the first of them, so it is made with them; a card cleared of all its
 // text is still removed, its images with it, and a new card with nothing in it is never made.
 export function boxText({ written, images = [], stacks = [], details = [], fresh = false }) {
-  const kept = [...images, ...stacks, ...details];
-  if (!kept.length) return written;
-  if (/\S/.test(written)) return `${written.trimEnd()}\n\n${kept.join('\n')}`;
+  const kept = [...images, ...stacks];
+  if (!kept.length&&!details.length) return written;
+  const restore = text => {
+    if(!details.length)return text;
+    const detail=cardDetails(details.join('\n')),restored=withCardDetails(text,detail);
+    if(restored.startsWith(detail.lines[0]+'\n\n')){
+      // withCardDetails placed it before an open fence. Keep the editor's
+      // first nonblank line as the title, and insert metadata just after it.
+      const lines=text.split('\n'),first=lines.findIndex(line=>/\S/.test(line));
+      lines.splice(first+1,0,'',...detail.lines,'');return lines.join('\n');
+    }
+    return restored;
+  };
+  if (/\S/.test(written)) return restore([written.trimEnd(),kept.join('\n')].filter(Boolean).join('\n\n'));
   if (!fresh || !images.length) return written;
   const [first] = cardImages(images[0]).images;
-  return `${first.name.replace(/\.[A-Za-z0-9]{1,5}$/, '').trim() || 'Image'}\n\n${kept.join('\n')}`;
+  return restore(`${first.name.replace(/\.[A-Za-z0-9]{1,5}$/, '').trim() || 'Image'}\n\n${kept.join('\n')}`);
 }
 
 // A card from the text a person wrote: the first line that is not blank is
@@ -263,6 +274,15 @@ export function applyAct(deck, act) {
       const upperChildren = down ? children.slice(children.length - keep) : children.slice(0, keep);
       const lowerChildren = down ? children.slice(0, children.length - keep) : children.slice(keep);
       const upper = textCard(act.upper), lower = textCard(act.lower);
+      // A link allocated after the merge belongs to its surviving target,
+      // while the old moved identities return to the separated card.
+      const target=down?lower:upper,original=cardDetails(target.words),merged=cardDetails(cards[i].words);
+      const known=new Set([...cardDetails(upper.words).ids,...cardDetails(lower.words).ids]);
+      const added=merged.ids.filter(id=>!known.has(id));
+      if(added.length){
+        const id=original.id??merged.id,aliases=[...new Set([...original.aliases,...added])].filter(each=>each!==id);
+        target.words=withCardDetails(target.words,{id,aliases,color:merged.color});
+      }
       // Titles are literal on a card, even when they begin with Markdown heading characters.
       cards.splice(i, end - i, { ...upper, title: act.upperTitle ?? upper.title, depth }, ...upperChildren,
         { ...lower, title: act.lowerTitle ?? lower.title, depth }, ...lowerChildren);

@@ -13,7 +13,7 @@ export function detailsLine(details) {
     throw Error('A card needs valid identities and a palette color.');
   return '<!-- theseus-card: '+JSON.stringify({id,aliases,color})+' -->';
 }
-export function detailLines(text) {
+export function detailLines(text, {partial=false}={}) {
   const lines=String(text??'').split('\n'), found=[];
   let fence=null,offset=0;
   lines.forEach((raw,i)=>{
@@ -27,13 +27,14 @@ export function detailLines(text) {
         detailsLine(value);found.push({...value,line:line.trim(),start:offset,end:offset+raw.length+(i<lines.length-1?1:0)});
       }
     }catch{/* An invalid marker remains ordinary writing. */}
+    if(partial&&i===lines.length-1&&!before&&!fence&&/^\s*<!-- theseus-card: \{/.test(line)&&!line.trimEnd().endsWith('-->'))
+      found.push({start:offset,end:offset+raw.length,partial:true});
     offset+=raw.length+1;
   });
   return found;
 }
-export function stripDetails(text) {
-  let kept='',at=0;
-  for(const row of detailLines(text)){
+export function detailRanges(text, options) {
+  return detailLines(text,options).map(row=>{
     let start=row.start,end=row.end;
     // The blank separator written with the hidden line belongs to it. Leave
     // the following line break so projecting/restoring never grows blank lines.
@@ -44,8 +45,14 @@ export function stripDetails(text) {
       if(text.slice(end-2,end)==='\r\n')end-=2;
       else if(text[end-1]==='\n')end--;
     }
-    kept+=text.slice(at,Math.max(at,start));at=end;
-  }
+    // Metadata before an open fence owns its following blank separator.
+    if(start===0){if(text.slice(end,end+2)==='\r\n')end+=2;else if(text[end]==='\n')end++;}
+    return {start,end};
+  });
+}
+export function stripDetails(text, options) {
+  let kept='',at=0;
+  for(const {start,end} of detailRanges(text,options)){kept+=text.slice(at,Math.max(at,start));at=end;}
   return kept+text.slice(at);
 }
 export function cardDetails(text) {
@@ -56,7 +63,16 @@ export function cardDetails(text) {
 }
 export function withCardDetails(words, details) {
   const visible=cardDetails(words).words;
-  return details.id || details.aliases?.length ? [visible,detailsLine(details)].filter(Boolean).join('\n\n') : visible;
+  if(!details.id&&!details.aliases?.length)return visible;
+  // The first line is outside every fence, including an unfinished one.
+  let fence=null;const lines=visible.split('\n');
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i].replace(/\r$/,'');
+    if(fence){if(fenceEnd(line,fence)>=0)fence=null;}
+    else {const open=fenceOpen(line,lines[i+1]?.replace(/\r$/,'')??'');if(open&&open.end<0)fence=open;}
+  }
+  const parts=fence?[detailsLine(details),visible]:[visible,detailsLine(details)];
+  return parts.filter(Boolean).join('\n\n');
 }
 export function mergeDetails(target, moved) {
   return {id:target.id, aliases:[...new Set([...target.aliases,...moved.ids])].filter(id=>id!==target.id),color:target.color};

@@ -240,7 +240,6 @@ test('867 long ordinary Text typing does not evict metadata needed by native del
  const raw=card()+card('Second','second',details(B)),projection=new CardTextProjection(),before=projection.show(raw),cut=before.indexOf('## Second'),after=before.slice(cut);
  projection.edit(after,{start:0,end:cut,inputType:'deleteContentBackward'});let text=after;
  for(let n=0;n<150;n++){text+='x';projection.edit(text,{inputType:'insertText'});}
- assert.equal(projection.history.length,2,'only the deletion needs a metadata snapshot');
  projection.edit(after,{inputType:'historyUndo'});assert.equal(projection.edit(before,{inputType:'historyUndo'}),raw);
 });
 test('867 Text deletion Undo preserves a later Cards color change through Undo and Redo',()=>{
@@ -298,4 +297,109 @@ test('867 typing a new card heading keeps the existing identity with the origina
 test('867 the actual Text sync hides metadata without changing the writer or replacing its full seen revision',async t=>{
  const {p,w}=await writingPort(t,card());p.text=p.doc.createElement('textarea');p.header.title=p.doc.createElement('h1');p.textSeen=null;
  p.sync(true);assert.equal(p.text.value,stripDetails(w.value.body));assert.equal(p.textSeen.content.body,w.value.body);p.sync();assert.equal(w.dirty,false);
+});
+
+// Review 12221: exercise surviving content across intermediate headings and
+// whole-card moves, rather than relying on a keystroke offset as identity.
+const metaOf = raw => parseDeck(raw).cards.map(c => ({title:c.title,...cardDetails(c.words)}));
+for (const replacement of ['## Costs', '### Budget']) test('867 review heading retyping through a single hash preserves Budget: '+replacement,()=>{
+ const raw=card('Plan','plan words',details(A))+card('Budget','budget words',details(B,'rose'));
+ const p=new CardTextProjection(),before=p.show(raw),start=before.indexOf('## Budget');let text=before;
+ for(const heading of ['', '#', '##', replacement]){
+  const end=text.indexOf('\n',start);text=text.slice(0,start)+heading+text.slice(end);
+  p.edit(text,{inputType:'insertText',start,end});
+ }
+ const rows=metaOf(p.body);assert.equal(rows[1].id,B);assert.equal(rows[1].color,'rose');assert.deepEqual(rows[0].ids,[A]);
+});
+test('867 review Option line move and cut/paste preserve content identities and directional Undo',()=>{
+ const raw=card('First','first',details(A))+card('Second','second',details(B,'rose'))+card('Third','third',null);
+ const p=new CardTextProjection(),before=p.show(raw),parts=parseDeck(before).cards.map(c=>c.raw),after=parts[0]+parts[2],start=parts[0].length;
+ let result=p.edit(parts[1]+parts[0]+parts[2],{inputType:'insertText'});assert.deepEqual(metaOf(result).map(c=>c.id),[B,A,null]);
+ p.edit(before,{inputType:'historyUndo'});
+ p.edit(after,{inputType:'deleteByCut',start,end:start+parts[1].length});
+ result=p.edit(before,{inputType:'insertFromPaste',start,end:start});assert.deepEqual(metaOf(result).map(c=>c.id),[A,B,null]);
+ result=p.edit(after,{inputType:'historyUndo'});assert.deepEqual(metaOf(result).map(c=>c.id),[A,null]);
+ result=p.edit(before,{inputType:'historyUndo'});assert.equal(result,raw,'the earlier recurrence restores the earlier state');
+ result=p.edit(after,{inputType:'historyRedo'});assert.deepEqual(metaOf(result).map(c=>c.id),[A,null]);
+});
+test('867 review normalized textarea opening does not revise CRLF or lose middle identities',async t=>{
+ const raw=(card('First','first',details(A))+card('Second','second',details(B,'rose'))).replaceAll('\n','\r\n');
+ const {p,w,calls}=await writingPort(t,raw);p.textSeen=w.capture();p.text={value:stripDetails(raw).replaceAll('\r\n','\n')};
+ p.textEdited();await w.flush();assert.equal(w.value.body,raw);assert.equal(w.dirty,false);assert.equal(calls.length,0);
+});
+for(const step of [-1,1])test('867 review merge then lazy allocation then split keeps the new link: '+step,()=>{
+ const p=menuPage(card('First','first',null)+card('Second','second',details(B,'rose'))),i=step<0?1:0;
+ p.act({kind:'merge',text:cardText(p.deck.cards[i]),near:i,step});
+ const id=p.ensureCardId(p.cardRef(0));p.undo();
+ assert.equal(p.cardAt({id}),step<0?0:1);assert.equal(cardDetails(p.deck.cards[1].words).id,B);
+});
+for(const fence of ['```js','~~~~'])test('867 review metadata allocation on unclosed fence stays hidden and idempotent: '+fence,()=>{
+ const p=menuPage(card('Code',fence+'\nconst x = 1;',null)),before=stripDetails(deckBody(p.deck));
+ const id=p.ensureCardId(p.cardRef(0));assert.equal(cardDetails(p.deck.cards[0].words).id,id);
+ assert.equal(stripDetails(deckBody(p.deck)).trimEnd(),before.trimEnd());
+ assert.equal(p.ensureCardId(p.cardRef(0)),id);assert.equal(detailLines(p.deck.cards[0].words).length,1);
+});
+test('867 review Copy text of an unpicked metadata-bearing twin excludes bookkeeping',async t=>{
+ const copied=clipboard(t),raw=card('Same','first',details(A))+card('Same','second **words**',details(B,'rose')),p=menuPage(raw);
+ const menu=p.openCardMenu(1,p.anchor);t.after(()=>menu?.close(false));await p.cardMenuItems(p.cardRef(1),p.anchor)[0].act();
+ assert.deepEqual(copied,['Same\n\nsecond words']);assert.equal(deckBody(p.deck),raw);
+});
+test('867 review Copy link and color allocate on an unpicked identical twin',async t=>{
+ const copied=clipboard(t),one=card('Same','same words',null),{p}=await writingPort(t,one+one);
+ await p.cardMenuItems(p.cardRef(1),p.anchor)[1].act();const id=parseRoute(new URL(copied[0])).card;
+ assert.equal(cardDetails(p.deck.cards[0].words).id,null);assert.equal(cardDetails(p.deck.cards[1].words).id,id);
+ const anchor=p.doc.createElement('button');p.doc.body.append(anchor);const picker=p.cardColors(p.cardRef(1),anchor);t.after(()=>picker.close(false));await picker.root.querySelectorAll('.swatch')[1].onclick();
+ assert.equal(cardDetails(p.deck.cards[0].words).color,null);assert.equal(cardDetails(p.deck.cards[1].words).color,AGENT_PALETTE[1]);
+});
+test('867 review Delete on an unpicked twin leaves the picked twin alone',()=>{
+ const p=menuPage(card('Same','words',details(A))+card('Same','words',details(B,'rose')));
+ p.cardMenuItems(p.cardRef(1),p.anchor)[2].act();assert.deepEqual(metaOf(deckBody(p.deck)).map(c=>c.id),[A]);p.undo();assert.deepEqual(metaOf(deckBody(p.deck)).map(c=>c.id),[A,B]);
+});
+test('867 review Copy link starts promised clipboard data before its save settles',async t=>{
+ clipboard(t);const old=globalThis.ClipboardItem;globalThis.ClipboardItem=class {constructor(data){this.data=data;}};t.after(()=>{globalThis.ClipboardItem=old;});
+ const {p,w}=await writingPort(t);let release,started=false,item;const flush=w.flush.bind(w);
+ w.flush=async()=>{await new Promise(done=>release=done);return flush();};
+ navigator.clipboard.write=async items=>{started=true;item=items[0];await item.data['text/plain'];};
+ const copying=p.copyCard(p.cardRef(0),true);const began=started;release();await copying;
+ assert.equal(began,true,'clipboard.write must start during the click');const blob=await item.data['text/plain'];assert.equal(parseRoute(new URL(await blob.text())).card,cardDetails(p.deck.cards[0].words).id);
+});
+import { paintChanges } from '../web/page-changes.mjs';
+import { imageStandIns } from '../web/deck.mjs';
+import { Reader } from '../web/reader.mjs';
+import { linkedFenceNodes } from '../web/message-format.mjs';
+test('867 review all Notebook readers hide metadata through the shared rule, while fenced examples remain',t=>{
+ const doc=documentPort(),old=globalThis.document;globalThis.document=doc;t.after(()=>{globalThis.document=old;});
+ const raw=card('Title','Readable words',details()),example='```\n'+line()+'\n```';
+ const changed=doc.createElement('div');paintChanges(changed,'',raw,doc);assert.doesNotMatch(changed.textContent,/theseus-card|aliases/);
+ assert.doesNotMatch(imageStandIns(raw),/theseus-card|aliases/);
+ const host=doc.createElement('div');host.append(...linkedFenceNodes(raw,doc));assert.doesNotMatch(host.textContent,/theseus-card|aliases/);
+ const reader={source:{source_ref:{kind:'memory'}},sourceBody:doc.createElement('div'),callbacks:{},placeEnd(){}};
+ Reader.prototype.drawSource.call(reader,raw);assert.doesNotMatch(reader.sourceBody.textContent,/theseus-card|aliases/);
+ assert.match(imageStandIns(example),/theseus-card/);
+});
+test('867 review conflict panel strips a valid hidden line from the actual saved version',()=>{
+ const p=menuPage();p.host.style.removeProperty=()=>{};p.text={};p.paintPageState=p.paintDraft=p.paintImages=p.revisionShown=()=>{};
+ p.conflictPanel=p.doc.createElement('div');p.writing={hasLocal:true,conflict:{revision:2,content:{title:'Changed',body:card()}},images:[]};
+ p.writingChanged();const latest=p.conflictPanel.querySelector('.notebook-latest');assert.ok(latest);assert.match(latest.textContent,/Changed/);assert.doesNotMatch(latest.textContent,/theseus-card|aliases/);
+});
+test('867 review fresh card editor does not borrow the following card tint',t=>{
+ const p=menuPage(card()),doc=p.doc,old=globalThis.document;globalThis.document=doc;t.after(()=>{globalThis.document=old;});Object.assign(p,{keyed:false,opening:doc.createElement('div'),keyLines:[],editButton:doc.createElement('button'),
+  editing:{fresh:true,after:null,near:0,field:doc.createElement('textarea')},mark(){},fit(){},bubbles:()=>doc.createElement('div')});
+ p.editing.field.setSelectionRange=()=>{};p.editing.field.value='New card';p.doc.body.append(p.editing.field);
+ DeckPage.prototype.paint.call(p);const row=p.list.querySelector('.deck-writing');assert.ok(row);assert.equal(row.classList.contains('deck-tinted'),false);
+});
+test('867 review editing an identified card to an open fence does not expose the restored hidden line',()=>{
+ const p=menuPage(),shown=p.written(p.deck.cards[0]);
+ const written='Code\n```js\nconst x = 1;';
+ const to=boxText({written,details:shown.details});
+ p.act({kind:'edit',text:cardText(p.deck.cards[0]),near:0,to});
+ assert.equal(cardDetails(p.deck.cards[0].words).id,A);
+ assert.doesNotMatch(cardDetails(p.deck.cards[0].words).words,/theseus-card/);
+ assert.equal(cardDetails(p.deck.cards[0].words).words,'```js\nconst x = 1;');
+});
+test('867 review a truncated Notebook excerpt does not expose a partial hidden JSON line',()=>{
+ const cut=card().slice(0,card().indexOf('aliases')+5);
+ assert.doesNotMatch(imageStandIns(cut,{partial:true}),/theseus-card|c-1111|alias/);
+ const fenced='```\n'+cut;assert.match(imageStandIns(fenced,{partial:true}),/theseus-card/);
+ assert.match(imageStandIns(cut),/theseus-card/,'unmarked incomplete writing remains literal');
 });

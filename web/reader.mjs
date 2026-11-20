@@ -547,6 +547,7 @@ export class Reader {
   drawSource(body) {
     const source = this.source, page = source?.source_ref?.kind === 'memory' && this.callbacks.pageImage;
     drawPassages(this.sourceBody, body, document, { copyFences: true, struck: source?.source_ref?.kind === 'message' ? source.struck?.cuts : null,
+      notebook: source?.source_ref?.kind === 'memory',
       displayRules: source?.source_ref?.kind === 'message' ? this.callbacks.displayRules?.() ?? [] : [],
       images: page ? pageImages(source, attachment => this.callbacks.pageImage(attachment, source.source_ref)) : null });
     this.placeEnd();

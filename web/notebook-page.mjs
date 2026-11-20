@@ -1,4 +1,4 @@
-import { CardTextProjection } from './notebook-card-text.mjs';
+import { CardTextProjection, cardTextValue } from './notebook-card-text.mjs';
 import { stripDetails } from './card-details.mjs';
 import { pageLink } from './links.mjs';
 import { openMessageMenu, copyText } from './message-menu.mjs';
@@ -162,7 +162,7 @@ export class NotebookPage extends DeckPage {
       this.picked=Math.min(this.picked,Math.max(0,this.deck.cards.length-1));
       this.paint();
     }
-    const textBody=stripDetails(w.value.body);
+    const textBody=cardTextValue(stripDetails(w.value.body));
     if(this.text.value!==textBody&&(!w.conflict || drawKept)) {
       const focused=this.doc.activeElement===this.text,selection=[this.text.selectionStart,this.text.selectionEnd];
       this.text.value=textBody;
