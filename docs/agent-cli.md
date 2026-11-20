@@ -514,6 +514,19 @@ are absolute local times.
   piece's in the order its card names them, then the items not in a piece, in
   their placed order.
 - `item OUTCOME N` shows one item with its stages and events.
+- `item-edit OUTCOME N [--title T] [--size small|medium|large|none] [--group G] [--words FILE|-]`
+  lets any outcome member edit the supplied fields directly, then shows the
+  item as read back. Supply at least one option. `--words` reads UTF-8 from
+  a regular file or standard input (`-`); an empty file clears the words,
+  `--group ''` clears the Candidate group and `--size none` clears the size.
+  Words keep their whitespace; Core keeps its existing text validation
+  (at most 16,384 UTF-8 bytes for words), membership and shipped-item rules.
+  The verb reads the current item revision before
+  writing; a concurrent edit is refused with `REVISION_CONFLICT`.
+  `READ_BACK_UNCONFIRMED` (exit 1) means the edit was recorded but its final
+  read failed: use `item OUTCOME N` to read it. An uncertain command receipt
+  names its operation for `retry OPERATION`; do not rerun `item-edit` as a
+  new edit to recover it. Moving and attribution retain their permissions.
 - `pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off]`
   turns it on or off (the owner or the coordinator); its title, units, sizing
   and releases are the owner's alone.
