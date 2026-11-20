@@ -162,10 +162,17 @@ and the bar's ⋯ is one more tap. The items:
   closes and the focus goes back to the message's card. Everyone sees the new
   words marked "Edited" (docs/message-edit.md).
 
-The Reader's header has the same ⋯ in place of the Wide/Stacked button: Copy
-Link, Edit on the person's own message (the Reader turns to its edit mode in
-place, and back to the message when it ends, the focus on its ⋯), and the mark
-for a message, and Wide layout or Stacked layout where the
+The Reader's header uses the same message-action list as the feed (861),
+including Star/Unstar, Archive/Bring back and Rename on a loaded dossier's
+first message. Both offer Start a topic from this, Add to pipeline and Start
+a new dossier. The latter quotes the full message and its link in the existing
+New message composer; in the Reader it also moves the reply text and its
+effective audience, only when both drafts can safely make that move
+(shared-message-menus-861.md). The feed alone adds its arrangement actions
+and Show full message; the Reader alone adds Quote selection and layout.
+Edit on the person's own message turns the Reader to its edit mode in
+place, and back to the message when it ends, the focus on its ⋯.
+The Reader offers Wide layout or Stacked layout where the
 window is wide enough to choose. While a message is edited, ⌘↑ and ⌘↓ step
 nowhere and Escape leaves the edit, its writing kept on the device for the
 next Edit. Up and Down move through a menu, Escape

@@ -110,11 +110,18 @@ the pane's gap under the header in each of its states, and the message keeps
 its own room after its end, under ↑ Previous · ↓ Next. A laptop's header, and
 a phone's of one row, keep their room as before.
 
-The message's own acts are in the Reader's ⋯, beside Copy Link: Quote
-selection (only while words are selected or a passage is lit), Mark unread,
-Fold message (Unfold message once folded; a starred message offers none, as
-on the card), Start a topic from this, and Add to pipeline, and Wide or Stacked layout
-where the window can choose. Pressing the ⋯ or + can move the focus and let
+The message's own acts in the Reader's ⋯ come from the feed's shared list
+(861): Star/Unstar, Rename on a loaded dossier's first message, Archive/Bring
+back, Move to topic, Copy Link, Edit, Update, Mark read/unread, Fold/Unfold,
+Start a topic from this, Add to pipeline, Start a new dossier and text display.
+Each keeps its existing eligibility. A starred message offers no Fold.
+Rename keeps the reply and closes the Reader before opening the existing
+dossier title field. The Reader alone adds Quote selection (only while words
+are selected or a passage is lit) and Wide/Stacked where the window can choose.
+Start a new dossier quotes the full message and its link in New message,
+then moves any reply text and its effective audience; an occupied destination,
+image or unsettled writing refuses the move. See shared-message-menus-861.md.
+Pressing the ⋯ or + can move the focus and let
 the selection go, so what Quote selection quotes there is what was chosen
 as it was pressed, by a pointer, a finger or the keys. ↑ and ↓ in the
 header step to the message above and the message below as the topic page
@@ -123,7 +130,7 @@ on to the stack below (docs/reply-stacks.md). On a phone the ⋯ is a sheet
 from the bottom, and the message ends with a quiet "↑ Previous · ↓ Next".
 
 A swipe right over the message in the composer folds that message for the
-reader, as in a dossier (item 648). It is the same act as Fold message in
+reader, as in a dossier (item 648). It is the same act as Fold in
 ⋯: the Reader stays open, its writing and destination kept, and the card on
 the topic folds to its row. A starred or already folded message stays as it
 is. A drag on code or a table scrolling sideways scrolls it instead; vertical

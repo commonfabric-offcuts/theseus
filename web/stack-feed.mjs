@@ -1028,30 +1028,32 @@ export class StackFeed {
   // same and each item's glyph (glyphs.mjs, items 602 and 601); on a phone,
   // the stack's moves and joins sit behind "Move or join…".
   // first: what the message offers; last: its stack's moves and joins.
-  menuItems(item, { phone = false, more = () => {} } = {}) {
+  menuItems(item, { phone = false, more = () => {}, reader = false, at = null, rename = act => act() } = {}) {
     const entry = this.entryFor(item.id), found = entry && stackOf(this.list, entry);
     const starred = Boolean(this.actsOf(item.id, item).starred);
     const items = [{ label: starred ? 'Unstar' : 'Star for me', glyph: starred ? 'starred' : 'star', act: () => this.star(item) }];
-    if (!found) return { first: items, last: [] };
-    const { stack } = found, state = this.state;
-    const askCover = found.head && firstCoverMenuItem(this.list.ownerDocument, stack);
+    const stack = found?.stack, state = this.state;
+    const askCover = found?.head && firstCoverMenuItem(this.list.ownerDocument, stack);
     if (askCover) items.push(askCover);
     // Where a refusal of the stack's moves is said: the line of the message whose menu it is.
-    const line = () => lineOf(this.entryFor(item.id) && cardIn(this.entryFor(item.id)));
+    const line = () => at ?? lineOf(this.entryFor(item.id) && cardIn(this.entryFor(item.id)));
+    if (found?.head && stack.replies.length) {
+      items.push({ label: 'Rename', glyph: 'pencil', act: () => rename(() => this.startRename(stack)) });
+    }
+    if (stack && positionOf(stack)) items.push({ label: positionOf(stack).below ? 'Bring back' : 'Archive', glyph: positionOf(stack).below ? 'back' : 'archive',
+      act: () => this.setAside(stack, !positionOf(stack).below, { at: line(), focus: !reader }) });
+    // The Reader and feed use the same labels and star/fold owner. An older
+    // message opened alone still has personal acts, though no loaded stack.
+    if (this.actsOf(item.id, item).folded) items.push({ label: 'Unfold', glyph: 'unfold', act: () => this.setFold(item, false, { focus: !reader }) });
+    else if (!starred) items.push({ label: 'Fold', glyph: 'fold', act: () => this.setFold(item, true, { focus: !reader }) });
+    if (reader || !found) return { first: items, last: [] };
     if (found.head && stack.replies.length) {
-      items.push({ label: 'Rename', glyph: 'pencil', act: () => this.startRename(stack) });
       const open = levelOf(state, stack.id) === 'open';
       items.push({ label: open ? 'Show latest and unread replies' : 'Show all messages', glyph: open ? 'latest' : 'all',
         act: () => { setLevel(state, stack, open ? 'folded' : 'open'); this.arrange(); this.focusOn(stack.id); } });
     }
-    // A star keeps a message in view: a starred message offers no Fold.
-    if (this.actsOf(item.id, item).folded) items.push({ label: 'Unfold', glyph: 'unfold', act: () => this.setFold(item, false) });
-    else if (!starred) items.push({ label: 'Fold', glyph: 'fold', act: () => this.setFold(item, true) });
     if (stack.joins.has(item.id)) items.push({ label: 'Split back out', glyph: 'split', act: () => this.split(item) });
     const moves = [
-      // Item 601: Archive shows the Reader's archive tray, Bring back the tray with an arrow out.
-      ...(positionOf(stack) ? [{ label: positionOf(stack).below ? 'Bring back' : 'Archive', glyph: positionOf(stack).below ? 'back' : 'archive',
-        act: () => this.setAside(stack, !positionOf(stack).below, { at: line() }) }] : []),
       { label: 'Move its stack up', keys: '⌘↑', glyph: 'up', act: () => this.move(entry, 'up') },
       { label: 'Move its stack down', keys: '⌘↓', glyph: 'down', act: () => this.move(entry, 'down') },
       ...(stack.replies.length && foldStep({ level: levelOf(state, stack.id) }, 'fold') ? [{ label: 'Fold its stack', keys: '←', glyph: 'chevron', act: () => this.fold(entry, 'fold') }] : []),
