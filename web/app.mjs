@@ -47,7 +47,7 @@ import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from
 import { PurposeLine } from './outcome-purpose.mjs';
 import { AgentInvite, Invitation } from './agent-invite.mjs';
 import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf, paintNoteCorner } from './marks.mjs';
-import { replyLine } from './replies.mjs';
+import { replyLine, paintReplyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, opened } from './fold.mjs';
 import { MessageEditWriting, messageEditStore, mayEdit, revisionOf, wasEdited } from './message-edit-writing.mjs';
@@ -1339,7 +1339,7 @@ function paintViews(kind) {
       paintCardAuthor(author, item);
       const answers = replyLine(item);
       // The line a reply quotes is cut, so an address at its end is left as words.
-      if (answers) card.append(linkWords(node('span', undefined, 'message-reply-to'), answers, { partial: true }));
+      if (answers) card.append(paintReplyLine(node('span', undefined, 'message-reply-to'), item));
       card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // Its images as thumbnails after its words, each read through the message (card-images.mjs, item 474).
@@ -2539,7 +2539,7 @@ function repaintEdited(ids, edits) {
     if (deferFencePaint(card, () => repaintEdited([id], edits))) continue;
     paintCardAuthor(card.querySelector(':scope > .message-author'), item);
     const line = card.querySelector(':scope > .message-reply-to'), answers = replyLine(item);
-    if (line && answers) linkWords(line, answers, { partial: true });
+    if (line && answers) paintReplyLine(line, item);
     const preview = card.querySelector(':scope > .message-preview');
     const keepingWhole = reader?.card === card && item.preview;
     if (preview && !keepingWhole) {

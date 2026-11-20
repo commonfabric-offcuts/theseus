@@ -172,6 +172,11 @@ export class TopicViews {
       const item = this.messages.get(id);
       if (item) { item.removal = removal; terminalFields(item); this.revised.add(id); }
     }
+    for (const item of this.messages.values()) {
+      if (item.reply_to === id && typeof item.reply_to_excerpt === 'string' && !item.reply_to_withheld) {
+        item.reply_to_removal = removal; this.revised.add(item.id);
+      }
+    }
     this.paintMessages();
   }
   // A loaded reply's line shows how message id begins.
@@ -278,6 +283,11 @@ export class TopicViews {
     for (const item of answer.items) {
       const known = this.messages.get(item.id);
       if (this.removals.get(item.id)?.kind === 'unsent') continue;
+      const parentRemoval = typeof item.reply_to_excerpt === 'string' && !item.reply_to_withheld
+        ? this.removals.get(item.reply_to) ?? known?.reply_to_removal ?? item.reply_to_removal ?? null : null;
+      if (known && JSON.stringify(parentRemoval) !== JSON.stringify(known.reply_to_removal ?? null)) this.revised.add(item.id);
+      item.reply_to_removal = parentRemoval;
+      if (known) known.reply_to_removal = parentRemoval;
       item.withdrawal = known?.withdrawal ?? item.withdrawal;
       item.removal = this.removals.get(item.id) ?? known?.removal ?? item.removal;
       if (item.removal) { this.removals.set(item.id, item.removal); terminalFields(item); }

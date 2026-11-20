@@ -502,11 +502,14 @@ class Conversation:
         folded = self._fold_answered(db, actor, snapshot["reply_to"]) if snapshot.get("reply_to") else []
         return result, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}] + cover_affected + folded + covered
 
-    def _message_access(self, db, actor, message_id):
+    def _message_access(self, db, actor, message_id, removal=False):
         row = db.execute("SELECT id,topic_id,author_id,private_to FROM messages WHERE id=?", (_identifier(message_id),)).fetchone()
         # A whisper is readable by its two people only, and refused to anyone else exactly as an unknown id.
         from .removal import unsent
-        if not row or not whispers.visible(row, actor) or unsent(db, message_id):
+        # Removal verbs alone can recover an author's own terminal receipt.
+        # Reads and edits still treat an unsent identity as unknown.
+        if (not row or not whispers.visible(row, actor)
+                or unsent(db, message_id) and not (removal and row['author_id'] == actor)):
             raise Refusal("FORBIDDEN", "No readable source")
         try:
             self._topic(db, actor, row["topic_id"])
@@ -621,6 +624,7 @@ class Conversation:
                 "outcome_target": target, "relevant_versions": {"topic": topic["version"]}, "allowed_actions": ["draft.save", "message.send"]}
 
     def _view_topic_messages(self, db, actor, args):
+        from .removal import value as removal_value
         topic = self._topic(db, actor, args.get("topic_id"))
         # Named messages are read alone: a page's position, size or form would be a second question.
         if args.get("message_ids") is not None and set(args) & {"cursor", "direction", "limit", "items", "audience"}:
@@ -673,6 +677,8 @@ class Conversation:
             item["reply_to_withheld"] = not hidden and item["reply_to"] is not None and withheld(item["reply_to"])
             if item["reply_to_withheld"]:
                 item["reply_to_excerpt"] = None
+            item['reply_to_removal'] = (removal_value(db, item['reply_to'])
+                                        if item['reply_to'] and not hidden and not item['reply_to_withheld'] else None)
             item.update(whispers.whisper_fields(row))
             if not item["whisper"]:
                 item.pop("private_to")
