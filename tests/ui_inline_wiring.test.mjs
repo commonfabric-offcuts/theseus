@@ -5003,6 +5003,19 @@ test('item 655 B2 freshness follows unloaded rename clear join split and loaded 
   assert.equal(f.readerDossierName(source), null, 'a loaded singleton never falls back to a cached old dossier name');
 });
 
+test('item 932 remote question state invalidates acts without painting an unloaded dossier', async () => {
+  const { f, p, source } = await starred655();
+  await f.present(p);
+  f.enableFreshness({});
+  const invalidations = [];
+  f.fresh.invalidate = (...args) => invalidations.push(args);
+  const question = { state: 'resolved', waiting_on: [], may_resolve: false, by: 'asker', at_ms: 42, superseded_by: null };
+  await assert.doesNotReject(f.fresh.options.refresh('question:' + source.source_ref.id, 1,
+    async name => { assert.equal(name, 'source'); return { ...source, question }; }, () => true));
+  assert.equal(source.question.state, 'resolved', 'the open Reader learns its exact source');
+  assert.deepEqual(invalidations, [['acts', 0, true]], 'the view redraw follows ordinary freshness instead of a direct paint');
+});
+
 for (const failedRead of ['stack_positions', 'topic_messages']) test(`item 655 B3 ${failedRead} lookup failure opens the exact source and shows a notice`, async () => {
   const { f, p, source } = await starred655();
   source.source_ref.id = 'old-reply';

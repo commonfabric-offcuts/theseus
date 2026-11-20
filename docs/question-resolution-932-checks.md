@@ -3,6 +3,39 @@
 Base: release 205, `6e5d2098b178e6fbaf3d2591d1393bdf7923557c`.
 The contract is in [question-resolution-932.md](question-resolution-932.md).
 
+## Returned review round (13500)
+
+The reviewed head `d2972ea6` introduced a failure in the unchanged item 655 B2
+freshness wiring check: learning a question tried to paint an unloaded
+dossier. That red is retained. Remote question/withdrawal changes now
+invalidate acts for the ordinary freshness path; learning the question does
+not call `paintViews`. A confirmed local receipt uses the loaded `TopicViews`
+paint callback, retaining its press fence and immediate cover update. The
+unchanged 655 check and a new real-app remote-question invalidation check pass.
+
+`test_question_withdrawal_links.py` also had a new failure under the intended
+supersession rule. Its two same-asker/same-recipient questions now close the
+first at publication. Withdrawing that first question still records
+`message_withdrawals`, but cannot append another cover act for a wait already
+removed. The history assertion now expects unchanged cover history and no
+affected cover act, and explicitly checks the earlier supersession. All
+retained-word, delivery, link, separate-wait, retry and withdrawal-record
+assertions remain. No additional Core implementation change was needed.
+
+This round passes 35 Core cases (the prior 29 plus all six linked-withdrawal
+cases), 594 Node cases (the prior seven files plus the complete inline wiring
+file), and the four native cases again on the changed page path. Each native
+case held three real refresh requests while the receipt removed the wait.
+Browser.close disconnected; owned profile processes were absent, fixture EOF
+exited 0, PID 92985 was absent and its port was closed. Evidence is
+`932-r2-inline-red.txt`, `932-r2-withdrawal-links-red.txt`,
+`932-r2-core35.txt`, `932-r2-node-cohort02.txt`, and
+`932-r2-native01/results.json` under the raw evidence directory below.
+The initial expanded Node attempt had one extraction-fixture error because
+invalidation was in the learned-state helper; moving it to the freshness
+handler restored the unchanged withdrawal check. The remaining independent
+review findings must arrive before the next freeze.
+
 ## Core
 
 The 11 new cases in `tests/test_question_resolution_932.py` cover identical
