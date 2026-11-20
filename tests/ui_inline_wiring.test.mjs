@@ -207,6 +207,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     calls.push({ name, args });
     if (name === 'topic') return { instance_id: 'fixture', topic, participants: [] };
     if (name === 'workspace') return { instance_id: 'fixture', workspace: { title: 'Workspace' } };
+    if (name === 'workspace_counts') return { instance_id: 'fixture', items: args.workspace_ids.map(id => ({ id, unread: 0, addressed: 0, build: { unread: 0, addressed: 0 }, cover_waiting: 0, light: null })) };
     if (name === 'marks') return { instance_id: 'fixture', topic_id: args.topic_id, items: [], next_cursor: null };
     if (name === 'colors') return { instance_id: 'fixture', palette: [...AGENT_PALETTE], items: [], next_cursor: null };
     if (name === 'source' && args.source_ref?.kind === 'message' && views.messages.has(args.source_ref.id)) {
@@ -7998,4 +7999,110 @@ test('929 Space uses the card action once; repeat, modifiers and nested fields k
   assert.equal(x.inlineOpens(), 1); assert.equal(x.opened(), 0);
   x.card.handlers.keydown({ target: x.card, key: ' ', preventDefault() {} }); await settle();
   assert.equal(x.opened(), 1); assert.equal(x.edits.length, 1);
+});
+
+// 933: actual app/OutlineRail/OutcomeChanges. Read-port answers only; no
+// browser, Core, HTTP or time claim in these Node checks.
+function countsOutline933(route = 'workspace') {
+  const setup = route === 'workspace' ? scopedOutcome923() : (() => {
+    const f = fixture('https://fixture/?topic=t1'); return { f, outline: mountOutcomeOutline(f) };
+  })();
+  const { f } = setup, live = stream(); live.outcomes = 'stable'; f.useLive(live);
+  const metrics = (id, unread = 0) => ({ id, unread, addressed: 0, build: { unread: 0, addressed: 0 }, cover_waiting: 0, light: null });
+  const rows = ['w1', 'w2'].map(id => ({ id, title: 'Outcome ' + id, title_truncated: false, owner_id: 'fixture-person', version: 1, ...metrics(id) }));
+  const counts = new Map(rows.map(row => [row.id, metrics(row.id)])), calls = [], view = f.api.view;
+  let fail = false, hold = null;
+  f.api.view = async (name, args) => {
+    calls.push({ name, args: structuredClone(args) });
+    if (name === 'workspaces') return { instance_id: 'fixture', items: structuredClone(rows), next_cursor: null, order: { ids: ['w2', 'w1'], revision: 1 } };
+    if (name === 'workspace_counts') {
+      const answer = { instance_id: 'fixture', items: args.workspace_ids.map(id => structuredClone(counts.get(id))) };
+      if (hold) await hold.promise;
+      if (fail) throw Error('Counts interrupted');
+      return answer;
+    }
+    return view(name, args);
+  };
+  return { ...setup, live, rows, counts, calls, fail: value => { fail = value; }, hold: value => { hold = value; } };
+}
+
+for (const route of ['workspace', 'topic']) test(`933 ${route}: arrival in folded Y updates its count/lamp and elsewhere in one commit without a list reread`, async () => {
+  const { f, outline, live, counts, calls, add } = countsOutline933(route);
+  await f.initialize(); await drain();
+  outline.opened.set('w2', false); outline.paint();
+  const y = outline.outcomes.get('w2'), node = y.li, before = outline.pages.items.map(row => [row.id, row.title]);
+  const order = outline.pages.order, next = outline.pages.next;
+  counts.set('w2', { id: 'w2', unread: 3, addressed: 2, build: { unread: 1, addressed: 1 }, cover_waiting: 1,
+    light: { light: 'waiting', label: 'Waiting on you', short: { kind: 'asks', count: 2 }, unreadable: false } });
+  calls.length = 0;
+  live.emit({ kind: 'commit', seq: add?.('actor', 'delivery', 'foreign-message') ?? 2, outcomes: 'stable' }); await drain();
+  assert.equal(outline.pages.loaded.get('w2').unread, 3);
+  assert.equal(y.item.light.light, 'waiting');
+  assert.equal(y.li.hasAttribute('data-fresh'), true, 'actual folded row paints new');
+  assert.equal(y.li.hasAttribute('data-waiting'), true, 'actual folded row paints waiting');
+  assert.equal(y.li, node); assert.equal(outline.isOpen('w2'), false);
+  assert.deepEqual(outline.pages.items.map(row => [row.id, row.title]), before);
+  assert.equal(outline.pages.order, order); assert.equal(outline.pages.next, next);
+  assert.match(f.get('outline-elsewhere').children.map(child => child.textContent).join(' '), /3 new in 1 other outcome/);
+  assert.equal(calls.filter(call => call.name === 'workspaces').length, 0);
+  assert.equal(calls.filter(call => call.name === 'workspace_counts').length, 1);
+  assert.deepEqual(calls.find(call => call.name === 'workspace_counts').args.workspace_ids, ['w1', 'w2']);
+});
+
+test('933 counts failure retains the scoped window; retry and a mark clear the count without a list read', async () => {
+  const { f, outline, live, counts, calls, add, fail, changes } = countsOutline933();
+  await f.initialize(); await drain();
+  counts.get('w2').unread = 4; fail(true); calls.length = 0;
+  await commit(live, add('actor', 'waiting', 'other-topic'));
+  assert.equal(outline.pages.loaded.get('w2').unread, 0, 'failed answer publishes no counts');
+  const refusedAt = changes.filter(args => args.scope.kind === 'actor' && args.cursor).at(-1).cursor.after_seq;
+  fail(false); changes.length = 0; await commit(live, 20);
+  assert.equal(outline.pages.loaded.get('w2').unread, 4);
+  assert.equal(changes.find(args => args.scope.kind === 'actor' && args.cursor).cursor.after_seq, refusedAt);
+  counts.get('w2').unread = 0;
+  await commit(live, add('actor', 'mark', 'other-message'));
+  assert.equal(outline.pages.loaded.get('w2').unread, 0);
+  assert.equal(calls.filter(call => call.name === 'workspaces').length, 0);
+});
+
+test('933 a retired run cannot merge late counts', async () => {
+  const { f, outline, counts, hold } = countsOutline933();
+  await f.initialize(); await drain();
+  const gate = defer(); counts.get('w2').unread = 7; hold(gate);
+  const loading = outline.load(new Set(['counts'])); await drain();
+  outline.begin(true); gate.resolve(); await loading;
+  assert.equal(outline.pages.loaded.get('w2').unread, 0);
+  hold(null);
+  assert.equal(outline.handles, null);
+});
+
+test('933 bounded chunks publish atomically and reject missing, duplicate or foreign count rows', async () => {
+  const { f, outline, counts, calls } = countsOutline933();
+  await f.initialize(); await drain();
+  f.bootstrap.limits = { page_max: 2 };
+  outline.pages.loaded.set('w3', { ...outline.pages.loaded.get('w2'), id: 'w3' });
+  counts.set('w3', { ...counts.get('w2'), id: 'w3' });
+  for (const row of counts.values()) row.unread = 5;
+  const view = f.api.view; let mode = 'failed-second';
+  f.api.view = async (name, args) => {
+    const answer = await view(name, args);
+    if (name !== 'workspace_counts') return answer;
+    if (mode === 'failed-second' && args.workspace_ids.includes('w3')) throw Error('Second chunk interrupted');
+    if (mode === 'missing') answer.items.pop();
+    if (mode === 'duplicate') answer.items[1] = answer.items[0];
+    if (mode === 'foreign') answer.instance_id = 'foreign';
+    return answer;
+  };
+  calls.length = 0;
+  assert.equal(await outline.load(new Set(['counts'])), false);
+  assert.equal(outline.pages.loaded.get('w1').unread, 0, 'successful first chunk cannot publish before the second');
+  assert.deepEqual(calls.filter(call => call.name === 'workspace_counts').map(call => call.args.workspace_ids), [['w1', 'w2'], ['w3']]);
+  for (mode of ['missing', 'duplicate', 'foreign']) {
+    assert.equal(await outline.load(new Set(['counts'])), false, mode);
+    assert.equal(outline.pages.loaded.get('w1').unread, 0, mode);
+  }
+  mode = 'valid';
+  assert.equal(await outline.load(new Set(['counts'])), true);
+  assert.deepEqual(Array.from(outline.pages.items, row => row.unread), [5, 5, 5]);
+  assert.equal(calls.filter(call => call.name === 'workspaces').length, 0);
 });

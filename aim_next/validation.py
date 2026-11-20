@@ -130,6 +130,7 @@ VIEWS = {
     "changes": {"scope", "cursor", "limit"},
     "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},
     "workspaces": {"cursor", "limit", "reached", "ended"},
+    "workspace_counts": {"workspace_ids"},
     "outcome_light": {"workspace_id"},
     "workspace_topics": {"workspace_id", "cursor", "limit", "archived", "done", "build"}, "topic": {"topic_id"},
     "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction", "items", "message_ids"}, "source": {"source_ref", "kind", "id", "revision"},
