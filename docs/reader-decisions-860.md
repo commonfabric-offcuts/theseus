@@ -13,7 +13,12 @@ remain visible. Non-message and unavailable Reader sources show no controls.
 
 A Reader decision uses the existing Reactions.answer command path with the
 message's current answer revision. While pending, its choices are disabled and their DOM nodes stay in place.
-The existing learned-result owner updates both surfaces. A late completion
+The existing learned-result owner updates both surfaces.
+Item 889 reverses the original writing-stays-open default for Reader answer
+buttons only: after a committed answer, that same Reader closes through its
+normal close/save owner, keeping unsent writing. Linked Waiting on you choices
+in the Reader cover use the same completion rule; feed answers do not close
+the Reader. Refusal, failure or a device-save problem leaves it open. A late completion
 cannot answer a different Reader source, erase newer writing or replace the
 current source's controls; a refused or lost answer keeps its existing notice.
 
