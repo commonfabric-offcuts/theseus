@@ -70,3 +70,37 @@ test('935 a failed replacement releases the placeholder so its own Retry can be 
   const f = releaseFixture(); f.rail.release(f.outcome);
   f.read.resolve(false); await turn(); assert.equal(f.outcome.held, null); assert.equal(f.own.hidden, false);
 });
+
+test('935 separator announced width follows density changes and keeps an explicit width', async () => {
+  // Rectangle adapter only: this checks the actual installed density callback
+  // and ARIA state, not browser geometry or a native gesture.
+  const previous = ['document', 'localStorage'].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]);
+  const values = new Map(), styles = new Map();
+  let root;
+  class DensityElement extends Dom {
+    get parentElement() { return this.parent; }
+    after(node) { const at = this.parent.children.indexOf(this); this.parent.insertBefore(node, this.parent.children[at + 1] ?? null); }
+    getBoundingClientRect() { return { width: styles.has('--rail-w') ? Number.parseInt(styles.get('--rail-w'), 10) : root.getAttribute('data-rail-roomy') === null ? 264 : 288 }; }
+  }
+  const doc = { createElement: tag => new DensityElement(tag) };
+  root = doc.documentElement = new DensityElement('html');
+  root.style = { setProperty: (key, value) => styles.set(key, value), removeProperty: key => styles.delete(key) };
+  doc.body = new DensityElement('body'); doc.body.root = true;
+  const layout = new DensityElement(), rail = new DensityElement('nav'), foot = new DensityElement();
+  rail.id = 'rail'; foot.className = 'rail-foot'; rail.append(foot); layout.append(rail); doc.body.append(layout);
+  doc.querySelector = selector => doc.body.querySelector(selector); doc.getElementById = id => doc.querySelector('#' + id);
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: doc });
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) } });
+  try {
+    const { railDensity } = await import('../web/rail-density.mjs?935-aria-control'); railDensity();
+    const handle = layout.querySelector('.rail-resize'), choices = foot.querySelector('.rail-density').children;
+    assert.equal(handle.getAttribute('aria-valuenow'), '264');
+    choices[1].onclick(); assert.equal(rail.getBoundingClientRect().width, 288); assert.equal(handle.getAttribute('aria-valuenow'), '288');
+    choices[0].onclick(); assert.equal(handle.getAttribute('aria-valuenow'), '264');
+    handle.onkeydown({ key: 'ArrowRight', preventDefault() {}, stopPropagation() {} });
+    assert.equal(handle.getAttribute('aria-valuenow'), '280');
+    choices[1].onclick(); assert.equal(handle.getAttribute('aria-valuenow'), '280', 'explicit width holds across density');
+  } finally {
+    for (const [name, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete globalThis[name]; }
+  }
+});

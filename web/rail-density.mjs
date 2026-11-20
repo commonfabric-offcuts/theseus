@@ -28,7 +28,7 @@ function density() {
   const choice = (label, isRoomy, tip) => {
     const button = [...group.children].find(child => child.textContent === label) ?? document.createElement('button');
     button.type = 'button'; button.textContent = label; button.title = tip;
-    button.onclick = () => { roomy = isRoomy; set(ROOMY, roomy ? '1' : '0'); applyDensity(); paint(); };
+    button.onclick = () => { roomy = isRoomy; set(ROOMY, roomy ? '1' : '0'); applyDensity(); paint(); resizer(); };
     return button;
   };
   const compact = choice('Compact', false, 'One line per outcome and topic'), spacious = choice('Roomy', true, "Today's larger spacing");

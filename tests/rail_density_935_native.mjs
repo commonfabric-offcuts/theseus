@@ -70,6 +70,7 @@ try {
     assert.ok(compact.counts.length >= 2); assert.ok(Math.max(...compact.counts) - Math.min(...compact.counts) < 1, 'counts align at the rail edge');
     for (const density of ['Compact', 'Roomy']) {
       await page.getByRole('button', { name: density, exact: true }).click();
+      assert.equal(Number(await page.getByRole('separator', { name: 'Rail width' }).getAttribute('aria-valuenow')), await page.locator('#rail').evaluate(el => el.getBoundingClientRect().width));
       const w1 = page.locator('.ol-outcome[data-workspace-id="w1"]'), name = w1.locator('.ol-name');
       await name.focus(); await page.keyboard.press('ArrowDown');
       assert.equal(await page.evaluate(() => document.activeElement.classList.contains('ol-pencil')), false, 'Down skips pencil');
