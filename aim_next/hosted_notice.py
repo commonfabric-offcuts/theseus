@@ -137,6 +137,12 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     # Each dossier to name is said once, on its first delivery listed.
     to_name = set()
     for number, item in enumerate(listed, 1):
+        if item.get('retraction'):
+            removed = item['retraction']
+            lines.append('%d. retraction: message %s was retracted by %s; it no longer asks, answers or holds a wait. '
+                         'Its original words remain only as a retracted record. Acknowledge delivery %s.' % (
+                             number, _named(removed['message_id']), _named(removed['by']), _named(item['id'])))
+            continue
         if item.get("request"):
             request = item["request"]
             lines.append("%d. request in topic %s, from %s, source %s, dossier %s, observed revision %d, delivery %s; "
@@ -181,7 +187,7 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
                                           " Titles and previews are in the untrusted context." if PREVIEWS_IN_CONTEXT else ""))
     first = {}
     for item in listed:
-        if item.get("request"):
+        if item.get("request") or item.get('retraction'):
             continue
         topic = item["topic"]["id"]
         if _named(topic) != UNNAMED:
@@ -192,8 +198,8 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     if PREVIEWS_IN_CONTEXT:
         previews = "\n".join("%s: %s" % (_named(item["id"]), json.dumps(
             {"topic": item["topic"]["id"], "title": _title(item["topic"]),
-             "from": item["request"]["requester_id"] if item.get("request") else item["message"]["author_id"],
-             "body": item["request"]["body"] if item.get("request") else item["message"]["body"]}, ensure_ascii=False)) for item in listed)
+             "from": item['retraction']['by'] if item.get('retraction') else item["request"]["requester_id"] if item.get("request") else item["message"]["author_id"],
+             "body": 'Message retracted.' if item.get('retraction') else item["request"]["body"] if item.get("request") else item["message"]["body"]}, ensure_ascii=False)) for item in listed)
         context = {"theseus.previews." + attempt_id: {"kind": "untrusted", "value": previews}}
     return {"input": [{"type": "text", "text": "\n".join(lines), "text_elements": []}],
             "additionalContext": context, "announced_seq": max(item["seq"] for item in listed)}

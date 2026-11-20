@@ -356,7 +356,8 @@ class Conversation:
         if snapshot.get("reply_to"):
             # A message the writer cannot see is refused as one that does not exist.
             parent = db.execute("SELECT topic_id,author_id,private_to FROM messages WHERE id=?", (snapshot["reply_to"],)).fetchone()
-            if not parent or parent["topic_id"] != topic_id or not whispers.visible(parent, actor):
+            from .removal import unsent
+            if not parent or parent["topic_id"] != topic_id or not whispers.visible(parent, actor) or unsent(db, snapshot['reply_to']):
                 # A state check, not a shape error: it is recorded like the others.
                 raise Refusal("INVALID_REPLY", "Reply context must belong to the destination topic")
         private = whispers.check_publish(db, actor, snapshot, parent)
@@ -508,7 +509,8 @@ class Conversation:
     def _message_access(self, db, actor, message_id):
         row = db.execute("SELECT id,topic_id,author_id,private_to FROM messages WHERE id=?", (_identifier(message_id),)).fetchone()
         # A whisper is readable by its two people only, and refused to anyone else exactly as an unknown id.
-        if not row or not whispers.visible(row, actor):
+        from .removal import unsent
+        if not row or not whispers.visible(row, actor) or unsent(db, message_id):
             raise Refusal("FORBIDDEN", "No readable source")
         try:
             self._topic(db, actor, row["topic_id"])
@@ -541,7 +543,7 @@ class Conversation:
         quotes = [] if held else self._source_quotes(db, actor, json.loads(row["quotes"]))
         # For a person who had read words its agent author has since changed, those words, struck through (item 614).
         seen = None if held or current <= 1 else struck(db, actor, row["id"], current, current_words(db, row["id"], plain=True)[0])
-        return {"instance_id": self.instance_id, "source_ref": {"kind": "message", "id": row["id"]},
+        result = {"instance_id": self.instance_id, "source_ref": {"kind": "message", "id": row["id"]},
                 "owner_scope": {"kind": "topic", "id": row["topic_id"]}, "topic_id": row["topic_id"],
                 "author": row["author_id"], "author_kind": row["author_kind"], "seq": row["seq"], "title": "", "body": "" if held else body,
                 "attachments": [] if held else json.loads(row["attachments"]), "withheld": held,
@@ -553,6 +555,8 @@ class Conversation:
                 "allowed_actions": ["quote", "note.save"], "dossier": self._source_dossier(db, actor, row),
                 "acts": self._source_acts(db, actor, row),
                 **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
+        self._removal_fields(db, actor, [result])
+        return result
 
     def _source_acts(self, db, actor, row):
         try:
@@ -578,6 +582,9 @@ class Conversation:
         quotes = []
         for kept, quote in zip(stored, whispers.redact_quotes(db, actor, stored)):
             source = kept.get("source") if isinstance(kept, dict) else None
+            from .removal import unsent
+            if isinstance(source, dict) and source.get('kind') == 'message' and unsent(db, source.get('id')):
+                continue
             if not isinstance(quote, dict) or not isinstance(source, dict) or source.get("kind") != "message":
                 quotes.append(quote)
             elif withheld(source.get("id")):
@@ -585,7 +592,9 @@ class Conversation:
             else:
                 number = source.get("revision")
                 number = number if isinstance(number, int) and not isinstance(number, bool) and number > 0 else 1
-                quotes.append(dict(quote, excerpt=mark(source.get("id"), number, quote.get("excerpt"))))
+                from .removal import value
+                terminal = value(db, source.get('id'))
+                quotes.append(dict(quote, excerpt=mark(source.get("id"), number, quote.get("excerpt")), **({'removal': terminal} if terminal else {})))
         return quotes
 
     def _view_source(self, db, actor, args):
@@ -652,7 +661,7 @@ class Conversation:
                               + whispers.VISIBLE + open_items_clause() + " ORDER BY m.seq " + order + " LIMIT :limit", values).fetchall()
         elif args.get("audience", "all") == "reader":
             unaddressed = db.execute("SELECT " + columns + " FROM messages m" + parent + " WHERE m.topic_id=:topic AND m.addressees='[]' AND m.seq" + relation + ":cursor AND " + whispers.VISIBLE + " ORDER BY m.seq " + order + " LIMIT :limit", values).fetchall()
-            addressed = db.execute("SELECT " + columns + " FROM (SELECT seq FROM message_addressees WHERE topic_id=:topic AND actor_id=:actor AND seq" + relation + ":cursor ORDER BY seq " + order + " LIMIT :limit) a JOIN messages m ON m.seq=a.seq" + parent + " WHERE " + whispers.VISIBLE, values).fetchall()
+            addressed = db.execute("SELECT " + columns + " FROM message_addressees a JOIN messages m ON m.seq=a.seq" + parent + " WHERE a.topic_id=:topic AND a.actor_id=:actor AND a.seq" + relation + ":cursor AND " + whispers.VISIBLE + " ORDER BY a.seq " + order + " LIMIT :limit", values).fetchall()
             rows = sorted(unaddressed + addressed, key=lambda row: row["seq"], reverse=backwards)[:limit + 1]
         else:
             rows = db.execute("SELECT " + columns + " FROM messages m" + parent + " WHERE m.topic_id=:topic AND m.seq" + relation + ":cursor AND " + whispers.VISIBLE + " ORDER BY m.seq " + order + " LIMIT :limit", values).fetchall()
@@ -686,6 +695,8 @@ class Conversation:
             item["struck"] = None if item["withheld"] else struck(db, actor, item["id"], item["revision"], whole, cut if item["preview"] else None)
             encoded = len(_json(plain(item)).encode("utf-8")) + 1
             if size + encoded > LIMITS["summary_utf8_bytes"]:
+                if args.get("message_ids") is not None:
+                    raise Refusal("VIEW_TOO_LARGE", "The named messages cannot fit in one bounded response")
                 break
             items.append(item)
             size += encoded
@@ -696,6 +707,7 @@ class Conversation:
         self._reaction_fields(db, actor, items)
         self._block_fields(db, items)
         self._withdrawal_fields(db, items)
+        self._removal_fields(db, actor, items)
         reading_fields(db, actor, unread_groups(db, actor, topic["id"]), items)
         # The reader's own private note and saved, unsent reply on each message (docs/topic-reading.md, item 127).
         writing_fields(db, actor, items)
@@ -704,8 +716,20 @@ class Conversation:
         # Whether each of the reader's own messages still waits for a reply (item 475), until the first reply from anyone else.
         awaiting_fields(db, actor, topic, items)
         from .dossier_move import membership_revision
-        return {"membership_revision": membership_revision(db, topic["id"], actor), "instance_id": self.instance_id, "items": items, "next_cursor": last if len(rows) > len(items) else None,
-                "relevant_versions": {"topic": topic["version"]}, **self._new_line(db, actor, topic["id"])}
+        answer = {"membership_revision": membership_revision(db, topic["id"], actor), "instance_id": self.instance_id, "items": items, "next_cursor": last if len(rows) > len(items) else None,
+                  "relevant_versions": {"topic": topic["version"]}, **self._new_line(db, actor, topic["id"])}
+        # The early body bound cannot account for reaction, removal, reading,
+        # private-writing and act fields added afterward. Bound the final plain
+        # envelope too, dropping only the far end of this traversal. Markers
+        # from dropped rows never reach the shared exposure boundary.
+        while len(_json(plain(answer)).encode("utf-8")) > LIMITS["summary_utf8_bytes"]:
+            if args.get("message_ids") is not None:
+                raise Refusal("VIEW_TOO_LARGE", "The named messages cannot fit in one bounded response")
+            if len(items) <= 1:
+                raise Refusal("VIEW_TOO_LARGE", "A preview cannot fit in the bounded response")
+            items.pop(0 if backwards else -1)
+            answer["next_cursor"] = items[0 if backwards else -1]["seq"]
+        return answer
 
     def _named_messages(self, db, actor, topic, ids):
         """The ids topic_messages was asked for, each once: one to 100 messages of this topic the actor can see, or a

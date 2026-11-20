@@ -7,6 +7,7 @@ import { mayStartFrom } from '../web/whisper-choice.mjs';
 import { configureCoverRefresh, firstCoverMenuItem } from '../web/cover-refresh.mjs';
 import { openLinksWith } from '../web/links.mjs';
 import { withdrawalItem } from '../web/question-withdrawal.mjs';
+import { removalItem } from '../web/message-removal.mjs';
 import { stackMenuItems } from '../web/stack-menu-items.mjs';
 
 const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
@@ -44,6 +45,7 @@ function fixture({ phone = false, below = false, starred = false, folded = false
     marks: { state: () => ({ marked: false }) }, mayEdit: () => true, editRights: () => ({}), editOpener: () => anchor,
     updateMenuItem: () => ({ label: 'Ask for update', glyph: 'refresh', act: () => calls.push(['update']) }), updateContext: () => ({}),
     withdrawalItem, withdrawals: { withdraw: item => calls.push(['withdraw', item.id]) },
+    removalItem, removals: { remove: item => calls.push(['remove', item.id]) },
     copyLink: (...args) => calls.push(['copy', ...args.slice(0, 2)]), editMessage: id => calls.push(['edit', id]),
     markFromMenu: (id, marked) => calls.push(['mark', id, marked]), moveDossier: id => calls.push(['move', id]), mayStartFrom,
     textDisplayMenuItems: () => [{ label: 'Text display', glyph: 'text', act: () => {} }],
