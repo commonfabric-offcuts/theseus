@@ -58,7 +58,7 @@ try {
     for (const place of ['inline', 'sheet']) {
       if (place === 'sheet') await page.locator('#new-message').click();
       const note = page.locator('#inline-kind-note-card');
-      assert.equal(await note.getAttribute('aria-checked'), 'true', `${place} defaults to Note`);
+      assert.equal(await page.locator('#inline-kind-message').getAttribute('aria-checked'), 'true', `${place} defaults to Message`);
       assert.equal(await note.innerText(), 'Note');
       assert.equal(await page.locator('#inline-kind [role=radio]').count(), 2);
       await page.locator('#inline-writing-body').fill('Kept title\nKept words');
