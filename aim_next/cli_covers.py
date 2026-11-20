@@ -115,13 +115,13 @@ class CoverVerbs:
                                   {"cover_revision": expected}, operation=self.operation_of())
             refresh = result["refresh"]
             self.out.plain("awaiting a new cover from %s (request %s, observed revision %d)" %
-                           (refresh["recipient"], refresh["request_message_id"], refresh["observed_revision"]))
+                           (refresh["recipient"], refresh.get("request_id") or refresh["request_message_id"], refresh["observed_revision"]))
             return
         if not args:
             if found.get("refresh"):
                 refresh = found["refresh"]
                 self.out.plain("cover refresh %s: %s (request %s, observed revision %d)" %
-                               (refresh["state"], refresh["recipient"], refresh["request_message_id"], refresh["observed_revision"]))
+                               (refresh["state"], refresh["recipient"], refresh.get("request_id") or refresh["request_message_id"], refresh["observed_revision"]))
             for line in cover_lines(found["root_id"], found["cover_revision"], found["cover"], found["owner"]):
                 self.out.plain(line)
             return
