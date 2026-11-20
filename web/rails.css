@@ -145,7 +145,7 @@ a.things-name[href]{color:var(--accent)}
 }
 /* The outcome grid fills the space returned by its absent right rail. */
 [data-rails] .workspace-layout:has(#outcome-page:not([hidden]) .outcome-topic-cards) #main{max-width:none}
-[data-rails] #outcome-page{max-width:none}
+[data-rails] #outcome-page:not([hidden]):has(.outcome-topic-cards){max-width:none}
 /* Middle widths and phones: the things open from the header's "Pipeline & pages". */
 @media(max-width:1180px){
   /* The outcome's name takes what room is left, down to none; where even then "☰ Outcomes", one gap and "Pipeline &

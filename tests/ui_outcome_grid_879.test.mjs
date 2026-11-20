@@ -170,7 +170,7 @@ test('879 source layout gives the rail space back and fits four or more cards at
   assert.equal(styles(outcomeLayout)['grid-template-columns'], '18rem minmax(0,1fr)', 'no empty right-rail column on an outcome');
   assert.equal(styles(['.workspace-layout', '[data-rails] .workspace-layout'])['grid-template-columns'], '18rem minmax(0,1fr) 18rem', 'topics keep both rails');
   assert.equal(styles(['main', '[data-rails] .workspace-layout:has(#outcome-page:not([hidden]) .outcome-topic-cards) #main'])['max-width'], 'none');
-  assert.equal(styles(['.selection-page', '[data-rails] #outcome-page'])['max-width'], 'none');
+  assert.equal(styles(['.selection-page', '[data-rails] #outcome-page:not([hidden]):has(.outcome-topic-cards)'])['max-width'], 'none');
   const grid = styles(['.outcome-topic-grid']), pattern = /^repeat\(auto-fit,minmax\(min\(100%,([\d.]+)rem\),1fr\)\)$/;
   assert.match(grid['grid-template-columns'], pattern, 'columns fit the available width');
   const minimum = +grid['grid-template-columns'].match(pattern)[1] * 16, gap = parseFloat(grid.gap) * 16;
@@ -215,10 +215,11 @@ test('879 width rules require the visible cards host created only by the outcome
   assert.match(page.slice(workspace, created), /\$\('outcome-page'\)\.append\([^;]*\$\('topic-navigation'\)/);
   // Derive the overridden rules from rails.css rather than telling styles()
   // which selectors a hypothetical page would match.
-  const overrides = rules(source('rails.css')).filter(rule => rule.selector.includes('.workspace-layout:has(') &&
+  const overrides = rules(source('rails.css')).filter(rule => (rule.selector.includes('.workspace-layout:has(') || rule.selector.includes('#outcome-page')) &&
     (rule.props['grid-template-columns'] === '18rem minmax(0,1fr)' || rule.props['max-width'] === 'none'));
   const key = '[data-rails] .workspace-layout:has(#outcome-page:not([hidden]) .outcome-topic-cards)';
-  assert.deepEqual(overrides.map(rule => rule.selector), [key, key + ' #main']);
+  assert.deepEqual(overrides.map(rule => rule.selector), [key, key + ' #main', '[data-rails] #outcome-page:not([hidden]):has(.outcome-topic-cards)']);
   assert.equal(styles(['.workspace-layout', '[data-rails] .workspace-layout'])['grid-template-columns'], '18rem minmax(0,1fr) 18rem');
   assert.equal(styles(['main'])['max-width'], '75rem');
+  assert.equal(styles(['.selection-page'])['max-width'], '50rem');
 });
