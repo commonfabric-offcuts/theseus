@@ -6,7 +6,7 @@ import { keyAction, holdsWriting, written } from './editor.mjs';
 import { showLine } from './lines.mjs';
 import { ReaderLayout } from './layout.mjs';
 import { composerWidth } from './composer-width.mjs';
-import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
+import { imageBarrier, recoveryReadOnly, currentImages } from './upload-state.mjs';
 import { paintAddress } from './people.mjs';
 import { timeNode } from './times.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, sourceChange, paintSaveTime } from './writing-helpers.mjs';
@@ -1293,7 +1293,7 @@ export class Reader {
   }
 
   // A failure goes to the notice as the error itself (lines.mjs).
-  notice(what) { showLine(this.$('reader-notice'), what); }
+  notice(what) { this.noticeVersion = (this.noticeVersion ?? 0) + 1; showLine(this.$('reader-notice'), what); }
 
   // Done, by its button or ⌘ Return, waits for a step as sending does. The
   // note saves as it is written; Done confirms the save. A saved note leaves
@@ -1336,13 +1336,23 @@ export class Reader {
     // The writing goes as the choice shows: a whisper, or a tell or ask that says so, to
     // whom the line said; Core records a leading @name's members itself (addressing.py).
     editor.edit(sending(editor.draft, this.names(editor), this.kindOf, this.answering()));
-    const draft = editor.draft;
+    const draft = editor.draft, presentation = this.presentation, token = this.viewToken;
+    const returnToCard = Boolean(presentation?.fromCardReply && !stay);
     try {
       // The controller freezes A synchronously. Reflect that deliberate act
       // before awaiting its journal or network; later receipts only paint status.
-      const sending = this.callbacks.send(editor, { stay });
+      const sending = this.callbacks.send(editor, { stay: returnToCard || stay });
       if (this.editor === editor && editor.draft !== draft) { this.drawEditor(); this.field.focus(); }
-      await sending;
+      const version = editor.localVersion, cycle = editor.clientCycleId, notice = this.noticeVersion;
+      // This Reader shares an inline field. Keep its recovery controls until
+      // publication, then let the card owner close both surfaces and land.
+      const current = () => this.presentation === presentation && this.viewToken === token &&
+        this.mode === 'reply' && this.admits(editor, presentation) && editor.localVersion === version &&
+        editor.clientCycleId === cycle && !holdsWriting(editor.draft) && !currentImages(editor).length && !imageBarrier(editor) &&
+        !this.imagePicker && !this.images?.open && !this.compose.panel && !this.naming.sheet.open &&
+        this.noticeVersion === notice;
+      const result = await sending;
+      if (returnToCard && result?.status === 'confirmed' && current()) await this.callbacks.sent?.(presentation, result, current);
     } catch (error) { this.callbacks.error?.(error); }
   }
 

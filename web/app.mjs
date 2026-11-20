@@ -3443,6 +3443,7 @@ async function initialize() {
     // A note that could not be saved says so in the Reader, beside its writing.
     saveNote: editor => registry.saveNote(editor).catch(error => { reader.notice(error); return null; }),
     send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation }),
+    sent: (p, result, current) => cardReplies?.readerSent(p, result, current),
     close: async (_sessions, reason) => {
       const p = reader.presentation;
       try {
