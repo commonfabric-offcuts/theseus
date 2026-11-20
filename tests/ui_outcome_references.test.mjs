@@ -191,9 +191,9 @@ test('the outcome Notebook is no section of the side rail: it waits in the page 
   // 852 removes the visible heading; the section keeps its accessible name.
   assert.match(section, /aria-label="Outcome Notebook"/);
   assert.doesNotMatch(section, /<h2/);
-  const topicNotebook = /<section id="notebook"[^>]*>[\s\S]*?<h2>([^<]*)<\/h2>/.exec(main)?.[1];
-  const headings = [...html.matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map(match => match[1]);
-  assert.equal(headings.filter(text => text === topicNotebook).length, 1, 'one heading of each name: ' + headings);
+  const notebookName = /aria-label="([^"]+)"/.exec(section)?.[1];
+  const notebooks = [...html.matchAll(/<section\b[^>]*aria-label="([^"]+)"/g)].map(match => match[1]);
+  assert.equal(notebooks.filter(name => name === notebookName).length, 1, 'one named Outcome Notebook on the outcome page');
   assert.doesNotMatch(section, /<details/);
   assert.ok(section.indexOf('id="outcome-references-status"') < section.indexOf('id="outcome-references-list"'));
   const css = readFileSync(new URL('../web/aim.css', import.meta.url), 'utf8');

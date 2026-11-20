@@ -295,7 +295,8 @@ order and folds, and the one file that sets the look. In short:
 - A link to a message a stack folds away opens the stack first and lands on
   the message. That holds for a tag's link, the reply arrow's, a message's
   address and a link written inside a message, which then opens the Reader
-  as before. A row of the right rail's Starred lands without opening it.
+  as before. A starred dossier title in the outline opens its dossier through
+  the writing guard; the right rail has no Starred section.
 
 The one New line goes under the lowest stack holding anything new, never
 inside one. What the page reports as read (`topic.read_through`) is only

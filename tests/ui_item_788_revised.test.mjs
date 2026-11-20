@@ -2,15 +2,18 @@
 // DOM. This proves model behavior, not native focus, layout or browser timing.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 import { ThingsRail, SECTIONS } from '../web/things-rail.mjs';
 import { NotebookCreate } from '../web/notebook-create.mjs';
 import { controls } from '../web/arrow-reach.mjs';
+import { Shell } from '../web/in-place-navigation.mjs';
 
 const scope = { kind: 'topic', id: 't788' };
 const page = (revision = 3, read_revision = 1) => ({ id: 'n788', title: 'Plan', revision, read_revision });
 const click = target => ({ target, button: 0, preventDefault() { this.defaultPrevented = true; } });
-function fixture(t, { writable = true, pages = [page()], next = null, conversation = false } = {}) {
+function fixture(t, { writable = true, pages = [page()], next = null, ready = true } = {}) {
   const doc = miniDocument(), create = doc.createElement;
   doc.createElement = tag => {
     const n = create(tag); n.ownerDocument = doc; n.localName = tag;
@@ -35,27 +38,25 @@ function fixture(t, { writable = true, pages = [page()], next = null, conversati
   const calls = [], commands = [], opened = [];
   const api = { command: async request => { commands.push(request); return { instance_id: request.instance_id, operation_id: request.operation_id,
     kind: request.kind, recorded: true, status: 'committed', result: { item_id: request.target.item_id, revision: 1, owner_scope: request.target.owner_scope } }; } };
-  const handles = { route: { kind: conversation ? 'conversation' : 'topic', id: conversation ? 'w788' : 't788' }, topic: { id: 't788', title: 'Private topic title', version: 1 }, workspaceId: 'w788', workspaceTitle: 'Outcome title',
+  const handles = { route: { kind: 'topic', id: 't788' }, topic: { id: 't788', title: 'Private topic title', version: 1 }, workspaceId: 'w788', workspaceTitle: 'Outcome title',
     bootstrap: { instance_id: 'i788', actor: 'reader788', authority: { authority_id: 'a788', authority_epoch: 'e788' } }, api,
     inTurn: async () => null, open: (...args) => opened.push(args), readable: () => true, view: async (name, args) => {
       calls.push([name, structuredClone(args)]);
       if (name === 'pipeline') return { pipeline: null };
       if (name === 'stars') return { items: [] };
       if (name === 'topic_tools') return { linked: [] };
-      if (name === 'tools') return { own: [], used: [] };
       if (name === 'conversation') return { conversation: { topic_id: 'c788', version: 1 } };
-      if (name === 'workspace_topics') return { items: [{ id: 'other788', title: 'Another topic', version: 1 }] };
       if (name === 'memory_items') return { items: pages, next_cursor: next, reader_may_write: writable };
       if (name === 'topic_messages' || name === 'topic_images') return { items: [] };
       throw Error('Unexpected read ' + name);
     } };
   handles.notebookCreate = (host, scope) => new NotebookCreate({ host, scope, api, bootstrap: handles.bootstrap, open: (...args) => opened.push(args) });
-  r.ready(handles);
+  if (ready) r.ready(handles);
   return { r, doc, host, handles, calls, commands, opened, api };
 }
 const visible = r => [...r.sections].filter(([, part]) => !part.details.hidden).map(([key]) => key);
-const found = overrides => ({ byTopic: true, topicId: 't788', notebook: [page()], notebookMayWrite: true, notebookNext: null,
-  pipeline: null, messages: [], images: [], conversation: [], stars: [], tools: [], ...overrides });
+const found = overrides => ({ topicId: 't788', notebook: [page()], notebookMayWrite: true, notebookNext: null,
+  pipeline: null, messages: [], images: [], tools: [], ...overrides });
 
 test('788 revised rail declares Notebook, PRs, Images, conditional sections, then Pipeline; no Starred', () => {
   assert.deepEqual(SECTIONS.map(([key]) => key), ['notebook', 'prs', 'images', 'waiting', 'previews', 'tools', 'pipeline']);
@@ -144,21 +145,38 @@ test('788 revised a stale rail read cannot repaint the next topic', async t => {
 });
 
 
-test('788 revised Conversation keeps outcome scope and bounds without chips or name row', async t => {
-  const f = fixture(t, { conversation: true }); await f.r.load();
-  assert.equal(f.r.byTopic, false); assert.equal(f.r.heading.textContent, 'This outcome');
+test('788 real Shell resolves the legacy Conversation address before ready and supplies only its topic rail and pencil', async t => {
+  const f = fixture(t, { ready: false, pages: [] });
+  const win = { location: new URL('http://aim.test/?conversation=w788#kept'), history: { state: { aimPlace: 3 },
+    replaceState(state, title, href) { this.state = state; win.location = new URL(href, win.location); } } };
+  const shell = new Shell({ doc: null, win, build: null });
+  shell.begin({}); shell.follow(f.r);
+  assert.deepEqual(shell.route(), { kind: 'conversation', id: 'w788' });
+  // Execute the app's real legacy-address block, not a copy of its rename or
+  // a synthetic route passed to the rail. The Shell reads the resulting URL.
+  const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
+  const resolver = /  if \(route.kind === 'conversation'\) \{[\s\S]*?\n  \}\n(?=  \/\/ The reader's agent colors)/.exec(app)?.[0];
+  assert.ok(resolver, 'the current app owns the legacy Conversation resolver');
+  const topicId = await runInNewContext(`(async () => { let route = shell.route(), topicId = route.id; ${resolver} return topicId; })()`,
+    { shell, location: win.location, api: { view: f.handles.view }, validate: value => value });
+  assert.equal(topicId, 'c788');
+  assert.equal(win.location.search + win.location.hash, '?topic=c788#kept', 'legacy address is replaced before ready');
+  assert.deepEqual(win.history.state, { aimPlace: 3 }, 'rename preserves the history entry');
+  shell.ready({ ...f.handles, topic: { id: topicId, title: 'Conversation', kind: 'conversation', version: 1 } });
+  assert.deepEqual(f.r.handles.route, { kind: 'topic', id: 'c788' });
+  assert.equal(f.r.heading.textContent, 'In this topic');
+  await f.r.load();
   assert.deepEqual(f.calls, [
+    ['conversation', { workspace_id: 'w788' }],
     ['pipeline', { workspace_id: 'w788', section: 'now', limit: 100 }],
-    ['tools', { workspace_id: 'w788' }], ['memory_items', { owner_scope: { kind: 'workspace', id: 'w788' }, limit: 20 }],
-    ['conversation', { workspace_id: 'w788' }], ['workspace_topics', { workspace_id: 'w788', limit: 6 }],
-    ['topic_messages', { topic_id: 'c788', direction: 'before', limit: 50 }], ['topic_images', { topic_id: 'c788', limit: 12 }],
-    ['topic_messages', { topic_id: 'other788', direction: 'before', limit: 50 }], ['topic_images', { topic_id: 'other788', limit: 12 }],
+    ['topic_tools', { topic_id: 'c788' }], ['memory_items', { owner_scope: { kind: 'topic', id: 'c788' }, limit: 20 }],
+    ['topic_messages', { topic_id: 'c788', direction: 'before', limit: 50 }], ['topic_images', { topic_id: 'c788', limit: 24 }],
   ]);
   assert.equal(f.host.querySelector('.things-scope') === null, true);
   assert.equal(f.host.querySelector('.things-name') === null, true);
-  assert.deepEqual(visible(f.r), ['notebook', 'pipeline']);
-  assert.match(f.r.sections.get('pipeline').body.text, /This outcome has no pipeline/);
-  const creator = f.r.creators.get('outcome'); assert.equal(creator.button.hidden, false);
-  creator.button.onclick(); creator.line.input.value = 'Outcome page'; await creator.line.go();
-  assert.deepEqual(f.commands[0].target.owner_scope, { kind: 'workspace', id: 'w788' });
+  assert.deepEqual(visible(f.r), ['notebook']);
+  assert.deepEqual([...f.r.creators.keys()], ['topic'], 'only the current-topic pencil exists');
+  const creator = f.r.creators.get('topic'); assert.equal(creator.button.hidden, false);
+  creator.button.onclick(); creator.line.input.value = 'Conversation page'; await creator.line.go();
+  assert.deepEqual(f.commands[0].target.owner_scope, { kind: 'topic', id: 'c788' });
 });

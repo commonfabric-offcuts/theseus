@@ -60,9 +60,9 @@ page look changed again.
 The side rail lists no Notebook (item 464): its outline holds the outcomes and
 their topics, nothing else. On a topic's page and on an outcome's
 Conversation, the right rail's Notebook section lists the pages
-([rails.md](rails.md#the-right-rail)): on a Conversation the outcome's, on a
-topic the topic's own, and the outcome's once "All of this outcome" is
-pressed. One row per page, by title, opening the page in the composer over the
+([rails.md](rails.md#the-right-rail)): always that topic's own, the Conversation
+included. The outcome's Notebook pages are on the outcome's own page. One row
+per page, by title, opening the page in the composer over the
 feed ([decks.md](decks.md#where-it-opens)); on a phone, where the rail is a
 sheet from the bottom, each row is a full touch target. The section lists the
 first 20 pages, its count saying "20+" while there are more, and More pages
@@ -242,9 +242,9 @@ A pencil beside a Notebook heading opens a single title line in place: beside
 the Notebook section of the right rail, which then shows even before the
 Notebook has a page (its one line says No pages yet) and opens if it was
 folded, and beside Outcome Notebook on the outcome's own page. The side rail
-has none (item 464). The right rail shows the topic's pencil while it lists
-that topic's own pages, and the outcome's while it lists the whole outcome's,
-on a Conversation or with "All of this outcome". Each pencil shows only to someone Core lets write that
+has none (item 464). The right rail always shows the current topic's pencil,
+the Conversation included; the outcome's pencil is on the outcome's own page.
+Each pencil shows only to someone Core lets write that
 Notebook (its `reader_may_write`): a teammate who reads a topic without taking
 part in it has none, and a topic's owner who has stepped out of it keeps
 theirs. Return

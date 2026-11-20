@@ -554,13 +554,10 @@ test('the right rail finds previews and pull requests in messages, newest first,
   assert.deepEqual(previews.map(preview => [preview.url, preview.message.id]), [['https://box.ts.net/p', 'new']]);
 });
 
-test('Waiting for… holds what the reader raised that is not shipped, and their Conversation posts not taken up', () => {
+test('Waiting for… holds what the reader raised in this topic that is not shipped', () => {
   const now = [{ title: 'Mine', raised_by: 'me', stage: { name: 'Build', entered_ms: 5 }, pieceTopic: 't1' }, { title: 'Theirs', raised_by: 'them' }];
   const next = [{ title: 'Later', raised_by: 'me', section: 'next', pieceTopic: 't2' }, { title: 'Shipped', raised_by: 'me', shipped: true }];
-  const conversation = [{ author_id: 'me', body: 'Please add rails', item: { state: 'new', takes: [] } }, { author_id: 'me', body: 'done', item: { state: 'done' } }, { author_id: 'them', body: 'x', item: { state: 'new' } }];
-  assert.deepEqual(waitingFor({ reader: 'me', now, next, conversation }).map(row => [row.what, row.where.stage ?? row.where.words]),
-    [['Mine', 'Build'], ['Later', 'Next'], ['Please add rails', 'Not taken up yet']]);
-  assert.deepEqual(waitingFor({ reader: 'me', now, next, conversation, topic: 't1' }).map(row => row.what), ['Mine'], 'on a topic: only its own');
+  assert.deepEqual(waitingFor({ reader: 'me', now, next, topic: 't1' }).map(row => row.what), ['Mine'], 'on a topic: only its own');
 });
 
 test('right rail sections stay open until folded, per viewer', () => {

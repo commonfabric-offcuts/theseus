@@ -119,8 +119,8 @@ Reads:
   have any act, newest first, with `version`, the newest act the reader hears
   of. The page reads it when an `acts` change arrives.
 - `stars {cursor?, limit?}` lists the reader's starred messages in every
-  place they read, newest star first. The right rail's Starred is drawn from
-  it.
+  place they read, newest star first. Starred dossiers appear under their
+  topics in the outline; the right rail has no Starred section.
 - `stack_namer {message_id}` says who names the dossier a message is in:
   `root_id`, `name`, `name_revision` (the fence a mint is sent on), `namer`
   (an actor or null) and `why` (below).
@@ -648,9 +648,9 @@ and the positions read after it land, and ⌘Z shows them back where they
 were at once. Its "Joined from its own stack" line is on that first
 message, so it shows once Earlier messages loads it.
 
-The right rail's Starred lists the reader's stars, this place's first and
-then Elsewhere. A press lands on the message, opening its stack if it is
-folded, and Unstar beside each takes the star off.
+Starred dossier titles appear under their loaded topics in the outline
+([starred-outline.md](starred-outline.md)). A title opens that dossier through
+the writing guard. The message's own Star control takes its star off.
 
 On a phone, ⋯ opens as a sheet from the bottom, and the moves sit behind
 "Move or join…", which opens a second sheet. A message swiped to the right

@@ -407,10 +407,10 @@ rule above. (`web/arrow-reach.mjs`)
   and taps", then Health. → from
   New outcome, a row with nothing under it, goes on into the messages, as
   from a topic. ↑ above the right rail's first section
-  reaches its name, "Just this topic" and "All of this outcome". ↓ past the
-  last message goes on down the page: More messages, the People row, the
-  Notebook and the reply; ↑ from there comes back to the last message. Into a
-  tree from beside it (a pencil in a section's heading, the chips above it)
+  moves to the nearest control above it; there is no name row or scope switch. ↓ past the
+  last message goes on down the page: More messages and the reply; ↑ from
+  there comes back to the last message. Notebook pages are in
+  the right rail. Into a tree from beside it (a pencil in a section's heading)
   the arrows land on the row nearest that way, which becomes its stop.
   A control set in a tree's row (the pencil in the right rail's Notebook
   heading) is the row's own, as a card's speech bubble is: → on the row, open,
@@ -425,8 +425,8 @@ rule above. (`web/arrow-reach.mjs`)
   ← and → move along the title bar, from ⋯ to Move below More, Reply and the
   chevron, and past its end on to the pane beside; ↑ and ↓ stay the messages'
   (docs/reply-stacks.md, "The title bar and the message bar").
-- **In a pane, off its keys.** On the logo block, the chips, Keys, the rail's foot, the right
-  rail's name and chips, People and the Notebook, ↑ and ↓ move within that
+- **In a pane, off its keys.** On the logo block, the outline's chips, Keys,
+  the rail's foot, People and the right rail's Notebook controls, ↑ and ↓ move within that
   pane, and ← and → too; past the pane's edge ← and → go on to the pane beside,
   as from the messages.
 - **Every other page.** The Outcomes home, an outcome's own page, its pipeline,
@@ -658,7 +658,9 @@ and pressing every arrow from each, natively, to show the arrows reach them
 all and none loses the focus to the page: past the outline's edges, "rail
 arrows ↑ above the outline's first row goes on up the side rail …" (↓ below
 Keys reaches the rail's foot, the guide's ? and then Health); the right
-rail's chips, "rail arrows ↑ above the right rail's first section reaches …";
+rail, "rail arrows ↑ above the right rail's first section reaches …" (its
+old name-row and scope-chip expectation is retired by 788; native repointing
+is tracked separately, and that case is not current proof of the new rail);
 below the messages, "rail arrows ↓ past the last message goes on down the page
 …" (at 1280, 390, 375 and 320); the bar, "rail arrows on a message's bar ← and
 → move along its buttons, …"; a dossier's title bar, "reading stacks ← and →
