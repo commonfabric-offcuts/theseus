@@ -363,6 +363,72 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
     }
   });
 
+  await check('rail item 598 Review and Set aside open after typing by native mouse and phone touch, with stable pressed labels', async () => {
+    const press = async (p, selector, input) => {
+      await p.evaluate(`document.querySelector(${q(selector)}).scrollIntoView({block:'center',inline:'nearest'})`);
+      await atRest(p);
+      const b = await p.evaluate(`(()=>{const r=document.querySelector(${q(selector)}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height}})()`);
+      assert.ok(b.width > 0 && b.height > 0, `native ${input} target is visible: ${selector}`);
+      assert.equal(await p.evaluate(`document.querySelector(${q(selector)}).contains(document.elementFromPoint(${b.x},${b.y}))`), true, 'the press reaches its actual target');
+      if (input === 'touch') {
+        await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x, y: b.y }] });
+      } else {
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: b.x, y: b.y });
+        await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: b.x, y: b.y, button: 'left', clickCount: 1 });
+      }
+      // A real native press held across two painted frames: blur may redraw
+      // the writing and Review control before the person releases the press.
+      await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+      await p.send(input === 'touch' ? 'Input.dispatchTouchEvent' : 'Input.dispatchMouseEvent', input === 'touch'
+        ? { type: 'touchEnd', touchPoints: [] } : { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', clickCount: 1 });
+    };
+    const openFromWriting = async (p, s, input, label) => {
+      await p.evaluate(`(()=>{const b=document.querySelector('#inline-pending button');window.review598={label:b.textContent,replaced:0,events:[]};
+        const observer=new MutationObserver(records=>{review598.replaced+=records.filter(r=>r.type==='childList').length});
+        observer.observe(b,{childList:true});window.stopReview598=()=>observer.disconnect();
+        for(const type of ['mousedown','mouseup','click','touchstart','touchend'])b.addEventListener(type,()=>review598.events.push(type),{once:true});})()`);
+      await press(p, '#inline-pending button', input);
+      try {
+        await until(() => p.evaluate(`document.querySelector('#version-review').open && Boolean(document.querySelector(${q(card(s))}))`), `${label}: native press opens the list`);
+      } catch (error) {
+        throw Error(error.message + '; native evidence ' + JSON.stringify(await p.evaluate('review598')));
+      }
+      const observed = await p.evaluate('(()=>{stopReview598();return review598})()');
+      assert.equal(observed.replaced, 0, `${label}: the unchanged label survives the press: ${JSON.stringify(observed)}`);
+      assert.ok(observed.events.includes('click'), `${label}: the browser dispatched the click`);
+      assert.ok(observed.events.includes(input === 'touch' ? 'touchstart' : 'mousedown'), `${label}: actual ${input} input was observed`);
+    };
+    for (const [size, input] of [['laptop', 'mouse'], ['w390', 'mouse'], ['w320', 'touch'], ['w390', 'touch']]) {
+      for (const theme of ['light', 'dark']) {
+        const label = `${size}/${input}/${theme}`, s = await seed('composer-image');
+        const p = await open(`review598-${size}-${input}-${theme}`, `/?topic=${s.here}`, size, theme);
+        if (input === 'touch') await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+        await ready(p, s.here);
+        await until(async () => (await reviews(p)).join() === 'Review 1 reply', `${label}: the prepared reply is in doubt`);
+        const body = `Kept while pressing Review ${label}`;
+        await typeInComposer(p, s, body, focusWriting);
+        await openFromWriting(p, s, input, label + '/Review');
+        await press(p, `${card(s)} .aside-act`, input);
+        await until(async () => (await cardState(p, s))?.state === 'aside', `${label}: Set aside commits`);
+        assert.equal((await draft(s)).body, body, `${label}: typed writing stays kept`);
+        await press(p, '#review-close', input);
+        await until(() => p.evaluate('!document.querySelector("#version-review").open'), `${label}: list closes`);
+        await until(async () => (await reviews(p)).join() === 'Set aside 1', `${label}: chip label really updates`);
+        await focusWriting(p);
+        await p.send('Input.insertText', { text: ' more' });
+        await until(async () => (await draft(s))?.body === body + ' more', `${label}: more typed writing is kept`);
+        await until(() => p.evaluate("document.querySelector('#inline-save-state').dataset.save==='saved'"), `${label}: save is shown`);
+        await openFromWriting(p, s, input, label + '/Set aside');
+        await press(p, undo(s), input);
+        await until(async () => (await cardState(p, s))?.state === 'doubt', `${label}: Undo remains pressable`);
+        assert.equal((await draft(s)).body, body + ' more');
+        assert.equal((await view('submission', { submission_id: s.submission })).attachments.length, 1, 'the pending image remains kept');
+        assert.deepEqual(p.errors, []);
+        await p.close();
+      }
+    }
+  });
+
   // Every state of a reply set aside, on a laptop and a phone (320, 375, 390), light and dark: its words kept on its
   // line with Copy, its image opened there, the Set aside chip once the list closes, and its words back in the writing.
   // Each act and Open is 44px to touch on a phone, and nothing is wider than the window.
