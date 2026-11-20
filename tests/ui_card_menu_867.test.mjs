@@ -136,8 +136,8 @@ test('867 opening the real shared menu and Copy text never allocates or saves a 
  const copied=clipboard(t),raw=card('Literal *title*','**Words**',null)+'### Child\n\nChild words\n',p=menuPage(raw);
  const menu=p.openCardMenu(0,p.anchor);t.after(()=>menu?.close(false));
  assert.equal(menu.root.getAttribute('aria-label'),'This card');
- assert.deepEqual(menu.root.children.map(n=>n.textContent),['Copy text','Copy link','Delete','Set color']);
- assert.deepEqual(menu.root.children.map(n=>n.querySelector('svg').getAttribute('data-glyph')),['copy','link','drop','palette']);
+ assert.deepEqual(menu.root.children.map(n=>n.textContent),['Copy text','Copy link','Delete','Set color','Chat about this…']);
+ assert.deepEqual(menu.root.children.map(n=>n.querySelector('svg').getAttribute('data-glyph')),['copy','link','drop','palette','topic']);
  await p.cardMenuItems(p.cardRef(0),p.anchor)[0].act();assert.deepEqual(copied,['Literal *title*\n\nWords']);
  assert.equal(deckBody(p.deck),raw);assert.deepEqual(p.acts,[]);
 });
@@ -234,8 +234,8 @@ test('867 closing the page closes its menu and picker; saved color cannot focus 
 });
 test('867 read-only Copy link requires an existing primary; Copy text remains available',async t=>{
  const copied=clipboard(t),{p,w}=await writingPort(t,card());w.readOnly=true;p.readOnly=true;
- let items=p.cardMenuItems(p.cardRef(0),p.anchor);assert.deepEqual(items.map(x=>!!x.disabled),[false,false,true,true]);await items[1].act();assert.equal(copied.length,1);
- p.deck=parseDeck(card('Old','words',null));items=p.cardMenuItems(p.cardRef(0),p.anchor);assert.deepEqual(items.map(x=>!!x.disabled),[false,true,true,true]);await items[1].act();assert.equal(copied.length,1);
+ let items=p.cardMenuItems(p.cardRef(0),p.anchor);assert.deepEqual(items.map(x=>!!x.disabled),[false,false,true,true,true]);await items[1].act();assert.equal(copied.length,1);
+ p.deck=parseDeck(card('Old','words',null));items=p.cardMenuItems(p.cardRef(0),p.anchor);assert.deepEqual(items.map(x=>!!x.disabled),[false,true,true,true,true]);await items[1].act();assert.equal(copied.length,1);
 });
 test('867 Text merge keeps an unidentified first card uncolored with aliases, and Undo splits originals',()=>{
  const raw=card('First','first',null)+card('Second','second',details(B,'rose')),projection=new CardTextProjection(),visible=projection.show(raw);
