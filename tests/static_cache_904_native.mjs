@@ -15,7 +15,7 @@ const { chromium } = createRequire(import.meta.url)(playwright);
 await mkdir(out, { recursive: true });
 const fixture = fileURLToPath(new URL('./fixtures/static_cache_904.py', import.meta.url));
 const results = [], runtimes = [];
-let browser;
+let browser, browserClosed = false;
 
 async function world(source, name) {
   const argv = ['-I', '-X', `pycache_prefix=${path.join(out, `cache-${name}`)}`, fixture, source];
@@ -26,11 +26,11 @@ async function world(source, name) {
   const read = async () => {
     const value = await lines.next(); assert.equal(value.done, false, stderr); return JSON.parse(value.value);
   };
-  const ready = await read(); runtimes.push({ name, argv: ['/usr/bin/python3', ...argv], ...ready });
+  const ready = await read(), runtime = { name, argv: ['/usr/bin/python3', ...argv], ...ready }; runtimes.push(runtime);
   let id = 0;
   return { ...ready,
     async call(method) { child.stdin.write(JSON.stringify({ id: ++id, method }) + '\n'); const value = await read(); assert.equal(value.id, id); return value.answer; },
-    async close() { child.stdin.end(); const result = await exit; await writeFile(path.join(out, `${name}-fixture-stderr.log`), stderr); assert.deepEqual(result, { code: 0, signal: null }); }
+    async close() { child.stdin.end(); const result = await exit; runtime.exitAfterEOF = result; await writeFile(path.join(out, `${name}-fixture-stderr.log`), stderr); assert.deepEqual(result, { code: 0, signal: null }); }
   };
 }
 
@@ -74,6 +74,6 @@ try {
     } finally { await context.close(); await fixture.close(); }
   }
 } finally {
-  if (browser) await browser.close(); // Browser.close, never a signal.
-  await writeFile(path.join(out, 'results.json'), JSON.stringify({ chrome, playwright, runtimes, results }, null, 2));
+  if (browser) { await browser.close(); browserClosed = !browser.isConnected(); } // Browser.close, never a signal.
+  await writeFile(path.join(out, 'results.json'), JSON.stringify({ chrome, playwright, browserClosed, runtimes, results }, null, 2));
 }
