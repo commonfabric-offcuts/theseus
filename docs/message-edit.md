@@ -451,6 +451,12 @@ selection; an accepted own-body second click replaces word selection. Phone
 taps keep their existing behavior. A stale or unsuccessful opening never
 edits another Reader.
 
+A plain double-click on your editable text inside an already open Reader also
+uses its More → Edit descriptor (item 909; [contract](reader-edit-909.md)). The
+second press replaces word selection. Controls, links, other authors and
+modified clicks retain their own actions. No pencil is added to the Reader's
+header. All edit endings keep this Reader open and return focus to its More.
+
 Edit is in the ⋯ menu of a message the person wrote themselves, on a feed card,
 a row of a reply stack (dossier) and in the Reader. Only people see it, and not
 when the topic can no longer be read or its outcome is reached (the outcome's
