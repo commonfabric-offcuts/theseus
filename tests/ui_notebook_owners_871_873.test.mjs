@@ -46,6 +46,30 @@ for(const options of [{wide:false},{feed:false},{storage:new Map([['notebook-doc
   const f=notebookFixture(t,options);await f.sheet.open('p');assert.equal(f.sheet.docked,false);assert.equal(f.calls.at(-1),'modal');
 });
 
+test('871 docked Escape from the feed leaves Notebook showing and does not consume the key',async t=>{
+  const f=notebookFixture(t);await f.sheet.open('p');
+  const feedField=f.doc.createElement('textarea');f.doc.body.append(feedField);
+  const escape=event(feedField,'Escape');f.emit('keydown',escape);
+  assert.equal(f.sheet.showing,true,'Escape in the adjacent feed must leave the docked Notebook showing');
+  assert.equal(f.sheet.dialog.open,true);assert.equal(f.sheet.docked,true);
+  assert.equal(escape.defaultPrevented,undefined,'the feed keeps its Escape');
+});
+
+test('871 docked Escape inside Notebook closes it keeping its page and exact writing',async t=>{
+  const f=notebookFixture(t);await f.sheet.open('p');
+  const edit=f.doc.createElement('textarea');edit.value='Exact unsaved card\nsecond line';f.page.host.append(edit);f.page.editing={field:edit};
+  const escape=event(edit,'Escape');f.emit('keydown',escape);
+  assert.equal(escape.defaultPrevented,true);assert.equal(f.sheet.showing,false);assert.equal(f.sheet.dialog.open,false);
+  assert.ok(f.sheet.current===f.page);assert.ok(f.page.editing.field===edit);assert.equal(edit.value,'Exact unsaved card\nsecond line');
+  await f.sheet.open('p');assert.ok(f.sheet.current===f.page);assert.equal(edit.value,'Exact unsaved card\nsecond line');
+});
+
+test('871 modal Escape still closes Notebook with a target outside its dialog',async t=>{
+  const f=notebookFixture(t,{wide:false});await f.sheet.open('p');
+  const escape=event(f.doc.body,'Escape');f.emit('keydown',escape);
+  assert.equal(escape.defaultPrevented,true);assert.equal(f.sheet.showing,false);assert.equal(f.sheet.dialog.open,false);
+});
+
 test('871 actual composer pop, close and confirmed send preserve docked page, scroll and editing',async t=>{
   const f=notebookFixture(t);await f.sheet.open('p');f.sheet.setDocked(true);
   const field=f.doc.createElement('textarea');field.value='Message';f.doc.getElementById('inline-composer').append(field);

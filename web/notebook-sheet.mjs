@@ -101,8 +101,8 @@ export class NotebookSheet {
       if (!this.showing || event.defaultPrevented) return;
       const modal = this.doc.querySelector?.('dialog:modal');
       if (modal && modal !== this.dialog) return;
-      // Escape the page did not use (a card being written takes the first) closes the sheet, as ✕ does.
-      if (event.key === 'Escape' && !event.isComposing) {
+      // Unused Escape closes as ✕ does; while docked, keys in the feed belong to the feed.
+      if (event.key === 'Escape' && !event.isComposing && (!this.docked || this.dialog.contains(event.target))) {
         if (this.dossiers?.showing) { event.preventDefault(); this.dossiers.close(true); return; }
         event.preventDefault(); this.close(); return;
       }

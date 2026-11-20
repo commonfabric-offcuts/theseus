@@ -6,7 +6,9 @@ existing New message dialog remains the only message composer. On a topic at
 1280px or wider, no stored preference means docked; a boolean false under the
 existing session key notebook-docked preserves an explicit Wide choice.
 Narrow and non-topic pages stay modal. Close and Escape close either mode,
-keeping writing. Only the layout button/menu switches modes: Wide while
+keeping writing. While docked, Escape closes only from inside the Notebook;
+Escape in the adjacent feed leaves it showing and belongs to the feed.
+Only the layout button/menu switches modes: Wide while
 beside the feed, Open with Dossiers while wide.
 
 Docked Notebook leaves inline-composer visible so the topic pencil remains.
