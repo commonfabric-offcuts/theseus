@@ -388,12 +388,13 @@ export function unkeep(list, pick) {
 
 // Puts each node of desired, in order, among parent's children that count,
 // moving only what is out of place.
-function reconcile(parent, desired, counts = () => true) {
+function reconcile(parent, desired, moved, counts = () => true) {
   const next = node => { while (node && !counts(node)) node = node.nextElementSibling; return node; };
   let ref = next(parent.firstElementChild);
   for (const node of desired) {
     if (node === ref) { ref = next(ref.nextElementSibling); continue; }
     parent.insertBefore(node, ref);
+    moved.push(node);
   }
 }
 
@@ -722,7 +723,7 @@ export function renameInput(list, id) {
 }
 
 function paintStack(section, stack, byId, context) {
-  const { state, keep, unread, nameOf, colorOf, doc } = context;
+  const { state, keep, unread, nameOf, colorOf, doc, moved } = context;
   const p = parts.get(section), head = byId.get(stack.id), single = !stack.replies.length;
   const level = single ? 'open' : levelOf(state, stack.id);
   const coordination = state.coordination.has(stack.id);
@@ -812,7 +813,7 @@ function paintStack(section, stack, byId, context) {
   }
   const used = new Set(desired);
   for (const [key, node] of p.lines) if (!used.has(node)) { node.remove(); p.lines.delete(key); }
-  reconcile(p.replies, desired);
+  reconcile(p.replies, desired, moved);
   // Presentation only: overlap adjacent visible faces, never a provenance
   // line. Hidden replies neither consume an edge nor separate two faces.
   // Item 550: what More messages filled the stack with (stack.filled) is a
@@ -851,7 +852,7 @@ function paintStack(section, stack, byId, context) {
   p.requestLine = !p.cover && firstTarget ? refreshLine(doc, firstTarget, coverContext) : null;
   section.dataset.askCover = String(Boolean(coverTools.get(p.tools)?.node));
   paintFolderColor(section, stack, colorOf);
-  reconcile(section, [...(separate ? [p.header] : []), ...(p.cover ? [p.cover] : []), ...(p.requestLine ? [p.requestLine] : []), head, ...(rename ? [rename] : [...(separate ? [] : [p.toggle]), p.tools]), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
+  reconcile(section, [...(separate ? [p.header] : []), ...(p.cover ? [p.cover] : []), ...(p.requestLine ? [p.requestLine] : []), head, ...(rename ? [rename] : [...(separate ? [] : [p.toggle]), p.tools]), p.replies, ...(stack.placed !== null ? [p.placed] : [])], moved);
   if (!separate) p.header.remove();
   if (separate || rename) p.toggle.remove();
   if (rename) p.tools.remove();
@@ -918,7 +919,7 @@ export function arrangeStacks(list, messages, options = {}) {
   list.dataset.showCoordination = String(state.showCoordination);
   const coordinationNews = stacks.some(stack => state.coordination.has(stack.id) && [stack.head, ...stack.replies].some(unread));
   state.on?.coordinationCount?.(state.coordination.size, coordinationNews);
-  const top = [...waiting], aside = [], live = new Set(), context = { state, keep, unread, nameOf, colorOf, doc };
+  const top = [...waiting], aside = [], live = new Set(), moved = [], context = { state, keep, unread, nameOf, colorOf, doc, moved };
   state.below = new Set();
   for (const stack of stacks) {
     const head = byId.get(stack.id);
@@ -961,7 +962,7 @@ export function arrangeStacks(list, messages, options = {}) {
   // Entries the page has that Core's messages do not name stay where they are,
   // and so does anything else that is not a dossier, More or the composer at
   // rest (a line, or what holds the composer's place while it is up).
-  reconcile(list, top, node => (node === home ? resting : node.dataset.id ? messages.has(node.dataset.id) : !node.dataset.line && (node === state.controls || node === state.more || node.classList.contains('reply-stack'))));
+  reconcile(list, top, moved, node => (node === home ? resting : node.dataset.id ? messages.has(node.dataset.id) : !node.dataset.line && (node === state.controls || node === state.more || node.classList.contains('reply-stack'))));
   for (const [id, section] of state.sections) if (!live.has(id)) { section.remove(); state.sections.delete(id); }
   for (const entry of byId.values()) if (entry.parentElement === list) entry.hidden = false;
   // Only a stack's head carries its row: a message that headed one before a
@@ -982,11 +983,15 @@ export function arrangeStacks(list, messages, options = {}) {
   const { asideShown } = shownView(state);
   for (const node of top) if (node !== state.controls && node !== home) node.hidden = state.waiting.has(node.dataset.id) || aside.includes(node) && !asideShown;
   // Detaching a card can reset its table or long-message scroll. Restore
-  // only boxes known from their scroll events, after every nested/outer
-  // move, with no position reads or scans of the moved cards' descendants.
+  // only boxes known from their scroll events inside a node actually moved,
+  // after every nested/outer move, without reading positions or descendants.
+  // Consume the attempt even when a hidden box cannot take the write: only
+  // a fresh scroll event may record another restore (item 896).
   for (const [box, { left, top }] of state.scrolled) {
     if (!list.contains(box)) { state.scrolled.delete(box); continue; }
+    if (!moved.some(node => node.contains(box))) continue;
     box.scrollLeft = left; box.scrollTop = top;
+    state.scrolled.delete(box);
   }
   if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
   state.on?.arranged?.();
