@@ -5143,5 +5143,59 @@
       ],
       "scope": "repository"
     }
+  },
+  "tests/ui_message_menus_861.test.mjs": {
+    "d86d5b45b44bcc9209b1876a6bf7898ff87b257e01c7e16a452e95fc13b19eda": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    }
+  },
+  "tests/ui_question_withdrawal.test.mjs": {
+    "d86d5b45b44bcc9209b1876a6bf7898ff87b257e01c7e16a452e95fc13b19eda": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    },
+    "ee164fdbbea7aee738a888e9b219a0b84f5eb9c9170d24757c2bee0184e07e34": {
+      "scope": "repository",
+      "inputs": [
+        "web/freshness.mjs"
+      ]
+    },
+    "d86d5b45b44bcc9209b1876a6bf7898ff87b257e01c7e16a452e95fc13b19eda:1": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    }
+  },
+  "tests/test_question_withdrawal_links.py": {
+    "8d12e9ec83314f0009f316032076a2c9ebe739b70b53c3f75c22a93b92cc25a9": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/test_question_withdrawal_migration.py": {
+    "d11fa29ec7de0ce041d5cd83147200767c30db6297992babd6e5f79cfd5ba1b7": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "95cb0cc5e89431eb658b2bada9df13f9d7645d267e92d8648384382324907e8d": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/fixtures/withdrawal_366_schema54.py": {
+    "73a67e60fd526487d4af4536be7470eeffd7fefa44686a9c684b037f03d9aae0": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
   }
 }

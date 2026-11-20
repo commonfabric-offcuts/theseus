@@ -396,6 +396,7 @@ class Delivery:
             (body, message["edited_ms"]), message["revision"] = words_at(db, row["message_id"], row["revision"], plain=True), row["revision"]
         message["body"], message["preview"], message["whisper"] = (mark(row["message_id"], message["revision"], body[:256]), len(body) > 256,
                                                                    bool(message["whisper"]))
+        message["withdrawal"] = self._withdrawal_value(db, row["message_id"])
         title, truncated = _prefix(message.pop("title_prefix"))
         item = {key: row[key] for key in ("seq", "id", "message_id", "recipient_id", "state")}
         if row["revision"] != 1:

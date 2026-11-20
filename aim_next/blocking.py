@@ -117,7 +117,7 @@ class Blocking:
         needs waits (outcome_asks.held_ask), one a settled record answered does not, and otherwise it waits
         until member writes there on the record, replies to it by whisper to whoever asked (item 307), or gives
         it a 👍 that answered it (their thumb row)."""
-        if (message["intent"] != "ask" or member == message["author_id"] or member not in json.loads(message["addressees"])
+        if (message["intent"] != "ask" or self._withdrawal_value(db, message["id"]) is not None or member == message["author_id"] or member not in json.loads(message["addressees"])
                 or db.execute("SELECT 1 FROM topic_waiting WHERE topic_id=? AND actor_id=? AND " + WAITS_FROM_AN_ASK,
                               (topic["id"], member)).fetchone() is None):
             return False

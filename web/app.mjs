@@ -47,6 +47,7 @@ import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, opened } from './fold.mjs';
 import { MessageEditWriting, messageEditStore, mayEdit, revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { MessageEdit } from './message-edit.mjs';
+import { withdrawalItem, paintWithdrawal, Withdrawals, learnWithdrawal } from './question-withdrawal.mjs';
 import { cardClass, paintCardColor, agentColor, paneClass } from './author-colors.mjs';
 import { paintWhisperAuthor, mayStartFrom } from './whisper-choice.mjs';
 import { AgentColors } from './colors.mjs';
@@ -71,7 +72,7 @@ import { ToolPage, OutcomeTools, ToolsRail, TopicTools } from './skills.mjs';
 import { openDossierMove } from './dossier-move.mjs';
 import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
 import { DossierSelectionQuote } from './dossier-selection-quote.mjs';
-import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions } from './reactions.mjs';
+import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions, paintReactions } from './reactions.mjs';
 import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
@@ -123,7 +124,7 @@ let pipelineRow = null, pipelineAddFor = null;
 // An outcome page's Notebook page shown in place (page-here.mjs), and that outcome.
 let pageHere = null, pageHereOutcome = null;
 // The topic page's light, message bar, thumbs-up and go-ahead answers (message-menu.mjs, reactions.mjs).
-let menu = null, reactions = null, cardScroll = null;
+let menu = null, reactions = null, cardScroll = null, withdrawals = null;
 // Whether the open topic's outcome is reached, as its light last said: its
 // messages are kept to read, so none offers Edit (Core refuses one too).
 let outcomeReached = false;
@@ -1691,8 +1692,9 @@ function paintMessageUpdates() {
 }
 function paintCardAuthor(author, item) {
   paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true, wasEdited(item), carriesOf(item));
+  paintWithdrawal(author, item, document);
   if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
-  if (here?.conversation) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
+  if (here?.conversation && !item.withdrawal) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
   // The star in its header, put back as the line is painted again (StackFeed.paintStar).
   stackFeed?.paintStar(author, item);
   const update = messageUpdateActivity(document, item, updateContext(item.topic_id));
@@ -1953,7 +1955,7 @@ function asideFromReader() {
 function readerItem() {
   const p = registry?.current, source = p?.source, ref = source?.source_ref;
   if (!p || p.sourceUnavailable || ref?.kind !== 'message') return null;
-  return views?.messages.get(ref.id) ?? { id: ref.id, author_id: source.author, addressees: source.addressees, reactions: source.reactions, go_ahead: source.go_ahead };
+  return views?.messages.get(ref.id) ?? { id: ref.id, author_id: source.author, addressees: source.addressees, reactions: source.reactions, go_ahead: source.go_ahead, withdrawal: source.withdrawal };
 }
 function paintReaderThumb$() {
   const item = readerItem();
@@ -2090,6 +2092,8 @@ function sharedMessageMenuItems(item, { say, anchor = say, presentation = null }
     act: () => run(() => editMessage(item.id, inReader ? anchor : editOpener(item, anchor))) });
   const update = !topicUnavailable && !outcomeReached && updateMenuItem(document, item, updateContext(item.topic_id));
   if (update) items.push(update);
+  const withdraw = withdrawalItem(item, editRights(), item => run(() => withdrawals.withdraw(item)));
+  if (withdraw) items.push(withdraw);
   if (marks && item.author_id !== bootstrap.actor && !topicUnavailable) {
     const marked = marks.state(item.id)?.marked === true;
     items.push({ label: marked ? 'Mark read' : 'Mark unread', glyph: marked ? 'read' : 'unread',
@@ -2232,6 +2236,18 @@ function openReaderMenu() {
   if (reader.quotable) items.push({ label: 'Quote selection', glyph: 'quote', act: () => reader.quote() });
   if (reader.layoutChoice) items.push({ label: reader.layoutChoice, glyph: 'layout', act: () => reader.toggleLayout() });
   openMessageMenu({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message', sheet: true });
+}
+// A message's withdrawal is permanent and belongs only to that identity, even after a Reader step.
+function learnQuestionWithdrawal({ message_id, withdrawal }) {
+  const item = views?.messages.get(message_id);
+  learnWithdrawal(item, withdrawal);
+  const card = cardIn(messageEntries.get(message_id)), author = card?.querySelector('.message-author');
+  if (author && item) { paintCardAuthor(author, item); paintReactions(card, item, bootstrap.actor, bootstrap.actor_kind, document); }
+  menu?.paint();
+  const source = registry.current?.source;
+  if (source?.source_ref?.kind === 'message' && source.source_ref.id === message_id) {
+    learnWithdrawal(source, withdrawal); reader.paintOrigin(source);
+  }
 }
 // Who may edit which message here (message-edit-writing.mjs, mayEdit).
 const updateContext = topicId => ({ viewer: bootstrap.actor, nameOf: displayActor, topicId });
@@ -2718,6 +2734,15 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
       if (key === 'availability') { await checkAvailability(read, current, false); return true; }
       if (key === 'starred') return views.readStarred(read, () => current() && !topicUnavailable && !authorityReviewPending());
       if (key === 'acts' || key === 'topic') views.resetStars();
+      if (key.startsWith('withdrawal:')) {
+        const id = key.slice('withdrawal:'.length);
+        const source = registry.current?.source;
+        if (!views.messages.has(id) && source?.source_ref?.id !== id) return true;
+        const answer = checkedView(await read('source', { kind: 'message', id }), bootstrap.instance_id);
+        if (!current()) return false;
+        if (!answer.withdrawal) throw Error('The question withdrawal has not arrived yet.');
+        learnQuestionWithdrawal({ message_id: id, withdrawal: answer.withdrawal }); return true;
+      }
       if (key.startsWith('edit:')) return messageEdited(key, version, read, current);
       // The edit session of one of the person's messages moved (docs/message-edit.md): another device may have taken it.
       if (key.startsWith('edit_session:')) { if (messageEdit?.id === key.slice(13)) messageEdit.writing.sessionChanged(version); return true; }
@@ -3101,6 +3126,11 @@ async function initialize() {
     // A 👍 or an answer that cleared the person's mark on its message: the card, its pill and the marks line read so at once.
     cleared: result => marks.learn(result.message_id, result.mark_revision, { topicId: result.topic_id, seq: result.seq }),
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); }, reading: id => reading('reaction:' + id) });
+  const withdrawalPage = shell.page;
+  withdrawals = new Withdrawals({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current,
+    current: () => shell.page === withdrawalPage, learned: learnQuestionWithdrawal,
+    say: (words, item) => { if (reader.dialog.open && registry.current?.source?.source_ref?.id === item.id) reader.notice(words); else status(words); },
+    recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
   mountFeedFences($('messages'));
   keepLineRoom($('main'), $('messages'));
   watchListAnchor();
