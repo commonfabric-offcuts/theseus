@@ -93,6 +93,7 @@ export class OutlineMenus {
             item.topic_id !== target.id || item.stack_position?.root_id !== target.message) throw Error('The dossier could not be confirmed.');
         items = handles.dossierMenu(item, row, (key, label) => this.perform(handles, () => this.dossierAction(item, key, label, row, handles)));
       }
+      if (!items.length) return;
       if (current()) this.menu = this.show({ anchor: row, at, items, label: workspaceId ? 'This outcome' : topicId ? 'This topic' : pageId ? 'This page' : 'This message',
         sheet: true, doc: outline.doc, win: outline.doc.defaultView });
     } catch (error) { if (current()) this.notice(`The menu could not be opened: ${error.message}`); }

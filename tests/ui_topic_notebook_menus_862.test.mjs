@@ -9,6 +9,7 @@ import { NotebookRailMenu } from '../web/notebook-rail-menu.mjs';
 import { notebookSheetMenuItems } from '../web/notebook-sheet.mjs';
 import { RailMenuCommands } from '../web/rail-menu-commands.mjs';
 import { topicMenuItems } from '../web/topic-menu-items.mjs';
+import { readTopicList, TopicPages, TopicRail } from '../web/topic-navigation.mjs';
 import { TopicStatePanel, topicUpdateEnvelope } from '../web/topic-state.mjs';
 import { menuRouteValid, consumeMenuRoute } from '../web/menu-route.mjs';
 import { shareLinksFrom } from '../web/links.mjs';
@@ -36,6 +37,26 @@ test('862 a Topic row opens its named shared menu without navigating or sending'
   assert.deepEqual(f.reads, [['topic', { topic_id: 't' }]]);
   assert.deepEqual(f.shown[0].items.map(x => x.label), ['Mark Done', 'Archive', 'Mark all read', 'Rename', 'Topic settings…', 'Copy Link', 'Move up', 'Move down']);
   assert.deepEqual(f.sent, []);
+});
+
+test('862 a Conversation row from the actual topic list opens no empty menu', async t => {
+  const f = fixture('topic'), previousDocument = globalThis.document;
+  globalThis.document = f.doc; t.after(() => { globalThis.document = previousDocument; });
+  Object.assign(f.record.topic, { kind: 'conversation', title: 'Conversation', list_position: 0 });
+  const answer = await readTopicList(async (name, args) => {
+    if (name === 'workspace_topics') return { instance_id: 'i', items: [], next_cursor: null };
+    if (name === 'conversation') return { instance_id: 'i', conversation: { topic_id: 't' } };
+    assert.equal(name, 'topic'); assert.deepEqual(args, { topic_id: 't' }); return f.record;
+  }, { workspace_id: 'w' });
+  const pages = new TopicPages('i', 'w', null);
+  assert.equal(pages.accept(answer), true); assert.equal(pages.items.length, 1);
+  const row = TopicRail.prototype.row.call({ links: new Map(), rowItems: new Map(), reader: 'reader', pages,
+    question: () => null, activate() { assert.fail('menu opening navigated'); } }, pages.items[0]);
+  f.outline.list.append(row);
+  assert.equal(row.dataset.topicId, 't'); assert.equal(f.menus.row(row), row);
+  await f.menus.open(row);
+  assert.deepEqual(f.reads, [['topic', { topic_id: 't' }]]);
+  assert.equal(f.shown.length, 0); assert.deepEqual(f.sent, []); assert.equal(f.menus.pending, null);
 });
 
 test('862 a starred Notebook row opens the existing list from one named read', async () => {
