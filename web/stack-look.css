@@ -291,7 +291,9 @@
 .stack-head>:is(.stack-named,.stack-new,.stack-star,.stack-meta){margin-left:calc(.3em - .5rem)}
 .stack-head>:is(.stack-named,.stack-new,.stack-star,.stack-meta)::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-weight:400;font-style:normal}
 .stack-new{flex:none;color:var(--stack-new);font-size:.72rem;font-weight:700}
-.stack-star{flex:none;color:var(--stack-star)}
+/*646: familiar star, transparent natural glyph box; keep the live title padding. */
+.stack-star{flex:none;color:var(--stack-star);cursor:pointer;background:transparent;-webkit-tap-highlight-color:transparent}
+.stack-star:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 .stack-meta{flex:1 1 0;min-width:0;max-width:max-content;overflow:hidden;text-overflow:ellipsis;color:var(--stack-meta-ink)}
 /* On the tab (a compact row keeps .stack-meta whole, above), the count keeps its width and who replied and what is
    new give way, each a part of the line. */
@@ -451,7 +453,7 @@
 .reply-stack[data-compact=true]:not(.only-new *){margin:.65rem 0;padding:0;border-radius:.55rem;box-shadow:none;min-height:2.75rem;background:transparent}
 .reply-stack[data-compact=true]:not(.only-new *) .stack-head-card>.stack-head{position:relative;top:0;width:100%;max-width:100%;height:2.75rem;flex-wrap:nowrap;align-items:center;padding-block:.25rem;border-radius:.55rem;background:transparent}
 .reply-stack[data-compact=true]:not(.only-new *) .stack-head-card{height:2.75rem;scroll-margin-top:4px}
-.reply-stack[data-compact=true]:not(.only-new *) .stack-head>:not(.stack-name,.stack-meta){display:none}
+.reply-stack[data-compact=true]:not(.only-new *) .stack-head>:not(.stack-name,.stack-meta,.stack-star){display:none}
 .reply-stack[data-compact=true]:not(.only-new *) .stack-head::after,
 .reply-stack[data-compact=true]:not(.only-new *) .stack-name::before,
 .reply-stack[data-compact=true]:not(.only-new *) .stack-name::after{display:none}
