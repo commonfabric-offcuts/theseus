@@ -12,7 +12,7 @@ superseded destinations cannot become a guessed navigation. Canonical ids,
 Copy Link addresses, writing guards and literal writing retain their paths.
 Cover stands and item descriptions preserve surrounding literal text.
 
-## Checks
+## First-freeze checks
 
 - 281/281 Node tests passed, zero failures, cancellations or skips:
   `tests/ui_topic_link_route_864.test.mjs`, `tests/ui_links.test.mjs`,
@@ -47,6 +47,39 @@ Both final browser runs closed through Browser.close, verified all seven
 owned PIDs absent and the temporary profile removed, then ended the fixture
 by stdin EOF, exit 0, absent PID and closed port. Baseline fixture PID 70917,
 port 53644; candidate PID 71103, port 55138. No test records touched live data.
+
+## Review correction
+
+Warp13790 identified missing imports in the extracted 780 fixture. The fixture
+now supplies the actual topicLinkNeedsLookup/resolveTopicLink bindings and
+the app's cancellation/context/topic-view dependencies. Its original assertions
+are unchanged. Real bindings exposed one unnecessary current-topic read;
+the lookup gate now accepts the already-open topic id as known. Other readable
+short ids are still confirmed by the topic view.
+
+The captured first-freeze run has the missing-import failures. With actual
+bindings, 22/23 pass and the unchanged read-count assertion fails on the extra
+topic read. After the known-id bypass, 36/36 combined 780/resolver checks pass.
+Actually removing the bypass fails that assertion again; exact-byte restoration
+passes 23/23. Raw `review780-*` TAP and mutation JSON are beside earlier evidence.
+
+Final correction verification: 304/304 Node tests pass, zero failures,
+cancellations or skips. This is the seven first-freeze files plus
+`tests/ui_dossier_landing_780.test.mjs`; all 23 original 780 checks pass.
+The complete test bodies match release220 byte-for-byte (SHA-256
+`4cb90caea1c0f42548ddf80849355343e7750369b27b9a94dc271f10018abbe8`).
+`review-final304.tap` and `review780-assertions.json` retain those results.
+
+The same native script reran 44/44 successfully on the correction, with zero
+page errors or failures. `review-candidate/results.json` records Browser.close,
+all seven owned PIDs absent, the temporary profile removed, and scratch fixture
+78652 exiting0 after EOF with its PID absent and port59749 closed.
+The review mutation changed app.mjs SHA-256 from
+`9caba2956d1e7f1a0d3b6383d37e0f51fbc8b058893c8f5c1cf29c8789600bfe`
+to `ef93e26d27bf273eeb3083629d9fddde3f78eff893c3f7e5cd15a8060aec2cb8`;
+restoration returned the first hash before the final304/native run. A fresh
+release/live73 fetch still names the original220 base. No rebase or assertion
+weakening was needed.
 
 ## Scope and limits
 

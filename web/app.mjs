@@ -4039,7 +4039,7 @@ nameTopicsWith(topicName);
 // from: the link pressed, which takes the focus back when the Reader closes.
 async function openDestination(target, title, from = null) {
   const landing = ++landingSerial;
-  if (topicLinkNeedsLookup(target)) {
+  if (topicLinkNeedsLookup(target, topic?.id)) {
     topicNavigation?.cancelPending();
     try {
       target = await resolveTopicLink(target, { read: (name, args) => api.view(name, args, { readClass: 'foreground' }),

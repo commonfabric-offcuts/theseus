@@ -16,7 +16,9 @@ Copy Link still produces full id-based addresses.
 
 Resolve topic labels before existing guarded navigation and initial URL
 startup. Canonical t- ids keep their current path; existing readable legacy
-ids remain valid. A named topic/page route uses memory_current owner_scope
+ids remain valid. An id equal to the already-open topic is already known and
+needs no lookup; other readable short ids are confirmed by the topic view.
+A named topic/page route uses memory_current owner_scope
 as authority, including revision links; the label never selects another page.
 For a bare/message/unread name, compare complete titles ignoring case in the
 current outcome first. Only if none match, search the reader's other outcomes.

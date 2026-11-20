@@ -2,7 +2,7 @@
 import { TopicPages, WorkspacePages, readTopicList, listArgs, routeKey } from './topic-navigation.mjs';
 import { checkedView } from './freshness.mjs';
 const topicId = value => /^t-[0-9a-f]{32}$/.test(value);
-export const topicLinkNeedsLookup = route => route?.kind === 'topic' && !topicId(route.id);
+export const topicLinkNeedsLookup = (route, currentTopicId = null) => route?.kind === 'topic' && route.id !== currentTopicId && !topicId(route.id);
 const superseded = () => Object.assign(Error('This link was superseded.'), { code: 'LINK_SUPERSEDED' });
 const invalid = () => Error('The destination could not be confirmed. Retry the link.');
 const missing = error => ['FORBIDDEN', 'NOT_FOUND', 'TOPIC_NOT_FOUND'].includes(error?.details?.error?.code ?? error?.code);

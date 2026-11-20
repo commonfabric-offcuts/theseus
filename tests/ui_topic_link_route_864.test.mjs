@@ -30,6 +30,8 @@ const route = (id = 'Landing', extra = {}) => ({ kind: 'topic', id, ...extra });
 test('864 canonical and readable legacy ids keep existing destinations', async () => {
   const f = fixture([scope('w1', [topic('t1', 'Old id')])]);
   const canonical = route('t-' + 'a'.repeat(32)); assert.equal(topicLinkNeedsLookup(canonical), false);
+  assert.equal(topicLinkNeedsLookup(route('t1'), 't1'), false, 'the current topic is a known id, including a short id');
+  assert.equal(topicLinkNeedsLookup(route('Landing'), 't1'), true);
   assert.equal(await f.resolve(canonical), canonical); assert.deepEqual(f.calls, []);
   assert.deepEqual(await f.resolve(route('t1')), route('t1')); assert.equal(f.calls.length, 1);
   assert.deepEqual(await f.resolve({ kind: 'workspace', id: 'w1' }), { kind: 'workspace', id: 'w1' });
