@@ -46,19 +46,20 @@ const coverTools = new WeakMap();
 export const entries = list => [...list.querySelectorAll(ENTRIES)];
 
 // An open dossier has two distinct stops: its header control, then its
-// original message. Folded dossiers already use the head entry as their
-// header. Hidden messages and controls never enter the arrow-key order.
+// original message. A folded dossier's compact head is followed by its
+// chevron, then the replies it shows (564). Hidden messages and controls never
+// enter the arrow-key order.
 export function navigationStops(list) {
   const stops = [];
   for (const entry of entries(list)) {
     // What the page draws is what the keys reach: a card laid out is a stop.
     if (!entry.getClientRects().length) continue;
     const section = entry.closest('.reply-stack');
-    if (section?.dataset.stack === entry.dataset.id && section.dataset.headOpen === 'true') {
-      const toggle = section.querySelector(':scope > .stack-toggle');
-      if (toggle?.getClientRects().length) stops.push(toggle);
-    }
+    const toggle = section?.dataset.stack === entry.dataset.id ? section.querySelector(':scope > .stack-toggle') : null;
+    const header = toggle?.getClientRects().length ? toggle : null;
+    if (header && section.dataset.headOpen === 'true') stops.push(header);
     stops.push(entry);
+    if (header && section.dataset.headOpen === 'false') stops.push(header);
   }
   return stops;
 }
@@ -75,9 +76,8 @@ export function shownSelected(stop) {
 }
 
 // The stop among stops that a focused element in the list stands for. A
-// dossier's chevron is its own stop while the dossier is fully expanded, and
-// otherwise stands for the dossier's head entry, its compact header; anything
-// else stands for the message entry it is in. Null when that is no stop.
+// dossier's visible chevron is its own stop; anything else stands for the
+// message entry it is in. Null when that is no stop.
 export function stopAt(list, target, stops = navigationStops(list)) {
   if (stops.includes(target)) return target;
   const toggle = target?.closest?.('.stack-toggle');

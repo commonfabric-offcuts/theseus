@@ -1,4 +1,5 @@
-import { feedControl, feedFence } from './feed-fence-copy.mjs';
+import { feedFence } from './feed-fence-copy.mjs';
+import { inlineStops, focusStop } from './message-controls.mjs';
 // The topic page's light and message bar (docs/interaction.md).
 //
 // The message under the pointer lights, as a passage lights in the Reader,
@@ -62,35 +63,6 @@ function pressOf(doc) {
 }
 
 const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
-
-// External Copy buttons take the place of their fences among a card's links.
-function inlineStops(card) {
-  const stops = [];
-  for (const node of card.querySelectorAll('a[href],button,[tabindex],.feed-fence-anchor')) {
-    if (!node.getClientRects().length) continue;
-    const external = feedControl(node);
-    if (external) stops.push(external);
-    else if (node.tabIndex >= 0 && !node.disabled) stops.push(node);
-  }
-  return stops;
-}
-
-function focusStop(target) {
-  const anchor = feedFence(target);
-  if (anchor) {
-    const card = anchor.closest('.message-card').getBoundingClientRect();
-    const top = anchor.getBoundingClientRect().top;
-    const win = anchor.ownerDocument.defaultView;
-    const height = parseFloat(win.getComputedStyle(anchor).paddingTop);
-    // The Copy button occupies the top lane. 'nearest' may leave that lane
-    // clipped when the fence spans both edges of an inner scrolling card.
-    if (top < Math.max(0, card.top) || top + height > Math.min(win.innerHeight, card.bottom)) {
-      anchor.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'instant' });
-    }
-    target.hidden = false;
-  }
-  target.focus({ preventScroll: true });
-}
 
 export class MessageMenu {
   // host: #messages. item(id): its loaded topic_messages item. viewer, kind:
