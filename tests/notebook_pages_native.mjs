@@ -1258,47 +1258,25 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     await p.close();
   });
 
-  await check('notebook while a card is written, Tab puts it under the card above and shift-Tab takes it out, keeping the writing and the cursor', async () => {
-    const id = 'notebook-cards-tab', body = '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n## Risks\n\nNone yet.\n', p = await cards(id, body);
-    // Risks, picked with ↓ and opened with ⌘Return, gets a few words more, and the cursor goes inside its title.
-    await p.key('ArrowDown'); await p.key('ArrowDown'); await p.key('Enter', 4);
-    await writing(p, { words: 'Risks\nNone yet.', at: [15, 15], depth: '0', above: 'Notes', focused: true }, 'Risks opens for writing');
-    await p.send('Input.insertText', { text: ' Maybe two.' });
-    await cursor(p, 3);
+  await check('notebook writing Tab nests the current list line and Shift-Tab restores it without moving the card (866)', async () => {
+    const id = 'notebook-cards-tab', body = '## Plan\n\n- first\n- second\n\n## Notes\n\nDan reviews.\n', p = await cards(id, body);
+    await p.key('Enter', 4);
+    const original = 'Plan\n- first\n- second', at = original.length;
+    await writing(p, { words: original, at: [at, at], depth: '0', above: null, focused: true }, 'Plan opens for writing');
     await p.key('Tab');
-    await writing(p, { words: 'Risks\nNone yet. Maybe two.', at: [3, 3], depth: '1', above: 'Notes', focused: true }, 'Tab puts it under Notes, still written');
-    await saved(id, body.replace('## Risks', '### Risks').replace('None yet.', 'None yet. Maybe two.'), 'the move and unfinished words are saved together');
+    const nested = 'Plan\n- first\n  - second';
+    await writing(p, { words: nested, at: [at + 2, at + 2], depth: '0', above: null, focused: true }, 'Tab nests the line inside Plan');
+    await saved(id, body.replace('- second', '  - second'), 'unfinished line indentation autosaves');
     await p.key('Tab', 8);
-    await writing(p, { words: 'Risks\nNone yet. Maybe two.', at: [3, 3], depth: '0', above: 'Notes', focused: true }, 'shift-Tab takes it out again');
-    await saved(id, body.replace('None yet.', 'None yet. Maybe two.'), 'shift-Tab saves the current words too');
-    await p.key('Tab');
-    await writing(p, { words: 'Risks\nNone yet. Maybe two.', at: [3, 3], depth: '1', above: 'Notes', focused: true }, 'under Notes again');
-    await p.key('Escape');
-    const under = '## Plan\n\nShip it.\n\n## Notes\n\nDan reviews.\n\n### Risks\n\nNone yet. Maybe two.\n';
-    await saved(id, under, 'finishing saves what was written where the card went');
-    // On the first card there is nowhere to go: the card stays, and so does the focus.
-    await p.key('ArrowUp'); await p.key('ArrowUp'); await p.key('Enter', 4);
-    await writing(p, { words: 'Plan\nShip it.', at: [13, 13], depth: '0', above: null, focused: true }, 'Plan opens for writing');
-    await p.key('Tab');
-    assert.deepEqual(await box(p), { words: 'Plan\nShip it.', at: [13, 13], depth: '0', above: null, focused: true }, 'Tab on the first card moves nothing and keeps the box');
-    await p.key('Escape');
-    // A new card, not yet made, only changes where it will go: under Notes, after Risks.
-    await p.key('ArrowDown'); await p.key('Enter');
-    await writing(p, { words: '', at: [0, 0], depth: '0', above: 'Risks', focused: true }, 'a new card opens after Notes and its children');
-    await p.send('Input.insertText', { text: 'Later' });
-    await p.key('Tab');
-    await writing(p, { words: 'Later', at: [5, 5], depth: '1', above: 'Risks', focused: true }, 'Tab puts the new card under Notes');
-    await p.key('Escape');
-    await saved(id, `${under}\n### Later\n`, 'the new card is made where Tab put it');
-    // A new card begun among siblings, after Risks with Later still to come: shift-Tab takes it out of Notes after all
-    // the children of Notes, as it would a made card there, so Later stays under Notes and not under the new card.
-    await p.key('ArrowUp'); await p.key('Enter');
-    await writing(p, { words: '', at: [0, 0], depth: '1', above: 'Risks', focused: true }, 'a new card opens between Risks and Later');
-    await p.send('Input.insertText', { text: 'Soon' });
+    await writing(p, { words: original, at: [at, at], depth: '0', above: null, focused: true }, 'Shift-Tab restores the line');
+    await saved(id, body, 'outdent autosaves');
     await p.key('Tab', 8);
-    await writing(p, { words: 'Soon', at: [4, 4], depth: '0', above: 'Later', focused: true }, 'shift-Tab takes the new card out of Notes, after Later');
+    await writing(p, { words: original, at: [at, at], depth: '0', above: null, focused: true }, 'outdent at the left edge keeps writing focus');
     await p.key('Escape');
-    await saved(id, `${under}\n### Later\n\n## Soon\n`, 'the new card is made beside Notes, and Later stays under Notes');
+    await p.key('ArrowDown'); await p.key('Tab');
+    await saved(id, body.replace('## Notes', '### Notes'), 'picked-card Tab still moves Notes under Plan');
+    await p.key('Tab', 8);
+    await saved(id, body, 'picked-card Shift-Tab restores Notes');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
