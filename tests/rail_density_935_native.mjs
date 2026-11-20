@@ -11,6 +11,13 @@ import { pngPixels } from './png-bands.mjs';
 const { chromium } = await import(process.env.AIM_PLAYWRIGHT_CORE);
 const evidence = process.argv[2]; await mkdir(evidence, { recursive: true });
 const coarseOnly = process.argv.includes('--coarse-only');
+//940 reuses the original935 Compact checks at each requested desktop width.
+const compactOnly = process.argv.includes('--compact-only');
+const desktopWidth = Number(process.env.AIM_RAIL_TEST_WIDTH ?? 1280);
+const collectFailures = process.argv.includes('--collect-failures'), comparisonFailures = [];
+// Keep every assertion and nonzero exit; a comparison run also reaches the
+// remaining cases so an existing baseline red cannot conceal a new failure.
+const compare = (name, act) => { try { act(); } catch (error) { if (!collectFailures) throw error; comparisonFailures.push({ name, error: error.stack }); } };
 const child = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--freshness']);
 const { control, exit } = fixtureControl(child);
 const marker = `theseus-935-${process.pid}`, results = [], errors = [];
@@ -51,7 +58,7 @@ try {
   assert.ok(profile, 'actual isolated profile identified'); results.push({ profile }); await session.detach();
   if (!coarseOnly) for (const theme of ['light', 'dark']) {
     await control({ method: 'agent_message', operation_id: `935-unread-${theme}`, topic_id: 't935b', whole_topic: true, post_args: { divergence_reason: 'Isolated rail unread-count control.' }, body: 'Unread count control for935', sender: facts.agent });
-    const context = await browser.newContext({ viewport: { width: 1280, height: 1000 }, colorScheme: theme });
+    const context = await browser.newContext({ viewport: { width: desktopWidth, height: 1000 }, colorScheme: theme });
     page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
     await page.goto(facts.origin + '/?topic=t935a'); await settled(page);
     await page.locator('.ol-outcome[data-workspace-id="w935"] .ol-disclosure').click(); await page.locator('.ol-outcome[data-workspace-id="w935"] a[data-topic-id="t935b"]').waitFor();
@@ -68,7 +75,7 @@ try {
     for (const row of compact.outcomes) { assert.equal(row.height, 26); assert.ok(row.title); assert.equal(row.whitespace, 'nowrap'); }
     for (const row of compact.topics) { assert.equal(row.height, 24); assert.ok(row.title); assert.equal(row.whitespace, 'nowrap'); }
     assert.ok(compact.counts.length >= 2); assert.ok(Math.max(...compact.counts) - Math.min(...compact.counts) < 1, 'counts align at the rail edge');
-    for (const density of ['Compact', 'Roomy']) {
+    for (const density of (compactOnly ? ['Compact'] : ['Compact', 'Roomy'])) {
       await page.getByRole('button', { name: density, exact: true }).click();
       assert.equal(Number(await page.getByRole('separator', { name: 'Rail width' }).getAttribute('aria-valuenow')), await page.locator('#rail').evaluate(el => el.getBoundingClientRect().width));
       const w1 = page.locator('.ol-outcome[data-workspace-id="w1"]'), name = w1.locator('.ol-name');
@@ -117,6 +124,7 @@ try {
       const trace = await page.evaluate(() => window.rail935Trace);
       results.push({ theme, density, before, trace, staticPixels });
       assert.equal(await page.evaluate(() => performance.timeOrigin), origin, 'cross-outcome click keeps the document');
+      compare(`${theme}-${density} retained navigation geometry`, () => {
       const base = before.find(row => row.id === 'w1');
       for (const frame of trace) {
         const row = frame.boxes.find(row => row.id === 'w1');
@@ -124,9 +132,12 @@ try {
         assert.deepEqual(row.rows.map(r => [r.id, r.y, r.height]), base.topics.map(r => [r.id, r.box[1], r.box[3]]));
         for (const outcome of frame.boxes) assert.equal(new Set(outcome.rows.map(r => r.id)).size, outcome.rows.length, 'no doubled rows');
       }
+      });
       // RGB rounding at a layer boundary differed by exactly1/255 in native07.
       // Keep geometry exact and reject every larger pixel difference.
+      compare(`${theme}-${density} static rail pixels`, () => {
       assert.ok(staticPixels.every(frame => frame.maxChannelDelta <= 1), 'static rail pixels differ by at most one RGB level, expected selected row masked');
+      });
       const changedPixel = { ...firstImage, pixel: (x, y) => { const color = firstImage.pixel(x, y); if (x === 0 && y === 0) color[0] = color[0] > 247 ? color[0] - 8 : color[0] + 8; return color; } };
       assert.equal(pixelDelta(firstImage, changedPixel), 8, 'pixel oracle detects a deliberate single-pixel change');
       // A rapid return starts while the real replacement reads are delayed.
@@ -165,7 +176,7 @@ try {
     await handle.dblclick({ position: { x: 3, y: 100 } });
     results.push({ theme, nativeWidthAndPostNavigationControls: true }); await context.close();
   }
-  if (!coarseOnly) for (const width of [1280, 1512]) for (const theme of ['light', 'dark']) {
+  if (!coarseOnly) for (const width of (compactOnly ? [desktopWidth] : [1280, 1512])) for (const theme of ['light', 'dark']) {
     const context = await browser.newContext({ viewport: { width, height: 1000 }, colorScheme: theme });
     page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
     await page.goto(facts.origin + '/?topic=t1&page=n935'); await settled(page);
@@ -173,7 +184,7 @@ try {
     const dock = sheet.getByRole('button', { name: 'Side by side', exact: true });
     if (await dock.getAttribute('aria-pressed') !== 'true') await dock.click();
     await page.waitForFunction(() => document.body.classList.contains('notebook-docked'));
-    for (const variant of ['compact', 'dragged', 'roomy']) {
+    for (const variant of (compactOnly ? ['compact'] : ['compact', 'dragged', 'roomy'])) {
       const handle = page.getByRole('separator', { name: 'Rail width' });
       if (variant === 'dragged') {
         const b = await handle.boundingBox(); await page.mouse.move(b.x + b.width / 2, 100); await page.mouse.down(); await page.mouse.move(340, 100, { steps: 8 }); await page.mouse.up();
@@ -198,7 +209,7 @@ try {
     }
     await context.close();
   }
-  if (!coarseOnly) {
+  if (!coarseOnly && !compactOnly) {
     const context = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
     await context.addInitScript(() => {
       for (const name of ['getItem', 'setItem', 'removeItem']) {
@@ -215,7 +226,7 @@ try {
     results.push({ storageRefusedPageFallback: true }); await context.close();
   }
   // Exact CSS-disabled controls on phone and desktop coarse pointer.
-  for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
+  if (!compactOnly) for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
     const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: theme, hasTouch: true, isMobile: width === 390 });
     page = await context.newPage(); await page.goto(facts.origin + '/?topic=t935a'); await settled(page);
     if (width === 390) await page.locator('#rail-open').tap();
@@ -247,7 +258,9 @@ try {
   let fixtureAbsent = false; try { process.kill(child.pid, 0); } catch (error) { fixtureAbsent = error.code === 'ESRCH'; }
   let portClosed = true;
   if (facts) portClosed = await new Promise(resolve => { const socket = net.connect(new URL(facts.origin).port, '127.0.0.1'); socket.on('connect', () => { socket.destroy(); resolve(false); }); socket.on('error', () => resolve(true)); socket.setTimeout(1000, () => { socket.destroy(); resolve(false); }); });
-  results.push({ cleanup: ended, fixturePid: child.pid, fixtureAbsent, portClosed });
+  results.push({ cleanup: ended, fixturePid: child.pid, fixtureAbsent, portClosed, comparisonFailures });
   await writeFile(path.join(evidence, 'results.json'), JSON.stringify(results, null, 2));
   assert.deepEqual(ended, { code: 0, signal: null }); assert.equal(fixtureAbsent, true); assert.equal(portClosed, true); assert.deepEqual(ownedProcesses(), []);
 }
+
+if (comparisonFailures.length) process.exitCode = 1;
