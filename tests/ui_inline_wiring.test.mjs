@@ -5154,3 +5154,110 @@ test('847 and 852 outcome home puts Team then Notebook above topics and shares b
   assert.equal(handles.readable(),true);
   assert.equal(rail.sections.get('images').details.hidden,false,'recovery reads and restores current context');
 });
+
+// 860: initialized page's actual Reader handler, Reactions and card callback.
+// The API is a controlled peer; this does not claim a native click.
+const decisionReactions860 = more => ({ version: 5, thumbs: [], answers: [], thumb_revision: 1, answer_revision: 7, ...more });
+async function decisionPage860({ loaded = true } = {}) {
+  const item = { id: 'decision860', seq: 1, author_id: 'agent-a', body: 'May I proceed?', intent: 'ask', go_ahead: true,
+    addressees: ['fixture-person'], reactions: decisionReactions860() };
+  const { f } = await conversationPage([item]);
+  const presentation = { source: { ...item, author: item.author_id, source_ref: { kind: 'message', id: item.id } }, editors: { reply: f.editor }, mode: 'reply' };
+  f.registry.current = presentation; Object.assign(f.reader, { dialog: { open: true }, presentation });
+  let closes = 0; f.registry.close = async () => { closes++; };
+  if (!loaded) f.views.messages.delete(item.id);
+  let current = decisionReactions860(), command = null;
+  const commands = [], original = f.api.view;
+  f.api.view = async (name, args, options) => name === 'reactions'
+    ? { instance_id: 'fixture', message_id: args.message_id, go_ahead: true, reactions: current } : original(name, args, options);
+  f.api.command = async envelope => {
+    commands.push(envelope); if (command) return command(envelope);
+    current = decisionReactions860({ version: current.version + 1, answer_revision: current.answer_revision + 1,
+      answers: [{ actor_id: 'fixture-person', answer: envelope.args.answer }] });
+    return { status: 'committed', result: { message_id: envelope.target.message_id } };
+  };
+  const paint = () => f.runObservation('paintReaderThumb$()'); paint();
+  return { f, item, presentation, commands, paint, get closes() { return closes; },
+    answer: choice => f.get('reader-reactions').querySelector(`[data-react="${choice}"]`),
+    setCommand: value => { command = value; }, setCurrent: value => { current = value; } };
+}
+const cardDecision860 = (f, choice) => entryIn(f, 'decision860')?.querySelector(`[data-react="${choice}"]`);
+
+test('860 actual Reader answer uses the current revision and paints the card without closing or losing writing', async () => {
+  const d = await decisionPage860(), { f } = d;
+  assert.ok(d.answer('yes'), 'the actual Reader exposes Go ahead'); const stale = d.answer('yes');
+  f.views.messages.set(d.item.id, { ...f.views.messages.get(d.item.id), reactions: decisionReactions860({ answer_revision: 19 }) });
+  const held = defer(); d.setCommand(async () => held.promise); const sent = stale.onclick();
+  assert.equal(d.commands.length, 1); assert.equal(d.commands[0].kind, 'message.answer');
+  assert.equal(d.commands[0].target.message_id, 'decision860'); assert.equal(d.commands[0].expected.answer_revision, 19, 'latest revision at press');
+  assert.deepEqual({ ...d.commands[0].expected.authority }, { authority_id: 'a1', authority_epoch: 'e1' });
+  assert.equal(d.commands[0].args.answer, 'yes');
+  assert.equal(d.answer('yes').disabled, true); assert.equal(d.answer('no').disabled, true);
+  assert.equal(d.answer('yes'), stale, 'pending repaint keeps the same control');
+  await stale.onclick(); assert.equal(d.commands.length, 1, 'pending duplicate cannot send');
+  f.editor.draft.body = 'newer writing while the decision waits';
+  d.setCurrent(decisionReactions860({ version: 6, answer_revision: 20, answers: [{ actor_id: 'fixture-person', answer: 'yes' }] }));
+  held.resolve({ status: 'committed', result: { message_id: 'decision860' } }); await sent; await drain();
+  assert.equal(d.answer('yes').getAttribute('aria-pressed'), 'true'); assert.equal(d.answer('yes').disabled, false);
+  assert.equal(d.answer('yes'), stale, 'learned-result repaint keeps the same control');
+  assert.equal(cardDecision860(f, 'yes').classList.contains('mine'), true, 'Reader result paints the actual card');
+  assert.equal(f.editor.draft.body, 'newer writing while the decision waits');
+  assert.equal(f.registry.current, d.presentation); assert.equal(d.closes, 0);
+});
+
+test('860 the actual card answer callback paints the open Reader and the card', async () => {
+  const d = await decisionPage860(), { f } = d;
+  await f.runObservation("menu.answer(views.messages.get('decision860'), 'no')"); await drain();
+  assert.ok(d.answer('no'), 'the open Reader offers the same decisions');
+  assert.equal(d.commands.length, 1); assert.equal(d.commands[0].args.answer, 'no');
+  assert.equal(d.answer('no').getAttribute('aria-pressed'), 'true');
+  assert.equal(cardDecision860(f, 'no').classList.contains('mine'), true);
+});
+
+test('860 source-only Reader preserves refused or lost answers in words and learns a committed decision', async () => {
+  for (const outcome of ['refused', 'lost', 'committed']) {
+    const d = await decisionPage860({ loaded: false }), { f } = d;
+    assert.ok(d.answer('no'), 'source-only Reader has a decision button');
+    d.setCommand(async () => {
+      if (outcome === 'lost') throw new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.');
+      if (outcome === 'refused') return { status: 'rejected', error: { code: 'FORBIDDEN', message: 'This question is no longer yours' } };
+      d.setCurrent(decisionReactions860({ version: 6, answers: [{ actor_id: 'fixture-person', answer: 'no' }] }));
+      return { status: 'committed', result: { message_id: 'decision860' } };
+    });
+    await d.answer('no').onclick(); await drain();
+    assert.equal(d.commands.length, 1); assert.equal(d.commands[0].expected.answer_revision, 7);
+    assert.equal(d.answer('no').disabled, false); assert.equal(d.closes, 0); assert.equal(f.editor.draft.body, 'kept');
+    if (outcome === 'lost') assert.match(f.get('reader-notice').textContent, /Connection interrupted; whether that was saved is unknown/);
+    if (outcome === 'refused') assert.match(f.get('reader-notice').textContent, /This question is no longer yours/);
+    if (outcome === 'committed') assert.equal(d.answer('no').getAttribute('aria-pressed'), 'true');
+  }
+});
+
+test('860 stale Reader button cannot answer after source, permission or withdrawal changes', async () => {
+  for (const change of ['source', 'unavailable', 'non-message', 'agent', 'unaddressed', 'withdrawn']) {
+    const d = await decisionPage860(), { f } = d;
+    assert.ok(d.answer('yes'), 'start with an eligible button'); const stale = d.answer('yes');
+    if (change === 'source') d.presentation.source = { ...d.item, author: 'dan', source_ref: { kind: 'message', id: 'other860' } };
+    if (change === 'unavailable') d.presentation.sourceUnavailable = true;
+    if (change === 'non-message') d.presentation.source.source_ref.kind = 'memory';
+    if (change === 'agent') f.bootstrap.actor_kind = 'agent';
+    if (change === 'unaddressed') f.views.messages.get(d.item.id).addressees = [];
+    if (change === 'withdrawn') f.views.messages.get(d.item.id).withdrawal = { reason: 'Superseded' };
+    await stale.onclick(); await drain(); assert.equal(d.commands.length, 0, change);
+    d.paint();
+    if (change === 'source') { assert.equal(d.answer('yes').dataset.messageId, 'other860'); assert.notEqual(d.answer('yes'), stale); }
+    else assert.equal(d.answer('yes'), null, change);
+  }
+});
+
+test('860 late refusal cannot replace another Reader source or its notice and writing', async () => {
+  const d = await decisionPage860(), { f } = d, held = defer();
+  assert.ok(d.answer('yes'), 'start with an eligible button');
+  d.setCommand(() => held.promise); const sent = d.answer('yes').onclick();
+  const next = { source: { source_ref: { kind: 'memory', id: 'note860' } }, editors: { reply: f.editor } };
+  f.registry.current = next; f.editor.draft.body = 'new source writing'; f.reader.notice('Current source notice'); d.paint();
+  held.resolve({ status: 'rejected', error: { code: 'FORBIDDEN', message: 'Old question refused' } }); await sent; await drain();
+  assert.equal(f.registry.current, next); assert.equal(f.editor.draft.body, 'new source writing');
+  assert.equal(f.get('reader-notice').textContent, 'Current source notice');
+  assert.equal(f.get('reader-reactions').hidden, true); assert.equal(d.answer('yes'), null); assert.equal(d.closes, 0);
+});
