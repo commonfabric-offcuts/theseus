@@ -97,8 +97,8 @@ class WritingCase(CoverCase):
         raw = "  Discussed:\t cabin \r\n\r\n Decisions:  none\n Next: book\rit  "
         want = "Discussed: cabin\n\nDecisions: none\nNext: book it"
         self.assertEqual(self.committed(self.cover(root, {"stands": raw}))["cover"]["stands"], want)
-        # LF counts toward the existing 300-character limit; no truncation or partial wait update.
-        boundary = "x" * 149 + "\n" + "y" * 150
+        # LF counts toward the 913 limit; no truncation or partial wait update.
+        boundary = "x" * 15999 + "\n" + "y" * 16000
         self.committed(self.cover(root, {"stands": boundary}, revision=1))
         self.rejected(self.cover(root, {"stands": boundary + "z", "waiting": []}, revision=2), "INVALID_ARGUMENT")
         self.assertEqual(self.shown(root)["stands"], boundary)
@@ -166,7 +166,7 @@ class WritingCase(CoverCase):
 
     def test_what_a_write_may_say(self):
         root, answer, _ = self.dossier()
-        for args in ({}, {"title": "x"}, {"stands": 3}, {"stands": "x" * 301},
+        for args in ({}, {"title": "x"}, {"stands": 3}, {"stands": "x" * 32001},
                      {"waiting": [{"text": "Book it?"}]}, {"waiting": [{"text": "Book it?", "default": ""}]},
                      {"waiting": [{"text": "A?", "default": "b"}] * 5}, {"waiting": "Book it?"},
                      {"payload": {"text": "No message"}}, {"payload": self.payload(answer, kind="essay")},

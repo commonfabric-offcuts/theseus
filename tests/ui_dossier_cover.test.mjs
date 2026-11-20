@@ -48,7 +48,7 @@ test('item 769 the shared sheet draws literal stands lines without parsing label
 test('the sheet says where it stands, its payload with its label, pill and the message that delivered it, and what waits on the owner with its default', () => {
   const doc = miniDocument(), sheet = coverSheet(doc, COVER, context());
   assert.equal(sheet.className, 'dossier-cover');
-  assert.deepEqual(sheet.children.map(line => line.className), ['cover-line cover-heading', 'cover-line cover-payload', 'cover-line cover-wait'], 'stands, then the payload, then each wait');
+  assert.deepEqual(sheet.children.map(line => line.className), ['cover-line cover-heading', 'cover-line cover-payload', 'cover-line cover-wait', 'cover-revision-line'], 'stands, then the payload, then each wait, then the revision footer');
   assert.equal(sheet.children[0].text, 'Answered: the second weekend');
   assert.equal(of(sheet, 'cover-label')[0].text, 'Payload · answer');
   assert.equal(of(sheet, 'row-pill')[0].dataset.state, 'proposed');
@@ -70,11 +70,11 @@ test('the sheet says where it stands, its payload with its label, pill and the m
 test('a sheet holds only the lines its cover says, and one done with nothing waiting says so', () => {
   const doc = miniDocument();
   const bare = coverSheet(doc, { ...COVER, stands: null, waiting: [], payload: { ...COVER.payload, kind: null, done: DONE_BY_THUMB } }, context());
-  assert.deepEqual(bare.children.map(line => line.className), ['cover-line cover-payload']);
+  assert.deepEqual(bare.children.map(line => line.className), ['cover-line cover-payload', 'cover-revision-line']);
   assert.equal(of(bare, 'cover-label')[0].text, 'Payload', 'no kind, no kind in the label');
   assert.equal(bare.dataset.done, 'true');
   const waits = coverSheet(doc, { ...COVER, payload: null }, context());
-  assert.deepEqual(waits.children.map(line => line.className), ['cover-line cover-heading', 'cover-line cover-wait']);
+  assert.deepEqual(waits.children.map(line => line.className), ['cover-line cover-heading', 'cover-line cover-wait', 'cover-revision-line']);
   assert.equal(waits.dataset.done, 'false');
   assert.equal(of(waits, 'row-pill').length, 0, 'no payload, no pill');
 });
@@ -108,11 +108,13 @@ test('a payload\'s link shows its address\'s host and goes where it was written;
   assert.equal(anchor.title, 'https://example.test/cabin/week');
   const pills = coverPills(doc, COVER, context());
   assert.equal(pills.className, 'row-pills');
-  assert.deepEqual(pills.children.map(pill => [pill.dataset.state, of(pill, 'pill-words')[0].text]), [['proposed', 'payload proposed'], ['waiting', 'waits on you']]);
+  assert.deepEqual(pills.children.map(pill => pill.className), ['row-pill pill-payload', 'row-pill pill-waits', 'cover-revision-line']);
+  assert.deepEqual(of(pills, 'row-pill').map(pill => [pill.dataset.state, of(pill, 'pill-words')[0].text]), [['proposed', 'payload proposed'], ['waiting', 'waits on you']]);
   assert.equal(pills.title, 'Answered: the second weekend', 'where it stands, on the pills');
   assert.equal(of(pills, 'dossier-cover').length, 0);
   const many = coverPills(doc, { ...COVER, payload: null, waiting: [COVER.waiting[0], COVER.waiting[0]] }, context('agent-a'));
-  assert.deepEqual(many.children.map(pill => of(pill, 'pill-words')[0].text), ['2 wait on Ana']);
+  assert.deepEqual(many.children.map(pill => pill.className), ['row-pill pill-waits', 'cover-revision-line']);
+  assert.deepEqual(of(many, 'row-pill').map(pill => of(pill, 'pill-words')[0].text), ['2 wait on Ana']);
   assert.equal(coverPills(doc, { ...COVER, payload: null, waiting: [] }, context()), null, 'stands alone gives no pill');
 });
 
