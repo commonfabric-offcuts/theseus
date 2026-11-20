@@ -302,14 +302,18 @@ test('867 the actual Text sync hides metadata without changing the writer or rep
 // Review 12221: exercise surviving content across intermediate headings and
 // whole-card moves, rather than relying on a keystroke offset as identity.
 const metaOf = raw => parseDeck(raw).cards.map(c => ({title:c.title,...cardDetails(c.words)}));
-for (const replacement of ['## Costs', '### Budget']) test('867 review heading retyping through a single hash preserves Budget: '+replacement,()=>{
+// 922 applies the existing merge contract when the heading's newline stays.
+// Retyping a heading after deleting it is a new card; only Undo restores B.
+for (const replacement of ['## Costs', '### Budget']) test('922 heading deletion then retyping keeps Budget as the survivor alias: '+replacement,()=>{
  const raw=card('Plan','plan words',details(A))+card('Budget','budget words',details(B,'rose'));
  const p=new CardTextProjection(),before=p.show(raw),start=before.indexOf('## Budget');let text=before;
  for(const heading of ['', '#', '##', replacement]){
   const end=text.indexOf('\n',start);text=text.slice(0,start)+heading+text.slice(end);
   p.edit(text,{inputType:'insertText',start,end});
  }
- const rows=metaOf(p.body);assert.equal(rows[1].id,B);assert.equal(rows[1].color,'rose');assert.deepEqual(rows[0].ids,[A]);
+ const rows=metaOf(p.body);assert.equal(rows[1].id,null);assert.equal(rows[1].color,null);assert.deepEqual(rows[1].ids,[]);
+ assert.equal(rows[0].id,A);assert.equal(rows[0].color,'blue');assert.deepEqual(rows[0].aliases,[B]);
+ assert.equal(detailLines(p.body).length,1);
 });
 test('867 review Option line move and cut/paste preserve content identities and directional Undo',()=>{
  const raw=card('First','first',details(A))+card('Second','second',details(B,'rose'))+card('Third','third',null);
@@ -435,10 +439,10 @@ test('867 R3 deleting a title-only card cannot lend its id or color to a later n
  const {p,w,input}=await text867(t,card('Plan','',details(A))+card('Deleted','',details(B,'rose')));const at=p.text.value.indexOf('## Deleted');input(at,p.text.value.length,'','deleteContentBackward');await w.flush();
  const rows=input(p.text.value.length,p.text.value.length,'## Brand new\n\n');assert.equal(rows[1].id,null);assert.equal(rows[1].color,null);
 });
-for(const heading of ['## Costs','### Budget'])test('867 R3 title-only Plan and Budget retype each heading key: '+heading,async t=>{
+for(const heading of ['## Costs','### Budget'])test('922 title-only Plan retains Budget alias after heading deletion and retyping: '+heading,async t=>{
  const {p,input}=await text867(t,card('Plan','',details(A))+card('Budget','budget words',details(B,'rose')));const start=p.text.value.indexOf('## Budget');let rows;
  for(const h of ['','#','##',heading])rows=input(start,p.text.value.indexOf('\n',start),h);
- assert.deepEqual(rows.map(r=>r.ids),[[A],[B]]);assert.equal(rows[1].color,'rose');
+ assert.deepEqual(rows.map(r=>r.ids),[[A,B],[]]);assert.equal(rows[0].color,'blue');assert.equal(rows[1].color,null);
 });
 test('867 R3 deleting one exact twin keeps only the surviving identity',async t=>{
  const {p,input}=await text867(t,card('Same','same',details(A))+card('Same','same',details(B,'rose')));const second=p.text.value.indexOf('## Same',1);assert.deepEqual(input(0,second,'','deleteContentBackward').map(r=>r.ids),[[B]]);
