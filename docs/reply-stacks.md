@@ -705,7 +705,10 @@ One capturing scroll listener on the feed remembers only boxes whose own
 scroll events report a nonzero offset (item 888). Returning both axes to zero
 forgets the box. Reconciliation moves nodes without reading scroll positions
 or scanning their descendants; after all moves it restores only remembered
-boxes still in that feed. Detached boxes are forgotten. This is visit state,
+boxes still in that feed and inside a node reconcile actually moved (item 896).
+An unmoved box receives no write. After one attempt the remembered entry is
+consumed, even when a hidden box cannot take the write; the next scroll event
+records fresh offsets. Detached boxes are forgotten. This is visit state,
 never stored. `tests/ui_scroll_carry_888.test.mjs` exercises the actual renderer
 with modelled detach resets and counts position reads/writes across moves,
 joins and new replies. It does not measure browser layout or responsiveness.

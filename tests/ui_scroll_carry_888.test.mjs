@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { renderer799 } from './fixtures/renderer799.mjs';
 import { arrangeStacks, entries, stackState } from '../web/reply-stacks.mjs';
+import { foldCard, show as showFold } from '../web/fold.mjs';
 
 // Actual renderer and reconcile; only DOM scroll/event behavior is modelled.
 // A move resets connected descendants as detaching a scroll box can do.
 // This counts getters/writes, not layout cost, native events or browser time.
-function fixture() {
+function fixture({ dropHidden = false } = {}) {
   const f = renderer799('reader'), doc = f.list.ownerDocument;
   const offsets = new WeakMap(), listeners = new WeakMap(), events = [];
   let phase = 'setup';
@@ -14,7 +15,13 @@ function fixture() {
     offsets.set(node, { left: 0, top: 0 }); listeners.set(node, []);
     for (const [property, axis] of [['scrollLeft', 'left'], ['scrollTop', 'top']]) Object.defineProperty(node, property, {
       get() { events.push({ kind: 'read', node, axis, phase }); return offsets.get(node)[axis]; },
-      set(value) { events.push({ kind: 'write', node, axis, value, phase }); offsets.get(node)[axis] = value; },
+      set(value) {
+        events.push({ kind: 'write', node, axis, value, phase });
+        // Browser behavior under test: a box under display:none cannot keep
+        // a restored offset. This is a DOM model, not a layout measurement.
+        if (dropHidden) for (let at = node; at; at = at.parentElement) if (at.hidden) return;
+        offsets.get(node)[axis] = value;
+      },
     });
     const listen = node.addEventListener, query = node.querySelectorAll, insert = node.insertBefore;
     node.addEventListener = function(type, callback, options) { listeners.get(this).push({ type, callback, options }); listen.call(this, type, callback, options); };
@@ -47,8 +54,8 @@ function fixture() {
   return { ...f, doc, offsets, listeners, events, draw, card, scroll, inspect };
 }
 const message = (id, seq, reply_to = null) => ({ id, seq, topic_id: 'fixture-topic', author_id: 'fixture-writer', reply_to, acts: {} });
-function reading() {
-  const f = fixture(); f.add([message('a', 1), message('ar', 2, 'a'), message('b', 3), message('br', 4, 'b')]);
+function reading(options) {
+  const f = fixture(options); f.add([message('a', 1), message('ar', 2, 'a'), message('b', 3), message('br', 4, 'b')]);
   const table = f.doc.createElement('div'); table.className = 'table-scroll';
   table.append(f.doc.createElement('table')); f.card('a').querySelector('.message-preview').append(table);
   const long = f.card('ar'); long.classList.add('long-message');
@@ -88,7 +95,7 @@ for (const action of ['move', 'join', 'reply']) {
       restoreWrites: trace.filter(event => event.kind === 'write').length, table: f.offsets.get(f.table), longMessage: f.offsets.get(f.long) }));
     assert.ok(trace.some(event => event.kind === 'move' && event.connected), 'the real reconcile moved a connected subtree');
     assert.deepEqual(order(f), action === 'join' ? ['b'] : ['a', 'b']);
-    assert.equal(f.table, initialTable); assert.equal(f.card('ar'), initialLong);
+    assert.equal(f.card('a').querySelector('.table-scroll') === initialTable, true, 'the current card contains the original table'); assert.equal(f.card('ar'), initialLong);
     assert.deepEqual(f.offsets.get(f.table), { left: 137, top: 0 });
     assert.deepEqual(f.offsets.get(f.long), { left: 0, top: 241 });
     assert.equal(trace.filter(event => event.kind === 'read').length, 0, 'no scroll getter during the entire arrangement');
@@ -139,4 +146,73 @@ test('888 two feed owners preserve only their own scrolled boxes', () => {
   assert.deepEqual(b.offsets.get(b.table), { left: 73, top: 0 }); assert.deepEqual(b.offsets.get(b.long), { left: 0, top: 81 });
   assert.equal(trace.filter(event => event.kind === 'read').length, 0);
   assert.notEqual(stackState(a.list), stackState(b.list));
+});
+
+
+// Item 896 uses this same move/getter instrument and the shipped renderer.
+const writesOf = (trace, box) => trace.filter(event => event.kind === 'write' && (!box || event.node === box));
+const noReads896 = trace => assert.equal(trace.filter(event => event.kind === 'read' || event.kind === 'scan').length, 0);
+test('896 an arrangement moving no nodes writes no remembered box or newer offset', () => {
+  const f = reading();
+  // A keyboard/caret/Reader scroll has happened but its event is still queued.
+  Object.assign(f.offsets.get(f.table), { left: 188, top: 0 });
+  Object.assign(f.offsets.get(f.long), { left: 0, top: 355 });
+  const trace = f.inspect('unchanged', () => f.draw());
+  assert.equal(trace.filter(event => event.kind === 'move').length, 0);
+  assert.equal(writesOf(trace).length, 0);
+  assert.deepEqual(f.offsets.get(f.table), { left: 188, top: 0 });
+  assert.deepEqual(f.offsets.get(f.long), { left: 0, top: 355 }); noReads896(trace);
+});
+test('896 moving another dossier leaves an unmoved remembered box untouched', () => {
+  const f = reading(), other = f.card('br'); f.scroll(other, 0, 91);
+  Object.assign(f.offsets.get(other), { left: 0, top: 123 });
+  const trace = f.inspect('only a moves', () => change.move(f));
+  assert.ok(trace.some(event => event.kind === 'move' && event.connected));
+  assert.ok(!trace.some(event => event.kind === 'move' && event.node.contains(other)), 'the other dossier did not move');
+  assert.equal(writesOf(trace, other).length, 0); assert.deepEqual(f.offsets.get(other), { left: 0, top: 123 });
+  assert.deepEqual(f.offsets.get(f.table), { left: 137, top: 0 }); assert.deepEqual(f.offsets.get(f.long), { left: 0, top: 241 });
+  noReads896(trace);
+});
+test('896 a hidden move consumes its failed restore and cannot replay on an unrelated arrangement or later move', () => {
+  const f = reading({ dropHidden: true }), parent = f.long.parentElement, next = f.long.nextElementSibling;
+  const fold = foldCard(f.long, { ...f.messages.get('ar'), addressees: ['someone-else'] }, f.doc); parent.insertBefore(fold, next);
+  showFold(fold, true); f.scroll(f.long, 0, 241); f.draw();
+  showFold(fold, false);
+  const hidden = f.inspect('hidden move', () => change.move(f));
+  assert.equal(f.long.hidden, true); assert.ok(hidden.some(event => event.kind === 'move' && event.connected && event.node.contains(f.long)));
+  assert.equal(writesOf(hidden, f.long).length, 2, 'one attempt, both axes');
+  assert.deepEqual(f.offsets.get(f.long), { left: 0, top: 0 }, 'hidden box dropped the write'); noReads896(hidden);
+  showFold(fold, true);
+  const later = f.inspect('shown, unrelated arrange', () => f.draw());
+  assert.equal(writesOf(later, f.long).length, 0); assert.deepEqual(f.offsets.get(f.long), { left: 0, top: 0 }); noReads896(later);
+  const movedAgain = f.inspect('move again without scroll event', () => change.join(f));
+  assert.ok(movedAgain.some(event => event.kind === 'move' && event.node.contains(f.long)));
+  assert.equal(writesOf(movedAgain, f.long).length, 0); assert.deepEqual(f.offsets.get(f.long), { left: 0, top: 0 }); noReads896(movedAgain);
+});
+test('896 a successful restore is consumed, and a later scroll event records a fresh move', () => {
+  const f = reading(); change.move(f);
+  const withoutEvent = f.inspect('join without another scroll', () => change.join(f));
+  assert.ok(withoutEvent.some(event => event.kind === 'move' && event.node.contains(f.long)));
+  assert.equal(writesOf(withoutEvent).length, 0); noReads896(withoutEvent);
+  f.scroll(f.table, -43, 12); f.scroll(f.long, 7, 330);
+  f.messages.get('a').acts.joined = null;
+  const fresh = f.inspect('split after fresh scroll', () => f.draw());
+  assert.ok(fresh.some(event => event.kind === 'move' && event.connected));
+  assert.equal(writesOf(fresh, f.table).length, 2); assert.equal(writesOf(fresh, f.long).length, 2);
+  assert.deepEqual(f.offsets.get(f.table), { left: -43, top: 12 }); assert.deepEqual(f.offsets.get(f.long), { left: 7, top: 330 }); noReads896(fresh);
+});
+test('896 an unmoved remembered box remains eligible for its eventual move', () => {
+  const f = reading(); f.draw();
+  const trace = f.inspect('eventual move', () => change.move(f));
+  assert.equal(writesOf(trace, f.table).length, 2); assert.equal(writesOf(trace, f.long).length, 2);
+  assert.deepEqual(f.offsets.get(f.table), { left: 137, top: 0 }); assert.deepEqual(f.offsets.get(f.long), { left: 0, top: 241 }); noReads896(trace);
+});
+test('896 a singleton gaining its first reply restores a box carried only by the inner section reconcile', () => {
+  const f = fixture(); f.add([message('a', 1)]);
+  const head = f.card('a'), section = head.parentElement, table = f.doc.createElement('div'); table.className = 'table-scroll';
+  head.querySelector('.message-preview').append(table); f.scroll(table, 64, 9);
+  const trace = f.inspect('single gains reply', () => f.add([message('ar', 2, 'a')]));
+  assert.ok(trace.some(event => event.kind === 'move' && event.node === head && event.connected));
+  assert.ok(!trace.some(event => event.kind === 'move' && event.node === section));
+  assert.equal(writesOf(trace, table).length, 2); assert.deepEqual(f.offsets.get(table), { left: 64, top: 9 }); noReads896(trace);
 });
