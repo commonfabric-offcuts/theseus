@@ -2,26 +2,26 @@
 // the repaint; these cursors confer no authority and persist nowhere.
 import { scopedChangesPage, supportsAdmission, readFailure } from './freshness.mjs';
 
-export const outcomeReads = () => new Set(['workspace', 'team', 'standing', 'targets', 'tools', 'references', 'pipeline', 'outcomes', 'topics', 'stars', 'pages']);
+export const outcomeReads = () => new Set(['workspace', 'team', 'standing', 'targets', 'tools', 'references', 'pipeline', 'outcomes', 'topics', 'stars', 'pages', 'counts']);
 export function outcomeInvalidation(workspace, actor) {
   const dirty = new Set(), add = (...names) => names.forEach(name => dirty.add(name));
   for (const item of workspace) {
     const kind = item.resource_kind;
     if (kind === 'workspace') return outcomeReads();
-    if (kind === 'topic') add('topics', 'standing', 'targets', 'pipeline');
+    if (kind === 'topic') add('topics', 'standing', 'targets', 'pipeline', 'counts');
     else if (kind === 'memory') add('references');
-    else if (kind === 'checks') add('targets', 'standing');
-    else if (kind === 'pipeline') add('pipeline', 'targets', 'topics');
+    else if (kind === 'checks') add('targets', 'standing', 'counts');
+    else if (kind === 'pipeline') add('pipeline', 'targets', 'topics', 'counts');
     else if (kind.startsWith('tool_')) add('tools');
     else for (const name of outcomeReads()) if (name !== 'outcomes') dirty.add(name); // Unknown keys reread local panels, not the global list.
   }
   for (const item of actor) {
     const kind = item.resource_kind;
     if (kind === 'workspace' || kind === 'participation') return outcomeReads();
-    if (['waiting', 'delivery', 'mark'].includes(kind)) add('topics', 'standing');
+    if (['waiting', 'delivery', 'mark'].includes(kind)) add('topics', 'standing', 'counts');
     if (kind === 'outcome_order') add('outcomes');
     if (kind === 'topic_order') add('topics');
-    if (['acts', 'dossier_move', 'edit'].includes(kind)) add('stars');
+    if (['acts', 'dossier_move', 'edit'].includes(kind)) add('stars', 'counts');
     if (kind === 'memory_star') add('pages');
     if (kind === 'memory_read') add('references', 'pages');
     // Drafts, preparations and other private writing do not change these lists.

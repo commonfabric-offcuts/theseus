@@ -32,7 +32,7 @@ test('923 scoped change keys map to the existing list owners, leaving private wr
   assert.deepEqual([...outcomeInvalidation([key('memory')], [])], ['references']);
   assert.deepEqual([...outcomeInvalidation([key('tool_use')], [])], ['tools']);
   assert.deepEqual([...outcomeInvalidation([], [key('memory_star')])], ['pages']);
-  assert.deepEqual([...outcomeInvalidation([], [key('acts')])], ['stars']);
+  assert.deepEqual([...outcomeInvalidation([], [key('acts')])], ['stars', 'counts']);
   assert.equal(outcomeInvalidation([key('new-public-key')], []).has('workspace'), true);
 });
 
@@ -84,7 +84,7 @@ test('923 continuation failure keeps the old checkpoint and a later retry reread
   await assert.rejects(changes.next(), /lost continuation/);
   assert.equal(changes.cursors[0].after_seq, 0);
   failed = false; const next = await changes.next();
-  assert.deepEqual([...next.dirty], ['targets', 'standing', 'references']);
+  assert.deepEqual([...next.dirty], ['targets', 'standing', 'counts', 'references']);
   next.accept(); assert.equal(changes.cursors[0].after_seq, 2);
 });
 

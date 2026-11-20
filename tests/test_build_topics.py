@@ -83,6 +83,21 @@ class BuildTopicsCase(PipelineCase):
         self.committed(self.on())
         self.assertEqual(self.ids(build=True), ["t1"], "on again, it is again")
 
+    def test_933_count_only_refresh_keeps_build_counts_and_pipeline_changes(self):
+        self.committed(self.start(numbers=(1,), topic="t1"))
+        self.post("Build update", topic="t1", addressees=["owner"], intent="tell")
+        counts = self.store.view("owner", "workspace_counts", {"workspace_ids": ["w1"]})
+        self.assertNotIn("error", counts, counts)
+        row = counts["items"][0]
+        self.assertGreater(row["build"]["unread"], 0)
+        self.assertGreater(row["build"]["addressed"], 0)
+        listed = self.store.view("owner", "workspaces", {})["items"][0]
+        self.assertEqual(row, {key: listed[key] for key in row})
+        self.committed(self.on(enabled=False))
+        without_build = self.store.view("owner", "workspace_counts", {"workspace_ids": ["w1"]})["items"][0]
+        self.assertEqual(without_build["build"], {"unread": 0, "addressed": 0})
+        self.assertEqual(without_build["unread"], row["unread"])
+
     def test_human_topic_stays_in_the_sidebar_when_an_agent_links_finishes_and_reuses_it(self):
         self.topic("human", "My tracking topic", actor="owner")
         self.assertIn("human", self.ids(build=False))
