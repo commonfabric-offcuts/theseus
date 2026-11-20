@@ -121,9 +121,19 @@ export function topOf(list, entry) {
 // shown last above it with (filled), and those it showed as cards of their
 // own (apart; stack-order.mjs, gather). None is ever recorded.
 export function stackState(list) {
-  if (!states.has(list)) states.set(list, { levels: new Map(), kept: new Set(), unreadKept: new Set(), contextRows: new Set(), peeked: new Set(), here: new Map(), renaming: null,
+  if (!states.has(list)) {
+    // Scroll events do not bubble. Capture the box's own offsets when it
+    // scrolls, so carrying a card never reads layout after another move.
+    const scrolled = new Map();
+    list.addEventListener('scroll', event => {
+      const box = event.target, left = box.scrollLeft, top = box.scrollTop;
+      if (left || top) scrolled.set(box, { left, top });
+      else scrolled.delete(box);
+    }, { capture: true, passive: true });
+    states.set(list, { scrolled, levels: new Map(), kept: new Set(), unreadKept: new Set(), contextRows: new Set(), peeked: new Set(), here: new Map(), renaming: null,
     stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: false, coordinationHere: new Set(), below: new Set(), viewer: null, again: () => {}, waiting: new Set(),
     checking: new Map(), earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set(), filling: null, filled: new Set(), apart: new Set() });
+  }
   return states.get(list);
 }
 
@@ -383,21 +393,8 @@ function reconcile(parent, desired, counts = () => true) {
   let ref = next(parent.firstElementChild);
   for (const node of desired) {
     if (node === ref) { ref = next(ref.nextElementSibling); continue; }
-    carry(node, () => parent.insertBefore(node, ref));
+    parent.insertBefore(node, ref);
   }
-}
-
-// Moves a node, keeping where everything in it was scrolled: a browser puts a
-// box it takes out of the page back at its start, so a table scrolled
-// sideways, or a long message scrolled in its card, would jump back when a
-// join, a move or a new reply carries its card into another place.
-function carry(node, move) {
-  const kept = [];
-  if (node.isConnected) {
-    for (const box of [node, ...node.querySelectorAll('*')]) if (box.scrollLeft || box.scrollTop) kept.push([box, box.scrollLeft, box.scrollTop]);
-  }
-  move();
-  for (const [box, left, top] of kept) { box.scrollLeft = left; box.scrollTop = top; }
 }
 
 const element = (doc, tag, className, text) => {
@@ -984,6 +981,13 @@ export function arrangeStacks(list, messages, options = {}) {
   // unless Only new draws the New items there.
   const { asideShown } = shownView(state);
   for (const node of top) if (node !== state.controls && node !== home) node.hidden = state.waiting.has(node.dataset.id) || aside.includes(node) && !asideShown;
+  // Detaching a card can reset its table or long-message scroll. Restore
+  // only boxes known from their scroll events, after every nested/outer
+  // move, with no position reads or scans of the moved cards' descendants.
+  for (const [box, { left, top }] of state.scrolled) {
+    if (!list.contains(box)) { state.scrolled.delete(box); continue; }
+    box.scrollLeft = left; box.scrollTop = top;
+  }
   if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
   state.on?.arranged?.();
   paintFoldedNames(list, messages, state);

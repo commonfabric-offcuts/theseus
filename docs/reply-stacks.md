@@ -701,6 +701,14 @@ this is checked in Chrome.
 A card that a join, a move or a new reply carries to another place keeps
 where it was scrolled: a table scrolled sideways, or a long message scrolled
 in its card, stays as it was, and the page keeps its place.
+One capturing scroll listener on the feed remembers only boxes whose own
+scroll events report a nonzero offset (item 888). Returning both axes to zero
+forgets the box. Reconciliation moves nodes without reading scroll positions
+or scanning their descendants; after all moves it restores only remembered
+boxes still in that feed. Detached boxes are forgotten. This is visit state,
+never stored. `tests/ui_scroll_carry_888.test.mjs` exercises the actual renderer
+with modelled detach resets and counts position reads/writes across moves,
+joins and new replies. It does not measure browser layout or responsiveness.
 
 A join the reader makes, by ⇧⌘↑ or ⇧⌘↓, from ⋯ or from the phone's sheet,
 shows where it went (`joinShown`). The stack it went into, which now heads
