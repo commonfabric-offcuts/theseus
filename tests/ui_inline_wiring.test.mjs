@@ -121,15 +121,20 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     getAttributeNames() { return []; }
     hasAttribute(name) { return name in this; }
     toggleAttribute(name, force = !this.hasAttribute(name)) { if (force) this.setAttribute(name, ''); else this.removeAttribute(name); return force; }
-    // A bare tag name finds the first such element inside, a :scope chain the first it reaches; any other selector names an element by id.
+    // Tags, data attributes and :scope chains find descendants. Named page
+    // elements keep the fixture's existing id lookup.
     querySelector(selector) {
-      if (selector.startsWith(':scope')) return this.querySelectorAll(selector)[0] ?? null;
+      if (selector.startsWith(':scope') || selector.startsWith('[data-')) return this.querySelectorAll(selector)[0] ?? null;
       if (!/^[a-z][a-z0-9]*$/.test(selector)) return get(selector.slice(1));
       for (const child of this.children) { if (child.tagName?.toLowerCase() === selector) return child; const inner = child.querySelector?.(selector); if (inner) return inner; }
       return null;
     }
     // The rail's sideways strips are a phone layout this fixture does not draw.
     querySelectorAll(selector = '') {
+      if (selector.startsWith('[data-')) {
+        const found = [], walk = host => { for (const child of host.children) if (child instanceof Element) { if (isStep(child, selector)) found.push(child); walk(child); } };
+        walk(this); return found;
+      }
       // A list's entries, read as the reply stacks read them (':scope > [data-id], :scope > .reply-stack > [data-id]', reply-stacks.mjs), in the page's order.
       if (selector.startsWith(':scope')) {
         const chains = selector.split(',').map(chain => chain.split('>').slice(1).map(step => step.trim()));
@@ -167,11 +172,13 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     replaceWith(next) { if (this.parent) { this.parent.insertBefore(next, this); this.remove(); } }
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
-  // One step of a selector: a tag or classes, optionally with [data-name].
+  // One step of a selector: a tag or classes, optionally with a data
+  // attribute's presence or exact quoted/bare value.
   const isStep = (el, step) => {
-    const data = step.match(/\[data-([\w-]+)\]$/);
+    const data = step.match(/\[data-([\w-]+)(?:=(?:"([^"]*)"|'([^']*)'|([^\]\s]+)))?\]$/);
     if (data) {
-      if (el.dataset[data[1].replace(/-(.)/g, (_, c) => c.toUpperCase())] === undefined) return false;
+      const actual = el.dataset[data[1].replace(/-(.)/g, (_, c) => c.toUpperCase())], expected = data[2] ?? data[3] ?? data[4];
+      if (actual === undefined || (expected !== undefined && String(actual) !== expected)) return false;
       step = step.slice(0, -data[0].length);
     }
     const [tag, ...classes] = step.split('.'), names = String(el.className ?? '').split(' ');
@@ -295,6 +302,37 @@ function mountOutcomeOutline(f) {
 }
 const outcomeCards = f => walk(f.get('topic-navigation')).filter(node => node.classList?.contains('outcome-topic-card'));
 const outcomeCardTitles = f => outcomeCards(f).map(card => card.children[0].textContent);
+
+// Item 859 put Team in the shared header. This fixture does not parse HTML;
+// read that shipped placement as well as the app's live middle-page order.
+const assertOutcomeTeamHeader = f => {
+  const html = webSource('index.html'), header = html.match(/<header class="topic-header">([\s\S]*?)<\/header>/);
+  assert.ok(header, 'the shared topic header exists');
+  assert.match(header[1], /<section id="outcome-team" class="topic-people"[^>]*>[\s\S]*?id="team-people"[\s\S]*?<\/section>/);
+  assert.ok(header.index < html.indexOf('id="outcome-page"'), 'Team in the header precedes the outcome middle');
+  assert.equal(f.get('outcome-team').hidden, false, 'the outcome Team is shown');
+  assert.equal(f.get('outcome-page').contains(f.get('outcome-team')), false, 'initialization keeps Team in the header');
+};
+
+test('876 inline fixture selects exact descendant data values and walks past text children', () => {
+  const f = fixture(), host = f.document.createElement('div'), nested = f.document.createElement('div');
+  const buttons = ['reply', 'aside', 'menu', ''].map(tool => Object.assign(f.document.createElement('button'), { dataset: { tool } }));
+  const absent = f.document.createElement('button');
+  host.append('before', buttons[0], nested); nested.append('between', ...buttons.slice(1), absent);
+  assert.equal(walk(host).length, 6, 'text children do not become element descendants');
+  assert.deepEqual(walk(host).map(node => node === nested ? 'nested' : buttons.indexOf(node)), [0, 'nested', 1, 2, 3, -1]);
+  for (const [index, tool] of ['reply', 'aside', 'menu', ''].entries()) {
+    for (const selector of [`[data-tool="${tool}"]`, `[data-tool='${tool}']`, ...(tool ? [`[data-tool=${tool}]`] : [])]) {
+      assert.equal(host.querySelector(selector) === buttons[index], true, `${selector} finds its actual descendant`);
+      assert.equal(host.querySelectorAll(selector).length, 1, `${selector} matches exactly one value`);
+    }
+  }
+  assert.equal(nested.querySelector('[data-tool=reply]'), null, 'lookup stays inside its host');
+  assert.equal(host.querySelector('[data-tool=missing]'), null, 'a missing value creates no fake global-id node');
+  assert.equal(host.querySelectorAll('[data-tool]').length, 4, 'presence includes empty and excludes absent');
+  assert.equal(host.querySelector(':scope > [data-tool=menu]'), null, 'direct-child scope excludes nested tools');
+  assert.equal(host.querySelector(':scope > div > [data-tool=menu]') === buttons[2], true);
+});
 
 test('the inline fixture reveals an offscreen card through real window and scroller geometry', () => {
   const geometryTolerance = .5;
@@ -1826,6 +1864,16 @@ async function readingPage() {
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
+// Item 857 starts ordinary dossiers open. A check about a folded dossier
+// makes that choice through the actual chevron before checking its behavior.
+const foldDossier = (f, id) => {
+  const folder = entryIn(f, id)?.closest('.reply-stack');
+  assert.equal(folder?.dataset.fold, 'open', `${id} starts open before the explicit fold`);
+  const toggle = folder.children.find(node => node.classList?.contains('stack-toggle'));
+  toggle.onclick();
+  assert.equal(folder.dataset.fold, 'folded', `${id} takes the explicit folded choice`);
+};
+
 test('843 actual dossier chevron clears its session marks on collapse, preserves them on expand and leaves other dossiers alone', async () => {
   const { f } = await readingPage();
   // This fixture supplies the browser microtask primitive used by clearVisitNew.
@@ -1838,6 +1886,9 @@ test('843 actual dossier chevron clears its session marks on collapse, preserves
   ].map(item => ({ ...item, author_id: 'agent-a', topic_id: 't1', unread: false, acts: { folded: false, fold_revision: 0 } }));
   for (const item of items) f.views.messages.set(item.id, item);
   const stored = JSON.stringify(items), commands = f.calls.filter(c => c.kind).length;
+  // An already-folded dossier receives these arrivals. Seeding the earlier
+  // choice avoids handling these very messages in a setup collapse (843).
+  f.runObservation("stackState(document.getElementById('messages')).levels.set('m1', 'folded')");
   f.runObservation('visitNew.arrive([...views.messages.values()])');
   f.paintViews('messages'); await settle();
   const marks = () => [...f.runObservation('visitNew.arrivals')].sort();
@@ -2134,7 +2185,7 @@ test('a message sent by name opens where it can even when the page never started
 
 // The pickers: who may change a topic's participants or an outcome's team gets
 // a field fed by the directory, and the composer offers who can be sent to.
-const walk = node => node.children.flatMap(child => [child, ...walk(child)]);
+const walk = node => (node.children ?? []).filter(child => child && typeof child === 'object').flatMap(child => [child, ...walk(child)]);
 // A person in the topic's people: one pill, at the bottom of the page.
 const isPill = node => String(node.className ?? '').split(' ').includes('person-pill');
 // A small stand-in for Core: participation.set and workspace.member_set check
@@ -3700,6 +3751,7 @@ test('folded, a stack gathered under a first message not loaded shows its head\'
   const items = [...[2, 3, 4, 5].map(seq => item(seq, 'm1', { reply_to: 'm1', unread: true })), ...[20, 21, 22].map(seq => item(seq, 'm10', { reply_to: 'm10' })),
     item(40, 'm40'), item(41, 'm40', { reply_to: 'm40' })];
   views.messagesPage({ instance_id: 'fixture', items, next_cursor: null, relevant_versions: { topic: 1 } }, { initial: true }); await settle();
+  for (const id of ['m2', 'm20', 'm40']) foldDossier(f, id);
   const section = id => entryIn(f, id)?.closest('.reply-stack') ?? null;
   const look = id => [section(id)?.dataset.stack, section(id)?.dataset.fold, section(id)?.dataset.headOpen];
   assert.deepEqual([look('m2'), look('m20'), look('m40')], [['m2', 'folded', 'true'], ['m20', 'folded', 'true'], ['m40', 'folded', 'false']],
@@ -3812,9 +3864,10 @@ test('on an outcome page its Notebook pages precede its topics and read again wi
   f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
   o.answers.push(o.page(['w1']), o.page(['w1']));
   await f.initialize(); await drain();
+  assertOutcomeTeamHeader(f);
   const page = f.get('outcome-page').children.map(child => child.id);
-  assert.deepEqual(page.slice(page.indexOf('outcome-team'), page.indexOf('topic-navigation') + 1),
-    ['outcome-team', 'outcome-references', 'page-here', 'topic-navigation'], 'Team, Notebook and the open page precede the topic cards');
+  assert.deepEqual(page.slice(page.indexOf('team-invite'), page.indexOf('topic-navigation') + 1),
+    ['team-invite', 'outcome-references', 'page-here', 'topic-navigation'], 'below Team, its invitation, Notebook and the open page precede the topic cards');
   assert.ok(f.get('topic-navigation').children.some(node => node.className === 'outcome-topic-cards'));
   const pages = () => JSON.parse(JSON.stringify(f.calls.filter(call => call.name === 'memory_items').map(call => call.args.owner_scope)));
   assert.deepEqual(pages(), [{ kind: 'workspace', id: 'w1' }]);
@@ -4636,7 +4689,7 @@ test('cards inside a reply stack count as read on screen, and a range breaks at 
 // (ui_conversation.test.mjs) and the browser's (conversation_native.mjs) read
 // their words; here each painter records the card it was given and the link it
 // follows, so these checks read what the page hands them for a stacked message.
-async function conversationPage(list, { waits = [], href = 'https://fixture/?topic=t1' } = {}) {
+async function conversationPage(list, { waits = [], href = 'https://fixture/?topic=t1', folded = [] } = {}) {
   const painted = { tags: new Map(), asks: new Map(), about: new Map() }, renames=[];
   const f = fixture(href, { history: { state: null, replaceState(_state,_title,url) {renames.push(url);} },
     paintItemTags: (card, item, shownWaits, _reader, open) => painted.tags.set(card.dataset.id, { card, item, waits: shownWaits, open }),
@@ -4657,7 +4710,9 @@ async function conversationPage(list, { waits = [], href = 'https://fixture/?top
   for (const message of list) f.views.messages.set(message.id, { topic_id: 't1', sent_ms: null, reply_to: null, unread: false, item: null, ...message });
   f.views.newest = Math.max(...list.map(message => message.seq));
   // The first page of messages is painted as the page starts, as TopicViews paints it.
-  f.views.messagesPage = () => f.paintViews('messages');
+  // Tests of links may need a folded destination before initialize handles
+  // the address. Choose it on the actual first paint, through its chevron.
+  f.views.messagesPage = () => { f.paintViews('messages'); for (const id of folded) foldDossier(f, id); };
   const view = f.api.view;
   f.api.view = async (name, args, options) => {
     if (name === 'conversation') return { instance_id: 'fixture', conversation: { topic_id: 't1', version: 1, coordinator: { actor_id: 'agent-a' },
@@ -4715,7 +4770,7 @@ test('a covered dossier keeps its first sheet above every message through an edi
 });
 
 test('on the conversation page replies stack under the message they answer, as in any topic, and its own marks reach every stacked message', async () => {
-  const { f, painted, stackOf } = await conversationPage(conversationMessages(), { waits: ASKED });
+  const { f, painted, stackOf } = await conversationPage(conversationMessages(), { waits: ASKED, folded: ['m1'] });
   assert.ok(stackOf('m2'), 'a reply on the conversation page is in a reply stack');
   const stack = stackOf('m1');
   assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => stackOf(id) === stack), [true, true, true, true], 'every reply up the chain, in the one stack of the message they answer');
@@ -4736,7 +4791,7 @@ test('on the conversation page replies stack under the message they answer, as i
 });
 
 test('on the conversation page a link to a message folded in a stack opens its stack and lands on it, from a tag or from the address', async () => {
-  const { f, painted, opens, stackOf } = await conversationPage(conversationMessages(), { waits: ASKED });
+  const { f, painted, opens, stackOf } = await conversationPage(conversationMessages(), { waits: ASKED, folded: ['m1'] });
   const scrolled = [];
   for (const id of ['m2', 'm4']) entryIn(f, id).scrollIntoView = () => scrolled.push(id);
   assert.equal(entryIn(f, 'm2').hidden, true, 'the reply the item\'s Answered tag names is folded away');
@@ -4752,27 +4807,45 @@ test('on the conversation page a link to a message folded in a stack opens its s
   painted.about.get('m1').open('message', 'elsewhere'); await settle();
   assert.equal(opens.at(-1)[0], 'elsewhere');
   // A message's link (docs/links.md) to a folded reply in the conversation.
-  const linked = await conversationPage(conversationMessages(), { waits: ASKED, href: 'https://fixture/?topic=t1&message=m2' });
+  const linked = await conversationPage(conversationMessages(), { waits: ASKED, href: 'https://fixture/?topic=t1&message=m2', folded: ['m1'] });
   assert.deepEqual([linked.stackOf('m2').dataset.fold, entryIn(linked.f, 'm2').hidden, linked.opens.at(-1)], ['open', false, ['m2', 'm2']],
     'the address opens the stack and the Reader on the message, from its card');
 });
 
 test('on the conversation page More messages brings a stack\'s first message: the replies gather under it, and its tags and what it keeps in view follow', async () => {
   const all = conversationMessages(), first = all[0];
-  const { f, painted, stackOf } = await conversationPage(all.slice(1), { waits: ASKED });
+  const { f, painted, stackOf } = await conversationPage(all.slice(1), { waits: ASKED, folded: ['m2'] });
   // Its parent not loaded, the ask heads nothing and stands alone; m2 heads its own replies.
   assert.deepEqual([stackOf('m4'), stackOf('m3') === stackOf('m2'), entryIn(f, 'm2').closest('.reply-stack')?.children[0].dataset.id], [null, true, 'm2']);
   f.views.messages.set(first.id, { topic_id: 't1', sent_ms: null, reply_to: null, unread: false, ...first });
   f.paintViews('messages'); await settle();
   const stack = stackOf('m1');
   assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => stackOf(id) === stack), [true, true, true, true], 'the older message heads the one stack');
+  // This legacy response omits Core's stack_position. Until m1 is loaded,
+  // it names m2 and m4 as separate dossiers; m1 therefore starts a new view.
+  foldDossier(f, 'm1');
   assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, true, true, true], 'read asks and New items do not add extra messages');
   assert.equal(entryIn(f, 'm1').dataset.item, undefined, 'More paints no retired Only new marker');
   assert.equal(painted.about.get('m1').item.id, 'm1', 'More keeps ordinary source-link context');
+
+  // A current Core response identifies the canonical dossier even before
+  // its first message is loaded. Its explicit fold must survive reheading.
+  const positioned = all.map(message => ({ ...message, stack_position: {
+    root_id: message.id === 'm6' ? 'm6' : 'm1', through: null, below: false, aside_revision: 0,
+    name: null, name_revision: 0, at: { acts: 1, messages: 0 },
+  } }));
+  const current = await conversationPage(positioned.slice(1), { waits: ASKED, folded: ['m2'] });
+  assert.equal(current.stackOf('m4') === current.stackOf('m2'), true, 'Core identifies the unloaded first message for every branch');
+  current.f.views.messages.set('m1', { topic_id: 't1', sent_ms: null, reply_to: null, unread: false, ...positioned[0] });
+  current.f.paintViews('messages'); await settle();
+  assert.equal(current.stackOf('m1').dataset.fold, 'folded', 'the canonical dossier keeps its chosen fold when its first message loads');
+  assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => current.stackOf(id) === current.stackOf('m1')), [true, true, true, true]);
+  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(current.f, id).hidden), [false, true, true, true]);
+  assert.equal(current.painted.about.get('m1').item.id, 'm1');
 });
 
 test('on the conversation page a reply folded in its stack is never reported read, as in any topic', async () => {
-  const { f } = await conversationPage(conversationMessages(), { waits: ASKED });
+  const { f } = await conversationPage(conversationMessages(), { waits: ASKED, folded: ['m1'] });
   const ranges = () => f.calls.filter(c => c.kind === 'topic.read_through').map(c => [c.envelope.args.from_seq, c.envelope.args.seq]);
   // On screen, as a browser sees it: every entry shown, and none folded away.
   const [observer] = f.observers;
@@ -5041,8 +5114,9 @@ test('847 and 852 outcome home puts Team then Notebook above topics and shares b
   };
   f.inject({api:f.api,bootstrap:f.bootstrap}); f.useLive(live);
   await f.initialize();await drain();
+  assertOutcomeTeamHeader(f);
   const ids=f.get('outcome-page').children.map(node=>node.id);
-  assert.deepEqual(ids,['outcomes-status','retry-workspaces','outcome-team','outcome-references','page-here','topic-navigation','outcome-tools','outcome-standing','outcome-purpose','target-panel','pipeline-line','also-waiting','loop-panel','problems-panel']);
+  assert.deepEqual(ids,['outcomes-status','retry-workspaces','team-invite','outcome-references','page-here','topic-navigation','outcome-tools','outcome-standing','outcome-purpose','target-panel','pipeline-line','also-waiting','loop-panel','problems-panel']);
   assert.equal(f.get('new-topic').children[0]?.id,pencil.id);
   assert.notEqual(f.get('new-topic').children[0],pencil);
   assert.equal(f.get('new-topic').getAttribute('aria-label'),'New topic');
