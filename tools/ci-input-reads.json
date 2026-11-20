@@ -5205,5 +5205,13 @@
       "scope": "generated/system/product",
       "inputs": []
     }
+  },
+  "tests/ui_notebook_toggle_878.test.mjs": {
+    "579771381e131c051465225118564a41c44ff4067d2c84747a625249f2203798": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    }
   }
 }
