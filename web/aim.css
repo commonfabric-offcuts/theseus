@@ -1113,8 +1113,11 @@ dialog.notebook-sheet-dialog:not([open]){display:none}
 .sheet-glyph:hover{background:var(--soft);color:var(--ink)}
 .notebook-sheet-head .sheet-glyph{flex:none;width:2.5rem;height:2.5rem}
 .notebook-sheet-dock[aria-pressed=true]{background:var(--soft);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
-.notebook-sheet-pages{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--paper)}
-.notebook-sheet-page{flex:1;min-height:0;max-width:none;scroll-padding-top:.75rem;display:flex;flex-direction:column;gap:.6rem;overflow:auto;overscroll-behavior:contain;padding:0 1.1rem 1.1rem}
+.notebook-sheet-pages{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--paper);position:relative;overflow:hidden;isolation:isolate}
+/* 900: paint the same inset above the opaque page. Its top sits outside this
+   clip, so no seam is added under the unchanged header. No hit area or space. */
+.notebook-sheet-pages::after{content:"";position:absolute;inset:-100% 0 0;border-radius:0 0 var(--stack-r-sheet) var(--stack-r-sheet);box-shadow:var(--stack-cover-inset);pointer-events:none;z-index:1}
+.notebook-sheet-page{flex:1;min-height:0;max-width:none;scroll-padding-top:.75rem;display:flex;flex-direction:column;gap:.6rem;overflow:auto;overscroll-behavior:contain;padding:0 1.1rem 1.1rem;isolation:isolate}
 .notebook-sheet-page>*{flex:none}
 .notebook-sheet-page>.deck-bar{padding:.55rem 0 .35rem}
 .notebook-sheet-page>.notebook-text-panel:not([hidden]){flex:1 1 auto;display:flex;min-height:10rem;padding-top:.75rem}
