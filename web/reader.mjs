@@ -93,7 +93,7 @@ export class Reader {
     this.narrow = window.matchMedia('(max-width: 760px)');
     this.narrow.addEventListener('change', () => { this.placeEnd(); if (this.dialog.open) this.applyLayout(); });
     this.bind();
-    this.syncWidthPlacement = composerWidth(this.dialog);
+    this.syncWidthPlacement = composerWidth(this.dialog, () => this.layout);
   }
   // Capture the source where the gesture began. A step, close or access change
   // during the gesture cannot fold another source or touch private writing.
@@ -354,9 +354,7 @@ export class Reader {
     this.compose?.writes(this.placeKey());
     if (this.layoutInstance !== sessions.reply.context.instanceId) {
       this.layoutInstance = sessions.reply.context.instanceId;
-      let storage;
-      try { storage = window.localStorage; } catch { /* no persisted preference */ }
-      this.layout = new ReaderLayout(this.layoutInstance, storage);
+      this.layout = new ReaderLayout(this.layoutInstance);
     }
     this.mode = mode;
     this.notice('');
@@ -397,11 +395,12 @@ export class Reader {
     this.drawAttachments(this.$('source-attachments'), source.attachments);
     this.drawEditor();
     this.paintPending();
-    if (!this.dialog.open) { if (this.card) this.dialog.show(); else this.dialog.showModal(); }
+    const opening = !this.dialog.open;
+    if (opening) { if (this.card) this.dialog.show(); else this.dialog.showModal(); }
     // A message opens to be read: the reply is its one line until written in.
     if (!same) { this.kept = null; this.held = null; this.compose?.fold(); }
     if (left) this.notice(KEPT);
-    this.applyLayout();
+    this.applyLayout({ opening });
     this.moveTo(this.positions.get(this.placeKey()) ?? 0);
     if (mode === 'note') this.field.focus({ preventScroll: true });
     else if (!same && !this.card) this.sourceBody.focus({ preventScroll: true });
@@ -455,7 +454,7 @@ export class Reader {
     if (!this.card) return;
     this.presentation.replyCard = null;
     this.placeReply(null);
-    this.dialog.showModal(); this.applyLayout(); this.field.focus({ preventScroll: true });
+    this.dialog.showModal(); this.applyLayout({ opening: true }); this.field.focus({ preventScroll: true });
   }
 
   // What changed in the Notebook page shown since the revision the reader
@@ -474,10 +473,11 @@ export class Reader {
     this.applyLayout();
   }
 
-  applyLayout() {
+  applyLayout({ opening = false } = {}) {
     const place = this.captureVisiblePlace();
     const shape = this.layoutShape, share = this.layout.share('wide');
     this.dialog.dataset.layout = shape;
+    this.syncWidthPlacement?.({ opening });
     // In hundredths of the room, so when one pane keeps a floor (aim.css) the other
     // still takes all that is left: shares that sum to under 1fr would leave a gap.
     this.dialog.style.setProperty('--reading-share', `${(1 - share) * 100}fr`);

@@ -10,6 +10,7 @@ import { ComposeBar } from './compose-bar.mjs';
 import { holdPlace } from './sheet-holder.mjs';
 import { currentImages, imageBarrier } from './upload-state.mjs';
 import { composerWidth } from './composer-width.mjs';
+import { ReaderLayout } from './layout.mjs';
 
 
 // The inline DOM adapter shares the existing registry/session/upload owners.
@@ -31,7 +32,8 @@ export class InlineComposer {
     // place in the feed, just above More (reply-stacks.mjs), its writing kept. Shown only where the composer is
     // (aim.css), so it is never one more row of buttons.
     this.sheet = document.querySelector('#new-message-sheet');
-    composerWidth(this.sheet);
+    this.useLayout(callbacks.instanceId);
+    this.syncWidthPlacement = composerWidth(this.sheet, () => this.layout);
     document.querySelector('#new-message')?.addEventListener('click', () => this.pop());
     // Put back by the person (✕, Escape, a press outside), the composer folds to its line while still up, so it
     // comes back into its place at the height its holder kept there, and no card behind it moves (item 589).
@@ -113,11 +115,18 @@ export class InlineComposer {
   admits(p = this.presentation, editor = this.editor) { return Boolean(editor && this.callbacks.admits(p, editor)); }
   state() { return writingState(this.editor, { active: this.admits(), status: this.callbacks.status, sign: this.callbacks.sign }); }
   caret() { return this.input.caret(); }
+  useLayout(instanceId) {
+    if (instanceId && this.layoutInstance !== instanceId) {
+      this.layoutInstance = instanceId;
+      this.layout = new ReaderLayout(instanceId);
+    }
+  }
   pop() {
     if (!this.sheet || this.sheet.open || this.root.hidden) return;
     // At rest it is among the dossiers (item 465): a holder keeps its place there, so the feed does not move behind it.
     holdPlace(this.sheet);
     this.sheet.showModal(); this.popped = true; this.opening = Symbol();
+    this.syncWidthPlacement?.({ opening: true });
     // Start at one line and fit the writing at the sheet’s current width.
     this.bar.fit();
     this.field.focus();
@@ -126,6 +135,7 @@ export class InlineComposer {
   show(p) {
     if (this.sheet?.open && this.presentation !== p) this.sheet.close();
     this.presentation = p; this.root.hidden = false;
+    this.useLayout(p.editors.reply.context.instanceId);
     // A name typed in To stays with the new message of the topic it was typed in.
     this.bar.writes(p.topic.id);
     this.field.disabled = false; showLine(this.$('notice'), '');
