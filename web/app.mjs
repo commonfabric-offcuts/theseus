@@ -623,7 +623,7 @@ async function present(presentation) {
 // topic's message (opened from an About link) is no part of this page's view.
 function onPage(presentation, core) {
   const here = presentation?.source?.topic_id === topic?.id;
-  return readerSteps(presentation?.source?.source_ref, core, here ? stackPage(stackState($('messages'))) : null);
+  return readerSteps(presentation?.source?.source_ref, core, here ? stackPage(stackState($('messages')), feedMessages()) : null);
 }
 // Core's word on the Reader's neighbours is kept with what it shows (core),
 // and what ↑ and ↓ may step to is worked out from it and the page as shown
@@ -1487,11 +1487,12 @@ function paintCardReading() {
   }
 }
 // A message the page shows, brought into view: its stack opened first when it
-// folds the message away, and its fold opened. Null when it is not loaded.
+// folds the message away, and its fold opened. A hidden structural question
+// lands on its first visible dossier card. Null when no visible card is loaded.
 function landOn(id, { full = false } = {}) {
-  const entry = entries($('messages')).find(child => child.dataset.id === id);
-  if (!entry) return null;
   releaseTopArrivals();
+  const entry = stackFeed.landingEntry(id);
+  if (!entry) return null;
   anchorHold = null;
   reveal(entry, { full });
   const card = opened(entry);
@@ -1500,7 +1501,8 @@ function landOn(id, { full = false } = {}) {
   return card;
 }
 // A rail landing can name a card outside the loaded page. Read only its
-// anchored page, preserving the paging gap, without presenting a Reader.
+// anchored page, preserving the paging gap. With no visible card, the exact
+// source opens through the ordinary Reader owner instead.
 let landingSerial = 0;
 async function landOnMessage(id, serial = ++landingSerial) {
   const accessEpoch = listAccessEpoch, generation = registry.generation;
@@ -1525,7 +1527,7 @@ async function landOnMessage(id, serial = ++landingSerial) {
   // before its bubbling click closes the drawer and removes main's inertness.
   if (shell.drawer?.isOpen()) shell.drawer.close();
   const card = landOn(id, { full: true });
-  if (!card) throw Error('This message could not be shown. Try its link again.');
+  if (!card) return Boolean(await openSource({ kind: 'message', id }, document.activeElement));
   card.focus({ preventScroll: true });
   return true;
 }
@@ -1917,7 +1919,7 @@ async function readReaderDossier(presentation, read, current = () => true) {
   const lookup = ++dossierRead, accessEpoch = listAccessEpoch;
   const source = presentation?.source, id = source?.source_ref?.id;
   if (!presentation || presentation.sourceUnavailable || source.source_ref.kind !== 'message' ||
-      source.topic_id !== topic?.id || views.messages.has(id) && stackFeed?.dossierName(id)) return true;
+      source.topic_id !== topic?.id || stackFeed?.dossierName(id)) return true;
   const admitted = () => lookup === dossierRead && current() && accessEpoch === listAccessEpoch &&
     !topicUnavailable && registry.isSourceCurrent(presentation);
   const answer = checkedView(await read('stack_positions', { topic_id: source.topic_id, message_ids: [id] }), bootstrap.instance_id);
@@ -3178,7 +3180,9 @@ async function initialize() {
             } finally { foreground.release(); }
           }
           if (accessEpoch !== listAccessEpoch || topicUnavailable || registry.current) return true;
-          landOn(id, { full: true })?.focus({ preventScroll: true });
+          const card = landOn(id, { full: true });
+          if (card) card.focus({ preventScroll: true });
+          else await openSource({ kind: 'message', id }, p.opener);
         }
         return true;
       } catch (error) { if (reader.dialog.open) reader.notice(error); else status(error); return false; }

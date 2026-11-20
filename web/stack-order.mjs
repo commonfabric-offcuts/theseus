@@ -170,6 +170,7 @@ export function visibleStacks(stacks, viewer) {
     if (!visible.length) return [];
     const [head, ...replies] = visible;
     return [{ ...stack, id: head.id, head, replies, sourceStack: stack,
+      newest: Math.max(...visible.map(item => item.seq)),
       sourceHead: head === stack.head && stack.sourceHead }];
   });
 }
@@ -332,7 +333,10 @@ export function headOf(stack, { preview = item => String(item.body ?? '').split(
   const repliers = [];
   for (const item of stack.replies) if (!repliers.includes(item.author_id)) repliers.push(item.author_id);
   const headNew = unread(stack.head);
-  return { name: typed?.text || preview(stack.head), typed: typed ?? null, mintedBy: typed?.text && typed.minted === true ? typed.by : null, count: stack.replies.length, repliers,
+  // A withdrawal projection's surviving reply has no first-message title.
+  // Keep its neutral shown name in every consumer, not only the feed painter.
+  const name = typed?.text || (stack.sourceStack && stack.id !== stack.dossier ? 'Dossier' : preview(stack.head));
+  return { name, typed: typed ?? null, mintedBy: typed?.text && typed.minted === true ? typed.by : null, count: stack.replies.length, repliers,
     headNew, fresh: headNew ? 0 : stack.replies.filter(unread).length };
 }
 
@@ -438,14 +442,19 @@ export const placeOf = position => (position ? `${position.root_id}:${position.a
 // sits, top to bottom, those not on show included (readingOrder of the stacks
 // above More, then below it); order, those of them on show (view.hidden), and
 // with view.only (the Conversation's Only new) just the messages it draws;
-// shown, their ids; loaded, the ids of all; hiddenRoots, the dossier (Core's
+// shown, their ids; loaded, the ids of all plus known own withdrawn questions
+// omitted from the projection; hiddenRoots, the dossier (Core's
 // root_id) of each stack drawn but not on show; asideShown, whether a dossier
 // put below More is on show (More open, or Only new).
-export function pageOf(stacks, view) {
+export function pageOf(stacks, view, { known = [], viewer = null } = {}) {
   const all = readingOrder(shownOrder(stacks, { below: view.below, hidden: () => false }));
   const hiddenRoots = new Set(stacks.filter(stack => view.hidden(stack)).flatMap(stack => [stack.id, positionOf(stack)?.root_id ?? stack.id]));
   const order = readingOrder(shownOrder(stacks, view)).filter(item => !view.only || view.only(item));
-  return { all, order, shown: new Set(order.map(item => item.id)), loaded: new Set(all.map(item => item.id)),
+  const loaded = new Set(all.map(item => item.id));
+  // Projection can omit an entire dossier. Its known withdrawn question is
+  // still loaded, so a Core neighbor must not reopen it as an outside edge.
+  for (const item of known) if (ownWithdrawnQuestion(item, viewer)) loaded.add(item.id);
+  return { all, order, shown: new Set(order.map(item => item.id)), loaded,
     hiddenRoots, asideShown: Boolean(view.asideShown), only: view.only ?? null };
 }
 
