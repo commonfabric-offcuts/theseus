@@ -585,28 +585,42 @@ export class DossierHeads {
     };
     const accept = (entries, page) => {
       if (!Array.isArray(page?.items)) throw Error('The dossier source could not be read.');
+      const remaining = [];
       for (const entry of entries) {
         if (!current(entry)) continue;
         const [id, record] = entry, item = page.items.find(item => item.id === id);
+        // Core's byte limit can cut a named-ID answer before all its rows.
+        // An omitted head is missing only when the answer is complete.
+        if (!item && page.next_cursor != null) { remaining.push(entry); continue; }
         if (item && (item.topic_id !== this.topicId || item.stack_position?.root_id !== id)) {
           failed(entry, Error('The dossier source identity changed.')); continue;
         }
         Object.assign(record, item?.withheld ? { state: 'refused' } : item ? { state: 'available', item: { ...item, dossierSource: true } } : { state: 'missing' });
         settled.add(entry);
       }
+      return remaining;
     };
     const read = entries => this.read('topic_messages', { topic_id: this.topicId, message_ids: entries.map(([id]) => id) });
-    try { accept(batch, await read(batch)); }
+    let pending = batch;
+    try {
+      while (pending.length) {
+        const remaining = accept(pending, await read(pending));
+        if (remaining.length === pending.length) throw Error('The dossier source answer made no progress.');
+        pending = remaining.filter(current);
+      }
+    }
     catch (error) {
       // A refused batch identifies no particular head. Read each still-wanted
       // head once, serially, so one refusal cannot hide admitted siblings.
       // Transport/malformed failures do not fan out into another request run.
-      if (refused(error) && batch.length > 1) {
-        for (const entry of batch) {
+      if (refused(error) && pending.length > 1) {
+        for (const entry of pending) {
           if (!current(entry)) continue;
-          try { accept([entry], await read([entry])); } catch (failure) { failed(entry, failure); }
+          try {
+            if (accept([entry], await read([entry])).length) throw Error('The dossier source answer made no progress.');
+          } catch (failure) { failed(entry, failure); }
         }
-      } else for (const entry of batch) failed(entry, error);
+      } else for (const entry of pending) failed(entry, error);
     }
     // A fallback can await a sibling after settling another head; invalidating
     // that earlier head while waiting must not cause a stale repaint either.

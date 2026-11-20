@@ -123,3 +123,78 @@ test('886 fallback results invalidated while a later sibling waits never trigger
   f.heads.invalidate('a'); f.heads.invalidate('b'); finish(); await f.heads.readTail;
   assert.equal(f.paints(), 0); assert.equal(f.heads.records.size, 0);
 });
+
+// Model conversation._view_topic_messages's actual cut: 1024 bytes reserved,
+// UTF-8 JSON length + one per row, stop before the first row exceeding 131072,
+// then add presentation fields. Named-ID answers sort by sequence, not request
+// order, and forbid a cursor. This is transport data, not a Core execution.
+function byteCut(rows) {
+  const items = []; let size = 1024, last = null;
+  for (const row of rows) {
+    const encoded = Buffer.byteLength(JSON.stringify(row), 'utf8') + 1;
+    if (size + encoded > 131072) break;
+    items.push({ ...row, stack_position: { root_id: row.id } });
+    size += encoded; last = row.seq;
+  }
+  return { items, next_cursor: rows.length > items.length ? last : null };
+}
+
+test('886 byte-cut named answers reread only omitted heads until complete, with one repaint', async () => {
+  const rows = Array.from({ length: 90 }, (_, i) => ({ id: `large-${i}`, topic_id: 'topic', seq: i + 1, body: 'é'.repeat(1800) }));
+  const ids = rows.map(row => row.id).reverse(), replies = loaded(ids), original = [...replies];
+  const answers = [], f = fixture(async wanted => {
+    const answer = byteCut(rows.filter(row => wanted.includes(row.id))); answers.push(answer); return answer;
+  });
+  assert.equal(byteCut(rows).items.length, 35, 'the first answer really crosses the Core byte ceiling');
+  f.heads.sync(replies); await f.heads.readTail;
+  assert.deepEqual([...f.heads.records.values()].map(record => record.state), ids.map(() => 'available'));
+  assert.deepEqual(f.calls.map(([, args]) => args.message_ids.length), [90, 55, 20]);
+  for (let n = 1; n < f.calls.length; n++) {
+    const received = new Set(answers.slice(0, n).flatMap(answer => answer.items.map(item => item.id)));
+    assert.deepEqual(f.calls[n][1].message_ids, ids.filter(id => !received.has(id)), 'only omitted IDs are read again');
+  }
+  for (const [name, args] of f.calls) { assert.equal(name, 'topic_messages'); assert.deepEqual(Object.keys(args).sort(), ['message_ids', 'topic_id']); }
+  assert.equal(answers.at(-1).next_cursor, null); assert.equal(f.maximum(), 1); assert.equal(f.paints(), 1);
+  assert.deepEqual([...replies], original, 'head continuations never fill a paging gap');
+  for (const row of rows) assert.equal(f.heads.messages(replies).get(row.id).body, row.body);
+});
+
+test('886 cut omissions stay loading; only complete omission becomes missing', async () => {
+  let finish;
+  const f = fixture(async ids => ids.length === 3 ? { items: [root('a')], next_cursor: 1 }
+    : new Promise(resolve => { finish = () => resolve({ items: [root('b')], next_cursor: null }); }));
+  f.heads.sync(loaded(['a', 'b', 'c'])); await tick();
+  assert.deepEqual([...f.heads.records.values()].map(record => record.state), ['available', 'loading', 'loading']);
+  assert.equal(f.paints(), 0); assert.deepEqual(f.calls.map(([, args]) => args.message_ids), [['a', 'b', 'c'], ['b', 'c']]);
+  finish(); await f.heads.readTail;
+  assert.deepEqual([...f.heads.records.values()].map(record => record.state), ['available', 'available', 'missing']);
+  assert.equal(f.paints(), 1); assert.equal(f.maximum(), 1);
+});
+
+test('886 a refused cut continuation falls back only for the still-omitted heads', async () => {
+  const f = fixture(async ids => {
+    if (ids.length === 3) return { items: [root('a')], next_cursor: 1 };
+    if (ids.length === 2 || ids[0] === 'c') throw refusal('FORBIDDEN');
+    return page(ids);
+  });
+  f.heads.sync(loaded(['a', 'b', 'c'])); await f.heads.readTail;
+  assert.deepEqual(f.calls.map(([, args]) => args.message_ids), [['a', 'b', 'c'], ['b', 'c'], ['b'], ['c']]);
+  assert.deepEqual([...f.heads.records.values()].map(record => record.state), ['available', 'available', 'refused']);
+  assert.equal(f.paints(), 1); assert.equal(f.maximum(), 1);
+});
+
+test('886 a cut answer rechecks invalidation and retirement before continuing', async () => {
+  let finish; const f = fixture(ids => new Promise(resolve => { finish = () => resolve({ items: [root(ids[0])], next_cursor: 1 }); }));
+  f.heads.sync(loaded(['a', 'b'])); await tick(); f.heads.invalidate('b'); finish(); await f.heads.readTail;
+  assert.equal(f.calls.length, 1); assert.equal(f.heads.records.has('b'), false); assert.equal(f.paints(), 1);
+  const retired = fixture(ids => new Promise(resolve => { finish = () => resolve({ items: [root(ids[0])], next_cursor: 1 }); }));
+  retired.heads.sync(loaded(['a', 'b'])); await tick(); retired.retire(); finish(); await retired.heads.readTail;
+  assert.equal(retired.calls.length, 1); assert.equal(retired.paints(), 0);
+});
+
+test('886 an incomplete answer with no progress stops with errors and never invents missing heads', async () => {
+  const f = fixture(async () => ({ items: [], next_cursor: 1 }));
+  f.heads.sync(loaded(['a', 'b'])); await f.heads.readTail;
+  assert.equal(f.calls.length, 1); assert.equal(f.paints(), 1);
+  assert.deepEqual([...f.heads.records.values()].map(record => record.state), ['error', 'error']);
+});

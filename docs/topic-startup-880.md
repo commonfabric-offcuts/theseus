@@ -37,6 +37,15 @@ identity guards; invalidated, already loaded or retired heads never repaint.
 Fetched heads remain presentation-only and do not alter loaded runs or paging
 frontiers. Checks establish these request/repaint counts, not browser timing.
 
+A named-head answer can stop at Core's 131072-byte summary limit even when
+fewer than 100 IDs were requested. When `next_cursor` is non-null, omitted
+IDs stay loading and are read again as a smaller named-ID batch, without a
+cursor (Core forbids mixing named IDs and page arguments). Only an omission
+from a complete answer becomes missing. Each continuation rechecks visit and
+record identity and shares the same serial background lane; one repaint
+settles the original batch. An incomplete answer making no progress becomes
+an error, never a missing head or an unbounded retry.
+
 The Landing-shaped in-memory opening check (Warp 12147) uses 30 replies in four
 unloaded dossiers and observes the actual app paintViews and full StackFeed
 arrangements. The first paint is followed by one full arrangement for the
