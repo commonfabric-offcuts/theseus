@@ -396,6 +396,9 @@ export class TopicRail {
       drawn.set(link, shows);
       link.textContent = item.title;
       paintMarks(link, item, this.reader);
+      // On hover, the whole title (a one-line row may cut it short), then what was seen there, if anything.
+      const seen = link.title;
+      link.title = seen ? `${item.title} · ${seen}` : item.title;
     }
     if (Number.isSafeInteger(item.cover_waiting) && item.cover_waiting > 0) link.setAttribute('data-cover-waiting', '');
     else link.removeAttribute('data-cover-waiting');
