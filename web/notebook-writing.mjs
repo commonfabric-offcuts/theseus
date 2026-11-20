@@ -289,7 +289,7 @@ export async function notebookStore(binding, win = globalThis) {
       resolve(true); await lifetime;
     }).catch(reject);
   });
-  if (!await acquired) throw Error('This Notebook page is being written in another tab. Close that editor, then reload here.');
+  if (!await acquired) throw Error('This Notebook page is being written in another tab. Close the page in the other tab, then reload this one, or keep reading here.');
   let db;
   try {
     db = await new Promise((resolve, reject) => {
