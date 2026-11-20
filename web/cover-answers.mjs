@@ -15,10 +15,12 @@ export function coverAnswers(doc, wait, context) {
     button.onclick = async event => {
       event.stopPropagation();
       const current = runtime(); if (!current.reactions) return;
+      const recorded = context.answering?.();
       for (const choice of buttons) choice.disabled = true;
       status.textContent = '';
       try {
-        await current.reactions.answer({ id: wait.ask_id, reactions: { version: 0, thumbs: [], answers: [], thumb_revision: 0, answer_revision: wait.answer_revision } }, answer);
+        const receipt = await current.reactions.answer({ id: wait.ask_id, reactions: { version: 0, thumbs: [], answers: [], thumb_revision: 0, answer_revision: wait.answer_revision } }, answer);
+        await recorded?.(receipt);
       } catch (error) { status.textContent = error.message; }
       finally { for (const choice of buttons) choice.disabled = false; current.changed(); }
     };
