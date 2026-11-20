@@ -18,6 +18,12 @@ Resolve topic labels before existing guarded navigation and initial URL
 startup. Canonical t- ids keep their current path; existing readable legacy
 ids remain valid. An id equal to the already-open topic is already known and
 needs no lookup; other readable short ids are confirmed by the topic view.
+Only an authored query link requests click-time name lookup; ordinary rail,
+notification, generated HTTP and internal routes keep the existing path.
+An unconfirmed lookup falls through to that original guarded route. Explicit
+unknown/duplicate names still say why, and superseded clicks cannot navigate.
+Startup retains its early color read before lookup, and an unconfirmed lookup
+falls through to the parsed route rather than returning before initialization.
 A named topic/page route uses memory_current owner_scope
 as authority, including revision links; the label never selects another page.
 For a bare/message/unread name, compare complete titles ignoring case in the

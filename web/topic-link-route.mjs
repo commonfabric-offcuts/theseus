@@ -52,7 +52,7 @@ export async function resolveTopicLink(route, { read, instanceId, workspaceId = 
       return matches;
     };
     const choose = matches => {
-      if (matches.size > 1) throw Error(`Two or more topics are named ${route.id}. Choose the topic from Outcomes.`);
+      if (matches.size > 1) throw Object.assign(Error(`Two or more topics are named ${route.id}. Choose the topic from Outcomes.`), { code: 'TOPIC_NAME_AMBIGUOUS' });
       if (!matches.size) return null;
       const resolved = { ...route, id: matches.keys().next().value }; routeKey(resolved); return resolved;
     };
@@ -70,6 +70,6 @@ export async function resolveTopicLink(route, { read, instanceId, workspaceId = 
       cursor = workspaces.next;
     } while (cursor !== null);
     const found = choose(matches); if (found) return found;
-    throw Error(`No topic is named ${route.id}. Choose the topic from Outcomes.`);
+    throw Object.assign(Error(`No topic is named ${route.id}. Choose the topic from Outcomes.`), { code: 'TOPIC_NAME_UNKNOWN' });
   } catch (error) { if (error.code === 'LINK_SUPERSEDED') return null; throw error; }
 }

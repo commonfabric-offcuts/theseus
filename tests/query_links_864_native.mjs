@@ -92,6 +92,10 @@ try {
       if (width === 390) await inSheet.tap(); else await inSheet.click();
       await sheet.getByText(/^No topic is named NoSuch864/).first().waitFor();
       records.push({ name: `${width}-sheet refusal is visible`, pass: true });
+      await page.goto(facts.origin + '/?topic=Landing&page=n-864-target'); await ready();
+      await page.waitForFunction(() => [...document.querySelectorAll('dialog.notebook-sheet-dialog[open]')].some(el => el.textContent.includes('Actual864 destination.')));
+      assert.equal(await page.locator('#topic-title').textContent(), 'Landing');
+      records.push({ name: `${width}-initial named query opens actual owner page`, pass: true });
     }
     await page.goto(facts.origin + '/?cards=n-864-note&view=text'); await ready();
     const writing = page.locator('textarea.notebook-text'); await writing.waitFor();

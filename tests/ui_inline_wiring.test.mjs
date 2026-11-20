@@ -8375,3 +8375,47 @@ test('931 R2 every conflict review rereads the remote, including its first compa
   assert.equal(reads, 2);
   assert.equal(f.editor.draft.body, currentWords, 'fresh reads never overwrite current writing');
 });
+
+
+for (const failed of [false, true]) test(`864 startup ${failed ? 'unconfirmed' : 'empty'} lookup retains the original initializer`, async () => {
+  const f = fixture('https://fixture/?topic=t1', { resolveTopicLink: async () => {
+    if (failed) throw Error('Destination could not be confirmed');
+    return null;
+  } });
+  await f.initialize(); await drain();
+  assert.equal(f.get('body').dataset.ready, 'true');
+  assert.equal(f.get('topic-title').textContent, 'Fixture');
+  assert.equal(f.runObservation('topic.id'), 't1');
+});
+
+test('864 ordinary internal destinations do not request topic-name lookup', async () => {
+  let lookups = 0;
+  const f = fixture('https://fixture/', { resolveTopicLink: async () => { lookups++; throw Error('Unconfirmed'); } });
+  await f.initialize(); await drain();
+  f.runObservation('shell.go = () => true');
+  await f.runObservation("openDestination({ kind: 'topic', id: 't2' }, 'Known route')");
+  assert.equal(lookups, 0);
+});
+
+test('864 an unconfirmed authored query uses the existing departure guard and keeps writing', async () => {
+  const assigned = [], location = { href: 'https://fixture/?topic=t1', origin: 'https://fixture', assign: href => assigned.push(href), reload() {} };
+  const f = fixture('https://fixture/?topic=t1', { location });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  f.registry.keepEditorsLocal = async () => {};
+  Object.assign(f.editor, { localVersion: 1, ackVersion: 0 });
+  Object.defineProperty(f.editor, 'dirty', { get: () => f.editor.ackVersion < f.editor.localVersion });
+  f.registry.flush = async () => ({ recorded: false, status: 'unknown' });
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize(); await drain();
+  f.views.messages.set('m864', { id: 'm864', seq: 1, author_id: 'fable', body: '[Next](?topic=t2)', topic_id: 't1', sent_ms: null, reply_to: null });
+  f.paintViews('messages');
+  const [a] = linksIn(entryIn(f, 'm864'));
+  assert.equal(a.href, '?topic=t2');
+  clicked(a); await drain();
+  assert.deepEqual(assigned, []);
+  assert.equal(f.editor.draft.body, 'kept');
+  assert.match(f.get('topic-navigation-status').textContent, /not confirmed saved/);
+  f.registry.flush = async () => { f.editor.ackVersion = 1; return { recorded: true, status: 'committed' }; };
+  clicked(a); await drain();
+  assert.deepEqual(assigned, ['?topic=t2']);
+});

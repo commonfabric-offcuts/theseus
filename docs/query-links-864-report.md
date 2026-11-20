@@ -48,7 +48,7 @@ owned PIDs absent and the temporary profile removed, then ended the fixture
 by stdin EOF, exit 0, absent PID and closed port. Baseline fixture PID 70917,
 port 53644; candidate PID 71103, port 55138. No test records touched live data.
 
-## Review correction
+## First review correction
 
 Warp13790 identified missing imports in the extracted 780 fixture. The fixture
 now supplies the actual topicLinkNeedsLookup/resolveTopicLink bindings and
@@ -80,6 +80,40 @@ to `ef93e26d27bf273eeb3083629d9fddde3f78eff893c3f7e5cd15a8060aec2cb8`;
 restoration returned the first hash before the final304/native run. A fresh
 release/live73 fetch still names the original220 base. No rebase or assertion
 weakening was needed.
+
+## Round-three correction
+
+Warp13815's seven additional failures reproduce on 811e5eb2; all seven pass
+on an own detached unchanged220 baseline. The cause was lookup applied to
+ordinary routes, plus an extra startup await before the existing early color
+read. Authored query links now carry explicit provenance through the real link
+opener; only those clicks request name lookup. Ordinary internal, rail,
+notification and full-address routes retain their existing path. An unconfirmed
+lookup keeps the original route and its writing/validation guards; explicit
+unknown/duplicate names retain their visible refusal. Startup begins colors
+independently and retains its parsed route after an empty or failed lookup.
+
+All original ui_inline_wiring source/assertions remain a byte-for-byte prefix
+of that file; four appended actual-app checks cover empty/error startup
+fallback, zero lookups for ordinary routes and dirty-writing protection for an
+unconfirmed authored query. Five focused checks, including opener provenance,
+pass. Applying actual811e5eb2 app bytes makes all four app checks fail;
+exact restoration returns all five green. App SHA-256 restored to
+`47a0b8e1b4cfd2d9a6dd81a4c3e5be06cdc2a5c0af2c90f8d44879b85f96563b`.
+Raw `round3-red811e5eb2.tap`, `round3-seven-baseline220.tap`,
+`round3-previous-app-mutation.tap`, `round3-previous-app-restored.tap` and
+`round3-previous-app-mutation.json` retain the actual observations.
+
+Final round-three verification: 827/827 Node tests pass with zero failures,
+cancellations or skips (`round3-final827.tap`). The first eight files plus
+ui_inline_wiring, ui_dossier_heads_886 and ui_outcome_navigation_901 are the
+eleven-file cohort; all original assertions remain. Native46/46 passes with
+zero page errors/failures, including direct named-page startup at both widths.
+`864-native/round3-candidate/results.json` records Browser.close, seven owned
+PIDs absent, temporary profile removed and scratch fixture91167 EOF exit0,
+absent PID and closed port63772. No new workload follows the13831 deploy hold.
+The same220 base was freshly fetched before this freeze; source remains on
+its exact own branch for review after seats resume.
 
 ## Scope and limits
 

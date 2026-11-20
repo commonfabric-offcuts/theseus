@@ -73,8 +73,11 @@ Notebook words in the Reader, Cards and sheets follow the same link rules.
 A topic name in such a route is compared without regard to case against
 complete titles in the current outcome first, then the reader's other
 outcomes. Conversation, done and archived topics count too. More than one
-match at the chosen scope, an unknown name or an incomplete read refuses the
-move with an explanation; no match is guessed. A standalone Cards page uses
+match at the chosen scope or an unknown name refuses the move with an
+explanation; no match is guessed. When lookup cannot confirm a destination,
+the route as written follows the existing navigation and writing guards.
+Only authored query links request click-time name lookup; generated routes
+and full web addresses keep their existing path. A standalone Cards page uses
 its Notebook owner's outcome as that context. With no known outcome, names
 are sought across readable outcomes. Names are read afresh when followed.
 

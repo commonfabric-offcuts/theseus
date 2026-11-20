@@ -394,6 +394,9 @@ test('864 authored query link renders and uses the existing opener while invalid
   const opened = []; openLinksWith((...args) => opened.push(args));
   assert.equal(click(anchor).prevented, true); assert.equal(opened.length, 1);
   assert.deepEqual(opened[0][0], link.route);
+  assert.equal(opened[0][3], true, 'only the authored query asks the app to resolve a label');
+  const [ordinary] = inlineNodes('[Next](https://theseus.example:5211/?topic=Landing)', { doc });
+  click(ordinary); assert.equal(opened.at(-1)[3], false, 'full addresses retain the existing navigation path');
   for (const bad of ['?bogus=yes', '?topic=Landing&topic=Other', '?topic=Landing&page=n&message=m', '/?topic=Landing', '//elsewhere.invalid/?topic=Landing', 'javascript:alert(1)', 'data:text/html,test', '#topic=Landing']) assert.equal(writtenLink(bad), null, bad);
   assert.equal(pageLink({ kind: 'topic', id: 't-864' }, 'n-864'), 'https://theseus.example:5211/?topic=t-864&page=n-864', 'copied links stay full and id-based');
 });

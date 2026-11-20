@@ -3282,12 +3282,25 @@ async function initialize() {
     if (list === 'addressable-names') refreshMembers();
   });
   let route = parseRoute(new URL(location.href));
-  if (topicLinkNeedsLookup(route)) route = await resolveTopicLink(route, { read: (name, args) => api.view(name, args, { readClass: 'foreground' }), instanceId: bootstrap.instance_id });
-  if (!route) return;
   if (!['topic', 'conversation'].includes(route.kind)) {
     await initializeOutcomePage(route);
     if(['root','workspace'].includes(route.kind))run(()=>initializeUnfinished(route));
     return;
+  }
+  // Keep the existing early color read independent of topic confirmation.
+  if (!colors) {
+    colors = new AgentColors({ api, instanceId: bootstrap.instance_id, authority: () => registry?.runtime.current ?? bootstrap.authority });
+    colors.listen(paintAgentColors);
+  }
+  const colorsRead = colors.load('foreground').catch(() => {});
+  if (topicLinkNeedsLookup(route)) {
+    try { route = await resolveTopicLink(route, { read: (name, args) => api.view(name, args, { readClass: 'foreground' }), instanceId: bootstrap.instance_id }) ?? route; }
+    catch { /* An unconfirmed label keeps the route's existing startup path. */ }
+    if (!['topic', 'conversation'].includes(route.kind)) {
+      await initializeOutcomePage(route);
+      if (['root', 'workspace'].includes(route.kind)) run(() => initializeUnfinished(route));
+      return;
+    }
   }
   // An outcome's conversation is its one topic of kind conversation (outcome-conversation.mjs).
   let topicId = route.id;
@@ -3311,12 +3324,6 @@ async function initialize() {
     route = { kind: 'topic', id: topicId };
     shell.rename(route, location.hash);
   }
-  // The reader's agent colors, read alongside the topic so the first cards wear them.
-  if (!colors) {
-    colors = new AgentColors({ api, instanceId: bootstrap.instance_id, authority: () => registry?.runtime.current ?? bootstrap.authority });
-    colors.listen(paintAgentColors);
-  }
-  const colorsRead = colors.load('foreground').catch(() => {});
   // The saved feed position precedes topic, messages and Notebook startup reads.
   const checkpoint = await initialViews({ api, bootstrap, topicId, load: async () => {} });
   const actorCheckpoint = await actorBaseline({ api, bootstrap });
@@ -4016,7 +4023,7 @@ function topicFolds() {
 // Rows a reload may ask for at once, from the server's own limits.
 const pageMax = () => Number.isSafeInteger(bootstrap.limits?.page_max) ? bootstrap.limits.page_max : undefined;
 // A link in a message's words to one of this Theseus's places opens it here.
-openLinksWith((target, title, link) => openDestination(target, title, link));
+openLinksWith((target, title, link, writtenQuery) => openDestination(target, title, link, writtenQuery));
 // A topic's name for a link in a message's words: the open topic's, a listed
 // topic's, or else one read of the topic, kept for the page. A topic the
 // reader may not see stays unnamed; a read that failed is tried again the
@@ -4037,9 +4044,10 @@ function topicName(id) {
 }
 nameTopicsWith(topicName);
 // from: the link pressed, which takes the focus back when the Reader closes.
-async function openDestination(target, title, from = null) {
+async function openDestination(target, title, from = null, writtenQuery = false) {
   const landing = ++landingSerial;
-  if (topicLinkNeedsLookup(target, topic?.id)) {
+  if (writtenQuery && topicLinkNeedsLookup(target, topic?.id)) {
+    const original = target;
     topicNavigation?.cancelPending();
     try {
       target = await resolveTopicLink(target, { read: (name, args) => api.view(name, args, { readClass: 'foreground' }),
@@ -4047,12 +4055,14 @@ async function openDestination(target, title, from = null) {
         ownerScope: linkOwnerScope?.(), current: () => !retired && landing === landingSerial });
       if (!target || retired || landing !== landingSerial) return false;
     } catch (error) {
-      if (!retired && landing === landingSerial) {
+      if (retired || landing !== landingSerial) return false;
+      if (!['TOPIC_NAME_UNKNOWN', 'TOPIC_NAME_AMBIGUOUS'].includes(error.code)) target = original;
+      else {
         if (notebookSheet?.showing && notebookSheet.current) notebookSheet.current.say(error.message, 'attention');
         else if (linkNotice) linkNotice(error.message);
         else stayedWhy(error);
+        return false;
       }
-      return false;
     }
   }
   // A link to a message in the open topic opens it in the Reader, here.
