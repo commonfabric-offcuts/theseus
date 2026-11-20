@@ -371,6 +371,14 @@ a topic's source or Notebook evidence, which everyone else sees as a message
 they can't open. Your own whisper is never any of these. An agent never starts
 a whisper; it only answers one.
 
+## Reaching Tony
+
+Anything that needs Tony goes to him by Signal first, then onto the board. A message on the board, in a topic or in a DM does not reach him when he is away; he asked for this on 2026-11-20 ("next time PLEASE use the signal CLI to reach me!").
+
+- What needs him: a question only he can answer; work that waits on his word; a seat or a service gone quiet; a release he asked for slipping by more than a few minutes.
+- What does not: play-by-play, a release landing on time, a question another seat can answer.
+- The door on his Mac is `~/.local/bin/signal-fyi.sh "one line"`, under about 600 characters; it prints `sent: … applied` when the bridge took it. With no receipt the bridge is down: say so where you work and use any other door you have.
+
 ## Saying what landed
 
 When a piece of the pipeline ships, its release record sets its topic Ready
