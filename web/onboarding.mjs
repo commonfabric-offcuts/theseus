@@ -26,8 +26,8 @@ const el = (tag, props = {}, ...children) => {
 };
 
 export class OnboardingPrompt {
-  constructor({ button, read, reader, copier = copyPrompt }) {
-    Object.assign(this, { button, read, reader, copier });
+  constructor({ button, read, reader, copier = copyPrompt, menuItems = null }) {
+    Object.assign(this, { button, read, reader, copier, menuItems });
     this.serial = 0; this.variant = null;
     this.dialog = el('dialog', { id: 'onboarding-sheet', className: 'onboarding-sheet' });
     this.dialog.setAttribute('aria-labelledby', 'onboarding-title');
@@ -53,9 +53,9 @@ export class OnboardingPrompt {
     this.dialog.addEventListener('pointerdown', event => { this.outside = event.target === this.dialog && this.outsideBox(event); });
     this.dialog.addEventListener('click', event => { if (this.outside && event.target === this.dialog && this.outsideBox(event)) this.close(); this.outside = false; });
     button.onclick = () => {
-      if (!owns(this.workspace, reader)) return;
+      if (menuItems ? !this.workspace : !owns(this.workspace, reader)) return;
       this.menu = openMessageMenu({ anchor: button, label: 'This outcome', sheet: true,
-        items: [{ label: 'Onboarding prompt…', glyph: 'quote', act: () => this.open() }] });
+        items: menuItems ? menuItems(this.workspace) : [{ label: 'Onboarding prompt…', glyph: 'quote', act: () => this.open() }] });
     };
   }
   outsideBox(event) {
@@ -63,7 +63,7 @@ export class OnboardingPrompt {
     return event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom;
   }
   paint(workspace) {
-    this.workspace = workspace; this.button.hidden = !owns(workspace, this.reader);
+    this.workspace = workspace; this.button.hidden = this.menuItems ? !workspace : !owns(workspace, this.reader);
     if (!owns(workspace, this.reader)) { this.menu?.close(false); this.menu = null; }
     if (this.dialog.open && !owns(workspace, this.reader)) this.close();
   }

@@ -611,7 +611,7 @@ const element = (doc, tag, props = {}) => Object.assign(doc.createElement(tag), 
 // item's end.
 // sheet: on a phone (a narrow window) the menu opens as a sheet from the
 // bottom of the window, its items full width, rather than under its button.
-export function openMessageMenu({ anchor, at = null, items, label = 'Message', sheet = false, doc = globalThis.document, win = globalThis }) {
+export function openMessageMenu({ anchor, at = null, items, label = 'Message', sheet = false, focusKey = null, doc = globalThis.document, win = globalThis }) {
   if (open?.anchor === anchor && !at) { open.close(true); return null; }
   // Every item's glyph is drawn before anything changes on the page: an item that names none, or one nobody draws, opens nothing.
   const glyphs = items.map(item => glyph(item.glyph, doc));
@@ -637,6 +637,8 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
   });
   root.append(...buttons);
   const enabled = buttons.filter(button => !button.disabled);
+  const requested = focusKey === null ? null : buttons[items.findIndex(item => item.key === focusKey)];
+  const first = requested && !requested.disabled ? requested : enabled[0];
   const keys = event => {
     event.stopPropagation();
     if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); menu.close(true); return; }
@@ -673,7 +675,7 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
   const box = anchor.getBoundingClientRect();
   if (sheet && win.matchMedia?.('(max-width: 760px)').matches) {
     root.classList.add('menu-sheet');
-    enabled[0]?.focus({ preventScroll: true });
+    first?.focus({ preventScroll: true });
     return menu;
   }
   const width = root.offsetWidth || 0, height = root.offsetHeight || 0;
@@ -682,7 +684,7 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
   const x = at ? at.x : box.right - width, below = at ? at.y : box.bottom + 4, above = (at ? at.y : box.top - 4) - height;
   const top = below + height + 8 <= H || above < 8 ? below : above;
   Object.assign(root.style, { position: 'fixed', top: `${Math.round(Math.max(8, top))}px`, left: `${Math.round(Math.max(8, Math.min(x, W - width - 8)))}px` });
-  enabled[0]?.focus({ preventScroll: true });
+  first?.focus({ preventScroll: true });
   return menu;
 }
 
