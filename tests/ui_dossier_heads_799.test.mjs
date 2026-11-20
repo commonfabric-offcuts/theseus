@@ -39,10 +39,10 @@ test('799 loaded heads and standalone negatives retain the actual gather objects
 test('799 withheld and absent sources never become available bodies; errors and refusals remain distinct', async () => {
   for (const [read, expected] of [
     [async () => page([{ ...root, withheld: true, body: 'Secret' }]), 'refused'],
-    [async () => page([]), 'missing'],
+    [async () => ({ ...page([]), next_cursor: null }), 'missing'],
     [async () => { throw Error('offline'); }, 'error'],
     [async () => { throw { details: { error: { code: 'FORBIDDEN' } } }; }, 'refused'],
-    [async () => page([{ ...root, id: 'foreign' }]), 'missing'],
+    [async () => ({ ...page([{ ...root, id: 'foreign' }]), next_cursor: null }), 'missing'],
     [async () => page([{ ...root, topic_id: 'foreign' }]), 'error']]) {
     const f = fixture(read); f.heads.sync(f.loaded); await tick();
     assert.equal(f.heads.records.get('root').state, expected);
