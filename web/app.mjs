@@ -3602,9 +3602,10 @@ function followCommits(load, changes = null, before = Promise.resolve()) {
     let batch = null;
     if (changes && !full) {
       try { batch = await changes.next(); }
-      catch (error) {
-        if (!['forbidden', 'resync'].includes(readFailure(error).kind)) throw error;
-        if (readFailure(error).kind === 'resync') await changes.baseline();
+      catch {
+        // A failed change window is no evidence that the lists are current.
+        // Use their existing full-read/error owners without accepting a cursor.
+        // A resync clears its cursor in OutcomeChanges; the next pass baselines.
         full = true;
       }
     }

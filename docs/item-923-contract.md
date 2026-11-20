@@ -31,3 +31,23 @@ topic cards after 11→5 response waves without a Conversation and 12→6 with o
 Total reads are 24→21 and 25→22 respectively, peak foreground requests 5→4,
 and Conversation reads 2→1. These are synthetic view answers and manually
 released responses through the real app, API, Shell and Outline owners.
+
+## Returned refresh and test-driver corrections
+
+Ordinary topic, pipeline, mark, delivery and waiting commits refresh their
+local owners without reading the global outcomes list. Unknown workspace keys
+conservatively refresh local panels, without broadening the global rule.
+Explicit workspace, participation and outcome-order changes retain the named
+current-workspace/own-actor refresh default. Item904 separately adds its Live
+outcome-list key; this slice does not add or infer that key.
+
+A star change during an in-flight star read requires a following read, and
+the changes window waits for that read's result before accepting its cursor.
+Initial outline construction can still share a just-started sync read.
+A failed scoped changes read falls back to the existing full refresh, keeping
+the old checkpoint for the next attempt. A failed full refresh remains owed.
+
+The connection interleaving fixture leaves one of the four foreground places
+available for renewal, while continuing to exercise overlapping held reads,
+all response kinds and all original per-step assertions. The production
+document-wide cap remains four. Full ui_inline_wiring must finish green.

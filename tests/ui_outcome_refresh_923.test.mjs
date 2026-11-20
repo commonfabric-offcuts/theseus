@@ -22,6 +22,23 @@ test('923 scoped change keys map to the existing list owners, leaving private wr
   assert.equal(outcomeInvalidation([key('new-public-key')], []).has('workspace'), true);
 });
 
+test('923 B2 ordinary commits never dirty the global outcomes list', () => {
+  for (const kind of ['topic', 'pipeline', 'new-public-key']) {
+    const dirty = outcomeInvalidation([{ resource_kind: kind }], []);
+    assert.equal(dirty.has('outcomes'), false, 'workspace-scoped ' + kind);
+    assert.equal(dirty.has('topics'), true);
+  }
+  for (const kind of ['waiting', 'delivery', 'mark']) {
+    const dirty = outcomeInvalidation([], [{ resource_kind: kind }]);
+    assert.equal(dirty.has('outcomes'), false, 'actor-scoped ' + kind);
+    assert.equal(dirty.has('topics'), true); assert.equal(dirty.has('standing'), true);
+  }
+  for (const [workspace, actor] of [[[{ resource_kind: 'workspace' }], []], [[], [{ resource_kind: 'workspace' }]],
+    [[], [{ resource_kind: 'participation' }]], [[], [{ resource_kind: 'outcome_order' }]]]) {
+    assert.equal(outcomeInvalidation(workspace, actor).has('outcomes'), true, 'explicit outcome/own-actor change retains the global refresh');
+  }
+});
+
 test('923 a completed scoped window advances only when its views were accepted', async () => {
   const calls = []; let head = 0;
   const api = { view: async (_name, args) => {

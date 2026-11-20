@@ -1338,8 +1338,11 @@ test('property: after every step of any interleaving of requests, the live feed 
   };
   const words = { refusal: 'This topic is closed.', nothing: 'Connection interrupted. Confirmation is unknown; your writing is kept.',
     proxy: 'AIM returned an unreadable response. Confirmation is unknown.', session: 'Open this instance to establish a session.', ranOut: timedOut };
-  const SEEDS = 40, STEPS = 60;
-  let checked = 0, shown = 0, hidden = 0, doubted = 0, renewed = 0;
+  // Leave one of the document's four foreground places for renewal/bootstrap.
+  // Held reads still overlap; an arbitrary queued read cannot finish before
+  // the earlier gates which this same sequential driver alone can release.
+  const SEEDS = 40, STEPS = 60, MAX_HELD_READS = 3;
+  let checked = 0, shown = 0, hidden = 0, doubted = 0, renewed = 0, peakHeld = 0;
   const seen = new Set();
   for (let seed = 1; seed <= SEEDS; seed++) {
     const random = seeded(seed), pick = list => list[Math.floor(random() * list.length)];
@@ -1361,7 +1364,7 @@ test('property: after every step of any interleaving of requests, the live feed 
     const pending = [], history = [];
     let seq = 0;
     for (let step = 1; step <= STEPS; step++) {
-      const kinds = ['start', 'start', 'renew', ...(pending.length ? ['end', 'end', 'end'] : []), ...(live.state === 'live' ? ['message', 'down'] : ['up', 'up'])];
+      const kinds = [...(pending.length < MAX_HELD_READS ? ['start', 'start'] : []), 'renew', ...(pending.length ? ['end', 'end', 'end'] : []), ...(live.state === 'live' ? ['message', 'down'] : ['up', 'up'])];
       const kind = pick(kinds);
       let did = kind;
       if (kind === 'start') {
@@ -1372,6 +1375,7 @@ test('property: after every step of any interleaving of requests, the live feed 
           entry.done = f.run(() => entry.gate.promise.then(() => deadline.bound(request)));
         } else entry.done = f.run(() => new RealApi('fixture-session', async () => { await entry.gate.promise; return endings[entry.ending](); }).view('topic', {}));
         pending.push(entry); did = entry.bounded ? 'start a bounded read' : 'start a request';
+        peakHeld = Math.max(peakHeld, pending.length);
       } else if (kind === 'end') {
         const entry = pending.splice(Math.floor(random() * pending.length), 1)[0];
         entry.ending = entry.bounded ? 'ranOut' : pick(Object.keys(endings));
@@ -1416,6 +1420,7 @@ test('property: after every step of any interleaving of requests, the live feed 
     await new Promise(resolve => setTimeout(resolve, 2)); await Promise.all(pending.map(entry => entry.done)); await drain();
   }
   assert.equal(checked, SEEDS * STEPS);
+  assert.equal(peakHeld, MAX_HELD_READS, 'the driver still reaches overlapping held reads');
   // Every kind of step ran, and connection lines both showed and were hidden.
   assert.deepEqual([...seen].sort(), ['down', 'end: nothing', 'end: proxy', 'end: ranOut', 'end: refusal', 'end: session', 'end: success', 'message',
     'renewal answered', 'renewal not answered', 'start a bounded read', 'start a request', 'up']);
@@ -6838,6 +6843,60 @@ test('923 a failed full refresh remains owed even when the next change window is
   await drain(); assert.equal(tools, 1);
   live.emit({ kind: 'state', state: 'live' }); await drain();
   assert.equal(tools, 2, 'the failed full read is retried without needing a new resource key');
+});
+
+test('923 B2 ordinary commit refreshes do not read the global list, but explicit workspace and visibility changes do', async () => {
+  const { f, calls, add } = scopedOutcome923(), live = stream(); f.useLive(live);
+  await f.initialize(); await drain();
+  for (const [scope, kind] of [['workspace', 'topic'], ['workspace', 'pipeline'], ['actor', 'mark'], ['actor', 'delivery'], ['actor', 'waiting']]) {
+    calls.length = 0; await commit(live, add(scope, kind));
+    assert.equal(calls.filter(call => call.name === 'workspaces').length, 0, scope + ':' + kind);
+    assert.ok(calls.some(call => call.name === 'workspace_topics'), 'local topic owner still refreshes');
+  }
+  calls.length = 0; await commit(live, add('workspace', 'workspace'));
+  assert.equal(calls.filter(call => call.name === 'workspaces').length, 1);
+  calls.length = 0;
+  for (const event of f.events.filter(event => event[0] === 'document-handler' && event[1] === 'visibilitychange')) event[2]({});
+  await drain(); assert.equal(calls.filter(call => call.name === 'workspaces').length, 1);
+});
+
+test('923 B2 failed changes read falls back to full lists and retries the same checkpoint', async () => {
+  const { f, calls, changes, add } = scopedOutcome923(), live = stream(); f.useLive(live);
+  await f.initialize(); await drain(); const view = f.api.view; let fail = true, refusedCursor;
+  f.api.view = async (name, args) => {
+    if (name === 'changes' && args.cursor && fail) { refusedCursor = args.cursor.after_seq; throw Error('Changes interrupted'); }
+    return view(name, args);
+  };
+  calls.length = 0; await commit(live, add('workspace', 'checks'));
+  assert.ok(calls.some(call => call.name === 'workspace'), 'failed scoped changes must not silently suppress the refresh');
+  assert.ok(calls.some(call => call.name === 'outcome_checks'));
+  fail = false; changes.length = 0; calls.length = 0; await commit(live, 50);
+  assert.equal(changes[0].cursor.after_seq, refusedCursor, 'failed changes were never accepted');
+  assert.ok(calls.some(call => call.name === 'outcome_checks'));
+});
+
+test('923 B2 a star commit during More reads a fresh star page before settling', async () => {
+  const { f, outline, add } = scopedOutcome923(), live = stream(); f.useLive(live);
+  await f.initialize(); await drain();
+  // The outcome's center cards are not rail anchors. Model one visible topic
+  // row while retaining the actual outline refresh and star sync/read/paint.
+  const parent = f.document.createElement('a'); parent.dataset.topicId = 't1'; outline.list.append(parent);
+  outline.dossiers.parents = () => [parent]; outline.dossiers.sync();
+  await outline.dossiers.states.get('t1').busy;
+  const view = f.api.view, old = defer(), fresh = defer(), reads = [];
+  f.api.view = async (name, args) => {
+    if (name !== 'stars') return view(name, args);
+    reads.push(args); return reads.length === 1 ? old.promise : fresh.promise;
+  };
+  const state = outline.dossiers.states.get('t1'); state.next = 10;
+  let done = false; const more = outline.dossiers.load(state, true).then(() => { done = true; });
+  await drain(); await commit(live, add('actor', 'acts', 't1'));
+  old.resolve({ instance_id: 'fixture', items: [], next_cursor: null }); await drain();
+  assert.equal(reads.length, 2, 'the commit needs a newer page than the held More response');
+  assert.equal(reads[1].cursor, undefined); assert.equal(done, false);
+  fresh.resolve({ instance_id: 'fixture', items: [{ topic_id: 't1', star: 11, dossier: { id: 'star-923', name: 'New star' } }], next_cursor: null });
+  await more; await drain();
+  assert.equal(state.links.get('star-923').textContent, '★ New star');
 });
 
 for (const conversation of [false, true]) test(`923 actual app read trace reaches topics in bounded rounds (${conversation ? 'Conversation' : 'no Conversation'})`, async t => {

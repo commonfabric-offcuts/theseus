@@ -279,6 +279,7 @@ export class OutlineRail {
   async load(dirty = null) {
     const handles = this.handles, run = this.run, mine = () => run === this.run;
     if (!handles) return true;
+    const starReads = new Set([...this.dossiers.states.values(), ...this.notebookStars.states.values()].map(state => state.busy).filter(Boolean));
     const view = this.own(handles), read = args => view('workspaces', args), here = handles.workspaceId, max = handles.pageMax ?? PAGE;
     const wants = key => !dirty || dirty.has(key);
     // Read the current outcome's topics before the global outcome list. Its
@@ -310,8 +311,10 @@ export class OutlineRail {
     const settled = await Promise.all(reads.map(read => Promise.resolve(read).catch(() => false)));
     if (!mine()) return true;
     this.paint();
-    const stars = [...(wants('topics') || wants('stars') ? await this.dossiers.refresh(true) : []),
-      ...(wants('topics') || wants('pages') ? await this.notebookStars.refresh(true) : [])];
+    // Share a sync read begun during this pass, but follow any older read
+    // (including More/visible-row sync) which may predate the changed window.
+    const stars = [...(wants('topics') || wants('stars') ? await this.dossiers.refresh(starReads) : []),
+      ...(wants('topics') || wants('pages') ? await this.notebookStars.refresh(starReads) : [])];
     return firstRead !== false && settled.every(read => read !== false) && stars.every(Boolean);
   }
   async loadMore() {
