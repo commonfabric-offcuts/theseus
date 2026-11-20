@@ -63,14 +63,17 @@ test('R4-C4 title-only twins: type into the second after a confirmed save (sync 
   console.log('R4-C4', show(rows)); assert.deepEqual(rows.map(r => [r.id, r.color]), [[C, 'blue'], [A, 'blue'], [B, 'rose']]);
 });
 
-test('R4-C5 a save confirms in the middle of retyping a heading key by key', async t => {
+test('R4-C5 / 922 a save while retyping a deleted heading keeps the merged alias on its survivor', async t => {
   const h = await text867(t, card('Plan', 'plan words', details(A)) + card('Budget', 'budget words', details(B, 'rose')));
   const s = h.p.text.value.indexOf('## Budget'), e = s + '## Budget'.length;
   backspace(h, e, '## Budget'.length); await h.w.flush();
   typeAt(h, s, '## Co'); await h.w.flush();
   const rows = typeAt(h, s + 5, 'sts');
-  console.log('R4-C5', show(rows)); assert.deepEqual(rows.map(r => [r.id, r.color]), [[A, 'blue'], [B, 'rose']]);
-  await h.w.flush(); assert.deepEqual(metaOf(h.w.base.content.body).map(r => r.id), [A, B]);
+  // 922: deleting the whole heading merges B into A even without its newline.
+  // Manually typing a new heading cannot undo that merge or restore B's tint.
+  assert.deepEqual(rows.map(r => [r.id, r.color]), [[A, 'blue'], [null, null]]);
+  assert.deepEqual(rows.map(r => r.ids), [[A, B], []]);
+  await h.w.flush(); assert.deepEqual(metaOf(h.w.base.content.body).map(r => r.ids), [[A, B], []]);
 });
 
 test('R4-C6 a save confirms between two keystrokes of a word edit on a twin, then the SAVE lands while another keystroke is in flight', async t => {
