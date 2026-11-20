@@ -121,6 +121,7 @@ let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, fresh
 let localEffectVersion = 0;
 // The open page's outcome and its server-owned reply destination/coordinator.
 let here = null;
+let readerCoordinatorPainted = null;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
@@ -3608,6 +3609,9 @@ async function loadConversation() {
   try {
     const answer = checkedView(await api.view('conversation', { workspace_id: here.workspaceId }, { readClass: 'background' }), bootstrap.instance_id);
     here.view = answer.conversation;
+    if (reader?.sessions && (here.view?.coordinator?.actor_id ?? null) !== readerCoordinatorPainted) {
+      reader.paintRecipients(); reader.paintChoice();
+    }
     if (inline?.editor && here.conversation) answeredBy(inline, $('inline-composer').querySelector('.audience'), inline.editor.draft.addressees, true);
     paintMessageContext();
     return true;
@@ -3670,6 +3674,9 @@ function conversationPlace(topicId) {
 function paintReaderAudience(topicId, names = null) {
   const on = Boolean(here?.view && !here.conversation && topicId === here.view.topic_id);
   if (reader?.sessions && (on || answering.size)) answeredBy(reader, $('reply-audience'), names ?? reader.names(), on);
+  // Remember the coordinator used by this paint, including paints before a
+  // conversation refresh settles, so that read does not paint it twice.
+  if (reader?.sessions) readerCoordinatorPainted = here?.view?.coordinator?.actor_id ?? null;
 }
 // Switching the Reader between this topic and the conversation opens the same
 // message with the other destination. The writing moves there only when that
