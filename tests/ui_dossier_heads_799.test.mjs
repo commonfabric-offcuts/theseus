@@ -78,7 +78,8 @@ test('799 More cards kept apart do not acquire a duplicate supplemental head', (
 
 import { fillFrom, stackState } from '../web/reply-stacks.mjs';
 test('799 actual More fill frontier excludes a supplemental root', () => {
-  const list = {}, state = stackState(list), source = { ...root, dossierSource: true };
+  // stackState owns the list's scroll listener; use an event-capable stand-in.
+  const list = new EventTarget(), state = stackState(list), source = { ...root, dossierSource: true };
   state.stacks = withDossierHeads(gather([reply]), new Map([['root', source]]));
   fillFrom(list);
   assert.equal(state.filling.below, 1501, 'the actual loaded reply remains the frontier');
