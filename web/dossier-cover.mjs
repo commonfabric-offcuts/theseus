@@ -1,3 +1,4 @@
+import { currentQuestionCover } from './question-state.mjs';
 // A dossier's cover (item 624, docs/dossier-covers.md): first in the folder,
 // right under its tab and above its messages, saying where it stands, what
 // waits on the outcome's owner (each with the default that holds if they say nothing),
@@ -23,7 +24,7 @@ const element = (doc, tag, className, text) => {
 const PAYLOAD_LABELS = { answer: 'Payload · answer', decision: 'Payload · decision', preview: 'Payload · preview', page: 'Payload · page', release: 'Payload · release' };
 
 // The cover a message carries, or null: only a dossier's first message carries one.
-export const coverOf = item => item?.acts?.cover ?? null;
+export const coverOf = item => currentQuestionCover(item?.acts?.cover ?? null);
 
 // Who a cover's line names, as the reader reads it: "you" for the reader.
 const whom = (id, { viewer, nameOf }) => (id === viewer ? 'you' : nameOf(id));
@@ -94,6 +95,7 @@ function revisionLine(doc, cover, context) {
 }
 
 export function coverSheet(doc, cover, context) {
+  cover = currentQuestionCover(cover);
   const ctx = { ...context, owner: cover.owner };
   const sheet = element(doc, 'div', 'dossier-cover');
   sheet.setAttribute('role', 'note'); sheet.setAttribute('aria-label', 'Dossier cover');
@@ -147,6 +149,7 @@ export function coverSheet(doc, cover, context) {
 // What a cover on a message on its own shows instead: its payload's pill and
 // one pill for what waits on the owner, under who wrote it. Null with neither.
 export function coverPills(doc, cover, context) {
+  cover = currentQuestionCover(cover);
   const ctx = { ...context, owner: cover.owner };
   const pills = element(doc, 'span', 'row-pills');
   if (cover.payload) pills.append(payloadPill(doc, cover.payload, ctx));
@@ -167,7 +170,7 @@ export function coverPills(doc, cover, context) {
 }
 
 // A key for what a cover shows a reader, so a sheet is drawn again only when it changes.
-export const coverKey = (cover, context) => (cover ? JSON.stringify([cover.stands, cover.waiting, cover.payload, cover.by, cover.at_ms, cover.owner, cover.root_id, cover.revision, cover.writer, cover.refresh, cover.refresh_revision, context.viewer, context.topicId, context.rootId]) : '');
+export const coverKey = (cover, context) => ((cover = currentQuestionCover(cover)) ? JSON.stringify([cover.stands, cover.waiting, cover.payload, cover.by, cover.at_ms, cover.owner, cover.root_id, cover.revision, cover.writer, cover.refresh, cover.refresh_revision, context.viewer, context.topicId, context.rootId]) : '');
 
 const pillRows = new WeakMap();
 // The pills of a message on its own that carries a cover, set under its
