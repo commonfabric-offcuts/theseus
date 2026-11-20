@@ -125,21 +125,30 @@ export class ComposeBar {
     // and the control pressed is the one that acts, wherever closing the panel
     // moves the composer. That control's act is the press's, so it names no
     // one: a name typed in To stays typed (putAway).
-    this.win.addEventListener('click', event => {
+    this.outsideClick = event => {
       if (!this.panel) return;
       const panel = this.panels[this.panel], opener = this.openers[this.panel];
       if (!panel.contains(event.target) && !opener.contains(event.target)) this.close();
-    }, true);
+    };
+    this.win.addEventListener('click', this.outsideClick, true);
     taller?.addEventListener('click', () => {
       const tall = !this.root.hasAttribute('data-tall');
       this.root.toggleAttribute('data-tall', tall); taller.setAttribute('aria-pressed', String(tall));
       this.fit(); this.field.focus({ preventScroll: true });
     });
-    this.phone.addEventListener('change', () => this.fit());
+    this.widthChanged = () => this.fit();
+    this.phone.addEventListener('change', this.widthChanged);
     // Whatever stops showing the composer (the Reader closing, the topic page
     // giving way to another view) puts its open panel away (unseen).
-    new ResizeObserver(() => this.unseen()).observe(root);
+    this.observer = new ResizeObserver(() => { if (!this.disposed) this.unseen(); });
+    this.observer.observe(root);
     if (naming) this.wireNaming(naming);
+  }
+
+  dispose() {
+    this.disposed = true; this.close();
+    this.win.removeEventListener('click', this.outsideClick, true);
+    this.phone.removeEventListener('change', this.widthChanged); this.observer.disconnect();
   }
 
   // Naming someone on a phone is two steps (docs/reader.md). The who panel

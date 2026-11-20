@@ -7492,3 +7492,31 @@ for (const answer of ['refused', 'unreached']) test(`891 B3 ${answer} split-out 
     feed.deafen();
   }
 });
+
+
+test('929 modified second clicks do not become a pending double-click or replace selection', async () => {
+  for (const key of ['ctrlKey', 'metaKey', 'altKey', 'shiftKey']) {
+    const x = await editClick890(), held = x.hold(); x.click();
+    const second = x.click(x.words, { [key]: true, detail: 2, timeStamp: 1100 });
+    assert.notEqual(second.defaultPrevented, true, key); held.resolve(); await settle();
+    assert.equal(x.opened(), 0, key); assert.equal(x.edits.length, 0, key);
+    assert.equal(x.f.runObservation('selectionClears890'), 0, key);
+  }
+});
+test('929 a key between presses cancels the pending double-click', async () => {
+  const x = await editClick890(), held = x.hold(); x.click();
+  x.emit('keydown', x.words, { key: 'Escape' });
+  const second = x.click(x.words, { detail: 2, timeStamp: 1100 });
+  assert.notEqual(second.defaultPrevented, true); held.resolve(); await settle();
+  assert.equal(x.opened(), 0); assert.equal(x.edits.length, 0); assert.equal(x.f.runObservation('selectionClears890'), 0);
+});
+test('929 Space uses the card action once; repeat, modifiers and nested fields keep their keys', async () => {
+  const x = await editClick890(); x.card.click = () => x.emit('click', x.card, { detail: 0 });
+  for (const props of [{ repeat: true }, { ctrlKey: true }, { metaKey: true }, { altKey: true }, { isComposing: true }, { target: x.words }])
+    x.card.handlers.keydown({ target: x.card, key: ' ', preventDefault() {}, ...props });
+  await settle(); assert.equal(x.inlineOpens(), 0); assert.equal(x.opened(), 0);
+  x.card.handlers.keydown({ target: x.card, key: ' ', preventDefault() {} }); await settle();
+  assert.equal(x.inlineOpens(), 1); assert.equal(x.opened(), 0);
+  x.card.handlers.keydown({ target: x.card, key: ' ', preventDefault() {} }); await settle();
+  assert.equal(x.opened(), 1); assert.equal(x.edits.length, 1);
+});

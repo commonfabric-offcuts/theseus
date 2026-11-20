@@ -13,7 +13,7 @@ function replies() {
   for(const id of ['a','b','saved']) {
     const root=doc.createElement('div'),card=doc.createElement('article'),field=doc.createElement('textarea'),taller=doc.createElement('button');
     card.root=true;card.append(root);root.append(field,taller);
-    const p={hidden:true,editors:{reply:{draft:noWriting()}}};
+    const p={hidden:true,source:{source_ref:{kind:'message',id}},editors:{reply:{draft:noWriting()}}};
     owner.rows.set(id,{card,p,paintHeight(){},ui:{root,field,$:()=>taller,bar:{expand(){},close(){}}}});
   }
   return owner;
@@ -88,4 +88,31 @@ test('907 adding then removing a second recipient keeps a whispered reply privat
   assert.deepEqual(choiceOf(draft, draft.addressees, ui.kindOf), { choice: 'tell', switched: true });
   InlineComposer.prototype.removeName.call(ui, 'agent-b');
   assert.equal(choiceOf(draft, draft.addressees, ui.kindOf).choice, 'whisper');
+});
+
+
+test('929 closing the Reader leaves its empty click-opened reply closed', async () => {
+  const owner = replies(), row = owner.rows.get('a'); await owner.open('a', row.card);
+  owner.readerClosed({ fromCardReply: { wide: false }, source: row.p.source, editors: row.p.editors }); owner.paint();
+  assert.equal(row.p.hidden, true); assert.equal(row.ui.root.hidden, true); assert.equal(owner.closed.has('a'), true);
+  await owner.open('a', row.card); assert.equal(row.ui.root.hidden, false, 'a new click deliberately opens it again');
+});
+for (const kind of ['words', 'images', 'quotes', 'recipients', 'upload', 'submission'])
+test('929 Reader close preserves its reply with ' + kind, async () => {
+  const owner = replies(), row = owner.rows.get('a'); await owner.open('a', row.card);
+  const editor = row.p.editors.reply;
+  if (kind === 'words') editor.draft.body = 'Written in the Reader';
+  if (kind === 'images') editor.draft.attachments = [{ id: 'image' }];
+  if (kind === 'quotes') editor.draft.quotes = [{ body: 'quoted' }];
+  if (kind === 'recipients') editor.draft.addressees = ['chosen'];
+  if (kind === 'upload') editor.imageBusy = true;
+  if (kind === 'submission') editor.submissions = [{ status: 'sending' }];
+  owner.readerClosed({ fromCardReply: { wide: false }, source: row.p.source, editors: row.p.editors }); owner.paint();
+  assert.equal(row.p.hidden, false); assert.equal(row.ui.root.hidden, false); assert.equal(owner.closed.has('a'), false);
+});
+test('929 an unrelated or stale Reader close does not close another opening', async () => {
+  const owner = replies(), row = owner.rows.get('a'); await owner.open('a', row.card);
+  for (const p of [{ source: row.p.source, editors: row.p.editors },
+    { fromCardReply: {}, source: row.p.source, editors: { reply: {} } }]) owner.readerClosed(p);
+  assert.equal(row.p.hidden, false); assert.equal(row.ui.root.hidden, false);
 });
