@@ -204,6 +204,73 @@ def guarded(paths):
     return [path for path in paths if path in DEPLOY_TOOL or path in MIGRATIONS or path.startswith(CONTROLLER)]
 
 
+def input_declaration_additions(git, live, merge):
+    """Only added test input declarations; preserve existing bytes and meanings.
+
+    The ordinary item review records the actual own checks and reviewer audit.
+    This is a data-only class, not permission to change the verifier or schema.
+    An unreadable, duplicate-key or non-additive document gets no exception.
+    """
+    path = 'tools/ci-input-reads.json'
+    try:
+        # Git compares blob bytes before a text-mode caller can normalize EOLs.
+        stat = _ask(git, 'the declaration line changes', 'diff', '--no-ext-diff', '--no-textconv',
+                    '--numstat', live, merge, '--', path).strip().split('\t')
+        if len(stat) != 3 or stat[2] != path or not stat[0].isdigit() or int(stat[0]) < 1 or stat[1] != '0':
+            return []
+        for commit in (live, merge):
+            entry = _ask(git, 'the declaration file mode', 'ls-tree', commit, '--', path).split()
+            if len(entry) != 4 or entry[0:2] != ['100644', 'blob'] or entry[3] != path:
+                return []
+        before_text = _ask(git, 'the existing input declarations', 'show', live + ':' + path)
+        after_text = _ask(git, 'the proposed input declarations', 'show', merge + ':' + path)
+        before, after = base_move.loads(before_text), base_move.loads(after_text)
+        if not isinstance(before, dict) or not isinstance(after, dict):
+            return []
+        # Every prior complete line must remain byte-for-byte, in order.
+        remaining = iter(after_text.splitlines(keepends=True))
+        if not all(any(old == new for new in remaining) for old in before_text.splitlines(keepends=True)):
+            return []
+        for test, declarations in before.items():
+            if not isinstance(declarations, dict) or not isinstance(after.get(test), dict):
+                return []
+            if any(signature not in after[test] or after[test][signature] != value
+                   for signature, value in declarations.items()):
+                return []
+        additions = []
+        for test, declarations in after.items():
+            if (not isinstance(test, str) or not test.startswith('tests/')
+                    or not test.endswith(('.py', '.mjs', '.js'))
+                    or '..' in test.split('/') or not isinstance(declarations, dict)):
+                return []
+            for signature, value in declarations.items():
+                if signature in before.get(test, {}):
+                    continue
+                if (not isinstance(signature, str) or not re.fullmatch(r'[0-9a-f]{64}(?::[1-9][0-9]*)?', signature)
+                        or not isinstance(value, dict) or set(value) != {'scope', 'inputs'}
+                        or value['scope'] not in ('repository', 'generated/system/product')
+                        or not isinstance(value['inputs'], list)):
+                    return []
+                for source in [test] + value['inputs']:
+                    if (not isinstance(source, str) or not source or source.startswith('/')
+                            or '..' in source.split('/')):
+                        return []
+                    _ask(git, 'a declared tracked input', 'cat-file', '-e', merge + ':' + source)
+                additions.append(dict(test=test, signature=signature, **value))
+        return additions
+    except (Refused, base_move.Refused, ValueError, TypeError, RecursionError):
+        return []
+
+
+def ordinary_guarded(paths, git, live, merge):
+    """Read the actual data delta before exempting added input declarations."""
+    kept = guarded(paths)
+    additions = input_declaration_additions(git, live, merge) if 'tools/ci-input-reads.json' in kept else []
+    if additions:
+        kept = [path for path in kept if path != 'tools/ci-input-reads.json']
+    return kept, additions
+
+
 def listed(github, repository, kind, number):
     """What GitHub lists for one workflow run ("run") or check run ("check"), or Refused when it cannot be read."""
     path = (RUN_PATH if kind == "run" else CHECK_PATH) % (repository, number)
@@ -316,7 +383,9 @@ def judge(path, sha, live, release_branch, repository, git, github):
     changed = [name for name in _ask(git, "the paths changed from the live commit %s" % live[:12], "diff", "--name-only",
                                      "-z", live, merge).split("\0") if name]
     kept = guarded(changed)
+    declaration_additions = []
     if train["kind"] == "ordinary":
+        kept, declaration_additions = ordinary_guarded(changed, git, live, merge)
         if kept:
             raise Refused("an ordinary train cannot change %s: the deploy tool, the controller and the data migrations keep "
                           "their judged run before the merge; make the train judged-first" % ", ".join(kept[:5]))
@@ -371,6 +440,8 @@ def judge(path, sha, live, release_branch, repository, git, github):
     result = {"file": str(path), "pr": train["pr"], "kind": train["kind"], "merge_commit": merge, "merged_tree": tree,
             "release_branch": release_branch, "live": live, "items": train["items"], "hosted_run": hosted,
             "guarded_changes": kept, "judgment": judgment}
+    if declaration_additions:
+        result['input_declaration_additions'] = declaration_additions
     if 'full_checks' in train:
         result['full_checks'] = {'evidence': train['full_checks'], 'observed': full_observed}
     if "base_move" in train:
