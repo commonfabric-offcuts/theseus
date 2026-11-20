@@ -106,6 +106,17 @@ test('Cards merge different card edits, preserve exact words, and require a choi
   assert.equal(mergeCardContent(base,{...base,body:base.body+'\n## C\n\nNew\n'},theirs).body,theirs.body+'\n## C\n\nNew\n');
 });
 
+test('Cards keep an identical concurrent edit alongside an adjacent deletion in either copy',()=>{
+  const top='## Top\n\nt\n\n',middle='## Budget\n\nwords\n\n',bottom='## Below\n\nb\n\n';
+  const base={title:'Page',body:top+middle+bottom,attachments:[],references:[]};
+  const edited=top.replace('\nt\n','\nt edited\n');
+  const mine={...base,body:edited+middle+bottom},theirs={...base,body:edited+bottom};
+  assert.equal(mergeCardContent(base,mine,theirs).body,theirs.body);
+  assert.equal(mergeCardContent(base,theirs,mine).body,theirs.body);
+  assert.equal(mergeCardContent(base,mine,{...theirs,body:top.replace('\nt\n','\ndifferent\n')+bottom}),null);
+  assert.equal(mergeCardContent(base,{...mine,body:edited+middle.replace('words','changed words')+bottom},theirs),null);
+});
+
 
 test('every edit carries its displayed content even while a slow journal holds a newer Text revision',async t=>{
   const f=fixture(t),c=await f.make(),seen=c.capture(),put=f.store.put;

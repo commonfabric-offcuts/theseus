@@ -1,4 +1,5 @@
 import { pairFeedFence } from './feed-fence-copy.mjs';
+import { detailRanges, stripDetails } from './card-details.mjs';
 import { applyTextDisplayRules } from './text-display-rules.mjs';
 // A message's words as they were written to be read: headings, lists and task
 // lists, tables (with a dash row, as an agent types them without one, or drawn
@@ -29,7 +30,14 @@ class Mapped {
   constructor(text, runs, left) { this.text = text; this.runs = runs; this.left = left; }
 
   // A message's body as lines without the CR of a CR LF.
-  static of(body) {
+  static of(body, notebook = false) {
+    if(notebook){
+      const parts=[];let at=0;
+      const keep=end=>{if(end<=at)return;const part=Mapped.of(body.slice(at,end));part.runs=part.runs.map(([t,s])=>[t,s+at]);part.left=at;parts.push(part);};
+      for(const range of detailRanges(body)){keep(range.start);at=range.end;}
+      keep(body.length);
+      return parts.length?Mapped.join(parts):new Mapped('',[[0,body.length]],body.length);
+    }
     const runs = [[0, 0]];
     let text = '', from = 0;
     for (let cr = body.indexOf('\r\n'); cr >= 0; cr = body.indexOf('\r\n', from)) {
@@ -822,6 +830,7 @@ export function formatNodes(text, { doc = globalThis.document, partial = false, 
 // Replace only fence lines, and, given images ({of, node}, as for drawPassages), each image line, by
 // images.node(image), the line break after it with it. Raw gaps keep even quote prefixes and CRLFs.
 export function linkedFenceNodes(text, doc, images = null) {
+  text=stripDetails(text);
   const nodes = [];
   let at = 0;
   const emit = blocks => {
@@ -890,11 +899,11 @@ export const drawnRevision = host => REVISIONS.get(host);
 // one passage, shown as a block. A passage never cuts a link, code or a
 // mark: the sentences one spans join, as the line's own reading says. images, for a Notebook page: images.of(line)
 // names the image a line puts there, and that line is a passage of its own holding images.node(image, doc).
-export function drawPassages(host, body, doc = globalThis.document, { meter, copyFences = false, images = null, struck = null, displayRules = [] } = {}) {
-  if (deferFencePaint(host, () => drawPassages(host, body, doc, { meter, copyFences, images, struck, displayRules }))) return;
+export function drawPassages(host, body, doc = globalThis.document, { meter, copyFences = false, images = null, struck = null, displayRules = [], notebook = false } = {}) {
+  if (deferFencePaint(host, () => drawPassages(host, body, doc, { meter, copyFences, images, struck, displayRules, notebook }))) return;
   body = String(body ?? '');
   host.replaceChildren();
-  const blocks = displayBlocks(blocksOf(Mapped.of(body), false, 0, meter, images), displayRules, { meter }), drawn = [];
+  const blocks = displayBlocks(blocksOf(Mapped.of(body, notebook), false, 0, meter, images), displayRules, { meter }), drawn = [];
   blocks.forEach((block, n) => {
     const next = blocks[n + 1];
     if (block.kind === 'paragraph') {

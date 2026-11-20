@@ -1,3 +1,4 @@
+import { detailParts } from './card-details.mjs';
 import { messageUpdateActivity, refreshLine } from './cover-refresh.mjs';
 import { messageFoldSwipe } from './message-fold-swipe.mjs';
 import { keyAction, holdsWriting, written } from './editor.mjs';
@@ -547,6 +548,7 @@ export class Reader {
   drawSource(body) {
     const source = this.source, page = source?.source_ref?.kind === 'memory' && this.callbacks.pageImage;
     drawPassages(this.sourceBody, body, document, { copyFences: true, struck: source?.source_ref?.kind === 'message' ? source.struck?.cuts : null,
+      notebook: source?.source_ref?.kind === 'memory',
       displayRules: source?.source_ref?.kind === 'message' ? this.callbacks.displayRules?.() ?? [] : [],
       images: page ? pageImages(source, attachment => this.callbacks.pageImage(attachment, source.source_ref)) : null });
     this.placeEnd();
@@ -606,7 +608,7 @@ export class Reader {
   hold(by) {
     const cardWords = this.card && this.chosen ? this.callbacks.cardSelection?.(this.card) : null;
     this.held = cardWords ? { excerpt: cardWords.text, revision: cardWords.revision, by }
-      : this.chosen ? { excerpt: this.selectedPassage(), place: this.quotedPlace(), by } : null;
+      : this.chosen ? { excerpt: this.selectedPassage(), range:this.selectedRange(), place: this.quotedPlace(), by } : null;
     this.paintQuote();
   }
   paintQuote() {
@@ -709,15 +711,24 @@ export class Reader {
   // them: a link showing a topic's name is quoted as the words it stands for.
   selectedPassage() {
     if (this.card) return this.callbacks.cardSelection?.(this.card)?.text ?? '';
+    const range=this.selectedRange();return range?this.source.body.slice(range.start,range.end):'';
+  }
+  selectedRange() {
     const selection = window.getSelection();
     if (selection?.rangeCount && !selection.isCollapsed) {
       const range = selection.getRangeAt(0);
       if (this.sourceBody.contains(range.startContainer) && this.sourceBody.contains(range.endContainer)) {
         const from = this.sourceOffset(range.startContainer, range.startOffset), to = this.sourceOffset(range.endContainer, range.endOffset, true);
-        return this.source.body.slice(from, to);
+        return {start:from,end:to};
       }
     }
-    return this.hover ? this.source.body.slice(this.hover.start, this.hover.end) : '';
+    return this.hover?{start:this.hover.start,end:this.hover.end}:null;
+  }
+  passageParts(excerpt, range=this.selectedRange()) {
+    if(this.source?.source_ref.kind!=='memory')return [excerpt];
+    const body=this.source.body;
+    const start=range&&body.slice(range.start,range.end)===excerpt?range.start:body.indexOf(excerpt);
+    return start<0?[]:detailParts(body,start,start+excerpt.length);
   }
 
   // given: words chosen on the message's card (quoteFrom), quoted as they are,
@@ -734,7 +745,7 @@ export class Reader {
     // after, and its own writing does not take that away.
     this.notice('');
     this.quoting = true;
-    try { this.quoteInto(excerpt, place, given ? revision : cardWords?.revision ?? held?.revision); } finally { this.quoting = false; }
+    try { this.quoteInto(this.passageParts(excerpt, given?null:this.selectedRange()??held?.range), place, given ? revision : cardWords?.revision ?? held?.revision); } finally { this.quoting = false; }
   }
 
   quoteInto(excerpt, place, revision = undefined) {
@@ -747,10 +758,12 @@ export class Reader {
       this.layout.setMode('wide'); this.applyLayout();
     }
     const prefix = editor.draft.body ? (editor.draft.body.endsWith('\n\n') ? '' : editor.draft.body.endsWith('\n') ? '\n' : '\n\n') : '';
-    const addition = prefix + excerpt.split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
+    const excerpts = Array.isArray(excerpt) ? excerpt : [excerpt];
+    if (!excerpts.length) return;
+    const addition = prefix + excerpts.join('').split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
     // The quote is writing like any other, so it goes through the editor's
     // edit, which brings in the author a reply is offered to.
-    editor.edit({ quotes: [...editor.draft.quotes, { source: quoteSource(this.source, revision), excerpt }] });
+    editor.edit({ quotes: [...editor.draft.quotes, ...excerpts.map(excerpt => ({ source: quoteSource(this.source, revision), excerpt }))] });
     // The message's selection is let go before the field takes focus: once
     // the field is focused the document's selection is its caret, and
     // clearing it then leaves no caret drawn until the window is refocused.
@@ -1418,7 +1431,7 @@ export class Reader {
     // ⌘C with a passage lit and no words selected copies the passage's words,
     // as Return would quote them, as on the topic page (message-menu.mjs).
     if (!inEditor && copyKey(event, this.mac) && this.hover && window.getSelection()?.isCollapsed !== false && this.source) {
-      event.preventDefault(); copyText(this.selectedPassage().trimEnd()).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
+      event.preventDefault(); copyText(this.passageParts(this.selectedPassage()).join('').trimEnd()).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
     }
     if (!inEditor && event.metaKey && event.shiftKey && event.code === 'KeyC' && this.source?.source_ref.kind === 'message') {
       event.preventDefault(); copyText(this.source.body).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
