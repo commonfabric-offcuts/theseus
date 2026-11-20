@@ -220,6 +220,9 @@ this topic's things, the Conversation included. The outcome's Notebook pages
 and their pencil are on its page. The page resolves an old `?conversation=`
 address and renames it to that Conversation's `?topic=` address before the Shell
 hands the rail its route. There is no separate outcome scope in this rail.
+If a non-topic route reaches the rail's ready step, including an address changed
+during startup, the rail closes, hides and removes its opener through the same
+cleanup used when beginning an outcome page. It starts no reads or subscription.
 There is no Topic/Outcome switch, keyboard scope choice,
 name row or Starred section; starred dossiers remain in the outline. The generic
 arrow owner reaches the controls actually present, without a scope destination.

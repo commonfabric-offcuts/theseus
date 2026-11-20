@@ -268,7 +268,8 @@ export class ThingsRail {
     }
   }
   ready(handles) {
-    if (handles.route?.kind !== 'topic' || !handles.topic) return;
+    if (handles.route?.kind !== 'topic') { this.begin(false, handles.route); return; }
+    if (!handles.topic) return;
     this.handles = handles;
     this.folds ??= new SectionFolds(this.storage, `aim-next.things.${handles.bootstrap.instance_id}.${handles.bootstrap.actor}`);
     this.clear();

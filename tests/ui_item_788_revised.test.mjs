@@ -2,9 +2,8 @@
 // DOM. This proves model behavior, not native focus, layout or browser timing.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
 import { miniDocument } from './fixtures/mini_dom.mjs';
+import { resolveLegacyConversation } from './fixtures/legacy_conversation_route.mjs';
 import { ThingsRail, SECTIONS } from '../web/things-rail.mjs';
 import { NotebookCreate } from '../web/notebook-create.mjs';
 import { controls } from '../web/arrow-reach.mjs';
@@ -154,11 +153,7 @@ test('788 real Shell resolves the legacy Conversation address before ready and s
   assert.deepEqual(shell.route(), { kind: 'conversation', id: 'w788' });
   // Execute the app's real legacy-address block, not a copy of its rename or
   // a synthetic route passed to the rail. The Shell reads the resulting URL.
-  const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
-  const resolver = /  if \(route.kind === 'conversation'\) \{[\s\S]*?\n  \}\n(?=  \/\/ The reader's agent colors)/.exec(app)?.[0];
-  assert.ok(resolver, 'the current app owns the legacy Conversation resolver');
-  const topicId = await runInNewContext(`(async () => { let route = shell.route(), topicId = route.id; ${resolver} return topicId; })()`,
-    { shell, location: win.location, api: { view: f.handles.view }, validate: value => value });
+  const topicId = await resolveLegacyConversation(shell, f.handles.view);
   assert.equal(topicId, 'c788');
   assert.equal(win.location.search + win.location.hash, '?topic=c788#kept', 'legacy address is replaced before ready');
   assert.deepEqual(win.history.state, { aimPlace: 3 }, 'rename preserves the history entry');
