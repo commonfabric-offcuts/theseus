@@ -1,3 +1,5 @@
+import { stackMenuItems } from './stack-menu-items.mjs';
+import { unstarDossier } from './dossier-unstar.mjs';
 // What a person does to reply stacks on a topic page or a Conversation
 // (docs/reply-stacks.md), and the keys and menu items that do it: star a
 // message, fold a message to one line and unfold it, rename a stack, move it,
@@ -35,6 +37,14 @@ export const HELD_BY_STAR = 'This dossier has a message you starred: unstar it t
 const LINES = [':scope > .stack-head', ':scope > .message-author', ':scope > .message-folded', ':scope > .message-earlier'];
 const lineOf = card => LINES.map(selector => card?.querySelector(selector)).find(line => line?.getClientRects().length) ?? card;
 const FIELD = { 'stack.aside': 'aside', 'message.star': 'star', 'message.deal': 'deal', 'message.fold': 'fold', 'message.fold_through': 'fold', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
+// Feed and rail commands share the same revision fence and envelope.
+export function stackActEnvelope({ instanceId, authority, kind, item, args, operationId = crypto.randomUUID() }) {
+  const field = FIELD[kind];
+  if (!field) throw Error('That message action is not available.');
+  const { authority_id, authority_epoch } = authority;
+  return { v: 1, instance_id: instanceId, operation_id: operationId, kind, target: { message_id: item.id },
+    expected: { [`${field}_revision`]: item.acts?.[`${field}_revision`] ?? 0, authority: { authority_id, authority_epoch } }, args };
+}
 const FEED_ACTIONS = ['move-up', 'move-down', 'right', 'left', 'join-up', 'join-down', 'undo', 'fold-message'];
 
 // Whether a touch began on something between it and the list that scrolls
@@ -165,8 +175,9 @@ export class StackFeed {
   // the menu a right-click on a message opens, from anchor (a title bar's ⋯). colorOf: as arrangeStacks takes it.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
     newest = () => {}, refreshPositions = async () => {}, acted = () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), navigate = () => {}, press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
-    colorOf = () => null, clock = () => Date.now(), doc = document }) {
+    colorOf = () => null, readNamed = null, clock = () => Date.now(), doc = document }) {
     Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, acted, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, clock, doc });
+    this.readNamed = readNamed;
     this.coordinationChoice = new CoordinationChoice({ instanceId, viewer, view: doc.defaultView ?? globalThis.window });
     this.state.showCoordination = this.coordinationChoice.on;
     home?.addEventListener('close', () => this.arrange());
@@ -493,10 +504,8 @@ export class StackFeed {
   }
   // Sends an act, or sends again the exact request of one not settled (made).
   async send(kind, item, args, made = null) {
-    const field = FIELD[kind];
     const current = this.messages().get(item.id) ?? item;
-    const envelope = made ?? (({ authority_id, authority_epoch }) => ({ v: 1, instance_id: this.instanceId, operation_id: crypto.randomUUID(), kind, target: { message_id: item.id },
-      expected: { [`${field}_revision`]: current.acts?.[`${field}_revision`] ?? 0, authority: { authority_id, authority_epoch } }, args }))(this.authority());
+    const envelope = made ?? stackActEnvelope({ instanceId: this.instanceId, authority: this.authority(), kind, item: current, args });
     let receipt;
     try { receipt = await this.commandOf(envelope); } catch (error) { throw new ActFailure(envelope, { error }); }
     if (receipt?.status !== 'committed') throw new ActFailure(envelope, { receipt });
@@ -566,6 +575,13 @@ export class StackFeed {
       this.act('message.star', item, { starred: false });
       this.arrange(); this.say('Star taken off');
     });
+  }
+  async unstarDossier(item, stack) {
+    try {
+      await unstarDossier({ ...item, stack_position: positionOf(stack) }, { instanceId: this.instanceId,
+        read: this.readNamed, send: member => this.act('message.star', member, { starred: false }), current: () => !this.gone });
+      if (!this.gone) { this.reread(); this.say('Stars taken off this dossier'); }
+    } catch (error) { if (!this.gone && !(error instanceof ActFailure)) this.status(error); }
   }
   // A stack dealt with folds to its newest reply when the reader comes back.
   deal(item) {
@@ -1030,41 +1046,29 @@ export class StackFeed {
   // first: what the message offers; last: its stack's moves and joins.
   menuItems(item, { phone = false, more = () => {}, reader = false, at = null, rename = act => act() } = {}) {
     const entry = this.entryFor(item.id), found = entry && stackOf(this.list, entry);
-    const starred = Boolean(this.actsOf(item.id, item).starred);
-    const items = [{ label: starred ? 'Unstar' : 'Star for me', glyph: starred ? 'starred' : 'star', act: () => this.star(item) }];
-    const stack = found?.stack, state = this.state;
-    const askCover = found?.head && firstCoverMenuItem(this.list.ownerDocument, stack);
-    if (askCover) items.push(askCover);
-    // Where a refusal of the stack's moves is said: the line of the message whose menu it is.
+    const stack = found?.stack, level = stack && levelOf(this.state, stack.id);
     const line = () => at ?? lineOf(this.entryFor(item.id) && cardIn(this.entryFor(item.id)));
-    if (found?.head && stack.replies.length) {
-      items.push({ label: 'Rename', glyph: 'pencil', act: () => rename(() => this.startRename(stack)) });
-    }
-    if (stack && positionOf(stack)) items.push({ label: positionOf(stack).below ? 'Bring back' : 'Archive', glyph: positionOf(stack).below ? 'back' : 'archive',
-      act: () => this.setAside(stack, !positionOf(stack).below, { at: line(), focus: !reader }) });
-    // The Reader and feed use the same labels and star/fold owner. An older
-    // message opened alone still has personal acts, though no loaded stack.
-    if (this.actsOf(item.id, item).folded) items.push({ label: 'Unfold', glyph: 'unfold', act: () => this.setFold(item, false, { focus: !reader }) });
-    else if (!starred) items.push({ label: 'Fold', glyph: 'fold', act: () => this.setFold(item, true, { focus: !reader }) });
-    if (reader || !found) return { first: items, last: [] };
-    if (found.head && stack.replies.length) {
-      const open = levelOf(state, stack.id) === 'open';
-      items.push({ label: open ? 'Show latest and unread replies' : 'Show all messages', glyph: open ? 'latest' : 'all',
-        act: () => { setLevel(state, stack, open ? 'folded' : 'open'); this.arrange(); this.focusOn(stack.id); } });
-    }
-    if (stack.joins.has(item.id)) items.push({ label: 'Split back out', glyph: 'split', act: () => this.split(item) });
-    const moves = [
-      { label: 'Move its stack up', keys: '⌘↑', glyph: 'up', act: () => this.move(entry, 'up') },
-      { label: 'Move its stack down', keys: '⌘↓', glyph: 'down', act: () => this.move(entry, 'down') },
-      ...(stack.replies.length && foldStep({ level: levelOf(state, stack.id) }, 'fold') ? [{ label: 'Fold its stack', keys: '←', glyph: 'chevron', act: () => this.fold(entry, 'fold') }] : []),
-      ...(stack.replies.length && foldStep({ level: levelOf(state, stack.id) }, 'open') ? [{ label: 'Open its stack', keys: '→', glyph: 'chevdown', act: () => this.fold(entry, 'open') }] : []),
-      { label: 'Join the stack above', keys: '⇧⌘↑', glyph: 'joinup', act: () => this.join(entry, 'up') },
-      { label: 'Join the stack below', keys: '⇧⌘↓', glyph: 'joindown', act: () => this.join(entry, 'down') },
-      ...(stack.placed !== null ? [{ label: 'Reset position', glyph: 'unpin', act: () => this.unplace(stack) }] : []),
-      ...(this.undos.length ? [{ label: 'Undo', keys: '⌘Z', glyph: 'undo', act: () => this.undo(line()) }] : []),
-    ];
-    return { first: items, last: phone ? [{ label: 'Move or join…', glyph: 'move', act: () => more(moves) }] : moves };
+    const dossierStarred = found?.head && positionOf(stack)?.starred?.length > 0;
+    return stackMenuItems({ starred: dossierStarred || Boolean(this.actsOf(item.id, item).starred), folded: this.actsOf(item.id, item).folded,
+      head: found?.head, hasReplies: Boolean(stack?.replies.length), position: stack && positionOf(stack), below: stack && positionOf(stack)?.below,
+      found: Boolean(found), reader, phone, open: level === 'open', joined: stack?.joins.has(item.id), placed: stack?.placed != null,
+      undo: this.undos.length > 0, foldable: stack && foldStep({ level }, 'fold'), openable: stack && foldStep({ level }, 'open'),
+      cover: found?.head && firstCoverMenuItem(this.list.ownerDocument, stack) }, (key, value) => {
+      if (key === 'star') return dossierStarred ? this.unstarDossier(item, stack) : this.star(item);
+      if (key === 'rename') return rename(() => this.startRename(stack));
+      if (key === 'aside') return this.setAside(stack, value, { at: line(), focus: !reader });
+      if (key === 'fold') return this.setFold(item, value, { focus: !reader });
+      if (key === 'level') { setLevel(this.state, stack, value); this.arrange(); this.focusOn(stack.id); return; }
+      if (key === 'split') return this.split(item);
+      if (key === 'move-up' || key === 'move-down') return this.move(entry, value);
+      if (key === 'fold-stack' || key === 'open-stack') return this.fold(entry, value);
+      if (key === 'join-up' || key === 'join-down') return this.join(entry, value);
+      if (key === 'reset') return this.unplace(stack);
+      if (key === 'undo') return this.undo(line());
+      if (key === 'moves') return more(value);
+    });
   }
+
   // Lands on a message, opening its stack (and, for its first message, the full words).
   land(id) {
     const entry = this.entryFor(id);

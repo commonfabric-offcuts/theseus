@@ -4,9 +4,10 @@ import { readFileSync } from 'node:fs';
 import { renderer799 } from './fixtures/renderer799.mjs';
 import { StackFeed } from '../web/stack-feed.mjs';
 import { mayStartFrom } from '../web/whisper-choice.mjs';
-import { configureCoverRefresh } from '../web/cover-refresh.mjs';
+import { configureCoverRefresh, firstCoverMenuItem } from '../web/cover-refresh.mjs';
 import { openLinksWith } from '../web/links.mjs';
 import { withdrawalItem } from '../web/question-withdrawal.mjs';
+import { stackMenuItems } from '../web/stack-menu-items.mjs';
 
 const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
 const menuCode = app.slice(app.indexOf('function messageMenuItems(item,'), app.indexOf('function moveDossier(id,'));
@@ -36,7 +37,7 @@ function fixture({ phone = false, below = false, starred = false, folded = false
   const reader = { presentation: p, source: p.source, quotable: true, layoutChoice: 'Wide',
     quote: () => calls.push(['quote']), toggleLayout: () => calls.push(['layout']), names: () => ['fixture-agent'], notice: error => calls.push(['notice', error.message]) };
   let menu;
-  const env = { window: { matchMedia: () => ({ matches: phone }) }, document: doc, stackFeed: feed, topicUnavailable: false, outcomeReached: false,
+  const env = { window: { matchMedia: () => ({ matches: phone }) }, document: doc, stackFeed: feed, stackMenuItems, topicUnavailable: false, outcomeReached: false,
     topic: { id: 't-fixture' }, retired: false, registry, reader, messageEdit: null, pipelineRow: { on: true }, pipelineAddFor: null,
     bootstrap: { actor: 'fixture-human' }, messageEntries: new Map(), cardScroll: { clipped: () => true, showFull: () => calls.push(['full']) },
     cardIn: () => ({}), cardMenuActs: (_item, items) => items, run: fn => fn(),
@@ -53,7 +54,7 @@ function fixture({ phone = false, below = false, starred = false, folded = false
     status: error => calls.push(['status', error.message]),
     $: () => anchor, readerFeedItem: () => item, openMessageMenu: options => { menu = options; },
   };
-  const make = overrides => new Function(...Object.keys({ ...env, ...overrides }), menuCode + '\n' + readerCode + '\nreturn { messageMenuItems, openReaderMenu, withMenuSource: typeof withMenuSource === "function" ? withMenuSource : null, leaveReaderForRename: typeof leaveReaderForRename === "function" ? leaveReaderForRename : null };')(...Object.values({ ...env, ...overrides }));
+  const make = overrides => new Function(...Object.keys({ ...env, ...overrides }), menuCode + '\n' + readerCode + '\nreturn { messageMenuItems, sharedMessageMenuItems, openReaderMenu, withMenuSource: typeof withMenuSource === "function" ? withMenuSource : null, leaveReaderForRename: typeof leaveReaderForRename === "function" ? leaveReaderForRename : null };')(...Object.values({ ...env, ...overrides }));
   return { ...r, p, reader, registry, feed, item, anchor, calls, make, menu: () => menu, methods: make({}) };
 }
 
@@ -67,6 +68,26 @@ test('feed and Reader consume the same actions; arrangement, full message, quote
     assert.equal(labels(reader).some(label => /stack|latest|Show all|Show full|Move or join/.test(label)), false);
     assert.ok(labels(feed).includes('Show full message')); assert.ok(labels(reader).includes('Quote selection')); assert.ok(labels(reader).includes('Wide'));
     assert.equal(labels(feed).includes('Quote selection'), false); assert.equal(labels(feed).includes('Wide'), false);
+  }
+});
+
+test('863 rail uses the actual page descriptor list; an unloaded topic constructs choices without calling owners', t => {
+  configureCoverRefresh(() => ({ bootstrap: { instance_id: 'fixture863', actor: 'fixture-human' }, api: { command() { assert.fail('a menu open sends nothing'); } } }));
+  t.after(() => configureCoverRefresh(null));
+  for (const phone of [false, true]) {
+    const f = fixture({ phone }), chosen = [];
+    const start = app.indexOf('function railDossierMenu('), end = app.indexOf('let railMarks', start);
+    const env = { topic: { id: 't-fixture' }, views: { messages: f.messages }, topicUnavailable: false,
+      messageMenuItems: f.methods.messageMenuItems, sharedMessageMenuItems: f.methods.sharedMessageMenuItems,
+      document: f.list.ownerDocument, firstCoverMenuItem, window: { matchMedia: () => ({ matches: phone }) } };
+    const rail = new Function(...Object.keys(env), app.slice(start, end) + ';return railDossierMenu;')(...Object.values(env));
+    const page = f.methods.messageMenuItems(f.item, null, f.anchor);
+    const loaded = rail(f.item, f.anchor, (...args) => chosen.push(args));
+    assert.deepEqual(loaded.map(x => [x.key, x.label, x.checked]), page.map(x => [x.key, x.label, x.checked]));
+    loaded.find(x => x.key === 'rename').act(); assert.deepEqual(chosen, [['rename', 'Rename']]); assert.deepEqual(f.calls, []);
+    const remote = rail({ ...f.item, id: 'm-remote', topic_id: 't-remote' }, f.anchor, (...args) => chosen.push(args));
+    for (const key of ['rename', 'aside', 'star', 'cover-refresh', 'Copy Link', 'Move to topic…', 'Mark read', 'Mark unread']) assert.ok(remote.some(x => x.key === key), key);
+    remote.find(x => x.key === 'rename').act(); assert.equal(chosen.length, 2); assert.deepEqual(f.calls, []);
   }
 });
 
