@@ -168,7 +168,7 @@ export class MessageMenu {
       // drawn whole under Only new, light first as any card's does.
       if (onEarlierRow(entry, event.target)) return;
       // A message folded to its row unfolds at the first tap (reply-stacks.mjs).
-      if (this.touch && entry !== this.before && !event.target.closest?.('a, .message-preview, .card-reply-composer, .fold-line, .image-thumb, .note-corner, .cover-refresh-glyph, .stack-new-action') && cardIn(entry).dataset.folded !== 'true') {
+      if (this.touch && entry !== this.before && !event.target.closest?.('a, .message-preview, .card-reply-composer, .fold-line, .image-thumb, .note-corner, .cover-refresh-glyph, .waiting-silence, .stack-new-action') && cardIn(entry).dataset.folded !== 'true') {
         this.light(entry);
         // The reply arrow answers its own first tap with its words (card-reading.mjs).
         if (event.target.closest?.('.replied-mark')) return;
@@ -295,7 +295,7 @@ export class MessageMenu {
   // ends a drag selecting words leaves it, so the words stay selected.
   claim(target) {
     const at = target?.nodeType === 1 ? target : target?.parentElement, focused = this.doc.activeElement;
-    if (!at || writing(at) || writing(focused) || focused?.isContentEditable || this.doc.getSelection?.()?.isCollapsed === false) return;
+    if (!at || at.closest('.waiting-silence') || writing(at) || writing(focused) || focused?.isContentEditable || this.doc.getSelection?.()?.isCollapsed === false) return;
     const header = at.closest('.stack-toggle');
     const entry = header ? null : this.entryOf(at);
     const stop = header ?? (entry && (cardIn(entry).hidden ? entry.querySelector('.fold-line') : cardIn(entry)));

@@ -96,7 +96,11 @@ dots (docs/conversation.md: the same element, `waitingDots` in
 `web/outcome-conversation.mjs`, pulsing in turn in the card's own ink and
 still under reduced motion), at the foot of the card, until the first reply
 from anyone else, a person or an agent. Named "Waiting for a reply" for a
-screen reader and the pointer; they are a mark, not a control.
+screen reader and the pointer. Their button opens a popover with one action,
+Silence, with a check mark (722). Silence stops only this message's pulse for
+this waiting episode in this document: the static dots, waiting words and
+underlying request remain. Repainting keeps the choice; another request and
+a reload start unsilenced. A reply still arrives and ends the wait normally.
 
 - A reply is what Theseus already reads as answering a message, by someone
   else:

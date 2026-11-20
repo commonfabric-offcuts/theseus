@@ -6,6 +6,7 @@ import { glyph } from './glyphs.mjs';
 import { datedTime, shownTime } from './times.mjs';
 import { reactionsOf } from './reactions.mjs';
 import { waitingDots } from './outcome-conversation.mjs';
+import { waitingEnded, waitingSilence } from './waiting-silence.mjs';
 
 // Talk between agents: an agent wrote it, by name to agents only, and the
 // reader is not among them, did not write it, and wrote nothing it answers.
@@ -84,6 +85,8 @@ export const UNWATCHED_WORDS = 'No agent was woken: no agent was addressed or li
 export function paintAwaiting(card, item, doc = card.ownerDocument) {
   const row = card.querySelector(':scope > .reply-wait');
   const unwatched = item.no_agent_notified === true;
+  const key = item.id ?? card;
+  if (item.awaiting_reply !== true || unwatched) waitingEnded(doc, key);
   if (item.awaiting_reply !== true && !unwatched) { row?.remove(); return; }
   if (row?.dataset.unwatched === String(unwatched)) return;
   row?.remove();
@@ -94,7 +97,7 @@ export function paintAwaiting(card, item, doc = card.ownerDocument) {
     const mark = doc.createElement('span'); mark.className = 'no-agent-notified';
     mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', UNWATCHED_WORDS); mark.title = UNWATCHED_WORDS;
     mark.append(glyph('unwatched', doc, 18)); group.append(mark);
-  } else group.append(waitingDots(doc, AWAITING_WORDS));
+  } else group.append(waitingSilence(waitingDots(doc, AWAITING_WORDS), key, doc));
   host.append(group);
   card.append(host);
 }
