@@ -5311,13 +5311,5 @@
         "web/app.mjs"
       ]
     }
-  },
-  "tests/ui_notebook_header_887.test.mjs": {
-    "579771381e131c051465225118564a41c44ff4067d2c84747a625249f2203798": {
-      "scope": "repository",
-      "inputs": [
-        "web/aim.css"
-      ]
-    }
   }
 }
