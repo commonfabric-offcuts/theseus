@@ -166,10 +166,10 @@ const styles = (selectors, width = 1440, dark = false) => Object.assign({}, ...s
 const resolve = (value, tokens) => value?.replace(/var\((--[\w-]+)\)/g, (_, name) => resolve(tokens[name], tokens));
 
 test('879 source layout gives the rail space back and fits four or more cards at 1440, one on phones', () => {
-  const outcomeLayout = ['.workspace-layout', '[data-rails] .workspace-layout', '[data-rails] .workspace-layout:has(#outcome-page)'];
+  const outcomeLayout = ['.workspace-layout', '[data-rails] .workspace-layout', '[data-rails] .workspace-layout:has(#outcome-page:not([hidden]) .outcome-topic-cards)'];
   assert.equal(styles(outcomeLayout)['grid-template-columns'], '18rem minmax(0,1fr)', 'no empty right-rail column on an outcome');
   assert.equal(styles(['.workspace-layout', '[data-rails] .workspace-layout'])['grid-template-columns'], '18rem minmax(0,1fr) 18rem', 'topics keep both rails');
-  assert.equal(styles(['main', '[data-rails] .workspace-layout:has(#outcome-page) #main'])['max-width'], 'none');
+  assert.equal(styles(['main', '[data-rails] .workspace-layout:has(#outcome-page:not([hidden]) .outcome-topic-cards) #main'])['max-width'], 'none');
   assert.equal(styles(['.selection-page', '[data-rails] #outcome-page'])['max-width'], 'none');
   const grid = styles(['.outcome-topic-grid']), pattern = /^repeat\(auto-fit,minmax\(min\(100%,([\d.]+)rem\),1fr\)\)$/;
   assert.match(grid['grid-template-columns'], pattern, 'columns fit the available width');
@@ -191,11 +191,34 @@ test('879 source title and meta resolve to white only in dark mode; light colors
   }
 });
 
-test('879 a non-outcome page with its right rail hidden retains three columns and the main cap', () => {
-  // This page matches the hidden-rail selector, but has no #outcome-page.
-  // Evaluate the actual matching source rules; this is not a layout measurement.
-  const layout = ['.workspace-layout', '[data-rails] .workspace-layout', '[data-rails] .workspace-layout:has(>#things[hidden])'];
-  const main = ['main', '[data-rails] .workspace-layout:has(>#things[hidden]) #main'];
-  assert.deepEqual({ columns: styles(layout)['grid-template-columns'], mainMax: styles(main)['max-width'] },
-    { columns: '18rem minmax(0,1fr) 18rem', mainMax: '75rem' });
+test('879 width rules require the visible cards host created only by the outcome-home branch', () => {
+  const index = source('index.html'), app = source('app.mjs');
+  // The shared container is present even on a topic page. Its presence alone
+  // cannot identify an outcome home. Read the actual page and creator code.
+  assert.match(index, /<section id="outcome-page" class="selection-page" hidden><\/section>/);
+  assert.equal(index.includes('outcome-topic-cards'), false, 'no static cards host on other routes');
+  const creator = "cardsHost.className='outcome-topic-cards'";
+  assert.equal(app.split(creator).length - 1, 1, 'one real cards-host creation site');
+  const start = app.indexOf('async function initializeOutcomePage(route) {');
+  const end = app.indexOf('\nfunction pipelineSend(', start);
+  assert.ok(start >= 0 && end > start);
+  const page = app.slice(start, end);
+  const guard = page.indexOf("if(!['root','workspace'].includes(route.kind))throw");
+  const shown = page.indexOf("$('outcome-page').hidden=false;");
+  const root = page.indexOf("if(route.kind==='root') {");
+  const workspace = page.indexOf('\n  } else {', root);
+  const created = page.indexOf(creator);
+  assert.ok(guard >= 0 && guard < shown && shown < root && root < workspace && workspace < created,
+    'only the workspace branch creates cards, after showing the outcome page');
+  assert.equal(page.slice(root, workspace).includes(creator), false, 'Outcomes home has no cards host');
+  assert.match(page.slice(created), /\$\('topic-navigation'\)\.append\(cardsHost\)/);
+  assert.match(page.slice(workspace, created), /\$\('outcome-page'\)\.append\([^;]*\$\('topic-navigation'\)/);
+  // Derive the overridden rules from rails.css rather than telling styles()
+  // which selectors a hypothetical page would match.
+  const overrides = rules(source('rails.css')).filter(rule => rule.selector.includes('.workspace-layout:has(') &&
+    (rule.props['grid-template-columns'] === '18rem minmax(0,1fr)' || rule.props['max-width'] === 'none'));
+  const key = '[data-rails] .workspace-layout:has(#outcome-page:not([hidden]) .outcome-topic-cards)';
+  assert.deepEqual(overrides.map(rule => rule.selector), [key, key + ' #main']);
+  assert.equal(styles(['.workspace-layout', '[data-rails] .workspace-layout'])['grid-template-columns'], '18rem minmax(0,1fr) 18rem');
+  assert.equal(styles(['main'])['max-width'], '75rem');
 });

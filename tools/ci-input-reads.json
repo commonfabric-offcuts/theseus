@@ -5285,5 +5285,17 @@
         "web/stack-look.css"
       ]
     }
+  },
+  "tests/ui_outcome_grid_879.test.mjs": {
+    "e504a36efd08e310728864b4409ff68047e871dae5eb3da977f138ce070ae5c5": {
+      "scope": "repository",
+      "inputs": [
+        "web/aim.css",
+        "web/rails.css",
+        "web/stack-look.css",
+        "web/index.html",
+        "web/app.mjs"
+      ]
+    }
   }
 }
