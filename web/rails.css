@@ -137,9 +137,15 @@ a.things-name[href]{color:var(--accent)}
 /* Wide: three columns, each rail scrolling on its own. */
 @media(min-width:1181px){
   [data-rails] .workspace-layout{grid-template-columns:18rem minmax(0,1fr) 18rem}
+  /* Outcome homes retain the outline but give the hidden right rail's
+     column to their topic grid (879). Topic pages keep three columns. */
+  [data-rails] .workspace-layout:has(#outcome-page:not([hidden]) .outcome-topic-cards){grid-template-columns:18rem minmax(0,1fr)}
   [data-rails] .things{position:sticky;top:0;align-self:start;max-height:100dvh;overflow-y:auto;border-left:1px solid var(--line)}
   .things-close{display:none}
 }
+/* The outcome grid fills the space returned by its absent right rail. */
+[data-rails] .workspace-layout:has(#outcome-page:not([hidden]) .outcome-topic-cards) #main{max-width:none}
+[data-rails] #outcome-page:not([hidden]):has(.outcome-topic-cards){max-width:none}
 /* Middle widths and phones: the things open from the header's "Pipeline & pages". */
 @media(max-width:1180px){
   /* The outcome's name takes what room is left, down to none; where even then "☰ Outcomes", one gap and "Pipeline &

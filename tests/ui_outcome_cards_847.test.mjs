@@ -142,7 +142,7 @@ test('847 composition has one topic query owner, shared Team renderer, and expli
   assert.match(body,/outcomeTopics: values => topicCards.paint\(values\)/);
   assert.match(html,/<header class="topic-header">[\s\S]*?id="outcome-team" class="topic-people"[\s\S]*?<\/header>/);
   assert.match(app,/pill:participantPill,dismissible:true/);assert.match(html,/id="outcome-team" class="topic-people"/);
-  assert.match(css,/\.outcome-topic-grid\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(css,/\.outcome-topic-grid\{display:grid;grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,14rem\),1fr\)\)/);
   assert.match(css,/@media\(max-width:760px\)\{\.outcome-topic-grid\{grid-template-columns:minmax\(0,1fr\)/);
   assert.match(css,/\.outcome-topic-card\{[^}]*background:var\(--soft\);box-shadow:var\(--stack-cover-inset\)/);
   assert.match(css,/#outcome-references-list\{display:flex;gap:[^;]+;overflow-x:auto/);
