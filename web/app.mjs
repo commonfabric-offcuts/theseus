@@ -1,3 +1,4 @@
+import { QuestionStates, configureQuestionStates, questionOf, questionPill, Resolutions } from './question-state.mjs';
 import { reviewDifferences } from './review-differences.mjs';
 import { railDensity } from './rail-density.mjs';
 import { CardReplies } from './card-replies.mjs';
@@ -138,7 +139,7 @@ let pipelineRow = null, pipelineAddFor = null;
 // An outcome page's Notebook page shown in place (page-here.mjs), and that outcome.
 let pageHere = null, pageHereOutcome = null;
 // The topic page's light, message bar, thumbs-up and go-ahead answers (message-menu.mjs, reactions.mjs).
-let menu = null, reactions = null, cardScroll = null, withdrawals = null;
+let menu = null, reactions = null, cardScroll = null, withdrawals = null, resolutions = null, questionStates = null;
 // Whether the open topic's outcome is reached, as its light last said: its
 // messages are kept to read, so none offers Edit (Core refuses one too).
 let outcomeReached = false;
@@ -1297,6 +1298,7 @@ function paintMoreMessages() {
     [...$('messages').children].some(child => child.dataset?.line === 'older' && !child.classList.contains('new-line-read')));
 }
 function paintViews(kind) {
+  if (questionStates) for (const item of feedMessages().values()) questionStates.of(item);
   // Notebook pages remain admitted in TopicViews for reads and links. Their
   // visible list belongs to the right rail, so a memory update moves no feed.
   if (kind === 'memory') return;
@@ -1324,6 +1326,10 @@ function paintViews(kind) {
     if (authorityReviewPending()) return;
     topicUnavailable = false;
     topic = views.topic;
+    if (questionStates && questionStates.archived !== Boolean(topic.archived)) {
+      questionStates.archived = Boolean(topic.archived);
+      freshness?.invalidate('acts', 0, true);
+    }
     shell.topicChanged();
     // The panel paints the header with the newest topic it has seen.
     if (topicState) topicState.paint(topic, views.participants); else paintHeader(topic);
@@ -1809,6 +1815,11 @@ function paintReplyContext(card, item, messages = feedMessages()) {
 function paintCardAuthor(author, item) {
   paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true, wasEdited(item), carriesOf(item));
   paintWithdrawal(author, item, document);
+  const question = questionOf(item);
+  if (['resolved', 'superseded'].includes(question?.state)) {
+    const pill = questionPill(document, item, { nameOf: displayActor });
+    if (pill) author.append(' ', pill);
+  }
   if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
   if (here?.conversation && !item.withdrawal) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
   // The star in its header, put back as the line is painted again (StackFeed.paintStar).
@@ -2484,8 +2495,23 @@ function openReaderMenu() {
   if (reader.layoutChoice) items.push({ label: reader.layoutChoice, glyph: 'layout', act: () => reader.toggleLayout() });
   openMessageMenu({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message', sheet: true });
 }
+// Terminal state belongs to its exact message, even when a receipt arrives after a Reader step.
+function learnQuestionState({ message_id, question }) {
+  if (!question) return;
+  const known = questionStates.learn(message_id, question);
+  const item = feedMessages().get(message_id);
+  if (item) item.question = known;
+  const source = registry.current?.source;
+  if (source?.source_ref?.kind === 'message' && source.source_ref.id === message_id) {
+    source.question = known; reader.paintOrigin(source);
+  }
+  const card = cardIn(messageEntries.get(message_id)), author = card?.querySelector('.message-author');
+  if (author && item) { paintCardAuthor(author, item); paintReactions(card, item, bootstrap.actor, bootstrap.actor_kind, document); }
+  paintReaderThumb$();
+}
 // A message's withdrawal is permanent and belongs only to that identity, even after a Reader step.
 function learnQuestionWithdrawal({ message_id, withdrawal }) {
+  questionStates?.learn(message_id, { state: 'withdrawn', waiting_on: [], may_resolve: false, ...withdrawal });
   const messages = feedMessages(), item = messages.get(message_id);
   learnWithdrawal(item, withdrawal);
   const card = cardIn(messageEntries.get(message_id)), author = card?.querySelector('.message-author');
@@ -3008,6 +3034,15 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
       if (key === 'availability') { await checkAvailability(read, current, false); return true; }
       if (key === 'starred') return views.readStarred(read, () => current() && !topicUnavailable && !authorityReviewPending());
       if (key === 'acts' || key === 'topic') views.resetStars();
+      if (key.startsWith('question:')) {
+        const id = key.slice('question:'.length);
+        const source = registry.current?.source;
+        if (!views.messages.has(id) && !dossierHeads?.records.has(id) && source?.source_ref?.id !== id) return true;
+        const answer = checkedView(await read('source', { kind: 'message', id }), bootstrap.instance_id);
+        if (!current()) return false;
+        learnQuestionState({ message_id: id, question: answer.question });
+        freshness.invalidate('acts', 0, true); return true;
+      }
       if (key.startsWith('withdrawal:')) {
         const id = key.slice('withdrawal:'.length);
         const source = registry.current?.source;
@@ -3015,7 +3050,8 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
         const answer = checkedView(await read('source', { kind: 'message', id }), bootstrap.instance_id);
         if (!current()) return false;
         if (!answer.withdrawal) throw Error('The question withdrawal has not arrived yet.');
-        learnQuestionWithdrawal({ message_id: id, withdrawal: answer.withdrawal }); return true;
+        learnQuestionWithdrawal({ message_id: id, withdrawal: answer.withdrawal });
+        freshness.invalidate('acts', 0, true); return true;
       }
       if (key.startsWith('edit:')) return messageEdited(key, version, read, current);
       // The edit session of one of the person's messages moved (docs/message-edit.md): another device may have taken it.
@@ -3028,7 +3064,23 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
         }
         if (key === 'acts' && done !== false && current()) {
           await readReaderDossier(registry.current, read, current);
-          if (current()) paintReaderTitle();
+          if (current()) {
+            const source = registry.current?.source;
+            if (source?.source_ref?.kind === 'message') {
+              const answer = checkedView(await read('source', source.source_ref), bootstrap.instance_id);
+              if (current() && registry.current?.source === source) learnQuestionState({ message_id: source.source_ref.id, question: answer.question });
+            }
+            if (current()) paintReaderTitle();
+          }
+        }
+        if (key === 'topic' && done !== false && current()) {
+          const source = registry.current?.source;
+          // Archival and legacy waits can change without an exact question act.
+          // Read only the question in the open Reader, never unloaded history.
+          if (source?.source_ref?.kind === 'message' && source.question) {
+            const answer = checkedView(await read('source', source.source_ref), bootstrap.instance_id);
+            if (current() && registry.current?.source === source) learnQuestionState({ message_id: source.source_ref.id, question: answer.question });
+          }
         }
         return done;
       }
@@ -3323,6 +3375,7 @@ async function initialize() {
     people: whisperPeople,
     recipientsPainted: names => { if (here?.conversation || answering.size) answeredBy(inline, $('inline-composer').querySelector('.audience'), names, Boolean(here?.conversation)); },
   });
+  questionStates = new QuestionStates(); configureQuestionStates(questionStates);
   reader = new Reader({
     images: topicImages, imageBytes, pageImage, displayRules,
     cardSelection: card => menu?.passages.chosen(messageEntries.get(card.dataset.id)) ?? null,
@@ -3385,6 +3438,11 @@ async function initialize() {
     paneClass: source => paneClass(source, bootstrap.actor, agentShown),
     dossierName: source => readerDossierName(source),
     dossierCover: source => readerDossierCover(source),
+    resolvingQuestion: id => resolutions?.busy.has(id),
+    resolveQuestion: id => run(async () => {
+      try { await resolutions.resolve(id); }
+      finally { if (registry.current?.source?.source_ref?.id === id) reader.paintOrigin(registry.current.source); }
+    }),
     answered: closeReaderAfterAnswer,
     foldMessage: foldReaderMessage,
     people: whisperPeople, actor: () => bootstrap.actor,
@@ -3415,8 +3473,22 @@ async function initialize() {
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); }, reading: id => reading('reaction:' + id) });
   const withdrawalPage = shell.page;
   withdrawals = new Withdrawals({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current,
-    current: () => shell.page === withdrawalPage, learned: learnQuestionWithdrawal,
+    current: () => shell.page === withdrawalPage, learned: result => {
+      learnQuestionWithdrawal(result);
+      if (views?.topic && stackFeed?.state) views.paint('acts');
+      paintReaderTitle();
+    },
     say: (words, item) => { if (reader.dialog.open && registry.current?.source?.source_ref?.id === item.id) reader.notice(words); else status(words); },
+    recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
+  resolutions = new Resolutions({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current,
+    current: () => shell.page === withdrawalPage, learned: result => {
+      learnQuestionState(result);
+      // A confirmed local receipt paints the loaded view immediately. Remote
+      // changes instead invalidate acts and follow the ordinary refresh path.
+      if (views?.topic && stackFeed?.state) views.paint('acts');
+      paintReaderTitle();
+    },
+    say: (words, id) => { if (reader.dialog.open && registry.current?.source?.source_ref?.id === id) { reader.notice(words); reader.paintOrigin(registry.current.source); } },
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
   mountFeedFences($('messages'));
   keepLineRoom($('main'), $('messages'));

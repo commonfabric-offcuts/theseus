@@ -219,15 +219,17 @@ class DossierMove:
 
     def _move_waits(self, db, found, source, destination, waiting):
         ids = {item["id"] for item in found}
+        open_questions = [item for item in found if item['intent'] == 'ask'
+                          and not self._question_closed(db, item['id']) and not self._withdrawal_value(db, item['id'])]
         for row in waiting:
             member = row["actor_id"]
-            candidates = [item for item in found if item["intent"] == "ask" and item["seq"] >= row["ask_seq"]
+            candidates = [item for item in open_questions if item["seq"] >= row["ask_seq"]
                           and member != item["author_id"] and member in json.loads(item["addressees"])
                           and not self._reaction_row(db, member, item["id"], "answer")
                           and not answered_yes(self._reaction_row(db, member, item["id"], "thumb"))]
             # The original open wait is authoritative even for a held/go-ahead ask.
-            if row["ask_message_id"] in ids:
-                original = next(item for item in found if item["id"] == row["ask_message_id"])
+            original = next((item for item in open_questions if item['id'] == row['ask_message_id']), None)
+            if original is not None:
                 if not any(item["id"] == original["id"] for item in candidates): candidates.append(original)
             if candidates:
                 ask = min(candidates, key=lambda item: item["seq"])

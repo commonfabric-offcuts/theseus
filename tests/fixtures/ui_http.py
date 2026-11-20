@@ -520,7 +520,10 @@ def main():
             build = server_module.web_build.load(Path(__file__).resolve().parents[2] / "web")
             server = SimpleNamespace(build=build, csp="default-src 'self';script-src " + " ".join(["'self'"] + ["'%s'" % h for h in build.script_hashes]) + ";style-src 'self';")
         else:
-            server = serve()
+            # Native permission checks can open the fixture's initial session as
+            # another synthetic actor without replacing its comparison build.
+            session_actor = sys.argv[sys.argv.index('--as-actor') + 1] if '--as-actor' in sys.argv else None
+            server = serve(as_actor=session_actor)
         from item_783_builds import Builds783
         item783_builds = Builds783(server, root, server_module.web_build.load)
         from item_721_runtime import Item721Runtime
