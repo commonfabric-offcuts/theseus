@@ -123,7 +123,9 @@ test('Reader star, fold and archive use the loaded message owners without moving
     items.find(x => x.label === (below ? 'Bring back' : 'Archive')).act();
     assert.deepEqual(f.calls, [['star', 'm-first'], ['fold', 'm-first', !folded, false], ['aside', 'm-first', !below, false]]);
   }
-  const f = fixture({ starred: true }); f.methods.openReaderMenu(); assert.equal(labels(f.menu().items).includes('Fold'), false);
+  const f = fixture({ starred: true }); f.methods.openReaderMenu();
+  const fold = f.menu().items.find(item => item.key === 'fold');
+  assert.equal(fold.disabled, true); assert.equal(fold.label, 'Fold — Starred messages stay in view; unstar it to fold.');
 });
 
 test('Reader Rename retains and closes the Reader before opening the existing dossier title field; a reply has no Rename', async () => {

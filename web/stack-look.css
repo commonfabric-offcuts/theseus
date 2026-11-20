@@ -357,12 +357,11 @@
 :is(.stack-split,.stack-unplace):hover{background:var(--stack-folder-deep)}
 
 /* The star in a message's header, after who wrote it and when (stack-feed.mjs, paintStar): outline while the message
-   is lit or has the focus, filled on a message the reader starred, always; a head's row already shows its star.
+   is lit or has the focus, filled on a message the reader starred, always, including the first card.
    Its place is kept while it is hidden, so lighting a message moves nothing in its line: a tap that lights the
    card lands on what was under the finger (the reply arrow beside it), never on a star that came in under it. */
 .card-star{display:inline-block;position:relative;visibility:hidden;margin-left:.3rem;padding:0 .2rem;border-radius:.3rem;line-height:1;color:var(--stack-meta-ink);font-weight:400;cursor:pointer}
 .message-card:is(.lit,:focus-visible,:focus-within) .card-star,[data-starred=true] .card-star{visibility:visible}
-.stack-head-card[data-starred=true]:not(.lit,:focus-within) .card-star{visibility:hidden}
 [data-starred=true] .card-star{color:var(--stack-star)}
 .card-star:hover{background:var(--stack-folder-deep)}
 .card-star:focus-visible{outline:2px solid var(--focus);outline-offset:1px}

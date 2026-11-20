@@ -1,4 +1,4 @@
-import { stackMenuItems } from './stack-menu-items.mjs';
+import { stackMenuItems, STARRED_FOLD_REASON } from './stack-menu-items.mjs';
 import { unstarDossier } from './dossier-unstar.mjs';
 // What a person does to reply stacks on a topic page or a Conversation
 // (docs/reply-stacks.md), and the keys and menu items that do it: star a
@@ -214,7 +214,7 @@ export class StackFeed {
       const touch = event.touches?.[0];
       this.swipe = touch && doc.getSelection()?.isCollapsed !== false && !scrollsSideways(event.target, list) ? { x: touch.clientX, y: touch.clientY, target: event.target } : null;
     }, { passive: true });
-    list.addEventListener('touchend', event => this.swiped(event), { passive: true });
+    list.addEventListener('touchend', event => this.swiped(event), { passive: false });
     // Two fingers across a laptop's trackpad do the same. Not passive: while a
     // swipe over a message goes across, the page keeps it from the browser,
     // which would otherwise go back or forward a page.
@@ -746,15 +746,25 @@ export class StackFeed {
   // once. A starred message is not folded. ⌘Z puts it back; focus: the message
   // takes the focus, so ⌘Z is at hand (not on a phone's swipe).
   setFold(item, on, { focus = true, undoable = true } = {}) {
+    const reason = this.foldReason(item, on);
+    if (reason) return this.refuseFold(reason);
     const acts = this.actsOf(item.id, item);
-    if (Boolean(acts.folded) === on || (on && acts.starred)) return false;
+    if (Boolean(acts.folded) === on) return false;
     this.state.peeked.delete(item.id);
-    this.act('message.fold', item, { folded: on });
+    const sent = this.act('message.fold', item, { folded: on });
     if (undoable) this.remember(() => { this.setFold(item, !on, { undoable: false }); });
     this.arrange();
     if (focus) this.focusOn(item.id);
     this.say(on ? 'Folded to one line, for you only' : 'Unfolded');
-    return true;
+    return sent;
+  }
+  foldReason(item, on) {
+    if (!item) return 'Nothing to fold here';
+    const acts = this.actsOf(item.id, item);
+    return on ? acts.starred ? STARRED_FOLD_REASON : acts.folded ? 'Already folded.' : null : null;
+  }
+  refuseFold(reason) {
+    this.status(reason); this.say(reason); return false;
   }
   // The bar's Fold (item 473), as ⋯ offers it: 'unfold' on a folded message,
   // 'fold' on one that is not, and null on a starred one (a star keeps a
@@ -794,7 +804,6 @@ export class StackFeed {
   foldId(id) {
     const item = this.messages().get(id);
     if (!item) return;
-    if (this.actsOf(item.id, item).starred) { this.say('Starred messages stay open'); return; }
     this.setFold(item, true);
   }
   // Option held with a swipe right (item 472): the message and every message
@@ -963,10 +972,10 @@ export class StackFeed {
   // through: Option was held, so a swipe right folds the message and every one before it (foldThrough).
   swipeAct(target, folds, through = false) {
     const gesture = this.gestureTarget(target);
-    if (!gesture) return false;
+    if (!gesture) return this.refuseFold('Nothing to fold here');
     if (gesture.whole && folds) return this.setAside(gesture.found.stack, true);
     if (gesture.whole && !folds && positionOf(gesture.found.stack)?.below) return this.setAside(gesture.found.stack, false);
-    if (!gesture.item) return false;
+    if (!gesture.item) return this.refuseFold('Nothing to fold here');
     return through && folds ? this.foldThrough(gesture.found.stack, gesture.item) : this.setFold(gesture.item, folds, { focus: false });
   }
   swiped(event) {
@@ -974,6 +983,7 @@ export class StackFeed {
     this.swipe = null;
     const across = touch && start ? touch.clientX - start.x : 0;
     if (!start || this.doc.getSelection()?.isCollapsed === false || Math.abs(across) < 80 || Math.abs(touch.clientY - start.y) > 40) return;
+    event.preventDefault();
     this.swipeAct(start.target, across > 0, event.altKey);
   }
   // A wheel event on the list: part of a trackpad swipe, or a scroll the
@@ -993,7 +1003,7 @@ export class StackFeed {
     let swipe = this.wheelSwipe;
     if (!swipe || event.timeStamp - swipe.last >= SWIPE_GAP) {
       const target = scrollsSideways(event.target, this.list) ? null : event.target;
-      swipe = this.wheelSwipe = { x: 0, y: 0, target, valid: target && this.gestureTarget(target), done: false };
+      swipe = this.wheelSwipe = { x: 0, y: 0, target, valid: target && !target.closest?.('#reader'), done: false };
     }
     swipe.last = event.timeStamp;
     swipe.x += across; swipe.y += down;
@@ -1045,7 +1055,6 @@ export class StackFeed {
     const acts = this.actsOf(item.id, item), found = stackOf(this.list, entry);
     if (found?.head && found.stack.replies.length && found.section?.dataset.headOpen === 'false') return;
     event.preventDefault();
-    if (acts.starred && !acts.folded) { this.say('Starred messages stay open'); return; }
     this.setFold(item, !acts.folded);
   }
   // Return on a dossier as a whole, its chevron or its compact header (the
