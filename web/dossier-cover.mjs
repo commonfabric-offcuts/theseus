@@ -15,6 +15,7 @@ import { glyph } from './glyphs.mjs';
 import { linkNode, writtenLink } from './links.mjs';
 import { timeNode } from './times.mjs';
 import { inlineNodes } from './message-format.mjs';
+import { literalHTMLNodes } from './interactive-html.mjs';
 
 const element = (doc, tag, className, text) => {
   const node = doc.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node;
@@ -97,7 +98,13 @@ export function coverSheet(doc, cover, context) {
   const sheet = element(doc, 'div', 'dossier-cover');
   sheet.setAttribute('role', 'note'); sheet.setAttribute('aria-label', 'Dossier cover');
   const line = className => { const node = element(doc, 'div', `cover-line ${className}`); sheet.append(node); return node; };
-  if (cover.stands) line('cover-heading').append(element(doc, 'span', 'cover-words cover-stands', cover.stands));
+  if (cover.stands) {
+    const words = element(doc, 'span', 'cover-words cover-stands');
+    const nodes = literalHTMLNodes(cover.stands, doc);
+    if (nodes.length === 1 && nodes[0].nodeType === 3) words.textContent = cover.stands;
+    else words.append(...nodes);
+    line('cover-heading').append(words);
+  }
   const payload = cover.payload;
   if (payload) {
     const row = line('cover-payload'), words = element(doc, 'span', 'cover-words');

@@ -52,8 +52,8 @@ export class DeckPage {
   // header: the page's {eyebrow, title, description}. place(scope): {href, title} of the topic or outcome the page is in.
   // askIn(scope): where a card's ask goes, {topicId, agents}, or null when there is nowhere.
   // shortKeys: the lines of keys in their short form, the long form their tooltip.
-  constructor({ host, header, item, read, send, place, askIn, shortKeys = false, doc = globalThis.document }) {
-    Object.assign(this, { host, header, item, read, send, place, askIn, doc });
+  constructor({ host, header, item, read, send, place, askIn, shortKeys = false, interactiveHTML = false, doc = globalThis.document }) {
+    Object.assign(this, { host, header, item, read, send, place, askIn, doc, interactiveHTML });
     // The listeners on the document go with the page when it closes (close()).
     this.listening = new AbortController();
     const signal = this.listening.signal;
@@ -985,7 +985,7 @@ export class DeckPage {
     this.paintCardTint(row,card);
     row.style.setProperty('--depth', String(asking.depth));
     row.append(this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled'),
-      formatWords(this.node('div', 'deck-words'), cardImages(cardStacks(cardDetails(card.words).words, messageOf).words).words, { copyFences: true }), asking.form);
+      formatWords(this.node('div', 'deck-words'), cardImages(cardStacks(cardDetails(card.words).words, messageOf).words).words, { copyFences: true, interactiveHTML: this.interactiveHTML }), asking.form);
     return row;
   }
 
@@ -1039,7 +1039,7 @@ export class DeckPage {
     const putBack = !this.keyed ? this.holdPage() : () => {};
     const { cards, opening } = this.deck, editing = this.editing, asking = this.asking;
     this.opening.hidden = !/\S/.test(opening);
-    if (!this.opening.hidden) formatWords(this.opening, opening.trim(), { copyFences: true });
+    if (!this.opening.hidden) formatWords(this.opening, opening.trim(), { copyFences: true, interactiveHTML: this.interactiveHTML });
     // A card under a folded one is drawn hidden, so the rows stand where their cards do.
     const { shown, parents } = this.layout();
     while (!shown[this.picked] && parents[this.picked] >= 0) this.picked = parents[this.picked];
@@ -1052,7 +1052,7 @@ export class DeckPage {
       row.hidden = !shown[index];
       row.style.setProperty('--depth', String(card.depth));
       if (parents[index] >= 0) row.append(this.node('p', 'deck-under muted', cards[parents[index]].title || 'Untitled'));
-      const shownWords = formatWords(this.node('div', 'deck-words'), words, { copyFences: true });
+      const shownWords = formatWords(this.node('div', 'deck-words'), words, { copyFences: true, interactiveHTML: this.interactiveHTML });
       row.append(title, shownWords, ...(images.length ? [this.pictures(images)] : []), this.bubbles(index, stacks));
       // A click opens the card in its box with the cursor where it fell. ⌘-click and ⇧-click select, never selecting
       // the page's text, and finish a card being written first, so a click and then a ⌘-click select both cards. A

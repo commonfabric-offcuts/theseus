@@ -7,7 +7,8 @@ import { applyTextDisplayRules } from './text-display-rules.mjs';
 // struck words, inline code and links in the lines (docs/topic-reading.md,
 // "Formatted words"). A message body is plain text in Core; this reads its
 // Markdown on the page and builds nodes, never markup, so nothing in a message
-// can become HTML. Web addresses become links as everywhere else (links.mjs).
+// can become application HTML. Notebook HTML fences alone opt into a separate
+// opaque document (interactive-html.mjs). Web addresses become links as everywhere else (links.mjs).
 //
 // Every node drawn knows which characters of the message it shows, so the
 // Reader quotes the author's own words for whatever is selected
@@ -18,6 +19,7 @@ import { addressAt, addressStarts, lastWords, linkNode, topicAt, topicStarts, wo
 import { deferFencePaint, fenceCopyButton } from './fence-copy.mjs';
 import { fenceEnd, fenceOpen } from './fences.mjs';
 import { charAt, charBefore, isEscapable, isPunctuation, isSpace } from './characters.mjs';
+import { interactiveHTML } from './interactive-html.mjs';
 
 // ---- Words and where each of their characters is in the message
 
@@ -279,7 +281,7 @@ function blocksOf(m, partial, depth, meter, images = null) {
       const payloadAt = fence.payloadAt ?? (ownLine && j === i + 1 && fence.info ? fence.after : null);
       const from = payloadAt !== null ? line.s + payloadAt : (lines[i + 1]?.s ?? line.e);
       const to = end < 0 ? m.text.length : ownLine ? lines[j - 1].e : lines[j].s + end;
-      blocks.push({ kind: 'code', fenced: true, complete: !partial || j < n - 1, lang: payloadAt !== null ? '' : fence.lang, ...span(i, Math.min(j, n - 1)), words: m.slice(from, to) });
+      blocks.push({ kind: 'code', fenced: true, html: end >= 0 && fence.lang.toLowerCase() === 'html', complete: !partial || j < n - 1, lang: payloadAt !== null ? '' : fence.lang, ...span(i, Math.min(j, n - 1)), words: m.slice(from, to) });
       i = j + 1; continue;
     }
     const image = images?.of(line.text);
@@ -744,12 +746,16 @@ function sentencePart(node, block) {
 // One block as nodes. Inside a card (a button), every block is a span shown
 // as a block, but for a table, which needs its own elements. cut: the block
 // ends an excerpt, so its last words may be cut.
-function blockNode(block, doc, cut, meter, copyFences = false) {
+function blockNode(block, doc, cut, meter, copyFences = false, html = false) {
   const inline = (words, last = cut) => inlineNodes(words, { doc, partial: last, meter });
   const span = { start: block.start, end: block.end };
   if (block.kind === 'heading') return el(doc, 'span', `md-block md-heading md-h${Math.min(block.level, 4)}`, inline(block.words), span);
   if (block.kind === 'rule') return el(doc, 'span', 'md-block md-rule', [], span);
   if (block.kind === 'code') {
+    if (html && block.html) {
+      const start = html.source.lastIndexOf('\n', block.start - 1) + 1;
+      return placed(interactiveHTML(block.lang ? block.words.text : '', doc, html.source.slice(start, block.end)), span);
+    }
     const code = el(doc, 'span', block.box ? 'md-block md-pre md-box' : 'md-block md-pre', [], span);
     if (block.lang) code.dataset.lang = block.lang;
     if (block.words.text) code.append(placed(doc.createTextNode(block.words.text), { words: block.words }));
@@ -770,7 +776,7 @@ function blockNode(block, doc, cut, meter, copyFences = false) {
     return wrap;
   }
   if (block.kind === 'quote') {
-    const inner = block.blocks ? block.blocks.map((b, k) => blockNode(b, doc, cut && k === block.blocks.length - 1, meter, copyFences)) : inline(block.words);
+    const inner = block.blocks ? block.blocks.map((b, k) => blockNode(b, doc, cut && k === block.blocks.length - 1, meter, copyFences, html)) : inline(block.words);
     return el(doc, 'span', 'md-block md-quote', inner, span);
   }
   if (block.kind === 'list') {
@@ -820,10 +826,10 @@ function tableNode(block, doc, meter) {
 }
 
 // text as nodes for a card or any other place that shows a message's words.
-export function formatNodes(text, { doc = globalThis.document, partial = false, meter, copyFences = false, displayRules = [] } = {}) {
+export function formatNodes(text, { doc = globalThis.document, partial = false, meter, copyFences = false, displayRules = [], interactiveHTML: html = false } = {}) {
   const blocks = displayBlocks(parseBlocks(text, { partial, meter }), displayRules, { partial, meter });
   if (!blocks.length) return wordNodes(String(text ?? ''), { doc, partial });
-  return blocks.map((block, n) => blockNode(block, doc, partial && n === blocks.length - 1, meter, copyFences));
+  return blocks.map((block, n) => blockNode(block, doc, partial && n === blocks.length - 1, meter, copyFences, html ? { source: String(text ?? '') } : false));
 }
 
 // A Notebook revision opened in place shows its source verbatim, with links.
@@ -839,7 +845,7 @@ export function linkedFenceNodes(text, doc, images = null) {
         // A quoted block may start after its opening line's quote prefix.
         const start = text.lastIndexOf('\n', block.start - 1) + 1;
         if (at < start) nodes.push(...wordNodes(text.slice(at, start), { doc }));
-        nodes.push(blockNode(block, doc, false, undefined, true));
+        nodes.push(blockNode(block, doc, false, undefined, true, { source: text }));
         at = block.end;
       } else if (block.kind === 'image') {
         if (at < block.start) nodes.push(...wordNodes(text.slice(at, block.start), { doc }));
@@ -940,7 +946,7 @@ export function drawPassages(host, body, doc = globalThis.document, { meter, cop
       });
       return;
     }
-    drawn.push({ node: blockNode(block, doc, false, meter, copyFences), start: block.start });
+    drawn.push({ node: blockNode(block, doc, false, meter, copyFences, notebook ? { source: body } : false), start: block.start });
   });
   drawn.forEach(({ node, start, tail, from }, k) => {
     const end = k + 1 < drawn.length ? drawn[k + 1].start : body.length;

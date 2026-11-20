@@ -5311,5 +5311,19 @@
         "web/app.mjs"
       ]
     }
+  },
+  "tests/test_interactive_html_920.py": {
+    "8d12e9ec83314f0009f316032076a2c9ebe739b70b53c3f75c22a93b92cc25a9": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/ui_interactive_html_920.test.mjs": {
+    "3744b3f97e9ae0d36117e071bf8411e4b3fff80c96d5bd35714e9bb92b67e305": {
+      "scope": "repository",
+      "inputs": [
+        "web/interactive-html-bootstrap.js"
+      ]
+    }
   }
 }

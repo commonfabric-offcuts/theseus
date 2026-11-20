@@ -49,7 +49,7 @@ export function notebookMenuItems(page) {
 // supplies one body and one saving stream, shared with the Text view.
 export class NotebookPage extends DeckPage {
   constructor(options) {
-    super(options);
+    super({ ...options, interactiveHTML: true });
     this.viewPreference = options.viewPreference ?? new NotebookViews(options.bootstrap ?? {});
     Object.assign(this, { api: options.api, bootstrap: options.bootstrap, mode: options.mode ?? this.viewPreference.get(options.item) });
     this.viewPreference.set(options.item, this.mode);
