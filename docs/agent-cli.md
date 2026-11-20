@@ -634,3 +634,9 @@ Every `post` or `reply` with `--asks` must choose `--go-ahead` or
 flags are mutually exclusive and belong only to asks. An agent asking a person
 may supply literal `--ask-wait` metadata; omitting it uses the plain question
 default described in asking-person-cover.md.
+
+An asker (person or agent) can `withdraw MESSAGE [--operation ID]` when a question
+no longer needs answering (item 366). This records `message.withdraw`, keeps the
+original words and answers, and ends only that question’s waits. Nobody else,
+including an owner or coordinator, can withdraw it. `read` shows “Question
+withdrawn”; retries use the existing outbox and the same operation.
