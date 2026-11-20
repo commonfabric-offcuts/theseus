@@ -267,20 +267,22 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   since the outline lists no Notebook (its pages are the right rail's). Home
   and End go to the first and last; ↑ from the first outcome lands on the
   heading's pencil. Return opens the row in place: a topic, or an outcome's
-  Conversation with its topics, folding every other outcome; on a pencil it
+  home with its topics, without folding other outcomes; on a pencil it
   opens its title line (docs/rails.md, "The outline"). A click or a tap on a
   row opens it too, and leaves the keys on it with their ring, so ↑ ↓ and →
   go on from there. On a phone, a tap on a collapsed outcome first opens its
   topics in the rail, leaving the drawer and the current page as they were;
-  a tap on an open outcome goes to its Conversation (item 654). A topic tap
-  still opens that topic. Laptop clicks still navigate and toggle the topics. ⌘→ opens the focused
+  a tap on an open outcome goes to its home (item 654). A topic tap
+  still opens that topic. Laptop name clicks navigate; the separate chevron
+  opens or folds topics in place. ⌘→ opens the focused
   outcome (or a focused topic's outcome) and ⌘← folds it, with the keys on its
   row; → opens a folded outcome and shows its topics, the next → lands on its
   pencil, and the next goes on into the messages; on Done (N) or Archived (N)
   → opens the group or goes to its first row; ← goes to the row it is under or
   folds an open one. ⇧⌘→ opens every outcome and ⇧⌘← folds every
-  one, from anywhere in the outline; the next place reached tidies back to
-  one open. ⌘↑ and ⌘↓ move an outcome, or a topic within its outcome, one
+  one, including outcomes loaded later, from anywhere in the outline. An
+  individual fold afterwards is kept as an exception. Arriving opens the
+  current outcome without folding any other. ⌘↑ and ⌘↓ move an outcome, or a topic within its outcome, one
   place, the reader's own order kept wherever they sign in
   (docs/outline-order.md); ⌘Z right after puts the last move back. "Keys"
   under the outline lists them.

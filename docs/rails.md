@@ -98,13 +98,16 @@ rail.
   that hold what it counts; what is new in an outcome's Build topics is on
   its row, as above. Pressing it again shows everything.
 - **Open and folded.** Each outcome keeps its own open or folded state in
-  localStorage on this device, scoped to the reader and instance. A new
-  outcome starts folded except for the one being read. Arriving anywhere
+  localStorage on this device, scoped to the reader and instance. Each change
+  merges with the latest stored choices, so another tab's navigation cannot
+  overwrite a fold. Before an all command, a new outcome starts folded except
+  for the one being read. Arriving anywhere
   opens the current outcome without folding another; an explicit fold of
   the current outcome lasts until the next arrival. The existing keys open
-  or fold one outcome or all known outcomes (⌘→ ⌘←, → ←, ⇧⌘→ ⇧⌘←;
-  docs/interaction.md, "Keys across the panes"). Open-all records those
-  outcomes individually, so a later new outcome still starts folded.
+  or fold one outcome or all outcomes (⌘→ ⌘←, → ←, ⇧⌘→ ⇧⌘←;
+  docs/interaction.md, "Keys across the panes"). Open-all and Fold-all keep a
+  default for outcomes loaded later too; later individual choices are kept
+  as exceptions. Another all command clears those exceptions.
   New/Waiting filters temporarily open all outcomes they show and leave the
   kept choices intact. Each disclosure is an ordinary Tab-reachable button
   with `aria-expanded` and `aria-controls`; the name row also retains the

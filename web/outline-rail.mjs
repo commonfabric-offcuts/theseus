@@ -101,31 +101,50 @@ export function shownUnder(filter, item) {
 }
 
 // One fold per outcome, kept for this reader and instance on this device.
-// New outcomes start folded except the current one. Filters temporarily show
-// every matching outcome open; they never replace the remembered choices.
+// Before an all command, new outcomes start folded except the current one.
+// Filters open matching outcomes without replacing remembered choices.
 export class Opened {
   constructor(storage = null, key = null) {
-    Object.assign(this, { storage, key }); this.marks = new Map();
+    Object.assign(this, { storage, key }); this.marks = new Map(); this.every = null;
+    this.unsaved = new Map(); this.unsavedAll = null;
+    this.read();
+  }
+  read() {
     try {
-      const saved = JSON.parse(storage?.getItem(key) ?? '{}');
+      const saved = JSON.parse(this.storage?.getItem(this.key) ?? '{}');
       if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
-        for (const [id, open] of Object.entries(saved)) if (typeof open === 'boolean') this.marks.set(id, open);
+        // The old flat boolean map is still admitted. Keep the default outside
+        // the marks so no valid outcome id becomes a reserved preference key.
+        const marks = saved.marks && typeof saved.marks === 'object' && !Array.isArray(saved.marks) ? saved.marks : saved;
+        this.every = marks !== saved && typeof saved.every === 'boolean' ? saved.every : null;
+        this.marks = new Map(Object.entries(marks).filter(([, open]) => typeof open === 'boolean'));
       }
     } catch { /* unavailable or invalid device preference: use the defaults */ }
+    // Failed writes still hold on this page, and merge when storage recovers.
+    if (this.unsavedAll !== null) { this.every = this.unsavedAll; this.marks.clear(); }
+    for (const [id, open] of this.unsaved) this.marks.set(id, open);
   }
   isOpen(id, here = null, filter = null) {
     if (filter) return true;
     if (this.marks.has(id)) return this.marks.get(id);
-    return id === here;
+    return this.every ?? id === here;
   }
   save() {
-    try { if (this.key !== null) this.storage?.setItem(this.key, JSON.stringify(Object.fromEntries(this.marks))); }
+    try {
+      if (this.key === null || !this.storage) return;
+      this.storage.setItem(this.key, JSON.stringify({ every: this.every, marks: Object.fromEntries(this.marks) }));
+      this.unsaved.clear(); this.unsavedAll = null;
+    }
     catch { /* the choices still hold in this page */ }
   }
-  set(id, open) { this.marks.set(id, open); this.save(); }
-  // Only known outcomes: an outcome first encountered later starts folded.
-  all(open, ids) {
-    for (const id of ids) this.marks.set(id, open);
+  set(id, open) {
+    this.read(); // Merge this key with choices another tab made since our last read.
+    this.marks.set(id, open); this.unsaved.set(id, open); this.save();
+  }
+  // Every outcome, including those not loaded yet; later choices are exceptions.
+  all(open) {
+    this.marks.clear(); this.every = open;
+    this.unsaved.clear(); this.unsavedAll = open;
     this.save();
   }
 }
@@ -450,11 +469,11 @@ export class OutlineRail {
     this.paint();
     if (open) Promise.resolve(this.loadTopics(outcome)).then(() => { if (run === this.run) this.paint(); });
   }
-  // Opens or folds every known outcome (⇧⌘→ ⇧⌘←), keeping each choice.
+  // Opens or folds every outcome (⇧⌘→ ⇧⌘←), including those loaded later.
   // Folded, the keys that were on a topic go to its outcome.
   setAll(open, row = null) {
     const run = this.run;
-    this.opened.all(open, this.shownItems().map(item => item.id)); this.filter = null;
+    this.opened.all(open); this.filter = null;
     this.paint();
     if (row && row.level > 1) this.tree.go(this.tree.list().find(each => each.el === row.outcome.name));
     if (!open) return;
