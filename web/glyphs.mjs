@@ -14,6 +14,8 @@
 // with the button's name as its tooltip. Archive uses the Reader's own tray
 // everywhere, including the title bar and its phone menu (item 601).
 const DRAWN = {
+  // Tony's B: three cards fanned slightly, with hidden lines removed (870).
+  stack: { vb: '3 15 56 39', sw: '1.6', d: 'M10.6 37.4 4 40 26 53 54 43 47.4 38.8 M13.4 31.7 6 35 29 47 56 35 50.1 31.9 M8 29 32 41 58 28 34 16Z M21.5 29.6 35 23.2 M26.5 32.2 36 27.6' },
   // No agent was notified of this message. It says nothing about read access.
   unwatched: { d: 'M3 3l18 18 M10 5.2a10 10 0 0 1 11 6.8 15 15 0 0 1-3.2 4.4 M6.3 6.3A16 16 0 0 0 3 12s3 7 9 7a9 9 0 0 0 4-.9 M9.2 9.2a4 4 0 0 0 5.6 5.6' },
   // Ask for a new cover; the same drawing turns while Core awaits it.

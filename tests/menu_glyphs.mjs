@@ -37,6 +37,8 @@ export const glyphOf = label => (Object.hasOwn(GLYPH_OF, label) ? GLYPH_OF[label
 // text. Written out here, not read from web/glyphs.mjs, so a drawing blanked, swapped with another or redrawn there
 // fails the checks that read it (misdrawn below).
 export const APPROVED = Object.freeze({
+  // Item 870, Tony's selected B drawing.
+  stack: { vb: '3 15 56 39', sw: '1.6', d: 'M10.6 37.4 4 40 26 53 54 43 47.4 38.8 M13.4 31.7 6 35 29 47 56 35 50.1 31.9 M8 29 32 41 58 28 34 16Z M21.5 29.6 35 23.2 M26.5 32.2 36 27.6' },
   // Item 738's approved cover refresh drawing, frozen independently of its implementation.
   refresh: { d: 'M20 10a8 8 0 1 0-1.8 7 M20 4v6h-6' },
   // Item 840's cover sheet with a plus, shared by its title button and menu.
