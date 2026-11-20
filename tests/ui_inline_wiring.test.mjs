@@ -7699,3 +7699,96 @@ for (const conversation of [false, true]) test(`923 actual app read trace reache
   assert.ok(max <= 4, `actual API foreground maximum ${max}`);
   assert.equal(trace.filter(call => call.name === 'conversation').length, 1);
 });
+
+// Real app listeners on the Reader source body; the fixture only supplies DOM
+// propagation. Shared descriptors and (above) all four real Edit endings run.
+function readerText909(x) {
+  const body = x.f.get('source-body'); x.overlay.append(body);
+  const words = x.control('span', body); words.textContent = x.item.body;
+  return { body, words, emit(type, target = words, props = {}) {
+    const event = { target, button: 0, detail: 2, preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }, ...props };
+    body.handlers[type]?.(event); return event;
+  } };
+}
+test('909 Reader own-text double click uses More Edit and replaces word selection without reopening', async () => {
+  const x = await editClick890(); await openReader909(x); const r = readerText909(x);
+  assert.equal(r.emit('mousedown', r.words, { detail: 1 }).defaultPrevented, undefined);
+  assert.equal(r.emit('mousedown').defaultPrevented, true);
+  const event = r.emit('dblclick'); await settle();
+  assert.equal(event.defaultPrevented, true); assert.equal(event.stopped, true);
+  assert.equal(x.edits.length, 1); assert.equal(x.edits[0][0], x.item.id);
+  assert.equal(x.edits[0][1], x.f.get('reader-menu'));
+  assert.equal(x.opened(), 1); assert.equal(x.overlay.open, true);
+  assert.equal(x.f.runObservation('selectionClears890'), 1);
+});
+test('909 Reader Edit eligibility is rechecked for each gesture', async () => {
+  for (const mode of ['other author', 'agent', 'reached', 'unavailable', 'source unavailable', 'memory', 'closed', 'already editing']) {
+    const x = await editClick890(mode === 'other author' ? { author: 'someone-else' } : {});
+    await openReader909(x); const r = readerText909(x);
+    if (mode === 'agent') x.f.bootstrap.actor_kind = 'agent';
+    if (mode === 'reached') x.f.runObservation('outcomeReached = true');
+    if (mode === 'unavailable') x.f.runObservation('topicUnavailable = true');
+    if (mode === 'source unavailable') x.f.registry.current.sourceUnavailable = true;
+    if (mode === 'memory') x.f.registry.current.source.source_ref.kind = 'memory';
+    if (mode === 'closed') x.overlay.open = false;
+    if (mode === 'already editing') x.f.runObservation('messageEdit = {}');
+    const down = r.emit('mousedown'), event = r.emit('dblclick'); await settle();
+    assert.equal(down.defaultPrevented, undefined, mode); assert.equal(event.defaultPrevented, undefined, mode);
+    assert.equal(x.edits.length, 0, mode); assert.equal(x.f.runObservation('selectionClears890'), 0, mode);
+  }
+});
+test('909 controls, Reader whitespace, outside text and modified clicks keep their actions', async () => {
+  const x = await editClick890(); await openReader909(x); const r = readerText909(x);
+  for (const tag of ['a', 'button', 'input', 'textarea', 'select', 'img', 'svg']) {
+    const control = x.control(tag, r.words), nested = x.control('span', control);
+    for (const target of [control, nested]) {
+      assert.equal(r.emit('mousedown', target).defaultPrevented, undefined, tag);
+      assert.equal(r.emit('dblclick', target).defaultPrevented, undefined, tag);
+    }
+  }
+  for (const [attr, value] of [['contenteditable', 'true'], ['role', 'button']]) {
+    const control = x.control('span', r.words); control.setAttribute(attr, value);
+    assert.equal(r.emit('dblclick', control).defaultPrevented, undefined, attr);
+  }
+  for (const target of [r.body, x.words, x.f.get('reader-menu')]) assert.equal(r.emit('dblclick', target).defaultPrevented, undefined);
+  for (const props of [{ button: 1 }, { ctrlKey: true }, { altKey: true }, { metaKey: true }, { shiftKey: true }])
+    assert.equal(r.emit('dblclick', r.words, props).defaultPrevented, undefined);
+  await settle(); assert.equal(x.edits.length, 0);
+});
+
+async function openReader909(x) {
+  await x.f.owners().marks.open(x.f.registry, { kind: 'message', id: x.item.id }, { opener: x.card });
+  await settle();
+}
+for (const ending of ['Save', 'Cancel', 'Use saved', 'Escape']) test('909 ' + ending + ' after Reader text double-click keeps the Reader and More focus', async () => {
+  {
+    const entry = 'Reader double click', x = await editFinish890(), { f } = x;
+    try {
+      await openReader909(x); readerText909(x).emit('dblclick');
+      await settle();
+      const session = f.runObservation('messageEdit'); assert.ok(session, entry + ' starts a real edit');
+      const host = f.get('message-edit'), field = host.children[0];
+      assert.equal(f.document.activeElement === field, true); assert.equal(f.reader.dialog.dataset.editing, 'true');
+      field.value = 'Exact revised words'; field.handlers.input();
+      if (ending === 'Use saved') {
+        x.conflict(); await host.querySelector('[data-act="save"]').onclick(); await settle();
+        assert.equal(session.writing.state, 'conflict'); assert.equal(host.children[1].hidden, false);
+        await host.querySelector('[data-act="saved"]').onclick();
+      } else if (ending === 'Save') await host.querySelector('[data-act="save"]').onclick();
+      else if (ending === 'Cancel') await host.querySelector('[data-act="cancel"]').onclick();
+      else f.reader.escape();
+      await settle();
+      assert.equal(f.runObservation('messageEdit'), null, entry + ': the actual finish/leave owner ended Edit');
+      assert.equal(f.reader.dialog.open, true); assert.equal(f.reader.editing, null); assert.equal(f.reader.sourceBody.hidden, false);
+      assert.equal(f.document.activeElement === f.get('reader-menu'), true, entry + ': focus returns to the Reader More control, not its inert feed card');
+      assert.equal(session.writing.closed, true);
+      assert.equal(session.writing.state, { Save: 'saved', Cancel: 'cancelled', 'Use saved': 'discarded', Escape: 'editing' }[ending]);
+      assert.deepEqual(x.commands.map(sent => sent.kind), ending === 'Save' ? ['message.edit_open', 'message.edit']
+        : ending === 'Use saved' ? ['message.edit_open', 'message.edit', 'message.edit_close']
+        : ending === 'Cancel' ? ['message.edit_open', 'message.edit_close'] : ['message.edit_open']);
+      if (ending === 'Save') assert.equal(f.registry.current.source.body, 'Exact revised words');
+      if (ending === 'Use saved') assert.equal(f.registry.current.source.body, 'Saved on another device');
+      if (ending === 'Escape') assert.equal(f.runObservation('device890.held.value'), 'Exact revised words');
+    } finally { f.runObservation('messageEdit?.writing.close()'); }
+  }
+});

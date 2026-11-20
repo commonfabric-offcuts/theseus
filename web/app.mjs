@@ -2396,6 +2396,14 @@ function readerMessageMenuItems(p) {
   if (!p || p.sourceUnavailable || ref?.kind !== 'message' || !topic) return [];
   return sharedMessageMenuItems({ ...p.source, ...readerFeedItem(), id: ref.id, author_id: p.source.author }, { say: button, anchor: button, presentation: p });
 }
+// The Reader's text borrows the same Edit descriptor and More focus return.
+// Controls and whitespace keep their own gestures; eligibility is read anew.
+function readerTextEdit(event) {
+  const body = $('source-body'), target = event.target;
+  if (!reader.dialog.open || event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey ||
+      target === body || !body.contains(target) || target.closest('a, button, input, textarea, select, [contenteditable], [role="button"], img, svg')) return null;
+  return readerMessageMenuItems(registry.current).find(item => item.label === 'Edit');
+}
 function openReaderMenu() {
   const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = readerMessageMenuItems(p);
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
@@ -3421,6 +3429,15 @@ async function initialize() {
   $('mark-unread').onclick = () => run(toggleMark);
   $('add-to-pipeline').onclick = () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true));
   $('reader-menu').onclick = () => openReaderMenu();
+  $('source-body').addEventListener('mousedown', event => {
+    if (event.detail === 2 && readerTextEdit(event)) event.preventDefault();
+  });
+  $('source-body').addEventListener('dblclick', event => {
+    const edit = event.detail === 2 && readerTextEdit(event);
+    if (!edit) return;
+    event.preventDefault(); event.stopPropagation();
+    window.getSelection()?.removeAllRanges(); edit.act();
+  });
   $('reader-star').onclick = () => starFromReader();
   $('reader-aside').onclick = () => asideFromReader();
   const cancelDossierHold = menuDoor($('messages'), target => {
