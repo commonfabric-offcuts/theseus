@@ -8,6 +8,11 @@ and sends topic.read_through only through that boundary. Rename and settings
 open their existing UI through an ordinary guarded, consumed address.
 Topic ordering uses the outline's existing owner.
 
+On a topic page the title buttons read New message, Topic settings, then
+This topic from left to right (893). Their DOM order also supplies ordinary
+Tab order and the header's left/right arrow reach. Each keeps its existing
+action owner. The outcome page retains More for this outcome, then New message.
+
 A starred Notebook row uses NotebookPage's menu list and the sheet's layout
 extras. Opening the menu reads only the named page, acquires no writing lock,
 and leaves the document, sheet, URL and current writing alone. An existing
