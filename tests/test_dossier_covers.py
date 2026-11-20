@@ -23,6 +23,13 @@ class CoverCase(AgentVerbCase):
         self.committed(self.command("participation.set", {"actor_id": "agent-b", "present": True}, target={"topic_id": "t1"}))
 
     def post(self, body="Words", actor="owner", **args):
+        # These cases exercise covers, not missing reply provenance. Select the
+        # actual parent's current words just as the CLI's --quote path does.
+        if (args.get("reply_to") and "reply_passage" not in args and "reply_without_quote" not in args
+                and self.sql("SELECT kind FROM actors WHERE id=?", (actor,))[0][0] == "agent"):
+            source = self.source({"kind": "message", "id": args["reply_to"]}, actor=actor)
+            args["reply_passage"] = {"source": dict(source["source_ref"], revision=source["revision"]),
+                                     "start": 0, "end": len(source["body"])}
         return self.committed(self.command("message.post", dict({"body": body}, **args), target={"topic_id": "t1"}, actor=actor))["message_id"]
 
     def cover(self, message, args, revision=0, actor="agent-a"):
@@ -285,10 +292,12 @@ class DoneCase(CoverCase):
         missed = self.post("Nothing went wrong: you approved it with your 👍. I missed it.", actor="agent-a", reply_to=asked,
                            addressees=["owner"], intent="tell")
         self.post("Are you building it or ?", reply_to=missed, addressees=["agent-a"])
-        proposed = self.committed(self.cover(design, {"stands": "Approved by the owner's 👍; agent-a owes the build", "payload": self.payload(missed)}))
+        # An agent's separate root now starts with its divergence-reason cover (760).
+        self.assertEqual(self.shown(design)["stands"], "Separate synthetic fixture investigation")
+        proposed = self.committed(self.cover(design, {"stands": "Approved by the owner's 👍; agent-a owes the build", "payload": self.payload(missed)}, revision=1))
         self.assertIsNone(proposed["cover"]["payload"]["done"], "a question in reply is not the owner's word")
         self.assertIsNone(self.shown(design)["payload"]["done"])
-        approved = self.committed(self.cover(design, {"payload": dict(self.payload(design), link="https://example.test/design")}, revision=1))
+        approved = self.committed(self.cover(design, {"payload": dict(self.payload(design), link="https://example.test/design")}, revision=2))
         self.assertEqual(approved["cover"]["payload"]["done"], {"how": "thumb", "by": "owner", "at_ms": thumbed}, "Done from the 👍, at its time")
         self.assertEqual(self.shown(design, "agent-b")["payload"]["done"], {"how": "thumb", "by": "owner", "at_ms": thumbed})
 
@@ -327,8 +336,7 @@ class DoneCase(CoverCase):
 class WhisperCase(CoverCase):
     def test_a_whispered_dossiers_cover_is_read_by_its_two_people_alone(self):
         root = self.post("Can you check the cabin's price quietly?", whisper=True, addressees=["agent-a"])
-        answer = self.committed(self.command("message.post", {"body": "It is within the budget.", "whisper": True, "addressees": ["owner"],
-                                                               "reply_to": root}, target={"topic_id": "t1"}, actor="agent-a"))["message_id"]
+        answer = self.post("It is within the budget.", whisper=True, addressees=["owner"], reply_to=root, actor="agent-a")
         before = self.sql("SELECT max(seq) FROM changes")[0][0] or 0
         self.committed(self.cover(root, {"stands": "Price checked", "payload": self.payload(answer)}))
         for reader in ("owner", "agent-a"):
@@ -409,10 +417,12 @@ class PositionCase(CoverCase):
 
     def test_a_reader_outside_the_dossiers_first_message_reads_no_cover_through_its_place(self):
         root = self.post("Can you check the cabin's price quietly?", whisper=True, addressees=["agent-a"])
-        answer = self.committed(self.command("message.post", {"body": "It is within the budget.", "whisper": True, "addressees": ["owner"],
-                                                               "reply_to": root}, target={"topic_id": "t1"}, actor="agent-a"))["message_id"]
+        answer = self.post("It is within the budget.", whisper=True, addressees=["owner"], reply_to=root, actor="agent-a")
         self.committed(self.cover(root, {"stands": "Price checked", "payload": self.payload(answer)}))
         public = self.post("The cabin's dates are open.", actor="agent-b")
+        public_cover = self.store.view("agent-b", "dossier_cover", {"message_id": public})
+        self.assertEqual((public_cover["cover"]["stands"], public_cover["cover"]["payload"], public_cover["cover_revision"]),
+                         ("Separate synthetic fixture investigation", None, 1))
         reply = self.post("And the road to it is clear.", actor="agent-b", reply_to=public)
         # The owner joins agent-b's stack into the whispered dossier: its two people read it there, under the cover.
         self.committed(self.command("stack.join", {"into": root}, target={"message_id": public}, expected={"join_revision": 0}))
@@ -421,11 +431,12 @@ class PositionCase(CoverCase):
             for position in (held[reply]["stack_position"], read):
                 self.assertIsNotNone(position["cover"], reader)
                 self.assertEqual((position["root_id"], position["cover"]["stands"]), (root, "Price checked"), reader)
-        # agent-b reads the stack as its own dossier, with no cover: the whispered first message's cover never reaches them.
+        # agent-b retains its own root's divergence cover; the whispered root's cover never reaches them.
         held, read = self.placed(reply, "agent-b")
         self.assertNotIn(root, held)
         for position in (held[reply]["stack_position"], held[public]["stack_position"], read):
-            self.assertEqual((position["root_id"], position["cover"], position["cover_revision"]), (public, None, 0))
+            self.assertEqual((position["root_id"], position["cover"], position["cover_revision"]),
+                             (public, public_cover["cover"], public_cover["cover_revision"]))
         self.assertNotIn("Price checked", json.dumps(self.store.view("agent-b", "topic_messages", {"topic_id": "t1", "direction": "before", "limit": 100})))
 
 
@@ -463,7 +474,7 @@ class VerbCase(CoverCase):
         lines = out.splitlines()
         self.assertEqual(lines[0], "wrote the cover of the dossier of %s" % root)
         self.assertIn("  stands: Answered: the second weekend", lines)
-        self.assertIn("  waits on owner: Book the cabin? (default: booked Friday)", lines)
+        self.assertIn("  waits on owner: Book the cabin? (Default: booked Friday)", lines)
         self.assertIn("    payload proposed: Done when owner gives its message a 👍, or replies to it and the cover names that reply", lines)
         self.assertEqual(self.shown(root)["stands"], "Answered: the second weekend")
         self.committed(self.thumb(answer))
