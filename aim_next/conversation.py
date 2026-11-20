@@ -11,6 +11,7 @@ from .responsibility import responsibility_note
 from .work import OTHER_MESSAGE, work_by_topic
 from . import whispers, root_posts
 from .standing_conversation import open_items_clause
+from .topic_state import derived_conversation
 from .reactions import GO_AHEAD_NEEDS_ASK, go_ahead_flag
 from .topic_reading import reading_fields, unread_groups, writing_fields
 from .stacks import current_acts, act_fields, awaiting_fields, record_wait_start, source_dossier
@@ -131,10 +132,13 @@ class Conversation:
         return list(dict.fromkeys(recipients))
 
     def _touch_topic(self, db, topic):
+        repaired = self._repair_conversation_waiting(db, topic)
         db.execute("UPDATE topics SET version=version+1 WHERE id=?", (topic["id"],))
         db.execute("UPDATE workspaces SET version=version+1 WHERE id=?", (topic["workspace_id"],))
         self._change(db, "topic", topic["id"], "topic", topic["id"], topic["version"] + 1)
         self._change(db, "workspace", topic["workspace_id"], "topic", topic["id"], topic["version"] + 1)
+        for member in repaired:
+            self._change(db, "actor", member, "waiting", topic["id"], topic["version"] + 1)
         return topic["version"] + 1
 
     def _command_participation_set(self, db, actor, envelope):
@@ -606,6 +610,7 @@ class Conversation:
         # The message that reopened or started it is named only to a reader who may see it (whispers.py).
         topic = dict(whispers.redact_topic(db, actor, topic), archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks, work=work_by_topic(db, waits, actor)[topic["id"]],
                      reader_may_say=self._may_say(db, topic, actor), build=topic["id"] in self._build_topics(db, topic["workspace_id"]))
+        topic = derived_conversation(topic, asks)
         # D10: the outcome's target, closed, above the conversation; None for an outcome to keep with no target and no checks.
         target = self._outcome_target_line(db, actor, topic["workspace_id"])
         return {"instance_id": self.instance_id, "topic": topic, "participants": participants, "summary": summary,

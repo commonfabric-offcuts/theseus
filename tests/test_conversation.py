@@ -30,6 +30,21 @@ class ConversationCase(verbs.AgentVerbCase):
         return answer["conversation"]
 
     def post(self, body="Where does the launch stand?", actor="owner", topic=None, **args):
+        # These cases exercise Conversation routing, not missing reply/ask
+        # fields. Send valid current requests through the real Core path.
+        agent = self.sql("SELECT kind FROM actors WHERE id=?", (actor,))[0][0] == "agent"
+        if agent and args.get("reply_to") and not args.keys() & {"reply_passage", "reply_without_quote"}:
+            args["reply_without_quote"] = "This synthetic reply addresses the complete fixture question"
+        if agent and args.get("intent") == "ask" and not args.get("whisper") and "ask_wait" not in args:
+            people = [member for member in args.get("addressees", []) if member != actor and
+                      self.sql("SELECT kind FROM actors WHERE id=?", (member,))[0][0] == "human"]
+            if people:
+                parent = args.get("reply_to")
+                cover = self.store.view(actor, "dossier_cover", {"message_id": parent}) if parent else None
+                args["ask_wait"] = {"root_id": cover["root_id"] if cover else None,
+                                    "cover_revision": cover["cover_revision"] if cover else 0,
+                                    "questions": [{"actor_id": member, "text": standing.excerpt(body), "options": [], "default": None,
+                                                   "reason": "The fixture requests a factual answer without choices or a promised default"} for member in people]}
         return self.command("message.post", dict({"body": body}, **args), target={"topic_id": topic or self.conversation}, actor=actor)
 
     def posted(self, body="Where does the launch stand?", actor="owner", topic=None, **args):
@@ -624,7 +639,8 @@ class CliCase(ConversationCase):
 
     def test_an_agent_chooses_the_coordinator_and_an_answerer_posts_part_of_an_answer(self):
         asked = self.posted("Copy and date?")
-        code, out, err = self.run_cli("post", self.conversation, "--reply-to", asked, "--part", "Copy is final.")
+        code, out, err = self.run_cli("post", self.conversation, "--reply-to", asked, "--part",
+                                      "--without-quote", "This synthetic reply addresses the copy portion of the fixture question", "Copy is final.")
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(self.item(asked)["state"], "new")
         code, out, err = self.run_cli("coordinator", "w1", "agent-b")
