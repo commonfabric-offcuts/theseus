@@ -207,7 +207,7 @@ export class RecoveryCleanup {
     return this.enqueue(session.editor.key, async () => {
       await this.retireOwn(session);
       const page = await this.check(session, await readPage());
-      apply(page); return page;
+      await apply(page); return page;
     });
   }
   report(session, error) {
@@ -253,6 +253,9 @@ export class RecoveryCleanup {
   }
   releasedRow(row, ids) {
     const next = copy(row); next.stamp = crypto.randomUUID();
+    // Proven byte release changes no saved writing or refused submission.
+    // Carry its exact choice forward with this bookkeeping-only stamp.
+    if (next.reviewChoice?.stamp === row.stamp) next.reviewChoice.stamp = next.stamp;
     for (const e of next.snapshot.uploadState.entries) if (ids.includes(e.bytes_ref)) { e.bytes_ref = null; e.bytes_state = 'released'; e.version++; }
     next.snapshot.uploadState.revision++;
     return next;

@@ -19,7 +19,7 @@ export class RecoveryJournal {
   row(snapshot) {
     return { id: this.id(snapshot.key), editorKey: snapshot.key, writerId: this.writerId,
       scope: JSON.stringify([snapshot.context.instanceId, snapshot.context.actor]), active: 1,
-      stamp: crypto.randomUUID(), snapshot: structuredClone(snapshot) };
+      stamp: crypto.randomUUID(), saved_ms: Date.now(), snapshot: structuredClone(snapshot) };
   }
   enqueue(editorKey, task) {
     const previous = this.queues.get(editorKey) ?? Promise.resolve();
@@ -31,7 +31,7 @@ export class RecoveryJournal {
   save(snapshot, alreadyAcknowledged = () => false) {
     const stamp = crypto.randomUUID();
     const row = { id: this.id(snapshot.key), editorKey: snapshot.key, writerId: this.writerId,
-      scope: JSON.stringify([snapshot.context.instanceId, snapshot.context.actor]), active: 1, stamp, snapshot: structuredClone(snapshot) };
+      scope: JSON.stringify([snapshot.context.instanceId, snapshot.context.actor]), active: 1, stamp, saved_ms: Date.now(), snapshot: structuredClone(snapshot) };
     return this.enqueue(snapshot.key, async () => {
       if (alreadyAcknowledged()) return null;
       await this.backend.put(row); return stamp;
@@ -105,6 +105,8 @@ export class RecoveryJournal {
   retireAcknowledged(editorKey, candidate, confirm) { return this.backend.retireAcknowledged(editorKey, candidate, confirm); }
   retireImageCandidate(editorKey, candidate, prove) { return this.backend.retireImageCandidate?.(editorKey, candidate, prove); }
   changeCandidateImages(editorKey, candidate, action) { return this.backend.changeCandidateImages(editorKey, candidate, action); }
+  keepCandidate(editorKey, candidate, choice, guard) { return this.backend.keepCandidate(editorKey, candidate, choice, guard); }
+  comparisonImages(editorKey, candidate) { return this.backend.comparisonImages?.(editorKey, candidate) ?? Promise.resolve({}); }
   close() { return this.backend.close?.(); }
 }
 
@@ -446,6 +448,50 @@ export async function openJournal({ instanceId, actor, win = globalThis } = {}) 
           store.delete(id); if (!--remaining) complete();
         });
       }));
+      });
+    },
+    comparisonImages: async (key, candidate) => {
+      scopedKey(key);
+      const matches = row => valid(row, key) && row.active === 1 && !row.superseded_by &&
+        row.id === candidate.id && row.stamp === candidate.stamp && row.writerId !== writerId;
+      const row = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
+      if (!matches(row)) throw Error('This saved image copy changed.');
+      return borrow(row.writerId, async owned => {
+        if (!owned) throw Error('This image copy is open in another tab.');
+        const hashes = {};
+        for (const e of row.snapshot.uploadState?.entries ?? []) {
+          if (!e.selected || e.owner.kind !== 'cycle' || e.file?.sha256 || e.ready_descriptor || e.retained_ref) continue;
+          const bytes = await transact('readonly', (_store, finish, get) => get(candidate.id, current => {
+            if (!matches(current) || !holds(current.writerId)) throw Error('This saved image copy changed.');
+            get(e.bytes_ref, bytes => {
+              if (!validBytes(bytes, current)) throw Error('The saved image bytes cannot be compared yet.');
+              finish(decodedBytes(bytes));
+            });
+          }));
+          if (bytes.blob.size !== e.file.size || ['name', 'size', 'type', 'last_modified'].some(k => bytes.metadata[k] !== e.file[k])) throw Error('The saved image bytes do not match this selection.');
+          hashes[e.selection_id] = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await bytes.blob.arrayBuffer()))].map(n => n.toString(16).padStart(2, '0')).join('');
+        }
+        const current = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
+        if (!matches(current) || !holds(current.writerId)) throw Error('This saved image copy changed while comparing it.');
+        return hashes;
+      });
+    },
+    keepCandidate: async (key, candidate, choice, guard) => {
+      scopedKey(key);
+      if (choice.writerId !== writerId || !choice.cycle || !choice.authority?.authority_id || !choice.authority?.authority_epoch ||
+          !choice.writing || !Array.isArray(choice.images) || containsBytes(choice)) throw Error('This writing cannot yet be compared.');
+      const matches = row => valid(row, key) && row.active === 1 && !row.superseded_by &&
+        row.id === candidate.id && row.stamp === candidate.stamp && row.writerId !== writerId;
+      const row = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
+      if (!matches(row) || !guard()) throw Error('This saved copy changed. Review it again.');
+      return borrow(row.writerId, owned => {
+        if (!owned) throw Error('This saved copy is open in another tab.');
+        return transact('readwrite', (store, finish, get) => get(candidate.id, current => {
+          if (!matches(current) || !holds(current.writerId) || !guard()) throw Error('This writing changed. Review it again.');
+          const next = structuredClone(current); next.stamp = crypto.randomUUID();
+          next.reviewChoice = { ...structuredClone(choice), stamp: next.stamp };
+          store.put(next); finish(next);
+        }));
       });
     },
     changeCandidateImages: async (key, candidate, action) => {

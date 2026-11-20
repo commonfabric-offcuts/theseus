@@ -3,6 +3,7 @@ import { dossierImage, dossierOccupied, dossierWriting } from './dossier-writing
 import { EditorSession, RuntimeAuthority } from './session.mjs';
 import { RecoveryCleanup, eligible } from './cleanup.mjs';
 import { Uploads } from './uploads.mjs';
+import { writingValue, imageValues } from './writing-comparison.mjs';
 import { uploadWork, readableUploads, copyNeedsImageReview, refusedCopyAtDraft, copyChoiceKey, currentImages } from './upload-state.mjs';
 
 const copy = value => structuredClone(value);
@@ -234,6 +235,7 @@ export class EditorRegistry {
         }
       } });
     this.sessions.set(key, session);
+    Object.defineProperties(editor, { reviewWriterId: { value: this.journal.writerId }, reviewAuthority: { get: () => session.authority } });
     session.registered = () => this.sessions.get(key) === session && !this.disposed;
     // From here this writing can be in doubt, so the page is told now, as
     // setPending tells it of every later list.
@@ -615,7 +617,20 @@ export class EditorRegistry {
     const result = await this.cleanup.discover(this.sessionFor(editor), async () => {
       const page = await this.journal.candidates(editor.key, { ...options, limit });
       return Array.isArray(page) ? { items: page, nextCursor: null } : page;
-    }, page => {
+    }, async page => {
+      // Compare unknown saved image bytes under the journal's scoped writer
+      // lock. Digests are read evidence on this page, never edits to its copy.
+      for (const row of page.items) if (row.availability === 'available' && row.snapshot?.uploadState?.entries?.some(e => e.selected && e.owner.kind === 'cycle' && !e.file?.sha256 && !e.ready_descriptor && !e.retained_ref)) {
+        try { row.comparisonDigests = await this.journal.comparisonImages(editor.key, row); }
+        catch { /* Unknown bytes remain unknown; the image recovery gate stays. */ }
+      }
+      const session = this.sessionFor(editor);
+      for (const e of currentImages(editor)) if (!e.file?.sha256 && e.bytes_state === 'durable' && !e.ready_descriptor && !e.retained_ref) {
+        try {
+          const { hash } = await session.uploads.bytes(e);
+          if (this.sessions.get(editor.key) === session && currentImages(editor).includes(e)) (editor.comparisonDigests ??= {})[e.selection_id] = hash;
+        } catch { /* An unfinished selection is handled by its image owner. */ }
+      }
       const continued = Boolean(options?.cursor);
       if (continued && options.cursor !== editor.candidatesNext) { stale = true; return; }
       editor.candidatesNext = page.nextCursor;
@@ -711,14 +726,26 @@ export class EditorRegistry {
   }
 
   async keepCurrentWriting(editor, candidate) {
-    const session = this.sessionFor(editor), cycle = editor.clientCycleId;
-    const row = editor.imageCopies?.get(candidate.id);
-    if (!row || row.stamp !== candidate.stamp || !refusedCopyAtDraft(row, editor.recoveryServerDraft)) throw Error('This saved refusal changed. Review it again.');
-    await this.journal.inspectCandidate(editor.key, candidate);
-    if (this.sessions.get(editor.key) !== session || editor.clientCycleId !== cycle || editor.imageCopies?.get(row.id)?.stamp !== row.stamp) throw Error('This writing changed. Review the saved copy again.');
-    (editor.refusedCopyChoices ??= new Set()).add(copyChoiceKey(editor, row));
-    this.updateImageBarrier(editor);
+    const session = this.sessionFor(editor), cycle = editor.clientCycleId, version = editor.localVersion, images = editor.uploadState?.revision;
+    const kept = await this.cleanup.enqueue(editor.key, async () => {
+      const row = editor.imageCopies?.get(candidate.id);
+      if (!row || row.stamp !== candidate.stamp || !refusedCopyAtDraft(row, editor.recoveryServerDraft)) throw Error('This saved refusal changed. Review it again.');
+      const authority = copy(session.authority);
+      const guard = () => this.sessions.get(editor.key) === session && !this.disposed && editor.clientCycleId === cycle &&
+        editor.localVersion === version && editor.uploadState?.revision === images && same(session.authority, authority) && editor.imageCopies?.get(row.id)?.stamp === row.stamp;
+      await this.journal.inspectCandidate(editor.key, candidate);
+      if (!guard()) throw Error('This writing changed. Review the saved copy again.');
+      const result = await this.journal.keepCandidate(editor.key, row, { writerId: this.journal.writerId, cycle, authority,
+        draftId: editor.draft.id, generation: editor.draft.generation, writing: writingValue(editor.draft),
+        images: imageValues(editor.draft, editor.uploadState, cycle, editor.comparisonDigests) }, guard);
+      if (!guard()) throw Error('The choice was saved for earlier writing. Review this writing again.');
+      const kept = { ...result, ...(row.comparisonDigests ? { comparisonDigests: row.comparisonDigests } : {}), availability: 'available' };
+      editor.imageCopies.set(kept.id, kept);
+      (editor.refusedCopyChoices ??= new Set()).add(copyChoiceKey(editor, kept));
+      this.updateImageBarrier(editor); return kept;
+    });
     await session.uploads.validateRetained();
+    return kept;
   }
 
   async adoptCandidate(editor, candidate, presentation) {

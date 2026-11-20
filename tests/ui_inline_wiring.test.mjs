@@ -1,3 +1,4 @@
+import * as uploadState931 from '../web/upload-state.mjs';
 // Exercises actual app/inline-adapter functions below the native browser. Only
 // imports and auto-start are replaced; no product function body is copied.
 import test from 'node:test';
@@ -8215,7 +8216,7 @@ test('933 bounded chunks publish atomically and reject missing, duplicate or for
 });
 
 function review931() {
-  const f = fixture();
+  const f = fixture('https://fixture/?topic=t1', { refusedAtDraft: uploadState931.refusedAtDraft, refusedCopyAtDraft: uploadState931.refusedCopyAtDraft, readableUploads: uploadState931.readableUploads });
   Object.assign(f.editor, { localVersion: 4, ackVersion: 4, clientCycleId: 'cycle931',
     uploadState: { format: 2, revision: 1, client_cycle_id: 'cycle931', entries: [], submission_links: {} } });
   Object.assign(f.editor.draft, { id: 'draft931', generation: 'generation931', revision: 3, quotes: [], intent: 'tell', whisper: false });
@@ -8247,4 +8248,26 @@ test('931 the frozen refused writing is compared even when its successor draft m
   saved.snapshot.format = 2; saved.snapshot.clientCycleId = f.editor.clientCycleId; saved.snapshot.uploadState = structuredClone(f.editor.uploadState);
   saved.snapshot.submissions = [{ status: 'refused', receipt: { kind: 'submission.prepare' }, snapshot: { ...structuredClone(f.editor.draft), body: 'Earlier refused words' } }];
   f.editor.recoveryServerDraft = structuredClone(f.editor.draft); list([saved]); assert.equal(needs(), true);
+});
+
+test('931 the pill names the actual refused difference and opens with it first', async () => {
+  const { f, row, list } = review931(); const saved = row(); saved.snapshot.localVersion++;
+  saved.snapshot.draft.body = 'The different saved words'; list([saved]);
+  const state = f.runObservation('reviewState(registry.inline.editors.reply)');
+  assert.equal(state.text, 'Review versions'); assert.match(state.title, /copy.*differs from this field/);
+  f.registry.recoveryCandidates = async (_editor, _options, shown) => { const page = { items: [], nextCursor: null }; shown(page, false); return page; };
+  f.get('version-review').showModal = function() { this.open = true; };
+  await f.showVersions(f.editor, f.get('opener'), f.p);
+  assert.equal(f.get('review-content').children[0].children.at(-1).textContent, 'The different saved words');
+});
+test('931 runtime recovery retains its action without claiming a known version difference', () => {
+  const { f, needs } = review931(); f.editor.authorityRecovery = { phase: 'parked' };
+  assert.equal(needs(), false); const state = f.runObservation('reviewState(registry.inline.editors.reply)');
+  assert.equal(state.hidden, false); assert.equal(state.text, 'Check recovery');
+});
+test('931 identical writing with an unknown public send keeps a recovery action', () => {
+  const { f, row, list, needs } = review931(), saved = row(); saved.snapshot.submissions = [{ status: 'prepared' }]; list([saved]);
+  assert.equal(needs(), false);
+  const state = f.runObservation('reviewState(registry.inline.editors.reply)'); assert.equal(state.hidden, false); assert.equal(state.text, 'Check recovery');
+  assert.equal(saved.snapshot.submissions[0].status, 'prepared');
 });
