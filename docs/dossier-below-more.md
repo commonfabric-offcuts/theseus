@@ -19,6 +19,13 @@ the choice. Explicit Bring back clears it, and so does the reader's star on a
 message of it; while the reader has a star in it, it stays above More for them
 (below, "A star holds it above More").
 
+Command–Down Arrow in a topic feed or Conversation moves the selected dossier
+below More (705); a selected message moves its containing dossier. The selection
+is Return's pointer, keyboard or last-touch selection. Writing, open menus,
+other controls and the Reader keep their keys; nothing selected does nothing.
+It uses the same star hold, personal act, More focus and Command-Z Undo. Move
+its stack down remains available in ⋯ for reordering, without this shortcut.
+
 ## Core
 
 `stack.aside`, target `{message_id: root}`, expected `{aside_revision, authority}`,
