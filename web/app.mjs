@@ -178,7 +178,7 @@ const reviewState = editor => {
   const unsettled = candidates.get(editor.key)?.items.some(row => row.active !== 0 && !row.superseded_by && (row.availability !== 'available' || row.snapshot?.authorityRecovery ||
     row.snapshot?.attempts?.some(attempt => !attempt.detached && !attempt.receipt) ||
     row.snapshot?.submissions?.some(item => !item.detached && ['preparing', 'prepared'].includes(item.status))));
-  const retained = Array.isArray(editor.uploadState?.entries) && editor.uploadState.entries.some(entry => entry && (!entry.selected && entry.bytes_ref ||
+  const retained = !editor.uploadOpaque && Array.isArray(editor.uploadState?.entries) && editor.uploadState.entries.some(entry => entry && (!entry.selected && entry.bytes_ref ||
     Array.isArray(entry.attempts) && entry.attempts.some(attempt => !attempt.detached && !attempt.receipt && attempt.publish_response?.recorded !== true &&
       !(attempt.begin_response?.recorded === true && attempt.begin_response.status === 'rejected'))));
   const recovery = editor.authorityRecovery || editor.conflict || editor.uploadOpaque || editor.imageStorageError || editor.recoveryDiscovery || editor.cleanupError || unsettled || retained;

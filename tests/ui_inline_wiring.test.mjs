@@ -8306,7 +8306,7 @@ test('931 R2 own retained bytes and unsettled image attempts keep recovery reach
 });
 test('931 R2 opaque upload metadata keeps recovery reachable without reading malformed entries', () => {
   const { f } = review931(); f.editor.uploadOpaque = true;
-  for (const entries of [undefined, {}, [null]]) {
+  for (const entries of [undefined, {}, [null], [{ attempts: [null] }]]) {
     f.editor.uploadState = { format: 2, entries };
     const state = f.runObservation('reviewState(registry.inline.editors.reply)');
     assert.equal(state.hidden, false); assert.equal(state.text, 'Check recovery');
