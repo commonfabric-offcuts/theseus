@@ -30,6 +30,11 @@ from . import whispers
 from .message_edit import mark, revision, words, withheld
 
 
+# A removed answer keeps its immutable take, but no longer settles or appears
+# as an active answer. Topic/pipeline takes retain their independent effect.
+ACTIVE_TAKE = "(conversation_takes.kind<>'answer' OR NOT EXISTS (SELECT 1 FROM message_removals removed WHERE removed.message_id=conversation_takes.ref))"
+
+
 # Version 28: a topic's kind, the conversation a replaced topic gave way to,
 # the message a post to the conversation is about, and the conversation's
 # items, what became of each, and its open asks.
@@ -312,6 +317,9 @@ class StandingConversation:
             raise Refusal("INVALID_ARGUMENT", "A take answers, takes into a topic or puts on the pipeline")
         if self._item(db, item_id) is None:
             return False
+        from .removal import value
+        if kind == 'answer' and value(db, item_id) is not None:
+            return False
         db.execute("INSERT INTO conversation_takes(item_id,kind,ref,added,part,actor_id,at_ms) VALUES (?,?,?,?,?,?,?)",
                    (item_id, kind, ref if isinstance(ref, str) else json.dumps(ref), int(bool(added)), int(bool(part)), actor, _now_ms()))
         if not part:
@@ -324,6 +332,17 @@ class StandingConversation:
             conversation = db.execute("SELECT t.*,w.owner_id FROM messages m JOIN topics t ON t.id=m.topic_id "
                                       "JOIN workspaces w ON w.id=t.workspace_id WHERE m.id=?", (source_message_id,)).fetchone()
             self._touch_topic(db, conversation)
+
+    def _removed_conversation_answer(self, db, message_id):
+        # The sole answer writer records the direct reply_to item. Seek that
+        # parent and its indexed takes only; preserve every immutable take and
+        # do not reopen an item whose own message is terminal.
+        db.execute("UPDATE conversation_items SET settled=EXISTS ("
+                   "SELECT 1 FROM conversation_takes INDEXED BY item_takes WHERE item_id=conversation_items.message_id AND part=0 AND " + ACTIVE_TAKE + ") "
+                   "WHERE message_id=(SELECT reply_to FROM messages WHERE id=?) "
+                   "AND NOT EXISTS (SELECT 1 FROM message_removals removed WHERE removed.message_id=conversation_items.message_id) "
+                   "AND EXISTS (SELECT 1 FROM conversation_takes INDEXED BY item_takes WHERE item_id=conversation_items.message_id AND kind='answer' AND ref=?)",
+                   (message_id, message_id))
 
     def _take_into_pipeline(self, db, actor, workspace_id, message_ids, number, part, added):
         """A pipeline item added from messages (added false), or given them as sources (added true): under
@@ -440,7 +459,7 @@ class StandingConversation:
         if ids:
             marks = ",".join("?" * len(ids))
             states = {row[0]: row[1] for row in db.execute("SELECT message_id,settled FROM conversation_items WHERE message_id IN (%s)" % marks, ids)}
-            for row in db.execute("SELECT * FROM conversation_takes INDEXED BY item_takes WHERE item_id IN (%s) ORDER BY item_id,id" % marks, ids):
+            for row in db.execute("SELECT * FROM conversation_takes INDEXED BY item_takes WHERE item_id IN (%s) AND " % marks + ACTIVE_TAKE + " ORDER BY item_id,id", ids):
                 takes.setdefault(row["item_id"], []).append(self._take(db, actor, row))
         for item in items:
             item["item"] = None if item["id"] not in states else {

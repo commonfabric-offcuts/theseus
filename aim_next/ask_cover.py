@@ -104,6 +104,8 @@ class AskCover:
         # actor identifies the person asked. Withdrawal is the asker's act,
         # while the ordinary answer/recovery path belongs to that person.
         row = db.execute('SELECT * FROM ask_cover_links WHERE ask_id=? AND actor_id=?', (ask_id, actor)).fetchone()
+        if active and (self._question_closed(db, ask_id) is not None or self._withdrawal_value(db, ask_id) is not None):
+            return []
         if row is None or bool(row['active']) == active:
             return []
         db.execute('UPDATE ask_cover_links SET active=? WHERE ask_id=? AND actor_id=?', (int(active), ask_id, actor))

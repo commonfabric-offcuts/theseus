@@ -40,11 +40,18 @@ class CoverCase(AgentVerbCase):
 
     def shown(self, message, actor="owner"):
         """The cover as a reader's page of the topic carries it on the dossier's first message, or the refusal's code."""
-        page = self.store.view(actor, "topic_messages", {"topic_id": "t1", "direction": "before", "limit": 100})
-        if "error" in page:
-            return page["error"]["code"]
-        item = next((item for item in page["items"] if item["id"] == message), None)
-        return "absent" if item is None else item["acts"]["cover"]
+        args = {"topic_id": "t1", "direction": "before", "limit": 100}
+        while True:
+            page = self.store.view(actor, "topic_messages", args)
+            if "error" in page:
+                return page["error"]["code"]
+            item = next((item for item in page["items"] if item["id"] == message), None)
+            if item is not None:
+                return item["acts"]["cover"]
+            if not page["next_cursor"]:
+                return "absent"
+            # Removal/question metadata may fill the byte bound before 100 rows.
+            args["cursor"] = page["next_cursor"]
 
     def rows(self):
         return [(json.loads(value), actor, revision) for value, actor, revision in

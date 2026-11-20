@@ -29,7 +29,7 @@ export const wasEdited = item => Number.isSafeInteger(item?.edited_ms) || revisi
 // follow-up, docs/agent-guide.md), in a topic they can read and whose outcome
 // is not reached. Core decides again on every Save.
 export function mayEdit(item, { actor, actorKind, unavailable = false, reached = false }) {
-  return Boolean(item && typeof actor === 'string' && item.author_id === actor && actorKind === 'human' && !unavailable && !reached);
+  return Boolean(item && !item.removal && typeof actor === 'string' && item.author_id === actor && actorKind === 'human' && !unavailable && !reached);
 }
 // What a refusal leaves: these say the person may not edit it now, so the
 // words are kept and only Cancel is offered.
