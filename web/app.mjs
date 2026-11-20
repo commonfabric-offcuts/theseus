@@ -1162,7 +1162,7 @@ function inView(node) { const box = node.getBoundingClientRect(); return box.bot
 // its stack moves it no more than one above the stack.
 const MESSAGE_ENTRIES = '#messages > [data-id], #messages > .reply-stack > [data-id], #messages > .reply-stack > .stack-replies > [data-id]';
 function firstInView() {
-  return [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages .dossier-cover, #messages .stack-earlier, #messages > [data-line=older], #more-messages, #memory-items .memory-card`)].find(inView);
+  return [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages .dossier-cover, #messages .stack-earlier, #messages > [data-line=older], #more-messages`)].find(inView);
 }
 // The first card drawn now, after last, that the list did not hold before:
 // one loaded, not one a fold or a join only draws again.
@@ -1189,6 +1189,9 @@ function paintMoreMessages() {
     [...$('messages').children].some(child => child.dataset?.line === 'older' && !child.classList.contains('new-line-read')));
 }
 function paintViews(kind) {
+  // Notebook pages remain admitted in TopicViews for reads and links. Their
+  // visible list belongs to the right rail, so a memory update moves no feed.
+  if (kind === 'memory') return;
   if (kind === 'offer') { reader?.paintOffer(); return; }
   // All but the header and the people, which repaint in place, move the list:
   // under a press held down they wait for it to end, so the click lands where it began.
@@ -1305,25 +1308,6 @@ function paintViews(kind) {
   }
   // The stacks are drawn with the new messages in before any of them is dealt with (stack-feed.mjs, arrived).
   if (kind === 'messages') { syncDossierHeads(); feedOf().arrived([...views.messages.values()]); paintCardReading(); }
-  if(kind==='memory')for(const [id,card] of memoryCards)if(!views.memory.has(id)){card.remove();memoryCards.delete(id);}
-  for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
-    let card = memoryCards.get(item.id);
-    if (!card) {
-      card = button('', () => openNotebook(item.id, { opener: card })); card.className = 'memory-card';
-      card.dataset.id = item.id; card.append(node('strong'), node('span')); $('memory-items').append(card);
-      memoryCards.set(item.id, card);
-    }
-    // A page read before and revised since wears its light, as in the sidebar.
-    const identity = sourceIdentity(item.source_ref), changed = String(changedSince(item));
-    if (card.dataset.source !== identity || card.dataset.changed !== changed) {
-      const [title, body] = card.children;
-      card.dataset.source = identity; card.dataset.changed = changed;
-      title.replaceChildren(item.title || 'Notebook item'); paintChanged(title, item);
-      // A card's image line reads as the image's name after its glyph (deck.mjs, imageStandIns), never its markup.
-      linkWords(body, imageStandIns(item.body, { partial: item.preview === true }), { partial: item.preview === true });
-    }
-    card.onclick = () => run(() => openNotebook(item.id, { opener: card }));
-  }
   if (kind === 'messages') {
     for (const old of $('messages').querySelectorAll('.dossier-moved-pointer')) old.remove();
     for (const move of views.movedPointers ?? []) {
@@ -1335,13 +1319,10 @@ function paintViews(kind) {
   if (kind === 'messages') paintMessageContext();
   });
   paintMoreMessages();
-  $('more-memory').hidden = views.memoryCursor === null;
   if (kind === 'messages') noteRead();
 }
-// Each message's entry in the list and each Notebook page's card, by id: a
-// paint finds a card without searching every card loaded. Cards stay for the
-// page's life.
-const messageEntries = new Map(), memoryCards = new Map();
+// Each message's entry by id, kept for the page's life.
+const messageEntries = new Map();
 // A card's image, read through its message, so only a reader of the message gets it (item 474).
 const cardImageBytes = id => async attachment => (await api.media(bootstrap.instance_id, attachment, { kind: 'message', id })).blob;
 // The color the reader sees an agent in: their choice, or the agent's own.
@@ -1438,7 +1419,7 @@ function feedOf() {
     colorOf: item => (item.author_kind === 'agent' && item.author_id !== bootstrap.actor ? agentShown(item.author_id) : null) });
   return stackFeed;
 }
-// The topic's feed, its Notebook and its Team, drawn or not, with any other
+// The topic's feed and its Team, drawn or not, with any other
 // parts of the page named. The New message sheet rests in the feed, just above
 // More (item 465), and a dialog in a box that is not drawn shows nothing, up
 // over the page or not: where the feed is not drawn (an outcome's page, Health,
@@ -1447,7 +1428,7 @@ function feedOf() {
 // (arrangeStacks, which takes it back above More once the feed is drawn).
 function drawFeed(on, ...parts) {
   const sheet = $('new-message-sheet'), inFeed = $('messages').contains(sheet);
-  for (const id of ['messages', 'notebook', 'topic-people', ...parts]) $(id).hidden = !on;
+  for (const id of ['messages', 'topic-people', ...parts]) $(id).hidden = !on;
   reader?.keepReplyVisible();
   if (on) paintStarredStatus(); else $('starred-status').hidden = true;
   if (on === inFeed) return;
@@ -3383,7 +3364,6 @@ async function initialize() {
         topic === currentTopic && views === currentViews && registry.generation === generation && listAccessEpoch === accessEpoch &&
         !registry.disposed && !retired && !topicUnavailable && !authorityReviewPending()) releaseTopArrivals();
   });
-  $('more-memory').onclick = () => run(() => listPage('memory', true));
   window.addEventListener('beforeunload', () => marks.leave());
   shell.guard(() => registry.hasUnprotectedWriting);
   // An edit open in the Reader sends nothing at unload (its hold lapses), and lets its Web Lock go.
@@ -4012,7 +3992,7 @@ async function initializeMeasurementsPage(route) {
 // logo block and "← Outcomes" head it. The page and the rail read again on every commit.
 async function initializeToolPage(route) {
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  for(const id of ['topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   const page=new ToolPage({host:$('tool-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},toolId:route.tool,
     instanceId:bootstrap.instance_id,read:pipelineView,send:pipelineSend,open:openDestination});
