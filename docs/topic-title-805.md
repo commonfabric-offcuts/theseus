@@ -40,3 +40,13 @@ navigation-only control establishes WebKit's canceled-view access-control
 diagnostic; the feature run must reject new error families and require an
 actual canceled view in each case with that known diagnostic. This is not a
 blanket page-error waiver or a physical Safari/phone claim.
+
+Warp13590 /893 reach order: for a reader allowed to rename, the title and its
+pencil belong together before New message, settings and overflow in Tab order.
+The semantic h1 is a Tab stop; arrow travel along header buttons starts at its
+pencil and follows the unchanged893 action order. Readers without Rename keep
+New message, settings, overflow; outcome pages keep outcome menu, New message.
+The893 check in tests/ui_topic_notebook_menus_862.test.mjs retains its original
+non-renaming Topic/outcome cases and adds the authorized case using actual
+header permission paint and the real panes arrow handler. This is a test and
+contract correction; product source and prior native results are unchanged.
