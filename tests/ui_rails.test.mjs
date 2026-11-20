@@ -70,12 +70,16 @@ test('the outline tidies itself: only the outcome being read is open, a key\'s o
   assert.equal(new Opened().isOpen('w2', 'w1'), false, 'a new page starts tidy: no fold is kept');
 });
 
-test('only moves between an outcome Conversation and topics are made in place', () => {
+test('901 topics, Conversations, outcomes and root move in place; other pages load', () => {
   const topic = { kind: 'topic', id: 't1' }, conversation = { kind: 'conversation', id: 'w1' };
   assert.equal(movesInPlace(topic, { kind: 'topic', id: 't2' }), true);
   assert.equal(movesInPlace(topic, conversation), true);
   assert.equal(movesInPlace(conversation, topic), true);
-  for (const other of [{ kind: 'root' }, { kind: 'workspace', id: 'w1' }, { kind: 'pipeline', id: 'w1' }, { kind: 'health' }, null]) {
+  for (const place of [{ kind: 'root' }, { kind: 'workspace', id: 'w1' }]) {
+    assert.equal(movesInPlace(topic, place), true);
+    assert.equal(movesInPlace(place, topic), true);
+  }
+  for (const other of [{ kind: 'pipeline', id: 'w1' }, { kind: 'health' }, null]) {
     assert.equal(movesInPlace(topic, other), false, `to ${other?.kind}`);
     assert.equal(movesInPlace(other, topic), false, `from ${other?.kind}`);
   }
@@ -158,18 +162,19 @@ function shellAt(href, { guard = () => true, build = null, served = undefined } 
   return { shell, win, h, moves, page, goTo, moving, started, up };
 }
 
-test('a link between feeds moves in place with a new entry; any other loads as before', () => {
+test('901 a link between supported places moves in place with a new entry; other routes load', () => {
   const { shell, h, moves } = shellAt('?topic=t1');
   assert.equal(shell.go({ kind: 'topic', id: 't2' }), true);
   assert.deepEqual([h.entries, moves.length], [['?topic=t2'], 1]);
-  assert.equal(shell.go({ kind: 'workspace', id: 'w1' }), false, 'the outcome page loads');
-  assert.equal(shell.go({ kind: 'root' }), false, 'the Outcomes home loads');
-  assert.deepEqual([h.entries.length, moves.length], [1, 1]);
+  assert.equal(shell.go({ kind: 'workspace', id: 'w1' }), true, 'the outcome page moves in place');
+  assert.equal(shell.go({ kind: 'root' }), true, 'the Outcomes home moves in place');
+  assert.equal(shell.go({ kind: 'pipeline', id: 'w1' }), false, 'the pipeline still loads');
+  assert.deepEqual([h.entries, moves.length], [['?topic=t2', '?workspace=w1', '/'], 3]);
   shell.moving = true;
   assert.equal(shell.go({ kind: 'topic', id: 't3' }), false, 'a move under way is not stacked');
   shell.moving = false; shell.handles = null;
   assert.equal(shell.go({ kind: 'topic', id: 't3' }), true, 'before the page is up the move waits for it');
-  assert.deepEqual([h.entries.length, moves.length], [1, 1], 'nothing moved yet');
+  assert.deepEqual([h.entries.length, moves.length], [3, 3], 'nothing more moved yet');
 });
 
 test('a back, a forward, a place chosen or a link pressed while a run is on its way waits for that run, and never loads the page', async () => {
@@ -536,7 +541,8 @@ test('back and forward go through the page guard; a refusal puts the address bac
   const away = shellAt('?topic=t1');
   away.shell.places.push('?topic=t2'); away.goTo('/');
   await away.shell.popstate({ state: { aimPlace: 0 } });
-  assert.deepEqual([away.win.reloads, away.page.opened.length], [1, 0], 'back to a page that is not a feed loads');
+  assert.deepEqual([away.win.reloads, away.page.opened.length, away.moves.length], [0, 1, 1], '901 back to Outcomes home moves in place');
+  assert.deepEqual(away.page.opened, [{ kind: 'root' }]);
 });
 
 test('the right rail finds previews and pull requests in messages, newest first, each once', () => {
@@ -720,16 +726,16 @@ test('a press on a Build row\'s unread count opens its topic at the oldest unrea
 });
 
 
-test('844 outcome homes use the shared rail shell without changing document navigation', () => {
+test('844 and 901 outcome homes use the shared rail shell and in-place navigation', () => {
   assert.equal(hasRails({kind:'workspace',id:'w1'}),true);
   assert.equal(hasRails({kind:'topic',id:'t1'}),true);
   assert.equal(hasRails({kind:'root'}),false);
-  assert.equal(movesInPlace({kind:'topic',id:'t1'},{kind:'workspace',id:'w1'}),false);
+  assert.equal(movesInPlace({kind:'topic',id:'t1'},{kind:'workspace',id:'w1'}),true);
   const {shell}=shellAt('?workspace=w1'), attributes=[], starts=[];
   shell.doc={documentElement:{toggleAttribute:(name,on)=>attributes.push([name,on])}};
   shell.follow({begin:(shown,route)=>starts.push([shown,route.kind])});
   shell.begin({open(){}});
-  assert.equal(shell.feed,false,'Back and forward still use the outcome document navigation');
+  assert.equal(shell.feed,true,'Back and forward can move from the outcome in place');
   assert.deepEqual(attributes,[['data-rails',true]],'same responsive layout and drawer controls');
   assert.deepEqual(starts,[[true,'workspace']],'the existing shell followers show on an outcome');
 });
