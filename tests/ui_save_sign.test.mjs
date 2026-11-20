@@ -99,7 +99,7 @@ function composer(editor, sign, presentation, savedAt, status = statusNode()) {
   const c = Object.assign(Object.create(InlineComposer.prototype), {
     presentation: { editors: { reply: editor }, ...presentation }, root: { inert: false }, field: { readOnly: false },
     callbacks: { admits: () => true, status: () => 'Saved to Theseus', sign: () => sign, needsReview: () => false, renderPending() {}, ...(savedAt ? { savedAt } : {}) },
-    paintImages() {}, paintChoice() {},
+    kind: 'message', notebookJobs: new WeakMap(), paintKind() {}, paintImages() {}, paintChoice() {},
   });
   c.$ = name => { if (!nodes.has(name)) nodes.set(name, node()); return nodes.get(name); };
   c.paintStatus();

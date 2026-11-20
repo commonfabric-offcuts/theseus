@@ -104,3 +104,23 @@ test('854 cross-topic bubble keeps return intent and page keys yield outside doc
   assert.doesNotThrow(()=>NotebookPage.prototype.key.call({keyScope:f.page.keyScope},event(f.doc.body,'ArrowDown')));
   f.sheet.retire();const e=event(f.doc.body,'Escape');f.emit('keydown',e);assert.equal(e.defaultPrevented,undefined);
 });
+
+for (const mode of ['cards', 'text']) test(`894 explicit ${mode} opening docks despite an earlier wide preference and picks first card`, async t => {
+  const f = fixture(t); f.sheet.dockWanted = false;
+  f.page.picked = 2; f.page.switchView = wanted => { f.page.mode = wanted; };
+  await f.sheet.open('p', { beside: true, mode });
+  assert.equal(f.sheet.docked, true); assert.equal(f.page.mode, mode);
+  if (mode === 'cards') assert.equal(f.page.picked, 0);
+  else assert.equal(f.doc.activeElement, f.page.text);
+  f.sheet.resized(); assert.equal(f.sheet.docked, true);
+});
+
+test('894 B2 beside belongs to one opening and never overwrites the saved layout', async t => {
+  const f = fixture(t, { storage: new Map([['notebook-docked', 'false']]) });
+  await f.sheet.open('p', { beside: true }); assert.equal(f.sheet.docked, true);
+  assert.equal(f.sheet.dockWanted, false); assert.equal(f.storage.get('notebook-docked'), 'false');
+  f.media.matches = false; f.media.changed(); f.media.matches = true; f.media.changed(); assert.equal(f.sheet.docked, true);
+  f.sheet.close(); await f.sheet.open('p'); assert.equal(f.sheet.docked, false);
+  await f.sheet.open('p', { beside: true }); f.sheet.dockButton.onclick();
+  f.media.changed(); assert.equal(f.sheet.docked, false, 'explicit layout choice overrides this opening too');
+});
