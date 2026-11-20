@@ -3162,6 +3162,7 @@ async function initialize() {
   const imageBytes = async item => (await api.media(bootstrap.instance_id, item.attachment, item.source_ref)).blob;
   inline = new InlineComposer({
     instanceId: bootstrap.instance_id,
+    notebook: { api, bootstrap, mayWrite: memoryAnswer.reader_may_write === true, open: (id, options) => openNotebook(id, options) },
     images: topicImages, imageBytes,
     actorLabel,
     admits: (p, editor) => registry?.isCurrent(p, editor),
@@ -4137,7 +4138,11 @@ function notebookRailMenu() {
     notice: words => panes.outline?.menus.notice(words), changed: () => panes.outline?.notebookStars.refresh(),
   });
 }
-function openNotebook(id, options = {}) { return notebookSheetOf().open(id, options); }
+function openNotebook(id, options = {}) {
+  const sheet = notebookSheetOf();
+  if (options.beside && !sheet.canDock()) return openDestination({ kind: 'cards', id, ...(options.mode === 'text' ? { view: 'text' } : {}) }, 'the Notebook page');
+  return sheet.open(id, options);
+}
 
 // An outcome's Notebook page opening in place, on a page of the outcome's with no
 // topic of its own: the outcome's page, its pipeline, its Measurements, a new topic.
