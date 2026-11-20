@@ -306,6 +306,29 @@ export class NotebookPage extends DeckPage {
   act(...args) { if (refuseUnavailableWriting(this)) return false; return super.act(...args); }
   edit(...args) { if (!refuseUnavailableWriting(this)) return super.edit(...args); }
   start(...args) { if (!refuseUnavailableWriting(this)) return super.start(...args); }
+  // The composer's Note uses the Cards + act and the same revision/journal
+  // stream. The job remembers only its already-applied act, never a second
+  // save envelope: an uncertain answer retries NotebookWriting's exact one.
+  async appendNote(job) {
+    const w = this.writing;
+    if (job.applied && w?.refusalCode) await w.retry();
+    if (!job.applied) {
+      if (!w || this.unavailable || !await w.refresh()) throw Error(this.unavailable || w?.error || 'This Notebook page is no longer available.');
+      const scope = w.base?.source.owner_scope;
+      if (!this.cardWritable() || scope?.kind !== job.scope.kind || scope?.id !== job.scope.id) throw Error('This Notebook page is no longer available for writing.');
+      if (this.asking?.sending) throw Error('Finish sending the card’s question before adding a Note.');
+      if (this.editing) this.finish();
+      this.switchView('cards'); this.sync();
+      const attachments = [...new Map([...w.value.attachments, ...job.attachments].map(ref => [ref.id, { id: ref.id }])).values()];
+      w.edit({ attachments }, w.capture(), 'cards');
+      const last = this.deck.cards.length - 1;
+      if (!this.act({ kind: 'add', after: last < 0 ? null : cardText(this.deck.cards[last]), text: job.cardWords, depth: 0, near: last })) throw Error('The card could not be added. Your writing is kept.');
+      job.applied = true;
+      job.card = this.ensureCardId(this.cardRef(this.picked));
+    }
+    await this.saveCardChange();
+    if (!job.card || w.pending || w.dirty || w.conflict || w.error || w.journalError || w.deleted || w.closed) throw Error(w.error || w.journalError || 'The added card is not confirmed yet. Your writing is kept.');
+  }
   undo() {
     if (refuseUnavailableWriting(this)) return;
     const last=this.undos.at(-1);

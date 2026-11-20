@@ -1438,6 +1438,8 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 .pencil-kinds button{min-height:2.25rem;padding:.15rem .8rem;border:1px solid transparent;border-radius:1.2rem;background:transparent;color:var(--ink);font-size:.85rem;font-weight:600;white-space:nowrap}
 .pencil-kinds [aria-checked=true]{background:#234b3d;border-color:#41856b;color:#fff}
 .pencil-kinds button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pencil-destination{grid-area:kinds;justify-self:center;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:.4rem;max-width:calc(100% - 3rem)}
+.note-page-choice{width:auto;min-width:0;max-width:14rem;min-height:2.25rem;padding:.15rem .4rem;border:0;border-radius:.4rem;background:transparent;color:var(--muted);font-size:.85rem}
 
 /* Pencil choices take a full row, never a column beside the writing. */
 #inline-composer{grid-template-areas:"kinds kinds kinds kinds" "notice notice notice notice" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act" "phone-panel phone-panel phone-panel phone-panel"}
