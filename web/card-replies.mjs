@@ -70,7 +70,7 @@ export class CardReplies {
             }
           }
           root.querySelector('.sheet-close')?.remove();
-          const ui = new InlineComposer(this.callbacks, { root, prefix, cardReply: true });
+          const ui = new InlineComposer({ ...this.callbacks, sent: (p, result) => this.sent(id, p, result) }, { root, prefix, cardReply: true });
           const preview = card.querySelector(':scope > .message-preview');
           const sourceHeight = preview?.clientHeight ? Math.max(24, Math.min(preview.clientHeight, card.clientHeight - (card.scrollHeight - preview.clientHeight))) : 240;
           row = { ui, card, p, sourceHeight }; this.rows.set(id, row); card.append(root);
@@ -106,6 +106,7 @@ export class CardReplies {
     }
     if (!row || this.registry.disposed) return null;
     if (focus) {
+      row.ui.opening = Symbol();
       for (const [otherId, other] of this.rows) {
         const editor = other.p.editors.reply;
         if (other !== row && other.clickOpened && !other.p.hidden && !holdsWriting(editor.draft) &&
@@ -123,9 +124,24 @@ export class CardReplies {
   }
   async close(id, { focus = true } = {}) {
     const row = this.rows.get(id); if (!row || !await this.registry.hideCard(row.p)) return false;
+    return this.hide(id, row, { focus });
+  }
+  hide(id, row, { focus = true } = {}) {
+    row.p.hidden = true;
     this.closed.add(id); row.ui.bar.close(); row.ui.root.hidden = true; row.card.removeAttribute('data-card-reply');
     row.ui.root.removeAttribute('data-tall'); row.ui.$('taller-field').setAttribute('aria-pressed', 'false'); row.paintHeight?.();
     if (focus) row.card.focus({ preventScroll: true }); this.changed(); return true;
+  }
+  sent(id, p, result) {
+    const row = this.rows.get(id);
+    if (!row || row.p !== p || holdsWriting(p.editors.reply.draft)) return;
+    // The session has already persisted publication and its empty successor.
+    // Hide synchronously: no close/save await may swallow a later opening.
+    const doc = row.ui.root.ownerDocument, focused = row.ui.root.contains(doc.activeElement), opening = row.ui.opening;
+    this.hide(id, row, { focus: false });
+    if (focused) return this.callbacks.sent?.(result, () => row.ui.opening === opening && p.hidden &&
+      !this.registry.current && !this.registry.pendingOpen && !holdsWriting(p.editors.reply.draft) &&
+      (!doc.activeElement || doc.activeElement === doc.body || row.ui.root.contains(doc.activeElement)));
   }
   from(id) {
     const row = this.rows.get(id);

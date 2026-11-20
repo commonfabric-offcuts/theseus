@@ -458,12 +458,13 @@ export class InlineComposer {
       // is never dismissed by an older answer.
       // Image selection/capture does not edit text. Only selections owned by
       // the successor count here; the sent submission owns its frozen images.
-      if (result?.status === 'confirmed' && this.admits(p, editor) && this.popped &&
+      if (result?.status === 'confirmed' && this.admits(p, editor) && (this.popped || this.cardReply) &&
           this.opening === opening && editor.localVersion === version && editor.clientCycleId === cycle &&
           !currentImages(editor).length && !imageBarrier(editor) &&
           !this.imagePicker && !this.images?.open && !this.bar.panel && !this.naming.sheet.open &&
           this.noticeVersion === noticeVersion) {
-        this.bar.fold(); this.sheet.close();
+        if (this.cardReply) await this.callbacks.sent?.(p, result);
+        else { this.bar.fold(); this.sheet.close(); }
       }
     } catch (error) { this.notice(error, p, editor); }
   }
