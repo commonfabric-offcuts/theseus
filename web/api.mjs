@@ -240,6 +240,37 @@ async function attempted(api, attempt, signal) {
   } finally { out.get(signal)?.delete(entry); }
 }
 
+// The foreground server lane has one reader and eight waiting places. Keep
+// a four-read default below that bound across API instances and page runs
+// sharing this document; a
+// parallel page start must not send a tenth request only to have it refused.
+const foregroundWaiting = [];
+let foregroundActive = 0;
+function foregroundRead(job, signal) {
+  return new Promise((resolve, reject) => {
+    let started = false;
+    const aborted = () => {
+      if (started) return;
+      const at = foregroundWaiting.indexOf(start);
+      if (at >= 0) foregroundWaiting.splice(at, 1);
+      reject(signal.reason ?? new DOMException('The read was cancelled.', 'AbortError'));
+    };
+    const start = () => {
+      signal?.removeEventListener('abort', aborted);
+      if (signal?.aborted) { aborted(); return; }
+      started = true; foregroundActive++;
+      // Departure may have happened while this request waited for capacity.
+      Promise.resolve().then(stayed).then(job).then(resolve, reject).finally(() => {
+        foregroundActive--;
+        foregroundWaiting.shift()?.();
+      });
+    };
+    if (signal?.aborted) { aborted(); return; }
+    signal?.addEventListener('abort', aborted, { once: true });
+    if (foregroundActive < 4) start(); else foregroundWaiting.push(start);
+  });
+}
+
 export class Api {
   constructor(token, fetcher = globalThis.fetch.bind(globalThis)) {
     this.token = token;
@@ -249,7 +280,11 @@ export class Api {
     this.refused = () => {};
   }
 
-  request(path, data, options) { return attempted(this, () => this.attempt(path, data, options), options?.signal); }
+  request(path, data, options) {
+    const foreground = (path === '/api/view' || path === '/api/bootstrap') && options?.readClass !== 'background';
+    return attempted(this, () => foreground ? foregroundRead(() => this.attempt(path, data, options), options?.signal)
+      : this.attempt(path, data, options), options?.signal);
+  }
   async attempt(path, data, { signal, readClass } = {}) {
     let response;
     try {

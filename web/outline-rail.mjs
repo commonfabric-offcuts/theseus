@@ -20,7 +20,7 @@ import { OutlineMenus } from './outline-menus.mjs';
 // The outline is the shell's (in-place-navigation.mjs): it stays the same
 // element across moves, with its scroll and the keys' place. It reads what Core
 // already serves (workspaces, workspace_topics, conversation) through the
-// page that is up, and again on every commit its live feed announces. It
+// page that is up, and again on relevant commits (scoped on outcome homes). It
 // never moves anything by itself: outcomes keep their order, a new message
 // changes only counts and lights, and topics keep the order their list gives.
 // Only the person moves a row (⌘↑ ⌘↓): the order they place is theirs, kept
@@ -160,7 +160,9 @@ export class OutlineRail {
     Object.assign(this, { host, open, read, storage, doc });
     this.handles = null; this.filter = null; this.outcomes = new Map(); this.unlisten = null; this.started = false;
     this.pages = null; this.opened = new Opened(); this.failed = false; this.listRead = false; this.run = 0; this.watch = null; this.watched = null;
-    this.reload = reloader(() => this.load());
+    let pending = new Set(), full = false, result = true;
+    const reload = reloader(async () => { const dirty = full ? null : pending; full = false; pending = new Set(); result = await this.load(dirty); });
+    this.reload = (dirty = null) => { if (dirty) for (const key of dirty) pending.add(key); else full = true; return reload().then(() => result); };
     this.build();
     this.menus = new OutlineMenus(this);
     this.dossiers = new OutlineDossiers(this);
@@ -247,6 +249,7 @@ export class OutlineRail {
   ready(handles) {
     if (!['topic', 'conversation', 'workspace'].includes(handles.route?.kind)) return;
     this.handles = handles;
+    this.starting = handles.route?.kind === 'workspace';
     const { bootstrap } = handles;
     // What a move of the person's order is sent through, kept for the moments between runs.
     this.sender = { api: handles.api, bootstrap };
@@ -260,14 +263,16 @@ export class OutlineRail {
     // Every arrival opens its own outcome and leaves every other choice alone.
     if (this.here) this.opened.set(this.here, true);
     this.unlisten?.();
-    this.unlisten = handles.live?.listen(event => { if ((event.kind === 'commit' || event.state === 'live') && this.doc.visibilityState === 'visible') this.reload(); }) ?? null;
+    this.unlisten = handles.outcomeChanges ? handles.outcomeChanges.listen(dirty => this.reload(dirty))
+      : handles.live?.listen(event => { if ((event.kind === 'commit' || event.state === 'live') && this.doc.visibilityState === 'visible') this.reload(); }) ?? null;
     for (const outcome of this.outcomes.values()) outcome.rail?.updateCurrent(this.currentTopicIn(outcome.id));
     this.doc.getElementById('rail')?.setAttribute('aria-label', 'Outcomes');
     this.paint();
-    this.reload();
+    if (!handles.outcomeChanges) this.reload();
   }
   // The person came back to the page: what changed meanwhile shows.
   shown() { if (this.handles && this.doc.visibilityState === 'visible') this.reload(); }
+  topicChanged() { this.paint(); }
   get here() { return this.handles?.workspaceId ?? null; }
   currentTopicIn(id) { const topic = this.handles?.route?.kind === 'topic' ? this.handles.topic : null; return topic && topic.workspace_id === id ? topic : null; }
   // Whether an outcome shows its topics (Opened): the one being read, a peek, or every one a chip shows.
@@ -276,18 +281,25 @@ export class OutlineRail {
   // the side rail did. A run's own reads go through that run (handles.view):
   // one still waiting for its turn when the run goes is never sent.
   own(handles) { return (name, args) => handles.view(name, args, 'foreground'); }
-  // The list of outcomes, then each open outcome's topics and Conversation,
+  // The current outcome's topics first, then outcomes and other open topics,
   // for the run that is up. Settles false when any of them could not be read;
   // what it read lands only while its run is still the page.
-  async load() {
+  async load(dirty = null) {
     const handles = this.handles, run = this.run, mine = () => run === this.run;
     if (!handles) return true;
     const view = this.own(handles), read = args => view('workspaces', args), here = handles.workspaceId, max = handles.pageMax ?? PAGE;
+    const wants = key => !dirty || dirty.has(key);
+    // Read the current outcome's topics before the global outcome list. Its
+    // provisional row is this same outline owner, not a second card list.
+    const first = wants('topics') && handles.route?.kind === 'workspace' ? this.outcomes.get(here) : null;
+    const firstRead = first ? await this.loadTopics(first) : true;
+    if (!mine()) return true;
+    this.starting = false;
     try {
-      await reread(this.pages, read, max);
+      if (wants('outcomes')) await reread(this.pages, read, max);
       book.learn(scopeOf(null), this.pages.order);
       // The outcome being read is in the outline, however far down the list it is.
-      while (mine() && !this.pages.loaded.has(here) && this.pages.next !== null) this.pages.accept(await read({ limit: max, cursor: this.pages.next }), this.pages.next);
+      while (wants('outcomes') && mine() && !this.pages.loaded.has(here) && this.pages.next !== null) this.pages.accept(await read({ limit: max, cursor: this.pages.next }), this.pages.next);
       if (!mine()) return true;
       this.failed = false;
     }
@@ -298,15 +310,17 @@ export class OutlineRail {
     // A directly reached outcome can be readable without being in the
     // person's workspaces list. Its provisional outline row owns its topics too.
     for (const item of this.shownItems()) {
-      if (!this.isOpen(item.id) || !shownUnder(this.filter, item)) continue;
+      if (!wants('topics') || !this.isOpen(item.id) || !shownUnder(this.filter, item)) continue;
       const outcome = this.outcome(item);
-      reads.push(this.loadTopics(outcome), this.readConversation(outcome, view));
+      if (outcome === first) continue;
+      reads.push(this.loadTopics(outcome));
     }
     const settled = await Promise.all(reads.map(read => Promise.resolve(read).catch(() => false)));
     if (!mine()) return true;
     this.paint();
-    const stars = [...await this.dossiers.refresh(),...await this.notebookStars.refresh()];
-    return settled.every(read => read !== false) && stars.every(Boolean);
+    const stars = [...(wants('topics') || wants('stars') ? await this.dossiers.refresh(true) : []),
+      ...(wants('topics') || wants('pages') ? await this.notebookStars.refresh(true) : [])];
+    return firstRead !== false && settled.every(read => read !== false) && stars.every(Boolean);
   }
   async loadMore() {
     const handles = this.handles, run = this.run;
@@ -431,7 +445,7 @@ export class OutlineRail {
     const run = this.run;
     this.opened.set(outcome.id, open); this.filter = null;
     this.paint();
-    if (open) Promise.all([this.loadTopics(outcome), this.readConversation(outcome)]).then(() => { if (run === this.run) this.paint(); });
+    if (open) Promise.resolve(this.loadTopics(outcome)).then(() => { if (run === this.run) this.paint(); });
   }
   // Opens or folds every known outcome (⇧⌘→ ⇧⌘←), keeping each choice.
   // Folded, the keys that were on a topic go to its outcome.
@@ -442,7 +456,7 @@ export class OutlineRail {
     if (row && row.level > 1) this.tree.go(this.tree.list().find(each => each.el === row.outcome.name));
     if (!open) return;
     for (const outcome of this.outcomes.values()) {
-      Promise.all([this.loadTopics(outcome), this.readConversation(outcome)]).then(() => { if (run === this.run) this.paint(); });
+      Promise.resolve(this.loadTopics(outcome)).then(() => { if (run === this.run) this.paint(); });
     }
   }
   // The rows the keys move through, in order: the Outcomes heading's pencil,
@@ -586,7 +600,13 @@ export class OutlineRail {
       pages: new TopicPages(this.bootstrap.instance_id, outcome.id, this.currentTopicIn(outcome.id), 'active', true), ...outcome.parts,
       storage: this.storage, area: outcome.own, denied: error => readFailure(error).kind === 'forbidden',
       painted: () => this.publishTopics(),
-      read: args => readTopicList((name, query) => this.read(name, query, 'foreground'), args), open: (topicId, topicTitle, message, at) => this.open(topicTarget(topicId, message, at), topicTitle) });
+      read: args => {
+        const handles = this.handles;
+        return readTopicList(this.own(handles), args, conversation => {
+          if (handles !== this.handles) return;
+          outcome.conversation = conversation; outcome.conversationRead = true;
+        });
+      }, open: (topicId, topicTitle, message, at) => this.open(topicTarget(topicId, message, at), topicTitle) });
     return outcome.rail;
   }
   // The outcome page consumes this exact rail; it never creates another
@@ -598,7 +618,7 @@ export class OutlineRail {
     this.handles.outcomeTopics?.(visible ? outcome.rail?.presentation() ?? null : null);
   }
   // An outcome's topics, read again: the page's own list reads itself.
-  loadTopics(outcome) { return outcome.adopted || outcome.id === this.here && this.handles?.route?.kind !== 'workspace' ? true : this.ownRail(outcome).load(); }
+  loadTopics(outcome) { return outcome.adopted || outcome.id === this.here && this.handles?.route?.kind !== 'workspace' ? this.readConversation(outcome) : this.ownRail(outcome).load(); }
   // Under the outcome being read, the page's own topic list (its TopicRail,
   // with its guard and its checks) stands in for the outline's, from when it
   // has something to show, so the list never blinks empty on a move. Which
@@ -742,8 +762,8 @@ export class OutlineRail {
     this.more.hidden = !this.pages || this.pages.next === null;
     this.paintHeader();
     this.place();
-    this.dossiers.sync();
-    this.notebookStars.sync();
+    if (!this.starting) { this.dossiers.sync(); this.notebookStars.sync(); }
+    if (this.pages?.started || this.failed) this.handles.outcomeList?.(this.pages.items, this.failed || null, () => this.reload());
     this.publishTopics();
   }
   // On a phone: "☰ Outcomes" carries the total and the lit light, and a line

@@ -138,17 +138,18 @@ const key = item => [doneFlag(item), Number.isSafeInteger(item.list_position) ? 
 
 // Core still lists the standing conversation separately. Carry its one topic
 // beside the first active page, never inside the server's cursor/extent.
-export async function readTopicList(read, args) {
+export async function readTopicList(read, args, conversationRead = () => {}) {
   const answer = await read('workspace_topics', args);
   if (args.cursor || args.archived || args.done || args.build === true) return answer;
   const found = await read('conversation', { workspace_id: args.workspace_id });
   const conversation = found.conversation;
   if (found.instance_id !== answer.instance_id) throw Error('The conversation topic identity could not be confirmed. Retry topics.');
-  if (!conversation) return { ...answer, conversation_topic: null };
+  if (!conversation) { conversationRead(null); return { ...answer, conversation_topic: null }; }
   const record = await read('topic', { topic_id: conversation.topic_id });
   const topic = record.topic;
   if (found.instance_id !== answer.instance_id || record.instance_id !== answer.instance_id || topic?.id !== conversation.topic_id || topic.workspace_id !== args.workspace_id)
     throw Error('The conversation topic identity could not be confirmed. Retry topics.');
+  conversationRead(conversation);
   return { ...answer, conversation_topic: { ...topic, unread: conversation.unread ?? 0,
     addressed: conversation.addressed ?? 0 } };
 }

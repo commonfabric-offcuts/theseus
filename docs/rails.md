@@ -443,9 +443,23 @@ the outline draws. The outline's own topic lists and an outcome's
 Conversation are not any one place's, so they read through whichever run is
 up when their turn comes.
 
-The rails read one read at a time (`oneAtATime`), so they never crowd the
-page's own reads out of the server's admission lanes. The outline reads in
-the foreground lane. The right rail reads in the background lane.
+Each rail sequences its reads (`oneAtATime`). Foreground API reads also share
+a four-request ceiling across the page and retained rails, below the backend's
+one reader plus eight waiting places. The right rail keeps its background lane;
+commands keep their command lane.
+
+On an outcome home (923), the current topics start before the global outcomes
+list. The same checked topic rows paint its cards, and one Conversation answer
+serves both those rows and the outline shortcut. Team, wakes and independent
+panels start together after the workspace answer. The outline's outcome list
+also supplies Also waiting; its refusal and Retry appear in the main column.
+
+Workspace and actor change keys refresh only the affected outcome-home lists.
+The named global-list default is navigation, becoming visible, manual retry,
+and relevant current-workspace or current-actor changes. Another outcome's
+rename or creation appears at that next refresh, rather than on every commit.
+Private-writing changes do not reread those lists. A failed refresh stays owed
+until its views succeed; an access refusal hides the outcome's content.
 
 ### One build per document
 
@@ -547,9 +561,8 @@ loads once and reads no build.
 ## Known gaps
 
 - Core records no pull request's state.
-- The old sections the outline stands for (the outcomes list, the
-  Conversation and Pipeline rows) are still read by the page, hidden, since
-  other parts of the page follow them.
+- Other routes still read some old hidden sections that supply their page
+  context. Outcome homes share the outline's outcomes and Conversation answers.
 - Waits in outcomes the reader cannot list are not in the outline's totals.
 - On a laptop, ⌘→ opens another outcome's topics only from the keys; there
   is no pointer's way to look without going there. A phone's first tap can
