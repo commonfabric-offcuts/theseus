@@ -71,9 +71,6 @@ export class OutcomeChanges {
       throw error;
     }
     const dirty = outcomeInvalidation(...items);
-    // Once Live supplies the reader's list key, scoped topic/mark activity
-    // still refreshes its owners but does not reread the global outcome list.
-    if (outcomesKey !== null) dirty.delete('outcomes');
     if (outcomesKey !== this.readOutcomesKey) dirty.add('outcomes');
     return { dirty, accept: () => { if (this.current()) { this.cursors = cursors; this.readOutcomesKey = outcomesKey; } } };
   }
