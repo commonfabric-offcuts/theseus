@@ -521,9 +521,9 @@
 .dossier-source-status { display: block; color: var(--muted); font-size: .85rem; }
 .dossier-source-status a { color: var(--accent); }
 .dossier-source-status button { color: var(--accent); background: none; border: 0; font: inherit; }
-/* A folded fallback keeps the source's actual loading/refusal and canonical
-   link visible inside its face, rather than painting outside a fixed row. */
-#messages .reply-stack .message-card:is([data-folded=true],[data-earlier=true]):has(>.dossier-source-status){height:auto;flex-direction:column;align-items:stretch;padding-block:.5rem}
+/* A folded fallback expands only for trouble and its canonical link.
+   Loading stays accessible out of flow without changing the card's height. */
+#messages .reply-stack .message-card:is([data-folded=true],[data-earlier=true]):has(>.dossier-source-status:not(.sr-only)){height:auto;flex-direction:column;align-items:stretch;padding-block:.5rem}
 .message-card:is([data-folded=true],[data-earlier=true])>.dossier-source-status{display:block!important}
 
 /* Direct answers remain real keyboard/touch buttons in covers and singleton pills. */

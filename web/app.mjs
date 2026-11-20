@@ -1378,6 +1378,7 @@ function stackMessages() { syncDossierHeads(); feedOf().arrange(); paintDossierS
 function paintStarredStatus() {
   const line = $('starred-status'), words = $('starred-status-words'), retry = $('starred-retry');
   line.hidden = topicUnavailable || authorityReviewPending() || !views.starredPending;
+  line.classList.toggle('sr-only', !views.starredError);
   words.textContent = views.starredError ? 'Could not finish loading starred dossiers. ' : 'Loading starred dossiers…';
   retry.hidden = !views.starredError;
   retry.onclick = () => { views.resetStars(); freshness?.request({ retry: true }); };
@@ -1392,6 +1393,8 @@ function paintDossierSourceStatus() {
     const entry = messageEntries.get(stack.id);
     if (!entry) continue;
     const line = node('span', undefined, 'dossier-source-status');
+    line.setAttribute('role', 'status');
+    line.classList.toggle('sr-only', record.state === 'loading');
     const label = stack.head.stack_position?.name?.text || 'this dossier';
     const link = node('a', `Reply in ${label}`);
     link.href = routeHref({ kind: 'topic', id: topic.id, message: stack.dossier });
