@@ -154,11 +154,15 @@ function replaceBody(body,value,change,transfer=null,selection=[]) {
   if(transfer!==null){
     for(const token of transfer.tokens)tokens.push({...token,at:start+token.at,ownerStart:start+token.ownerStart,row:-1,imported:true});
   }
-  // Deleting the heading line (not the whole card) merges metadata using the
-  // very same null-primary/alias-only representation as a Cards merge.
-  const lower=map.rows.find(r=>r.index>0&&!removed.has(r.index)&&r.start>=start&&
-    end>=r.start+cardTextValue(r.card.raw.split('\n')[0]).length+1&&
-    end<=r.start+cardTextValue(r.card.raw).indexOf(cardTextValue(cardDetails(r.card.words).words))&&edit.text==='');
+  // Merge when a deletion removes the heading boundary, even without its
+  // newline or one character at a time. A remaining valid heading is a rename.
+  const lower=map.rows.find(r=>{
+    const raw=cardTextValue(r.card.raw),ownerStart=Math.min(r.start,start);
+    return r.index>0&&!removed.has(r.index)&&edit.text===''&&end>r.start&&
+      start<r.start+raw.split('\n')[0].length&&
+      end<=r.start+raw.indexOf(cardTextValue(cardDetails(r.card.words).words))&&
+      !after.some(row=>row.start===ownerStart);
+  });
   if(lower){
     const upper=map.rows.slice(0,lower.index).filter(r=>!removed.has(r.index)).at(-1);
     const target=upper&&after.find(r=>r.start===upper.start);
