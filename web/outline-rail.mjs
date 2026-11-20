@@ -525,6 +525,11 @@ export class OutlineRail {
     const outcome = this.outcomes.get(id);
     if (outcome && this.handles) this.reorder({ level: 1, outcome, el: outcome.name }, delta);
   }
+  moveTopic(id, delta) {
+    const row = this.treeRows().find(row => row.el.dataset.topicId === id);
+    if (!row || !this.handles) { this.tree.say('Open this topic in the outline to move it.'); return false; }
+    this.reorder(row, delta); return true;
+  }
   // ⌘Z: the last move put back.
   undo() {
     const last = book.undo();

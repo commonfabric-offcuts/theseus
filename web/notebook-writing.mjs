@@ -21,6 +21,10 @@ const mergeTextContent = (base,mine,theirs) => mergeFields(FIELDS,base,mine,thei
 const content = source => ({ title: source.title, body: source.body ?? '',
   attachments: source.attachments.map(({ id }) => ({ id })), references: copy(source.references), draft: source.draft === true });
 const authority = bootstrap => ({ authority_id: bootstrap.authority.authority_id, authority_epoch: bootstrap.authority.authority_epoch });
+export function notebookActionEnvelope(bootstrap, item, state, kind, args) {
+  return { v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind, target: { item_id: item }, args: copy(args),
+    expected: { authority: authority(bootstrap), ...(kind === 'memory.star' ? { star_revision: state.star_revision ?? 0 } : { item_revision: state.source_ref.revision }) } };
+}
 const readOnly = new Set(['FORBIDDEN', 'OUTCOME_REACHED', 'AUTHORITY_CHANGED', 'PAGE_DELETED']);
 
 // The one revision stream behind Text and Cards. The journal owns only local,
@@ -207,9 +211,7 @@ export class NotebookWriting {
       }
     }
     const state=this.pageState;
-    this.actionPending={v:1,instance_id:this.bootstrap.instance_id,operation_id:crypto.randomUUID(),kind,
-      target:{item_id:this.item},args:copy(args),expected:{authority:authority(this.bootstrap),
-        ...(kind==='memory.star'?{star_revision:state.star_revision??0}:{item_revision:state.source_ref.revision})}};
+    this.actionPending=notebookActionEnvelope(this.bootstrap,this.item,state,kind,args);
     return this.retryAction();
   }
   retryAction() {

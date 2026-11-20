@@ -19,6 +19,29 @@ function refuseUnavailableWriting(page) {
   return true;
 }
 
+export function notebookMenuItems(page) {
+    const w=page.writing,state=w?.pageState;
+    if(!state)return [];
+    if(w.deleted)return state.reader_may_delete?[{key:'restore',label:'Undo delete',glyph:'undo',act:()=>page.pageAction('memory.delete',{deleted:false})}]:[];
+    // Read the current writer again when a menu action runs: permission or recovery
+    // may have changed since this list opened. The ordinary buttons use the same owners.
+    const canWrite=()=>page.writing===w&&!page.readOnly&&!w.readOnly&&!w.reading&&!w.deleted&&!w.closed&&!w.actionPending&&!w.actionRunning;
+    const items=[
+      {key:'text',label:'Show as text',glyph:'text',checked:page.mode==='text',act:()=>page.switchView('text')},
+      {key:'cards',label:'Show as cards',glyph:'stack',checked:page.mode==='cards',act:()=>page.switchView('cards')},
+      {key:'draft',label:'Private Draft',glyph:'draft',checked:page.drafted(),disabled:!canWrite(),act:()=>{if(canWrite())page.markDraft(!page.drafted());}},
+      ...(page.menuExtras?.('beforeImage')??[]),
+      {key:'image',label:'Add image…',glyph:'image',disabled:!canWrite(),act:()=>{if(canWrite())page.addImage.onclick();}},
+      ...(page.menuExtras?.('afterImage')??[]),
+      {key:'star',label:state.starred?'Unstar':'Star',glyph:state.starred?'starred':'star',act:()=>page.pageAction('memory.star',{starred:!state.starred})}];
+    if(!page.readOnly)items.push({key:'rename',label:'Rename',glyph:'pencil',act:()=>page.rename()});
+    if(state.reader_may_delete)items.push({key:'delete',label:'Delete',glyph:'drop',act:()=>{
+      if(page.doc.defaultView.confirm('Delete this Notebook page? Its history is kept and you can undo it.'))page.pageAction('memory.delete',{deleted:true});
+    }});
+    items.push({key:'copy',label:'Copy Link',glyph:'link',act:()=>page.copyLink()});
+    return items;
+  }
+
 // DeckPage supplies the existing card gestures and geometry. This surface
 // supplies one body and one saving stream, shared with the Text view.
 export class NotebookPage extends DeckPage {
@@ -337,28 +360,8 @@ export class NotebookPage extends DeckPage {
     this.revisionShown();
     putBack();
   }
-  menuItems() {
-    const w=this.writing,state=w?.pageState;
-    if(!state)return [];
-    if(w.deleted)return state.reader_may_delete?[{label:'Undo delete',glyph:'undo',act:()=>this.pageAction('memory.delete',{deleted:false})}]:[];
-    // Read the current writer again when a menu action runs: permission or recovery
-    // may have changed since this list opened. The ordinary buttons use the same owners.
-    const canWrite=()=>this.writing===w&&!this.readOnly&&!w.readOnly&&!w.reading&&!w.deleted&&!w.closed&&!w.actionPending&&!w.actionRunning;
-    const items=[
-      {label:'Show as text',glyph:'text',checked:this.mode==='text',act:()=>this.switchView('text')},
-      {label:'Show as cards',glyph:'stack',checked:this.mode==='cards',act:()=>this.switchView('cards')},
-      {label:'Private Draft',glyph:'draft',checked:this.drafted(),disabled:!canWrite(),act:()=>{if(canWrite())this.markDraft(!this.drafted());}},
-      ...(this.menuExtras?.('beforeImage')??[]),
-      {label:'Add image…',glyph:'image',disabled:!canWrite(),act:()=>{if(canWrite())this.addImage.onclick();}},
-      ...(this.menuExtras?.('afterImage')??[]),
-      {label:state.starred?'Unstar':'Star',glyph:state.starred?'starred':'star',act:()=>this.pageAction('memory.star',{starred:!state.starred})}];
-    if(!this.readOnly)items.push({label:'Rename',glyph:'pencil',act:()=>this.rename()});
-    if(state.reader_may_delete)items.push({label:'Delete',glyph:'drop',act:()=>{
-      if(this.doc.defaultView.confirm('Delete this Notebook page? Its history is kept and you can undo it.'))this.pageAction('memory.delete',{deleted:true});
-    }});
-    items.push({label:'Copy Link',glyph:'link',act:()=>this.copyLink()});
-    return items;
-  }
+  menuItems() { return notebookMenuItems(this); }
+
   async copyLink() {
     const w=this.writing,source=w?.base?.source;
     if(!source||w.closed)return;
