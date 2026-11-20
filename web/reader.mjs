@@ -347,6 +347,7 @@ export class Reader {
     // is kept. The same message shown again is no move: the composer, its
     // panel, the focus and the place in the message stay as they are.
     const same = this.dialog.open && sameSource(this.source?.source_ref, source.source_ref);
+    if (!same || this.layoutInstance !== sessions.reply.context.instanceId) this.temporaryWide = false;
     const left = this.dialog.open && this.sessions && !same && holdsWriting(this.sessions.reply.draft);
     if (this.source) this.rememberPlace();
     this.source = source;
@@ -374,8 +375,10 @@ export class Reader {
     // Only a confirmed source can dock in its own visible card. This is the
     // same Reader and DOM, not another editor or a copied phone bar.
     const card = presentation?.replyCard;
-    this.placeReply(!presentation?.sourceUnavailable && source.source_ref.kind === 'message' &&
-      card?.dataset.id === source.source_ref.id && card.isConnected && card.getClientRects().length ? card : null);
+    const dock = !presentation?.sourceUnavailable && source.source_ref.kind === 'message' &&
+      card?.dataset.id === source.source_ref.id && card.isConnected && card.getClientRects().length ? card : null;
+    if (same && this.card && !dock) this.widenInlineReply();
+    this.placeReply(dock);
     // The cover's sheet is opened by a press, for the message it was pressed on: any other message, or this one
     // opened again, starts at the cover's one line (paintCover).
     if (!same) this.$('reader-cover').open = false;
@@ -453,9 +456,26 @@ export class Reader {
 
   expandReply() {
     if (!this.card) return;
+    this.widenInlineReply();
     this.presentation.replyCard = null;
     this.placeReply(null);
     this.dialog.showModal(); this.applyLayout({ opening: true }); this.field.focus({ preventScroll: true });
+  }
+
+  // Only expanding an inline reply uses its writing to choose temporary room.
+  // Measure wrapping at the inline field's width, even while its quiet line is folded.
+  widenInlineReply() {
+    if (!this.layout || this.narrow.matches || this.layout.mode === 'wide') return;
+    if (this.sessions.reply.draft.quotes?.length) { this.temporaryWide = true; return; }
+    if (!this.sessions.reply.draft.body) return;
+    const field = this.field, style = getComputedStyle(field), line = parseFloat(style.lineHeight);
+    const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    if (!(line > 0) || !Number.isFinite(padding)) return;
+    const height = field.style.height, whiteSpace = field.style.whiteSpace, scroll = field.scrollTop;
+    try {
+      field.style.height = '0px'; field.style.whiteSpace = 'pre-wrap';
+      if (field.scrollHeight > 4 * line + padding + 1) this.temporaryWide = true;
+    } finally { field.style.height = height; field.style.whiteSpace = whiteSpace; field.scrollTop = scroll; }
   }
 
   // What changed in the Notebook page shown since the revision the reader
@@ -466,11 +486,12 @@ export class Reader {
     this.$('source-changes').open = true; this.$('source-changes').hidden = false;
   }
 
-  get layoutShape() { return this.card || this.narrow.matches ? 'stacked' : this.layout.mode; }
+  get layoutShape() { return this.card || this.narrow.matches ? 'stacked' : this.temporaryWide ? 'wide' : this.layout.mode; }
   // Wide or Stacked, from the ⋯ menu; a phone is always stacked, so it has no choice.
-  get layoutChoice() { return this.narrow.matches || !this.layout ? null : this.layout.mode === 'wide' ? 'Stacked layout' : 'Wide layout'; }
+  get layoutChoice() { return this.narrow.matches || !this.layout ? null : this.layoutShape === 'wide' ? 'Stacked layout' : 'Wide layout'; }
   toggleLayout() {
-    this.layout.setMode(this.layout.mode === 'wide' ? 'stacked' : 'wide');
+    this.layout.setMode(this.layoutShape === 'wide' ? 'stacked' : 'wide');
+    this.temporaryWide = false;
     this.applyLayout();
   }
 
@@ -754,8 +775,8 @@ export class Reader {
     if (!this.writes(editor)) return;
     if (editor.adopting || recoveryReadOnly(editor)) { this.notice('Review saved image copies before changing this reply.'); return; }
     // Quoting on a laptop opens room to reply; a phone has only its stacked layout.
-    if (!this.card && !this.narrow.matches && this.layout.mode !== 'wide') {
-      this.layout.setMode('wide'); this.applyLayout();
+    if (!this.card && !this.narrow.matches && this.layout.mode !== 'wide' && !this.temporaryWide) {
+      this.temporaryWide = true; this.applyLayout();
     }
     const prefix = editor.draft.body ? (editor.draft.body.endsWith('\n\n') ? '' : editor.draft.body.endsWith('\n') ? '\n' : '\n\n') : '';
     const excerpts = Array.isArray(excerpt) ? excerpt : [excerpt];
@@ -1331,6 +1352,7 @@ export class Reader {
     // An edit under way is left as Escape leaves it: its writing stays on the device.
     this.editing?.leave({ closing: true });
     ++this.viewToken;
+    this.temporaryWide = false;
     this.held = null;
     // The naming sheet is a modal of its own: it goes with the Reader.
     if (this.naming?.sheet.open) this.naming.sheet.close();
