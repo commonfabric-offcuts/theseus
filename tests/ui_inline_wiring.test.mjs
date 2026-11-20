@@ -118,6 +118,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     get nodeType() { return 1; }
     get childNodes() { return this.children; }
     get lastChild() { return this.children[this.children.length - 1] ?? null; }
+    get lastElementChild() { return this.children[this.children.length - 1] ?? null; }
     getAttributeNames() { return []; }
     hasAttribute(name) { return name in this; }
     toggleAttribute(name, force = !this.hasAttribute(name)) { if (force) this.setAttribute(name, ''); else this.removeAttribute(name); return force; }
@@ -245,6 +246,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
+    unobserve(target) { this.targets = this.targets.filter(each => each !== target); }
   }
   const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} unobserve() {} disconnect() {} }, MutationObserver: class { observe() {} disconnect() {} takeRecords() { return []; } }, innerHeight: 600, innerWidth: 1000, Node: { DOCUMENT_POSITION_FOLLOWING: 4, TEXT_NODE: 3 }, requestAnimationFrame: callback => setImmediate(callback), cancelAnimationFrame: clearImmediate, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     // The window's own location and history are the page's, as in a browser (the shell reads them there).
@@ -5276,8 +5278,8 @@ test('860 late refusal cannot replace another Reader source or its notice and wr
 
 // 880 uses this file's actual app loader and the real TopicViews renderer.
 // Only transport and the device journal are held in memory; no store opens.
-function startup880(t, { answers = {}, journalError = null } = {}) {
-  const names = ['topic_messages', 'memory_items', 'colors', 'journal'];
+function startup880(t, { answers = {}, journalError = null, prerequisites = false } = {}) {
+  const names = ['topic_messages', 'memory_items', 'colors', 'journal', ...(prerequisites ? ['workspace', 'wakes', 'workspace_members'] : [])];
   const gates = new Map(names.map(name => [name, defer()])), asked = [], baselines = [];
   let closes = 0, settled = false, f;
   const opened = { close() { closes++; } };
@@ -5299,6 +5301,9 @@ function startup880(t, { answers = {}, journalError = null } = {}) {
     topic_messages: { instance_id: 'fixture', items: [message], next_cursor: null, relevant_versions: { topic: 1 } },
     memory_items: { instance_id: 'fixture', items: [note], next_cursor: null, relevant_versions: { notebook: 1 } },
     colors: { instance_id: 'fixture', palette: [...AGENT_PALETTE], items: [], next_cursor: null },
+    workspace: { instance_id: 'fixture', workspace: { id: 'w1', title: 'Workspace' } },
+    wakes: { instance_id: 'fixture', quiet: [] },
+    workspace_members: { instance_id: 'fixture', items: [], next_cursor: null },
     ...answers,
   };
   const read = f.api.view;
@@ -5416,6 +5421,139 @@ test('880 confirmed topic precedes the startup join; the existing color read kee
     assert.deepEqual(s.asked.map(x => x.name).sort(), ['colors', 'journal', 'memory_items', 'topic_messages']);
   } finally { held.resolve(); s.releaseAll(); }
   assert.equal((await s.started).ok, true); await drain(); assert.deepEqual(s.page(), expected880);
+});
+
+const startup886 = (t, options = {}) => startup880(t, { ...options, prerequisites: true });
+test('886 all independent topic reads start before any answer, after topic and baseline, with unchanged bounds', async t => {
+  const s = startup886(t); await drain();
+  assert.deepEqual(s.asked.map(x => x.name).sort(), [...s.names].sort());
+  const one = name => s.asked.find(x => x.name === name);
+  for (const name of ['topic_messages', 'memory_items']) assert.deepEqual(one(name).baselines, ['feed', 'actor']);
+  assert.deepEqual(JSON.parse(JSON.stringify(one('workspace').args)), { workspace_id: 'w1' });
+  assert.deepEqual(JSON.parse(JSON.stringify(one('workspace_members').args)), { workspace_id: 'w1', limit: 100 });
+  assert.deepEqual(JSON.parse(JSON.stringify(one('wakes').args)), {});
+  for (const name of ['wakes', 'workspace_members']) assert.equal(one(name).options.readClass, 'background');
+  s.unpublished(); s.releaseAll(); assert.equal((await s.started).ok, true); await drain();
+  assert.deepEqual(s.page(), expected880); assert.equal(s.asked.length, 7, 'no duplicate color or other startup request');
+});
+for (const held of ['workspace', 'wakes', 'workspace_members', 'topic_messages', 'memory_items', 'colors', 'journal']) {
+  test('886 held ' + held + ' does not stop sibling reads or admit early sources', async t => {
+    const s = startup886(t); await drain();
+    assert.equal(s.asked.length, 7);
+    for (const name of s.names) if (name !== held) s.release(name);
+    await drain(); assert.equal(s.settled(), false); s.unpublished();
+    s.release(held); assert.equal((await s.started).ok, true); await drain();
+    assert.deepEqual(s.page(), expected880); assert.equal(s.closes(), 0);
+  });
+}
+for (const name of ['workspace', 'wakes', 'workspace_members']) test('886 ' + name + ' refusal retains its existing nonfatal fallback', async t => {
+  const s = startup886(t, { answers: { [name]: Error('Optional read refused886') } });
+  s.releaseAll(); assert.equal((await s.started).ok, true); await drain(); assert.deepEqual(s.page(), expected880);
+  if (name === 'workspace') assert.equal(s.f.get('workspace-name').textContent, 'w1');
+  if (name === 'workspace_members') assert.equal(s.f.runObservation('outcomeMembers'), null);
+});
+for (const name of ['topic_messages', 'memory_items']) test('886 refused ' + name + ' settles while workspace and other prerequisites stay held; late journal closes', async t => {
+  const refused = Error('List refused886'), s = startup886(t, { answers: { [name]: refused } }); await drain();
+  assert.equal(s.asked.length, 7); s.release(name); await drain();
+  assert.equal(s.settled(), true, 'fatal startup refusal does not wait for optional read gates');
+  const result = await s.started; assert.equal(result.ok, false); assert.equal(result.error, refused); s.unpublished();
+  assert.equal(s.closes(), 0); s.release('journal'); await drain(); assert.equal(s.closes(), 1);
+  s.releaseAll(); await drain(); assert.equal(s.closes(), 1); s.unpublished();
+});
+test('886 topic identity is confirmed before new independent reads; colors retains its earlier start', async t => {
+  const topic = defer(), s = startup886(t), read = s.f.api.view;
+  s.f.api.view = async (name, ...args) => { if (name === 'topic') await topic.promise; return read(name, ...args); };
+  try {
+    await drain(); assert.deepEqual(s.asked.map(x => x.name), ['colors']); s.unpublished();
+    topic.resolve(); await drain(); assert.equal(s.asked.length, 7);
+  } finally { topic.resolve(); s.releaseAll(); }
+  assert.equal((await s.started).ok, true);
+});
+
+test('886 actual dossier adapter keeps batched reads background and checks the instance before admitting words', async t => {
+  const s = startup886(t); s.releaseAll(); assert.equal((await s.started).ok, true); await drain();
+  const heads = s.f.runObservation('dossierHeads'), reads = [];
+  let foreign = false, paints = 0; heads.changed = () => paints++;
+  s.f.api.view = async (name, args, options) => {
+    reads.push({ name, args: JSON.parse(JSON.stringify(args)), options: JSON.parse(JSON.stringify(options)) });
+    return { instance_id: foreign ? 'foreign' : 'fixture', items: args.message_ids.map(id => ({ id, topic_id: 't1', body: 'Admitted words', stack_position: { root_id: id } })) };
+  };
+  const messages = new Map(['a', 'b'].map(id => ['reply-' + id, { id: 'reply-' + id, reply_to: id, stack_position: { root_id: id } }]));
+  heads.sync(messages); await heads.readTail;
+  assert.deepEqual(reads, [{ name: 'topic_messages', args: { topic_id: 't1', message_ids: ['a', 'b'] }, options: { readClass: 'background' } }]);
+  assert.equal(paints, 1); assert.equal(heads.messages(new Map()).size, 2);
+  heads.invalidate(); foreign = true; heads.sync(messages); await heads.readTail;
+  assert.equal(reads.length, 2); assert.equal(paints, 2); assert.equal(heads.messages(new Map()).size, 0);
+  assert.deepEqual([...heads.records.values()].map(record => record.state), ['error', 'error']);
+});
+
+test('886 Landing-shaped opening counts actual full-feed arrangements and identifies later repaint triggers', async t => {
+  const roots = ['head-886-a', 'head-886-b', 'head-886-c', 'head-886-d'];
+  const position = (id, revision = 0) => ({ root_id: id, at: { acts: revision, messages: 130 }, order_key: roots.indexOf(id), order_tie: 1,
+    cover_revision: revision, cover: revision ? { stands: `Cover revision ${revision}`, waiting: [], payload: null } : null });
+  const messages = Array.from({ length: 30 }, (_, index) => ({ id: `reply-886-${index}`, seq: 101 + index, topic_id: 't1', author_id: 'fixture-writer', body: `Landing-shaped reply ${index}`, sent_ms: null,
+    reply_to: roots[index % 4], stack_position: position(roots[index % 4]),
+    attachments: index === 0 ? [{ id: 'image-886', inline: true, content_type: 'image/png', name: 'Fixture image' }] : [] }));
+  const heads = roots.map((id, index) => ({ id, seq: index + 1, topic_id: 't1', author_id: 'fixture-writer', body: `Original ${id}`, sent_ms: null, reply_to: null, stack_position: position(id) }));
+  const s = startup886(t, { answers: { topic_messages: { instance_id: 'fixture', items: messages, next_cursor: 101, relevant_versions: { topic: 1 } } } });
+  // Wrappers delegate to the actual app/StackFeed implementations. This is
+  // not a DossierHeads.changed count: full arrangements render real stacks.
+  const trace = s.f.runObservation(`(() => {
+    const trace = { phase: 'opening', events: [] }, paint = paintViews, arrange = StackFeed.prototype.arrange;
+    paintViews = function(kind) { trace.events.push({ owner: 'paintViews', kind, phase: trace.phase, stack: new Error().stack }); return paint(kind); };
+    StackFeed.prototype.arrange = function(...args) {
+      const stack = new Error().stack, result = arrange.apply(this, args);
+      trace.events.push({ owner: 'StackFeed.arrange', phase: trace.phase, stacks: this.state.stacks.length, entries: entries(this.list).length, stack });
+      return result;
+    };
+    return trace;
+  })()`);
+  const headGate = defer(), markGate = defer(), imageGate = defer(), requests = [], read = s.f.api.view;
+  s.f.api.view = async (name, args, options) => {
+    if (name === 'topic_messages' && args.message_ids) {
+      requests.push({ name, ids: [...args.message_ids], readClass: options?.readClass }); await headGate.promise;
+      return { instance_id: 'fixture', items: heads.filter(item => args.message_ids.includes(item.id)), next_cursor: null };
+    }
+    if (name === 'marks') { await markGate.promise; return { instance_id: 'fixture', topic_id: 't1', items: [{ message_id: messages[0].id, seq: 101, mark_revision: 1 }], next_cursor: null }; }
+    return read(name, args, options);
+  };
+  let imageReads = 0, imageURL;
+  s.f.api.media = async () => { imageReads++; await imageGate.promise; return { blob: new Blob(['in-memory image bytes'], { type: 'image/png' }) }; };
+  t.after(() => { headGate.resolve(); markGate.resolve(); imageGate.resolve(); if (imageURL) URL.revokeObjectURL(imageURL); });
+  s.releaseAll(); assert.equal((await s.started).ok, true); await drain();
+  const arrangements = () => Array.from(trace.events).filter(event => event.owner === 'StackFeed.arrange');
+  const count = phase => arrangements().filter(event => event.phase === phase).length;
+  assert.equal(s.f.runObservation('views.messages.size'), 30); assert.equal(arrangements()[0].stacks, 4);
+  assert.equal(count('opening'), 1, 'one initial full feed arrangement before the held arrivals');
+  trace.phase = 'marks'; markGate.resolve(); await drain(); assert.equal(count('marks'), 0);
+  trace.phase = 'image';
+  for (const observer of s.f.observers.filter(each => each.options?.rootMargin === '50% 0px')) observer.callback([...observer.targets].map(target => ({ target, isIntersecting: true })));
+  await drain(); assert.equal(imageReads, 1); imageGate.resolve(); await drain();
+  const image = entryIn(s.f, messages[0].id).querySelector(':scope > .card-images').querySelector(':scope > .card-image').querySelector(':scope > img.image-thumb');
+  imageURL = image?.src; assert.equal(image?.hidden, false, 'actual thumbnail completion is observed'); assert.equal(count('image'), 0);
+  trace.phase = 'heads'; headGate.resolve(); await s.f.runObservation('dossierHeads.readTail'); await drain();
+  assert.deepEqual(requests.map(each => ({ ...each, ids: [...each.ids].sort() })), [{ name: 'topic_messages', ids: roots, readClass: 'background' }]);
+  assert.equal(count('heads'), 1, 'all four heads cause one actual full feed arrangement');
+  assert.equal(trace.events.filter(event => event.owner === 'paintViews' && event.kind === 'messages' && event.phase === 'heads').length, 1);
+  assert.equal(arrangements().at(-1).stacks, 4); assert.equal(s.f.runObservation('feedMessages().size'), 34);
+  const openingAfterFirst = arrangements().slice(1).map(event => event.phase);
+  assert.deepEqual(openingAfterFirst, ['heads']);
+
+  // Additional explicit arrivals are probes, not assertions that these
+  // changes happened in Tony's opening. Exercise the app's freshness callback
+  // and actual TopicViews, retaining the fixture's deterministic feed driver.
+  const refresh = async (phase, revision, withAct = false) => {
+    trace.phase = phase;
+    const read = async name => name === 'message_acts'
+      ? { instance_id: 'fixture', topic_id: 't1', version: revision, next_cursor: null,
+        items: withAct ? [{ message_id: roots[0], seq: 1, acts: { name: { text: 'Changed dossier name' }, name_revision: 1 } }] : [] }
+      : { instance_id: 'fixture', topic_id: 't1', items: roots.map(id => ({ message_id: id, stack_position: position(id, revision) })) };
+    await s.f.fresh.options.refresh('acts', revision, read, () => true); await drain();
+  };
+  await refresh('freshness unchanged', 0); assert.equal(count('freshness unchanged'), 0);
+  await refresh('cover positions changed', 1); assert.equal(count('cover positions changed'), 1);
+  await refresh('acts and positions changed', 2, true); assert.equal(count('acts and positions changed'), 2, 'existing readPositions and readActs each paint the changed feed');
+  t.diagnostic('886 repaint trace ' + JSON.stringify({ openingAfterFirst, counts: Object.fromEntries(['opening', 'marks', 'image', 'heads', 'freshness unchanged', 'cover positions changed', 'acts and positions changed'].map(phase => [phase, count(phase)])), requests, events: trace.events }));
 });
 
 test('872 app gives New message the verified instance for width preferences even before its editor loads', async () => {
