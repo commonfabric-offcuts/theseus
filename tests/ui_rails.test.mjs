@@ -60,7 +60,7 @@ test('902 the outline keeps each choice; arriving opens its current outcome and 
   assert.deepEqual([opened.isOpen('w1', 'w2'), opened.isOpen('w2', 'w2')], [false, true], 'arrival retains the other explicit fold');
   opened.all(true, ['w1', 'w2', 'w9']);
   assert.deepEqual(['w1', 'w2', 'w9'].map(id => opened.isOpen(id, 'w2')), [true, true, true], '⇧⌘→ opens every known outcome');
-  assert.equal(opened.isOpen('new', 'w2'), false, 'a later new outcome starts folded');
+  assert.equal(opened.isOpen('new', 'w2'), true, 'open-all applies to outcomes first encountered later');
   opened.set('w9', false);
   assert.equal(opened.isOpen('w9', 'w2'), false, 'one folded after stays folded');
   opened.all(false, ['w1', 'w2', 'w9']);
