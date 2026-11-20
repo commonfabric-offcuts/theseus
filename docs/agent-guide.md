@@ -426,6 +426,23 @@ added 163 to OUTCOME
 `--section`: adding never changes Now or Next. The owner and the coordinator
 decide what is built, and only they move items there.
 
+As an outcome member, edit an existing item's title, words, size or Candidate
+group yourself; you do not need to route these edits to the coordinator:
+
+```sh
+aim-next item-edit OUTCOME N --title "Reloading keeps the draft" --words item-words.txt
+```
+
+Only supplied fields change, and the command prints the item read back.
+Use `--words -` to read UTF-8 from standard input, `--size small|medium|large|none`
+to set or clear its size, and `--group G` to set its Candidate group. An empty
+words file clears the words; `--group ''` clears the group. A concurrent edit
+is refused: read the item and reconcile before editing again. If the final
+read fails after the edit was recorded, `READ_BACK_UNCONFIRMED` directs you to
+`item OUTCOME N`. If the command receipt is uncertain, follow its `retry`
+instruction to recover the same operation. Moving items and changing who
+raised them still belong to the owner or coordinator.
+
 ## Notebook pages
 
 An outcome's Notebook, and each topic's own, holds pages that keep every

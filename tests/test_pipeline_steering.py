@@ -12,6 +12,12 @@ from reader_fixture import ReaderCase
 
 
 class PipelineCase(ReaderCase):
+    def build_topic(self, topic_id, title="Piece work"):
+        # Reuse the public agent-opening fixture; a person's writing topic
+        # stays separate from the topic a new piece is built in (632).
+        from test_build_topics import BuildTopicsCase
+        return BuildTopicsCase.topic(self, topic_id, title)
+
     def on(self, actor="owner", **settings):
         current = self.store.view(actor, "pipeline", {"workspace_id": "w1", "limit": 1}).get("pipeline")
         return self.command("pipeline.configure", dict({"enabled": True}, **settings), {"workspace_id": "w1"},
@@ -226,10 +232,11 @@ class SteeringCase(PipelineCase):
         self.committed(self.move(2, above=1, actor="agent-a"))
 
     def test_dropping_an_item_being_built_asks_first_and_the_piece_ends_with_its_last_item(self):
+        self.build_topic("piece-topic")
         self.stages({"stage_id": "build", "name": "Build"}, {"stage_id": "review", "name": "Review"})
         for n in range(1, 4):
             self.add("Now %d" % n, section="now", size="medium")
-        piece = self.committed(self.command("pipeline.piece_start", {"numbers": [1, 2, 3], "topic_id": "t1", "stage_id": "build"},
+        piece = self.committed(self.command("pipeline.piece_start", {"numbers": [1, 2, 3], "topic_id": "piece-topic", "stage_id": "build"},
                                             {"workspace_id": "w1"}))["piece_id"]
         refused = self.move(1, section="dropped")
         self.rejected(refused, "ITEM_UNDERWAY")

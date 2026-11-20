@@ -514,6 +514,19 @@ are absolute local times.
   piece's in the order its card names them, then the items not in a piece, in
   their placed order.
 - `item OUTCOME N` shows one item with its stages and events.
+- `item-edit OUTCOME N [--title T] [--size small|medium|large|none] [--group G] [--words FILE|-]`
+  lets any outcome member edit the supplied fields directly, then shows the
+  item as read back. Supply at least one option. `--words` reads UTF-8 from
+  a regular file or standard input (`-`); an empty file clears the words,
+  `--group ''` clears the Candidate group and `--size none` clears the size.
+  Words keep their whitespace; Core keeps its existing text validation
+  (at most 16,384 UTF-8 bytes for words), membership and shipped-item rules.
+  The verb reads the current item revision before
+  writing; a concurrent edit is refused with `REVISION_CONFLICT`.
+  `READ_BACK_UNCONFIRMED` (exit 1) means the edit was recorded but its final
+  read failed: use `item OUTCOME N` to read it. An uncertain command receipt
+  names its operation for `retry OPERATION`; do not rerun `item-edit` as a
+  new edit to recover it. Moving and attribution retain their permissions.
 - `pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off]`
   turns it on or off (the owner or the coordinator); its title, units, sizing
   and releases are the owner's alone.
@@ -532,6 +545,11 @@ are absolute local times.
   (docs/pipeline.md, "Who changes what"), and sets aside a piece holding one
   only with a go-ahead naming each such item; `item` then shows the move as
   `on OWNER's word (MSG)`.
+- `move-piece PIECE --topic T --expected N` repairs a piece's topic, by its
+  owner or coordinator, fenced on the piece version N from a JSON pipeline/item
+  read. Both topics refresh on open pages; writing and stage history stay put.
+  The destination is an agent-opened topic in the same outcome. A person's
+  topic and the outcome's Conversation cannot hold a new piece (632).
 - `piece OUTCOME N[,N...] --topic T --stage S [--size S] [--ask MSG]` starts
   work on items in a topic; `enter-stage PIECE STAGE [--round R] [--left approved|sent-back|passed|held] [--note N] [--ask MSG]`,
   `stage-note PIECE TEXT`, `combine OUTCOME --pieces P,... --topic T [--release N] [--commit SHA] [--ask MSG]`

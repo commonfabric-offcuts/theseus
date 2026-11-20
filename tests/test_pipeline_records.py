@@ -12,6 +12,10 @@ from test_pipeline_steering import PipelineCase
 
 
 class RecordsCase(PipelineCase):
+    def create_topic(self):
+        self.workspace()
+        return self.build_topic("t1", "Topic")
+
     def setUp(self):
         super().setUp()
         self.committed(self.on())
