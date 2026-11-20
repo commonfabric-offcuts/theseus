@@ -3821,11 +3821,11 @@ async function initializeOutcomePage(route) {
   // A Notebook page's link opens the page in place once the outcome's lists are
   // up; the address then names the outcome alone, as a message's link does.
   const shown=route.page?{id:route.page,revision:route.revision??null}:null;
-  if(shown){route={kind:'workspace',id:route.id};history.replaceState(history.state,'',routeHref(route)+location.hash);}
+  if(shown){route={kind:'workspace',id:route.id};shell.rename(route,location.hash);}
   status('');
   drawFeed(false,'topic-pending','inline-composer');
   $('outcome-page').hidden=false;
-  topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
+  topicNavigation=new TopicNavigation({current:route,navigateTarget:(target,still)=>{if(!shell.go(target,still))shell.leave(routeHref(target));}});
   if(route.kind==='root') {
     // What waits on the reader, every outcome's, heads the Outcomes home only (item 86):
     // an outcome's own page says its questions once, in "Where it stands".
@@ -3841,6 +3841,7 @@ async function initializeOutcomePage(route) {
     placeBrand($('main'));
     const reload=followCommits(async()=>{const loaded=await outcomeRail.load();await wakeLights.load();return loaded;});
     await reload();
+    readyRails(null);
   } else {
     // The title, Team and menu share the topic header. Notes, topics and
     // tools come before outcome setup; secondary context follows (item 842).

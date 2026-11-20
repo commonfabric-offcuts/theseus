@@ -2,10 +2,11 @@
 
 A topic page and an outcome's Conversation have a rail on each side. On the
 left is an outline of every outcome. On the right are the outcome's things.
-Moving between topics and Conversations does not load the page again: the
-outline stays where it was, and only the middle and the right rail change.
-Every other page (the Outcomes home, an outcome's own page, its pipeline,
-Health) keeps the side rail it had. The Outcomes home lists the outcomes with no
+Moving between topics, Conversations, outcomes and Outcomes home does not load
+the page again: the outline stays the same element, and the page's main content
+changes. Outcomes keep their visible side rail. Outcomes home keeps its current
+full-main list and hidden rail, retaining that outline for the next move.
+Pipeline and Health still load as before. The Outcomes home lists the outcomes with no
 heading of its own above them; a press on one, or Return on its row, opens its
 Conversation, and one with no Conversation yet opens its page (`outcome_rail_native.mjs`,
 "rail on the Outcomes home a press on an outcome opens its Conversation …").
@@ -307,13 +308,14 @@ the rail first where it is open over the page.
 ## Moving in place
 
 Each page is one run of `app.mjs`, which keeps its state in its module. A move
-between two feed pages (topics and Conversations) goes like this:
+between topics, Conversations, outcomes and Outcomes home goes like this:
 
 1. The page's guard (`TopicNavigation.openTarget`) decides first, as it does
    for a load. Unsent writing that cannot be kept stops the move. A send under
    way stops it with the same words as before. Where the move waits (it reads
    the served build first, below), the guard's last look is asked again just
-   before it is made.
+   before it is made. The shell's existing registered writing guards also hold
+   this move, including Notebook device writes on pages without an editor registry.
 2. The address changes with `pushState`. Each entry the page makes carries
    its place in the page's history (`aimPlace`).
 3. The old run ends as an unload ends a page. Its `pagehide` listeners run,
@@ -394,8 +396,8 @@ Back and forward to an entry the page made also go through the guard. If the
 guard refuses, the page goes back to the entry it was on, by as many entries
 as the person moved, and says why where the person is looking: in the rail,
 and also in the Reader or the New message sheet when one is open over the
-page. An entry from before this page, or a page that is not a
-feed, loads as it did before. Reload and copied links work because the
+page. An entry from before this page, or a route outside these four kinds,
+loads as it did before. Reload and copied links work because the
 address is always the real one.
 
 A move can come while the run before it is still on its way: a quick second
@@ -407,8 +409,8 @@ and then a forward), there is nothing more to do. If the run cannot start, what
 waited loads as it would with no feed page up. While a run starts, it renames
 its own address only if a back or forward has not moved it on (`shell.rename`).
 
-Every load the page decides goes through `shell.leave`: a page that is not a
-feed, a place chosen with no feed page up, an entry from before this page, a
+Every load the page decides goes through `shell.leave`: a route outside these
+four kinds, a place chosen with no supported page up, an entry from before this page, a
 new topic or outcome opened after its write commits. From the moment it asks
 for the load, the page starts no read (`web/api.mjs` `depart`): a read asked
 for then waits, unsent, and one the browser cancels as the load begins tells
