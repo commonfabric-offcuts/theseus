@@ -1120,6 +1120,13 @@ dialog.notebook-sheet-dialog:not([open]){display:none}
 .notebook-sheet-page>.notebook-text-panel:not([hidden]){flex:1 1 auto;display:flex;min-height:10rem;padding-top:.75rem}
 .notebook-sheet-page .notebook-text{flex:1;min-height:0;height:auto;resize:none}
 .notebook-sheet-page>.notebook-images:has(.notebook-image-rows:empty){display:none}
+/* Docked Cards alone have a black ground. Remember the theme above this local
+   palette so a person's explicit Set color face keeps its original ink. */
+.notebook-sheet-dialog{--notebook-theme-ink:var(--ink);--notebook-theme-accent:var(--accent);--notebook-theme-focus:var(--focus);--notebook-theme-soft:var(--soft)}
+.notebook-docked .notebook-sheet-page:has(>.deck-cards:not([hidden])){--paper:#000;--panel:#111;--ink:#fff;--muted:#b8c4c0;--line:#64756e;--accent:#86d4b7;--soft:#253c33;--focus:#a7f0d2;background:var(--paper);color:var(--ink)}
+.notebook-docked .notebook-sheet-page .deck-card:not(.deck-tinted){background:var(--panel)}
+.notebook-docked .notebook-sheet-page .deck-card.deck-tinted{--ink:var(--notebook-theme-ink);--accent:var(--notebook-theme-accent);--focus:var(--notebook-theme-focus);--soft:var(--notebook-theme-soft);color:var(--ink)}
+.notebook-docked .notebook-sheet-page.notebook-drafted .deck-card{border-style:dashed}
 .notebook-sheet-changes{padding-top:.75rem}.notebook-sheet-changes>.source-changes{margin:0}.notebook-sheet-changes-body{padding:0 .7rem .6rem;overflow-wrap:anywhere}.notebook-sheet-changes>.notice{margin:0}
 .notebook-sheet-page .deck-keys>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .notebook-back{max-width:16rem;min-height:2.75rem;padding:.3rem .6rem;overflow:hidden;text-overflow:ellipsis;color:var(--accent);font-size:.88rem;font-weight:600}
