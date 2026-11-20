@@ -106,3 +106,45 @@ test('853 existing answer controls keep their ask identity and answer revision',
   assert.equal(answers[0].message.id, 'ask853'); assert.equal(answers[0].message.reactions.answer_revision, 7); assert.equal(answers[0].answer, 'yes');
   assert.equal(choices.some(choice => choice.disabled), false);
 });
+
+function activityRule() {
+  const css = readFileSync(new URL('../web/stack-look.css', import.meta.url), 'utf8');
+  const hover = css.match(/@media\(hover:hover\) and \(pointer:fine\)\{([\s\S]*?)\n\}/)?.[1];
+  assert.ok(hover, 'the override belongs to the existing fine-pointer media query');
+  const rule = hover.match(/\.dossier-cover>\.cover-refresh:has\(([^{}]+)\)\{([^{}]+)\}/);
+  return { hover, rule };
+}
+
+test('869 pending dots stay shown and pressable without hover through the existing request link', t => {
+  const f = fixture(t), sheet = coverSheet(f.doc, { ...f.cover, stands: 'Ready', refresh_revision: 1,
+    refresh: { state: 'pending', recipient: 'writer', request_message_id: 'request869', observed_revision: 4 } }, f.context);
+  const dots = sheet.querySelector('.cover-refresh-glyph');
+  assert.equal(dots.dataset.pending, 'true'); assert.equal(dots.tag, 'a'); assert.match(dots.href, /message=request869/);
+  assert.equal(sheet.querySelectorAll('.cover-refresh').length, 1);
+  const { rule } = activityRule();
+  assert.ok(rule, 'pending activity needs a visible override after hover ends');
+  assert.match(rule[1], /\.cover-refresh-glyph\[data-pending=true\]/);
+  assert.match(rule[2], /opacity:1/); assert.match(rule[2], /pointer-events:auto/);
+});
+
+test('869 busy activity and a request error share the persistent corner control', async t => {
+  const f = fixture(t), sheet = coverSheet(f.doc, { ...f.cover, stands: 'Ready' }, f.context); f.root.append(sheet);
+  const sending = sheet.querySelector('.cover-refresh-glyph').onclick({ stopPropagation() {} });
+  assert.equal(sheet.querySelector('.cover-refresh-glyph').dataset.pending, 'true');
+  await sending;
+  assert.match(sheet.querySelector('.cover-refresh-status').text, /not confirmed/);
+  assert.equal(sheet.querySelectorAll('.cover-refresh').length, 1);
+  const { rule } = activityRule();
+  assert.ok(rule, 'errors need a visible override after hover ends');
+  assert.match(rule[1], /\.cover-refresh-status:not\(:empty\)/);
+  assert.match(rule[2], /opacity:1/); assert.match(rule[2], /pointer-events:auto/);
+});
+
+test('869 an idle refresh still waits for hover or focus on a fine pointer', t => {
+  const f = fixture(t), sheet = coverSheet(f.doc, { ...f.cover, stands: 'Ready' }, f.context);
+  assert.notEqual(sheet.querySelector('.cover-refresh-glyph').dataset.pending, 'true');
+  assert.equal(sheet.querySelector('.cover-refresh-status').text, '');
+  const { hover } = activityRule();
+  assert.match(hover, /\.dossier-cover>\.cover-refresh\{opacity:0;pointer-events:none\}/);
+  assert.match(hover, /\.dossier-cover:is\(:hover,:focus-within\)>\.cover-refresh\{opacity:1;pointer-events:auto\}/);
+});

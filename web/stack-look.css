@@ -489,6 +489,7 @@
 @media(hover:hover) and (pointer:fine){
   .dossier-cover>.cover-refresh{opacity:0;pointer-events:none}
   .dossier-cover:is(:hover,:focus-within)>.cover-refresh{opacity:1;pointer-events:auto}
+  .dossier-cover>.cover-refresh:has(.cover-refresh-glyph[data-pending=true],.cover-refresh-status:not(:empty)){opacity:1;pointer-events:auto}
 }
 .cover-refresh-glyph{display:inline-flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;
   width:2rem;min-height:2rem;padding:.3rem;border:0;border-radius:.35rem;background:transparent;color:var(--muted);cursor:pointer}
