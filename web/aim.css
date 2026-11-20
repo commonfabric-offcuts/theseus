@@ -1398,7 +1398,7 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 .notebook-document-label .unread-count{flex:none}
 .selection-page #topic-navigation>.rail-heading{justify-content:flex-start}
 .selection-page #topic-navigation>.rail-heading h2{flex:none}
-.notebook-document[data-mode=cards]{display:flex;align-items:flex-end;justify-content:center;padding:0;border:0;background:transparent;box-shadow:none}
+.notebook-document[data-mode=cards]{display:flex;align-items:flex-end;justify-content:center;padding:0;border:0;background:transparent;box-shadow:none;color:var(--muted)}
 .notebook-document[data-mode=cards]>.glyph{width:100%;height:auto;flex:none}
 .selection-page #outcome-references{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
 .selection-page #outcome-references>.rail-heading{grid-column:2;grid-row:1;justify-content:flex-end}
