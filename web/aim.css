@@ -1461,3 +1461,6 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 
 .message-card[data-card-reply]>.card-reply-composer:not([hidden]){display:grid!important}
 .card-reply-composer{color:var(--ink);--paper:var(--stack-folder);--panel:var(--stack-folder);--ink:var(--stack-folder-ink);--muted:var(--stack-meta-ink);--soft:var(--stack-folder-deep);--line:color-mix(in srgb,var(--stack-folder-ink) 30%,transparent)}
+/* An interactive document owns its scrolling; it never grows beyond a screen. */
+.html-frame { display: block; width: 100%; min-width: 0; height: 96px; max-height: 100dvh; border: 0; color-scheme: light dark; }
+.html-refusal { display: block; color: var(--muted); }
