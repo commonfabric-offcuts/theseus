@@ -86,6 +86,17 @@
   .ol-topics a.nav-item .topic-state.mine::before{content:"?";font-size:.6rem;font-weight:800;color:var(--on-accent)}
   .ol-topics a.nav-item .unread-count.addressed{background:var(--accent);color:var(--on-accent)}
   .ol-topics a.nav-item:has(.topic-state.mine) .unread-count.addressed{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--rail-ink-2)}
+  /* Waiting on someone else: a small open ring with an ellipsis, the same size as your "?"; its hover names who and the question. */
+  .ol-topics a.nav-item .topic-state[data-state=waiting]:not(.mine){width:.95rem;height:.95rem;padding:0;border:1.2px solid var(--muted);border-radius:50%;background:transparent;font-size:0;line-height:.75rem;text-align:center;box-sizing:border-box}
+  .ol-topics a.nav-item .topic-state[data-state=waiting]:not(.mine)::before{content:"\2026";font-size:.6rem;font-weight:800;color:var(--muted)}
+  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state[data-state=waiting]){padding-right:1.9rem}
+  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state[data-state=waiting]):has(.unread-count){padding-right:3.1rem}
+  /* Starred dossiers and Notebook pages under their topic: one line each, a step in from the topic's title. */
+  .ol-dossiers{margin:0 0 .1rem 1.15rem}
+  .ol-dossiers:empty{margin-bottom:0}
+  .ol-dossier{min-height:0;height:1.5rem;padding:0 .5rem;font-size:.8rem;line-height:1.5rem;color:color-mix(in srgb,var(--warn) 88%,var(--ink));border-radius:.3rem}
+  .ol-dossier:hover{background:var(--rail-hover)}
+  .ol-dossiers>button{min-height:0;height:1.5rem;padding:0 .5rem;font-size:.75rem}
 
   /* Done and Archived: one quiet line. */
   .ol-topics .topic-group{display:inline-block;margin:0 .6rem 0 0}
