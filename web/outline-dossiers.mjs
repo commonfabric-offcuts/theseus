@@ -58,9 +58,12 @@ export class OutlineDossiers {
       if (returned || !state.loaded && !state.busy && !state.error) this.load(state);
     }
   }
-  refresh() {
+  refresh(join = false) {
     this.sync();
-    return Promise.all(this.parents().map(parent => this.load(this.states.get(parent.dataset.topicId))));
+    return Promise.all(this.parents().map(parent => {
+      const state = this.states.get(parent.dataset.topicId);
+      return join && state?.busy ? state.busy : this.load(state);
+    }));
   }
   async load(state, more = false) {
     if (!state || !this.outline.handles) return true;

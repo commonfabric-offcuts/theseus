@@ -29,7 +29,8 @@ In particular, a response from a retired run must not repaint the new run.
 This first slice does not change the outcome read schedule or its commit
 refresh policy. The item explicitly permits those as a separate next slice:
 topics-first read ordering, removal of the duplicate Conversation read,
-bounded foreground concurrency and scoped refreshes remain outstanding.
+bounded foreground concurrency and scoped refreshes are the continuation in
+[item 923](item-923-contract.md).
 Server asset caching is item 904. This contract claims no browser timing gain.
 
 Evidence will exercise actual Shell moves/restoration, history and guards,

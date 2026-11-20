@@ -16,6 +16,7 @@ import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 import { typingField } from './writing-input.mjs';
 import { Freshness, initialViews, actorBaseline, readFailure, checkedView, bindingOf } from './freshness.mjs';
+import { OutcomeChanges, outcomeReads } from './outcome-refresh.mjs';
 import { DossierHeads } from './stack-order.mjs';
 import { TopicViews, followEdits } from './topic-views.mjs';
 import { visitNewFor, paintVisitNew } from './visit-new.mjs';
@@ -3592,11 +3593,30 @@ function refreshDirectory() {
 // Returns the page's one reload, which its first read goes through as well;
 // the page calls this before its first read, so a commit while that read is
 // out is read after it.
-function followCommits(load) {
-  let owed = false;
-  const reload = reloader(async () => { owed = true; owed = await load() === false; });
+function followCommits(load, changes = null, before = Promise.resolve()) {
+  let owed = false, full = true;
+  const pass = reloader(async () => {
+    await before;
+    if (changes && !changes.current()) return;
+    owed = true;
+    let batch = null;
+    if (changes && !full) {
+      try { batch = await changes.next(); }
+      catch (error) {
+        if (!['forbidden', 'resync'].includes(readFailure(error).kind)) throw error;
+        if (readFailure(error).kind === 'resync') await changes.baseline();
+        full = true;
+      }
+    }
+    const dirty = full || !batch ? null : batch.dirty;
+    full = false;
+    try { owed = Boolean(!dirty || dirty.size) && await load(dirty) === false; }
+    finally { if (!dirty && owed) full = true; }
+    if (!owed) batch?.accept();
+  });
+  const reload = (all = true) => { full ||= all; return pass(); };
   if (live) {
-    live.listen(event => { if ((event.kind === 'commit' || event.state === 'live' && owed) && document.visibilityState === 'visible') run(reload); });
+    live.listen(event => { if ((event.kind === 'commit' || event.state === 'live' && owed) && document.visibilityState === 'visible') run(() => reload(false)); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(reload); });
   }
   return reload;
@@ -3870,7 +3890,16 @@ async function initializeOutcomePage(route) {
     const scope=outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'workspace',rail,home:$('outcomes-home'),attention,open:openDestination});
     // The list of outcomes is read, not shown, for the line naming other outcomes' questions;
     // "← Outcomes" says its words when that line names fewer outcomes than its light counts.
-    initializeOutcomeNavigation(route.id,items=>scope.alsoNamed(paintAlsoWaiting($('also-waiting'),items,route.id,(id,title)=>openDestination({kind:'workspace',id},title))));
+    const paintOutcomes = (items, error, reread) => {
+      const notice = $('outcomes-status'), retry = $('retry-workspaces');
+      notice.hidden = !error; retry.hidden = !error;
+      if (error) notice.textContent = `${readFailure(error).message} Retry outcomes.`;
+      retry.onclick = () => run(reread);
+      scope.alsoNamed(paintAlsoWaiting($('also-waiting'),error ? [] : items,route.id,(id,title)=>openDestination({kind:'workspace',id},title)));
+      if (!permitted) $('also-waiting').hidden = true;
+    };
+    initializeOutcomeNavigation(route.id,paintOutcomes);
+    $('outcomes-status').hidden = true; $('retry-workspaces').hidden = true;
     // Where it stands, read with the page and again on every commit.
     const outcomeChoices = workspace => outcomeMenuItems(workspace, { actor: bootstrap.actor, act: key => {
       if (key === 'new-topic') return $('new-topic').click();
@@ -3895,13 +3924,20 @@ async function initializeOutcomePage(route) {
     };
     // permitted: the latest read of the outcome let the reader see it.
     let refreshSerial=0,permitted=false;
-    const refresh=async()=>{
+    const changes = new OutcomeChanges({ api, bootstrap, workspaceId: route.id, current: () => !retired && shell.page === thisRun });
+    const before = changes.baseline().catch(() => false);
+    const refresh=async(dirty=null)=>{
+      if (retired) return false;
+      dirty = dirty && permitted ? dirty : outcomeReads();
       const serial=++refreshSerial;
       status('');
-      let answer;
-      try { answer=checkedView(await api.view('workspace',{workspace_id:route.id},{readClass:'foreground'}),bootstrap.instance_id); }
+      const rails = changes.notify(dirty); rails.catch(() => {});
+      let workspace = onboarding.workspace;
+      try {
+        if (dirty.has('workspace')) workspace = checkedView(await api.view('workspace',{workspace_id:route.id},{readClass:'foreground'}),bootstrap.instance_id).workspace;
+      }
       catch(error) {
-        if(serial!==refreshSerial)return;
+        if(serial!==refreshSerial||retired)return;
         if(readFailure(error).kind==='forbidden') {
           onboarding.paint(null);permitted=false;$('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
           $('topic-navigation').hidden=true;$('new-topic').disabled=true;
@@ -3909,40 +3945,45 @@ async function initializeOutcomePage(route) {
           $('outcome-references').hidden=true;$('page-here').hidden=true;$('outcome-standing').hidden=true;$('also-waiting').hidden=true;$('outcome-tools').hidden=true;
           shell.topicChanged();
         }
+        await rails;
         throw error;
       }
-      if(serial!==refreshSerial)return;
-      const workspace=answer.workspace;
+      if(serial!==refreshSerial||retired)return;
       if(workspace?.id!==route.id||typeof workspace.title!=='string')throw Error('The outcome identity could not be confirmed.');
       permitted=true;
-      $('topic-title').textContent=workspace.title;
-      purposeLine??=new PurposeLine({host:$('outcome-purpose'),description:$('topic-description'),
-        save:(purpose,current)=>setPresence('workspace.update',{workspace_id:current.id},'workspace_revision',current.version,{purpose}).then(receipt=>{run(reload);return receipt;})});
-      purposeLine.paint(workspace,organises(workspace,bootstrap.actor));
-      onboarding.paint(workspace);
-      $('workspace-name').hidden=true;enableNewTopic(workspace.id);here.title=workspace.title;
-      shell.topicChanged();
-      await paintTeam(workspace,()=>reload());
+      if (dirty.has('workspace')) {
+        $('topic-title').textContent=workspace.title;
+        purposeLine??=new PurposeLine({host:$('outcome-purpose'),description:$('topic-description'),
+          save:(purpose,current)=>setPresence('workspace.update',{workspace_id:current.id},'workspace_revision',current.version,{purpose}).then(receipt=>{run(reload);return receipt;})});
+        purposeLine.paint(workspace,organises(workspace,bootstrap.actor));
+        onboarding.paint(workspace);
+        $('workspace-name').hidden=true;enableNewTopic(workspace.id);here.title=workspace.title;
+        shell.topicChanged();
+      }
       if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
-      return (await Promise.all([stands(workspace),targets.load(),outcomeTools.load(),outcomeReferences.load(),
-        paintPipelineLine($('pipeline-line'),{workspace:route.id,read:pipelineView})])).every(read=>read!==false);
+      const jobs = [['team',()=>paintTeam(workspace,()=>reload())], ['standing',()=>stands(workspace)], ['targets',()=>targets.load()],
+        ['tools',()=>outcomeTools.load()], ['references',()=>outcomeReferences.load()],
+        ['pipeline',()=>paintPipelineLine($('pipeline-line'),{workspace:route.id,read:pipelineView})]];
+      return (await Promise.all([rails,...jobs.filter(([key])=>dirty.has(key)).map(([,read])=>read())])).every(read=>read!==false);
     };
     // A commit may change the team or the outcome's revision as well as its
     // topics, and other outcomes' questions in the line above them. Back from a
     // refusal, the topics show once that commit's reads have painted what stands
     // above them (standing, target and Pipeline), so a topic
     // does not move down under a pointer as each lands.
-    const reload=followCommits(async()=>{
-      const reads=await Promise.allSettled([outcomeRail.load(),refresh()]);
+    const reload=followCommits(async dirty=>{
+      const reads=await Promise.allSettled([refresh(dirty)]);
       if(permitted)$('topic-navigation').hidden=false;
       for(const read of reads)if(read.status==='rejected')throw read.reason;
       return reads.every(read=>read.value!==false);
-    });
-    await reload();
-    readyRails(route.id, { workspaceTitle: here.title, currentWorkspaceTitle: () => here.title, readable: () => permitted, outcomeTopics: values => topicCards.paint(values), centerPane: topicCards, outcomeMenuChoice: key => {
+    },changes,before);
+    await before;
+    if (retired) return;
+    readyRails(route.id, { outcomeChanges: changes, outcomeList: paintOutcomes, workspaceTitle: here.title, currentWorkspaceTitle: () => here.title, readable: () => permitted, outcomeTopics: values => topicCards.paint(values), centerPane: topicCards, outcomeMenuChoice: key => {
       const choice = outcomeChoices(onboarding.workspace).find(choice => choice.key === key);
       if (!choice) return false; choice.act(); return true;
     } });
+    await reload();
     if (route.act === 'onboarding' && consumeMenuRoute(route)) {
       if (permitted && onboarding.workspace?.owner_id === bootstrap.actor) onboarding.open();
       else status('The onboarding prompt is no longer available to you.');
@@ -4187,9 +4228,10 @@ async function paintTeam(workspace,refresh) {
       send:(current,id,operation)=>pipelineSend('workspace.coordinator_set',{workspace_id:current.id},{actor_id:id},{workspace_revision:current.version},operation)});
   }
   let members,failed=null;
-  await wakeLights.load();
+  const wakes = wakeLights.load();
   try { members=await readMembers(api,bootstrap.instance_id,workspace.id); }
   catch(error) { failed=error;members=teamPanel.people; }
+  await wakes;
   if(serial!==teamReadSerial||retired)return;
   if(failed)teamPanel.error=`The team could not be read: ${failed.message}`;
   coordinatorChoice.refresh=refresh;
