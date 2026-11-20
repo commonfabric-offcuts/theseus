@@ -139,7 +139,8 @@ export class InlineComposer {
     state.readOnly ||= Boolean(busy); state.addDisabled ||= note || Boolean(busy);
     return state;
   }
-  defaultKind() { return this.callbacks.notebook?.mayWrite === true ? 'note-card' : 'message'; }
+  // Every opening starts on Message; a Note takes a press (item 925).
+  defaultKind() { return 'message'; }
   chooseKind(kind) {
     if (!this.callbacks.notebook || (kind !== 'message' && this.callbacks.notebook.mayWrite !== true) || !this.admits() || this.pageBusy() || !this.kinds.includes(kind)) return false;
     this.kind = kind; this.bar.close(); this.images?.close();

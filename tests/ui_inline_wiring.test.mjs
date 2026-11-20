@@ -6382,17 +6382,17 @@ function receipt894(request) {
     result: { item_id: request.target.item_id, revision: 1, owner_scope: request.target.owner_scope } };
 }
 
-test('910 two choices use one writing field, keep caret and default to Note on every opening', () => {
+test('925 two choices use one writing field, keep caret and default to Message on every opening', () => {
   const f = pencil894();
   assert.equal(f.get('inline-kind').hidden, false);
-  assert.equal(f.get('inline-kind-note-card').getAttribute('aria-checked'), 'true');
+  assert.equal(f.get('inline-kind-message').getAttribute('aria-checked'), 'true');
   const words = f.editor.draft.body, caret = f.editor.draft.caret;
   for (const kind of ['note-card', 'message']) {
     f.choose(kind); assert.equal(f.editor.draft.body, words); assert.deepEqual(f.editor.draft.caret, caret);
     assert.equal(f.get('inline-kind-' + kind).getAttribute('aria-checked'), 'true');
   }
   f.choose('note-card'); f.sheet.close(); f.inline.pop();
-  assert.equal(f.get('inline-kind-note-card').getAttribute('aria-checked'), 'true');
+  assert.equal(f.get('inline-kind-message').getAttribute('aria-checked'), 'true', 'a Note chosen last time does not carry over');
   assert.equal(f.requests.length, 0);
   const html = webSource('index.html');
   assert.match(html, /id="inline-kind"[^>]*role="radiogroup"[^>]*aria-label="Create"/);
@@ -6576,8 +6576,10 @@ test('894 B2 Message restores its label, recipients, intent and images after Not
     assert.ok(ask); assert.equal(ask.getAttribute('aria-pressed'), 'true'); assert.equal(ask.disabled, false);
   }
   f.choose('note-card'); f.sheet.close();
-  assert.equal(f.get('inline-attachments').hidden, true); assert.equal(f.get('send-word').textContent, 'Start page');
-  f.inline.pop(); assert.equal(f.get('inline-attachments').hidden, true);
+  // Closing goes back to Message (item 925): the image and the Ask intent are painted again.
+  assert.equal(f.get('inline-attachments').hidden, false); assert.equal(f.get('send-word').textContent, 'Ask');
+  f.inline.pop(); assert.equal(f.get('inline-attachments').hidden, false); assert.equal(f.get('send-word').textContent, 'Ask');
+  f.choose('note-card'); assert.equal(f.get('inline-attachments').hidden, true); assert.equal(f.get('send-word').textContent, 'Start page');
   f.choose('message'); assert.equal(f.get('inline-attachments').hidden, false); assert.equal(f.get('send-word').textContent, 'Ask');
 });
 
@@ -6730,10 +6732,12 @@ test('894 B3 typing in Note keeps Start page and hides the To line', () => {
 });
 
 
-test('910 resting composer defaults to Note and starts a new page in Cards without opening the sheet', async () => {
+test('925 resting composer starts on Message; a press on Note starts a new page in Cards without opening the sheet', async () => {
   const f = pencil894(undefined, { popped: false });
-  assert.equal(f.sheet.open, false); assert.equal(f.inline.kind, 'note-card');
+  assert.equal(f.sheet.open, false); assert.equal(f.inline.kind, 'message');
   assert.equal(f.get('inline-kind').hidden, false);
+  assert.equal(f.get('inline-send').querySelector('.send-word').textContent, 'Send');
+  f.choose('note-card');
   assert.equal(f.get('inline-send').querySelector('.send-word').textContent, 'Start page');
   await f.get('inline-send').onclick();
   assert.equal(f.requests.length, 1); assert.equal(f.requests[0].kind, 'memory.create');
@@ -6754,13 +6758,14 @@ test('910 resting selector keeps exact writing and Message still uses the existi
 
 test('910 opening the sheet while an inline Note saves keeps the later opening and writing', async () => {
   const d = defer(), f = pencil894(r => d.promise.then(() => receipt894(r)), { popped: false });
+  f.choose('note-card');
   const sending = f.inline.send(); f.inline.pop(); d.resolve(); await sending;
   assert.equal(f.sheet.open, true); assert.equal(f.editor.draft.body, 'Title\nBody'); assert.equal(f.opened.length, 0);
   assert.ok(f.get('inline-notice').children.find(n => n.textContent === 'Open started page'));
 });
 
 test('910 removed Note page cannot be selected; the title remains a screen-reader label', () => {
-  const f = pencil894(); assert.equal(f.inline.chooseKind('note-page'), false); assert.equal(f.inline.kind, 'note-card');
+  const f = pencil894(); assert.equal(f.inline.chooseKind('note-page'), false); assert.equal(f.inline.kind, 'message');
   const html = webSource('index.html');
   assert.doesNotMatch(html, /id="inline-kind-note-page"/);
   assert.match(html, /<h2 id="inline-writing-title" class="sr-only">New Notebook page<\/h2>/);
