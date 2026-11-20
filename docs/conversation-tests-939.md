@@ -38,3 +38,12 @@ No product change or test retirement is planned. If an assertion reveals an
 actual defect after its request is valid, name it separately before changing
 the product. Verification is isolated scratch Core/CLI only, with retained
 baseline and corrected receipts; no browser is needed.
+
+Warp13479 requested the related
+`test_at_names.AtNamesCase.test_an_agents_post_keeps_the_addressees_it_names`
+before carry. Its direct raw person-ask also failed `ASK_WAIT_REQUIRED` on
+the first frozen head. It now uses this same corrected fixture request path,
+still passing the original body, explicit `owner` addressee and Ask intent
+to Core. Its original assertion that `@agent-b` does not retarget the agent's
+post remains unchanged. Both modules retain all 39 test methods and their
+original assertion calls; no product change or retirement is needed.
