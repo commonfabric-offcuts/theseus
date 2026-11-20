@@ -79,7 +79,8 @@ export class InlineComposer {
       load: () => this.callbacks.images(this.editor), thumb: item => this.callbacks.imageBytes(item),
       choose: item => this.pickImage(item) });
     this.field.addEventListener('focus', () => this.checkClipboard());
-    window.addEventListener('focus', () => { if (!this.root.hidden) this.checkClipboard(); });
+    this.windowFocus = () => { if (!this.root.hidden && this.root.isConnected) this.checkClipboard(); };
+    window.addEventListener('focus', this.windowFocus);
     this.field.addEventListener('keydown', event => {
       if(this.images.key(event)||this.input.writingKey(event))return;
       if (event.key === 'Enter' && event.metaKey && !event.isComposing && event.keyCode !== 229) {
@@ -137,7 +138,11 @@ export class InlineComposer {
   }
   $(name) { return this.root.querySelector(`#${this.prefix ?? 'inline-'}${name}`); }
   get editor() { return this.presentation?.editors.reply; }
-  admits(p = this.presentation, editor = this.editor) { return Boolean(editor && this.callbacks.admits(p, editor)); }
+  dispose() {
+    this.disposed = true; window.removeEventListener('focus', this.windowFocus);
+    this.bar.dispose(); this.images.close();
+  }
+  admits(p = this.presentation, editor = this.editor) { return Boolean(!this.disposed && editor && this.callbacks.admits(p, editor)); }
   pageJobs(editor = this.editor) { return this.notebookJobs.get(editor) ?? []; }
   pageBusy() { return this.pageJobs().some(job => job.busy); }
   state() {
@@ -405,6 +410,7 @@ export class InlineComposer {
   // the window takes focus, never by prompting (image-pick.mjs).
   async checkClipboard() {
     const ready = await clipboardHoldsImage();
+    if (this.disposed) return;
     if (ready !== Boolean(this.pasteReady)) { this.pasteReady = ready; if (this.editor) this.paintStatus(); }
   }
   // An image picked from the #img list: the #img words, which the list has
