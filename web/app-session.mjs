@@ -311,6 +311,17 @@ export class EditorRegistry {
     const reply = await this.register({ ...context, kind: 'reply' }, state.draft);
     const note = await this.register({ ...context, kind: 'note' }, state.note);
     if (token !== this.generation || this.disposed) return null;
+    // A corner can appear after this document saved an empty note. Reuse its
+    // editor, but admit the newer saved words while there is no local writing
+    // or unsettled save to protect. Never replace a nonempty or uncertain copy.
+    const noteSession = this.sessionFor(note);
+    if (mode === 'note' && state.note && state.note.revision > (note.draft.revision ?? 0) &&
+        (!note.draft.revision || state.note.id === note.draft.id) && !holdsWriting(note.draft) &&
+        !note.dirty && !note.conflict && !note.authorityRecovery && !note.journalError && !noteSession.unsettledSave()) {
+      note.draft = { ...noWriting(), ...copy(state.note) };
+      await noteSession.persist();
+      if (token !== this.generation || this.disposed) return null;
+    }
     // Writing typed while the step waited is kept on this device before the
     // step replaces it, or the step is refused and the writing stays in front.
     this.leaving = token; this.activity();

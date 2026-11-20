@@ -150,7 +150,7 @@ def done_of(db, owner, message_id, done_by=None):
     return min(found, key=lambda each: each[:2])[2] if found else None
 
 
-def shown(db, actor, value, by, at_ms, owner):
+def shown(db, actor, value, by, at_ms, owner, archived=False):
     """The cover as actor reads it, or None when every field is clear: its fields, who wrote it last and when, and the
     outcome's owner (whose 👍 or word gives Done). A word given in a whisper actor is outside shows as given, with no
     message to open."""
@@ -165,7 +165,16 @@ def shown(db, actor, value, by, at_ms, owner):
         seen = db.execute("SELECT 1 FROM messages m WHERE m.id=:id AND " + VISIBLE, {"id": done["message_id"], "actor": actor}).fetchone()
         if seen is None:
             payload = dict(payload, done={key: item for key, item in done.items() if key not in ("message_id", "seq")})
-    waiting = [dict(each) for each in value["waiting"]]
+    waiting = []
+    for each in () if archived else value["waiting"]:
+        if each.get("ask_id"):
+            linked = db.execute("SELECT active FROM ask_cover_links WHERE ask_id=? AND actor_id=?", (each["ask_id"], each.get("actor_id"))).fetchone()
+            if linked is not None and not linked["active"]:
+                continue
+        source = each.get("ask_id") or each.get("message_id")
+        if source and db.execute("SELECT 1 FROM question_closures WHERE message_id=? UNION ALL SELECT 1 FROM message_withdrawals WHERE message_id=? LIMIT 1", (source, source)).fetchone():
+            continue
+        waiting.append(dict(each))
     # Only the asked person gets the answer fence. Check the recorded recipients
     # and visibility rather than trusting cover text.
     human = db.execute("SELECT kind FROM actors WHERE id=?", (actor,)).fetchone()[0] == "human"

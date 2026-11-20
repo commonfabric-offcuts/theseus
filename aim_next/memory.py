@@ -313,12 +313,14 @@ class Memory:
                                     (item["id"], item["current_revision"])).fetchone()[0])
         deleted = self._memory_deleted(db, item)
         withheld = deleted or (draft_now and actor_kind(db, actor) == "agent")
+        from .removal import unsent
+        references = [ref for ref in json.loads(row['refs']) if not (ref.get('kind') == 'message' and unsent(db, ref.get('id')))]
         return {"instance_id": self.instance_id, "source_ref": dict(ref),
                 "owner_scope": {"kind": item["scope_kind"], "id": item["scope_id"]},
                 "topic_id": item["scope_id"] if item["scope_kind"] == "topic" else None,
                 "author": row["author_id"], "creator": item["creator_id"], "title": row["title"],
                 "body": "" if withheld else row["body"], "attachments": [] if withheld else json.loads(row["attachments"]),
-                "references": [] if withheld else json.loads(row["refs"]), "version": row["revision"],
+                "references": [] if withheld else references, "version": row["revision"],
                 "draft": bool(row["draft"]), "withheld": withheld, "deleted": deleted,
                 **self._memory_star(db, actor, item["id"]),
                 "reader_may_delete": self._memory_may_delete(db, actor, item, draft_now),

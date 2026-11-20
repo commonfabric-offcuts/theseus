@@ -24,6 +24,7 @@ import { cardIn, opened } from './fold.mjs';
 import { gather, visibleStacks, withDossierHeads, dossiersOf, reheaded, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf, stackCover, starredDossiers, dossierOf } from './stack-order.mjs';
 import { ownWithdrawnQuestion } from './question-withdrawal.mjs';
 import { messagePreview } from './message-preview.mjs';
+import { paintRemoval } from './message-removal.mjs';
 import { shownTime } from './times.mjs';
 import { coordinationStack } from './coordination-stacks.mjs';
 import { carriesNode, carriesOf } from './marks.mjs';
@@ -209,7 +210,7 @@ export function setLevel(state, stack, level) {
 // is its own view: More's button goes, every New item shows wherever it sits,
 // put aside or not, and hidden agent coordination stays hidden (aim.css,
 // stack-look.css).
-const coordinationRevealed = (state, stack) => [stack.head, ...stack.replies].some(item => state.coordinationHere.has(item.id));
+const coordinationRevealed = (state, stack) => [stack.head, ...stack.replies].some(item => state.coordinationHere.has(item.id) || item.yours?.note === true);
 export function shownView(state) {
   const only = state.only ?? null, asideShown = Boolean(state.moreOpen || only);
   return { below: stack => state.below.has(stack.id), only, asideShown,
@@ -543,6 +544,7 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc, sep
   };
   const name = row.querySelector(':scope > .stack-name') ?? act('rename', 'stack-name');
   name.textContent = head.name;
+  name.classList.toggle('retracted-words', original && !head.typed && stack.head.removal?.kind === 'retracted');
   name.title = head.typed ? `Named by ${nameOf(head.typed.by)}${head.mintedBy ? ' when the first reply landed' : ''} for everyone here. Click to rename.` : 'Click to give it a short name everyone here sees';
   // A singleton (or Only new) has a title independent of its message's
   // visibility and between-others fold. Give its rename handle its own keys.
@@ -586,6 +588,7 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc, sep
     ...(checking?.kind === 'head' || (!checking && head.headNew) ? [newMark('stack-new', checking ? '✓' : 'New')] : []),
     ...(starred ? [element(doc, 'span', 'stack-star', '★ Starred')] : []),
     meta, ...(open ? [act('hide', 'stack-hide', 'Show latest and unread replies')] : []));
+  paintRemoval(row, original ? stack.head : null, doc);
   row.dataset.renaming = String(state.renaming === stack.id);
   return head;
 }
@@ -646,6 +649,8 @@ function paintFolded(entry, item, folded, { nameOf, doc }) {
   const [author, words] = row.children;
   author.textContent = nameOf(item.author_id);
   words.textContent = messagePreview(item);
+  words.classList.toggle('retracted-words', item.removal?.kind === 'retracted');
+  paintRemoval(row, item, doc);
   const title = card.querySelector(':scope > .stack-head'), at = title ? title.nextElementSibling : card.firstElementChild;
   if (at !== row) card.insertBefore(row, at);
   card.dataset.folded = 'true';
@@ -690,6 +695,8 @@ function paintEarlier(entry, item, on, { nameOf, doc }) {
   const [author, said] = row.children;
   author.textContent = nameOf(item.author_id);
   said.textContent = messagePreview(item);
+  said.classList.toggle('retracted-words', item.removal?.kind === 'retracted');
+  paintRemoval(row, item, doc);
   const tab = headRows.get(card)?.parentElement === card ? headRows.get(card) : null;
   if (tab ? tab.nextElementSibling !== row : card.firstElementChild !== row) { if (tab) tab.after(row); else card.prepend(row); }
   card.dataset.earlier = 'true';
@@ -748,8 +755,8 @@ function paintStack(section, stack, byId, context) {
   // (stack-order.mjs, gather) is headed by one of its replies, a card of its
   // own before 550: folded, it shows whole, as each reply kept in view does,
   // never as its tab alone.
-  const whole = single || open || stack.dossier !== stack.id;
-  if (open && headBefore && !starred && !state.folded.has(stack.id) && !state.whole.has(stack.id)) state.earlierRows.add(stack.id);
+  const whole = single || open || stack.dossier !== stack.id || stack.head.yours?.note === true;
+  if (open && headBefore && stack.head.yours?.note !== true && !starred && !state.folded.has(stack.id) && !state.whole.has(stack.id)) state.earlierRows.add(stack.id);
   const kept = item => {
     if (state.kept.has(item.id)) return true;
     if (!unread(item)) return false;
@@ -761,7 +768,7 @@ function paintStack(section, stack, byId, context) {
   if (separate) unhead(head);
   const shown = paintHead(separate ? p.header : cardIn(head), stack, { open: open && !separate, starred: marked, state, unread, nameOf, doc, separate });
   p.toggle.dataset.state = level;
-  Object.assign(section.dataset, { coordination: coordination ? 'agents' : '', compact: String(!separate && !whole && coordination && level === 'head' && state.renaming !== stack.id) });
+  Object.assign(section.dataset, { coordination: coordination ? 'agents' : '', compact: String(!separate && !whole && coordination && level === 'head' && state.renaming !== stack.id && !stack.replies.some(item => item.yours?.note === true)) });
   p.toggle.setAttribute('aria-expanded', String(level !== 'head'));
   p.toggle.setAttribute('aria-label', `${{ head: 'Closed; show latest and unread replies', folded: 'Latest and unread replies; show all messages', open: 'All messages; show latest and unread replies' }[level]}: ${shown.name}`);
   p.toggle.onclick = () => { setLevel(state, stack, LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length]); state.on?.folded?.(stack, level); state.again(); };
@@ -775,7 +782,7 @@ function paintStack(section, stack, byId, context) {
       const entry = byId.get(row.item.id); entry.hidden = false; desired.push(entry);
       if (row.context && row.folded) { state.contextRows.add(row.item.id); state.folded.add(row.item.id); }
       // An earlier message reads as its row; one the reader folded keeps that row, a starred one stays whole.
-      if (row.earlier && !row.folded && row.item.acts?.starred !== true && !state.whole.has(row.item.id)) state.earlierRows.add(row.item.id);
+      if (row.earlier && !row.folded && row.item.yours?.note !== true && row.item.acts?.starred !== true && !state.whole.has(row.item.id)) state.earlierRows.add(row.item.id);
       continue;
     }
     if (row.kind === 'earlier') {

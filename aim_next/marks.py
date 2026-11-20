@@ -19,6 +19,7 @@ the New line.
 """
 
 from .whispers import visible
+from .removal import unsent
 from .contract import READABLE, Refusal, _bounded_page, _identifier, _page_size
 
 
@@ -50,7 +51,7 @@ class Marks:
     def _mark_state(self, db, actor, message_id):
         """{marked, mark_revision} for someone else's message whose topic the actor can read, else None."""
         row = db.execute("SELECT topic_id,author_id,private_to FROM messages WHERE id=?", (message_id,)).fetchone()
-        if row is None or row["author_id"] == actor or not visible(row, actor):
+        if row is None or row["author_id"] == actor or not visible(row, actor) or unsent(db, message_id):
             return None
         try:
             self._topic(db, actor, row["topic_id"])
@@ -68,7 +69,7 @@ class Marks:
         message_id = _identifier(target["message_id"], "message_id")
         message = db.execute("SELECT id,topic_id,seq,author_id,private_to FROM messages WHERE id=?", (message_id,)).fetchone()
         # A whisper someone is not in is refused as an unknown message.
-        if message is None or not visible(message, actor):
+        if message is None or not visible(message, actor) or unsent(db, message_id):
             raise Refusal("FORBIDDEN", "No permission for this message")
         # A mark lives in a topic the person can open; a message read only
         # because it was sent to them by name cannot be marked.
