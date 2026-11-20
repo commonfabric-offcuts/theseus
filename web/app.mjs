@@ -51,7 +51,7 @@ import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from
 import { PurposeLine } from './outcome-purpose.mjs';
 import { AgentInvite, Invitation } from './agent-invite.mjs';
 import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf, paintNoteCorner } from './marks.mjs';
-import { replyLine } from './replies.mjs';
+import { replyLine, paintReplyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, opened } from './fold.mjs';
 import { MessageEditWriting, messageEditStore, mayEdit, revisionOf, wasEdited } from './message-edit-writing.mjs';
@@ -1343,12 +1343,8 @@ function paintViews(kind) {
     dropCardImages(entry); cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); entry.remove(); messageEntries.delete(id);
   }
   let following = $('messages').firstElementChild;
-<<<<<<< HEAD
   const messages = kind === 'messages' ? feedMessages() : null;
   for (const item of messages ? [...messages.values()].sort((a, b) => b.seq - a.seq) : []) {
-=======
-  for (const item of kind === 'messages' ? [...renderedMessages.values()].sort((a, b) => b.seq - a.seq) : []) {
->>>>>>> e5080e1f298375d4da2bc9e71e515526ff1a5d6b
     let card = messageEntries.get(item.id);
     if (!card) {
       const ref = { kind: 'message', id: item.id };
@@ -1805,12 +1801,13 @@ function paintMessageUpdates() {
 // Generated context may quote a parent whose withdrawal arrived after this
 // reply. Authored words stay unchanged; only this line reads the projection.
 function paintReplyContext(card, item, messages = feedMessages()) {
-  const answers = replyLine(item, { parent: messages.get(item.reply_to), viewer: bootstrap.actor });
+  const context = { parent: messages.get(item.reply_to), viewer: bootstrap.actor };
+  const answers = replyLine(item, context);
   let line = card.querySelector(':scope > .message-reply-to');
   if (!answers) { line?.remove(); return; }
   if (!line) { line = node('span', undefined, 'message-reply-to'); card.insertBefore(line, card.querySelector(':scope > .message-preview')); }
   // The excerpt is cut, so an address at its end remains words.
-  linkWords(line, answers, { partial: true });
+  paintReplyLine(line, item, context);
 }
 function paintCardAuthor(author, item) {
   paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true, wasEdited(item), carriesOf(item));
@@ -3041,11 +3038,7 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
       if (key.startsWith('withdrawal:')) {
         const id = key.slice('withdrawal:'.length);
         const source = registry.current?.source;
-<<<<<<< HEAD
         if (!views.messages.has(id) && !dossierHeads?.records.has(id) && source?.source_ref?.id !== id) return true;
-        const answer = checkedView(await read('source', { kind: 'message', id }), bootstrap.instance_id);
-=======
-        if (!views.messages.has(id) && source?.source_ref?.id !== id) return true;
         let answer;
         try { answer = checkedView(await read('source', { kind: 'message', id }), bootstrap.instance_id); }
         catch (error) {
@@ -3055,7 +3048,6 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
           if ((error?.details?.error ?? error?.error ?? error)?.code === 'FORBIDDEN') return true;
           throw error;
         }
->>>>>>> e5080e1f298375d4da2bc9e71e515526ff1a5d6b
         if (!current()) return false;
         if (!answer.withdrawal) throw Error('The question withdrawal has not arrived yet.');
         learnQuestionWithdrawal({ message_id: id, withdrawal: answer.withdrawal }); return true;

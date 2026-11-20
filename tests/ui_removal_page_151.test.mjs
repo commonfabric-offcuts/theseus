@@ -12,6 +12,7 @@ import { paintAuthor, carriesOf } from '../web/marks.mjs';
 import { wasEdited } from '../web/message-edit-writing.mjs';
 import { paintWithdrawal, withdrawalItem, Withdrawals } from '../web/question-withdrawal.mjs';
 import { removalItem, paintRemoval, readRemoval, Removals } from '../web/message-removal.mjs';
+import { replyLine, paintReplyLine } from '../web/replies.mjs';
 import { Freshness, checkedView, bindingOf } from '../web/freshness.mjs';
 
 const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
@@ -45,6 +46,22 @@ const removalConstruction = section('  const withdrawalPage = shell.page;', "  m
 function evaluate(env, code, returned) {
   return new Function(...Object.keys(env), code + '\nreturn ' + returned + ';')(...Object.values(env));
 }
+
+test('924 app card creation and loaded-reply repaint use the shared parent removal painter', () => {
+  const doc = renderer799().list.ownerDocument, card = doc.createElement('div');
+  const item = message('reply', 2, { reply_to: 'parent', reply_to_author: 'owner', reply_to_excerpt: 'Original parent words' });
+  const node = (tag, text, cls) => { const result = doc.createElement(tag); result.className = cls; if (text !== undefined) result.textContent = text; return result; };
+  card.append(node('span', item.body, 'message-preview'));
+  const code = section('function paintReplyContext(', 'function paintCardAuthor(');
+  const paint = evaluate({ node, replyLine, paintReplyLine, bootstrap: identity, feedMessages: () => new Map() }, code, 'paintReplyContext');
+  paint(card, item);
+  const line = card.querySelector('.message-reply-to');
+  assert.equal(line.text, 'Replying to owner: Original parent words');
+  item.reply_to_removal = act;
+  paint(card, item);
+  decorated(line, 'Original parent words', 'REPLY_PARENT', '.reply-parent-words');
+  assert.equal(line.classList.contains('retracted-words'), false, 'author prefix and act remain undecorated');
+});
 function documentFor(t, doc) {
   const before = globalThis.document;
   globalThis.document = doc;

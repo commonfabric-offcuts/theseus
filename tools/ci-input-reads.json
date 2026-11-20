@@ -5318,7 +5318,6 @@
       ]
     }
   },
-<<<<<<< HEAD
   "tests/test_outcome_live_key_904.py": {
     "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185": {
       "inputs": [],
@@ -5353,15 +5352,10 @@
   },
   "tests/test_interactive_html_920.py": {
     "8d12e9ec83314f0009f316032076a2c9ebe739b70b53c3f75c22a93b92cc25a9": {
-=======
-  "tests/fixtures/removal_151_schema56.py": {
-    "73a67e60fd526487d4af4536be7470eeffd7fefa44686a9c684b037f03d9aae0": {
->>>>>>> e5080e1f298375d4da2bc9e71e515526ff1a5d6b
       "scope": "generated/system/product",
       "inputs": []
     }
   },
-<<<<<<< HEAD
   "tests/ui_interactive_html_920.test.mjs": {
     "3744b3f97e9ae0d36117e071bf8411e4b3fff80c96d5bd35714e9bb92b67e305": {
       "scope": "repository",
@@ -5369,7 +5363,13 @@
         "web/interactive-html-bootstrap.js"
       ]
     }
-=======
+  },
+  "tests/fixtures/removal_151_schema56.py": {
+    "73a67e60fd526487d4af4536be7470eeffd7fefa44686a9c684b037f03d9aae0": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
   "tests/test_removal_inventory_151.py": {
     "5d6be2fe3909aac92cac556cd64329f7a923f976df8df67be39af105aaddf067": {
       "scope": "generated/system/product",
@@ -5425,6 +5425,5 @@
       ],
       "scope": "repository"
     }
->>>>>>> e5080e1f298375d4da2bc9e71e515526ff1a5d6b
   }
 }

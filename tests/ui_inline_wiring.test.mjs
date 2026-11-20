@@ -16,7 +16,7 @@ import { ReadThrough } from '../web/read-through.mjs';
 import { Live, liveOffered, reloader } from '../web/live.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 import { RecoveryCleanup } from '../web/cleanup.mjs';
-import { replyLine } from '../web/replies.mjs';
+import { replyLine, paintReplyLine } from '../web/replies.mjs';
 import { placeNewLine } from '../web/unanswered.mjs';
 import { revealSelection } from '../web/reveal.mjs';
 import { cardClass, paintCardColor, agentColor, AGENT_PALETTE } from '../web/author-colors.mjs';
@@ -255,7 +255,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     observe(target) { this.targets.push(target); }
     unobserve(target) { this.targets = this.targets.filter(each => each !== target); }
   }
-  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} unobserve() {} disconnect() {} }, MutationObserver: class { observe() {} disconnect() {} takeRecords() { return []; } }, innerHeight: 600, innerWidth: 1000, Node: { DOCUMENT_POSITION_FOLLOWING: 4, TEXT_NODE: 3 }, requestAnimationFrame: callback => setImmediate(callback), cancelAnimationFrame: clearImmediate, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, paintReplyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} unobserve() {} disconnect() {} }, MutationObserver: class { observe() {} disconnect() {} takeRecords() { return []; } }, innerHeight: 600, innerWidth: 1000, Node: { DOCUMENT_POSITION_FOLLOWING: 4, TEXT_NODE: 3 }, requestAnimationFrame: callback => setImmediate(callback), cancelAnimationFrame: clearImmediate, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     // The window's own location and history are the page's, as in a browser (the shell reads them there).
     window: { innerHeight: 600, scrollY: 0,
       getComputedStyle: el => ({ overflowY: 'visible', position: 'static', scrollPaddingTop: '0px', scrollPaddingBottom: '0px', ...el.style }),
@@ -2681,8 +2681,10 @@ test('a reply card says quietly which message it answers, and a message answerin
     reply_to: 'm1', reply_to_author: 'fable', reply_to_excerpt: 'Ship the table' });
   f.paintViews('messages');
   const card = id => entryIn(f, id);
-  // A line's words are its text and link nodes' (links.mjs).
-  const lines = id => card(id).children.filter(node => node.className === 'message-reply-to').map(node => node.children.map(child => child.textContent).join(''));
+  // This DOM stores appended strings and nested elements separately. Read
+  // through the parent-word span and links as a browser's textContent does.
+  const words = node => typeof node === 'string' ? node : (node.textContent ?? '') + (node.children ?? []).map(words).join('');
+  const lines = id => card(id).children.filter(node => node.className === 'message-reply-to').map(words);
   assert.deepEqual(lines('m2'), ['Replying to fable: Ship the table']);
   assert.deepEqual(lines('m1'), []);
   // The ⋯ is on the one bar over a lit card (message-menu.mjs), not on the card; the words are formatted (message-format.mjs).

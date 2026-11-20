@@ -544,7 +544,7 @@ class MessageEdit:
         message they cannot read, is refused as an unknown id), is a person when people is true (an edit session's
         commands; message.edit passes False, item 614), wrote it, and its outcome is not kept to read (skipped by
         message.edit_close, so a hold can always be ended)."""
-        message = self._message_access(db, actor, _identifier(message_id, "message_id"))
+        message = self._message_access(db, actor, _identifier(message_id, "message_id"), removal=removed)
         if people and self._actor(db, actor)["kind"] != "human":
             raise Refusal("FORBIDDEN", ONLY_PEOPLE)
         if message["author_id"] != actor:
