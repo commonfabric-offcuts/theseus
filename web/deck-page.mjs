@@ -134,6 +134,7 @@ export class DeckPage {
     try {
       let notebook = null;
       if (this.source) {
+        if (!this.room?.agents.length) await this.readRoom();
         notebook = (await this.read('memory_items', { owner_scope: this.source.owner_scope, limit: 1 })).relevant_versions.notebook;
         if (notebook === this.notebook) { await this.loadTalks(); return this.resume(); }
       }
@@ -184,9 +185,21 @@ export class DeckPage {
     const place = await this.place(this.source.owner_scope), back = this.node('a', '', `← ${place.title}`);
     back.href = place.href;
     eyebrow.replaceChildren(back);
-    // Where asks go is read once; a read that fails leaves the cards without asks, and their stacks still open.
-    this.room = (await this.askIn?.(this.source.owner_scope).catch(() => null)) ?? null;
-    this.paint();
+    await this.readRoom();
+  }
+
+  // An unavailable room is retried by the next followed commit or header paint.
+  // Share overlapping reads; failure stays quiet and keeps a previously known room.
+  readRoom() {
+    if (this.listening.signal.aborted || !this.source) return;
+    if (this.roomReading) return this.roomReading;
+    const scope = {...this.source.owner_scope};
+    this.roomReading = Promise.resolve().then(() => this.askIn?.(scope)).then(room => {
+      if (this.listening.signal.aborted || this.source?.owner_scope.kind !== scope.kind || this.source?.owner_scope.id !== scope.id) return;
+      this.room = room ?? null;
+      this.paint();
+    }, () => {}).finally(() => { this.roomReading = null; });
+    return this.roomReading;
   }
 
   // How many replies each card's stack has, and how many of them wait unread

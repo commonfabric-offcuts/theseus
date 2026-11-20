@@ -160,7 +160,7 @@ export class NotebookPage extends DeckPage {
       this.sync(true); await this.paintHeader();
       this.images=new NotebookImages(this.writing);this.images.resume();
       this.textImages=this.imagePicker(this.text,this.textInput,this.textPanel);
-    }
+    } else if(!this.room?.agents.length) await this.readRoom();
     await this.loadTalks(); this.writingChanged(); return Boolean(this.writing.base);
   }
   // Let go without a pagehide (an in-place move, another page in the composer, notebook-sheet.mjs): writing closes
