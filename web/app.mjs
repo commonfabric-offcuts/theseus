@@ -624,7 +624,7 @@ async function present(presentation) {
 // topic's message (opened from an About link) is no part of this page's view.
 function onPage(presentation, core) {
   const here = presentation?.source?.topic_id === topic?.id;
-  return readerSteps(presentation?.source?.source_ref, core, here ? stackPage(stackState($('messages'))) : null);
+  return readerSteps(presentation?.source?.source_ref, core, here ? stackPage(stackState($('messages')), feedMessages()) : null);
 }
 // Core's word on the Reader's neighbours is kept with what it shows (core),
 // and what ↑ and ↓ may step to is worked out from it and the page as shown
@@ -1286,7 +1286,8 @@ function paintViews(kind) {
     dropCardImages(entry); cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); entry.remove(); messageEntries.delete(id);
   }
   let following = $('messages').firstElementChild;
-  for (const item of kind === 'messages' ? [...feedMessages().values()].sort((a, b) => b.seq - a.seq) : []) {
+  const messages = kind === 'messages' ? feedMessages() : null;
+  for (const item of messages ? [...messages.values()].sort((a, b) => b.seq - a.seq) : []) {
     let card = messageEntries.get(item.id);
     if (!card) {
       const ref = { kind: 'message', id: item.id };
@@ -1335,9 +1336,6 @@ function paintViews(kind) {
       const author = node('span', undefined, 'message-author');
       card.append(author);
       paintCardAuthor(author, item);
-      const answers = replyLine(item);
-      // The line a reply quotes is cut, so an address at its end is left as words.
-      if (answers) card.append(linkWords(node('span', undefined, 'message-reply-to'), answers, { partial: true }));
       card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // Its images as thumbnails after its words, each read through the message (card-images.mjs, item 474).
@@ -1352,6 +1350,7 @@ function paintViews(kind) {
       messageEntries.set(item.id, entry);
       cardObserver?.observe(entry); middleObserver?.observe(entry);
     }
+    paintReplyContext(cardIn(messageEntries.get(item.id)), item, messages);
     // A whispered answer arrived: the whisper it answers no longer waits for one.
     const asked = item.whisper && item.reply_to ? views.messages.get(item.reply_to) : null;
     if (asked?.no_answer && item.author_id === asked.private_to) {
@@ -1524,11 +1523,12 @@ function paintCardReading() {
   }
 }
 // A message the page shows, brought into view: its stack opened first when it
-// folds the message away, and its fold opened. Null when it is not loaded.
+// folds the message away, and its fold opened. A hidden structural question
+// lands on its first visible dossier card. Null when no visible card is loaded.
 function landOn(id, { full = false } = {}) {
-  const entry = entries($('messages')).find(child => child.dataset.id === id);
-  if (!entry) return null;
   releaseTopArrivals();
+  const entry = stackFeed.landingEntry(id);
+  if (!entry) return null;
   anchorHold = null;
   reveal(entry, { full });
   const card = opened(entry);
@@ -1537,7 +1537,8 @@ function landOn(id, { full = false } = {}) {
   return card;
 }
 // A rail landing can name a card outside the loaded page. Read only its
-// anchored page, preserving the paging gap, without presenting a Reader.
+// anchored page, preserving the paging gap. With no visible card, the exact
+// source opens through the ordinary Reader owner instead.
 let landingSerial = 0;
 async function landOnMessage(id, serial = ++landingSerial) {
   const accessEpoch = listAccessEpoch, generation = registry.generation;
@@ -1562,7 +1563,7 @@ async function landOnMessage(id, serial = ++landingSerial) {
   // before its bubbling click closes the drawer and removes main's inertness.
   if (shell.drawer?.isOpen()) shell.drawer.close();
   const card = landOn(id, { full: true });
-  if (!card) throw Error('This message could not be shown. Try its link again.');
+  if (!card) return Boolean(await openSource({ kind: 'message', id }, document.activeElement));
   card.focus({ preventScroll: true });
   return true;
 }
@@ -1738,6 +1739,16 @@ function paintMessageUpdates() {
     reader.source.acts = readerFeedItem()?.acts ?? reader.source.acts;
     reader.paintOrigin(reader.source);
   }
+}
+// Generated context may quote a parent whose withdrawal arrived after this
+// reply. Authored words stay unchanged; only this line reads the projection.
+function paintReplyContext(card, item, messages = feedMessages()) {
+  const answers = replyLine(item, { parent: messages.get(item.reply_to), viewer: bootstrap.actor });
+  let line = card.querySelector(':scope > .message-reply-to');
+  if (!answers) { line?.remove(); return; }
+  if (!line) { line = node('span', undefined, 'message-reply-to'); card.insertBefore(line, card.querySelector(':scope > .message-preview')); }
+  // The excerpt is cut, so an address at its end remains words.
+  linkWords(line, answers, { partial: true });
 }
 function paintCardAuthor(author, item) {
   paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true, wasEdited(item), carriesOf(item));
@@ -1944,7 +1955,7 @@ async function readReaderDossier(presentation, read, current = () => true) {
   const lookup = ++dossierRead, accessEpoch = listAccessEpoch;
   const source = presentation?.source, id = source?.source_ref?.id;
   if (!presentation || presentation.sourceUnavailable || source.source_ref.kind !== 'message' ||
-      source.topic_id !== topic?.id || views.messages.has(id) && stackFeed?.dossierName(id)) return true;
+      source.topic_id !== topic?.id || stackFeed?.dossierName(id)) return true;
   const admitted = () => lookup === dossierRead && current() && accessEpoch === listAccessEpoch &&
     !topicUnavailable && registry.isSourceCurrent(presentation);
   const answer = checkedView(await read('stack_positions', { topic_id: source.topic_id, message_ids: [id] }), bootstrap.instance_id);
@@ -2369,10 +2380,15 @@ function openReaderMenu() {
 }
 // A message's withdrawal is permanent and belongs only to that identity, even after a Reader step.
 function learnQuestionWithdrawal({ message_id, withdrawal }) {
-  const item = views?.messages.get(message_id);
+  const messages = feedMessages(), item = messages.get(message_id);
   learnWithdrawal(item, withdrawal);
   const card = cardIn(messageEntries.get(message_id)), author = card?.querySelector('.message-author');
   if (author && item) { paintCardAuthor(author, item); paintReactions(card, item, bootstrap.actor, bootstrap.actor_kind, document); }
+  for (const reply of messages.values()) if (reply.reply_to === message_id) {
+    const entry = messageEntries.get(reply.id);
+    if (entry) paintReplyContext(cardIn(entry), reply, messages);
+  }
+  if (item) stackMessages();
   menu?.paint();
   const source = registry.current?.source;
   if (source?.source_ref?.kind === 'message' && source.source_ref.id === message_id) {
@@ -2512,8 +2528,7 @@ function repaintEdited(ids, edits) {
     const card = cardIn(entry);
     if (deferFencePaint(card, () => repaintEdited([id], edits))) continue;
     paintCardAuthor(card.querySelector(':scope > .message-author'), item);
-    const line = card.querySelector(':scope > .message-reply-to'), answers = replyLine(item);
-    if (line && answers) linkWords(line, answers, { partial: true });
+    paintReplyContext(card, item);
     const preview = card.querySelector(':scope > .message-preview');
     const keepingWhole = reader?.card === card && item.preview;
     if (preview && !keepingWhole) {
@@ -2867,7 +2882,7 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
       if (key.startsWith('withdrawal:')) {
         const id = key.slice('withdrawal:'.length);
         const source = registry.current?.source;
-        if (!views.messages.has(id) && source?.source_ref?.id !== id) return true;
+        if (!views.messages.has(id) && !dossierHeads?.records.has(id) && source?.source_ref?.id !== id) return true;
         const answer = checkedView(await read('source', { kind: 'message', id }), bootstrap.instance_id);
         if (!current()) return false;
         if (!answer.withdrawal) throw Error('The question withdrawal has not arrived yet.');
@@ -3215,7 +3230,9 @@ async function initialize() {
             } finally { foreground.release(); }
           }
           if (accessEpoch !== listAccessEpoch || topicUnavailable || registry.current) return true;
-          landOn(id, { full: true })?.focus({ preventScroll: true });
+          const card = landOn(id, { full: true });
+          if (card) card.focus({ preventScroll: true });
+          else await openSource({ kind: 'message', id }, p.opener);
         }
         return true;
       } catch (error) { if (reader.dialog.open) reader.notice(error); else status(error); return false; }

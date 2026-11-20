@@ -100,8 +100,11 @@ const DOING = {
   'message.answer': args => args.answer === 'yes' ? 'answering Go ahead to' : 'answering Don’t to',
   'message.mark': args => args.marked ? 'marking unread' : 'marking read',
 };
-function doing(kind, item, args) {
-  const line = messagePreview(item), short = line.length > CARD_WORDS ? `${line.slice(0, CARD_WORDS - 1).trimEnd()}…` : line;
+function doing(kind, item, args, name = null) {
+  // Splitting removes this message from its containing dossier; that
+  // dossier's name still belongs to the messages which stay there.
+  const line = kind === 'stack.join' && args.into === null ? messagePreview(item) : name ?? messagePreview(item);
+  const short = line.length > CARD_WORDS ? `${line.slice(0, CARD_WORDS - 1).trimEnd()}…` : line;
   return `${DOING[kind](args)} ${!short ? 'a message' : short.startsWith('“') ? short : `“${short}”`}`;
 }
 const upper = words => words[0].toUpperCase() + words.slice(1);
@@ -423,7 +426,7 @@ export class StackFeed {
   // A failure after Core recorded the act (reading positions) says itself.
   failed(act, error, first) {
     if (!(error instanceof ActFailure)) { this.paintNotice(); this.status(error); this.reread(); return; }
-    const op = error.envelope.operation_id, what = doing(act.kind, act.item, act.args), why = waiting(error);
+    const op = error.envelope.operation_id, what = doing(act.kind, act.item, act.args, act.kind.startsWith('stack.') ? this.dossierName(act.item.id) : null), why = waiting(error);
     this.notices.delete(op);
     if (why) {
       this.doubts.set(op, { ...act, envelope: error.envelope, after: contact.answered, out: false }); this.listen();
@@ -454,7 +457,7 @@ export class StackFeed {
   // line instead (lines.mjs), which its maker says. shows: what shows the card
   // (reading).
   notTaken(kind, item, args, failure, shows) {
-    this.answered(`${kind}:${item.id}`, notSaved(doing(kind, item, args), notTaken(failure), AGAIN[kind]), shows);
+    this.answered(`${kind}:${item.id}`, notSaved(doing(kind, item, args, kind.startsWith('stack.') ? this.dossierName(item.id) : null), notTaken(failure), AGAIN[kind]), shows);
   }
   // An answer that settles an act, said until a read of what shows its card
   // (shows: 'acts', 'reaction:<message id>' or 'marks'), begun after it was
@@ -846,6 +849,22 @@ export class StackFeed {
     const dossier = this.state.stacks.filter(each => positionOf(each)?.root_id === position.root_id);
     return { stack, below: position.below, count: dossier.reduce((count, each) => count + 1 + each.replies.length, 0) };
   }
+  // A hidden structural question still belongs to its surviving dossier.
+  // Resolve it from the existing projection, without another record or cache.
+  stackFor(id) {
+    const holds = stack => stack.head.id === id || stack.replies.some(item => item.id === id);
+    return this.state.stacks.find(holds) ?? this.state.stacks.find(stack =>
+      stack.dossier === id || stack.sourceStack && holds(stack.sourceStack)) ?? null;
+  }
+  // A landing keeps an ordinary message's exact card. A structural question
+  // omitted by the projection takes the first eligible visible card instead.
+  landingEntry(id) {
+    const stack = this.stackFor(id);
+    if (!stack) return null;
+    const items = [stack.head, ...stack.replies], only = shownView(this.state).only;
+    const target = items.find(item => item.id === id) ?? items.find(item => !only || only(item));
+    return target ? this.entryFor(target.id) : null;
+  }
   // The name of the dossier a message is in, as its tab shows it (item 561):
   // the name typed or minted, or, for a dossier nobody named, its first line.
   // Null for a message of its own nobody named (a stack of one, which shows no
@@ -853,10 +872,12 @@ export class StackFeed {
   // named whose first message is not loaded, as no line on the page is its
   // first message's (app.mjs, readerDossierName).
   dossierName(id) {
-    const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
+    const stack = this.stackFor(id);
     if (!stack) return null;
     const head = headOf(stack, { preview: messagePreview });
-    return head.typed?.text || (stack.replies.length && stack.dossier === stack.head.id ? head.name : '') || null;
+    // A projected reply head already has its shown neutral name. Looking up
+    // its hidden root would replace that name with the withdrawn words.
+    return head.typed?.text || (stack.sourceStack || stack.replies.length && stack.dossier === stack.head.id ? head.name : '') || null;
   }
   // The cover of the dossier a message is in, as its folder shows it (item 624, stackCover: from its place when its
   // first message is not loaded), with the topic its links go to and the dossier's first message (rootId); null for a

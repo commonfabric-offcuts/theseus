@@ -1,3 +1,8 @@
+// Item 891: one viewer's display rule, derived only from the existing fact.
+export function ownWithdrawnQuestion(item, viewer) {
+  return Boolean(viewer && item?.intent === 'ask' && item.author_id === viewer && item.withdrawal);
+}
+
 // Item 366: a separate act on one's own question, in the existing message menus.
 export function withdrawalItem(item, rights, withdraw) {
   if (!item || item.intent !== 'ask' || item.whisper || item.withdrawal || item.author_id !== rights.actor || rights.unavailable || rights.reached) return null;
