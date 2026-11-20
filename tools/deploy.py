@@ -107,10 +107,25 @@ def server_argv(config):
 
 
 def runner_policy(config, candidate):
-    """Read before an outer seat boundary; only restart policies need it."""
+    """Preflight before an outer seat boundary; only restart policies need it."""
     try:
-        return runner_runtime.policy(config, candidate)
-    except runner_runtime.Refused as error:
+        policy = runner_runtime.policy(config, candidate)
+        if policy['kind'] == 'keep':
+            rows = processes()
+            runner_args = runner_argv(config, policy['source'])
+            supervisors = find(rows, supervisor_argv(config, policy['source'])[1:])
+            children = [pid for pid, parent, _ in rows if parent in supervisors]
+            bare = [pid for pid in find(rows, ['/bin/aim-next-runner'] + runner_args[3:]) if pid not in children]
+            if children or bare:
+                kept_runner(config, policy, pids=children + bare + supervisors)
+            else:
+                policy = dict(policy, kind='restart', reason='host_absent')
+        if policy['kind'] == 'restart':
+            # Export and verify now: a bad candidate, path, route or existing
+            # snapshot must refuse while the old server/runner still run.
+            policy['prepared_source'] = runner_runtime.prepare(config, candidate)
+        return policy
+    except (runner_runtime.Refused, OSError, ValueError, KeyError, TypeError) as error:
         raise Refused(str(error)) from error
 
 
@@ -204,12 +219,17 @@ def wait_line(path, proc):
 
 
 def start(config, sha, argv, run_dir, previous, source=None):
+    if source is not None:
+        try:
+            startup = runner_runtime.inputs(config)
+        except (runner_runtime.Refused, OSError, ValueError, KeyError, TypeError) as error:
+            raise Refused('hosted startup inputs cannot be verified: %s' % error) from error
     run_dir.mkdir(mode=0o700)
     launch = {"at": now(), "revision": sha, "argv": argv, "cwd": str(config.live), "previous": previous}
     (run_dir / "launch.json").write_text(json.dumps(launch, indent=1) + "\n")
     if source is not None:
         (run_dir / 'source.json').write_text(json.dumps(source, sort_keys=True) + '\n')
-        (run_dir / 'host-inputs.json').write_text(json.dumps(runner_runtime.inputs(config), sort_keys=True) + '\n')
+        (run_dir / 'host-inputs.json').write_text(json.dumps(startup, sort_keys=True) + '\n')
     out = open(run_dir / "stdout.log", "wb")
     err = open(run_dir / "stderr.log", "wb")
     proc = subprocess.Popen(argv, cwd=str(config.live), stdin=subprocess.DEVNULL, stdout=out, stderr=err,
@@ -964,8 +984,10 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
         record(evidence, '09-runner', {'kept': True, 'owner': held_owner, 'source': host_policy['source']['revision']})
     else:
         try:
-            source = runner_runtime.prepare(config, sha)
-        except runner_runtime.Refused as error:
+            source = host_policy['prepared_source']
+            if source is not None:
+                runner_runtime.verify(config.live, config.instance, source)
+        except (runner_runtime.Refused, OSError, ValueError, KeyError, TypeError) as error:
             raise Refused(str(error)) from error
         argv = supervisor_argv(config, source)
         previous = {"pid": stop[0] if stop else None}

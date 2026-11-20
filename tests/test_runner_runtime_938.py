@@ -103,6 +103,14 @@ class Runtime938Case(unittest.TestCase):
         with self.assertRaises(deploy.Refused):
             deploy.kept_runner(self.config, policy)
 
+    def test_start_input_refusal_is_typed_and_leaves_no_partial_run_record(self):
+        source = self.pinned()
+        (self.instance / 'hosted.json').unlink()
+        directory = self.instance / 'run-runner-02'
+        with self.assertRaises(deploy.Refused):
+            deploy.start(self.config, self.base, ['/usr/bin/false'], directory, {}, source=source)
+        self.assertFalse(directory.exists())
+
     def test_tampered_pin_or_manifest_refuses_without_rewriting_source(self):
         record = self.pinned()
         path = Path(record['root']) / 'aim_next/effects_runner.py'
@@ -133,9 +141,11 @@ class Runtime938Case(unittest.TestCase):
         self.assertEqual(argv[2], str(Path(record['root']) / 'bin/aim-next-runner'))
         self.assertEqual(argv[-2:], ['--broker-executable', str(self.repo / 'bin/aim-next-codex-broker')])
 
-    def test_outer_launcher_can_classify_before_waiting_on_a_boundary(self):
+    def test_outer_launcher_restarts_an_absent_host_before_waiting_on_a_boundary(self):
         self.pinned()
-        self.assertEqual(deploy.runner_policy(self.config, self.base)['kind'], 'keep')
+        policy = deploy.runner_policy(self.config, self.base)
+        self.assertEqual((policy['kind'], policy['reason']), ('restart', 'host_absent'))
+        self.assertEqual(policy['prepared_source'], policy['source'])
 
 
 if __name__ == '__main__':

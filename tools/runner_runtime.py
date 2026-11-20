@@ -151,14 +151,15 @@ def inputs(config):
 
 
 def hosted_routes(config):
-    # Legacy broker-only deployments keep their existing startup path. Missing
-    # or refused route configuration can never establish a preserved host.
-    try:
-        mapping = json.loads(config.routes.read_text())
-        return any(json.loads(Path(path).read_text()).get('kind') == 'codex-hosted-stdio'
-                   for path in mapping['routes'].values())
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+    # A missing legacy map never establishes a pin. Any supplied map and its
+    # direct configs must be closed regular files before reading their bytes.
+    if not config.routes.exists() and not config.routes.is_symlink():
         return False
+    inputs(config)
+    mapping = json.loads(_regular(config.routes))
+    records = [json.loads(_regular(Path(path))) for path in mapping['routes'].values()]
+    require(all(isinstance(record, dict) for record in records), 'invalid runner route config')
+    return any(record.get('kind') == 'codex-hosted-stdio' for record in records)
 
 
 def prepare(config, revision):
@@ -166,6 +167,7 @@ def prepare(config, revision):
         return None
     entries = protected(config.live, revision)
     parent = config.instance / 'runner-sources'
+    require(config.instance.resolve() == config.instance and config.instance.is_dir(), 'invalid runner instance directory')
     parent.mkdir(mode=0o700, exist_ok=True)
     require(parent.resolve() == parent and stat.S_ISDIR(parent.lstat().st_mode), 'invalid runner source directory')
     root = parent / revision

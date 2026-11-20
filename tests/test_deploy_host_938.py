@@ -243,6 +243,52 @@ class DeployHost938Case(HostCase):
         self.assertNotEqual(new['pid'], self.host.pid)
         self.assertEqual(runner_runtime.latest(self.deploy_config)['revision'], target)
 
+    def legacy_host(self):
+        self.host.terminate()
+        self.assertEqual(self.host.wait(timeout=20), 0)
+        self.host = self.launch(deploy.supervisor_argv(self.deploy_config, None), 'runner', 2)
+        self.events = Events(self, self.host, self.instance / 'run-runner-02')
+        self.events.event('acquired')
+        self.assertIsNone(runner_runtime.latest(self.deploy_config))
+
+    def test_legacy_candidate_without_policy_refuses_before_stopping_either_process(self):
+        self.legacy_host()
+        (self.repo / 'tools/runner_runtime.py').unlink()
+        target = self.commit('scratch legacy candidate without policy')
+        self.git('reset', '--hard', self.base)
+        with self.assertRaisesRegex(deploy.Refused, 'runner source is incomplete'):
+            self.perform(target)
+        self.assertIsNone(self.server.poll())
+        self.assertIsNone(self.host.poll())
+        self.assertEqual(self.git('rev-parse', 'HEAD'), self.base)
+        self.assertFalse((self.evidence / '03-stopped.json').exists())
+
+    def test_legacy_symlink_instance_refuses_before_stopping_either_process(self):
+        self.legacy_host()
+        alias = self.root / 'instance-alias'
+        alias.symlink_to(self.instance, target_is_directory=True)
+        self.deploy_config = self.deploy_config._replace(instance=alias)
+        target = self.candidate()
+        with self.assertRaises(deploy.Refused):
+            self.perform(target)
+        self.assertIsNone(self.server.poll())
+        self.assertIsNone(self.host.poll())
+        self.assertEqual(self.git('rev-parse', 'HEAD'), self.base)
+        self.assertFalse((self.evidence / '03-stopped.json').exists())
+
+    def test_web_release_starts_a_new_runner_when_pinned_host_is_gone(self):
+        self.host.terminate()
+        self.assertEqual(self.host.wait(timeout=20), 0)
+        target = self.candidate()
+        self.perform(target)
+        self.assertEqual(self.read_record('00-plan')['runner_policy']['kind'], 'restart')
+        self.assertNotIn('runner', self.read_record('03-stopped'))
+        self.assertEqual(self.read_record('06-migrate')['exit'], 0)
+        launched = self.read_record('09-runner')
+        self.assertNotEqual(launched['pid'], self.host.pid)
+        self.assertTrue(self.read_record('10-verify')['runner_alive'])
+        self.assertEqual(self.git('rev-parse', 'HEAD'), target)
+
     def test_failed_backup_keeps_host_alive_and_refuses_before_source_move(self):
         target = self.candidate()
         def failed(real, argv, kwargs):

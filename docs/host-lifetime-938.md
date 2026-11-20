@@ -5,8 +5,14 @@ for incompatible changes. The installed launcher and guard source were read
 under13524: `900-land13411/land.py`, `deploy-trains.json`, and its verified
 guard's `tools/deploy.py`, which equals the release210 source.
 
-The deploy exposes a read-only runner policy before any outer seat boundary.
+The deploy exposes a runner preflight before any outer seat boundary.
 Existing hosts without a verified source record use the full-stop path once.
+Before anything stops, preflight exports and verifies the candidate snapshot
+and requires canonical instance/source paths and closed regular route inputs.
+A candidate predating the policy module refuses while both old processes stay
+alive. Preflight may populate the private source cache, including on a dry run;
+it changes no running process, route, profile or Core record. Start validates
+its inputs before making any run record and reports a typed deploy refusal.
 When that path starts hosted routes, it exports the candidate's tracked
 `aim_next/**`, `bin/**` and `tools/runner_runtime.py` into a private immutable
 source directory and records the commit, schema, exact file set, Git object
@@ -23,6 +29,10 @@ also protects the bound CLI/broker it dispatches. The policy module protects
 the interpretation of the source record. Added/deleted/renamed files count.
 Unreadable or tampered facts refuse before changing the installation.
 The exact compared paths are returned and saved with the deployment plan.
+A matching file policy keeps only a live host with its lease. If no runner is
+alive, preflight selects the ordinary start path and prepares the candidate
+source before the server stops; an absent host cannot permanently block web
+releases. A live process with a lost lease still refuses.
 
 For a compatible release, the same runner/supervisor and app-server children
 stay alive. The deploy verifies the captured process identity, running Core
