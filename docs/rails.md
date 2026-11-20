@@ -135,8 +135,8 @@ rail.
 
 The outline lists no Notebook (item 464): under the outcome being read come
 its pencil and its topics, and then the next outcome, for the pointer and the
-keys alike. The outcome's Notebook pages are in the right rail's Notebook
-section, which has its own pencil, and on the outcome's own page.
+keys alike. The outcome's Notebook pages and their pencil are on the outcome's
+own page.
 
 On a phone the outline is a drawer behind "☰ Outcomes", which carries the
 total count and the light. It opens on the row the keys or a tap chose last
@@ -215,14 +215,16 @@ for scoped paging, updates, access failures and the native checks (item 715).
 
 The right rail starts with **Notebook**, **Pull requests**, and **Images**, then
 shows **Waiting for…**, **Previews**, and **Skills and tools** when present.
-**Pipeline** is last (item 788, revised). On a topic it always lists this topic's
-pages and references. An outcome's Conversation keeps its outcome-scoped rail
-(the named default approved in 12213/12215). There is no Topic/Outcome switch, keyboard scope choice,
+**Pipeline** is last (item 788, revised in 12252). The right rail always shows
+this topic's things, the Conversation included. The outcome's Notebook pages
+and their pencil are on its page. The page resolves an old `?conversation=`
+address and renames it to that Conversation's `?topic=` address before the Shell
+hands the rail its route. There is no separate outcome scope in this rail.
+There is no Topic/Outcome switch, keyboard scope choice,
 name row or Starred section; starred dossiers remain in the outline. The generic
 arrow owner reaches the controls actually present, without a scope destination.
 A section with nothing in it does not show, except a writable empty Notebook,
-which keeps its pencil and says No pages yet, and the Conversation's Pipeline,
-which keeps its existing quiet state when no pipeline is configured. When none shows, one quiet line
+which keeps its pencil and says No pages yet. When none shows, one quiet line
 says the place refers to nothing yet.
 
 Notebook pages are no longer rendered at the bottom of the dossier feed. The
@@ -232,8 +234,8 @@ supports source reads and revision tracking, but memory updates do not repaint
 the feed. The same current-topic pencil, permission check, paging, changed light,
 creation receipt and retry identity remain owned by the existing Notebook code.
 
-- **Pipeline** is what is live, and what is in Now (with its stage) and Next,
-  from the `pipeline` view, and the outcome's Build topics, each once: under
+- **Pipeline** lists the outcome's Build topics, each once, with stages from
+  the `pipeline` view: under
   Now each topic a piece is being built in, one row for it however many
   pieces it holds, its row its topic's (Core names these topics on every page,
   `building`, so however many Build topics there are, each carries its marks);
@@ -248,41 +250,38 @@ creation receipt and retry identity remain owned by the existing Notebook code.
   for review…), the work ring, and the mark of the topic being read; one that
   waits on the reader opens at the question, as in the outline. The Build
   topics show on a topic as on its Conversation, since they stand in for the
-  outline's rows; Live and Next are the outcome's alone. Its heading says
-  how many messages in all the Build topics are new to the reader ("1 in Now
-  · 3 new", from `workspace_topics`' `builds`), so a folded section still
+  outline's rows. Live and Next remain on the outcome's pipeline page. Its
+  heading names the current topic's stage, if any, and how many messages in
+  all the Build topics are new to the reader ("Build · 3 new", from
+  `workspace_topics`' `builds`), so a folded section still
   shows it. It lists 20 Build topics, and More topics brings 20 more; Return
   on More topics hands the keys to the first topic it brought. The keys reach
   each row like any other in the rail, and Return on one opens its topic in
   place with the keys staying on its row. Below 1181px, "Pipeline & pages"
   carries the same count.
-- **Waiting for…** is the Now and Next items the reader raised, at their
-  stage, and the reader's Conversation posts nobody has taken up yet.
-- **Notebook pages** come from `memory_items`: the topic's own pages on a
-  topic, the outcome's otherwise, each with its light. Its heading carries the
-  pencil that starts a new page in the Notebook it lists, the topic's or the
-  outcome's, for someone Core lets write it (docs/notebook-pages.md), so it
+- **Waiting for…** is the Now and Next items the reader raised in this
+  topic, at their stage.
+- **Notebook pages** come from `memory_items`: this topic's own pages, each
+  with its light. Its heading carries the pencil that starts a new page in
+  this topic's Notebook for someone Core lets write it (docs/notebook-pages.md), so it
   shows with No pages yet when that Notebook has none. It lists 20 pages, its
   count saying "20+" while there are more, and More pages brings 20 more.
 - **Previews and pull requests** are links people posted in messages: a
   build on the tailnet or this machine, or an address that names a preview or
-  a mockup, and GitHub pull requests. On a whole outcome they come from its
-  Conversation and its six most recently active topics, the newest 50
-  messages of each. Core records no pull request's state, so the section says
+  a mockup, and GitHub pull requests. They come from the current topic's
+  newest 50 messages. Core records no pull request's state, so the section says
   so and does not guess.
 - **Images** come from `topic_images`. Clicking a displayed thumbnail opens
   its image in a new tab (item 651, docs/images.md). Return on the containing
   message link still opens that message in place.
-- **Skills and tools** come from `topic_tools` on a topic (the tools linked to
-  it) and from `tools` on a Conversation (the outcome's own and those it says
-  it uses), each opening its page; one linked to a topic whose record is gone
+- **Skills and tools** come from `topic_tools` (the tools linked to this
+  topic), each opening its page; one linked to a topic whose record is gone
   is named, with no page ([skills-and-tools.md](skills-and-tools.md)).
 
 Folds are kept per section on this browser. A section takes its kept fold as
 it appears, and stays as the person leaves it after that. The rail reads only while it is
 on screen, and reads a place's messages and images again only when that topic
-has moved on (its version): for the open topic, when the page has read it
-again; elsewhere, by the version the outcome's topic list gives. A topic the
+has moved on (its version), when the page has read it again. A topic the
 page can no longer read is not read here either, and what the rail showed and
 kept of it goes as the page hides the topic's messages. It shows beside the page at 1181px and wider, as a panel from the
 right between 761px and 1180px, and as a sheet from the bottom on a phone.
