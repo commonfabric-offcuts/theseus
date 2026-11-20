@@ -1,7 +1,7 @@
 import { InlineComposer } from './inline-composer.mjs';
 import { revealCardReply } from './compose-bar.mjs';
 import { holdsWriting } from './editor.mjs';
-import { uploadWork } from './upload-state.mjs';
+import { uploadWork, currentImages, imageBarrier } from './upload-state.mjs';
 
 const keepsReply = editor => holdsWriting(editor.draft) || uploadWork(editor) || editor.submissions?.length;
 
@@ -145,16 +145,28 @@ export class CardReplies {
     const id = p?.source?.source_ref?.id, row = this.rows.get(id);
     if (p?.fromCardReply && row?.clickOpened && row.p.editors.reply === p.editors.reply && !keepsReply(p.editors.reply)) this.hide(id, row, { focus: false });
   }
-  sent(id, p, result) {
+  async readerSent(p, result, current) {
+    const id = p?.source?.source_ref?.id, row = this.rows.get(id);
+    if (!p?.fromCardReply || !row || row.p.editors.reply !== p.editors.reply || !current()) return;
+    const opening = row.ui.opening, editor = p.editors.reply, version = editor.localVersion, cycle = editor.clientCycleId;
+    if (!await this.registry.close(p)) return;
+    // Close keeps the shared writing before releasing the Reader. A newer
+    // opening, edit or navigation during that await keeps its ownership.
+    if (this.rows.get(id) !== row || row.ui.opening !== opening || editor.localVersion !== version ||
+        editor.clientCycleId !== cycle || holdsWriting(editor.draft) || currentImages(editor).length || imageBarrier(editor) ||
+        this.registry.current || this.registry.pendingOpen || this.registry.disposed) return;
+    return this.sent(id, row.p, result, p.opener);
+  }
+  sent(id, p, result, returnedFocus = null) {
     const row = this.rows.get(id);
     if (!row || row.p !== p || holdsWriting(p.editors.reply.draft)) return;
     // The session has already persisted publication and its empty successor.
     // Hide synchronously: no close/save await may swallow a later opening.
-    const doc = row.ui.root.ownerDocument, focused = row.ui.root.contains(doc.activeElement), opening = row.ui.opening;
+    const doc = row.ui.root.ownerDocument, focused = row.ui.root.contains(doc.activeElement) || Boolean(returnedFocus && doc.activeElement === returnedFocus), opening = row.ui.opening;
     this.hide(id, row, { focus: false });
     if (focused) return this.callbacks.sent?.(result, () => row.ui.opening === opening && p.hidden &&
       !this.registry.current && !this.registry.pendingOpen && !holdsWriting(p.editors.reply.draft) &&
-      (!doc.activeElement || doc.activeElement === doc.body || row.ui.root.contains(doc.activeElement)));
+      (!doc.activeElement || doc.activeElement === doc.body || doc.activeElement === returnedFocus || row.ui.root.contains(doc.activeElement)));
   }
   from(id) {
     const row = this.rows.get(id);

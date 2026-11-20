@@ -1,0 +1,7 @@
+{
+  "before": "2420de985a7813495c21fb7d9f0e831f526dd637352a1d0b4e23ad698d538121",
+  "mutant": "4035ff6baae53456335994ab88f357e6aea60563dee8974c74a721b68845ed7d",
+  "mutant_exit": 1,
+  "restored": "2420de985a7813495c21fb7d9f0e831f526dd637352a1d0b4e23ad698d538121",
+  "restored_exit": 0
+}

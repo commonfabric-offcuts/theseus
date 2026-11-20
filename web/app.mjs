@@ -1,3 +1,4 @@
+import { QuestionStates, configureQuestionStates, questionOf, questionPill, Resolutions } from './question-state.mjs';
 import { reviewDifferences } from './review-differences.mjs';
 import { railDensity } from './rail-density.mjs';
 import { CardReplies } from './card-replies.mjs';
@@ -51,12 +52,13 @@ import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from
 import { PurposeLine } from './outcome-purpose.mjs';
 import { AgentInvite, Invitation } from './agent-invite.mjs';
 import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf, paintNoteCorner } from './marks.mjs';
-import { replyLine } from './replies.mjs';
+import { replyLine, paintReplyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, opened } from './fold.mjs';
 import { MessageEditWriting, messageEditStore, mayEdit, revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { MessageEdit } from './message-edit.mjs';
 import { withdrawalItem, paintWithdrawal, Withdrawals, learnWithdrawal } from './question-withdrawal.mjs';
+import { removalItem, paintRemoval, readRemoval, Removals } from './message-removal.mjs';
 import { cardClass, paintCardColor, agentColor, paneClass } from './author-colors.mjs';
 import { paintWhisperAuthor, mayStartFrom } from './whisper-choice.mjs';
 import { AgentColors } from './colors.mjs';
@@ -138,7 +140,7 @@ let pipelineRow = null, pipelineAddFor = null;
 // An outcome page's Notebook page shown in place (page-here.mjs), and that outcome.
 let pageHere = null, pageHereOutcome = null;
 // The topic page's light, message bar, thumbs-up and go-ahead answers (message-menu.mjs, reactions.mjs).
-let menu = null, reactions = null, cardScroll = null, withdrawals = null;
+let menu = null, reactions = null, cardScroll = null, withdrawals = null, removals = null, resolutions = null, questionStates = null;
 // Whether the open topic's outcome is reached, as its light last said: its
 // messages are kept to read, so none offers Edit (Core refuses one too).
 let outcomeReached = false;
@@ -1297,6 +1299,7 @@ function paintMoreMessages() {
     [...$('messages').children].some(child => child.dataset?.line === 'older' && !child.classList.contains('new-line-read')));
 }
 function paintViews(kind) {
+  if (questionStates) for (const item of feedMessages().values()) questionStates.of(item);
   // Notebook pages remain admitted in TopicViews for reads and links. Their
   // visible list belongs to the right rail, so a memory update moves no feed.
   if (kind === 'memory') return;
@@ -1324,6 +1327,10 @@ function paintViews(kind) {
     if (authorityReviewPending()) return;
     topicUnavailable = false;
     topic = views.topic;
+    if (questionStates && questionStates.archived !== Boolean(topic.archived)) {
+      questionStates.archived = Boolean(topic.archived);
+      freshness?.invalidate('acts', 0, true);
+    }
     shell.topicChanged();
     // The panel paints the header with the newest topic it has seen.
     if (topicState) topicState.paint(topic, views.participants); else paintHeader(topic);
@@ -1337,7 +1344,8 @@ function paintViews(kind) {
   }
   keepListAnchor(() => {
   // Newest first, so where each new card goes is at or after where the one before it went.
-  if (kind === 'messages') for (const [id, entry] of messageEntries) if (!views.messages.has(id)) {
+  const renderedMessages = kind === 'messages' ? feedMessages() : null;
+  if (kind === 'messages') for (const [id, entry] of messageEntries) if (!renderedMessages.has(id)) {
     dropCardImages(entry); cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); entry.remove(); messageEntries.delete(id);
   }
   let following = $('messages').firstElementChild;
@@ -1465,7 +1473,7 @@ function refreshDossierHeads(id = null) {
 }
 function syncDossierHeads() {
   if (!dossierHeads || topicUnavailable || registry?.disposed || authorityReviewPending()) return;
-  dossierHeads.sync(views.messages);
+  dossierHeads.sync(views.messages, views.removals);
   const messages = feedMessages();
   for (const [id, entry] of messageEntries) if (!messages.has(id)) {
     cardObserver?.unobserve(entry); middleObserver?.unobserve(entry);
@@ -1763,7 +1771,7 @@ function participantPill(person) {
 // gear, except on a conversation, which refuses every change Topic settings makes.
 function paintHeader(current) {
   // ✅ Done on a topic Ready for review, for a reader who may say where it stands: the Done chip's tap.
-  paintTopicHeader({ title: $('topic-title'), subtitle: $('topic-description'), gear: $('settings-open') }, current, bootstrap.actor,
+  paintTopicHeader({ title: $('topic-title'), subtitle: $('topic-description'), gear: $('settings-open'), pencil: $('topic-title-rename') }, current, bootstrap.actor,
     { settings: current.kind !== 'conversation', done: current.kind !== 'conversation' && topicState?.says ? () => topicState.markDone() : null,
       question: id => run(() => openDestination(topicTarget(current.id, id), current.title)) });
   const menu = $('topic-menu');
@@ -1799,18 +1807,26 @@ function paintMessageUpdates() {
 // Generated context may quote a parent whose withdrawal arrived after this
 // reply. Authored words stay unchanged; only this line reads the projection.
 function paintReplyContext(card, item, messages = feedMessages()) {
-  const answers = replyLine(item, { parent: messages.get(item.reply_to), viewer: bootstrap.actor });
+  const context = { parent: messages.get(item.reply_to), viewer: bootstrap.actor };
+  const answers = replyLine(item, context);
   let line = card.querySelector(':scope > .message-reply-to');
   if (!answers) { line?.remove(); return; }
   if (!line) { line = node('span', undefined, 'message-reply-to'); card.insertBefore(line, card.querySelector(':scope > .message-preview')); }
   // The excerpt is cut, so an address at its end remains words.
-  linkWords(line, answers, { partial: true });
+  paintReplyLine(line, item, context);
 }
 function paintCardAuthor(author, item) {
   paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true, wasEdited(item), carriesOf(item));
   paintWithdrawal(author, item, document);
+  paintRemoval(author, item, document);
+  author.parentElement?.classList.toggle('retracted-message', item.removal?.kind === 'retracted');
+  const question = questionOf(item);
+  if (['resolved', 'superseded'].includes(question?.state)) {
+    const pill = questionPill(document, item, { nameOf: displayActor });
+    if (pill) author.append(' ', pill);
+  }
   if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
-  if (here?.conversation && !item.withdrawal) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
+  if (here?.conversation && !item.withdrawal && !item.removal) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
   // The star in its header, put back as the line is painted again (StackFeed.paintStar).
   stackFeed?.paintStar(author, item);
   const update = messageUpdateActivity(document, item, updateContext(item.topic_id));
@@ -2071,7 +2087,7 @@ function asideFromReader() {
 function readerItem() {
   const p = registry?.current, source = p?.source, ref = source?.source_ref;
   if (!p || p.sourceUnavailable || ref?.kind !== 'message') return null;
-  return views?.messages.get(ref.id) ?? { id: ref.id, author_id: source.author, addressees: source.addressees, reactions: source.reactions, go_ahead: source.go_ahead, withdrawal: source.withdrawal };
+  return views?.messages.get(ref.id) ?? { id: ref.id, author_id: source.author, addressees: source.addressees, reactions: source.reactions, go_ahead: source.go_ahead, withdrawal: source.withdrawal, removal: source.removal, removal_action: source.removal_action };
 }
 function paintReaderThumb$() {
   const item = readerItem();
@@ -2275,6 +2291,8 @@ function sharedMessageMenuItems(item, { say, anchor = say, presentation = null, 
   if (update) items.push(update);
   const withdraw = withdrawalItem(item, rights, item => run(() => withdrawals.withdraw(item)));
   if (withdraw) items.push(withdraw);
+  const remove = removalItem(item, rights, item => run(() => removals.remove(item)));
+  if (remove) items.push(remove);
   if ((remote || marks) && item.author_id !== bootstrap.actor && available) {
     // A source read carries no mark revision. Offer both explicit choices
     // until the current destination owner can confirm the mark.
@@ -2484,8 +2502,23 @@ function openReaderMenu() {
   if (reader.layoutChoice) items.push({ label: reader.layoutChoice, glyph: 'layout', act: () => reader.toggleLayout() });
   openMessageMenu({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message', sheet: true });
 }
+// Terminal state belongs to its exact message, even when a receipt arrives after a Reader step.
+function learnQuestionState({ message_id, question }) {
+  if (!question) return;
+  const known = questionStates.learn(message_id, question);
+  const item = feedMessages().get(message_id);
+  if (item) item.question = known;
+  const source = registry.current?.source;
+  if (source?.source_ref?.kind === 'message' && source.source_ref.id === message_id) {
+    source.question = known; reader.paintOrigin(source);
+  }
+  const card = cardIn(messageEntries.get(message_id)), author = card?.querySelector('.message-author');
+  if (author && item) { paintCardAuthor(author, item); paintReactions(card, item, bootstrap.actor, bootstrap.actor_kind, document); }
+  paintReaderThumb$();
+}
 // A message's withdrawal is permanent and belongs only to that identity, even after a Reader step.
 function learnQuestionWithdrawal({ message_id, withdrawal }) {
+  questionStates?.learn(message_id, { state: 'withdrawn', waiting_on: [], may_resolve: false, ...withdrawal });
   const messages = feedMessages(), item = messages.get(message_id);
   learnWithdrawal(item, withdrawal);
   const card = cardIn(messageEntries.get(message_id)), author = card?.querySelector('.message-author');
@@ -2500,6 +2533,27 @@ function learnQuestionWithdrawal({ message_id, withdrawal }) {
   if (source?.source_ref?.kind === 'message' && source.source_ref.id === message_id) {
     learnWithdrawal(source, withdrawal); reader.paintOrigin(source);
   }
+}
+function learnMessageRemoval({ message_id, removal }) {
+  questionStates?.remove(message_id);
+  // Bind the shared terminal map before learnRemoval paints. A separate head
+  // or its pending read then sees the same fact as the loaded page.
+  dossierHeads?.sync(views.messages, views.removals);
+  views?.learnRemoval(message_id, removal);
+  const item = feedMessages().get(message_id), entry = messageEntries.get(message_id), card = cardIn(entry);
+  if (removal.kind === 'unsent') { entry?.remove(); messageEntries.delete(message_id); clearVisitNew(message_id); }
+  else if (card && item) { paintCardAuthor(card.querySelector('.message-author'), item); paintFoldWords(entry, item); paintAwaiting(card, item); paintReactions(card, item, bootstrap.actor, bootstrap.actor_kind, document); }
+  const presentation = registry.current, source = presentation?.source;
+  if (source?.source_ref?.kind === 'message' && source.source_ref.id === message_id) {
+    source.removal = removal; source.removal_action = null;
+    if (removal.kind === 'unsent') {
+      presentation.sourceUnavailable = true; presentation.accessMessage = 'This message was unsent. Your private writing is kept.';
+      source.body = ''; source.attachments = []; source.quotes = [];
+      for (const editor of Object.values(presentation.editors)) { editor.unavailable = true; registry.cancelSave(editor); }
+      revokeMedia(); reader.hideUnavailableSource(); paintReaderMark();
+    } else { reader.paintOrigin(source); paintReaderThumb$(); }
+  }
+  menu?.paint();
 }
 // Who may edit which message here (message-edit-writing.mjs, mayEdit).
 const updateContext = topicId => ({ viewer: bootstrap.actor, nameOf: displayActor, topicId });
@@ -3008,14 +3062,41 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
       if (key === 'availability') { await checkAvailability(read, current, false); return true; }
       if (key === 'starred') return views.readStarred(read, () => current() && !topicUnavailable && !authorityReviewPending());
       if (key === 'acts' || key === 'topic') views.resetStars();
-      if (key.startsWith('withdrawal:')) {
-        const id = key.slice('withdrawal:'.length);
+      if (key.startsWith('question:')) {
+        const id = key.slice('question:'.length);
         const source = registry.current?.source;
         if (!views.messages.has(id) && !dossierHeads?.records.has(id) && source?.source_ref?.id !== id) return true;
         const answer = checkedView(await read('source', { kind: 'message', id }), bootstrap.instance_id);
         if (!current()) return false;
+        learnQuestionState({ message_id: id, question: answer.question });
+        freshness.invalidate('acts', 0, true); return true;
+      }
+      if (key.startsWith('withdrawal:')) {
+        const id = key.slice('withdrawal:'.length);
+        const source = registry.current?.source;
+        if (!views.messages.has(id) && !dossierHeads?.records.has(id) && source?.source_ref?.id !== id) return true;
+        let answer;
+        try { answer = checkedView(await read('source', { kind: 'message', id }), bootstrap.instance_id); }
+        catch (error) {
+          if (!current()) return false;
+          // Only this source is unreadable. The separate removal resource
+          // learns its terminal act; availability still owns topic denial.
+          if ((error?.details?.error ?? error?.error ?? error)?.code === 'FORBIDDEN') return true;
+          throw error;
+        }
+        if (!current()) return false;
         if (!answer.withdrawal) throw Error('The question withdrawal has not arrived yet.');
-        learnQuestionWithdrawal({ message_id: id, withdrawal: answer.withdrawal }); return true;
+        learnQuestionWithdrawal({ message_id: id, withdrawal: answer.withdrawal });
+        freshness.invalidate('acts', 0, true); return true;
+      }
+      if (key.startsWith('removal:')) {
+        const id = key.slice('removal:'.length);
+        // The actor-scoped terminal event is enough to discard a no-longer
+        // readable identity; no cache or delayed page can put it back.
+        const removal = await readRemoval(read, id);
+        if (!current()) return false;
+        learnMessageRemoval({ message_id: id, removal });
+        return true;
       }
       if (key.startsWith('edit:')) return messageEdited(key, version, read, current);
       // The edit session of one of the person's messages moved (docs/message-edit.md): another device may have taken it.
@@ -3028,7 +3109,23 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
         }
         if (key === 'acts' && done !== false && current()) {
           await readReaderDossier(registry.current, read, current);
-          if (current()) paintReaderTitle();
+          if (current()) {
+            const source = registry.current?.source;
+            if (source?.source_ref?.kind === 'message') {
+              const answer = checkedView(await read('source', source.source_ref), bootstrap.instance_id);
+              if (current() && registry.current?.source === source) learnQuestionState({ message_id: source.source_ref.id, question: answer.question });
+            }
+            if (current()) paintReaderTitle();
+          }
+        }
+        if (key === 'topic' && done !== false && current()) {
+          const source = registry.current?.source;
+          // Archival and legacy waits can change without an exact question act.
+          // Read only the question in the open Reader, never unloaded history.
+          if (source?.source_ref?.kind === 'message' && source.question) {
+            const answer = checkedView(await read('source', source.source_ref), bootstrap.instance_id);
+            if (current() && registry.current?.source === source) learnQuestionState({ message_id: source.source_ref.id, question: answer.question });
+          }
         }
         return done;
       }
@@ -3232,7 +3329,7 @@ async function initialize() {
   // "Tools this topic improves" (docs/skills-and-tools.md): read with the page, and again as Topic settings opens.
   // One for the topic being read: a topic reached in place replaces the one before, so its chips never paint here.
   settings ??= new TopicSettings({ dialog: $('topic-settings'), gear: $('settings-open'), heading: $('settings-title'), close: $('settings-close'),
-    opened: () => { const tools = topicTools; if (tools) run(() => tools.load()); } });
+    opened: () => { topicState?.restoreTitleSurface(); const tools = topicTools; if (tools) run(() => tools.load()); } });
   $('topic-tools').hidden = true; $('topic-tools').replaceChildren();
   topicTools = here.conversation ? null : new TopicTools({ host: $('topic-tools'), topicId: topic.id, instanceId: bootstrap.instance_id, read: pipelineView, send: pipelineSend });
   if (topicTools) { const tools = topicTools; run(() => tools.load()); }
@@ -3286,6 +3383,7 @@ async function initialize() {
   // The topic as the topic view gives it, read once after a change that was not confirmed.
   const readTopic = async () => validate(await registry.cleanup.list(options => api.view('topic', { topic_id: topicId }, options)));
   topicState = new TopicStatePanel({ host: $('topic-state'), reader: bootstrap.actor, refresh: () => freshness?.request(), painted: paintHeader, read: readTopic,
+    titleSurface: { host: $('topic-title-edit'), title: $('topic-title'), pencil: $('topic-title-rename') },
     // Words not saved are shown, in Topic settings, even when leaving it was what saved them.
     attention: () => { if (!$('topic-settings').open) settings.open(); },
     // Each save names its operation: sent again, it is the same command, and Core answers what it holds for it.
@@ -3323,6 +3421,7 @@ async function initialize() {
     people: whisperPeople,
     recipientsPainted: names => { if (here?.conversation || answering.size) answeredBy(inline, $('inline-composer').querySelector('.audience'), names, Boolean(here?.conversation)); },
   });
+  questionStates = new QuestionStates(); configureQuestionStates(questionStates);
   reader = new Reader({
     images: topicImages, imageBytes, pageImage, displayRules,
     cardSelection: card => menu?.passages.chosen(messageEntries.get(card.dataset.id)) ?? null,
@@ -3345,6 +3444,7 @@ async function initialize() {
     // A note that could not be saved says so in the Reader, beside its writing.
     saveNote: editor => registry.saveNote(editor).catch(error => { reader.notice(error); return null; }),
     send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation }),
+    sent: (p, result, current) => cardReplies?.readerSent(p, result, current),
     close: async (_sessions, reason) => {
       const p = reader.presentation;
       try {
@@ -3385,6 +3485,11 @@ async function initialize() {
     paneClass: source => paneClass(source, bootstrap.actor, agentShown),
     dossierName: source => readerDossierName(source),
     dossierCover: source => readerDossierCover(source),
+    resolvingQuestion: id => resolutions?.busy.has(id),
+    resolveQuestion: id => run(async () => {
+      try { await resolutions.resolve(id); }
+      finally { if (registry.current?.source?.source_ref?.id === id) reader.paintOrigin(registry.current.source); }
+    }),
     answered: closeReaderAfterAnswer,
     foldMessage: foldReaderMessage,
     people: whisperPeople, actor: () => bootstrap.actor,
@@ -3415,8 +3520,32 @@ async function initialize() {
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); }, reading: id => reading('reaction:' + id) });
   const withdrawalPage = shell.page;
   withdrawals = new Withdrawals({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current,
-    current: () => shell.page === withdrawalPage, learned: learnQuestionWithdrawal,
+    current: () => shell.page === withdrawalPage, learned: result => {
+      learnQuestionWithdrawal(result);
+      if (views?.topic && stackFeed?.state) views.paint('acts');
+      paintReaderTitle();
+    },
     say: (words, item) => { if (reader.dialog.open && registry.current?.source?.source_ref?.id === item.id) reader.notice(words); else status(words); },
+    recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
+  removals = new Removals({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current,
+    current: () => shell.page === withdrawalPage, learned: learnMessageRemoval, refresh: item => {
+      const held = feedMessages().get(item.id), source = registry.current?.source;
+      if (held && !held.removal) held.removal_action = item.removal_action;
+      if (source?.source_ref?.kind === 'message' && source.source_ref.id === item.id && !source.removal)
+        source.removal_action = item.removal_action;
+      menu?.paint();
+    },
+    say: (words, item) => { if (reader.dialog.open && registry.current?.source?.source_ref?.id === item.id) reader.notice(words); else status(words); },
+    recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
+  resolutions = new Resolutions({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current,
+    current: () => shell.page === withdrawalPage, learned: result => {
+      learnQuestionState(result);
+      // A confirmed local receipt paints the loaded view immediately. Remote
+      // changes instead invalidate acts and follow the ordinary refresh path.
+      if (views?.topic && stackFeed?.state) views.paint('acts');
+      paintReaderTitle();
+    },
+    say: (words, id) => { if (reader.dialog.open && registry.current?.source?.source_ref?.id === id) { reader.notice(words); reader.paintOrigin(registry.current.source); } },
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
   mountFeedFences($('messages'));
   keepLineRoom($('main'), $('messages'));
