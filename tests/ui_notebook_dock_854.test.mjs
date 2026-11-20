@@ -114,3 +114,13 @@ for (const mode of ['cards', 'text']) test(`894 explicit ${mode} opening docks d
   else assert.equal(f.doc.activeElement, f.page.text);
   f.sheet.resized(); assert.equal(f.sheet.docked, true);
 });
+
+test('894 B2 beside belongs to one opening and never overwrites the saved layout', async t => {
+  const f = fixture(t, { storage: new Map([['notebook-docked', 'false']]) });
+  await f.sheet.open('p', { beside: true }); assert.equal(f.sheet.docked, true);
+  assert.equal(f.sheet.dockWanted, false); assert.equal(f.storage.get('notebook-docked'), 'false');
+  f.media.matches = false; f.media.changed(); f.media.matches = true; f.media.changed(); assert.equal(f.sheet.docked, true);
+  f.sheet.close(); await f.sheet.open('p'); assert.equal(f.sheet.docked, false);
+  await f.sheet.open('p', { beside: true }); f.sheet.dockButton.onclick();
+  f.media.changed(); assert.equal(f.sheet.docked, false, 'explicit layout choice overrides this opening too');
+});

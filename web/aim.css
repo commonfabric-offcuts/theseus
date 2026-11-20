@@ -981,12 +981,12 @@ dialog.composer-home[open] .inline-composer{border:0;border-radius:1rem}
    dialog but keeps its full-height reading surface and backdrop. */
 dialog.composer-home[open]:not(.notebook-mode){height:auto;overflow:hidden}
 dialog.composer-home:not(.notebook-mode)::backdrop{background:transparent;backdrop-filter:none}
-dialog.composer-home[open] .inline-composer{height:auto;max-height:calc(var(--vv-height,100dvh) - 3rem);grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.5rem,auto);align-content:start;overflow-y:auto;scroll-padding-bottom:calc(.55rem + env(safe-area-inset-bottom))}
+dialog.composer-home[open] .inline-composer{height:auto;max-height:calc(var(--vv-height,100dvh) - 3rem);grid-template-rows:repeat(6,minmax(min-content,auto)) minmax(2.5rem,auto);align-content:start;overflow-y:auto;scroll-padding-bottom:calc(.55rem + env(safe-area-inset-bottom))}
 dialog.composer-home[open] .inline-composer textarea{--fit:auto;height:auto;max-height:min(40dvh,calc(12 * 1.5em + 1.1rem));padding-right:.9rem}
 dialog.composer-home[open] .inline-composer textarea:placeholder-shown{white-space:nowrap}
 dialog.composer-home[open] .inline-composer .taller-field{display:none}
 /* An unavailable composer keeps the reason and its recovery control on separate rows. */
-#inline-composer:has(>#inline-retry:not([hidden])){grid-template-areas:"title title title title" "notice notice notice notice" "retry retry retry retry" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act";grid-template-rows:repeat(6,minmax(min-content,auto)) minmax(2.5rem,auto)}
+#inline-composer:has(>#inline-retry:not([hidden])){grid-template-areas:"title title title title" "kinds kinds kinds kinds" "notice notice notice notice" "retry retry retry retry" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act";grid-template-rows:repeat(7,minmax(min-content,auto)) minmax(2.5rem,auto)}
 #inline-composer>#inline-retry{grid-area:retry}
 /* A thumbnail's center opens its choices. Remove has its own slot, even
    before those choices open: a finger-sized corner overlay covers that center. */
@@ -1416,7 +1416,10 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 }
 
 /* Pencil choices share one writing field. Only the popped sheet offers kinds. */
-.pencil-kinds{display:flex;align-self:flex-start;gap:2px;padding:3px;border:1px solid var(--line);border-radius:9px;background:var(--soft)}
+.pencil-kinds{grid-area:kinds;justify-self:start;max-width:100%;display:flex;align-self:flex-start;gap:2px;padding:3px;border:1px solid var(--line);border-radius:9px;background:var(--soft)}
 .pencil-kinds button{min-height:44px;padding:.35rem .8rem;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--ink);white-space:nowrap}
 .pencil-kinds [aria-checked=true]{background:#234b3d;border-color:#41856b;color:#fff}
 .pencil-kinds button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Pencil choices take a full row, never a column beside the writing. */
+#inline-composer{grid-template-areas:"title title title title" "kinds kinds kinds kinds" "notice notice notice notice" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act"}

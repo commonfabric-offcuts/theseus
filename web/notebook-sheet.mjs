@@ -60,7 +60,7 @@ export class NotebookSheet {
     this.listening = new AbortController();
     this.docked = false; this.dockWanted = notebookDockWanted();
     this.wide = globalThis.matchMedia?.('(min-width: 1280px)');
-    this.resized = () => this.setDocked(this.dockWanted && this.canDock(), false);
+    this.resized = () => this.setDocked((this.beside || this.dockWanted) && this.canDock(), false);
     this.wide?.addEventListener('change', this.resized);
     this.messageDialog = doc.getElementById('new-message-sheet');
     this.dialog = doc.createElement('dialog'); this.dialog.id = 'notebook-sheet-dialog';
@@ -135,7 +135,7 @@ export class NotebookSheet {
     this.doc.body.classList.toggle('notebook-docked', this.docked);
   }
   setDocked(wanted, remember = true) {
-    if (remember) { this.dockWanted = Boolean(wanted); keep(DOCKED, this.dockWanted); }
+    if (remember) { this.beside = false; this.dockWanted = Boolean(wanted); keep(DOCKED, this.dockWanted); }
     const next = Boolean(this.showing && wanted && this.canDock());
     this.dossiers?.close();
     if (next !== this.docked) {
@@ -214,8 +214,8 @@ export class NotebookSheet {
     }
     if (!page.host.isConnected) this.body.append(page.host);
     this.show(page);
-    if (beside) this.dockWanted = true;
-    this.setDocked(this.dockWanted && this.canDock(), false);
+    this.beside = beside;
+    this.setDocked((this.beside || this.dockWanted) && this.canDock(), false);
     if (!this.dialog.open) this.dialog.showModal();
     const kept = first ? take(WRITING + id) : null;
     page.readAt = undefined;

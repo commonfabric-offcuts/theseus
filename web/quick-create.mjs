@@ -1,4 +1,4 @@
-import { deckBody } from './deck.mjs';
+import { deckBody, textCard } from './deck.mjs';
 import { hasTitle } from './creation.mjs';
 import { routeHref } from './topic-navigation.mjs';
 
@@ -20,15 +20,15 @@ function envelope(bootstrap, kind, target, expected, args) {
 
 // What became of one command: its committed result, or an Error in plain words.
 // keep(): the request may have been recorded, so the caller keeps it to send again.
-async function sent(api, request, keep) {
+async function sent(api, request, keep, again = AGAIN) {
   let receipt;
   try { receipt = await api.command(copy(request)); }
-  catch (error) { keep(); throw Error(`Not confirmed: ${error.message}.${AGAIN}`, { cause: error }); }
+  catch (error) { keep(); throw Error(`Not confirmed: ${error.message}.${again}`, { cause: error }); }
   const exact = receipt?.instance_id === request.instance_id && receipt.operation_id === request.operation_id && receipt.kind === request.kind;
   if (exact && receipt.recorded === true && receipt.status === 'committed') return receipt.result;
   const message = receipt?.error?.message ?? 'Theseus did not confirm this.';
   if (exact && (receipt.recorded === true || receipt.error?.code === 'INVALID_ARGUMENT')) throw Object.assign(Error(message), { code: receipt.error?.code });
-  keep(); throw Error(message + AGAIN);
+  keep(); throw Error(message + again);
 }
 
 // One outcome from a title: workspace.create with only the title; the owner is
@@ -47,20 +47,17 @@ export class OutcomeStart {
   }
 }
 
-// The pencil sheet's writing, through the same page command as the rail pencil.
-// The first line names the page/card; the Text body retains all remaining bytes.
+// The pencil sheet follows the card box's first-line and newline rules.
 export function notebookWriting(writing, mode) {
-  const end = writing.indexOf('\n');
-  const title = (end < 0 ? writing : writing.slice(0, end)).trim() || 'Notebook page';
-  const words = end < 0 ? '' : writing.slice(end + 1);
+  const card = textCard(writing), title = card.title || 'Notebook page';
   return { title, body: mode === 'note-card'
-    ? deckBody({ opening: '', cards: [{ title, words, depth: 0, written: true }] }) : words };
+    ? deckBody({ opening: '', cards: [{ ...card, title, depth: 0 }] }) : card.words };
 }
 
 // A new Notebook page may start with writing. The exact identity, title and scope stay
 // together until Core confirms or refuses the creation, even after a lost answer.
 export class NotebookStart {
-  constructor({ api, bootstrap, scope }) { Object.assign(this, { api, bootstrap, scope }); this.pending = null; }
+  constructor({ api, bootstrap, scope, again = AGAIN }) { Object.assign(this, { api, bootstrap, scope, again }); this.pending = null; }
   async create(title, body = '') {
     if (!hasTitle(title)) throw Error('Type the page’s title, then press Return.');
     if (this.pending && (this.pending.args.title !== title || this.pending.args.body !== body)) throw Error(`First confirm “${this.pending.args.title}”: restore that title and writing, then try again.`);
@@ -69,13 +66,13 @@ export class NotebookStart {
       { title, body, attachments: [], references: [] });
     const request = this.pending;
     try {
-      const result = await sent(this.api, request, () => {});
+      const result = await sent(this.api, request, () => {}, this.again);
       if (result?.item_id !== request.target.item_id || result.revision !== 1 ||
           result.owner_scope?.kind !== request.target.owner_scope.kind || result.owner_scope?.id !== request.target.owner_scope.id) {
-        throw Error('The created page could not be confirmed.' + AGAIN);
+        throw Error('The created page could not be confirmed.' + this.again);
       }
     }
-    catch (error) { if (!error.message.endsWith(AGAIN)) this.pending = null; throw error; }
+    catch (error) { if (!error.message.endsWith(this.again)) this.pending = null; throw error; }
     this.pending = null;
     return request.target.item_id;
   }

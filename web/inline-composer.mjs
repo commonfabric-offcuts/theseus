@@ -130,37 +130,52 @@ export class InlineComposer {
   $(name) { return this.root.querySelector(`#inline-${name}`); }
   get editor() { return this.presentation?.editors.reply; }
   admits(p = this.presentation, editor = this.editor) { return Boolean(editor && this.callbacks.admits(p, editor)); }
+  pageJobs(editor = this.editor) { return this.notebookJobs.get(editor) ?? []; }
+  pageBusy() { return this.pageJobs().some(job => job.busy); }
   state() {
-    const note = this.kind !== 'message', busy = this.notebookJobs.get(this.editor)?.busy;
+    const note = this.kind !== 'message', busy = this.pageBusy();
     const state = writingState(this.editor, { active: this.admits(), note, status: this.callbacks.status, sign: this.callbacks.sign });
-    state.sendDisabled ||= Boolean(busy || (note && (state.readOnly || !this.editor.context.topicId || this.editor.submissions.some(s => s.status === 'preparing' && !s.detached))));
+    state.sendDisabled ||= Boolean(busy || (note && (this.callbacks.notebook?.mayWrite !== true || state.readOnly || !this.editor.context.topicId || this.editor.submissions.some(s => s.status === 'preparing' && !s.detached))));
     state.readOnly ||= Boolean(busy); state.addDisabled ||= note || Boolean(busy);
     return state;
   }
   chooseKind(kind) {
-    if (!this.callbacks.notebook || !this.popped || !this.admits() || this.notebookJobs.get(this.editor)?.busy || !this.kinds.includes(kind)) return false;
-    this.kind = kind; this.bar.fold(); this.images?.close();
+    if (!this.callbacks.notebook || (kind !== 'message' && this.callbacks.notebook.mayWrite !== true) || !this.popped || !this.admits() || this.pageBusy() || !this.kinds.includes(kind)) return false;
+    this.kind = kind; this.bar.close(); this.images?.close();
     if (kind !== 'message' && this.imagePicker) this.cancelPicker();
     this.paintStatus(); return true;
   }
   paintKind() {
     const note = this.kind !== 'message';
-    this.$('kind').hidden = !this.popped || !this.callbacks.notebook;
+    this.$('kind').hidden = !this.popped || this.callbacks.notebook?.mayWrite !== true;
     for (const kind of this.kinds) {
       const button = this.$('kind-' + kind);
       button.setAttribute('aria-checked', String(kind === this.kind)); button.tabIndex = kind === this.kind ? 0 : -1;
-      button.disabled = Boolean(this.notebookJobs.get(this.editor)?.busy);
+      button.disabled = this.pageBusy() || (kind !== 'message' && this.callbacks.notebook?.mayWrite !== true);
     }
-    for (const name of ['who-chip', 'plus-button', 'writing-to']) this.$(name).hidden = note;
-    if (note) for (const name of ['who-panel', 'plus-panel', 'attachments']) this.$(name).hidden = true;
+    for (const name of ['who-chip', 'plus-button', 'attachments']) this.$(name).hidden = note;
+    if (note) for (const name of ['who-panel', 'plus-panel', 'writing-to']) this.$(name).hidden = true;
     this.$('writing-title').textContent = note ? 'New Notebook page' : 'New message';
     this.field.setAttribute('aria-label', note ? (this.kind === 'note-card' ? 'Note card' : 'Note page') : 'New message');
     if (note) this.$('send').querySelector('.send-word').textContent = 'Start page';
   }
-  offerStarted(job) {
-    const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Open started page';
-    button.onclick = () => { if (this.editor === job.editor && this.admits()) return this.finishPage(job).catch(error => this.notice(error)); };
-    this.notice(['Notebook page started. Your writing is kept.', button]);
+  offerPages(error = null, p = this.presentation, editor = this.editor) {
+    const jobs = this.pageJobs(editor).filter(job => job.id || job.starter.pending);
+    if (!error && !jobs.length) return;
+    const parts = [error ?? 'Earlier Notebook pages are kept below. Your writing is kept.'];
+    for (const job of jobs) {
+      const button = document.createElement('button'); button.type = 'button';
+      button.textContent = job.id ? 'Open started page' : `Retry earlier page: ${job.title}`;
+      button.setAttribute('aria-label', job.id ? `Open started page: ${job.title}` : button.textContent);
+      button.disabled = job.busy;
+      button.onclick = () => {
+        if (this.editor !== editor || !this.admits() || this.pageBusy() || !this.pageJobs().includes(job)) return;
+        if (job.id) return this.finishPage(job).catch(error => this.notice(error));
+        if (this.callbacks.notebook?.mayWrite === true) return this.createPage(job, false);
+      };
+      parts.push(button);
+    }
+    this.notice(parts, p, editor);
   }
   async finishPage(job) {
     const p = this.presentation, editor = this.editor, opening = this.opening;
@@ -172,32 +187,44 @@ export class InlineComposer {
         const version = editor.localVersion;
         await this.callbacks.edit(editor, p);
         if (!this.admits(p, editor)) return;
-        if (this.opening !== opening || editor.localVersion !== version || editor.clientCycleId !== job.cycle) { this.offerStarted(job); return; }
+        if (this.opening !== opening || editor.localVersion !== version || editor.clientCycleId !== job.cycle) { this.offerPages(); return; }
         this.drawEditor();
       }
-      this.notebookJobs.delete(editor);
       this.bar.fold(); if (this.sheet.open) this.sheet.close();
       await this.callbacks.notebook.open(job.id, { mode: job.kind === 'note-card' ? 'cards' : 'text', beside: true, opener: document.querySelector('#new-message') });
+      this.notebookJobs.set(editor, this.pageJobs(editor).filter(other => other !== job));
     } finally { job.busy = false; if (this.admits(p, editor)) this.paintStatus(); }
   }
   async startPage() {
-    const p = this.presentation, editor = this.editor, opening = this.opening, kind = this.kind, body = editor.draft.body;
-    let job = this.notebookJobs.get(editor);
+    const editor = this.editor, kind = this.kind, body = editor.draft.body;
+    const jobs = this.pageJobs(editor);
+    if (this.pageBusy()) return;
+    // Each changed writing gets its own creation owner. Earlier uncertain requests
+    // keep their exact envelope; confirmed pages remain separate opening actions.
+    let job = jobs.find(job => job.body === body && job.kind === kind && job.cycle === editor.clientCycleId);
     if (job?.id) return this.finishPage(job);
-    if (!job) { job = { editor, starter: new NotebookStart({ ...this.callbacks.notebook, scope: { kind: 'topic', id: editor.context.topicId } }) }; this.notebookJobs.set(editor, job); }
-    if (job.busy) return;
-    if (job.starter.pending && (job.body !== body || job.kind !== kind)) { this.notice('First confirm the earlier page: restore its writing and Notebook choice, then Start page again.'); return; }
-    Object.assign(job, { body, kind, version: editor.localVersion, cycle: editor.clientCycleId, busy: true }); this.paintStatus();
-    try {
+    if (!job) {
       const writing = notebookWriting(body, kind);
-      job.id = await job.starter.create(writing.title, writing.body); job.busy = false;
-      if (!this.admits(p, editor)) return;
-      if (this.popped && this.opening === opening && editor.localVersion === job.version && editor.clientCycleId === job.cycle) await this.finishPage(job);
-      else this.offerStarted(job);
-    } catch (error) {
-      if (this.opening === opening) this.notice(Error(error.message.replace('Press Return to try once more.', 'Choose Start page to try once more.'), { cause: error }), p, editor);
+      job = { editor, body, kind, title: writing.title, words: writing.body,
+        starter: new NotebookStart({ ...this.callbacks.notebook, scope: { kind: 'topic', id: editor.context.topicId }, again: ' Choose Start page to try once more.' }) };
+      this.notebookJobs.set(editor, [...jobs, job]);
     }
-    finally { job.busy = false; if (this.admits(p, editor)) this.paintStatus(); }
+    Object.assign(job, { version: editor.localVersion, cycle: editor.clientCycleId });
+    return this.createPage(job, true);
+  }
+  async createPage(job, automatic) {
+    const p = this.presentation, editor = this.editor, opening = this.opening;
+    job.busy = true; this.paintStatus();
+    try {
+      job.id = await job.starter.create(job.title, job.words); job.busy = false;
+      if (!this.admits(p, editor)) return;
+      if (automatic && this.popped && this.opening === opening && editor.localVersion === job.version && editor.clientCycleId === job.cycle) await this.finishPage(job);
+      else this.offerPages();
+    } catch (error) {
+      job.busy = false;
+      if (!job.id && !job.starter.pending) this.notebookJobs.set(editor, this.pageJobs(editor).filter(other => other !== job));
+      this.offerPages(error, p, editor);
+    } finally { job.busy = false; if (this.admits(p, editor)) this.paintStatus(); }
   }
   caret() { return this.input.caret(); }
   useLayout(instanceId) {
@@ -227,7 +254,7 @@ export class InlineComposer {
     this.field.disabled = false; showLine(this.$('notice'), '');
     this.$('destination').textContent = `To ${p.topic.title}`;
     this.drawEditor(); this.paintRecipients(); this.paintStatus(); this.paintChoice();
-    const started = this.notebookJobs.get(this.editor); if (started?.id) this.offerStarted(started);
+    this.offerPages();
   }
   // The composer could not load: it says why until Retry composer loads it.
   fail(error) {

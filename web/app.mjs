@@ -3114,7 +3114,7 @@ async function initialize() {
   const imageBytes = async item => (await api.media(bootstrap.instance_id, item.attachment, item.source_ref)).blob;
   inline = new InlineComposer({
     instanceId: bootstrap.instance_id,
-    notebook: { api, bootstrap, open: (id, options) => openNotebook(id, options) },
+    notebook: { api, bootstrap, mayWrite: memoryAnswer.reader_may_write === true, open: (id, options) => openNotebook(id, options) },
     images: topicImages, imageBytes,
     actorLabel,
     admits: (p, editor) => registry?.isCurrent(p, editor),
