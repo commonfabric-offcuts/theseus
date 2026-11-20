@@ -20,16 +20,16 @@ export class InlineComposer {
   constructor(callbacks) {
     this.callbacks = callbacks; this.root = document.querySelector('#inline-composer');
     this.field = this.$('writing-body');
-    this.kind = 'message'; this.notebookJobs = new WeakMap();
-    this.kinds = ['message', 'note-card', 'note-page'];
+    this.kind = this.defaultKind(); this.notebookJobs = new WeakMap();
+    this.kinds = ['message', 'note-card'];
     for (const [index, kind] of this.kinds.entries()) {
       const button = this.$('kind-' + kind);
       button?.addEventListener('click', () => this.chooseKind(kind));
       button?.addEventListener('keydown', event => {
         if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
-        const next = event.key === 'Home' ? 0 : event.key === 'End' ? 2
-          : ['ArrowRight', 'ArrowDown'].includes(event.key) ? (index + 1) % 3
-          : ['ArrowLeft', 'ArrowUp'].includes(event.key) ? (index + 2) % 3 : null;
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? this.kinds.length - 1
+          : ['ArrowRight', 'ArrowDown'].includes(event.key) ? (index + 1) % this.kinds.length
+          : ['ArrowLeft', 'ArrowUp'].includes(event.key) ? (index + this.kinds.length - 1) % this.kinds.length : null;
         if (next === null) return;
         event.preventDefault(); event.stopPropagation();
         if (this.chooseKind(this.kinds[next])) this.$('kind-' + this.kinds[next]).focus();
@@ -62,7 +62,7 @@ export class InlineComposer {
     // focus back to what opened it as it closed, and this event, a frame
     // later, leaves it there, or wherever a key pressed since has moved it.
     this.sheet?.addEventListener('close', () => {
-      const popped = this.popped; this.popped = false; this.kind = 'message';
+      const popped = this.popped; this.popped = false; this.opening = Symbol(); this.kind = this.defaultKind();
       this.paintStatus();
       this.bar.fold();
       if (popped) document.querySelector('#new-message')?.focus({ preventScroll: true });
@@ -139,15 +139,16 @@ export class InlineComposer {
     state.readOnly ||= Boolean(busy); state.addDisabled ||= note || Boolean(busy);
     return state;
   }
+  defaultKind() { return this.callbacks.notebook?.mayWrite === true ? 'note-card' : 'message'; }
   chooseKind(kind) {
-    if (!this.callbacks.notebook || (kind !== 'message' && this.callbacks.notebook.mayWrite !== true) || !this.popped || !this.admits() || this.pageBusy() || !this.kinds.includes(kind)) return false;
+    if (!this.callbacks.notebook || (kind !== 'message' && this.callbacks.notebook.mayWrite !== true) || !this.admits() || this.pageBusy() || !this.kinds.includes(kind)) return false;
     this.kind = kind; this.bar.close(); this.images?.close();
     if (kind !== 'message' && this.imagePicker) this.cancelPicker();
     this.paintStatus(); return true;
   }
   paintKind() {
     const note = this.kind !== 'message';
-    this.$('kind').hidden = !this.popped || this.callbacks.notebook?.mayWrite !== true;
+    this.$('kind').hidden = this.callbacks.notebook?.mayWrite !== true;
     for (const kind of this.kinds) {
       const button = this.$('kind-' + kind);
       button.setAttribute('aria-checked', String(kind === this.kind)); button.tabIndex = kind === this.kind ? 0 : -1;
@@ -156,7 +157,7 @@ export class InlineComposer {
     for (const name of ['who-chip', 'plus-button', 'attachments']) this.$(name).hidden = note;
     if (note) for (const name of ['who-panel', 'plus-panel', 'writing-to']) this.$(name).hidden = true;
     this.$('writing-title').textContent = note ? 'New Notebook page' : 'New message';
-    this.field.setAttribute('aria-label', note ? (this.kind === 'note-card' ? 'Note card' : 'Note page') : 'New message');
+    this.field.setAttribute('aria-label', note ? 'Note' : 'New message');
     if (note) this.$('send').querySelector('.send-word').textContent = 'Start page';
   }
   offerPages(error = null, p = this.presentation, editor = this.editor) {
@@ -218,7 +219,7 @@ export class InlineComposer {
     try {
       job.id = await job.starter.create(job.title, job.words); job.busy = false;
       if (!this.admits(p, editor)) return;
-      if (automatic && this.popped && this.opening === opening && editor.localVersion === job.version && editor.clientCycleId === job.cycle) await this.finishPage(job);
+      if (automatic && this.opening === opening && editor.localVersion === job.version && editor.clientCycleId === job.cycle) await this.finishPage(job);
       else this.offerPages();
     } catch (error) {
       job.busy = false;
@@ -238,7 +239,7 @@ export class InlineComposer {
     // At rest it is among the dossiers (item 465): a holder keeps its place there, so the feed does not move behind it.
     holdPlace(this.sheet);
     this.sheet.showModal(); this.popped = true; this.opening = Symbol();
-    this.chooseKind?.('message');
+    this.chooseKind?.(this.defaultKind());
     this.syncWidthPlacement?.({ opening: true });
     // Start at one line and fit the writing at the sheet’s current width.
     this.bar.fit();
@@ -246,6 +247,7 @@ export class InlineComposer {
     this.field.setSelectionRange(this.field.value.length, this.field.value.length);
   }
   show(p) {
+    if (this.presentation !== p) { this.kind = this.defaultKind(); this.opening = Symbol(); }
     if (this.sheet?.open && this.presentation !== p) this.sheet.close();
     this.presentation = p; this.root.hidden = false;
     this.useLayout(p.editors.reply.context.instanceId);
