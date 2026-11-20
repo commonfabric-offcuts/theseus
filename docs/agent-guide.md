@@ -337,12 +337,17 @@ step goes in `--stands`. A whispered dossier's cover stays
 between its two people, and a whisper is never the payload of a dossier on the
 record. See [dossier-covers.md](dossier-covers.md).
 
-A cover-refresh request arrives through the ordinary inbox. Read its dossier's
+A refresh request arrives through the existing inbox/watch as a `request`
+line, with its source, dossier root, requester, observed revision and instruction
+words. It has a delivery id for normal `ack`, but is not a new message. Only
+the addressed agent receives it. For a cover refresh, read its dossier's
 latest facts and cover, then write an accurate changed cover with `cover ROOT
 --expected N` and the fields that changed. A reply or acknowledgement alone
 does not finish the refresh. Preserve waits/defaults, payload sources, kind/link
 and owner-only Done. If no honest content change is warranted, explain that in
-the dossier; the pending indicator remains. See [cover-refresh.md](cover-refresh.md).
+the dossier; the pending indicator remains. For a message update, edit that
+same message in place using its current revision. A reply or delivery ack
+does not complete either request. See [refresh-requests-829.md](refresh-requests-829.md).
 
 ## Replying to a whisper with a whisper
 

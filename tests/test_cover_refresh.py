@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Item 738: real publication, authorization, durable intent and cover boundaries.
+"""Items738/829: authorization, durable request delivery and cover boundaries.
 
 Only invented actors and a temporary Store; no profiles, server or agent process.
 """
@@ -65,17 +65,17 @@ class CoverRefreshCase(ReaderCase):
         return {table: self.sql("SELECT count(*) FROM " + table)[0][0] for table in
                 ("messages", "deliveries", "message_acts", "topic_participants")}
 
-    def test_writer_publication_exact_retry_coalescing_and_reopen(self):
+    def test_writer_request_exact_retry_coalescing_and_reopen(self):
         before = self.read()["cover"]
         counts = self.counts()
         receipt = self.refresh(op="refresh-once")
         result = self.committed(receipt)
         pending = result["refresh"]
         self.assertEqual((pending["recipient"], pending["by"], pending["observed_revision"]), ("agent-b", "owner", 1))
-        request = self.sql("SELECT author_id,addressees,reply_to,intent,private_to,body FROM messages WHERE id=?", (pending["request_message_id"],))[0]
-        self.assertEqual(request[:5], ("owner", '["agent-b"]', self.root, "ask", None))
-        self.assertIn("latest facts", request[5])
-        self.assertEqual(self.sql("SELECT d.recipient_id FROM deliveries d JOIN delivery_reasons r ON r.delivery_id=d.id WHERE d.message_id=? AND r.reason='addressed'", (pending["request_message_id"],)), [("agent-b",)])
+        request = self.sql("SELECT requester_id,recipient_id,message_id,kind,body FROM refresh_requests WHERE id=?", (pending["request_id"],))[0]
+        self.assertEqual(request[:4], ("owner", "agent-b", self.root, "cover_refresh"))
+        self.assertIn("latest facts", request[4])
+        self.assertEqual(self.sql("SELECT d.recipient_id FROM deliveries d JOIN delivery_reasons r ON r.delivery_id=d.id WHERE d.request_id=? AND r.reason='request'", (pending["request_id"],)), [("agent-b",)])
         self.assertEqual(self.refresh(op="refresh-once", revision=1), receipt)
         second = self.committed(self.refresh(actor="agent-a", revision=0))
         self.assertTrue(second["coalesced"])
@@ -83,7 +83,7 @@ class CoverRefreshCase(ReaderCase):
         self.assertEqual({k: v for k, v in self.read()["cover"].items() if k not in ("refresh", "refresh_revision")},
                          {k: v for k, v in before.items() if k not in ("refresh", "refresh_revision")})
         after = self.counts()
-        self.assertEqual(after["messages"], counts["messages"] + 1)
+        self.assertEqual(after["messages"], counts["messages"])
         self.assertEqual(after["topic_participants"], counts["topic_participants"])
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.read()["refresh"], pending)
@@ -130,7 +130,7 @@ class CoverRefreshCase(ReaderCase):
         result = self.write({"stands": "Road reopened"}, actor="agent-a")
         done = self.read()
         self.assertEqual((done["refresh"]["state"], done["refresh"]["completed_by"], done["refresh"]["completed_revision"]), ("completed", "agent-a", result["cover_revision"]))
-        self.assertEqual(done["refresh"]["request_message_id"], pending["request_message_id"])
+        self.assertEqual(done["refresh"]["request_id"], pending["request_id"])
         self.assertEqual(done["cover"]["waiting"], prior["waiting"])
         self.assertEqual({k: v for k, v in done["cover"]["payload"].items() if k != "done"}, {k: v for k, v in prior["payload"].items() if k != "done"})
         self.assertEqual(done["cover"]["payload"]["done"]["how"], "thumb")
@@ -179,18 +179,18 @@ class CoverRefreshCase(ReaderCase):
         envelope = self.envelope("stack.cover_refresh", {"message_id": bare}, {}, {"cover_revision": 0}, op="wrong-authority")
         envelope["expected"]["authority"]["authority_epoch"] = "different-epoch"
         self.rejected(self.store.command("owner", envelope), "AUTHORITY_CHANGED")
-        self.assertEqual(self.counts()["messages"], before["messages"] + 2)
+        self.assertEqual(self.counts()["messages"], before["messages"] + 1)
 
     def test_whisper_refresh_and_cover_never_escape_the_two_readers(self):
         root = self.post("Private cabin facts", addressees=["agent-b"], whisper=True)
         self.write({"stands": "Private cover"}, root=root)
         pending = self.committed(self.refresh(root=root))["refresh"]
-        self.assertEqual(self.sql("SELECT private_to,intent,addressees FROM messages WHERE id=?", (pending["request_message_id"],)), [("agent-b", None, '["agent-b"]')])
+        self.assertEqual(self.sql("SELECT requester_id,recipient_id,message_id FROM refresh_requests WHERE id=?", (pending["request_id"],)), [("owner", "agent-b", root)])
         for who in ("agent-a", "outsider", "other-reader"):
             self.assertIn("error", self.read(root, who))
             page = self.store.view(who, "topic_messages", {"topic_id": "t1", "limit": 100})
-            self.assertNotIn(pending["request_message_id"], [item["id"] for item in page.get("items", [])])
-        self.assertEqual(self.sql("SELECT d.recipient_id FROM deliveries d JOIN delivery_reasons r ON r.delivery_id=d.id WHERE d.message_id=? AND r.reason='addressed'", (pending["request_message_id"],)), [("agent-b",)])
+            self.assertNotIn(pending["request_id"], [item["id"] for item in page.get("items", [])])
+        self.assertEqual(self.sql("SELECT d.recipient_id FROM deliveries d JOIN delivery_reasons r ON r.delivery_id=d.id WHERE d.request_id=? AND r.reason='request'", (pending["request_id"],)), [("agent-b",)])
 
     def test_join_elsewhere_does_not_complete_old_root(self):
         self.committed(self.refresh())
@@ -201,7 +201,7 @@ class CoverRefreshCase(ReaderCase):
         [value] = self.sql("SELECT value FROM message_acts WHERE message_id=? AND kind='cover_refresh' ORDER BY revision DESC LIMIT 1", (self.root,))
         self.assertEqual(json.loads(value[0])["state"], "pending")
 
-    def test_publication_and_pending_intent_rollback_together(self):
+    def test_delivery_and_pending_intent_rollback_together(self):
         before = self.counts()
         schedules = self.sql("SELECT * FROM recipient_schedule ORDER BY recipient_id")
         with sqlite3.connect(str(self.path)) as db:
@@ -209,13 +209,13 @@ class CoverRefreshCase(ReaderCase):
         blocked = self.refresh(op="publish-rollback")
         self.rejected(blocked, "INTERNAL_ERROR")
         self.assertFalse(blocked["recorded"])
-        self.assertEqual(self.counts(), before, "message, delivery and pending intent share a transaction")
+        self.assertEqual(self.counts(), before, "delivery and pending intent share a transaction; no message is made")
         self.assertEqual(self.sql("SELECT * FROM recipient_schedule ORDER BY recipient_id"), schedules)
         with sqlite3.connect(str(self.path)) as db:
             db.execute("DROP TRIGGER refuse_refresh_intent")
         self.committed(self.refresh(op="publish-rollback"))
         self.pending()
-        self.assertEqual(self.counts()["messages"], before["messages"] + 1)
+        self.assertEqual(self.counts()["messages"], before["messages"])
 
     def test_unauthorized_and_closed_outcome_cannot_publish(self):
         before = self.counts()
@@ -244,14 +244,13 @@ class CoverRefreshCase(ReaderCase):
         self.assertEqual(self.sql("SELECT * FROM message_acts ORDER BY id"), acts)
         self.assertEqual(self.sql("SELECT * FROM messages ORDER BY seq"), messages)
         self.assertEqual(self.sql("SELECT actor_id,revision FROM cover_writers WHERE message_id=?", (self.root,)), [("agent-b", 1)])
-        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], SCHEMA_VERSION)
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        self.assertEqual(self.committed(self.refresh())["refresh"]["recipient"], "agent-b")
-        # Reach48 explicitly, so it is the occupied cover-refresh step that
-        # refuses47 rather than the later dossier-order guard.
+        # This old guard is about a kept48 refresh act. Seed that old shape
+        # while still at48; a new request now correctly occupies56 instead.
+        # Actual old publication is covered by829's actual153 migration fixture.
         with sqlite3.connect(str(self.path)) as db:
-            db.execute("DELETE FROM dossier_order")
-        self.assertEqual(migrate(self.path, "test-instance", self.binding, "48")["schema_version"], "48")
+            db.execute("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) "
+                       "SELECT 'cover_refresh',id,topic_id,seq,'','owner',?,1,1 FROM messages WHERE id=?",
+                       (json.dumps({"state": "pending", "recipient": "agent-b", "observed_revision": 1}), self.root))
         with self.assertRaises(MigrationError) as refused:
             migrate(self.path, "test-instance", self.binding, "47")
         self.assertEqual(refused.exception.code, "RECORDS_WOULD_BE_LOST")

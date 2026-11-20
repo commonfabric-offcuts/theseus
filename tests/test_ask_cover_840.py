@@ -36,9 +36,9 @@ class AskCoverCase(ReaderCase):
         receipt = self.ask(op="first-cover")
         pending = self.committed(receipt)["refresh"]
         self.assertEqual((pending["recipient"], pending["observed_revision"]), ("agent-a", 0))
-        row = self.sql("SELECT author_id,reply_to,intent,addressees,body FROM messages WHERE id=?",
-                       (pending["request_message_id"],))[0]
-        self.assertEqual(row[:4], ("owner", self.root, "ask", '["agent-a"]'))
+        row = self.sql("SELECT requester_id,message_id,kind,recipient_id,body FROM refresh_requests WHERE id=?",
+                       (pending["request_id"],))[0]
+        self.assertEqual(row[:4], ("owner", self.root, "cover_refresh", "agent-a"))
         self.assertIn("Please write this dossier's first cover", row[4])
         self.assertNotIn("rewrite", row[4])
         self.assertEqual(self.read()["cover_revision"], 0)
@@ -53,7 +53,7 @@ class AskCoverCase(ReaderCase):
         other = self.committed(self.ask(actor="agent-b", revision=99))
         self.assertTrue(other["coalesced"])
         self.assertEqual(other["refresh"], pending)
-        self.assertEqual(self.counts()["messages"], before["messages"] + 1)
+        self.assertEqual(self.counts()["messages"], before["messages"])
         self.assertEqual(self.counts()["topic_participants"], before["topic_participants"])
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.read()["refresh"], pending)
@@ -73,7 +73,7 @@ class AskCoverCase(ReaderCase):
         now = self.read()
         self.assertEqual(now["refresh"]["state"], "completed")
         self.assertEqual(now["refresh"]["completed_by"], "agent-a")
-        self.assertEqual(now["refresh"]["request_message_id"], pending["request_message_id"])
+        self.assertEqual(now["refresh"]["request_id"], pending["request_id"])
         self.assertEqual(now["cover"]["stands"], "Agent checked the facts")
         self.rejected(self.ask(), "REVISION_CONFLICT")
 
@@ -95,12 +95,12 @@ class AskCoverCase(ReaderCase):
     def test_private_request_uses_only_an_eligible_coordinator_and_never_grants_reach(self):
         private = self.post("Private first cover", addressees=["agent-a"], whisper=True)
         pending = self.committed(self.ask(root=private))["refresh"]
-        self.assertEqual(self.sql("SELECT private_to,intent,addressees FROM messages WHERE id=?",
-                                 (pending["request_message_id"],)), [("agent-a", None, '["agent-a"]')])
+        self.assertEqual(self.sql("SELECT requester_id,recipient_id,message_id FROM refresh_requests WHERE id=?",
+                                 (pending["request_id"],)), [("owner", "agent-a", private)])
         for actor in ("agent-b", "outsider", "other-reader"):
             self.assertIn("error", self.read(private, actor))
             page = self.store.view(actor, "topic_messages", {"topic_id": "t1", "limit": 100})
-            self.assertNotIn(pending["request_message_id"], [item["id"] for item in page.get("items", [])])
+            self.assertNotIn(pending["request_id"], [item["id"] for item in page.get("items", [])])
         unreachable = self.post("Private to a different agent", addressees=["agent-b"], whisper=True)
         before = self.counts()
         self.rejected(self.ask(root=unreachable), "COVER_WRITER_UNAVAILABLE")
@@ -139,4 +139,4 @@ class AskCoverCase(ReaderCase):
         with sqlite3.connect(str(self.path)) as db:
             db.execute("DROP TRIGGER refuse_first_request")
         self.committed(self.ask(op="first-rollback"))
-        self.assertEqual(self.counts()["messages"], before["messages"] + 1)
+        self.assertEqual(self.counts()["messages"], before["messages"])

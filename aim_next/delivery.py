@@ -141,13 +141,13 @@ class Delivery:
         db.execute("UPDATE recipient_schedule SET pending_count=?,wake_generation=wake_generation+1,last_seq=?,next_due_ms=?,retry_count=?,handed_seq=? WHERE recipient_id=?",
                    (pending, last_seq if last_seq is not None else old["last_seq"], due, retry, handed, actor))
 
-    def _queue_delivery(self, db, message_id, recipient, topic_id, reasons, settled=False, revision=1):
+    def _queue_delivery(self, db, message_id, recipient, topic_id, reasons, settled=False, revision=1, request_id=None):
         """Queue one delivery of a message; settled, it is recorded already acknowledged and waits on nobody.
 
         A correction (reason `correction`, docs/message-edit.md) delivers the message again at a later revision,
         in the recipient's one correction group, which nothing counts as unread or addressed."""
         direct = any(reason != "subscription" for reason in reasons)
-        kind = "correction" if "correction" in reasons else "direct" if direct else "subscription"
+        kind = "request" if request_id is not None else "correction" if "correction" in reasons else "direct" if direct else "subscription"
         key = (recipient, kind, "" if direct else topic_id, 0 if direct else reasons["subscription"])
         db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) VALUES (?,?,?,?) ON CONFLICT DO NOTHING", key)
         group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind=? AND topic_id=? AND participant_epoch=?", key).fetchone()[0]
@@ -155,9 +155,9 @@ class Delivery:
         # A message its author has open in Edit is holding (docs/message-edit.md): an agent's unsettled delivery of it
         # waits in the state 'held', counted nowhere, and its release counts it as an arrival. The one session row's
         # primary key answers whether it is holding.
-        held = not settled and holding(db, message_id) and db.execute("SELECT kind FROM actors WHERE id=?", (recipient,)).fetchone()[0] == "agent"
-        seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id,state,revision) VALUES (?,?,?,?,?,?,?)",
-                         (delivery_id, message_id, recipient, group, topic_id, "acknowledged" if settled else "held" if held else "pending", revision)).lastrowid
+        held = request_id is None and not settled and holding(db, message_id) and db.execute("SELECT kind FROM actors WHERE id=?", (recipient,)).fetchone()[0] == "agent"
+        seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id,state,revision,request_id) VALUES (?,?,?,?,?,?,?,?)",
+                         (delivery_id, message_id, recipient, group, topic_id, "acknowledged" if settled else "held" if held else "pending", revision, request_id)).lastrowid
         db.executemany("INSERT INTO delivery_reasons VALUES (?,?,?,?)", [(delivery_id, reason, topic_id, epoch) for reason, epoch in reasons.items()])
         if held:
             # Its release counts it and reads the recipient's schedule, so the schedule row exists from now (it counts nothing).
@@ -383,6 +383,8 @@ class Delivery:
         return row[0] if row else 0
 
     def _delivery_item(self, db, row, active=True):
+        if row["request_id"] is not None:
+            return self._request_delivery_item(db, row)
         # The message's own sequence and its topic's title prefix let an inbox
         # line or a wake notice name the place without another read.
         message = dict(db.execute("SELECT m.id,m.seq,m.topic_id,m.author_id,m.intent,m.private_to IS NOT NULL AS whisper,"
@@ -422,7 +424,11 @@ class Delivery:
         # The item carries the message and its topic, so it is readable only
         # while the message itself is: topic access, or an addressed delivery.
         try:
-            self._message_access(db, actor, row["message_id"])
+            if row["request_id"] is not None:
+                if not self._request_readable(db, actor, row):
+                    raise Refusal("FORBIDDEN", "No readable delivery")
+            else:
+                self._message_access(db, actor, row["message_id"])
         except Refusal:
             raise Refusal("FORBIDDEN", "No readable delivery")
         if row["state"] == "held":
@@ -447,7 +453,8 @@ class Delivery:
                     if len(answer["items"]) == limit:
                         answer["next_cursor"] = _cursor(*last)
                         return answer
-                    if not self._correction_readable(db, actor, row):
+                    if ((row["request_id"] is not None and not self._request_readable(db, actor, row))
+                            or not self._correction_readable(db, actor, row)):
                         # A correction of a message the actor can no longer read is never shown, even in a preview.
                         last = (group_id, row["seq"])
                         continue

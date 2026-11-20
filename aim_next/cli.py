@@ -1289,6 +1289,12 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
 
     @staticmethod
     def delivery_line(item):
+        if item.get("request"):
+            request = item["request"]
+            return 'request "%s" %s from %s, source %s, dossier %s, observed revision %s: %s  [%s in %s]' % (
+                _one_line(item["topic"]["title"], 60), request["kind"], request["requester_id"],
+                request["message_id"], request["root_id"], request["observed_revision"],
+                _one_line(request["body"], len(request["body"])), item["id"], request["topic_id"])
         message = item["message"]
         if item.get("correction"):
             # Its author edited a message this agent was sent: read it again, act on its latest words, then ack this line's id.

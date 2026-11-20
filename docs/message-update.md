@@ -1,4 +1,7 @@
-# Ask for update (item 786)
+# Ask for update (786, updated by829)
+
+New schema56 requests follow [refresh-requests-829.md](refresh-requests-829.md).
+Historical786 native evidence below remains bound to its original source.
 
 A readable message's overflow menu offers Ask for update when its author is
 another agent. The viewer's own messages, human authors and unknown actor kinds
@@ -11,7 +14,7 @@ older words remain.
 `expected.message_revision` plus the ordinary authority binding. It is available
 through HTTP `/api/command` and local CLI `command` envelopes. It and
 `stack.cover_refresh` call the same `_refresh_request` door in cover_refresh.py,
-publish through `_publish`, and use the same completion/activity record shape.
+use the same typed delivery and completion/activity record shape.
 Message and cover are separate target kinds, even on the same root. Schema50
 adds `message_refresh` to message_acts without changing any earlier act or id.
 Explicit49→50 migration retains sqlite_sequence; any update history forbids
@@ -19,10 +22,10 @@ downgrade. Reading does not migrate.
 
 Defaults: exact enabled agent author as recipient, with current reach and no
 fallback; the viewer's observed ordinary revision as fence; no activity before
-a request; empty arguments. The ask replies to that exact message, only that
-author addressed. A private request keeps the existing two-person whisper
-boundary and publication rules. No route or running agent is required. An
-offline author leaves ordinary delivery pending; no work is attributed to a
+a request; empty arguments. The request names that exact message and addresses
+only its author. It publishes no message or reply and grants no source reach.
+Only the addressed agent sees its instruction words. No route or running agent
+is required. An offline author leaves the typed delivery pending; no work is attributed to a
 running agent until it happens. Self, human, disabled/unreachable author,
 closed outcome and stale revision are honest refusals. No timer, cancel,
 reassign or automatic resend is added.
@@ -38,14 +41,16 @@ The existing738 browser owner stores the exact unconfirmed envelope before
 sending, with instance/actor/type/message identity and captured authority.
 Storage refusal sends nothing. Retry and reload retain the same command. Shared
 waiting dots on the card's visible author/folded/head row and beside Reader provenance mean asked/awaiting,
-with a link to the actual request and an accessible name. They do not claim
+with an accessible name and one timed line for the latest request. Old generated
+request messages retain their links. The dots do not claim
 execution. In the Reader, activity occupies a nonshrinking slot beside the
 provenance text; only that text ellipsizes on phones, including320/375/390.
 Author, sent/edited time and provenance nodes stay intact. Busy uses the same
 dots;738's visible status remains error-only.
 Revision fences and monotonically merged activity keep late replies/reads from
-reviving a completed indicator. Ordinary ask publication still performs its
-existing read/fold effects; no new exception is introduced.
+reviving a completed indicator. A new refresh has no ordinary ask publication
+or read/fold effects. A qualifying write replaces its pending line with the
+writer and completion time.
 
 Focused real-Core and client checks are test_message_refresh.py and
 ui_message_refresh.test.mjs. message_refresh_786_contract.test.mjs executes the

@@ -5,6 +5,7 @@ import { linkNode } from './links.mjs';
 import { notTaken, NOT_TAKEN } from './api.mjs';
 import { waitingDots } from './outcome-conversation.mjs';
 import { stackCover } from './stack-order.mjs';
+import { timeNode } from './times.mjs';
 
 let runtime = null;
 const requests = new Map(), painters = new WeakMap();
@@ -108,6 +109,29 @@ export function refreshRequest(doc, target) {
 const requestLink = (doc, topicId, messageId, words = '') => linkNode(doc, words,
   { route: { kind: 'topic', id: topicId, message: messageId }, written: true });
 
+// One latest line per target, from the same monotonic state as its control.
+// Old request messages keep their links and get no retrospective line.
+export function refreshLine(doc, target, context) {
+  const request = refreshRequest(doc, target);
+  if (!request) return null;
+  if (!request.state().refresh?.request_id) return null;
+  const line = doc.createElement('span'); line.className = 'refresh-request-line'; line.dataset.coverRefresh = request.key;
+  const draw = () => {
+    const { refresh } = request.state(), completed = refresh?.state === 'completed';
+    line.hidden = !refresh?.request_id;
+    if (line.hidden) { line.replaceChildren(); return; }
+    const cover = target.type === 'cover', name = context.nameOf;
+    const words = completed ? `${name(refresh.completed_by)} ${cover ? 'refreshed the cover' : 'updated this message'}`
+      : `${name(refresh.by)} asked ${name(refresh.recipient)} to ${cover ? 'refresh the cover' : 'update this message'}`;
+    line.replaceChildren(words + ' · ', timeNode(completed ? refresh.completed_ms : refresh.at_ms, doc));
+  };
+  painters.set(line, draw); draw(); return line;
+}
+
+const coverTarget = cover => ({ type: 'cover', id: cover.root_id, revision: cover.revision,
+  refresh: cover.refresh, refresh_revision: cover.refresh_revision });
+export const coverRequestLine = (doc, cover, context) => refreshLine(doc, coverTarget(cover), context);
+
 function activity(doc, target, context) {
   const request = refreshRequest(doc, target);
   if (!request) return null;
@@ -115,11 +139,12 @@ function activity(doc, target, context) {
   const host = doc.createElement('span'); host.className = isCover ? 'cover-refresh' : 'message-update'; host.dataset.coverRefresh = request.key;
   const draw = () => {
     const { refresh, pending, busy, error } = request.state();
-    const label = pending ? (isCover ? (target.first ? `Asked ${context.nameOf(refresh.recipient)} to write a cover. Open the request` : `Awaiting ${context.nameOf(refresh.recipient)}’s new cover. Open the request`)
-      : `Asked ${context.nameOf(refresh.recipient)} to update this message. Open the request`)
+    const legacy = pending && Boolean(refresh.request_message_id), open = legacy ? '. Open the request' : '';
+    const label = pending ? (isCover ? (target.first ? `Asked ${context.nameOf(refresh.recipient)} to write a cover${open}` : `Awaiting ${context.nameOf(refresh.recipient)}’s new cover${open}`)
+      : `Asked ${context.nameOf(refresh.recipient)} to update this message${open}`)
       : busy ? 'Requesting an update' : target.first ? 'Ask for a cover' : 'Ask the writer to refresh this cover';
-    const control = pending ? requestLink(doc, context.topicId, refresh.request_message_id)
-      : doc.createElement('button');
+    const control = legacy ? requestLink(doc, context.topicId, refresh.request_message_id)
+      : doc.createElement(pending ? 'span' : 'button');
     control.className = isCover ? 'cover-refresh-glyph' : 'message-update-activity';
     control.title = label; control.setAttribute('aria-label', label); control.dataset.pending = String(pending || busy);
     control.append(pending || busy ? waitingDots(doc, label) : glyph(target.first ? 'coverplus' : 'refresh', doc, 17));
@@ -129,16 +154,16 @@ function activity(doc, target, context) {
     }
     const status = doc.createElement('span'); status.className = 'cover-refresh-status'; status.setAttribute('role', 'status'); status.textContent = error;
     const focused = host.contains(doc.activeElement);
-    host.hidden = !isCover && !(pending || busy || error);
-    host.replaceChildren(...(isCover || pending || busy ? [control] : []), status);
+    const line = !isCover ? refreshLine(doc, target, context) : null;
+    host.hidden = !isCover && !(pending || busy || error || refresh?.request_id);
+    host.replaceChildren(...(isCover || pending || busy ? [control] : []), status, ...(line ? [line] : []));
     if (focused && !host.hidden && control.isConnected) control.focus({ preventScroll: true });
   };
   painters.set(host, draw); draw(); return host;
 }
 
 export function refreshControl(doc, cover, context) {
-  return activity(doc, { type: 'cover', id: cover.root_id, revision: cover.revision,
-    refresh: cover.refresh, refresh_revision: cover.refresh_revision }, context);
+  return activity(doc, coverTarget(cover), context);
 }
 // The header and all dossier menus use this same admission and request owner.
 export function firstCoverTarget(stack) {
@@ -155,6 +180,7 @@ export function firstCoverMenuItem(doc, stack) {
   const target = firstCoverTarget(stack), request = target && refreshRequest(doc, target);
   if (!request) return null;
   const { pending, refresh } = request.state();
+  if (pending && refresh.request_id) return null;
   return pending ? { label: 'Open the cover request', glyph: 'link',
     act: () => requestLink(doc, stack.head.topic_id, refresh.request_message_id, 'Open the cover request').click() }
     : { label: 'Ask for a cover', glyph: 'coverplus', act: () => request.send() };
@@ -165,7 +191,7 @@ export function updateMenuItem(doc, item, context) {
   return request ? { label: 'Ask for update', glyph: 'refresh', act: () => request.send() } : null;
 }
 export function messageUpdateActivity(doc, item, context) {
-  if (!mayAskForUpdate(item, context.viewer)) return null;
+  if (!mayAskForUpdate(item, context.viewer) && !item.acts?.message_refresh?.request_id) return null;
   return activity(doc, messageTarget(item), context);
 }
 
