@@ -1,3 +1,4 @@
+import { reviewDifferences } from './review-differences.mjs';
 import { CardReplies } from './card-replies.mjs';
 import { panes } from './panes.mjs';
 import { stackMenuItems } from './stack-menu-items.mjs';
@@ -166,9 +167,21 @@ const validate = answer => {
 const reviewStatus = message => { $('review-status').textContent = message; $('review-status').hidden = !message; };
 const presentationFor = editor => [registry?.current, registry?.inline, ...registry?.cards?.values() ?? []].find(p => p && Object.values(p.editors).includes(editor));
 const writingSurface = p => p?.surface === 'card' ? cardReplies.surface(p) : p?.surface === 'inline' ? inline : reader;
-const needsReview = editor => {
-  const known = candidates.get(editor.key);
-  return Boolean(editor.uploadState || editor.recoveryDiscovery || editor.authorityRecovery || editor.conflict || editor.cleanupError || known?.items.length || known?.nextCursor);
+const differences = editor => reviewDifferences(editor, candidates.get(editor.key)?.items ?? []);
+const needsReview = editor => differences(editor).length > 0;
+const reviewState = editor => {
+  const first = differences(editor)[0];
+  if (first) return { hidden: false, text: 'Review versions', title: first.label };
+  // Recovery still owns its write gates. Unknown contents are not a version
+  // difference, and an empty upload-state object is not a recovery action.
+  const unsettled = candidates.get(editor.key)?.items.some(row => row.snapshot?.authorityRecovery ||
+    row.snapshot?.attempts?.some(attempt => !attempt.detached && !attempt.receipt) ||
+    row.snapshot?.submissions?.some(item => !item.detached && ['preparing', 'prepared'].includes(item.status)));
+  const recovery = editor.authorityRecovery || editor.conflict || editor.uploadOpaque || editor.imageStorageError || editor.recoveryDiscovery || unsettled;
+  return { hidden: !recovery, text: 'Check recovery', title: recovery ? 'Check the saved writing or connection before sending' : '' };
+};
+const paintVersionButton = (button, editor) => {
+  const state = reviewState(editor); button.hidden = state.hidden; button.textContent = state.text; button.title = state.title;
 };
 function closeReview() {
   ++reviewSerial; comparison = null; review.close();
@@ -207,12 +220,14 @@ function invalidateComparison(editor) {
 }
 async function showVersions(editor, opener = $('review-versions'), presentation = presentationFor(editor)) {
   if (!registry.isCurrent(presentation, editor)) throw Error('Open this writing before reviewing its versions.');
-  const serial = beginReview('Review versions', opener), session = registry.sessionFor(editor);
+  const first = differences(editor)[0];
+  const serial = beginReview(first ? 'Review versions' : 'Saved writing and recovery', opener), session = registry.sessionFor(editor);
   const current = () => serial === reviewSerial && review.open && registry.isCurrent(presentation);
   const action = run => () => { if (current() && registry.isCurrent(presentation, editor)) return run(); };
   const make = (label, run) => button(label, action(run));
   const localVersion = editor.localVersion, recovery = structuredClone(editor.authorityRecovery);
   const destination = editor.context.kind === 'note' ? 'Private note · only you' : `Reply to ${editor.context.topicId}`;
+  if (first) $('review-content').append(version(first.label, first.draft?.body ?? null, first.draft ? imageSummary(editor, first.draft.attachments ?? []) : ''));
   $('review-content').append(version('Your current writing', editor.draft.body, destination));
   if (editor.context.kind === 'reply') {
     $('review-content').append(node('p', imageSummary(editor), 'muted'));
@@ -244,7 +259,7 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
     } catch (error) { if (current()) reviewStatus(error.message); }
   }
   if (!current()) return;
-  if (recovery || editor.conflict) $('review-content').append(version('Saved private version', remote === undefined ? 'Saved version unavailable. Retry to read it; your writing is kept.' : remote?.body ?? null,
+  if ((recovery || editor.conflict) && !first?.remote) $('review-content').append(version('Saved private version', remote === undefined ? 'Saved version unavailable. Retry to read it; your writing is kept.' : remote?.body ?? null,
     remote ? `Revision ${remote.revision} · ${destination}` : destination));
   if (recovery) {
     reviewStatus(recovery.message);
@@ -290,7 +305,9 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
             section.append(node('p', 'Earlier reply was not prepared. Keeping current writing leaves this earlier reply saved here.', 'muted'), node('pre', item.snapshot.body));
           }
           section.append(make('Keep current writing', async () => {
-            await registry.keepCurrentWriting(editor, candidate);
+            const kept = await registry.keepCurrentWriting(editor, candidate);
+            const known = candidates.get(editor.key);
+            if (known) known.items = known.items.map(row => row.id === kept.id ? kept : row);
             if (current()) { reviewStatus('Current writing kept. The earlier reply remains saved and will not be sent.'); changed(editor); }
           }));
         }
@@ -511,7 +528,7 @@ function changed(editor) {
   if (registry.sessions.get(editor.key)?.editor !== editor) return;
   if (reader?.sessions && Object.values(reader.sessions).includes(editor)) {
     reader.paintStatus();
-    $('review-versions').hidden = !needsReview(reader.editor);
+    paintVersionButton($('review-versions'), reader.editor);
   }
   if (inline?.editor === editor) inline.paintStatus();
   cardReplies?.paint(editor);
@@ -702,9 +719,22 @@ function listCandidates(editor, page, continued) {
   candidates.set(editor.key, known ? { items: [...known.items, ...page.items], nextCursor: page.nextCursor } : page);
   changed(editor);
 }
-function discover(presentation, editor) {
-  return registry.recoveryCandidates(editor, { limit: 10 }, (page, continued) => listCandidates(editor, page, continued))
-    .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error); });
+async function discover(presentation, editor) {
+  const discovery = editor.versionDiscovery = (editor.versionDiscovery ?? 0) + 1;
+  const current = () => editor.versionDiscovery === discovery && registry.isCurrent(presentation, editor);
+  try {
+    let cursor;
+    do {
+      const page = await registry.recoveryCandidates(editor, { limit: 10, ...(cursor ? { cursor } : {}) }, (page, continued) => listCandidates(editor, page, continued));
+      cursor = page.nextCursor;
+    } while (cursor && current());
+    const conflict = editor.conflict;
+    if (current() && conflict && conflict.remote === undefined && !editor.authorityRecovery) {
+      const state = validate(await api.view('editor_state', { source_ref: editor.sourceRef, topic_id: editor.context.topicId }));
+      registry.validateState(state, editor.sourceRef, editor.context.topicId);
+      if (current() && editor.conflict === conflict) { conflict.remote = editor.context.kind === 'note' ? state.note : state.draft; changed(editor); }
+    }
+  } catch (error) { if (current()) writingSurface(presentation).notice(error); }
 }
 // Rows a foreground read deferred were checked again: what the page lists for
 // exactly those rows is replaced, a copy that moved is added, and every other
@@ -3241,7 +3271,7 @@ async function initialize() {
     reach: recipientReach, addressable: addressPeople,
     uploads: editor => registry.sessionFor(editor).uploads,
     edit: (editor, p) => run(() => { if (registry.isCurrent(p, editor)) return registry.edited(editor); }),
-    status: editor => registry.status(editor), sign: editor => registry.saveSign(editor).state, savedAt: editor => registry.savedTime(editor), needsReview,
+    status: editor => registry.status(editor), sign: editor => registry.saveSign(editor).state, savedAt: editor => registry.savedTime(editor), needsReview, reviewState,
     send: (editor, p) => registry.send(editor, { presentation: p, stay: true }),
     review: (editor, p, opener) => run(() => showVersions(editor, opener, p)),
     renderPending: () => paintReview(),

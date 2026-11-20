@@ -15,7 +15,7 @@ must not claim that two versions differ when their contents are unknown.
 
 Keeping current writing over an exact refused copy records a choice on that
 copy under its writer lock and stamp guard. The choice never deletes writing,
-bytes or attempts and never sends anything. A new copy stamp invalidates it.
+bytes or attempts and never sends anything. A writing or image-choice change invalidates it. Proven release of retained bytes alone carries it forward, without changing writing or sends.
 Within this document it applies only to the chosen writing cycle; after reload
 it applies only when the canonical draft slot, authority and writing still match
 the chosen field. Selected image work remains independently gated. Failure to

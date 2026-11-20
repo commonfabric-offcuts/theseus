@@ -390,7 +390,9 @@ export class InlineComposer {
     this.$('add-image').textContent = this.pasteReady ? 'Paste image' : 'Add image';
     this.$('choose-image').hidden = this.$('add-image').hidden || !this.pasteReady; this.$('choose-image').disabled = state.addDisabled;
     this.$('cancel-image').hidden = !editor.imageReservation;
-    this.$('review-versions').hidden = !this.callbacks.needsReview(editor);
+    const review = this.callbacks.reviewState?.(editor);
+    this.$('review-versions').hidden = review ? review.hidden : !this.callbacks.needsReview(editor);
+    if (review) { this.$('review-versions').textContent = review.text; this.$('review-versions').title = review.title; }
     // Status updates do not touch text or caret, even when uploads finish.
     this.paintImages(); this.callbacks.renderPending(this.$('pending'), editor, this.presentation);
     this.paintKind?.();
