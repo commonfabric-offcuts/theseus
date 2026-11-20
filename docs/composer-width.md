@@ -10,20 +10,36 @@ The Reader (stacked and Wide) and the New message sheet offer their left and
 right outer edges. Moving either edge changes both sides by the same amount
 around the window's centre. Height and vertical position keep their existing
 rules. Returning to the starting position during one held drag restores the
-starting width, including movements back through the origin. The initial size is unchanged. The page clips neither side: width is
+starting width, including movements back through the origin. With no kept choice,
+the initial size is unchanged. The page clips neither side: width is
 bounded by the existing maximum and the window; the minimum leaves room for
 the existing composer controls. Width is only a presentation choice in the
 open page, never writing, a destination, a send or a private-note action.
 Tony #8665 approves the drag feel at 58523903; Warp #8667 requires separate
 stacked and Wide widths before shipping and waives another preview. Each
-Reader layout keeps its own last chosen outer width for that element's page
-lifetime. Switching layouts restores that layout's choice; an unchosen layout
-uses its existing default. Close/reopen keeps both choices. New message owns
-its separate width. Reload recreates all three choices at their defaults:
-at viewport <=760px, viewport width; above it, min(72rem, viewport - 48px)
-for stacked/New message and min(100rem, viewport - 48px) for Wide. Existing
-mode preference and Wide writing share (.45) retain their separate owners.
-There is no Core migration, durable width preference or new preference UI.
+Reader layout keeps its own last chosen outer width. Item 872 keeps these three
+choices across in-place page replacement and reload, per browser and Theseus
+instance: Reader Stacked, Reader Wide, and New message. `ReaderLayout` in
+`layout.mjs` is the screen-preference storage owner for widths as well as mode
+and Wide writing share (.45). `composerWidth` remains storage-free and routes
+explicit desktop edge/arrow choices through that owner. These preferences are
+not writing, actor-specific records or Core data, and add no preference UI.
+
+On a desktop, opening or changing Reader layout restores that surface's choice,
+clamped to the current window and existing CSS minimum/maximum. An automatic
+clamp never overwrites the remembered choice: a later larger window restores it.
+Missing or malformed choices use the existing defaults: min(72rem, viewport -
+48px) for Stacked/New message and min(100rem, viewport - 48px) for Wide. Refused
+browser storage leaves the current page's in-memory choices working; it cannot
+promise persistence after reconstruction.
+
+Warp12104 names the phone rule for 872: at viewport <=760px, Reader and New
+message open at the window's full width **each time**. No saved width applies
+there. During use, 650's edge drag and arrow keys still narrow the surface down
+to 280px (or the window width if smaller). That narrowing lasts until close;
+ordinary redraws preserve it. Phone gestures save no width, so they cannot
+replace a remembered desktop choice. Returning to a desktop and opening again
+restores the desktop choice.
 The topic's composer resting in the feed and Notebook pages keep their existing
 layout; these are not new floating composer surfaces.
 The shared Reader reply bar inside a message card (721) also keeps its card's
@@ -100,10 +116,10 @@ not new native acceptance. The disabled340/240/412 plan remains unrun.
 The historical composition under Warp10353 was source-only: no new test, syntax/module/
 product execution or runtime proof. The complete historical limits remain in
 the650-fix9636 REPORT/SPEC; the returned650-compose10353 packet records conflicts
-and omissions. That historical landing order is superseded by Warp11225; see the current integration below.
+and omissions. That historical landing order is superseded by Warp11225; see the historical integration below.
 
 
-## Current live integration — November 19
+## Historical 650 integration — November 19
 
 Warp11225 puts 650 onto current live, with a focused comparison and frozen
 source review before its single-item release. The approved first-parent delta
@@ -131,6 +147,12 @@ rejection of invalid transitions. These are focused checks, not a full suite
 or browser evidence. Historical native packets and limits above remain bound
 to their original sources; there are zero new native/browser starts.
 
-The existing initial widths remain the defaults. Reader stacked and Wide keep
-separate choices for the page lifetime, New message keeps its own, close/reopen
-retains them and reload restores the defaults. No Core or stored-data change.
+That integration kept choices for the element's lifetime. Item 872 supersedes
+that lifetime rule with the browser/instance preferences described above.
+`ui_width_preferences_872.test.mjs` reconstructs actual Reader and New message
+adapters with fresh DOM and an in-memory Storage adapter, exercises their real
+width handlers and layout owner, and checks phone reopen, clamping, isolation,
+refused storage and inactive embedded/Notebook surfaces. It models rectangles
+and invokes handlers; it is not native browser, CSS layout, shell navigation or
+gesture evidence. The historical native evidence remains bound to its original
+sources. No Core migration is needed.

@@ -5,15 +5,21 @@ export function edgeWidth(width, delta, side, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, width + 2 * delta * (side === 'left' ? -1 : 1)));
 }
 
-export function composerWidth(dialog) {
+export function composerWidth(dialog, preferences = () => null) {
   if (!dialog) return;
   const doc = dialog.ownerDocument, win = doc.defaultView;
   const active = () => dialog.open && dialog.dataset.cardReply === undefined && !dialog.classList.contains('notebook-mode');
-  // Choices belong to this element's lifetime. CSS selects the Reader's
-  // current layout; New message has its own element and single choice.
+  // CSS selects the Reader's current layout. The screen-preference owner
+  // keeps the three desktop choices; this adapter never accesses storage.
+  const surface = () => dialog.id === 'reader' ? `reader-${dialog.dataset.layout === 'wide' ? 'wide' : 'stacked'}` : 'new-message';
   const widthProperty = () => dialog.id === 'reader'
     ? `--composer-width-${dialog.dataset.layout === 'wide' ? 'wide' : 'stacked'}` : '--composer-width';
-  const setWidth = width => dialog.style.setProperty(widthProperty(), `${width}px`);
+  const paintWidth = width => dialog.style.setProperty(widthProperty(), `${width}px`);
+  const setWidth = width => {
+    paintWidth(width);
+    // Phone narrowing lasts until close and must not replace a desktop choice.
+    if (win.innerWidth > 760) preferences()?.setWidth(surface(), width);
+  };
   const bounds = () => {
     const phone = win.innerWidth <= 760;
     const widest = parseFloat(win.getComputedStyle(dialog).getPropertyValue('--widest')) * parseFloat(win.getComputedStyle(doc.documentElement).fontSize);
@@ -58,11 +64,22 @@ export function composerWidth(dialog) {
     });
     dialog.append(edge); return edge;
   });
-  // The same Reader moves into its source card. Floating choices stay with
-  // the element while the card owns its width and offers no resize controls.
-  const syncPlacement = () => {
+  // The card owns an embedded reply's width. Opening a floating surface
+  // restores its desktop choice, clamped for this window without saving the
+  // clamp. A phone opens full width; ordinary redraws keep its active drag.
+  const syncPlacement = ({ opening = false } = {}) => {
     const embedded = dialog.dataset.cardReply !== undefined;
     for (const edge of edges) { edge.hidden = embedded; edge.tabIndex = embedded ? -1 : 0; }
+    if (!active()) return;
+    if (win.innerWidth <= 760) { if (opening) paintWidth(win.innerWidth); return; }
+    const owner = preferences();
+    if (!owner) return;
+    const width = owner.width(surface());
+    if (width === null) dialog.style.removeProperty(widthProperty());
+    else {
+      const { minimum, maximum } = bounds();
+      paintWidth(Math.max(minimum, Math.min(maximum, width)));
+    }
   };
   syncPlacement();
   dialog.dataset.widthEdges = '';

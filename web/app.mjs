@@ -3114,6 +3114,7 @@ async function initialize() {
   const topicImages = async editor => checkedView(await registry.cleanup.list(options => api.view('topic_images', { topic_id: editor.context.topicId }, options)), bootstrap.instance_id);
   const imageBytes = async item => (await api.media(bootstrap.instance_id, item.attachment, item.source_ref)).blob;
   inline = new InlineComposer({
+    instanceId: bootstrap.instance_id,
     images: topicImages, imageBytes,
     actorLabel,
     admits: (p, editor) => registry?.isCurrent(p, editor),
