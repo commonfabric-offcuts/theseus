@@ -83,7 +83,10 @@ import { plainCardText } from '../web/card-menu.mjs';
 function documentPort(){
  const doc={activeElement:null,addEventListener(){},removeEventListener(){}};
  class Node extends Element{
-  constructor(tag){super(tag,doc);this.style={setProperty(){}};this.nodeType=1;}
+  constructor(tag){super(tag,doc);this.style={setProperty(){}};this.nodeType=1;this.selectionStart=0;this.selectionEnd=0;}
+  // Store the requested range for the real beforeinput/input handlers. This
+  // memory port does not claim browser selection, focus or keyboard behavior.
+  setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}
   get childNodes(){return this.children;}
   get textContent(){return this.children.map(c=>c.textContent).join('');}
   set textContent(text){this.children=[];if(text)this.append(String(text));}
@@ -240,50 +243,43 @@ test('867 Text merge keeps an unidentified first card uncolored with aliases, an
  const merged=projection.edit(text,{start,end,inputType:'deleteContentBackward'}),meta=cardDetails(parseDeck(merged).cards[0].words);
  assert.equal(meta.id,null);assert.equal(meta.color,null);assert.deepEqual(meta.aliases,[B]);assert.equal(projection.edit(visible,{inputType:'historyUndo'}),raw);
 });
-test('867 long ordinary Text typing does not evict metadata needed by native deletion Undo',()=>{
+test('867 Text keeps every applied input for explicit deletion Undo',()=>{
  const raw=card()+card('Second','second',details(B)),projection=new CardTextProjection(),before=projection.show(raw),cut=before.indexOf('## Second'),after=before.slice(cut);
  projection.edit(after,{start:0,end:cut,inputType:'deleteContentBackward'});let text=after;
  for(let n=0;n<150;n++){text+='x';projection.edit(text,{inputType:'insertText'});}
- projection.edit(after,{inputType:'historyUndo'});assert.equal(projection.edit(before,{inputType:'historyUndo'}),raw);
+ for(let n=0;n<150;n++)projection.undo();
+ assert.equal(projection.body,projection.history[0].after.body);assert.equal(projection.undo().body,raw);
 });
-test('867 Text Undo after a confirmed deletion keeps survivor color without reviving deleted ids',()=>{
- const raw=card()+card('Second','second',details(B,'green')),p=new CardTextProjection(),before=p.show(raw),cut=before.indexOf('## Second'),after=before.slice(0,cut);
- p.edit(after,{start:cut,end:before.length,inputType:'deleteContentBackward'});
+// Review decisions 12592/12596 retire saved-base/native-history reconciliation.
+// History restores raw input snapshots; show/confirm do not rewrite those records.
+test('867 Text Undo restores deleted ids and raw colors even after a newer body is shown',()=>{
+ const raw=card()+card('Second','second',details(B,'green')),p=new CardTextProjection(),before=p.show(raw),cut=before.indexOf('## Second');
+ const after=p.edit(before.slice(0,cut),{start:cut,end:before.length,inputType:'deleteContentBackward'});
  p.show(card('First','words',details(A,'rose')));
- for(const [text,inputType] of [[before,'historyUndo'],[after,'historyRedo'],[before,'historyUndo']]){
-  const result=p.edit(text,{inputType}),cards=parseDeck(result).cards;
-  assert.equal(stripDetails(result),text);assert.equal(cardDetails(cards[0].words).color,'rose');
-  if(cards.length===2)assert.deepEqual(cardDetails(cards[1].words).ids,[]);
- }
+ assert.equal(p.undo().body,raw);assert.equal(p.undo(1).body,after);assert.equal(p.undo().body,raw);
 });
-test('867 a lazy identity allocated after Text deletion and rename survives Undo on the original card',()=>{
+test('867 Text Undo restores pre-allocation snapshots without assigning a later id to older words',()=>{
  const raw=card('First','words',null)+card('Second','second',details(B)),p=new CardTextProjection(),before=p.show(raw),cut=before.indexOf('## Second'),after=before.slice(0,cut);
  p.edit(after,{start:cut,end:before.length,inputType:'deleteContentBackward'});
- const renamed=after.replace('First','Renamed');p.edit(renamed,{inputType:'insertText'});
+ p.edit(after.replace('First','Renamed'),{inputType:'insertText'});
  p.show(card('Renamed','words',details(A,'rose')));
- p.edit(after,{inputType:'historyUndo'});
- const restored=parseDeck(p.edit(before,{inputType:'historyUndo'})).cards;
- assert.equal(cardDetails(restored[0].words).id,A);assert.equal(cardDetails(restored[0].words).color,'rose');assert.equal(cardDetails(restored[1].words).id,null);
+ assert.equal(p.undo().body,after);assert.equal(p.undo().body,raw);
 });
-test('867 a confirmed Text merge keeps its alias on the saved survivor when Text is split again',()=>{
+test('867 Text Undo splits a merge into its exact original metadata snapshots',()=>{
  const raw=card('First','first',null)+card('Second','second',details(B,'rose')),p=new CardTextProjection(),before=p.show(raw),start=before.indexOf('## Second'),end=start+'## Second\n'.length;
  const merged=p.edit(before.slice(0,start)+before.slice(end),{start,end,inputType:'deleteContentBackward'});
  p.show(merged.replace(hidden(details(null,null,[B])),hidden(details(A,'blue',[B]))));
- const restored=parseDeck(p.edit(before,{inputType:'historyUndo'})).cards;
- assert.deepEqual(cardDetails(restored[0].words).ids,[A,B]);assert.equal(cardDetails(restored[0].words).color,'blue');
- assert.deepEqual(cardDetails(restored[1].words).ids,[]);assert.equal(cardDetails(restored[1].words).color,null);
+ assert.equal(p.undo().body,raw);assert.equal(p.undo(1).body,merged);
 });
-test('867 Text Undo assigns a later lazy identity to the surviving duplicate, not the restored twin',()=>{
- const one=card('Same','words',null),p=new CardTextProjection(),before=p.show(one+one);
+test('867 Text Undo restores twins from raw snapshots without borrowing a later lazy identity',()=>{
+ const one=card('Same','words',null),p=new CardTextProjection();p.show(one+one);
  p.edit(one,{start:0,end:one.length,inputType:'deleteContentBackward'});p.show(card('Same','words',details(A,'rose')));
- const restored=parseDeck(p.edit(before,{inputType:'historyUndo',start:0,end:0})).cards;
- assert.deepEqual(cardDetails(restored[0].words).ids,[]);assert.deepEqual(cardDetails(restored[1].words).ids,[A]);
+ assert.equal(p.undo().body,one+one);
 });
-test('867 Text Undo after a confirmed sole-card replacement aligns the sole saved card',()=>{
- const p=new CardTextProjection(),before=p.show(card('Old','words',null)),after=card('New','new words',null);
- p.edit(after,{start:0,end:before.length,inputType:'insertFromPaste'});p.show(card('New','new words',details(A)));
- const restored=p.edit(before,{inputType:'historyUndo'});assert.equal(stripDetails(restored),before);assert.deepEqual(cardDetails(parseDeck(restored).cards[0].words).ids,[A]);
- const redone=p.edit(after,{inputType:'historyRedo'});assert.deepEqual(cardDetails(parseDeck(redone).cards[0].words).ids,[A]);
+test('867 Text Undo and Redo retain exact replacement snapshots across confirmation',()=>{
+ const raw=card('Old','words',null),p=new CardTextProjection(),before=p.show(raw),after=card('New','new words',null);
+ const replacement=p.edit(after,{start:0,end:before.length,inputType:'insertFromPaste'});p.show(card('New','new words',details(A)));
+ assert.equal(p.undo().body,raw);assert.equal(p.undo(1).body,replacement);
 });
 test('867 actual Notebook Text owner saves visible edits with metadata and keeps the revision fence',async t=>{
  const {p,w,calls}=await writingPort(t,card());p.textSeen=w.capture();p.text={value:stripDetails(w.value.body)};
@@ -318,7 +314,8 @@ for (const replacement of ['## Costs', '### Budget']) test('867 review heading r
 test('867 review Option line move and cut/paste preserve content identities and directional Undo',()=>{
  const raw=card('First','first',details(A))+card('Second','second',details(B,'rose'))+card('Third','third',null);
  const p=new CardTextProjection(),before=p.show(raw),parts=parseDeck(before).cards.map(c=>c.raw),after=parts[0]+parts[2],start=parts[0].length;
- let result=p.edit(parts[1]+parts[0]+parts[2],{inputType:'insertText'});assert.deepEqual(metaOf(result).map(c=>c.id),[B,A,null]);
+ // Decision12781: this is one whole-body replacement, with explicit bounds.
+ let result=p.edit(parts[1]+parts[0]+parts[2],{inputType:'insertText',start:0,end:before.length});assert.deepEqual(metaOf(result).map(c=>c.id),[B,A,null]);
  p.edit(before,{inputType:'historyUndo'});
  p.edit(after,{inputType:'deleteByCut',start,end:start+parts[1].length});
  result=p.edit(before,{inputType:'insertFromPaste',start,end:start});assert.deepEqual(metaOf(result).map(c=>c.id),[A,B,null]);
@@ -414,7 +411,20 @@ async function text867(t,raw){
  doc.createElement=tag=>{const n=make(tag);n.before=x=>n.parent?.insertBefore(x,n);n.after=(...xs)=>{const next=n.parent?.children[n.parent.children.indexOf(n)+1];for(const x of xs)n.parent?.insertBefore(x,next);};return n;};
  const p=new NotebookPage({doc,host:doc.body,item:'page',mode:'text',bootstrap:{},viewPreference:{get:()=> 'text',set(){}},header:{title:doc.createElement('h1')}});
  Object.assign(p,{writing:f.w,deck:parseDeck(raw),base:{revision:1,body:raw},paint(){},keepNamed(){}});p.sync(true);
- const input=(start,end,insert,inputType='insertText')=>{p.text.selectionStart=start;p.text.selectionEnd=end;p.text.listeners.beforeinput({inputType});p.text.value=p.text.value.slice(0,start)+insert+p.text.value.slice(end);p.text.listeners.input({inputType});return metaOf(f.w.value.body);};
+ const input=(start,end,insert,inputType='insertText')=>{
+  p.text.setSelectionRange(start,end);
+  assert.deepEqual([p.text.selectionStart,p.text.selectionEnd],[start,end],'adapter retains the requested selection before beforeinput');
+  const event={inputType,defaultPrevented:false,preventDefault(){this.defaultPrevented=true;}};
+  p.text.listeners.beforeinput(event);
+  if(!event.defaultPrevented){
+   assert.deepEqual([p.textChange.start,p.textChange.end],[start,end],'the real beforeinput handler captures the requested replacement');
+   p.text.value=p.text.value.slice(0,start)+insert+p.text.value.slice(end);
+   const caret=start+insert.length;p.text.setSelectionRange(caret,caret);
+   assert.deepEqual([p.text.selectionStart,p.text.selectionEnd],[caret,caret],'adapter retains the post-edit caret before input');
+   p.text.listeners.input({inputType});
+  }
+  return metaOf(f.w.value.body);
+ };
  return {...f,p,input};
 }
 for(const words of ['TBD','https://example.invalid','same'])test('867 R3 deleting a whole card never makes its id an alias: '+words,async t=>{
@@ -529,15 +539,22 @@ for(const state of ['color','restored'])test('867 R4 Text keeps unconfirmed Card
  const after=p.edit(text.replace('second','changed'));
  assert.equal(stripDetails(after),text.replace('second','changed'));assert.deepEqual(metaOf(after).map(r=>[r.id,r.color]),[[A,'green'],[B,'rose']]);
 });
-test('867 R4 moving the last card above renamed cards keeps the longest ordered anchors',()=>{
+test('867 R6 whole-body replacement pairs exact signatures only within its bounds; a renamed row is id-less',()=>{
  const C='c-33333333333333333333333333333333',D='c-44444444444444444444444444444444';
- const p=new CardTextProjection();p.show(card('One','one',details(A))+card('Two','two',details(B))+card('Three','three',details(C))+card('Four','four',details(D)));
- const after=p.edit(card('Four','four',null)+card('Renamed','one',null)+card('Two','two',null)+card('Three','three',null));
- assert.deepEqual(metaOf(after).map(r=>r.id),[D,A,B,C]);
+ const p=new CardTextProjection(),before=p.show(card('One','one',details(A))+card('Two','two',details(B))+card('Three','three',details(C))+card('Four','four',details(D)));
+ const after=p.edit(card('Four','four',null)+card('Renamed','one',null)+card('Two','two',null)+card('Three','three',null),{start:0,end:before.length,inputType:'insertFromPaste'});
+ assert.deepEqual(metaOf(after).map(r=>r.id),[D,null,B,C]);
 });
-test('867 R4 an empty intermediate card cannot prove a Text merge alias',()=>{
- const C='c-33333333333333333333333333333333',p=new CardTextProjection();p.show(card('First','one',details(A))+card('Empty','',details(B))+card('Third','two',details(C)));
- const after=p.edit(card('First','one\n\ntwo',null));assert.deepEqual(metaOf(after).map(r=>r.ids),[[A]]);
+test('867 R6 deleting empty B whole and C heading keeps C as A alias, drops B, and Undo restores the original cards',()=>{
+ const C='c-33333333333333333333333333333333',p=new CardTextProjection();
+ const raw=card('First','one',details(A))+card('Empty','',details(B))+card('Third','two',details(C)),before=p.show(raw);
+ const start=before.indexOf('## Empty'),end=before.indexOf('## Third')+'## Third\n\n'.length;
+ const after=p.edit(before.slice(0,start)+before.slice(end),{start,end,inputType:'deleteContentBackward'}),rows=metaOf(after);
+ assert.deepEqual(rows.map(r=>[r.id,r.aliases,r.color,r.words]),[[A,[C],'blue','one\n\ntwo']]);
+ assert.deepEqual(detailLines(after).map(r=>[r.id,r.aliases,r.color]),[[A,[C],'blue']],'C is written as an alias, not a second primary marker');
+ assert.equal(after.includes(B),false,'the whole deleted B leaves no marker or alias');
+ assert.equal(p.undo().body,raw,'one Undo restores the full snapshot, including B and the separate C');
+ assert.deepEqual(metaOf(p.body).map(r=>[r.id,r.aliases]),[[A,[]],[B,[]],[C,[]]]);
 });
 function painted867(t,p){
  p.header.description??=p.doc.createElement('p');

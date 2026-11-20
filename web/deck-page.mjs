@@ -701,7 +701,15 @@ export class DeckPage {
     const apply=act=>this.act(act,false,target?done=>{
       let i=done.deck.cards.indexOf(target);
       if(i<0&&editingTarget&&cardText(textCard(to)))i=done.at;
-      at=i<0?-1:parseDeck(deckBody({...done.deck,cards:done.deck.cards.slice(0,i)})).cards.length;
+      at=-1;
+      if(i>=0){
+        const body=deckBody(done.deck),deck=parseDeck(body);
+        const start=body.length-deckBody({opening:'',cards:done.deck.cards.slice(i)}).length;
+        let offset=deck.opening.length;
+        // The target must still begin a card in the complete body. Parsing a
+        // prefix alone cannot tell whether an earlier fence swallowed it.
+        at=deck.cards.findIndex(card=>{const here=offset;offset+=card.raw.length;return here===start;});
+      }
     }:null);
     let made = false;
     if (editing.fresh) made = apply({ kind: 'add', after: editing.after, text: to, depth: editing.depth, near: editing.near });

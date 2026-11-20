@@ -1,0 +1,363 @@
+{
+  "decisions": [
+    12592,
+    12596,
+    12604,
+    12614,
+    12781,
+    12797,
+    12800,
+    12902
+  ],
+  "status": "Build 6 green: 59 test files, 995 passed, zero failures, cancellations, skips or todos. Review regressions and explicit oracle adaptations are retained. Under the shipping rule at 12902, the builder freezes on green for one review; new mutation campaigns and proof packets are not gates.",
+  "adopted": [
+    {
+      "review_source": "zz_r4_crlf.test.mjs",
+      "original_sha256": "ba30b935c8ca992f36ede8b5a8d7d94db590be7a21d09375991cfdad8f3fbf65",
+      "adopted": "tests/ui_card_text_r4_crlf_867.test.mjs",
+      "adaptations": [
+        "Shared fixture preserves real input listeners and makes beforeinput cancellable for Text-owned history."
+      ]
+    },
+    {
+      "review_source": "zz_r4_dup.test.mjs",
+      "original_sha256": "5086a99cf71bda0f9920a81401b1f3c6c44fa3600467c79a3f5077fad020323d",
+      "adopted": "tests/ui_card_text_r4_dup_867.test.mjs",
+      "adaptations": [
+        "Shared fixture preserves real input listeners and makes beforeinput cancellable for Text-owned history."
+      ]
+    },
+    {
+      "review_source": "zz_r4_dup2.test.mjs",
+      "original_sha256": "d7012396df57bfac0b2f079af66e0a49b5ea74ea43cfc214d30939e2926a4ce2",
+      "adopted": "tests/ui_card_text_r4_dup2_867.test.mjs",
+      "adaptations": [
+        "Shared fixture preserves real input listeners and makes beforeinput cancellable for Text-owned history."
+      ]
+    },
+    {
+      "review_source": "zz_r4_dup3.test.mjs",
+      "original_sha256": "2f728c8912613423495c63ce093ccd707b850a004965dd779128052070a3a7e2",
+      "adopted": "tests/ui_card_text_r4_dup3_867.test.mjs",
+      "adaptations": [
+        "Shared fixture preserves real input listeners and makes beforeinput cancellable for Text-owned history.",
+        "Obsolete pair-map debug logs now print the raw body; behavioral assertions retained."
+      ]
+    },
+    {
+      "review_source": "zz_r4_lispref.test.mjs",
+      "original_sha256": "129f1236867d9ecd5bda8d33737d1e565b854a25c083f68e9138dbaefe0e6cf7",
+      "adopted": "tests/ui_card_text_r4_lispref_867.test.mjs",
+      "adaptations": [
+        "Shared fixture preserves real input listeners and makes beforeinput cancellable for Text-owned history.",
+        "Obsolete pair-map debug logs now print the raw body; behavioral assertions retained."
+      ]
+    },
+    {
+      "review_source": "zz_r4_renamemove.test.mjs",
+      "original_sha256": "7c80fc38635e27ef91e4faba166bb1575e7b711114e55afedece4dcb0f86209c",
+      "adopted": "tests/ui_card_text_r4_renamemove_867.test.mjs",
+      "adaptations": [
+        "Shared fixture preserves real input listeners and makes beforeinput cancellable for Text-owned history."
+      ]
+    },
+    {
+      "review_source": "zz_r4_moves.test.mjs",
+      "original_sha256": "9d17a6e1d625139e5ec10f2960d355b3584daf296e3c27f8b60c868284af0080",
+      "adopted": "tests/ui_card_text_r4_moves_867.test.mjs",
+      "adaptations": [
+        "Shared fixture preserves real input listeners and makes beforeinput cancellable for Text-owned history.",
+        "M4/M5/M6/M10 unmatched rewritten rows now assert id-less under exact-signature decision 12592/7; the original oracle is explicitly retired."
+      ]
+    },
+    {
+      "review_source": "zz_r4_syncfuzz.test.mjs",
+      "original_sha256": "186c7cded8579da862be838f3fa958445ff3f8619b86886e611abbaf0d7df69d",
+      "adopted": "tests/ui_card_text_r4_syncfuzz_867.test.mjs",
+      "adaptations": [
+        "Shared fixture preserves real input listeners and makes beforeinput cancellable for Text-owned history."
+      ]
+    },
+    {
+      "review_source": "zz_r4_trail.test.mjs",
+      "original_sha256": "b032c60867271bde4d76e184400c9767815a8bdc2f99b6179cd6d83bd4b3bda8",
+      "adopted": "tests/ui_card_text_r4_trail_867.test.mjs",
+      "adaptations": [
+        "Shared fixture preserves real input listeners and makes beforeinput cancellable for Text-owned history."
+      ]
+    },
+    {
+      "review_source": "zz_r4_fuzz.test.mjs",
+      "original_sha256": "f6a9777adc0ea86b0205c6eaaeb2aa33d31336e8449c94b8bc41aa079e78ae8f",
+      "adopted": "tests/ui_card_text_r4_fuzz_867.test.mjs",
+      "adaptations": [
+        "Shared fixture preserves real input listeners and makes beforeinput cancellable for Text-owned history."
+      ]
+    },
+    {
+      "review_source": "zz_r4_twinfuzz.test.mjs",
+      "original_sha256": "20bbb2fc20be53110e006c97a99500f4e2d76e53e156d7916bbd49d70bcd364b",
+      "adopted": "tests/ui_card_text_r4_twinfuzz_867.test.mjs",
+      "adaptations": [
+        "Shared fixture preserves real input listeners and makes beforeinput cancellable for Text-owned history."
+      ]
+    },
+    {
+      "review_source": "zz_r4_confirm.test.mjs",
+      "original_sha256": "158f09dc1b7066615995230d1356f2cb9a90c948c4da257078f39769b92cb4a2",
+      "adopted": "tests/ui_card_text_r4_confirm_867.test.mjs",
+      "adaptations": [
+        "Shared fixture preserves real input listeners and makes beforeinput cancellable for Text-owned history.",
+        "Decision12781: E1 exact selection deleting B whole and C heading retains C as A alias. Assert primary/color/words, saved no-B body with C encoded as an alias rather than a second primary, and full snapshot restoration/persistence on owned Undo."
+      ]
+    },
+    {
+      "review_source": "zz_r5_synced.test.mjs",
+      "original_sha256": "be087089129bd160b49fd1a3a0fe62015bf6e6b3cd78783b875022b1df2c6394",
+      "adopted": "tests/ui_card_text_r5_synced_867.test.mjs",
+      "adaptations": [
+        "Shared fixture preserves real input listeners and makes beforeinput cancellable for Text-owned history."
+      ]
+    },
+    {
+      "review_source": "zz_r5_uipath.test.mjs",
+      "original_sha256": "81107160b1dcc82f4974f0ec280cb55f635bf39600fc1117b08f1282d0578417",
+      "adopted": "tests/ui_card_text_r5_uipath_867.test.mjs",
+      "adaptations": [
+        "Shared fixture preserves real input listeners and makes beforeinput cancellable for Text-owned history."
+      ]
+    },
+    {
+      "review_source": "zz_r5_mutkill.test.mjs",
+      "original_sha256": "1c9ff7f6d633032ec4a60006d136857052bf819a670ed6c35f967597bef91305",
+      "adopted": "tests/ui_card_text_r5_mutkill_867.test.mjs",
+      "adaptations": [
+        "Shared fixture dispatches cancellable beforeinput for Text-owned Undo; assertions retained.",
+        "K3/M4e beta! row is unmatched inside a complete replacement and now explicitly asserts id-less under12592/7; original alignment oracle retained in the archived source."
+      ]
+    },
+    {
+      "review_source": "zz_m14_pins.test.mjs",
+      "original_sha256": "40bc9f608a3d794fa69e5c3fb2c2b0e64c78ecaa34acf3bdfd396ab2668140cd",
+      "adopted": "tests/ui_card_text_m14_pins_867.test.mjs",
+      "adaptations": [
+        "Shared fixture dispatches cancellable beforeinput for Text-owned Undo; assertions retained except the explicit12781 change below.",
+        "Decision12781: for B2/P recolor/Undo, replace saved-base text equality with exact pre-keystroke raw/body and displayed-text snapshot equality; keep local B green and saved B blue. No other assertion changed."
+      ]
+    },
+    {
+      "review_source": "zz_m14_pins2.test.mjs",
+      "original_sha256": "6f94a697a01d60cee98d7ed905bf63ecd6eb87394a3b205f1767cc4bd33fae97",
+      "adopted": "tests/ui_card_text_m14_pins2_867.test.mjs",
+      "adaptations": [
+        "Shared fixture dispatches cancellable beforeinput for Text-owned Undo; assertions retained except the explicit12781 change below.",
+        "Decision12781: for B2/P recolor/Undo, replace saved-base text equality with exact pre-keystroke raw/body and displayed-text snapshot equality; keep local B green and saved B blue. No other assertion changed."
+      ]
+    },
+    {
+      "review_source": "zz_m14_pins3.test.mjs",
+      "original_sha256": "b3459c6122368d954e4e85fe137da24b0c85f326f84c869710884032a0cbc42d",
+      "adopted": "tests/ui_card_text_m14_pins3_867.test.mjs",
+      "adaptations": [
+        "Shared fixture dispatches cancellable beforeinput for Text-owned Undo; assertions retained."
+      ]
+    },
+    {
+      "review_source": "zz_m14_mid.test.mjs",
+      "original_sha256": "d16d38f9bb1cccc96afe0788f81de44e66363f8d4f37c602c979fe76e52c32aa",
+      "adopted": "tests/ui_card_text_m14_mid_867.test.mjs",
+      "adaptations": [
+        "Shared fixture dispatches cancellable beforeinput for Text-owned Undo; assertions retained."
+      ]
+    },
+    {
+      "review_source": "zz_r5_attack.test.mjs",
+      "original_sha256": "0c5c9cc4891ae4516c12c2f8ff101d75a49081e9b7bcc044dd70722101383117",
+      "adopted": "tests/ui_card_text_r5_attack_867.test.mjs",
+      "adaptations": [
+        "Wire actual writer notifications to sync; includes metadata-only Cards act notifications missing in the original memory fixture.",
+        "Beforeinput adapters use view-owned history per12592/1.",
+        "F1 checks a present normalized hard-break substring instead of accidentally accepting index -1.",
+        "I1/I2 manual heading reinsertion retains the current merged alias on its owner; reconstructing pre-merge metadata without Undo is retired with saved-base alignment.",
+        "I4 title reflects exact snapshot Undo; nonduplication assertion retained."
+      ]
+    },
+    {
+      "review_source": "zz_r4_probe.test.mjs",
+      "original_sha256": "8df1fd4ee686fbd17249dccd1fd837f45d8b77677f87ceb6b71d34ba59b5833d",
+      "adopted": "tests/ui_card_review_r4_probe_867.test.mjs",
+      "adaptations": [
+        "Retain the complete unique reviewer appendix; shared real page/writer/painted menu helpers replace the duplicated 707-line baseline.",
+        "Text input helper dispatches cancellable beforeinput for view-owned Undo. All appendix assertions retained."
+      ],
+      "limits": "Cases labelled note or fixture that only log outcomes remain diagnostic observations; their passing status is not proof of the logged behavior."
+    },
+    {
+      "review_source": "zz_r4_boxkept.test.mjs",
+      "original_sha256": "6f354476ed8934ffb21513348c5046225bc73707b6d11abf0377d78601c92b44",
+      "adopted": "tests/ui_card_review_r4_boxkept_867.test.mjs",
+      "adaptations": [
+        "Retain the complete unique reviewer appendix; shared real page/writer/painted menu helpers replace the duplicated 707-line baseline.",
+        "Text input helper dispatches cancellable beforeinput for view-owned Undo. All appendix assertions retained."
+      ],
+      "limits": "Cases labelled note or fixture that only log outcomes remain diagnostic observations; their passing status is not proof of the logged behavior."
+    },
+    {
+      "review_source": "zz_r4_attack.test.mjs",
+      "original_sha256": "d998d515ec474232051035cc6c0c18479cbda2ace0bbadb7dfeba9599527d025",
+      "adopted": "tests/ui_card_review_r4_attack_867.test.mjs",
+      "adaptations": [
+        "Retain the complete unique reviewer appendix; shared real page/writer/painted menu helpers replace the duplicated 707-line baseline.",
+        "Text input helper dispatches cancellable beforeinput for view-owned Undo. All appendix assertions retained."
+      ],
+      "limits": "Cases labelled note or fixture that only log outcomes remain diagnostic observations; their passing status is not proof of the logged behavior."
+    },
+    {
+      "review_source": "zz_r5_menus.test.mjs",
+      "original_sha256": "6424cad4bab7fe58bf6e3619aa770c70737c1fedb4b8c78463cf5c54cd06e78a",
+      "adopted": "tests/ui_card_review_r5_menus_867.test.mjs",
+      "adaptations": [
+        "Retain the complete unique reviewer appendix; shared real page/writer/painted menu helpers replace the duplicated 707-line baseline.",
+        "Text input helper dispatches cancellable beforeinput for view-owned Undo. All appendix assertions retained."
+      ],
+      "limits": "Cases labelled note or fixture that only log outcomes remain diagnostic observations; their passing status is not proof of the logged behavior."
+    },
+    {
+      "review_source": "zz_r4_pastemarker.test.mjs",
+      "original_sha256": "30c660797dd86730e6bb4c2a5378843c92b4f69b9d57fe947059bbf929afb1a4",
+      "adopted": "tests/ui_card_text_r4_pastemarker_867.test.mjs",
+      "adaptations": [
+        "Shared real input fixture with cancellable beforeinput.",
+        "P1 next-sync rewrite expectation is replaced by immediate-hide, immediate-projection-equality and zero-next-sync-writes assertions under12604; P3-P7 retained."
+      ],
+      "limits": "P2 is an original diagnostic observation of two marker lines, not a behavioral acceptance assertion."
+    },
+    {
+      "review_source": "zz_r5_confirm_B_saved.test.mjs",
+      "original_sha256": "8a3a02117b0ca1b43a423b622a1a58c08143cff1dc9fc47982c7e3370923ad46",
+      "adopted": "tests/ui_card_text_r5_confirm_saved_867.test.mjs",
+      "adaptations": [
+        "Retain B including final flush; shared real fixture replaces copied helpers.",
+        "Original skipped A is actively asserted by the first test in ui_card_text_body_867.test.mjs; no skipped duplicate retained.",
+        "Add an assertion on the confirmed saved base for the outcome the original logged."
+      ]
+    },
+    {
+      "review_source": "zz_r5_crlfpeek.test.mjs",
+      "original_sha256": "a0e9ed73d343cf7a1a319e5edfda3a6cbd1c347c6deab15c7247533d4beae64a",
+      "adopted": "tests/ui_card_text_r5_crlfpeek_867.test.mjs",
+      "adaptations": [
+        "Shared cancellable input fixture; turn the original raw-equality log into exact raw-body and no-dirty assertions."
+      ]
+    },
+    {
+      "review_source": "zz_m14_backspace.test.mjs",
+      "original_sha256": "3dc3928d140e97f86b28669811e6954e2d7be6bef31b77e0541825b32892546d",
+      "adopted": "tests/ui_card_text_m14_backspace_867.test.mjs",
+      "adaptations": [
+        "Shared imports; local input adapter supplies cancellable beforeinput and post-input selection. All assertions retained."
+      ]
+    }
+  ],
+  "equivalent_sources": [
+    {
+      "review_source": "zz_r5_twinfuzz_peek.test.mjs",
+      "original_sha256": "aa5ff9f803304367044ea8bde5fd38057c9715eeb1c17d394f0a78f119b203c4",
+      "covered_by": "tests/ui_card_text_r4_twinfuzz_867.test.mjs",
+      "basis": "Byte diff changes only which failures are console-logged; loop, input actions and assertions are identical."
+    },
+    {
+      "review_source": "zz_r4_card_menu_867_on_r3.test.mjs",
+      "original_sha256": "68549aa73c552d0ac79aeb664499c1688f84a3c7ddd7e6279bf19a7f905ba26b",
+      "covered_by": "tests/ui_card_menu_867.test.mjs",
+      "basis": "Exact prefix of 06b44c7d test source; current test file retains these cases with explicit raw-snapshot history replacements under12592/1. No unrelated old tests are removed."
+    },
+    {
+      "review_source": "zz_r5_tests_on_r4.test.mjs",
+      "original_sha256": "6e019cc319930caf03d7dcb3ed1eb10ea04d3d2f2623a967eaaa2aea2a28bae3",
+      "covered_by": "tests/ui_card_menu_867.test.mjs",
+      "basis": "Exact prefix of 06b44c7d test source; current test file retains these cases with explicit raw-snapshot history replacements under12592/1. No unrelated old tests are removed."
+    },
+    {
+      "review_source": "zz_r5_confirm_defect.test.mjs",
+      "original_sha256": "ae97c1c558de194a366c014c6197db8bf705d1d07a9eabc3705cc695227eabef",
+      "covered_by": "tests/ui_card_text_body_867.test.mjs",
+      "basis": "Both original reproduction tests and hold/save helpers retained byte-for-byte as the first two cases."
+    }
+  ],
+  "replacement_mutation_pins": [
+    {
+      "original_faults": [
+        "M4e-gap-unbounded",
+        "M4f-words-before-title"
+      ],
+      "decision": 12614,
+      "old_applicability": "Removed gap matcher; behavior pinned instead.",
+      "tests": "tests/ui_card_text_bounded_pairing_867.test.mjs",
+      "replacement_fault": "Widen candidate signatures and transfers to the whole body.",
+      "state": "Both behavior cases passed in the final 995-case check. Replacement mutation was not executed; 12902 retires that separate campaign as a gate."
+    }
+  ],
+  "authorized_oracle_changes_12781": [
+    {
+      "prior_grant": 12772,
+      "prior_occurrences": [
+        532,
+        538
+      ],
+      "files": [
+        "tests/ui_card_text_m14_pins2_867.test.mjs",
+        "tests/ui_card_text_m14_pins_867.test.mjs"
+      ],
+      "retired": "Undo must equal saved-base text.",
+      "replacement": "Exact pre-keystroke raw/text snapshot, local B green and saved B blue.",
+      "state": "Passed in the final 995-case check on 2026-11-20."
+    },
+    {
+      "prior_grant": 12772,
+      "prior_occurrences": [
+        140,
+        193
+      ],
+      "files": [
+        "tests/ui_card_menu_867.test.mjs"
+      ],
+      "retired": "Whole-body replacement inferred without bounds and longest-anchor identity for a renamed row.",
+      "replacement": "Explicit whole-body bounds; exact signatures only;193 expects D,null,B,C;140 cut/paste and directional Undo assertions retained unchanged.",
+      "state": "Passed in the final 995-case check on 2026-11-20."
+    },
+    {
+      "prior_grant": 12772,
+      "prior_occurrences": [
+        194,
+        551
+      ],
+      "files": [
+        "tests/ui_card_menu_867.test.mjs",
+        "tests/ui_card_text_r4_confirm_867.test.mjs"
+      ],
+      "retired": "Deleting B whole and C heading may not retain C as an alias.",
+      "replacement": "Exact selection preserves A primary/color and C words/alias in the merged marker, deletes B through save; Undo restores original raw cards and their separate identities.",
+      "state": "Passed in the final 995-case check on 2026-11-20."
+    }
+  ],
+  "oracle_correction_12909": {
+    "file": "tests/ui_card_review_r4_attack_867.test.mjs",
+    "prior_occurrence": 240,
+    "retired": "An unchanged editor for a remotely deleted Budget must remain open even after the remote revision acknowledges the local Top edit.",
+    "replacement": "Both remote variants must merge without conflict. An unacknowledged Top edit retains the Budget editor; an acknowledged Top edit makes hasLocal false and existing sync closes that untouched deleted editor. The Below menu deletes Below in both states, without resurrecting Budget in the acknowledged state.",
+    "state": "Passed in the final 995-case check."
+  },
+  "validation": {
+    "date": "2026-11-20",
+    "runner": "node --test --test-concurrency=1 --test-reporter=tap (59 explicit files)",
+    "files": 59,
+    "tests": 995,
+    "pass": 995,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "limits": "In-memory DOM and writer checks. No native keyboard, touch, clipboard, layout, browser, Core/server or full database suite claim."
+  }
+}

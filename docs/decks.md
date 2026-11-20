@@ -122,47 +122,180 @@ Reader, changed-page comparison, excerpts and conflict panel. Code examples
 and invalid markers remain words. On an open code fence, new metadata goes
 before the fence so allocation is hidden and repeatable.
 
-Card editing and Text show no metadata line, restoring it through the same
-Notebook writer and revision fence. Text recomputes identity from one fixed
-base: the last confirmed saved body, initially the body Text opened on. A
-keystroke never teaches a visit catalog. A confirmed save replaces the base;
-its hidden identities carry the old-to-new correspondence, with content matching
-only for rows without identities. Unsaved transient headings do not replace it.
-Edit-range-preferred pairs are fixed; exact unchanged title-and-words pairs form
-the longest ordered set of anchors between them. This distinguishes exact
-twins even when a save confirms between keystrokes. Within each
-gap, pair by title, then by non-empty words, then pair a sole remaining base
-card with a sole remaining current card as a rename or edit. Finally an
-unchanged title-and-words pair may match anywhere to preserve a move. Empty
-words never establish a match.
+### Text edits the body (867, Review 5 replacement)
 
-A Text merge adds an alias only when removing a heading leaves the survivor's
-own base words followed directly by the whole words of the unpaired card.
-Deleting a whole card, even one with matching words or a URL, adds no alias.
-Confirmed aliases ride with the survivor in its hidden line on later edits.
-An unconfirmed merge alias returns to its separate base card when Text Undo
-restores that card; it cannot remain on both cards.
-Both writers place new metadata at the end of the words (before an unfinished
-fence when necessary); Text preserves an existing line's placement. Untouched
-CRLF and visible spacing are kept. Undo/Redo re-align against that same saved
-base; it does not resurrect identities deleted in an already confirmed save.
-Cards retain their own metadata from the current value while their words change,
-including unsaved Cards color and Undo changes; the confirmed base governs pairing.
-An unconfirmed restored card follows its own current row through the edit.
-Equal words cannot
-transfer current metadata between different confirmed cards. Hidden lines go
-after exact visible words, including trailing spaces. A metadata-only sync
-leaves the textarea value and native undo untouched. Unchanged visible rows and
-opening text retain their original raw bytes, including CRLF, so typing followed
-by Undo owes no revision when the content and metadata are back where they began.
-A later saved Cards identity/color is part of the next base. Merely switching
-views never writes the page.
+This replaces the saved-base alignment design, following review decisions
+12592 and 12596. Cards and the Reader retain their reviewed behavior.
+
+The complete current Notebook body, including hidden lines, is the Text
+model. The textarea is a projection of that body, not a second document from
+which card identities are inferred. The projection uses the same whole-body,
+fence-aware `detailRanges` as Reader quotes. Its offset map also accounts for
+the textarea's CRLF/CR-to-LF conversion; selection offsets are UTF-16 offsets.
+A visible span maps to its exact source spans, and each collapsed hidden span
+retains both source boundaries. Opening text, untouched CRLF and visible
+spacing keep their original bytes. New line breaks use the nearest preceding
+body line ending at the caret, or LF if there is none.
+
+An input applies one visible replacement to this current body. Record the
+pre-input value and selection, then check that the resulting textarea value
+agrees with that replacement. An input without a usable selection, including
+a programmatic WritingInput fallback, derives its changed range
+from the before/after visible values; it does not match the page to a saved
+base. Composition updates, replacement text, deletion, paste, line moves and
+indentation use this same path. Capture the actual input type and range in
+checks; an input listener called by a fixture is not evidence of a native
+keyboard, clipboard, composition or Undo gesture.
+
+Map the changed visible range to the raw body and replace its visible spans
+with the inserted text. Hidden spans outside a removed card stay with their
+own raw row. A rename or word edit cannot reassign them, even to an exact
+copy beside that row. A whole-card deletion takes that card's hidden lines;
+a heading-only deletion retains the lower card's lines in the surviving
+card's words. Boundary choices must distinguish those two acts: a collapsed
+hidden span is not permission to delete the neighboring row's metadata.
+Reproject after the edit and require the visible result to equal the actual
+textarea value. No whole-page shortcut on equality with saved visible text
+may replace newer body metadata.
+
+Only one bounded matching case remains. When a single replacement spans
+several card rows, pair exact title-and-words signatures inside the replaced
+range, in occurrence order, using each old row at most once. Paired rows keep
+their own raw hidden lines; an unmatched inserted row is id-less. Rows outside
+that one range are never candidates, and there are no title-only, words-only,
+sole-pair, fixed-preference or saved-base matches. A normal paste into a
+collapsed selection has no removed rows to pair: an exact pasted copy cannot
+borrow the original's identity on that input or a later keystroke. An atomic
+move replacing several rows can carry their identities within that one range.
+The input must supply that actual replacement range, including when it covers
+the whole body. A renamed row inside such a replacement is unmatched and
+id-less; an old longest-anchor matcher does not restore its identity (12781).
+
+Cards, allocation and recovery still reach Text through `sync()`, using the
+current body accepted by NotebookWriting and its existing revision/content
+fence. Before installing incoming writing, drain an input already in the box
+against the snapshot it actually displayed. A metadata-only sync updates the
+body and map without assigning textarea.value or disturbing selection or
+the Text history. A slow save confirms its submitted snapshot, not later writing:
+`confirm()` advances the saved baseline for the writer's diff only. It never
+re-pairs visible rows, reloads current metadata from that baseline, or makes
+a first allocation invisible to the current body. Switching views itself
+writes no revision. Existing refusals and overlapping edits retain both
+versions through the Notebook recovery flow.
+
+#### Literal marker input (review decision 12604)
+
+Text the person pastes goes into the body as typed. The shared hidden-line
+rule interprets a complete valid marker outside a fence as metadata. This is
+the named exception to equality with the native textarea input: immediately
+reproject the textarea and map its caret to the end of the visible paste.
+There is no deferred rewrite at the next sync. Fenced and invalid markers
+remain literal writing; no escape format is introduced.
+
+Existing card identities win over a newly pasted duplicate marker. Drop that
+pasted hidden line when its primary or aliases are already owned in the body,
+leaving a newly pasted card id-less. A valid new identity explicitly included
+in the pasted text is retained. Ordinary plain-text copies never borrow an
+identity from any other card. The same duplicate rule covers a remembered cut
+if that identity was reintroduced elsewhere before its matching paste.
+
+#### Text history, cut and body boundaries
+
+Text owns Undo and Redo. Every applied input records the raw body and
+selection before and after that input. Undo restores the preceding body and
+selection, Redo the following one; a new edit after Undo discards that redo
+branch. `beforeinput` historyUndo/historyRedo is prevented, including an
+Edit-menu Undo; the Text keyboard shortcuts reach the same handler. No native
+textarea history is used. The stack starts empty on opening Text and is
+dropped when that view closes. Whole-card deletion takes all the card's
+hidden bytes; Undo restores the exact snapshot, including those bytes and
+CRLF. A save confirmation does not erase this history or substitute its body
+for a later snapshot.
+After an unconfirmed Cards recolor and a return to Text, Undo restores the
+snapshot immediately before its next keystroke. Restoring that raw body and
+displayed text keeps the local color even when the saved base has the old color.
+Equality with the saved base's text is not an Undo requirement (12781).
+
+One cut transfer is kept only for this Text view's life: its exact raw text
+and corresponding visible text. The first successful paste whose complete
+text equals that cut text inserts the raw text instead of plain clipboard
+text, then consumes the transfer. Later pastes of that clipboard are plain
+and id-less. An Undo that restores the cut source invalidates the transfer.
+Another cut replaces it, and closing Text drops it. Copy and the system
+clipboard contain no hidden metadata; no cut record is written to a device.
+The transfer is not a content-matching catalog.
+
+A hidden line is the last line of its card. At a collapsed hidden span, an
+insertion at the end of that card's words is before the hidden line; an
+insertion at the start of the next line is after it. Those source boundaries
+are distinct even though the hidden span occupies no textarea characters.
+If an edit would put a hidden line inside an open fence, move that line just
+before the opening fence line, within the same card, as Cards restores it.
+This is the only fence relocation; hidden lines never move across a card boundary.
+Appending at the end of the whole Text body keeps the final card's hidden line
+after its newly entered words. Inserting at the next card's start does not
+move the preceding card's line into that next card.
+If a fence swallows a heading, that card no longer exists while fenced. Its
+marker bytes stay with its words and become visible writing under the shared
+fence rule (12797). They are neither retired nor moved into a surviving card.
+Text reprojects immediately after the input and keeps the caret at the end
+of the edit; a later sync does not rewrite the field. The preservation check
+accounts only for the exact retained marker spans newly exposed by the fence,
+while still requiring every other entered character to survive projection.
+Undo restores the exact raw snapshot, identities and colors included. Deleting
+the opener restores the original card boundaries; closing it restores only
+headings after the closing line. A closing line after every heading does not
+turn those already-fenced headings into cards.
+Untouched code examples and invalid markers remain ordinary writing.
+
+Deleting only a lower heading merges using the Cards metadata representation.
+The survivor keeps its primary id and color, including null, and receives the
+lower identities as aliases. `mergeDetails` and `withCardDetails` already
+write an alias-only line for an id-less survivor: id null, color null, moved
+ids in aliases. Text uses that same representation, never promotes the lower
+id to primary, and never gives it the lower color. Undo restores the separate
+raw cards and Redo restores the merge; a whole-card deletion creates no alias.
+If one selection deletes an empty B card whole and the following C heading,
+while retaining C's words under A, remove B's hidden lines and keep C as A's
+alias. A keeps its primary and color. Saving must not resurrect B. Undo
+restores the complete pre-selection snapshot, including B and the separate
+C with its own identity (12781).
+
+#### Checks retained for the replacement
+
+Keep every `zz_r4_*` and `zz_r5_*` reproduction from the review rounds and the
+real NotebookPage/writer cases already committed. Keep the three new Review 5
+failures as regressions: first-id confirmation among twins, wrong sole-pair
+preference across confirmation, and copy/paste stealing the original's id on
+its next keystroke. The replacement must preserve M14's unconfirmed metadata
+across Undo by restoring the exact pre-keystroke raw/text snapshot; decision
+12781 retires its saved-visible-text equality premise. Preserve fixed-pair
+behavior without retaining those old algorithms; also
+pin `finish()`'s `done.at` fallback and round 4's M4e/M4f. Check the resulting
+body, identities, colors and writer revisions. The shipping rule at 12902
+uses green meaningful tests and one review; the retained regression cases run
+together without a separate mutation campaign or proof-packet gate. Menus and Reader checks
+remain in the regression set. Add real-input cases for select-all/Delete/Undo
+with hidden lines and CRLF, a cut move and a repeated paste, Undo before paste,
+a typed CRLF newline, null-survivor metadata bytes equal to Cards, and a new
+fence before an existing hidden line. Native input behavior is a separate measured
+claim, never inferred from the in-memory DOM adapters.
+
+### Card targeting and Reader quotes
 
 A painted menu resolves its card from the pressed row, including the writing
 holder after an incoming revision. Finishing follows that card through the actual
 applied act, then resolves its identity or words at the resulting position.
 The insertion fallback for a deleted editor or anchor follows the same rule;
 picked state and an estimated insertion point never supply the menu's target.
+The target is resolved in the complete resulting body: a heading swallowed
+by an open fence cannot retarget a later card with the same visible words.
+
+Concurrent identical word edits merge once even when one copy also deletes
+an adjacent card; different edits to the same words still conflict. If the
+incoming revision acknowledges the last local edit, the writer becomes clean
+and closes an untouched editor for a card that revision deleted. A remaining
+unsaved edit retains that editor and the existing recovery behavior.
 
 Reader Quote computes hidden ranges on the whole memory source, then intersects
 those ranges with the selection, retaining the preceding fence state. Message
@@ -611,7 +744,11 @@ outcome's owner, with access, in an open outcome. A reader's star is personal.
 The command, migration, recovery and old-link rules are in
 [the page menu contract](notebook-menu-792.md).
 
-### 867 review 12306: replaced expectations
+### Historical 867 review 12306: replaced expectations
+
+This records the earlier saved-base design. Decisions 12592 and 12781
+supersede it with Text-owned raw snapshots and exact bounded replacement;
+the current contract and adaptation manifest above govern Build 6.
 
 The fixed saved base replaces four visit-history expectations in
 `ui_card_menu_867.test.mjs`: two restored a deleted id after a later confirmed
