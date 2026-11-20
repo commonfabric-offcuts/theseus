@@ -5417,3 +5417,12 @@ test('880 confirmed topic precedes the startup join; the existing color read kee
   } finally { held.resolve(); s.releaseAll(); }
   assert.equal((await s.started).ok, true); await drain(); assert.deepEqual(s.page(), expected880);
 });
+
+test('872 app gives New message the verified instance for width preferences even before its editor loads', async () => {
+  const f = fixture();
+  await f.initialize();
+  const inline = f.owners().inline;
+  assert.equal(inline.callbacks.instanceId, f.bootstrap.instance_id);
+  assert.equal(inline.layoutInstance, f.bootstrap.instance_id);
+  assert.equal(inline.layout.widthKeys['new-message'], JSON.stringify(['aim-next', f.bootstrap.instance_id, 'composer-width', 'new-message']));
+});
