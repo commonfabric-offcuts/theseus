@@ -1,6 +1,6 @@
 # Conversation waiting follows open asks (928)
 
-Base: release 192, `1ce0538e8f2403ab5ff40b700add269a6b81ac0b`.
+Base: release 205, `6e5d2098b178e6fbaf3d2591d1393bdf7923557c`.
 
 The Conversation's Waiting pill derives from Core's open asks. No open ask
 means Active. Answering, withdrawing or otherwise resolving the final ask

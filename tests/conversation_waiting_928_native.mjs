@@ -17,7 +17,7 @@ try {
   const id = conversation.topic_id;
   await control({ method: 'topic_state', operation_id: '928-manual', topic_id: 't1',
     args: { state: 'waiting', waiting_on: [facts.agent], note: 'Which manual date?' } });
-  browser = await chromium.launch({ executablePath: process.env.AIM_CHROME, headless: true });
+  browser = await chromium.launch({ executablePath: process.env.AIM_CHROME, headless: true, args: ['--enable-automation'] });
   const cdp = await browser.newBrowserCDPSession();
   profile = (await cdp.send('Browser.getBrowserCommandLine')).arguments.find(arg => arg.startsWith('--user-data-dir='))?.split('=').slice(1).join('=');
   assert.ok(profile, 'identify the actual isolated test profile');
@@ -68,7 +68,8 @@ finally {
   child.stdin.end(); cleanup.fixtureExit = await exit;
   cleanup.fixturePid = child.pid;
   const processes = execFileSync('/bin/ps', ['-axo', 'pid=,command='], { encoding: 'utf8' });
-  cleanup.ownedProfileProcesses = profile ? processes.split('\n').filter(line => line.includes(profile)) : [];
+  cleanup.profileIdentified = Boolean(profile);
+  cleanup.ownedProfileProcesses = profile ? processes.split('\n').filter(line => line.includes(profile)) : null;
   cleanup.fixtureAbsent = !processes.split('\n').some(line => Number(line.trim().split(/\s/)[0]) === child.pid);
   if (origin) cleanup.portClosed = await new Promise(resolve => {
     const url = new URL(origin), socket = net.createConnection({ host: url.hostname, port: Number(url.port) });
@@ -77,6 +78,7 @@ finally {
   await writeFile(`${evidence}/results.json`, JSON.stringify({ results, cleanup, failure: failure?.stack ?? null }, null, 2));
 }
 assert.equal(cleanup.fixtureExit.code, 0); assert.equal(cleanup.disconnected, true);
+assert.equal(cleanup.profileIdentified, true);
 assert.deepEqual(cleanup.ownedProfileProcesses, []); assert.equal(cleanup.fixtureAbsent, true); assert.equal(cleanup.portClosed, true);
 if (failure) throw failure;
 console.log(JSON.stringify({ passed: results.length, cleanup }));
