@@ -13,6 +13,7 @@ import { readTopicList, TopicPages, TopicRail } from '../web/topic-navigation.mj
 import { TopicStatePanel, topicUpdateEnvelope } from '../web/topic-state.mjs';
 import { menuRouteValid, consumeMenuRoute } from '../web/menu-route.mjs';
 import { shareLinksFrom } from '../web/links.mjs';
+import { feedKey, headerRows } from '../web/panes.mjs';
 
 function fixture(kind) {
   const r = renderer799(), doc = r.list.ownerDocument, shown = [], reads = [], sent = [];
@@ -67,10 +68,42 @@ test('862 a starred Notebook row opens the existing list from one named read', a
   assert.equal(f.shown[0].items, choices); assert.deepEqual(f.sent, []);
 });
 
-test('862 the Topic title has an accessible overflow beside its existing settings door', () => {
+test('893 title buttons use New message, settings, overflow order for Topic Tab and arrow reach; outcomes keep their order', () => {
   const html = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
   assert.match(html, /id="topic-menu"[^>]*aria-label="This topic"[^>]*aria-haspopup="menu"/);
-  assert.ok(html.indexOf('id="topic-menu"') < html.indexOf('id="settings-open"'));
+  const row = html.match(/<div class="title-row">([\s\S]*?)<\/div>/)[1];
+  const tags = [...row.matchAll(/<button\b[^>]*>/g)].map(match => match[0]);
+  assert.equal(tags.length, 4);
+  for (const tag of tags) {
+    assert.match(tag, /type="button"/);
+    assert.doesNotMatch(tag, /tabindex|style=/, 'ordinary buttons follow DOM Tab order');
+  }
+  for (const [route, expected] of [
+    ['topic', ['new-message', 'settings-open', 'topic-menu']],
+    ['outcome', ['outcome-menu', 'new-message']],
+  ]) {
+    // Only the route's visibility is supplied here. Order comes from the real
+    // template and arrow handling from the real panes owner, not a copied list.
+    const doc = { querySelector: selector => selector === '#main > .topic-header' ? header : null };
+    const buttons = tags.map(tag => {
+      const id = tag.match(/id="([^"]+)"/)[1];
+      return { id, ownerDocument: doc, isConnected: true, closest: () => null,
+        checkVisibility: () => route === 'topic' ? id !== 'outcome-menu' : !['settings-open', 'topic-menu'].includes(id),
+        focus() { doc.activeElement = this; } };
+    });
+    const header = { querySelectorAll: () => buttons };
+    const visible = headerRows(doc)[0].buttons;
+    assert.deepEqual(visible.map(button => button.id), expected, route);
+    for (const [key, order] of [['ArrowRight', expected], ['ArrowLeft', [...expected].reverse()]]) {
+      doc.activeElement = buttons.find(button => button.id === order[0]);
+      for (const id of order.slice(1)) {
+        let prevented = false;
+        assert.equal(feedKey({ key, target: doc.activeElement, preventDefault() { prevented = true; } }, doc), true);
+        assert.equal(doc.activeElement.id, id, `${route} ${key}`);
+        assert.equal(prevented, true);
+      }
+    }
+  }
 });
 
 test('862 topic choices follow recorded state and existing permissions; Conversations have none', () => {
