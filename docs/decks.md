@@ -127,7 +127,8 @@ Notebook writer and revision fence. Text recomputes identity from one fixed
 base: the last confirmed saved body, initially the body Text opened on. A
 keystroke never teaches a visit catalog. A confirmed save replaces the base;
 unsaved transient headings do not. Exact unchanged title-and-words pairs form
-ordered anchors, with the edit range distinguishing exact twins. Within each
+the longest ordered set of anchors, with the edit range distinguishing exact
+twins even when a save confirms between keystrokes. Within each
 gap, pair by title, then by non-empty words, then pair a sole remaining base
 card with a sole remaining current card as a rename or edit. Finally an
 unchanged title-and-words pair may match anywhere to preserve a move. Empty
@@ -141,15 +142,28 @@ Both writers place new metadata at the end of the words (before an unfinished
 fence when necessary); Text preserves an existing line's placement. Untouched
 CRLF and visible spacing are kept. Undo/Redo re-align against that same saved
 base; it does not resurrect identities deleted in an already confirmed save.
+Unchanged cards retain metadata from the current value, including unsaved Cards
+color and Undo changes; the confirmed base governs pairing. Equal words cannot
+transfer current metadata between different confirmed cards. Hidden lines go
+after exact visible words, including trailing spaces. A metadata-only sync
+leaves the textarea value and native undo untouched.
 A later saved Cards identity/color is part of the next base. Merely switching
 views never writes the page.
 
-Reader Quote splits its source ranges around hidden metadata so each retained
+A painted menu resolves its card from the pressed row, including the writing
+holder after an incoming revision. Finishing another editor rebases that row
+through the changed span before resolving the menu reference; picked state
+never supplies its target.
+
+Reader Quote computes hidden ranges on the whole memory source, then intersects
+those ranges with the selection, retaining the preceding fence state. Message
+sources keep marker-shaped writing verbatim. Reader Quote splits its source
+ranges around hidden metadata so each retained
 quote remains an exact substring of the original body. The reply's visible
 quotation and Copy omit the hidden ranges, including a partial final marker
 in an explicitly truncated excerpt. Fenced examples and malformed complete
 markers remain ordinary writing. Copy link and Set color await a save that
-includes their own changes, even when an earlier save is in flight, without
+includes their own changes, even when an earlier save is in flight or waiting for resend, without
 claiming success on refusal or a closed page. Checks act through the real
 textarea input listeners and the unpicked card's own menu; in-memory DOM
 adapters do not establish native gestures, focus, rendered geometry or speech.

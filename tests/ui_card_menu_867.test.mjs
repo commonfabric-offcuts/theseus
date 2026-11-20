@@ -90,6 +90,10 @@ function documentPort(){
   append(...nodes){super.append(...nodes.map(n=>typeof n==='string'?{nodeType:3,textContent:n}:n));}
   *descendants(){for(const n of this.children){if(n.nodeType!==3)yield n;if(n.descendants)yield* n.descendants();}}
   contains(n){for(;n;n=n.parent)if(n===this)return true;return false;}
+  querySelectorAll(selector){
+   const door=/^(\.deck-card\[data-index="-?\d+"\]) (\.deck-menu)$/.exec(selector);
+   return door?super.querySelectorAll(door[1]).flatMap(row=>row.querySelectorAll(door[2])):super.querySelectorAll(selector);
+  }
   getBoundingClientRect(){return {top:0,left:0,right:40,bottom:40};}
  }
  doc.createElement=tag=>new Node(tag);doc.createElementNS=(_,tag)=>doc.createElement(tag);
@@ -493,4 +497,121 @@ for(const action of ['Delete','move','merge'])test('867 R3 Cards '+action+' surv
  await w.flush();assert.equal(w.dirty,false);p.key({key:'z',metaKey:true,target:p.list,preventDefault(){}});await w.flush();
  assert.deepEqual(metaOf(w.base.content.body).map(c=>[c.id,c.aliases,c.color]),[[A,[alias],'blue'],[B,[],'rose']]);
  p.pick=i=>{p.picked=i;};assert.equal(p.pickCardId(route.card),true);assert.equal(p.picked,0);assert.equal(p.cardAt({id:alias}),0);
+});
+
+// Review 12400: selections, saved twins, local Cards metadata and painted doors.
+for(const tail of [' ', '  ', '\t', ' \n\n'])test('867 R4 trailing writing survives metadata projection and sync: '+JSON.stringify(tail),async t=>{
+ const {p,w,input}=await text867(t,card());const at=p.text.value.indexOf('words')+5;
+ input(at,at,tail);const wanted=p.text.value;assert.equal(stripDetails(w.value.body),wanted);
+ let writes=0,value=wanted;Object.defineProperty(p.text,'value',{configurable:true,get:()=>value,set:v=>{writes++;value=v;}});
+ p.doc.activeElement=p.text;p.sync();assert.equal(writes,0,'sync must leave the actual textarea untouched');assert.equal(value,wanted);
+});
+test('867 R4 a confirmed save between twin keystrokes retains the edited twin identity',async t=>{
+ const {p,w,input}=await text867(t,card('Same','same',details(A))+card('Same','same',details(B,'rose')));
+ const at=p.text.value.indexOf('same');input(at,at+4,'changed');await w.flush();input(at,at+7,'same');
+ assert.deepEqual(metaOf(w.value.body).map(r=>[r.id,r.color]),[[A,'blue'],[B,'rose']]);
+});
+test('867 R4 a confirmed save preserves the second twin when it becomes identical again',async t=>{
+ const {p,w,input}=await text867(t,card('Same','same',details(A))+card('Same','same',details(B,'rose')));
+ const at=p.text.value.lastIndexOf('same');input(at,at+4,'changed');await w.flush();input(at,at+7,'same');
+ assert.deepEqual(metaOf(w.value.body).map(r=>[r.id,r.color]),[[A,'blue'],[B,'rose']]);
+});
+
+test('867 R4 appending after a confirmed twin edit retains both identities',async t=>{
+ const {p,w,input}=await text867(t,card('Same','same',details(A))+card('Same','same',details(B,'rose')));
+ const at=p.text.value.indexOf('same');input(at,at+4,'changed');await w.flush();input(at+7,at+7,'!');
+ assert.deepEqual(metaOf(w.value.body).map(r=>[r.id,r.color]),[[A,'blue'],[B,'rose']]);
+});
+for(const state of ['color','restored'])test('867 R4 Text keeps unconfirmed Cards metadata on an unchanged card: '+state,()=>{
+ const base=card('First','words',null)+card('Second','second',details(B,'rose'));
+ const current=card('First','words',details(A,'green'))+card('Second','second',details(B,'rose'));
+ const p=new CardTextProjection(),text=p.show(current,state==='color'?base:card('Second','second',details(B,'rose')));
+ const after=p.edit(text.replace('second','changed'));
+ assert.equal(stripDetails(after),text.replace('second','changed'));assert.deepEqual(metaOf(after).map(r=>[r.id,r.color]),[[A,'green'],[B,'rose']]);
+});
+test('867 R4 moving the last card above renamed cards keeps the longest ordered anchors',()=>{
+ const C='c-33333333333333333333333333333333',D='c-44444444444444444444444444444444';
+ const p=new CardTextProjection();p.show(card('One','one',details(A))+card('Two','two',details(B))+card('Three','three',details(C))+card('Four','four',details(D)));
+ const after=p.edit(card('Four','four',null)+card('Renamed','one',null)+card('Two','two',null)+card('Three','three',null));
+ assert.deepEqual(metaOf(after).map(r=>r.id),[D,A,B,C]);
+});
+test('867 R4 an empty intermediate card cannot prove a Text merge alias',()=>{
+ const C='c-33333333333333333333333333333333',p=new CardTextProjection();p.show(card('First','one',details(A))+card('Empty','',details(B))+card('Third','two',details(C)));
+ const after=p.edit(card('First','one\n\ntwo',null));assert.deepEqual(metaOf(after).map(r=>r.ids),[[A]]);
+});
+function painted867(t,p){
+ p.header.description??=p.doc.createElement('p');
+ const old=globalThis.document;globalThis.document=p.doc;t.after(()=>{p.listening.abort();globalThis.document=old;});
+ Object.assign(p,{talks:new Map(),room:null,keyed:false,opening:p.doc.createElement('div'),keyLines:[],editButton:p.doc.createElement('button'),mark(){},fit(){}});
+ p.paint=()=>DeckPage.prototype.paint.call(p);return p;
+}
+function edit867(p,at,written){
+ const c=p.deck.cards[at],shown=p.written(c),field=p.doc.createElement('textarea');field.value=written??cardText({title:c.title,words:shown.words});
+ p.editing={text:cardText(c),shown:cardText({title:c.title,words:shown.words}),near:at,depth:c.depth,fresh:false,field,details:shown.details,stacks:[],images:[],kept:''};p.doc.body.append(field);
+}
+function press867(p,at){
+ const button=p.list.children[at].querySelector('.deck-menu');assert.ok(button,'painted overflow');button.listeners.click({target:button,stopPropagation(){}});
+ const menu=p.doc.body.querySelector('[role="menu"]');assert.ok(menu,'real shared menu');return menu;
+}
+function choice867(menu,label){const button=menu.children.find(n=>n.textContent===label);assert.ok(button);return button.onclick({preventDefault(){},stopPropagation(){}});}
+test('867 R4 writing holder menu follows its own card after another writer inserts above',async t=>{
+ const {p,w,api,source}=await text867(t,card('Budget','words',details(A)));painted867(t,p);p.mode='cards';edit867(p,0);p.paint();
+ api.view=async()=>({...source(),body:card('Incoming','other',details(B))+card('Budget','words',details(A)),source_ref:{...source().source_ref,revision:2}});
+ await w.refresh();p.sync();assert.equal(p.picked,0);assert.ok(p.list.children[1].classList.contains('deck-writing'));
+ choice867(press867(p,1),'Delete');assert.deepEqual(p.deck.cards.map(c=>c.title),['Incoming']);assert.deepEqual(metaOf(w.value.body).map(r=>r.id),[B]);
+});
+for(const written of ['', 'Changed\nnew\n\n## Added\nmore'])test('867 R4 an unpicked twin menu survives finishing another editor: '+JSON.stringify(written),async t=>{
+ const copied=clipboard(t),p=painted867(t,menuPage(card('Editing','edit',null)+card('Same','same',null)+card('Same','same',null)));
+ edit867(p,0,written);p.paint();const menu=press867(p,2);choice867(menu,'Delete');
+ assert.deepEqual(p.deck.cards.map(c=>c.title),written?['Changed','Added','Same']:['Same']);
+ // Delete's Undo records which occurrence survived, not just an identical body.
+ assert.equal(p.undos.at(-1).near,written?2:0);
+});
+test('867 R4 Set color through the unpicked painted idless twin menu allocates only on that twin',async t=>{
+ const {p,w}=await writingPort(t,card('Same','same',null)+card('Same','same',null));painted867(t,p);p.paint();p.picked=0;
+ choice867(press867(p,1),'Set color');const picker=p.doc.body.querySelector('.color-picker');assert.ok(picker);await picker.querySelectorAll('.swatch')[1].onclick();
+ const rows=metaOf(w.base.content.body);assert.deepEqual(rows[0].ids,[]);assert.equal(rows[0].color,null);assert.ok(rows[1].id);assert.equal(rows[1].color,AGENT_PALETTE[1]);
+});
+for(const action of ['Copy link','Set color'])test('867 R4 '+action+' awaits its own save after a pending resend',async t=>{
+ const copied=clipboard(t),{p,w,api,calls}=await writingPort(t),send=api.command;api.command=async()=>{throw Error('offline');};
+ w.edit({title:'Earlier'},w.capture());await w.flush();assert.ok(w.pending);assert.equal(w.running,null);const operation=w.pending.operation_id;api.command=send;
+ if(action==='Copy link'){await p.copyCard(p.cardRef(0),true);assert.equal(copied.length,1);}
+ else {const picker=p.cardColors(p.cardRef(0),p.anchor);t.after(()=>picker.close(false));await picker.root.querySelectorAll('.swatch')[0].onclick();assert.equal(picker.root.isConnected,false);}
+ assert.equal(calls.length,2);assert.equal(calls[0].operation_id,operation);assert.notEqual(calls[1].operation_id,operation);assert.ok(metaOf(w.base.content.body)[0].id);assert.equal(w.dirty,false);
+});
+function reader867(t,raw,kind,start,end){
+ const copied=clipboard(t),old=globalThis.window;globalThis.window={getSelection:()=>({isCollapsed:true,rangeCount:0,removeAllRanges(){}})};t.after(()=>{globalThis.window=old;});
+ const editor={draft:{body:'',quotes:[]},edit(patch){Object.assign(this.draft,patch);}},field={value:'',focus(){},setSelectionRange(){}};
+ const p=Object.assign(Object.create(Reader.prototype),{source:{source_ref:{kind,id:'source',revision:1},body:raw},hover:{start,end},field,mode:'reply',mac:true,sessions:{reply:editor},writes:()=>true,narrow:{matches:true},notice(){},quotedPlace:()=>null,insertText(text){field.value+=text;},disarm(){},keepAbove(){}});
+ return {p,copied,editor,field};
+}
+for(const kind of ['memory','message'])test('867 R4 Reader quote and lit Copy use whole-source fence state for '+kind,async t=>{
+ const raw='```\nexample\n'+line()+'\n```\n\nAfter\n\n'+hidden(details(B))+'\n',start=raw.indexOf('example'),end=raw.length;
+ const {p,copied,editor,field}=reader867(t,raw,kind,start,end);p.quote();
+ assert.ok(field.value.includes(line()),'the marker inside the fence is visible writing');
+ assert.equal(field.value.includes(hidden(details(B))),kind==='message','only memory metadata is hidden');
+ for(const q of editor.draft.quotes)assert.ok(raw.includes(q.excerpt));
+ p.key({key:'c',code:'KeyC',metaKey:true,target:{closest:()=>null},preventDefault(){}});await Promise.resolve();
+ assert.ok(copied[0].includes(line()));assert.equal(copied[0].includes(hidden(details(B))),kind==='message');
+});
+test('867 R4 Reader held selection keeps its exact range among equal fenced and hidden markers',t=>{
+ const raw='```\n'+line()+'\n```\n\n'+line()+'\n';const start=raw.lastIndexOf(line()),{p,editor}=reader867(t,raw,'memory',start,raw.length);
+ p.held={excerpt:raw.slice(start),range:{start,end:raw.length}};p.hover=null;p.quote();assert.deepEqual(editor.draft.quotes,[]);
+});
+test('867 R4 Reader whole message Copy retains marker-shaped writing',async t=>{
+ const raw='Literal\n\n'+line(),{p,copied}=reader867(t,raw,'message',0,raw.length);p.hover=null;
+ p.key({key:'C',code:'KeyC',metaKey:true,shiftKey:true,target:{closest:()=>null},preventDefault(){}});await Promise.resolve();assert.deepEqual(copied,[raw]);
+});
+import { formatWords } from '../web/message-format.mjs';
+test('867 R4 Reader selected message Copy retains marker-shaped writing with display rules',t=>{
+ const raw='Literal\n\n'+line(),{p}=reader867(t,raw,'message',0,raw.length),doc=documentPort(),old=globalThis.document;
+ globalThis.document=doc;t.after(()=>{globalThis.document=old;});p.dialog={open:true};p.sourceBody=doc.createElement('div');formatWords(p.sourceBody,raw,{doc,displayRules:['break-out-paragraphs']});
+ globalThis.window.getSelection=()=>({rangeCount:1,isCollapsed:false,getRangeAt:()=>({startContainer:p.sourceBody,startOffset:0,endContainer:p.sourceBody,endOffset:raw.length})});
+ p.sourceOffset=(_,offset)=>offset;let copied;
+ p.copySelection({defaultPrevented:false,preventDefault(){},clipboardData:{setData(type,text){assert.equal(type,'text/plain');copied=text;}}});assert.equal(copied,raw);
+});
+
+test('867 R4 Reader actual hold retains the selected occurrence of equal markers',t=>{
+ const raw='```\n'+line()+'\n```\n\n'+line()+'\n';const start=raw.lastIndexOf(line()),{p,editor}=reader867(t,raw,'memory',start,raw.length);
+ Object.defineProperty(p,'chosen',{value:true});p.paintQuote=()=>{};p.hold('quote-selection');p.hover=null;p.quote();assert.deepEqual(editor.draft.quotes,[]);
 });

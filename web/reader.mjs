@@ -608,7 +608,7 @@ export class Reader {
   hold(by) {
     const cardWords = this.card && this.chosen ? this.callbacks.cardSelection?.(this.card) : null;
     this.held = cardWords ? { excerpt: cardWords.text, revision: cardWords.revision, by }
-      : this.chosen ? { excerpt: this.selectedPassage(), place: this.quotedPlace(), by } : null;
+      : this.chosen ? { excerpt: this.selectedPassage(), range:this.selectedRange(), place: this.quotedPlace(), by } : null;
     this.paintQuote();
   }
   paintQuote() {
@@ -704,22 +704,31 @@ export class Reader {
     if (!this.sourceBody.contains(range.startContainer) || !this.sourceBody.contains(range.endContainer)) return;
     // This is the selection branch of the existing quote projection, with no
     // trim or hover/whole-message fallback. Native Copy keeps its selection.
-    if (!copySelectedText(event, stripDetails(this.selectedPassage()))) this.notice(SELECTION_COPY_REFUSED);
+    if (!copySelectedText(event, this.selectedPassage())) this.notice(SELECTION_COPY_REFUSED);
   }
 
   // The source's own words a selection covers, never what the page shows for
   // them: a link showing a topic's name is quoted as the words it stands for.
   selectedPassage() {
     if (this.card) return this.callbacks.cardSelection?.(this.card)?.text ?? '';
+    const range=this.selectedRange();return range?this.source.body.slice(range.start,range.end):'';
+  }
+  selectedRange() {
     const selection = window.getSelection();
     if (selection?.rangeCount && !selection.isCollapsed) {
       const range = selection.getRangeAt(0);
       if (this.sourceBody.contains(range.startContainer) && this.sourceBody.contains(range.endContainer)) {
         const from = this.sourceOffset(range.startContainer, range.startOffset), to = this.sourceOffset(range.endContainer, range.endOffset, true);
-        return this.source.body.slice(from, to);
+        return {start:from,end:to};
       }
     }
-    return this.hover ? this.source.body.slice(this.hover.start, this.hover.end) : '';
+    return this.hover?{start:this.hover.start,end:this.hover.end}:null;
+  }
+  passageParts(excerpt, range=this.selectedRange()) {
+    if(this.source?.source_ref.kind!=='memory')return [excerpt];
+    const body=this.source.body;
+    const start=range&&body.slice(range.start,range.end)===excerpt?range.start:body.indexOf(excerpt);
+    return start<0?[]:detailParts(body,start,start+excerpt.length);
   }
 
   // given: words chosen on the message's card (quoteFrom), quoted as they are,
@@ -736,7 +745,7 @@ export class Reader {
     // after, and its own writing does not take that away.
     this.notice('');
     this.quoting = true;
-    try { this.quoteInto(detailParts(excerpt), place, given ? revision : cardWords?.revision ?? held?.revision); } finally { this.quoting = false; }
+    try { this.quoteInto(this.passageParts(excerpt, given?null:this.selectedRange()??held?.range), place, given ? revision : cardWords?.revision ?? held?.revision); } finally { this.quoting = false; }
   }
 
   quoteInto(excerpt, place, revision = undefined) {
@@ -1419,10 +1428,10 @@ export class Reader {
     // ⌘C with a passage lit and no words selected copies the passage's words,
     // as Return would quote them, as on the topic page (message-menu.mjs).
     if (!inEditor && copyKey(event, this.mac) && this.hover && window.getSelection()?.isCollapsed !== false && this.source) {
-      event.preventDefault(); copyText(stripDetails(this.selectedPassage()).trimEnd()).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
+      event.preventDefault(); copyText(this.passageParts(this.selectedPassage()).join('').trimEnd()).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
     }
     if (!inEditor && event.metaKey && event.shiftKey && event.code === 'KeyC' && this.source?.source_ref.kind === 'message') {
-      event.preventDefault(); copyText(stripDetails(this.source.body)).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
+      event.preventDefault(); copyText(this.source.body).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
     }
     const where = Object.keys(STEPPING).find(at => STEPPING[at].key === event.key);
     if (!inEditor && event.metaKey && !event.shiftKey && where) {

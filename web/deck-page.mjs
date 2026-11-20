@@ -745,7 +745,7 @@ export class DeckPage {
   async saveCardChange() {
     const w=this.writing;if(!w)return;
     // flush() joins the current envelope; a later card act needs the next one.
-    const running=w.running;
+    const running=w.running||w.pending;
     await w.flush();
     if(running&&!w.error&&!w.closed&&!w.conflict&&w.dirty)await w.flush();
   }
@@ -820,13 +820,22 @@ export class DeckPage {
     return picker;
   }
   openCardMenu(index,anchor) {
-    let ref=this.cardRef(index);if(!ref)return;
+    // The pressed row owns the target, including the holder after sync moved
+    // it. Finishing changes only the editor's span; rebase this row across it
+    // before taking a ref, so identical siblings cannot steal the menu.
+    const row=anchor.closest?.('.deck-card');
+    if(row){if(!row.isConnected)return;index=Number(row.dataset.index);}
+    if(!this.deck.cards[index])return;
     if(this.editing){
-      const e=this.editing,own=!e.fresh&&findCard(this.deck,e.text,e.near)===index,empty=!cardText(textCard(e.field.value));
-      this.finish();if(this.editing||own&&empty)return;
-      if(own)ref=this.cardRef(this.picked);
-      const at=this.cardAt(ref);if(at<0)return;anchor=this.list.querySelector(`.deck-card[data-index="${at}"] .deck-menu`)??anchor;
+      const e=this.editing,count=this.deck.cards.length;
+      const at=e.fresh?(e.after===null?0:findCard(this.deck,e.after,e.near)+1):findCard(this.deck,e.text,e.near);
+      const empty=!cardText(textCard(e.field.value));
+      const removed=!e.fresh&&empty&&at>=0&&index>=at&&index<groupEnd(this.deck.cards,at);
+      this.finish();if(this.editing||removed)return;
+      if(at>=0&&(index>at||e.fresh&&index>=at))index+=this.deck.cards.length-count;
+      anchor=this.list.querySelector(`.deck-card[data-index="${index}"]`)?.querySelector('.deck-menu')??anchor;
     }
+    const ref=this.cardRef(index);if(!ref)return;
     const menu=openMessageMenu({anchor,items:this.cardMenuItems(ref,anchor),label:'This card',sheet:true,doc:this.doc});
     this.listening?.signal.addEventListener('abort',()=>menu?.close(false),{once:true});
     return menu;
@@ -1057,6 +1066,7 @@ export class DeckPage {
       // The box stands in its card's place at its card's depth, wherever an act or a read of the page has put it.
       if (!editing.fresh && at >= 0) Object.assign(editing, { near: at, depth: cards[at].depth });
       if(!editing.fresh)this.paintCardTint(holder,cards[at]);
+      holder.dataset.index=String(at);
       holder.style.setProperty('--depth', String(editing.depth ?? 0));
       // Replacing a card with its shared editor must not shorten the document under it.
       if (editing.height) holder.style.minHeight = `${editing.height}px`;

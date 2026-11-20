@@ -79,9 +79,12 @@ export function mergeDetails(target, moved) {
 }
 
 // Keep each visible part an exact source substring for Core quote validation.
-export function detailParts(text) {
-  const parts=[];let at=0;
-  for(const {start,end} of detailRanges(text)){if(start>at)parts.push(text.slice(at,start));at=end;}
-  if(at<text.length)parts.push(text.slice(at));
+export function detailParts(text, from=0, to=text.length) {
+  const parts=[];let at=from;
+  for(const {start,end} of detailRanges(text)){
+    if(end<=from||start>=to)continue;
+    if(start>at)parts.push(text.slice(at,Math.min(start,to)));at=Math.max(at,Math.min(end,to));
+  }
+  if(at<to)parts.push(text.slice(at,to));
   return parts.filter(part=>/\S/.test(part));
 }

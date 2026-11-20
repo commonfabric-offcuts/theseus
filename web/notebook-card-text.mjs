@@ -29,8 +29,10 @@ export class CardTextProjection {
   confirm(body) {
     if(this.base?.body===body)return;
     const text=cardTextValue(stripDetails(body));
+    const confirmed=this.base?this.align(text):new Map(),next=new Map([...confirmed].map(([i,j])=>[j,i]));
+    const pairs=new Map([...(this.pairs??[])].filter(([,j])=>next.has(j)).map(([i,j])=>[i,next.get(j)]));
     this.base={body,text,rows:rowsOf(text),raw:rowsOf(body)};
-    this.pairs=new Map();
+    this.pairs=pairs;
   }
   show(body, confirmed=body) {
     this.confirm(confirmed);
@@ -51,12 +53,21 @@ export class CardTextProjection {
     }
     const bySignature=new Map();
     before.forEach((r,j)=>{const list=bySignature.get(r.signature)??[];list.push(j);bySignature.set(r.signature,list);});
-    const reserved=new Set(preferences.values());let last=-1;const anchors=[];
+    // Longest ordered matches: a card moved above the rest must not strand
+    // all the cards it passed. Reverse candidates keep each row in one chain.
+    const reserved=new Set(preferences.values()),tails=[];
     after.forEach((r,i)=>{
-      const preferred=preferences.get(i),j=preferred!==undefined&&preferred>last?preferred:
-        bySignature.get(r.signature)?.find(j=>j>last&&!reserved.has(j));
-      if(j!==undefined){choose(i,j);anchors.push([i,j]);last=j;}
+      const preferred=preferences.get(i),matches=preferred!==undefined?[preferred]:
+        (bySignature.get(r.signature)??[]).filter(j=>!reserved.has(j));
+      for(const j of [...matches].reverse()){
+        let lo=0,hi=tails.length;
+        while(lo<hi){const mid=(lo+hi)>>1;if(tails[mid].j<j)lo=mid+1;else hi=mid;}
+        tails[lo]={i,j,previous:lo?tails[lo-1]:null};
+      }
     });
+    const anchors=[];
+    for(let node=tails.at(-1);node;node=node.previous)anchors.push([node.i,node.j]);
+    anchors.reverse();for(const [i,j] of anchors)choose(i,j);
     const bounds=[[-1,-1],...anchors,[after.length,before.length]];
     for(let n=1;n<bounds.length;n++){
       const [a,b]=bounds[n-1],[z,y]=bounds[n];
@@ -76,11 +87,16 @@ export class CardTextProjection {
     return chosen;
   }
   render(text,pairs,written) {
-    if(text===this.base.text)return this.base.body;
-    const rows=rowsOf(written),used=new Set(pairs.values());let body=written;
+    const rows=rowsOf(written),used=new Set(pairs.values()),current=rowsOf(this.body),kept=new Set();let body=written;
     for(let i=rows.length-1;i>=0;i--){
       const row=rows[i],j=pairs.get(i),base=j===undefined?null:this.base.raw[j];
-      let detail=base?cardDetails(base.card.words):emptyDetails();
+      // Equal words are not enough: current metadata must belong to this
+      // same confirmed card, or an edited twin can borrow its sibling's ID.
+      const same=current.map((r,k)=>({r,k})).filter(({r,k})=>!kept.has(k)&&r.signature===row.signature&&this.pairs?.get(k)===j)
+        .sort((a,b)=>Math.abs(a.k-i)-Math.abs(b.k-i))[0];
+      if(same)kept.add(same.k);
+      const source=same?.r??base;
+      let detail=source?cardDetails(source.card.words):emptyDetails();
       if(base){
         let combined=this.base.rows[j].words;const merged=[];
         for(let k=j+1;k<this.base.rows.length&&!used.has(k);k++){
@@ -92,15 +108,15 @@ export class CardTextProjection {
         }
       }
       if(!detail.id&&!detail.aliases.length)continue;
-      if(base&&cardTextValue(stripDetails(base.card.raw))===cardTextValue(row.card.raw)&&
-        JSON.stringify(detail.aliases)===JSON.stringify(cardDetails(base.card.words).aliases)){
-        body=body.slice(0,row.start)+base.card.raw+body.slice(row.end);continue;
+      if(source&&cardTextValue(stripDetails(source.card.raw))===cardTextValue(row.card.raw)&&
+        JSON.stringify(detail.aliases)===JSON.stringify(cardDetails(source.card.words).aliases)){
+        body=body.slice(0,row.start)+source.card.raw+body.slice(row.end);continue;
       }
       const line=detailsLine(detail),firstBreak=row.card.raw.indexOf('\n');
       const oldLine=base&&detailLines(base.card.raw)[0];
       const underTitle=oldLine&&stripDetails(base.card.raw.slice(0,oldLine.start)).trim()===base.card.raw.split('\n')[0].trim();
       const openFence=withCardDetails(row.card.words,detail).startsWith(line+'\n\n');
-      let at=row.start+(underTitle||openFence?(firstBreak<0?row.card.raw.length:firstBreak):row.card.raw.trimEnd().length);
+      let at=row.start+(underTitle||openFence?(firstBreak<0?row.card.raw.length:firstBreak):row.card.raw.replace(/(?:\r?\n)+$/,'').length);
       if(written[at-1]==='\r')at--;
       const newline=written.includes('\r\n')?'\r\n':'\n';
       body=body.slice(0,at)+newline+newline+line+body.slice(at);
