@@ -208,18 +208,12 @@ export class NotebookSheet {
     return true;
   }
 
-  // opener: what takes the focus back on close. write: 'new' opens the first card of an empty page.
-  async open(id, { opener = null, write = null, mode = null, beside = false } = {}) {
-    if (!this.dialog) return false;
-    const serial = ++this.serial;
-    // The New message sheet, popped up, goes back to its place in the feed first, its writing kept; a page opened from
-    // the Reader's words takes the Reader's place, its reply kept, so one window stands over the feed.
-    if (!this.showing && this.messageDialog?.open) this.messageDialog.close();
-    if (this.reader?.open && !this.aside) this.doc.getElementById('reader-close')?.click();
-    if (!this.showing && !this.place) this.place = { x: globalThis.scrollX, y: globalThis.scrollY, opener: opener ?? this.doc.activeElement };
+  // Prepare through the same page/writer owner without replacing the composer.
+  // Kept in the existing leaving collection until confirmed and opened, so the
+  // normal journal guard, reconnect and retirement still own it.
+  obtain(id) {
     let page = this.current?.item === id ? this.current : this.leaving.get(id) ?? null;
     if (page && page !== this.current) { this.leaving.delete(id); page.leaving = false; }
-    if (this.current && this.current !== page) this.letGo(this.current);
     const first = !page;
     if (!page) {
       const host = this.node('section', 'deck-page notebook-sheet-page'); host.setAttribute('aria-label', 'Notebook page');
@@ -242,6 +236,31 @@ export class NotebookSheet {
         if (this.docked) this.openInFeed(topicId, messageId); else this.setAside(topicId, messageId);
       }, true);
     }
+    return { page, first };
+  }
+  async appendNote(id, job) {
+    const { page } = this.obtain(id);
+    if (page !== this.current) this.leaving.set(id, page);
+    try {
+      if (!await page.load() || this.listening.signal.aborted) throw Error('This Notebook page is no longer available.');
+      await page.appendNote(job);
+    } catch (error) {
+      if (!job.applied && page !== this.current) { this.leaving.delete(id); page.close?.(); }
+      throw error;
+    }
+  }
+
+  // opener: what takes the focus back on close. write: 'new' opens the first card of an empty page.
+  async open(id, { opener = null, write = null, mode = null, beside = false, card = null } = {}) {
+    if (!this.dialog) return false;
+    const serial = ++this.serial;
+    // The New message sheet, popped up, goes back to its place in the feed first, its writing kept; a page opened from
+    // the Reader's words takes the Reader's place, its reply kept, so one window stands over the feed.
+    if (!this.showing && this.messageDialog?.open) this.messageDialog.close();
+    if (this.reader?.open && !this.aside) this.doc.getElementById('reader-close')?.click();
+    if (!this.showing && !this.place) this.place = { x: globalThis.scrollX, y: globalThis.scrollY, opener: opener ?? this.doc.activeElement };
+    const { page, first } = this.obtain(id);
+    if (this.current && this.current !== page) this.letGo(this.current);
     if (!page.host.isConnected) this.body.append(page.host);
     this.show(page);
     this.beside = beside;
@@ -254,6 +273,7 @@ export class NotebookSheet {
     if (serial !== this.serial || this.current !== page || !this.showing) return loaded;
     if (mode) page.switchView(mode);
     if (mode === 'cards') { page.picked = 0; page.paint(); }
+    if (card && loaded) page.pickCardId(card);
     if (kept && page.reopen?.(kept)) { /* the card box it had open, open again */ }
     else if (write === 'new' && page.base && !page.base.body && !page.readOnly && !page.editing) page.start();
     else this.focus(page, first);

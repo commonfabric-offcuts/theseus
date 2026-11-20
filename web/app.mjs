@@ -3235,7 +3235,8 @@ async function initialize() {
   const imageBytes = async item => (await api.media(bootstrap.instance_id, item.attachment, item.source_ref)).blob;
   inline = new InlineComposer({
     instanceId: bootstrap.instance_id,
-    notebook: { api, bootstrap, mayWrite: memoryAnswer.reader_may_write === true, open: (id, options) => openNotebook(id, options) },
+    notebook: { api, bootstrap, mayWrite: memoryAnswer.reader_may_write === true, open: (id, options) => openNotebook(id, options),
+      pages: () => panes.things.notebookPages(topicId), append: (id, job) => notebookSheetOf().appendNote(id, job) },
     images: topicImages, imageBytes,
     actorLabel,
     admits: (p, editor) => registry?.isCurrent(p, editor),
@@ -4267,7 +4268,7 @@ function notebookRailMenu() {
 }
 function openNotebook(id, options = {}) {
   const sheet = notebookSheetOf();
-  if (options.beside && !sheet.canDock()) return openDestination({ kind: 'cards', id, ...(options.mode === 'text' ? { view: 'text' } : {}) }, 'the Notebook page');
+  if (options.beside && !sheet.canDock()) return openDestination({ kind: 'cards', id, ...(options.mode === 'text' ? { view: 'text' } : {}), ...(options.card ? { card: options.card } : {}) }, 'the Notebook page');
   return sheet.open(id, options);
 }
 
