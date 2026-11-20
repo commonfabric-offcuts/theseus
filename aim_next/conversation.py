@@ -369,6 +369,7 @@ class Conversation:
         # In an outcome's conversation an agent answers only the items it answers (standing_conversation.py).
         self._conversation_check_publish(db, actor, topic, snapshot, snapshot.get("reply_to"), private)
         intent = self._intent(db, actor, snapshot)
+        self._check_unread_answers(db, actor, topic, snapshot, intent)
         if snapshot["addressees"] and intent is None and private is None:
             raise Refusal("INTENT_REQUIRED", INTENT_REQUIRED, recorded=False)
         if intent is not None and not snapshot["addressees"]:

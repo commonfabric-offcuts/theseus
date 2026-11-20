@@ -205,9 +205,9 @@ def on_record_wake_health(db, reader, quiet):
         if item["actor_id"] == reader:
             shown.append(item)
             continue
-        row = db.execute("SELECT count(*),min(m.sent_ms) FROM delivery_groups g INDEXED BY eligible_groups "
+        row = db.execute("SELECT count(*),min(coalesce(ar.at_ms,m.sent_ms)) FROM delivery_groups g INDEXED BY eligible_groups "
                          "CROSS JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
-                         "JOIN messages m ON m.id=d.message_id WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0 AND " + READ_BY,
+                         "JOIN messages m ON m.id=d.message_id LEFT JOIN answer_receipts ar ON ar.id=d.answer_id WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0 AND " + READ_BY,
                          (item["actor_id"], reader)).fetchone()
         if not row[0]:
             continue

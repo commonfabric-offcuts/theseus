@@ -137,6 +137,13 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     # Each dossier to name is said once, on its first delivery listed.
     to_name = set()
     for number, item in enumerate(listed, 1):
+        if item.get('answer'):
+            answer = item['answer']
+            lines.append('%d. answer in topic %s from %s to question %s (seq %d), delivery %s; '
+                         'read the answer in inbox and the question, then acknowledge this delivery before asking again in its dossier.' % (
+                             number, _named(item['topic']['id']), _named(answer['actor_id']), _named(answer['message_id']),
+                             item['message']['seq'], _named(item['id'])))
+            continue
         if item.get("request"):
             request = item["request"]
             lines.append("%d. request in topic %s, from %s, source %s, dossier %s, observed revision %d, delivery %s; "
@@ -192,8 +199,10 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     if PREVIEWS_IN_CONTEXT:
         previews = "\n".join("%s: %s" % (_named(item["id"]), json.dumps(
             {"topic": item["topic"]["id"], "title": _title(item["topic"]),
-             "from": item["request"]["requester_id"] if item.get("request") else item["message"]["author_id"],
-             "body": item["request"]["body"] if item.get("request") else item["message"]["body"]}, ensure_ascii=False)) for item in listed)
+             "from": item['answer']['actor_id'] if item.get('answer') else item["request"]["requester_id"] if item.get("request") else item["message"]["author_id"],
+             "body": (('%s: %s%s; question: ' % (item['answer']['kind'], item['answer']['value'],
+                       '' if item['answer']['stands'] else ' (no longer stands)')) + item['message']['body']) if item.get('answer') else
+                     item["request"]["body"] if item.get("request") else item["message"]["body"]}, ensure_ascii=False)) for item in listed)
         context = {"theseus.previews." + attempt_id: {"kind": "untrusted", "value": previews}}
     return {"input": [{"type": "text", "text": "\n".join(lines), "text_elements": []}],
             "additionalContext": context, "announced_seq": max(item["seq"] for item in listed)}

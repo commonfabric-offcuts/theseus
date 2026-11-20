@@ -141,13 +141,13 @@ class Delivery:
         db.execute("UPDATE recipient_schedule SET pending_count=?,wake_generation=wake_generation+1,last_seq=?,next_due_ms=?,retry_count=?,handed_seq=? WHERE recipient_id=?",
                    (pending, last_seq if last_seq is not None else old["last_seq"], due, retry, handed, actor))
 
-    def _queue_delivery(self, db, message_id, recipient, topic_id, reasons, settled=False, revision=1, request_id=None):
+    def _queue_delivery(self, db, message_id, recipient, topic_id, reasons, settled=False, revision=1, request_id=None, answer_id=None):
         """Queue one delivery of a message; settled, it is recorded already acknowledged and waits on nobody.
 
         A correction (reason `correction`, docs/message-edit.md) delivers the message again at a later revision,
         in the recipient's one correction group, which nothing counts as unread or addressed."""
         direct = any(reason != "subscription" for reason in reasons)
-        kind = "request" if request_id is not None else "correction" if "correction" in reasons else "direct" if direct else "subscription"
+        kind = "answer" if answer_id is not None else "request" if request_id is not None else "correction" if "correction" in reasons else "direct" if direct else "subscription"
         key = (recipient, kind, "" if direct else topic_id, 0 if direct else reasons["subscription"])
         db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) VALUES (?,?,?,?) ON CONFLICT DO NOTHING", key)
         group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind=? AND topic_id=? AND participant_epoch=?", key).fetchone()[0]
@@ -155,9 +155,9 @@ class Delivery:
         # A message its author has open in Edit is holding (docs/message-edit.md): an agent's unsettled delivery of it
         # waits in the state 'held', counted nowhere, and its release counts it as an arrival. The one session row's
         # primary key answers whether it is holding.
-        held = request_id is None and not settled and holding(db, message_id) and db.execute("SELECT kind FROM actors WHERE id=?", (recipient,)).fetchone()[0] == "agent"
-        seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id,state,revision,request_id) VALUES (?,?,?,?,?,?,?,?)",
-                         (delivery_id, message_id, recipient, group, topic_id, "acknowledged" if settled else "held" if held else "pending", revision, request_id)).lastrowid
+        held = request_id is None and answer_id is None and not settled and holding(db, message_id) and db.execute("SELECT kind FROM actors WHERE id=?", (recipient,)).fetchone()[0] == "agent"
+        seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id,state,revision,request_id,answer_id) VALUES (?,?,?,?,?,?,?,?,?)",
+                         (delivery_id, message_id, recipient, group, topic_id, "acknowledged" if settled else "held" if held else "pending", revision, request_id, answer_id)).lastrowid
         db.executemany("INSERT INTO delivery_reasons VALUES (?,?,?,?)", [(delivery_id, reason, topic_id, epoch) for reason, epoch in reasons.items()])
         if held:
             # Its release counts it and reads the recipient's schedule, so the schedule row exists from now (it counts nothing).
@@ -409,6 +409,8 @@ class Delivery:
             item["state"] = "cancelled"
         item.update(reasons=self._effective_reasons(db, row), message=message, source_ref={"kind": "message", "id": row["message_id"]},
                     topic={"id": message["topic_id"], "title": title, "title_truncated": truncated})
+        if row['answer_id'] is not None:
+            item['answer'] = self._answer_receipt_value(db, row['answer_id'])
         # An agent that names the message's dossier, which nobody has named, is told so with the work (item 479).
         if row["state"] == "pending" and row["revision"] == 1 and not message["whisper"] and self._actor_kind(db, row["recipient_id"]) == "agent":
             name_it = self._name_it(db, row["recipient_id"], row["message_id"])

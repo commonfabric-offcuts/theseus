@@ -1289,6 +1289,11 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
 
     @staticmethod
     def delivery_line(item):
+        if item.get('answer'):
+            answer = item['answer']
+            return 'answer "%s" %s from %s to question %s: %s%s  [%s in %s]' % (
+                _one_line(item['topic']['title'], 60), answer['kind'], answer['actor_id'], answer['message_id'],
+                answer['value'], '' if answer['stands'] else ' (no longer stands)', item['id'], item['topic']['id'])
         if item.get("request"):
             request = item["request"]
             return 'request "%s" %s from %s, source %s, dossier %s, observed revision %s: %s  [%s in %s]' % (
