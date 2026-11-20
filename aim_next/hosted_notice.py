@@ -87,6 +87,9 @@ def developer_instructions(actor_id, cli, profile_path):
         "a new id.",
         "A correction says its author edited a message you were sent: it is not a new ask, Tell or",
         "reply. Read the message again, act on its latest words, then ack the correction's delivery.",
+        "A request delivery asks for a cover refresh or an in-place message update. Its instructions are in inbox;",
+        "read its source and dossier, perform the requested write, then ack its delivery. It is not a message",
+        "in the requester's name, and neither a reply nor an acknowledgement completes that request.",
     ))
 
 
@@ -134,6 +137,13 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     # Each dossier to name is said once, on its first delivery listed.
     to_name = set()
     for number, item in enumerate(listed, 1):
+        if item.get("request"):
+            request = item["request"]
+            lines.append("%d. request in topic %s, from %s, source %s, dossier %s, observed revision %d, delivery %s; "
+                         "read its instructions in inbox, perform the requested write, then ack the delivery." % (
+                             number, _named(item["topic"]["id"]), _named(request["requester_id"]),
+                             _named(request["message_id"]), _named(request["root_id"]), request["observed_revision"], _named(item["id"])))
+            continue
         message = item["message"]
         if item.get("correction"):
             # Core's words: its author edited a message this agent was sent (docs/message-edit.md). It is not new work, and
@@ -171,6 +181,8 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
                                           " Titles and previews are in the untrusted context." if PREVIEWS_IN_CONTEXT else ""))
     first = {}
     for item in listed:
+        if item.get("request"):
+            continue
         topic = item["topic"]["id"]
         if _named(topic) != UNNAMED:
             first[topic] = min(first.get(topic, item["message"]["seq"]), item["message"]["seq"])
@@ -179,8 +191,9 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     context = None
     if PREVIEWS_IN_CONTEXT:
         previews = "\n".join("%s: %s" % (_named(item["id"]), json.dumps(
-            {"topic": item["topic"]["id"], "title": _title(item["topic"]), "from": item["message"]["author_id"],
-             "body": item["message"]["body"]}, ensure_ascii=False)) for item in listed)
+            {"topic": item["topic"]["id"], "title": _title(item["topic"]),
+             "from": item["request"]["requester_id"] if item.get("request") else item["message"]["author_id"],
+             "body": item["request"]["body"] if item.get("request") else item["message"]["body"]}, ensure_ascii=False)) for item in listed)
         context = {"theseus.previews." + attempt_id: {"kind": "untrusted", "value": previews}}
     return {"input": [{"type": "text", "text": "\n".join(lines), "text_elements": []}],
             "additionalContext": context, "announced_seq": max(item["seq"] for item in listed)}

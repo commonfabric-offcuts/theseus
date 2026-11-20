@@ -1,4 +1,9 @@
-# Refresh a dossier cover (Pipeline 738, preview only)
+# Refresh a dossier cover (738, updated by829)
+
+New requests on schema56 follow [refresh-requests-829.md](refresh-requests-829.md):
+an immutable request act and typed agent delivery, with a timed line on the
+dossier and Reader. The historical preview/native notes below remain bound to
+their original sources; they are not current829 acceptance evidence.
 
 Pressing the cover's refresh glyph asks its writer to rewrite it using the
 latest facts in that dossier. The existing cover stays whole. The glyph is an
@@ -15,13 +20,12 @@ receipt deduplicates retries. Core additionally coalesces all pending requests
 for a root across actors and tabs. Once completed, an attempt on its older
 observed revision is refused rather than prompting again.
 The pending operation identity, requester, observed revision, recipient and request
-message are durable in append-only act history. Nothing schedules another prompt on a timer.
+identity are durable in append-only act history. Nothing schedules another prompt on a timer.
 
-Core publishes one attributed request through the existing `_publish` path,
-with its addressed delivery, wake eligibility and recovery. It is a reply in
-the dossier, private between the same two people when the root is a whisper.
-All ordinary topic reach, private message reach, closed outcome and publication
-checks apply. No model call, route discovery or scheduler is introduced.
+Core records one request in the existing delivery queue, addressed only to its
+agent. It creates no reply, unread mark or subscription delivery. Current source
+reach and closed outcome checks apply; instructions are visible only through
+the recipient's delivery. No model call, route discovery or scheduler is introduced.
 
 Recipient default: the recorded current cover writer, when enabled, an agent,
 and still able to read this dossier root as the same root. Otherwise use the
@@ -29,8 +33,9 @@ outcome's explicitly configured coordinator, under those same checks. Neither
 the dossier's human author nor an arbitrary team member is a fallback. A request
 to oneself is refused because the normal delivery path does not deliver to its
 sender. No eligible recipient is an honest refusal, with the cover untouched.
-An absent/failed wake route leaves durable pending work; the request message is
-reachable from the indicator. Core does not claim a writer has accepted it.
+An absent/failed wake route leaves durable pending work. The timed request line
+remains; Core does not claim a writer has accepted it. Pre56 generated request
+messages remain intact and keep their original indicator links.
 
 Schema 48 adds topic-owned `cover_refresh` acts and a separate writer record.
 Existing cover

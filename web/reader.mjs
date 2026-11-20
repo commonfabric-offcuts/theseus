@@ -1,4 +1,4 @@
-import { messageUpdateActivity } from './cover-refresh.mjs';
+import { messageUpdateActivity, refreshLine } from './cover-refresh.mjs';
 import { messageFoldSwipe } from './message-fold-swipe.mjs';
 import { keyAction, holdsWriting, written } from './editor.mjs';
 import { showLine } from './lines.mjs';
@@ -1156,8 +1156,17 @@ export class Reader {
     paintWithdrawal(originText, source, document, true);
     this.$('reader-origin').replaceChildren(originText);
     if (source.source_ref.kind === 'message') {
-      const update = messageUpdateActivity(document, source, { viewer: this.callbacks.actor?.(), nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: source.topic_id });
+      const context = { viewer: this.callbacks.actor?.(), nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: source.topic_id };
+      const update = messageUpdateActivity(document, source, context);
       if (update) this.$('reader-origin').append(update);
+      // A first-cover request has no sheet yet. Its source still carries the
+      // same timed line; once a cover exists its shared sheet owns that line.
+      if (!source.acts?.cover && source.acts?.cover_refresh?.request_id) {
+        const line = refreshLine(document, { type: 'cover', id: source.source_ref.id,
+          revision: source.acts.cover_revision ?? 0, refresh: source.acts.cover_refresh,
+          refresh_revision: source.acts.cover_refresh_revision ?? 0 }, context);
+        if (line) this.$('reader-origin').append(line);
+      }
     }
     this.paintTone(source);
   }

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Durable cover-refresh intent, using ordinary addressed messages and wakes.
+"""Durable refresh intent, using typed requests in the existing delivery queue.
 
 The state is a topic-owned message act, separate from the untouched cover.
 Only a changed agent cover write completes it. See docs/cover-refresh.md.
@@ -8,6 +8,7 @@ Only a changed agent cover write completes it. See docs/cover-refresh.md.
 
 from .contract import Refusal
 from .delivery import _now_ms
+import uuid
 
 
 WRITER_SCHEMA = [
@@ -55,7 +56,7 @@ class CoverRefresh:
         return self._refresh_request(db, actor, envelope, "message")
 
     def _refresh_request(self, db, actor, envelope, target_type):
-        """One request door: adapters select a target, publication/activity stay shared."""
+        """One request door: adapters select a target, delivery/activity stay shared."""
         from .stacks import EMPTY, StackRoots, current_acts
         from .message_edit import current_words
         message, topic = self._acted_message(db, actor, envelope["target"])
@@ -102,16 +103,20 @@ class CoverRefresh:
                     "message identity; do not post a replacement. This request observed revision %d; only a new "
                     "ordinary revision of that same message completes it, not a reply or acknowledgement."
                     % (message["id"], message["id"], current))
-        private = message["private_to"] is not None
-        snapshot = self._writing({"body": body, "addressees": [recipient], "reply_to": message["id"],
-                                  "intent": None if private else "ask", "whisper": private})
-        posted, affected = self._publish(db, actor, envelope["operation_id"], topic["id"], snapshot)
+        request_id, at_ms = "rq-" + uuid.uuid4().hex, _now_ms()
+        root_id = StackRoots(db, actor).root(message["id"])
         value = {"state": "pending", "operation_id": envelope["operation_id"], "by": actor,
-                 "observed_revision": current, "recipient": recipient, "request_message_id": posted["message_id"],
-                 "at_ms": _now_ms(), "completed_revision": None}
+                 "observed_revision": current, "recipient": recipient, "request_id": request_id,
+                 "root_id": root_id, "at_ms": at_ms, "completed_revision": None}
         next_revision = acts.get(kind + "_revision", 0) + 1
         version = self._record_act(db, kind, message, "", actor, value, next_revision)
-        return dict(result, refresh=value, refresh_revision=next_revision, coalesced=False), affected + [{"kind": "acts", "id": topic["id"], "version": version}]
+        db.execute("INSERT INTO refresh_requests(id,act_id,message_id,root_id,topic_id,kind,requester_id,recipient_id,observed_revision,body,created_ms) "
+                   "VALUES (?,?,?,?,?,?,?,?,?,?,?)", (request_id, version, message["id"], root_id, topic["id"], kind,
+                                                      actor, recipient, current, body, at_ms))
+        delivery_id = self._queue_delivery(db, None, recipient, topic["id"], {"request": None}, request_id=request_id)
+        self._change(db, "actor", recipient, "delivery", delivery_id, 1)
+        return dict(result, refresh=value, refresh_revision=next_revision, coalesced=False), [
+            {"kind": "acts", "id": topic["id"], "version": version}, {"kind": "delivery", "id": delivery_id, "version": 1}]
 
     def _complete_refresh(self, db, actor, message, kind, revision, version=None):
         pending = self._act_value(db, message["id"], kind, "")

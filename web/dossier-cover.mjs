@@ -9,7 +9,7 @@
 // no cover: what its cover says shows as small pills under who wrote it.
 //
 // Its look is web/stack-look.css's, from the page's semantic tokens.
-import { refreshControl } from './cover-refresh.mjs';
+import { refreshControl, coverRequestLine } from './cover-refresh.mjs';
 import { coverAnswers } from './cover-answers.mjs';
 import { glyph } from './glyphs.mjs';
 import { linkNode, writtenLink } from './links.mjs';
@@ -120,6 +120,8 @@ export function coverSheet(doc, cover, context) {
     refresh.style.gridRow = String(Math.max(1, sheet.children.length));
     sheet.append(refresh);
   }
+  const request = coverRequestLine(doc, cover, ctx);
+  if (request) sheet.append(request);
   sheet.dataset.done = String(Boolean(payload?.done) && !(cover.waiting ?? []).length);
   return sheet;
 }
@@ -139,6 +141,7 @@ export function coverPills(doc, cover, context) {
     for (const wait of cover.waiting) { const answers = coverAnswers(doc, wait, ctx); if (answers) pills.append(answers); }
   }
   const refresh = refreshControl(doc, cover, ctx); if (refresh) pills.append(refresh);
+  const request = coverRequestLine(doc, cover, ctx); if (request) pills.append(request);
   if (!pills.children.length) return null;
   if (cover.stands) pills.title = cover.stands;
   return pills;

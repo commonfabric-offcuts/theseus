@@ -29,7 +29,7 @@ import { carriesNode, carriesOf } from './marks.mjs';
 import { coverKey, coverSheet, paintCoverPills } from './dossier-cover.mjs';
 import { AGENT_PALETTE } from './author-colors.mjs';
 import { showGlyph } from './glyphs.mjs';
-import { firstCoverTarget, firstCoverControl } from './cover-refresh.mjs';
+import { firstCoverTarget, firstCoverControl, refreshLine } from './cover-refresh.mjs';
 
 const ENTRIES = ':scope > [data-id], :scope > .reply-stack > [data-id], :scope > .reply-stack > .stack-replies > [data-id]';
 const states = new WeakMap();
@@ -849,9 +849,12 @@ function paintStack(section, stack, byId, context) {
   if (p.placed) p.free.onclick = () => state.on?.unplace?.(stack);
   const rename = renameField(section, stack, shown, context);
   paintTools(p.tools, stack, shown, context);
+  p.requestLine?.remove();
+  const firstTarget = firstCoverTarget(stack);
+  p.requestLine = !p.cover && firstTarget ? refreshLine(doc, firstTarget, coverContext) : null;
   section.dataset.askCover = String(Boolean(coverTools.get(p.tools)?.node));
   paintFolderColor(section, stack, colorOf);
-  reconcile(section, [...(separate ? [p.header] : []), ...(p.cover ? [p.cover] : []), head, ...(rename ? [rename] : [...(separate ? [] : [p.toggle]), p.tools]), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
+  reconcile(section, [...(separate ? [p.header] : []), ...(p.cover ? [p.cover] : []), ...(p.requestLine ? [p.requestLine] : []), head, ...(rename ? [rename] : [...(separate ? [] : [p.toggle]), p.tools]), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
   if (!separate) p.header.remove();
   if (separate || rename) p.toggle.remove();
   if (rename) p.tools.remove();
