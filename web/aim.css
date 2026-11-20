@@ -573,6 +573,7 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 .message-bar button[hidden]{display:none}
 .message-bar button:hover,.message-bar button[aria-pressed=true]{background:var(--soft)}
 .message-bar button[aria-pressed=true]{font-weight:700}
+.message-bar button[aria-pressed=true],#thumb-source[aria-pressed=true]{box-shadow:var(--stack-cover-inset)}
 .message-reactions{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .45rem;margin-top:.55rem;font-size:.8rem}
 .reaction-count,.reaction-choice{display:inline-flex;align-items:center;gap:.25rem;padding:0 .55rem;border:1px solid color-mix(in srgb,currentColor 30%,transparent);border-radius:1rem;line-height:1.7rem;background:transparent;color:inherit;cursor:pointer;white-space:nowrap}
 .reaction-count:hover,.reaction-choice:hover{background:color-mix(in srgb,currentColor 10%,transparent)}

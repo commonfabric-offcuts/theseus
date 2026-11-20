@@ -5213,5 +5213,19 @@
       ],
       "scope": "repository"
     }
+  },
+  "tests/ui_pressed_reactions_882.test.mjs": {
+    "86b4b501522477e28a3af88cf8731f5d5ca400d2f2e7afced022a266085b957a": {
+      "scope": "repository",
+      "inputs": [
+        "web/aim.css"
+      ]
+    },
+    "5d7beca93ce0f663587fb96a295dcd456e08942be8ad5c98854256d52629cfd9": {
+      "scope": "repository",
+      "inputs": [
+        "web/stack-look.css"
+      ]
+    }
   }
 }
