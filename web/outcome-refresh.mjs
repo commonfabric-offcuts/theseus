@@ -8,17 +8,17 @@ export function outcomeInvalidation(workspace, actor) {
   for (const item of workspace) {
     const kind = item.resource_kind;
     if (kind === 'workspace') return outcomeReads();
-    if (kind === 'topic') add('topics', 'standing', 'targets', 'pipeline', 'outcomes');
+    if (kind === 'topic') add('topics', 'standing', 'targets', 'pipeline');
     else if (kind === 'memory') add('references');
     else if (kind === 'checks') add('targets', 'standing');
-    else if (kind === 'pipeline') add('pipeline', 'targets', 'topics', 'outcomes');
+    else if (kind === 'pipeline') add('pipeline', 'targets', 'topics');
     else if (kind.startsWith('tool_')) add('tools');
-    else return outcomeReads(); // A new public key is conservatively reread.
+    else for (const name of outcomeReads()) if (name !== 'outcomes') dirty.add(name); // Unknown keys reread local panels, not the global list.
   }
   for (const item of actor) {
     const kind = item.resource_kind;
     if (kind === 'workspace' || kind === 'participation') return outcomeReads();
-    if (['waiting', 'delivery', 'mark'].includes(kind)) add('outcomes', 'topics', 'standing');
+    if (['waiting', 'delivery', 'mark'].includes(kind)) add('topics', 'standing');
     if (kind === 'outcome_order') add('outcomes');
     if (kind === 'topic_order') add('topics');
     if (['acts', 'dossier_move', 'edit'].includes(kind)) add('stars');
