@@ -7,6 +7,7 @@ import vm from 'node:vm';
 import { OutlineDossiers } from '../web/outline-dossiers.mjs';
 import { parseRoute, routeHref, routeKey, TopicNavigation } from '../web/topic-navigation.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
+import { StackFeed } from '../web/stack-feed.mjs';
 import { checkedView } from '../web/freshness.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 const source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
@@ -47,6 +48,11 @@ function app({loaded=false, readerOpen=false}={}) {
     topicNavigation:{serial:0,openTarget:async value=>{calls.push(['navigate',copy(value)]);return true;}},
     showLine:()=>{},shell:{leave:href=>calls.push(['leave',href]),stayed:()=>calls.push(['stayed'])},stayedWhy:error=>{throw error;}
   };
+  // This route fixture models one loaded card. Supply that projection to the
+  // real landing resolver; full-app 891 cases cover hidden structural roots.
+  scope.stackFeed=Object.create(StackFeed.prototype);
+  Object.defineProperty(scope.stackFeed,'state',{get:()=>({stacks:views.messages.has('root')?[{head:views.messages.get('root'),replies:[]}]:[]})});
+  scope.stackFeed.entryFor=id=>scope.entries().find(entry=>entry.dataset.id===id)??null;
   const context=vm.createContext(scope);
   vm.runInContext(between('function landOn(id,','// A message a link on the page names'),context);
   vm.runInContext(between('async function openDestination(', '// Why the page stayed,'),context);

@@ -47,3 +47,16 @@ transport retries and late-source isolation below the browser. Applied mutants
 must fail assertions and exact restored controls must pass. This recut has no
 new browser, layout, physical-device, preview or whole-suite claim. Historical
 native acceptance remains bound to original source e9e243fc, not this composition.
+
+## Your view after withdrawal
+
+Your own withdrawn question leaves your feed and dossier. Other readers still
+see it with “Question withdrawn”. Replies stay in the same dossier and order;
+an explicit or agent-minted name and independent cover stay. Without a name,
+a surviving reply heads the existing neutral “Dossier” tab. Generated reply
+context omits an excerpt when the feed’s loaded records or dossier-head cache
+establish that it is your withdrawn question, but keeps its author cue. A parent
+known only to Reader, or absent from those records, does not trigger suppression.
+Authored reply text is unchanged. A direct link still opens the exact
+question in Reader. This is a page projection of the existing withdrawal fact,
+not a saved hide choice or record removal, and it adds no waiting state.
