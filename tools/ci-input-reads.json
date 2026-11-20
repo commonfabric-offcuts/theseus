@@ -4292,6 +4292,14 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/ui_outcome_black_877.test.mjs": {
+    "86b4b501522477e28a3af88cf8731f5d5ca400d2f2e7afced022a266085b957a": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    }
+  },
   "tests/ui_outcome_light.test.mjs": {
     "86b4b501522477e28a3af88cf8731f5d5ca400d2f2e7afced022a266085b957a": {
       "inputs": [],
