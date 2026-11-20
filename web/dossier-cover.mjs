@@ -101,7 +101,9 @@ export function coverSheet(doc, cover, context) {
   if (cover.stands) {
     const words = element(doc, 'span', 'cover-words cover-stands');
     const nodes = literalHTMLNodes(cover.stands, doc);
-    if (nodes.length === 1 && nodes[0].nodeType === 3) words.textContent = cover.stands;
+    // Plain covers retain their original textContent paint, regardless of the
+    // document adapter's representation of text nodes. Keep size refusals too.
+    if (!nodes.some(node => node.className === 'html-block' || node.className === 'html-source')) words.textContent = cover.stands;
     else words.append(...nodes);
     line('cover-heading').append(words);
   }

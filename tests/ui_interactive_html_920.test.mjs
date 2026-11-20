@@ -104,12 +104,13 @@ test('920 parent channel rejects wrong source, nonce, origin and inactive link i
 
 function bootstrapFixture({ report = true, fetchOK = false, imageOK = false, reportPatch = {} } = {}) {
   const { doc } = fixture(), sent = [], parent = { postMessage: (...args) => sent.push(args) }, handlers = {}, probes = [];
+  const activation = { isActive: false };
   const href = 'https://theseus.test/interactive-html';
   let observer, closed = 0, disconnected = 0;
   doc.body = doc.createElement('body');
   const create = doc.createElement; doc.createElement = tag => Object.assign(create(tag), { contentWindow: {} });
   vm.runInNewContext(readFileSync(new URL('../web/interactive-html-bootstrap.js', import.meta.url), 'utf8'), {
-    document: doc, parent, location: { href }, URL, TextEncoder, AbortController,
+    document: doc, parent, location: { href }, navigator: { userActivation: activation }, URL, TextEncoder, AbortController,
     addEventListener: (kind, fn) => { handlers[kind] = fn; },
     setTimeout: (fn, ms) => { assert.equal(ms, 5000); return setTimeout(fn, 10); }, clearTimeout,
     ReportingObserver: class { constructor(fn) { observer = fn; } observe() {} disconnect() { disconnected++; } },
@@ -126,8 +127,39 @@ function bootstrapFixture({ report = true, fetchOK = false, imageOK = false, rep
   });
   const data = { protocol: 'theseus-html-1', kind: 'init', nonce: 'a'.repeat(48), html: '<p>kept</p>' };
   const send = patch => handlers.message({ source: parent, origin: 'https://theseus.test', data, ...patch });
-  return { doc, data, send, sent, probes, cleaned: () => ({ closed, disconnected }) };
+  return { doc, data, send, sent, probes, activation, cleaned: () => ({ closed, disconnected }) };
 }
+
+test('920 a timer-posted link needs activation in the bootstrap, not merely the page', async () => {
+  const f = bootstrapFixture(); await f.send({});
+  const frame = f.doc.body.children[0], relay = { protocol: f.data.protocol, nonce: f.data.nonce,
+    kind: 'link', href: 'https://example.test/' };
+  // A fence can read the nonce. Valid source/origin/nonce alone cannot relay.
+  await new Promise(resolve => setTimeout(() => {
+    f.send({ source: frame.contentWindow, origin: 'null', data: relay }); resolve();
+  }, 0));
+  assert.equal(f.sent.length, 0, 'no fence click means no link reaches the active main page');
+  f.activation.isActive = true;
+  await f.send({ source: frame.contentWindow, origin: 'null', data: relay });
+  assert.deepEqual(JSON.parse(JSON.stringify(f.sent)), [[relay, 'https://theseus.test']]);
+});
+
+test('920 inner bridge locks all RTC constructors to a plain error before fence code runs', async () => {
+  const f = bootstrapFixture(); await f.send({});
+  const script = f.doc.body.children[0].srcdoc.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const names = ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel'], nativeCalls = [];
+  const inner = { parent: { postMessage() {} }, addEventListener() {},
+    ...Object.fromEntries(names.map(name => [name, function () { nativeCalls.push(name); }])) };
+  vm.runInNewContext(script, inner);
+  for (const name of names) {
+    assert.throws(() => new inner[name](), /WebRTC is not available in this isolated HTML block/, name);
+    assert.equal(Object.getOwnPropertyDescriptor(inner, name).configurable, false, name);
+    assert.equal(Object.getOwnPropertyDescriptor(inner, name).writable, false, name);
+    assert.equal(Reflect.set(inner, name, function () {}), false, name);
+    assert.equal(Reflect.defineProperty(inner, name, { value: function () {} }), false, name);
+  }
+  assert.deepEqual(nativeCalls, []);
+});
 
 test('920 bootstrap binds one parent nonce and forwards only its own opaque child', async () => {
   const { doc, data, send, sent, probes, cleaned } = bootstrapFixture();

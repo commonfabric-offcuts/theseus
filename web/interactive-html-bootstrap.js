@@ -31,7 +31,8 @@
     }
     if (!frame || event.source !== frame.contentWindow || event.origin !== 'null' || value.nonce !== nonce) return;
     if (value.kind === 'height' && Number.isFinite(value.height)) send({ kind: 'height', height: Math.max(48, Math.min(4096, value.height)) });
-    if (value.kind === 'link' && typeof value.href === 'string' && value.href.length <= 4096) send({ kind: 'link', href: value.href });
+    if (value.kind === 'link' && typeof value.href === 'string' && value.href.length <= 4096 &&
+        navigator.userActivation?.isActive) send({ kind: 'link', href: value.href });
   });
 
   function isolated() {
@@ -74,6 +75,9 @@
   }
 
   function inside(nonce) {
+    for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel'])
+      Object.defineProperty(globalThis, name, { configurable: false, writable: false,
+        value: function () { throw new Error('WebRTC is not available in this isolated HTML block.'); } });
     const send = value => parent.postMessage({ protocol: 'theseus-html-1', nonce, ...value }, '*');
     addEventListener('click', event => {
       const link = event.target.closest?.('a[href]');
