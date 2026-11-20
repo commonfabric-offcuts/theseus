@@ -173,7 +173,7 @@ export class InlineComposer {
       if (!this.admits(p, editor) || this.opening !== opening || this.noteReading !== reading) return;
       this.notePages = pages; this.paintKind();
     } catch (error) {
-      if (this.admits(p, editor) && this.opening === opening && this.kind === 'note-card') this.notice(`Notebook pages could not be read: ${error.message}`);
+      if (this.admits(p, editor) && this.opening === opening && this.kind === 'note-card') this.notice(Error('Notebook pages could not be read.', { cause: error }), p, editor);
     } finally { if (this.noteReading === reading) this.noteReading = null; }
   }
   paintKind() {
