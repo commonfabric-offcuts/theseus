@@ -288,7 +288,7 @@ export class EditorRegistry {
     this.activity();
     try {
     await this.keepBeforeStep(this.interactive);
-    if (this.cards.size) await this.keepEditorsLocal([...this.cards.values()].flatMap(p => Object.values(p.editors)));
+    if (this.cards?.size) await this.keepEditorsLocal([...this.cards.values()].flatMap(p => Object.values(p.editors)));
     const [sourceAnswer, state] = await foreground.read(options => pairedReads([
       this.api.view('source', sourceRef, options),
       this.api.view('editor_state', { source_ref: sourceRef, topic_id: topicId ?? null, limit: this.pendingPageSize, unsent: true }, options),

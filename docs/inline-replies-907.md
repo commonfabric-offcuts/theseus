@@ -6,6 +6,12 @@ message opens in Edit. A double click does the same, retaining the 400 ms / 6 px
 bounds and leaving drags and controls to their own handlers. A dossier title's
 Reply opens the latest message's reply.
 
+Opening another reply by click closes the previous click-opened empty field.
+Fields holding writing, chosen recipients, quotes, images, uploads or pending
+submissions stay. If the inline source read fails, the Reader's normal source
+notice and access to authorized retained writing remain reachable; a late
+failure cannot replace a newer card or Reader opening.
+
 Every loaded message with a saved reply receives its own composer. These are
 DOM adapters of the existing InlineComposer; the EditorRegistry still owns one
 EditorSession for each source/destination. The Reader reuses that exact owner.
@@ -16,8 +22,8 @@ their existing owners. Restoring saved replies reads only admitted messages,
 with at most two loads at once; it does not open a Reader or mark messages read.
 
 The field grows to four lines on desktop and three on phone. The upward
-chevron doubles that cap, then points down to restore it. This is page state
-only. No redundant To line appears under the writing; recipient chips and the
+chevron doubles that cap, then points down to restore it. Closing the field
+resets that opening's height. No redundant To line appears under the writing; recipient chips and the
 How/To panel remain. An expanded inline reply uses 906's temporary Wide layout
 when its writing includes a quote or wraps past four lines; phones stay stacked.
 906 is an explicit, already-approved dependency of this branch.

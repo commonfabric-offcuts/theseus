@@ -1687,6 +1687,8 @@ test('source access refusal still exposes authorized retained writing without ol
     }
     return answer;
   };
+  const topic=(await f.api.view('topic',{topic_id:f.facts.topic_id})).topic;
+  await assert.rejects(f.registry.initializeCard(f.facts.sources[0],topic),/not available/);
   const restored = await f.open(0);
   assert.equal(restored.sourceUnavailable, true);
   assert.equal(restored.editors.reply.draft.body, 'My retained writing');

@@ -5835,6 +5835,11 @@ async function editClick890(options = {}) {
   return { f, card, words, overlay, item, edits, emit, click, control, opened: () => opened, inlineOpens: () => inlineOpens, hold() { pending = defer(); return pending; } };
 }
 
+test('907 R2 a failed card source read falls back to the Reader without starting Edit', async () => {
+  const x=await editClick890();
+  x.f.runObservation('cardReplies').open=async()=>{throw Error('This message is not available to you.');};
+  x.click();await settle();assert.equal(x.opened(),1);assert.equal(x.overlay.open,true);assert.equal(x.edits.length,0);
+});
 test('907 first body click opens only its reply; the second opens Reader and shared Edit once', async () => {
   const x = await editClick890(); x.click();
   assert.equal(x.inlineOpens(), 1); assert.equal(x.opened(), 0); await settle();
@@ -5875,12 +5880,13 @@ test('907 controls retain their actions and a drag never becomes a body click', 
   const x = await editClick890(); x.emit('pointerdown'); x.emit('pointermove', x.words, { clientX: 25 }); x.emit('pointerup'); x.emit('click');
   await settle(); assert.equal(x.inlineOpens(), 0); assert.equal(x.opened(), 0);
 });
-test('907 a refused or retired first reply cannot open a later Reader', async () => {
-  for (const mode of ['failed', 'retired']) {
+test('907 R2 a refused first reply tries Reader; retired or superseded opens cannot open a later Reader', async () => {
+  for (const mode of ['failed', 'retired', 'superseded']) {
     const x = await editClick890(), held = x.hold(); x.click(); x.click(x.words, { timeStamp: 1100 });
     if (mode === 'failed') held.reject(Error('source refused'));
-    else { x.f.runObservation('retired = new Set()'); held.resolve(); }
-    await settle(); assert.equal(x.opened(), 0);
+    else if(mode==='retired'){ x.f.runObservation('retired = new Set()'); held.reject(Error('late source refusal')); }
+    else { x.f.runObservation('opening++'); held.reject(Error('superseded source refusal')); }
+    await settle(); assert.equal(x.opened(), mode==='failed'?1:0);assert.equal(x.edits.length,0);
   }
 });
 

@@ -1,6 +1,48 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { holdReplyImages, replyNeedsWide } from '../web/card-replies.mjs';
+import { CardReplies } from '../web/card-replies.mjs';
+import { noWriting } from '../web/editor.mjs';
+import { miniDocument } from './fixtures/mini_dom.mjs';
+
+function replies() {
+  const doc=miniDocument(),owner=Object.assign(Object.create(CardReplies.prototype),{
+    rows:new Map(),closed:new Set(),registry:{hideCard:async p=>{p.hidden=true;return true;}},
+    changed(){},paint(){for(const row of this.rows.values())row.ui.root.hidden=row.p.hidden;}
+  });
+  for(const id of ['a','b','saved']) {
+    const root=doc.createElement('div'),card=doc.createElement('article'),field=doc.createElement('textarea'),taller=doc.createElement('button');
+    card.root=true;card.append(root);root.append(field,taller);
+    const p={hidden:true,editors:{reply:{draft:noWriting()}}};
+    owner.rows.set(id,{card,p,paintHeight(){},ui:{root,field,$:()=>taller,bar:{expand(){},close(){}}}});
+  }
+  return owner;
+}
+test('907 R2 opening another reply closes only a previous empty click-opened field',async()=>{
+  const owner=replies();await owner.open('a',owner.rows.get('a').card);
+  await owner.open('saved',owner.rows.get('saved').card,{focus:false});
+  owner.rows.get('saved').p.editors.reply.draft.body='Saved writing';
+  await owner.open('b',owner.rows.get('b').card);
+  assert.equal(owner.rows.get('a').ui.root.hidden,true);
+  assert.equal(owner.rows.get('b').ui.root.hidden,false);
+  assert.equal(owner.rows.get('saved').ui.root.hidden,false);
+});
+for(const writing of [{body:'Exact writing'},{attachments:[{id:'image'}]},{quotes:[{body:'quoted'}]},{addressees:['chosen']}])
+test('907 R2 opening another reply preserves chosen writing '+JSON.stringify(writing),async()=>{
+  const owner=replies();await owner.open('a',owner.rows.get('a').card);
+  Object.assign(owner.rows.get('a').p.editors.reply.draft,writing);
+  await owner.open('b',owner.rows.get('b').card);assert.equal(owner.rows.get('a').ui.root.hidden,false);
+});
+test('907 R2 selected upload work does not count as an empty field',async()=>{
+  const owner=replies();await owner.open('a',owner.rows.get('a').card);owner.rows.get('a').p.editors.reply.imageBusy=true;
+  await owner.open('b',owner.rows.get('b').card);assert.equal(owner.rows.get('a').ui.root.hidden,false);
+});
+test('907 R2 closing resets this opening’s doubled height',async()=>{
+  const owner=replies(),row=owner.rows.get('a');await owner.open('a',row.card);
+  row.ui.root.setAttribute('data-tall','');row.ui.$().setAttribute('aria-pressed','true');
+  await owner.close('a');assert.equal(row.ui.root.getAttribute('data-tall'),null);assert.equal(row.ui.$().getAttribute('aria-pressed'),'false');
+  await owner.open('a',row.card);assert.equal(row.ui.root.getAttribute('data-tall'),null);
+});
 
 function field(top, bottom) {
   const rect = { top, bottom, height: bottom - top }, moves = [];

@@ -119,6 +119,7 @@ const failed = error => { status(error); return null; };
 const run = action => { try { return Promise.resolve(action()).catch(failed); } catch (error) { return Promise.resolve(failed(error)); } };
 let healthLight = null;
 let api, bootstrap, journal, registry, reader, inline, cardReplies, topic, opening = 0, freshness, views, updateState, live = null, attention = null, topicState = null, waitingHost = null;
+let cardReplyRequest = 0;
 let localEffectVersion = 0;
 // The open page's outcome and its server-owned reply destination/coordinator.
 let here = null;
@@ -2062,13 +2063,21 @@ async function openMessageReader(id, card) {
   return p;
 }
 async function replyInCard(id, card) {
+  const request = ++cardReplyRequest, readerRequest = opening;
   let entry = messageEntries.get(id);
   if (!card?.getClientRects?.().length) entry = stackFeed?.land(id) ?? entry;
   if (entry) card = opened(entry);
   if (!card?.isConnected) return;
   const act = marks.capture(id);
   clearVisitNew(id);
-  const p = await cardReplies.open(id, card);
+  let p;
+  try { p = await cardReplies.open(id, card); }
+  catch {
+    // The Reader can show a source refusal alongside authorized kept writing.
+    // An old failed click must not replace a newer card or Reader opening.
+    if (request !== cardReplyRequest || readerRequest !== opening || retired || !card.isConnected || registry.disposed) return;
+    return openSource({ kind: 'message', id }, card, act);
+  }
   if (p && registry.isCurrent(p)) {
     marks.read(act, () => registry.isCurrent(p)); openedHere(id); releaseTopArrivals();
   }

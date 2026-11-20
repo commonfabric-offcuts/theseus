@@ -85,6 +85,17 @@ try {
     await ownReply.waitFor({ state: 'visible' });
     assert.equal(await ownReply.evaluate(el => document.activeElement === el), true, 'first body press focuses reply');
     assert.equal(await page.locator('#reader').evaluate(el => el.open), false);
+    const ownRoot=page.locator(`[id="reply-${ownId}-composer"]`),height=page.locator(`[id="reply-${ownId}-taller-field"]`);
+    await press(height);assert.equal(await ownRoot.getAttribute('data-tall'),'');
+    await page.keyboard.press('Escape');await ownReply.waitFor({state:'hidden'});
+    await press(ownBody);await ownReply.waitFor({state:'visible'});
+    assert.equal(await ownRoot.getAttribute('data-tall'),null,'a new opening starts at ordinary height');
+    assert.equal(await height.getAttribute('aria-pressed'),'false');assert.equal(await height.getAttribute('aria-label'),'Double reply height');
+    const next=await control({method:'agent_message',sender:'person',whole_topic:true,body:`Next empty ${width}`,operation_id:`907-next-empty-${width}`});
+    const nextBody=page.locator(`[data-id="${next.result.message_id}"] > .message-preview`),nextReply=page.locator(`[id="reply-${next.result.message_id}-writing-body"]`);
+    await nextBody.waitFor({state:'visible'});await press(nextBody);await nextReply.waitFor({state:'visible'});
+    await ownReply.waitFor({state:'hidden'});assert.equal(await reply.isVisible(),true,'saved writing stays visible');
+    await press(ownBody);await ownReply.waitFor({state:'visible'});await nextReply.waitFor({state:'hidden'});
     await press(ownBody); await page.waitForSelector('#message-edit textarea');
     assert.equal(await page.locator('#message-edit textarea').inputValue(), `Own message ${width}`);
     await page.keyboard.press('Escape'); await page.locator('#reader-close').click();
@@ -97,6 +108,7 @@ try {
       assert.equal(await page.locator('#reader').getAttribute('data-editing'), null);
       await page.locator('#reader-close').click();
     }
+    results.push({width,round2:{oneEmptyField:true,savedWritingRetained:true,heightResets:true}});
     await context.close();
   }
 } catch (error) {

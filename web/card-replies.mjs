@@ -1,5 +1,7 @@
 import { InlineComposer } from './inline-composer.mjs';
 import { revealCardReply } from './compose-bar.mjs';
+import { holdsWriting } from './editor.mjs';
+import { uploadWork } from './upload-state.mjs';
 
 // Keep the writing's bottom where it was when its image strip changes. Ignore
 // an offscreen reply: an upload finishing there must not pull the page away.
@@ -83,7 +85,7 @@ export class CardReplies {
           const taller = ui.$('taller-field'); root.insertBefore(taller, ui.$('plus-button'));
           taller.classList.add('reply-height'); taller.setAttribute('aria-label', 'Double reply height'); taller.title = 'Double reply height';
           const paintHeight = () => { const tall = root.hasAttribute('data-tall'); taller.firstElementChild.textContent = tall ? '⌄' : '⌃'; taller.title = tall ? 'Restore reply height' : 'Double reply height'; taller.setAttribute('aria-label', taller.title); };
-          taller.addEventListener('click', paintHeight); paintHeight();
+          row.paintHeight = paintHeight; taller.addEventListener('click', paintHeight); paintHeight();
           ui.field.placeholder = 'Write a reply…'; ui.$('writing-to').hidden = true;
           ui.show(p); ui.bar.expand();
           const fieldBox = ui.field.closest('.field-box');
@@ -103,6 +105,14 @@ export class CardReplies {
       row = await load;
     }
     if (!row || this.registry.disposed) return null;
+    if (focus) {
+      for (const [otherId, other] of this.rows) {
+        const editor = other.p.editors.reply;
+        if (other !== row && other.clickOpened && !other.p.hidden && !holdsWriting(editor.draft) &&
+            !uploadWork(editor) && !editor.submissions?.length) await this.close(otherId, { focus: false });
+      }
+      row.clickOpened = true;
+    }
     if (focus) this.closed.delete(id);
     if (this.closed.has(id)) return row.p;
     row.p.hidden = false; row.ui.root.hidden = Boolean(this.registry.current); this.paint();
@@ -111,10 +121,11 @@ export class CardReplies {
     }
     this.changed(); return row.p;
   }
-  async close(id) {
+  async close(id, { focus = true } = {}) {
     const row = this.rows.get(id); if (!row || !await this.registry.hideCard(row.p)) return false;
     this.closed.add(id); row.ui.bar.close(); row.ui.root.hidden = true; row.card.removeAttribute('data-card-reply');
-    row.card.focus({ preventScroll: true }); this.changed(); return true;
+    row.ui.root.removeAttribute('data-tall'); row.ui.$('taller-field').setAttribute('aria-pressed', 'false'); row.paintHeight?.();
+    if (focus) row.card.focus({ preventScroll: true }); this.changed(); return true;
   }
   from(id) {
     const row = this.rows.get(id);
