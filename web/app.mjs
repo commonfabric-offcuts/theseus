@@ -1976,15 +1976,23 @@ function paintReaderThumb$() {
   paintReaderReactions($('reader-reactions'), reactions && item, bootstrap.actor, bootstrap.actor_kind, {
     busy: Boolean(item && reactions?.busy.has(item.id)), answer: (id, choice) => run(() => answerFromReader(id, choice)) });
 }
-// A decision keeps the Reader and its writing open. Read the current item
-// at the press, so an old button cannot answer a newly opened source.
+// Reader answers (including linked Waiting-on cover choices) use the normal
+// close/save owner after Core records success. A late answer owns only the
+// presentation captured at its press, never a Reader opened meanwhile (889).
+async function closeReaderAfterAnswer(presentation, receipt) {
+  if (receipt?.status !== 'committed' || !registry.isCurrent(presentation) ||
+      reader.presentation !== presentation || !reader.dialog.open) return;
+  return reader.close();
+}
+// Read the current item at the press: an old button cannot answer a new source.
 async function answerFromReader(id, choice) {
   const item = readerItem(), presentation = registry.current;
   if (!reactions || !item || item.id !== id || !mayAnswer(item, bootstrap.actor, bootstrap.actor_kind)) return;
   try {
     const pending = reactions.answer(item, choice);
     paintReaderThumb$();
-    await pending;
+    const receipt = await pending;
+    await closeReaderAfterAnswer(presentation, receipt);
   } catch (error) { if (registry.isCurrent(presentation)) reader.notice(error); }
   finally { paintReaderThumb$(); }
 }
@@ -3188,6 +3196,7 @@ async function initialize() {
     paneClass: source => paneClass(source, bootstrap.actor, agentShown),
     dossierName: source => readerDossierName(source),
     dossierCover: source => readerDossierCover(source),
+    answered: closeReaderAfterAnswer,
     // Item 648: same personal fold as the Reader's menu. Core and StackFeed
     // retain starred/already folded, optimistic and refused/recovery behavior.
     foldMessage: source => {

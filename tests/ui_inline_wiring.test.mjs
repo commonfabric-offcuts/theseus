@@ -30,6 +30,9 @@ import { PageHere } from '../web/page-here.mjs';
 import { hasTitle } from '../web/creation.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
 import { Reader as RealReader } from '../web/reader.mjs';
+import { configureCoverAnswers } from '../web/cover-answers.mjs';
+import { coverSheet } from '../web/dossier-cover.mjs';
+import { miniDocument } from './fixtures/mini_dom.mjs';
 import { entries } from '../web/reply-stacks.mjs';
 // A message's entry in the list, on its own or in its reply stack (reply-stacks.mjs).
 const entryIn = (f, id) => entries(f.get('messages')).find(entry => entry.dataset.id === id);
@@ -5179,6 +5182,9 @@ async function decisionPage860({ loaded = true } = {}) {
   const presentation = { source: { ...item, author: item.author_id, source_ref: { kind: 'message', id: item.id } }, editors: { reply: f.editor }, mode: 'reply' };
   f.registry.current = presentation; Object.assign(f.reader, { dialog: { open: true }, presentation });
   let closes = 0; f.registry.close = async () => { closes++; };
+  // These reaction checks observe close requests; item889 below executes
+  // the real Reader/registry/device-save chain separately.
+  f.reader.close = () => f.registry.close(f.reader.presentation);
   if (!loaded) f.views.messages.delete(item.id);
   let current = decisionReactions860(), command = null;
   const commands = [], original = f.api.view;
@@ -5197,7 +5203,7 @@ async function decisionPage860({ loaded = true } = {}) {
 }
 const cardDecision860 = (f, choice) => entryIn(f, 'decision860')?.querySelector(`[data-react="${choice}"]`);
 
-test('860 actual Reader answer uses the current revision and paints the card without closing or losing writing', async () => {
+test('860/889 actual Reader answer uses the current revision, paints the card and requests close without losing writing', async () => {
   const d = await decisionPage860(), { f } = d;
   assert.ok(d.answer('yes'), 'the actual Reader exposes Go ahead'); const stale = d.answer('yes');
   f.views.messages.set(d.item.id, { ...f.views.messages.get(d.item.id), reactions: decisionReactions860({ answer_revision: 19 }) });
@@ -5216,7 +5222,7 @@ test('860 actual Reader answer uses the current revision and paints the card wit
   assert.equal(d.answer('yes'), stale, 'learned-result repaint keeps the same control');
   assert.equal(cardDecision860(f, 'yes').classList.contains('mine'), true, 'Reader result paints the actual card');
   assert.equal(f.editor.draft.body, 'newer writing while the decision waits');
-  assert.equal(f.registry.current, d.presentation); assert.equal(d.closes, 0);
+  assert.equal(f.registry.current, d.presentation); assert.equal(d.closes, 1);
 });
 
 test('860 the actual card answer callback paints the open Reader and the card', async () => {
@@ -5240,7 +5246,7 @@ test('860 source-only Reader preserves refused or lost answers in words and lear
     });
     await d.answer('no').onclick(); await drain();
     assert.equal(d.commands.length, 1); assert.equal(d.commands[0].expected.answer_revision, 7);
-    assert.equal(d.answer('no').disabled, false); assert.equal(d.closes, 0); assert.equal(f.editor.draft.body, 'kept');
+    assert.equal(d.answer('no').disabled, false); assert.equal(d.closes, outcome === 'committed' ? 1 : 0); assert.equal(f.editor.draft.body, 'kept');
     if (outcome === 'lost') assert.match(f.get('reader-notice').textContent, /Connection interrupted; whether that was saved is unknown/);
     if (outcome === 'refused') assert.match(f.get('reader-notice').textContent, /This question is no longer yours/);
     if (outcome === 'committed') assert.equal(d.answer('no').getAttribute('aria-pressed'), 'true');
@@ -5563,4 +5569,144 @@ test('872 app gives New message the verified instance for width preferences even
   assert.equal(inline.callbacks.instanceId, f.bootstrap.instance_id);
   assert.equal(inline.layoutInstance, f.bootstrap.instance_id);
   assert.equal(inline.layout.widthKeys['new-message'], JSON.stringify(['aim-next', f.bootstrap.instance_id, 'composer-width', 'new-message']));
+});
+
+// 889: the real app/Reader/registry close chain, with only the device persist
+// adapter kept in memory. No Core, device database, server or browser opens.
+async function decisionPage889(options) {
+  const d = await decisionPage860(options), { f } = d, saved = [], closes = [];
+  let device = null, failSave = false;
+  const session = { attempts: [], persist() {
+    const copy = structuredClone({ draft: f.editor.draft, context: f.editor.context, localVersion: f.editor.localVersion });
+    saved.push(copy); return device ? device.promise : failSave ? Promise.reject(Error('device unavailable')) : Promise.resolve();
+  } };
+  f.editor.localVersion = 2;
+  f.editor.context = { kind: 'reply', topicId: 't1', sourceRef: { kind: 'message', id: d.item.id } };
+  Object.assign(f.editor.draft, { body: 'unsent exact words', addressees: ['agent-a'], attachments: [{ id: 'fixture-image-889' }] });
+  Object.assign(f.registry, { generation: 1, localWrites: new Map(), timers: { now: () => 100 }, activity() {}, changed() {}, sessionFor: () => session,
+    close: EditorRegistry.prototype.close, keepLocal: EditorRegistry.prototype.keepLocal, keepEditorsLocal: EditorRegistry.prototype.keepEditorsLocal,
+    persistLocal: EditorRegistry.prototype.persistLocal, savedAt: EditorRegistry.prototype.savedAt, closeRefusal: EditorRegistry.prototype.closeRefusal,
+    closed: f.registry.options.closed });
+  Object.assign(f.reader, { viewToken: 1, editor: f.editor, sessions: d.presentation.editors, opener: f.get('opener889'),
+    rememberPlace() {}, caret: () => ({ start: 3, end: 5 }), placeReply() {}, disarm() {}, close: RealReader.prototype.close, finishClose: RealReader.prototype.finishClose });
+  f.reader.dialog.close = () => { closes.push(f.reader.presentation); f.reader.dialog.open = false; };
+  const coverDoc = miniDocument(), cover = { owner: 'fixture-person', stands: 'A choice waits', payload: null, waiting: [{ actor_id: 'fixture-person', ask_id: 'linked889', message_id: 'linked889', text: 'Proceed?', go_ahead: true, answer_revision: 4 }] };
+  f.reader.$ = id => coverDoc.byId(id);
+  f.reader.callbacks.dossierCover = () => ({ rootId: 'root889', topicId: 't1', cover });
+  const paintCover = () => {
+    const before = globalThis.document; globalThis.document = coverDoc;
+    try { RealReader.prototype.paintCover.call(f.reader, f.reader.presentation.source); }
+    finally { if (before === undefined) delete globalThis.document; else globalThis.document = before; }
+    return coverDoc.byId('reader-cover').querySelectorAll('button.cover-answer');
+  };
+  return { ...d, f, saved, closes, paintCover, coverDoc, cover,
+    holdDevice() { device = defer(); return device; }, refuseDevice() { failSave = true; },
+    configureCover() { configureCoverAnswers(() => ({ reactions: f.runObservation('reactions'), changed() {} })); } };
+}
+
+test('889 both Reader decisions wait for recorded success and the real device-save barrier before closing', async () => {
+  for (const choice of ['yes', 'no']) {
+    const d = await decisionPage889(), { f } = d, answer = defer(); d.setCommand(() => answer.promise);
+    const device = d.holdDevice(), sent = d.answer(choice).onclick();
+    assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0);
+    f.editor.draft.body = 'newer unsent words while answer waits';
+    answer.resolve({ status: 'committed', result: { message_id: d.item.id } }); await drain();
+    assert.equal(d.saved.length, 1, 'actual keepLocal reaches the persist adapter'); assert.equal(f.reader.dialog.open, true);
+    assert.equal(d.saved[0].draft.body, 'newer unsent words while answer waits');
+    assert.deepEqual(d.saved[0].draft.addressees, ['agent-a']); assert.deepEqual(d.saved[0].draft.attachments, [{ id: 'fixture-image-889' }]);
+    assert.deepEqual(d.saved[0].draft.caret, { start: 3, end: 5 }); assert.deepEqual(d.saved[0].context, f.editor.context);
+    device.resolve(); await sent; await drain();
+    assert.equal(d.closes.length, 1); assert.equal(f.reader.dialog.open, false); assert.equal(f.registry.current, null);
+    assert.equal(f.editor.draft.body, 'newer unsent words while answer waits');
+  }
+});
+test('889 refused and lost Reader answers keep the Reader and writing with their notice', async () => {
+  for (const kind of ['refused', 'lost']) {
+    const d = await decisionPage889({ loaded: false }); d.setCommand(async () => {
+      if (kind === 'lost') throw new AttemptError('Connection interrupted.');
+      return { status: 'rejected', error: { code: 'FORBIDDEN', message: 'Question is no longer yours' } };
+    });
+    await d.answer('no').onclick(); await drain(); assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0);
+    assert.equal(d.f.reader.dialog.open, true); assert.equal(d.f.editor.draft.body, 'unsent exact words');
+    assert.match(d.f.get('reader-notice').textContent, kind === 'lost' ? /Connection interrupted/ : /Question is no longer yours/);
+  }
+});
+test('889 local-save failure or a held image keeps a successfully answered Reader open', async () => {
+  for (const kind of ['device', 'image']) {
+    const d = await decisionPage889(); if (kind === 'device') d.refuseDevice(); else d.f.editor.imageReservation = {};
+    const warn = console.warn; console.warn = () => {};
+    try { await d.answer('yes').onclick(); await drain(); } finally { console.warn = warn; }
+    assert.equal(d.commands.length, 1); assert.equal(d.closes.length, 0); assert.equal(d.f.reader.dialog.open, true);
+    assert.equal(d.f.editor.draft.body, 'unsent exact words'); assert.match(d.f.get('reader-notice').textContent, kind === 'device' ? /Not closed.*keep your writing/ : /image/i);
+  }
+});
+test('889 a successful late answer never closes a replacement Reader', async () => {
+  const d = await decisionPage889(), held = defer(); d.setCommand(() => held.promise); const sent = d.answer('yes').onclick();
+  const next = { source: { source_ref: { kind: 'memory', id: 'new889' } }, editors: { reply: d.f.editor } };
+  d.f.registry.current = next; d.f.reader.presentation = next; d.f.reader.viewToken++;
+  held.resolve({ status: 'committed', result: { message_id: d.item.id } }); await sent; await drain();
+  assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0); assert.equal(d.f.registry.current, next);
+});
+test('889 a duplicate pending answer does not close early and a feed-card decision never closes Reader', async () => {
+  const d = await decisionPage889(), held = defer(); d.setCommand(() => held.promise);
+  const first = d.answer('yes').onclick(); await d.answer('no').onclick(); assert.equal(d.commands.length, 1); assert.equal(d.closes.length, 0);
+  held.resolve({ status: 'rejected', error: { code: 'FORBIDDEN', message: 'not taken' } }); await first;
+  d.setCommand(null); await d.f.runObservation("menu.answer(views.messages.get('decision860'), 'no')"); await drain();
+  assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0); assert.equal(d.f.reader.dialog.open, true);
+});
+test('889 Reader Waiting-on buttons share the close owner and their observed answer revision', async () => {
+  for (const index of [0, 1]) {
+    const d = await decisionPage889(); d.configureCover();
+    try {
+      const buttons = d.paintCover(); assert.equal(buttons.length, 2);
+      await buttons[index].onclick({ stopPropagation() {} }); await drain();
+      assert.equal(d.commands[0].target.message_id, 'linked889'); assert.equal(d.commands[0].expected.answer_revision, 4);
+      assert.equal(d.commands[0].args.answer, index ? 'no' : 'yes');
+      assert.equal(d.closes.length, 1); assert.equal(d.saved.length, 1, 'the cover answer keeps writing before closing');
+      assert.equal(d.saved[0].draft.body, 'unsent exact words'); assert.equal(d.f.registry.current, null);
+    } finally { configureCoverAnswers(null); }
+  }
+});
+test('889 Waiting-on refusal and lost answer retain their status and a late success cannot close another Reader', async () => {
+  for (const kind of ['refused', 'lost', 'late']) {
+    const d = await decisionPage889(), held = defer(); d.configureCover();
+    try {
+      d.setCommand(() => held.promise); const sent = d.paintCover()[0].onclick({ stopPropagation() {} });
+      if (kind === 'late') { const p = { source: { source_ref: { kind: 'memory', id: 'next889' } }, editors: { reply: d.f.editor } }; d.f.registry.current = p; d.f.reader.presentation = p; }
+      if (kind === 'lost') held.reject(new AttemptError('Connection interrupted.'));
+      else held.resolve(kind === 'refused' ? { status: 'rejected', error: { code: 'FORBIDDEN', message: 'Not your choice' } } : { status: 'committed', result: { message_id: 'linked889' } });
+      await sent; await drain(); assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0); assert.equal(d.f.reader.dialog.open, true);
+      if (kind !== 'late') assert.match(d.coverDoc.byId('reader-cover').querySelector('.cover-answer-status').textContent, kind === 'lost' ? /Connection interrupted/ : /Not your choice/);
+    } finally { configureCoverAnswers(null); }
+  }
+});
+test('889 a reused unchanged cover captures its Reader at press, not when the cover was painted', async () => {
+  const d = await decisionPage889(); d.configureCover();
+  try {
+    const old = d.paintCover()[0], next = { ...d.presentation, source: { ...d.presentation.source, source_ref: { kind: 'message', id: 'other-in-dossier889' } } };
+    d.f.registry.current = next; d.f.reader.presentation = next; assert.equal(d.paintCover()[0] === old, true, 'actual unchanged cover reuses the control');
+    await old.onclick({ stopPropagation() {} }); await drain(); assert.equal(d.closes.length, 1); assert.equal(d.closes[0] === next, true);
+  } finally { configureCoverAnswers(null); }
+});
+
+test('889 feed-cover answers keep Reader open and duplicate pending Reader-cover answers cannot close early', async () => {
+  const d = await decisionPage889(), held = defer(); d.configureCover();
+  try {
+    const feed = coverSheet(d.coverDoc, d.cover, { viewer: 'fixture-person', nameOf: id => id, topicId: 't1', rootId: 'root889' });
+    await feed.querySelector('button.cover-answer').onclick({ stopPropagation() {} }); await drain();
+    assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0); assert.equal(d.commands.length, 1);
+    d.setCommand(() => held.promise); const buttons = d.paintCover(), sent = buttons[0].onclick({ stopPropagation() {} });
+    await buttons[1].onclick({ stopPropagation() {} }); assert.equal(d.commands.length, 2); assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0);
+    held.resolve({ status: 'committed', result: { message_id: 'linked889' } }); await sent; await drain();
+    assert.equal(d.closes.length, 1); assert.equal(d.saved.length, 1);
+  } finally { configureCoverAnswers(null); }
+});
+test('889 the existing close generation protects a Reader replaced while its device save is pending', async () => {
+  const d = await decisionPage889(), device = d.holdDevice(), sent = d.answer('yes').onclick(); await drain();
+  assert.equal(d.saved.length, 1); assert.equal(d.closes.length, 0);
+  const next = { source: { source_ref: { kind: 'memory', id: 'after-save889' } }, editors: { reply: d.f.editor } };
+  d.f.registry.current = next; d.f.registry.generation++; d.f.reader.presentation = next; d.f.reader.viewToken++;
+  d.f.editor.draft.body = 'new Reader writing'; device.resolve(); await sent; await drain();
+  assert.equal(d.closes.length, 0); assert.equal(d.f.registry.current, next); assert.equal(d.f.reader.dialog.open, true);
+  assert.equal(d.saved[0].draft.body, 'unsent exact words'); assert.equal(d.f.editor.draft.body, 'new Reader writing');
 });

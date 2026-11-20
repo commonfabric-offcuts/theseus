@@ -1125,7 +1125,10 @@ export class Reader {
     const host = this.$('reader-cover'), line = this.$('reader-cover-line');
     const dossier = found?.rootId ?? null;
     if (dossier !== (this.coverDossier ?? null)) { host.open = false; this.coverDossier = dossier; }
-    const context = found ? { viewer: this.callbacks.actor?.() ?? null, nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: found.topicId, rootId: dossier } : null;
+    const context = found ? { viewer: this.callbacks.actor?.() ?? null, nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: found.topicId, rootId: dossier,
+      // An unchanged cover can keep its buttons when Reader moves within the
+      // dossier. Capture the presentation at the press, not at this paint.
+      answering: () => { const presentation = this.presentation; return receipt => this.callbacks.answered?.(presentation, receipt); } } : null;
     // Drawn again only when what it says changes; a Reader that never showed one has nothing to take away.
     const key = found ? coverKey(found.cover, context) : '';
     if ((this.coverShown ?? '') === key) return;
