@@ -3,6 +3,7 @@ export const UI_MENU_KEYS = new Set(['Move to topic…', 'Edit', 'Start a topic 
 export const dossierMenuRoute = key => key === 'rename' ? { act: 'rename' } : { act: UI_MENU_KEYS.has(key) ? 'ui' : 'menu', choice: key };
 export function menuRouteValid(route) {
   if (!route.act) return !route.choice;
+  if (route.act === 'topic-rename' || route.act === 'topic-settings') return route.kind === 'topic' && !route.message && !route.page && !route.at && !route.land && !route.choice;
   if (route.act === 'onboarding') return route.kind === 'workspace' && !route.page && !route.choice;
   if (route.kind !== 'topic' || !route.message || route.land !== true) return false;
   return route.act === 'rename' && !route.choice || route.act === 'ui' && UI_MENU_KEYS.has(route.choice) || route.act === 'menu' && typeof route.choice === 'string' && route.choice.length > 0 && route.choice.length <= 200;

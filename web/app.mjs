@@ -37,7 +37,7 @@ import { CreateOutcomeView, showUnfinished } from './creation-view.mjs';
 import { ReadThrough } from './read-through.mjs';
 import { Live, liveOffered, reloader } from './live.mjs';
 import { Attention } from './attention.mjs';
-import { TopicStatePanel, paintWaiting, managesTopic, organises } from './topic-state.mjs';
+import { TopicStatePanel, paintWaiting, managesTopic, organises, topicUpdateEnvelope } from './topic-state.mjs';
 import { paintTopicHeader } from './topic-header.mjs';
 import { TopicSettings } from './topic-settings.mjs';
 import { repaintTimes, watchDays } from './times.mjs';
@@ -69,7 +69,8 @@ import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine }
 import { firstLine } from './pipeline-words.mjs';
 import { HealthPage } from './health.mjs';
 import { NotebookPage } from './notebook-page.mjs';
-import { NotebookSheet, returning as notebookReturning } from './notebook-sheet.mjs';
+import { NotebookRailMenu } from './notebook-rail-menu.mjs';
+import { NotebookSheet, notebookDockWanted, returning as notebookReturning } from './notebook-sheet.mjs';
 import { HealthLight } from './health-light.mjs';
 import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
@@ -1672,6 +1673,11 @@ function paintHeader(current) {
   // ✅ Done on a topic Ready for review, for a reader who may say where it stands: the Done chip's tap.
   paintTopicHeader({ title: $('topic-title'), subtitle: $('topic-description'), gear: $('settings-open') }, current, bootstrap.actor,
     { settings: current.kind !== 'conversation', done: current.kind !== 'conversation' && topicState?.says ? () => topicState.markDone() : null });
+  const menu = $('topic-menu');
+  menu.hidden = current.kind === 'conversation' || topicUnavailable; menu.dataset.topicId = current.id;
+  menu.onclick = () => {
+    if (!retired && !topicUnavailable && shell.handles?.route?.kind === 'topic' && shell.handles.route.id === current.id) panes.outline?.menus.open(menu);
+  };
 }
 // Messages sent before times were kept have none. Beside the time, the marks of
 // what the message carries: an image, the person's private note, a reply they
@@ -2645,7 +2651,7 @@ async function checkAvailability(read, current, topicDenied = true) {
     dropCardImages($('messages'));
     $('more-messages').hidden = true; $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
     // No settings for a topic the reader cannot see.
-    $('settings-open').hidden = true; settings?.close();
+    $('settings-open').hidden = true; $('topic-menu').hidden = true; settings?.close();
     paintMarks();
     // The rails hide what they show of it too.
     shell.topicChanged();
@@ -3072,11 +3078,7 @@ async function initialize() {
     // Words not saved are shown, in Topic settings, even when leaving it was what saved them.
     attention: () => { if (!$('topic-settings').open) settings.open(); },
     // Each save names its operation: sent again, it is the same command, and Core answers what it holds for it.
-    send: (current, args, fields, operation_id) => {
-      const { authority_id, authority_epoch } = bootstrap.authority;
-      return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id, kind: 'topic.update',
-        target: { topic_id: current.id }, expected: { topic_fields: fields, authority: { authority_id, authority_epoch } }, args });
-    },
+    send: (current, args, fields, operation_id) => api.command(topicUpdateEnvelope(bootstrap, current, args, fields, operation_id)),
     sendNote: (current, note, revision, operation_id) => {
       const { authority_id, authority_epoch } = bootstrap.authority;
       return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id, kind: 'responsibility.set',
@@ -3405,6 +3407,7 @@ async function initialize() {
   // message in the Reader; the address then names the page alone, as any does.
   // This run's first marks read establishes what its reading act may clear.
   // The older pages begin only after that baseline, as on a card already shown.
+  if (['topic-rename', 'topic-settings'].includes(route.act) && consumeMenuRoute(route)) run(() => runTopicMenuAction(topic, route.act.slice(6)));
   if (atUnread) run(() => firstReading.then(landOnUnread));
   freshness.invalidate('dossier_move', 0); freshness.request();
   if (anchored) {
@@ -3422,10 +3425,28 @@ async function initialize() {
 }
 // One handoff to the shell-owned outline, things rail and phone drawers for
 // both topic and outcome pages. The shell owns their lifetime and read queue.
+function runTopicMenuAction(current, key) {
+  if (retired || topicUnavailable || topicState?.topic?.id !== current.id) return false;
+  if (key === 'state') {
+    if (!topicState.says) throw Error('You can no longer change this topic.');
+    return topicState.tap('state', () => current.state === 'done' ? 'active' : 'done', true);
+  }
+  if (key === 'archive') {
+    if (!topicState.controls?.managed) throw Error('You can no longer archive this topic.');
+    return topicState.tap('archived', () => !current.archived, true);
+  }
+  if (key === 'settings' || key === 'rename') {
+    if (key === 'rename' && !topicState.controls?.managed) throw Error('You can no longer rename this topic.');
+    settings.open(); if (key === 'rename') topicState.renaming(true); return true;
+  }
+  return false;
+}
 function readyRails(workspaceId, handles = {}) {
   shell.ready({ api, bootstrap, live, workspaceId, workspaceTitle: $('workspace-name').textContent, topic: null, pageMax: pageMax(),
     view: async (name, args, readClass = 'background') => checkedView(await api.view(name, args, { readClass }), bootstrap.instance_id),
-    open: (target, title, from) => openDestination(target, title, from), notebookCreate: notebookCreator, dossierMenu: railDossierMenu, dossierMenuChoice: runDossierMenuChoice,
+    open: (target, title, from) => openDestination(target, title, from), notebookCreate: notebookCreator, dossierMenu: railDossierMenu, dossierMenuChoice: runDossierMenuChoice, topicMenuAction: runTopicMenuAction,
+    notebookMenu: (source, row, choose) => notebookRailMenu().items(source, choose),
+    notebookMenuAction: (source, key, label, row, commands) => notebookRailMenu().act(source, key, label, row, commands, shell.handles),
     markMenu: markFromRail, menuChanged: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, ...handles });
 }
 // A notification opens its readable topic, or Outcomes when access is gone.
@@ -4051,6 +4072,21 @@ function notebookSheetOf() {
     source: async ref => checkedView(await api.view('source', ref, { readClass: 'foreground' }), bootstrap.instance_id) });
   shell.guard(() => notebookSheet.holds());
   return notebookSheet;
+}
+let railNotebook = null;
+function notebookRailMenu() {
+  return railNotebook ??= new NotebookRailMenu({
+    loaded: id => notebookSheet?.showing && notebookSheet.current?.item === id && !notebookSheet.current.writing?.closed ? notebookSheet.current : null,
+    open: (id, options) => openNotebook(id, options),
+    mode: id => notebookViewsOf().get(id),
+    layout: () => {
+      if (notebookSheet) return { ...notebookSheet, docked: notebookSheet.canDock() && notebookSheet.dockWanted, canDock: () => notebookSheet.canDock() };
+      const canDock = Boolean(topic && views && globalThis.matchMedia?.('(min-width: 1280px)').matches);
+      return { canDock: () => canDock, docked: canDock && notebookDockWanted(), dossiers: Boolean(topic && views) };
+    },
+    current: handles => !retired && shell.handles === handles && handles?.readable?.() !== false,
+    notice: words => panes.outline?.menus.notice(words), changed: () => panes.outline?.notebookStars.refresh(),
+  });
 }
 function openNotebook(id, options = {}) { return notebookSheetOf().open(id, options); }
 
