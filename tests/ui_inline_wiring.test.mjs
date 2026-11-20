@@ -6041,7 +6041,7 @@ async function coordinatorPage899({ owner = 'fixture-person', coordinator = 'all
     if (receipts.has(request.operation_id)) return receipts.get(request.operation_id);
     assert.equal(request.kind, 'workspace.coordinator_set');
     let answer;
-    if (request.expected.workspace_revision !== f.pickers.workspace.version) answer = exact(request, { status: 'rejected', error: { code: 'REVISION_CONFLICT', message: 'The coordinator changed elsewhere. Read it again.', current_versions: { workspace_revision: f.pickers.workspace.version } } });
+    if (request.expected.workspace_revision !== f.pickers.workspace.version) answer = exact(request, { status: 'rejected', error: { code: 'REVISION_CONFLICT', message: 'Writing changed; preserve this attempt and reconcile', current_versions: { workspace_revision: f.pickers.workspace.version } } });
     else if (request.args.actor_id !== null && !f.pickers.members.some(row => row.actor_id === request.args.actor_id)) answer = exact(request, { status: 'rejected', error: { code: 'INVALID_RECIPIENT', message: 'The coordinator must belong to the outcome’s team.' } });
     else {
       if (f.pickers.workspace.coordinator_id !== request.args.actor_id) { f.pickers.workspace.coordinator_id = request.args.actor_id; f.pickers.workspace.version++; }
@@ -6114,7 +6114,7 @@ test('899 stale pick refuses once, preserves reason and shows actual current coo
   p.f.pickers.workspace.version++; p.f.pickers.workspace.coordinator_id = 'fixture-person';
   await p.choose('other899');
   assert.equal(p.sent().length, 1, 'no setPresence conflict auto-retry');
-  assert.match(p.notice().textContent, /coordinator changed elsewhere/); assert.equal(p.notice().hidden, false);
+  assert.equal(p.notice().textContent, 'Someone else changed this at the same moment. Try again.'); assert.equal(p.notice().hidden, false);
   assert.equal(p.row().textContent, 'Coordinator: Fixture');
 });
 
@@ -6304,4 +6304,144 @@ test('899 a newer actual coordinator wins over the older successful receipt', as
   gate.resolve(); await pending; await drain();
   assert.equal(p.row().textContent, 'Coordinator: Fixture');
   assert.equal(p.f.pickers.workspace.version, 8);
+});
+
+// 905 binds the actual Reader paint owners to the actual app callbacks. Only
+// DOM ports are supplied here: descendant selectors and a local document for
+// the natively imported Reader modules. No product body or source read is added.
+async function conversationReader905() {
+  const f = fixture();
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.live = stream(); f.useLive(f.live);
+  pickerApi(f);
+  f.pickers.members.push({ actor_id: 'other905', name: 'Other agent', kind: 'agent', enabled: true });
+  let coordinator = 'ally';
+  const view = f.api.view;
+  f.api.view = async (name, args, options) => {
+    if (name !== 'conversation') return view(name, args, options);
+    f.calls.push({ name, args, options });
+    return { instance_id: 'fixture', conversation: { topic_id: 'conversation905', coordinator: { actor_id: coordinator }, waits: [] } };
+  };
+  await f.initialize(); await drain();
+  assert.equal(f.runObservation('here.conversation'), false, 'this is an ordinary topic');
+  assert.equal(f.runObservation('here.view.coordinator.actor_id'), 'ally');
+  const adapt = node => {
+    const query = node.querySelector.bind(node), all = node.querySelectorAll.bind(node);
+    const matches = (child, selector) => {
+      const simple = selector.match(/^([a-z]+)?(?:\.([\w-]+))?(?:\[data-([\w-]+)\])?$/);
+      if (!simple || !child?.tagName && !child?.classList) return false;
+      const [, tag, cls, data] = simple;
+      return (!tag || child.tagName === tag.toUpperCase()) && (!cls || child.classList.contains(cls))
+        && (!data || child.dataset?.[data.replace(/-(.)/g, (_, c) => c.toUpperCase())] !== undefined);
+    };
+    node.querySelectorAll = selector => {
+      if (/^(?:[a-z]+)?(?:\.[\w-]+)?(?:\[data-[\w-]+\])?$/.test(selector)) return walk(node).filter(child => matches(child, selector));
+      if (selector.startsWith(':scope > ')) return node.children.filter(child => matches(child, selector.slice(9)));
+      return all(selector);
+    };
+    node.querySelector = selector => selector.startsWith('.') || selector.startsWith(':scope > ') || /^[a-z]+\[data-/.test(selector)
+      ? node.querySelectorAll(selector)[0] ?? null : query(selector);
+    return node;
+  };
+  const create = f.document.createElement.bind(f.document);
+  f.document.createElement = tag => adapt(create(tag));
+  const who = adapt(f.get('who-row-905')), label = adapt(f.get('who-label-905'));
+  who.className = 'who-row'; label.className = 'who-label'; label.textContent = 'To';
+  const audience = adapt(f.get('reply-audience')), chips = adapt(f.get('recipient-chips')), input = adapt(f.get('recipient-input'));
+  chips.className = 'chips'; input.className = 'name-filter'; audience.append(chips, input); who.append(label, audience);
+  for (const id of ['intent-row', 'who-sentence', 'send-reply']) adapt(f.get(id));
+  const editor = { ...f.editor, key: 'reply905', draft: { ...f.editor.draft, body: '', addressees: [] }, context: { ...f.editor.context, topicId: 'conversation905' } };
+  Object.assign(f.reader, { $: f.get, mode: 'reply', sessions: { reply: editor }, field: f.get('reply-field'),
+    source: { source_ref: { kind: 'message', id: 'message905' }, topic_id: 't1' },
+    presentation: { surface: 'reader', editors: { reply: editor } }, paintLine() {}, naming: null, compose: null });
+  const withDocument = action => {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
+    Object.defineProperty(globalThis, 'document', { configurable: true, writable: true, value: f.document });
+    try { return action(); } finally { if (previous) Object.defineProperty(globalThis, 'document', previous); else delete globalThis.document; }
+  };
+  for (const name of ['paintRecipients', 'paintChoice', 'own', 'names', 'members', 'place', 'answering']) {
+    f.reader[name] = (...args) => withDocument(() => RealReader.prototype[name].apply(f.reader, args));
+  }
+  Object.defineProperty(f.reader, 'kindOf', { get: () => Object.getOwnPropertyDescriptor(RealReader.prototype, 'kindOf').get.call(f.reader) });
+  f.reader.paintRecipients(); f.reader.paintChoice();
+  const defaults = () => walk(audience).filter(node => node.dataset?.answerer !== undefined && node.getAttribute('aria-pressed') === 'true').map(node => node.dataset.answerer);
+  const refresh = async () => {
+    coordinator = 'other905';
+    const before = f.calls.length;
+    assert.equal(await f.runObservation('loadConversation()'), true);
+    assert.equal(f.runObservation('here.view.coordinator.actor_id'), 'other905', 'the actual app accepted the newer view');
+    assert.deepEqual(structuredClone(f.calls.slice(before)), [{ name: 'conversation', args: { workspace_id: 'w1' }, options: { readClass: 'background' } }], 'repaint needs no extra read');
+  };
+  return { f, label, defaults, refresh };
+}
+
+test('905 keyboard pick returns focus to Coordinator after disabling the focused choice', async () => {
+  const gate = defer();
+  const p = await coordinatorPage899({ prepare(f, { apply }) { f.api.command = async request => {
+    f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); await gate.promise; return apply(request);
+  }; } });
+  p.panel().toggle(true);
+  const key = (node, value) => node.onkeydown({ key: value, preventDefault() {}, stopPropagation() {} });
+  key(p.row(), 'ArrowDown'); const list = p.choices()[0].parentNode;
+  key(list, 'End'); const choice = p.f.document.activeElement;
+  assert.equal(choice.dataset.coordinator, 'other899');
+  // Native disabling removes focus from this button. Keep that DOM behavior
+  // local; the generic fixture and all its existing controls remain unchanged.
+  let disabled = choice.disabled;
+  Object.defineProperty(choice, 'disabled', { configurable: true, get: () => disabled, set(value) {
+    disabled = value;
+    if (value && p.f.document.activeElement === choice) p.f.document.activeElement = p.f.document.body;
+  } });
+  const pending = choice.onclick(); // Native Return activates this same handler; no native gesture claim.
+  try { await drain(); assert.equal(choice.disabled, true); assert.equal(p.f.document.activeElement === p.f.document.body, true); }
+  finally { gate.resolve(); await pending; await drain(); }
+  assert.equal(p.row().textContent, 'Coordinator: Other member');
+  assert.equal(list.hidden, true);
+  assert.equal(p.f.document.activeElement === p.row(), true, 'settled keyboard pick returns to the Coordinator row');
+  key(p.row(), 'Escape');
+  assert.equal(p.panel().row.hidden, true); assert.equal(p.f.document.activeElement === p.panel().opener, true);
+});
+
+test('905 conversation refresh repaints the real Reader Answered by default', async () => {
+  const p = await conversationReader905();
+  assert.equal(p.label.textContent, 'Answered by'); assert.deepEqual(p.defaults(), ['ally']);
+  await p.refresh();
+  assert.deepEqual(p.defaults(), ['other905']);
+});
+
+test('905 conversation refresh repaints the real Reader answers there note', async () => {
+  const p = await conversationReader905();
+  assert.equal(p.f.get('destination-note').textContent, "Goes to the outcome's conversation with a link to this message. ally answers there; nobody in this topic is woken.");
+  await p.refresh();
+  assert.equal(p.f.get('destination-note').textContent, "Goes to the outcome's conversation with a link to this message. other905 answers there; nobody in this topic is woken.");
+  assert.equal(p.f.get('destination-note').hidden, false);
+});
+
+test('905 a page-learned workspace revision is sent by the next pick and commits its row', async () => {
+  const p = await coordinatorPage899(); p.open();
+  p.f.pickers.workspace.version = 7; p.f.pickers.workspace.coordinator_id = 'fixture-person';
+  await commit(p.f.live, 7);
+  assert.equal(p.row().textContent, 'Coordinator: Fixture', 'the page actually learned the intervening workspace');
+  await p.choose('other899');
+  assert.equal(p.sent().length, 1);
+  assert.equal(p.sent()[0].expected.workspace_revision, 7, 'use the newer page-learned revision, not the opening revision');
+  assert.equal(p.f.pickers.workspace.version, 8);
+  assert.equal(p.row().textContent, 'Coordinator: Other member', 'the asserted revision allowed the real adapter to commit');
+});
+
+test('905 a pending pick preserves focus moved to a different control', async () => {
+  const gate = defer();
+  const p = await coordinatorPage899({ prepare(f, { apply }) { f.api.command = async request => {
+    f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); await gate.promise; return apply(request);
+  }; } });
+  p.open(); const choice = p.choices().find(node => node.dataset.coordinator === 'other899'); choice.focus();
+  const elsewhere = p.f.document.createElement('button'); elsewhere.textContent = 'Another control'; p.f.document.body.append(elsewhere);
+  const pending = choice.onclick();
+  try {
+    await drain(); assert.equal(choice.disabled, true);
+    elsewhere.focus(); assert.equal(p.f.document.activeElement === elsewhere, true);
+    assert.equal(p.panel().row.hidden, false, 'the panel was not dismissed');
+  } finally { gate.resolve(); await pending; await drain(); }
+  assert.equal(p.sent().length, 1); assert.equal(p.row().textContent, 'Coordinator: Other member');
+  assert.equal(p.panel().row.hidden, false);
+  assert.equal(p.f.document.activeElement === elsewhere, true, 'settled pick must not take focus from another control');
 });
