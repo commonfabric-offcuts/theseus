@@ -440,8 +440,13 @@ A desktop body click still opens Reader immediately. A second click, including
 on the Reader overlay, enters that Reader's existing Edit when its click detail
 is at least two **or** it arrives within **400 ms**, and it is within **6 px**
 of the first. A slow second click with reset detail leaves the Reader open;
-Edit remains one menu choice away. Links, images, controls, keyboard activation,
-other authors and noneditable messages keep their actions. A drag keeps its
+Edit remains one menu choice away. The first click on a link, image or control,
+keyboard activation, other authors and noneditable messages keep their actions.
+A qualifying second click is consumed wherever it lands, including on a Reader
+control or its reply field. It uses the Reader More menu's own Edit descriptor:
+Save, Cancel, Use saved and Escape return focus to that More button while
+keeping the Reader open (review12296). A stale pencil whose Edit is no longer
+offered disappears when its press rechecks availability. A drag keeps its
 selection; an accepted own-body second click replaces word selection. Phone
 taps keep their existing behavior. A stale or unsuccessful opening never
 edits another Reader.

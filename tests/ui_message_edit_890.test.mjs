@@ -79,6 +79,6 @@ test('890 a stale pencil rechecks shared availability and current author at acti
     if (change === 'access lost') f.rights.unavailable = true;
     if (change === 'outcome reached') f.rights.reached = true;
     stale(); assert.deepEqual(f.calls.filter(([name]) => name === 'edit'), [], change);
-    f.menu.paintBar(); assert.equal(visible(f.menu).includes('edit'), false, change);
+    assert.equal(visible(f.menu).includes('edit'), false, change + ': the stale press itself repaints');
   }
 });

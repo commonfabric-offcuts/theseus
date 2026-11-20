@@ -792,7 +792,7 @@ const editClickChoice = (id, card) => {
 const editClickMatches = event => {
   const first = editBodyClick;
   return first && !retired && !event.defaultPrevented && event.button === 0 && event.detail > 0 && editPointer?.type === 'mouse' && !editPointer.dragged &&
-    !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && !editClickControl(event.target) &&
+    !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey &&
     (event.detail >= 2 || event.timeStamp >= first.time && event.timeStamp - first.time <= 400) &&
     Math.hypot(event.clientX - first.x, event.clientY - first.y) <= 6 &&
     (!first.shown || reader.dialog.open && registry.current === first.shown) && editClickChoice(first.id, first.card);
@@ -817,7 +817,7 @@ document.addEventListener('click', event => {
     const p = await first.opened;
     if (retired || !p || !reader.dialog.open || registry.current !== p || reader.presentation !== p || p.sourceUnavailable) return;
     // Reads can settle after access or editing availability changed.
-    return editClickChoice(first.id, first.card)?.act();
+    return readerMessageMenuItems(p).find(choice => choice.label === 'Edit')?.act();
   });
 }, true);
 function rememberEditBodyClick(id, card, event, opened) {
@@ -2354,10 +2354,15 @@ async function copyPageLink(source, revision, say) {
 // for someone who may write it, Edit page (docs/notebook-writing.md).
 // The message's own acts live here, not in a row under it; on a phone the
 // menu opens as a sheet from the bottom.
+// The Reader's message descriptors also own a body double-click's Edit:
+// ending that edit keeps the Reader open and returns focus to its own More.
+function readerMessageMenuItems(p) {
+  const ref = p?.source?.source_ref, button = $('reader-menu');
+  if (!p || p.sourceUnavailable || ref?.kind !== 'message' || !topic) return [];
+  return sharedMessageMenuItems({ ...p.source, ...readerFeedItem(), id: ref.id, author_id: p.source.author }, { say: button, anchor: button, presentation: p });
+}
 function openReaderMenu() {
-  const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = [];
-  const message = Boolean(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
-  if (message) items.push(...sharedMessageMenuItems({ ...p.source, ...readerFeedItem(), id: ref.id, author_id: p.source.author }, { say: button, anchor: button, presentation: p }));
+  const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = readerMessageMenuItems(p);
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
     const act=action=>run(async()=>{const opener=p.opener;$('reader-close').click();if(await openNotebook(ref.id,{opener})){const page=notebookSheetOf().current;if(action==='rename')page.rename();else page.menuItems().find(item=>item.label===action)?.act();}});
     items.push({label:p.source.starred?'Unstar':'Star',glyph:p.source.starred?'starred':'star',act:()=>act(p.source.starred?'Unstar':'Star')});

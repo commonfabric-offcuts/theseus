@@ -425,7 +425,7 @@ export class MessageMenu {
     const card = cardIn(entry);
     if (name === 'edit') {
       const choice = this.editChoice?.(item, card);
-      if (!choice) return;
+      if (!choice) { this.paintBar(); return; }
       this.acted(item.id);
       return choice.act();
     }

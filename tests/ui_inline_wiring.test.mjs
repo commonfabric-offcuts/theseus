@@ -5458,6 +5458,7 @@ async function editClick890(options = {}) {
   f.runObservation('globalThis.selectionClears890 = 0; window.getSelection = () => ({ removeAllRanges() { selectionClears890++; } });');
   f.registry.initializeInline = async () => f.p;
   Object.assign(f.views, { memory: new Map(), memoryMap: new Map(), olderCursor: null, memoryCursor: null, newest: 1 });
+  options.beforeInitialize?.(f);
   await f.initialize(); await settle();
   const item = { id: 'm890', seq: 1, topic_id: 't1', author_id: options.author ?? 'fixture-person', author_kind: 'human', body: 'My exact words', revision: 1 };
   f.views.messages.set(item.id, item); f.paintViews('messages');
@@ -5488,12 +5489,13 @@ async function editClick890(options = {}) {
     const event = { type, target, button: 0, pointerType: 'mouse', pointerId: 1, detail: 1, clientX: 20, clientY: 30, timeStamp: 1000,
       preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }, stopImmediatePropagation() { this.stopped = this.immediate = true; }, ...props };
     for (const [kind, name, fn, options] of f.events) if (kind === 'document-handler' && name === type && (options === true || options?.capture)) { fn(event); if (event.immediate) break; }
+    if (!event.stopped && type === 'click' && target !== card && target !== overlay) target.onclick?.(event);
     if (!event.stopped && target !== overlay && card.contains(target)) { card.handlers[type]?.(event); if (type === 'click') card.onclick(event); }
     if (!event.stopped && type === 'click' && target === overlay) event.overlayAction = true;
     return event;
   };
   const click = (target = words, props = {}) => { emit('pointerdown', target, props); emit('mousedown', target, props); emit('pointerup', target, props); return emit('click', target, props); };
-  const control = tag => { const node = f.document.createElement(tag); node.closest = closest; words.append(node); return node; };
+  const control = (tag, host = words, id = '') => { const node = id ? f.get(id) : f.document.createElement(tag); node.tagName = tag.toUpperCase(); node.closest = closest; host.append(node); return node; };
   return { f, card, words, overlay, item, edits, emit, click, control, opened: () => opened, hold() { pending = defer(); return pending; } };
 }
 
@@ -5503,7 +5505,7 @@ test('890 first body click opens immediately and a second overlay click enters t
   const second = x.click(x.overlay, { timeStamp: 1400, clientX: 26, detail: 1 }); await settle();
   assert.equal(second.defaultPrevented, true); assert.equal(second.overlayAction, undefined);
   assert.equal(x.f.runObservation('selectionClears890'), 1, 'accepted second click replaces word selection');
-  assert.equal(x.edits.length, 1); assert.equal(x.edits[0][0], 'm890'); assert.equal(x.edits[0][1], x.card);
+  assert.equal(x.edits.length, 1); assert.equal(x.edits[0][0], 'm890'); assert.equal(x.edits[0][1] === x.f.get('reader-menu'), true);
   x.click(x.overlay, { timeStamp: 1410, detail: 3 }); await settle(); assert.equal(x.edits.length, 1);
 });
 test('890 click detail at least two admits the second click beyond 400ms but still requires six pixels', async () => {
@@ -5535,11 +5537,24 @@ test('890 other authors, revoked eligibility, keyboard and touch never enter Edi
     x.click(x.overlay, { ...props, timeStamp: 1100 }); await settle(); assert.equal(x.edits.length, 0, mode);
   }
 });
-test('890 controls retain their own second-click action and cannot start a body gesture', async () => {
+test('890 first-click card controls retain their own action and cannot start a body gesture', async () => {
   for (const tag of ['a', 'button', 'img', 'input', 'textarea', 'select']) {
-    const x = await editClick890(), control = x.control(tag); x.click(); await settle();
-    const second = x.click(control, { timeStamp: 1100, detail: 2 }); await settle(); assert.equal(x.edits.length, 0, tag); assert.notEqual(second.defaultPrevented, true, tag);
-    x.click(control, { timeStamp: 2000 }); await settle(); x.click(x.overlay, { timeStamp: 2100 }); await settle(); assert.equal(x.edits.length, 0, tag + ' first');
+    const x = await editClick890(), control = x.control(tag); let acts = 0; control.onclick = event => { acts++; event.stopPropagation(); };
+    const first = x.click(control); await settle();
+    assert.equal(acts, 1, tag); assert.equal(x.opened(), 0, tag); assert.notEqual(first.defaultPrevented, true, tag);
+    x.click(x.overlay, { timeStamp: 1100, detail: 2 }); await settle(); assert.equal(x.edits.length, 0, tag);
+  }
+});
+test('890 a qualifying second click on any Reader control is consumed for Edit', async () => {
+  for (const [id, tag] of [['reader-close', 'button'], ['previous-message', 'button'], ['next-message', 'button'], ['reader-menu', 'button'], ['reader-topic', 'button'], ['writing-body', 'textarea']]) {
+    for (const props of [{ timeStamp: 1400, detail: 1 }, { timeStamp: 1800, detail: 2 }]) {
+      const x = await editClick890(), control = x.control(tag, x.overlay, id === 'reader-topic' ? '' : id);
+      if (id === 'reader-topic') control.className = 'reader-topic'; // the title button is created by Reader.paintTitle
+      let acts = 0; control.onclick = () => acts++;
+      x.click(); await settle(); const second = x.click(control, { ...props, clientX: 26 }); await settle();
+      assert.equal(second.defaultPrevented, true, id); assert.equal(second.immediate, true, id); assert.equal(acts, 0, id);
+      assert.equal(x.edits.length, 1, id); assert.equal(x.edits[0][1] === x.f.get('reader-menu'), true, id);
+    }
   }
 });
 test('890 dragging either press preserves selection and never becomes Edit', async () => {
@@ -5585,7 +5600,7 @@ test('890 second-click and pencil both execute the real Reader, edit view and wr
     assert.equal(f.document.activeElement, field);
     assert.equal(f.runObservation('messageEdit.writing.constructor.name'), 'MessageEditWriting');
     assert.equal(f.runObservation('device890.held.value'), 'My exact words');
-    assert.equal(f.runObservation('messageEdit.opener') === x.card, true);
+    assert.equal(f.runObservation('messageEdit.opener') === (entry === 'second click' ? f.get('reader-menu') : x.card), true);
     f.runObservation('messageEdit.writing.close()');
   }
 });
@@ -5612,7 +5627,85 @@ test('890 a body in a role button card is eligible while nested card controls an
     if (kind === 'role button') target.setAttribute('role', 'button');
     else if (kind === 'contenteditable') target.setAttribute('contenteditable', 'true');
     else target.className = kind;
-    x.click(); await settle(); const second = x.click(target, { timeStamp: 1100, detail: 2 }); await settle();
-    assert.equal(x.edits.length, 0, kind); assert.notEqual(second.defaultPrevented, true, kind);
+    const first = x.click(target); await settle(); x.click(x.overlay, { timeStamp: 1100, detail: 2 }); await settle();
+    assert.equal(x.edits.length, 0, kind); assert.notEqual(first.defaultPrevented, true, kind);
   }
+});
+
+// Build2 executes the actual Reader start/stop/Escape and MessageEdit endings.
+// Only transport, source opening and the device journal are in-memory adapters.
+async function editFinish890() {
+  const x = await editClick890({ realEdit: true }), { f } = x, commands = [];
+  f.runObservation(`globalThis.device890 = { held: null, get: async () => null, put: async value => { device890.held = value; }, delete: async () => { device890.held = null; }, close() {} };
+    messageEditStore = async () => device890;`);
+  Object.assign(f.reader, { $: f.get, sourceBody: f.get('source-body'), disarm() {}, placeEnd() {}, redrawSource() {},
+    startEdit: RealReader.prototype.startEdit, stopEdit: RealReader.prototype.stopEdit, escape: RealReader.prototype.escape });
+  Object.assign(f.bootstrap.authority, { authority_id: 'a890', authority_epoch: 'e890' });
+  let conflict = false;
+  const read = f.api.view;
+  f.api.view = async (name, args, options) => conflict && name === 'source'
+    ? { instance_id: 'fixture', revision: 2, body: 'Saved on another device' } : read(name, args, options);
+  f.api.command = async sent => {
+    commands.push(sent);
+    const receipt = { instance_id: sent.instance_id, operation_id: sent.operation_id, kind: sent.kind, status: 'committed', recorded: true };
+    if (sent.kind === 'message.edit_open') return { ...receipt, result: { message_id: 'm890', session_revision: 1, base_revision: 1, base_words: x.item.body, draft: x.item.body } };
+    if (sent.kind === 'message.edit') return conflict ? { ...receipt, status: 'rejected', error: { code: 'REVISION_CONFLICT', current_versions: { message_revision: 2 } } }
+      : { ...receipt, result: { message_id: 'm890', revision: 2, edited_ms: 42, session_closed: true, session_revision: 2 } };
+    assert.equal(sent.kind, 'message.edit_close'); return { ...receipt, result: { message_id: 'm890' } };
+  };
+  return { ...x, commands, conflict() { conflict = true; } };
+}
+for (const ending of ['Save', 'Cancel', 'Use saved', 'Escape']) test('890 Build2 ' + ending + ' after second-click Edit keeps Reader focus exactly as its More Edit does', async () => {
+  for (const entry of ['Reader More', 'second click']) {
+    const x = await editFinish890(), { f } = x;
+    try {
+      x.click(); await settle();
+      if (entry === 'second click') x.click(x.overlay, { timeStamp: 1100 });
+      else {
+        f.runObservation('globalThis.choices890 = null; openMessageMenu = options => { choices890 = options.items; }; openReaderMenu();');
+        await f.runObservation("choices890.find(item => item.label === 'Edit').act()");
+      }
+      await settle();
+      const session = f.runObservation('messageEdit'); assert.ok(session, entry + ' starts a real edit');
+      const host = f.get('message-edit'), field = host.children[0];
+      assert.equal(f.document.activeElement === field, true); assert.equal(f.reader.dialog.dataset.editing, 'true');
+      field.value = 'Exact revised words'; field.handlers.input();
+      if (ending === 'Use saved') {
+        x.conflict(); await host.querySelector('[data-act="save"]').onclick(); await settle();
+        assert.equal(session.writing.state, 'conflict'); assert.equal(host.children[1].hidden, false);
+        await host.querySelector('[data-act="saved"]').onclick();
+      } else if (ending === 'Save') await host.querySelector('[data-act="save"]').onclick();
+      else if (ending === 'Cancel') await host.querySelector('[data-act="cancel"]').onclick();
+      else f.reader.escape();
+      await settle();
+      assert.equal(f.runObservation('messageEdit'), null, entry + ': the actual finish/leave owner ended Edit');
+      assert.equal(f.reader.dialog.open, true); assert.equal(f.reader.editing, null); assert.equal(f.reader.sourceBody.hidden, false);
+      assert.equal(f.document.activeElement === f.get('reader-menu'), true, entry + ': focus returns to the Reader More control, not its inert feed card');
+      assert.equal(session.writing.closed, true);
+      assert.equal(session.writing.state, { Save: 'saved', Cancel: 'cancelled', 'Use saved': 'discarded', Escape: 'editing' }[ending]);
+      assert.deepEqual(x.commands.map(sent => sent.kind), ending === 'Save' ? ['message.edit_open', 'message.edit']
+        : ending === 'Use saved' ? ['message.edit_open', 'message.edit', 'message.edit_close']
+        : ending === 'Cancel' ? ['message.edit_open', 'message.edit_close'] : ['message.edit_open']);
+      if (ending === 'Save') assert.equal(f.registry.current.source.body, 'Exact revised words');
+      if (ending === 'Use saved') assert.equal(f.registry.current.source.body, 'Saved on another device');
+      if (ending === 'Escape') assert.equal(f.runObservation('device890.held.value'), 'Exact revised words');
+    } finally { f.runObservation('messageEdit?.writing.close()'); }
+  }
+});
+test('890 Build2 a late outcome_light answer removes the stale pencil when its shared Edit recheck refuses', async () => {
+  const light = defer();
+  const x = await editClick890({ beforeInitialize(f) {
+    const read = f.api.view; f.api.view = (name, args, options) => name === 'outcome_light' ? light.promise : read(name, args, options);
+  } }), { f } = x, menu = f.runObservation('menu');
+  try {
+    // The bar borrows the page's New message SVG; this check is eligibility,
+    // while the shared glyph fixture owns drawing assertions.
+    f.get('new-message').append(f.document.createElement('svg'));
+    menu.lit = x.card; menu.paintBar(); assert.equal(menu.buttons.edit.hidden, false);
+    light.resolve({ instance_id: 'fixture', lead: { kind: 'reached' } }); await settle();
+    assert.equal(f.runObservation('outcomeReached'), true, 'actual background read changed shared rights');
+    assert.equal(menu.buttons.edit.hidden, false, 'no background repaint: this is the stale control');
+    await menu.buttons.edit.onclick(); await settle();
+    assert.equal(x.edits.length, 0); assert.equal(menu.buttons.edit.hidden, true, 'the rejected stale press repaints the bar');
+  } finally { light.resolve({ instance_id: 'fixture' }); }
 });
