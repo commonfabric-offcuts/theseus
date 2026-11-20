@@ -243,6 +243,45 @@ test('867 long ordinary Text typing does not evict metadata needed by native del
  assert.equal(projection.history.length,2,'only the deletion needs a metadata snapshot');
  projection.edit(after,{inputType:'historyUndo'});assert.equal(projection.edit(before,{inputType:'historyUndo'}),raw);
 });
+test('867 Text deletion Undo preserves a later Cards color change through Undo and Redo',()=>{
+ const raw=card()+card('Second','second',details(B,'green')),p=new CardTextProjection(),before=p.show(raw),cut=before.indexOf('## Second'),after=before.slice(0,cut);
+ p.edit(after,{start:cut,end:before.length,inputType:'deleteContentBackward'});
+ p.show(card('First','words',details(A,'rose')));
+ for(const [text,inputType] of [[before,'historyUndo'],[after,'historyRedo'],[before,'historyUndo']]){
+  const result=p.edit(text,{inputType}),cards=parseDeck(result).cards;
+  assert.equal(stripDetails(result),text);assert.equal(cardDetails(cards[0].words).color,'rose');
+  if(cards.length===2)assert.deepEqual(cardDetails(cards[1].words).ids,[B]);
+ }
+});
+test('867 a lazy identity allocated after Text deletion and rename survives Undo on the original card',()=>{
+ const raw=card('First','words',null)+card('Second','second',details(B)),p=new CardTextProjection(),before=p.show(raw),cut=before.indexOf('## Second'),after=before.slice(0,cut);
+ p.edit(after,{start:cut,end:before.length,inputType:'deleteContentBackward'});
+ const renamed=after.replace('First','Renamed');p.edit(renamed,{inputType:'insertText'});
+ p.show(card('Renamed','words',details(A,'rose')));
+ p.edit(after,{inputType:'historyUndo'});
+ const restored=parseDeck(p.edit(before,{inputType:'historyUndo'})).cards;
+ assert.equal(cardDetails(restored[0].words).id,A);assert.equal(cardDetails(restored[0].words).color,'rose');assert.equal(cardDetails(restored[1].words).id,B);
+});
+test('867 allocating a primary after Text merge belongs to the surviving card when Undo splits aliases',()=>{
+ const raw=card('First','first',null)+card('Second','second',details(B,'rose')),p=new CardTextProjection(),before=p.show(raw),start=before.indexOf('## Second'),end=start+'## Second\n'.length;
+ const merged=p.edit(before.slice(0,start)+before.slice(end),{start,end,inputType:'deleteContentBackward'});
+ p.show(merged.replace(hidden(details(null,null,[B])),hidden(details(A,'blue',[B]))));
+ const restored=parseDeck(p.edit(before,{inputType:'historyUndo'})).cards;
+ assert.deepEqual(cardDetails(restored[0].words).ids,[A]);assert.equal(cardDetails(restored[0].words).color,'blue');
+ assert.deepEqual(cardDetails(restored[1].words).ids,[B]);assert.equal(cardDetails(restored[1].words).color,'rose');
+});
+test('867 Text Undo assigns a later lazy identity to the surviving duplicate, not the restored twin',()=>{
+ const one=card('Same','words',null),p=new CardTextProjection(),before=p.show(one+one);
+ p.edit(one,{start:0,end:one.length,inputType:'deleteContentBackward'});p.show(card('Same','words',details(A,'rose')));
+ const restored=parseDeck(p.edit(before,{inputType:'historyUndo'})).cards;
+ assert.deepEqual(cardDetails(restored[0].words).ids,[]);assert.deepEqual(cardDetails(restored[1].words).ids,[A]);
+});
+test('867 Text Undo of a whole-card replacement does not give the former card the replacement identity',()=>{
+ const p=new CardTextProjection(),before=p.show(card('Old','words',null)),after=card('New','new words',null);
+ p.edit(after,{start:0,end:before.length,inputType:'insertFromPaste'});p.show(card('New','new words',details(A)));
+ const restored=p.edit(before,{inputType:'historyUndo'});assert.equal(stripDetails(restored),before);assert.deepEqual(cardDetails(parseDeck(restored).cards[0].words).ids,[]);
+ const redone=p.edit(after,{inputType:'historyRedo'});assert.deepEqual(cardDetails(parseDeck(redone).cards[0].words).ids,[A]);
+});
 test('867 actual Notebook Text owner saves visible edits with metadata and keeps the revision fence',async t=>{
  const {p,w,calls}=await writingPort(t,card());p.textSeen=w.capture();p.text={value:stripDetails(w.value.body)};
  p.textEdited();assert.equal(w.dirty,false,'opening Text is not a write');p.text.value=p.text.value.replace('First','Renamed');p.textEdited();await w.flush();

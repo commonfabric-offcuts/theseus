@@ -121,6 +121,9 @@ Card editing and Text show no metadata line, restoring it through the same
 Notebook writer and revision fence. Text edits attach metadata to surviving
 card writing; removing an entire card removes its metadata. Text Undo/Redo
 restores the corresponding metadata for writing from the current visit.
+An identity or color changed later in Cards stays with the surviving card
+when Text Undo restores deleted writing or separates a merge. This also holds
+for identical cards and cards which had no identity when Text editing began.
 Merely switching views never writes the page. The deterministic checks use
 real card acts, the Notebook writer and shared painters with in-memory
 adapters; they do not claim native touch, focus or layout proof.
