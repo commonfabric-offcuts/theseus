@@ -10,6 +10,8 @@
 // tests/reader_compose_native.mjs (the Reader's ⋯), tests/pipeline_native.mjs
 // (a pipeline item's ⋯) and tests/notebook_pages_native.mjs (the Reader's ⋯ on
 // a Notebook page).
+import { shippedUnwatched } from './fixtures/shipped_unwatched_865.mjs';
+
 export const GLYPH_OF = Object.freeze({
   'Star for me': 'star', Unstar: 'starred', Rename: 'pencil', 'Show all messages': 'all', 'Show latest and unread replies': 'latest',
   Fold: 'fold', Unfold: 'unfold', 'Fold message': 'fold', 'Unfold message': 'unfold', 'Split back out': 'split',
@@ -34,9 +36,11 @@ export const glyphOf = label => (Object.hasOwn(GLYPH_OF, label) ? GLYPH_OF[label
 
 // Each glyph as the approved design page draws it (item 602's design pass), by name: a line drawing on a 24-unit
 // grid (vb, its viewBox, where it differs), stroked in the text's colour, sw wide, filled where fill; or a character,
-// text. Written out here, not read from web/glyphs.mjs, so a drawing blanked, swapped with another or redrawn there
-// fails the checks that read it (misdrawn below).
+// text. The original catalog is written here; unwatched is rendered from a pinned shipped module. Neither reads
+// today's web/glyphs.mjs, so a drawing blanked, swapped or redrawn there fails these checks (misdrawn below).
 export const APPROVED = Object.freeze({
+  // Item 676's shipped drawing, independently rendered from its pinned module.
+  unwatched: shippedUnwatched,
   // Item 738's approved cover refresh drawing, frozen independently of its implementation.
   refresh: { d: 'M20 10a8 8 0 1 0-1.8 7 M20 4v6h-6' },
   // Item 840's cover sheet with a plus, shared by its title button and menu.

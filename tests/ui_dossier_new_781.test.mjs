@@ -20,7 +20,7 @@ Object.defineProperties(Element.prototype, {
 });
 const item = (id, seq, extra = {}) => ({ id, seq, topic_id: 'fixture-topic', body: 'Exact ' + id, author_id: 'fixture-writer', unread: true, ...extra });
 const root = item('z-head', 10), oldest = item('r-last-alphabet', 20), middle = item('r-middle', 30), newest = item('a-newest', 40);
-const stack = () => ({ id: root.id, head: { ...root }, replies: [{ ...middle }, { ...newest }, { ...oldest }], joins: new Map() });
+const stack = () => ({ id: root.id, dossier: root.id, head: { ...root }, replies: [{ ...middle }, { ...newest }, { ...oldest }], joins: new Map() });
 
 test('781 greatest New sequence wins, including a head with newer replies; input order stays exact', () => {
   const s = stack(), before = structuredClone(s);
@@ -68,11 +68,22 @@ test('781 real header renderer derives count from unread messages and removes it
 function appFixture({ headNew = false, failure = false, marked = false, short = false, waiting = false } = {}) {
   const s = stack(); s.head.unread = headNew; if (short) s.replies = [{ ...oldest, unread: false }];
   const messages = new Map([s.head, ...s.replies].map(each => [each.id, each]));
-  const entries = new Map([...messages].map(([id]) => [id, { dataset: { id }, isConnected: true }]));
+  const entries = new Map();
   const visitNew = new VisitNew('fixture-reader');
-  const doc = { visibilityState: 'visible', hasFocus: () => true, addEventListener() {} }, openedIds = new Set(), sent = [], shown = [], focuses = [], reveals = [];
-  let serial = 0, fail = failure, epoch = 1, blockWhole = null, wholeWait = null, afterSend = null, repaints = 0;
-  for (const [id, card] of entries) card.focus = () => { doc.activeElement = card; focuses.push(id); };
+  const doc = { visibilityState: 'visible', hasFocus: () => true, addEventListener() {} }, openedIds = new Set(), sent = [], shown = [], focuses = [], focusCalls = [], lights = [], reveals = [];
+  let serial = 0, fail = failure, epoch = 1, blockWhole = null, wholeWait = null, afterSend = null, afterRepaint = null, repaints = 0;
+  const makeEntry = id => {
+    const card = { dataset: { id }, isConnected: true };
+    card.focus = () => {
+      focusCalls.push(id);
+      // A browser does not move focus or emit another focus event when the
+      // already-focused node is focused again. Keep calls separately visible.
+      if (doc.activeElement === card) return;
+      doc.activeElement = card; focuses.push(id);
+    };
+    return card;
+  };
+  for (const id of messages.keys()) entries.set(id, makeEntry(id));
   const api = { command: async envelope => {
     sent.push(structuredClone(envelope));
     if (afterSend) afterSend();
@@ -92,9 +103,9 @@ function appFixture({ headNew = false, failure = false, marked = false, short = 
     registry, getEpoch: () => epoch, views: { messages }, stackState: () => ({ stacks: [s] }), $: id => id === 'messages' ? {} : { open: false, inert: false },
     entries: () => [...entries.values()], reveal: (entry, options) => reveals.push([entry.dataset.id, options]), opened: entry => entry,
     cardScroll: { showFull: async (card, message) => { shown.push([card.dataset.id, message.body]); if (wholeWait) await wholeWait; return true; } },
-    revealSelection() {}, menu: { light() {} }, document: doc, onScreen: () => true, marks, api, bootstrap: { instance_id: 'fixture' },
+    revealSelection() {}, menu: { light: entry => lights.push(entry.dataset.id) }, document: doc, onScreen: () => true, marks, api, bootstrap: { instance_id: 'fixture' },
     crypto: { randomUUID: () => 'read-' + ++serial }, revisionOf: each => each.revision ?? 1,
-    openedHere: id => { visitNew.clear(id); openedIds.add(id); }, stackMessages: () => { repaints++; }, attention: { refresh() {} }, commitReload: null,
+    openedHere: id => { visitNew.clear(id); openedIds.add(id); }, stackMessages: () => { repaints++; afterRepaint?.(); }, attention: { refresh() {} }, commitReload: null,
     run: fn => fn(), checkDossierNew: async () => { shown.push('check'); }, status() {}, writing };
   // Execute the real application block, with no module startup, server or fake Reader open.
   const begin = app.indexOf('const dossierNewFlights ='), end = app.indexOf('// A message a link on the page names');
@@ -102,9 +113,17 @@ function appFixture({ headNew = false, failure = false, marked = false, short = 
   const predicate = app.slice(app.indexOf('const newOnPage ='), app.indexOf('let visitPaintQueued ='));
   const code = predicate + app.slice(begin, end).replaceAll('listAccessEpoch', 'getEpoch()');
   const actions = new Function(...Object.keys(bindings), code + '\nreturn { openDossierNew };')(...Object.values(bindings));
-  return { ...actions, s, messages, marks, sent, shown, focuses, reveals, writing, beforeWriting, openedIds, cardRead, visitNew, registry, doc,
+  return { ...actions, s, messages, marks, sent, shown, focuses, focusCalls, lights, reveals, writing, beforeWriting, openedIds, cardRead, visitNew, registry, doc,
     repaintCount: () => repaints, allow: () => { fail = false; }, leave: () => { epoch++; },
-    waitWhole: () => { wholeWait = new Promise(resolve => { blockWhole = resolve; }); }, releaseWhole: () => blockWhole(), afterSend: fn => { afterSend = fn; } };
+    waitWhole: () => { wholeWait = new Promise(resolve => { blockWhole = resolve; }); }, releaseWhole: () => blockWhole(), afterSend: fn => { afterSend = fn; },
+    afterRepaint: fn => { afterRepaint = fn; }, entry: id => entries.get(id),
+    replaceEntry: id => {
+      const old = entries.get(id), replacement = makeEntry(id);
+      old.isConnected = false;
+      if (doc.activeElement === old) doc.activeElement = null;
+      entries.set(id, replacement);
+      return replacement;
+    } };
 }
 
 test('781 app consumes three replies one by one via exact Core range, never opens Reader or changes writing', async () => {
@@ -129,6 +148,48 @@ test('781 app head New and stale path; ordinary reading preserves retained New',
   await f.openDossierNew(f.s, {}); assert.deepEqual(f.focuses, [root.id]); assert.equal(f.cardRead(f.s.head), true);
   const before = f.sent.length; await f.openDossierNew(f.s, {});
   assert.equal(f.shown.at(-1), 'check'); assert.equal(f.sent.length, before, 'stale checks fabricate no read');
+});
+
+test('865 repeated selection calls keep one focus transition while lighting the exact head at all three stages', async () => {
+  const f = appFixture({ headNew: true, short: true });
+  f.waitWhole();
+  const pending = f.openDossierNew(f.s, {});
+  assert.deepEqual(f.focusCalls, [root.id], 'selection precedes waiting for whole words');
+  assert.deepEqual(f.lights, [root.id]);
+  assert.equal(f.doc.activeElement, f.entry(root.id));
+  f.afterSend(() => {
+    assert.deepEqual(f.focusCalls, [root.id, root.id], 'whole-word landing reselects before the Core read');
+    assert.deepEqual(f.lights, [root.id, root.id]);
+  });
+  f.releaseWhole(); await pending;
+  assert.deepEqual(f.focusCalls, [root.id, root.id, root.id], 'receipt repaint restores the explicit selection');
+  assert.deepEqual(f.lights, [root.id, root.id, root.id]);
+  assert.deepEqual(f.focuses, [root.id], 'three calls to one already-focused node move focus only once');
+  assert.equal(f.doc.activeElement, f.entry(root.id));
+  assert.deepEqual(f.sent.map(envelope => envelope.args), [{ from_seq: root.seq, seq: root.seq }]);
+  assert.deepEqual(f.writing, f.beforeWriting);
+});
+
+test('865 receipt redraw selects its replacement node and preserves a later user focus', async () => {
+  const replaced = appFixture({ headNew: true, short: true });
+  const original = replaced.entry(root.id);
+  replaced.afterRepaint(() => replaced.replaceEntry(root.id));
+  await replaced.openDossierNew(replaced.s, {});
+  assert.equal(original.isConnected, false);
+  assert.notEqual(replaced.entry(root.id), original);
+  assert.equal(replaced.doc.activeElement, replaced.entry(root.id));
+  assert.deepEqual(replaced.focuses, [root.id, root.id], 'a replacement node receives actual focus after redraw');
+  assert.deepEqual(replaced.lights, [root.id, root.id, root.id]);
+  assert.deepEqual(replaced.writing, replaced.beforeWriting);
+
+  const moved = appFixture({ headNew: true, short: true }), writing = { name: 'later writing focus' };
+  moved.afterSend(() => { moved.doc.activeElement = writing; });
+  await moved.openDossierNew(moved.s, {});
+  assert.equal(moved.doc.activeElement === writing, true, 'the receipt does not reclaim later user focus');
+  assert.deepEqual(moved.focusCalls, [root.id, root.id]);
+  assert.deepEqual(moved.lights, [root.id, root.id]);
+  assert.equal(moved.cardRead(moved.s.head), true, 'the confirmed read is retained');
+  assert.deepEqual(moved.writing, moved.beforeWriting);
 });
 
 test('781 unknown settlement keeps New and exact retry, rapid presses consume sequential messages', async () => {
