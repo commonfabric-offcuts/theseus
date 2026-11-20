@@ -213,21 +213,25 @@ for scoped paging, updates, access failures and the native checks (item 715).
 
 ## The right rail
 
-The right rail has folding sections: Starred, Pipeline, Waiting for…,
-Notebook pages, Previews, Pull requests, Images, and Skills and tools. On a Conversation they
-hold the outcome's things. On a topic they hold the topic's, and the chip
-"All of this outcome" switches to the outcome's. A section with nothing in it
-does not show, except the Notebook's, which keeps its pencil and says No
-pages yet; when none shows, one quiet line says the place refers to nothing
-yet.
+The right rail starts with **Notebook**, **Pull requests**, and **Images**, then
+shows **Waiting for…**, **Previews**, and **Skills and tools** when present.
+**Pipeline** is last (item 788, revised). On a topic it always lists this topic's
+pages and references. An outcome's Conversation keeps its outcome-scoped rail
+(the named default approved in 12213/12215). There is no Topic/Outcome switch, keyboard scope choice,
+name row or Starred section; starred dossiers remain in the outline. The generic
+arrow owner reaches the controls actually present, without a scope destination.
+A section with nothing in it does not show, except a writable empty Notebook,
+which keeps its pencil and says No pages yet, and the Conversation's Pipeline,
+which keeps its existing quiet state when no pipeline is configured. When none shows, one quiet line
+says the place refers to nothing yet.
 
-- **Starred** is the reader's own stars, shown to no one else: this topic's
-  (on a Conversation, this outcome's) first, then the rest under Elsewhere.
-  A press opens the message in the composer, titled with its dossier's name;
-  pressing that title returns to the dossier, as when the message is opened
-  from the dossier itself (item 655; docs/reader.md). Another topic on screen
-  does not change its name or its way back. Unstar beside each takes the star
-  off (docs/reply-stacks.md).
+Notebook pages are no longer rendered at the bottom of the dossier feed. The
+right rail lists them, and existing page links still open the shared Notebook
+sheet. Initial bounded Notebook reads and admission checks remain: their cache
+supports source reads and revision tracking, but memory updates do not repaint
+the feed. The same current-topic pencil, permission check, paging, changed light,
+creation receipt and retry identity remain owned by the existing Notebook code.
+
 - **Pipeline** is what is live, and what is in Now (with its stage) and Next,
   from the `pipeline` view, and the outcome's Build topics, each once: under
   Now each topic a piece is being built in, one row for it however many

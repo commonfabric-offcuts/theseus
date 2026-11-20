@@ -3895,7 +3895,7 @@ test('an outcome that becomes unavailable stops showing its Notebook pages and t
   assert.equal(f.get('outcome-references').hidden, false, 'recovery lists them again');
 });
 
-test('a page in the topic\'s own Notebook carries the changed light, and a commit, such as the person\'s own read, puts it out', async () => {
+test('a cached topic Notebook page keeps its read revision across commits without a bottom-feed card', async () => {
   const f = fixture(), live = stream(); Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
   f.useLive(live);
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
@@ -3910,21 +3910,19 @@ test('a page in the topic\'s own Notebook carries the changed light, and a commi
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
   views.memoryPage({ instance_id: 'fixture', items: [shown], next_cursor: null, relevant_versions: { notebook: 3 } }, { initial: true });
-  const light = () => {
-    const card = f.get('memory-items').children.find(child => child.dataset.id === 'n1');
-    const badge = card.children[0].children.find(child => typeof child === 'object' && /\bchanged\b/.test(child.className ?? ''));
-    return badge ? [badge.textContent, card.children[0].children.find(child => child.className === 'sr-only').textContent] : null;
-  };
-  assert.deepEqual(light(), ['2', ', changed since you read it, 2 new revisions']);
+  const state = () => [views.memory.get('n1').revision, views.memory.get('n1').read_revision];
+  assert.deepEqual(state(), [3, 1]);
+  assert.equal(f.get('memory-items').children.length, 0, 'the right rail owns the visible page list');
   const asked = () => f.calls.filter(call => call.name === 'memory_items' && call.args.owner_scope?.kind === 'topic').length;
   const before = asked();
   shown = page(3, 3);
   live.emit({ kind: 'commit', seq: 9 }); await drain();
   assert.equal(asked(), before + 1, 'a commit reads the topic Notebook\'s read state again');
-  assert.equal(light(), null, 'read, the light goes out');
+  assert.deepEqual(state(), [3, 3], 'read, the cache records that revision');
   shown = page(4, 3);
   live.emit({ kind: 'commit', seq: 10 }); await drain();
-  assert.deepEqual(light(), ['1', ', changed since you read it, 1 new revision'], 'revised again, it comes back on');
+  assert.deepEqual(state(), [4, 3], 'revised again, the cache retains the read revision');
+  assert.equal(f.get('memory-items').children.length, 0, 'commits do not recreate bottom-feed pages');
 });
 
 test('once the topic is denied, or the runtime changed, a commit reads none of its Notebook\'s read state and puts nothing in the page status', async () => {
@@ -4165,7 +4163,7 @@ const clicked = (a, fields = {}) => {
   a.handlers.click(event); return event;
 };
 
-test('a message card, the line a reply quotes and a Notebook card show their web addresses as links that press nothing under them', async () => {
+test('a message card and the line a reply quotes show web links that press nothing under them; Notebook stays in cache', async () => {
   const f = fixture();
   Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
   await f.initialize();
@@ -4184,8 +4182,8 @@ test('a message card, the line a reply quotes and a Notebook card show their web
   assert.deepEqual([press.stopped, press.prevented], [true, false], 'the browser follows it, and the card under it hears nothing');
   f.views.memory.set('n1', { id: 'n1', seq: 1, title: 'Plan', body: 'Lives at https://docs.example/plan.', source_ref: { kind: 'memory', id: 'n1', revision: 1 } });
   f.paintViews('memory');
-  const notebook = f.get('memory-items').children.find(node => node.dataset.id === 'n1');
-  assert.deepEqual(shown(notebook.children[1]), [['https://docs.example/plan', 'https://docs.example/plan', '_blank', 'noopener noreferrer']]);
+  assert.equal(f.get('memory-items').children.length, 0, 'Notebook body rendering at the bottom of the feed is retired');
+  assert.equal(f.views.memory.get('n1').body, 'Lives at https://docs.example/plan.');
 });
 
 test('a link to a place in this Theseus opens it as the rail does, keeping writing that is not yet saved', async () => {
@@ -5103,8 +5101,9 @@ test('847, 852 and 879 outcome home keeps Team, Notebook and pencil without a ri
   f.get('new-message').querySelector=selector=>selector==='svg'?pencil:null;
   f.api.media=async(instance,attachment,ref)=>{assert.equal(instance,'fixture');assert.equal(attachment.id,'image835');assert.equal(ref.id,'retained835');return {blob:'fixture image bytes'};};
   f.api.view=async(name,args,options)=>{
-    if(['workspace','pipeline','conversation','stars','topic_messages','topic_images'].includes(name))f.calls.push({name,args});
+    if(['workspace','pipeline','conversation','stars','topic_messages','topic_images','topic_tools'].includes(name))f.calls.push({name,args});
     if(name==='workspace'){if(denied)throw Object.assign(Error('No access'),{code:'FORBIDDEN'});return {instance_id:'fixture',workspace:{id:'w1',title:'Launch',purpose:'Ship',owner_id:'owner'}};}
+    if(name==='topic_tools')return {instance_id:'fixture',linked:[]};
     if(name==='pipeline')return {instance_id:'fixture',pipeline:null,items:[],next_cursor:null};
     if(name==='conversation')return {instance_id:'fixture',conversation:{topic_id:'t1',version:1}};
     if(name==='stars')return {instance_id:'fixture',items:[{workspace_id:'w1',topic_id:'t1',message_id:'retained835',author_id:'fixture-person',excerpt:'Keep this reference',star_revision:1}]};
@@ -5146,22 +5145,24 @@ test('847, 852 and 879 outcome home keeps Team, Notebook and pencil without a ri
   assert.equal(handles.readable(),true);
   assert.equal(rail.host.hidden,true,'recovery does not restore a removed home rail');
   // Retain the existing bounded context assertions on a real topic route,
-  // where 879 keeps the rail and its whole-outcome scope.
+  // where 788 now fixes it to this topic, with no scope-switch surface.
   f.runObservation("location.href='https://fixture/?topic=t1'");
   await f.initialize(); await drain();
   const topicHandles=f.runObservation('shell.handles');
   assert.equal(rail.handles,topicHandles);assert.equal(topicHandles.route.kind,'topic');
-  rail.choose('outcome');
+  assert.equal(typeof rail.choose,'undefined','788 retires the scope-choice handler');
+  const toolsBeforeRail = count('tools');
   rail.open(); await rail.reload();await drain();
-  assert.ok(f.calls.some(call=>call.name==='stars'),'opening reads the existing bounded context');
+  assert.equal(f.calls.some(call=>call.name==='stars'),false,'788 removes the rail Stars read');
   assert.ok(count('memory_items')>notes,'the right rail includes its existing Notebook');
-  assert.ok(count('tools')>tools,'the right rail includes its existing tools');
+  assert.equal(count('tools'),toolsBeforeRail,'opening the topic rail does not read outcome tools');
+  assert.ok(f.calls.some(call=>call.name==='topic_tools'&&call.args.topic_id==='t1'),'the rail reads this topic’s tools');
   const walk=node=>[node,...(node.children??[]).flatMap(walk)], nodes=walk(f.get('things'));
   const shown=nodes.filter(node=>node.className==='things-sec'&&!node.hidden).map(node=>node.dataset.key);
-  assert.deepEqual(shown,['starred','pipeline','waiting','previews','prs','images']);
+  assert.deepEqual(shown,['prs','images','previews']);
   assert.ok(nodes.some(node=>node.href==='https://example.test/preview/835'));
   assert.ok(nodes.some(node=>node.href==='https://github.com/example/project/pull/835'));
-  assert.equal(nodes.filter(node=>node.href==='?topic=t1&message=retained835').length,3,'star, waiting item and image keep their message destination');
+  assert.equal(nodes.filter(node=>node.href==='?topic=t1&message=retained835').length,1,'the image keeps its message destination; retired Starred and outcome Waiting do not appear');
   assert.equal(thumbnails.length,1);
   assert.equal(await thumbnails[0](),'fixture image bytes','right-rail image uses the current page media reader');
   assert.equal(rail.sections.get('images').details.hidden,false,'the topic rail still reads current context');
@@ -5336,7 +5337,7 @@ function startup880(t, { answers = {}, journalError = null } = {}) {
   return { f, names, asked, gates, opened, started, release, releaseAll, unpublished, page, closes: () => closes, settled: () => settled };
 }
 const expected880 = { title: 'Fixture', messages: [['m880', 'Message words 880']], memory: [['n880', 'Notebook 880', 'Notebook words 880', 2]],
-  messageText: 'Message words 880', memoryText: 'Notebook words 880', sourceClickable: 'function', memoryClickable: 'function', ready: 'true' };
+  messageText: 'Message words 880', memoryText: '', sourceClickable: 'function', memoryClickable: 'undefined', ready: 'true' };
 
 test('880 all four startup reads are already asked while messages are held, with exact bounds and baselines', async t => {
   const s = startup880(t); await drain();
@@ -5416,4 +5417,26 @@ test('880 confirmed topic precedes the startup join; the existing color read kee
     assert.deepEqual(s.asked.map(x => x.name).sort(), ['colors', 'journal', 'memory_items', 'topic_messages']);
   } finally { held.resolve(); s.releaseAll(); }
   assert.equal((await s.started).ok, true); await drain(); assert.deepEqual(s.page(), expected880);
+});
+
+test('788 revised page markup has no bottom Notebook container or paging control', async () => {
+  const html = webSource('index.html');
+  assert.doesNotMatch(html, /id="(?:notebook|memory-items|more-memory)"/);
+});
+test('788 revised memory paint keeps admitted pages in cache without rendering bottom-feed cards', async t => {
+  const s = startup880(t); s.releaseAll(); assert.equal((await s.started).ok, true); const f = s.f;
+  const item = { id: 'n788', seq: 1, title: 'Plan', body: 'Exact cached words', revision: 2, read_revision: 1,
+    owner_scope: { kind: 'topic', id: 't1' }, source_ref: { kind: 'memory', id: 'n788', revision: 2 } };
+  const views = f.runObservation('views');
+  views.memoryPage({ instance_id: 'fixture', items: [item], next_cursor: null, relevant_versions: { notebook: 2 } }, { initial: true });
+  assert.equal(f.get('memory-items').children.length, 0);
+  assert.deepEqual(views.memory.get(item.id), item);
+});
+
+test('788 revised a current-topic Notebook link still opens the shared sheet with its opener', async () => {
+  const f = fixture(); await f.initialize();
+  f.runObservation("globalThis.notebookOpened788 = []; notebookSheet = { open: (id, options) => notebookOpened788.push([id, options.opener.id]) };");
+  await f.runObservation("openDestination({ kind: 'topic', id: 't1', page: 'n788' }, 'Plan', document.getElementById('opener788'))");
+  assert.deepEqual(JSON.parse(JSON.stringify(f.runObservation('notebookOpened788'))), [['n788', 'opener788']]);
+  assert.equal(f.get('memory-items').children.length, 0);
 });

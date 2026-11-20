@@ -1,12 +1,8 @@
-// The right rail of a topic or an outcome's Conversation (pipeline item 131;
-// docs/rails.md): the outcome's things in folding sections. Starred (the
-// reader's own stars, this place's first, then Elsewhere; docs/reply-stacks.md), Pipeline (what is
-// live, what is in Now and at which stage, what is Next), Waiting for… (what
-// the reader asked for and where it stands), Notebook pages, Previews, Pull
-// requests, Images, and Skills and tools. On a Conversation it shows the
-// outcome's; on a topic it shows the topic's, and "All of this outcome" is
-// one tap away. A section with nothing in it is left out, or says so in one
-// quiet line; nothing is made up to fill it.
+// The right rail of a topic or an outcome's Conversation (docs/rails.md).
+// Notebook, Pull requests and Images come first; Waiting for…, Previews and
+// Skills and tools show when present; Pipeline is last. A topic always lists
+// its own pages and references. There is no scope switch, name row or Starred
+// section. The Conversation lists the outcome's things.
 //
 // Everything comes from what Core already serves: pipeline, conversation,
 // workspace_topics, topic_messages, topic_images, memory_items, and tools and
@@ -34,8 +30,8 @@ import { panes } from './panes.mjs';
 import { book, orderOf, placeIn, scopeOf } from './outline-order.mjs';
 
 export const SECTIONS = [
-  ['starred', 'Starred'], ['pipeline', 'Pipeline'], ['waiting', 'Waiting for…'], ['notebook', 'Notebook'], ['previews', 'Previews'],
-  ['prs', 'Pull requests'], ['images', 'Images'], ['tools', 'Skills and tools'],
+  ['notebook', 'Notebook'], ['prs', 'Pull requests'], ['images', 'Images'],
+  ['waiting', 'Waiting for…'], ['previews', 'Previews'], ['tools', 'Skills and tools'], ['pipeline', 'Pipeline'],
 ];
 // How far back the rail looks for links and images in a whole outcome: its
 // Conversation and its most recently active topics, each their newest messages.
@@ -159,7 +155,7 @@ const settle = promise => promise.then(value => ({ value }), error => ({ error }
 export class ThingsRail {
   constructor({ host, backdrop, storage = null, doc = host.ownerDocument, win = doc.defaultView }) {
     Object.assign(this, { host, backdrop, storage, doc, win });
-    this.handles = null; this.scope = 'outcome'; this.unlisten = null; this.stale = false; this.serial = 0; this.folds = null;
+    this.handles = null; this.topicRoute = false; this.unlisten = null; this.stale = false; this.serial = 0; this.folds = null;
     // The Notebook section's pencils, by the scope each writes in ('topic', 'outcome'); how many of its
     // pages the person has asked to see; and the first page More brought, which takes the focus from More.
     this.creators = new Map(); this.notebookWant = NOTEBOOK_PAGE; this.notebookFrom = null;
@@ -172,8 +168,8 @@ export class ThingsRail {
     // The keys move through the sections and their rows as one tree
     // (key-tree.mjs): ↑ ↓ between them, → ← and ⌘→ ⌘← open and fold a
     // section, Return opens a row, ← from a folded section goes back to the
-    // messages (panes.mjs); ↑ above the first section goes on to the rail's
-    // name and its "Just this topic" and "All of this outcome" (arrow-reach.mjs).
+    // messages (panes.mjs). The generic arrow owner reaches only controls
+    // actually present; this rail has no scope controls or name row.
     this.tree = new KeyTree({ root: this.holder, doc, label: 'The outcome\'s things', column: this.host, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows) });
     // The sheet closes with Escape, its ✕ and a tap beside it; the shell keeps these across moves.
     listen(doc, 'keydown', event => { if (event.key === 'Escape' && this.isOpen()) { event.preventDefault(); this.close(true); } });
@@ -187,12 +183,6 @@ export class ThingsRail {
     this.closer = element(doc, 'button', { type: 'button', className: 'quiet things-close', id: 'things-close', textContent: '✕' });
     this.closer.setAttribute('aria-label', 'Close');
     this.closer.onclick = () => this.close(true);
-    this.onlyTopic = element(doc, 'button', { type: 'button', className: 'chip', textContent: 'Just this topic' });
-    this.wholeOutcome = element(doc, 'button', { type: 'button', className: 'chip', textContent: 'All of this outcome' });
-    this.onlyTopic.onclick = () => this.choose('topic'); this.wholeOutcome.onclick = () => this.choose('outcome');
-    this.chips = element(doc, 'div', { className: 'things-scope', hidden: true }, this.onlyTopic, this.wholeOutcome);
-    this.chips.setAttribute('role', 'group'); this.chips.setAttribute('aria-label', 'Show things from');
-    this.name = element(doc, 'a', { className: 'things-name' });
     this.sections = new Map();
     const holder = this.holder = element(doc, 'div', { className: 'things-sections' });
     for (const [key, label] of SECTIONS) {
@@ -209,7 +199,7 @@ export class ThingsRail {
     this.message = element(doc, 'p', { className: 'notice', hidden: true }); this.message.setAttribute('role', 'status');
     this.retry = element(doc, 'button', { type: 'button', textContent: 'Try again', hidden: true });
     this.retry.onclick = () => this.reload();
-    this.host.replaceChildren(element(doc, 'div', { className: 'things-head' }, this.heading, this.closer), this.chips, this.name, holder, this.nothing, this.message, this.retry);
+    this.host.replaceChildren(element(doc, 'div', { className: 'things-head' }, this.heading, this.closer), holder, this.nothing, this.message, this.retry);
     this.host.hidden = true;
   }
   // Each section shown, and under an open one what can be pressed in it.
@@ -278,7 +268,7 @@ export class ThingsRail {
     for (const creator of this.creators.values()) creator.remove();
     this.creators.clear(); this.notebookWant = NOTEBOOK_PAGE; this.buildWant = BUILD_PAGE;
     this.serial += 1;
-    this.scope = route?.kind === 'topic' ? 'topic' : 'outcome';
+    this.topicRoute = route?.kind === 'topic';
     this.paintHead(); this.clear();
     if (!shown) { this.control()?.remove(); return; }
     const row = this.doc.querySelector('#main .eyebrow-row');
@@ -293,7 +283,7 @@ export class ThingsRail {
     if (!['topic', 'conversation'].includes(handles.route?.kind)) return;
     this.handles = handles;
     this.folds ??= new SectionFolds(this.storage, `aim-next.things.${handles.bootstrap.instance_id}.${handles.bootstrap.actor}`);
-    this.scope = handles.route.kind === 'topic' ? 'topic' : 'outcome';
+    this.topicRoute = handles.route.kind === 'topic';
     this.paintHead(); this.clear();
     this.unlisten = handles.live?.listen(event => { if (event.kind === 'commit' || event.state === 'live') this.changed(); }) ?? null;
     // A new Notebook page starts from the pencil beside this section's heading
@@ -328,12 +318,6 @@ export class ThingsRail {
     return held;
   }
   shown() { if (this.handles && this.stale && this.shows()) this.reload(); }
-  choose(scope) {
-    if (this.scope === scope) return;
-    this.serial += 1;
-    this.scope = scope; this.notebookWant = NOTEBOOK_PAGE; this.paintHead(); this.clear();
-    this.reload();
-  }
   // Nothing of the place or scope before stays on screen: every section goes,
   // with its words, until this one's read lands.
   clear() {
@@ -343,25 +327,8 @@ export class ThingsRail {
     this.drawnOnce = false; this.holder.setAttribute('aria-busy', 'true');
   }
   get topicId() { return this.handles?.route?.kind === 'topic' ? this.handles.topic?.id ?? null : null; }
-  get byTopic() { return this.scope === 'topic' && this.topicId !== null; }
-  paintHead() {
-    const handles = this.handles, byTopic = this.byTopic;
-    if (!handles) {
-      // A run on its way: the kind of place is known, its name not yet.
-      this.chips.hidden = true;
-      this.heading.textContent = this.scope === 'topic' ? 'In this topic' : 'This outcome';
-      this.name.textContent = ''; this.name.removeAttribute('href'); this.name.title = '';
-      return;
-    }
-    this.chips.hidden = this.topicId === null;
-    this.onlyTopic.setAttribute('aria-pressed', String(byTopic));
-    this.wholeOutcome.setAttribute('aria-pressed', String(!byTopic));
-    this.heading.textContent = byTopic ? 'In this topic' : 'This outcome';
-    const outcome = handles?.currentWorkspaceTitle?.() ?? handles?.workspaceTitle ?? '';
-    this.name.textContent = byTopic ? handles.topic.title : `${outcome} ›`;
-    if (byTopic) this.name.removeAttribute('href'); else this.name.href = handles ? `?workspace=${encodeURIComponent(handles.workspaceId)}` : '';
-    this.name.title = byTopic ? '' : 'The outcome’s own page';
-  }
+  get byTopic() { return this.topicId !== null; }
+  paintHead() { this.heading.textContent = this.topicRoute ? 'In this topic' : 'This outcome'; }
   // Everything the sections show, read again, through the run that is up
   // (its reads still waiting when it goes are never sent). A read overtaken
   // by a newer one, or by a move, says nothing; one that fails keeps what was
@@ -376,7 +343,6 @@ export class ThingsRail {
     // A topic the page can no longer read (its updates refused) is not read here either.
     const readable = id => id !== handles.topic?.id || handles.readable?.() !== false;
     const pipeline = settle(this.readPipeline(view, workspace));
-    const stars = settle(view('stars', { limit: 50 }));
     const tools = byTopic && !readable(topicId) ? settle(Promise.resolve(null))
       : settle(byTopic ? view('topic_tools', { topic_id: topicId }).then(answer => answer.linked.map(tool => ({ ...tool, home: tool.home_workspace_id })))
         : view('tools', { workspace_id: workspace }).then(answer => [...answer.own, ...answer.used].map(tool => ({ ...tool, home: tool.home.workspace_id, live: true }))));
@@ -384,16 +350,16 @@ export class ThingsRail {
     const places = (byTopic ? [this.topicPlace(handles)] : await this.outcomePlaces(view, workspace)).filter(place => readable(place.id));
     if (serial !== this.serial || handles !== this.handles) return true;
     const reads = places.map(place => settle(this.readPlace(view, place, byTopic ? 24 : 12)));
-    const [pipe, notes, starred, toolsRead, ...found] = await Promise.all([pipeline, notebook, stars, tools, ...reads]);
+    const [pipe, notes, toolsRead, ...found] = await Promise.all([pipeline, notebook, tools, ...reads]);
     if (serial !== this.serial || handles !== this.handles) return true;
-    const failed = [pipe, notes, starred, toolsRead, ...found].filter(read => read.error && !denied(read.error));
+    const failed = [pipe, notes, toolsRead, ...found].filter(read => read.error && !denied(read.error));
     const messages = found.flatMap(read => read.value ? read.value.messages.map(message => ({ ...message, place: read.value.place })) : []);
     const images = new Map();
     for (const read of found) for (const image of read.value?.images ?? []) if (!images.has(image.attachment.id)) images.set(image.attachment.id, { ...image, place: read.value.place });
     const conversation = found.find(read => read.value?.place.conversation)?.value.messages ?? [];
     this.paint({ byTopic, topicId, pipeline: pipe.value ?? (pipe.error ? undefined : null), notebook: notes.value === null ? null : notes.value?.items ?? (notes.error ? undefined : []),
       notebookMayWrite: notes.value?.reader_may_write === true, notebookNext: notes.value?.next ?? null,
-      messages, images: [...images.values()].sort((a, b) => (b.sent_ms ?? 0) - (a.sent_ms ?? 0)), conversation, stars: starred.value?.items ?? (starred.error ? undefined : []),
+      messages, images: [...images.values()].sort((a, b) => (b.sent_ms ?? 0) - (a.sent_ms ?? 0)), conversation,
       tools: toolsRead.value === null ? [] : toolsRead.value ?? (toolsRead.error ? undefined : []) });
     this.drawnOnce = true; this.holder.removeAttribute('aria-busy');
     this.message.hidden = this.retry.hidden = !failed.length;
@@ -479,7 +445,6 @@ export class ThingsRail {
     // The pencil of the Notebook listed shows only to someone Core lets write it (reader_may_write).
     if (found.notebook !== undefined) for (const [scope, creator] of this.creators) creator.setAvailable((scope === 'topic') === found.byTopic && found.notebook !== null && found.notebookMayWrite);
     const shown = {
-      starred: found.stars === undefined ? undefined : this.starredSection(found.stars, found, reader),
       pipeline: found.pipeline === undefined ? undefined : this.pipelineSection(items, found, nowMs),
       waiting: items || found.conversation.length ? this.waitingSection(waitingFor({ reader, now: items?.now ?? [], next: items?.next ?? [], conversation: found.byTopic ? [] : found.conversation, topic: found.byTopic ? found.topicId : null }), nowMs) : null,
       notebook: found.notebook === undefined ? undefined : this.notebookSection(found.notebook, found),
@@ -516,7 +481,7 @@ export class ThingsRail {
       if (!this.doc.activeElement || this.doc.activeElement === this.doc.body) builtFrom.focus();
     }
     this.nothing.hidden = any;
-    this.nothing.textContent = found.byTopic ? 'This topic refers to nothing yet. “All of this outcome” shows the rest.' : 'Nothing here yet.';
+    this.nothing.textContent = found.byTopic ? 'This topic refers to nothing yet.' : 'Nothing here yet.';
   }
   pipelineRows({ now, next, builds }, saved = []) {
     const titles = new Map((now.items ?? []).map(item => [item.number, item.title]));
@@ -527,7 +492,7 @@ export class ThingsRail {
       now: (now.items ?? []).map(withTopic), next: (next.items ?? []).map(withTopic), title: now.pipeline?.title ?? 'Pipeline' };
   }
   // The pipeline, and in it the outcome's Build topics (item 297): the outline
-  // lists none of them, so they show here whichever the chips say, each row
+  // lists none of them, so they show here on either route, each row
   // carrying what the outline's row would. Live and Next are the outcome's.
   pipelineSection(items, found, nowMs) {
     const doc = this.doc, workspace = this.handles.workspaceId, reader = this.handles.bootstrap.actor, here = found.byTopic ? found.topicId : this.topicId;
@@ -587,27 +552,6 @@ export class ThingsRail {
       if (row.item) return element(doc, 'li', {}, element(doc, 'a', { className: 'row', href: pipelineHref(workspace, row.item.number) }, row.what, sub));
       return element(doc, 'li', {}, this.placeLink({ kind: 'topic', id: row.message.topic_id, message: row.message.id }, row.what, sub));
     })) };
-  }
-  // The reader's stars: this topic's (on a Conversation, this outcome's) first,
-  // then the rest under Elsewhere. A press opens its composer in its topic;
-  // the composer names its dossier and its title returns there (item 655).
-  // Unstar beside each takes the star off, wherever its message is.
-  starredSection(stars, found, reader) {
-    if (!stars.length) return null;
-    const doc = this.doc, here = star => (found.byTopic ? star.topic_id === found.topicId : star.workspace_id === this.handles.workspaceId);
-    const mine = stars.filter(here), elsewhere = stars.filter(star => !here(star));
-    const row = star => {
-      const sub = element(doc, 'span', { className: 'sub', textContent: `${star.author_id === reader ? 'you' : star.author_id}${here(star) && found.byTopic ? '' : ` in ${star.conversation ? 'Conversation' : star.topic_title}`}` });
-      const off = element(doc, 'button', { type: 'button', className: 'things-unstar', textContent: 'Unstar', title: 'Take the star off' });
-      off.setAttribute('aria-label', `Unstar "${firstWords(star.excerpt, 40)}"`);
-      off.hidden = !this.handles.unstar;
-      off.onclick = () => this.handles.unstar?.(star);
-      return element(doc, 'li', { className: 'things-starred' }, this.placeLink({ kind: 'topic', id: star.topic_id, message: star.message_id }, firstWords(star.excerpt, 70), sub), off);
-    };
-    return { sum: String(stars.length), key: JSON.stringify(['star', stars.map(star => [star.message_id, star.star_revision, here(star)])]), node: () => element(doc, 'div', {},
-      ...(mine.length ? [element(doc, 'ul', { className: 'things-list' }, ...mine.map(row))] : []),
-      ...(elsewhere.length ? [element(doc, 'div', { className: 'pipe-label', textContent: 'Elsewhere' }), element(doc, 'ul', { className: 'things-list' }, ...elsewhere.map(row))] : []),
-      element(doc, 'p', { className: 'things-quiet', textContent: 'Only you see your stars.' })) };
   }
   notebookSection(items, found) {
     if (!items?.length) {
