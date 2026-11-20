@@ -310,6 +310,27 @@ function mountOutcomeOutline(f) {
 const outcomeCards = f => walk(f.get('topic-navigation')).filter(node => node.classList?.contains('outcome-topic-card'));
 const outcomeCardTitles = f => outcomeCards(f).map(card => card.children[0].textContent);
 
+for (const [kind, query, workspace] of [['root', '/', null], ['workspace', '/?workspace=w1', 'w1']]) {
+  test(`901 actual ${kind} initializer supplies shell handles and routes through the shared move callback`, async () => {
+    const f = fixture('https://fixture' + query);
+    const view = f.api.view;
+    f.api.view = (name, args) => name === 'workspace' ? Promise.resolve({ instance_id: 'fixture', workspace: { id: 'w1', title: 'Workspace' } }) : view(name, args);
+    f.runObservation(`globalThis.moves901 = []; shell.go = (target, still) => {
+      moves901.push({ target, safe: still() }); return true;
+    };`);
+    await f.initialize(); await drain();
+    assert.equal(f.runObservation('shell.handles?.workspaceId'), workspace);
+    assert.equal(f.runObservation('shell.handles?.route.kind'), kind);
+    assert.equal(f.get('rail').hidden, kind === 'root', 'the existing root/outcome presentation is kept');
+    await f.runObservation("openDestination({ kind: 'topic', id: 't2' }, 'Next')");
+    assert.deepEqual(JSON.parse(f.runObservation('JSON.stringify(moves901)')), [{ target: { kind: 'topic', id: 't2' }, safe: true }]);
+    assert.equal(f.events.some(([event]) => event === 'navigate' || event === 'reload'), false);
+    f.runObservation('shell.go = () => false');
+    await f.runObservation("openDestination({ kind: 'pipeline', id: 'w1' }, 'Pipeline')");
+    assert.deepEqual(f.events.filter(([event]) => event === 'navigate'), [['navigate', '?pipeline=w1']], 'unsupported moves retain the shared document-load fallback');
+  });
+}
+
 // Item 859 put Team in the shared header. This fixture does not parse HTML;
 // read that shipped placement as well as the app's live middle-page order.
 const assertOutcomeTeamHeader = f => {
