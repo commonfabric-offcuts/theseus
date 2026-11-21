@@ -185,3 +185,48 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 .ol-dossiers>button{display:block;min-height:44px;padding:.35rem .5rem;color:var(--accent);background:transparent;border:0;text-align:left;font-size:.8rem;max-width:100%}
 .ol-dossiers>[role=status]{display:block;font-size:.8rem;overflow-wrap:anywhere}
 .ol-dossiers:empty{margin-bottom:0}
+
+/* ---- The things rail, in the outcome page's grammar (designer, Redesign right siderail) ----
+   Every section heading the same small caps as the outcome page's TOPICS, AGENTS and NOTEBOOK; the Notebook's pages as
+   small text pages with their first words; images three to a row. A fine pointer only: a touch keeps its taller rows. */
+@media (pointer:fine) and (min-width:761px){
+  .things{--things-quiet:color-mix(in srgb,var(--ink) 58%,transparent);--things-tile:color-mix(in srgb,var(--ink) 3%,var(--paper));--things-hair:var(--line)}
+  .things-sec{border-top:0;padding:0;margin:0 0 1.35rem}
+  .things-sec>summary{min-height:0;height:1.6rem;margin:0 0 .45rem;padding:0 0 .35rem .1rem;border-bottom:1px solid var(--line);
+    font-size:.66rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--things-quiet);list-style:none}
+  .things-sec>summary::-webkit-details-marker{display:none}
+  .things-sec>summary .sum{font-size:.66rem;font-weight:600;letter-spacing:0;color:var(--things-quiet)}
+  .things-sec>summary .notebook-create{width:1.6rem;height:1.6rem;min-height:0;padding:0;margin:0 0 0 auto;border:0;background:transparent;color:var(--things-quiet)}
+  .things-sec>summary .notebook-create svg{width:.9rem;height:.9rem}
+  .things-sec>summary:has(.notebook-create) .sum{margin-left:.35rem}
+  .things-sec>summary .notebook-create:hover{color:var(--ink)}
+  .things-body{padding:0}
+  .things-list a.row,.things-list span.row{padding:.35rem .5rem;font-size:.8rem}
+  .things-list .sub,.things-list .wait-state{font-size:.7rem;color:var(--things-quiet)}
+  .things-quiet,.things-empty{margin:.1rem;font-size:.76rem;color:var(--things-quiet)}
+  .things-more{min-height:0;height:1.8rem;font-size:.76rem}
+  /* Notebook pages: each a small page, its title and its own first words in the book face. */
+  .things-sec[data-key=notebook] .things-list{display:grid;gap:.45rem}
+  .things-sec[data-key=notebook] .things-list li{margin:0}
+  .things-sec[data-key=notebook] .things-list a.row{display:block;padding:.55rem .65rem .6rem;border:1px solid var(--things-hair);border-radius:.55rem;
+    background:var(--things-tile);font-size:.82rem;font-weight:650;line-height:1.3;color:var(--ink)}
+  .things-sec[data-key=notebook] .things-list a.row:hover{border-color:color-mix(in srgb,var(--accent) 40%,var(--things-hair))}
+  .things-opening{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;margin-top:.3rem;
+    font-family:"Iowan Old Style","Charter","Palatino Linotype",Georgia,serif;font-size:.74rem;font-weight:400;line-height:1.42;color:var(--things-quiet)}
+  /* Images: three to a row. */
+  .things-thumbs{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .things-thumbs a.thumb{border-radius:.5rem}
+  .things-thumbs a.thumb:hover{border-color:color-mix(in srgb,var(--accent) 50%,var(--line))}
+}
+/* Docked beside the page: "In this topic" stays for screen readers, the sections' headings carry the rail, and the rail
+   draws no edge of its own (in Paper that line stopped where the rail's contents did). */
+@media (pointer:fine) and (min-width:1181px){
+  [data-rails] .things{padding:1.15rem .95rem 1.4rem;border-left-color:transparent}
+  [data-rails] .things-head{min-height:0}
+  [data-rails] .things-head h2{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+}
+/* Paper: the Notebook's pages are paper on the rail's dark floor, as in the outcome page's Notebook column. */
+@media (pointer:fine) and (min-width:761px){
+  :root[data-look=paper] .things-sec[data-key=notebook] .things-body{padding:.55rem;border-radius:.7rem;background:#f2eee5}
+  :root[data-look=paper] .things-sec[data-key=notebook]{--things-tile:#fbf8f1;--things-hair:#ddd5c5;--things-quiet:#6f685c;--ink:#27241f;--accent:#3d7a62}
+}
