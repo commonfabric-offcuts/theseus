@@ -98,3 +98,81 @@ under `/Users/commonfabric/.local/share/theseus/page-lane6/evidence/960/`:
 `native-red242-cardsopen/results.json`. Mutation and restored control use
 distinct Python cache prefixes. The earlier exact188 Item783 failure remains
 failed and unwaived; this cut makes no claim about it.
+
+## Page cut on release247
+
+Core is live246; this own247 cut implements the wide page at1100px and above.
+Use the same TopicRail.presentation values and acts, existing workspace member
+read and PeoplePanel, existing PurposeLine save, and existing memory_items
+bodies. No additional topic or Notebook query. A responsive layout owner
+moves the real Team and purpose controls and restores their original narrow
+parents; it disposes its media listener on page retirement. Agent filter
+counts refer to unique currently shown/loaded topic cards, including open
+Done/Archived groups; More updates them. It dims unmatched cards, never
+changes their routing. Blank/held/removed latest prose has no speaker line.
+Notebook excerpts use the page body, skip a repeated initial title, and
+retain the exact saved source reference and existing button actions.
+
+Wide cards/purpose/agents/Notebook receive native checks in both looks and
+schemes, with narrow layout, one-message sheets, real Add, keyboard edit and
+rail/topic controls. No timing assertion is inferred from a fake DOM.
+The actual visible-card missing-opening native red already precedes product.
+957 owns the title colour ring,962 owns Notebook passage gestures,968/969/971
+own their shipped rail/card/Reader surfaces. No prototype global observer,
+fetch interception, per-card read, study switch or right-rail snippet is used.
+
+## Finished page cut on release248
+
+The248 source preserves974's topic header/team stylesheet. The page now uses
+the wide three-column bench, actual inline purpose pencil, shared latest-word
+topic sheets, exact-actor waiting filter, real Team Add/management surface,
+and the outcome Notebook's own first words/material. Below1100px the original
+layout and controls remain. The page uses no per-card message read and does
+not change the rail or topic surfaces.
+
+Native `tests/outcome_page_960_native.mjs` passed16 cells in Chromium and16 in
+WebKit:1440/1280/1000/390px, light/dark, Bookends/Paper. The final owner-control
+case also passes in each engine: resizing keeps unsent purpose text and the
+actual action; an immutable save delivered after a real scratch Core purpose
+change is refused and keeps the writing; topic/rail navigation returns to the
+correct surface and the retired layout listener does not touch the next one.
+Each wide cell confirms the actual saved purpose in Core, Escape focus,
+exact-ID filter and reset, real Add, Notebook material/title-skip, sheet
+thresholds and no per-card `topic_messages`. Narrow cells keep the original
+metadata and header Team. No horizontal overflow or page errors occurred.
+
+Screenshot inspection caught the Notebook heading sharing a flex row with
+its first card; the panel is now block flow and a native geometry assertion
+holds the heading above the cards. An early resize assertion observed before
+the media event completed; its raw failure remains diagnostic, and the final
+case waits for the actual reparented node rather than a fixed delay.
+
+All owned browsers closed through Browser.close. Observed PIDs and profiles
+are absent; scratch fixtures exited0 on EOF and their ports closed. WebKit
+uses its own explicit temporary profile. These are native desktop engines
+at phone viewport width, not physical-phone/finger evidence.
+
+The final affected Node cohort is212 tests/211 pass/1 fail versus pristine
+248's207/206/1. The same unchanged failing test is `847 a directly reached
+outcome uses its provisional outline row as the topic-list owner`, whose
+legacy fixture lacks `dossiers.states`. No existing assertion was weakened;
+the one attempted fixture repair was discarded because it no longer tested
+the original expectation. Five added checks pass: latest prose/sheets, exact
+Notebook source and title skip, exact-ID filter preserving links/one read,
+held-message repaint removing old prose, and partial-word title safety.
+The failure is retained, not waived or called broad green.
+
+Evidence under the seat's `evidence/960/`: `native248-matrix/` and
+`webkit248-matrix/` (16 each), `native248-owner-controls-ready/` and
+`webkit248-owner-controls/` (final controls), `ui-pristine248.log`,
+`ui-candidate248.log`, `ui-cohort-comparison248.json`, plus the original
+`ui-red247.log` and `native-red242-cardsopen/`. Each native report retains
+the product/harness hashes and cleanup observations. The scratch
+`agent_page` fixture now optionally accepts the real memory owner_scope,
+keeping its topic default; no production API, Core schema or migration changed.
+
+Run with the local Playwright module in `AIM_PLAYWRIGHT_CORE` and CfT binary
+in `AIM_CHROME`: `node tests/outcome_page_960_native.mjs OUTDIR`; add
+`--webkit` for the installed WebKit or `--quick` for the owner-control cell.
+The earlier exact188 Item783 failure remains failed/unwaived.959 and954
+remain separate follow-up assignments;957/961/962/973 keep their own owners.

@@ -1,13 +1,16 @@
 import { arrange, paintMarks } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
 import { revealSelection } from './reveal.mjs';
+import { waitsOn, stateLabel } from './topic-state.mjs';
+import { agentColor } from './author-colors.mjs';
 
 // No read function or rail DOM: TopicRail.presentation() supplies values and
 // acts from the outline's one list owner, independent of its markup.
 export class OutcomeTopicCards {
-  constructor({ host, doc = host.ownerDocument }) {
-    Object.assign(this, { host, doc });
+  constructor({ host, doc = host.ownerDocument, color = agentColor, named = id => id, painted = () => {} }) {
+    Object.assign(this, { host, doc, color, named, painted });
     this.sections = new Map(); this.cards = new Map();
+    this.items = new Map(); this.filterActor = null;
   }
   node(tag, className, text) {
     const node = this.doc.createElement(tag); node.className = className;
@@ -50,6 +53,7 @@ export class OutcomeTopicCards {
     return next ? this.reach(next, navigate) : true;
   }
   paint(presentation) {
+    this.presentation = presentation; this.items.clear();
     const sections = [], ids = new Set();
     for (const list of presentation?.groups ?? []) {
       let section = this.sections.get(list.name);
@@ -69,21 +73,36 @@ export class OutcomeTopicCards {
       }
       const rows = list.rows.map(({ href, activate, item }) => {
         ids.add(item.id);
+        this.items.set(item.id, item);
         let card = this.cards.get(item.id);
         if (!card) { card = this.node('a', 'outcome-topic-card'); card.dataset.topicId = item.id; this.cards.set(item.id, card); }
         card.href = href; card.onclick = activate;
         card.onfocus = () => { this.lastTopicId = item.id; };
-        const signature = JSON.stringify([item, href]);
+        const latest = item.latest_message;
+        const signature = JSON.stringify([item, href, latest?.author_kind === 'agent' ? this.color(latest.author_id) : null, latest ? this.named(latest.author_id) : null]);
         if (card.drawn !== signature) {
           const title = this.node('span', 'outcome-topic-title', item.title);
           paintMarks(title, item, presentation.reader);
           const meta = this.node('span', 'outcome-topic-meta');
           const n = Number.isSafeInteger(item.message_count) ? item.message_count : 0;
+          card.dataset.sheets = String(n >= 10 ? 2 : n >= 2 ? 1 : 0);
           meta.append(this.node('span', '', `${n} message${n === 1 ? '' : 's'}`));
           if (Number.isSafeInteger(item.activity_ms) && item.activity_ms > 0) {
             const time = timeNode(item.activity_ms, this.doc); time.setAttribute('aria-label', `Last activity: ${time.title}`); meta.append(time);
           }
-          card.replaceChildren(title, meta); card.drawn = signature;
+          const line = this.node('span', 'outcome-topic-latest');
+          if (latest?.opening && !latest.withheld && !latest.removed) {
+            const who = this.node('b', 'who', latest.author_id === presentation.reader ? 'You' : this.named(latest.author_id));
+            if (latest.author_kind === 'agent') line.classList.add(`agent-${this.color(latest.author_id)}`);
+            else line.classList.add('person');
+            line.append(who, this.doc.createTextNode(' ' + latest.opening));
+          } else line.hidden = true;
+          const footer = this.node('span', 'outcome-topic-footer');
+          const state = this.node('span', 'outcome-topic-state', item.state && item.state !== 'active' || waitsOn(item).length ? stateLabel(item, presentation.reader) : '');
+          state.classList.toggle('mine', waitsOn(item).includes(presentation.reader));
+          footer.append(state);
+          if (Number.isSafeInteger(latest?.sent_ms) && latest.sent_ms > 0) footer.append(timeNode(latest.sent_ms, this.doc));
+          card.replaceChildren(title, line, meta, footer); card.drawn = signature;
         }
         return card;
       });
@@ -108,5 +127,13 @@ export class OutcomeTopicCards {
     this.empty ??= this.node('p', 'empty'); this.empty.hidden = !presentation || ids.size > 0 || !this.notice.hidden;
     this.empty.textContent = presentation && !presentation.started ? 'Loading topics…' : 'No topics in this list.';
     arrange(this.host, [...sections, this.notice, this.retry, this.empty]);
+    this.filter(this.filterActor); this.painted(presentation);
   }
+
+  filter(actor) {
+    this.filterActor = actor;
+    for (const [id, card] of this.cards) card.classList.toggle('outcome-topic-dim', Boolean(actor) && !waitsOn(this.items.get(id)).includes(actor));
+  }
+
+  repaint() { this.paint(this.presentation); }
 }

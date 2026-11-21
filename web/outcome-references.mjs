@@ -1,6 +1,13 @@
 import { PAGE, paintChanged, changedSince } from './topic-navigation.mjs';
 import { notebookDocument } from './notebook-view.mjs';
 
+export function pageOpening(body, title) {
+  let text = String(body ?? '').split(/\n+/).map(line => line.replace(/^#+\s*|[*_`>]/g, '').trim()).filter(Boolean).join(' ');
+  const heading = String(title ?? '').trim();
+  if (heading && text.toLowerCase().startsWith(heading.toLowerCase()) && (text.length === heading.length || /^[\s:.\u2014-]/.test(text.slice(heading.length)))) text = text.slice(heading.length).replace(/^[\s:.\u2014-]+/, '');
+  return text.slice(0, 220);
+}
+
 // The outcome's own Notebook pages, first on the outcome's own page:
 // what every topic in the outcome stands on, such as its architecture,
 // ways of working and guidelines. Each page is a labeled document icon,
@@ -32,6 +39,10 @@ export class OutcomeReferences {
         const mode = this.viewPreference.get(item.id), label = document.createElement('span'), line = document.createElement('span');
         label.className = 'notebook-document-title'; label.textContent = item.title || 'Notebook item'; label.title = label.textContent;
         line.className = 'notebook-document-label'; line.append(label); paintChanged(line, item);
+        const opening = pageOpening(item.body, item.title);
+        if (opening) {
+          const excerpt = document.createElement('span'); excerpt.className = 'outcome-page-opening'; excerpt.textContent = opening; line.append(excerpt);
+        }
         row.replaceChildren(notebookDocument(mode), line);
         const since = changedSince(item);
         row.setAttribute('aria-label', `${label.textContent}, ${mode === 'text' ? 'Text' : 'Cards'}${since ? `, ${since} new revisions` : ''}${item.draft ? ', draft' : ''}`);
