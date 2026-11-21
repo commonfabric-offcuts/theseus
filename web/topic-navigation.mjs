@@ -20,7 +20,7 @@ const badRoute = () => { throw Error('This destination link is incomplete or amb
 const OPTIONAL = {cards:['write','view','card'],opening:['from'],topic:['message','land','at','page','revision','act','choice'],workspace:['page','revision','act']};
 const REVISION = /^[1-9][0-9]{0,17}$/;
 export function routeKey(route) {
-  const fields = {root:[],health:[],'phone-check':['id'],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],measurements:['id'],tool:['id','tool'],cards:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
+  const fields = {root:[],health:[],image:['id','message'],'phone-check':['id'],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],measurements:['id'],tool:['id','tool'],cards:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
   const optional = (OPTIONAL[route?.kind] ?? []).filter(key=>key in route);
   if (!fields || Object.keys(route).length !== fields.length + optional.length + 1 || ![...fields,...optional].every(key=>key === 'land' ? route[key] === true : validId(route[key]))) badRoute();
   // Landing-only links name a message, and never imply opening its Reader.
@@ -38,6 +38,7 @@ export function routeKey(route) {
 export function routeHref(route) {
   routeKey(route);
   const page = route.page ? {page:route.page,...(route.revision?{revision:route.revision}:{})} : {};
+  if (route.kind === 'image') return '?' + new URLSearchParams({ image: route.id, message: route.message });
   const params = route.kind === 'root' ? null : route.kind === 'health' ? {health:''} : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{}),...(route.land?{land:'only'}:{}),...(route.at?{at:route.at}:{}),...page} : route.kind === 'conversation' ? {conversation:route.id} :
     route.kind === 'workspace' ? {workspace:route.id,...page} : route.kind === 'pipeline' ? {pipeline:route.id} : route.kind === 'measurements' ? {measurements:route.id} : route.kind === 'tool' ? {workspace:route.id,tool:route.tool} : route.kind === 'cards' ? {cards:route.id,...(route.write?{write:route.write}:{}),...(route.view?{view:route.view}:{}),...(route.card?{card:route.card}:{})} :
     route.kind === 'item' ? {pipeline:route.id,item:route.item} : route.kind === 'phone-check' ? {'phone-check':route.id} : route.kind === 'create' ? {new:'outcome',intent:route.intent} :
@@ -54,6 +55,7 @@ export function parseRoute(url) {
   if (new Set(keys).size !== keys.length) badRoute();
   let route;
   if (!keys.length) route={kind:'root'};
+  else if (keys.length===2 && p.has('image') && p.has('message')) route={kind:'image',id:p.get('image'),message:p.get('message')};
   // The instance's Health page (docs/health.md).
   else if (keys.length===1 && p.get('health')==='') route={kind:'health'};
   else if (keys.length===1 && p.has('topic')) route={kind:'topic',id:p.get('topic')};
