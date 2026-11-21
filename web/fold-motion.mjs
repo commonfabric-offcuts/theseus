@@ -53,7 +53,7 @@ export function foldInMotion(doc, entryOf, change, folding) {
     doc.body.append(ghost);
     const shut = Math.max(0, from.height - to.height);
     ghost.animate([{ clipPath: 'inset(0 0 0 0 round 10px)', opacity: 1 }, { clipPath: `inset(0 0 ${shut}px 0 round 10px)`, opacity: 0 }],
-      { duration: FOLD, easing: EASE, fill: 'forwards' }).finished.finally(() => ghost.remove());
+      { duration: FOLD, easing: EASE, fill: 'forwards' }).finished.catch(() => {}).finally(() => ghost.remove());
     after.animate([{ opacity: 0 }, { opacity: 0, offset: .35 }, { opacity: 1 }], { duration: FOLD, easing: 'ease-out' });
   } else {
     const open = Math.max(0, to.height - from.height);
