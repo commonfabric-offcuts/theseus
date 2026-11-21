@@ -2,8 +2,8 @@ from __future__ import annotations
 
 """Outcome-owned Links and title/removal overrides for message previews (1021)."""
 
-from encodings.idna import nameprep
 from ipaddress import IPv4Address, IPv6Address
+import stringprep
 import unicodedata
 from urllib.parse import quote, unquote, urlsplit
 
@@ -55,7 +55,21 @@ def _host(value):
             decoded = label[4:].encode("ascii").decode("punycode")
             if not decoded or unsafe_text(decoded) or unicodedata.combining(decoded[0]):
                 raise ValueError()
-            nameprep(decoded)  # Reject prohibited and invalid bidi labels.
+            # Keep prohibited scalars out, without IDNA2003's obsolete rule
+            # requiring a right-to-left letter at both ends. RFC5893 section2
+            # allows an RTL label to end in either family of digits (not both).
+            prohibited = (stringprep.in_table_c12, stringprep.in_table_c22, stringprep.in_table_c3,
+                          stringprep.in_table_c4, stringprep.in_table_c5, stringprep.in_table_c6,
+                          stringprep.in_table_c7, stringprep.in_table_c8, stringprep.in_table_c9)
+            if any(check(c) for c in decoded for check in prohibited):
+                raise ValueError()
+            bidi = [unicodedata.bidirectional(c) for c in decoded]
+            if any(kind in ("R", "AL", "AN") for kind in bidi):
+                last = next(kind for kind in reversed(bidi) if kind != "NSM")
+                if (bidi[0] not in ("R", "AL") or last not in ("R", "AL", "EN", "AN")
+                        or any(kind not in ("R", "AL", "AN", "EN", "ES", "CS", "ET", "ON", "BN", "NSM") for kind in bidi)
+                        or "EN" in bidi and "AN" in bidi):
+                    raise ValueError()
     parts = host.split(".")
     if parts[-1] == "":
         parts.pop()
@@ -125,7 +139,9 @@ class WorkspaceLinks:
         self._refuse_if_closed(db, actor, workspace["id"])
         url = canonical_url(args["url"])
         title = args["title"]
-        if (not isinstance(title, str) or not title.strip() or unsafe_text(title)
+        if isinstance(title, str) and unsafe_text(title):
+            raise Refusal("INVALID_ARGUMENT", "The link title contains a control or invisible direction character; remove it and try again")
+        if (not isinstance(title, str) or not title.strip()
                 or len(title.encode("utf-8")) > LIMITS["link_title_utf8_bytes"] or type(args["removed"]) is not bool):
             raise Refusal("INVALID_ARGUMENT", "A link needs a bounded title and a true or false removal choice")
         title = title.strip()
@@ -140,8 +156,8 @@ class WorkspaceLinks:
                    "ON CONFLICT(workspace_id,url) DO UPDATE SET title=excluded.title,revision=excluded.revision,"
                    "removed=excluded.removed,by_actor=excluded.by_actor,ms=excluded.ms",
                    (workspace["id"], url, title, revision + 1, int(args["removed"]), actor, _now_ms()))
-        db.execute("UPDATE workspaces SET version=version+1 WHERE id=?", (workspace["id"],))
-        self._outcome_change(db, workspace["id"], workspace["version"] + 1)
         row = db.execute("SELECT * FROM workspace_links WHERE workspace_id=? AND url=?", (workspace["id"], url)).fetchone()
+        for scope in ("workspace", "outcome"):
+            self._change(db, scope, workspace["id"], "workspace_link", str(row["seq"]), row["revision"])
         return {"workspace_id": workspace["id"], "link": link_item(row), "changed": True}, [
-            {"kind": "workspace", "id": workspace["id"], "version": workspace["version"] + 1}]
+            {"kind": "workspace_link", "id": str(row["seq"]), "version": row["revision"]}]

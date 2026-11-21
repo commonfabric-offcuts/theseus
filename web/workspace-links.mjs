@@ -54,13 +54,22 @@ export class WorkspaceLinks {
     // A held finger can be over a newly opened sheet item on release.
     // Consume that release's click; the next deliberate press resets it.
     doc.addEventListener('pointerdown', event => {
+      this.cancelDoor();
       this.holdOpened = false; this.touchDown = event.pointerType === 'touch' && part.body.contains(event.target);
     }, true);
     doc.addEventListener('pointerup', () => { this.touchDown = false; }, true);
-    doc.addEventListener('pointercancel', () => { this.touchDown = false; this.holdOpened = false; }, true);
+    doc.addEventListener('pointercancel', () => { this.cancelDoor(); this.touchDown = false; this.holdOpened = false; }, true);
+    doc.addEventListener('keydown', event => {
+      if (!this.touchDown) { this.cancelDoor(); this.holdOpened = false; }
+      // Native touch release may put focus back outside the sheet. Escape
+      // still closes this Links menu before the rail handles the same key.
+      if (event.key === 'Escape' && this.openMenu?.root.isConnected) {
+        event.preventDefault(); event.stopPropagation(); this.openMenu.close(true);
+      }
+    }, true);
     doc.addEventListener('click', event => {
       if (!this.holdOpened) return;
-      this.holdOpened = false; event.preventDefault(); event.stopImmediatePropagation();
+      this.cancelDoor(); this.holdOpened = false; event.preventDefault(); event.stopImmediatePropagation();
     }, true);
     this.form = node(doc, 'form', { className: 'link-form rail-line', hidden: true });
     this.form.setAttribute('aria-label', 'Save outcome link');
@@ -74,6 +83,8 @@ export class WorkspaceLinks {
     this.form.append(node(doc, 'label', {}, 'URL', this.url), node(doc, 'label', {}, 'Title', this.title),
       node(doc, 'div', { className: 'link-form-actions' }, this.save, this.cancel), this.notice);
     part.summary.after(this.form);
+    this.feedback = node(doc, 'p', { className: 'notice link-notice', hidden: true, textContent: 'Link copied.' });
+    this.feedback.setAttribute('role', 'status'); this.form.after(this.feedback);
     this.cancel.onclick = () => this.close(true);
     this.form.onsubmit = event => { event.preventDefault(); this.submit(); };
     this.form.addEventListener('keydown', event => {
@@ -86,6 +97,7 @@ export class WorkspaceLinks {
     ++this.serial; this.records = []; this.mayWrite = false; this.pencil.hidden = true;
     this.cancelDoor(); this.openMenu?.close(false); this.close(false); this.url.value = this.title.value = '';
     this.newDraft = null; this.touchDown = this.holdOpened = false; this.removedFocus = null;
+    this.feedback.hidden = true;
   }
   current(handles) { return this.rail.handles === handles && handles?.readable?.() !== false; }
   async read(handles) {
@@ -151,6 +163,7 @@ export class WorkspaceLinks {
   }
   edit(record, opener) {
     if (!this.mayWrite || !this.rail.handles) return;
+    if (!this.form.hidden && !this.record) this.newDraft = { url: this.url.value, title: this.title.value };
     ++this.serial; this.record = record; this.opener = opener; this.busy = false;
     this.url.readOnly = Boolean(record); this.title.readOnly = false; this.save.disabled = false;
     this.url.value = record?.url ?? this.newDraft?.url ?? ''; this.title.value = record?.title ?? this.newDraft?.title ?? ''; this.save.textContent = record ? 'Save' : 'Add link';
@@ -184,6 +197,7 @@ export class WorkspaceLinks {
   }
   menu(anchor, at = null) {
     if (!anchor?.isConnected || !this.current(this.rail.handles)) return;
+    this.feedback.hidden = true;
     if (this.touchDown) this.holdOpened = true;
     const handles = this.rail.handles, row = anchor.linkRecord;
     const act = task => async () => { try { await task(); } catch (error) { if (this.current(handles)) { this.rail.message.textContent = error.message; this.rail.message.hidden = false; } } };
@@ -191,7 +205,7 @@ export class WorkspaceLinks {
       { label: 'Open', glyph: 'openpage', act: () => anchor.click() },
       { label: 'Copy link', glyph: 'copy', act: act(async () => {
         if (!await copyText(row.url, this.rail.win.navigator)) throw Error('Could not copy this link.');
-        if (this.current(handles)) { this.rail.message.textContent = 'Link copied.'; this.rail.message.hidden = false; }
+        if (this.current(handles)) this.feedback.hidden = false;
       }) },
       { label: 'Rename', glyph: 'pencil', disabled: !this.mayWrite, act: () => this.edit(row, anchor) },
       { label: 'Remove', glyph: 'drop', disabled: !this.mayWrite, act: act(async () => {

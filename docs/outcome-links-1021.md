@@ -115,3 +115,51 @@ drop the empty later workspace_links table, matching step_back_by_hand in
 test_migrations.py. Only that setup SQL changes; the upgrade, predecessor-data,
 recorded-seat, roundtrip and byte-preservation assertions remain unchanged.
 Actual pre-edit errors in both named tests are retained.
+
+## Review15569 fourth-head correction contract
+
+Rejected e5f2b9f3 remains retained history. Same source branch takes the three
+remaining fixes and the bounded followups before a single new frozen head.
+A hold's opening release stays suppressed, but a later sheet Open or the first
+Return after Escape must navigate. Clear this Links door's stale suppression
+at a new deliberate pointer/key gesture and when its held release is consumed;
+keep the shared menu implementation and all other menu owners unchanged.
+Native touch release can move focus outside the sheet. Links handles Escape
+for its still-open menu at document capture, restores the tile and keeps the
+rail open; the next Return opens it without an intervening pointer or focus
+assignment. Retain that natural-sequence red separately from the earlier
+controlled-focus navigation checks.
+Escape stops propagation to the rail, while other document capture listeners
+still observe keyboard use. Stopping those listeners too makes the existing
+Return owner take the following Return to the page composer.
+
+At phone/coarse widths the44px dots control must have its own area outside the
+browser icon's rectangle, with both icon and title keeping native link taps.
+Place it in a separate row below the title; preserve the desktop control.
+Retain before/after390px screenshot and geometry/native hit observations.
+
+Each changed Link publishes workspace_link in both workspace and outcome
+change scopes with its stable row sequence identity and row revision. It never
+bumps workspaces.version or the global outcomes-list hint. Settings opened
+before a teammate's add/rename/remove still save at their original revision;
+Link CAS and operation replay remain. Topic change pages admit this known key
+without treating it as Notebook content, and outcome invalidation does not
+re-list unrelated panels. The rail's existing Live listener repaints Links.
+No schema or changes-cursor-shape addition, no weakening scope/authority checks.
+
+Menu Rename over an Add form keeps its exact unsent URL/title for reopening.
+Copy confirms in a Links-owned status line: a background rail refresh cannot
+hide the confirmation. It clears on the next Link menu or route reset. The
+native check copies, commits another isolated Link from another client and
+waits for that Live repaint before checking the confirmation is still shown.
+Title control/bidi refusal names the cause. Browser-produced A-label hosts,
+including RTL labels ending in digits, survive validation without IDNA2003's
+stricter whole-label bidi rule; prohibited Unicode host scalars still refuse.
+Direct raw-Unicode API input retains its named stdlib-IDNA deviation limit.
+It may map or refuse a raw Unicode host before an A-label exists; the browser
+form supplies its ASCII href. The RTL digit check follows the relevant label
+rules in [RFC5893 section2](https://www.rfc-editor.org/rfc/rfc5893.html#section-2),
+within the existing bounded parser rather than claiming complete UTS46 parity.
+Keep actual pre-edit native/Core reds, small scoped client tests, final producer
+hashes, paired relevant cohorts, recovery controls and strict owned cleanup.
+1037 and1034 stay conditional on approval, not part of this correction.

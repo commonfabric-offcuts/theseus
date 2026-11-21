@@ -1,3 +1,123 @@
+# 1021 Build3 — fourth source under review15569
+
+This is the current builder return. The accompanying manifest names the exact
+commit/tree, full base306 diff and source bytes. Same branch
+`page-lane6/1021-links-306-15256`; rejected e5f2b9f3 and every earlier failure
+remain history below and in the retained packets. This source stays on
+306/5ccd5432284200e823c123c5689383d13f1c8fb7, schema65→66. Latest own release
+read is314/schema65. Fable owns canonical freeze/stages; Warp owns independent
+review, actual-live carry, judged run and landing. No approval, broad-green,
+hosted-green or deployment claim is made here.1037 then1034 remain conditional
+on1021 approval and their separate binding.
+
+## Corrections and defaults
+
+- Links clears its own old hold suppression when the held release is consumed
+  or a deliberate pointer/key act begins. Hold→lift→Open navigates. Natural
+  hold→release→Escape closes only the Link menu, restores the tile and keeps
+  the rail; first Return navigates without focus assignment or another pointer.
+  Escape uses stopPropagation so the other document capture owners still see
+  keyboard intent. Shared menuDoor/message-menu product is unchanged.
+- Phone/coarse44px dots occupy a separate row below the title. All final phone
+  cells retain zero icon/dots overlap and the icon-centre hit belongs to the
+  anchor. Before/after390 screenshots were visually inspected; the original
+  measured overlap was954.2358px² and its centre hit went to the dots button.
+- Each Link write emits its own workspace_link row identity/revision in the
+  workspace and internal outcome change scopes. It does not bump the outcome's
+  settings revision or global list hint. Actual owner settings still commit at
+  the pin read before a teammate's add/rename/remove. Distinct revision1 rows
+  keep distinct change identities; replay/no-op emits no new key. Consumers
+  admit the key without Notebook/topic or unrelated outcome-panel invalidation;
+  the existing rail Live listener repaints Links.
+- Rename over Add preserves the exact current unsent URL/title. Control or
+  invisible-direction title refusals explain the cause. Browser RTL-digit
+  A-labels support add/rename/remove, with real row revisions1→3.
+- Copy uses a Links-owned status line, clearing on the next Link menu/route
+  reset. A real other-client Link write and completed Live tile repaint cannot
+  erase its confirmation. The shared rail status writer is unchanged.
+
+Owner/team access, closed-outcome refusal, authority/CAS, exact operation retry,
+retained-byte/digest migration checks,500-row cap including tombstones,4096-byte
+URLs and1024-byte titles remain. Browser root favicon/no-referrer and local
+fallback stay; Core performs no metadata fetch.
+
+The stdlib URL parser remains bounded, not a complete WHATWG/UTS46 replacement.
+Browser forms submit browser hrefs. Raw-Unicode API hosts may still map or
+refuse under stdlib IDNA before an A-label exists (including the named faß
+mapping limit). The relevant RTL-digit label rule was checked against
+[RFC5893 section2](https://www.rfc-editor.org/rfc/rfc5893.html#section-2), alongside
+the [URL Standard](https://url.spec.whatwg.org/#concept-domain-to-ascii).
+
+## Retained failures and phase boundaries
+
+Evidence root is `review15569` beside the prior packet directories.
+
+- `core-red-separated.log`:14 tests,2 failures/1 error on unchanged e5: actual
+  unrelated settings-save conflict, browser RTL A-label refusal and generic
+  title-refusal text. `client-red-separated.log`:14 tests,3 failures for outcome
+  invalidation, Notebook misrouting and rejected change kind. Exact test bytes
+  and unchanged product bindings are retained.
+- `native-red` and `native-red-corrected`: actual phone overlap, Add→Rename
+  draft loss and swallowed held Open/Return. The corrected Return red explicitly
+  focused the held sheet before Escape. First candidate/focused-sheet matrices
+  remain superseded; they do not establish the natural touch-release path.
+- `native-natural-red` removes that focus setup and fails because Escape leaves
+  the sheet visible. `native-natural-preflight`/`native-natural-diagnostic`
+  retain the next local mistake: stopImmediatePropagation prevented document
+  keyboard-intent observation, and MessageMenu.returnKey took Return to the
+  composer. Actual prevention stacks are retained. stopPropagation fixes it;
+  the final producer uses no focus assignment in that sequence.
+- `webkit-natural-final` is7/8, with the copied URL correct but its confirmation
+  hidden by a completing read. `native-copy-red` forces the same failure after
+  a real other-client write/Live repaint; `native-copy-fixed` passes.
+- The first Core check named a nonexistent seat-end module; its import error
+  remains a harness failure. The corrected real1015 migration module passes.
+  The15664 runner cut stopped `core-head.log` mid-module; it remains INCOMPLETE,
+  separately from the completed `core-head-final.log`.
+
+`red-source-snapshots.json` binds all measured source bytes for seven critical
+failure/fix phases to33 content-addressed blobs. Git/reconstructed historical
+bytes were accepted only when their SHA256 matched the phase's original
+source.json; exact red harness files are retained too. No historical red is
+renamed green or waived.
+
+## Final checks on the frozen producer bytes
+
+| Check | Result |
+|---|---|
+| `test_outcome_links_1021`, `test_seat_migration_1002`, `test_seat_end_migration_1015` |20/20 pass;15 Links cases plus5 actual migration cases |
+| `ui_outcome_links_1021.test.mjs` |14/14 pass |
+|38 existing direct-consumer/importer/canary files in `cohort-files.json` |1001 tests,980 pass/21 fail on both source and pristine306; complete normalized output identical |
+|9 existing Core/migration/view-inventory/web-build/change-key modules |307 tests,64 pass/148 fail/95 error on both; all243 failure/error names identical |
+| Complete Core diagnostics |242/243 match after named run noise; the already-red whisper inventory's truncated diagnostic changes because workspace_links is classified in both actual and expected sets. Its same11 missing unrelated views are independently verified in `whisper-inventory-delta.json`. |
+| Applied scope, revision, occupied downgrade, late-route, visual-grid, Link outcome-scope, settings-fence and row-identity faults |8 caught;8 exact restorations green, unique Python mutant/restored cache per case |
+| `chrome-copy-final` |8/8 pass,1280/390 × Bookends/Paper × light/dark |
+| `webkit-copy-final` |8/8 pass, same product/harness hashes and actual served bytes |
+
+All21 Node and243 Core inherited failures/errors remain unwaived. The comparison
+retains raw output plus normalization of owned paths, durations, stack positions,
+generated IDs/timestamps and unordered-set display. It does not alter tests or
+their assertions. No full224-module/hosted green is claimed.
+
+Both final engines retain exact retry after a real committed/lost response,
+stale-CAS writing retention, route/access revocation, spatial arrows/320 resize,
+Core-kept URL identity, no-referrer HTTP favicon, Add draft, RTL revisions, Copy
+after Live refresh and observed Live title repaint. All four Chrome phone cells
+drive trusted held-touch Open, natural Escape→first Return and release over
+Remove followed by a deliberate Remove. WebKit uses native taps/keyboard doors;
+it does not prove held touch.
+
+Browser.close/disconnected, all22 observed Chrome and2 WebKit PIDs absent,
+profiles removed, fixtures EOF/exit0/absent/empty errors and both ports closed
+are verified per final engine. WebKit's85 exact leaving-page `/api/view` fetch
+cancellations are retained separately by full stack/origin/phase; active errors
+remain empty. Every final product/harness hash is unchanged through controls
+and cohorts. Prevention tracing wraps and calls native preventDefault; inputs
+remain actual browser gestures. Clipboard is instrumented; viewport emulation
+does not establish physical-phone/IME behavior or timing claims.
+
+## Superseded Build2 record
+
 # 1021 Build2 — review15423 and15443 correction
 
 This section supersedes the earlier frozen-source returns below. The exact

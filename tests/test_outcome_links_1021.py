@@ -27,6 +27,66 @@ class OutcomeLinksCase(unittest.TestCase):
     def read(self, actor="owner", workspace="w1", **args):
         return self.store.view(actor, "workspace_links", dict(args, workspace_id=workspace))
 
+    def test_link_changes_keep_outcome_settings_and_list_identity_independent(self):
+        self.workspace()
+        before = self.store.view('owner', 'workspace', {'workspace_id': 'w1'})['workspace']
+        list_keys = self.sql("SELECT key,value FROM metadata WHERE key LIKE 'outcome_list:%' ORDER BY key")
+        start = self.sql('SELECT coalesce(max(seq),0) FROM changes')[0][0]
+        added = self.saved(actor='agent-b')
+        self.assertEqual(added['status'], 'committed')
+        self.assertEqual(self.saved(title='Teammate rename', revision=1, actor='agent-a')['status'], 'committed')
+        self.assertEqual(self.saved(title='Teammate rename', removed=True, revision=2, actor='agent-b')['status'], 'committed')
+        after_links = self.sql("SELECT key,value FROM metadata WHERE key LIKE 'outcome_list:%' ORDER BY key")
+        # A real settings save retains the fence read before those three writes.
+        edited = self.command('workspace.update', {'title': 'Owner settings kept'}, {'workspace_id': 'w1'},
+                              {'workspace_revision': before['version']})
+        self.assertEqual(edited['status'], 'committed', edited)
+        self.assertEqual(edited['result']['version'], before['version'] + 1)
+        seq = str(added['result']['link']['seq'])
+        for scope in ('workspace', 'outcome'):
+            changes = self.sql("SELECT resource_kind,resource_id,version FROM changes WHERE seq>? AND scope_kind=? AND scope_id='w1' AND resource_kind!='workspace' ORDER BY seq", (start, scope))
+            self.assertEqual(changes, [('workspace_link', seq, version) for version in (1, 2, 3)])
+        # Only the settings save can change its list hint; no Links write does.
+        self.assertEqual(after_links, list_keys)
+        mark = self.sql('SELECT max(seq) FROM changes')[0][0]
+        self.assertFalse(self.saved(title='Teammate rename', removed=True, revision=3)['result']['changed'])
+        self.assertEqual(self.sql('SELECT max(seq) FROM changes')[0][0], mark)
+
+    def test_distinct_link_rows_share_no_change_identity_and_replay_emits_nothing(self):
+        self.workspace()
+        conversation = self.store.view('owner', 'conversation', {'workspace_id': 'w1'})['conversation']['topic_id']
+        scopes = [{'kind': 'workspace', 'id': 'w1'}, {'kind': 'topic', 'id': conversation}]
+        checkpoints = [self.store.view('owner', 'changes', {'scope': scope})['checkpoint'] for scope in scopes]
+        first = self.saved(op='first-link')
+        second = self.saved(url='https://second.test/', op='second-link')
+        first_id, second_id = (str(result['result']['link']['seq']) for result in (first, second))
+        self.assertNotEqual(first_id, second_id)
+        for scope, checkpoint in zip(scopes, checkpoints):
+            page = self.store.view('owner', 'changes', {'scope': scope, 'cursor': checkpoint})
+            self.assertEqual([(item['resource_kind'], item['resource_id'], item['version']) for item in page['items']],
+                             [('workspace_link', first_id, 1), ('workspace_link', second_id, 1)])
+        end = self.sql('SELECT max(seq) FROM changes')[0][0]
+        self.assertEqual(self.saved(op='first-link'), first)
+        self.assertEqual(self.sql('SELECT max(seq) FROM changes')[0][0], end)
+
+    def test_browser_rtl_digit_alabel_supports_add_rename_and_remove(self):
+        self.workspace()
+        href = json.loads(subprocess.check_output(['node', '-e', "console.log(JSON.stringify(new URL('http://مثال1.com/').href))"], text=True))
+        self.assertEqual(href, 'http://xn--1-ymcl5hc.com/')
+        self.assertEqual(canonical_url(href), href)
+        for version, title, removed in [(0, 'RTL site', False), (1, 'Renamed RTL site', False), (2, 'Renamed RTL site', True)]:
+            result = self.saved(url=href, title=title, revision=version, removed=removed)
+            self.assertEqual(result['status'], 'committed', result)
+            self.assertEqual(result['result']['link']['url'], href)
+        self.assertEqual(self.read()['items'][0]['revision'], 3)
+
+    def test_title_refusal_explains_invisible_or_control_characters(self):
+        self.workspace()
+        for title in ['Copied\ttitle', 'Copied\u200etitle']:
+            result = self.saved(title=title)
+            self.assertEqual(result['error']['code'], 'INVALID_ARGUMENT')
+            self.assertRegex(result['error']['message'], 'control|direction|invisible|tab')
+
     def test_browser_href_is_a_core_fixed_point_for_url_components(self):
         # Independent browser URL implementation, not a copy of Core's encoder.
         script = r"""
@@ -34,7 +94,7 @@ const inputs = ['https://host/?', 'https://host/#', 'https://host/?#'];
 const chars = Array.from({length:94}, (_,n)=>String.fromCharCode(n+33)).filter(c=>c!=='\\');
 for(const c of chars.concat(['界','ß','☕','😀','%2f','%','%zz']))
   for(const prefix of ['https://host/a','https://host/?q=','https://host/#f']) inputs.push(prefix+c+'z');
-for(const host of ['xn--fa-hia.de','xn--53h.example','127.0.0.1','[2001:db8::1]','host..','_srv.host','-host','host-'])
+for(const host of ['xn--fa-hia.de','xn--53h.example','مثال1.com','مثال١.com','אחד2.com','אחד٢.com','127.0.0.1','[2001:db8::1]','host..','_srv.host','-host','host-'])
   for(const suffix of ['/?ids[]=1','/docs/[slug]','/?{}|^`','/#a#b','/?','#']) inputs.push('https://'+host+suffix);
 let seed=15423;
 for(let n=0;n<512;n++) {let word='';for(let j=0;j<24;j++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;word+=chars[seed%chars.length];}inputs.push('https://host/'+word+'?'+word+'#'+word);}

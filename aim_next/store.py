@@ -616,7 +616,8 @@ class Store(WorkspaceLinks, RailDimming, Onboarding, Assessments, HostedControl,
     def _outcome_change(self, db, workspace_id, version):
         """The outcome's own record changed: its team, owner or coordinator. Open outcome
         pages read the key in the workspace scope, and open topic pages in the outcome
-        scope, which holds only these keys, so a page learns who may organise it now."""
+        scope, so a page learns who may organise it now. Sub-collections such as
+        Links use their own resource kinds there, without changing this record."""
         self._change(db, "workspace", workspace_id, "workspace", workspace_id, version)
         self._change(db, "outcome", workspace_id, "workspace", workspace_id, version)
 

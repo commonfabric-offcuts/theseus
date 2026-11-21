@@ -141,7 +141,7 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 .link-form[hidden]{display:none}.link-form label{display:grid;gap:.2rem;min-width:0;font-size:.78rem;color:var(--muted)}
 .link-form input{box-sizing:border-box;width:100%;min-width:0}.link-form-actions{display:flex;gap:.4rem;flex-wrap:wrap}
 .link-notice{margin:0;font-size:.8rem;overflow-wrap:anywhere}
-@media(max-width:760px),(pointer:coarse){.link-menu{opacity:1;width:2.75rem;min-height:2.75rem}.outcome-link{padding-top:.6rem}.link-form :is(input,button){min-height:2.75rem}}
+@media(max-width:760px),(pointer:coarse){.link-tile{display:flex;flex-direction:column;align-items:center}.link-menu{position:static;opacity:1;width:2.75rem;min-height:2.75rem;margin-top:auto}.outcome-link{align-self:stretch;padding-top:.6rem}.link-form :is(input,button){min-height:2.75rem}}
 
 /* Wide: three columns, each rail scrolling on its own. */
 @media(min-width:1181px){

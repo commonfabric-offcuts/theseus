@@ -11,6 +11,7 @@ import { Api } from '../web/api.mjs';
 const engines = await import(process.env.AIM_PLAYWRIGHT_CORE), engine = process.env.AIM_BROWSER ?? 'chromium';
 const evidence = process.argv[2]; await mkdir(evidence, { recursive: true });
 const sourceFiles = ['web/things-rail.mjs','web/workspace-links.mjs','web/glyphs.mjs','web/browser-link.svg','web/rails.css','web/app.mjs','web/api.mjs','web/key-tree.mjs','web/arrow-reach.mjs',
+  'web/freshness.mjs','web/topic-views.mjs','web/outcome-refresh.mjs',
   'aim_next/workspace_links.py','aim_next/store.py','aim_next/migrations.py','aim_next/validation.py','aim_next/contract.py','aim_next/server.py',
   'tests/fixtures/ui_http.py','tests/outcome_links_1021_native.mjs'];
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -67,6 +68,21 @@ try {
       const pencil=section.locator('.link-create');
       result.reviewFailures=[];
       const reviewCheck=async(name,task)=>{try{await task();}catch(error){result.reviewFailures.push({name,error:error.stack});}};
+      if(width<761)await reviewCheck('phone dots leave the browser icon visible and tappable',async()=>{
+        await anchor(site).scrollIntoViewIfNeeded();
+        result.iconMenuGeometry=await anchor(site).evaluate(a=>{
+          const rect=el=>{const b=el.getBoundingClientRect();return{x:b.x,y:b.y,width:b.width,height:b.height,left:b.left,right:b.right,top:b.top,bottom:b.bottom};};
+          const icon=rect(a.querySelector('.link-browser')),menu=rect(a.parentElement.querySelector('[data-link-menu]'));
+          const overlap={left:Math.max(icon.left,menu.left),right:Math.min(icon.right,menu.right),top:Math.max(icon.top,menu.top),bottom:Math.min(icon.bottom,menu.bottom)};
+          const area=Math.max(0,overlap.right-overlap.left)*Math.max(0,overlap.bottom-overlap.top);
+          const hit=area?document.elementFromPoint((overlap.left+overlap.right)/2,(overlap.top+overlap.bottom)/2):null;
+          return{icon,menu,overlapArea:area,overlapHitsMenu:!!hit?.closest('[data-link-menu]'),iconCenterHitsLink:document.elementFromPoint(icon.x+icon.width/2,icon.y+icon.height/2)?.closest('a')===a};
+        });
+        await page.screenshot({path:`${evidence}/${key}-icon-menu.png`});
+        assert.ok(result.iconMenuGeometry.menu.width>=44&&result.iconMenuGeometry.menu.height>=44);
+        assert.equal(result.iconMenuGeometry.overlapArea,0,JSON.stringify(result.iconMenuGeometry));
+        assert.equal(result.iconMenuGeometry.iconCenterHitsLink,true);
+      });
       await reviewCheck('pencil closes and retains unsent writing',async()=>{
         await press(pencil);await form.waitFor();await form.getByRole('textbox',{name:'Link URL',exact:true}).fill(`${origin}/unsent/a-very-long-path?ids[]=1`);await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Unsent title');
         await press(pencil);assert.equal(await form.isVisible(),false,'second pencil press closes');
@@ -74,6 +90,36 @@ try {
         assert.equal(await form.getByRole('textbox',{name:'Link title',exact:true}).inputValue(),'Unsent title');assert.equal(await form.getByRole('textbox',{name:'Link URL',exact:true}).inputValue(),`${origin}/unsent/a-very-long-path?ids[]=1`);
       });
       if(await form.isVisible())await press(form.getByRole('button',{name:'Cancel',exact:true}));
+      await reviewCheck('Rename over Add keeps the exact unsent Add writing',async()=>{
+        const draftURL=`${origin}/unsent/under-rename?ids[]=7`,draftTitle='Add draft under a tile menu';
+        await press(pencil);await form.waitFor();await form.getByRole('textbox',{name:'Link URL',exact:true}).fill(draftURL);await form.getByRole('textbox',{name:'Link title',exact:true}).fill(draftTitle);
+        await menu(site,'Rename');await form.waitFor();assert.equal(await form.getByRole('textbox',{name:'Link URL',exact:true}).inputValue(),site);
+        await press(form.getByRole('button',{name:'Cancel',exact:true}));await press(pencil);await form.waitFor();
+        result.addDraftAfterRename={url:await form.getByRole('textbox',{name:'Link URL',exact:true}).inputValue(),title:await form.getByRole('textbox',{name:'Link title',exact:true}).inputValue()};
+        assert.deepEqual(result.addDraftAfterRename,{url:draftURL,title:draftTitle});
+      });
+      if(await form.isVisible())await press(form.getByRole('button',{name:'Cancel',exact:true}));
+      if(width<761&&engine==='chromium')for(const door of ['Open','Escape then Return'])await reviewCheck(`native hold then ${door} opens the link`,async()=>{
+        await page.keyboard.press('Escape');await openRail();const a=anchor(site);await a.locator('.link-title').scrollIntoViewIfNeeded();
+        const box=await a.locator('.link-title').boundingBox(),point={x:box.x+box.width/2,y:box.y+box.height/2};
+        const cdp=await context.newCDPSession(page),sheet=page.getByRole('menu',{name:'Link',exact:true});
+        await page.evaluate(()=>{
+          window.linkDoorTrace1021=[];window.linkDoorPrevent1021=Event.prototype.preventDefault;
+          Event.prototype.preventDefault=function(){if(this.type==='click'||this.type==='keydown')window.linkDoorTrace1021.push({prevent:this.type,key:this.key,stack:new Error().stack});return window.linkDoorPrevent1021.call(this);};
+        });
+        try{
+          await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point]});await sheet.waitFor();
+          await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+          await page.waitForTimeout(350); // Let the native compatibility click finish before the next act.
+          const pending=page.waitForEvent('popup',{timeout:1800}).then(popup=>({popup}),error=>({error}));
+          if(door==='Open')await sheet.getByRole('menuitem',{name:'Open',exact:true}).tap();
+          else{await page.keyboard.press('Escape');assert.equal(await sheet.isVisible(),false,'Escape closes the held sheet after native release');assert.equal(await a.evaluate(el=>el.ownerDocument.activeElement===el),true);await page.keyboard.press('Enter');}
+          const opened=await pending;
+          (result.holdOpenResults??=[]).push({door,point,opened:!!opened.popup,error:opened.error?.message,trace:await page.evaluate(()=>({prevents:window.linkDoorTrace1021,railOpen:document.querySelector('#things-open')?.getAttribute('aria-expanded'),focus:document.activeElement?.outerHTML?.slice(0,600)}))});
+          if(opened.popup){assert.equal(opened.popup.url(),site);await opened.popup.close();}
+          assert.ok(opened.popup,`${door}: ${opened.error?.message}`);
+        }finally{await page.evaluate(()=>{Event.prototype.preventDefault=window.linkDoorPrevent1021;});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]}).catch(()=>{});await cdp.detach();await page.keyboard.press('Escape');await openRail();}
+      });
       if(width<761&&engine==='chromium')await reviewCheck('native hold release does not choose Remove under finger',async()=>{
         const holdURL=`${origin}/seed/${key}/0`;await page.setViewportSize({width,height:580});await openRail();
         await anchor(holdURL).locator('xpath=..').locator('[data-link-menu]').tap();
@@ -110,7 +156,9 @@ try {
       await menu(custom,'Rename');await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Renamed native link');await press(form.getByRole('button',{name:'Save',exact:true}));await form.waitFor({state:'hidden'});
       await anchor(custom).filter({hasText:'Renamed native link'}).waitFor();
       await anchor(custom).focus();await page.keyboard.press('Shift+F10');await page.getByRole('menu',{name:'Link'}).getByRole('menuitem',{name:'Copy link',exact:true}).click();
-      assert.deepEqual(await page.evaluate(()=>window.copied1021),[custom]);await page.locator('#things').getByText('Link copied.',{exact:true}).waitFor();result.copyFeedback=true;
+      assert.deepEqual(await page.evaluate(()=>window.copied1021),[custom]);
+      const feedbackURL=`${origin}/copy-feedback/${key}`;result.receipts.push(await set(workspace,feedbackURL,'Live repaint after Copy'));
+      await anchor(feedbackURL).waitFor();await page.locator('#things').getByText('Link copied.',{exact:true}).waitFor();result.copyFeedback=true;
       await menu(legacy,'Remove');await anchor(legacy).waitFor({state:'detached'});
       phase='leaving';await page.reload();await page.locator('body[data-ready=true]').waitFor();phase='active';await openRail();await anchor(custom).waitFor();assert.equal(await anchor(legacy).count(),0);
       const geometry=async()=>section.locator('a[data-outcome-link]').evaluateAll(nodes=>nodes.map(n=>({url:n.href,box:(()=>{const b=n.getBoundingClientRect();return{left:b.left,right:b.right,top:b.top,bottom:b.bottom};})()})));
@@ -132,6 +180,7 @@ try {
       // A real newer Core revision refuses the stale rename, preserving the typed attempt.
       await menu(custom,'Rename');const before=(await api.view('workspace_links',{workspace_id:workspace})).items.find(row=>row.url===custom);
       result.receipts.push(await set(workspace,custom,'Other device title',before.revision));
+      await anchor(custom).filter({hasText:'Other device title'}).waitFor();result.liveLinkRepaint=true;
       await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Stale local title');await press(form.getByRole('button',{name:'Save',exact:true}));
       await form.locator('.link-notice').filter({hasText:'Writing changed'}).waitFor();assert.equal(await form.getByRole('textbox',{name:'Link title',exact:true}).inputValue(),'Stale local title');result.realConflictKept=true;
       await press(form.getByRole('button',{name:'Cancel',exact:true}));
@@ -156,6 +205,12 @@ try {
       await menu(queryURL,'Remove');await anchor(queryURL).waitFor({state:'detached'});
       await press(section.locator('.link-create'));await form.getByRole('textbox',{name:'Link URL',exact:true}).fill(queryURL);await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Bracket query restored');await press(form.getByRole('button',{name:'Add link',exact:true}));await form.waitFor({state:'hidden'});await anchor(queryURL).waitFor();
       result.queryIdentity=await api.view('workspace_links',{workspace_id:workspace});const queryRows=result.queryIdentity.items.filter(row=>row.url===queryURL);assert.equal(queryRows.length,1);assert.equal(queryRows[0].revision,3);assert.equal(queryRows[0].removed,false);assert.equal(queryRows[0].title,'Bracket query restored');
+      const rtlURL='http://xn--1-ymcl5hc.com/';
+      await page.route(rtlURL+'favicon.ico',route=>route.abort('blockedbyclient')); // No dependency on the external site's network.
+      await press(pencil);await form.getByRole('textbox',{name:'Link URL',exact:true}).fill('http://مثال1.com/');await form.getByRole('textbox',{name:'Link title',exact:true}).fill('RTL digit host');await press(form.getByRole('button',{name:'Add link',exact:true}));await form.waitFor({state:'hidden'});await anchor(rtlURL).waitFor();
+      await menu(rtlURL,'Rename');await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Renamed RTL digit host');await press(form.getByRole('button',{name:'Save',exact:true}));await form.waitFor({state:'hidden'});await anchor(rtlURL).filter({hasText:'Renamed RTL digit host'}).waitFor();
+      await menu(rtlURL,'Remove');await anchor(rtlURL).waitFor({state:'detached'});
+      result.rtlIdentity=(await api.view('workspace_links',{workspace_id:workspace})).items.find(row=>row.url===rtlURL);assert.equal(result.rtlIdentity.revision,3);assert.equal(result.rtlIdentity.removed,true);
       await press(section.locator('.link-create'));const bracketURL=`${origin}/docs/[slug]-${key}?#`;await form.getByRole('textbox',{name:'Link URL',exact:true}).fill(bracketURL);await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Bracket path');await press(form.getByRole('button',{name:'Add link',exact:true}));await form.waitFor({state:'hidden'});await anchor(bracketURL).waitFor();
       result.bracketIdentity=(await api.view('workspace_links',{workspace_id:workspace})).items.find(row=>row.url===bracketURL);assert.equal(result.bracketIdentity.revision,1);
       if(width<761){const box=await anchor(bracketURL).locator('xpath=..').locator('[data-link-menu]').boundingBox();assert.ok(box.width>=44&&box.height>=44,JSON.stringify(box));result.menuTouchTarget=box;}

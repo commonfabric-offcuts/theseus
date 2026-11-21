@@ -2,6 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SECTIONS, thingsIn } from '../web/things-rail.mjs';
 import { WorkspaceLinks, linkURL, outcomeLinks } from '../web/workspace-links.mjs';
+import { outcomeInvalidation } from '../web/outcome-refresh.mjs';
+import { TopicViews } from '../web/topic-views.mjs';
+import { changesPage } from '../web/freshness.mjs';
+
+const linkChange={seq:2,resource_kind:'workspace_link',resource_id:'7',version:1};
+test('1021 Link changes do not refresh outcome settings or lists',()=>{
+  assert.deepEqual([...outcomeInvalidation([linkChange],[])],[]);
+});
+test('1021 Link changes do not enter the Notebook read path',()=>{
+  const view=Object.assign(Object.create(TopicViews.prototype),{retain(){throw Error('Notebook retained for a Link');}});
+  assert.deepEqual(view.keys(linkChange),[]);
+});
+test('1021 topic changes admit own Link keys while still rejecting unknown kinds',()=>{
+  const scope={kind:'topic',id:'t1'},bootstrap={instance_id:'i1',actor:'owner',authority:{authority_id:'a',authority_epoch:'e'}};
+  const cursor=after_seq=>({v:1,kind:'checkpoint',instance_id:'i1',actor_id:'owner',authority_id:'a',authority_epoch:'e',scope,after_seq});
+  const answer={instance_id:'i1',scope,baseline:false,items:[linkChange],has_more:false,continuation:null,checkpoint:cursor(2),covered_versions:{topic:1,notebook:0}};
+  assert.equal(changesPage(answer,bootstrap,'t1',cursor(1)),answer);
+  assert.throws(()=>changesPage({...answer,items:[{...linkChange,resource_kind:'unknown'}]},bootstrap,'t1',cursor(1)));
+});
 
 test('1021 existing preview section is named Links and keeps its saved fold identity', () => {
   assert.equal(SECTIONS.find(([key]) => key === 'previews')[1], 'Links');
