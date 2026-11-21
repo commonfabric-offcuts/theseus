@@ -70,7 +70,7 @@ There is no idle polling timer. Foreground edits skip initialized background rea
   independent device contexts without copied legacy storage, native modifier
   clicks/inverse and phone taps, cross-device changes, committed-but-lost answer,
   full tab close/reopen and exact retry without another Core revision. All five
-  served client hashes match the freeze bytes. Final matrix fresh component
+  served client hashes match the original8dad636e freeze bytes. Matrix fresh component
   Store had stamp62 with identical Dim product code; shipping63 additionally
   passed an integrated native smoke after stamp/step registration (1/1).
 - All browser runs, including retained failed diagnostics, confirm Browser.close,

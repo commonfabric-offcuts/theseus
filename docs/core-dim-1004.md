@@ -135,8 +135,8 @@ Warp14985 corrects the workload rule: seats run their isolated headless native
 work concurrently. Each seat keeps one own workload at a time; the only load
 brake is one-minute load above12 on this18-core Mac. No cross-seat browser slot.
 
-At final freeze1004 uses62→63, after approved757 e6049706. The final32 native
-cells use identical Dim/Core preference product code and served client hashes;
+At first freeze8dad636e,1004 uses62→63 after approved757 e6049706. Its32 native
+cells use identical Dim/Core preference product code and its served client hashes;
 their fresh component Store had stamp62. Shipping63 additionally receives all
 Core/migration checks and an integrated native smoke after stamp/step registration.
 No predecessor step is renumbered; occupied downgrade refuses even saved Dim0.
