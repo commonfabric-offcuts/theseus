@@ -11,6 +11,7 @@
 // as long as a stack's name may be, ends at a word with "…".
 // Pipeline titles keep their own rule (pipeline-words.mjs, firstLine).
 import { parseBlocks } from './message-format.mjs';
+import { replyBasisPresentation } from './reply-basis.mjs';
 
 const LIMIT = 200;
 const EMPHASIS = /\*\*|__|~~|`/g;
@@ -48,7 +49,8 @@ function bounded(line) {
 
 // item: a message as the feed holds it ({body, attachments, preview}).
 export function messagePreview(item) {
-  const { text, quoted } = wordsOf(parseBlocks(item?.body ?? '', { partial: item?.preview === true }));
+  const body = item?.body ?? '', basis = replyBasisPresentation(body, { replyBasis: item?.reply_basis, agentReply: item?.author_kind === 'agent' && Boolean(item?.reply_to) });
+  const { text, quoted } = wordsOf(parseBlocks(body.slice(basis?.headingEnd ?? 0), { partial: item?.preview === true }));
   if (text) return bounded(quoted ? `“${text}”` : text);
   const attached = (item?.attachments ?? []).map(attachment => attachment?.name || 'a file');
   return attached.length ? bounded(`Attached: ${attached.join(', ')}`) : '';

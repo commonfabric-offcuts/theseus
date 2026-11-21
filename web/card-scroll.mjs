@@ -27,7 +27,7 @@ export function edges(box) {
 
 export class CardScroll {
   // press: the page's PressHold, which a redraw of the words waits on.
-  constructor({ read, press = null, displayRules = () => [] }) { this.read = read; this.press = press; this.displayRules = displayRules; this.loading = new WeakSet(); this.wholes = new Map(); this.revisions = new Map(); this.strikes = new Map(); this.epochs = new Map(); }
+  constructor({ read, press = null, displayRules = () => [] }) { this.read = read; this.press = press; this.displayRules = displayRules; this.loading = new WeakSet(); this.wholes = new Map(); this.revisions = new Map(); this.strikes = new Map(); this.bases = new Map(); this.epochs = new Map(); }
   // The whole of a cut-off message, read from its source once (a read that
   // fails is asked again next time); known(id) has it once it has come.
   // readClass: 'background' for what lighting a card reads ahead, which the
@@ -40,7 +40,7 @@ export class CardScroll {
     if (source?.source_ref?.id !== id || typeof source.body !== 'string') throw Error('The message could not be read whole.');
     if (this.epochs.get(id) !== epoch) throw Error('The message changed while it was being read. Try again.');
     // And what of them the reader had read and the author's edit took away, struck through (item 614).
-    this.wholes.set(id, source.body); this.revisions.set(id, revisionOf(source)); this.strikes.set(id, source.struck?.cuts ?? null);
+    this.wholes.set(id, source.body); this.revisions.set(id, revisionOf(source)); this.strikes.set(id, source.struck?.cuts ?? null); this.bases.set(id, source.reply_basis);
     return source.body;
   }
   known(id) { return this.wholes.get(id); }
@@ -49,7 +49,7 @@ export class CardScroll {
   // as a card not yet read on.
   forget(id, card = null) {
     this.epochs.set(id, (this.epochs.get(id) ?? 0) + 1);
-    this.wholes.delete(id); this.revisions.delete(id); this.strikes.delete(id);
+    this.wholes.delete(id); this.revisions.delete(id); this.strikes.delete(id); this.bases.delete(id);
     if (!card) return;
     delete card.dataset.whole; delete card.dataset.full; delete card.dataset.more;
     if (card.style) card.style.maxHeight = '';
@@ -72,7 +72,7 @@ export class CardScroll {
     // The words the reader had scrolled to inside the box hold their place:
     // the page scrolls by as much as the box's own scroll gives back.
     const top = preview.getBoundingClientRect().top;
-    formatWords(preview, body, { copyFences: 'feed', revision: item.preview ? this.revisions.get(item.id) : revisionOf(item),
+    formatWords(preview, body, { replyBasis: item.preview ? this.bases.get(item.id) : item.reply_basis, agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: item.preview ? this.revisions.get(item.id) : revisionOf(item),
       struck: item.preview ? this.strikes.get(item.id) : item.struck?.cuts, displayRules: this.displayRules() });
     preview.classList.add('scroll-in-place');
     card.dataset.whole = 'shown'; card.dataset.full = 'shown';
@@ -125,7 +125,7 @@ export class CardScroll {
       // field is outside the source's scrolling room, including on close.
       const height = parseFloat(card.style.getPropertyValue?.('--reply-card-height')) || card.getBoundingClientRect().height;
       card.style.maxHeight = `${Math.ceil(height)}px`;
-      formatWords(preview, body, { copyFences: 'feed', revision: this.revisions.get(item.id), struck: this.strikes.get(item.id), displayRules: this.displayRules() });
+      formatWords(preview, body, { replyBasis: this.bases.get(item.id), agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: this.revisions.get(item.id), struck: this.strikes.get(item.id), displayRules: this.displayRules() });
       preview.classList.add('scroll-in-place');
       card.classList.add('scroll-in-place');
       edges(card);
