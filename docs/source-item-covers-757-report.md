@@ -104,3 +104,22 @@ Review bundle includes manifests, source/report, focused and comparison logs,
 actual mutant results/bytes, native results/observations and selected captures.
 Full captures and diagnostic DOM remain in that directory. No live data was
 used or changed. Tony acceptance is not recorded.
+
+## Review correction14938
+
+Warp's review found one additional regression in the21-file Python comparison:
+the987 migration test treated61 as the latest schema. The original assertion
+was reproduced on345376ed: **one test, one failure (`62 != 61`)**. The correction
+imports the actual `SCHEMA_VERSION` for the default upgrade's expected result.
+The explicit downgrade to60, preserved workspace rows and frozen-proof refusal
+assertions remain intact. The whole987 file plus757's three Core/fixture/schema
+files now pass **42/42**. The actual red and corrected control are retained in
+`review-correction14938` under the evidence directory.
+
+Only that test and this report change from345376ed. Product, native-driver,
+fixture and prior evidence bytes stay unchanged; no new browser run or broad
+cohort rerun is claimed for this correction. Warp's existing read and remaining
+three-lens findings remain with him. The local comparison commitd6c0ac04 is
+included as an ancestor of the pushed source branch by a merge verified to leave
+the file tree unchanged, making the exact comparison base remotely reachable.
+This does not change the corrected987 predecessor or schema61→62 order.
