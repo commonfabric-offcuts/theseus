@@ -196,7 +196,7 @@ above; `binding`, `view` and `command` are unchanged.
 | `retry OPERATION` | Re-sends a saved request unchanged. |
 | `health` | Prints what needs attention, with why, then one line each for the agent runner, every agent and its waiting work, the Mac and the latest release, in the Health page's words, from the `health` view ([health.md](health.md)). With `--json` it prints the view itself. |
 | `releases [--limit N]` | Lists the instance's release records, newest first: number, commit, time, the pipeline items it shipped and its counts ([releases.md](releases.md)). `--limit` shows only the newest N. |
-| `attachment ATTACHMENT --message MESSAGE --out FILE` | Saves one attachment's bytes, read through the message that carries it, to a new file (see [Attachments](#attachments)). |
+| `attachment ATTACHMENT (--message MESSAGE \| --page PAGE) --out FILE` | Saves one attachment through its readable message or current Notebook page to a new file (see [Attachments](#attachments)). |
 | `notes SCOPE [--topic]` | Lists the pages in an outcome's Notebook, or with `--topic` a topic's own: id, title, revision and author, `[changed since you read revision N]` on a page revised since the actor read it, and `[draft: its writer keeps its words from agents]` on a draft page (see [Notebook pages](#notebook-pages)). |
 | `note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE\|-` | Makes a page in that Notebook from FILE's words, or stdin's for `-`, and reads it back. |
 | `note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE\|-` | Writes the page's next revision from FILE's words, keeping its title (unless `--title`), attachments and evidence, adding any `--attach` files, and reads it back. Refused unless the page stands at revision N. |
@@ -370,6 +370,16 @@ there by then it is left alone, and when the removal itself fails the refusal
 is still `OUT_UNAVAILABLE` and says a partial file may remain. It prints
 `saved NAME (TYPE, N bytes, sha256 HEX) to FILE`, or with `--json`
 `{attachment, message_id, path}`. It sends no command and acknowledges nothing.
+
+`attachment ID --page PAGE --out FILE` saves an attachment from the current
+Notebook page instead. Exactly one of `--message` and `--page` is required.
+The CLI resolves the current exact page reference through `memory_status`,
+then uses the same `open_media` read with that memory source and revision.
+A concurrent edit leaves the captured reference in force; Core checks access
+again when opening it. A fresh invocation selects the new current revision,
+so an attachment retained only in old history is not selected. Page visibility,
+attachment membership and all new-file safeguards above still apply. Its JSON
+result is `{attachment, page_id, path}`; the message result is unchanged.
 
 ### Sending attachments
 

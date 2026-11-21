@@ -194,7 +194,7 @@ USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
          "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch [--once] | retry OPERATION | releases [--limit N] | health "
-         "| attachment ATTACHMENT --message MESSAGE --out FILE "
+         "| attachment ATTACHMENT (--message MESSAGE | --page PAGE) --out FILE "
          "| notes SCOPE [--topic] | note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE|- "
          "| note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE|- "
          "| note read ITEM [--revision N] | note link ITEM [--revision N] [--origin URL] "
@@ -384,7 +384,9 @@ def _parser():
     verb("health")
     attachment = verb("attachment")
     attachment.add_argument("attachment")
-    attachment.add_argument("--message", required=True)
+    attachment_source = attachment.add_mutually_exclusive_group(required=True)
+    attachment_source.add_argument("--message")
+    attachment_source.add_argument("--page")
     attachment.add_argument("--out", required=True)
     # Notebook pages (docs/agent-cli.md, "Notebook pages"). SCOPE is an outcome,
     # or with --topic a topic, whose Notebook holds the pages.
@@ -1046,15 +1048,23 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         self.item_lines(item, waits)
 
     def do_attachment(self):
-        """Save one attachment's bytes to a new file, read through the message that carries it.
+        """Save one attachment's bytes to a new file, through its message or current page.
 
-        The same read as the web page's (open_media with the message as its
-        source): only someone who can read the message gets the bytes, which
+        The same read as the web page's (open_media with the selected source):
+        only someone who can read that source gets the bytes, which
         Core has checked against the attachment's size and sha256."""
         options = self.options
+        page = options.page is not None
+        source = {"kind": "message", "id": options.message}
+        if page:
+            status = self.store.view(self.actor, "memory_status", {"item_id": options.page})
+            if status.get("error"):
+                self.out.raw(status)
+                self.fail(status["error"])
+            source = status["source_ref"]
         try:
             with self.store.open_media(self.actor, {"media_id": options.attachment,
-                                                    "source_ref": {"kind": "message", "id": options.message}}) as resource:
+                                                    "source_ref": source}) as resource:
                 descriptor = dict(resource.descriptor)
                 data = b"".join(iter(lambda: resource.read(65536), b""))
         except Refusal as refusal:
@@ -1075,7 +1085,8 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         except OSError as error:
             self.refuse("OUT_UNAVAILABLE", "%s could not be written (%s); %s" % (options.out, error.strerror, _remove_partial(options.out, created)))
         attachment = {key: descriptor[key] for key in ("name", "content_type", "size_bytes", "sha256", "inline")}
-        self.out.raw({"attachment": dict(attachment, id=descriptor["media_id"]), "message_id": options.message, "path": options.out})
+        self.out.raw({"attachment": dict(attachment, id=descriptor["media_id"]),
+                      **({"page_id": options.page} if page else {"message_id": options.message}), "path": options.out})
         self.out.plain("saved %s (%s, %s bytes, sha256 %s) to %s" % (descriptor["name"], descriptor["content_type"],
                                                                     descriptor["size_bytes"], descriptor["sha256"], options.out))
 
