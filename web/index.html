@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/aim.css">
   <link rel="stylesheet" href="/rails.css">
   <link rel="stylesheet" href="/rail-dense.css">
+  <link rel="stylesheet" href="/sheet-dense.css">
   <link rel="stylesheet" href="/stack-look.css">
   <link rel="stylesheet" href="/look.css">
   <script type="module" src="/look.mjs"></script>
@@ -116,14 +117,14 @@
           <p id="inline-writing-to" class="muted to-note" aria-live="polite" hidden></p>
         </div>
         <div id="inline-who-panel" class="compose-panel who-panel" role="dialog" aria-label="Who sees this message" hidden>
-          <button id="inline-who-done" type="button" class="panel-done" data-done>Done</button>
+          <button id="inline-who-done" type="button" class="panel-done" data-done aria-label="Close" title="Close">✕</button>
           <div id="inline-who-sentence" class="who-sentence"></div>
           <div class="who-row"><span class="who-label" aria-hidden="true">How</span><div id="inline-intent-row" class="intent-row"></div></div>
           <div class="who-row"><span class="who-label" id="inline-address-words">To</span><div class="audience" role="group" aria-labelledby="inline-address-words"><div id="inline-recipient-named" class="named-chips"></div><button id="inline-recipient-open" type="button" class="someone" aria-haspopup="dialog" aria-controls="inline-recipient-sheet">+ Someone</button><dialog id="inline-recipient-sheet" class="naming-sheet" aria-labelledby="inline-recipient-title"><div class="naming-head"><button id="inline-recipient-back" type="button" class="naming-back" aria-label="Back to your message" title="Back to your message"><span aria-hidden="true">←</span></button><h2 id="inline-recipient-title">Name someone</h2><button id="inline-recipient-done" type="button" class="naming-done">Done</button></div><div class="naming-people"><div id="inline-recipient-chips" class="chips"></div></div><input id="inline-recipient-input" class="name-filter" list="addressable-names" aria-label="Name someone else in the new message" placeholder="+ Someone" autocomplete="off" enterkeyhint="done"></dialog></div></div>
           <div class="who-row destination-row"><p id="inline-destination" class="field-label"></p></div>
         </div>
         <div id="inline-plus-panel" class="compose-panel plus-panel" role="dialog" aria-label="Add to this message" hidden>
-          <button id="inline-plus-done" type="button" class="panel-done" data-done>Done</button>
+          <button id="inline-plus-done" type="button" class="panel-done" data-done aria-label="Close" title="Close">✕</button>
           <div class="tiles">
             <button id="inline-add-image" type="button" class="tile">Add image</button>
             <button id="inline-choose-image" type="button" class="tile" hidden>Choose file</button>
