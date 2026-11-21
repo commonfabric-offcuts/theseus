@@ -23,6 +23,7 @@ SEAT_SCHEMA = [
     "first_message_id TEXT REFERENCES messages(id), ready_seq INTEGER UNIQUE, created_ms INTEGER NOT NULL)",
     "CREATE INDEX hosted_seats_work ON hosted_seats(state,id)",
     "CREATE INDEX hosted_seats_workspace ON hosted_seats(workspace_id,id)",
+    "CREATE INDEX hosted_seats_ready ON hosted_seats(state,ready_seq)",
     "CREATE TABLE hosted_seat_events (seat_id TEXT NOT NULL REFERENCES hosted_seats(id), version INTEGER NOT NULL, "
     "state TEXT NOT NULL, stage TEXT NOT NULL, reason TEXT, thread_id TEXT, at_ms INTEGER NOT NULL, "
     "PRIMARY KEY(seat_id,version))",
@@ -32,7 +33,6 @@ SEAT_SCHEMA = [
     "OR NEW.created_ms IS NOT OLD.created_ms OR (OLD.thread_id IS NOT NULL AND NEW.thread_id IS NOT OLD.thread_id) "
     "OR (OLD.plan IS NOT NULL AND NEW.plan IS NOT OLD.plan) "
     "OR (OLD.first_message_id IS NOT NULL AND NEW.first_message_id IS NOT OLD.first_message_id) "
-    "OR (OLD.ready_seq IS NOT NULL AND NEW.ready_seq IS NOT OLD.ready_seq) "
     "BEGIN SELECT RAISE(ABORT,'immutable hosted seat identity'); END",
     "CREATE TRIGGER hosted_seat_no_delete BEFORE DELETE ON hosted_seats BEGIN SELECT RAISE(ABORT,'immutable hosted seat'); END",
     "CREATE TRIGGER hosted_seat_event_no_update BEFORE UPDATE ON hosted_seat_events BEGIN SELECT RAISE(ABORT,'immutable hosted seat event'); END",
@@ -67,6 +67,10 @@ def _record(row, *, private=False, role=True):
 
 
 class HostedSeats:
+    def _seat_schedule(self, db):
+        return {'pending': bool(db.execute("SELECT EXISTS (SELECT 1 FROM hosted_seats WHERE state IN ('pending','preparing'))").fetchone()[0]),
+                'ready_seq': db.execute("SELECT coalesce(max(ready_seq),0) FROM hosted_seats WHERE state='ready'").fetchone()[0]}
+
     def _command_workspace_hosted_seat_retry(self, db, actor, envelope):
         target, args = envelope['target'], envelope['args']
         if set(target) != {'workspace_id', 'seat_request_id'} or args:
@@ -276,8 +280,44 @@ class HostedSeats:
             db.execute('INSERT INTO metadata VALUES (?,?)', (_key(binding), _json(pin)))
         self._provision_hosted_owner(db, row['agent_id'], row['owner_id'], now)
 
+    def hosted_seat_late_thread(self, guard, token, identity, version, thread):
+        """Keep a late creation receipt, without resuming uncertain native work."""
+        from .runner import _thread
+        thread = _thread(thread)
+        def action(db, now):
+            ownership = self._seat_owned(db, guard, token, now)
+            if ownership != 'running':
+                return {'status': ownership}, False
+            row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
+            if (row is None or row['runner_token'] != token or row['stage'] != 'starting' or
+                    row['state'] != 'refused' or row['reason'] != 'thread_start_uncertain' or
+                    row['version'] != version + 1 or row['thread_id'] is not None):
+                return {'status': 'ok', 'seat': _record(row, private=True) if row else None}, False
+            db.execute('UPDATE hosted_seats SET thread_id=?,version=version+1 WHERE id=?', (thread, identity))
+            row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
+            self._seat_event(db, row)
+            return {'status': 'ok', 'seat': _record(row, private=True)}, True
+        return self._effect(guard, action)
+
+    def hosted_seat_route_refuse(self, guard, token, identity, version):
+        """Isolate an unadoptable confirmed route from the host's other seats."""
+        def action(db, now):
+            ownership = self._seat_owned(db, guard, token, now)
+            if ownership != 'running':
+                return {'status': ownership}, False
+            row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
+            if row is None or row['version'] != version or row['state'] != 'ready':
+                raise RunnerError('REVISION_CONFLICT', 'The ready seat changed before route refusal')
+            db.execute("UPDATE hosted_seats SET state='refused',stage='route',reason='route_conflict',version=version+1 WHERE id=?", (identity,))
+            row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
+            self._seat_event(db, row)
+            return {'status': 'ok', 'seat': _record(row, private=True)}, True
+        return self._effect(guard, action)
+
     def _seat_first_delivery(self, db, row):
         # This delayed Tell is part of the original invitation, not an agent hello.
+        if row['first_message_id'] is not None:
+            return row['first_message_id']
         workspace = self._workspace(db, row['inviter_id'], row['workspace_id'], organise=True)
         if workspace['owner_id'] != row['owner_id']:
             raise Refusal('FORBIDDEN', 'The seat owner changed before its first delivery')
@@ -302,6 +342,6 @@ class HostedSeats:
             ownership = self._seat_owned(db, guard, token, now)
             if ownership != 'running':
                 return {'status': ownership}, False
-            row = db.execute('SELECT * FROM hosted_seats WHERE ready_seq>? ORDER BY ready_seq LIMIT 1', (after,)).fetchone()
+            row = db.execute("SELECT * FROM hosted_seats WHERE state='ready' AND ready_seq>? ORDER BY ready_seq LIMIT 1", (after,)).fetchone()
             return {'status': 'ok', 'seat': _record(row, private=True) if row else None}, False
         return self._effect(guard, action)

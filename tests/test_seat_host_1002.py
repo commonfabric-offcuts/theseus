@@ -127,6 +127,43 @@ class RunningSeatHost(fixture.HostCase):
         self.assertEqual(len([row for row in self.wire() if row.get('in', {}).get('method') == 'thread/start']), 1)
         self.stop_clean(runner)
 
+    def test_definite_auth_refusal_can_resume_the_same_seat_after_the_host_recovers(self):
+        (self.home / 'fake-script.json').write_text(json.dumps({'signed_in': False, 'turns': []}))
+        first = self.runner('--seat-template', fixture.AGENT)
+        added = self.add_seat()
+        first.event('seat_step', seat_id=added['seat_request_id'], state='refused', reason='auth_missing')
+        seat = self.seat(added['seat_request_id'])
+        self.stop_clean(first)
+        (self.home / 'fake-script.json').write_text(json.dumps({'signed_in': True, 'turns': [
+            {'reply': 'Hello from the recovered same seat.', 'reply_to_delivery': True}]}))
+        retried = self.act('workspace.hosted_seat_retry', {}, {'workspace_id': 'w1', 'seat_request_id': seat['id']},
+                           {'seat_revision': seat['version']})
+        self.assertEqual(retried['seat_request_id'], seat['id'])
+        second = self.runner('--seat-template', fixture.AGENT)
+        second.event('seat_step', seat_id=seat['id'], state='ready')
+        ready = self.seat(seat['id'])
+        second.event('host_turn_end', thread=ready['thread_id'], status='completed')
+        self.assertEqual(self.sql('SELECT count(*) FROM hosted_seats'), [(1,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE author_id='evidence-scribe'"), [(1,)])
+        self.assertEqual(len([row for row in self.wire() if row.get('in', {}).get('method') == 'thread/start']), 2)
+        self.stop_clean(second)
+
+    def test_stop_during_unanswered_native_creation_is_not_replayed_by_a_new_owner(self):
+        (self.home / 'fake-script.json').write_text(json.dumps({'silence_thread_start_once': True, 'turns': []}))
+        first = self.runner('--seat-template', fixture.AGENT)
+        added = self.add_seat()
+        first.event('seat_step', seat_id=added['seat_request_id'], state='preparing', stage='starting')
+        self.stop_clean(first)
+        second = self.runner('--seat-template', fixture.AGENT)
+        second.event('host_resume', thread=self.thread, status='idle')
+        seat = self.seat(added['seat_request_id'])
+        self.assertEqual((seat['state'], seat['stage'], seat['reason'], seat['first_message_id']),
+                         ('refused', 'starting', 'thread_start_uncertain', None))
+        self.assertFalse(seat['retryable'])
+        self.assertEqual(len([row for row in self.wire() if row.get('in', {}).get('method') == 'thread/start']), 2)
+        self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE author_id='evidence-scribe'"), [(0,)])
+        self.stop_clean(second)
+
 
 if __name__ == '__main__':
     unittest.main()

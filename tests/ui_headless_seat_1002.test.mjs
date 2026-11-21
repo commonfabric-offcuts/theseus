@@ -78,6 +78,24 @@ test('a failed strict device write sends nothing and keeps all writing', async (
   assert.equal(state.sent.length, 0); assert.deepEqual(state.owner.row.form, form);
 });
 
+test('typed writing remains unprotected until the actual device transaction finishes', async () => {
+  const state = setup(); await state.owner.load(); await state.owner.edit(form);
+  const put = state.saved.put.bind(state.saved);
+  let entered, release;
+  const started = new Promise(resolve => { entered = resolve; });
+  state.saved.put = (...args) => new Promise((resolve, reject) => {
+    release = () => put(...args).then(resolve, reject); entered();
+  });
+  const newer = { name: 'Next seat', role: 'This writing is still being saved.' };
+  const pending = state.owner.edit(newer); await started;
+  assert.equal(state.owner.unprotectedWriting, true);
+  assert.deepEqual(state.owner.row.form, newer);
+  assert.deepEqual(state.saved.row().form, form, 'a concurrent cache read may still see the previous committed form');
+  release(); await pending;
+  assert.equal(state.owner.unprotectedWriting, false);
+  assert.deepEqual(state.saved.row().form, newer);
+});
+
 test('a recorded refusal clears only the request and keeps the form for correction', async () => {
   const state = setup(request => ({ ...committed(request), status: 'rejected', result: null,
     error: { code: 'NAME_TAKEN', message: 'That name belongs to someone here.' } }));
@@ -115,4 +133,23 @@ test('a changed authority prevents even the old operation lookup and retains its
   state.api.bootstrap = async () => ({ ...bootstrap, authority: { ...bootstrap.authority, authority_epoch: 'changed' } });
   await assert.rejects(state.owner.again(), /changed|different account/i);
   assert.equal(state.sent.length, 1); assert.deepEqual(state.reads, []); assert.deepEqual(state.owner.row.request, original);
+});
+
+test('safe setup retry durably keeps the original seat fence and leaves the next form intact', async () => {
+  const saved = journal(); let kept;
+  const state = setup(request => { kept = saved.row(); return { ...committed(request), result: {
+    ...committed(request).result, agent: { id: 'evidence-scribe', name: 'Evidence scribe' },
+  } }; }, saved);
+  await state.owner.load(); await state.owner.edit(form);
+  await state.owner.retrySeat({ id: 'seat-one', agent_id: 'evidence-scribe', version: 7, retryable: true }, 'Evidence scribe');
+  assert.deepEqual(kept.request, state.sent[0]);
+  assert.deepEqual([state.sent[0].kind, state.sent[0].target, state.sent[0].expected],
+    ['workspace.hosted_seat_retry', { workspace_id: 'w1', seat_request_id: 'seat-one' }, { authority: bootstrap.authority, seat_revision: 7 }]);
+  assert.deepEqual(state.owner.row.form, form); assert.equal(state.owner.row.request, null);
+});
+
+test('uncertain native setup cannot be retried into a replacement context', async () => {
+  const state = setup(); await state.owner.load(); await state.owner.edit(form);
+  await assert.rejects(state.owner.retrySeat({ id: 'seat-one', version: 7, retryable: false }), /reconciliation/);
+  assert.equal(state.sent.length, 0); assert.deepEqual(state.owner.row.form, form);
 });

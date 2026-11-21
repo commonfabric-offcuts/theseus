@@ -91,6 +91,21 @@ class SeatCLI(unittest.TestCase):
         self.assertEqual(retried[0], 0, retried)
         self.assertEqual(self.sql('SELECT count(*) FROM hosted_seats'), [(1,)])
 
+    def test_retry_resumes_the_same_definite_refusal_and_reuses_its_saved_fence(self):
+        self.assertEqual(self.invoke('seat-add', 'w1', 'Scribe', '--role', '-')[0], 0)
+        with self.store.runner_guard('fixture-host') as guard:
+            token = self.store.acquire_runner(guard)['runner_token']
+            seat = self.store.hosted_seat_claim(guard, token)['seat']
+            self.store.hosted_seat_step(guard, token, seat['id'], seat['version'], 'refused', {'reason': 'host_not_configured'})
+        args = ('seat-retry', 'w1', seat['id'], '--operation', 'resume-scribe')
+        first = self.invoke(*args); self.assertEqual(first[0], 0, first)
+        path = self.profiles['owner'].parent / 'owner.outbox' / 'resume-scribe.request.json'
+        original = path.read_bytes()
+        second = self.invoke(*args); self.assertEqual(second[0], 0, second)
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(self.sql('SELECT agent_id,state,stage FROM hosted_seats'), [('scribe', 'pending', 'profile')])
+        self.assertEqual(self.sql("SELECT count(*) FROM actors WHERE id='scribe'"), [(1,)])
+
 
 if __name__ == '__main__':
     unittest.main()

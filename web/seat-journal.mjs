@@ -22,7 +22,7 @@ export async function openSeatJournal(bootstrap, workspace, indexed = globalThis
   database.onversionchange = () => { closed = true; database.close(); };
   function valid(row) {
     if (!row || row.v !== 1 || row.key !== key || !Number.isSafeInteger(row.revision) || row.revision < 1 ||
-        typeof row.form?.name !== 'string' || typeof row.form?.role !== 'string' || bytes(row) > 65536 ||
+        typeof row.form?.name !== 'string' || typeof row.form?.role !== 'string' || bytes(row) > 262144 ||
         !(row.lastSeatId === null || validActorId(row.lastSeatId))) return false;
     const request = row.request;
     if (request === null) return true;

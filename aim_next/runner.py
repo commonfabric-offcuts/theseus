@@ -796,6 +796,7 @@ class Runner:
                     result = {"instance_id": self.instance_id, "state": state["state"],
                               "version": state["version"], "lease_until_ms": state["lease_until_ms"],
                               "next_due_ms": self._next_due(db, routed),
+                              "hosted_seats": self._seat_schedule(db),
                               "hosted_controls": {agent: self._hosted_control_read(db, agent) for agent in json.loads(routed)}}
                     if state["reason_code"] is not None:
                         result["reason_code"] = state["reason_code"]
