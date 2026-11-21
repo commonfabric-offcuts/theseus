@@ -27,6 +27,7 @@ import { reloader } from './live.mjs';
 import { listen } from './in-place-navigation.mjs';
 import { KeyTree } from './key-tree.mjs';
 import { panes } from './panes.mjs';
+import { ImageRailMenu } from './image-rail-menu.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
 import { glyph } from './glyphs.mjs';
@@ -166,6 +167,7 @@ export class ThingsRail {
     this.kept = new Map();
     this.reload = reloader(() => this.load());
     this.build();
+    this.imageMenus = new ImageRailMenu(this);
     // The keys move through the sections and their rows as one tree
     // (key-tree.mjs): ↑ ↓ between them, → and ⌘→ ⌘← open and fold a
     // section, Return opens a row, and plain ← goes back to the messages
@@ -355,6 +357,7 @@ export class ThingsRail {
   // Nothing of the topic before stays on screen: every section goes,
   // with its words, until this one's read lands.
   clear() {
+    this.imageMenus?.reset();
     for (const part of this.sections.values()) { part.drawn = null; part.details.hidden = true; part.body.replaceChildren(); part.sum.textContent = ''; }
     for (const creator of this.creators.values()) creator.setAvailable(false);
     this.nothing.hidden = true; this.message.hidden = true; this.retry.hidden = true;
@@ -636,10 +639,11 @@ export class ThingsRail {
   imageSection(images, reader) {
     if (!images.length) return null;
     const doc = this.doc, { api, bootstrap, inTurn } = this.handles;
-    return { sum: String(images.length), key: JSON.stringify(['img', images.map(image => image.attachment.id)]), node: () => element(doc, 'div', { className: 'things-thumbs' }, ...images.map(image => {
+    return { sum: String(images.length), key: JSON.stringify(['img', images.map(image => [image.source_ref.id, image.attachment.id, image.attachment.sha256])]), node: () => element(doc, 'div', { className: 'things-thumbs' }, ...images.map(image => {
       const label = `${image.attachment.name ?? 'Image'}, from ${image.author_id === reader ? 'you' : image.author_id}, ${datedTime(image.sent_ms)}`;
       const link = this.placeLink({ kind: 'topic', id: image.topic_id, message: image.source_ref.id }, '');
       link.className = 'thumb'; link.title = label; link.setAttribute('aria-label', label);
+      link.dataset.railImage = image.attachment.id; link.railImage = image;
       paintThumb(link, `${image.source_ref.id}:${image.attachment.id}`, () => inTurn(async () => (await api.media(bootstrap.instance_id, image.attachment, image.source_ref)).blob));
       return link;
     })) };

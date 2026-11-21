@@ -82,7 +82,8 @@ same words, within a pixel (Tony, Mez en place #5287). The card lights its words
 through the CSS highlight `lit-passage`, which paints only their own height, so
 the rest is painted behind them as a background layer per line, in
 `--lit-field` (black, and on the person's own black card a lift of its ink,
-`#2d2e2e`, the ink at 20%, under its own light words, softer than the white field it had: Tony,
+`#4e5150`, the ink at 35%, under its own light words (20% read as nothing on
+a dossier's own cards, item 1009), softer than the white field it had: Tony,
 Colors #14691), never as padding: the card's lines stay where they were, it is
 as tall, and they keep their own height, 1.5 times their words' size. Each line's layer
 is on the background of the box its words show in (`clipBox`): the card, or the
