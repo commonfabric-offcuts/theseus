@@ -514,6 +514,8 @@ class Conversation:
             result["whisper"] = True
         # A person's reply folds the message it answers for them (Stacks._fold_answered).
         folded = self._fold_answered(db, actor, snapshot["reply_to"]) if snapshot.get("reply_to") else []
+        if not record_only and snapshot.get('reply_to'):
+            folded += self._fold_author_answered(db, actor, snapshot['reply_to'])
         return result, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}] + cover_affected + folded + covered
 
     def _message_access(self, db, actor, message_id, removal=False):

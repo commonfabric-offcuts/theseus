@@ -378,12 +378,15 @@ class AnsweredFoldCase(StackCase):
         self.committed(self.command("message.post", {"body": "And one more thing", "reply_to": mine}, target={"topic_id": "t1"}, actor="owner"))
         self.assertEqual(self.folded(mine), (True, 1))
 
-    def test_an_agents_reply_or_thumbs_up_folds_nothing(self):
+    def test_an_agents_reply_folds_the_author_only_and_its_thumb_adds_no_fold(self):
         mine = self.post("For the agent", actor="owner")
-        self.committed(self.command("message.post", {"body": "Done", "reply_to": mine}, target={"topic_id": "t1"}, actor="agent-a"))
+        self.committed(self.command("message.post", {"body": "Done", "reply_to": mine,
+                                                      "reply_without_quote": "The fixture answers the complete request"},
+                                    target={"topic_id": "t1"}, actor="agent-a"))
+        self.assertEqual((self.folded(mine, "agent-a"), self.folded(mine)), ((False, 0), (True, 1)))
         self.committed(self.thumb(mine, actor="agent-a"))
-        self.assertEqual((self.folded(mine, "agent-a"), self.folded(mine)), ((False, 0), (False, 0)), "an agent folds nothing by replying or a thumbs-up")
-        self.assertEqual(self.rows("fold"), [])
+        self.assertEqual((self.folded(mine, "agent-a"), self.folded(mine)), ((False, 0), (True, 1)), "an agent thumb changes no fold")
+        self.assertEqual(len(self.rows("fold")), 1, "only the955 author-personal reply fold was recorded")
 
     def test_an_answer_to_a_go_ahead_ask_is_a_reply_and_folds_the_ask(self):
         ask = self.post("May I ship the copy?", addressees=["owner"], intent="ask", go_ahead=True)
