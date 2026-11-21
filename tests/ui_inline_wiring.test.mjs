@@ -2780,9 +2780,11 @@ test('a topic page says where it stands, saves a tapped state or person fenced o
 
 // A tap whose answer was lost goes again when the browser is back online, as
 // the same command: the same operation id, so Core runs it at most once.
+// Closing acts require real durable storage; item1000's native Core/IDB checks
+// own their recovery. This adapter checks the unchanged non-closing state path.
 for (const [how, back] of [['online', f => { for (const [, name, handler] of f.events.filter(([kind]) => kind === 'window-handler')) if (name === 'online') handler(); }],
   ['on the live feed', f => f.live.emit({ kind: 'state', state: 'live' })]]) {
-  test(`a topic page sends a lost tap again when it is back ${how}, as the same operation`, async () => {
+  test(`a topic page sends a lost non-closing state tap again when it is back ${how}, as the same operation`, async () => {
     const f = fixture();
     f.live = stream(); f.useLive(f.live);
     pickerApi(f);
@@ -2792,14 +2794,14 @@ for (const [how, back] of [['online', f => { for (const [, name, handler] of f.e
     const core = f.api.command, envelopes = [];
     let offline = true;
     f.api.command = async envelope => { envelopes.push(JSON.parse(JSON.stringify(envelope))); if (offline && envelope.kind === 'topic.update') throw Error('Connection interrupted.'); return core(envelope); };
-    await chip('Done').onclick();
+    await chip('Ready for review').onclick();
     assert.deepEqual([envelopes.length, f.pickers.topic.state ?? 'active'], [1, 'active'], 'lost: Core never saw it');
     offline = false;
     back(f);
     await new Promise(resolve => setImmediate(resolve)); await new Promise(resolve => setImmediate(resolve));
     assert.equal(envelopes.length, 2, 'sent again once');
     assert.deepEqual(envelopes[1], envelopes[0], 'the same envelope, operation id and all');
-    assert.equal(f.pickers.topic.state, 'done');
+    assert.equal(f.pickers.topic.state, 'review');
   });
 }
 

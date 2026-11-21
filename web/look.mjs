@@ -2,6 +2,7 @@
 // in localStorage (with no storage it holds for the page) and set as a data attribute on <html>:
 // - Bookends | Paper (data-look; look.css): Bookends, the default, or Paper.
 // - Quiet | Vivid (data-agent-colors; agent-colors.css): how strongly agents' cards and names are tinted.
+// - Light on | Light off (data-pointer-light; pointer-light.mjs, 1010): pointer passages, independent of keyboard outlines.
 // - The middle column's colour (data-bench; look.css, 1001): Slate, the default, Graphite, or the look's own third,
 //   Midnight in Bookends and Umber in Paper (1011), each drawn for the look and theme in use. The switch names the
 //   look, then shows its three colours as swatches; a third chosen stays the third when the look changes.
@@ -13,6 +14,8 @@ const SWITCHES = [
     ['', 'Bookends', 'Black rail and Notebook, the conversation lit between them'], ['paper', 'Paper', 'The Notebook is paper']] },
   { key: 'theseus-agent-colors', attr: 'agentColors', label: 'Agent colors', choices: [
     ['', 'Quiet', 'Agents in deep, even tints that sit low on the page'], ['vivid', 'Vivid', 'Agents in lighter, more colorful tints']] },
+  { key: 'theseus-pointer-light', attr: 'pointerLight', label: 'Passage lighting under the pointer', choices: [
+    ['', 'Light on', 'Light passages under the pointer'], ['off', 'Light off', 'Keep pointer passage lighting off; keyboard outlines stay on']] },
   { key: 'theseus-bench', attr: 'bench', label: 'Middle colour', swatches: true, choices: [
     ['', 'Slate', 'Slate: the cool grey-green the middle column has always had'], ['graphite', 'Graphite', 'Graphite: a plain neutral grey'],
     ['umber', 'Umber', 'Umber: a warm brown-grey']] },
