@@ -2,8 +2,9 @@
 // in localStorage (with no storage it holds for the page) and set as a data attribute on <html>:
 // - Bookends | Paper (data-look; look.css): Bookends, the default, or Paper.
 // - Quiet | Vivid (data-agent-colors; agent-colors.css): how strongly agents' cards and names are tinted.
-// - The middle column's colour (data-bench; look.css, 1001): Slate, the default, Graphite or Umber, each drawn for
-//   the look and theme in use. The switch names the look, then shows its three colours as swatches.
+// - The middle column's colour (data-bench; look.css, 1001): Slate, the default, Graphite, or the look's own third,
+//   Midnight in Bookends and Umber in Paper (1011), each drawn for the look and theme in use. The switch names the
+//   look, then shows its three colours as swatches; a third chosen stays the third when the look changes.
 const root = document.documentElement;
 const get = key => { try { return localStorage.getItem(key); } catch (_) { return null; } };
 const put = (key, v) => { try { v ? localStorage.setItem(key, v) : localStorage.removeItem(key); } catch (_) {} };
@@ -16,10 +17,25 @@ const SWITCHES = [
     ['', 'Slate', 'Slate: the cool grey-green the middle column has always had'], ['graphite', 'Graphite', 'Graphite: a plain neutral grey'],
     ['umber', 'Umber', 'Umber: a warm brown-grey']] },
 ];
-for (const s of SWITCHES) { const saved = get(s.key); s.value = s.choices.some(([v]) => v === saved) ? saved : ''; }
+const THIRD = { bookends: ['midnight', 'Midnight', 'Midnight: a deep blue'], paper: ['umber', 'Umber', 'Umber: a warm brown-grey'] };
+const thirds = Object.values(THIRD).map(([value]) => value);
+const bench = SWITCHES.find(s => s.attr === 'bench');
+for (const s of SWITCHES) {
+  const saved = get(s.key), known = [...s.choices.map(([v]) => v), ...(s === bench ? thirds : [])];
+  s.value = known.includes(saved) ? saved : '';
+}
 const apply = s => { if (s.value) root.dataset[s.attr] = s.value; else delete root.dataset[s.attr]; };
-SWITCHES.forEach(apply);
+// The middle colour's third choice is the look's own: a third chosen in one look is the other look's third there.
+const fitBench = () => {
+  bench.choices[2] = THIRD[root.dataset.look === 'paper' ? 'paper' : 'bookends'];
+  if (thirds.includes(bench.value) && bench.value !== bench.choices[2][0]) { bench.value = bench.choices[2][0]; put(bench.key, bench.value); }
+  apply(bench);
+};
+SWITCHES.forEach(apply); fitBench();
 const paint = s => {
+  if (s.swatches) s.el?.querySelectorAll('button').forEach((b, i) => {
+    const [value, label, tip] = s.choices[i]; b.dataset.value = value; b.title = tip; b.setAttribute('aria-label', label);
+  });
   s.el?.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.value === s.value)));
   // The middle colour's switch names the look its colours belong to.
   const name = s.el?.querySelector('.look-switch-name');
@@ -47,7 +63,7 @@ function mount() {
         const button = document.createElement('button');
         button.type = 'button'; button.title = tip; button.dataset.value = value;
         if (s.swatches) { button.className = 'look-swatch'; button.setAttribute('aria-label', label); } else button.textContent = label;
-        button.addEventListener('click', () => { s.value = value; put(s.key, value); apply(s); SWITCHES.forEach(paint); });
+        button.addEventListener('click', () => { s.value = button.dataset.value; put(s.key, s.value); apply(s); fitBench(); SWITCHES.forEach(paint); });
         s.el.append(button);
       }
       if (s.attr === 'agentColors') dimSize.observe(s.el);
