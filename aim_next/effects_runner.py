@@ -90,8 +90,14 @@ class EffectsLoop:
         self.host = None
         if self.hosted:
             configs = {actor: broker_routes.preflight_hosted(self.routes[actor], actor, profile) for actor in self.hosted}
+            homes = {config.destination['codex_home'] for config in configs.values()}
+            for actor in self.routed:
+                if actor not in self.hosted:
+                    route = broker_routes.preflight_route(self.routes[actor], actor, profile,
+                                                          selected_executable=self.executable)
+                    homes.add(route.destination['codex_home'])
             self.host = codex_host.Host(configs, core=self._core, settle=self._hosted_settled, watch=watch,
-                                        log=host_log, monotonic=self.clock.monotonic)
+                                        log=host_log, monotonic=self.clock.monotonic, protected_homes=homes)
 
     def _event(self, kind, **fields):
         self.emit(dict(event=kind, **fields))

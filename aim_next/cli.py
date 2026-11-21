@@ -2,6 +2,8 @@ from __future__ import annotations
 
 """Explicit local Store calls; transport success never acknowledges delivery."""
 
+from .hosted_cli import BrokerFailure
+
 import argparse
 import hashlib
 import io
@@ -179,7 +181,7 @@ def _output(stdout, stderr, result, code):
 LEGACY_VERBS = ("binding", "view", "command")
 # What a held message shows in place of its words (docs/message-edit.md): its author has it open in Edit.
 HELD_WORDS = "(held: its author is editing it)"
-USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DIR] "
+USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute/core.sock) [--json] [--outbox DIR] "
          "{binding | view FILE|- | command FILE|- | outcomes [--reached | --ended] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR | coordinator OUTCOME ACTOR|--none | participant TOPIC ACTOR "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
@@ -246,7 +248,9 @@ def self_quote_options(parser):
 
 def _parser():
     parser = Parser(prog="aim-next", add_help=False)
-    parser.add_argument("--profile", required=True)
+    transport = parser.add_mutually_exclusive_group(required=True)
+    transport.add_argument("--profile")
+    transport.add_argument("--broker")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--outbox")
     verbs = parser.add_subparsers(dest="verb", parser_class=Parser)
@@ -617,7 +621,8 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         if chosen is None:
             if not SAFE_NAME.fullmatch(self.actor):
                 raise UsageError()
-            directory = Path(self.options.profile).parent / (self.actor + ".outbox")
+            directory = (self.profile.outbox_path if self.options.broker else
+                         Path(self.options.profile).parent / (self.actor + ".outbox"))
         elif not Path(chosen).is_absolute():
             raise UsageError()
         else:
@@ -1652,6 +1657,8 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         return result
 
     def do_watch(self):
+        if self.options.broker:
+            self.refuse('WATCH_UNAVAILABLE', 'Hosted deliveries drive this route; use inbox for a bounded pending read')
         try:
             # The authority anchor is watched as well: a recovery activation
             # replaces it and never writes this database again.
@@ -1823,7 +1830,7 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
                     "acknowledged %s" % identity if kind == "delivery" and version == 2 else "change %s %s v%s" % (kind, identity, version))
 
 
-PATH_OPTIONS = {"profile", "outbox", "outbox_after", "out", "file", "attach"}
+PATH_OPTIONS = {"profile", "broker", "outbox", "outbox_after", "out", "file", "attach"}
 
 
 def _utf8_arguments(options):
@@ -1835,6 +1842,13 @@ def _utf8_arguments(options):
                     item.encode("utf-8")
                 except UnicodeError as error:
                     raise InvalidRequest() from error
+
+
+def _selected_profile(options):
+    if options.broker:
+        from .hosted_cli import RemoteProfile
+        return RemoteProfile.connect(options.broker)
+    return load_profile(options.profile)
 
 
 def _agent_verb(options, stdin, stdout, stderr):
@@ -1855,9 +1869,18 @@ def _agent_verb(options, stdin, stdout, stderr):
     try:
         try:
             _utf8_arguments(options)
-            agent = Agent(load_profile(options.profile), options, stdin, lines)
+            agent = Agent(_selected_profile(options), options, stdin, lines)
             getattr(agent, "do_" + options.verb.replace("-", "_"))()
             return agent.exit
+        except BrokerFailure as error:
+            if error.exit_code != 1:
+                lines.raw(_attempt(error.code, error.message, error.retryable))
+            lines.problem('%s: %s' % (error.code, error.message))
+            if error.exit_code == 1 and agent is not None and agent.operation:
+                unconfirmed(error.code)
+            return error.exit_code
+        except Refusal as error:
+            return attempt(error.code, error.message)
         except InvalidRequest:
             return attempt("INVALID_REQUEST", "Use bounded UTF-8 text, or a saved request with an exact binding.")
         except (ProfileError, AuthorityError, StoreOpenError) as error:
@@ -1885,13 +1908,14 @@ def main(argv=None, *, stdin=None, stdout=None, stderr=None):
     parser = _parser()
     try:
         options = parser.parse_args(argv)
-        if not Path(options.profile).is_absolute():
+        selected = options.broker if options.broker is not None else options.profile
+        if not selected or not Path(selected).is_absolute():
             raise UsageError()
         if options.verb not in LEGACY_VERBS:
             return _agent_verb(options, stdin, stdout, stderr)
         if options.json or options.outbox is not None or (options.verb == "binding") != (options.request is None):
             raise UsageError()
-        profile = load_profile(options.profile)
+        profile = _selected_profile(options)
         if options.verb == "binding":
             result, code = {"v": 1, "binding": _binding(profile)}, 0
         else:
@@ -1912,6 +1936,11 @@ def main(argv=None, *, stdin=None, stdout=None, stderr=None):
         return 2
     except InvalidRequest:
         return _output(stdout, stderr, _attempt("INVALID_REQUEST", "Use one bounded finite UTF-8 JSON request with an exact binding."), 2)
+    except BrokerFailure as error:
+        if error.exit_code == 1:
+            _diagnostic(stderr, '%s: %s; retain the original operation for reconciliation.' % (error.code,error.message))
+            return 1
+        return _output(stdout, stderr, _attempt(error.code, error.message, error.retryable), error.exit_code)
     except (ProfileError, AuthorityError, StoreOpenError) as error:
         code = error.code or "PROFILE_UNAVAILABLE"
         message = str(error) if code == "SCHEMA_MISMATCH" else "The explicit profile or authority is unavailable; preserve the original binding."
