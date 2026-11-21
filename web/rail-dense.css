@@ -121,6 +121,8 @@
 @media (pointer:fine) and (min-width:761px){
 :root[data-rail-roomy]{
   .rail{padding-left:.45rem;padding-right:.55rem}
+  /* 950: keep Roomy's spacing while its status words and their empty control go. */
+  .ol-row small.standing,.ol-row>.ol-waiting{visibility:hidden}
   .ol-row>.ol-new-topic{width:1.9rem;min-width:0;height:2.5rem;min-height:0;border-radius:.4rem}
   .ol-row>.ol-new-topic svg{width:.95rem;height:.95rem}
   .rail .brand,.ol-sums,.ol-heading{margin-left:.45rem}
