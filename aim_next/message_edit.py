@@ -656,6 +656,14 @@ class MessageEdit:
                        (delivery["seq"], delivery["seq"], delivery["group_id"]))
             self._eligibility_changed(db, reader, 1)
             self._change(db, "actor", reader, "delivery", delivery["id"], 1)
+            # This genuinely new unread ends the reader's saved boundary.
+            # Use Bring back's existing personal act, fence and bottom admission;
+            # reading the message later must not hide its dossier again.
+            from .stacks import stack_positions
+            if stack_positions(db, reader, [message])[message["id"]]["below"]:
+                back = self._brought_back(db, reader, message)
+                self._record_act(db, "aside", back["root"], reader, reader,
+                                 {"through": None}, back["aside_revision"])
             count += 1
         return count
 
