@@ -231,6 +231,7 @@ export class Reader {
     // Writing can take the author a reply is offered to, so the choice is redrawn with it.
     // A notice says what last happened; writing on is the next thing, so it goes.
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.writes(),
+      members:()=>this.members(),mentions:()=>this.mode==='reply',
       beforeEdit:()=>this.disarm(),changed:editor=>{if(!this.quoting)this.notice('');this.callbacks.edit(editor);this.paintStatus();this.paintChoice();this.images?.update();}});
     this.field.addEventListener('paste', event => this.paste(event));
     // #img lists the topic's recent images under the writing (image-pick.mjs).
@@ -891,6 +892,7 @@ export class Reader {
   }
 
   drawEditor() {
+    this.input?.mentions?.close();
     const note = this.mode === 'note';
     this.images?.close();
     this.$('writing-label').textContent = note ? 'Private note' : 'Reply';
@@ -1097,6 +1099,7 @@ export class Reader {
     this.$('choose-image').disabled = state.addDisabled;
     this.$('cancel-image').hidden = note || !editor.imageReservation;
     this.field.readOnly = state.readOnly;
+    if(state.readOnly)this.input?.mentions?.close();
     this.$('recipient-input').disabled = this.field.readOnly;
     this.paintChoice();
     this.$('quote-selection').disabled = Boolean(this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed || this.sessions.reply.adopting || recoveryReadOnly(this.sessions.reply));
@@ -1366,6 +1369,7 @@ export class Reader {
   }
 
   finishClose() {
+    this.input?.mentions?.close();
     // An edit under way is left as Escape leaves it: its writing stays on the device.
     this.editing?.leave({ closing: true });
     ++this.viewToken;
