@@ -98,3 +98,136 @@ under `/Users/commonfabric/.local/share/theseus/page-lane6/evidence/960/`:
 `native-red242-cardsopen/results.json`. Mutation and restored control use
 distinct Python cache prefixes. The earlier exact188 Item783 failure remains
 failed and unwaived; this cut makes no claim about it.
+
+## Page cut on release247
+
+Core is live246; this own247 cut implements the wide page at1100px and above.
+Use the same TopicRail.presentation values and acts, existing workspace member
+read and PeoplePanel, existing PurposeLine save, and existing memory_items
+bodies. No additional topic or Notebook query. A responsive layout owner
+moves the real Team and purpose controls and restores their original narrow
+parents; it disposes its media listener on page retirement. Agent filter
+counts refer to unique currently shown/loaded topic cards, including open
+Done/Archived groups; More updates them. It dims unmatched cards, never
+changes their routing. Blank/held/removed latest prose has no speaker line.
+Notebook excerpts use the page body, skip a repeated initial title, and
+retain the exact saved source reference and existing button actions.
+
+Wide cards/purpose/agents/Notebook receive native checks in both looks and
+schemes, with narrow layout, one-message sheets, real Add, keyboard edit and
+rail/topic controls. No timing assertion is inferred from a fake DOM.
+The actual visible-card missing-opening native red already precedes product.
+957 owns the title colour ring,962 owns Notebook passage gestures,968/969/971
+own their shipped rail/card/Reader surfaces. No prototype global observer,
+fetch interception, per-card read, study switch or right-rail snippet is used.
+
+## Finished page cut on release248
+
+The248 source preserves974's topic header/team stylesheet. The page now uses
+the wide three-column bench, actual inline purpose pencil, shared latest-word
+topic sheets, exact-actor waiting filter, real Team Add/management surface,
+and the outcome Notebook's own first words/material. Below1100px the original
+layout and controls remain. The page uses no per-card message read and does
+not change the rail or topic surfaces.
+
+Native `tests/outcome_page_960_native.mjs` passed16 cells in Chromium and16 in
+WebKit:1440/1280/1000/390px, light/dark, Bookends/Paper. The final owner-control
+case also passes in each engine: resizing keeps unsent purpose text and the
+actual action; an immutable save delivered after a real scratch Core purpose
+change is refused and keeps the writing; topic/rail navigation returns to the
+correct surface and the retired layout listener does not touch the next one.
+Each wide cell confirms the actual saved purpose in Core, Escape focus,
+exact-ID filter and reset, real Add, Notebook material/title-skip, sheet
+thresholds and no per-card `topic_messages`. Narrow cells keep the original
+metadata and header Team. No horizontal overflow or page errors occurred.
+
+Screenshot inspection caught the Notebook heading sharing a flex row with
+its first card; the panel is now block flow and a native geometry assertion
+holds the heading above the cards. An early resize assertion observed before
+the media event completed; its raw failure remains diagnostic, and the final
+case waits for the actual reparented node rather than a fixed delay.
+
+All owned browsers closed through Browser.close. Observed PIDs and profiles
+are absent; scratch fixtures exited0 on EOF and their ports closed. WebKit
+uses its own explicit temporary profile. These are native desktop engines
+at phone viewport width, not physical-phone/finger evidence.
+
+The final affected Node cohort is212 tests/211 pass/1 fail versus pristine
+248's207/206/1. The same unchanged failing test is `847 a directly reached
+outcome uses its provisional outline row as the topic-list owner`, whose
+legacy fixture lacks `dossiers.states`. No existing assertion was weakened;
+the one attempted fixture repair was discarded because it no longer tested
+the original expectation. Five added checks pass: latest prose/sheets, exact
+Notebook source and title skip, exact-ID filter preserving links/one read,
+held-message repaint removing old prose, and partial-word title safety.
+The failure is retained, not waived or called broad green.
+
+Evidence under the seat's `evidence/960/`: `native248-matrix/` and
+`webkit248-matrix/` (16 each), `native248-owner-controls-ready/` and
+`webkit248-owner-controls/` (final controls), `ui-pristine248.log`,
+`ui-candidate248.log`, `ui-cohort-comparison248.json`, plus the original
+`ui-red247.log` and `native-red242-cardsopen/`. Each native report retains
+the product/harness hashes and cleanup observations. The scratch
+`agent_page` fixture now optionally accepts the real memory owner_scope,
+keeping its topic default; no production API, Core schema or migration changed.
+
+Run with the local Playwright module in `AIM_PLAYWRIGHT_CORE` and CfT binary
+in `AIM_CHROME`: `node tests/outcome_page_960_native.mjs OUTDIR`; add
+`--webkit` for the installed WebKit or `--quick` for the owner-control cell.
+The earlier exact188 Item783 failure remains failed/unwaived.959 and954
+remain separate follow-up assignments;957/961/962/973 keep their own owners.
+
+## R2: optional media capability on release252
+
+Warp14262 returned the248 page head for its eager matchMedia call. This
+successor carries the page onto252/3d8756b464971dd16b064591e4d6693564768fd5,
+preserving both agent-colors.css and outcome-page.css in the one index carry
+conflict. The returned248 head remains unchanged and is superseded for review.
+
+OutcomePageLayout now optionally reads matchMedia and its listener methods.
+Missing media keeps the original narrow Team and purpose parents, attaches no
+Agents section, and disposes safely. A data-outcome-wide capability attribute
+also gates the wide CSS, so viewport width alone cannot select the wide grid
+when the component lacks the media API. A real media change restores the
+original narrow DOM and removes the listener on disposal.
+
+Actual clean pre-fix wiring red on252:495 tests,430 pass,65 fail, including64
+missing-matchMedia errors. Final candidate and pristine252 each run495 with
+485 pass and the exact same ten failures. The wiring test file and assertions
+are unchanged. Three direct regressions cover missing media, absent listener
+methods, and wide-to-narrow restoration/disposal; their two initial failures
+are retained, and the final three pass. These ten baseline failures and the
+earlier exact188 Item783 failure remain failed and unwaived.
+
+Native Chromium and WebKit each pass the16-cell normal layout matrix again
+on252. Each also passes two component-scoped missing-media probes: after real
+application bootstrap, the actual layout and purpose components are constructed
+with matchMedia absent for that task, their original narrow parents and computed
+CSS are checked, and the API is restored before other owners run. This proves
+the returned component's fallback, not whole-application compatibility with a
+host lacking matchMedia. The earlier global-removal attempt timed out during
+legacy app bootstrap and is retained as a diagnostic; other existing owners
+still consume that API directly.
+
+The final owner-control cell also passes in each engine after actual concurrent
+scratch Core purpose mutation/refusal, retained unsent writing across resize,
+and topic-to-rail-to-outcome navigation. Chromium's adverse round-trip exposed
+the existing Retry topics notice; the control clicked the real Retry button and
+verified that the notice cleared. Its final screenshot is the recovery preview,
+not a claim that the first return was notice-free. The32 normal matrix cells,
+four scoped capability probes and two final owner-control cells all pass; their
+product hashes match this successor. Only the final owner controls include the
+additional explicit Retry recovery assertion.
+
+Evidence in evidence/960/:r2-wiring-clean-red252.log,
+r2-wiring-pristine252.log,r2-wiring-candidate252.log,
+r2-wiring-comparison252.json,r2-direct-red252.log,r2-direct-green252.log,
+and r2-{chrome,webkit}252-{matrix,component-media,owner-ready}/results.json.
+The global-removal diagnostic remains in r2-chrome252-without-media/.
+Run the wiring suite with node --test tests/ui_inline_wiring.test.mjs and the
+direct regressions with node --test tests/ui_outcome_page_layout_960.test.mjs.
+The native command above accepts --without-media for the scoped probe and
+--quick for the final owner-control case. All six accepted browser runs closed
+through Browser.close, removed their own profiles, and verified observed PID
+absence, fixture EOF/exit0 and closed ports. No owned workload remains. Phone
+viewport evidence remains desktop-engine evidence, not physical-phone gestures.
