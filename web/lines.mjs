@@ -1,4 +1,5 @@
 import { unreached, unanswered, answeredAfter, attemptOf, heard } from './api.mjs';
+import { finishPageNotice } from './page-notices.mjs';
 
 // The lines the page writes what went wrong into: its status line, the
 // Reader's notice, the composer's and the navigation line. A writer hands a
@@ -32,6 +33,7 @@ const paint = (element, given) => {
   element.textContent = lineText(given);
   if (controls.length) element.append(' ', ...controls);
   element.hidden = !given.length;
+  finishPageNotice(element);
 };
 const settle = (element, { given, at }) => {
   if (answeredAfter(at)) connection.delete(element);

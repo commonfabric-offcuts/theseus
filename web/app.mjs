@@ -4,6 +4,7 @@ import { reviewDifferences } from './review-differences.mjs';
 import { railDensity } from './rail-density.mjs';
 import { CardReplies } from './card-replies.mjs';
 import { MentionNotices } from './mention-notices.mjs';
+import { finishPageNotice } from './page-notices.mjs';
 import { panes } from './panes.mjs';
 import { stackMenuItems } from './stack-menu-items.mjs';
 import { outcomeMenuItems } from './outcome-menu-items.mjs';
@@ -172,7 +173,7 @@ const review = $('version-review');
 let comparison = null, reviewSerial = 0, reviewOpener = null;
 // Whether each agent's wakes are getting through, said on its name where it is not.
 const wakeLights = new WakeLights({ read: async () => checkedView(await api.view('wakes', {}, { readClass: 'background' }), bootstrap.instance_id),
-  painted: () => { const words = wakeLights.notice(); $('wakes-status').textContent = words ?? ''; $('wakes-status').hidden = !words; } });
+  painted: () => { const words = wakeLights.notice(); $('wakes-status').textContent = words ?? ''; $('wakes-status').hidden = !words; finishPageNotice($('wakes-status')); } });
 const wakeLight = person => person.kind === 'agent' || person.kind === undefined ? wakeLights.words(person.actor_id) : null;
 const sourceIdentity = ref => JSON.stringify(ref);
 const validate = answer => {
@@ -1308,7 +1309,8 @@ function placeLine() {
 function paintMoreMessages() {
   const view = stackFeed ? shownView(stackFeed.state) : null, aside = stackFeed?.state.belowCount;
   $('more-messages').textContent = aside ? 'Earlier messages' : 'More messages';
-  $('more-messages').hidden = Boolean(aside && !view.asideShown) || views.olderCursor === null || (!view?.only &&
+  // With the archive shelf drawn, Archived (N) is on the shelf, not a More to open first.
+  $('more-messages').hidden = Boolean(aside && !view.asideShown && !view.shelved) || views.olderCursor === null || (!view?.only &&
     [...$('messages').children].some(child => child.dataset?.line === 'older' && !child.classList.contains('new-line-read')));
 }
 function paintViews(kind) {
@@ -2884,6 +2886,7 @@ function updateStatus(state) {
     : state.message + ' ';
   $('updates-retry').textContent = state.kind === 'reconnect' ? 'Reconnect' : state.kind === 'authority' ? 'Review saved writing' : 'Retry updates';
   $('updates-retry').hidden = state.kind === 'manual';
+  finishPageNotice($('updates-status'));
   // Updates that ran again may be retried after a later refusal.
   if (state.kind === 'current') reconnectRetried = null;
   if (state.kind === 'reconnect') run(reconnect);

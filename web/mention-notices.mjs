@@ -1,4 +1,5 @@
 import { checkedView, readFailure } from './freshness.mjs';
+import { finishPageNotice } from './page-notices.mjs';
 
 const pair = value => ({authority_id:value?.authority_id,authority_epoch:value?.authority_epoch});
 const same = (a,b) => a?.authority_id === b?.authority_id && a?.authority_epoch === b?.authority_epoch;
@@ -73,7 +74,7 @@ export class MentionNotices {
         }
       }
     }
-    entry.node.append(button('Dismiss',()=>{entry.dismissed=true;entry.node.remove();}));
+    finishPageNotice(entry.node,()=>{entry.dismissed=true;entry.node.remove();});
   }
   async add(entry,person,button) {
     if(!this.live(entry) || entry.dismissed || person.busy || person.added || person.refused)return;
