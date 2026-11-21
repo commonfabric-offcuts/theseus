@@ -62,16 +62,17 @@ try {
       assert.ok(await list.getByRole('option').evaluateAll(rows=>rows.every(n=>n.scrollWidth<=n.clientWidth+1)),'long member IDs wrap without clipping');
       const bounds=await list.boundingBox();assert.ok(bounds.x>=0 && bounds.x+bounds.width<=width+1,'picker fits viewport');
       const typed=facts.agent.slice(0,5);await field.pressSequentially(typed);await page.getByRole('option',{name:`@${facts.agent}`,exact:false}).waitFor();
-      const narrowed=await list.getByRole('option').allTextContents();assert.ok(narrowed.every(s=>s.toLowerCase().includes(typed.toLowerCase())));
+      const narrowed=await list.getByRole('option').allTextContents();assert.ok(narrowed.every(s=>s.toLowerCase().startsWith('@'+typed.toLowerCase())));
       result.beforePick=await field.evaluate(n=>({body:n.value,whiteSpace:getComputedStyle(n).whiteSpace,selection:[n.selectionStart,n.selectionEnd]}));
-      await page.keyboard.press('Enter');assert.equal(await field.inputValue(),`Please ask @${facts.agent} `);assert.equal(await list.isVisible(),false);
-      assert.equal(await field.evaluate(n=>document.activeElement===n),true);assert.equal(sends.length,0,'Return chooses without sending');
+      await page.keyboard.press('Tab');assert.equal(await field.inputValue(),`Please ask @${facts.agent} `);assert.equal(await list.isVisible(),false);
+      assert.equal(await field.evaluate(n=>document.activeElement===n),true);assert.equal(sends.length,0,'Tab chooses without sending or moving focus');
       const completed=await field.inputValue();await page.keyboard.press('Meta+z');result.undoBody=await field.inputValue();assert.notEqual(result.undoBody,completed,'completion participates in native Undo');
       await page.keyboard.press('Meta+Shift+z');assert.equal(await field.inputValue(),completed,'native Redo restores exact completed writing');
       await field.fill('Keep @');await list.waitFor();await page.keyboard.press('Escape');assert.equal(await field.inputValue(),'Keep @');assert.equal(await field.isVisible(),true);assert.equal(await list.isVisible(),false);
       await field.fill('mail');await field.pressSequentially(`@${facts.agent}`);assert.equal(await list.isVisible(),false,'email interior stays plain text');
-      await field.fill('Ask @zz-no-member');assert.equal(await list.getByRole('option').count(),0);await page.keyboard.press('Enter');assert.equal(await field.inputValue(),'Ask @zz-no-member\n','no match does not swallow Return');
-      await field.fill('Ask @Guide');await list.waitFor();assert.equal(await list.getByRole('option').count(),1,'filter also matches display name');
+      await field.fill('Ask @notebook');assert.equal(await list.isVisible(),false,'999 closes for an interior-only ID match');
+      await field.fill('Ask @zz-no-member');assert.equal(await list.getByRole('option').count(),0);assert.equal(await list.isVisible(),false);await page.keyboard.press('Enter');assert.equal(await field.inputValue(),'Ask @zz-no-member\n','no match does not swallow Return');
+      await field.fill('Ask @mEn');await list.waitFor();assert.equal(await list.getByRole('option').count(),1,'999 matches a case-folded display-name prefix');
       await page.keyboard.press('Enter');assert.equal(await field.inputValue(),`Ask @${facts.agent} `);
       // Put the caret inside a partial token using actual keys; choosing must
       // replace its suffix too while keeping all surrounding writing.
