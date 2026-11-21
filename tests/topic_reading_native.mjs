@@ -2735,8 +2735,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // columns every one of those lines covers: above holds how far it reaches over the first line's words, below how far
   // under the last line's, gaps how many rows between its top and its bottom are left unlit, and lines each line's
   // field, its words' height with above and below (a passage of one line: its field's whole height, both edges in sight).
-  // The field's colour: black, and on the person's own black card its light words' colour (aim.css, --lit-field).
-  const FIELD = [0, 0, 0], OWN_FIELD = [0xe0, 0xe8, 0xe5];
+  // The field's colour: black, and on the person's own black card a lift of its ink (aim.css, --lit-field).
+  const FIELD = [0, 0, 0], OWN_FIELD = [0x2d, 0x2e, 0x2e];
   const litLines = (p, surface) => p.evaluate(`(()=>{let range=null;
     if(${JSON.stringify(surface)}==='reader'){const lit=[...document.querySelectorAll('#source-body .hover-quote')];if(lit.length){range=document.createRange();range.setStartBefore(lit[0]);range.setEndAfter(lit.at(-1))}}
     else{const h=CSS.highlights.get('lit-passage');range=h&&h.size?[...h][0]:null}
