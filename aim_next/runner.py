@@ -260,7 +260,7 @@ class Runner:
         # Use the same bound parser as dispatch, including malformed JSON. A
         # single invalid record cannot fault the scheduler for other routes.
         db.create_function("hosted_execution_allowed", 2, self._hosted_execution_allowed)
-        return "NOT EXISTS (SELECT 1 FROM metadata WHERE key='hosted_control.v1:'||recipient_schedule.recipient_id AND NOT hosted_execution_allowed(value,recipient_schedule.recipient_id))"
+        return "NOT EXISTS (SELECT 1 FROM hosted_seats WHERE agent_id=recipient_schedule.recipient_id AND end_state IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM metadata WHERE key='hosted_control.v1:'||recipient_schedule.recipient_id AND NOT hosted_execution_allowed(value,recipient_schedule.recipient_id))"
 
     def _next_due(self, db, routed=None):
         if routed is None:

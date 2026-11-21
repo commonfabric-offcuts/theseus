@@ -55,6 +55,11 @@ def main():
                     identity = request['workspace']
                     answer = case.act('workspace.create', {'id': identity, 'title': 'Seat ' + identity,
                         'team': [AGENT], 'coordinator': None}, {})
+                elif method == 'purpose':
+                    workspace = request['workspace']
+                    current = case.store.view('lead', 'workspace', {'workspace_id': workspace})['workspace']
+                    answer = case.act('workspace.update', {'purpose': request['purpose']},
+                        {'workspace_id': workspace}, {'workspace_revision': current['version']})
                 elif method == 'changes':
                     topic = case.store.view('lead', 'conversation', {'workspace_id': request['workspace']})['conversation']['topic_id']
                     args = {'scope': {'kind': 'topic', 'id': topic}, 'limit': 50}

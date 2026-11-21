@@ -9,7 +9,7 @@ import stat
 import uuid
 
 from .profile import Profile, load_profile
-from .route_pins import HOSTED_KIND, QUEUE_KIND
+from .route_pins import HOSTED_KIND, QUEUE_KIND, RoutePinError
 from . import wake_adapter as adapter
 
 
@@ -340,7 +340,12 @@ def load_route_table(path, runner_profile, *, selected_executable):
         _require(adapter._identity(actor),'invalid_actor')
         if is_hosted(path):
             route = config_path = _path(path)
-            config = preflight_hosted(route,actor,runner_profile)
+            try:
+                config = preflight_hosted(route,actor,runner_profile)
+            except RoutePinError as error:
+                if error.code == 'SEAT_ENDED':
+                    continue
+                raise
             hosted.add(actor)
         else:
             selected_executable = _executable(selected_executable)

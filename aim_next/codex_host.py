@@ -505,6 +505,7 @@ class HostedThread:
         self.early_ends, self.early_seen = {}, set()
         # Consecutive turns that ended contextWindowExceeded (design §6.1).
         self.context_failures = 0
+        self.ending = False
         self.control_stopped = False
         self.control_stop_at = None
 
@@ -537,6 +538,7 @@ class Host:
             self.threads[thread.id] = thread
         self.children = {}
         self.by_fd, self.by_pid, self.by_input = {}, {}, {}
+        self.lifecycle_version = 0
         # While a child this host ended is handled as exited: its home's
         # interrupted attaches go to the successor.
         self.replacing = None
@@ -578,6 +580,43 @@ class Host:
         work = Dispatch(claim, thread, notice, self.monotonic())
         self.current = work
         self.ensure_thread(thread, lambda: self._prepare(work), lambda reason: self._settle(work, "unavailable", None, reason))
+
+    def drain_seat(self, config):
+        """Confirm only this context idle; keep it until Core confirms retirement."""
+        thread = self.threads.get(config.destination['thread_id'])
+        if thread is None:
+            self.add_seat(config)
+            thread = self.threads[config.destination['thread_id']]
+        if thread.actor != config.profile.actor_id:
+            raise HostFault('route_binding_changed')
+        thread.ending = True
+        if self._control_busy(thread):
+            return False
+        if not thread.attached or thread.uncertain:
+            if not thread.attaching:
+                thread.attached = False
+                self.ensure_thread(thread, lambda: None, lambda reason: None)
+            return False
+        return thread.status == 'idle'
+
+    def forget_seat(self, config):
+        """Core retired this idle seat; detach it without touching a peer or child."""
+        thread = self.threads.get(config.destination['thread_id'])
+        if thread is None:
+            return
+        if thread.actor != config.profile.actor_id or self._control_busy(thread):
+            raise HostFault('route_binding_changed')
+        if thread.status != 'idle' or not thread.ending:
+            raise HostFault('route_binding_changed')
+        if thread.bridge is not None:
+            thread.bridge.close()
+        del self.threads[thread.id]
+        self.log.write('seat_abandoned', thread=thread.id, actor=thread.actor)
+
+    def _lifecycle_changed(self):
+        # Successful attach and turn completion wake End work. Failed attaches
+        # deliberately do not: they wait for SeatHost's bounded backoff.
+        self.lifecycle_version = getattr(self, 'lifecycle_version', 0) + 1
 
     def abandon(self):
         """The claim's lease ended first; a late response is logged and its thread re-read before the next dispatch.
@@ -622,6 +661,7 @@ class Host:
     def apply_controls(self, controls):
         for thread in self.threads.values():
             value = controls.get(thread.actor)
+            thread.ending = thread.ending or value is not None and value.get('ending') is True
             stopped = value is not None and value['desired'] == 'stopped'
             if stopped != thread.control_stopped:
                 thread.control_stopped = stopped
@@ -755,7 +795,9 @@ class Host:
         controls = self.core('hosted_controls', [work.thread.actor]).get('controls')
         if controls is None:
             raise HostFault('runner_lease_lost')
-        self.apply_controls({**{t.actor: {'desired':'stopped' if t.control_stopped else 'running'} for t in self.threads.values()}, **controls})
+        self.apply_controls({**{t.actor: {'desired':'stopped' if t.control_stopped else 'running', 'ending':t.ending} for t in self.threads.values()}, **controls})
+        if (controls.get(work.thread.actor) or {}).get('ending'):
+            return self._settle(work, 'busy', None, 'seat_ending')
         if work.thread.control_stopped:
             return self._settle(work, 'busy', None, 'operator_stopped')
         thread, config, notice = work.thread, work.thread.config, work.notice
@@ -1010,6 +1052,9 @@ class Host:
         if thread.config != config or thread.bridge is not bridge:
             return self._attach_failed(thread, 'route_configuration_changed')
         if error is not None:
+            if thread.ending:
+                self.log.write('end_resume_unconfirmed', thread=thread.id)
+                return self._attach_failed(thread, 'end_native_unconfirmed')
             if _refuses_pin(error):
                 self.log.write("resume_refused", thread=thread.id)
                 raise HostFault("route_binding_changed")
@@ -1018,6 +1063,9 @@ class Host:
         if type(result) is not dict or type(result.get("thread")) is not dict:
             raise ProtocolError("invalid_resume")
         if result["thread"].get("id") != thread.id:
+            if thread.ending:
+                self.log.write('end_resume_unconfirmed', thread=thread.id)
+                return self._attach_failed(thread, 'end_native_unconfirmed')
             # Never a replacement thread: the pin names exactly one.
             self.log.write("resume_refused", thread=thread.id)
             raise HostFault("route_binding_changed")
@@ -1039,6 +1087,9 @@ class Host:
             return self._attach_failed(thread, "child_exited")
         resumed = thread.status
         last = self._last_turn(thread, result) if error is None else None
+        if thread.ending and (error is not None or resumed not in ('idle', 'active')
+                or resumed == 'active' and (last is None or last['status'] != 'inProgress')):
+            return self._attach_failed(thread, 'end_native_unconfirmed')
         # An in-progress last turn is live only if the resumed thread says it is active.
         live = last is not None and last["status"] == "inProgress" and resumed == "active"
         thread.status, thread.active_turn = resumed, last["id"] if live else None
@@ -1048,7 +1099,8 @@ class Host:
                 self._end_turn(thread, turn_id, last["status"], error_code(last.get("error")) if last["status"] != "completed" else None)
             elif not (live and last["id"] == turn_id):
                 self._end_turn(thread, turn_id, ORPHANED_IN_PROGRESS, None)
-        thread.attached, thread.attaching = True, False
+        thread.attached, thread.attaching, thread.uncertain = True, False, False
+        self._lifecycle_changed()
         self.log.write("resume", thread=thread.id, status=thread.status)
         waiters, thread.waiters = thread.waiters, []
         for ready, failed in waiters:
@@ -1073,6 +1125,7 @@ class Host:
         return True
 
     def _end_turn(self, thread, turn_id, status, code):
+        self._lifecycle_changed()
         usage = thread.usage.pop(turn_id, {})
         calls = thread.cli_calls.pop(turn_id, None)
         if calls is not None:

@@ -13,6 +13,7 @@ from .runner import RunnerError
 
 KIND = 'workspace.hosted_seat_add'
 RETRY_KIND = 'workspace.hosted_seat_retry'
+END_KIND = 'workspace.hosted_seat_end'
 ROLE_BYTES = 16 * 1024
 ACTIVE_LIMIT = 8
 SEAT_SCHEMA = [
@@ -41,6 +42,19 @@ SEAT_SCHEMA = [
 ]
 SEAT_DOWN = ['DROP TABLE hosted_seat_events', 'DROP TABLE hosted_seats']
 SEAT_OCCUPIED = 'SELECT EXISTS (SELECT 1 FROM hosted_seats)'
+END_SCHEMA = [
+    "ALTER TABLE hosted_seats ADD COLUMN end_state TEXT CHECK(end_state IN ('ending','ended'))",
+    "ALTER TABLE hosted_seats ADD COLUMN end_by TEXT REFERENCES actors(id)",
+    "ALTER TABLE hosted_seats ADD COLUMN end_ms INTEGER",
+    "ALTER TABLE hosted_seats ADD COLUMN end_version INTEGER",
+    "CREATE INDEX hosted_seats_ending ON hosted_seats(end_state,id)",
+    "CREATE INDEX hosted_seats_active ON hosted_seats(state,id) WHERE end_state IS NOT 'ended'",
+    "CREATE INDEX hosted_seats_setup ON hosted_seats(state,id) WHERE end_state IS NULL",
+    "CREATE INDEX hosted_seats_adopt ON hosted_seats(state,ready_seq) WHERE end_state IS NULL",
+]
+END_DOWN = ['DROP INDEX ' + name for name in ('hosted_seats_ending', 'hosted_seats_active', 'hosted_seats_setup', 'hosted_seats_adopt')] + [
+    'ALTER TABLE hosted_seats DROP COLUMN ' + key for key in ('end_version', 'end_ms', 'end_by', 'end_state')]
+END_OCCUPIED = 'SELECT EXISTS (SELECT 1 FROM hosted_seats WHERE end_state IS NOT NULL)'
 STAGES = ('profile', 'thread', 'starting', 'persist', 'persisting', 'pin', 'route', 'delivery', 'ready')
 REASONS = frozenset(('host_not_configured', 'host_template_ambiguous', 'host_template_requires_full',
     'profile_conflict', 'profile_write_failed', 'path_conflict', 'auth_missing', 'incompatible', 'spawn_failed',
@@ -50,16 +64,17 @@ REASONS = frozenset(('host_not_configured', 'host_template_ambiguous', 'host_tem
 
 
 SUMMARY_FIELDS = ('id', 'workspace_id', 'agent_id', 'inviter_id', 'owner_id', 'state', 'stage', 'version',
-                  'thread_id', 'reason', 'first_message_id')
+                  'thread_id', 'reason', 'first_message_id', 'end_state', 'end_by', 'end_ms', 'end_version')
 
 
 def _retryable(row):
-    return row['state'] == 'refused' and (row['stage'] in ('profile', 'thread', 'pin', 'route', 'delivery')
+    return row['end_state'] is None and row['state'] == 'refused' and (row['stage'] in ('profile', 'thread', 'pin', 'route', 'delivery')
         or row['stage'] == 'persist' and row['reason'] == 'stopping' and row['thread_id'] is not None)
 
 
 def _record(row, *, private=False, role=True):
     result = {key: row[key] for key in SUMMARY_FIELDS}
+    result['state'] = row['end_state'] or row['state']
     result['retryable'] = _retryable(row)
     if role:
         result['role'] = row['role']
@@ -70,8 +85,30 @@ def _record(row, *, private=False, role=True):
 
 class HostedSeats:
     def _seat_schedule(self, db):
-        return {'pending': bool(db.execute("SELECT EXISTS (SELECT 1 FROM hosted_seats WHERE state IN ('pending','preparing'))").fetchone()[0]),
-                'ready_seq': db.execute("SELECT coalesce(max(s.ready_seq),0) FROM hosted_seats s JOIN actors a ON a.id=s.agent_id AND a.enabled=1 JOIN workspace_members m ON m.workspace_id=s.workspace_id AND m.actor_id=s.agent_id WHERE s.state='ready'").fetchone()[0]}
+        return {'pending': bool(db.execute("SELECT EXISTS (SELECT 1 FROM hosted_seats INDEXED BY hosted_seats_setup WHERE end_state IS NULL AND state IN ('pending','preparing'))").fetchone()[0]),
+                'ending': bool(db.execute("SELECT EXISTS (SELECT 1 FROM hosted_seats WHERE end_state='ending')").fetchone()[0]),
+                'ready_seq': db.execute("SELECT coalesce(max(s.ready_seq),0) FROM hosted_seats s INDEXED BY hosted_seats_adopt JOIN actors a ON a.id=s.agent_id AND a.enabled=1 JOIN workspace_members m ON m.workspace_id=s.workspace_id AND m.actor_id=s.agent_id WHERE s.state='ready' AND s.end_state IS NULL").fetchone()[0]}
+
+    def _command_workspace_hosted_seat_end(self, db, actor, envelope):
+        target = envelope['target']
+        if set(target) != {'workspace_id', 'seat_request_id'} or envelope['args']:
+            raise Refusal('INVALID_ARGUMENT', 'Name one outcome and its seat request')
+        workspace = self._workspace(db, actor, target['workspace_id'], organise=True)
+        self._seat_owner(db, actor, workspace)
+        row = db.execute('SELECT * FROM hosted_seats WHERE workspace_id=? AND id=?',
+                         (workspace['id'], _identifier(target['seat_request_id'], 'seat_request_id'))).fetchone()
+        if row is None:
+            raise Refusal('NOT_FOUND', 'No such seat in this outcome')
+        affected = []
+        if row['end_state'] is None:
+            _revision(envelope['expected'], 'seat_revision', row['version'])
+            db.execute("UPDATE hosted_seats SET end_state='ending',end_by=?,end_ms=?,end_version=version,version=version+1 WHERE id=?",
+                       (actor, _now_ms(), row['id']))
+            row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (row['id'],)).fetchone()
+            self._seat_event(db, row)
+            affected = [{'kind':'hosted_seat', 'id':row['id'], 'version':row['version']}]
+        name = db.execute('SELECT name FROM actors WHERE id=?', (row['agent_id'],)).fetchone()[0]
+        return self._seat_invitation(workspace, row, name), affected
 
     def _command_workspace_hosted_seat_retry(self, db, actor, envelope):
         target, args = envelope['target'], envelope['args']
@@ -83,6 +120,8 @@ class HostedSeats:
         row = db.execute('SELECT * FROM hosted_seats WHERE workspace_id=? AND id=?', (workspace['id'], identity)).fetchone()
         if row is None:
             raise Refusal('NOT_FOUND', 'No such seat in this outcome')
+        if row['end_state'] is not None:
+            raise Refusal('SEAT_ENDED', 'This seat is ending or ended. A new seat needs a different name.')
         _revision(envelope['expected'], 'seat_revision', row['version'])
         if not _retryable(row):
             raise Refusal('SEAT_REQUIRES_RECONCILIATION', 'This seat is active or its native creation/settings need reconciliation. Retry cannot create a replacement context.')
@@ -118,6 +157,8 @@ class HostedSeats:
         existing = db.execute('SELECT s.*,a.name,a.enabled FROM hosted_seats s JOIN actors a ON a.id=s.agent_id '
             'WHERE s.workspace_id=? AND a.name=? COLLATE NOCASE', (workspace['id'], name)).fetchone()
         if existing is not None:
+            if existing['end_state'] is not None:
+                raise Refusal('SEAT_ENDED', 'This seat is ending or ended. A new seat needs a different name.')
             member = db.execute('SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?',
                                 (workspace['id'], existing['agent_id'])).fetchone()
             if existing['inviter_id'] != actor or not existing['enabled'] or not member:
@@ -148,7 +189,7 @@ class HostedSeats:
 
     def _seat_event(self, db, row):
         db.execute('INSERT INTO hosted_seat_events VALUES (?,?,?,?,?,?,?)',
-            (row['id'], row['version'], row['state'], row['stage'], row['reason'], row['thread_id'], _now_ms()))
+            (row['id'], row['version'], row['end_state'] or row['state'], row['stage'], row['reason'], row['thread_id'], _now_ms()))
         self._change(db, 'workspace', row['workspace_id'], 'hosted_seat', row['id'], row['version'])
         owner = db.execute('SELECT owner_id FROM workspaces WHERE id=?', (row['workspace_id'],)).fetchone()[0]
         for actor in {row['inviter_id'], owner}:
@@ -182,11 +223,11 @@ class HostedSeats:
 
     def _seat_owner(self, db, actor, workspace):
         if actor != workspace['owner_id'] or self._actor(db, actor)['kind'] != 'human':
-            raise Refusal('FORBIDDEN', 'Only the outcome’s human owner may add or retry a headless seat')
+            raise Refusal('FORBIDDEN', 'Only the outcome’s human owner may add, retry or end a headless seat')
 
     @staticmethod
     def _seat_capacity(db):
-        count = db.execute("SELECT count(*) FROM (SELECT 1 FROM hosted_seats WHERE state IN ('pending','preparing','ready') LIMIT ?)", (ACTIVE_LIMIT,)).fetchone()[0]
+        count = db.execute("SELECT count(*) FROM (SELECT 1 FROM hosted_seats INDEXED BY hosted_seats_active WHERE end_state IS NOT 'ended' AND state IN ('pending','preparing','ready') LIMIT ?)", (ACTIVE_LIMIT,)).fetchone()[0]
         if count >= ACTIVE_LIMIT:
             raise Refusal('SEAT_LIMIT', 'At most8 headless seats may be pending, preparing or ready in this instance.')
 
@@ -206,7 +247,7 @@ class HostedSeats:
             ownership = self._seat_owned(db, guard, token, now)
             if ownership != 'running':
                 return {'status': ownership}, False
-            row = db.execute("SELECT * FROM hosted_seats WHERE state IN ('pending','preparing') ORDER BY id LIMIT 1").fetchone()
+            row = db.execute("SELECT * FROM hosted_seats INDEXED BY hosted_seats_setup WHERE end_state IS NULL AND state IN ('pending','preparing') ORDER BY id LIMIT 1").fetchone()
             if row is None:
                 return {'status': 'ok', 'seat': None}, False
             if row['state'] == 'preparing' and row['runner_token'] == token:
@@ -239,6 +280,18 @@ class HostedSeats:
             if ownership != 'running':
                 return {'status': ownership}, False
             row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
+            if row is not None and row['end_state'] is not None:
+                # Capture only the original in-flight creation answer. End never
+                # advances setup or revives delivery, even when that answer is late.
+                if (row['runner_token'] == token and row['end_version'] == version and row['stage'] == 'starting'
+                        and stage == 'persist' and row['thread_id'] is None and 'thread_id' in details):
+                    from .runner import _thread
+                    db.execute('UPDATE hosted_seats SET thread_id=?,version=version+1 WHERE id=?',
+                               (_thread(details['thread_id']), identity))
+                    row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
+                    self._seat_event(db, row)
+                    return {'status':'ok', 'seat':_record(row, private=True)}, True
+                return {'status':'ok', 'seat':_record(row, private=True)}, False
             if row is None or row['runner_token'] != token or row['version'] != version or row['state'] != 'preparing':
                 raise RunnerError('REVISION_CONFLICT', 'The seat step or its owner changed')
             previous = row['stage']
@@ -313,6 +366,14 @@ class HostedSeats:
             if ownership != 'running':
                 return {'status': ownership}, False
             row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
+            if (row is not None and row['end_state'] is not None and row['runner_token'] == token
+                    and row['stage'] == 'starting' and row['thread_id'] is None and
+                    (row['end_version'] == version or row['end_version'] == version + 1 and
+                     row['state'] == 'refused' and row['reason'] == 'thread_start_uncertain')):
+                db.execute('UPDATE hosted_seats SET thread_id=?,version=version+1 WHERE id=?', (thread, identity))
+                row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
+                self._seat_event(db, row)
+                return {'status':'ok', 'seat':_record(row, private=True)}, True
             if (row is None or row['runner_token'] != token or row['stage'] != 'starting' or
                     row['state'] != 'refused' or row['reason'] != 'thread_start_uncertain' or
                     row['version'] != version + 1 or row['thread_id'] is not None):
@@ -332,6 +393,8 @@ class HostedSeats:
             if ownership != 'running':
                 return {'status': ownership}, False
             row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
+            if row is not None and row['end_state'] is not None:
+                return {'status':'ok', 'seat':_record(row, private=True)}, False
             if row is None or row['version'] != version or row['state'] != 'ready':
                 raise RunnerError('REVISION_CONFLICT', 'The ready seat changed before route refusal')
             db.execute("UPDATE hosted_seats SET state='refused',stage='route',reason=?,version=version+1 WHERE id=?", (reason, identity))
@@ -367,8 +430,67 @@ class HostedSeats:
             ownership = self._seat_owned(db, guard, token, now)
             if ownership != 'running':
                 return {'status': ownership}, False
-            row = db.execute("SELECT s.* FROM hosted_seats s JOIN actors a ON a.id=s.agent_id AND a.enabled=1 "
+            row = db.execute("SELECT s.* FROM hosted_seats s INDEXED BY hosted_seats_adopt JOIN actors a ON a.id=s.agent_id AND a.enabled=1 "
                              "JOIN workspace_members m ON m.actor_id=s.agent_id AND m.workspace_id=s.workspace_id "
-                             "WHERE s.state='ready' AND s.ready_seq>? ORDER BY s.ready_seq LIMIT 1", (after,)).fetchone()
+                             "WHERE s.state='ready' AND s.end_state IS NULL AND s.ready_seq>? ORDER BY s.ready_seq LIMIT 1", (after,)).fetchone()
             return {'status': 'ok', 'seat': _record(row, private=True) if row else None}, False
+        return self._effect(guard, action)
+
+    def hosted_seat_endings(self, guard, token, after=''):
+        """One indexed page, including disabled/departed seats; no membership adoption."""
+        if not isinstance(after, str) or len(after) > 200 or any(ord(c) < 32 for c in after):
+            raise RunnerError('INVALID_ARGUMENT', 'Use the previous ending-seat cursor')
+        def action(db, now):
+            owned = self._seat_owned(db, guard, token, now)
+            if owned != 'running':
+                return {'status':owned}, False
+            rows = db.execute("SELECT * FROM hosted_seats WHERE end_state='ending' AND id>? ORDER BY id LIMIT 8", (after,)).fetchall()
+            return {'status':'ok', 'seats':[_record(row, private=True) for row in rows]}, False
+        return self._effect(guard, action)
+
+    def hosted_seat_retire(self, guard, token, identity, version):
+        """The host confirmed this context idle; retire its exact authority only."""
+        from .route_pins import _key, _stored, RoutePinError, HOSTED_KIND
+        if (not isinstance(identity, str) or not identity or len(identity) > 200 or
+                any(ord(c) < 32 for c in identity) or type(version) is not int or version < 1):
+            raise RunnerError('INVALID_ARGUMENT', 'Use a seat identity and exact positive version')
+        def action(db, now):
+            owned = self._seat_owned(db, guard, token, now)
+            if owned != 'running':
+                return {'status':owned}, False
+            row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
+            if row is None:
+                raise RunnerError('NOT_FOUND', 'No such seat')
+            def answer(retired, reason=None):
+                return {'status':'ok', 'seat':_record(row, private=True), 'retired':retired, 'reason':reason}
+            if row['end_state'] == 'ended':
+                return answer(True), False
+            if row['end_state'] != 'ending' or row['version'] != version:
+                return answer(False, 'seat_changed'), False
+            claim = db.execute('SELECT claim_token FROM recipient_schedule WHERE recipient_id=? AND claim_token IS NOT NULL AND claim_until_ms>?',
+                               (row['agent_id'], now)).fetchone()
+            turns = db.execute('SELECT 1 FROM hosted_turns INDEXED BY hosted_turns_open WHERE thread_id=? AND final_status IS NULL LIMIT 1',
+                               (row['thread_id'],)).fetchone()
+            if claim or turns:
+                return answer(False, 'turn_active'), False
+            binding = dict(instance_id=self.instance_id, db_path=str(self.path), actor_id=row['agent_id'],
+                           authority_id=self.binding['authority_id'], authority_epoch=self.binding['authority_epoch'])
+            key = _key(binding)
+            try:
+                pin = _stored(db, key)
+                plan = json.loads(row['plan']) if row['plan'] else None
+                if pin is not None and (plan is None or pin != {'v':1, 'binding':binding, 'destination':{
+                        'kind':HOSTED_KIND, 'protocol_version':1, 'codex_home':plan['codex_home'], 'thread_id':row['thread_id']}}):
+                    return answer(False, 'pin_conflict'), False
+                # The strict control reader proves this exact bound actor and
+                # authority. Its human owner may legitimately differ from the
+                # immutable original owner after a transfer before pinning.
+                self._hosted_control(db, row['agent_id'])
+            except (RoutePinError, Refusal, ValueError, KeyError):
+                return answer(False, 'pin_conflict'), False
+            db.execute('DELETE FROM metadata WHERE key IN (?,?)', (key, 'hosted_control.v1:' + row['agent_id']))
+            db.execute("UPDATE hosted_seats SET end_state='ended',version=version+1 WHERE id=?", (identity,))
+            row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
+            self._seat_event(db, row)
+            return answer(True), True
         return self._effect(guard, action)

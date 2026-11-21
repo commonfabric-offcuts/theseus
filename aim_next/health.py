@@ -209,6 +209,8 @@ WHY = {
     "workspace_policy_not_attached": "its thread is not attached with the required sandbox policy",
     "invalid_cwd": "its work directory reaches a protected path, so its thread was not used",
     "operator_stopped": "an operator stopped its thread",
+    "seat_ending": "the seat is ending after its current turn",
+    "end_native_unconfirmed": "the seat’s saved context could not be checked while ending it",
     "spawn_failed": "the Codex process that hosts its turns could not be started",
     "stopping": "the agent runner was stopping",
     "stalled": "the Codex process that hosts its turns stopped answering, so it was ended",
