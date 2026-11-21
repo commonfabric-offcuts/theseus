@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 // Synthetic public-command fixtures only. Both reading engines run these same
 // own cases. Physical keyboard/phone feel and asker withdrawal are not claimed.
 export async function waitingQuestions372Checks({ check, page, until, control, view, facts, shot, observations, engine }) {
+  const ask = (operation, topic, body) => control({ method:'agent_message', operation_id:operation,
+    topic_id:topic, whole_topic:true, body, post_args:{intent:'ask',addressees:[facts.actor],go_ahead:false,
+      divergence_reason:'Separate synthetic372 question',ask_wait:{root_id:null,cover_revision:0,
+        questions:[{actor_id:facts.actor,text:body,options:[],default:null,reason:'Synthetic factual question without choices or default'}]}} });
   for (const width of [320, 375, 390, 1280]) for (const theme of ['light', 'dark']) {
     await check(`reading item 372 ${width} ${theme}: four source identities, next and wrap, same-page topic cycle`, async () => {
       const oid = `q372-${width}-${theme}`, a = oid + '-a', b = oid + '-b';
@@ -14,8 +18,7 @@ export async function waitingQuestions372Checks({ check, page, until, control, v
       const records = [];
       for (const [topic, label] of [[a, 'A'], [b, 'B'], [c, 'Conversation first'], [c, 'Conversation second']]) {
         const body = `${oid} synthetic question [${label}]`;
-        const answer = await control({ method: 'agent_message', operation_id: oid + '-' + records.length,
-          topic_id: topic, source: 'topic', body, addressees: [facts.actor], intent: 'ask' });
+        const answer = await ask(oid + '-' + records.length, topic, body);
         assert.equal(answer.status, 'committed');
         records.push({ topic_id: topic, message_id: answer.result.message_id, body });
       }
@@ -67,14 +70,19 @@ export async function waitingQuestions372Checks({ check, page, until, control, v
         await until(async () => (await shown())?.open === false, oid + ': Reader closes');
         return actual.message_id;
       };
-      const lightControl = '#outcome-standing .state-line button.state-question';
-      const countVisible = () => until(() => p.evaluate(`document.querySelector(${JSON.stringify(lightControl)})?.textContent==='Waiting on you · 4 questions'`), oid + ': four questions rendered');
+      // Release277's phone outcome page intentionally hides its standing panel.
+      // Use its actual Outcomes drawer control; desktop keeps the page's light.
+      const ensureOutline = async () => {
+        if (phone && !await p.evaluate('document.querySelector("#rail").classList.contains("open")')) await press('#rail-open');
+      };
+      const lightControl = phone ? `#outline .ol-outcome[data-workspace-id="${oid}"] .ol-waiting` : '#outcome-standing .state-line button.state-question';
+      const countVisible = () => until(() => p.evaluate(`document.querySelector(${JSON.stringify(lightControl)})?.textContent.includes('4 questions')`), oid + ': four questions rendered');
       const back = async () => {
         await p.evaluate('history.back()');
         await until(() => p.evaluate(`new URL(location.href).searchParams.get('workspace')===${JSON.stringify(oid)}`).catch(() => false), oid + ': Back to outcome');
-        await ready(); await countVisible();
+        await ready(); await ensureOutline(); await countVisible();
       };
-      await ready(); await countVisible();
+      await ready(); await ensureOutline(); await countVisible();
       assert.ok(await p.evaluate('!document.querySelector("#reader").open'), 'count read opens nothing');
       const cycle = [];
       for (let n = 0; n < 5; n++) {
@@ -87,7 +95,7 @@ export async function waitingQuestions372Checks({ check, page, until, control, v
       assert.equal(still.light.short.count, 4, 'opening sources answers no asks');
       // Add a second ordinary-topic ask only after proving the exact four.
       const body = `${oid} synthetic question [A second]`;
-      const answer = await control({ method: 'agent_message', operation_id: oid + '-a2', topic_id: a, source: 'topic', body, addressees: [facts.actor], intent: 'ask' });
+      const answer = await ask(oid + '-a2', a, body);
       records.push({ topic_id: a, message_id: answer.result.message_id, body });
       await p.send('Page.navigate', { url: facts.origin + '/?topic=' + a });
       await ready();

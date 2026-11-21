@@ -1,0 +1,128 @@
+[
+  {
+    "name": "core-owner",
+    "phase": "mutant",
+    "exit": 1,
+    "applied_sha256": "446e4588afa9fba791d9c3a71afa478d6bcc0df7d05400a6f83a1af7052690d2",
+    "log": "core-owner-mutant.log",
+    "log_sha256": "9fb93532950c66c7cb0d65477d7573fb2daa5c59ee855b51d42ab530739cb609",
+    "effective_cache": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/790-build9837/focused-final2/core-owner-mutant-cache-5543f81858b343bfb5e13440830759bb"
+  },
+  {
+    "name": "core-owner",
+    "phase": "restored",
+    "exit": 0,
+    "applied_sha256": "6346506c11492428e19164ab9e8353a93430989c9ce199f7a804b411500f3e27",
+    "log": "core-owner-restored.log",
+    "log_sha256": "92b1bdc95752e98907dfee2c1650d3476517a2866e699dd4b3cffe6f9062fa0d",
+    "effective_cache": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/790-build9837/focused-final2/core-owner-restored-cache-3b14c4aaefca4f0db7f0fe4a47361a53"
+  },
+  {
+    "name": "core-scope",
+    "phase": "mutant",
+    "exit": 1,
+    "applied_sha256": "24f007e8c10522ba4fa06531382f30123dd750996951f4cbe6875100ddd27353",
+    "log": "core-scope-mutant.log",
+    "log_sha256": "dfee753cc898b5c487328550d60f81eeacb0cd92fc27881b3627addae04c1e3c",
+    "effective_cache": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/790-build9837/focused-final2/core-scope-mutant-cache-160ef852ea524c12a0cca5bb12033503"
+  },
+  {
+    "name": "core-scope",
+    "phase": "restored",
+    "exit": 0,
+    "applied_sha256": "6346506c11492428e19164ab9e8353a93430989c9ce199f7a804b411500f3e27",
+    "log": "core-scope-restored.log",
+    "log_sha256": "aa669859084832238678556e45eae19d69958c9b791b261dbca0e6e6c8e30b10",
+    "effective_cache": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/790-build9837/focused-final2/core-scope-restored-cache-f478822d61fc44dc9454150a92dabfba"
+  },
+  {
+    "name": "core-secret",
+    "phase": "mutant",
+    "exit": 1,
+    "applied_sha256": "dea459f15153d23f26b9db4146105284fae8ce597ac91d45ef67dc348a1c6ece",
+    "log": "core-secret-mutant.log",
+    "log_sha256": "895bcd7a77614f86e42422ff9f7756c29a4b68ce82273c02dd8ea7de0bd1ccd1",
+    "effective_cache": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/790-build9837/focused-final2/core-secret-mutant-cache-cbff9c15369c4ce69348e8aff38db196"
+  },
+  {
+    "name": "core-secret",
+    "phase": "restored",
+    "exit": 0,
+    "applied_sha256": "6346506c11492428e19164ab9e8353a93430989c9ce199f7a804b411500f3e27",
+    "log": "core-secret-restored.log",
+    "log_sha256": "7ec3427db95d4fa27906b1214245b5722f2a23df188d661f61731834f1f2d9d1",
+    "effective_cache": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/790-build9837/focused-final2/core-secret-restored-cache-8a55542feb2e44d1ba9fd74ffbdd2091"
+  },
+  {
+    "name": "core-current",
+    "phase": "mutant",
+    "exit": 1,
+    "applied_sha256": "b55349cc9573ddc23414b7bac8672960e54c48aeb28205cca40218b1df455a1e",
+    "log": "core-current-mutant.log",
+    "log_sha256": "f3f42635e5607a9208a8be47ec633ca1d7d037c31701255a3fdcd6cccbf3831f",
+    "effective_cache": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/790-build9837/focused-final2/core-current-mutant-cache-de2e9a70cbf848ceb8cd142f556d89b0"
+  },
+  {
+    "name": "core-current",
+    "phase": "restored",
+    "exit": 0,
+    "applied_sha256": "6346506c11492428e19164ab9e8353a93430989c9ce199f7a804b411500f3e27",
+    "log": "core-current-restored.log",
+    "log_sha256": "ad83a2239df4430828e0598170c0491f931ba00ca193c7e210a191b8f502e63b",
+    "effective_cache": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/790-build9837/focused-final2/core-current-restored-cache-8a34dc18c8f648f39adf3c59cfa10288"
+  },
+  {
+    "name": "node-owner",
+    "phase": "mutant",
+    "exit": 1,
+    "applied_sha256": "efa49525549353da4016f1a587b3378d5a211524a23b7195eb98b4149faa1e70",
+    "log": "node-owner-mutant.log",
+    "log_sha256": "9ed9760e3783f5eb900266a5777a2bdd644ab3d2128e2a6204652546c6626bae",
+    "effective_cache": null
+  },
+  {
+    "name": "node-owner",
+    "phase": "restored",
+    "exit": 0,
+    "applied_sha256": "f90e910bf02b9ab4c4f3269f10e7b9c4887d6a8162161c5abf9fdb29c16b693b",
+    "log": "node-owner-restored.log",
+    "log_sha256": "6f622bc23fbb3c31c3dd94dea2356efde5c682cadecca247a2b79735a8e13fb6",
+    "effective_cache": null
+  },
+  {
+    "name": "node-clipboard",
+    "phase": "mutant",
+    "exit": 1,
+    "applied_sha256": "c50f7a94391a40315e3a40e5a671cf32a48fad6b64115c00e8804f3ae9ee0409",
+    "log": "node-clipboard-mutant.log",
+    "log_sha256": "0c2274ecbfc09ab0c2b3d8b57442803cce83069608602111d9d364348de96de2",
+    "effective_cache": null
+  },
+  {
+    "name": "node-clipboard",
+    "phase": "restored",
+    "exit": 0,
+    "applied_sha256": "f90e910bf02b9ab4c4f3269f10e7b9c4887d6a8162161c5abf9fdb29c16b693b",
+    "log": "node-clipboard-restored.log",
+    "log_sha256": "ee839062d6dd31def47dc93e53fd7b62c92d22a29d6a240be79162b77f2c0abb",
+    "effective_cache": null
+  },
+  {
+    "name": "node-current",
+    "phase": "mutant",
+    "exit": 1,
+    "applied_sha256": "ff8487e63f37d044af05146e010f44ae128b9f3a3852cf8211e4105ea6750f5c",
+    "log": "node-current-mutant.log",
+    "log_sha256": "64db6fd07295ede1097fcbec62365c0c713cdc9995d9414423c58fd34a664b54",
+    "effective_cache": null
+  },
+  {
+    "name": "node-current",
+    "phase": "restored",
+    "exit": 0,
+    "applied_sha256": "f90e910bf02b9ab4c4f3269f10e7b9c4887d6a8162161c5abf9fdb29c16b693b",
+    "log": "node-current-restored.log",
+    "log_sha256": "b8fcac6b6a42a5aa852ce0c12b25a8591cb1b44dc0e722d12067f025ce3443e4",
+    "effective_cache": null
+  }
+]

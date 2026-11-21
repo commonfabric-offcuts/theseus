@@ -15,7 +15,7 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-from tools import check_plan, release_check
+from tools import unit_shards as check_plan, release_check
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / '.github/workflows/checks.yml'
@@ -33,7 +33,7 @@ class BrowserShards(unittest.TestCase):
 
     def plan(self, native=None, weights=None):
         count = re.search(r'^  BROWSER_SHARDS: (\d+)$', self.workflow, re.M).group(1)
-        self.assertIn('python3 -I tools/check_plan.py --github-output', self.workflow)
+        self.assertIn('python3 -I tools/unit_shards.py --plan --github-output', self.workflow)
         measured = json.loads((ROOT / '.github/check-weights.json').read_text())
         if weights is not None:
             measured['minutes'] = weights

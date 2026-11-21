@@ -26,6 +26,10 @@ class StoreCase(unittest.TestCase):
         self.serial = 0
 
     def command(self, kind, args=None, target=None, expected=None, actor="owner", op=None):
+        # Fixed test-authored input for synthetic roots, authorized by Warp9592.
+        # Tests of missing reasons explicitly pass divergence_reason=None.
+        if kind == "message.post" and not (args or {}).get("reply_to") and "divergence_reason" not in (args or {}):
+            args = dict(args or {}, divergence_reason="Separate synthetic fixture investigation")
         self.serial += 1
         if kind == "participation.set" and expected is None and isinstance((target or {}).get("topic_id"), str):
             current = self.store.view(actor, "topic", {"topic_id": target["topic_id"]})

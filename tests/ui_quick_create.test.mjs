@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from '../web/quick-create.mjs';
+import { NotebookStart, OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from '../web/quick-create.mjs';
 import { PurposeLine } from '../web/outcome-purpose.mjs';
 
 // Getting something in is one line (docs/openings.md): the requests each line
@@ -245,5 +245,41 @@ test('a Notebook creation with a mismatched result is still uncertain, not a sec
   const start = new NotebookStart({api, bootstrap, scope:{kind:'topic',id:'t1'}});
   await assert.rejects(start.create('Notes'), /could not be confirmed/);
   await assert.rejects(start.create('Notes'), /could not be confirmed/);
+  assert.deepEqual(api.sent[1], api.sent[0]);
+});
+
+test('894 NotebookStart creates initial writing through its existing command and retries the exact body', async () => {
+  let lose = true;
+  const api = core(e => { if (lose) { lose = false; throw Error('offline'); } return committed(e, { item_id: e.target.item_id, revision: 1, owner_scope: e.target.owner_scope }); });
+  const start = new NotebookStart({ api, bootstrap, scope: { kind: 'topic', id: 't1' } });
+  await assert.rejects(start.create('First', '## First\n\nWords\n'), /Not confirmed/);
+  assert.equal(api.sent[0].args.body, '## First\n\nWords\n');
+  await assert.rejects(start.create('First', 'Changed words'), /First confirm/);
+  assert.equal(api.sent.length, 1);
+  await start.create('First', '## First\n\nWords\n');
+  assert.deepEqual(api.sent[1], api.sent[0]);
+  assert.deepEqual(api.sent[0].args.attachments, []);
+  assert.deepEqual(api.sent[0].args.references, []);
+});
+
+test('894 NotebookStart cannot replace an uncertain body while keeping the title', async () => {
+  const api = core(() => { throw Error('offline'); });
+  const start = new NotebookStart({ api, bootstrap, scope: { kind: 'topic', id: 't1' } });
+  await assert.rejects(start.create('Page', 'Original'), /Not confirmed/);
+  await assert.rejects(start.create('Page', 'Edited'), /First confirm/);
+  assert.equal(api.sent.length, 1);
+});
+
+test('926 NotebookStart freezes image refs and refuses a different attachment retry', async () => {
+  let lost = true;
+  const api = core(request => { if (lost) { lost = false; throw Error('offline'); }
+    return committed(request, { item_id: request.target.item_id, revision: 1, owner_scope: request.target.owner_scope }); });
+  const start = new NotebookStart({ api, bootstrap, scope: { kind: 'topic', id: 't1' } }), refs = [{ id: 'ready-image' }];
+  await assert.rejects(start.create('Photo', '## Photo\n![photo](attachment:ready-image)\n', refs), /Not confirmed/);
+  refs[0].id = 'different';
+  assert.equal(start.pending.args.attachments[0].id, 'ready-image', 'the captured command owns its own immutable refs');
+  await assert.rejects(start.create('Photo', '## Photo\n![photo](attachment:ready-image)\n', refs), /First confirm/);
+  assert.equal(api.sent.length, 1);
+  await start.create('Photo', '## Photo\n![photo](attachment:ready-image)\n', [{ id: 'ready-image' }]);
   assert.deepEqual(api.sent[1], api.sent[0]);
 });

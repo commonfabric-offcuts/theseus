@@ -30,6 +30,19 @@ class WaitingQuestions372Case(reader_fixture.ReaderCase):
     def post(self, topic, body, actor="agent-a", **extra):
         args = dict(body=body, addressees=["owner"], intent="ask")
         args.update(extra)
+        agent = self.sql("SELECT kind FROM actors WHERE id=?", (actor,))[0][0] == "agent"
+        if agent and args.get("reply_to"):
+            args["reply_without_quote"] = "Complete synthetic fixture question"
+        if agent and args.get("intent") == "ask" and not args.get("whisper"):
+            people = [who for who in args["addressees"] if who != actor and
+                      self.sql("SELECT kind FROM actors WHERE id=?", (who,))[0][0] == "human"]
+            if people:
+                parent = args.get("reply_to")
+                cover = self.store.view(actor, "dossier_cover", {"message_id": parent}) if parent else None
+                args["ask_wait"] = {"root_id": cover["root_id"] if cover else None,
+                    "cover_revision": cover["cover_revision"] if cover else 0,
+                    "questions": [{"actor_id": who, "text": body, "options": [], "default": None,
+                        "reason": "Synthetic factual question without choices or default"} for who in people]}
         return self.committed(self.command("message.post", args, target={"topic_id": topic}, actor=actor))["message_id"]
 
     def light(self):
@@ -72,11 +85,15 @@ class WaitingQuestions372Case(reader_fixture.ReaderCase):
             self.assertEqual({q["message_id"] for q in row["asks"] if q["actor_id"] == "owner"}, {self.a, a2})
             self.assertEqual(len([q for q in row["asks"] if q["actor_id"] == "agent-b"]), 1)
 
-    def test_item_372_conversation_reply_settles_one_topic_writing_settles_all(self):
+    def test_item_372_exact_reply_settles_one_and_unrelated_topic_writing_keeps_siblings(self):
         a2 = self.post("t1", "Synthetic A sibling")
         self.post(self.c, "Synthetic reply", actor="owner", addressees=[], intent=None, reply_to=self.c1)
         self.assertEqual(self.identities(), {("t1", self.a), ("t1", a2), ("t-b", self.b), (self.c, self.c2)})
         self.post("t1", "Synthetic ordinary writing", actor="owner", addressees=[], intent=None)
+        self.assertEqual(self.identities(), {("t1", self.a), ("t1", a2), ("t-b", self.b), (self.c, self.c2)})
+        self.post("t1", "Synthetic exact answer", actor="owner", addressees=[], intent=None, reply_to=self.a)
+        self.assertEqual(self.identities(), {("t1", a2), ("t-b", self.b), (self.c, self.c2)})
+        self.post("t1", "Synthetic second exact answer", actor="owner", addressees=[], intent=None, reply_to=a2)
         self.assertEqual(self.identities(), {("t-b", self.b), (self.c, self.c2)})
 
     def test_item_372_said_plus_asks_no_duplicate_said_only_one_done_and_archive(self):
@@ -88,8 +105,26 @@ class WaitingQuestions372Case(reader_fixture.ReaderCase):
         self.assertNotIn(("t-b", self.b), self.identities())
         archived = self.store.view("owner", "topic", {"topic_id": "t-b"})["topic"]
         self.assertIn(self.b, [q["message_id"] for q in archived["asks"]])
-        self.post("t1", "Synthetic answer", actor="owner", addressees=[], intent=None)
+        self.post("t1", "Synthetic answer", actor="owner", addressees=[], intent=None, reply_to=self.a)
         self.assertEqual(self.identities(), {("t1", None), (self.c, self.c1), (self.c, self.c2)})
+
+    def test_item_372_withdraw_resolve_and_supersede_retain_only_current_eligible_identities(self):
+        sibling = self.post("t1", "Synthetic separate dossier sibling")
+        newer = self.post("t1", "Synthetic replacement question", reply_to=self.a)
+        self.assertEqual(self.identities(), {("t1", newer), ("t1", sibling), ("t-b", self.b), (self.c, self.c1), (self.c, self.c2)})
+        self.committed(self.command("message.withdraw", target={"message_id": sibling}, actor="agent-a"))
+        self.committed(self.command("message.resolve", target={"message_id": self.c1}, actor="agent-a"))
+        self.assertEqual(self.identities(), {("t1", newer), ("t-b", self.b), (self.c, self.c2)})
+        self.assertEqual(self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["asks"][0]["message_id"], newer)
+
+    def test_item_372_expanded_row_previews_keep_current_public_words(self):
+        newer = self.post("t1", "Synthetic next distinct public question")
+        rows = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["asks"]
+        own = {row["message_id"]: row for row in rows if row["actor_id"] == "owner"}
+        self.assertEqual(set(own), {self.a, newer})
+        for message_id, words in [(self.a, "Synthetic A question"), (newer, "Synthetic next distinct public question")]:
+            self.assertIn(words, own[message_id]["excerpt"])
+            self.assertFalse(own[message_id]["withheld"])
 
     def test_item_372_thumb_ends_one_and_undo_restores_second_conversation_question(self):
         for on, count in ((True, 3), (False, 4)):

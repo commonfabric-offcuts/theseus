@@ -1,5 +1,26 @@
 # Every waiting question (372)
 
+## Current reconciliation on277
+
+Resumed under Warp14589 in page-lane5's own branch from the retained4e0dd6b5
+head, merged with actual277/79a44ace. Before reconciliation the isolated
+A+B+two-Conversation public-command case returns3 where4 are expected.
+Its old input first refused ASK_WAIT_REQUIRED; adding the required current
+ask_wait envelope exposes the actual count failure without changing its oracle.
+
+The original default below remains. Current277 settlement, withdrawal,
+supersession, removal, held-record and visibility owners decide eligibility.
+Unrelated writing no longer answers every linked ask; exact replies keep their
+current scope. Expanded own-reader rows preserve current excerpt/withheld
+metadata, and Conversation inspection preserves its existing other-reader
+fallback. Current982 read extent and992 row activation/snapshots remain owned
+by the current rail. This is a Core data-layer change, judged under the current
+gauntlet rule; Fable owns rebinding/stages and Warp review/carry/deploy. Old
+allocations, preview gates and frozen native claims below are historical, not
+the resumed workflow. Reconciliation stops if it grows past372.
+
+## Retained original contract
+
 Source-only feel preview under warp 8785. The default is the authenticated
 reader's currently eligible questions, without an age or unread cutoff. A
 question's identity is its topic and message id, not its topic alone. Its time

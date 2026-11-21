@@ -90,8 +90,14 @@ class EffectsLoop:
         self.host = None
         if self.hosted:
             configs = {actor: broker_routes.preflight_hosted(self.routes[actor], actor, profile) for actor in self.hosted}
+            homes = {config.destination['codex_home'] for config in configs.values()}
+            for actor in self.routed:
+                if actor not in self.hosted:
+                    route = broker_routes.preflight_route(self.routes[actor], actor, profile,
+                                                          selected_executable=self.executable)
+                    homes.add(route.destination['codex_home'])
             self.host = codex_host.Host(configs, core=self._core, settle=self._hosted_settled, watch=watch,
-                                        log=host_log, monotonic=self.clock.monotonic)
+                                        log=host_log, monotonic=self.clock.monotonic, protected_homes=homes)
 
     def _event(self, kind, **fields):
         self.emit(dict(event=kind, **fields))
@@ -633,6 +639,7 @@ def main(argv=None):
     parser.add_argument('--resume-reason',choices=['cleanup_confirmed'],
                         help='why this resume is safe, recorded with it: the supervisor saw the paused child\'s group gone')
     parser.add_argument('--host-dir',help='private directory for the host event log, required by hosted routes')
+    parser.add_argument('--broker-executable', help='explicit configured broker when the runner uses a pinned source')
     args = parser.parse_args(argv)
     if args.resume_reason is not None and args.resume_version is None:
         parser.error('--resume-reason needs --resume-version')
@@ -640,6 +647,7 @@ def main(argv=None):
         print(json.dumps(event,separators=(',',':')),flush=True)
     result = run_foreground(args.profile,args.runner_id,args.routes,
                             resume_version=args.resume_version,resume_reason=args.resume_reason,
-                            emit=report,host_dir=args.host_dir)
+                            emit=report,host_dir=args.host_dir,
+                            **({'selected_executable': args.broker_executable} if args.broker_executable else {}))
     report(result)
     return 0 if result['status']=='stopped' else (75 if result['status']=='idle_lease_lost' else 2)

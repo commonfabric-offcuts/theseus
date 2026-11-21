@@ -80,6 +80,244 @@ reads and writes it with `note read` and `note revise` like any other page.
 
 The rules are `web/deck.mjs`, checked by `tests/ui_deck.test.mjs`.
 
+## A card’s menu, identity and color (item 867)
+
+Each card has a named **This card** ⋯ beside its speech bubbles, shown when
+picked, under the pointer, or focused; it is always shown at phone widths.
+The shared menu offers Chat about this…, Copy text, Copy link, Delete and Set
+color. Chat opens the card's existing chat composer; it replaces the standalone
+chat glyph (927). Context Menu or Shift+F10 opens the focused card's menu;
+Up/Down selects a row, Return runs it and Escape returns to the card. Copy text
+copies the card’s literal title and rendered words as plain text, without
+children, image/reply bookkeeping or the hidden line. Delete takes that card
+and its children, and one Undo brings them back. Set color uses the agents’
+eight-color palette plus No color; the tint appears in Cards and in the dock.
+Copy text uses overlapping-sheet ink and Set color a palette outline; Copy
+link and Delete reuse the shared chain and cross glyphs.
+Opening the menu and Copy text do not allocate an identity or rewrite a page.
+
+The first Copy link or Set color allocates a random `c-` plus 32 lowercase
+hexadecimal digits, kept in the card’s Notebook words in one line:
+`<!-- theseus-card: {"id":"c-11111111111111111111111111111111","aliases":[],"color":"blue"} -->`.
+`id` may be null for an alias-only card; `aliases` is a list of unique card
+ids distinct from the primary, and `color` is a palette name or null. At least
+one identity is present. Only a complete valid line outside a code fence is
+metadata. Invalid markers and examples inside fences remain ordinary words.
+Older cards are unchanged until they need an identity. No Core schema changes.
+
+Copy link waits for that identity to be saved and opens `cards` with `card`
+and `view=cards`, revealing, picking and bringing that card into view even
+when Text was the last view. Renaming or moving preserves the link. Missing
+or ambiguous identities do not select a different card. Read-only cards can
+copy their text and an already saved primary link; they cannot allocate an
+identity, delete, or change color. A refusal leaves writing in the existing
+Notebook recovery flow and does not claim that a new link or color was saved.
+
+A merge keeps the neighbor’s primary identity and color, including null. It
+adds the moved identities as aliases in the same line, so both old links
+resolve. An unidentified neighbor stays without a primary until Copy link or
+Set color needs one; an alias alone still resolves. Merge Undo restores both
+original identities, colors and child groups, and Redo repeats that merge.
+Word-edit and color Undo preserve an identity already allocated for a link.
+
+Every Notebook reader uses the same valid hidden-line rule, including the
+Reader, changed-page comparison, excerpts and conflict panel. Code examples
+and invalid markers remain words. On an open code fence, new metadata goes
+before the fence so allocation is hidden and repeatable.
+
+### Text edits the body (867, Review 5 replacement)
+
+This replaces the saved-base alignment design, following review decisions
+12592 and 12596. Cards and the Reader retain their reviewed behavior.
+
+The complete current Notebook body, including hidden lines, is the Text
+model. The textarea is a projection of that body, not a second document from
+which card identities are inferred. The projection uses the same whole-body,
+fence-aware `detailRanges` as Reader quotes. Its offset map also accounts for
+the textarea's CRLF/CR-to-LF conversion; selection offsets are UTF-16 offsets.
+A visible span maps to its exact source spans, and each collapsed hidden span
+retains both source boundaries. Opening text, untouched CRLF and visible
+spacing keep their original bytes. New line breaks use the nearest preceding
+body line ending at the caret, or LF if there is none.
+
+An input applies one visible replacement to this current body. Record the
+pre-input value and selection, then check that the resulting textarea value
+agrees with that replacement. An input without a usable selection, including
+a programmatic WritingInput fallback, derives its changed range
+from the before/after visible values; it does not match the page to a saved
+base. Composition updates, replacement text, deletion, paste, line moves and
+indentation use this same path. Capture the actual input type and range in
+checks; an input listener called by a fixture is not evidence of a native
+keyboard, clipboard, composition or Undo gesture.
+
+Map the changed visible range to the raw body and replace its visible spans
+with the inserted text. Hidden spans outside a removed card stay with their
+own raw row. A rename or word edit cannot reassign them, even to an exact
+copy beside that row. A whole-card deletion takes that card's hidden lines;
+a heading-only deletion retains the lower card's lines in the surviving
+card's words. Boundary choices must distinguish those two acts: a collapsed
+hidden span is not permission to delete the neighboring row's metadata.
+Reproject after the edit and require the visible result to equal the actual
+textarea value. No whole-page shortcut on equality with saved visible text
+may replace newer body metadata.
+
+Only one bounded matching case remains. When a single replacement spans
+several card rows, pair exact title-and-words signatures inside the replaced
+range, in occurrence order, using each old row at most once. Paired rows keep
+their own raw hidden lines; an unmatched inserted row is id-less. Rows outside
+that one range are never candidates, and there are no title-only, words-only,
+sole-pair, fixed-preference or saved-base matches. A normal paste into a
+collapsed selection has no removed rows to pair: an exact pasted copy cannot
+borrow the original's identity on that input or a later keystroke. An atomic
+move replacing several rows can carry their identities within that one range.
+The input must supply that actual replacement range, including when it covers
+the whole body. A renamed row inside such a replacement is unmatched and
+id-less; an old longest-anchor matcher does not restore its identity (12781).
+
+Cards, allocation and recovery still reach Text through `sync()`, using the
+current body accepted by NotebookWriting and its existing revision/content
+fence. Before installing incoming writing, drain an input already in the box
+against the snapshot it actually displayed. A metadata-only sync updates the
+body and map without assigning textarea.value or disturbing selection or
+the Text history. A slow save confirms its submitted snapshot, not later writing:
+`confirm()` advances the saved baseline for the writer's diff only. It never
+re-pairs visible rows, reloads current metadata from that baseline, or makes
+a first allocation invisible to the current body. Switching views itself
+writes no revision. Existing refusals and overlapping edits retain both
+versions through the Notebook recovery flow.
+
+#### Literal marker input (review decision 12604)
+
+Text the person pastes goes into the body as typed. The shared hidden-line
+rule interprets a complete valid marker outside a fence as metadata. This is
+the named exception to equality with the native textarea input: immediately
+reproject the textarea and map its caret to the end of the visible paste.
+There is no deferred rewrite at the next sync. Fenced and invalid markers
+remain literal writing; no escape format is introduced.
+
+Existing card identities win over a newly pasted duplicate marker. Drop that
+pasted hidden line when its primary or aliases are already owned in the body,
+leaving a newly pasted card id-less. A valid new identity explicitly included
+in the pasted text is retained. Ordinary plain-text copies never borrow an
+identity from any other card. The same duplicate rule covers a remembered cut
+if that identity was reintroduced elsewhere before its matching paste.
+
+#### Text history, cut and body boundaries
+
+Text owns Undo and Redo. Every applied input records the raw body and
+selection before and after that input. Undo restores the preceding body and
+selection, Redo the following one; a new edit after Undo discards that redo
+branch. `beforeinput` historyUndo/historyRedo is prevented, including an
+Edit-menu Undo; the Text keyboard shortcuts reach the same handler. No native
+textarea history is used. The stack starts empty on opening Text and is
+dropped when that view closes. Whole-card deletion takes all the card's
+hidden bytes; Undo restores the exact snapshot, including those bytes and
+CRLF. A save confirmation does not erase this history or substitute its body
+for a later snapshot.
+After an unconfirmed Cards recolor and a return to Text, Undo restores the
+snapshot immediately before its next keystroke. Restoring that raw body and
+displayed text keeps the local color even when the saved base has the old color.
+Equality with the saved base's text is not an Undo requirement (12781).
+
+One cut transfer is kept only for this Text view's life: its exact raw text
+and corresponding visible text. The first successful paste whose complete
+text equals that cut text inserts the raw text instead of plain clipboard
+text, then consumes the transfer. Later pastes of that clipboard are plain
+and id-less. An Undo that restores the cut source invalidates the transfer.
+Another cut replaces it, and closing Text drops it. Copy and the system
+clipboard contain no hidden metadata; no cut record is written to a device.
+The transfer is not a content-matching catalog.
+
+A hidden line is the last line of its card. At a collapsed hidden span, an
+insertion at the end of that card's words is before the hidden line; an
+insertion at the start of the next line is after it. Those source boundaries
+are distinct even though the hidden span occupies no textarea characters.
+If an edit would put a hidden line inside an open fence, move that line just
+before the opening fence line, within the same card, as Cards restores it.
+This is the only fence relocation; hidden lines never move across a card boundary.
+Appending at the end of the whole Text body keeps the final card's hidden line
+after its newly entered words. Inserting at the next card's start does not
+move the preceding card's line into that next card.
+If a fence swallows a heading, that card no longer exists while fenced. Its
+marker bytes stay with its words and become visible writing under the shared
+fence rule (12797). They are neither retired nor moved into a surviving card.
+Text reprojects immediately after the input and keeps the caret at the end
+of the edit; a later sync does not rewrite the field. The preservation check
+accounts only for the exact retained marker spans newly exposed by the fence,
+while still requiring every other entered character to survive projection.
+Undo restores the exact raw snapshot, identities and colors included. Deleting
+the opener restores the original card boundaries; closing it restores only
+headings after the closing line. A closing line after every heading does not
+turn those already-fenced headings into cards.
+Untouched code examples and invalid markers remain ordinary writing.
+
+Deleting only a lower heading merges using the Cards metadata representation.
+The survivor keeps its primary id and color, including null, and receives the
+lower identities as aliases. `mergeDetails` and `withCardDetails` already
+write an alias-only line for an id-less survivor: id null, color null, moved
+ids in aliases. Text uses that same representation, never promotes the lower
+id to primary, and never gives it the lower color. Undo restores the separate
+raw cards and Redo restores the merge; a whole-card deletion creates no alias.
+If one selection deletes an empty B card whole and the following C heading,
+while retaining C's words under A, remove B's hidden lines and keep C as A's
+alias. A keeps its primary and color. Saving must not resurrect B. Undo
+restores the complete pre-selection snapshot, including B and the separate
+C with its own identity (12781).
+
+#### Checks retained for the replacement
+
+Keep every `zz_r4_*` and `zz_r5_*` reproduction from the review rounds and the
+real NotebookPage/writer cases already committed. Keep the three new Review 5
+failures as regressions: first-id confirmation among twins, wrong sole-pair
+preference across confirmation, and copy/paste stealing the original's id on
+its next keystroke. The replacement must preserve M14's unconfirmed metadata
+across Undo by restoring the exact pre-keystroke raw/text snapshot; decision
+12781 retires its saved-visible-text equality premise. Preserve fixed-pair
+behavior without retaining those old algorithms; also
+pin `finish()`'s `done.at` fallback and round 4's M4e/M4f. Check the resulting
+body, identities, colors and writer revisions. The shipping rule at 12902
+uses green meaningful tests and one review; the retained regression cases run
+together without a separate mutation campaign or proof-packet gate. Menus and Reader checks
+remain in the regression set. Add real-input cases for select-all/Delete/Undo
+with hidden lines and CRLF, a cut move and a repeated paste, Undo before paste,
+a typed CRLF newline, null-survivor metadata bytes equal to Cards, and a new
+fence before an existing hidden line. Native input behavior is a separate measured
+claim, never inferred from the in-memory DOM adapters.
+
+### Card targeting and Reader quotes
+
+A painted menu resolves its card from the pressed row, including the writing
+holder after an incoming revision. Finishing follows that card through the actual
+applied act, then resolves its identity or words at the resulting position.
+The insertion fallback for a deleted editor or anchor follows the same rule;
+picked state and an estimated insertion point never supply the menu's target.
+The target is resolved in the complete resulting body: a heading swallowed
+by an open fence cannot retarget a later card with the same visible words.
+
+Concurrent identical word edits merge once even when one copy also deletes
+an adjacent card; different edits to the same words still conflict. If the
+incoming revision acknowledges the last local edit, the writer becomes clean
+and closes an untouched editor for a card that revision deleted. A remaining
+unsaved edit retains that editor and the existing recovery behavior.
+
+Reader Quote computes hidden ranges on the whole memory source, then intersects
+those ranges with the selection, retaining the preceding fence state. Message
+sources keep marker-shaped writing verbatim. Reader Quote splits its source
+ranges around hidden metadata so each retained
+quote remains an exact substring of the original body. The reply's visible
+quotation and Copy omit the hidden ranges, including a partial final marker
+in an explicitly truncated excerpt. Fenced examples and malformed complete
+markers remain ordinary writing. Copy link and Set color await a save that
+includes their own changes, even when an earlier save is in flight or waiting for resend, without
+claiming success on refusal or a closed page. Checks act through the real
+textarea input listeners and the unpicked card's own menu; in-memory DOM
+adapters do not establish native gestures, focus, rendered geometry or speech.
+
+A new identity allocated after a Cards merge stays with the surviving target
+when Undo separates it. A fresh card editor has no inherited tint. Copy link
+starts a promised clipboard write during the click; its data resolves only
+after the link's identity is confirmed saved.
+
 ## Acts
 
 Whatever card a key leaves picked comes into view by the one rule for what
@@ -115,45 +353,66 @@ fail that check. This unit control alone does not establish native behavior.
 | fold away a card's children, or show them | ← →, or a click on the chevron before its title | a tap on its chevron |
 | fold away every card's children, or show them all | ⇧⌘← ⇧⌘→ | |
 | edit the card | a click where the cursor should go, or ⌘Return | Edit, or a tap where the cursor should go |
-| finish editing | Escape | Done |
+| finish editing | Escape or ⇧⌘Return | Done |
 | finish editing, and write a new card below it | ⌘Return | |
 | finish editing a card with children, and fold them away | ← at the very start | |
+| finish editing a card with folded children, and show them | → at the very end | |
 | while editing, move the card past the one above or below it | ⌘↑ ⌘↓ | |
-| while editing, put the card under the one above it, or take it out of its parent | Tab, ⇧Tab | |
+| while editing, indent or outdent the card at the collapsed text start; elsewhere the current line or selected lines | Tab, ⇧Tab | |
 | while editing, move the line the cursor is on past the line above or below it | ⌥↑ ⌥↓ | |
 | while editing, finish the card and go on editing the one above or below | ↑ at the very start, ↓ at the very end | |
 | a new card beside this one | Return while not editing | New card |
-| a new card right above this one | ⌥Return | |
+| a new card right above this one, finishing any current writing first | ⌥Return | |
 | remove the card and its children | ⌘⌫ | |
 | take back your last act | ⌘Z | Undo |
 | select several cards, to act on them as one | ⇧↑ ⇧↓, ⌘-click or ⇧-click | |
-| ask an agent about the card, or open its reply stack | → then Return, or a click on its speech bubble | its speech bubble |
+| ask an agent about the card | Context Menu or ⇧F10, then Chat about this… | ⋯, then Chat about this… |
+| open its reply stack | → then Return, or a click on its speech bubble | its speech bubble |
 
 A move and a merge go between cards with the same parent, never out of it: a
-move takes the card past the one beside it with all its children, and a merge
-keeps every word of both cards under the upper card's title, the lower card's
-title a bold line inside it and its children following the upper card's. Tab
-makes the card the last child of the card above it with the same parent, and
-⇧Tab puts it after its parent's children, beside its parent; with nowhere to
-go, Tab and ⇧Tab move the focus as they do elsewhere. A new card goes beside
-the picked one, after its children, or with ⌥Return right above it, at its
-depth.
+move takes the card past the one beside it with all its children. A merge
+keeps the adjacent card's title and appends the picked card's title as a plain
+line, then its words, after the adjacent card's words. The picked card's
+children follow the adjacent card's children. This also applies when merging
+down: the lower card keeps its title, words and children first. The moved
+title is escaped as literal text, so it cannot become another heading or
+formatted block; lists, links, marks and Reply stack lines in the body stay.
+Undo restores both cards and their child groups; Redo keeps the same merge
+direction. While a card is picked, Tab makes it the last child of the card
+above it with the same parent, and ⇧Tab puts it after its parent's children,
+beside its parent; with nowhere to go, Tab and ⇧Tab move the focus as they do
+elsewhere. A new card goes beside the picked one, after its children, or with
+⌥Return right above it, at its depth.
 
-While a card is being written, Tab, ⇧Tab, ⌘↑ and ⌘↓ move it by the same
-rules; what is written, and the cursor, stay where they were. The page drawn
-again (a read of it, a move) gives the box the focus back only where the box or
-the cards had it, so a press outside the sheet as the page is read again leaves
-the box's cursor where it was for the next opening. Both the move
-and unfinished writing autosave through the shared Notebook writer (302,
-notebook-writing.md). A new card with words also saves before Done; an empty
-new card changes only where it will go. The box keeps these keys even with nowhere to go, as
-an outliner does, so a Tab never takes the focus out of a card half written;
-Escape leaves it, and ⌘Return leaves it and opens a new card for writing
-right after it and its children, at its depth, as Return does from a picked
-card; from a box with nothing written ⌘Return only leaves, so it never makes
-an empty card. ← at the very start of a card that has children finishes it
-and folds its children away, the card picked; on a card with none, ← stays
-the box's. ↑ at the very start of what is written finishes
+While a card is being written, ⌘↑ and ⌘↓ move it by the same rules; what is
+written, and the cursor, stay where they were. At the collapsed very first
+text position, Tab and ⇧Tab indent and outdent the card, including a new
+empty box after ⌘Return. A blocked first-card indent or top-level outdent
+keeps the words and focus. Elsewhere, including a selection beginning at
+zero, they indent and outdent the current line or selected lines, through the
+single `WritingInput.indentKey` rule: two spaces in, up to two spaces or one
+leading tab out. A selection ending at the next line's start excludes that
+line. One insertion uses the existing input/autosave path and the field's
+Undo/Redo selection record. Other writing surfaces keep their existing Tab
+routing. No Tab takes focus out of a card half written, including an outdent
+at the left edge or Safari's ⌥Tab.
+
+The page drawn again (a read of it, a move) gives the box the focus back only
+where the box or the cards had it, so a press outside the sheet as the page is
+read again leaves the box's cursor where it was for the next opening. Both
+the move and unfinished writing autosave through the shared Notebook writer
+(302, notebook-writing.md). A new card with words also saves before Done;
+an empty new card changes only where it will go. Escape or ⇧⌘Return leaves
+writing. ⌘Return leaves it and opens a new card right after it and its
+children, at its depth; from a box with nothing written ⌘Return only leaves,
+so it never makes an empty card. ⌥Return finishes the box and opens a fresh
+card directly above the picked card, just as it does outside writing.
+← at the very start of a card that has children finishes it and folds its
+children away, the card picked. → at the very end of a card with folded
+children finishes it and shows its children, keeping the parent picked.
+With no folded children, or away from that end, → stays the box's; a selected
+range or modified arrow also stays the box's. On a card with no children,
+← stays the box's. ↑ at the very start of what is written finishes
 the card and opens the card that shows above it for writing, the cursor at
 its end; ↓ at the very end does the same with the card below, the cursor at
 its start. Anywhere else in the box ↑ and ↓ move the cursor as usual, and at
@@ -262,8 +521,10 @@ for screen readers; it shows beside the picture while the image uploads or after
 its upload failed, and in the picture's place while the picture does not show:
 before it loads, or when the page holds no such image ("· not on this page").
 Clicking a displayed image opens it in a new tab, leaving the card and its
-writing in place (item 651, docs/images.md). An image smaller than a thumbnail
-shows at a thumbnail's size. The page's list of
+writing in place (item 651, docs/images.md). Item 653's source-only preview
+shows these clickable images as 3rem square thumbnails with `object-fit:contain`,
+the page attachment list's convention: the whole image fits without cropping
+([image-buttons-653.md](image-buttons-653.md)). The page's list of
 images under the head leaves an image a card shows to the card, unless it needs
 Retry. × takes the image off the page too, unless another card still shows it.
 Undo, bringing back the card's line, puts the image back on the page (and so
@@ -287,8 +548,7 @@ there is attached to the page without a line, as before.
 Everywhere else a card's words are drawn, the line is never its markup. Where
 the page is read, the Reader (a page at a revision) and a page opened in place
 on its outcome's page, it is
-the image, as wide as it is up to the width of the words and never taller than
-most of the screen, with its name under it, read through the page at the
+the image, with its name under it, read through the page at the
 revision shown (`web/page-image.mjs`); an image the page does not carry is its
 name alone, "· not on this page", and nothing is read for it. Where only words
 show, the topic's Notebook card (an excerpt of the page), what changed since
@@ -343,13 +603,14 @@ or clearing it is one more act, saved as a revision, which Undo takes back.
 
 ## Asking about a card
 
-Each card has a speech bubble at its right edge. On a laptop it shows on the
+Each card has a ⋯ menu at its right edge. On a laptop it shows on the
 picked card, and under the pointer while the mouse is in use: macOS hides the
 pointer while a person types, so once a key is pressed the card under it
-shows neither its bubble nor the pointer's highlight until the mouse moves.
-→ gives the bubble the focus, from a card with no children folded away, as ⌥→
-does from any card, and ← gives the focus back to the card. On a phone it shows on every card. On a card with no reply
-stack, the bubble asks an agent about it: a box in the card's place takes the
+shows neither its controls nor the pointer's highlight until the mouse moves.
+→ gives the first card control the focus, from a card with no children folded
+away, as ⌥→ does from any card, and ← gives focus back to the card. On a phone
+the menu shows on every card. **Chat about this…** in the menu asks an agent
+about the card: a box in the card's place takes the
 ask, and Ask or ⌘Return sends it as a new message (`message.post`, an ask) in
 the page's topic, or for an outcome's page in its conversation. The message
 quotes the card and says where it is, so the agent can change the card when
@@ -367,8 +628,8 @@ by the words on the page around it, so beside a card about tokens or codes an
 empty box reads as a field for a one-time code. Each box is therefore named by
 a label element of its own, whose words name nothing AutoFill fills.
 
-A draft page's cards offer no speech bubble that asks: its words are kept from
-agents until the mark is cleared, and the bubble comes back with them. A card's
+A draft page's cards disable Chat about this…: its words are kept from
+agents until the mark is cleared, and Chat becomes available with them. A card's
 reply stack, begun before the mark, still opens from its bubble. Nor does
 someone who may not write the page ask from it, since the ask writes the
 stack's link into the card.
@@ -390,8 +651,9 @@ bubble without a count.
 
 ## Where it opens
 
-A page opens in the composer over the feed (item 396, `web/notebook-sheet.mjs`):
-the New message sheet comes up with the page in it, from every place a page is
+A page opens in its own Notebook dialog (871, `web/notebook-sheet.mjs`),
+beside a topic feed by default at 1280px or wider, or over the page otherwise.
+An explicit Wide choice persists for the session. This applies wherever a page is
 opened as it stands: a card of the topic's own Notebook, a row of the right
 rail's Notebook (the topic's, or the outcome's), a row on the
 outcome's own page, a link to a page as it stands, the pencil that starts a
@@ -400,32 +662,48 @@ showing a page at a revision. Over the outcome's own page, which has no feed,
 it comes up over that page. A link to a page at a revision still opens it in
 the Reader, or in place on its outcome's page, to read.
 
-The sheet's head on a laptop has the page's title, Text and Cards as chips
-with the page's Draft toggle beside them, a Full page glyph (↗, `?cards=ITEM`,
-below) and ✕, each glyph named for screen readers and with a tooltip. On a
-phone the title and glyphs take the first row and the three chips the next;
-each chip, and the Draft mark that stands for the toggle for someone who
-reads the page, is 44 points tall there.
+The sheet's fixed header (887) shows the title, save dot and last confirmation
+time, Rename (✎), then a stateful Star (☆/★). Rename is absent for a reader who
+may not write. The actions follow in this order: New card (+, Cards only),
+Side by side where available, the page menu, and ✕. The title takes only its
+own width and truncates before the status and actions move; the header stays
+on one row on a phone. Every pressable retains its 44-point floor. The docked
+frame has no border; the shared `--stack-cover-inset` remains in both themes.
 
-The saving sign always has a row of its own below those controls, on the
-laptop and at every phone width (item 642). "Saved to Theseus", keeping a
-device copy, saving, uploading and every attention or read-only state change
-only that row: Text, Cards and Draft keep identical boxes while the status
-words change. Attention notices wrap whole there. A refusal's Try again and Discard
-my writing follow its words, wrapping when needed, and are 44 points tall on
-touch. An empty sign keeps its row. Below the head is one
-place that scrolls, containing the same vertical card list as the full page
-at every width. The line of keys above the cards is short there (↑ ↓ pick · Return new
-card · ⌘Return edit, and while writing Escape done · ⌘Return next card), the
-full page's line its tooltip.
+In Cards, the page menu begins with Edit (Done while writing) and Undo,
+showing ⌘Return and ⌘Z. The New card button's tooltip shows Return. Open as a
+full page follows Side by side in the menu (also available when the layout
+choice is absent). Show as text / Show as cards, Private Draft, Choose dossier…
+while docked, Add image…, Rename, Star, Delete and Copy Link retain their
+existing owners. The Cards bar keeps only the card count. Full Notebook pages
+keep their original bar and status words. No keyboard handler changes.
 
-✕, Escape or a press on the backdrop closes it. While a card is being written
+The header's save dot is green only for a confirmed revision and grey while
+writing is being saved, with the last confirmation time retained. The time
+uses `times.mjs` and is observed on this visit, as in the existing full-page
+status: Core does not expose a historical save timestamp. Repainting or
+switching views never advances the time for the same revision. A failed or
+refused save removes the dot; its complete explanation, Try again and Discard
+my writing stay in the scroller, with their existing recovery acts and live
+region. The empty recovery region stays rendered using the shared visually
+hidden pattern; a failure fills that same existing region. The compact dot/time
+has its own live region and an accessible save name. A late response from a
+departing page cannot change the current header.
+
+The same controls move with the active NotebookPage; neither the writing nor
+its scroll owner is replaced. New message keeps its own composer, available
+from the pencil while Notebook is docked; its close/send leaves Notebook intact.
+Below the header the dossier picker, recovery, page notices, card count and
+same vertical cards remain in the scroller. The short keyboard hints remain.
+
+✕ and Escape close either layout; only the layout control switches between
+beside and over the feed. A press on the modal backdrop also closes it. While a card is being written
 the first Escape finishes the card and a second closes the sheet; ✕ and a press
 outside close it with the card still open. The feed comes back where it was
 read and the focus to what opened the page, at once, so a page opened from the
 keys straight after (Tab to the next card, Return) stays open; should anything
-have moved the feed while the sheet was up (its scrollbar, say), closing puts it
-back. The feed keeps
+have moved the feed while the modal sheet was up (its scrollbar, say), closing
+puts it back. Closing a docked Notebook keeps the feed where the person moved it. The feed keeps
 its length while the sheet is up, so one read to its end does not move behind
 the backdrop. Unfinished writing keeps saving
 (notebook-writing.md), and the page keeps its picked card, its place in the
@@ -471,3 +749,29 @@ boxes across every saving-sign branch and during native typing/autosave, at
 real `NotebookPage.writingChanged` branches; the typing case checks Core's
 confirmed words, focus and each painted frame. CSS mutants break the laptop
 row, the phone row and the old status width cap separately and restore each rule.
+
+## The page's menu (792)
+
+Text and Cards share Star, Rename and Delete in the existing ⋯ menu, in the
+composer and on the full page. Rename edits the title in place using the same
+revision journal as the words. Delete confirms once, retains the page's history
+and offers Undo. Core supplies deletion permission: the page's creator or the
+outcome's owner, with access, in an open outcome. A reader's star is personal.
+The command, migration, recovery and old-link rules are in
+[the page menu contract](notebook-menu-792.md).
+
+### Historical 867 review 12306: replaced expectations
+
+This records the earlier saved-base design. Decisions 12592 and 12781
+supersede it with Text-owned raw snapshots and exact bounded replacement;
+the current contract and adaptation manifest above govern Build 6.
+
+The fixed saved base replaces four visit-history expectations in
+`ui_card_menu_867.test.mjs`: two restored a deleted id after a later confirmed
+Cards save; one split a confirmed merge's alias back to an obsolete card; one
+restored pre-save identity after a confirmed whole-card replacement. Their
+checks now assert the saved base: deleted identities stay gone, a saved alias
+stays on its survivor, and a sole card aligns as an edit. Unsaved Undo/Redo
+still restores the original base. The surviving-twin check now supplies the
+actual insertion range, as the duplicate rule requires. No other earlier
+assertions are retired.

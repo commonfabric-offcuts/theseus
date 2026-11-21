@@ -2,10 +2,11 @@
 
 A topic page and an outcome's Conversation have a rail on each side. On the
 left is an outline of every outcome. On the right are the outcome's things.
-Moving between topics and Conversations does not load the page again: the
-outline stays where it was, and only the middle and the right rail change.
-Every other page (the Outcomes home, an outcome's own page, its pipeline,
-Health) keeps the side rail it had. The Outcomes home lists the outcomes with no
+Moving between topics, Conversations, outcomes and Outcomes home does not load
+the page again: the outline stays the same element, and the page's main content
+changes. Outcomes keep their visible side rail. Outcomes home keeps its current
+full-main list and hidden rail, retaining that outline for the next move.
+Pipeline and Health still load as before. The Outcomes home lists the outcomes with no
 heading of its own above them; a press on one, or Return on its row, opens its
 Conversation, and one with no Conversation yet opens its page (`outcome_rail_native.mjs`,
 "rail on the Outcomes home a press on an outcome opens its Conversation …").
@@ -20,16 +21,16 @@ before when the shell declines. It renames its own address through the shell.
 
 ## The outline
 
-Each outcome has one row: its light, its name and the line that says where
-it stands, and the whole row is one thing to press, which opens the
-outcome's Conversation with its topics under it. On a phone (item 654), a
+Each outcome has a row with a disclosure chevron, its light, its name and the
+line that says where it stands (item 902). The chevron opens or folds its
+topics in place, without navigation or reading the outcome page. Several
+outcomes can stay open. The name opens the outcome's home. On a phone (item 654), a
 tap on a collapsed outcome instead opens its topics in the drawer: the drawer,
 its scroll, the current page and every other outcome's fold stay as they were.
-A tap on an open outcome goes to its Conversation, with its topics still open.
+A tap on an open outcome goes to its home, with its topics still open.
 A topic tap goes straight to the topic. On a laptop a click still goes to the
-Conversation and toggles its topics; Return keeps its existing way. When Core
-says the outcome has no Conversation, it opens the outcome's page instead. There is no fold
-triangle: the name has the rail's width. Under an open outcome are its
+outcome's home; Return does the same. The separate chevron only changes
+expansion, on a phone as on a laptop. Under an open outcome are its
 topics. They look as they do today:
 unread counts, the work ring, Waiting on you and Ready for review, bold titles
 while something in them is unread, and Done (N) and Archived (N) below. A
@@ -60,11 +61,13 @@ browser").
   it and gives the pencil the keys.
 
 An outcome's Build topics show once, in the right rail (item 297). On an
-outcome whose pipeline is on, a topic some piece is built in (a release's
-among them) is a Build topic, and the outline lists it not: it is a row of the
+outcome whose pipeline is on, an agent-created topic some piece is built in
+(a release's among them) is a Build topic, and the outline lists it not: it is a row of the
 right rail's Pipeline section instead, from when the piece starts until the
 topic is Done, when it folds into the outline's Done (N) as any topic does. An
 archived one is under Archived (N). Reopened, it is the right rail's again.
+Human-created topics stay in the ordinary sidebar even when a piece names
+them; they leave its open list only through Archive or Done (item 837).
 Core says which topics they are (`workspace_topics`, `build`;
 docs/topic-list.md), so the outline asks for its topics without them and the
 right rail for them alone. While the pipeline is off, or on an outcome with
@@ -94,24 +97,31 @@ rail.
   listed. Pressing one shows only the outcomes, and in them only the topics,
   that hold what it counts; what is new in an outcome's Build topics is on
   its row, as above. Pressing it again shows everything.
-- **Open and folded.** The outline tidies itself. Outcomes are folded, with
-  their counts and Waiting on you rolled up into their rows, but for the one
-  being read, whose topics show. Arriving anywhere, by a press on a row,
-  Return, a topic, a link, back or forward, or the phone's drawer, opens the
-  outcome of the place reached and folds every other. The keys can open
-  another outcome for a look, fold the one being read, or open or fold every
-  one (⌘→ ⌘←, → ←, ⇧⌘→ ⇧⌘←; docs/interaction.md, "Keys across the panes");
-  the next place reached tidies those away. While a chip shows only what is
-  new or waiting, every outcome it shows is open. Nothing about folds is
-  kept on the browser. Whether an outcome is open is on its row for a screen
-  reader (`aria-expanded`), and on screen in its topics under it.
+- **Open and folded.** Each outcome keeps its own open or folded state in
+  localStorage on this device, scoped to the reader and instance. Each change
+  merges with the latest stored choices, so another tab's navigation cannot
+  overwrite a fold. On desktop, a name click opens the outcome without changing
+  its disclosure, and navigation or reload preserves every manual choice (944).
+  Before an all command, outcomes without a saved choice start folded there.
+  A phone retains its open-current arrival and first-tap expansion behavior.
+  The existing keys open
+  or fold one outcome or all outcomes (⌘→ ⌘←, → ←, ⇧⌘→ ⇧⌘←;
+  docs/interaction.md, "Keys across the panes"). Open-all and Fold-all keep a
+  default for outcomes loaded later too; later individual choices are kept
+  as exceptions. Another all command clears those exceptions.
+  New/Waiting filters temporarily open all outcomes they show and leave the
+  kept choices intact. Each disclosure is an ordinary Tab-reachable button
+  with `aria-expanded` and `aria-controls`; the name row also retains the
+  tree's expanded state. If device storage is unavailable, choices hold for
+  the current page. Cross-device dossier state is separate work (858).
 - **Order.** Outcomes keep the order the `workspaces` view gives them, and
   topics their stable default position, newest topics first, until the reader places them with ⌘↑
   and ⌘↓: then their own order, which Core keeps for them on every device
   (docs/outline-order.md). A new message changes counts and lights, never the
   order. A topic new to the reader appears at the top once and stays there
   until the reader moves it. There is no "Not in an outcome" group.
-- **Keys.** The outline is one tree with one Tab stop: ↑ and ↓ move through
+- **Keys.** The outline's rows keep one roving Tab stop, with a separate Tab
+  stop for each disclosure: ↑ and ↓ move through
   its rows, Return opens one, → and ← take the tree's steps and then move to
   the messages: → on a folded outcome opens it and shows its topics, the next
   lands on its pencil (ringed), and the next goes on into the messages; Return
@@ -133,8 +143,8 @@ rail.
 
 The outline lists no Notebook (item 464): under the outcome being read come
 its pencil and its topics, and then the next outcome, for the pointer and the
-keys alike. The outcome's Notebook pages are in the right rail's Notebook
-section, which has its own pencil, and on the outcome's own page.
+keys alike. The outcome's Notebook pages and their pencil are on the outcome's
+own page.
 
 On a phone the outline is a drawer behind "☰ Outcomes", which carries the
 total count and the light. It opens on the row the keys or a tap chose last
@@ -199,25 +209,44 @@ gave it and the foot stays last throughout. That is checked by "rail the
 outline keeps its scroll when it moves in place to a topic …", which watches
 every state of the rail in the move.
 
+### Starred dossiers under topics
+
+The outline tucks the reader's starred dossier titles under each loaded topic,
+with a star and the theme's distinct readable warning-text color. Equal names
+keep their real dossier identities. The empty name uses the feed's first-message
+preview. A title opens that dossier in its parent topic through the writing
+guard; arrow Down visits these children and Left returns to their topic. Folded
+or unloaded parents have no orphan titles. See [starred-outline.md](starred-outline.md)
+for scoped paging, updates, access failures and the native checks (item 715).
+
 ## The right rail
 
-The right rail has folding sections: Starred, Pipeline, Waiting for…,
-Notebook pages, Previews, Pull requests, Images, and Skills and tools. On a Conversation they
-hold the outcome's things. On a topic they hold the topic's, and the chip
-"All of this outcome" switches to the outcome's. A section with nothing in it
-does not show, except the Notebook's, which keeps its pencil and says No
-pages yet; when none shows, one quiet line says the place refers to nothing
-yet.
+The right rail starts with **Notebook**, **Pull requests**, and **Images**, then
+shows **Waiting for…**, **Previews**, and **Skills and tools** when present.
+**Pipeline** is last (item 788, revised in 12252). The right rail always shows
+this topic's things, the Conversation included. The outcome's Notebook pages
+and their pencil are on its page. The page resolves an old `?conversation=`
+address and renames it to that Conversation's `?topic=` address before the Shell
+hands the rail its route. There is no separate outcome scope in this rail.
+If a non-topic route reaches the rail's ready step, including an address changed
+during startup, the rail closes, hides and removes its opener through the same
+cleanup used when beginning an outcome page. It starts no reads or subscription.
+There is no Topic/Outcome switch, keyboard scope choice,
+name row or Starred section; starred dossiers remain in the outline. The generic
+arrow owner reaches the controls actually present, without a scope destination.
+A section with nothing in it does not show, except a writable empty Notebook,
+which keeps its pencil and says No pages yet. When none shows, one quiet line
+says the place refers to nothing yet.
 
-- **Starred** is the reader's own stars, shown to no one else: this topic's
-  (on a Conversation, this outcome's) first, then the rest under Elsewhere.
-  A press opens the message in the composer, titled with its dossier's name;
-  pressing that title returns to the dossier, as when the message is opened
-  from the dossier itself (item 655; docs/reader.md). Another topic on screen
-  does not change its name or its way back. Unstar beside each takes the star
-  off (docs/reply-stacks.md).
-- **Pipeline** is what is live, and what is in Now (with its stage) and Next,
-  from the `pipeline` view, and the outcome's Build topics, each once: under
+Notebook pages are no longer rendered at the bottom of the dossier feed. The
+right rail lists them, and existing page links still open the shared Notebook
+sheet. Initial bounded Notebook reads and admission checks remain: their cache
+supports source reads and revision tracking, but memory updates do not repaint
+the feed. The same current-topic pencil, permission check, paging, changed light,
+creation receipt and retry identity remain owned by the existing Notebook code.
+
+- **Pipeline** lists the outcome's Build topics, each once, with stages from
+  the `pipeline` view: under
   Now each topic a piece is being built in, one row for it however many
   pieces it holds, its row its topic's (Core names these topics on every page,
   `building`, so however many Build topics there are, each carries its marks);
@@ -232,41 +261,38 @@ yet.
   for review…), the work ring, and the mark of the topic being read; one that
   waits on the reader opens at the question, as in the outline. The Build
   topics show on a topic as on its Conversation, since they stand in for the
-  outline's rows; Live and Next are the outcome's alone. Its heading says
-  how many messages in all the Build topics are new to the reader ("1 in Now
-  · 3 new", from `workspace_topics`' `builds`), so a folded section still
+  outline's rows. Live and Next remain on the outcome's pipeline page. Its
+  heading names the current topic's stage, if any, and how many messages in
+  all the Build topics are new to the reader ("Build · 3 new", from
+  `workspace_topics`' `builds`), so a folded section still
   shows it. It lists 20 Build topics, and More topics brings 20 more; Return
   on More topics hands the keys to the first topic it brought. The keys reach
   each row like any other in the rail, and Return on one opens its topic in
   place with the keys staying on its row. Below 1181px, "Pipeline & pages"
   carries the same count.
-- **Waiting for…** is the Now and Next items the reader raised, at their
-  stage, and the reader's Conversation posts nobody has taken up yet.
-- **Notebook pages** come from `memory_items`: the topic's own pages on a
-  topic, the outcome's otherwise, each with its light. Its heading carries the
-  pencil that starts a new page in the Notebook it lists, the topic's or the
-  outcome's, for someone Core lets write it (docs/notebook-pages.md), so it
+- **Waiting for…** is the Now and Next items the reader raised in this
+  topic, at their stage.
+- **Notebook pages** come from `memory_items`: this topic's own pages, each
+  with its light. Its heading carries the pencil that starts a new page in
+  this topic's Notebook for someone Core lets write it (docs/notebook-pages.md), so it
   shows with No pages yet when that Notebook has none. It lists 20 pages, its
   count saying "20+" while there are more, and More pages brings 20 more.
 - **Previews and pull requests** are links people posted in messages: a
   build on the tailnet or this machine, or an address that names a preview or
-  a mockup, and GitHub pull requests. On a whole outcome they come from its
-  Conversation and its six most recently active topics, the newest 50
-  messages of each. Core records no pull request's state, so the section says
+  a mockup, and GitHub pull requests. They come from the current topic's
+  newest 50 messages. Core records no pull request's state, so the section says
   so and does not guess.
 - **Images** come from `topic_images`. Clicking a displayed thumbnail opens
   its image in a new tab (item 651, docs/images.md). Return on the containing
   message link still opens that message in place.
-- **Skills and tools** come from `topic_tools` on a topic (the tools linked to
-  it) and from `tools` on a Conversation (the outcome's own and those it says
-  it uses), each opening its page; one linked to a topic whose record is gone
+- **Skills and tools** come from `topic_tools` (the tools linked to this
+  topic), each opening its page; one linked to a topic whose record is gone
   is named, with no page ([skills-and-tools.md](skills-and-tools.md)).
 
 Folds are kept per section on this browser. A section takes its kept fold as
 it appears, and stays as the person leaves it after that. The rail reads only while it is
 on screen, and reads a place's messages and images again only when that topic
-has moved on (its version): for the open topic, when the page has read it
-again; elsewhere, by the version the outcome's topic list gives. A topic the
+has moved on (its version), when the page has read it again. A topic the
 page can no longer read is not read here either, and what the rail showed and
 kept of it goes as the page hides the topic's messages. It shows beside the page at 1181px and wider, as a panel from the
 right between 761px and 1180px, and as a sheet from the bottom on a phone.
@@ -286,13 +312,14 @@ the rail first where it is open over the page.
 ## Moving in place
 
 Each page is one run of `app.mjs`, which keeps its state in its module. A move
-between two feed pages (topics and Conversations) goes like this:
+between topics, Conversations, outcomes and Outcomes home goes like this:
 
 1. The page's guard (`TopicNavigation.openTarget`) decides first, as it does
    for a load. Unsent writing that cannot be kept stops the move. A send under
    way stops it with the same words as before. Where the move waits (it reads
    the served build first, below), the guard's last look is asked again just
-   before it is made.
+   before it is made. The shell's existing registered writing guards also hold
+   this move, including Notebook device writes on pages without an editor registry.
 2. The address changes with `pushState`. Each entry the page makes carries
    its place in the page's history (`aimPlace`).
 3. The old run ends as an unload ends a page. Its `pagehide` listeners run,
@@ -373,8 +400,8 @@ Back and forward to an entry the page made also go through the guard. If the
 guard refuses, the page goes back to the entry it was on, by as many entries
 as the person moved, and says why where the person is looking: in the rail,
 and also in the Reader or the New message sheet when one is open over the
-page. An entry from before this page, or a page that is not a
-feed, loads as it did before. Reload and copied links work because the
+page. An entry from before this page, or a route outside these four kinds,
+loads as it did before. Reload and copied links work because the
 address is always the real one.
 
 A move can come while the run before it is still on its way: a quick second
@@ -386,8 +413,8 @@ and then a forward), there is nothing more to do. If the run cannot start, what
 waited loads as it would with no feed page up. While a run starts, it renames
 its own address only if a back or forward has not moved it on (`shell.rename`).
 
-Every load the page decides goes through `shell.leave`: a page that is not a
-feed, a place chosen with no feed page up, an entry from before this page, a
+Every load the page decides goes through `shell.leave`: a route outside these
+four kinds, a place chosen with no supported page up, an entry from before this page, a
 new topic or outcome opened after its write commits. From the moment it asks
 for the load, the page starts no read (`web/api.mjs` `depart`): a read asked
 for then waits, unsent, and one the browser cancels as the load begins tells
@@ -420,9 +447,23 @@ the outline draws. The outline's own topic lists and an outcome's
 Conversation are not any one place's, so they read through whichever run is
 up when their turn comes.
 
-The rails read one read at a time (`oneAtATime`), so they never crowd the
-page's own reads out of the server's admission lanes. The outline reads in
-the foreground lane. The right rail reads in the background lane.
+Each rail sequences its reads (`oneAtATime`). Foreground API reads also share
+a four-request ceiling across the page and retained rails, below the backend's
+one reader plus eight waiting places. The right rail keeps its background lane;
+commands keep their command lane.
+
+On an outcome home (923), the current topics start before the global outcomes
+list. The same checked topic rows paint its cards, and one Conversation answer
+serves both those rows and the outline shortcut. Team, wakes and independent
+panels start together after the workspace answer. The outline's outcome list
+also supplies Also waiting; its refusal and Retry appear in the main column.
+
+Workspace and actor change keys refresh only the affected outcome-home lists.
+The named global-list default is navigation, becoming visible, manual retry,
+and relevant current-workspace or current-actor changes. Another outcome's
+rename or creation appears at that next refresh, rather than on every commit.
+Private-writing changes do not reread those lists. A failed refresh stays owed
+until its views succeed; an access refusal hides the outcome's content.
 
 ### One build per document
 
@@ -524,9 +565,8 @@ loads once and reads no build.
 ## Known gaps
 
 - Core records no pull request's state.
-- The old sections the outline stands for (the outcomes list, the
-  Conversation and Pipeline rows) are still read by the page, hidden, since
-  other parts of the page follow them.
+- Other routes still read some old hidden sections that supply their page
+  context. Outcome homes share the outline's outcomes and Conversation answers.
 - Waits in outcomes the reader cannot list are not in the outline's totals.
 - On a laptop, ⌘→ opens another outcome's topics only from the keys; there
   is no pointer's way to look without going there. A phone's first tap can

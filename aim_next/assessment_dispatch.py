@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 
-from . import broker_routes, codex_host
+from . import broker_routes, codex_host, reply_passages
 from .assessments import RECOMMENDATIONS
 from .contract import _json
 from .profile import load_profile, ProfileError
@@ -35,7 +35,13 @@ REPORT_SCHEMA = {'type':'object', 'additionalProperties':False,
     'required':['body','recommendation','evidence_message_ids','next_checkpoint'], 'properties':{
         'body':{'type':'string'}, 'recommendation':{'type':'string','enum':sorted(RECOMMENDATIONS)},
         'evidence_message_ids':{'type':'array','items':{'type':'string'}},
-        'next_checkpoint':{'type':'string'}}}
+        'next_checkpoint':{'type':'string'},
+        'reply_passage':{'type':'object','additionalProperties':False,'required':['source','start','end'],
+            'properties':{'source':{'type':'object','additionalProperties':False,'required':['kind','id','revision'],
+                'properties':{'kind':{'type':'string','enum':['message']},'id':{'type':'string'},'revision':{'type':'integer'}}},
+                'start':{'type':'integer'},'end':{'type':'integer'}}},
+        'reply_without_quote':{'type':'string'}}}
+
 
 READ_TOOL = {'type':'function','name':'theseus_read',
     'description':'Read the bound assessment topic. Check binding first; page messages, then read complete source bodies. No writes. Private messages and other topics are excluded.',
@@ -89,6 +95,16 @@ class Core:
             raise DispatchError('report_readback_mismatch')
         args = {k:record[k] for k in ('thread_id','recommendation','evidence_message_ids','next_checkpoint')}
         args['body'] = source['body']
+        basis = source.get('reply_basis')
+        if basis is not None:
+            beginning = reply_passages.prefix(basis)
+            if not args['body'].startswith(beginning):
+                raise DispatchError('report_body_readback_mismatch')
+            args['body'] = args['body'][len(beginning):]
+            if 'reason' in basis:
+                args['reply_without_quote'] = basis['reason']
+            else:
+                args['reply_passage'] = {key:basis[key] for key in ('source','start','end')}
         if digest(args) != record['report_fingerprint']:
             raise DispatchError('report_body_readback_mismatch')
         return {'status':'reported','assessment_id':record['id'],'thread_id':record['thread_id'],
@@ -112,7 +128,9 @@ def settings(config):
         'theseus_read replaces the skill\'s CLI read transport while preserving the expected binding and full-body checks. '
         'If sources cannot be read, say so and use an empty evidence_message_ids list; never invent a citation. '
         'evidence_message_ids contains distinct public message ids from this topic only. '
-        'Cite artifact paths, test outputs and commit ids in body, never in evidence_message_ids.')
+        'Cite artifact paths, test outputs and commit ids in body, never in evidence_message_ids. '
+        'Choose reply_passage for the first assignment source with its current revision and zero-based Unicode code-point '
+        'start/end offsets in the exact raw Markdown, or reply_without_quote with your explicit reason. Core inserts the quote. ')
     result = {'cwd':config.cwd,'approvalPolicy':'never','sandbox':'read-only',
               'developerInstructions':instructions,'config':{'agents':{'enabled':False}}}
     if config.model is not None:
@@ -148,13 +166,13 @@ def read_tool(core, identity, request):
         page = core.view('topic_messages',query)
         # Keep the original cursor even when a page contains only private messages.
         return {'instance_id':page['instance_id'],'next_cursor':page['next_cursor'],
-            'items':[{k:m.get(k) for k in ('id','seq','author_id','body','preview','reply_to','withheld')}
+            'items':[{k:m.get(k) for k in ('id','seq','author_id','body','preview','reply_to','withheld','revision')}
                      for m in page['items'] if not m.get('whisper')]}
     if action == 'source' and set(args) == {'action','message_id'}:
         source = core.view('source',{'source_ref':{'kind':'message','id':args['message_id']}})
         if source.get('topic_id') != record['topic_id'] or source.get('whisper'):
             raise DispatchError('assessment_read_scope')
-        return dict({k:source.get(k) for k in ('instance_id','topic_id','seq','author','body','reply_to','withheld')},
+        return dict({k:source.get(k) for k in ('instance_id','topic_id','seq','author','body','reply_to','withheld','revision')},
                     source_ref=source['source_ref'])
     raise DispatchError('unsupported_assessment_read')
 
@@ -193,7 +211,8 @@ def report_from_turn(rpc, thread, turn):
                     report = json.loads(raw)
                 except ValueError as error:
                     raise DispatchError('report_invalid_json') from error
-                if not isinstance(report,dict) or set(report) != set(REPORT_SCHEMA['required']):
+                if (not isinstance(report,dict) or set(report) - {'reply_passage','reply_without_quote'} != set(REPORT_SCHEMA['required'])
+                        or len(set(report) & {'reply_passage','reply_without_quote'}) != 1):
                     raise DispatchError('report_invalid_shape')
                 return report
         cursor = page.get('nextCursor')

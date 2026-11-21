@@ -180,11 +180,15 @@ Every path is an existing canonical spelling. `profile` is bound to
 `codex_executable` the installed-Codex policy. `codex_home` is never the
 owner's own `~/.codex` (from the password database, not `$HOME`) or a
 directory inside it (`invalid_codex_home`): the desktop app keeps its sessions
-and token refresh there. `writable_roots` holds exactly the database's
+and token refresh there. The legacy `writable_roots` config field holds exactly the database's
 directory and the actor's outbox directory (an existing directory, not a
 symlink, at its own canonical path), in either order; anything else refuses
 with `invalid_writable_roots`. The config's destination is compared with Core's
 pin, and the returned `HostedConfig.destination` is the pin's.
+These two roots validate existing routing metadata; workspace-mode execution
+uses 662's narrower native permission profile, not the database-directory grant.
+See [the read-boundary contract](hosted-read-boundary-662.md) for protected paths,
+raw-store denial, outbox writes, local Core transport and material limits.
 
 Version 2 adds exactly `permission_mode` (`workspace` or `full`),
 `reasoning_effort` (null, low, medium, high, xhigh), and `instructions` (the
@@ -224,9 +228,9 @@ outbox rule) and the config path. It then takes the runner guard (so it
 refuses while a runner holds it), spawns one child, checks the handshake and
 sign-in, creates the agent's outbox (0700) if it is missing, sends
 `thread/start` with the thread settings below, and checks the echo: `cwd`,
-`approvalPolicy: never`, and a `workspaceWrite` sandbox with exactly the two
-writable roots, no network, and `/tmp` and `$TMPDIR` excluded (or the explicit
-full mode and selected model/effort). It persists a developer setup record
+`approvalPolicy: never`, and the exact host-authored permission-profile identity
+with its workspace parent and outbox write projection (or the explicit full
+mode and selected model/effort). It persists a developer setup record
 using `thread/inject_items` before pinning the id: native Codex otherwise
 forgets a newly started empty thread when its process closes. This makes no
 model call and fabricates no agent or human answer. It then
@@ -288,11 +292,20 @@ turn: its final status if it ended, kept open if it is in progress on a thread
 the resume reports active, otherwise `lost`.
 
 Thread settings (provisioning and every resume): `cwd`, `approvalPolicy:
-never`, `approvalsReviewer: user`, `sandbox: workspace-write`, `config` with
-`sandbox_workspace_write` (exactly the two writable roots, no network,
-`/tmp` and `$TMPDIR` excluded) and `agents.enabled=false`,
-`developerInstructions` (`hosted_notice.developer_instructions`), and `model`
-when the config names one.
+never`, `approvalsReviewer: user`, `permissions` naming the host-authored native
+profile, and `config` defining that profile, `features.network_proxy=true` and
+`agents.enabled=false`. The profile denies credential/session paths, permits
+only outbox/work writes, denies the raw store, and keeps temp writes excluded.
+Effective startup definitions are read back and a bounded sandboxed command
+proves proxy refusal of a loopback name and direct TCP denial before work.
+Ignored configuration or a failed probe refuses that route. The inventory
+denies all startup hosted homes and the account runtime home.
+Its proxy has no allowed domains and only this route's Core socket is allowed;
+the raw network-enabled bit activates that Unix allowlist, not external access.
+`developerInstructions` names `aim-next --broker SOCKET`; `model` is included
+when configured. Provisioning uses a non-listening placeholder socket and makes
+no model turn; runtime resume supplies its real host-owned socket. Every
+turn/start reselects the same named profile instead of legacy sandboxPolicy.
 Version 2 full mode replaces the sandbox configuration with
 `danger-full-access` and `agents.enabled=true`; its role is appended to the
 bound CLI instructions. `model_reasoning_effort` is set when selected.

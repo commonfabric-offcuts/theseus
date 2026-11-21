@@ -184,7 +184,7 @@ class Assessments:
         args = envelope['args']
         if actor != record['assessor_id']:
             raise Refusal('FORBIDDEN', 'Only the assigned assessor records its report')
-        if set(args) != {'thread_id','body','recommendation','evidence_message_ids','next_checkpoint'}:
+        if set(args) - {'reply_passage', 'reply_without_quote'} != {'thread_id','body','recommendation','evidence_message_ids','next_checkpoint'}:
             raise Refusal('INVALID_ARGUMENT', 'Name the assessment thread, report, recommendation, evidence and next checkpoint')
         if record['state'] == 'abandoned':
             raise Refusal('ASSESSMENT_ABANDONED', 'This request was abandoned; its late report cannot be published')
@@ -207,13 +207,14 @@ class Assessments:
         post = dict(envelope, kind='message.post', target={'topic_id':record['topic_id']}, args={
             'body':body, 'intent':'tell', 'addressees':list(dict.fromkeys((record['requested_by'],record['operator_id']))),
             'reply_to':record['source_message_ids'][0]})
+        post['args'].update({key: args[key] for key in ('reply_passage', 'reply_without_quote') if key in args})
         snapshot = self._writing(post['args'])
         result, affected = self._publish(db, actor, envelope['operation_id'], record['topic_id'], snapshot, record_only=True)
         record.update(state='reported', reported_ms=_now_ms(), report_message_id=result['message_id'],
                       report_fingerprint=fingerprint, recommendation=args['recommendation'],
                       evidence_message_ids=evidence, next_checkpoint=checkpoint)
         self._save_assessment(db, record)
-        return {'assessment_id':record['id'], 'message_id':result['message_id']}, affected
+        return {'assessment_id':record['id'], 'message_id':result['message_id'], 'reply_basis':result.get('reply_basis')}, affected
 
     def _command_assessment_abandon(self, db, actor, envelope):
         record = self._assessment_target(db, actor, envelope)

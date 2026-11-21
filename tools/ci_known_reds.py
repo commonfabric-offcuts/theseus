@@ -559,6 +559,14 @@ def scoped_required(summary, run, base, root, commit, required):
         return set(required)
     require(run['event'] == 'pull_request', 'scoped summary requires a pull request')
     require(isinstance(scoped, dict) and scoped.get('live') == base['sha'], 'scoped summary has another base')
+    if scoped.get('version') == 2:
+        try:
+            expected = ci_input_reads.pr_record(root, base['sha'], commit)
+        except ci_input_reads.Refused as error:
+            raise Refused('cannot prove scoped coverage: %s' % error)
+        require(scoped == expected, 'scoped input coverage differs from committed diff')
+        require(set(expected['required']) == set(required), 'scoped inventory differs')
+        return set(expected['selected'])
     try:
         changed, chosen, _ = release_check.scope(root, base['sha'], commit)
     except release_check.Refused as error:

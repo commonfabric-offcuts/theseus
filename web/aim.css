@@ -1,8 +1,8 @@
 :root{color-scheme:light dark;--paper:#f9f9f6;--panel:#fff;--ink:#222a30;--muted:#69747c;--line:#dfe4e3;--accent:#23695e;--on-accent:#fff;--soft:#e8f1ec;--focus:#2e8272;--warn:#805b19;--warn-bg:#fff4d9;--note:#fcefb5;--alert:#b42318;font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:16px;line-height:1.5;background:var(--paper);color:var(--ink)}
 *{box-sizing:border-box}body{margin:0}button,input,select,textarea{font:inherit;color:inherit}button,select{min-height:2.75rem}button{border:1px solid var(--line);border-radius:.5rem;padding:.4rem .8rem;background:var(--panel);cursor:pointer;white-space:nowrap}button:hover{background:var(--soft)}button:disabled,button[aria-disabled=true]{opacity:.5;cursor:default}button.primary{background:var(--accent);border-color:var(--accent);color:#fff}button.primary:hover{filter:brightness(1.08)}button.quiet{border-color:transparent;background:transparent}/* The page itself takes focus only when what held it is gone: no ring around the whole page; nor around its heading, where a move in place puts the focus as a load leaves it on the page. */
 main:focus,main h1:focus{outline:none}
-button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,article:focus-visible,[role=separator]:focus-visible{outline:2px solid var(--focus);outline-offset:3px}/* The Reader puts focus on the message itself, so the message wears no ring for that; a keyboard user who Tabs onto it sees the ring, as on any other stop. */#source-body:focus-visible:not([data-tabbed]){outline:none}a{color:var(--accent);text-underline-offset:3px}h1,h2,h3,p{margin:0}h1{font-size:1.5rem;font-weight:650;letter-spacing:-.025em}h2{font-size:1.05rem}h3{font-size:1rem}button[hidden],[hidden]{display:none!important}.muted{color:var(--muted);font-size:.85rem}.eyebrow{color:var(--muted);font-size:.8rem;margin-bottom:.3rem}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.brand{display:flex;flex-direction:column;align-items:flex-start;gap:.35rem;margin-bottom:1.1rem;min-width:0}/* The rail's foot (item 628): who you are on which instance, the guide's ? and Health at the end of the rail, or of the page with no rail; one under the other, as the logo block drew them (a phone's row is below). */.rail-foot{display:flex;flex-direction:column;align-items:flex-start;gap:.35rem;margin-top:1.1rem;min-width:0}.rail-foot #instance-label{overflow-wrap:anywhere;max-width:100%}.wordmark{display:flex;align-items:center;gap:.5rem;color:var(--ink);font-size:1.3rem;font-weight:750;text-decoration:none;letter-spacing:-.06em}.presence-dot{width:.5rem;height:.5rem;border-radius:100%;background:var(--accent)}#instance-label{font-size:.85rem;color:var(--muted)}.workspace-layout{display:grid;grid-template-columns:17rem minmax(0,1fr);min-height:100dvh}.rail{border-right:1px solid var(--line);padding:1.3rem 1rem}.rail-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:.7rem;gap:.6rem}.rail-heading h1,.rail-heading h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}.rail-heading:not(:first-child){margin-top:2rem}.rail button{font-size:.85rem}/* A row holds what it places, such as its words for screen readers, inside the rail that scrolls it. */.nav-item{position:relative;display:block;width:100%;text-align:left;margin:.3rem 0;border-color:transparent;white-space:normal}.nav-item[aria-current=true]{background:var(--soft);color:var(--accent);font-weight:600}main{padding:2rem clamp(1rem,4vw,4rem);max-width:75rem;width:100%}.topic-header{margin-bottom:1rem}.participants{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1.5rem}.chip{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--line);border-radius:1.2rem;padding:.18rem .6rem;font-size:.8rem;background:var(--panel)}.chip button{min-height:2rem;border:0;padding:0 .35rem;background:transparent}.message-card{display:block;text-align:left;width:100%;white-space:normal;padding:1rem 1.15rem;margin-bottom:.75rem;border-radius:.75rem}.message-card .message-author{display:block;font-size:.8rem;font-weight:650;margin-bottom:.4rem}.message-preview{white-space:pre-wrap;font-weight:400;overflow-wrap:anywhere}.section-heading{display:flex;justify-content:space-between;align-items:center;margin:2rem 0 .8rem}#memory-items{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(15rem,100%),1fr));gap:.7rem}.memory-card{display:flex;flex-direction:column;justify-content:flex-start;padding:1rem;text-align:left;white-space:normal}.memory-card strong{display:block;margin-bottom:.4rem}.notice{padding:.6rem .8rem;background:var(--warn-bg);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 25%,transparent);border-radius:.5rem;font-size:.88rem;overflow-wrap:anywhere}#app-status,#wakes-status{margin:1rem 1.5rem}/* The page's notices, one group that only the rail pins (rails.css); elsewhere it draws no box of its own. */.page-notices{display:contents}.empty{color:var(--muted);font-size:.9rem;padding:1rem 0}
+button:focus-visible,.message-card:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,article:focus-visible,[role=separator]:focus-visible{outline:2px solid var(--focus);outline-offset:3px}/* The Reader puts focus on the message itself, so the message wears no ring for that; a keyboard user who Tabs onto it sees the ring, as on any other stop. */#source-body:focus-visible:not([data-tabbed]){outline:none}a{color:var(--accent);text-underline-offset:3px}h1,h2,h3,p{margin:0}h1{font-size:1.5rem;font-weight:650;letter-spacing:-.025em}h2{font-size:1.05rem}h3{font-size:1rem}button[hidden],[hidden]{display:none!important}.muted{color:var(--muted);font-size:.85rem}.eyebrow{color:var(--muted);font-size:.8rem;margin-bottom:.3rem}.sr-only,.notebook-sheet-status:has(.deck-status:empty){position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.brand{display:flex;flex-direction:column;align-items:flex-start;gap:.35rem;margin-bottom:1.1rem;min-width:0}/* The rail's foot (item 628): who you are on which instance, the guide's ? and Health at the end of the rail, or of the page with no rail; one under the other, as the logo block drew them (a phone's row is below). */.rail-foot{display:flex;flex-direction:column;align-items:flex-start;gap:.35rem;margin-top:1.1rem;min-width:0}.rail-foot #instance-label{overflow-wrap:anywhere;max-width:100%}.wordmark{display:flex;align-items:center;gap:.5rem;color:var(--ink);font-size:1.3rem;font-weight:750;text-decoration:none;letter-spacing:-.06em}.presence-dot{width:.5rem;height:.5rem;border-radius:100%;background:var(--accent)}#instance-label{font-size:.85rem;color:var(--muted)}.workspace-layout{display:grid;grid-template-columns:17rem minmax(0,1fr);min-height:100dvh}.rail{border-right:1px solid var(--line);padding:1.3rem 1rem}.rail-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:.7rem;gap:.6rem}.rail-heading h1,.rail-heading h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}.rail-heading:not(:first-child){margin-top:2rem}.rail button{font-size:.85rem}/* A row holds what it places, such as its words for screen readers, inside the rail that scrolls it. */.nav-item{position:relative;display:block;width:100%;text-align:left;margin:.3rem 0;border-color:transparent;white-space:normal}.nav-item[aria-current=true]{background:var(--soft);color:var(--accent);font-weight:600}main{padding:2rem clamp(1rem,4vw,4rem);max-width:75rem;width:100%}.topic-header{margin-bottom:1rem}.participants{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1.5rem}.chip{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--line);border-radius:1.2rem;padding:.18rem .6rem;font-size:.8rem;background:var(--panel)}.chip button{min-height:2rem;border:0;padding:0 .35rem;background:transparent}.message-card{display:block;border:1px solid var(--line);background:var(--panel);min-height:2.75rem;cursor:pointer;text-align:left;width:100%;white-space:normal;padding:1rem 1.15rem;margin-bottom:.75rem;border-radius:.75rem}.message-card .message-author{display:block;font-size:.8rem;font-weight:650;margin-bottom:.4rem}.message-preview{white-space:pre-wrap;font-weight:400;overflow-wrap:anywhere}.section-heading{display:flex;justify-content:space-between;align-items:center;margin:2rem 0 .8rem}#memory-items{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(15rem,100%),1fr));gap:.7rem}.memory-card{display:flex;flex-direction:column;justify-content:flex-start;padding:1rem;text-align:left;white-space:normal}.memory-card strong{display:block;margin-bottom:.4rem}.notice{padding:.6rem .8rem;background:var(--warn-bg);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 25%,transparent);border-radius:.5rem;font-size:.88rem;overflow-wrap:anywhere}#app-status,#wakes-status{margin:1rem 1.5rem}/* The page's notices, one group that only the rail pins (rails.css); elsewhere it draws no box of its own. */.page-notices{display:contents}.empty{color:var(--muted);font-size:.9rem;padding:1rem 0}
 /* The Reader, and the New message sheet below, are as tall as the window and grow with its width up to --widest, further side by side (item 400, docs/reader.md "Size"). */
 dialog{--reading-share:52fr;--writing-share:48fr;--widest:72rem;width:min(var(--widest),calc(100vw - 3rem));height:calc(100dvh - 3rem);max-height:calc(100dvh - 3rem);padding:0;border:1px solid var(--line);border-radius:1rem;background:var(--panel);color:var(--ink);box-shadow:0 24px 80px #10202030;overflow:hidden}
 dialog[data-layout=wide]{--widest:100rem}
@@ -59,16 +59,21 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .creation-form #opening-body { min-height: 12rem; font-size: 16px; line-height: 1.6; }
 .creation-form pre { font: inherit; font-size: .88rem; white-space: pre-wrap; overflow-wrap: anywhere; margin: .4rem 0; }
 .unread-count{display:inline-block;min-width:1.4rem;margin-left:.45rem;padding:0 .4rem;border-radius:1rem;background:color-mix(in srgb,var(--accent) 30%,transparent);color:var(--ink);font-size:.72rem;font-weight:650;line-height:1.4rem;text-align:center;vertical-align:middle}.together{white-space:nowrap}.unread-count.addressed{background:var(--accent);color:var(--panel)}
+/* The feed keeps its own top-edge anchor, including late image and cover layout. */
+html:has(#messages:not([hidden])){overflow-anchor:none}
+/* Centre on the message column, overriding the legacy inline left edge. */
+#messages{anchor-name:--message-column}
+.new-above{position:fixed;top:12px;z-index:20;display:inline-flex;align-items:center;justify-content:center;margin:0;min-height:36px;padding:.35rem .9rem;border:0;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:.875rem;font-weight:650;line-height:1.4;box-shadow:0 4px 16px rgb(0 0 0 / .18)}
+@supports (left:anchor(--message-column center)){.new-above{left:anchor(--message-column center)!important;transform:translateX(-50%);}}
+.new-above:hover{background:var(--accent)}
+@media(pointer:coarse){.new-above{min-height:44px}}
 /* A topic's unread count leads to its oldest unread message (item 613): a press on it lands there, and on a phone it answers a finger 44px each way, reaching back over the title's end and never past the row's right. */.unread-count[data-lands]{cursor:pointer}@media(pointer:coarse),(max-width:760px){.unread-count[data-lands]{position:relative}.unread-count[data-lands]::after{content:'';position:absolute;top:50%;right:0;width:max(100%,44px);height:44px;transform:translateY(-50%)}}
 #sent-to-you h2{font-size:1rem;margin:0 0 .4rem}.sent-list{list-style:none;margin:0 0 1rem;padding:0}.sent-list li{padding:.35rem 0;border-bottom:1px solid var(--line)}.sent-list li.closed-topic button{margin-left:.4rem}
 /* A state stays one line; a long one ends in an ellipsis and its whole words are its title. */.topic-state{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:.45rem;padding:0 .45rem;border:1px solid var(--line);border-radius:1rem;color:var(--muted);font-size:.72rem;font-weight:600;line-height:1.35rem;vertical-align:middle}.topic-state[data-state=waiting]{color:var(--ink)}.topic-state.mine{border-color:var(--accent);color:var(--ink)}/* On a row shaded by hover or by being current, a plain state keeps a visible edge and readable words. */a.nav-item:is(:hover,[aria-current=page]) .topic-state:not(.mine):not([data-state=review]){border-color:var(--muted);color:var(--ink)}.topic-state[data-state=review]{border-color:var(--accent);color:var(--ink)}.opening-answers{margin:0 0 1rem;padding:.8rem 1rem;border:1px solid var(--line);border-radius:.75rem;background:var(--panel)}.opening-answers h2{font-size:.9rem;margin:0 0 .4rem}.opening-answers h3{font-size:.85rem;margin:.6rem 0 .3rem}.opening-answers blockquote{margin:0;color:var(--muted);overflow-wrap:anywhere}.started-topics{margin:0;padding-left:1.1rem}.started-topics li{margin:.25rem 0;overflow-wrap:anywhere}.responsibilities{margin:0 0 .5rem;padding:0;list-style:none;font-size:.9rem}.responsibilities li{margin:.15rem 0;overflow-wrap:anywhere}.responsibilities strong{margin-right:.15rem}.state-fields{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.6rem;margin:.6rem 0}.state-fields input{min-width:12rem}.waiting-on-you{margin:0 0 1.5rem;padding:1rem 1.15rem;border:1px solid var(--accent);border-radius:.75rem;background:var(--panel)}.waiting-on-you h2{font-size:.9rem;margin:0 0 .5rem}.waiting-list{margin:0;padding-left:1.1rem}.waiting-list li{margin:.3rem 0;overflow-wrap:anywhere}
 .people-add { display: flex; align-items: center; gap: .4rem; flex: 1 1 14rem; }
 .people-add input { flex: 1; min-width: 8rem; background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: .25rem; font-size: .85rem; }
 .people-add button { font-size: .8rem; min-height: 2rem; padding: .2rem .6rem; }
-.participants .notice, #team-people .notice { flex-basis: 100%; margin: .2rem 0 0; }
-.outcome-team { margin: 1.5rem 0; }
-.outcome-team h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: .6rem; }
-#team-people { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.participants .notice { flex-basis: 100%; margin: .2rem 0 0; }
 /* Inviting an agent (agent-invite.mjs): "+ Invite agent", then one name line and two chips; the prompt to paste, with its copy glyph and ×. */
 .team-invite{display:grid;gap:.5rem;margin-top:.5rem;min-width:0}
 .team-invite>.add-chip{justify-self:start}
@@ -114,6 +119,13 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .message-card { --lit-field: #000; }
 .message-preview::highlight(lit-passage), .message-preview *::highlight(lit-passage) { background-color: var(--lit-field); color: #fff; }
 .own-message > .message-preview::highlight(lit-passage), .own-message > .message-preview *::highlight(lit-passage) { color: #000; }
+/* Notebook display shares the passage paint, scoped away from messages. */
+.notebook-reading-words { --lit-field:var(--ink); --notebook-lit-ink:var(--panel); }
+.notebook-reading-words::highlight(notebook-lit-passage),.notebook-reading-words *::highlight(notebook-lit-passage){background-color:var(--lit-field);color:var(--notebook-lit-ink)}
+.notebook-reading-words::selection,.notebook-reading-words *::selection{background-color:var(--lit-field);color:var(--notebook-lit-ink)}
+.notebook-title-words>.md-block{display:inline;margin:0;font:inherit}
+:root[data-look=paper] .notebook-reading-words{--lit-field:color-mix(in srgb,var(--accent) 22%,var(--paper));--notebook-lit-ink:var(--ink)}
+:root[data-look=paper] .notebook-reading-source .hover-quote{background:color-mix(in srgb,var(--accent) 22%,var(--paper));color:var(--ink);box-shadow:none}
 /* A hidden copy of the Reader's text box: a card measures the Reader's line there, at this width, before the Reader first opens. */
 .reading-pane.passage-probe { position: fixed; top: 0; left: 0; width: 1px; height: 1px; padding: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
 .message-card.own-message {
@@ -160,11 +172,11 @@ main::after{content:"";display:block;height:var(--line-room,0px)}
 .new-line-older{width:100%;margin:.25rem 0 .85rem;padding:.4rem .8rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel);min-height:2.75rem;cursor:pointer}
 /* Agent colors (docs/reading-colors.md, "Agent colors"): an agent's cards in its own tint, its name in a deeper one, and no edge or bar. Text on them keeps 4.5:1. Green's card is the live --soft, Fable's color as it stood. */
 .agent-green{--agent-card:#e8f1ec;--agent-tag:#c8e0d2;--agent-hover:#dfece5}.agent-blue{--agent-card:#e7f3ff;--agent-tag:#c6daf1;--agent-hover:#dbecfc}.agent-indigo{--agent-card:#ececfb;--agent-tag:#c9cbed;--agent-hover:#e3e3f7}.agent-violet{--agent-card:#f3ecfb;--agent-tag:#dacbeb;--agent-hover:#ebe1f6}.agent-rose{--agent-card:#ffeaf1;--agent-tag:#edc9d5;--agent-hover:#fbdfe9}.agent-peach{--agent-card:#fff0e5;--agent-tag:#f1d7c6;--agent-hover:#fce8da}.agent-cyan{--agent-card:#e2f8fe;--agent-tag:#c9e6ed;--agent-hover:#d5f2fa}.agent-olive{--agent-card:#f3f8e9;--agent-tag:#e0e8cf;--agent-hover:#ecf3df}
-.message-card.agent-card{--muted:#56616a;background:var(--agent-card)}.message-card.agent-card:hover{background:var(--agent-hover)}
+.deck-card.deck-tinted{--muted:#56616a;}.message-card.agent-card{--muted:#56616a;background:var(--agent-card)}.message-card.agent-card:hover{background:var(--agent-hover)}
 /* A person's card under the pointer: a neutral tint, never the green that is Fable's card at rest, with its quiet words deepened to stay readable; no edge or bar. */
 .message-card:not(.own-message):not(.agent-card):hover{--muted:#56616a;background:#eff0f0}
 @media(prefers-color-scheme:dark){.message-card:not(.own-message):not(.agent-card):hover{--muted:#9aaba8;--accent:#79c7ab;background:#252b2e}}
-@media(prefers-color-scheme:dark){.agent-green{--agent-card:#263d35;--agent-tag:#385a4d;--agent-hover:#29403a}.agent-blue{--agent-card:#202d3c;--agent-tag:#32465d;--agent-hover:#243242}.agent-indigo{--agent-card:#222339;--agent-tag:#363759;--agent-hover:#262740}.agent-violet{--agent-card:#2d2438;--agent-tag:#463757;--agent-hover:#32283e}.agent-rose{--agent-card:#39222a;--agent-tag:#593641;--agent-hover:#40262f}.agent-peach{--agent-card:#372d26;--agent-tag:#57453a;--agent-hover:#3d312a}.agent-cyan{--agent-card:#223539;--agent-tag:#365259;--agent-hover:#263b40}.agent-olive{--agent-card:#313626;--agent-tag:#4c543b;--agent-hover:#373c2a}.message-card.agent-card{--muted:#9aaba8;--accent:#79c7ab}}
+@media(prefers-color-scheme:dark){.agent-green{--agent-card:#263d35;--agent-tag:#385a4d;--agent-hover:#29403a}.agent-blue{--agent-card:#202d3c;--agent-tag:#32465d;--agent-hover:#243242}.agent-indigo{--agent-card:#222339;--agent-tag:#363759;--agent-hover:#262740}.agent-violet{--agent-card:#2d2438;--agent-tag:#463757;--agent-hover:#32283e}.agent-rose{--agent-card:#39222a;--agent-tag:#593641;--agent-hover:#40262f}.agent-peach{--agent-card:#372d26;--agent-tag:#57453a;--agent-hover:#3d312a}.agent-cyan{--agent-card:#223539;--agent-tag:#365259;--agent-hover:#263b40}.agent-olive{--agent-card:#313626;--agent-tag:#4c543b;--agent-hover:#373c2a}.deck-card.deck-tinted{--muted:#9aaba8;--accent:#79c7ab;}.message-card.agent-card{--muted:#9aaba8;--accent:#79c7ab}}
 .agent-card .author-name{background:var(--agent-tag);padding:0 .3rem;border-radius:.3rem;-webkit-box-decoration-break:clone;box-decoration-break:clone}.agent-card .author-name-start{padding-right:0;border-top-right-radius:0;border-bottom-right-radius:0}.agent-card .author-name-end{padding-left:0;border-top-left-radius:0;border-bottom-left-radius:0}
 /* Choosing an agent's color (docs/reading-colors.md): its name, on a card or in the participants, opens a small picker of the palette's swatches. */
 .agent-card .author-name:hover{text-decoration:underline}
@@ -193,10 +205,16 @@ main::after{content:"";display:block;height:var(--line-room,0px)}
 .source-changes{margin:0 0 .6rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel);min-width:0}.source-changes summary{cursor:pointer;padding:.45rem .7rem;font-size:.85rem;font-weight:600}#source-changes-body{max-height:min(16rem,22dvh);overflow:auto}#source-changes-body,.page-here .source-changes>div{padding:0 .7rem .6rem;overflow-wrap:anywhere}.changes-summary{color:var(--muted);font-size:.8rem;margin:0 0 .35rem}.changes-text{white-space:pre-wrap;line-height:1.6}.changes-added{background:var(--soft);color:var(--ink);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:3px;border-radius:.15rem}.changes-removed{color:var(--muted);text-decoration:line-through}.changes-gap{color:var(--muted)}
 /* Words a person had read that the message's agent author has since changed (item 614): struck through where they stood, quieter than the words that replaced them. */
 .struck-words{color:var(--muted);text-decoration:line-through;text-decoration-thickness:1px}
-/* On an outcome's page its Notebook pages are listed as its topics are, and one opens in place below them. */
-.selection-page #outcome-references-list{display:grid;grid-template-columns:1fr;gap:.35rem;overflow:visible;padding:0}.selection-page #outcome-references-list .nav-item{width:100%;max-width:none;margin:0;background:var(--panel);border-color:var(--line);padding:.85rem}.selection-page #outcome-references-list .nav-item:hover{background:var(--soft)}.page-here{margin-top:1rem;padding:1rem 1.15rem;border:1px solid var(--line);border-radius:.75rem;background:var(--panel)}.page-here h2{margin-bottom:.2rem;overflow-wrap:anywhere}.page-here h2:focus{outline:none}.page-here .notice{margin:.5rem 0}.page-here .source-changes{margin:.8rem 0 0}.page-here-body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;margin:.8rem 0}
+/* On an outcome's page its Notebook pages open in the existing sheet. */
+.page-here{margin-top:1rem;padding:1rem 1.15rem;border:1px solid var(--line);border-radius:.75rem;background:var(--panel)}.page-here h2{margin-bottom:.2rem;overflow-wrap:anywhere}.page-here h2:focus{outline:none}.page-here .notice{margin:.5rem 0}.page-here .source-changes{margin:.8rem 0 0}.page-here-body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;margin:.8rem 0}
 /* The top of a topic: the title with a gear for Topic settings at its upper right, and the topic's note as a plain subtitle under it. */
-.title-row{display:flex;align-items:flex-start;gap:.75rem}.title-row h1{flex:1;min-width:0;overflow-wrap:anywhere;line-height:1.25;padding-top:.4rem}
+.title-row{display:flex;align-items:flex-start;gap:.75rem}.topic-title-area{flex:1;min-width:0;padding-top:.4rem;line-height:1.875rem}.title-row h1{display:inline;overflow-wrap:anywhere;line-height:1.25}
+/* The pencil follows the title's actual text, including its last wrapped line. */
+.title-row h1.renamable{cursor:pointer}.title-row h1.renamable:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+.topic-title-pencil{display:inline-grid;place-items:center;width:1em;height:1em;min-height:0;padding:0;margin-left:.15rem;border:0;border-radius:0;background:transparent;color:var(--muted);font-size:.8rem;line-height:1;vertical-align:baseline;opacity:0}.topic-title-pencil svg{width:1em;height:1em}.topic-title-area:hover>.topic-title-pencil,.topic-title-area:focus-within>.topic-title-pencil,.topic-title-pencil:focus-visible{opacity:1}.topic-title-pencil:hover{background:transparent;color:var(--ink)}
+#topic-title-edit{min-width:0;padding-top:.25rem}#topic-title-edit .rename-line{width:100%;min-width:0;margin:0;font:inherit;min-height:2.75rem}#topic-title-edit .notice{font-size:.875rem;overflow-wrap:anywhere;margin:.35rem 0 0}
+@media(hover:hover){.title-row h1.renamable:hover{background:var(--soft)}}
+@media(hover:none){.topic-title-pencil{display:none}.title-row h1.renamable{display:inline-block;min-height:2.75rem;max-width:100%}}
 /* The gear: a quiet square button, 44 px to touch, its middle level with the title's first line. */
 .settings-gear{flex:0 0 auto;display:inline-grid;place-items:center;width:2.75rem;height:2.75rem;padding:0;color:var(--muted);border-color:transparent;background:transparent}.settings-gear:hover{color:var(--ink);background:var(--soft)}
 .topic-header .topic-subtitle{margin-top:.3rem;font-size:.95rem;overflow-wrap:anywhere}.topic-subtitle .topic-state{margin-right:.25rem;vertical-align:.08em}
@@ -301,8 +319,24 @@ main>#outcomes-home{margin-bottom:.4rem}
 @media(prefers-color-scheme:dark){:root{--whisper-line:#eef3f1}}
 .message-card.own-message{--whisper-line:#eef3f1}
 .message-card.whisper,.message-card.whisper:hover{border:1px dashed var(--whisper-line);border-radius:.75rem}
-/* Your black card keeps a thin black rim outside its line, so the near-white dashes always sit on black, even on the light page. */
-.message-card.own-message.whisper{box-shadow:0 0 0 2px #000}
+/* Item 704: whisper frames */
+/* Match the existing dashed edge, including a sheet in a dossier. A spread
+   shadow would draw a second, solid rectangle; the selection uses an outline
+   instead, without changing the card's size or its place under the next sheet. */
+#messages .message-card.whisper{/*704-card*/border-style:dashed;border-color:var(--whisper-line);box-shadow:none}
+#messages .message-card.whisper.lit:not(.reply-stack[data-head-open=false] .stack-head-card){/*704-selection*/outline:2px dashed var(--focus);outline-offset:0}
+/* A closed head is drawn as the folder and its tab, not the zero-height card.
+   Keep both parts dashed and remove the old tab's solid shadow/fillet ring. */
+#messages .reply-stack[data-head-open=false]:has(.stack-head-card.whisper),
+#messages .reply-stack:has(.stack-head-card.whisper) .stack-head{/*704-header*/outline:1px dashed var(--whisper-line);outline-offset:0;box-shadow:none;--stack-tab-shadow:none;--stack-tab-fillet:initial}
+#messages .reply-stack:has(.stack-head-card.whisper) .stack-head{--whisper-line:var(--ink)}
+#messages .reply-stack[data-head-open=false]:has(.stack-head-card.whisper.lit),
+#messages .reply-stack[data-head-open=false]:has(.stack-head-card.whisper.lit) .stack-head,
+#messages:not(:has(.lit)) .reply-stack:has(.stack-head-card.whisper):has(:is(.stack-toggle,.stack-rename-input):focus),
+#messages:not(:has(.lit)) .reply-stack:has(.stack-head-card.whisper):has(:is(.stack-toggle,.stack-rename-input):focus) .stack-head{/*704-header-selection*/outline:2px dashed var(--focus);outline-offset:0;box-shadow:none;--stack-tab-shadow:none;--stack-tab-fillet:initial}
+/* A whispered source, its quoted writing and the who chip keep their normal
+   focus visibility, width, colour and offset; only the stroke changes. */
+:is(#source-body.whispering,textarea.whispering,.who-chip.whispering):focus-visible{/*704-focus*/outline-style:dashed}
 .whisper-label{font-weight:500}
 .message-card .whisper-label,.whisper-wait{color:var(--muted)}
 .whisper-wait{font-weight:400}
@@ -321,51 +355,32 @@ textarea.whispering,textarea.whispering:focus{border:1px dashed var(--whisper-li
 .audience-line.switched{flex-basis:100%}.audience-line.switched .switch-words{color:var(--ink)}
 /* At phone width the line keeps who will see it and drops the rest, so the Reader's Send stays in view. */
 @media(max-width:760px){.intent-choice .choice-chip{padding:.2rem .55rem}.intent-row{flex-wrap:nowrap}.intent-row:has(.switched){flex-wrap:wrap}.audience-line{font-size:.75rem;min-width:0}.audience-more{display:none}}
-/* An outcome's conversation (docs/conversation.md): a topic page with one filter chip above the messages and small tags at the foot of each card. */
-.conversation-page #inline-destination{display:none}
-.conversation-page #topic-people,.conversation-page #notebook{display:none!important}
 /* The Reader's To: the topic's name, or This topic and Conversation as two chips. */
 .destination-chips{display:flex;flex-wrap:wrap;gap:.35rem}.destination-title{color:var(--ink)}
 .destination-chips .choice-chip,.audience .choice-chip{min-height:2.25rem;padding:.2rem .75rem;font-size:.85rem}
 /* Answered by: the team's names in the row, then a field a name wide that adds on Return. */
 .audience .answerer-chips{display:contents}.audience.answered-by input{flex:0 1 12rem;width:12rem;max-width:100%}.audience.answered-by>button:not(.someone){display:none}
-.conversation-show{display:flex;justify-content:flex-end;margin:0 0 .6rem}
+.feed-filter{display:flex;justify-content:flex-end;margin:0 0 .6rem}
 /* One row above the feed: "N messages marked unread · Read it" at its left when it shows, the view filters side by side at its right; it wraps only when the row cannot hold them, and takes no room when none shows. */
 .feed-filters{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:.4rem .5rem;margin:0 0 .6rem}
 .feed-filters:not(:has(>:not([hidden]))){display:none}
-.feed-filters>.topic-marks{margin:0 auto 0 0}.feed-filters>.conversation-show{margin:0}
+.feed-filters>.topic-marks{margin:0 auto 0 0}.feed-filters>.feed-filter{margin:0}
 .filter-chip{min-height:2.2rem;padding:.15rem .75rem;border-radius:1.2rem;font-size:.8rem;color:var(--muted)}
 .filter-chip[aria-pressed=true]{background:var(--soft);border-color:var(--accent);color:var(--ink);font-weight:650}
-.conversation-empty{padding:.5rem 0 1rem;display:flex;flex-direction:column;gap:.4rem;max-width:40rem}.conversation-empty p{margin:0}
-/* Only new: every card but an item nothing has settled is left out, the New line and a stack's line with them. A reply
-   stack draws nothing of its own here: its boxes give way, so each card it shows lays out as a card on its own does,
-   whatever else of its stack shows. */
-#messages.only-new :is(.reply-stack,.stack-replies){display:contents}
-#messages.only-new>:not([data-item=new],.reply-stack,.composer-home,.sheet-holder),#messages.only-new>.reply-stack>:not([data-item=new],.stack-replies),
-#messages.only-new>.reply-stack>.stack-replies>:not([data-item=new]){display:none}
 /* Two fingers swiped across the trackpad over the messages fold or unfold one (web/stack-feed.mjs), so with the pointer
    there a sideways overscroll goes back or forward no page. Only the page's own scroller can say so, so it sits on the root. */
 html:has(#messages:hover){overscroll-behavior-x:none}
 .message-card .about-line{display:block;font-size:.78rem;opacity:.85;margin-bottom:.3rem}
-.message-card .item-tags{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .9rem;margin-top:.55rem;font-size:.76rem}
-.message-card .item-tag-group{display:inline-flex;align-items:center;gap:.35rem;min-width:0;max-width:100%}
-.message-card .item-detail{opacity:.85;overflow-wrap:anywhere;min-width:0}
-.message-card .item-tag{flex-shrink:0;padding:0 .45rem;border:1px solid currentColor;border-radius:1rem;font-size:.7rem;font-weight:650;line-height:1.3rem;white-space:nowrap}
-.message-card .item-tag.mine{border-width:2px;font-weight:750}
 /* An item nothing has settled yet: three quiet dots in the card's own ink, pulsing in turn, still under reduced motion. */
 .item-waiting{display:inline-flex;align-items:center;gap:.22rem;height:1.3rem;padding:0 .15rem;cursor:default}
 .item-waiting>span{width:.34rem;height:.34rem;border-radius:50%;background:currentColor;opacity:.3;animation:item-waiting 1.5s ease-in-out infinite}
 .item-waiting>span:nth-child(2){animation-delay:.25s}.item-waiting>span:nth-child(3){animation-delay:.5s}
 @keyframes item-waiting{0%,70%,100%{opacity:.3}35%{opacity:.85}}
 @media(prefers-reduced-motion:reduce){.item-waiting>span{animation:none;opacity:.55}}
+.waiting-silence{display:inline-flex;align-items:center;justify-content:center;min-width:2.75rem;min-height:2.75rem;padding:0;border:0;background:transparent;color:inherit}
+.waiting-silence:has(>.item-waiting.is-silent){display:none}
 .message-card .item-link{text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .message-card .asks-you{margin:0 .35rem 0 .4rem}
-.conversation-row{min-height:44px;padding:.6rem;border:1px solid transparent;border-radius:.5rem;text-decoration:none;overflow-wrap:anywhere;font-size:.9rem}
-.conversation-row:hover,.conversation-row[aria-current=page]{background:var(--soft)}.conversation-row[aria-current=page]{border-color:var(--line);font-weight:600}
-.conversation-row>span,.conversation-row>small{display:block}.conversation-row small{font-size:.72rem;color:var(--muted);margin-top:.2rem;font-weight:400}
-.conversation-row .topic-state{margin:.25rem 0 0}
-#conversation-navigation{margin-bottom:1.3rem}
-.selection-page #conversation-navigation .conversation-row{background:var(--panel);border-color:var(--line);padding:.85rem}
 .destination-note{font-size:.78rem;margin:-.2rem 0 0}
 /* The Reader's one-line notices, "Your writing for This topic is kept there." among them, are as wide as their words. */
 #reader-notice{width:fit-content;max-width:100%}
@@ -573,6 +588,7 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 .message-bar button[hidden]{display:none}
 .message-bar button:hover,.message-bar button[aria-pressed=true]{background:var(--soft)}
 .message-bar button[aria-pressed=true]{font-weight:700}
+.message-bar button[aria-pressed=true],#thumb-source[aria-pressed=true]{box-shadow:var(--stack-cover-inset)}
 .message-reactions{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .45rem;margin-top:.55rem;font-size:.8rem}
 .reaction-count,.reaction-choice{display:inline-flex;align-items:center;gap:.25rem;padding:0 .55rem;border:1px solid color-mix(in srgb,currentColor 30%,transparent);border-radius:1rem;line-height:1.7rem;background:transparent;color:inherit;cursor:pointer;white-space:nowrap}
 .reaction-count:hover,.reaction-choice:hover{background:color-mix(in srgb,currentColor 10%,transparent)}
@@ -583,7 +599,7 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 .message-card.show-full{max-height:none;overflow:visible}
 .message-card.show-full>.message-preview{max-height:none;overflow:visible}
 #thumb-source{flex-shrink:0;min-width:2.75rem}
-.reader-reactions{margin:0;padding:.3rem .2rem 0;color:var(--muted);font-size:.8rem;overflow-wrap:anywhere}
+.reader-reactions{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .45rem;margin:0;padding:.3rem .2rem 0;color:var(--muted);font-size:.8rem;overflow-wrap:anywhere}
 #thumb-source[aria-pressed=true]{background:var(--soft);font-weight:700}
 .guide-open{min-height:1.6rem;padding:0 .55rem;border-radius:.45rem;color:var(--muted);font-size:.8rem}
 dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;max-height:calc(100dvh - 2rem);padding:1rem 1.25rem 1.25rem;overflow:auto}
@@ -613,12 +629,15 @@ dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;
 /* Marked unread, agent talk reads at full strength at once, so its Unread pill is never faint, even while the mark arrives. */
 .message-fold[data-talk=agents]:has(.unread-mark)>:is(.fold-line,.message-card),.message-card[data-talk=agents]:has(.unread-mark){opacity:1;transition:none}
 .replied-mark{position:relative;display:inline-flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;margin:-.4rem 0 -.4rem .2rem;vertical-align:middle;border-radius:.5rem;color:var(--muted);font-weight:400;cursor:pointer}
-@media(hover:hover){.replied-mark:hover{color:var(--ink);background:color-mix(in srgb,currentColor 12%,transparent)}.replied-mark:hover .replied-words{opacity:1}}
+@media(hover:hover){.replied-mark:hover{color:var(--ink);background:color-mix(in srgb,currentColor 12%,transparent)}.replied-mark:hover .replied-words{width:max-content;height:auto;padding:.15rem .5rem;opacity:1}}
 .replied-mark[data-shown]{color:var(--ink);background:color-mix(in srgb,currentColor 12%,transparent)}
 .replied-icon{display:inline-flex}
-.replied-words{position:absolute;top:100%;left:0;z-index:2;margin-top:.2rem;padding:.15rem .5rem;border-radius:.4rem;background:var(--tip-bg);color:var(--tip-ink);font-size:.75rem;font-weight:500;line-height:1.5;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s ease}
+/* Hidden reply words still name the card for assistive reading, but their
+   box has no width: an opacity-only tip widened the mobile page (831).
+   Shown tips wrap within the viewport and card-reading.mjs places them. */
+.replied-words{position:absolute;top:100%;left:var(--reply-tip-left,0px);z-index:2;width:0;height:0;max-width:calc(100vw - 2rem);overflow:hidden;margin-top:.2rem;padding:0;border-radius:.4rem;background:var(--tip-bg);color:var(--tip-ink);font-size:.75rem;font-weight:500;line-height:1.5;white-space:normal;overflow-wrap:anywhere;opacity:0;pointer-events:none;transition:opacity .12s ease}
 /* Shown by a tap, the words are the way on: a second tap on them or the arrow opens the reply. */
-.replied-mark[data-shown] .replied-words{opacity:1;pointer-events:auto;padding:.45rem .7rem;font-size:.8rem}
+.replied-mark[data-shown] .replied-words{width:max-content;height:auto;opacity:1;pointer-events:auto;padding:.45rem .7rem;font-size:.8rem}
 .replied-mark[data-shown] .replied-words::after{content:" \203A"}
 /* Beside the time on the author line, clear of the message bar over the card's top corner; a finger's 44px target overhangs the line rather than growing it. */
 @media(pointer:coarse){.replied-mark{width:2.75rem;height:2.75rem;margin:-.9rem -.4rem -.9rem 0}}
@@ -811,6 +830,8 @@ body:has(.rail.open){overflow:hidden}
 .composer[data-compose=writing] .draft-tag,.composer:not([data-has-writing]) .draft-tag{display:none}
 .taller-field{display:none;position:absolute;right:.3rem;top:.15rem;width:2.2rem;height:2.2rem;min-height:0;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted)}
 .taller-field[aria-pressed=true]{color:var(--ink);background:var(--soft)}
+/* Keep the reply controls in place while the height choice is unnecessary. */
+:is(.card-reply-composer,#reader-composer):not(:has(textarea.noting)):not([data-full-field]) .taller-field{visibility:hidden}
 /* Send stands clear of the field, so a touch between them is beyond its reach and never sends (docs/reader.md). */
 .compose-send{min-height:2.5rem;margin-left:1rem;border-radius:1.25rem;padding:.3rem 1rem;font-weight:650;white-space:nowrap}.compose-send>.send-word{margin:0;opacity:1}
 .compose-send[aria-disabled=true]{opacity:.55}
@@ -898,6 +919,10 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
 .quote-pill{pointer-events:auto;min-height:2.5rem;padding:.3rem 1.1rem;border:0;border-radius:1.25rem;background:var(--ink);color:var(--panel);font-weight:600;box-shadow:0 6px 20px rgb(0 0 0 / .25)}
 .quote-pill:hover{background:var(--ink);filter:brightness(1.15)}
 .quote-key{margin-left:.5rem;opacity:.65;font-weight:500}
+/* The same pill on a phone's dossier selection; native selection UI stays native. */
+.dossier-quote-pill{position:fixed;z-index:21;min-width:44px;min-height:44px;white-space:normal}
+.dossier-quote-pill .quote-key{display:none}
+@media(pointer:coarse){.reply-stack .message-preview{-webkit-user-select:text;user-select:text}}
 /* The header: ↑ ↓ ⋯ ✕ as quiet marks, not boxes. */
 #reader-stepping{display:flex}
 .reader-header>button,#reader-stepping>button{min-width:2.5rem;min-height:2.5rem;padding:0 .4rem;border-color:transparent;background:transparent;font-size:1.05rem;color:var(--ink)}
@@ -946,13 +971,13 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
   .quote-float{left:0;right:0;display:flex;justify-content:center}
   .quote-key{display:none}
 }
-/* Where a finger presses, every control of a composer, in every state, is at least 44px: one floor under all of them, which no rule for a single control lowers (so the floor alone is !important). The Reader's header is held to it here too. */
-@media(pointer:coarse){
+/* The phone layout keeps its 44px controls even when a mouse or trackpad becomes the primary pointer. The same floor covers coarse pointers at any width; individual controls cannot lower it. The Reader title shares its header's floor. */
+@media(pointer:coarse),(max-width:760px){
   .composer :is(button,input,textarea,select,[role=button]){min-width:2.75rem!important;min-height:2.75rem!important}
   .plus-button,.composer>#thumb-source{width:2.75rem;height:2.75rem}
   .composer[data-compose=line] textarea{height:2.75rem}
   #reader:not([data-layout=wide]) .writing-pane{grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.75rem,auto)}
-  .reader-header>button,#reader-stepping>button,#reader-star,#reader-aside{min-width:2.75rem;min-height:2.75rem}
+  .reader-header>button,#reader-stepping>button,#reader-star,#reader-aside,.reader-topic{min-width:2.75rem;min-height:2.75rem}
   .taller-field{width:2.75rem;height:2.75rem;top:0}
   .image-strip{padding:1rem 1rem 0 0}
   .image-choice>button[data-method=remove]{width:2.75rem;height:2.75rem;top:-1rem;right:-1rem;background:transparent;border:0}
@@ -969,13 +994,31 @@ dialog.composer-home:not([open]){display:block;position:static;width:auto;height
 .composer-home:not([open]) .inline-composer{border:1px solid var(--line);border-radius:.9rem;background:var(--paper)}
 dialog.composer-home[open]{top:auto;bottom:1.5rem;height:calc(var(--vv-height,100dvh) - 3rem);max-height:calc(var(--vv-height,100dvh) - 3rem);overflow:visible}
 dialog.composer-home[open] .inline-composer{border:0;border-radius:1rem}
-/* Alone in the sheet the composer is the sheet's height, and its field takes what the head, a panel and the images leave, then scrolls; ⤢ has nothing to add there. Where the rest leaves less than one line (a small phone with the keyboard up, an image's choices open), the field keeps its line, every row above it keeps its whole height (min-content: the image strip and a panel, which scroll, would otherwise give way to nothing and be drawn under the rows beside them), and the composer scrolls inside itself, the field brought into view as the keyboard comes up (compose-bar.mjs), so nothing goes past the sheet. On a laptop the who panel opens in the composer, under the head, and + over the field's foot, as side by side, since a popover above the sheet would be off the screen. */
-dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) 1fr;align-content:stretch;overflow-y:auto;scroll-padding-bottom:calc(.55rem + env(safe-area-inset-bottom))}
-dialog.composer-home[open] .inline-composer>.field-box{align-self:stretch}
-dialog.composer-home[open] .inline-composer textarea{--fit:none;height:100%;max-height:none;padding-right:.9rem}
+/* The pencil's sheet floats over readable context. The Notebook uses the same
+   dialog but keeps its full-height reading surface and backdrop. */
+dialog.composer-home[open]:not(.notebook-mode){height:auto;overflow:hidden}
+dialog.composer-home:not(.notebook-mode)::backdrop{background:transparent;backdrop-filter:none}
+dialog.composer-home[open] .inline-composer{height:auto;max-height:calc(var(--vv-height,100dvh) - 3rem);grid-template-rows:repeat(6,minmax(min-content,auto)) minmax(2.5rem,auto);align-content:start;overflow-y:auto;scroll-padding-bottom:calc(.55rem + env(safe-area-inset-bottom))}
+dialog.composer-home[open] .inline-composer textarea{--fit:auto;height:auto;max-height:min(40dvh,calc(12 * 1.5em + 1.1rem));padding-right:.9rem}
+dialog.composer-home[open] .inline-composer textarea:placeholder-shown{white-space:nowrap}
 dialog.composer-home[open] .inline-composer .taller-field{display:none}
-@media(min-width:761px){dialog.composer-home[open] .inline-composer>.who-panel{position:static;grid-area:panel;width:auto;max-width:none;max-height:none;margin-bottom:.6rem;box-shadow:none}dialog.composer-home[open] .inline-composer>.plus-panel{bottom:3.75rem}}
-@media(max-width:760px){dialog.composer-home[open]{width:100%;max-width:100%;height:calc(var(--vv-height,100dvh) - .75rem);max-height:calc(var(--vv-height,100dvh) - .75rem);margin:0;top:auto;bottom:calc(100% - var(--vv-top,0px) - var(--vv-height,100dvh));border-radius:1rem 1rem 0 0;border-width:1px 0 0}}
+/* An unavailable composer keeps the reason and its recovery control on separate rows. */
+#inline-composer:has(>#inline-retry:not([hidden])){grid-template-areas:"kinds kinds kinds kinds" "notice notice notice notice" "retry retry retry retry" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act" "phone-panel phone-panel phone-panel phone-panel";grid-template-rows:repeat(7,minmax(min-content,auto)) minmax(2.5rem,auto)}
+#inline-composer>#inline-retry{grid-area:retry}
+/* A thumbnail's center opens its choices. Remove has its own slot, even
+   before those choices open: a finger-sized corner overlay covers that center. */
+#inline-composer .image-choice>button[data-method=remove]{position:static;width:auto;height:auto;min-width:2.75rem;min-height:2.75rem}
+@media(max-width:760px){#inline-composer :is(button,input,textarea,select,[role=button]){min-width:2.75rem!important;min-height:2.75rem!important}}
+/* The pencil has its own phone panel row below writing, including Retry. */
+@media(max-width:760px){#inline-composer>.compose-panel{grid-area:phone-panel}}
+/* The inline menu spends room on choices, not padding or a keyboard-sized gap. */
+#inline-who-panel{gap:.25rem;padding:.25rem .5rem .35rem}
+#inline-who-panel .who-row{gap:.25rem}
+#inline-who-panel .who-sentence .audience-line{font-size:.8rem;line-height:1.35}
+#inline-who-panel .intent-row,#inline-who-panel .audience{gap:.25rem}
+#inline-who-panel .choice-chip{padding-inline:.55rem}
+@media(min-width:761px){dialog.composer-home[open] .inline-composer>.who-panel{position:static;grid-area:panel;width:auto;max-width:none;max-height:none;margin-bottom:.35rem;box-shadow:none}dialog.composer-home[open] .inline-composer>.plus-panel{position:static;grid-area:panel;width:auto;max-width:none;margin-bottom:.35rem;box-shadow:none}}
+@media(max-width:760px){dialog.composer-home[open]{width:100%;max-width:100%;height:calc(var(--vv-height,100dvh) - .75rem);max-height:calc(var(--vv-height,100dvh) - .75rem);margin:0;top:auto;bottom:calc(100% - var(--vv-top,0px) - var(--vv-height,100dvh));border-radius:1rem 1rem 0 0;border-width:1px 0 0}dialog.composer-home[open] .inline-composer{max-height:calc(var(--vv-height,100dvh) - .75rem)}#inline-who-panel{height:auto;max-height:var(--keyboard,min(45dvh,22rem));padding-bottom:calc(.5rem + env(safe-area-inset-bottom))}}
 .composer>.sheet-close{grid-area:title;justify-self:end;width:2.5rem;height:2.5rem;min-height:0;padding:0;border-color:transparent;background:transparent;color:var(--ink)}
 .composer-home:not([open]) .sheet-close{display:none}
 /* A new message has no message above it to keep in view: its field grows further. */
@@ -998,18 +1041,20 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .deck-fold{min-height:0}.deck-editor{min-height:var(--kept,0px);padding:0;border:0;border-radius:0;background:none;font-size:.92rem;line-height:1.55;scrollbar-gutter:auto}.deck-editor:focus-visible{outline:none}.deck-parent>.deck-editor{text-indent:1.3rem}.deck-writing:not(.deck-worded)>.deck-editor{margin:calc((1.35rem - .92rem * 1.55) / 2) 0}.deck-worded>.deck-editor{padding-top:calc(var(--body-start,1.65rem) - .92rem * 1.55)}.deck-chevron{position:absolute;top:.75rem;left:.95rem}.deck-empty{padding:1rem 0}
 .deck-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.deck-count{flex:1;color:var(--muted);font-size:.85rem}.deck-keys{margin:0;font-size:.78rem;display:grid}.deck-keys>span{grid-area:1/1}
 .deck-read-only .deck-bar button,.deck-read-only .deck-keys{display:none}
-.deck-card{position:relative;margin-left:calc(var(--depth,0) * 1.6rem)}.deck-card[hidden]{display:none}.deck-card>.deck-title{padding-right:4.2rem}
+.deck-card{position:relative;margin-left:calc(var(--depth,0) * 1.6rem)}.deck-card[hidden]{display:none}.deck-card>.deck-title{padding-right:7.3rem}
 .deck-under{display:none}.deck-under::before{content:'↳ '}
 .deck-fold{display:inline-flex;align-items:center;justify-content:center;width:1.4rem;height:1.4rem;margin:-.2rem .2rem -.2rem -.3rem;padding:0;border:0;border-radius:.35rem;background:none;color:var(--muted);vertical-align:middle;cursor:pointer}.deck-fold svg{width:1.05rem;height:1.05rem;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.deck-fold[aria-expanded=true] svg{transform:rotate(90deg)}:where(.deck-pointing) .deck-fold:hover{color:var(--ink);background:var(--soft)}.deck-fold:focus-visible{outline:2px solid var(--focus);outline-offset:2px}.deck-bubbles{position:absolute;top:.45rem;right:.5rem;display:flex;gap:.3rem}
 .deck-bubble{display:inline-flex;align-items:center;gap:.3rem;min-width:44px;min-height:32px;justify-content:center;padding:0 .5rem;border:1px solid transparent;border-radius:999px;background:none;color:var(--muted);font:inherit;font-size:.8rem;text-decoration:none;cursor:pointer}
 .deck-bubble svg{flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}
 :where(.deck-pointing) .deck-bubble:hover{border-color:var(--line);color:var(--ink)}.deck-bubble:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.deck-menu{opacity:0;pointer-events:none}:where(.deck-pointing) .deck-card:hover .deck-menu,.deck-card[aria-current=true] .deck-menu,.deck-menu:focus{opacity:1;pointer-events:auto}.deck-writing>.deck-editor{padding-right:3.7rem}
+.deck-card.deck-tinted{background:var(--agent-card)}:where(.deck-pointing) .deck-card.deck-tinted:hover{background:var(--agent-hover)}.deck-card.deck-tinted[aria-current=true]{background:var(--agent-hover)}.deck-card.deck-tinted.deck-selected{background:color-mix(in srgb,var(--accent) 12%,var(--agent-card))}
 .deck-ask{opacity:0}:where(.deck-pointing) .deck-card:hover .deck-ask,.deck-card[aria-current=true] .deck-ask,.deck-ask:focus{opacity:1}.deck-editing .deck-ask{display:none}
 .deck-unread,.deck-unread:hover{color:var(--accent);font-weight:600}.deck-unread svg{fill:currentColor}.deck-unread::after{content:'';width:.5rem;height:.5rem;border-radius:50%;background:var(--accent)}
 /* A card's images (item 321), under its words: each as tall as it needs up to a line of cards, never wider than the card. Its name shows until it loads, or with what it waits on; once it shows, screen readers alone hear the name. */
 /* × stands beside its image, never over it; a small image still shows at a thumb's size. */
 .deck-images{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem}.deck-image{display:flex;align-items:flex-start;gap:.3rem;margin:0;min-width:0;max-width:100%}
-.deck-image>.image-thumb{display:block;flex:0 1 auto;width:auto;height:auto;min-width:3rem;min-height:3rem;max-width:100%;max-height:14rem;object-fit:contain;border-radius:.5rem;border:1px solid var(--line);background:var(--soft)}
+.deck-image>.image-thumb{display:block;flex:none;width:3rem;height:3rem;min-width:3rem;min-height:3rem;max-width:100%;object-fit:contain;border-radius:.5rem;border:1px solid var(--line);background:var(--soft)}
 .deck-image-name{min-width:0;font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}.deck-image:not([data-state]):has(>.image-thumb:not([hidden]))>.deck-image-name{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 .deck-image:has(>.image-thumb[hidden])>.deck-image-name,.deck-image:not(:has(>.image-thumb))>.deck-image-name{padding:.4rem .6rem;border:1px dashed var(--line);border-radius:.5rem}.deck-image[data-state]:has(>.image-thumb:not([hidden]))>.deck-image-name{order:1;align-self:center;max-width:12rem}
 .deck-image-remove{order:2;flex:none;display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;padding:0;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--ink);font-size:1.1rem;line-height:1;cursor:pointer}.deck-image-remove:hover{background:var(--soft)}
@@ -1019,12 +1064,12 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .deck-writing.deck-dropping{outline:2px dashed var(--accent);outline-offset:2px}
 /* A card's image where its page is read (the Reader, a page in place): at the size it reads at, never wider than the words nor taller than most of the screen, its name under it; an image the page does not carry is its name alone. */
 .md-image{display:block}.page-image{display:flex;flex-direction:column;align-items:flex-start;gap:.25rem;margin:.35rem 0;min-width:0;max-width:100%;white-space:normal}
-.page-image>.image-thumb:not([hidden]){display:block;width:auto;height:auto;min-width:3rem;min-height:3rem;max-width:100%;max-height:min(28rem,60dvh);object-fit:contain;border-radius:.5rem;border:1px solid var(--line);background:var(--soft)}
+.page-image>.image-thumb:not([hidden]){display:block;width:3rem;height:3rem;min-width:3rem;min-height:3rem;max-width:100%;object-fit:contain;border-radius:.5rem;border:1px solid var(--line);background:var(--soft)}
 .page-image-name{font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}.page-image[data-state=missing]>.page-image-name{padding:.4rem .6rem;border:1px dashed var(--line);border-radius:.5rem}
 .deck-asking{border-color:var(--accent)}.deck-ask-form{display:grid;gap:.45rem;margin-top:.7rem}.deck-ask-field{min-height:5rem;overflow:hidden}
 .deck-ask-line{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.deck-ask-to{min-height:2.2rem}
 @media(pointer:coarse),(max-width:760px){.deck-fold{width:2.75rem;height:2.75rem;min-height:2.75rem}.deck-status .deck-again{min-height:2.75rem}.deck-bubble{min-height:2.75rem}.deck-parent>.deck-editor{text-indent:2.75rem}}
-@media(max-width:760px){.deck-page{max-width:none}.deck-keys{display:none}.deck-ask{opacity:1}.deck-count{flex-basis:100%;text-align:center}.deck-bar button{flex:1}}
+@media(max-width:760px){.deck-page{max-width:none}.deck-keys{display:none}.deck-ask{opacity:1}.deck-menu{opacity:1;pointer-events:auto}.deck-count{flex-basis:100%;text-align:center}.deck-bar button{flex:1}}
 
 .page-here-cards{display:inline-flex;align-items:center;min-height:44px;margin-right:.8rem}
 /* Starting a Notebook page uses the same quiet pencil as starting a message. */
@@ -1050,36 +1095,62 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .notebook-images{display:grid;gap:.5rem}.notebook-images>button{justify-self:start}
 .notebook-image-rows{display:grid;gap:.4rem}.notebook-image{display:flex;align-items:center;gap:.65rem;min-width:0;flex-wrap:wrap}
 .notebook-image>span{flex:1;min-width:8rem;overflow-wrap:anywhere}.notebook-image .image-thumb{width:3rem;height:3rem;object-fit:contain}
-/* A Notebook page in the composer over the feed (notebook-sheet.mjs): the saving sign always has its own row below the title and controls. Changing its words never changes the columns or wraps the three view buttons (item 642). The page below is the one place that scrolls, with the shared vertical card list at every width (item 652). */
-dialog.composer-home.notebook-mode[open]{overflow:hidden}
+/* NotebookSheet keeps only its title and glyphs fixed (868). The page menu joins that title row (873); the existing scroller holds save status, notices, deck controls and cards. */
+dialog.notebook-sheet-dialog[open]{overflow:hidden;box-shadow:var(--stack-cover-inset);border-radius:var(--stack-r-sheet)}
+dialog.notebook-sheet-dialog:not([open]){display:none}
 .notebook-sheet{display:flex;flex-direction:column;height:100%;min-height:0}
-.notebook-sheet-head{flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;grid-template-areas:"title views full close" "status status status status";align-items:center;gap:.35rem .5rem;padding:.45rem .5rem .45rem 1.1rem;border-bottom:1px solid var(--line)}
-.notebook-sheet-title{grid-area:title;min-width:0;margin:0;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.notebook-sheet-views{grid-area:views;display:flex;align-items:center;gap:.25rem}.notebook-sheet-status{grid-area:status;min-width:0;max-width:none}.notebook-sheet-full{grid-area:full}.notebook-sheet-close{grid-area:close}
+.notebook-sheet-head{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:.25rem;min-height:2.5rem;padding:0 .35rem 0 .75rem;border-bottom:1px solid var(--line)}
+.notebook-sheet-heading{display:flex;align-items:center;flex:1 1 0;min-width:0;gap:.25rem}
+.notebook-sheet-actions{display:flex;align-items:center;margin-left:auto;gap:.25rem}
+.notebook-sheet-saved{display:flex;align-items:center;gap:.35em;flex:none}
+.notebook-save-dot{display:inline-block;width:.5em;height:.5em;border-radius:50%;background:var(--muted)}
+.notebook-save-dot[data-save=saved]{background:var(--accent)}
+.notebook-sheet-saved .save-time::before{content:none}
+.notebook-sheet-status .deck-status>span::before{display:none}
+.notebook-sheet-title{flex:0 1 auto;min-width:0;margin:0;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* The same sheet becomes nonmodal; the existing topic feed keeps scrolling.
+   The outline stays at left and the Notebook takes the things rail's space. */
+@media(min-width:1280px){
+  body.notebook-docked .workspace-layout{grid-template-columns:18rem minmax(0,1fr) minmax(0,1fr)}
+  body.notebook-docked #things{display:none}
+  dialog.notebook-sheet-dialog.notebook-docked[open]{border:0;position:fixed;inset:1rem 1rem 1rem auto;margin:0;width:calc((100vw - 18rem)/2 - 1.5rem);max-width:none;height:calc(100dvh - 2rem);max-height:calc(100dvh - 2rem);z-index:21;animation:none}
+  body.notebook-docked main{min-width:0;padding-inline:1rem}
+}
+.notebook-dossier-picker{flex:none;max-height:35vh;overflow:auto;padding:.5rem 1rem;border-bottom:1px solid var(--line);overscroll-behavior:contain}
+.notebook-dossier-choices{display:flex;flex-direction:column;gap:.2rem}
+.notebook-dossier-choices>button{text-align:left;overflow:hidden;text-overflow:ellipsis;max-width:100%;background:transparent;border-color:transparent}
+.notebook-sheet-status{min-width:0;max-width:none}
 .notebook-sheet-status .deck-status{min-height:0;flex-wrap:nowrap}.notebook-sheet-status .deck-status>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Recovery controls follow the whole notice, wrapping below it when needed. */
 .notebook-sheet-status:has(.deck-status>[data-save=attention]){max-width:none}
 .notebook-sheet-status .deck-status:has(>[data-save=attention]){flex-wrap:wrap;justify-content:flex-start;gap:.35rem .5rem}
 .notebook-sheet-status .deck-status>[data-save=attention]{flex:1 1 12rem;white-space:normal;overflow:visible;overflow-wrap:anywhere}
 .notebook-sheet-status .deck-status>button{min-height:2rem;padding:.1rem .6rem;font-size:.78rem}
-.notebook-sheet-views .notebook-views{gap:.25rem}
-.notebook-sheet-views .notebook-views button{min-height:2.25rem;padding:.2rem .8rem;border-radius:999px;font-size:.85rem;background:transparent}
-.notebook-sheet-views .notebook-draft-toggle,.notebook-sheet-views .notebook-draft-note{min-height:2.25rem;padding:.2rem .8rem;border-radius:999px;font-size:.85rem}
-.notebook-sheet-views .notebook-views button[aria-pressed=true]{background:var(--soft);border-color:var(--accent);color:var(--ink);font-weight:600}
 .sheet-glyph{display:inline-grid;place-items:center;width:2.75rem;height:2.75rem;min-height:0;padding:0;border:0;border-radius:.5rem;background:transparent;color:var(--muted);font-size:1.05rem;text-decoration:none}
 .sheet-glyph:hover{background:var(--soft);color:var(--ink)}
-.notebook-sheet-pages{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--paper)}
-.notebook-sheet-page{flex:1;min-height:0;max-width:none;scroll-padding-top:3.5rem;display:flex;flex-direction:column;gap:.6rem;overflow:auto;overscroll-behavior:contain;padding:0 1.1rem 1.1rem}
+.notebook-sheet-head .sheet-glyph{flex:none;width:2.5rem;height:2.5rem}
+.notebook-sheet-dock[aria-pressed=true]{background:var(--soft);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+.notebook-sheet-pages{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--paper);position:relative;overflow:hidden;isolation:isolate}
+/* 900: paint the same inset above the opaque page. Its top sits outside this
+   clip, so no seam is added under the unchanged header. No hit area or space. */
+.notebook-sheet-pages::after{content:"";position:absolute;inset:-100% 0 0;border-radius:0 0 var(--stack-r-sheet) var(--stack-r-sheet);box-shadow:var(--stack-cover-inset);pointer-events:none;z-index:1}
+.notebook-sheet-page{flex:1;min-height:0;max-width:none;scroll-padding-top:.75rem;display:flex;flex-direction:column;gap:.6rem;overflow:auto;overscroll-behavior:contain;padding:0 1.1rem 1.1rem;isolation:isolate}
 .notebook-sheet-page>*{flex:none}
-.notebook-sheet-page>.deck-bar{position:sticky;top:0;z-index:2;padding:.55rem 0 .35rem;background:var(--paper)}
+.notebook-sheet-page>.deck-bar{padding:.55rem 0 .35rem}
 .notebook-sheet-page>.notebook-text-panel:not([hidden]){flex:1 1 auto;display:flex;min-height:10rem;padding-top:.75rem}
 .notebook-sheet-page .notebook-text{flex:1;min-height:0;height:auto;resize:none}
-.notebook-sheet-page>.notebook-images:has(.notebook-image-rows:empty){display:flex;justify-content:flex-end;margin-bottom:-.4rem}
-.notebook-sheet-page>.notebook-images>button{min-height:2.25rem;padding:.15rem .7rem;font-size:.8rem;border-color:transparent;background:transparent;color:var(--muted)}
+.notebook-sheet-page>.notebook-images:has(.notebook-image-rows:empty){display:none}
+/* Docked Cards alone have a black ground. Remember the theme above this local
+   palette so a person's explicit Set color face keeps its original ink. */
+.notebook-sheet-dialog{--notebook-theme-ink:var(--ink);--notebook-theme-accent:var(--accent);--notebook-theme-focus:var(--focus);--notebook-theme-soft:var(--soft)}
+.notebook-docked .notebook-sheet-page:has(>.deck-cards:not([hidden])){--paper:#000;--panel:#111;--ink:#fff;--muted:#b8c4c0;--line:#64756e;--accent:#86d4b7;--soft:#253c33;--focus:#a7f0d2;background:var(--paper);color:var(--ink)}
+.notebook-docked .notebook-sheet-page .deck-card:not(.deck-tinted){background:var(--panel)}
+.notebook-docked .notebook-sheet-page .deck-card.deck-tinted{--ink:var(--notebook-theme-ink);--accent:var(--notebook-theme-accent);--focus:var(--notebook-theme-focus);--soft:var(--notebook-theme-soft);color:var(--ink)}
+.notebook-docked .notebook-sheet-page.notebook-drafted .deck-card{border-style:dashed}
 .notebook-sheet-changes{padding-top:.75rem}.notebook-sheet-changes>.source-changes{margin:0}.notebook-sheet-changes-body{padding:0 .7rem .6rem;overflow-wrap:anywhere}.notebook-sheet-changes>.notice{margin:0}
 .notebook-sheet-page .deck-keys>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .notebook-back{max-width:16rem;min-height:2.75rem;padding:.3rem .6rem;overflow:hidden;text-overflow:ellipsis;color:var(--accent);font-size:.88rem;font-weight:600}
-@media(pointer:coarse){.notebook-sheet-views .notebook-views button,.notebook-sheet-views .notebook-draft-toggle,.notebook-sheet-views .notebook-draft-note,.notebook-sheet-status .deck-status>button{min-height:2.75rem}.notebook-sheet-page>.notebook-images>button{min-height:2.75rem}}
+@media(pointer:coarse){.notebook-sheet-status .deck-status>button{min-height:2.75rem}}
 @media(max-width:760px){
   /* Item 652: every pressable in the Notebook editor sheet keeps a 44px floor,
      regardless of pointer media or state-specific sizing (including refusals).
@@ -1091,13 +1162,9 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
   .notebook-sheet .deck-image>.image-thumb{min-width:3rem!important;min-height:3rem!important}
   @media(pointer:coarse){.notebook-sheet button.image-option{min-height:3rem!important}}
   .notebook-sheet a[href]:not(.sheet-glyph,.deck-bubble){display:inline-block}
-  /* Title and glyphs, then the three chips, then the sign in its own row at every phone width. */
-  .notebook-sheet-head{display:flex;flex-wrap:wrap;padding:.3rem .35rem .45rem 1rem}
-  .notebook-sheet-title{flex:1 1 calc(100% - 6.6rem)}.notebook-sheet-views{flex:none}
-  .notebook-sheet-status{flex:0 0 100%;max-width:none;container-type:inline-size}.notebook-sheet-status .deck-status{justify-content:flex-end}
-  @container (max-width:12rem){.notebook-sheet-status .save-time{display:none}}
+  /* The fixed row stays single on a phone; the existing 44px control floor remains. */
+  .notebook-sheet-status{max-width:none;container-type:inline-size}.notebook-sheet-status .deck-status{justify-content:flex-end}
   .notebook-sheet-page{padding:0 .75rem .75rem}
-  .notebook-sheet-views .notebook-views button,.notebook-sheet-views .notebook-draft-toggle,.notebook-sheet-views .notebook-draft-note,.notebook-sheet-page>.notebook-images>button{min-height:2.75rem}
   .notebook-sheet-page>.deck-bar button{flex:none;padding-inline:.9rem}
   .notebook-back{max-width:9rem}
 }
@@ -1114,9 +1181,9 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .message-edited{color:var(--muted)}
 /* What a card's message carries (item 127): small glyphs in the card's line beside its time, in the line's quiet color on every card face, light and dark. A mark, not a control: its words are its accessible name and tooltip. */
 .card-carries{white-space:nowrap;margin-left:.15rem}
-/* The star (stack-look.css) shows only on a lit card, but always has its place. On a marked line its room is kept at the end of what comes before it (the time and its marks, or Edited), and the star sits in that room taking no width of its own, so a line the marks fill wraps with its star instead of leaving the star alone on a line that shows nothing. */
-.message-author:has(.card-carries)>:has(+ .card-star){padding-right:1.3rem}
-.message-author:has(.card-carries)>.card-star{box-sizing:border-box;width:1rem;margin-left:-1rem;padding:0;text-align:center}
+/* The star (stack-look.css) shows only on a lit card, but always has its place. On every author line, including a plain card (634), reserve a glyph and a small gap in the line's own font size at the end of what precedes it (the time and any marks, or Edited). The star sits in that room taking no extra width, so it neither wraps alone onto an empty line nor moves the time when revealed. */
+.message-author>:has(+ .card-star){padding-right:1.2em}
+.message-author>.card-star{box-sizing:border-box;width:1em;margin-left:-1em;padding:0;text-align:center}
 .carry{display:inline-block;width:.95rem;height:.95rem;margin-left:.3rem;vertical-align:-.15rem;background-color:var(--muted);-webkit-mask:var(--carry) center/contain no-repeat;mask:var(--carry) center/contain no-repeat}
 .carry-image{--carry:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='1.75' y='2.75' width='12.5' height='10.5' rx='1.5'/%3E%3Ccircle cx='5.5' cy='6.5' r='1.1'/%3E%3Cpath d='M2.5 12l3.75-3.75 2.5 2.5 1.75-1.75 3 3'/%3E%3C/svg%3E")}
 .carry-note{--carry:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.25 1.75h6.5l3 3v9.5h-9.5z'/%3E%3Cpath d='M9.75 1.75v3h3M5.5 8.25h5M5.5 11h3.5'/%3E%3C/svg%3E")}
@@ -1207,12 +1274,71 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 #skills-links a.nav-item:hover{background:var(--soft)}#skills-links a[aria-current=page]{background:var(--soft);color:var(--accent);font-weight:650;border-color:var(--line)}
 @media(max-width:760px){#skills-links{display:flex;overflow:auto;gap:.35rem;padding:.25rem}#skills-links a.nav-item{flex:0 0 auto;max-width:15rem;width:auto}}
 /* A dossier's cover in the Reader (item 624, docs/dossier-covers.md): one quiet line above the message, where it stands and its payload's pill, that opens to the whole sheet (web/dossier-cover.mjs; its pills' look is web/stack-look.css's). On a phone it gives way while the reply is written, so the message keeps its lines. */
-#reader-cover{flex:none;min-width:0;margin:0 0 .5rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel)}#reader-cover>summary{display:flex;align-items:center;gap:.4rem;min-width:0;padding:.35rem .7rem;font-size:.85rem;cursor:pointer;-webkit-tap-highlight-color:transparent}#reader-cover>summary>.reader-cover-words{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:550}#reader-cover>summary>.row-pill{flex:none;max-width:45%}#reader-cover[open]>summary>.row-pill{display:none}#reader-cover>.dossier-cover{display:flex;padding:0 .7rem .6rem}#reader-cover:not([open])>.dossier-cover{display:none}
+#reader-cover{flex:none;min-width:0;margin:0 0 .5rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel)}#reader-cover>summary{display:flex;align-items:center;gap:.4rem;min-width:0;padding:.35rem .7rem;font-size:.85rem;cursor:pointer;-webkit-tap-highlight-color:transparent}#reader-cover>summary>.reader-cover-words{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:550}#reader-cover>summary>.row-pill{flex:none;max-width:45%}#reader-cover[open]>summary>.row-pill{display:none}#reader-cover>.dossier-cover{display:grid;padding:0 .7rem .6rem}#reader-cover:not([open])>.dossier-cover{display:none}
 @media(pointer:coarse){#reader-cover>summary{min-height:2.75rem}}
 @media(max-width:480px){#reader:has(#reader-composer[data-compose=writing]) #reader-cover{display:none}}
 
 /* A displayed thumbnail opens its image (651), with visible keyboard focus. */
 .image-thumb[role=link]{cursor:pointer}.image-thumb[role=link]:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+/* 653: the Notebook list's contain thumbnail beside the existing named Open.
+   Its square is reserved while loading; no image leaves Open as the fallback.
+   Keep both acts at least 44px, with wrapping for long file names on phones. */
+.attachment-control{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.4rem;max-width:100%;vertical-align:middle}
+.attachment-control>.attachment-open{min-width:44px;min-height:44px;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.attachment-control>img.image-thumb{display:block;flex:none;align-self:center;width:3rem;height:3rem;min-width:44px;min-height:44px;object-fit:contain;margin:0;border-radius:.4rem}
+.attachment-control>img.image-thumb[hidden]{display:block!important}
+/* Override the Review list's larger passive-image result, only for thumbnails. */
+#review-content .pending-card .attachment-control>img.image-thumb{width:3rem;height:3rem;object-fit:contain;margin:0}
+/* Item 649: the corner owns a row after the content, before the card's normal
+   padding (including a covered sheet's overlap allowance). Flow also keeps a
+   static dossier root's corner on its own card without moving the folder tab. */
+.note-corner{position:static;display:flex;align-items:center;justify-content:center;width:2.75rem;height:2.75rem;margin-left:auto;color:var(--muted);cursor:pointer}
+.note-corner:hover{color:var(--ink)}
+.note-corner:focus-visible{outline:2px solid var(--focus);outline-offset:-4px}
+.note-corner-glyph{display:block;width:1rem;height:1rem;background:currentColor;-webkit-mask:var(--carry) center/contain no-repeat;mask:var(--carry) center/contain no-repeat}
+@media(forced-colors:active){.note-corner-glyph{background:CanvasText}}
+/* The Reader's own reply bar, in its source card (721, 838).
+   The source keeps its reading height above the shared reply bar;
+   the full Reader's layout and the phone composer keep their existing rules. */
+/* Source drags select words; the card's pointer owner prevents their release
+   from opening Reader. The embedded Reader and writing keep their own rules. */
+.message-card>:not(#reader,.message-preview){-webkit-user-select:none;user-select:none}
+.message-card>.message-preview{-webkit-user-select:text;user-select:text}
+.message-card[data-card-reply]{max-height:none!important;overflow:visible;cursor:default}
+#messages .message-card[data-card-reply]{display:block;height:auto;min-height:0}
+#messages .message-card[data-card-reply]>#reader{display:block!important}
+.message-card[data-card-reply]:not(.show-full)>.message-preview{display:block;max-height:var(--reply-message-height);overflow-y:auto;overscroll-behavior:auto}
+#reader[data-card-reply]{position:relative;inset:auto;width:100%;max-width:none;height:auto;max-height:none;margin:.65rem 0 0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible;animation:none;cursor:default}
+#reader[data-card-reply] .reader-main{display:grid;height:auto;grid-template-areas:"header" "reading" "writing";grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto}
+#reader[data-card-reply] .reader-header{display:flex;flex-wrap:nowrap;min-height:0;padding:0 0 .25rem;border:0}
+#reader[data-card-reply] .reader-header>:not(.reader-heading,#reader-close),
+#reader[data-card-reply] .reader-title-row>:not(#reader-title),
+#reader[data-card-reply] #reader-origin{display:none}
+#reader[data-card-reply] .reader-header .reader-heading{display:block}
+#reader[data-card-reply] .reader-header .reader-title-row{order:0;padding:0}
+#reader[data-card-reply] #reader-title{font-size:.8rem;color:var(--muted)}
+#reader[data-card-reply] #reader-close{min-width:2.75rem;min-height:2.75rem;padding:0;border:0;background:transparent}
+#reader[data-card-reply] .reading-pane{display:block;padding:0}
+#reader[data-card-reply] .reading-pane>:not(#source-access-status,#source-update,.source-actions){display:none}
+#reader[data-card-reply] .writing-pane{height:auto;max-height:none;overflow:visible;padding-left:0;padding-right:0;background:transparent}
+/* Addressing belongs to the dossier, even when the message has another
+   author's tint. These inherited folder tokens also cover the phone sheet. */
+#reader[data-card-reply] :is(.who-chip,.who-panel){--panel:var(--stack-folder);--paper:var(--stack-folder);--ink:var(--stack-folder-ink);--muted:var(--stack-meta-ink);--soft:var(--stack-folder-deep);--accent:color-mix(in srgb,var(--stack-folder) 80%,var(--stack-folder-ink));--on-accent:var(--stack-folder-ink);--line:color-mix(in srgb,var(--stack-folder-ink) 30%,transparent);background:var(--stack-folder);color:var(--stack-folder-ink)}
+#reader[data-card-reply] .who-chip[aria-expanded=true]{background:var(--stack-folder-deep)}
+
+
+/* Item 650: only horizontal width changes; the existing vertical rules hold.
+   The transparent 44px targets carry quiet neutral grips, never card edges. */
+dialog#reader[data-width-edges]{--composer-width:var(--composer-width-stacked,var(--widest))}
+dialog#reader[data-width-edges][data-layout=wide]{--composer-width:var(--composer-width-wide,var(--widest))}
+dialog[data-width-edges][open]:not(.notebook-mode):not([data-card-reply]){width:min(var(--composer-width,var(--widest)),calc(100vw - 3rem));min-width:min(760px,calc(100vw - 3rem));margin-inline:auto}
+.composer-edge{position:absolute;z-index:6;top:calc(50% - 22px);width:44px;height:44px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:ew-resize}
+.composer-edge[data-edge=left]{left:0}.composer-edge[data-edge=right]{right:0}
+.composer-edge::after{content:'';position:absolute;top:10px;bottom:10px;width:3px;border-radius:2px;background:var(--muted);opacity:.55}
+.composer-edge[data-edge=left]::after{left:3px}.composer-edge[data-edge=right]::after{right:3px}
+.composer-edge:hover::after,.composer-edge:focus-visible::after{opacity:1}
+dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[data-card-reply]>.composer-edge{display:none}
+@media(max-width:760px){dialog[data-width-edges][open]:not(.notebook-mode):not([data-card-reply]){width:min(var(--composer-width,100vw),100vw);min-width:min(280px,100vw);margin-inline:auto}}
 /* Item 643: Done occupies the same space as + Add; touch reaches its names. */
 .topic-people .add-chip{display:inline-grid;grid-template-areas:"word"}
 .topic-people .add-chip>span,.topic-people .add-chip::after{grid-area:word}
@@ -1220,3 +1346,163 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 @media(pointer:coarse){.topic-people .add-chip,.topic-people .people-add button{min-height:2.75rem}}
 /* Why a press did nothing, said where it was (web/press-note.mjs, item 635): over the page, beside what was pressed, so nothing moves for it. */
 .press-note{position:absolute;pointer-events:none;z-index:1000;margin:0;max-width:min(22rem,calc(100vw - 32px));padding:.5rem .75rem;background:var(--warn-bg);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);border-radius:.5rem;font-size:.85rem;line-height:1.4;font-weight:500;white-space:normal;overflow-wrap:anywhere;text-align:left;box-shadow:0 .25rem .9rem color-mix(in srgb,var(--ink) 18%,transparent)}
+
+/* 786: quiet asked activity shares738 waiting dots; never an execution claim. */
+.message-update { display: inline-flex; align-items: center; vertical-align: middle; }
+.message-update[hidden] { display: none; }
+.refresh-request-line,.cover-revision-line { display: block; color: var(--muted); font-size: .78rem; font-weight: 400; white-space: normal; overflow-wrap: anywhere; }
+.refresh-request-line[hidden] { display: none; }
+.dossier-cover > .refresh-request-line,.dossier-cover > .cover-revision-line { grid-column: 1 / -1; }
+.reply-stack > .refresh-request-line { padding: .3rem .6rem; }
+.message-update:has(> .refresh-request-line:not([hidden])) { flex-wrap: wrap; flex-basis: 100%; min-width: 0; }
+.message-update > .refresh-request-line { flex-basis: 100%; }
+#reader-origin:has(.refresh-request-line:not([hidden])) { flex-wrap: wrap; white-space: normal; }
+#reader-origin > .message-update:has(.refresh-request-line:not([hidden])) { flex: 1 0 100%; }
+.message-update-activity { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; color: var(--muted); }
+@media (max-width: 760px) { .message-update-activity { min-width: 44px; min-height: 44px; } }
+
+/* Reader activity has its own slot; only provenance text gives up width. */
+#reader-origin { display: flex; align-items: center; gap: .25rem; }
+#reader-origin > .reader-origin-text { min-width: 0; }
+#reader-origin > .message-update { flex: none; }
+#reader-origin > .question-state { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.reader-header:has(#reader-origin > .question-state) .reader-title-row > button { margin: 0; }
+@media(max-width:480px) {
+  .reader-header:has(#reader-origin > .question-state) #reader-stepping { margin-left: auto; }
+  .reader-header:has(#reader-aside:not([hidden])) #reader-origin:has(> .question-state) {
+    order: 2; flex: 1 0 100%; flex-wrap: wrap; white-space: normal;
+  }
+  .reader-header:has(#reader-aside:not([hidden])) #reader-origin:has(> .question-state) > .reader-origin-text {
+    flex: 1 0 100%;
+  }
+}
+@media (max-width: 480px) {
+  .reader-header:has(#reader-aside:not([hidden])) #reader-origin { overflow: visible; }
+  .reader-header:has(#reader-aside:not([hidden])) .reader-origin-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+/* The page menu and inline title, shared by Text and Cards (792). */
+.notebook-rename{width:min(32rem,100%);min-width:0;font:inherit}
+.notebook-page-notice{flex-basis:100%;overflow-wrap:anywhere}
+.notebook-page-notice:empty{display:none}
+.notebook-tools>[aria-label="This page"]{margin-left:auto}
+@media(max-width:760px){
+ .notebook-tools>[aria-label="This page"],.notebook-rename,.notebook-page-notice button{min-width:44px;min-height:44px}
+}
+/* Item 774: the existing message overflow opens one quiet, bounded topic picker. */
+.dossier-move { color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: .5rem; width: min(32rem, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 1rem; overflow: auto; }
+.dossier-move h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
+.dossier-move button { min-height: 44px; color: var(--ink); background: transparent; border: 0; padding: .5rem; text-align: left; }
+.dossier-move-choices { display: flex; flex-direction: column; }
+.dossier-move-choices button { white-space: normal; overflow-wrap: anywhere; min-width: 0; max-width: 100%; }
+.dossier-move button:focus-visible { outline: 2px solid var(--focus); }
+.dossier-move-status { color: var(--muted); max-width: 40rem; }
+.dossier-moved-pointer { display: block; color: var(--muted); padding: .4rem 0; }
+/* Item 790: readable handoff, bounded by the device in both themes. */
+.onboarding-sheet { height: auto; overflow: auto; width: min(44rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); box-sizing: border-box; padding: 1rem; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: .7rem; }
+.onboarding-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.onboarding-head h2 { font-size: 1.1rem; margin: 0; }
+.onboarding-sheet button { min-height: 44px; }
+#onboarding-text { display: block; width: 100%; height: min(52dvh, 32rem); box-sizing: border-box; resize: vertical; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel); color: var(--ink); border: 1px solid var(--line); padding: .75rem; font: inherit; }
+#onboarding-text[hidden] { display: none; }
+#onboarding-state { overflow-wrap: anywhere; }
+.onboarding-toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); max-width: calc(100vw - 3rem); padding: .6rem 1rem; border: 1px solid var(--line); border-radius: .5rem; background: var(--panel); color: var(--ink); z-index: 100; }
+
+#outcome-menu { min-width: 44px; min-height: 44px; flex: none; }
+
+/* Text display preview: spacing is layout only; no separator characters are
+   inserted into a sentence or into what a selection quotes. */
+.reading-pane article>.sentence-paragraph{display:block}
+.reading-pane article>.sentence-paragraph+.sentence-paragraph{margin-top:.45rem}
+.md-item-words>.sentence-paragraph{display:block}
+.md-item-words>.sentence-paragraph+.sentence-paragraph{margin-top:.45rem}
+.menu-description{display:flex;flex-direction:column;max-width:26rem;white-space:normal}
+.menu-description small{font-size:.78rem;font-weight:400;color:var(--muted)}
+.message-menu-list [aria-checked=true]{background:var(--soft)}
+
+
+/* Outcome home (879): the outline's topics fill the width beside the left
+   rail. The phone breakpoint keeps one column regardless of title length. */
+.outcome-topic-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:1rem}
+.outcome-topic-card{display:flex;flex-direction:column;justify-content:space-between;gap:1.25rem;min-width:0;min-height:9rem;padding:1.1rem 1.2rem;border:1px solid var(--stack-sheet-edge);border-radius:.75rem;background:var(--soft);box-shadow:var(--stack-cover-inset);color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
+@media(prefers-color-scheme:dark){.outcome-topic-card{background:#000}}
+.outcome-topic-card:hover{border-color:var(--accent)}
+.outcome-topic-card:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.outcome-topic-title{font-size:1.05rem;font-weight:650;line-height:1.5;color:var(--accent)}
+.outcome-topic-meta{display:flex;flex-wrap:wrap;gap:.25rem .85rem;color:var(--stack-meta-ink);font-size:.75rem}
+/* Named default: white card words in dark mode only; light keeps its ink. */
+@media(prefers-color-scheme:dark){:root{--outcome-topic-ink:#fff}.outcome-topic-title,.outcome-topic-meta{color:var(--outcome-topic-ink)}}
+.outcome-topic-toggle{margin:.85rem 0 .55rem}
+.outcome-topic-more{margin:.6rem 0}
+.outcome-topic-cards>.empty{margin:.8rem 0}
+@media(max-width:760px){.outcome-topic-grid{grid-template-columns:minmax(0,1fr);gap:.7rem}.outcome-topic-card{min-height:8rem;padding:1rem}}
+/* The existing page list is one horizontal strip; neither a long label nor a
+   long Notebook makes the whole middle column wider than its rails. */
+.selection-page #outcome-references-list{display:flex;gap:.75rem;overflow-x:auto;max-width:100%;padding:.4rem .2rem .65rem;scroll-padding:.2rem}
+.selection-page #outcome-references-list .nav-item{display:flex;flex-direction:column;align-items:center;gap:.4rem;flex:0 0 8rem;width:8rem;max-width:8rem;margin:0;padding:.7rem .4rem;border:1px solid transparent;background:transparent;text-align:center;white-space:normal;overflow-wrap:anywhere}
+.selection-page #outcome-references-list .nav-item:hover{background:var(--soft);border-color:var(--line)}
+.notebook-document{display:grid;grid-template-columns:repeat(2,1fr);gap:.3rem;width:3.25rem;height:4.1rem;padding:.75rem .45rem .45rem;background:var(--panel);border:1px solid var(--line);border-radius:.2rem .75rem .2rem .2rem;box-shadow:0 2px 3px rgb(0 0 0 / .06)}
+.notebook-document>span{border:1px solid var(--line);background:var(--soft);border-radius:.1rem}
+.notebook-document[data-mode=text]{grid-template-columns:1fr;align-content:center;gap:.35rem}
+.notebook-document[data-mode=text]>span{height:1px;border:0;background:var(--muted)}
+.notebook-document-title{font-size:.85rem;font-weight:600;line-height:1.35;min-width:0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;text-overflow:ellipsis}
+/* 859: the two-line title shrinks beside a count aligned to its first line. */
+.notebook-document-label{display:flex;align-items:flex-start;justify-content:center;gap:.3rem;max-width:100%}
+.notebook-document-label .unread-count{flex:none}
+.selection-page #topic-navigation>.rail-heading{justify-content:flex-start}
+.selection-page #topic-navigation>.rail-heading h2{flex:none}
+.notebook-document[data-mode=cards]{display:flex;align-items:flex-end;justify-content:center;padding:0;border:0;background:transparent;box-shadow:none;color:var(--muted)}
+.notebook-document[data-mode=cards]>.glyph{width:100%;height:auto;flex:none}
+.selection-page #outcome-references{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
+.selection-page #outcome-references>.rail-heading{grid-column:2;grid-row:1;justify-content:flex-end}
+.selection-page #outcome-references-list{grid-column:1;grid-row:1}
+.selection-page #outcome-references>:is(.notice,.rail-line,#more-references){grid-column:1/-1}
+.selection-page #topics-heading{text-transform:none;letter-spacing:normal}
+/* New message keeps its own dialog and width preference in the docked feed column (871). */
+@media(min-width:1280px){
+  body.notebook-docked #new-message-sheet[open][data-width-edges]{inset:auto auto 1.5rem 19rem;margin:0;width:min(var(--composer-width,var(--widest)),calc((100vw - 18rem)/2 - 2rem));max-width:calc((100vw - 18rem)/2 - 2rem);min-width:min(280px,calc((100vw - 18rem)/2 - 2rem))}
+}
+
+/* The same centered pill chooses Message or Note in the feed and the sheet (910).
+   Its outline adds no height to the chip-sized buttons, including the phone floor. */
+.pencil-kinds{grid-area:kinds;justify-self:center;max-width:100%;display:flex;align-self:start;gap:0;padding:0;border:0;border-radius:1.2rem;outline:1px solid var(--line);outline-offset:-1px;background:var(--soft)}
+.pencil-kinds button{min-height:2.25rem;padding:.15rem .8rem;border:1px solid transparent;border-radius:1.2rem;background:transparent;color:var(--ink);font-size:.85rem;font-weight:600;white-space:nowrap}
+.pencil-kinds [aria-checked=true]{background:#234b3d;border-color:#41856b;color:#fff}
+.pencil-kinds button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pencil-destination{grid-area:kinds;justify-self:center;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:.4rem;max-width:calc(100% - 3rem)}
+.note-page-choice{width:auto;min-width:0;max-width:14rem;min-height:2.25rem;padding:.15rem .4rem;border:0;border-radius:.4rem;background:transparent;color:var(--muted);font-size:.85rem}
+
+/* Pencil choices take a full row, never a column beside the writing. */
+#inline-composer{grid-template-areas:"kinds kinds kinds kinds" "notice notice notice notice" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act" "phone-panel phone-panel phone-panel phone-panel"}
+#inline-composer>.sheet-close{grid-area:kinds;align-self:start;z-index:1}
+
+/* Message replies share the composer; each keeps its own field and controls. */
+.card-reply-composer{position:relative;background:transparent;padding:.5rem 0;margin-top:.5rem;overflow-anchor:none;grid-template-columns:2rem 2.5rem minmax(0,1fr) auto;grid-template-areas:"title title title title" "notice notice notice notice" "head head head head" "panel panel panel panel" "images images images images" "height plus field send" "phone-panel phone-panel phone-panel phone-panel"}
+.card-reply-composer>.compose-head{grid-area:head;padding-right:2rem}
+.card-reply-composer>.image-strip{grid-area:images}
+.card-reply-composer>.field-box{grid-area:field}
+.card-reply-composer>.compose-send{grid-area:send;margin-left:.35rem}
+.card-reply-composer>.plus-button{grid-area:plus}
+.card-reply-composer>.reply-height{grid-area:height;position:static;display:grid;place-items:center;width:2rem;padding:0}
+.card-reply-composer>.card-reply-close{position:absolute;right:0;top:0;border:0;background:transparent;color:var(--muted);min-height:2rem;padding:0 .4rem}
+.card-reply-composer .to-note{display:none!important}
+.card-reply-composer[data-tall][data-compose=writing] textarea{max-height:calc(8 * 1.5em + 1.1rem)}
+.card-reply-composer[data-compose=writing]>.field-box textarea{padding-right:.9rem}
+@media(max-width:760px){.card-reply-composer[data-tall][data-compose=writing] textarea{max-height:calc(6 * 1.5em + 1.1rem)}}
+
+.message-card[data-card-reply]>.card-reply-composer:not([hidden]){display:grid!important}
+.card-reply-composer{color:var(--ink);--paper:var(--stack-folder);--panel:var(--stack-folder);--ink:var(--stack-folder-ink);--muted:var(--stack-meta-ink);--soft:var(--stack-folder-deep);--line:color-mix(in srgb,var(--stack-folder-ink) 30%,transparent)}
+/* An interactive document owns its scrolling; it never grows beyond a screen. */
+.html-frame { display: block; width: 100%; min-width: 0; height: 96px; max-height: 100dvh; border: 0; color-scheme: light dark; }
+.html-refusal { display: block; color: var(--muted); }
+/* Retraction keeps the words readable and gives the same terminal treatment
+   to a card's words and the Reader's source. The act's label stays unstruck. */
+.retracted-words,
+.retracted-message > .message-preview,
+#source-body.retracted-message { text-decoration: line-through; opacity: .6; }
+.message-retracted { font-weight: 500; }
+
+/* Reply completion follows the writing in every composer. */
+.mention-pick{display:flex;flex-direction:column;gap:.15rem;max-width:100%;max-height:13rem;overflow:auto;flex-shrink:0;padding:.3rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);box-shadow:0 .4rem 1.2rem rgba(0,0,0,.12)}
+.mention-pick[hidden]{display:none}.mention-pick>button{white-space:normal;min-width:0;max-width:100%;min-height:2.5rem;padding:.4rem .6rem;border:0;border-radius:.4rem;text-align:left;overflow-wrap:anywhere;background:transparent;color:var(--ink);cursor:pointer}
+.mention-pick>button[aria-selected=true],.mention-pick>button:hover{background:var(--soft)}.mention-pick>p{margin:.3rem .4rem;font-size:.8rem;color:var(--muted)}

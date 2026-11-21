@@ -1,5 +1,5 @@
-// Moving between an outcome's Conversation and its topics without the page
-// loading again (pipeline item 272; docs/rails.md). The outline on the left
+// Moving between topics, Conversations, outcomes and Outcomes home without the
+// page loading again (items 272 and 901; docs/rails.md). The outline on the left
 // stays the same element, with its folds and its scroll; only the middle and
 // the right rail change. The address changes with each move, so back,
 // forward, reload and a copied link work as they did.
@@ -27,12 +27,13 @@ import { parseRoute, routeHref, routeKey } from './topic-navigation.mjs';
 import { railDrawer } from './rail-drawer.mjs';
 import { depart, stay } from './api.mjs';
 
-// The pages a move in place leaves and reaches: an outcome's Conversation and
-// its topics. Every other page (the outcome's own page, its pipeline, its
-// Notebook page, Health, the Outcomes home) loads as before.
+// Navigation eligibility is separate from the rails' presentation: Outcomes
+// home keeps its full-main list while retaining the outline for the next move.
 export const FEEDS = new Set(['topic', 'conversation']);
 export const isFeed = route => Boolean(route && FEEDS.has(route.kind));
-export const movesInPlace = (from, to) => isFeed(from) && isFeed(to);
+export const hasRails = route => isFeed(route) || route?.kind === 'workspace';
+const isPlace = route => hasRails(route) || route?.kind === 'root';
+export const movesInPlace = (from, to) => isPlace(from) && isPlace(to);
 
 // The history entries this page makes carry their place in its own history
 // (aimPlace), so a back or forward the page refuses goes back to where it was
@@ -249,10 +250,11 @@ export class Shell {
     const route = this.begun = this.route();
     this.placeOfRun = this.places?.index ?? 0;
     this.at = route ? routeKey(route) : null;
-    this.feed = isFeed(route);
+    this.feed = isPlace(route);
+    const rails = hasRails(route);
     // The rails' look is the page's from its first paint (rails.css).
-    this.doc?.documentElement?.toggleAttribute('data-rails', this.feed);
-    for (const listener of this.listeners) listener.begin?.(this.feed, route);
+    this.doc?.documentElement?.toggleAttribute('data-rails', rails);
+    for (const listener of this.listeners) listener.begin?.(rails, route);
     return page;
   }
   // The run could not start (app.mjs says why, with a reload): what was
@@ -409,7 +411,12 @@ export class Shell {
   // (page.refused), or on another build says Theseus updated (updated).
   decide(way, build) {
     let why = null;
-    try { if (!way.still()) { this.stay(way); return; } } catch (error) { why = error; }
+    try {
+      if (!way.still()) { this.stay(way); return; }
+      // Notebook writing also registers here, including on outcome/root pages
+      // without an editor registry. An in-place move must respect its unload guard.
+      if (this.guards.some(holds => holds())) throw Error('Keep this page open until your writing and selected images are safely saved, then choose the page again.');
+    } catch (error) { why = error; }
     if (build !== null && build !== this.build) { this.updated(way, why); return; }
     if (!why) { this.proceed(way); return; }
     this.stay(way);
@@ -489,7 +496,7 @@ export class Shell {
     // A back or forward: the address may have moved on from the run's place.
     const to = this.route();
     if (!to || routeKey(to) === this.at) return;
-    if (!isFeed(to)) { this.leave(); return; }
+    if (!isPlace(to)) { this.leave(); return; }
     await this.arrive(to, { from: this.placeOfRun, to: this.places.index });
   }
   // Back and forward: an entry this page made is reached in place, through
@@ -500,7 +507,7 @@ export class Shell {
     this.cameBack();
     const said = this.places.popped(event.state), to = this.route();
     if (said.ignore) return;
-    if (said.load || !isFeed(to) || !this.installed || !this.feed) { this.leave(); return; }
+    if (said.load || !isPlace(to) || !this.installed || !this.feed) { this.leave(); return; }
     if (this.between) { this.owe({ pop: true }); return; }
     if (to && this.at === routeKey(to)) return;
     await this.arrive(to, said);

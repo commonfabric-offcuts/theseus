@@ -1,5 +1,33 @@
 # Checks for every waiting question (372)
 
+## Current277 reconciliation checkpoint
+
+Warp14589 assigned a bounded reconciliation and requires stopping if it grows
+past372. The public-command277 count red is3 for4 eligible asks. Updated current
+envelopes, exact-reply/withdrawal/supersession controls pass9/9, client3/3.
+Applied count/reader-scope/client-cycle mutants fail, with the cycle additionally
+caught by native320px taps; byte restoration returns both owners green.
+
+Current Chrome matrix: six phone cells pass at320/375/390 × light/dark using
+the actual Outcomes drawer waiting control; both1280px cells fail before the
+first pointer press because the old standing control is hidden.277's
+outcome-page.css hides the standing panel on the current outcome bench;
+rail-dense.css hides the separate waiting button in Compact and Roomy. The
+visible light glyph and its peek have no question-cycle handler. Restoring
+words or inventing another desktop act would cross those accepted owners.
+The desktop control needs Warp's ruling before continuation. No WebKit final
+run was started after this failed Chrome matrix. This checkpoint is not a
+feature freeze or review-ready source.
+
+Affected Core192 tests retains the same77 failure names as pristine183; Node
+1456 retains the same23 as pristine1453, with full normalized Node diagnostics
+identical. The Core source-read audit retains the same inherited undeclared
+deficits after classifying372's two new/moved query sites. Raw failures remain
+unwaived; old native and allocation notes below are historical. All owned
+Chrome/fixture cleanup is verified, with no remaining workload.
+
+## Retained original checks and qualifications
+
 `tests/test_waiting_questions_372.py` creates an isolated outcome with topics
 A and B and two Conversation asks through Core commands. It asserts four
 identities, exact source opening, no database mutation by reads, expanded

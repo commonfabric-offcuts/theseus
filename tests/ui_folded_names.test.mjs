@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { miniDocument, Element } from './fixtures/mini_dom.mjs';
+import { withReaderArchive } from './fixtures/reader_archive.mjs';
 import { placeNewLine } from '../web/unanswered.mjs';
 
 const file = new URL('../web/reply-stacks.mjs', import.meta.url);
@@ -25,7 +26,7 @@ Object.defineProperties(Element.prototype, {
 });
 Element.prototype.contains = function(node) { return node === this || [...this.descendants()].includes(node); };
 function fixture(items) {
-  const doc = miniDocument(), list = doc.createElement('div'), messages = new Map(), cards = new Map();
+  const doc = withReaderArchive(miniDocument()), list = doc.createElement('div'), messages = new Map(), cards = new Map();
   for (const [id, author, folded = true] of items) {
     const item = { id, seq: items.length - messages.size, author_id: author, body: 'Words ' + id, acts: { folded } }, card = doc.createElement('article'), name = doc.createElement('div');
     card.dataset.id = id; card.dataset.seq = String(item.seq); name.className = 'message-author'; name.textContent = author; card.append(name);
@@ -108,12 +109,18 @@ test('item 645 harness: filter off excludes the closed head and names the first 
   await assert.rejects(() => checkAttribution(p([{text:'fixture-person',ariaHidden:null},{text:'You',ariaHidden:null}]), ['head','reply']), {name:'AssertionError'});
   await assert.rejects(() => checkAttribution(p([{text:'You',ariaHidden:null},{text:'You',ariaHidden:'true'}]), ['head','reply']), {name:'AssertionError'});
 });
-test('item 645 regression: a New line placed by the arranged callback starts a named run', () => {
+test('item 645 regression: a separator placed by the arranged callback starts a named run', () => {
   const f = fixture([['a', 'agent'], ['b', 'agent'], ['c', 'agent']]);
+  // A run is inside one dossier. Separate roots now each have their own
+  // folder (799), and correctly do not suppress one another's sender.
+  for (const [index, item] of [...f.messages.values()].entries()) {
+    item.seq = index + 1; f.cards.get(item.id).dataset.seq = String(item.seq);
+    if (index) item.reply_to = 'a';
+  }
   let separated = false;
-  const line = f.doc.createElement('div'); line.dataset.line = 'new';
+  const line = f.doc.createElement('div'); line.className = 'stack-join-line';
   const arrange = () => subject.arrangeStacks(f.list, f.messages, { doc: f.doc, on: { arranged() {
-    if (separated) f.list.insertBefore(line, f.cards.get('c'));
+    if (separated) f.cards.get('c').parent.insertBefore(line, f.cards.get('c'));
     else line.remove();
   } } });
   arrange();
@@ -125,10 +132,12 @@ test('item 645 regression: a New line placed by the arranged callback starts a n
 });
 
 // Execute the page's actual boundary function with the real line renderer.
-// No browser, layout or timers: only the page shell and its data are supplied.
+// Flat folded rows deliberately isolate the line-only regrouping hook. The
+// full renderer's dossier boundaries are checked separately below; the real
+// New line goes between dossiers, never through one. No layout/native claim.
 test('item 645 regression: line-only refresh regroups inserted, moved and removed separators', async () => {
   const f = fixture([['a', 'agent'], ['b', 'agent'], ['c', 'agent']]);
-  subject.arrangeStacks(f.list, f.messages, { doc: f.doc });
+  Object.assign(subject.stackState(f.list), f.state);
   const views = { messages: f.messages, line: { seq: 2 }, olderCursor: null, held: true };
   const app = await readFile(new URL('../web/app.mjs', import.meta.url), 'utf8');
   const body = app.match(/function placeLine\(\) \{([\s\S]*?)\n\}/)[1];
@@ -140,4 +149,20 @@ test('item 645 regression: line-only refresh regroups inserted, moved and remove
   assert.deepEqual(f.names(), ['agent', 'agent', ''], 'moving the line names its new successor and groups the old one');
   views.line = null; place();
   assert.deepEqual(f.names(), ['agent', '', ''], 'removing the line groups the run again');
+});
+
+test('865 separate singleton dossiers keep each sender named through New-line moves', () => {
+  const f = fixture([['a', 'agent'], ['b', 'agent'], ['c', 'agent']]);
+  const state = subject.stackState(f.list);
+  let seq = 2;
+  const arrange = () => subject.arrangeStacks(f.list, f.messages, { doc: f.doc, on: { arranged() {
+    placeNewLine(f.list, subject.lineSeq(f.list, seq), f.doc, null);
+  } } });
+  for (const next of [2, 3, null]) {
+    seq = next; arrange();
+    assert.equal(state.stacks.length, 3);
+    assert.deepEqual(f.names(), ['agent', 'agent', 'agent'], 'a different dossier always restarts the sender run');
+    assert.ok([...state.sections.values()].every(section => section.dataset.single === 'true'));
+    assert.equal(f.list.querySelectorAll('[data-line=new]').length, next === null ? 0 : 1);
+  }
 });

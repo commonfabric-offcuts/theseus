@@ -1,0 +1,20 @@
+/* The topic header and an outcome's team on a phone (985): topic-dense applies on every screen, and this sheet,
+   loaded after it, sizes its chips and controls for a finger, shows a name's × while + Add is open (a phone has
+   no hover), and fits the add panel to a narrow page. */
+@media (pointer:coarse){
+  .topic-header{--sheet-chip-h:2rem;--topic-ctl:2.5rem}
+  .topic-header :is(.new-message,.settings-gear,.message-menu){width:var(--topic-ctl);height:var(--topic-ctl)}
+  .topic-people .person-pill{font-size:.85rem}
+  .topic-people .person-pill .pill-name{padding:0 .7rem}
+  .topic-people .add-chip{padding:0 .75rem;font-size:.85rem}
+  .topic-people .participants:has(.add-chip[aria-expanded=true]) .person-pill .pill-remove{width:2rem;margin-left:-.35rem;opacity:.85}
+  :is(.topic-people .people-add, #team-people>.people-add) input{font-size:1rem}
+}
+@media (max-width:760px){
+  /* The add panel opens under the team from its left edge, as wide as the page allows. */
+  .topic-people .participants>.people-add{left:0;right:auto;width:min(19rem,calc(100vw - 2.5rem))}
+  #team-people>.people-add{width:min(19rem,calc(100vw - 2.5rem))}
+  /* "Team" sits level with the first row of names when they wrap. */
+  :is(#outcome-team,.topic-people).topic-people{align-items:flex-start}
+  :is(#outcome-team,.topic-people).topic-people>h2{line-height:2rem;margin-block:0;align-self:flex-start}
+}

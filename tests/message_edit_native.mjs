@@ -1872,6 +1872,11 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   // The page loads again with every module held: its index.html comes from the server as it stands, and its entry
   // module is let through, so the entry's own imports are what wait. Gives the build index.html named and the held modules.
   const reloadHeld = async (p, what) => {
+    // 904 makes successful stamped modules immutable. This phase represents a
+    // cold module graph arriving during a restart, so ask the server instead of
+    // reusing the modules cached by open(). Keep the held requests observable.
+    // WebKit's route below already sends requests through its interception.
+    if (engine !== 'webkit') await p.send('Network.setCacheDisabled', { cacheDisabled: true });
     const held = await holdModules(p);
     const reloading = p.send('Page.reload').catch(error => error);
     await until(() => held.asked().some(at => /^\/b\/[^/]+\/app\.mjs$/.test(at)), `${what}: the page asks for its entry under its build`);
@@ -1894,7 +1899,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     try {
       for (const device of ['laptop', 'phone']) {
         const name = `edit-build-boot-${device}`;
-        const ids = await seed(name, [['note', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A page loaded across a deploy.' }]]);
+        const ids = await seed(name, [['note', { sender: 'person', whole_topic: true, body: 'A page loaded across a deploy.' }]]);
         const p = await open(name, device, name, ids.note, LOADS);
         const before = await loads(p);
         const { build: first, held, reloading } = await reloadHeld(p, device);
@@ -1922,7 +1927,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   await check('reading edit build a page whose modules the server could not give says Theseus could not open this page, with Reload, and loads nothing by itself: a module lost on its own build, and the server away mid-deploy; Reload brings it up: on a laptop and at 390 by touch', async () => {
     for (const device of ['laptop', 'phone']) {
       const name = `edit-build-said-${device}`;
-      const ids = await seed(name, [['note', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A page whose modules were lost.' }]]);
+      const ids = await seed(name, [['note', { sender: 'person', whole_topic: true, body: 'A page whose modules were lost.' }]]);
       const p = await open(name, device, name, ids.note, LOADS);
       for (const way of ['lost', 'away']) {
         const what = `${device}, ${way}`;
@@ -1957,7 +1962,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
 
   await check('reading edit build a page on one build, its modules slow but the server the same, loads once and reads no build; nor does a page opened plainly', async () => {
     const name = 'edit-build-once';
-    const ids = await seed(name, [['note', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A page on one build.' }]]);
+    const ids = await seed(name, [['note', { sender: 'person', whole_topic: true, body: 'A page on one build.' }]]);
     const p = await open(name, 'laptop', name, ids.note, LOADS);
     const served = await servedBuild();
     let seen = await loaded(p);

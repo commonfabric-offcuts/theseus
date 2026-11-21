@@ -65,6 +65,12 @@ a short reply from the person to the asker in the same act: `✅ Go ahead` or
 `🚫 Don't`, with "(I changed my answer)" when it replaces one. The agent hears
 it through its delivery like any reply, and the topic stops waiting on the
 person for that ask.
+Given from Go ahead, Don't or an offered Waiting on you answer in the Reader,
+a committed answer closes that same Reader after its unsent writing is kept
+(item 889). This reverses 860's writing-stays-open default for those Reader
+buttons only. A refusal or failure keeps its notice and the Reader open; a
+late answer never closes a different source. Feed-card and feed-cover answers
+keep their existing behavior.
 
 ## A thumbs-up answers an ask
 

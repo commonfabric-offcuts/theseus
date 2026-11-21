@@ -45,6 +45,7 @@ class HostedConfig:
     permission_mode: str = "workspace"
     reasoning_effort: object = None
     instructions: str = ""
+    protected_homes: tuple = ()
 
 
 HOSTED_FIELDS = frozenset(('v','kind','actor_id','profile','cli','codex_executable','codex_home',
@@ -185,7 +186,12 @@ def _load_config(path, *, expected_binding=None, profile_path=None, applications
 
 
 def writable_roots(profile_path, profile):
-    """The only directories a hosted agent's sandbox may write: the database's and its outbox."""
+    """Legacy config roots, retained to validate existing pinned route files.
+
+    Workspace execution uses hosted_permissions' narrower native profile:
+    only cwd/outbox writes and denied store/credential roots.
+    The database-directory entry here is never sent as an execution grant.
+    """
     return (str(profile.db_path.parent), str(Path(profile_path).parent/(profile.actor_id+'.outbox')))
 
 
@@ -247,7 +253,14 @@ def load_hosted_config(path, *, expected_binding=None):
              and set(supplied)==set(roots),'invalid_writable_roots')
     hosted_outbox(roots[1])
     pin = profile.store().read_route_pin(profile.actor_id,destination)
-    return HostedConfig(path,selected_profile,profile,cli,executable,dict(pin['destination']),cwd,model,roots,*options)
+    config = HostedConfig(path,selected_profile,profile,cli,executable,dict(pin['destination']),cwd,model,roots,*options)
+    if config.permission_mode == 'workspace':
+        from .hosted_permissions import validate_workspace
+        try:
+            validate_workspace(config)
+        except ValueError as error:
+            raise BrokerConfigError('invalid_cwd') from error
+    return config
 
 
 def _route(path, selected_executable):

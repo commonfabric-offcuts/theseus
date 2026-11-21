@@ -28,6 +28,7 @@ import base64
 from dataclasses import dataclass, field
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -118,4 +119,8 @@ def load(web_root) -> Build:
         entry = ('<script type="importmap">%s</script><script type="module" src="%s%s/app.mjs"></script>'
                  % (text, PREFIX, stamp)).encode("utf-8")
         index = index.replace(ENTRY, entry).replace(BOOT_TAG, ("<script>%s</script>" % boot).encode("utf-8"))
+        # Stylesheets share the same immutable namespace as the module graph;
+        # relative CSS assets then inherit that namespace too.
+        index = re.sub(rb'(<link\b[^>]*\bhref=")/([^"?#]+\.css)(")',
+                       lambda match: match[1] + (PREFIX + stamp + '/').encode() + match[2] + match[3], index)
     return Build(stamp=stamp, files=files, index=index, script_hashes=script_hashes)

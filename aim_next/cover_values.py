@@ -6,7 +6,7 @@ read from the owner's record, and what each reader is shown. No effects: covers.
 A cover is the newest `cover` act on a dossier's first message (message_acts, owner ''), so it keeps every revision
 and is fenced like any other act. It holds three fields, each set or cleared on its own:
 
-- `stands`: one line of where things stand;
+- `stands`: lines of where things stand (item 769);
 - `waiting`: what waits on the outcome's owner, each with the default that holds if they say nothing;
 - `payload`: what the dossier produced, in words, optionally a link and a kind, and the message that delivered it.
 
@@ -24,7 +24,7 @@ from .whispers import VISIBLE
 # What an empty cover stands at: the act's value before anyone wrote one, and after every field is cleared.
 EMPTY_COVER = {"stands": None, "waiting": [], "payload": None}
 FIELDS = ("stands", "waiting", "payload")
-STANDS_CHARS = 300
+STANDS_CHARS = 32000
 WAIT_CHARS = 300
 DEFAULT_CHARS = 200
 PAYLOAD_CHARS = 500
@@ -36,13 +36,16 @@ DONE_REFUSED = ("Done is the owner's to give: their 👍 on the payload's messag
                 "A cover's writer proposes the payload; nothing was changed")
 
 
-def _line(value, name, limit, required=True):
-    """One line of words: its spaces and line breaks folded to single spaces. Empty is None unless required."""
+def _line(value, name, limit, required=True, keep_lines=False):
+    """Fold whitespace to spaces, retaining LF boundaries only for stands. Empty is None unless required."""
     if value is None and not required:
         return None
     if not isinstance(value, str):
         raise Refusal("INVALID_ARGUMENT", "%s is words" % name)
-    folded = " ".join(value.split())
+    # Stands keeps LF boundaries; all other fields retain their one-line contract.
+    # CRLF becomes LF as CR is folded with whitespace within each line.
+    folded = ("\n".join(" ".join(line.split()) for line in value.split("\n")).strip()
+              if keep_lines else " ".join(value.split()))
     if not folded:
         if required:
             raise Refusal("INVALID_ARGUMENT", "%s says something" % name)
@@ -68,9 +71,12 @@ def _waiting(value):
         raise Refusal("INVALID_ARGUMENT", "waiting is a list of at most %d things that wait on the owner" % WAITS)
     waits = []
     for each in value:
-        if not isinstance(each, dict) or set(each) != {"text", "default"}:
+        if not isinstance(each, dict) or not {"text", "default"} <= set(each) <= {"text", "default", "message_id"}:
             raise Refusal("INVALID_ARGUMENT", "Each thing waiting names its text and its default: what holds if the owner says nothing")
-        waits.append({"text": _line(each["text"], "What waits", WAIT_CHARS), "default": _line(each["default"], "Its default", DEFAULT_CHARS)})
+        wait = {"text": _line(each["text"], "What waits", WAIT_CHARS), "default": _line(each["default"], "Its default", DEFAULT_CHARS)}
+        if "message_id" in each:
+            wait["message_id"] = None if each["message_id"] is None else _identifier(each["message_id"], "message_id")
+        waits.append(wait)
     return waits
 
 
@@ -105,7 +111,7 @@ def written(args):
         raise Refusal("INVALID_ARGUMENT", "A cover holds stands, waiting and payload only")
     fields = {}
     if "stands" in args:
-        fields["stands"] = _line(args["stands"], "Where it stands", STANDS_CHARS, required=False)
+        fields["stands"] = _line(args["stands"], "Where it stands", STANDS_CHARS, required=False, keep_lines=True)
     if "waiting" in args:
         fields["waiting"] = _waiting(args["waiting"])
     if "payload" in args:
@@ -115,7 +121,7 @@ def written(args):
 
 def stored_value(raw):
     """A stored cover act's value, every field present."""
-    value = dict(EMPTY_COVER)
+    value = dict(EMPTY_COVER, waiting=[])
     if raw:
         value.update(json.loads(raw) if isinstance(raw, str) else raw)
     return value
@@ -144,7 +150,7 @@ def done_of(db, owner, message_id, done_by=None):
     return min(found, key=lambda each: each[:2])[2] if found else None
 
 
-def shown(db, actor, value, by, at_ms, owner):
+def shown(db, actor, value, by, at_ms, owner, archived=False):
     """The cover as actor reads it, or None when every field is clear: its fields, who wrote it last and when, and the
     outcome's owner (whose 👍 or word gives Done). A word given in a whisper actor is outside shows as given, with no
     message to open."""
@@ -159,5 +165,33 @@ def shown(db, actor, value, by, at_ms, owner):
         seen = db.execute("SELECT 1 FROM messages m WHERE m.id=:id AND " + VISIBLE, {"id": done["message_id"], "actor": actor}).fetchone()
         if seen is None:
             payload = dict(payload, done={key: item for key, item in done.items() if key not in ("message_id", "seq")})
-    return {"stands": value["stands"], "waiting": [dict(each) for each in value["waiting"]],
+    waiting = []
+    for each in () if archived else value["waiting"]:
+        if each.get("ask_id"):
+            linked = db.execute("SELECT active FROM ask_cover_links WHERE ask_id=? AND actor_id=?", (each["ask_id"], each.get("actor_id"))).fetchone()
+            if linked is not None and not linked["active"]:
+                continue
+        source = each.get("ask_id") or each.get("message_id")
+        if source and db.execute("SELECT 1 FROM question_closures WHERE message_id=? UNION ALL SELECT 1 FROM message_withdrawals WHERE message_id=? LIMIT 1", (source, source)).fetchone():
+            continue
+        waiting.append(dict(each))
+    # Only the asked person gets the answer fence. Check the recorded recipients
+    # and visibility rather than trusting cover text.
+    human = db.execute("SELECT kind FROM actors WHERE id=?", (actor,)).fetchone()[0] == "human"
+    for wait in waiting:
+        # Both recorded sources are reader-scoped. A hidden first source can
+        # fall through to the visible Ask; neither identifier leaks in a link.
+        for key in ("message_id", "ask_id"):
+            if wait.get(key) and db.execute("SELECT 1 FROM messages m WHERE m.id=:id AND " + VISIBLE,
+                                            {"id": wait[key], "actor": actor}).fetchone() is None:
+                del wait[key]
+        if not human or wait.get("actor_id") != actor or not wait.get("ask_id"):
+            continue
+        ask = db.execute("SELECT m.go_ahead,m.addressees FROM messages m WHERE m.id=:id AND " + VISIBLE,
+                         {"id": wait["ask_id"], "actor": actor}).fetchone()
+        if ask is not None and ask["go_ahead"] and actor in json.loads(ask["addressees"]):
+            answer = db.execute("SELECT revision FROM message_reactions WHERE message_id=? AND actor_id=? AND kind='answer'",
+                                (wait["ask_id"], actor)).fetchone()
+            wait.update(go_ahead=True, answer_revision=answer[0] if answer else 0)
+    return {"stands": value["stands"], "waiting": waiting,
             "payload": dict(payload) if payload is not None else None, "by": by, "at_ms": at_ms, "owner": owner}

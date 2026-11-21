@@ -7,7 +7,7 @@ message is the same composer with no message above it.
 ## Reading
 
 While reading, the only thing under the message is one quiet line: `+`, a
-field that says who a reply would go to ("Tell fable · everyone here"), and
+field that says who a reply would go to ("Ask fable · everyone here"), and
 👍 for a reply of one thumb; `+` and 👍 wear no ring or fill until pointed at.
 Nothing under the message is boxed. A draft already written shows a Draft
 tag on the line, and one waiting to be reviewed shows its chip ("1 reply may
@@ -110,11 +110,18 @@ the pane's gap under the header in each of its states, and the message keeps
 its own room after its end, under ↑ Previous · ↓ Next. A laptop's header, and
 a phone's of one row, keep their room as before.
 
-The message's own acts are in the Reader's ⋯, beside Copy Link: Quote
-selection (only while words are selected or a passage is lit), Mark unread,
-Fold message (Unfold message once folded; a starred message offers none, as
-on the card), Start a topic from this, and Add to pipeline, and Wide or Stacked layout
-where the window can choose. Pressing the ⋯ or + can move the focus and let
+The message's own acts in the Reader's ⋯ come from the feed's shared list
+(861): Star/Unstar, Rename on a loaded dossier's first message, Archive/Bring
+back, Move to topic, Copy Link, Edit, Update, Mark read/unread, Fold/Unfold,
+Start a topic from this, Add to pipeline, Start a new dossier and text display.
+Each keeps its existing eligibility. A starred message offers no Fold.
+Rename keeps the reply and closes the Reader before opening the existing
+dossier title field. The Reader alone adds Quote selection (only while words
+are selected or a passage is lit) and Wide/Stacked where the window can choose.
+Start a new dossier quotes the full message and its link in New message,
+then moves any reply text and its effective audience; an occupied destination,
+image or unsettled writing refuses the move. See shared-message-menus-861.md.
+Pressing the ⋯ or + can move the focus and let
 the selection go, so what Quote selection quotes there is what was chosen
 as it was pressed, by a pointer, a finger or the keys. ↑ and ↓ in the
 header step to the message above and the message below as the topic page
@@ -122,19 +129,30 @@ shows them: inside a reply stack, ↓ goes down to its newer replies and then
 on to the stack below (docs/reply-stacks.md). On a phone the ⋯ is a sheet
 from the bottom, and the message ends with a quiet "↑ Previous · ↓ Next".
 
+A swipe right over the message in the composer folds that message for the
+reader, as in a dossier (item 648). It is the same act as Fold in
+⋯: the Reader stays open, its writing and destination kept, and the card on
+the topic folds to its row. A starred or already folded message stays as it
+is. A drag on code or a table scrolling sideways scrolls it instead; vertical
+scrolls, left swipes and gestures in the writing fold nothing. The phone's
+finger crosses 80 pixels with at most 40 pixels vertically; a trackpad uses
+the dossier's natural-scrolling direction and 80-pixel threshold, once per
+gesture. A gesture interrupted by another source opening acts on neither.
+The existing fold command owns optimistic display, refusal and recovery.
+
 ## Writing
 
 A press or Tab into the field makes it the composer:
 
 - **The who chip** says in words what Send will do and who sees it:
-  "Tell fable · everyone here", or, dashed, "Whisper to fable · only you
+  "Ask fable · everyone here", or, dashed, "Whisper to fable · only you
   two". A press opens the who panel: the full sentence of who sees it first,
   then How (Whisper, Tell, Ask), To, and In where the reply could go to
   another topic; Done closes it. On a laptop To is the topic's people,
   tapped to name them, and a field for anyone else; on a phone naming is
   two steps (below).
 - **Where it goes**, when In sends the reply to the outcome's conversation:
-  the chip says so ("Tell fable · in the conversation"), and so does the
+  the chip says so ("Ask fable · in the conversation"), and so does the
   panel's sentence ("Everyone in the conversation will see this"). A line
   under the chip says it goes there with a link to this message, who
   answers there, and that nobody in this topic is woken. With nothing
@@ -225,28 +243,31 @@ Escape is always what is shown now's (`unseen`).
 
 ## Size
 
-The Reader, where the composer has the message beside it, and the New
-message sheet, where it stands alone, are as tall as what shows of the window
-and grow with its width up to a maximum (item 400). On a laptop each keeps
-1.5rem of the dimmed page on every side and is at most 72rem wide, 100rem in
-Wide; the window decides the size, so it changes when the window does and
-never with what is written. A wider Reader changes what wraps and what
-overflows at 1440, so the native checks' message has one passage longer than
-any line, and the check that scrolls it reads it in a shorter window. On a phone, as in any window 760px wide or
-narrower, each is the window's width and as tall as what shows, above the
-keyboard when it is up (the sheet leaves .75rem of the dimmed page above it),
-so nothing goes past the screen, sideways or down, and Send stays in reach
-with the keyboard up. A phone turned sideways is wider than that, and is
-sized as a small laptop window. In Wide the reply's column is the Reader's
-whole height; in the New message sheet the composer is the sheet's height
-and its field takes what the head, an open panel and the images leave, then
-scrolls, so there is no taller toggle (⤢) there, while the stacked Reader's
-field keeps it where the window is narrow; on a laptop the sheet's who panel
-opens in it under the head, and + over the field's foot, as in Wide. Stacked, the reply
-stays as tall as its writing and the message has the rest; where the Reader
-is shorter than both (a small phone with the keyboard up, the reply holding
-an image), the field gives way, down to one line, before the reply has to
-scroll, so as much of the reply's head and images shows with Send as can.
+The Reader and New message sheet start at their existing widths. Dragging
+either outer edge resizes them symmetrically around the window's centre,
+horizontally only; Left/Right on a focused edge does the same (item650,
+[composer-width.md](composer-width.md)). Stacked and Wide keep separate
+page-lifetime choices through close/reopen; New message has its own choice.
+Reload restores the defaults. The shared in-card reply keeps its card's width
+and offers no resize edges; returning to full Reader restores the mode's choice.
+
+The Reader is as tall as the visible window and grows with its width up to
+72rem (100rem in Wide), keeping 1.5rem around it on a laptop. On a phone,
+it fills the visible window above the keyboard. The Wide reply fills its
+column; the stacked reply grows with the writing and leaves the rest for
+the message.
+
+The pencil's New message sheet instead floats at the bottom, over a clear,
+unblurred page (items 673, 670, 671). Its field starts at one line and grows
+with the text up to twelve lines or 40% of the window, then scrolls. It
+shrinks again as text is removed. The sheet fits its contents and never
+exceeds the visible window, keeping .75rem above on a phone and 1.5rem
+around it on a laptop. Its who and + panels open inside it. It needs no
+taller toggle. The inline who panel uses small gaps and padding, and takes
+only its content height on a phone (item 672); touch targets remain 44px.
+The Reader's own who panel and the separate phone naming sheet keep their
+existing layout. A Notebook page sharing the dialog keeps its full-height
+reading surface and backdrop.
 
 Shorter still, as on a 320-point phone with the keyboard up and an image
 whose Send was refused (its notice, the image's choices to Attach as
@@ -385,7 +406,10 @@ opening, which names its people as it is made, is unchanged.
 A quiet ✎ at the top of a topic opens the same composer with no message
 above it, focused and ready to type. It is the only control it adds to the
 page. ✕, Escape or a press on the backdrop closes it, keeping what was
-written, and focus returns to ✎. At rest the same composer is drawn in the
+written, and focus returns to ✎. Send or Cmd-Return closes this opening once
+Core confirms the message was sent. Empty, refused or unconfirmed sends
+leave it open with the recovery controls; a late answer never closes a
+later opening or newer writing. At rest the same composer is drawn in the
 feed, one line until written in, just above More: under the last dossier shown
 above More and over the More line (item 465). It is never moved while it is up,
 and a holder of its height keeps its place there, so no dossier behind the
@@ -415,8 +439,8 @@ holding a draft longer than its field (in the sheet, one written in its
 place in the feed first), holding an image, and holding a HEIC image that waits on a
 choice, its choices open (in the Reader by a refused Send, whose notice says
 why), the Reader and the New message sheet are each measured against the
-window: their height and width as above, the composer filling the sheet and
-Wide's column, the field reaching the composer's foot, a long draft scrolling
+window: the Reader fills it and the pencil sheet fits its content, the
+composer filling Wide's column, the wide field reaching the composer's foot, a long draft scrolling
 inside the field, a composer that scrolls inside itself having its field at
 one line (its minimum), no row of the composer drawn over another, what has focus
 showing (with the field in hand, Send too), ⤢ in the stacked Reader where
@@ -504,3 +528,42 @@ phone shows: the keyboard's own height and animation, the browser's bars
 appearing and going, and the caret being kept in view by the system. In
 WebKit, Tab moves only between fields and links unless Option is held, as in
 Safari; the check presses Option-Tab there.
+
+Item 648's bounded continuation checks (`tests/compose_swipe_648_protections.mjs`,
+`native-compose`, case names beginning "item 648 protections", "item 648 access"
+and "item 648 ledger") exercise the access guards through real HTTP refusal and
+state responses, native Retry access and read-only writing, negative gestures,
+and the ledger's actual binding-removal break with byte-for-byte restoration.
+The access states disable sending while safe local typing remains available.
+Actual read-only writing is checked while native Close waits for device-save
+completion; refusal keeps the Reader open, exact writing and destination kept.
+A source fold remains its own act while that writing is read-only. The title
+button shares the header's 44px phone-layout and coarse-pointer floor, which
+remains in force when native mixed input changes the primary pointer.
+The HTTP seams measure client behavior; they do not claim a backend permission
+transition. WebKit's phone-width input is desktop wheel with native taps. The
+unavailable native WebKit finger path remains harness item 720. Final physical
+phone acceptance is Tony's swipe on the coordinator's working preview, pending
+before independent review. Measured geometry uses named tolerances (#7715).
+
+The 8675 harness continuation observes trusted native touch termination on
+the original target, which may be detached when the source changes. A
+document-only observer cannot see that termination. The old and new source's
+own drafts and destinations are checked separately while stepping, and the
+original writing is checked again on return. Geometry keeps the named 2px
+containment and 1px phone-target tolerances, with actual served CSS mutants
+and restored controls. Ordinary and access/recovery fixtures use the fictional
+display name Pipit; the two original already-folded WebKit320 cases retain
+their technical-name fixture and their separate historical base placement.
+The recovered-state 3px diagnostic is specifically a background folded cue
+after that technical name, not Reader overflow, and is not waived by that
+older placement. Tony8674's supplied phone word, “yeah that works”, covers the
+precise smoke test and does not certify the engine matrix or every guard.
+
+The `item 673` cases in `tests/reader_compose_native.mjs` hold the pencil's
+bottom placement and clear backdrop, one-line growth and shrinkage, compact
+inline agent menu, confirmed Send and Cmd-Return closing exactly once, and
+interrupted preparation staying open. An unavailable composer keeps its
+reason and Retry on separate rows; Retry replaces the failed presentation,
+and the pencil then opens the restored composer. They run on a topic and Conversation,
+at 320, 375, 390 and laptop, light and dark, in Chromium and WebKit.

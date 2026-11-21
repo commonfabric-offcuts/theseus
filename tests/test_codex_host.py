@@ -1238,11 +1238,15 @@ class ProvisionCase(HostCase):
         started = [entry["in"] for entry in self.wire() if "in" in entry and entry["in"].get("method") == "thread/start"]
         self.assertEqual(len(started), 1)
         params = started[0]["params"]
-        self.assertEqual((params["approvalPolicy"], params["sandbox"], params["ephemeral"], params["cwd"]),
-                         ("never", "workspace-write", False, str(self.work)))
-        self.assertEqual(params["config"]["sandbox_workspace_write"]["writable_roots"], value["writable_roots"])
-        self.assertFalse(params["config"]["sandbox_workspace_write"]["network_access"])
-        self.assertIn("Your CLI: /usr/bin/python3 -I %s --profile %s" % (self.cli, self.agent_profile), params["developerInstructions"])
+        self.assertEqual((params["approvalPolicy"], params["ephemeral"], params["cwd"]), ("never", False, str(self.work)))
+        self.assertNotIn('sandbox', params)
+        policy = params['config']['permissions'][params['permissions']]
+        self.assertEqual(policy['filesystem'][str(self.db)], 'deny')
+        self.assertEqual(policy['filesystem'][str(self.agent_profile.parent)], 'deny')
+        self.assertTrue(params['config']['features']['network_proxy'])
+        self.assertEqual(policy['network']['domains'], {})
+        self.assertIn("Your CLI: /usr/bin/python3 -I %s --broker " % self.cli, params["developerInstructions"])
+        self.assertNotIn(str(self.agent_profile), params["developerInstructions"])
         # The provisioning child was reaped: its spawn has a matching end of input.
         self.assertEqual(len([entry for entry in self.wire() if "spawn" in entry]), 1)
 

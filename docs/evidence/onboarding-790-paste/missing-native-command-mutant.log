@@ -1,0 +1,50 @@
+effective_cache=/Users/commonfabric/aim-worktrees/codex-790-paste9912/docs/evidence/onboarding-790-paste/cache-missing-native-command-mutant-ae5d2144fd7d49ae8717c8c64bdd85bf
+{"ownedLiteralCases":{"chrome":["reading item 790 clipboard-control: fixture-only raw Meta+V versus native paste editing command","reading item 790 laptop: owner chooses both variants and copies current prompt by native paste","reading item 790 laptop: refused clipboard keeps readable text and retry copies fresh state","reading item 790 laptop: non-owner has no overflow and Core refuses the prompt","reading item 790 phone: owner chooses both variants and copies current prompt by native paste","reading item 790 phone: refused clipboard keeps readable text and retry copies fresh state","reading item 790 phone: non-owner has no overflow and Core refuses the prompt"],"webkit":["reading item 790 laptop: owner chooses both variants and copies current prompt by native paste","reading item 790 laptop: refused clipboard keeps readable text and retry copies fresh state","reading item 790 laptop: non-owner has no overflow and Core refuses the prompt","reading item 790 phone: owner chooses both variants and copies current prompt by native paste","reading item 790 phone: refused clipboard keeps readable text and retry copies fresh state","reading item 790 phone: non-owner has no overflow and Core refuses the prompt"]},"executedBodies":0,"runnerStarts":0}
+✔ safe diagnostics retain hashes, actual focus and native phases on success without text (0.704291ms)
+✔ exact equality rejects different text even at same length and leaves failure diagnostics (1.859542ms)
+✔ wrong clipboard content stops before paste, retains safe product defect classification (0.086416ms)
+✖ native editing command carries no text and raw path preserves original key call (0.565917ms)
+✔ clipboard read denial is diagnostic refusal without exception text or product failure claim (0.143417ms)
+✔ all diagnostic browser expressions parse and viewport tolerance catches actual expression crossing (0.468125ms)
+✔ actual reading entry point enumerates Chromium seven and WebKit original six without execution (30.128292ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 6
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 81.395834
+
+✖ failing tests:
+
+test at tests/clipboard_790_diagnostics.test.mjs:45:1
+✖ native editing command carries no text and raw path preserves original key call (0.565917ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      [
+        'Input.dispatchKeyEvent',
+        {
+          code: 'KeyV',
+  +       commands: [],
+  -       commands: [
+  -         'paste'
+  -       ],
+          key: 'v',
+          modifiers: 4,
+          type: 'rawKeyDown',
+          windowsVirtualKeyCode: 86
+        }
+  
+      at TestContext.<anonymous> (file:///Users/commonfabric/aim-worktrees/codex-790-paste9912/tests/clipboard_790_diagnostics.test.mjs:47:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ [ 'Input.dispatchKeyEvent', [Object] ], [ 'Input.dispatchKeyEvent', [Object] ] ],
+    expected: [ [ 'Input.dispatchKeyEvent', [Object] ], [ 'Input.dispatchKeyEvent', [Object] ] ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

@@ -219,14 +219,16 @@ class DeployRefusesTrain(TrainCase):
         out = self.trained(self.host(), self.train(self.merged, [self.head]), self.merged, self.hub())
         self.assertIn("train: PR #31 (ordinary), merge commit %s on %s at GitHub; the hosted judgment is pending (PR #31)"
                       % (self.merged[:12], BRANCH), out)
-        self.assertEqual(self.records(), ["00-plan", "00-train", "01-live", "02-checkout", "02-release"])
+        self.assertEqual(self.records(), ["00-plan", "00-train", "01-live", "02-checkout", "02-release", "release-20-measurements"])
         record = self.evidence_of("02-release")["record"]
         self.assertEqual((record["commit"], record["previous"], record["items"]), (self.merged, self.L, [481]))
         train = record["measurements"]["train"]
         self.assertEqual((train["pr"], train["kind"], train["merge_commit"], train["judgment"], train["hosted_run"]),
                          (PR, "ordinary", self.merged, "pending", None))
         self.assertEqual(train["items"], [{"item": 481, "approved_head": self.head, "review": "m-review-0"}])
-        self.assertEqual(set(record["measurements"]), {"train"}, "no count claims a local release check ran")
+        self.assertEqual(set(record["measurements"]), {"train", "full_measurements"}, "no count claims a local release check ran")
+        self.assertEqual(set(self.complete_measurements(record)), {'train'})
+        self.assertEqual(self.complete_measurements(record)['train']['judgment'], 'pending')
 
     def test_the_hosted_run_is_named_once_github_lists_it_and_must_be_of_the_merge_commit(self):
         github = self.hub(runs=[listed(77, self.merged, conclusion=None, status="in_progress"), listed(78, self.head)])
@@ -545,7 +547,10 @@ class TrainRecordsStepsBeyondPolicy(TrainCase):
         out = self.trained(self.host(), self.train(self.merged, [self.head]), self.merged, self.hub())
         measured = self.evidence_of("02-release")["record"]["measurements"]
         self.assertEqual(measured.get("steps_beyond_policy"), [self.ADDED])
-        self.assertEqual(set(measured), {"train", "steps_beyond_policy"}, "still no count claims a local release check ran")
+        self.assertEqual(set(measured), {"train", "steps_beyond_policy", "full_measurements"}, "still no count claims a local release check ran")
+        full = self.complete_measurements(self.evidence_of('02-release')['record'])
+        self.assertEqual(set(full), {'train', 'steps_beyond_policy'})
+        self.assertEqual(full['steps_beyond_policy'], [self.ADDED])
         self.assertIn("the release check runs %s, which %s at %s did not review; the next policy covers it"
                       % (self.ADDED, deploys.POLICY, self.L[:12]), out)
 
@@ -651,7 +656,8 @@ class TrainDeployed(Repositories, deploys.Restarting):
         self.assertNotIn("release_check", written["measurements"])
         self.assertEqual(self.records(), ["00-plan", "00-train", "01-live", "02-checkout", "02-release", "03-stopped",
                                           "04-backup", "05-fast-forward", "06-migrate", "07-server", "09-runner",
-                                          "10-verify", "11-release", "12-release-branch", "release-20"], "the live-instance steps still run")
+                                          "10-verify", "11-release", "12-release-branch", "release-20", "release-20-measurements"], "the live-instance steps still run")
+        self.assertEqual(self.complete_measurements(written)['train']['judgment'], 'pending')
 
 
 if __name__ == "__main__":

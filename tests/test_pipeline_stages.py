@@ -18,6 +18,10 @@ STAGES = ({"stage_id": "build", "name": "Build", "rounds": "together"},
 
 
 class StagesCase(PipelineCase):
+    def create_topic(self):
+        self.workspace()
+        return self.topic("t1", "Topic")
+
     def setUp(self):
         super().setUp()
         self.committed(self.on())
@@ -37,11 +41,10 @@ class StagesCase(PipelineCase):
         return self.sql("SELECT stage_id,round,left_outcome,left_ms IS NOT NULL FROM pipeline_stage_entries WHERE piece_id=? ORDER BY seq", (piece,))
 
     def topic(self, topic_id, title="Another topic"):
-        source = {"kind": "new_topic", "id": "opening-" + topic_id, "workspace_id": "w1"}
-        self.committed(self.save_draft("draft-" + topic_id, source, topic_id, "Opening " + title,
-                                       opening={"workspace_id": "w1", "title": title, "participants": ["agent-a"]}))
-        self.committed(self.prepare("draft-" + topic_id, topic_id, submission="sub-" + topic_id, send_op="open-" + topic_id))
-        self.committed(self.command("topic.create_and_send", {"submission_id": "sub-" + topic_id}, target={"topic_id": topic_id}, op="open-" + topic_id))
+        # 632: stage fixtures build in agent-opened topics. Keep the shared
+        # ReaderCase's person-opened writing fixtures unchanged.
+        from test_build_topics import BuildTopicsCase
+        return BuildTopicsCase.topic(self, topic_id, title)
 
     def test_a_piece_starts_only_on_now_items_not_already_in_work_in_a_topic_of_this_outcome(self):
         before = self.sql("SELECT count(*) FROM pipeline_pieces")
@@ -268,7 +271,7 @@ class StagesCase(PipelineCase):
         self.store.record_release({"release": 23, "commit": "5" * 40, "deployed_at": "2026-11-07T08:00:00-08:00", "items": [1, 2, 3], "source": "deploy"})
         self.assertEqual((self.entries(release)[-1][2], self.entries(piece)[-1][2], self.item(3)["shipped"]["release"]), ("shipped", "shipped", 23))
 
-    def test_finishing_a_piece_marks_its_items_done_and_a_release_pipeline_finishes_by_its_record(self):
+    def test_finishing_a_piece_marks_its_items_done_in_any_pipeline(self):
         piece = self.committed(self.start())["piece_id"]
         self.committed(self.command("pipeline.piece_finish", {"note": "done"}, {"piece_id": piece}))
         self.assertEqual(self.entries(piece), [("build", 1, "done", 1)])
@@ -279,7 +282,9 @@ class StagesCase(PipelineCase):
         self.rejected(self.command("pipeline.piece_finish", {}, {"piece_id": piece}), "PIECE_CLOSED")
         self.committed(self.on(ships_in_releases=True))
         other = self.committed(self.start(numbers=(3,)))["piece_id"]
-        self.rejected(self.command("pipeline.piece_finish", {}, {"piece_id": other}), "RELEASE_PIPELINE_SHIPS_BY_RECORD")
+        self.committed(self.command("pipeline.piece_finish", {"note": "Live in release 94; its record missed it"}, {"piece_id": other}))
+        self.assertEqual(self.entries(other), [("build", 1, "done", 1)])
+        self.assertEqual(self.item(3)["glyph"], "shipped")
 
     def test_combining_pieces_into_a_release_moves_their_items_and_keeps_their_topics_open(self):
         self.release_stages(*STAGES[:3], self.CHECKS)

@@ -22,7 +22,7 @@ export function readFailure(value) {
   if (['AUTHORITY_CHANGED', 'INVALID_BINDING'].includes(code)) return result('authority');
   if (code === 'CLEANUP_DEFERRED') return result('defer');
   if (code === 'RESYNC_REQUIRED') return result('resync');
-  if (code === 'FORBIDDEN') return result('forbidden');
+  if (['FORBIDDEN','PAGE_DELETED'].includes(code)) return result('forbidden');
   if (status === 401 || status === 403 || ['SESSION_REQUIRED', 'ORIGIN_REFUSED'].includes(code)) return result('reconnect');
   if (['VIEW_TOO_LARGE', 'INVALID_ARGUMENT', 'INVALID_READ_CLASS', 'INVALID_FRESHNESS_VIEW'].includes(code)) return result('diagnostic');
   if (busyCode(code) || code === 'RESOURCE_NOT_CURRENT' || error?.retryable === true ||
@@ -39,7 +39,7 @@ export function checkedView(answer, instance) {
 }
 
 function validateCursor(value, bootstrap, scope, kind) {
-  const versions = scope.kind === 'actor' ? v => v && Object.keys(v).length === 0 : topicVersions;
+  const versions = scopeVersions(scope);
   const identity = bindingOf(bootstrap);
   if (!value || value.v !== 1 || value.kind !== kind || !integer(value.after_seq) ||
       !sameBinding(identity, value) || !equal(value.scope, scope)) throw diagnostic('The changes cursor has a different binding or scope.');
@@ -48,32 +48,36 @@ function validateCursor(value, bootstrap, scope, kind) {
   if (kind === 'continuation' && (!integer(value.through_seq) || value.through_seq < value.after_seq || !versions(value.covered_versions))) throw diagnostic('The changes window is malformed.');
 }
 const topicVersions = v => v && Object.keys(v).length === 2 && integer(v.topic) && integer(v.notebook);
-export function changesPage(answer, bootstrap, topicId, input = null) {
+const scopeVersions = scope => scope.kind === 'actor' ? v => v && Object.keys(v).length === 0
+  : scope.kind === 'workspace' ? v => v && Object.keys(v).length === 2 && integer(v.workspace) && integer(v.notebook) : topicVersions;
+export function scopedChangesPage(answer, bootstrap, scope, input = null) {
   checkedView(answer, bootstrap.instance_id);
-  const scope = { kind: 'topic', id: topicId };
+  const versions = scopeVersions(scope);
   if (!equal(answer.scope, scope) || answer.baseline !== (input === null) || !Array.isArray(answer.items) || answer.items.length > 50 ||
       typeof answer.has_more !== 'boolean') throw diagnostic('The changes page is malformed.');
   const end = answer.has_more ? answer.continuation : answer.checkpoint;
   validateCursor(end, bootstrap, scope, answer.has_more ? 'continuation' : 'checkpoint');
   if (answer.has_more ? answer.checkpoint !== null || answer.covered_versions !== null || !answer.items.length
-    : answer.continuation !== null || !topicVersions(answer.covered_versions)) throw diagnostic('A partial changes page cannot be a checkpoint.');
+    : answer.continuation !== null || !versions(answer.covered_versions)) throw diagnostic('A partial changes page cannot be a checkpoint.');
   if (input === null && (answer.items.length || answer.has_more)) throw diagnostic('The baseline must precede view loading.');
   let previous = input?.after_seq ?? 0;
   const upper = answer.has_more ? end.through_seq : end.after_seq;
   if (upper < previous || input?.kind === 'continuation' && upper !== input.through_seq) throw diagnostic('The changes window moved backwards or changed.');
   const covered = answer.has_more ? end.covered_versions : answer.covered_versions;
-  if (input?.kind === 'continuation' && ['topic', 'notebook'].some(key => covered[key] !== input.covered_versions[key])) {
+  if (input?.kind === 'continuation' && Object.keys(covered).some(key => covered[key] !== input.covered_versions[key])) {
     throw diagnostic('The captured changes version window changed.');
   }
   for (const item of answer.items) {
     if (!integer(item.seq) || item.seq <= previous || item.seq > upper || !integer(item.version) || item.version < 1 ||
-        typeof item.resource_id !== 'string' || !item.resource_id || !['topic', 'memory', 'workspace'].includes(item.resource_kind) ||
-        item.resource_kind === 'topic' && item.resource_id !== topicId) throw diagnostic('The change key is malformed or outside this topic.');
+        typeof item.resource_id !== 'string' || !item.resource_id || typeof item.resource_kind !== 'string' || !item.resource_kind ||
+        scope.kind === 'topic' && (!['topic', 'memory', 'workspace'].includes(item.resource_kind) || item.resource_kind === 'topic' && item.resource_id !== scope.id) ||
+        scope.kind === 'workspace' && item.resource_kind === 'workspace' && item.resource_id !== scope.id) throw diagnostic('The change key is malformed or outside this topic.');
     previous = item.seq;
   }
   if (answer.has_more && end.after_seq !== previous) throw diagnostic('The continuation does not follow its keys.');
   return answer;
 }
+export const changesPage = (answer, bootstrap, topicId, input = null) => scopedChangesPage(answer, bootstrap, { kind: 'topic', id: topicId }, input);
 
 export async function initialViews({ api, bootstrap, topicId, load }) {
   let checkpoint = null;
@@ -184,6 +188,7 @@ export class Freshness {
       const answer = actorPage(await read('changes', { scope: actorScope(this.bootstrap), limit: 50, cursor: input }), this.bootstrap);
       if (!current()) return;
       for (const item of answer.items) {
+        if (item.resource_kind === 'dossier_move' && item.resource_id === this.topicId && integer(item.version)) this.invalidate('dossier_move', item.version);
         if (item.resource_kind === 'whisper' && item.resource_id === this.topicId && integer(item.version)) this.invalidate('whisper:' + item.version, item.version);
         // A thumbs-up or go-ahead answer on a message (docs/thumbs.md): its key names the message.
         if (item.resource_kind === 'reaction' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('reaction:' + item.resource_id, item.version);
@@ -191,6 +196,9 @@ export class Freshness {
         if (item.resource_kind === 'acts' && item.resource_id === this.topicId && integer(item.version)) this.invalidate('acts', item.version);
         // A message edited, by the person here or on another device (docs/message-edit.md): its key names the
         // message and the revision; a message this page has not loaded is read with its page.
+        if (item.resource_kind === 'question' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('question:' + item.resource_id, item.version);
+        if (item.resource_kind === 'withdrawal' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('withdrawal:' + item.resource_id, item.version);
+        if (item.resource_kind === 'removal' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('removal:' + item.resource_id, item.version);
         if (item.resource_kind === 'edit' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('edit:' + item.resource_id, item.version);
         // The person's private note or saved reply on a message changed, here or on another device (item 127,
         // docs/topic-reading.md): its key names the message, whose card says whether it has them.

@@ -95,9 +95,9 @@ the pointer's way, the keys' and the phone's.
   with the words selected on its card, or else its lit passages, quoted, as
   Return quotes them in the Reader, and nothing quoted when neither (a message
   the keys lit). **Reply** on the bar (a phone's way; its glyph is an arrow
-  turning back, named Reply (Return), docs/reply-stacks.md, "The title bar and
-  the message bar") quotes nothing; to quote
-  part of the message there, select that part in the Reader and press Return. Return on a selected
+  turning back, named Reply) opens the shared reply bar inside that message's
+  card and quotes nothing (item 721, [untested preview contract](card-reply-preview.md)).
+  Return and a card click still open the full Reader. Return on a selected
   dossier (its header or chevron) edits its title instead, as ✎ does: Return
   saves it and Escape cancels; Space folds and opens the dossier. Return in
   writing, on a folded line or on another control does what it does there.
@@ -111,6 +111,10 @@ the pointer's way, the keys' and the phone's.
   selected anywhere copy as the browser copies them, and in writing or a
   pop-up ⌘C is theirs; with nothing lit it does nothing of the page's. Nothing
   is said when it copies, as in the Reader; a refusal says how else to copy.
+  Source-only text-display preview exception: a selection wholly inside a
+  message drawn with a display rule on copies the exact existing quote projection
+  at its mapped ends; the rule's layout adds no characters. Off restores native
+  selected Copy. See [the preview contract](text-display-rules-preview.md).
 - **A cut-off message** (the first 1,024 bytes are shown) reads on in place:
   once the pointer rests on it, the keys light it or a finger taps it, the whole
   card scrolls under the wheel, trackpad or a finger, keeping its height (a
@@ -130,8 +134,17 @@ the pointer's way, the keys' and the phone's.
   a cut-off message is read whole on the server's foreground lane, as ⌘C reads
   it: a slow read ahead on the background lane never refuses it.
   (`web/card-scroll.mjs`, item 401)
+- **Rename topic.** A pencil named “Rename topic” beside the topic title
+  edits that title in place: Return or leaving saves, Escape cancels. It
+  follows the same permission as Rename in Topic settings, which still works.
+  The header and outline keep the saved name through reload. (item 656,
+  docs/topic-settings.md)
 - **New message.** A quiet ✎ beside the topic's title opens the topic's
-  composer on its own, with no message above it and the cursor in the field;
+  composer floating at the bottom, with the page behind it clear and unblurred,
+  no message above it and the cursor in its one-line field, which grows with
+  the text. Send or Cmd-Return closes it once the send is confirmed; an empty,
+  refused or interrupted send keeps it open. The inline agent menu keeps small
+  gaps and padding, with 44px targets on a phone;
   Escape, ✕ or a press outside puts it back in its place with the writing
   kept. At rest that composer sits among the messages, just above More: under
   the last dossier shown above More, and above the More line (or the end of the
@@ -185,7 +198,20 @@ the pointer's way, the keys' and the phone's.
   answer an agent's go-ahead ask in one tap or click, on the message or its
   bar, and the agent hears it as a reply (docs/thumbs.md).
 
+- **Your note corner.** A message with your private note shows a small note
+  corner. A click, Return or Space on it, or a phone's first tap, opens the
+  composer directly to that note, keeping the reply and its destination.
+  An empty note and another reader's note show no corner. (item 649,
+  docs/topic-reading.md; the `reading item 649` native cases in both engines.)
+
 ## Writing
+
+- **Composer width.** Drag the left or right outer edge of the Reader or New
+  message sheet: both sides grow or shrink equally, staying centred, with no
+  vertical resize or movement. Returning to the starting position in the same
+  held drag restores its width. Tab reaches either edge; Left/Right moves it.
+  Writing, destination and sending stay as they were. (item 650,
+  [composer-width.md](composer-width.md))
 
 - **The reply in the Reader** is one quiet line while you read (+, the field
   saying whom it answers, 👍) and opens to the who chip, the field and Send when
@@ -236,25 +262,27 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
 
 - **The outline.** ↑ and ↓ move between the rows shown: the Outcomes
   heading's pencil (New outcome), outcomes, and under an open one its pencil
-  (New topic), its topics, Done (N) and Archived (N) and the topics of one
+  (New topic), its topics with the reader's starred dossiers tucked under each, Done (N) and Archived (N) and the topics of one
   open, and More; past an open outcome's last row comes the next outcome,
   since the outline lists no Notebook (its pages are the right rail's). Home
   and End go to the first and last; ↑ from the first outcome lands on the
   heading's pencil. Return opens the row in place: a topic, or an outcome's
-  Conversation with its topics, folding every other outcome; on a pencil it
+  home with its topics, without folding other outcomes; on a pencil it
   opens its title line (docs/rails.md, "The outline"). A click or a tap on a
   row opens it too, and leaves the keys on it with their ring, so ↑ ↓ and →
   go on from there. On a phone, a tap on a collapsed outcome first opens its
   topics in the rail, leaving the drawer and the current page as they were;
-  a tap on an open outcome goes to its Conversation (item 654). A topic tap
-  still opens that topic. Laptop clicks still navigate and toggle the topics. ⌘→ opens the focused
+  a tap on an open outcome goes to its home (item 654). A topic tap
+  still opens that topic. Laptop name clicks navigate; the separate chevron
+  opens or folds topics in place. ⌘→ opens the focused
   outcome (or a focused topic's outcome) and ⌘← folds it, with the keys on its
   row; → opens a folded outcome and shows its topics, the next → lands on its
   pencil, and the next goes on into the messages; on Done (N) or Archived (N)
   → opens the group or goes to its first row; ← goes to the row it is under or
   folds an open one. ⇧⌘→ opens every outcome and ⇧⌘← folds every
-  one, from anywhere in the outline; the next place reached tidies back to
-  one open. ⌘↑ and ⌘↓ move an outcome, or a topic within its outcome, one
+  one, including outcomes loaded later, from anywhere in the outline. An
+  individual fold afterwards is kept as an exception. Arriving opens the
+  current outcome without folding any other. ⌘↑ and ⌘↓ move an outcome, or a topic within its outcome, one
   place, the reader's own order kept wherever they sign in
   (docs/outline-order.md); ⌘Z right after puts the last move back. "Keys"
   under the outline lists them.
@@ -279,11 +307,12 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   the question it opened is closed, and a message the keys opened once and the
   mouse opens next wears no ring when the mouse closes it.
 - **The buttons at the top of the feed.** These are rows: the
-  header's buttons (Topic settings, New message, the Team's pills and "+ Add",
+  header's buttons (Rename topic where permitted, Topic settings, New message, the Team's pills and "+ Add",
   and the others drawn there, such as "Pipeline & pages" below 1181px), on a phone the line under the
   header saying what is new in the other outcomes, and under them the view filters
-  in the row just over the messages ("Read it", Only new, Show agent
-  coordination), when any of those shows. ↑ on the message at the top of the
+  in the row just over the messages ("Read it", Only new), when any shows.
+  Show agent coordination shares the Archived row below the composer (467):
+  ←/→ move between its buttons and ↑/↓ leave it. ↑ on the message at the top of the
   feed moves the keys onto the row just above it, the filters' when they
   show, else the header's, with the keys' ring on the button they are on.
   ↑ from the filters goes on up to the header's buttons, and ↑ there, the
@@ -330,13 +359,19 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   on a fresh page. A press on a row whose move goes nowhere (the place
   already being read, or a move the guard refuses) lands the same way, on
   the page's heading; Return on such a row keeps the keys on it.
-- **The messages.** On a message (its card holding the keys), ⌘↑ and ⌘↓
-  move its reply stack up or down in the reader's own order, → and ←
+- **The messages.** Incoming replies keep every dossier in the reader's order;
+  new dossiers enter first and reawakened dossiers return last above More (731).
+  On a message (its card holding the keys), ⌘↑ moves its reply stack up
+  in the reader's own order; Move its stack down in ⋯ moves it down.
+  ⌘↓ moves the selected dossier below More; a selected message moves its
+  containing dossier. This uses Return's pointer, keyboard or last-touch
+  selection. With nothing selected it does nothing. → and ←
   switch it between its two states (latest plus unread, and all messages), x
   folds the message to its row for the reader alone (x again unfolds it), ⇧⌘↑ and
   ⇧⌘↓ join it to the stack above or below for everyone, and ⌘Z puts the
-  last of these back (docs/reply-stacks.md). The keys stay on the message
-  that moved, and a screen reader hears what happened.
+  last of these back (docs/reply-stacks.md). After a reorder the keys stay
+  on its message; after an archive they move to More. A screen reader hears
+  what happened.
 - **Put a dossier aside.** Swipe its header or last visible message right,
   on a phone or with two fingers on a trackpad, to move it below More messages
   for you on every device. The menu offers Move below More and Bring back
@@ -378,10 +413,10 @@ rule above. (`web/arrow-reach.mjs`)
   and taps", then Health. → from
   New outcome, a row with nothing under it, goes on into the messages, as
   from a topic. ↑ above the right rail's first section
-  reaches its name, "Just this topic" and "All of this outcome". ↓ past the
-  last message goes on down the page: More messages, the People row, the
-  Notebook and the reply; ↑ from there comes back to the last message. Into a
-  tree from beside it (a pencil in a section's heading, the chips above it)
+  moves to the nearest control above it; there is no name row or scope switch. ↓ past the
+  last message goes on down the page: More messages and the reply; ↑ from
+  there comes back to the last message. Notebook pages are in
+  the right rail. Into a tree from beside it (a pencil in a section's heading)
   the arrows land on the row nearest that way, which becomes its stop.
   A control set in a tree's row (the pencil in the right rail's Notebook
   heading) is the row's own, as a card's speech bubble is: → on the row, open,
@@ -396,8 +431,8 @@ rule above. (`web/arrow-reach.mjs`)
   ← and → move along the title bar, from ⋯ to Move below More, Reply and the
   chevron, and past its end on to the pane beside; ↑ and ↓ stay the messages'
   (docs/reply-stacks.md, "The title bar and the message bar").
-- **In a pane, off its keys.** On the logo block, the chips, Keys, the rail's foot, the right
-  rail's name and chips, People and the Notebook, ↑ and ↓ move within that
+- **In a pane, off its keys.** On the logo block, the outline's chips, Keys,
+  the rail's foot, People and the right rail's Notebook controls, ↑ and ↓ move within that
   pane, and ← and → too; past the pane's edge ← and → go on to the pane beside,
   as from the messages.
 - **Every other page.** The Outcomes home, an outcome's own page, its pipeline,
@@ -520,7 +555,7 @@ page painted. Its checks, by rule:
 - How cards read (docs/topic-reading.md): "reading read cards sit back on the
   read fill …", "reading the reply arrow says "You replied at" …" and
   "reading replies gather into a stack …"; every act on a reply stack (the
-  head's row, rename, Star and the rail's Starred, Fold and Unfold, ⌘↑ ⌘↓, ⇧⌘↑ ⇧⌘↓ and Split
+  head's row, rename, Star and the rail's Starred, Fold and Unfold, ⌘↑ and the down menu, ⌘↓ below More, ⇧⌘↑ ⇧⌘↓ and Split
   back out, → ← and ⌘Z, the New line, the Reader's ↑ ↓, the phone's sheet
   and swipe, the trackpad's two-finger swipe): the "reading stacks …" cases in `tests/stack_native.mjs`
   (docs/reply-stacks.md).
@@ -614,10 +649,11 @@ puts the focus on the page reached, …"; the steps the arrows take: "rail → o
 open outcome goes into the messages, …" and "rail in the right rail → and ←
 open and fold a section without ⌘: …"; the header's buttons: "rail ↑ from
 the top message reaches the buttons at the top of the feed, …", and the
-filters' row under them: "reading coordination the keys go on from Show agent
+former filters' row under them: "reading coordination the keys go on from Show agent
 coordination: …" and "reading coordination ← and → move along the filters'
 row, Read it among them, …" (`native-reading`, `native-webkit-reading`, at
-both widths) and "conversation the keys go on from Only new: …"
+both widths; the coordination placement expectations predate467 and are not
+a compatibility gate for its new row) and "conversation the keys go on from Only new: …"
 (`native-conversation`); ⌘Return:
 "rail ⌘Return starts a new message in the place the keys are on: …". What
 each key means, and that none acts in writing: `tests/ui_outline_order.test.mjs`.
@@ -628,7 +664,9 @@ and pressing every arrow from each, natively, to show the arrows reach them
 all and none loses the focus to the page: past the outline's edges, "rail
 arrows ↑ above the outline's first row goes on up the side rail …" (↓ below
 Keys reaches the rail's foot, the guide's ? and then Health); the right
-rail's chips, "rail arrows ↑ above the right rail's first section reaches …";
+rail, "rail arrows ↑ above the right rail's first section reaches …" (its
+old name-row and scope-chip expectation is retired by 788; native repointing
+is tracked separately, and that case is not current proof of the new rail);
 below the messages, "rail arrows ↓ past the last message goes on down the page
 …" (at 1280, 390, 375 and 320); the bar, "rail arrows on a message's bar ← and
 → move along its buttons, …"; a dossier's title bar, "reading stacks ← and →

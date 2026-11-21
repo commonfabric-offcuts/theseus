@@ -1,0 +1,125 @@
+{
+  "orchestrator_effective_cache": "/Users/commonfabric/.cache/790-paste9912-mutations-20261118a",
+  "phases": [
+    {
+      "name": "viewport-crosses-1px",
+      "phase": "mutant",
+      "source": "tests/onboarding_790_expressions.mjs",
+      "original_sha256": "45658368f6f23a28ea4018daeb622a6422567d7e99c7297795094c33d82dd013",
+      "applied_sha256": "f630541c7fdc65775cf5f663481918f45f1a6d1f3a653e6ded617de3d4199e7e",
+      "applied": true,
+      "exit": 1,
+      "effective_cache": "/Users/commonfabric/aim-worktrees/codex-790-paste9912/docs/evidence/onboarding-790-paste/cache-viewport-crosses-1px-mutant-8e9dbffcd75649d082068ce002341587",
+      "log": "viewport-crosses-1px-mutant.log",
+      "log_sha256": "93f7f02b607e22a0dcd88b02e7c712b7bad5fd1cc65e553abbcdf325c10d77e4"
+    },
+    {
+      "name": "viewport-crosses-1px",
+      "phase": "restored",
+      "source": "tests/onboarding_790_expressions.mjs",
+      "original_sha256": "45658368f6f23a28ea4018daeb622a6422567d7e99c7297795094c33d82dd013",
+      "applied_sha256": "45658368f6f23a28ea4018daeb622a6422567d7e99c7297795094c33d82dd013",
+      "applied": true,
+      "exit": 0,
+      "effective_cache": "/Users/commonfabric/aim-worktrees/codex-790-paste9912/docs/evidence/onboarding-790-paste/cache-viewport-crosses-1px-restored-7bd9210a7b5849da813d42749203dd89",
+      "log": "viewport-crosses-1px-restored.log",
+      "log_sha256": "29cb43cc7420b3abc39bbb43f726a911c9ce02ce46d57b96877f93e8fe5632bb"
+    },
+    {
+      "name": "missing-observation",
+      "phase": "mutant",
+      "source": "tests/clipboard_790_diagnostics.mjs",
+      "original_sha256": "5542178e0d4fd6e468e1af27639957bf8de7aa105d7526a6514fe69c5991b3eb",
+      "applied_sha256": "45173ae14cbd277aa5787ef8247f8a7e9e7d99f7bad81c66945f52a007c37478",
+      "applied": true,
+      "exit": 1,
+      "effective_cache": "/Users/commonfabric/aim-worktrees/codex-790-paste9912/docs/evidence/onboarding-790-paste/cache-missing-observation-mutant-b7b1fe7de64d4e638907fdab2343d0dc",
+      "log": "missing-observation-mutant.log",
+      "log_sha256": "98adc616780223ef4400be10c86bf916d936de516a819a0dd475091aff2c1407"
+    },
+    {
+      "name": "missing-observation",
+      "phase": "restored",
+      "source": "tests/clipboard_790_diagnostics.mjs",
+      "original_sha256": "5542178e0d4fd6e468e1af27639957bf8de7aa105d7526a6514fe69c5991b3eb",
+      "applied_sha256": "5542178e0d4fd6e468e1af27639957bf8de7aa105d7526a6514fe69c5991b3eb",
+      "applied": true,
+      "exit": 0,
+      "effective_cache": "/Users/commonfabric/aim-worktrees/codex-790-paste9912/docs/evidence/onboarding-790-paste/cache-missing-observation-restored-4edb3d87a0424949b43390193da45a0b",
+      "log": "missing-observation-restored.log",
+      "log_sha256": "a8c9ab1c20b865b58a5983a95dcb558a33325f22ce408b847a54439a1f795b1a"
+    },
+    {
+      "name": "length-instead-of-exact",
+      "phase": "mutant",
+      "source": "tests/clipboard_790_diagnostics.mjs",
+      "original_sha256": "5542178e0d4fd6e468e1af27639957bf8de7aa105d7526a6514fe69c5991b3eb",
+      "applied_sha256": "39888b55f4f43670b92879e3d353d23e8e3969f3174f2ad6322df0dddfa82c22",
+      "applied": true,
+      "exit": 1,
+      "effective_cache": "/Users/commonfabric/aim-worktrees/codex-790-paste9912/docs/evidence/onboarding-790-paste/cache-length-instead-of-exact-mutant-e2abfc85c3004b2b9598d0590de9ecf7",
+      "log": "length-instead-of-exact-mutant.log",
+      "log_sha256": "0ddd615a6364fea30dbf568007fd546841101098bbe5479e97ef779a3518d6e6"
+    },
+    {
+      "name": "length-instead-of-exact",
+      "phase": "restored",
+      "source": "tests/clipboard_790_diagnostics.mjs",
+      "original_sha256": "5542178e0d4fd6e468e1af27639957bf8de7aa105d7526a6514fe69c5991b3eb",
+      "applied_sha256": "5542178e0d4fd6e468e1af27639957bf8de7aa105d7526a6514fe69c5991b3eb",
+      "applied": true,
+      "exit": 0,
+      "effective_cache": "/Users/commonfabric/aim-worktrees/codex-790-paste9912/docs/evidence/onboarding-790-paste/cache-length-instead-of-exact-restored-08f262ce578d412aafe10f88c04f9b7f",
+      "log": "length-instead-of-exact-restored.log",
+      "log_sha256": "44f9d8ff1c8714f7549d2e14226680ba2682f73059aac94800c7a83138993f3f"
+    },
+    {
+      "name": "missing-native-command",
+      "phase": "mutant",
+      "source": "tests/clipboard_790_diagnostics.mjs",
+      "original_sha256": "5542178e0d4fd6e468e1af27639957bf8de7aa105d7526a6514fe69c5991b3eb",
+      "applied_sha256": "daabf2a5cd69ce3d396fd8a0f1b48aae85b04b29cd38a86962533b99729923bf",
+      "applied": true,
+      "exit": 1,
+      "effective_cache": "/Users/commonfabric/aim-worktrees/codex-790-paste9912/docs/evidence/onboarding-790-paste/cache-missing-native-command-mutant-ae5d2144fd7d49ae8717c8c64bdd85bf",
+      "log": "missing-native-command-mutant.log",
+      "log_sha256": "cbd1e122c7e134fdb9aaf05ab1bb0b3fc9980c6f28c5650318767acf063095f7"
+    },
+    {
+      "name": "missing-native-command",
+      "phase": "restored",
+      "source": "tests/clipboard_790_diagnostics.mjs",
+      "original_sha256": "5542178e0d4fd6e468e1af27639957bf8de7aa105d7526a6514fe69c5991b3eb",
+      "applied_sha256": "5542178e0d4fd6e468e1af27639957bf8de7aa105d7526a6514fe69c5991b3eb",
+      "applied": true,
+      "exit": 0,
+      "effective_cache": "/Users/commonfabric/aim-worktrees/codex-790-paste9912/docs/evidence/onboarding-790-paste/cache-missing-native-command-restored-c18dbe68d83544209012c4e64838aa3f",
+      "log": "missing-native-command-restored.log",
+      "log_sha256": "94c01e34cc093a0f4211fb8cf07d717ecc70ef1143c5aa8ad6635ae67457d9e6"
+    },
+    {
+      "name": "missing-event-phases",
+      "phase": "mutant",
+      "source": "tests/clipboard_790_diagnostics.mjs",
+      "original_sha256": "5542178e0d4fd6e468e1af27639957bf8de7aa105d7526a6514fe69c5991b3eb",
+      "applied_sha256": "0a1411799421e0076718f4e18aece8c0a0dba31ca51371ea69fe682cb02bb35f",
+      "applied": true,
+      "exit": 1,
+      "effective_cache": "/Users/commonfabric/aim-worktrees/codex-790-paste9912/docs/evidence/onboarding-790-paste/cache-missing-event-phases-mutant-b5159d107f10418fa7718d19bf3ae565",
+      "log": "missing-event-phases-mutant.log",
+      "log_sha256": "291ceb34a2b36821d7d6cd3104c6258af10055648d230154986b3966b0f697c6"
+    },
+    {
+      "name": "missing-event-phases",
+      "phase": "restored",
+      "source": "tests/clipboard_790_diagnostics.mjs",
+      "original_sha256": "5542178e0d4fd6e468e1af27639957bf8de7aa105d7526a6514fe69c5991b3eb",
+      "applied_sha256": "5542178e0d4fd6e468e1af27639957bf8de7aa105d7526a6514fe69c5991b3eb",
+      "applied": true,
+      "exit": 0,
+      "effective_cache": "/Users/commonfabric/aim-worktrees/codex-790-paste9912/docs/evidence/onboarding-790-paste/cache-missing-event-phases-restored-caea7d6052fe419997ad0c28f6b8d617",
+      "log": "missing-event-phases-restored.log",
+      "log_sha256": "31f130395893ca7c49c17b3d900e37105d8b1de1ee2f591de120707e221b48c1"
+    }
+  ]
+}

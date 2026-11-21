@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from item_674_runtime import runtime as item674_runtime
 from aim_next import Store, initialize
 from aim_next import server as server_module
 from aim_next.server import create_server, RequestError
@@ -37,6 +38,8 @@ class FreshnessControls:
         self.http_media_publications = 0
         self.legacy_number = 0
         self.fatal = []
+        self.item715_refuse_saves = False
+        self.item715_refused_saves = 0
 
     def record(self, value):
         with self.lock:
@@ -121,6 +124,11 @@ class FreshnessControls:
                 with controls.lock:
                     controls.http_commands += 1
                     controls.http_delivery_acks += int(envelope.get("kind") == "delivery.ack")
+                    refuse = controls.item715_refuse_saves and envelope.get("kind") == "draft.save"
+                    if refuse:
+                        controls.item715_refused_saves += 1
+                if refuse:
+                    raise RequestError(503, "DATABASE_BUSY", "Item 715 isolated draft-save refusal")
                 return self.base.command(actor, envelope)
 
             def publish_media(self, *args, **kwargs):
@@ -488,11 +496,11 @@ def main():
                     result="passed", passed=12, total=12, fate="live")}, {"workspace_id": "kites"}, sender=agent)
             return {"seeded": True}
 
-        def serve(port=0, web=None):
+        def serve(port=0, web=None, as_actor=None):
             """The real server, with a session of its own: a restart (server_stop,
             then server_start) brings it back at the same address with a new one.
             web: the page's files to serve, as a deploy brings another build; the checkout's own by default."""
-            server = create_server(store, instance, actor, Path(web) if web else Path(__file__).resolve().parents[2] / "web",
+            server = create_server(store, instance, as_actor or actor, Path(web) if web else Path(__file__).resolve().parents[2] / "web",
                                    max_reads=max_reads, port=port, sign_in_folder=sign_in,
                                    live=(path, (root / "control" / "authority.json",)) if "--live" in sys.argv else None)
             if "--live" in sys.argv:
@@ -507,10 +515,28 @@ def main():
             factory = server.store_factory
             server.store_factory = lambda: GatedStore(factory(), gate)
             return server
-        server = serve()
+        core_only = "--core-only-783" in sys.argv
+        if core_only:
+            build = server_module.web_build.load(Path(__file__).resolve().parents[2] / "web")
+            server = SimpleNamespace(build=build, csp="default-src 'self';script-src " + " ".join(["'self'"] + ["'%s'" % h for h in build.script_hashes]) + ";style-src 'self';")
+        else:
+            # Native permission checks can open the fixture's initial session as
+            # another synthetic actor without replacing its comparison build.
+            session_actor = sys.argv[sys.argv.index('--as-actor') + 1] if '--as-actor' in sys.argv else None
+            server = serve(as_actor=session_actor)
+        from item_783_builds import Builds783
+        item783_builds = Builds783(server, root, server_module.web_build.load)
+        from item_721_runtime import Item721Runtime
+        item721_runtime = Item721Runtime(server, root, server_module.web_build.load)
+        from item_650_runtime import Item650Runtime
+        item650_runtime = Item650Runtime(Path(__file__).resolve().parents[2], root, server_module.web_build.load)
         # Item 645: source-bound page comparisons inside one filtered native run.
         # This private stdin control swaps immutable public Build bytes only;
         # Core, records, origin and authority remain the same isolated fixture.
+        reading785_runtime = None
+        if "--item-785" in sys.argv:
+            from reading_785_runtime import Reading785Runtime
+            reading785_runtime = Reading785Runtime(server, root, server_module.web_build.load)
         item645_candidate = server.build
         item645_candidate_csp = server.csp
         item645_original = None
@@ -565,6 +591,98 @@ def main():
             return {"phase": phase, "stamp": server.build.stamp, "hashes": hashes(server.build),
                     "candidate_hashes": hashes(item645_candidate), "restored": server.build is item645_candidate,
                     "csp_sha256": hashlib.sha256(server.csp.encode()).hexdigest()}
+
+        def item738_runtime(phase):
+            if phase == "restored":
+                server.build = item645_candidate
+            else:
+                destination = root / ("item738-" + phase)
+                destination.mkdir(exist_ok=True)
+                if phase == "live":
+                    folder = Path(__file__).parent
+                    manifest = json.loads((folder / "item_738_live_web.json").read_text())
+                    archive = folder / "item_738_live_web.tar.gz"
+                    assert hashlib.sha256(archive.read_bytes()).hexdigest() == manifest["archive_sha256"]
+                    with tarfile.open(str(archive), "r:gz") as packed:
+                        for member in packed.getmembers():
+                            assert member.name == "web" or (member.name.startswith("web/") and ".." not in Path(member.name).parts)
+                            assert member.isdir() or member.isfile()
+                        packed.extractall(str(destination))
+                    destination = destination / "web"
+                else:
+                    for name, data in item645_candidate.files.items():
+                        path = destination / name
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_bytes(data)
+                    path = destination / ("reader.mjs" if phase in ("reader-tab-boundary", "reader-source-entry") else "cover-refresh.mjs")
+                    data = path.read_bytes()
+                    mutations = {
+                        "reader-tab-boundary": (b"if (target.closest?.('#reader-cover')) {", b"if (false) {"),
+                        "reader-source-entry": (b"if (event.shiftKey && target === this.sourceBody) {", b"if (false) {"),
+                        "lost-pending": (b"const pending = refresh?.state === 'pending';", b"const pending = false;"),
+                        "visible-text": (b"status.textContent = local.error;", b"status.textContent = local.error || (pending ? 'Awaiting new cover' : 'Requesting update');"),
+                        "keyboard-target": (b"control.className = 'cover-refresh-glyph';", b"control.tabIndex=-1; control.className = 'cover-refresh-glyph';"),
+                        "small-target": (b"control.className = 'cover-refresh-glyph';", b"control.style.cssText='width:1px;min-height:1px;height:1px;padding:0'; control.className = 'cover-refresh-glyph';"),
+                    }
+                    old, new = mutations[phase]
+                    assert data.count(old) == 1, "Item 738 source marker must apply exactly once: " + phase
+                    path.write_bytes(data.replace(old, new))
+                    assert path.read_bytes() == data.replace(old, new)
+                server.build = server_module.web_build.load(destination)
+            script_src = " ".join(["'self'"] + ["'%s'" % digest for digest in server.build.script_hashes])
+            before, rest = item645_candidate_csp.split("script-src ", 1)
+            server.csp = before + "script-src " + script_src + ";" + rest.split(";", 1)[1]
+            hashes = lambda build: {name: hashlib.sha256(data).hexdigest() for name, data in build.files.items()}
+            if phase == "restored":
+                assert server.csp == item645_candidate_csp
+            return {"phase": phase, "stamp": server.build.stamp, "hashes": hashes(server.build),
+                    "candidate_hashes": hashes(item645_candidate), "restored": server.build is item645_candidate}
+
+        def item731_runtime(phase):
+            # Reuse the existing immutable Build/CSP swap, but only load 731's
+            # exact LIVE94 public source archive for this comparison.
+            nonlocal item645_original
+            prior = item645_original
+            try:
+                if phase == "original":
+                    folder = Path(__file__).parent
+                    manifest = json.loads((folder / "item_731_original_web.json").read_text())
+                    archive = folder / "item_731_original_web.tar.gz"
+                    assert hashlib.sha256(archive.read_bytes()).hexdigest() == manifest["archive_sha256"]
+                    destination = root / "item731-original"
+                    if not destination.exists():
+                        destination.mkdir()
+                        with tarfile.open(str(archive), "r:gz") as packed:
+                            for member in packed.getmembers():
+                                assert member.name == "web" or (member.name.startswith("web/") and ".." not in Path(member.name).parts)
+                                assert member.isdir() or member.isfile()
+                            packed.extractall(str(destination))
+                    item645_original = server_module.web_build.load(destination / "web")
+                    assert {name: hashlib.sha256(data).hexdigest() for name, data in item645_original.files.items()} == manifest["files"]
+                if phase == "small-targets":
+                    destination = root / "item731-small-targets"
+                    destination.mkdir(exist_ok=True)
+                    for name, data in item645_candidate.files.items():
+                        path = destination / name
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_bytes(data)
+                    path = destination / "aim.css"
+                    data = path.read_bytes()
+                    old = b".reader-header>button,#reader-stepping>button,#reader-star,#reader-aside{min-width:2.75rem;min-height:2.75rem}"
+                    new = old.replace(b"2.75rem", b"2rem")
+                    assert data.count(old) == 1
+                    path.write_bytes(data.replace(old, new))
+                    assert path.read_bytes() != data
+                    server.build = server_module.web_build.load(destination)
+                    script_src = " ".join(["'self'"] + ["'%s'" % digest for digest in server.build.script_hashes])
+                    before, rest = item645_candidate_csp.split("script-src ", 1)
+                    server.csp = before + "script-src " + script_src + ";" + rest.split(";", 1)[1]
+                    return {"phase": phase, "stamp": server.build.stamp, "applied": True, "old": old.decode(), "new": new.decode(),
+                            "original_sha256": hashlib.sha256(data).hexdigest(), "mutated_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                            "candidate_hashes": {name: hashlib.sha256(data).hexdigest() for name, data in item645_candidate.files.items()}}
+                return item645_runtime(phase)
+            finally:
+                item645_original = prior
 
         def on_team(operation):
             """The fixture's agent, a member of the outcome w1; adding a member already there changes nothing."""
@@ -651,6 +769,7 @@ def main():
             command("draft.save", operation + "-save", dict({
                 "source_ref": source, "topic_id": topic_id, "generation": draft["generation"],
                 "body": request["body"], "addressees": request.get("addressees", [])}, **({"attachments": attached} if attached else {}),
+                **{key: request[key] for key in ("reply_passage", "reply_without_quote", "divergence_reason") if key in request},
                 # An agent's message to someone says ask or tell; a case that names
                 # no intent tells. With "whisper": true it answers a whisper instead,
                 # which says neither.
@@ -672,18 +791,56 @@ def main():
         # The Health checks' runner: one guard this process holds across their
         # acts, as a running runner does, and the token its acquisition gave.
         health_runner = {}
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
+        if not core_only:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
         try:
             for line in sys.stdin:
                 request = json.loads(line)
                 try:
-                    if request["method"] == "ready":
+                    if core_only and request["method"] == "core_ready_783":
+                        assert sys.version_info[:2] == (3, 9)
+                        assert sys.pycache_prefix == os.environ["PYTHONPYCACHEPREFIX"]
+                        answer = {"actor": actor, "core_only": True, "cache_prefix": sys.pycache_prefix, "python_version": "%d.%d" % sys.version_info[:2]}
+                    elif request["method"] == "item_783_runtime":
+                        answer = item783_builds.select(request["phase"])
+                    elif request["method"] == "ready":
                         answer = {"origin": server.origin, "token": server.session_token,
                                   "instance_id": instance, "actor": actor, "topic_id": "t1",
                                   "sources": sources, "media": media, "max_reads": max_reads,
                                   "admission_mode": "partitioned" if getattr(server, "read_admission", None) else "legacy-observation",
                                   "freshness": freshness, "agent": "fixture-notebook-agent" if freshness else None}
+                        if request.get("runtime_evidence"):
+                            answer["runtime_evidence"] = {"python": sys.version, "pycache_prefix": sys.pycache_prefix}
+                    elif reading785_runtime is not None and request["method"] == "reading_785_runtime":
+                        answer = reading785_runtime.select(request["phase"])
+                    elif request["method"] == "item_674_runtime":
+                        answer = item674_runtime(server, item645_candidate, item645_candidate_csp, root,
+                                                 request["phase"], server_module.web_build.load)
+                    elif request["method"] == "item_738_runtime":
+                        answer = item738_runtime(request["phase"])
+                    elif request["method"] == "item_738_end":
+                        version = store().view(actor, "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+                        answer = command("outcome.end_set", request["operation_id"], {"state": request["state"]},
+                                         {"workspace_id": "w1"}, {"workspace_revision": version})
+                    elif request["method"] == "item_738_audit":
+                        with sqlite3.connect(str(path)) as db:
+                            db.row_factory = sqlite3.Row
+                            answer = {"requests": [dict(row) for row in db.execute("SELECT id,author_id,addressees,reply_to,intent,private_to FROM messages WHERE reply_to=?", (request["root"],))],
+                                      "operations": [dict(row) for row in db.execute("SELECT actor_id,id,kind,outcome FROM operations WHERE kind='stack.cover_refresh'")]}
+                    elif request["method"] == "item_731_runtime":
+                        answer = item731_runtime(request["phase"])
+                    elif request["method"] == "item_731_mutants":
+                        from item_731_mutants import run
+                        answer = {"proofs": run()}
+                    elif request["method"] == "item_721_runtime":
+                        answer = item721_runtime.select(request["phase"])
+                    elif freshness and request["method"] == "item_721_participation":
+                        sender, topic_id = "fixture-notebook-agent", request["topic_id"]
+                        revision = store().view(sender, "topic", {"topic_id": topic_id})["topic"]["version"]
+                        answer = command("participation.set", request["operation_id"],
+                                         {"actor_id": actor, "present": request["present"]},
+                                         {"topic_id": topic_id}, {"topic_revision": revision}, sender=sender)
                     elif request["method"] == "item_645_runtime":
                         answer = item645_runtime(request["phase"])
                     elif request["method"] == "counts":
@@ -714,10 +871,61 @@ def main():
                             answer.append(command("message.mark", "%s-%s" % (request["operation_id"], message_id),
                                                   {"marked": request["marked"]}, {"message_id": message_id},
                                                   {"mark_revision": row[0] if row else 0})["result"])
+                    elif request["method"] == "item715_save_fault":
+                        with controls.lock:
+                            controls.item715_refuse_saves = request["enabled"]
+                            answer = {"enabled": controls.item715_refuse_saves, "refused": controls.item715_refused_saves}
+                    elif request["method"] == "item715_seed":
+                        prefix = request["operation_id"]
+                        workspace, topic_id = prefix + "-w", prefix + "-t"
+                        with sqlite3.connect(str(path)) as db:
+                            db.execute("INSERT OR IGNORE INTO actors(id,kind,name) VALUES ('fixture-715-other','human','Other isolated reader')")
+                        command("workspace.create", prefix + "-workspace", {"id": workspace, "title": "Starred dossier fixture", "team": ["fixture-715-other"]})
+                        command("opening.save", prefix + "-opening-save", {"workspace_id": workspace, "topic_id": topic_id,
+                                "title": "Parent topic", "participants": [], "body": "Fixture opening", "attachments": []},
+                                {"opening_id": prefix + "-opening"}, {"opening_revision": 0})
+                        command("opening.publish", prefix + "-opening-publish", {}, {"opening_id": prefix + "-opening"}, {"opening_revision": 1})
+                        roots = []
+                        for n, title in enumerate(["A long dossier title " * 8, "Equal title", "Equal title", ""]):
+                            mid = command("message.post", prefix + "-post-%d" % n, {"body": "Fallback words %d" % n}, {"topic_id": topic_id})["result"]["message_id"]
+                            roots.append(mid)
+                            if title:
+                                command("stack.name", prefix + "-name-%d" % n, {"name": title}, {"message_id": mid}, {"name_revision": 0})
+                            if not request.get("empty"):
+                                command("message.star", prefix + "-star-%d" % n, {"starred": True}, {"message_id": mid}, {"star_revision": 0})
+                        unloaded = None
+                        if request.get("unloaded") or request.get("cross_topic"):
+                            for n in range(22 if request.get("unloaded") else 1):
+                                tid, opening = prefix + "-extra-%d" % n, prefix + "-extra-opening-%d" % n
+                                command("opening.save", opening + "-save", {"workspace_id": workspace, "topic_id": tid,
+                                        "title": "Unloaded parent" if n == 0 else "Later topic %d" % n, "participants": [],
+                                        "body": "An isolated topic", "attachments": []}, {"opening_id": opening}, {"opening_revision": 0})
+                                command("opening.publish", opening + "-publish", {}, {"opening_id": opening}, {"opening_revision": 1})
+                                if n == 0:
+                                    mid = command("message.post", opening + "-post", {"body": "Unloaded dossier"}, {"topic_id": tid})["result"]["message_id"]
+                                    command("message.star", opening + "-star", {"starred": True}, {"message_id": mid}, {"star_revision": 0})
+                                    unloaded = {"topic": tid, "root": mid}
+                        if request.get("read_only"):
+                            revision = store().view(actor, "workspace", {"workspace_id": workspace})["workspace"]["version"]
+                            command("outcome.end_set", prefix + "-complete", {"state": "completed"}, {"workspace_id": workspace}, {"workspace_revision": revision})
+                        answer = {"topic": topic_id, "workspace": workspace, "roots": roots, "unloaded": unloaded}
+                    elif request["method"] == "item715_access":
+                        revision = store().view(actor, "workspace", {"workspace_id": request["workspace"]})["workspace"]["version"]
+                        answer = command("workspace.member_set", request["operation_id"], {"actor_id": "fixture-715-other", "present": False},
+                                         {"workspace_id": request["workspace"]}, {"workspace_revision": revision})
+                    elif request["method"] == "item715_act":
+                        field = STACK_KINDS[request["kind"]][1]
+                        with sqlite3.connect(str(path)) as db:
+                            db.row_factory = sqlite3.Row
+                            revision = current_acts(db, actor, [request["message_id"]]).get(request["message_id"], {}).get(field, 0)
+                        answer = command(request["kind"], request["operation_id"], request["args"], {"message_id": request["message_id"]}, {field: revision})
+                    elif request["method"] == "item650_runtime":
+                        answer = item650_runtime.select(server, request["phase"])
                     elif request["method"] == "server_stop":
                         # As a deploy stops the server: its live streams end and
                         # the address refuses connections until server_start.
                         assert server is not None, "The server is already stopped"
+                        assert server.build is item783_builds.candidate, "Restore Item 783 comparison runtime before restarting"
                         port = server.server_address[1]
                         server.shutdown()
                         server.server_close()
@@ -727,7 +935,12 @@ def main():
                         answer = {"stopped": True}
                     elif request["method"] == "server_start":
                         assert server is None, "Stop the server before starting it again"
-                        server = serve(port, request.get("web"))
+                        server = serve(port, request.get("web"), request.get("as_actor"))
+                        # A restart loads a new immutable Build, even for the
+                        # same bytes. Comparison controls now belong to that
+                        # server; server_stop refuses an unrestored comparison.
+                        item783_builds.server = server
+                        item783_builds.candidate, item783_builds.csp = server.build, server.csp
                         thread = threading.Thread(target=server.serve_forever, daemon=True)
                         thread.start()
                         answer = {"origin": server.origin, "token": server.session_token}
@@ -871,7 +1084,7 @@ def main():
                         # A star, a stack's short name, a join, a place or a dossier's cover, as another person or
                         # an agent makes it through Core (docs/reply-stacks.md, docs/dossier-covers.md), fenced on
                         # what they last read.
-                        field = "cover_revision" if request["kind"] == "stack.cover" else STACK_KINDS[request["kind"]][1]
+                        field = "cover_revision" if request["kind"] in ("stack.cover", "stack.cover_refresh") else STACK_KINDS[request["kind"]][1]
                         with sqlite3.connect(str(path)) as db:
                             db.row_factory = sqlite3.Row
                             revision = current_acts(db, request["sender"], [request["message_id"]]).get(request["message_id"], {}).get(field, 0)
@@ -1077,7 +1290,7 @@ def main():
                         attached = published(request["operation_id"], request.get("attachments", []), "fixture-notebook-agent")
                         answer = command("memory.create", request["operation_id"], {
                             "title": request["title"], "body": request["body"], "attachments": attached, "references": []},
-                            {"item_id": request["item_id"], "owner_scope": {"kind": "topic", "id": request["topic_id"]}},
+                            {"item_id": request["item_id"], "owner_scope": request.get("owner_scope") or {"kind": "topic", "id": request["topic_id"]}},
                             {"item_revision": 0}, sender="fixture-notebook-agent")
                     elif freshness and request["method"] == "agent_view":
                         # What the fixture's agent (or {"actor": an agent}) is given by a view, as its CLI reads it.
@@ -1094,6 +1307,16 @@ def main():
                         else:
                             answer = command("workspace.member_set", request["operation_id"], {"actor_id": request["member"], "present": request["present"]},
                                              {"workspace_id": workspace}, {"workspace_revision": version}, sender=sender)
+                    elif freshness and request["method"] == "onboarding_790":
+                        # Only item 790's isolated fixture facts. No credential-file access or invitation.
+                        workspace = request["workspace_id"]
+                        if request["action"] == "read":
+                            answer = store().view(request.get("sender", actor), "onboarding_prompt",
+                                                  {"workspace_id": workspace, "variant": request.get("variant", "codex")})
+                        else:
+                            revision = store().view(actor, "workspace", {"workspace_id": workspace})["workspace"]["version"]
+                            answer = command("workspace.update", request["operation_id"],
+                                             {"purpose": request["purpose"]}, {"workspace_id": workspace}, {"workspace_revision": revision})
                     elif freshness and request["method"] == "team_outcome":
                         # An outcome of the person's own, for the Team panel's cases: {"workspace_id", "title"}
                         # ("id" is this control's own), with {"team": [...]} on it; {"owner": id} then hands it to
@@ -1146,10 +1369,15 @@ def main():
                                     "target": {"media_id": media_id}, "args": {}, "expected": {"media_revision": 1,
                                     "authority": {key: binding[key] for key in ("authority_id", "authority_epoch")}}}
                         assert store().publish_media(agent, envelope, io.BytesIO(data))["status"] == "committed"
+                        # Item 653: same source owner and lost-topic permission,
+                        # with an optional verified image beside the text file.
+                        named_attachments = [{"id": media_id}]
+                        if request.get("image"):
+                            named_attachments += published(prefix + "-image", [{"name": "screen.png", "image": "screen.png"}], agent)
                         command("draft.save", prefix + "-save", {
                             "source_ref": {"kind": "new_topic", "id": prefix + "-opening", "workspace_id": workspace},
                             "topic_id": topic_id, "generation": prefix + "-generation", "body": request["body"],
-                            "attachments": [{"id": media_id}],
+                            "attachments": named_attachments,
                             "addressees": [actor], "intent": "tell", "opening": {"workspace_id": workspace, "title": "Elsewhere topic", "participants": [actor]}},
                             {"draft_id": prefix + "-draft"}, {"draft_revision": 0}, sender=agent)
                         command("submission.prepare", prefix + "-prepare", {"draft_id": prefix + "-draft", "submission_id": prefix + "-submission",
@@ -1390,20 +1618,37 @@ def main():
                 except Exception as error:
                     print(json.dumps({"id": request["id"], "failure": str(error)}), flush=True)
         finally:
+            item650_unrestored = item650_runtime.active is not None
+            if item650_unrestored:
+                item650_runtime.select(server, "restored")
+            item783_unrestored = server.build is not item783_builds.candidate
+            if item783_unrestored:
+                item783_builds.select("restored")
             item645_unrestored = item645_original is not None and server is not None and server.build is not item645_candidate
             if item645_unrestored:
                 server.build = item645_candidate
                 server.csp = item645_candidate_csp
+            reading785_cleanup_error = None
+            try:
+                if reading785_runtime is not None:
+                    reading785_runtime.close()
+            except AssertionError as error:
+                reading785_cleanup_error = error
             if controls is not None:
                 controls.close()
-            if server is not None:
+            if server is not None and not core_only:
                 server.shutdown()
                 server.server_close()
                 thread.join(2)
                 assert not thread.is_alive(), "Owned HTTP fixture did not close"
             if controls is not None:
                 controls.assert_healthy()
+            item721_runtime.close()
+            assert not item650_unrestored, "Item 650 baseline was not restored"
+            assert not item783_unrestored, "Item 783 comparison runtime was not restored"
             assert not item645_unrestored, "Item 645 comparison runtime was not restored"
+            if reading785_cleanup_error is not None:
+                raise reading785_cleanup_error
 
 
 if __name__ == "__main__":

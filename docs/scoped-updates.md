@@ -45,6 +45,11 @@ commit number is sent as one text message, `{"seq": N}`, the first being the
 current number. When Core kept what is red with that commit, the message also
 carries it, `{"seq": N, "health": {"red": [...], "seq": N}}`, for the Health
 link ([health.md](health.md)); a page that does not know the field ignores it.
+It also carries `outcomes`, an opaque key for this reader's outcome list (904).
+Create, rename, end, access and personal ordering changes advance that key in
+their transaction; ordinary messages do not. Pages use a changed key to reread
+the list, including a rename elsewhere, without rereading it for every commit.
+Old stores begin at `"0"`; this uses existing metadata and needs no migration.
 The stream names no records: the page reads the open topic's changes through
 the usual views, and what is red is what every page may read already, so the
 stream adds no new way to see anything.

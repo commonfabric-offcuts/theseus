@@ -3,8 +3,9 @@
 A topic page reads as stacks: a message, every loaded reply to it, and the
 replies to those, gathered into one stack. A stack reads as a chat does, its
 first message on top and its replies under it oldest first. The topic's
-stacks sit newest activity on top, unless the reader has put one somewhere
-else; the reader's own reply never moves its stack. This page holds the
+stacks keep the reader's order: incoming replies never move an existing dossier.
+New dossiers enter first, and reawakened dossiers enter last above More
+([dossier-order.md](dossier-order.md), item 731). This page holds the
 contract: what Core records, how the page orders and folds what it shows,
 and the one layer that decides how a stack looks.
 docs/topic-reading.md says how a card reads inside a stack, and
@@ -118,8 +119,8 @@ Reads:
   have any act, newest first, with `version`, the newest act the reader hears
   of. The page reads it when an `acts` change arrives.
 - `stars {cursor?, limit?}` lists the reader's starred messages in every
-  place they read, newest star first. The right rail's Starred is drawn from
-  it.
+  place they read, newest star first. Starred dossiers appear under their
+  topics in the outline; the right rail has no Starred section.
 - `stack_namer {message_id}` says who names the dossier a message is in:
   `root_id`, `name`, `name_revision` (the fence a mint is sent on), `namer`
   (an actor or null) and `why` (below).
@@ -209,6 +210,22 @@ their acts.
   more of it, and then stays as the reader left it, open or folded, its
   earlier-messages row opened or not, the seven it shows held (`reheaded`,
   `stack-order.mjs`), and where the reader placed it (The stacks, below).
+- **Actual distant heads (item 799).** Gathering still uses only the loaded
+  page for ordering, placement and branch visibility. When its real first
+  message is above that page, the client reads that exact root through the
+  existing admitted `topic_messages` named-message view. An available root
+  decorates the gathered stack as its normal folded head, with its real words,
+  author and dossier name; the former gathered head becomes a visible reply.
+  These supplemental sources stay outside the loaded runs and older cursor,
+  and contribute no sorting key or implied intervening history. More uses the
+  loaded frontier and transfers a source root to the loaded page once, without
+  repeating it or making that already displayed root an apart card. Other
+  filled/apart messages keep item550's placement. Loaded heads and standalone
+  messages retain their rendering. Loading is explicit; an unavailable source
+  uses “Reply in <dossier name>” opening the canonical root, and a read error
+  has Retry. A loading source is never called unavailable. Withheld/private
+  bodies are not used. Revision/access changes discard old source bytes;
+  obsolete root requests and retired page lifetimes cannot repopulate them.
 - **What one stack never loses.** Each way of showing a dossier loses
   nothing in it, and every message stays reachable where it is. So a
   gathered stack keeps, folded, its head whole and each branch in view, as
@@ -241,30 +258,15 @@ their acts.
   this one run. A join changes no message, only the display, so Split back
   out puts both stacks back exactly as they were. A stack's key is unchanged:
   its newest message that lifts it (below), whichever stack it came from.
-- **The stacks.** Each stack sorts by its key, newest first. The key is the
-  reader's place if they set one, or else the sequence of the newest message
-  in it that lifts it: any message but a reply of the reader's own. A new
-  stack therefore lands on top, the reader's own included, and a new reply
-  by anyone else lifts its stack unless the reader placed it. The reader's
-  own reply leaves its stack where it was, on every device and after a
-  reload, so what they answered stays where they were reading it; for
-  everyone else it lifts the stack as any reply does. A stack joined to
-  another counts for it whoever began it, so a join still puts the two
-  where the newer would sit. ⌘↑ and ⌘↓ set a place halfway past the neighbour.
-  A place is the dossier's, as its name is (item 550): it is kept on its
-  first message, loaded or not, fenced on the place revision Core sends with
-  each message's position (docs/dossier-below-more.md), so the dossier holds
-  it whatever of it the page loads. A page whose Core sends no place in the
-  positions places the stack's head. Before item 550 a stack was placed on the
-  message heading it, a reply or a stack later joined into the dossier; while
-  the first message carries no place, the one of those set last places the
-  dossier, loaded or not, whichever message heads its stack, and "Let new
-  replies move it" takes every one of them away with the first message's, ⌘Z
-  putting each back, the one set first first, so the same one places the
-  dossier again; each shows at once, before Core answers.
-  When no number fits between two places, the two stacks trade keys. A
-  placed stack says "Placed here by you", and "Let new replies move it"
-  takes the place away.
+- **The stacks (731).** Core's personal `order_key` places each dossier,
+  including a partial page whose first message is not loaded. The migration
+  preserves each existing reader's effective order, including saved and legacy
+  placements. Incoming replies never change it. New dossiers enter first;
+  reawakened dossiers enter last above More. ⌘↑ and Move its stack down in ⋯ still place a dossier
+  halfway past its neighbour, and ⌘Z restores its previous key. Reset position
+  returns it to its last admission position and still permits no reply to lift
+  it. A join uses its destination's position; a split restores the source.
+  See [the record contract](dossier-order.md).
 - **Folding.** A stack has exactly two states, shared by its chevron,
   keyboard commands, header and menu (item 394 took away the header-only
   state, now that a swipe moves a dossier out of the way):
@@ -343,8 +345,9 @@ their acts.
   for them, as their Fold would: Core records their own `message.fold` in
   the same transaction as the reply or the thumb (`Stacks._fold_answered`),
   so every page, device and the CLI agree. Nobody else's view changes, and
-  an agent's reply or thumb folds nothing. A starred message never folds
-  this way, and one already folded stays as it is (no new row). Taking the
+  an agent's thumb folds nothing. Agent answers follow item 955 below. A
+  starred message never folds this way, and one already folded stays as it
+  is (no new row). Taking the
   thumb back unfolds nothing; a message unfolded later folds again on the
   person's next reply or thumbs-up. On the page the row shows where the
   message was, the feed keeps its place and the keys stay where they were;
@@ -354,6 +357,14 @@ their acts.
   Fold), and sending a reply or giving a 👍 is not one of them, so the fold
   goes with what caused it. A press on the row, x, or Unfold in ⋯ unfolds
   it.
+- **An agent's answer (item 955).** An agent replying publicly to a person's
+  message in a topic dossier folds that message for its human author, leaving
+  the answer open. A star, a private note with words, or an existing personal
+  fold choice prevents this automatic fold; a manual unfold survives further
+  agent answers and reloads. Core records and notifies the human's fold with
+  the reply, attributed to the real agent. Other readers, human replies,
+  agent thumbs, Conversations and whispers keep their existing behavior.
+  There is no backfill. See [agent-answer-fold-955.md](agent-answer-fold-955.md).
 - **Earlier messages (item 476).** Open, a dossier of more than seven
   messages shows its newest seven as cards and one row at the top of the
   folder for the rest: "8 earlier messages", with how many of them are new
@@ -378,7 +389,12 @@ their acts.
   there it opens in the Reader as any card does. Under Only new, which shows
   such a message as a whole card with no row in it, a press on it acts as on
   any card. A link, search or Starred
-  that lands on an earlier message opens the row and shows that message whole.
+  that lands on an earlier reply opens the row and shows that message whole.
+  A full landing on the first message instead shows it whole and keeps the
+  earlier row closed (875, [first-message-landing-875.md](first-message-landing-875.md)).
+  The row then counts only hidden replies: fourteen messages give the first
+  message, the newest seven and "6 earlier replies". A row already opened
+  stays open; pressing a closed row keeps its existing behavior.
   A topic's unread count lands the same way (item 613, docs/attention.md, "In
   the browser"), and draws the dossier open first whatever its level
   (`reveal`'s `open`), so a message waiting deep in a dossier at latest and
@@ -525,7 +541,8 @@ On a message (its card focused, never in writing), these keys work:
 
 | Keys | Act |
 | --- | --- |
-| ⌘↑ ⌘↓ | move its stack up or down, for you alone |
+| ⌘↑ | move its stack up, for you alone |
+| ⌘↓ | move the selected dossier below More; a selected message moves its containing dossier, with Return’s selection |
 | → ← | show every message of its stack, or only its latest and unread; past either, move to the siderail at that end |
 | ⇧⌘↑ ⇧⌘↓ | join its stack to the stack above or below, for everyone |
 | Return | reply to it; on a dossier's header or chevron, edit the dossier's title (Return saves, Escape cancels) |
@@ -641,9 +658,9 @@ and the positions read after it land, and ⌘Z shows them back where they
 were at once. Its "Joined from its own stack" line is on that first
 message, so it shows once Earlier messages loads it.
 
-The right rail's Starred lists the reader's stars, this place's first and
-then Elsewhere. A press lands on the message, opening its stack if it is
-folded, and Unstar beside each takes the star off.
+Starred dossier titles appear under their loaded topics in the outline
+([starred-outline.md](starred-outline.md)). A title opens that dossier through
+the writing guard. The message's own Star control takes its star off.
 
 On a phone, ⋯ opens as a sheet from the bottom, and the moves sit behind
 "Move or join…", which opens a second sheet. A message swiped to the right
@@ -694,6 +711,17 @@ this is checked in Chrome.
 A card that a join, a move or a new reply carries to another place keeps
 where it was scrolled: a table scrolled sideways, or a long message scrolled
 in its card, stays as it was, and the page keeps its place.
+One capturing scroll listener on the feed remembers only boxes whose own
+scroll events report a nonzero offset (item 888). Returning both axes to zero
+forgets the box. Reconciliation moves nodes without reading scroll positions
+or scanning their descendants; after all moves it restores only remembered
+boxes still in that feed and inside a node reconcile actually moved (item 896).
+An unmoved box receives no write. After one attempt the remembered entry is
+consumed, even when a hidden box cannot take the write; the next scroll event
+records fresh offsets. Detached boxes are forgotten. This is visit state,
+never stored. `tests/ui_scroll_carry_888.test.mjs` exercises the actual renderer
+with modelled detach resets and counts position reads/writes across moves,
+joins and new replies. It does not measure browser layout or responsiveness.
 
 A join the reader makes, by ⇧⌘↑ or ⇧⌘↓, from ⋯ or from the phone's sheet,
 shows where it went (`joinShown`). The stack it went into, which now heads
@@ -1020,7 +1048,7 @@ bar, Move below More and the Reader's archive button show as ever, and a
 press says why where it was, moving nothing; starring a message in a dossier
 below More brings it back above More, for you. Links can
 show its messages without clearing your choice. More is a boundary for the
-stack keys and their menu items: ⌘↑ ⌘↓ move a stack past, and ⇧⌘↑ ⇧⌘↓ join
+reorder controls: ⌘↑ and Move its stack down move a stack past, and ⇧⌘↑ ⇧⌘↓ join
 it to, the stack shown beside it on its own side of More (`sideOf`), so a
 stack above More steps over a dossier put aside, and none moves or joins
 across More into or out of one. The Reader's ↑ and ↓ (and a phone's
@@ -1106,14 +1134,16 @@ then all messages, and goes on between those two; only ⌘Z right after
 opening takes it back to its row. Explicitly opening it stays open as new agent replies arrive.
 This presentation is not the reader's saved message fold or saved placement.
 
-Show agent coordination above either feed is on initially; turning it off
-hides these rows (including standalone agent coordination). It is a page-local
-view, changes no unread or delivery records, and can always be turned back on.
-A message link reveals its target even with this filter off. The keys
-reach Show agent coordination in the row of filters, one of the rows of
-buttons at the top of the feed (docs/interaction.md): ↓ from it goes to the
-first dossier or message the feed shows, on or off, ↑ from there comes back
-to it, and ↑ from it goes on up to the header's buttons (item 403).
+Show agent coordination starts **Off** (item467). An explicit flip lasts for
+this reader's tab session across reloads and topic visits; a fresh tab/device
+starts Off, and a duplicated session retains its choice (Warp11470).
+It changes no unread or delivery records. A message link reveals
+only its target dossier for that visit without saving On. The pill shares
+the Archived row below the composer, on its right, whenever coordination
+exists. Left/right move between that row's controls; up/down leave the row.
+Arrivals update its count and news colour, never its choice. When On,
+coordination stays in its existing interleaved positions. The contract and
+storage boundaries are in [coordination-467.md](coordination-467.md).
 
 Classification uses addressing, not inferred intent: every message must be
 from a known agent and explicitly addressed only to known agents. Room posts,

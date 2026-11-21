@@ -1,6 +1,8 @@
+import { validCardId } from './card-details.mjs';
 import { currentImages } from './upload-state.mjs';
-import { paintState, paintWork } from './topic-state.mjs';
+import { paintState, paintWork, waitingQuestion } from './topic-state.mjs';
 import { book, scopeOf, arrangeItems, orderOf } from './outline-order.mjs';
+import { menuRouteHash, menuRouteRead, menuRouteValid } from './menu-route.mjs';
 import { oldestFirst, presses } from './waiting-questions.mjs';
 
 const validId = id => typeof id === 'string' && id.length > 0 && [...id].length <= 200 && !/[\x00-\x1f]/.test(id);
@@ -15,14 +17,18 @@ const badRoute = () => { throw Error('This destination link is incomplete or amb
 // that it opens at the oldest message still unread for the reader ('at':
 // 'unread', item 613, docs/attention.md); a topic or an outcome, a page of its
 // Notebook to open ('page'), at a revision ('revision') or as it stands.
-const OPTIONAL = {cards:['write','view'],opening:['from'],topic:['message','at','page','revision'],workspace:['page','revision']};
+const OPTIONAL = {cards:['write','view','card'],opening:['from'],topic:['message','land','at','page','revision','act','choice'],workspace:['page','revision','act']};
 const REVISION = /^[1-9][0-9]{0,17}$/;
 export function routeKey(route) {
   const fields = {root:[],health:[],'phone-check':['id'],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],measurements:['id'],tool:['id','tool'],cards:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
   const optional = (OPTIONAL[route?.kind] ?? []).filter(key=>key in route);
-  if (!fields || Object.keys(route).length !== fields.length + optional.length + 1 || ![...fields,...optional].every(key=>validId(route[key]))) badRoute();
+  if (!fields || Object.keys(route).length !== fields.length + optional.length + 1 || ![...fields,...optional].every(key=>key === 'land' ? route[key] === true : validId(route[key]))) badRoute();
+  // Landing-only links name a message, and never imply opening its Reader.
+  if ('land' in route && !('message' in route)) badRoute();
+  if (!menuRouteValid(route)) badRoute();
   if (route.kind === 'cards' && route.write !== undefined && route.write !== 'new') badRoute();
   if (route.kind === 'cards' && route.view !== undefined && !['text','cards'].includes(route.view)) badRoute();
+  if ('card' in route && (!validCardId(route.card) || route.write || route.view === 'text')) badRoute();
   // A page is named alone (not with a message), and a revision only with its page.
   if (('page' in route && 'message' in route) || ('revision' in route && !('page' in route)) || ('revision' in route && !REVISION.test(route.revision))) badRoute();
   // Where a topic opens is one place: its oldest unread message, alone.
@@ -32,11 +38,11 @@ export function routeKey(route) {
 export function routeHref(route) {
   routeKey(route);
   const page = route.page ? {page:route.page,...(route.revision?{revision:route.revision}:{})} : {};
-  const params = route.kind === 'root' ? null : route.kind === 'health' ? {health:''} : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{}),...(route.at?{at:route.at}:{}),...page} : route.kind === 'conversation' ? {conversation:route.id} :
-    route.kind === 'workspace' ? {workspace:route.id,...page} : route.kind === 'pipeline' ? {pipeline:route.id} : route.kind === 'measurements' ? {measurements:route.id} : route.kind === 'tool' ? {workspace:route.id,tool:route.tool} : route.kind === 'cards' ? {cards:route.id,...(route.write?{write:route.write}:{}),...(route.view?{view:route.view}:{})} :
+  const params = route.kind === 'root' ? null : route.kind === 'health' ? {health:''} : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{}),...(route.land?{land:'only'}:{}),...(route.at?{at:route.at}:{}),...page} : route.kind === 'conversation' ? {conversation:route.id} :
+    route.kind === 'workspace' ? {workspace:route.id,...page} : route.kind === 'pipeline' ? {pipeline:route.id} : route.kind === 'measurements' ? {measurements:route.id} : route.kind === 'tool' ? {workspace:route.id,tool:route.tool} : route.kind === 'cards' ? {cards:route.id,...(route.write?{write:route.write}:{}),...(route.view?{view:route.view}:{}),...(route.card?{card:route.card}:{})} :
     route.kind === 'item' ? {pipeline:route.id,item:route.item} : route.kind === 'phone-check' ? {'phone-check':route.id} : route.kind === 'create' ? {new:'outcome',intent:route.intent} :
       {workspace:route.workspace,opening:route.opening,opening_topic:route.topic,...(route.from?{opening_from:route.from}:{})};
-  return params ? '?' + new URLSearchParams(params) : '/';
+  return (params ? '?' + new URLSearchParams(params) : '/') + menuRouteHash(route);
 }
 // A topic, opened at one of its messages when one is named, or at its oldest
 // unread message when at is 'unread' (item 613).
@@ -52,6 +58,7 @@ export function parseRoute(url) {
   else if (keys.length===1 && p.get('health')==='') route={kind:'health'};
   else if (keys.length===1 && p.has('topic')) route={kind:'topic',id:p.get('topic')};
   else if (keys.length===2 && p.has('topic') && p.has('message')) route={kind:'topic',id:p.get('topic'),message:p.get('message')};
+  else if (keys.length===3 && p.has('topic') && p.has('message') && p.get('land')==='only') route={kind:'topic',id:p.get('topic'),message:p.get('message'),land:true};
   // A topic opened at its oldest unread message: what its unread count leads to (item 613).
   else if (keys.length===2 && p.has('topic') && p.has('at')) route={kind:'topic',id:p.get('topic'),at:p.get('at')};
   // A Notebook page's link: its topic's or its outcome's, the page, and perhaps its revision.
@@ -68,7 +75,7 @@ export function parseRoute(url) {
   else if (keys.length===2 && p.has('workspace') && p.has('tool')) route={kind:'tool',id:p.get('workspace'),tool:p.get('tool')};
   else if (keys.length===2 && p.has('pipeline') && /^[1-9][0-9]{0,8}$/.test(p.get('item') ?? '')) route={kind:'item',id:p.get('pipeline'),item:p.get('item')};
   // A Notebook page as a deck of cards (docs/decks.md).
-  else if (p.has('cards') && keys.every(k=>['cards','write','view'].includes(k))) route={kind:'cards',id:p.get('cards'),...(p.has('write')?{write:p.get('write')}:{}),...(p.has('view')?{view:p.get('view')}:{})};
+  else if (p.has('cards') && keys.every(k=>['cards','write','view','card'].includes(k))) route={kind:'cards',id:p.get('cards'),...(p.has('write')?{write:p.get('write')}:{}),...(p.has('view')?{view:p.get('view')}:{}),...(p.has('card')?{card:p.get('card')}:{})};
   else if (keys.length===2 && p.get('new')==='outcome' && p.has('intent')) route={kind:'create',intent:p.get('intent')};
   // The phone check, posting what the phone did to one topic (docs/device-evidence.md).
   else if (keys.length===1 && p.has('phone-check')) route={kind:'phone-check',id:p.get('phone-check')};
@@ -76,6 +83,7 @@ export function parseRoute(url) {
     route={kind:'opening',workspace:p.get('workspace'),opening:p.get('opening'),topic:p.get('opening_topic'),...(p.has('opening_from')?{from:p.get('opening_from')}:{})};
   }
   else badRoute();
+  Object.assign(route, menuRouteRead(url));
   routeKey(route);return route;
 }
 
@@ -129,6 +137,24 @@ function compare([doneA, positionA, idA], [doneB, positionB, idB]) {
 }
 const key = item => [doneFlag(item), Number.isSafeInteger(item.list_position) ? item.list_position : 0, item.id];
 
+// Core still lists the standing conversation separately. Carry its one topic
+// beside the first active page, never inside the server's cursor/extent.
+export async function readTopicList(read, args, conversationRead = () => {}) {
+  const answer = await read('workspace_topics', args);
+  if (args.cursor || args.archived || args.done || args.build === true) return answer;
+  const found = await read('conversation', { workspace_id: args.workspace_id });
+  const conversation = found.conversation;
+  if (found.instance_id !== answer.instance_id) throw Error('The conversation topic identity could not be confirmed. Retry topics.');
+  if (!conversation) { conversationRead(null); return { ...answer, conversation_topic: null }; }
+  const record = await read('topic', { topic_id: conversation.topic_id });
+  const topic = record.topic;
+  if (found.instance_id !== answer.instance_id || record.instance_id !== answer.instance_id || topic?.id !== conversation.topic_id || topic.workspace_id !== args.workspace_id)
+    throw Error('The conversation topic identity could not be confirmed. Retry topics.');
+  conversationRead(conversation);
+  return { ...answer, conversation_topic: { ...topic, unread: conversation.unread ?? 0,
+    addressed: conversation.addressed ?? 0 } };
+}
+
 // Only workspace navigation data lives here. Existing sessions own all writing.
 export class TopicPages {
   // apart: the open topics are listed apart from the outcome's Build topics,
@@ -143,9 +169,11 @@ export class TopicPages {
   // the list where what the page knows of it puts it, in its place there.
   get items() {
     const current = this.current, here = current && listOf(current, this.apart) === this.list;
-    const items = [...this.loaded.values()].filter(item => item.id !== current?.id || here)
+    const loaded = new Map(this.loaded);
+    if (this.conversation && listOf(this.conversation, this.apart) === this.list) loaded.set(this.conversation.id, this.conversation);
+    const items = [...loaded.values()].filter(item => item.id !== current?.id || here)
       .map(item => item.id === current?.id ? { ...item, ...current } : item);
-    if (here && !this.loaded.has(current.id)) items.push(current);
+    if (here && !loaded.has(current.id)) items.push(current);
     return items.sort((a, b) => compare(key(a), key(b)));
   }
   accept(answer, cursor = null) {
@@ -165,7 +193,12 @@ export class TopicPages {
     if (answer.next_cursor !== null && (!answer.items.length || answer.next_cursor !== topicPosition(answer.items.at(-1)))) fail();
     // The person's own order of the outcome's topics, which every page carries (outline-order.mjs).
     const order = orderOf(answer);
-    if (cursor === null) this.loaded.clear();
+    if (cursor === null) {
+      const item = answer.conversation_topic;
+      if (item != null && (typeof item.id !== 'string' || !item.id || item.workspace_id !== this.workspaceId || typeof item.title !== 'string' || !Number.isSafeInteger(item.list_position) || item.list_position < 0)) fail();
+      this.loaded.clear();
+      this.conversation = item == null ? null : structuredClone(item);
+    }
     for (const item of answer.items) this.loaded.set(item.id, structuredClone(item));
     if (order) this.order = order;
     this.next = answer.next_cursor; this.started = true;
@@ -173,24 +206,48 @@ export class TopicPages {
     return true;
   }
   empty() { return new TopicPages(this.instanceId, this.workspaceId, this.current, this.list, this.apart); }
+  copy() { const fresh = this.empty(); takePages(fresh, this); fresh.loaded = new Map(this.loaded); return fresh; }
   last() { const item = [...this.loaded.values()].pop(); return item ? topicPosition(item) : null; }
   precedes(a, b) { return compare(position(a), position(b)) < 0; }
 }
 
 export const PAGE = 20;
+// WorkspacePages also uses reread; publication stays a shared adapter rather
+// than requiring a topic-only method on every paged owner.
+function takePages(pages, fresh) {
+  Object.assign(pages, { loaded: fresh.loaded, conversation: fresh.conversation, next: fresh.next,
+    groups: fresh.groups ?? pages.groups, order: fresh.order ?? pages.order, started: true });
+}
+// The current topic is already drawn even beyond the loaded page. A cursor
+// whose only remaining row is that topic promises nothing new. Probe only
+// that possible tail, validate it, and consume a confirmed duplicate/empty
+// answer; an actual unshown row remains behind the original cursor.
+async function currentTail(pages, read) {
+  const current = pages.current, cursor = pages.next;
+  if (!current || cursor === null || pages.loaded.has(current.id) ||
+      !pages.items.some(item => item.id === current.id) || !pages.precedes(cursor, topicPosition(current))) return;
+  const answer = await read({ limit: 1, cursor }), probe = pages.empty();
+  probe.started = true; probe.next = cursor; probe.accept(answer, cursor);
+  if ([...probe.loaded.keys()].every(id => id === current.id)) pages.accept(answer, cursor);
+}
+
+// A route keeps only how far its reader opened this list in this document.
+// Fresh Core reads still own the rows, counts and whether anything remains.
+const topicExtents = new WeakMap();
 // A reload reads again everything the reader has loaded, the pages More added
 // included: from the start, in pages as large as the view allows, until it
 // passes the last row they had. The list changes once, when all have arrived,
 // so a reload never folds the list back to its first page.
 export async function reread(pages, read, pageMax = PAGE) {
-  const fresh = pages.empty(), last = pages.last();
-  const limit = Math.min(pageMax, Math.max(PAGE, pages.loaded.size));
+  const fresh = pages.empty(), last = pages.last() ?? pages.extent?.last ?? null;
+  const limit = Math.min(pageMax, Math.max(PAGE, pages.loaded.size, pages.extent?.count ?? 0));
   let cursor = null;
   do {
     fresh.accept(await read({ limit, ...(cursor === null ? {} : { cursor }) }), cursor);
     cursor = fresh.next;
   } while (cursor !== null && last !== null && fresh.precedes(cursor, last));
-  Object.assign(pages, { loaded: fresh.loaded, next: fresh.next, groups: fresh.groups ?? pages.groups, order: fresh.order ?? pages.order, started: true });
+  await currentTail(fresh, read);
+  takePages(pages, fresh);
 }
 
 // The departure guard. A move waits for a send under way and for writing and
@@ -201,6 +258,7 @@ export class TopicNavigation {
   constructor({ registry, topicId, current = topicId ? {kind:'topic',id:topicId} : {kind:'root'}, navigate, navigateTarget, beforeLeave }) {
     Object.assign(this, { registry, topicId, current, navigate, navigateTarget, beforeLeave }); this.serial = 0;
   }
+  cancelPending() { this.serial++; }
   open(topicId, title = topicId) { return this.openTarget({kind:'topic',id:topicId},title); }
   async openTarget(destination, title = destination.kind) {
     const destinationKey=routeKey(destination);
@@ -276,8 +334,9 @@ export class TopicNavigation {
 export class TopicRail {
   // key: the line under the topics that says what the work ring means, shown
   // while a row in view wears one.
-  constructor({ pages, host, more, retry, message, read, open, denied, updated, reader = null, pageMax = PAGE, done = null, archived = null, storage = null, area = host, key = null }) {
-    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, reader, pageMax, storage, area, key });
+  constructor({ pages, host, more, retry, message, read, open, denied, updated, painted = null, reader = null, pageMax = PAGE, done = null, archived = null, storage = null, area = host, key = null }) {
+    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, painted, reader, pageMax, storage, area, key });
+    this.rowItems = new WeakMap();
     this.denied = false; this.loading = null; this.queued = null; this.queuedAsked = false; this.failedMore = false; this.serial = 0;
     this.lists = [{ name: 'active', pages, host, more }];
     const kept = this.kept();
@@ -292,8 +351,18 @@ export class TopicRail {
       // it, so it shows at once, under the pointer that opened it too.
       list.details.addEventListener('toggle', () => {
         this.keep(name, list.details.open);
+        this.paint(true);
         if (list.details.open && !list.reading) this.load(list.pages.started ? false : list, true);
       });
+    }
+    if (reader) {
+      let extents = topicExtents.get(document);
+      if (!extents) topicExtents.set(document, extents = new Map());
+      this.extents = extents;
+      for (const list of this.lists) {
+        list.extentKey = JSON.stringify([pages.instanceId, reader, pages.workspaceId, pages.apart, list.name]);
+        list.pages.extent = extents.get(list.extentKey) ?? null;
+      }
     }
     more.onclick = () => this.load(true); retry.onclick = () => this.load(this.failedMore, true);
     // The lists keep still under the pointer: a change found while it is over
@@ -352,12 +421,7 @@ export class TopicRail {
       link = document.createElement('a'); link.className = 'nav-item'; link.dataset.topicId = item.id;
       // A topic waiting on the reader opens at the question (item 148): the Reader shows it.
       // A press on its unread count opens it at its oldest unread message (item 613).
-      link.onclick = event => {
-        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        event.preventDefault();
-        if (landsOnUnread(event.target, event)) return this.open(item.id, this.title(item.id), null, 'unread');
-        return this.open(item.id, this.title(item.id), this.question(item.id, true));
-      };
+      link.onclick = event => this.activate(item.id, event);
       this.links.set(item.id, link);
     }
     // A row drawn again with what it already shows is left alone, so the
@@ -367,11 +431,52 @@ export class TopicRail {
       drawn.set(link, shows);
       link.textContent = item.title;
       paintMarks(link, item, this.reader);
+      // On hover, the whole title (a one-line row may cut it short), then what was seen there, if anything.
+      const seen = link.title;
+      link.title = seen ? `${item.title} · ${seen}` : item.title;
     }
+    if (Number.isSafeInteger(item.cover_waiting) && item.cover_waiting > 0) link.setAttribute('data-cover-waiting', '');
+    else link.removeAttribute('data-cover-waiting');
     link.href = routeHref(topicTarget(item.id, this.question(item.id)));
     if (item.id === this.pages.current?.id) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
+    this.rowItems.set(link, item);
     return link;
+  }
+  activate(id, event) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if (landsOnUnread(event.target, event)) return this.open(id, this.title(id), null, 'unread');
+    return this.open(id, this.title(id), this.question(id, true));
+  }
+  // A second presentation reads the rows this rail actually drew, including
+  // order held under the pointer. Visibility comes from the outline's own
+  // CSS, not a second implementation of its New / Waiting filters. A phone
+  // drawer off screen does not change these rows' own display properties.
+  shownLists() {
+    if (this.denied) return [];
+    return this.lists.filter(list => !list.details || displayed(list.details));
+  }
+  shownRows(list) {
+    if (this.denied || list.details && (!list.details.open || !displayed(list.details))) return [];
+    return [...list.host.children].filter(displayed).map(link => ({ link, item: this.rowItems.get(link) })).filter(row => row.item);
+  }
+  // Values and acts are the boundary to another presentation. Only this
+  // owner knows its DOM, CSS filter and held order; a card never reads them.
+  presentation() {
+    return {
+      reader: this.reader, started: this.pages.started, busy: Boolean(this.loading),
+      message: this.message.hidden ? '' : this.message.textContent,
+      retry: this.retry.hidden ? null : () => this.load(this.failedMore, true),
+      groups: this.shownLists().map(list => ({
+        name: list.name, label: list.label?.textContent ?? '', opened: !list.details || list.details.open,
+        toggle: list.details ? () => { list.details.open = !list.details.open; this.paint(true); } : null,
+        more: list.more.hidden || list.details && !list.details.open ? null : () => this.load(list),
+        rows: this.shownRows(list).map(({ item, link }) => ({
+          item: structuredClone(item), href: link.href, activate: event => this.activate(item.id, event),
+        })),
+      })),
+    };
   }
   // asked: the person asked for this change (More, Retry, opening a line), so
   // it shows at once, under the pointer too.
@@ -418,6 +523,7 @@ export class TopicRail {
     // The key shows while a row the person can see (in the topic list, or a line they opened) wears the ring.
     if (this.key) this.key.hidden = this.denied || !this.lists.some(list => (list === this.lists[0] || list.details.open) &&
       list.pages.items.some(item => owner.get(item.id) === list && item.work?.observed === true));
+    this.painted?.();
   }
   // A More asked for while a read runs shares it. A reload never joins a read
   // already sent: it may have been asked for after a commit that read cannot
@@ -441,13 +547,20 @@ export class TopicRail {
     // Keep busy controls focusable; repeated activation shares this read.
     for (const control of [this.retry, ...this.lists.map(list => list.more)]) control.setAttribute('aria-disabled', 'true');
     const reading = list => args => this.read({ workspace_id: this.pages.workspaceId, ...listArgs(list.name, this.pages.apart), ...args });
-    const read = list => (target && !first ? reading(list)({ limit: PAGE, cursor }).then(answer => { list.pages.accept(answer, cursor); })
+    const read = list => (target && !first ? reading(list)({ limit: PAGE, cursor }).then(async answer => {
+      const fresh = list.pages.copy(); fresh.accept(answer, cursor);
+      await currentTail(fresh, reading(list)); takePages(list.pages, fresh);
+    })
       : reread(list.pages, reading(list), this.pageMax)).then(() => { list.pages.readAt = ++this.serial; });
     const lists = target ? [target] : this.lists.filter(list => list === this.lists[0] || list.details.open);
     for (const list of lists) list.reading = true;
     this.loading = Promise.all(lists.map(read))
       .then(() => {
         for (const list of lists) book.learn(this.scope, list.pages.order);
+        for (const list of lists) if (this.extents) {
+          list.pages.extent = { last: list.pages.last(), count: list.pages.loaded.size };
+          this.extents.set(list.extentKey, list.pages.extent);
+        }
         const focused = document.activeElement;
         this.denied = false;
         this.message.hidden = true; this.retry.hidden = true; this.paint(asked);
@@ -470,10 +583,13 @@ export class TopicRail {
         for (const list of lists) list.reading = false;
         for (const control of [this.retry, ...this.lists.map(list => list.more)]) control.removeAttribute('aria-disabled');
         this.updated?.();
+        this.painted?.();
       });
     return this.loading;
   }
 }
+
+export const displayed = node => !node.hidden && (globalThis.getComputedStyle?.(node).display ?? '') !== 'none';
 
 // Puts exactly nodes in host, in their order, moving only what is out of place,
 // and never fixed: moving a node takes it out of the page for a moment, which
@@ -499,9 +615,10 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 const questionsOf = (item, reader) => (Array.isArray(item?.asks) ? item.asks : [])
   .filter(ask => ask?.actor_id === reader && typeof ask.message_id === 'string')
   .map(ask => ({ topic_id: item.id, message_id: ask.message_id, ms: ask.since_ms }));
-// Painting a link never advances its place. Only the plain press does, across either rail.
-export const questionOf = (item, reader) => oldestFirst(questionsOf(item, reader))[0]?.message_id ?? null;
-export const nextQuestionOf = (item, reader) => presses.next('topic:' + item.id, questionsOf(item, reader))?.message_id ?? null;
+// Painting is passive; only an actual press advances the reader's questions.
+// Keep Conversation inspection's existing fallback when none waits on this reader.
+export const questionOf = (item, reader) => oldestFirst(questionsOf(item, reader))[0]?.message_id ?? waitingQuestion(item, reader);
+export const nextQuestionOf = (item, reader) => presses.next('topic:' + item.id, questionsOf(item, reader))?.message_id ?? waitingQuestion(item, reader);
 // What a topic's row carries after its title, in the outline and in the right
 // rail alike (item 297): its unread count (marked when part of it was sent to
 // the reader by name), where it stands (Waiting on you, Ready for review…) and

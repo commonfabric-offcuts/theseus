@@ -3,7 +3,7 @@
 // note, as a subtitle. Where the topic stands in full, and the form that
 // changes it, are in Topic settings (topic-settings.mjs); the topic's people
 // are its Team, on the title row's right, under the title (item 465).
-import { STATES, stateLabel, waitsOn } from './topic-state.mjs';
+import { STATES, stateLabel, stateTitle, waitingQuestion, waitsOn, managesTopic } from './topic-state.mjs';
 
 // Active, and waiting on nobody: the state that needs no word of its own.
 export const plainActive = topic => (STATES.includes(topic?.state) ? topic.state : 'active') === 'active' && !waitsOn(topic).length;
@@ -21,12 +21,21 @@ export function subtitleNote(topic) {
 }
 
 // The state word as the live pill, for a topic that is not plainly Active.
-function stateMark(topic, reader, doc) {
-  const mark = doc.createElement('strong');
+function stateMark(topic, reader, doc, openQuestion) {
+  const question = topic.kind === 'conversation' ? waitingQuestion(topic, reader) : null;
+  const mark = doc.createElement(question ? 'a' : 'strong');
   mark.className = 'topic-state';
   mark.dataset.state = waitsOn(topic).length ? 'waiting' : STATES.includes(topic.state) ? topic.state : 'active';
   if (waitsOn(topic).includes(reader)) mark.classList.add('mine');
-  mark.textContent = mark.title = stateLabel(topic, reader);
+  mark.textContent = stateLabel(topic, reader);
+  mark.title = waitsOn(topic).length || topic.state === 'waiting' ? stateTitle(topic, reader) : mark.textContent;
+  if (question) {
+    mark.href = '?' + new URLSearchParams({ topic: topic.id, message: question });
+    if (openQuestion) mark.onclick = event => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault(); openQuestion(question);
+    };
+  }
   return mark;
 }
 
@@ -52,10 +61,10 @@ function doneButton(done, doc) {
 // say where it stands; a topic Ready for review then shows ✅ Done after its
 // state. A repaint keeps the focus on ✅ Done while it shows, and once it
 // goes, gives the focus to the subtitle, which now says Done.
-export function paintSubtitle(subtitle, topic, reader, doc = document, done = null) {
+export function paintSubtitle(subtitle, topic, reader, doc = document, done = null, openQuestion = null) {
   const focused = subtitle.children ? [...subtitle.children].some(node => node === doc.activeElement && node.classList?.contains('mark-done')) : false;
   const parts = [];
-  if (!plainActive(topic)) parts.push(stateMark(topic, reader, doc));
+  if (!plainActive(topic)) parts.push(stateMark(topic, reader, doc, openQuestion));
   const button = done && topic.state === 'review' ? doneButton(done, doc) : null;
   if (button) parts.push(' ', button);
   const note = subtitleNote(topic);
@@ -76,8 +85,11 @@ export function paintSubtitle(subtitle, topic, reader, doc = document, done = nu
 // The title, the subtitle and whether the gear shows. settings is false where
 // no Topic settings apply (a conversation refuses every change they make).
 // done marks the topic Done from ✅ Done (paintSubtitle).
-export function paintTopicHeader({ title, subtitle, gear }, topic, reader, { settings = true, doc = document, done = null } = {}) {
+export function paintTopicHeader({ title, subtitle, gear, pencil }, topic, reader, { settings = true, doc = document, done = null, question = null } = {}) {
   title.textContent = topic.title;
-  paintSubtitle(subtitle, topic, reader, doc, settings ? done : null);
+  const renamable = settings && managesTopic(topic, reader);
+  title.classList.toggle('renamable', renamable); title.tabIndex = renamable ? 0 : -1;
+  paintSubtitle(subtitle, topic, reader, doc, settings ? done : null, question);
   gear.hidden = !settings;
+  if (pencil) pencil.hidden = !renamable || title.hidden;
 }

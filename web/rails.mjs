@@ -6,7 +6,7 @@
 import { shell as host, listen } from './in-place-navigation.mjs';
 import { OutlineRail } from './outline-rail.mjs';
 import { ThingsRail } from './things-rail.mjs';
-import { panes, feedKey, inMessages, messagesSideways } from './panes.mjs';
+import { panes, feedKey, inMessages, messagesSideways, onStackControls } from './panes.mjs';
 import { arrowReach, onNothing } from './arrow-reach.mjs';
 
 const storage = win => { try { return win.localStorage; } catch { return null; } };
@@ -31,9 +31,10 @@ shell.extend((doc, win) => {
   }
   // ⌘Return: a new message in the place the keys are on, or in the page's own (panes.mjs).
   panes.write = (target, title) => shell.write(target, title);
+  panes.center = () => shell.handles?.centerPane ?? null;
   // → and ← in the messages move to the rails beside them, ↑ from the top
   // message to the header's buttons (panes.mjs); the shell keeps this across moves.
-  listen(doc, 'keydown', event => { if (doc.documentElement.hasAttribute('data-rails')) feedKey(event, doc); });
+  listen(doc, 'keydown', event => { if (doc.documentElement.hasAttribute('data-rails')) feedKey(event, doc, () => shell.handles?.readingNavigation?.()); });
   // An arrow nothing else used lands on the nearest control that way, on
   // every page (arrow-reach.mjs). On a topic and a Conversation the panes'
   // own keys answer first: in the rails' trees, on the buttons at the top of
@@ -49,11 +50,11 @@ shell.extend((doc, win) => {
   // the chips, People, the right rail's name): within that pane, and ← and →
   // past its edge on to the pane beside, as from the messages.
   const feed = () => doc.documentElement.hasAttribute('data-rails');
-  const PANES = [['#rail', 'outline'], ['#main', 'feed'], ['#things', 'things']];
+  const PANES = [['#rail', 'outline'], ['#main', 'feed'], ['#things', 'things'], ['#notebook-sheet-dialog.notebook-docked', 'notebook']];
   arrowReach(doc, {
     listen,
     managed: (at, way) => feed() && ((way === 'up' || way === 'down') && (onNothing(at, doc) && Boolean(doc.querySelector('#messages [data-id]'))) && !doc.getElementById('main')?.inert
-      || ((way === 'up' || way === 'down') ? inMessages(at, doc) : messagesSideways(at, doc))),
+      || ((way === 'up' || way === 'down') ? inMessages(at, doc) && !onStackControls(at) : messagesSideways(at, doc))),
     // A message's bar is a region of its own, and so is a dossier whose title bar's glyphs hold the keys: ← and → go
     // along the title bar and the chevron, never to a control of the messages below, and past its end on to the pane beside.
     region: at => feed() ? at.closest('.message-bar') ?? at.closest('.reply-stack > .stack-tools')?.parentElement ?? at.closest(PANES.map(([pane]) => pane).join(',')) : null,

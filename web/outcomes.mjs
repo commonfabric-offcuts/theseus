@@ -6,12 +6,10 @@ export class OutcomeRail {
   // peek, when given, opens what a row's light is made of (outcome-light.mjs);
   // painted hears the rows after every read, so a line that counts them
   // agrees, and null when they could not be read, so it shows no stale rows.
-  // opens: what a press on an outcome opens, its page ('workspace') or, on the
-  // Outcomes home, its Conversation ('conversation'; its page while it has none).
   // reader and bringBack(item): on the Outcomes home, the owner of an archived or completed outcome brings it back from
   // its row under "Archived (N)" (item 404); bringBack resolves once Core has taken it, or throws its words.
-  constructor({instanceId,current,host,more,retry,message,empty,read,open,denied,pageMax=PAGE,peek=null,painted=()=>{},opens='workspace',reader=null,bringBack=null}) {
-    Object.assign(this,{current,host,more,retry,message,empty,open,isDenied:denied,pageMax,peek,painted,opens,reader,bringBack});
+  constructor({instanceId,current,host,more,retry,message,empty,read,open,denied,pageMax=PAGE,peek=null,painted=()=>{},reader=null,bringBack=null}) {
+    Object.assign(this,{current,host,more,retry,message,empty,open,isDenied:denied,pageMax,peek,painted,reader,bringBack});
     // Reached outcomes fold into one "Reached (N)" line at the end of the list, which opens them (D42); archived and
     // completed ones into one "Archived (N)" line directly above it (item 404).
     this.reachedCount=0;this.endedCount=0;
@@ -85,9 +83,9 @@ export class OutcomeRail {
     await this.load();
     [...this.host.children].find(link=>link.dataset.workspaceId===item.id)?.focus();
   }
-  // Where a press on an outcome goes (opens).
+  // A press on an outcome opens its home.
   target(item) {
-    return this.opens==='conversation'&&typeof item.conversation_id==='string'?{kind:'conversation',id:item.id}:{kind:'workspace',id:item.id};
+    return {kind:'workspace',id:item.id};
   }
   paint() {
     const items=this.pages.items,ids=new Set(items.map(x=>x.id));

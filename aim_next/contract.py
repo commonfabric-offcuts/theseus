@@ -4,6 +4,7 @@ import json
 
 
 LIMITS = {
+    "root_post_candidates": 10,
     "body_utf8_bytes": 1048576, "recipients": 32, "topic_participants": 32, "workspace_members": 128,
     "page_default": 50, "page_max": 100, "summary_utf8_bytes": 131072,
     "http_envelope_bytes": 2097152, "image_bytes": 16777216,
@@ -36,10 +37,11 @@ class StoreError(Exception):
 
 
 class Refusal(Exception):
-    def __init__(self, code, message, current_versions=None, recorded=None):
+    def __init__(self, code, message, current_versions=None, recorded=None, *, details=None):
         self.code = code
         self.message = message
         self.current_versions = current_versions
+        self.details = details
         self.recorded = (code != "INVALID_ARGUMENT") if recorded is None else recorded
         super().__init__(message)
 

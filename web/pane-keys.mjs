@@ -22,6 +22,18 @@ export function pageItself(at, doc) {
   return !at || at === doc.body || at.id === 'main' || Boolean(at.matches?.('#main h1'));
 }
 
+// Capture before reach tries to focus or scroll. Its true return alone does
+// not prove movement: a control can refuse focus.
+export function readingMovement(doc, within = null, at = doc.activeElement) {
+  const boxes = [doc.scrollingElement, ...(within ?? doc.body).querySelectorAll('*')];
+  for (let box = within ?? doc.body; box; box = box.parentElement) boxes.push(box);
+  const scrollers = boxes
+    .filter(box => box && (box.scrollHeight > box.clientHeight || box.scrollWidth > box.clientWidth))
+    .map(box => ({ box, top: box.scrollTop, left: box.scrollLeft }));
+  return () => Boolean(doc.activeElement !== at && doc.activeElement?.isConnected && !pageItself(doc.activeElement, doc) ||
+    scrollers.some(({ box, top, left }) => box.scrollTop !== top || box.scrollLeft !== left));
+}
+
 // What a key press means, or null when it means nothing here: 'up', 'down',
 // 'first', 'last', 'left', 'right' (plain), 'open' and 'fold' (⌘→ ⌘←),
 // 'open-all' and 'fold-all' (⇧⌘→ ⇧⌘←), 'move-up' and 'move-down' (⌘↑ ⌘↓),
@@ -41,7 +53,7 @@ export function keyAction(event) {
 // The keys, in plain words, as the outline's legend and the guide list them.
 export const KEY_WORDS = [
   ['↑ ↓', 'move through the outcomes and topics; Home and End go to the first and last'],
-  ['Return', 'opens the topic at its oldest unread message when it has an unread count, or the outcome\'s Conversation with its topics, folding every other outcome; on a pencil, a new topic\'s or outcome\'s title line'],
+  ['Return', 'opens the topic at its oldest unread message when it has an unread count, or the outcome home with its topics, without folding other outcomes; on a pencil, a new topic\'s or outcome\'s title line'],
   ['⌘→ ⌘←', 'open and fold an outcome'],
   ['⇧⌘→ ⇧⌘←', 'open every outcome, or fold every one'],
   ['→ ←', 'open or fold, then move between the outline, the messages and the right rail'],
@@ -52,7 +64,8 @@ export const KEY_WORDS = [
 // The same keys on a message, as the outline's legend lists them under "In the messages" (docs/reply-stacks.md).
 export const MESSAGE_KEY_WORDS = [
   ['↑ ↓', 'move the light from message to message, down a stack to its newer replies and on to the stack below'],
-  ['⌘↑ ⌘↓', 'move the message\'s stack up or down; your order is yours, kept wherever you sign in'],
+  ['⌘↑', 'move the message\'s stack up; your order is yours, kept wherever you sign in'],
+  ['⌘↓', 'move the selected dossier below More; a selected message moves its containing dossier'],
   ['→ ←', 'show a stack\'s every message, or only its latest and unread; past either, move to the right or left siderail'],
   ['⇧⌘↑ ⇧⌘↓', 'join the stack to the one above or below, for everyone here; Split back out in ⋯ takes it out again'],
   ['x', 'folds the message to one line, for you alone, and x again unfolds it; a starred message stays open'],

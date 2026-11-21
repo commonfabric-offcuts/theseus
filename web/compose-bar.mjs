@@ -13,6 +13,18 @@ const TYPING = 'textarea, input:not([type]), input[type=text], input[type=search
 // while a text field has focus: smaller changes are the browser's own bars.
 const KEYBOARD_MIN = 120;
 
+// A reply docked in the page needs the page to move, not the full Reader's
+// internal scroll box. Only an opening/focus or a shrinking keyboard viewport
+// asks for this; scrolling the page away never pulls the person back.
+export function revealCardReply(field, win = globalThis.window) {
+  if (!field?.closest?.('#reader[data-card-reply], .card-reply-composer')) return;
+  const box = field.closest('.field-box');
+  if (!box?.getClientRects().length) return;
+  const rect = box.getBoundingClientRect(), vv = win.visualViewport;
+  const top = vv?.offsetTop ?? 0, bottom = top + (vv?.height ?? win.innerHeight);
+  if (rect.top < top || rect.bottom > bottom) win.scrollBy({ top: rect.bottom - bottom, behavior: 'instant' });
+}
+
 // The keyboard, read from the visual viewport (web/ has one reader of it):
 // --vv-height and --vv-top follow what is visible, so a phone's dialog sits
 // above the keyboard rather than under it, and --keyboard holds the last
@@ -25,7 +37,7 @@ function trackKeyboard(win, doc) {
   if (!vv || !doc) return;
   const root = doc.documentElement;
   let full = 0, width = 0, last = vv.height;
-  const read = () => {
+  const read = event => {
     const typing = doc.activeElement?.matches?.(TYPING) && !doc.activeElement.readOnly;
     if (vv.width !== width) { width = vv.width; full = 0; }
     if (!typing || vv.height > full) full = vv.height;
@@ -39,10 +51,11 @@ function trackKeyboard(win, doc) {
     // scrollTop, so nothing moves, and nothing around it is ever scrolled:
     // the Reader, which clips, stays where it is.
     const field = typing && vv.height < last ? doc.activeElement.closest('.composer .field-box') : null;
-    if (field) {
+    if (field && !field.closest('#reader[data-card-reply], .card-reply-composer')) {
       const composer = field.closest('.composer'), port = composer.getBoundingClientRect().top + composer.clientTop + composer.clientHeight;
       composer.scrollTop += Math.max(0, field.getBoundingClientRect().bottom + (parseFloat(win.getComputedStyle(composer).scrollPaddingBottom) || 0) - port);
     }
+    if (typing && (event?.type === 'focusin' || vv.height < last)) revealCardReply(doc.activeElement, win);
     last = vv.height;
   };
   vv.addEventListener('resize', read);
@@ -112,21 +125,47 @@ export class ComposeBar {
     // and the control pressed is the one that acts, wherever closing the panel
     // moves the composer. That control's act is the press's, so it names no
     // one: a name typed in To stays typed (putAway).
-    this.win.addEventListener('click', event => {
+    this.outsideClick = event => {
       if (!this.panel) return;
       const panel = this.panels[this.panel], opener = this.openers[this.panel];
       if (!panel.contains(event.target) && !opener.contains(event.target)) this.close();
-    }, true);
+    };
+    this.win.addEventListener('click', this.outsideClick, true);
     taller?.addEventListener('click', () => {
       const tall = !this.root.hasAttribute('data-tall');
       this.root.toggleAttribute('data-tall', tall); taller.setAttribute('aria-pressed', String(tall));
       this.fit(); this.field.focus({ preventScroll: true });
     });
-    this.phone.addEventListener('change', () => this.fit());
+    this.widthChanged = () => this.fit();
+    this.phone.addEventListener('change', this.widthChanged);
     // Whatever stops showing the composer (the Reader closing, the topic page
     // giving way to another view) puts its open panel away (unseen).
-    new ResizeObserver(() => this.unseen()).observe(root);
+    this.observer = new ResizeObserver(entries => {
+      if (this.disposed) return;
+      this.unseen();
+      const fieldSize = entries.find(entry => entry.target === field)?.contentRect;
+      // Wrapping can change without input, including when the Reader changes
+      // layout. Ignore height-only notifications from our own fit.
+      if (fieldSize?.width > 0 && fieldSize.width !== this.fieldWidth) {
+        this.fieldWidth = fieldSize.width;
+        // Fit outside ResizeObserver delivery: changing the observed height
+        // here otherwise produces undelivered-notification loops in WebKit.
+        if (this.fitFrame == null) this.fitFrame = this.win.requestAnimationFrame(() => {
+          this.fitFrame = null;
+          if (!this.disposed) this.fit();
+        });
+      }
+    });
+    this.observer.observe(root);
+    this.observer.observe(field);
     if (naming) this.wireNaming(naming);
+  }
+
+  dispose() {
+    this.disposed = true; this.close();
+    this.win.removeEventListener('click', this.outsideClick, true);
+    this.phone.removeEventListener('change', this.widthChanged); this.observer.disconnect();
+    if (this.fitFrame != null) { this.win.cancelAnimationFrame(this.fitFrame); this.fitFrame = null; }
   }
 
   // Naming someone on a phone is two steps (docs/reader.md). The who panel
@@ -331,11 +370,24 @@ export class ComposeBar {
   // would be pulled down by it at each key, so it is put back as it was.
   fit() {
     const field = this.field, style = this.win.getComputedStyle(field);
-    if (style.getPropertyValue('--fit').trim() === 'none') { field.style.height = ''; return; }
+    if (style.getPropertyValue('--fit').trim() === 'none') {
+      field.style.height = ''; this.root.toggleAttribute('data-full-field', false); return;
+    }
     const keep = field.scrollTop, back = this.holds();
+    const max = parseFloat(style.maxHeight);
+    let normalMax = max;
+    if (this.root.hasAttribute('data-tall')) {
+      // The down control stays available at the ordinary cap after expansion.
+      // Measure the current CSS cap (including phone/look changes) without
+      // changing the person's height choice or duplicating CSS dimensions.
+      this.root.toggleAttribute('data-tall', false);
+      try { normalMax = parseFloat(this.win.getComputedStyle(field).maxHeight); }
+      finally { this.root.toggleAttribute('data-tall', true); }
+    }
     field.style.height = '0px';
     const borders = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
-    const max = parseFloat(style.maxHeight), wanted = field.scrollHeight + borders;
+    const wanted = field.scrollHeight + borders;
+    this.root.toggleAttribute('data-full-field', Number.isFinite(normalMax) && wanted >= normalMax - 1);
     field.style.height = `${Number.isFinite(max) ? Math.min(wanted, max) : wanted}px`;
     field.scrollTop = keep;
     back();

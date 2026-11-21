@@ -37,3 +37,12 @@ test('item 372 four count identities cycle once including second Conversation, w
   assert.equal(next('conversation:372').message_id, 'a1', 'a separate place starts independently');
   assert.equal(next('outcome:372').message_id, 'b1');
 });
+
+test('item 372 Conversation inspection retains another actor destination without advancing their questions', () => {
+  const item={id:'synthetic-372-inspection',kind:'conversation',asks:[{actor_id:'other',message_id:'other-ask',since_ms:1}]};
+  const rail={lists:[{pages:{items:[item]}}],reader:'observer'};
+  assert.equal(questionOf(item,'observer'),'other-ask');
+  assert.equal(TopicRail.prototype.question.call(rail,item.id,true),'other-ask');
+  assert.equal(presses.last.has('topic:'+item.id),false);
+  assert.equal(questionOf({...item,kind:'topic'},'observer'),null);
+});

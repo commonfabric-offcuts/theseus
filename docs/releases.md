@@ -5,6 +5,12 @@ which pipeline items it shipped, and the release check's measurements. The
 record is the instance's own fact about itself. The pipeline page reads it to
 mark items shipped, and the Measurements page (item 12) can be filled from it.
 
+[Landing a change](landing.md) is the canonical rule for the two routes,
+approval and source identity, immediate live checks, recovery and tool rollout.
+Opening or merging a PR is not verified live: read the record and runtime and
+verify the changed surface. Broad judgment may still be pending, as recorded
+below; the separate landing timestamps and measures do not change this schema.
+
 ## Naming the items a change ships
 
 The person or agent merging a change is the only one who knows which pipeline
@@ -268,3 +274,96 @@ Release 19's measurements come from its release check's summary. Release 18
 ran before that tool kept a summary, so its measurements are `null`: the only
 count for it is a sentence written by hand on the pipeline page, and a record
 holds what a check measured, not what someone wrote down.
+
+For a reviewed base move, `measurements.train.base_move` v4 keeps the evidence record defined in [base-move-evidence.md](base-move-evidence.md). Its original `judgment`, raw failed-step flags/counts, controller refusal and source summary reference remain unchanged; a durable source audit binds every original red. The separate record names the new live base, assembly, resolution review and own-case artifacts, without claiming another full run.
+
+### Compact storage for new deploy records (warp8521)
+
+Every new deploy record, train or local summary, uses this storage form after
+the existing full guard passes. Historical records/backfills keep their original
+form. This is not judge input: `tools/train.py` still reads the full train and
+validates every source/controller/review/receipt fact before planning a record.
+Core's 16384-byte measurement limit and its record/admin contracts do not change.
+
+Before stopping anything, the deploy saves the **entire** measurements object
+(including reverts and policy qualifications) as canonical UTF-8 JSON: sorted
+keys, compact separators, literal Unicode, no NaN and no trailing newline.
+The fixed filename is `release-N-measurements.json` inside that deploy's owned,
+absolute, resolved evidence directory. Paths are at most 1024 UTF-8 bytes; full
+payloads are at most 16 MiB. Publication is atomic, durable and never overwrites
+an existing file. An existing unequal file, symlink, foreign owner, unreadable
+file, partial write, bad hash or read-back mismatch refuses before stopping.
+
+The row's `measurements.full_measurements` is
+`{version: 1, path, sha256, bytes}`. It binds the canonical complete measurements,
+not a rewritten subset. `train.judge_receipts_sha256` still binds the complete
+producer-run and verdict-check lists; receipt obligations retain their count
+and digest and now also name their location in the full file.
+
+The storage projection uses a fixed **512 canonical UTF-8 byte share per
+section** (one thirty-second of Core's unchanged bound), for every release
+and every section name. A large section with no
+inline result/qualification facts becomes `{count, sha256, path, pointer}`:
+count is its number of entries (characters for a string), SHA-256 covers that
+whole canonical section, path is the fixed basename of the full immutable
+measurements file and pointer is its RFC 6901 JSON pointer in that file.
+The sole absolute `full_measurements.path` anchors every section in the same
+evidence directory; section paths are never opened independently. This avoids
+repeating an up-to-1024-byte directory for every reference. No separate
+mutable section file or invented receipt is introduced.
+
+Inline facts are a positive preservation contract, not a list of sections to
+shrink: existing count/decision reader inputs (`release_check`, `python_units`,
+`node_units`, `native`, `known_reds`, `skipped`, `scoped`, `judged_tree`, `reverts`,
+policy qualifications, train `items`, `judgment`, `hosted_run`) and explicit
+`review`, `audit`, `controller`, `output`, `refusals`, `conclusion`, `status`,
+`passed` and `exit` values remain exact. A container with such facts, counts,
+or run/attempt identities keeps its shape and scalar identities; its other
+large children are projected recursively. Large lists of result records keep
+every record in order. Large inventories inside counts may become references;
+the numeric counts and step identities stay inline, including long scalar
+name/id/step/case/phase/engine/head/head_sha values in result containers.
+The counts context follows every nested mapping and list, rather than ending
+at the first mapping. Those mappings and lists retain each scalar at its
+original location, including numeric arrays, booleans and nulls. Only a bulky
+string-list inventory inside that context may become a section reference;
+containers of records or numeric counts are walked. Unknown unsupported shapes
+or facts that exceed the final row bound refuse before publication.
+A still-large dictionary whose children were projected also carries
+`_storage_projection`, binding its whole original
+section. That key is reserved throughout complete input. The root is already
+bound by `full_measurements`.
+
+This leaves original source failure conclusions, failed-step identities and
+raw numeric counts, red count, controller refusal and accepted own results
+inline. Individual failure names and bulky artifact inventories remain exact
+in the full file, with section references rather than being relabeled or
+omitted from evidence. No digest means green. Protected writing is never
+truncated; if protected facts plus references cannot fit Core's unchanged
+16384-byte bound, preparation refuses before publication/stop. This projection
+is storage only and is never accepted as full guard input.
+
+The pipeline board (`Pipeline._shipped_numbers`, `pipeline_state` and the legacy
+page builder) reads release number, items and deploy time. The CLI release/count
+reader additionally reads local counts; other decision readers read
+skipped/scoped and train kind/judgment.
+Health's `_release_check`, `_release_train`, `_release_scoped`, Core's
+`judgment_pending` and `check_reading.steps_of_measurements` retain exactly their
+existing answers. The scorecard's release read uses number, deploy time, items,
+head and previous. All these fields, item approved heads/review qualifications,
+all original judgment entries (including failure conclusions), source red counts,
+controller refusal and raw Pool results remain inline and exact; bulky inventories
+are bound to their whole canonical sections in the full file. A digest never
+means green.
+
+Planning validates the compact row with Core before any stop. Full read-back
+and exact reprojection are required again immediately before record commands;
+release filename, train merge head, shipped items and qualification/receipt
+differences refuse. New release JSON is also published once without overwrite.
+The deploy captures `deployed_at` immediately after successful real verification,
+before evidence/record writing, retaining it in `10-verify.json`; it is never
+the later record time. A record
+failure cannot advance publication or claim recorded completion. A failure
+before stopping leaves the prior runtime alone; a failure after verification
+reports the already-live but unrecorded release honestly for coordinator
+recovery. This correction adds no deployment/recovery bypass or new CLI verb.

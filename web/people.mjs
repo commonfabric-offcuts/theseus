@@ -1,4 +1,5 @@
 import { checkedView } from './freshness.mjs';
+import { closeOnOutsidePress } from './dismiss.mjs';
 
 // Who can be named. Two lists feed every input that names someone, as a
 // datalist the browser offers while the person types: the instance's
@@ -293,33 +294,16 @@ export class PeoplePanel {
     if (dismissible) {
       const doc = host.ownerDocument ?? document;
       const inside = target => this.opener.contains(target) || this.row.contains(target);
-      let outsidePress = null;
-      doc.addEventListener('pointerdown', event => {
-        outsidePress = !this.row.hidden && event.button === 0 && event.isPrimary !== false && !inside(event.target)
-          ? { pointerId: event.pointerId, releasedOutside: false } : null;
-      }, true);
-      doc.addEventListener('pointerup', event => {
-        if (!outsidePress || event.pointerId !== outsidePress.pointerId) return;
-        // A drag's click targets the common ancestor of its endpoints. Touch
-        // may also capture pointerup to the start node: hit-test the release.
-        outsidePress.releasedOutside = !inside(doc.elementFromPoint(event.clientX, event.clientY));
-      }, true);
-      doc.addEventListener('pointercancel', event => {
-        if (event.pointerId === outsidePress?.pointerId) outsidePress = null;
-      }, true);
-      doc.addEventListener('click', event => {
-        const startedOutside = outsidePress?.releasedOutside === true; outsidePress = null;
-        // Close before the outside control acts; keep its focus and default.
-        if (startedOutside && !this.row.hidden && !inside(event.target)) this.toggle(false, false);
-      }, true);
+      closeOnOutsidePress({ doc, inside, isOpen: () => !this.row.hidden, close: () => this.toggle(false, false) });
     }
   }
 
   // open: show or hide the people who can be added; closing gives the focus back to "+ Add".
   toggle(open = this.row.hidden, restoreFocus = true) {
     this.row.hidden = !open; this.opener.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) this.closed?.();
     if (this.openerWord) { this.openerWord.textContent = open ? 'Done' : '+ Add'; this.opener.title = open ? 'Done' : this.label; }
-    if (open) { this.opened(); this.paintChoices(); this.input.focus(); } else if (restoreFocus) this.opener.focus();
+    if (open) { this.opened(); this.paintChoices(); (this.manage ? this.input : this.beforeChoice ?? this.input).focus(); } else if (restoreFocus) this.opener.focus();
   }
 
   // The people not yet in, narrowed by what the filter holds.
@@ -331,7 +315,8 @@ export class PeoplePanel {
 
   paintChoices() {
     if (this.row.hidden) return;
-    const addable = this.addable(), typed = Boolean(this.input.value.trim());
+    const addable = this.manage ? this.addable() : [], typed = Boolean(this.input.value.trim());
+    this.input.hidden = !this.manage;
     const was = new Map([...this.choices.children].filter(chip => chip.dataset?.id !== undefined).map(chip => [chip.dataset.id, chip]));
     const at = document.activeElement, held = this.choices.contains(at) ? at.dataset?.id : undefined;
     // A name still offered keeps its button, so a press is never lost to a
@@ -350,11 +335,13 @@ export class PeoplePanel {
       chip.title = person.name && person.name !== person.id ? person.name : ''; chip.disabled = this.busy;
       return chip;
     });
-    if (!addable.length) {
+    if (this.manage && !addable.length) {
       this.none ??= element('span', { className: 'muted' });
       this.none.textContent = typed ? 'No one by that name yet. Return adds it as typed.' : 'Everyone is already here.';
       chips.push(this.none);
     }
+    if (this.beforeChoice) chips.push(this.beforeChoice);
+    if (this.extraChoice) chips.push(this.extraChoice);
     placeChips(this.choices, chips);
     if (held !== undefined) (chips.find(chip => chip.dataset?.id === held) ?? this.input).focus();
   }
@@ -370,7 +357,7 @@ export class PeoplePanel {
       light: this.light(person), removable: manage && !fixed.has(person.actor_id) }));
     this.paintChips(shown);
     // "+ Add" stays the same node after the pills, so a repaint never takes its focus.
-    if (manage) { if (this.opener.parentNode !== this.chips) this.chips.append(this.opener); }
+    if (manage || this.beforeChoice && !this.beforeChoice.hidden) { if (this.opener.parentNode !== this.chips) this.chips.append(this.opener); }
     else { this.opener.remove(); this.toggle(false, false); }
     this.paintChoices();
     this.notice.textContent = this.error; this.notice.hidden = !this.error;
@@ -449,4 +436,98 @@ export class PeoplePanel {
 export function listWords(names) {
   if (names.length < 2) return names.join('') || 'nobody';
   return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+}
+
+// Item899: choosing one member for an existing outcome role. The page owns
+// the command adapter and its refresh; this row owns only the pending pick
+// and presentation, using the same team names as PeoplePanel.
+export class CoordinatorChoice {
+  constructor({ panel, instanceId, send, binding, current = () => true, failed = () => {} }) {
+    Object.assign(this, { panel, instanceId, send, binding, current, failed });
+    this.workspace = null; this.members = []; this.available = false; this.busy = false; this.epoch = 0;
+    this.opener = element('button', { type: 'button', className: 'choice-chip coordinator-choice', hidden: true });
+    this.opener.setAttribute('aria-expanded', 'false');
+    this.opener.onclick = () => this.toggle();
+    this.list = element('div', { className: 'state-chips coordinator-choices', hidden: true });
+    this.list.setAttribute('role', 'group'); this.list.setAttribute('aria-label', 'Choose coordinator');
+    this.notice = element('p', { className: 'notice coordinator-notice', hidden: true }); this.notice.setAttribute('role', 'status');
+    panel.beforeChoice = this.opener; panel.row.append(this.list); panel.host.append(this.notice);
+    this.opener.onkeydown = event => {
+      if (event.isComposing) return;
+      if (event.key === 'ArrowDown') { event.preventDefault(); event.stopPropagation(); this.toggle(true); }
+      else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); panel.toggle(false); }
+    };
+    this.list.onkeydown = event => {
+      if (event.isComposing) return;
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.toggle(false); return; }
+      const buttons = [...this.list.children].filter(button => !button.disabled), index = buttons.indexOf(document.activeElement);
+      const next = event.key === 'ArrowDown' ? Math.min(index + 1, buttons.length - 1) : event.key === 'ArrowUp' ? Math.max(0, index - 1)
+        : event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : null;
+      if (next !== null) { event.preventDefault(); event.stopPropagation(); buttons[next]?.focus(); }
+    };
+  }
+  paint(workspace = this.workspace, members = this.members, available = this.available) {
+    const binding = this.binding();
+    if (workspace?.id !== this.workspace?.id || binding !== this.paintedBinding) { this.epoch++; this.pending = null; this.busy = false; this.toggle(false, false); this.say(''); }
+    this.paintedBinding = binding;
+    Object.assign(this, { workspace, members, available });
+    const person = members.find(person => person.actor_id === workspace.coordinator_id);
+    const coordinator = workspace.coordinator_id ? person ? distinctName(person, members) : workspace.coordinator_id : 'Nobody';
+    // The words stay one phrase; data-name lets the panel set the name apart at the row's end (topic-dense.css).
+    this.opener.textContent = `Coordinator: ${coordinator}`; this.opener.dataset.name = coordinator;
+    this.opener.hidden = !available; this.opener.disabled = this.busy;
+    if (!available) this.toggle(false, false);
+    const old = new Map([...this.list.children].map(button => [button.dataset.coordinator, button]));
+    const choices = available ? [{ actor_id: '', name: 'Nobody' }, ...members] : [];
+    placeChips(this.list, choices.map(person => {
+      const id = person.actor_id;
+      let button = old.get(id);
+      if (!button) { button = element('button', { type: 'button', className: 'choice-chip' }); button.dataset.coordinator = id; button.onclick = () => this.choose(id || null); }
+      button.textContent = id ? distinctName(person, members) : 'Nobody'; button.disabled = this.busy;
+      button.setAttribute('aria-pressed', String((workspace.coordinator_id ?? '') === id));
+      return button;
+    }));
+  }
+  toggle(open = this.list.hidden, focus = true) {
+    if (open && (!this.available || this.busy || !this.current())) return;
+    this.list.hidden = !open; this.opener.setAttribute('aria-expanded', String(open));
+    if (focus) (open ? this.list.firstElementChild : this.opener)?.focus();
+  }
+  say(words) { this.notice.textContent = words; this.notice.hidden = !words; }
+  async choose(id) {
+    if (this.busy || !this.available || !this.current() || id !== null && !this.members.some(person => person.actor_id === id)) return;
+    const binding = this.binding(), epoch = this.epoch, workspace = this.workspace;
+    const current = () => this.current() && epoch === this.epoch && binding === this.binding() && workspace.id === this.workspace?.id;
+    if (!this.pending || this.pending.id !== id || this.pending.binding !== binding) this.pending = { id, binding, workspace: { id: workspace.id, version: workspace.version }, operation: crypto.randomUUID() };
+    // Disabling the focused choice can move focus to the body before we settle.
+    const request = this.pending, heldFocus = this.list.contains(document.activeElement);
+    this.busy = true; this.say('Changing coordinator…'); this.paint();
+    let words = '', committed = false;
+    try {
+      const receipt = await this.send(request.workspace, id, request.operation);
+      if (!current()) return;
+      const exact = receipt?.instance_id === this.instanceId && receipt.operation_id === request.operation && receipt.kind === 'workspace.coordinator_set';
+      committed = exact && receipt.recorded === true && receipt.status === 'committed' &&
+        receipt.result?.workspace_id === request.workspace.id && receipt.result.coordinator_id === id && Number.isSafeInteger(receipt.result.version);
+      if (committed || exact && receipt.recorded === true && receipt.status === 'rejected') this.pending = null;
+      if (!committed) words = exact && receipt.recorded === true && receipt.status === 'rejected' && receipt.error?.code === 'REVISION_CONFLICT'
+        ? 'Someone else changed this at the same moment. Try again.'
+        : exact && receipt?.error?.message || 'The coordinator change was not confirmed. Choose again to retry.';
+    } catch (error) { if (!current()) return; words = `The coordinator change was not confirmed: ${error.message}`; }
+    finally {
+      if (current()) {
+        try { await this.refresh(); }
+        catch (error) { words += `${words ? ' ' : ''}The current coordinator could not be read: ${error.message}`; }
+        if (current()) {
+          this.busy = false; this.paint(); this.say(words);
+          if (words) this.failed(words);
+          const returnFocus = this.available && !this.panel.row.hidden &&
+            (this.list.contains(document.activeElement) || heldFocus && document.activeElement === document.body);
+          if (committed && !words) this.toggle(false, returnFocus);
+          else if (returnFocus) (this.list.hidden ? this.opener :
+            [...this.list.children].find(button => !button.disabled) ?? this.opener).focus();
+        }
+      }
+    }
+  }
 }

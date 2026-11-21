@@ -11,11 +11,21 @@ fold under it as they always have.
 
 A cover has three fields. Each is set or cleared on its own.
 
-- **Where it stands**: one line, at most 300 characters. Line breaks and runs
-  of spaces fold to single spaces.
+- **Where it stands**: at most 32,000 characters, including line breaks (913). LF
+  separates lines and stays a line break through command, storage and the
+  shared cover sheet (item 769). CRLF becomes LF: the CR is folded with the
+  other whitespace on its line. Within each LF-separated line, whitespace
+  folds to single spaces as before; outer whitespace is trimmed, and an
+  all-whitespace value clears the field. Interior blank lines stay blank.
+  Single-line values keep their existing normalization and look. These are
+  plain words: no label parsing, Markdown or inferred historical breaks.
 - **What waits on the owner**: at most four things, each with its default,
   the thing that happens if the owner says nothing. A thing that waits is at
   most 300 characters, and its default at most 200.
+  A manually written wait may name its source `message_id`. Its pill opens
+  that message when readable, otherwise the recorded `ask_id` of an ask-backed
+  wait when readable, otherwise the dossier's root. Omitted or null adds no
+  source and existing records are never backfilled ([item 770](wait-source-770.md)).
 - **The payload**: what the dossier produced, in at most 500 characters, and
   the message of the dossier that delivered it. It may also carry a link
   (http or https) and a kind: answer, decision, preview, page or release.
@@ -68,7 +78,7 @@ settles Done in the same transaction. Stepping back to 45 is refused
 once any cover was written, even one cleared since.
 
 The stored value is
-`{"stands": TEXT|null, "waiting": [{"text", "default"}…], "payload": null|{"text", "message_id", "seq", "link", "kind", "done_by", "done"}}`,
+`{"stands": TEXT|null, "waiting": [{"text", "default", "message_id"?}…], "payload": null|{"text", "message_id", "seq", "link", "kind", "done_by", "done"}}`,
 where `done_by` is the owner's reply the writer named, or `null`, and `done` is
 `null` or `{"how": "thumb"|"word", "by", "at_ms"}`. A word's `done` also
 carries the reply's `message_id` and `seq`.
@@ -93,6 +103,7 @@ outside the dossier, or one the writer cannot see, is refused with
 `INVALID_ARGUMENT`. Everyone who reads a dossier's first message reads its
 cover, so a whisper can be the payload only of a whispered dossier between the
 same two people. Otherwise it is refused with `WHISPER_STAYS_PRIVATE`.
+The same membership and privacy rules apply to a wait's source message.
 
 ### Reading it
 
@@ -125,25 +136,33 @@ tells everyone who reads the dossier, as any act about a message does.
 (with `--link` and `--kind`), `--no-waits` or `--no-payload` it writes those
 fields ([agent-cli.md](agent-cli.md)). When to write the cover is in
 [agent-guide.md](agent-guide.md), "Keeping a dossier's cover".
+When setting waits, MESSAGE is recorded as their source before the CLI resolves
+the dossier root for its cover write. Existing waits are never backfilled.
 
 ## The page
 
-A dossier's cover is drawn as the folder's first sheet, after the entry of
-its displayed head and before the chevron and the replies, both closed and
-open (`web/dossier-cover.mjs`). It is not drawn inside the head's card,
-because a closed folder shows that card as its tab alone. When the first
-message is above the loaded page, the reply that heads what is loaded is the
-tab, and the sheet is drawn after it, from the dossier's place
-(`stackCover` in `web/stack-order.mjs`). Earlier messages keeps an already
-displayed stack's head and place, even when it loads the dossier's first
-message; the one sheet stays with that stack and tab. The older messages
-appear where the button was, as described in [reply-stacks.md](reply-stacks.md),
-"What one stack never loses". When the page is read again and the first
-message becomes the stack's head, the one sheet is drawn after that head.
-A dossier whose only loaded message is one reply has no folder to draw a sheet
-in: that card shows its dossier's cover as pills under who wrote it, as a
-message on its own does. A cover sheet appears when the page gathers its
-messages into a folder. The sheet shows:
+A cover's refresh glyph requests a rewrite from its recorded writer, falling
+back only to the configured, eligible outcome coordinator. It turns while Core
+awaits a changed agent cover revision, keeping the existing cover whole, and
+links to the durable request. Reload does not end the wait. A reply, the owner's
+Done, delivery acknowledgement or a timer never ends it. The state, routing,
+retry identity and preview limitations are in [cover-refresh.md](cover-refresh.md).
+
+A dossier's cover is drawn first in the folder, directly under its name row
+and above the first message's card, both closed and open (`web/dossier-cover.mjs`).
+It has the folder's own colour (`--stack-folder`) in light and dark, with readable
+words, a soft top inner shadow and a faint lighter bottom inner edge. Its pills,
+spacing and rounded corners stay the same. The tab stands above the folder even
+when its head's message is closed.
+
+When the first message is above the loaded page, the folder gets its cover from
+its dossier's place (`stackCover` in `web/stack-order.mjs`). More keeps the existing
+stack's head and place; the one sheet stays above its messages as older messages
+arrive. When the page is read again with its real first message loaded, the cover
+still precedes that card. Singletons also have a folder and one cover sheet under
+the separate name row (items 799/803); they do not repeat the cover as card pills.
+The Reader keeps its cover above the source body.
+The sheet shows:
 
 - where the dossier stands;
 - its payload, with its kind as a label, its words, its link, a pill, and the
@@ -176,6 +195,16 @@ so the message keeps its lines ([reader.md](reader.md)).
 
 ## Checks
 
+Item 769: the focused Core/CLI cases in `tests/test_dossier_covers.py`, HTTP
+case in `tests/test_http_store.py` and shared drawing case in
+`tests/ui_dossier_cover.test.mjs` check literal LF source values separately
+from visual proof. The `reading item 769` cases in `tests/stack_native.mjs`
+(`native-reading`, `native-webkit-reading`) measure consecutive painted lines
+on the feed and the Reader's opened shared sheet at 320, 375, 390 and 1280,
+light and dark, through updates and reload. A single-line cover stays one
+line; waits, defaults, payload and unsent writing survive. Measured geometry
+uses `lineGeometryTolerancePx = 2`. Desktop WebKit is not physical iOS proof.
+
 `tests/test_dossier_covers.py` covers storage, merging, revisions and their
 refusals, Done by 👍 and by a named reply (and by no one else, and never by a
 reply nobody named, a question included), the earlier of the two when both
@@ -188,3 +217,49 @@ the step. The page is covered by the `reading covers …` cases in
 message is more than a page behind its newest reply, the Reader's sheet
 opening only where it is pressed (at 320, 375 and 390 and on a laptop), and the
 open Reader's line following a rewrite and the owner's 👍.
+
+## Waiting count in the outline (item 756)
+
+`workspaces` items add `cover_waiting`, one per readable cover with a nonempty
+waiting list whose owner is the bound reader, over all unarchived topics of
+that outcome. Duplicate entries and cover revisions never multiply it.
+`workspace_topics` items carry the same field for that topic. A joined-away
+first message is no longer a cover until it heads its own dossier again.
+Archived topic lists may still display covers, but contribute zero to this
+count. The existing workspace membership/reached/ended lists govern which
+outcomes the outline sums; it reads no additional outcomes.
+
+The outline adds this contribution to its existing said/ask topic count; it
+keeps the light and the question-opening control's meaning. Pressing the same
+Waiting on you pill filters and unfilters as before, retaining topics with
+cover waits as well as topics waiting from said/ask reasons. Cover changes use
+the existing shared act commit notification, so no reload or background
+history reconstruction is needed.
+
+Schema 51 adds `cover_waiting`, a derived index holding only the current
+nonempty waiting covers, keyed by first message with outcome/topic indexes.
+Every cover act updates it in the same transaction. Migration alone fills it
+from the latest recorded cover revisions; downgrade drops only the derived
+index. Counts recheck current owner, archive state, first-message visibility
+and dossier root identity, seeking only this outcome's current candidates or
+a bounded topic page. No read or server migrates a store.
+
+## Question-linked waits (item 759, warp9191)
+
+New agent asks to people append their supplied question/options/default to the
+cover in the publication transaction. Each names the actual asked actor, ask
+message and source revision, independently of the outcome owner. Explicit no
+choices/no default with reason is shown plainly. Manual waiting edits preserve
+these linked waits; eligible per-question answers and attention clear together.
+Schema 54 records links without changing legacy asks. See
+[asking-person-cover.md](asking-person-cover.md) for fields and fences.
+
+## Answer beside a linked wait (782)
+The asked person sees the existing go-ahead choices beside the cover wait,
+including singleton pills and the Reader. Each submits `message.answer` for
+that exact ask with the answer revision observed on the cover. A stale choice
+refuses, and the cover reloads. Core publishes the same answer reply and clears
+the linked wait in that transaction. Other readers receive no answer controls.
+Waiting counts now include a cover once when any wait names the reader; manual
+owner waits still follow the current outcome owner. Dossier moves relocate
+both the derived count index and the linked questions atomically.

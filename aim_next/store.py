@@ -19,16 +19,18 @@ from .authority import Authority, AuthorityError, prepare_authority, publish_ini
 from .delivery import Delivery, DELIVERY_SCHEMA, DELIVERY_TOPIC_FRESH, _now_ms
 from . import initialization
 from .runner import Runner, RUNNER_SCHEMA, HOSTED_SCHEMA
-from .memory import Memory, MEMORY_DRAFT_SCHEMA, MEMORY_READ_SCHEMA, MEMORY_SCHEMA
+from .memory import MEMORY_ACTION_SCHEMA, Memory, MEMORY_DRAFT_SCHEMA, MEMORY_READ_SCHEMA, MEMORY_SCHEMA
 from .media import Media, MEDIA_SCHEMA
+from .onboarding import Onboarding
 from .route_pins import RoutePins
 from .hosted_control import HostedControl
 from .assessments import Assessments
 from .changes import Changes
-from .topic_state import ACTIVITY_SCHEMA, ASK_WAIT_SCHEMA, TopicState, TOPIC_STATE_SCHEMA, WAITING_ORDER_SCHEMA, order_cursor, order_position
+from .topic_state import ACTIVITY_SCHEMA, ASK_WAIT_SCHEMA, TopicState, TOPIC_STATE_SCHEMA, WAITING_ORDER_SCHEMA, derived_conversation, order_cursor, order_position
 from .work import OTHERS_SCHEMA, TURN_ACTIVITY_BACKFILL, WORK_SCHEMA, work_by_topic
 from .marks import Marks, MARK_SCHEMA
-from .colors import Colors, COLOR_SCHEMA
+from .colors import Colors, COLOR_SCHEMA, AGENT_COLORS
+from .outcome_colors import OutcomeColors, OUTCOME_COLOR_SCHEMA
 from .responsibility import Responsibility, RESPONSIBILITY_SCHEMA
 from .sources import Sources, SOURCE_SCHEMA
 from .wake_health import WakeHealth, WAKE_HEALTH_SCHEMA
@@ -37,6 +39,7 @@ from . import delivery as _delivery
 from .releases import Releases, JUDGMENT_SCHEMA, RELEASE_SCHEMA, write_judgment, write_release
 from .outcome_light import OutcomeLight
 from .whispers import WHISPER_SCHEMA, redact_topic
+from .topic_preview import latest_by_topic
 from .standing_conversation import StandingConversation, STANDING_SCHEMA
 from .pipeline import Pipeline, PIPELINE_DECIDED_AGAIN_UP, PIPELINE_FACTS_SCHEMA, PIPELINE_SCHEMA, import_seed
 from .checks import Checks, CHECKS_SCHEMA, PROBLEMS_SCHEMA, import_checks, record_checks
@@ -45,17 +48,26 @@ from .outcome_end import ENDED, ENDS_SCHEMA, OutcomeEnd, end_view
 from .outcome_rules import KIND_BEFORE_R21
 from .reactions import Reactions, REACTION_SCHEMA
 from .outline_order import OutlineOrder, ORDER_SCHEMA, TOPIC_POSITION_SCHEMA
-from .stacks import Stacks, ACT_COVERS
-from .covers import Covers
+from .stacks import Stacks, ACT_MESSAGE_REFRESH
+from .covers import Covers, COVER_WAIT_SCHEMA
+from .dossier_order import ORDER_SCHEMA as DOSSIER_ORDER_SCHEMA
+from .cover_refresh import CoverRefresh, WRITER_SCHEMA
+from .dossier_move import DossierMove, MOVE_SCHEMA
+from .ask_cover import AskCover, ASK_COVER_SCHEMA
 from .blocking import Blocking, BLOCKS_SCHEMA
 from .message_edit import MessageEdit, EDIT_SESSION_UP, MESSAGE_EDIT_UP
 from .invite import Invites, INVITATIONS_SCHEMA
 from .tools_core import Tools, TOOLS_SCHEMA
 from .tool_records import Records as ToolRecords
-from . import message_edit
+from .withdrawal import Withdrawal, WITHDRAWAL_SCHEMA
+from .questions import Questions, QUESTION_SCHEMA
+from .answer_delivery import AnswerDelivery, ANSWER_UP
+from .refresh_delivery import RefreshDelivery, REQUEST_UP
+from . import message_edit, removal
+from .removal import Removal, REMOVAL_UP
 
 
-SCHEMA_VERSION = "47"
+SCHEMA_VERSION = "60"
 
 
 def commit_identity_intact(metadata):
@@ -131,7 +143,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_COVERS + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA + TOPIC_POSITION_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_MESSAGE_REFRESH + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA + TOPIC_POSITION_SCHEMA + WRITER_SCHEMA + COVER_WAIT_SCHEMA + MEMORY_ACTION_SCHEMA + MOVE_SCHEMA + ASK_COVER_SCHEMA + DOSSIER_ORDER_SCHEMA + WITHDRAWAL_SCHEMA + REQUEST_UP + QUESTION_SCHEMA + ANSWER_UP + REMOVAL_UP + OUTCOME_COLOR_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -171,8 +183,8 @@ class StoreOpenError(StoreError):
 _TOPIC_SUMMARY = "LEFT JOIN topic_summaries s ON s.topic_id=t.id LEFT JOIN messages m ON m.id=s.latest_message_id "
 
 
-class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
-            OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Covers, Blocking, MessageEdit, Invites, Tools):
+class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, OutcomeColors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
+            OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Covers, CoverRefresh, DossierMove, AskCover, Blocking, MessageEdit, Invites, Tools, Withdrawal, RefreshDelivery, Questions, AnswerDelivery, Removal):
     def __init__(self, db_path, expected_instance_id, *, expected_binding, machine=None, tools=None):
         self.path = Path(db_path).resolve()
         # The skills' and tools' records, read once from this code's own checkout (or the directory a test passes in):
@@ -369,6 +381,8 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
 
     def _refusal(self, envelope, exc, recorded=False):
         error = {"code": exc.code, "message": exc.message, "retryable": False}
+        if exc.details is not None:
+            error["details"] = exc.details
         if exc.current_versions is not None:
             error["current_versions"] = exc.current_versions
         return self._receipt(envelope, "rejected", recorded, error=error)
@@ -519,6 +533,15 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
         finally:
             message_edit.reading.reset(token)
         answer, pairs = message_edit.handed(db, current, answer)
+        removal.refuse_unsent_projection(db, removal.content_ids(answer, pairs, args))
+        # Empty image/attachment projections have no words marker. Their final
+        # content identities cross this same boundary, including raw media.
+        if agent and marks:
+            extra = set(removal.content_ids(answer, pairs, args)) - {identity for identity, _ in pairs} - current.held
+            if extra:
+                pairs.extend((row[0], row[1]) for row in db.execute(
+                    "SELECT m.id," + message_edit.revision('m') + " FROM messages m WHERE m.id IN (SELECT value FROM json_each(?))",
+                    (json.dumps(sorted(extra)),)))
         return answer, pairs, now
 
     def _hand_over(self, db, fence, actor, kind, args, handler, between, marks):
@@ -531,7 +554,9 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
         commit between the words it returns and the exposure it records; if the second run grows nothing (another
         read recorded it, or the message became held) it rolls back with no write."""
         answer, pairs, now = self._read_once(db, actor, kind, args, handler, marks)
-        if not marks or not message_edit.growing(db, actor, pairs):
+        first = removal.first_exposures(db, actor, removal.content_ids(answer, pairs, args)) if marks else []
+        grows = message_edit.growing(db, actor, pairs) if kind == 'agent' and marks else []
+        if not first and not grows:
             return answer
         db.rollback()
         if between is not None:
@@ -541,13 +566,15 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
         self._check_instance(db)
         kind = self._actor(db, actor)["kind"]
         answer, pairs, now = self._read_once(db, actor, kind, args, handler, marks)
-        grows = message_edit.growing(db, actor, pairs)
-        if not grows:
+        grows = message_edit.growing(db, actor, pairs) if kind == 'agent' else []
+        first = removal.first_exposures(db, actor, removal.content_ids(answer, pairs, args))
+        if not grows and not first:
             db.rollback()
             return answer
         db.executemany("INSERT INTO message_exposures(actor_id,message_id,revision) VALUES (?,?,?) "
                        "ON CONFLICT(actor_id,message_id) DO UPDATE SET revision=max(revision,excluded.revision)",
                        [(actor, message_id, number) for message_id, number in grows])
+        db.executemany("INSERT INTO message_first_exposures VALUES (?,?,?)", [(identity, actor, now) for identity in first])
         # Every commit keeps what is red with it (health.py), at the clock this run read.
         self._health_commit(db, now)
         db.commit()
@@ -570,6 +597,16 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
     def _change(self, db, scope_kind, scope_id, kind, record_id, version):
         db.execute("INSERT INTO changes(scope_kind,scope_id,resource_kind,resource_id,version) VALUES (?,?,?,?,?)",
                    (scope_kind, scope_id, kind, record_id, version))
+        # An opaque, reader-scoped list hint travels with Live. No history scan,
+        # and private outcomes never change an unrelated reader's key.
+        readers = []
+        if scope_kind == 'workspace' and kind == 'workspace':
+            readers = [row[0] for row in db.execute('SELECT actor_id FROM workspace_members WHERE workspace_id=?', (scope_id,))]
+        elif scope_kind == 'actor' and kind in ('workspace', 'outcome_order'):
+            readers = [scope_id]
+        for reader in readers:
+            db.execute("INSERT INTO metadata(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                       ('outcome_list:' + reader, uuid.uuid4().hex))
 
     def _outcome_change(self, db, workspace_id, version):
         """The outcome's own record changed: its team, owner or coordinator. Open outcome
@@ -625,7 +662,9 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
         conversation = self._conversation_of(db, workspace["id"])
         # Whether it is archived or completed, by whom and when (item 404), or null.
         return {"instance_id": self.instance_id, "workspace": dict(workspace, conversation_id=conversation["id"] if conversation else None,
-                                                                    end=end_view(self._end(db, workspace["id"]))),
+                                                                    end=end_view(self._end(db, workspace["id"])),
+                                                                    **self._outcome_color(db, actor, workspace["id"])),
+                "color_palette": list(AGENT_COLORS),
                 "relevant_versions": {"workspace": workspace["version"]}}
 
     def _view_workspaces(self, db, actor, args):
@@ -674,10 +713,48 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
                     "unread": unread, "addressed": addressed, "build": build, "kind": facts["kind"],
                     "reached_ms": facts["reached"]["ms"] if facts["reached"] else None,
                     "end": end_view(self._end(db, row["id"])),
-                    "light": self._outcome_stands(db, actor, row)["light"]}
+                    "cover_waiting": sum(self._cover_wait_counts(db, actor, workspace_id=row["id"]).values()),
+                    "light": self._outcome_stands(db, actor, row)["light"],
+                    **self._outcome_color(db, actor, row["id"])}
         # The person's own order of their outcomes, on every page (outline_order.py).
         return _bounded_page({"instance_id": self.instance_id, "reached_count": reached_count, "ended_count": ended_count,
-                              "order": self._outline_order(db, actor)}, rows, limit, item, "id")
+                              "order": self._outline_order(db, actor), "color_palette": list(AGENT_COLORS)}, rows, limit, item, "id")
+
+    def _view_workspace_counts(self, db, actor, args):
+        """Count/light refresh for already loaded outline rows; no list traversal."""
+        ids = args.get("workspace_ids")
+        if not isinstance(ids, list) or not 1 <= len(ids) <= LIMITS["page_max"]:
+            raise Refusal("INVALID_ARGUMENT", "Name one bounded page of outcome IDs")
+        for ident in ids:
+            _identifier(ident, "workspace_id")
+        if len(set(ids)) != len(ids):
+            raise Refusal("INVALID_ARGUMENT", "Outcome IDs must be distinct")
+        # Project only identity/authority fields; even long outcome titles are
+        # outside this read. Check every membership before computing any count.
+        rows = db.execute("SELECT w.id,w.owner_id,w.coordinator_id,w.version FROM workspaces w "
+                          "WHERE w.id IN (%s) AND (w.owner_id=? OR EXISTS ("
+                          "SELECT 1 FROM workspace_members m WHERE m.workspace_id=w.id AND m.actor_id=?))"
+                          % ",".join("?" * len(ids)), tuple(ids) + (actor, actor)).fetchall()
+        if len(rows) != len(ids):
+            raise Refusal("FORBIDDEN", "No permission for this workspace")
+        counts = self._unread(db, actor, workspaces=ids)
+        totals = {}
+        for unread, addressed, workspace_id in counts.values():
+            total = totals.setdefault(workspace_id, [0, 0])
+            total[0] += unread
+            total[1] += addressed
+        items = []
+        for row in rows:
+            unread, addressed = totals.get(row["id"], (0, 0))
+            items.append({"id": row["id"], "unread": unread, "addressed": addressed,
+                          "build": self._build_counts(counts, self._open_build_topics(db, row["id"])),
+                          "cover_waiting": sum(self._cover_wait_counts(db, actor, workspace_id=row["id"]).values()),
+                          "light": self._outcome_stands(db, actor, row)["light"],
+                    **self._outcome_color(db, actor, row["id"])})
+        answer = {"instance_id": self.instance_id, "items": items}
+        if len(_json(answer).encode("utf-8")) > LIMITS["summary_utf8_bytes"]:
+            raise Refusal("VIEW_TOO_LARGE", "The named counts cannot fit in one bounded response")
+        return answer
 
     def _view_actors(self, db, actor, args):
         """The instance's enabled people and agents, in id order: who can be added to a team or topic.
@@ -863,13 +940,17 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
         and whether it is a Build topic (builds, item 297)."""
         # A topic names the message that reopened or started it only to a reader who may see it (whispers.py).
         items = [redact_topic(db, actor, row) for row in rows]
+        latest = latest_by_topic(db, [item["id"] for item in items])
         counts = self._unread(db, actor, topics=[item["id"] for item in items])
         waits = self._waits_by_topic(db, [item["id"] for item in items], reader=actor)
         work = work_by_topic(db, waits, actor)
+        cover_waits = self._cover_wait_counts(db, actor, topics=[item["id"] for item in items])
         for item in items:
+            item["latest_message"] = latest.get(item["id"])
             item["unread"], item["addressed"] = counts.get(item["id"], (0, 0, None))[:2]
             item["archived"] = bool(item["archived"])
             item["waiting_on"], item["asks"] = waits[item["id"]]
             item["work"] = work[item["id"]]
+            item["cover_waiting"] = cover_waits.get(item["id"], 0)
             item["build"] = item["id"] in builds
-        return items
+        return [derived_conversation(item, item["asks"]) for item in items]
