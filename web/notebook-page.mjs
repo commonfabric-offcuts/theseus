@@ -103,7 +103,26 @@ export class NotebookPage extends DeckPage {
     this.draft.append(this.draftButton,this.draftNote);
     this.more=this.node('button','notebook-menu quiet','⋯');this.more.type='button';
     this.more.setAttribute('aria-label','This page');this.more.title='This page';this.more.setAttribute('aria-haspopup','menu');
-    this.more.onclick=()=>openMessageMenu({anchor:this.more,items:this.menuItems(),label:'This page',sheet:true,doc:this.doc});
+    this.more.onclick=()=>this.openPageMenu();
+    // The sheet moves the title and ⋯ out of the host; their listeners travel
+    // with this page and retire with it. Do not introduce a touch hold gesture.
+    for(const surface of new Set([this.host,this.header.title,this.more])) {
+      surface?.addEventListener('pointerdown',event=>{
+        this.contextPointerType=event.pointerType;this.contextClick=false;
+        // WebKit selects a word as the native secondary gesture proceeds.
+        // Keep an existing selection native, not one invented by that gesture.
+        this.contextSelection=event.button===2 || (event.button===0 && event.ctrlKey)
+          ? this.doc.getSelection()?.isCollapsed===false : null;
+      },{signal:this.listening.signal});
+      surface?.addEventListener('contextmenu',event=>this.contextMenu(event),{signal:this.listening.signal});
+      surface?.addEventListener('click',event=>{
+        // WebKit follows Control-click's contextmenu with a primary click.
+        // Do not let that same gesture select/edit the card behind its menu.
+        if(this.contextClick && event.ctrlKey) {
+          this.contextClick=false;event.preventDefault();event.stopImmediatePropagation();
+        }
+      },{capture:true,signal:this.listening.signal});
+    }
     this.titleBox=this.node('input','notebook-rename');this.titleBox.setAttribute('aria-label','Page title');this.titleBox.hidden=true;
     this.titleBox.addEventListener('keydown',event=>{
       if(event.isComposing)return;
@@ -122,6 +141,24 @@ export class NotebookPage extends DeckPage {
     this.list.addEventListener('dragleave',event=>{if(!event.relatedTarget||!this.list.querySelector('.deck-writing')?.contains(event.relatedTarget))lit(false);});
     this.list.addEventListener('drop',event=>{if(!dropping(event))return;event.preventDefault();lit(false);this.addToCard([...event.dataTransfer.files],this.editing.field);});
     this.drawView();
+  }
+  openPageMenu(at=null) {
+    const menu=openMessageMenu({anchor:this.more,at,items:this.menuItems(),label:'This page',sheet:true,doc:this.doc});
+    this.listening.signal.addEventListener('abort',()=>menu?.close(false),{once:true});
+    return menu;
+  }
+  contextMenu(event) {
+    const selected=this.contextSelection??this.doc.getSelection()?.isCollapsed===false;
+    this.contextSelection=null;
+    if(event.defaultPrevented || this.listening.signal.aborted ||
+      (event.pointerType || this.contextPointerType)==='touch' ||
+      selected ||
+      event.target.closest?.('img, input, textarea, select, [contenteditable]'))return;
+    const at={x:event.clientX,y:event.clientY},row=event.target.closest?.('.deck-card');
+    const menu=row && this.list.contains(row)
+      ? this.openCardMenu(Number(row.dataset.index),row.querySelector('.deck-menu')??row,at)
+      : this.openPageMenu(at);
+    if(menu){this.contextClick=Boolean(event.ctrlKey);event.preventDefault();}
   }
   async load() {
     if (!this.started) {
