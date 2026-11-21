@@ -22,7 +22,7 @@ for (const [key, code, kind] of [['Dead', 'KeyN', 'note-card'], ['µ', 'KeyM', '
   const f = fixture({ text: true }); const result = f.press({ key, code, altKey: true });
   assert.equal(result.used, true); assert.equal(result.event.defaultPrevented, true); assert.equal(f.composer.kind, kind);
   assert.deepEqual([f.field.selectionStart, f.field.selectionEnd, f.field.selectionDirection], [2, 6, 'forward']);
-  assert.equal(f.calls.includes('pop'), code === 'KeyN');
+  assert.equal(f.calls.includes('pop'), true, '1023 opens the sheet for either mode');
 });
 test('1018 plain Return on Note uses Send once; held Return does not send twice', () => {
   const f = fixture(); assert.equal(f.press({}).used, true); assert.deepEqual(f.calls, ['send']);

@@ -142,6 +142,7 @@ REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "dra
                      "stack.place": "place_revision", "stack.name": "name_revision", "stack.join": "join_revision",
                      "stack.move": "move_revision", "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
 VIEWS = {
+    "submission_mention_reach": {"submission_id", "cursor", "limit"},
     "rail_dimming": {"candidate"},
     "hosted_seat": {"workspace_id", "seat_request_id"},
     "hosted_seats": {"workspace_id", "cursor", "limit"},
