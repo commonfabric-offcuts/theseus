@@ -9,12 +9,58 @@ const fixture = () => {
   const doc = miniDocument(); doc.createTextNode = text => ({ text });
   const card = doc.byId('message'), preview = doc.createElement('span'), cue = doc.createElement('span');
   preview.className = 'message-preview'; cue.className = 'message-preview-cue';
-  preview.ownerDocument = doc; preview.getBoundingClientRect = () => ({ height: 100 });
+  card.ownerDocument = preview.ownerDocument = doc; preview.getBoundingClientRect = () => ({ height: 100 });
   card.getBoundingClientRect = () => ({ height: 150 }); card.style = {}; card.scrollTop = 0;
   card.append(preview, cue);
   return { card, preview, cue, item: { id: 'm', preview: true, body: 'Excerpt' } };
 };
 const source = { source_ref: { id: 'm' }, body: 'The complete source.' };
+const busy = () => Object.assign(Error('Busy'), { status: 503, details: { error: { code: 'SERVER_BUSY' } } });
+
+test('636 a focused preview recovers from a busy background lane through one foreground source read', async () => {
+  const f = fixture(), reads = []; f.card.ownerDocument.activeElement = f.card;
+  const scroll = new CardScroll({ read: async (id, readClass) => {
+    reads.push([id, readClass]); if (readClass === 'background') throw busy(); return source;
+  } });
+  assert.equal(await scroll.expand(f.card, f.item), true);
+  assert.deepEqual(reads, [['m', 'background'], ['m', 'foreground']]);
+  assert.equal(f.card.dataset.whole, 'shown'); assert.ok(f.preview.text.includes(source.body));
+});
+
+test('636 a second busy answer preserves the excerpt without a third attempt', async () => {
+  const f = fixture(), reads = []; f.card.ownerDocument.activeElement = f.card; f.preview.textContent = 'Excerpt';
+  const scroll = new CardScroll({ read: async (id, readClass) => { reads.push(readClass); throw busy(); } });
+  assert.equal(await scroll.expand(f.card, f.item), false);
+  assert.deepEqual(reads, ['background', 'foreground']); assert.equal(f.preview.text, 'Excerpt');
+  assert.equal(f.card.dataset.whole, undefined);
+});
+
+test('636 focus loss, retirement, hidden preview and edited epoch prevent foreground recovery', async () => {
+  for (const change of ['focus', 'retire', 'hide', 'edit']) {
+    const f = fixture(), reads = []; f.card.ownerDocument.activeElement = f.card;
+    const scroll = new CardScroll({ read: async (id, readClass) => {
+      reads.push(readClass);
+      if (change === 'focus') f.card.ownerDocument.activeElement = null;
+      if (change === 'retire') f.card.root = false;
+      if (change === 'hide') f.preview.getBoundingClientRect = () => ({ height: 0 });
+      if (change === 'edit') scroll.forget(id);
+      throw busy();
+    } });
+    assert.equal(await scroll.expand(f.card, f.item), false, change);
+    assert.deepEqual(reads, ['background'], change); assert.equal(f.card.dataset.whole, undefined, change);
+  }
+});
+
+test('636 permission and authority refusals and unfocused hover never enter foreground', async () => {
+  for (const code of ['FORBIDDEN', 'INVALID_BINDING', 'AUTHORITY_CHANGED', 'SERVER_BUSY']) {
+    const f = fixture(), reads = []; if (code !== 'SERVER_BUSY') f.card.ownerDocument.activeElement = f.card;
+    const scroll = new CardScroll({ read: async (id, readClass) => {
+      reads.push(readClass); throw Object.assign(Error(code), { details: { error: { code } } });
+    } });
+    assert.equal(await scroll.expand(f.card, f.item), false, code);
+    assert.deepEqual(reads, ['background'], code);
+  }
+});
 
 test('a late hover read cannot recap a message explicitly shown full', async () => {
   const f = fixture(), reads = [], scroll = new CardScroll({ read: () => new Promise(resolve => reads.push(resolve)) });
