@@ -25,6 +25,29 @@ export function revealCardReply(field, win = globalThis.window) {
   if (rect.top < top || rect.bottom > bottom) win.scrollBy({ top: rect.bottom - bottom, behavior: 'instant' });
 }
 
+// After a keyboard resize, the act below the field belongs above the keyboard
+// too. A sheet scrolls its composer; an inline reply scrolls the page. A fixed
+// ancestor stops the search so revealing a dialog never moves its background.
+function revealWriting(field, win) {
+  if (!field?.isConnected || field.readOnly || field.disabled) return;
+  const box = field.closest('.field-box'), composer = box?.closest('.composer');
+  if (!composer || !box.getClientRects().length) return;
+  const doc = field.ownerDocument, vv = win.visualViewport;
+  let scroller = null;
+  for (let at = box.parentElement; at && at !== doc.body && at !== doc.documentElement; at = at.parentElement) {
+    const style = win.getComputedStyle(at);
+    if (style.position === 'fixed' || /^(auto|scroll|overlay)$/.test(style.overflowY) && at.scrollHeight > at.clientHeight) { scroller = at; break; }
+  }
+  const visible = scroller?.getBoundingClientRect(), style = win.getComputedStyle(scroller ?? doc.documentElement);
+  const top = Math.max(vv.offsetTop, visible?.top ?? vv.offsetTop);
+  const bottom = Math.min(vv.offsetTop + vv.height, visible?.bottom ?? Infinity) - Math.max(8, parseFloat(style.scrollPaddingBottom) || 0);
+  const rect = box.getBoundingClientRect();
+  const foot = Math.max(rect.bottom, ...['.compose-send', '.plus-button'].map(selector => composer.querySelector(':scope > ' + selector))
+    .filter(node => node?.getClientRects().length).map(node => node.getBoundingClientRect().bottom));
+  const by = Math.ceil(foot - bottom);
+  if (by > 0 || rect.bottom < top) (scroller ?? win).scrollBy({ top: by, behavior: 'instant' });
+}
+
 // The keyboard, read from the visual viewport (web/ has one reader of it):
 // --vv-height and --vv-top follow what is visible, so a phone's dialog sits
 // above the keyboard rather than under it, and --keyboard holds the last
@@ -36,32 +59,39 @@ function trackKeyboard(win, doc) {
   const vv = win.visualViewport;
   if (!vv || !doc) return;
   const root = doc.documentElement;
-  let full = 0, width = 0, last = vv.height;
+  let full = 0, width = 0, last = vv.height, lastTop = vv.offsetTop, reduced = false, frame = null;
+  const settle = () => {
+    if (frame !== null) return;
+    // CSS uses the new viewport first; the existing width/height fitter gets
+    // its frame before we measure. Coalesce every resize/pan in that interval.
+    frame = win.requestAnimationFrame(() => {
+      frame = win.requestAnimationFrame(() => {
+        frame = null;
+        if (reduced && win.matchMedia(PHONE).matches) revealWriting(doc.activeElement, win);
+      });
+    });
+  };
   const read = event => {
-    const typing = doc.activeElement?.matches?.(TYPING) && !doc.activeElement.readOnly;
-    if (vv.width !== width) { width = vv.width; full = 0; }
-    if (!typing || vv.height > full) full = vv.height;
-    else if (full - vv.height > KEYBOARD_MIN) root.style.setProperty('--keyboard', `${Math.round(full - vv.height)}px`);
+    const field = doc.activeElement, typing = field?.matches?.(TYPING) && !field.readOnly;
+    const widthChanged = vv.width !== width, changed = widthChanged || vv.height !== last || vv.offsetTop !== lastTop;
+    if (widthChanged) { width = vv.width; full = vv.height; reduced = false; }
+    if (vv.height > full) full = vv.height;
+    if (typing && full - vv.height > KEYBOARD_MIN) root.style.setProperty('--keyboard', `${Math.round(full - vv.height)}px`);
     root.style.setProperty('--vv-height', `${Math.round(vv.height)}px`);
     root.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`);
-    // Less shows (the keyboard came up): the composer the field is typed in
-    // scrolls itself, and only itself, to bring the field, with Send on its
-    // row, back into view above its scroll padding (aim.css). A composer that
-    // does not scroll (side by side, or wider than a phone) takes no
-    // scrollTop, so nothing moves, and nothing around it is ever scrolled:
-    // the Reader, which clips, stays where it is.
-    const field = typing && vv.height < last ? doc.activeElement.closest('.composer .field-box') : null;
-    if (field && !field.closest('#reader[data-card-reply], .card-reply-composer')) {
-      const composer = field.closest('.composer'), port = composer.getBoundingClientRect().top + composer.clientTop + composer.clientHeight;
-      composer.scrollTop += Math.max(0, field.getBoundingClientRect().bottom + (parseFloat(win.getComputedStyle(composer).scrollPaddingBottom) || 0) - port);
-    }
-    if (typing && (event?.type === 'focusin' || vv.height < last)) revealCardReply(doc.activeElement, win);
-    last = vv.height;
+    if (typing && !widthChanged && vv.height < last) reduced = true;
+    if (vv.height >= full) reduced = false;
+    // Normal opening still reveals the card. Keyboard settling waits for a
+    // changed phone viewport; ordinary page scrolling does not pull it back.
+    if (typing && event?.type === 'focusin') revealCardReply(field, win);
+    if (typing && reduced && win.matchMedia(PHONE).matches && (changed || event?.type === 'focusin' || event?.type === 'input' && event.target === field)) settle();
+    last = vv.height; lastTop = vv.offsetTop;
   };
   vv.addEventListener('resize', read);
   vv.addEventListener('scroll', read);
   doc.addEventListener('focusin', read);
   doc.addEventListener('focusout', read);
+  doc.addEventListener('input', read);
   read();
 }
 trackKeyboard(globalThis, globalThis.document);

@@ -17,7 +17,7 @@ import { reach } from './arrow-reach.mjs';
 export const UNDO_LIMIT = 50;
 const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · Context Menu or ⇧F10 card menu · → card controls';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
-const WRITING_KEYS = 'Escape or ⇧⌘Return done · ⌘Return new card below, ⌥Return above · ← at the very start folds children, → at the very end unfolds them · ⌘↑ ⌘↓ move the card · Tab indent lines, ⇧Tab outdent · ⌥↑ ⌥↓ move a line · ↑ at the very start or ↓ at the very end goes on to the card beside';
+const WRITING_KEYS = 'Escape or ⇧⌘Return done · ⌘Return new card below, ⌥Return above · ← at the very start folds children, → at the very end unfolds them · ⌘↑ ⌘↓ move the card · Tab at start indent card, ⇧Tab outdent; elsewhere indent lines · ⌥↑ ⌥↓ move a line · ↑ at the very start or ↓ at the very end goes on to the card beside';
 // The same lines, short, where the cards stand in the composer over the feed (notebook-sheet.mjs); each keeps its
 // long form as its tooltip.
 const SHORT_KEYS = ['↑ ↓ pick · Return new card · ⌘Return edit · ⇧F10 menu', 'Escape done · ⌘Return next card', '⌘Return ask · Escape back'];
@@ -364,10 +364,16 @@ export class DeckPage {
     const command = event.metaKey || event.ctrlKey, up = event.key === 'ArrowUp', down = event.key === 'ArrowDown';
     // The box's line keys come first. Escape and ⇧⌘Return finish; ⌘Return adds below and ⌥Return above.
     // ⌘↑/↓ move the card. At the text boundaries, ↑/↓ continue writing beside it and ←/→ fold/unfold children.
-    // Tab indents lines through WritingInput; even an unchanged ⇧Tab or Safari's ⌥Tab keeps the box's focus.
+    // Tab at the collapsed text start moves the card; elsewhere it indents lines through WritingInput.
+    // Even a blocked card move, unchanged ⇧Tab or Safari's ⌥Tab keeps the box's focus.
     if (this.editing) {
       const field = this.editing.field, plain = !command && !event.shiftKey && !event.altKey;
       if (event.target !== field) return;
+      if (event.key === 'Tab' && !command && !event.altKey && field.selectionStart === 0 && field.selectionEnd === 0) {
+        event.preventDefault();
+        if (this.base && !this.readOnly && !this.editing.input.readOnly()) this.moveWriting({ kind: event.shiftKey ? 'outdent' : 'indent' });
+        return;
+      }
       // The composer's writing keys come first: ⌥↑ and ⌥↓ move a line, and the line keys of a Mac (writing-input.mjs).
       if (this.editing.input.writingKey(event) || this.editing.input.indentKey(event)) return;
       if (event.key === 'Escape' || event.key === 'Enter' && command && event.shiftKey && !event.altKey) this.finish();
@@ -410,6 +416,8 @@ export class DeckPage {
     const bubble = event.target.closest?.('.deck-bubble');
     if (bubble && (event.key === 'Enter' || event.key === ' ')) return;
     if (bubble && event.key === 'ArrowLeft') { event.preventDefault(); this.show(true); return; }
+    // A link in the card's words owns Return, including the browser's modifiers.
+    if (event.key === 'Enter' && event.target.closest?.('a[href]')) return;
     const card = this.deck.cards[this.picked], text = card ? cardText(card) : '', near = this.picked;
     // Past the first card or the last, the arrow goes on to what lies that way
     // on the page: the bar above the cards, the header (arrow-reach.mjs). With
