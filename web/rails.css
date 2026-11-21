@@ -84,10 +84,9 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 .ol-adopted #topics a.nav-item{display:block;width:100%;max-width:none;margin:.15rem 0}
 .ol-adopted #outcome-empty{padding:.3rem .5rem;font-size:.85rem}
 .ol-own[hidden]{display:none}
-/* "N new" and "N waiting on you" show only what they count: outcomes that hold some, and in them only those topics. */
+/* Only New hides rows. Waiting keeps the rail's shape with 973's dim paint. */
 .outline[data-only=new] .ol-topics :is(.topic-list,#topics) a.nav-item:not(:has(.unread-count)),
-.outline[data-only=waiting] .ol-topics :is(.topic-list,#topics) a.nav-item:not([data-cover-waiting]):not(:has(.topic-state.mine)),
-.outline:is([data-only=new],[data-only=waiting]) .ol-topics :is(.topic-group,.one-line,.rail-heading,#outcome-empty){display:none!important}
+.outline[data-only=new] .ol-topics :is(.topic-group,.one-line,.rail-heading,#outcome-empty){display:none!important}
 
 /* ---- The outcome's things ---- */
 .things{padding:1.3rem 1rem;background:var(--paper)}
@@ -245,3 +244,7 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 .rail-foot .rail-dim button:hover{color:var(--ink);background:transparent}
 .rail-foot .rail-dim button[aria-pressed=true]{background:var(--soft);color:var(--ink);font-weight:600}
 @media(pointer:fine) and (min-width:761px){.rail-foot .rail-dim button{min-height:0;min-width:0;height:1.25rem;padding:0 .45rem}}
+@media(pointer:fine) and (min-width:761px){
+  .rail-dim{display:grid;grid-template-columns:auto repeat(3,minmax(0,1fr));box-sizing:border-box;width:var(--rail-dim-width,auto)}
+  .rail-foot .rail-dim button{padding-inline:0}
+}

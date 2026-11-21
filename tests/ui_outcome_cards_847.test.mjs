@@ -5,7 +5,7 @@ import { miniDocument } from './fixtures/mini_dom.mjs';
 import { TopicPages, TopicRail, WorkspacePages, topicPosition } from '../web/topic-navigation.mjs';
 import { OutlineRail } from '../web/outline-rail.mjs';
 import { OutcomeTopicCards } from '../web/outcome-topic-cards.mjs';
-import { OutcomeReferences } from '../web/outcome-references.mjs';
+import { OutcomeReferences, pageOpening } from '../web/outcome-references.mjs';
 import { NotebookViews } from '../web/notebook-view.mjs';
 import { NotebookPage } from '../web/notebook-page.mjs';
 
@@ -180,4 +180,46 @@ test('847 composition has one topic query owner, shared Team renderer, and expli
   assert.match(css,/@media\(max-width:760px\)\{\.outcome-topic-grid\{grid-template-columns:minmax\(0,1fr\)/);
   assert.match(css,/\.outcome-topic-card\{[^}]*background:var\(--soft\);box-shadow:var\(--stack-cover-inset\)/);
   assert.match(css,/#outcome-references-list\{display:flex;gap:[^;]+;overflow-x:auto/);
+});
+
+
+test('960 shared cards show current latest prose and sheet counts without another read', async t => {
+  const f=railFixture(t);
+  f.queue.push(f.page([f.item('one',3,{message_count:1,latest_message:{author_id:'reader',author_kind:'human',opening:'Current newest words',sent_ms:1795120000000}}),f.item('two',2,{message_count:2}),f.item('ten',1,{message_count:10})]));
+  await f.rail.load();
+  const cards=f.host.querySelectorAll('a.outcome-topic-card');
+  assert.equal(cards[0].querySelector('.outcome-topic-latest')?.text,'You Current newest words');
+  assert.deepEqual(cards.map(card=>card.dataset.sheets),['0','1','2']);
+  assert.equal(f.calls.length,1);
+});
+
+test('960 Notebook first words skip the repeated opening title and keep saved source identity', async t => {
+  const doc=dom(t),node=()=>doc.createElement('div'),list=node(),opened=[];
+  const refs=new OutcomeReferences({scope:'w',host:node(),list,more:node(),message:Object.assign(node(),{hidden:true}),viewPreference:new NotebookViews({instance_id:'i',actor:'a'},memory()),
+    read:async()=>({items:[{id:'p',seq:1,title:'Train window',body:'# Train window\n\nThe train leaves at seven.',revision:2,owner_scope:{kind:'workspace',id:'w'},source_ref:{kind:'memory',id:'p',revision:2}}],next_cursor:null}),open:ref=>opened.push(ref),denied:()=>false});
+  await refs.load();const row=list.children[0];
+  assert.equal(row.querySelector('.outcome-page-opening')?.textContent,'The train leaves at seven.');
+  row.onclick();assert.deepEqual(opened,[{kind:'memory',id:'p',revision:2}]);
+});
+
+test('960 filter uses exact waiting identities and preserves card links and its sole read owner', async t => {
+  const f=railFixture(t);
+  f.queue.push(f.page([f.item('mine',2,{state:'waiting',waiting_on:['reader']}),f.item('similar',1,{state:'waiting',waiting_on:['reader-long']})]));await f.rail.load();
+  const mine=f.cards.cards.get('mine'),similar=f.cards.cards.get('similar'),hrefs=[mine.href,similar.href];
+  f.cards.filter('reader');assert.equal(mine.classList.contains('outcome-topic-dim'),false);assert.equal(similar.classList.contains('outcome-topic-dim'),true);
+  f.cards.filter(null);assert.equal(similar.classList.contains('outcome-topic-dim'),false);
+  assert.deepEqual([mine.href,similar.href],hrefs);assert.equal(f.calls.length,1);
+});
+
+test('960 a latest message becoming held removes previously drawn prose on repaint', async t => {
+  const f=railFixture(t),latest={author_id:'agent',author_kind:'agent',opening:'Previously visible words',sent_ms:1795120000000};
+  f.queue.push(f.page([f.item('a',1,{latest_message:latest})]));await f.rail.load();
+  const card=f.cards.cards.get('a');assert.ok(card.text.includes('Previously visible words'));
+  f.queue.push(f.page([f.item('a',1,{latest_message:{...latest,opening:'',withheld:true}})]));await f.rail.load();
+  assert.equal(f.cards.cards.get('a'),card);assert.equal(card.text.includes('Previously visible words'),false);assert.equal(card.querySelector('.outcome-topic-latest').hidden,true);
+});
+
+test('960 a Notebook title prefix never eats the first word of its prose',()=>{
+  assert.equal(pageOpening('Trains leave at seven.','Train'),'Trains leave at seven.');
+  assert.equal(pageOpening('# TRAIN WINDOW\n\nThe train leaves.','Train window'),'The train leaves.');
 });

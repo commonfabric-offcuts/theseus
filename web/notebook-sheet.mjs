@@ -467,6 +467,16 @@ export class NotebookSheet {
     take(RETURN);
     if (this.reader?.open) this.showBack(); else if (this.aside) this.back();
   }
+  // A selected page passage uses the same kept-page/back owner as a card's
+  // reply stack, with the existing Reader opening the exact page revision.
+  async quoteWith(open) {
+    const page = this.current;
+    if (!page) return;
+    this.aside = { id: page.item, title: page.sheetTitle.textContent || 'Notebook page' };
+    this.close();
+    try { await open(); }
+    finally { if (this.reader?.open) this.showBack(); else if (this.aside) this.back(); }
+  }
   // On a page of Theseus as it starts: the stack's topic, its Reader open, shows the way back; the page the stack
   // was left from, reached again by that way back, has its feed where it was and the page open over it.
   resume() {

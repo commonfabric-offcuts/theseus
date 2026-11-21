@@ -1,5 +1,5 @@
 import { paintChanges } from './page-changes.mjs';
-import { linkedFenceNodes } from './message-format.mjs';
+import { linkedFenceNodes, formatWords } from './message-format.mjs';
 import { pageImages } from './page-image.mjs';
 
 // On an outcome's own page there is no Reader, so a Notebook page listed
@@ -13,8 +13,8 @@ export class PageHere {
   // cards(id), when given: the address of the shared page editor (docs/notebook-writing.md).
   // media(attachment, ref), when given: the bytes of one of the page's images, read through the page at ref; its
   // card lines show the images (page-image.mjs), and without it each shows its name.
-  constructor({ host, read, reads, cards = null, media = null, status = null, doc = globalThis.document }) {
-    Object.assign(this, { host, read, reads, cards, media, status, doc });
+  constructor({ host, read, reads, cards = null, media = null, status = null, passages = null, doc = globalThis.document }) {
+    Object.assign(this, { host, read, reads, cards, media, status, passages, doc });
     this.serial = 0; this.opener = null;
   }
   node(tag, text, className) {
@@ -63,7 +63,11 @@ export class PageHere {
     heading.tabIndex = -1;
     const origin = this.node('p', `Notebook · revision ${source.source_ref.revision}${source.draft === true ? ' · draft' : ''}`, 'muted');
     const body = this.node('div', undefined, 'page-here-body');
-    body.append(...linkedFenceNodes(source.body ?? '', this.doc, pageImages(source, this.media && (attachment => this.media(attachment, source.source_ref)))));
+    const images = pageImages(source, this.media && (attachment => this.media(attachment, source.source_ref)));
+    if (this.passages) {
+      formatWords(body, source.body ?? '', { notebook: true, copyFences: true, images, revision: source.source_ref.revision });
+      this.passages.bind(body, { source, current: () => current() && !this.wasDeleted && !this.host.hidden });
+    } else body.append(...linkedFenceNodes(source.body ?? '', this.doc, images));
     // Edit page only for someone Core lets write the page (its reader_may_write).
     const cards = this.cards && source.reader_may_write === true ? Object.assign(this.node('a', 'Edit page', 'page-here-cards'), { href: this.cards(source.source_ref.id) }) : '';
     this.host.replaceChildren(heading, origin, status, body, cards, close);

@@ -910,6 +910,44 @@ export const drawnText = host => DRAWN.get(host);
 const REVISIONS = new WeakMap();
 export const drawnRevision = host => REVISIONS.get(host);
 
+// An existing literal label can join a formatted source without interpreting
+// its Markdown or adding links. Notebook card titles already draw literally.
+export function literalWords(host, text, revision) {
+  const words = Mapped.of(String(text));
+  host.replaceChildren(placed(host.ownerDocument.createTextNode(words.text), { words }));
+  SOURCE.set(host, { start: 0, end: words.text.length });
+  DRAWN.set(host, words.text); REVISIONS.set(host, revision); DISPLAY_RULES.set(host, []);
+  return host;
+}
+
+// A display card can keep its title, controls and body in their existing
+// elements while sharing one passage/selection source. Parts were drawn by
+// this formatter; only their source coordinates move, never their nodes.
+const PART_OFFSETS = new WeakMap();
+export function composeFormattedWords(host, text, revision, parts) {
+  for (const { node, offset, start = offset, end = offset + drawnText(node).length } of parts) {
+    const before = PART_OFFSETS.get(node), same = before?.first === node.firstChild && before?.last === node.lastChild &&
+      before?.text === drawnText(node) && before?.revision === revision;
+    const delta = offset - (same ? before.offset : 0);
+    const shift = at => {
+      const span = SOURCE.get(at);
+      if (span && delta) {
+        const shifted = { ...span };
+        if (span.words) shifted.words = new Mapped(span.words.text, span.words.runs.map(([t, s]) => [t, s + delta]), span.words.left + delta);
+        if (span.start !== undefined) shifted.start += delta;
+        if (span.end !== undefined) shifted.end += delta;
+        SOURCE.set(at, shifted);
+      }
+      for (const child of at.childNodes) shift(child);
+    };
+    shift(node);
+    SOURCE.set(node, { start, end });
+    PART_OFFSETS.set(node, { offset, first: node.firstChild, last: node.lastChild, text: drawnText(node), revision });
+  }
+  DRAWN.set(host, text); REVISIONS.set(host, revision); DISPLAY_RULES.set(host, []);
+  return host;
+}
+
 // The Reader's source as passages (reader.mjs): every child of host is one
 // passage with the span of the text it shows (data-start, data-end), and the
 // passages cover the whole text, so what lights is what Return quotes, from

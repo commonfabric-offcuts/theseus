@@ -15,6 +15,10 @@ ordinary replies leave keys untouched. Star and unstar never write order keys;
 a star brings a sleeping dossier above More at its existing key. The existing revision-fenced stack.place
 command moves a key, retaining operation retries and Undo. Schema 49 adds `dossier_order`; downgrade is refused once it holds positions.
 Each position carries `order_key`, `order_tie` and `order_entry_key`; partial pages use the same root's key. Changes remain actor scoped.
+An agent edit that makes a counted human delivery newly unread returns its sleeping
+canonical dossier through the existing personal Bring back act, last above More
+(item964, [contract](unread-dossier-return-964.md)). That act advances the aside
+revision; reading the edit later never reverses admission.
 No browser storage supplies order authority. The migration and each publication
 keep actor visibility; a private reply never changes an outside reader's key.
 The 48→49 freeze owns its historical whisper, join ancestry and placement

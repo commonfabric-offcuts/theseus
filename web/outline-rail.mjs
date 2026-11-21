@@ -1,3 +1,4 @@
+import { outcomeColors, validOutcomeColor } from './outcome-colors.mjs';
 import { OutlineMenus } from './outline-menus.mjs';
 // The outline on the left of a topic (pipeline
 // items 272 and 902; docs/rails.md): every outcome, with its own remembered
@@ -15,8 +16,8 @@ import { OutlineMenus } from './outline-menus.mjs';
 // A quiet pencil beside an outcome's name starts a new topic there, and one
 // beside the Outcomes heading a new outcome (item 305): each shows while the
 // pointer is on its row or the keys are on it, and always on a phone. At the
-// top, "N new" and "N waiting on you" add it all up, and a press on one shows
-// only those.
+// top, "N new" shows only what is new; "N waiting on you" dims other rows
+// without replacing the person's disclosure choices or saved dim sets.
 //
 // The outline is the shell's (in-place-navigation.mjs): it stays the same
 // element across moves, with its scroll and the keys' place. It reads what Core
@@ -94,11 +95,9 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 export function elsewhereWords({ fresh, where, waiting }) {
   return [fresh ? `${fresh} new in ${plural(where, 'other outcome', 'other outcomes')}` : '', waiting ? `${waiting} waiting on you` : ''].filter(Boolean).join(' · ');
 }
-// Whether an outcome shows while only what is new, or only what waits on the
-// reader, is shown.
+// Only New hides outcomes. Waiting uses the existing row marks as a dim layer.
 export function shownUnder(filter, item) {
   if (filter === 'new') return count(item?.unread) > 0;
-  if (filter === 'waiting') return waitingIn(item) > 0;
   return true;
 }
 
@@ -214,7 +213,7 @@ export class OutlineRail {
     this.onlyWaiting = element(doc, 'button', { type: 'button', className: 'chip ol-only', id: 'outline-only-waiting' }, lamp, this.waitingCount, ' waiting on you');
     for (const [chip, filter] of [[this.onlyNew, 'new'], [this.onlyWaiting, 'waiting']]) {
       chip.setAttribute('aria-pressed', 'false');
-      chip.onclick = () => { this.filter = this.filter === filter ? null : filter; this.paint(); if (this.filter) this.reload(); };
+      chip.onclick = () => { this.filter = this.filter === filter ? null : filter; this.paint(); if (this.filter === 'new') this.reload(); };
     }
     const sums = element(doc, 'div', { className: 'ol-sums' }, this.onlyNew, this.onlyWaiting);
     sums.setAttribute('role', 'group'); sums.setAttribute('aria-label', 'Across every outcome');
@@ -250,6 +249,7 @@ export class OutlineRail {
     this.dossiers.begin();
     this.notebookStars.begin();
     this.unlisten?.(); this.unlisten = null;
+    this.colorUnlisten?.(); this.colorUnlisten = null;
     this.watch?.disconnect(); this.watch = null; this.watched = null;
     // The list the run that went drew stays in view until the next run's own
     // has something to show; nothing in it acts meanwhile.
@@ -257,7 +257,10 @@ export class OutlineRail {
       outcome.adopted.inert = true;
       // Retired page parts keep their look, but their ids must not shadow
       // the next run's fresh elements. The retired run kept its own id map.
-      for (const node of [outcome.adopted, ...outcome.adopted.querySelectorAll('[id]')]) node.removeAttribute('id');
+      for (const node of [outcome.adopted, ...outcome.adopted.querySelectorAll('[id]')]) {
+        if (node.id === 'topics') node.classList.add('topic-list');
+        node.removeAttribute('id');
+      }
     }
     if (!feed) return;
     // Under the page's header on a phone: how much is new in the other
@@ -279,6 +282,8 @@ export class OutlineRail {
     this.outcomesKey = handles.live?.outcomes ?? null; this.readOutcomesKey = null;
     this.starting = handles.route?.kind === 'workspace';
     const { bootstrap } = handles;
+    outcomeColors.bind({ api: handles.api, bootstrap });
+    this.colorUnlisten?.(); this.colorUnlisten = outcomeColors.listen(() => this.paint());
     this.dimming.bind(bootstrap.instance_id, bootstrap.actor);
     // What a move of the person's order is sent through, kept for the moments between runs.
     this.sender = { api: handles.api, bootstrap };
@@ -317,7 +322,7 @@ export class OutlineRail {
   get phone() { return this.doc.defaultView.matchMedia('(max-width: 760px)').matches; }
   currentTopicIn(id) { const topic = this.handles?.route?.kind === 'topic' ? this.handles.topic : null; return topic && topic.workspace_id === id ? topic : null; }
   // Whether an outcome shows its topics (Opened): the one being read, a peek, or every one a chip shows.
-  isOpen(id) { return this.opened.isOpen(id, this.phone ? this.here : null, this.filter); }
+  isOpen(id) { return this.opened.isOpen(id, this.phone ? this.here : null, this.filter === 'new' ? 'new' : null); }
   // The outline is how a person moves, so it reads in the foreground lane, as
   // the side rail did. A run's own reads go through that run (handles.view):
   // one still waiting for its turn when the run goes is never sent.
@@ -376,6 +381,7 @@ export class OutlineRail {
     const max = handles.bootstrap.limits?.page_max ?? PAGE;
     const validCount = value => Number.isSafeInteger(value) && value >= 0;
     const fields = ['id', 'unread', 'addressed', 'build', 'cover_waiting', 'light'];
+    const allowed = new Set([...fields, 'color', 'color_revision']);
     const fail = () => { throw Error('The outcome counts could not be confirmed. Retry outcomes.'); };
     for (let start = 0; start < ids.length; start += max) {
       const wanted = new Set(ids.slice(start, start + max));
@@ -383,10 +389,12 @@ export class OutlineRail {
       if (!mine()) return;
       if (answer?.instance_id !== handles.bootstrap.instance_id || !Array.isArray(answer.items) || answer.items.length !== wanted.size) fail();
       for (const item of answer.items) {
-        if (!item || Object.keys(item).length !== fields.length || !fields.every(key => Object.hasOwn(item, key)) || !wanted.delete(item.id) ||
+        if (!item || !Object.keys(item).every(key => allowed.has(key)) || !fields.every(key => Object.hasOwn(item, key)) || !wanted.delete(item.id) ||
           ![item.unread, item.addressed, item.cover_waiting, item.build?.unread, item.build?.addressed].every(validCount) ||
           !(item.light === null || typeof item.light === 'object' && typeof item.light.light === 'string')) fail();
-        updates.push(structuredClone(item));
+        // Never pair an incomplete color with an older row's revision.
+        const color = validOutcomeColor(item);
+        updates.push({ ...structuredClone(item), color: color ? item.color : undefined, color_revision: color ? item.color_revision : undefined });
       }
     }
     if (!mine()) return;
@@ -800,6 +808,8 @@ export class OutlineRail {
     const focused = [...this.list.children].find(li => li.contains(this.doc.activeElement)) ?? null;
     items.forEach(item => {
       const outcome = this.outcome(item), open = this.isOpen(item.id), visible = shownUnder(this.filter, item);
+      const choice = outcomeColors.forDisplay(item);
+      if (choice?.color) outcome.li.dataset.color = choice.color; else delete outcome.li.dataset.color;
       shown.add(item.id);
       outcome.li.hidden = !visible;
       outcome.li.toggleAttribute('data-open', open);
@@ -860,6 +870,7 @@ export class OutlineRail {
     if (!this.starting) { this.dossiers.sync(); this.notebookStars.sync(); }
     if (this.pages?.started || this.failed) this.handles.outcomeList?.(this.pages.items, this.failed || null, () => this.reload());
     this.publishTopics();
+    this.dimming.paintRows();
   }
   // On a phone: "☰ Outcomes" carries the total and the lit light, and a line
   // under the header says how much is new in the other outcomes. Both are the

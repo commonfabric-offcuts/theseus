@@ -33,6 +33,7 @@ import { keptToRead } from './outcome-light-words.mjs';
 import { paintKeptLine, sendEnd } from './outcome-end.mjs';
 import { OutcomeReferences } from './outcome-references.mjs';
 import { OutcomeTopicCards } from './outcome-topic-cards.mjs';
+import { OutcomePageLayout } from './outcome-page-layout.mjs';
 import { NotebookViews } from './notebook-view.mjs';
 import { openIntentJournal } from './intent-journal.mjs';
 import { OpeningDraft } from './opening.mjs';
@@ -63,6 +64,7 @@ import { removalItem, paintRemoval, readRemoval, Removals } from './message-remo
 import { cardClass, paintCardColor, agentColor, paneClass } from './author-colors.mjs';
 import { paintWhisperAuthor, mayStartFrom } from './whisper-choice.mjs';
 import { AgentColors } from './colors.mjs';
+import { OutcomeColorPicker } from './outcome-color-picker.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { PageReads } from './page-reads.mjs';
 import { PageHere } from './page-here.mjs';
@@ -85,6 +87,8 @@ import { ToolPage, OutcomeTools, ToolsRail, TopicTools } from './skills.mjs';
 import { openDossierMove } from './dossier-move.mjs';
 import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
 import { DossierSelectionQuote } from './dossier-selection-quote.mjs';
+import { NotebookPassages } from './notebook-passages.mjs';
+import { NotebookQuoteTransfer } from './notebook-quote-transfer.mjs';
 import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions, paintReactions, mayAnswer } from './reactions.mjs';
 import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
@@ -110,9 +114,10 @@ import { showLine, lineText } from './lines.mjs';
 // Each page is one run of this module (in-place-navigation.mjs). A run that a
 // move in place has ended finds its own elements still, so work it had under
 // way lands there and never on the page that followed it.
-let retired = null, notebookSheet = null;
+let retired = null, notebookSheet = null, outcomeColorPicker = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
-const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; notebookSheet?.retire(); },
+let outcomePageLayout = null;
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); },
   updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
 // The901 shell restores the foot and separator from copies for each run.
 railDensity();
@@ -624,6 +629,8 @@ async function present(presentation) {
     revokeMedia(); reader.presentation = presentation;
     delete $('reader').dataset.discovered;
     reader.show(presentation.source, presentation.editors, { opener: presentation.opener, topics: [topic], presentation, mode: presentation.mode });
+    $('source-body').classList.toggle('notebook-reading-source', presentation.source.source_ref.kind === 'memory');
+    receiveNotebookQuote(presentation);
     cardReplies?.paint();
     if (presentation.fromCardReply) {
       if (presentation.fromCardReply.wide && !reader.narrow.matches) reader.temporaryWide = true;
@@ -4190,11 +4197,16 @@ async function initializeOutcomePage(route) {
     // The title, Team and menu share the topic header. Notes, topics and
     // tools come before outcome setup; secondary context follows (item 842).
     $('outcome-page').append($('outcomes-status'),$('retry-workspaces'),$('team-invite'),$('outcome-references'),$('page-here'),$('topic-navigation'),$('outcome-tools'),$('outcome-standing'),$('outcome-purpose'),$('target-panel'),$('pipeline-line'),$('also-waiting'),$('loop-panel'),$('problems-panel'));
+    outcomeColorPicker = new OutcomeColorPicker({ title: $('topic-title'), api, bootstrap, workspaceId: route.id, current: () => !retired && shell.page === thisRun });
     const cardsHost=document.createElement('div');cardsHost.className='outcome-topic-cards';
     // Keep the shared New topic heading, but let the outline own all lists.
     for(const child of [...$('topic-navigation').children])if(!child.classList.contains('rail-heading'))child.hidden=true;
     $('topic-navigation').append(cardsHost);
-    const topicCards=new OutcomeTopicCards({host:cardsHost});
+    const topicCards=new OutcomeTopicCards({host:cardsHost,color:agentShown,named:displayActor,painted:values=>outcomePageLayout?.topics(values)});
+    outcomePageLayout=new OutcomePageLayout({host:$('outcome-page'),team:$('outcome-team'),cards:topicCards,reader:bootstrap.actor,color:agentShown});
+    colors??=new AgentColors({api,instanceId:bootstrap.instance_id,authority:()=>bootstrap.authority});
+    outcomePageLayout.unlisten=colors.listen(()=>{if(!retired){topicCards.repaint();outcomePageLayout.paint();}});
+    run(()=>colors.load('foreground'));
     const topicPencil = $('new-message').querySelector('svg')?.cloneNode(true);
     if (topicPencil) $('new-topic').replaceChildren(topicPencil);
     $('new-topic').classList.add('notebook-create');
@@ -4263,10 +4275,11 @@ async function initializeOutcomePage(route) {
       catch(error) {
         if(serial!==refreshSerial||retired)return;
         if(readFailure(error).kind==='forbidden') {
-          onboarding.paint(null);permitted=false;$('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
+          onboarding.paint(null);outcomeColorPicker.paint(null);permitted=false;$('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
           $('topic-navigation').hidden=true;$('new-topic').disabled=true;
           // Its Notebook pages, and any open in place, go with it; a recovered read lists them again.
           $('outcome-references').hidden=true;$('page-here').hidden=true;$('outcome-standing').hidden=true;$('also-waiting').hidden=true;$('outcome-tools').hidden=true;
+          outcomePageLayout.members([]);
           shell.topicChanged();
         }
         await rails;
@@ -4277,15 +4290,17 @@ async function initializeOutcomePage(route) {
       permitted=true;
       if (dirty.has('workspace')) {
         $('topic-title').textContent=workspace.title;
+        outcomeColorPicker.paint(workspace);
         purposeLine??=new PurposeLine({host:$('outcome-purpose'),description:$('topic-description'),
           save:(purpose,current)=>setPresence('workspace.update',{workspace_id:current.id},'workspace_revision',current.version,{purpose}).then(receipt=>{run(reload);return receipt;})});
         purposeLine.paint(workspace,organises(workspace,bootstrap.actor));
+        outcomePageLayout.setPurpose(purposeLine);
         onboarding.paint(workspace);
         $('workspace-name').hidden=true;enableNewTopic(workspace.id);here.title=workspace.title;
         shell.topicChanged();
       }
       if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
-      const jobs = [['team',()=>paintTeam(workspace,()=>reload())], ['standing',()=>stands(workspace)], ['targets',()=>targets.load()],
+      const jobs = [['team',()=>paintTeam(workspace,()=>reload(),members=>{outcomeMembers=members;outcomePageLayout.members(members);topicCards.repaint();})], ['standing',()=>stands(workspace)], ['targets',()=>targets.load()],
         ['tools',()=>outcomeTools.load()], ['references',()=>outcomeReferences.load()],
         ['pipeline',()=>paintPipelineLine($('pipeline-line'),{workspace:route.id,read:pipelineView})]];
       return (await Promise.all([rails,...jobs.filter(([key])=>dirty.has(key)).map(([,read])=>read())])).every(read=>read!==false);
@@ -4395,8 +4410,11 @@ async function initializeDeckPage(route) {
     try { return {href,title:scope.kind==='topic'?(await pipelineView('topic',{topic_id:scope.id})).topic.title:(await pipelineView('workspace',{workspace_id:scope.id})).workspace.title}; }
     catch { return {href,title:'The page'}; }
   };
+  // Route construction supplies the binding port; only actual saved words
+  // need the shared controller, and a retired run must not create one.
+  const passages={bind(entry,state){if(!retired)notebookPassagesOf().bind(entry,state);}};
   const page=new NotebookPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
-    item:route.id,read:pipelineView,send:pipelineSend,place,askIn:notebookAskIn,api,bootstrap,mode:route.card?'cards':route.view,viewPreference:notebookViewsOf()});
+    item:route.id,read:pipelineView,send:pipelineSend,place,askIn:notebookAskIn,api,bootstrap,mode:route.card?'cards':route.view,viewPreference:notebookViewsOf(),passages});
   linkOwnerScope = () => page.source?.owner_scope;
   linkNotice = words => page.say(words, 'attention');
   shell.guard(()=>Boolean(page.writing?.journalPending||page.writing?.journalError));
@@ -4464,13 +4482,66 @@ async function notebookAskIn(scope) {
   const {participants}=await pipelineView('topic',{topic_id:topicId});
   return {topicId,agents:participants.filter(p=>p.kind==='agent'&&p.enabled).map(p=>p.actor_id)};
 }
+let notebookPassages = null;
+function notebookPassagesOf() {
+  return notebookPassages ??= new NotebookPassages({ template: $('quote-selection'), quote: quoteNotebookPassage });
+}
+function notebookQuoteNotice(what) {
+  const line = notebookSheet?.showing && notebookSheet.current?.pageNotice;
+  if (line) showLine(line, what); else status(what);
+}
+async function quoteNotebookPassage(choice, opener) {
+  try {
+    // Reuse the hosting topic's destination, or the Notebook's existing
+    // topic/conversation destination when this page has no composer.
+    const topicId = topic && views ? topic.id : (await notebookAskIn(choice.owner_scope))?.topicId;
+    if (!topicId) throw Error('The page has no conversation to quote into.');
+    new NotebookQuoteTransfer(bootstrap).keep(topicId, choice);
+    if (topic && views) {
+      const open = () => openSource(choice.source, opener);
+      if (notebookSheet?.showing) await notebookSheet.quoteWith(open); else await open();
+    } else {
+      await openDestination({ kind: 'topic', id: topicId, page: choice.source.id, revision: String(choice.source.revision) }, 'the page quote', opener);
+    }
+  } catch (error) { notebookQuoteNotice(error); }
+}
+function receiveNotebookQuote(presentation) {
+  if (!topic || presentation.source?.source_ref?.kind !== 'memory') return;
+  let transfer, pending;
+  try { transfer = new NotebookQuoteTransfer(bootstrap); pending = transfer.forSource(topic.id, presentation.source); }
+  catch (error) { reader.notice(error); return; }
+  if (!pending) return;
+  if (presentation.sourceUnavailable || presentation.availabilityUnconfirmed) return;
+  const editor = presentation.editors.reply, before = editor.draft.quotes.length;
+  const contiguous = presentation.source.body.includes(pending.choice.text), parts = pending.choice.parts;
+  if (!contiguous && (!Array.isArray(parts) || parts.join('') !== pending.choice.text ||
+      parts.some(part => !presentation.source.body.includes(part)))) {
+    reader.notice('The selected passage could not be matched to this page revision.'); return;
+  }
+  // Remove the exact intent before the synchronous edit. A storage refusal
+  // leaves both draft and intent untouched, so a reload cannot quote twice.
+  try { if (!transfer.claim(pending)) return; }
+  catch (error) { reader.notice([error, 'The selected passage is kept for retry.']); return; }
+  try {
+    if (contiguous) reader.quoteFrom(pending.choice.source, { ...pending.choice, revision: pending.choice.source.revision });
+    // Hidden image/detail/stack lines split the displayed selection into
+    // exact source substrings; the existing composer joins their writing.
+    else reader.quoteInto(parts, null, pending.choice.source.revision);
+  } catch (error) { reader.notice(error); }
+  finally {
+    if (editor.draft.quotes.length === before) {
+      try { transfer.restore(pending); }
+      catch (error) { reader.notice([error, 'The passage could not be kept for retry.']); }
+    }
+  }
+}
 // A Notebook page in the composer over the page being read (item 396; notebook-sheet.mjs): the full page's
 // Text and Cards, saving and recovery. The page showing is read again on every commit; one closed is not.
 function notebookSheetOf() {
   if (notebookSheet) return notebookSheet;
   notebookSheet = new NotebookSheet({
     make: (id, host, header, idSuffix, revisionShown) => {
-      const page = new NotebookPage({ host, header, item: id, read: pipelineView, send: pipelineSend, askIn: notebookAskIn, api, bootstrap, viewPreference: notebookViewsOf(), idSuffix, shortKeys: true, revisionShown,
+      const page = new NotebookPage({ host, header, item: id, read: pipelineView, send: pipelineSend, askIn: notebookAskIn, api, bootstrap, viewPreference: notebookViewsOf(), idSuffix, shortKeys: true, revisionShown, passages: notebookPassagesOf(),
         place: async scope => ({ href: routeHref({ kind: scope.kind, id: scope.id, page: id }), title: '' }) });
       followCommits(() => notebookSheet.followed(page));
       return page;
@@ -4521,7 +4592,7 @@ function pagesInPlace(workspace,recorded) {
     return api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),kind:'memory.read',
       target:{item_id:id},expected:{authority:{authority_id,authority_epoch}},args:{revision}});
   }});
-  pageHere=new PageHere({host:$('page-here'),reads,read:ref=>pipelineView('source',ref),status:id=>pipelineView('memory_status',{item_id:id}),media:pageImage,cards:id=>routeHref({kind:'cards',id,view:'text'})});pageHereOutcome=workspace;
+  pageHere=new PageHere({host:$('page-here'),reads,read:ref=>pipelineView('source',ref),status:id=>pipelineView('memory_status',{item_id:id}),media:pageImage,cards:id=>routeHref({kind:'cards',id,view:'text'}),passages:notebookPassagesOf()});pageHereOutcome=workspace;
   const shown=pageHere;followCommits(()=>shown.follow());
 }
 // The outcome's own page lists its Notebook pages first, each opening
@@ -4537,7 +4608,7 @@ function outcomePages(workspace,recorded) {
 // An outcome's team, which its owner and its coordinator may change. The owner
 // cannot be removed, so the owner's chip is fixed.
 let teamPanel=null,purposeLine=null,teamInvite=null,coordinatorChoice=null,teamReadSerial=0;
-async function paintTeam(workspace,refresh) {
+async function paintTeam(workspace,refresh,loaded=()=>{}) {
   const serial=++teamReadSerial;
   const send=(id,present)=>setPresence('workspace.member_set',{workspace_id:workspace.id},'workspace_revision',workspace.version,{actor_id:id,present})
     .then(receipt=>{run(refresh);return receipt;});
@@ -4574,6 +4645,7 @@ async function paintTeam(workspace,refresh) {
   teamInvite.current={id:workspace.id,version:workspace.version};
   teamInvite.paint(organises(workspace,bootstrap.actor));teamPanel.paintChoices();
   $('outcome-team').hidden=false;
+  loaded(members);
 }
 // New topic is one title line in the topic list: Return starts the topic with
 // the reader in it and opens it; people and the first message are added there.

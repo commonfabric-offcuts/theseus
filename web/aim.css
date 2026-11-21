@@ -119,6 +119,13 @@ html:has(#messages:not([hidden])){overflow-anchor:none}
 .message-card { --lit-field: #000; }
 .message-preview::highlight(lit-passage), .message-preview *::highlight(lit-passage) { background-color: var(--lit-field); color: #fff; }
 .own-message > .message-preview::highlight(lit-passage), .own-message > .message-preview *::highlight(lit-passage) { color: #000; }
+/* Notebook display shares the passage paint, scoped away from messages. */
+.notebook-reading-words { --lit-field:var(--ink); --notebook-lit-ink:var(--panel); }
+.notebook-reading-words::highlight(notebook-lit-passage),.notebook-reading-words *::highlight(notebook-lit-passage){background-color:var(--lit-field);color:var(--notebook-lit-ink)}
+.notebook-reading-words::selection,.notebook-reading-words *::selection{background-color:var(--lit-field);color:var(--notebook-lit-ink)}
+.notebook-title-words>.md-block{display:inline;margin:0;font:inherit}
+:root[data-look=paper] .notebook-reading-words{--lit-field:color-mix(in srgb,var(--accent) 22%,var(--paper));--notebook-lit-ink:var(--ink)}
+:root[data-look=paper] .notebook-reading-source .hover-quote{background:color-mix(in srgb,var(--accent) 22%,var(--paper));color:var(--ink);box-shadow:none}
 /* A hidden copy of the Reader's text box: a card measures the Reader's line there, at this width, before the Reader first opens. */
 .reading-pane.passage-probe { position: fixed; top: 0; left: 0; width: 1px; height: 1px; padding: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
 .message-card.own-message {
@@ -823,6 +830,8 @@ body:has(.rail.open){overflow:hidden}
 .composer[data-compose=writing] .draft-tag,.composer:not([data-has-writing]) .draft-tag{display:none}
 .taller-field{display:none;position:absolute;right:.3rem;top:.15rem;width:2.2rem;height:2.2rem;min-height:0;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted)}
 .taller-field[aria-pressed=true]{color:var(--ink);background:var(--soft)}
+/* Keep the reply controls in place while the height choice is unnecessary. */
+:is(.card-reply-composer,#reader-composer):not(:has(textarea.noting)):not([data-full-field]) .taller-field{visibility:hidden}
 /* Send stands clear of the field, so a touch between them is beyond its reach and never sends (docs/reader.md). */
 .compose-send{min-height:2.5rem;margin-left:1rem;border-radius:1.25rem;padding:.3rem 1rem;font-weight:650;white-space:nowrap}.compose-send>.send-word{margin:0;opacity:1}
 .compose-send[aria-disabled=true]{opacity:.55}
@@ -1492,3 +1501,8 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 .retracted-message > .message-preview,
 #source-body.retracted-message { text-decoration: line-through; opacity: .6; }
 .message-retracted { font-weight: 500; }
+
+/* Reply completion follows the writing in every composer. */
+.mention-pick{display:flex;flex-direction:column;gap:.15rem;max-width:100%;max-height:13rem;overflow:auto;flex-shrink:0;padding:.3rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);box-shadow:0 .4rem 1.2rem rgba(0,0,0,.12)}
+.mention-pick[hidden]{display:none}.mention-pick>button{white-space:normal;min-width:0;max-width:100%;min-height:2.5rem;padding:.4rem .6rem;border:0;border-radius:.4rem;text-align:left;overflow-wrap:anywhere;background:transparent;color:var(--ink);cursor:pointer}
+.mention-pick>button[aria-selected=true],.mention-pick>button:hover{background:var(--soft)}.mention-pick>p{margin:.3rem .4rem;font-size:.8rem;color:var(--muted)}
