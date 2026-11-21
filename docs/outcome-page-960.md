@@ -231,3 +231,62 @@ The native command above accepts --without-media for the scoped probe and
 through Browser.close, removed their own profiles, and verified observed PID
 absence, fixture EOF/exit0 and closed ports. No owned workload remains. Phone
 viewport evidence remains desktop-engine evidence, not physical-phone gestures.
+
+## R3 contract: original narrow PurposeLine DOM (page follow-on986)
+
+Warp14367 found one new quick-create regression in the158-file cohort. The
+PurposeLine painter must not reparent its description or action in its default
+narrow mode, including before the layout supplies any media result. Only an
+explicit wide layout may move them; the wide-to-narrow transition restores
+the original nodes once. Existing Return/Shift-Return/Escape/refusal behavior
+and the original minimal-host test remain unchanged. Preserve the R2 media
+guard and wide page composition. Reproduce the unchanged quick-create red,
+compare its pristine252 control, fix the owner, then run the focused owner
+cohort, the current UI-file comparison, and isolated native wide/narrow/absent-media
+controls. Do not extend the stand-in or alter unrelated assertions. The
+coordinator binds986;960's Core shipped246 record stays intact. Freeze this
+successor with exact head/tree/base for Warp's carry onto the black surfaces.
+
+### R3 implementation and native evidence
+
+The narrow branch no longer moves nodes during PurposeLine.paint. Only an
+explicit wide-to-narrow layout transition restores the borrowed description
+and action, then paints the existing narrow controls. The original
+ui_quick_create.test.mjs and its minimal host are unchanged: the pre-fix14-test
+run has13 pass/1 fail with this.host.insertBefore missing; pristine252 passes
+all14, and the corrected owner run passes that original behavior test. The
+three-file owner cohort is33 run/32 pass/1 fail; its sole failure is the
+previously recorded847 direct-outline fixture, still failed and unwaived.
+
+A component-scoped native check observes actual direct-child DOM mutations,
+rather than comparing only the final parents. With the returned product it
+records eight description/action insertions or removals in ordinary narrow
+paint, and fails. With this fix it records zero in both schemes/materials,
+in Chromium and WebKit. This observer is test instrumentation local to the
+scratch component; no observer was added to the product. The API-absence
+scope and whole-app/physical-phone limitations described above still apply.
+
+Both final16-cell native matrices pass again with the exact same final
+product and harness hashes as the four missing-media probes:36 cells total.
+The real save/Escape, unsent writing across wide/narrow transitions, actual
+concurrent Core refusal, navigation and Retry recovery controls run in the
+first wide cell of each matrix. All five browser runs, including the actual
+red, verify Browser.close, observed owned PID/profile absence and scratch
+fixture EOF/exit0/PID absence/closed ports. Evidence is retained in
+r3-chrome252-dom-red/, r3-{chrome,webkit}252-{matrix,component-media}/,
+r3-quick-red252.log, r3-quick-pristine252.log and r3-owner-candidate252.log.
+
+The full current UI-file comparison runs sequentially with
+node --test --test-concurrency=1 --test-reporter=tap and every
+tests/ui_*.test.mjs path recorded in each command receipt. Pristine252's250
+files run4179 tests/4149 pass/30 fail; the successor's251 files run4187/4157/30.
+The exact failed-name multisets match, with no introduced or removed failures,
+no skipped/cancelled checks, and no missing-media or insertBefore errors.
+All eight extra checks pass. The original quick-create behavior case is green
+unchanged. This is the current full UI set, not a claim to reconstruct Warp's
+158-file selection. It includes every directly named changed-web-module test
+found by the recorded rg scope search. The thirty failures, including the
+previous ten wiring failures and847 fixture, stay failed/unwaived; the earlier
+exact188 Item783 failure also stays unwaived. Raw logs, exact file lists and
+comparison are r3-ui-{pristine,candidate}252.log, their -command.json receipts,
+and r3-ui-comparison252.json. No unrelated assertion or fixture was changed.

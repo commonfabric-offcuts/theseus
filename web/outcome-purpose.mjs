@@ -48,9 +48,6 @@ export class PurposeLine {
         this.action.replaceChildren(glyph('pencil', this.host.ownerDocument ?? document, 16));
         this.description.append(this.action);
       } else this.host.insertBefore(this.action, this.state);
-    } else {
-      this.descriptionParent?.insertBefore(this.description, this.descriptionNext?.parentNode === this.descriptionParent ? this.descriptionNext : null);
-      this.host.insertBefore(this.action, this.state);
     }
     if (this.box.hidden) this.box.value = purpose;
   }
@@ -64,7 +61,18 @@ export class PurposeLine {
 
   close() { this.box.hidden = true; this.paint(this.workspace, this.owner); this.box.value = this.workspace?.purpose || ''; this.action.focus(); }
 
-  layout(wide) { this.wide = wide; if (this.workspace) this.paint(this.workspace, this.owner); }
+  layout(wide) {
+    const restore = this.wide && !wide;
+    this.wide = wide;
+    // Only the wide layout borrows these nodes. Ordinary narrow paints keep
+    // their original DOM contract, including before any media result arrives.
+    if (restore) {
+      if (this.descriptionParent) this.descriptionParent.insertBefore(this.description, this.descriptionNext?.parentNode === this.descriptionParent ? this.descriptionNext : null);
+      else this.description.remove();
+      this.host.insertBefore(this.action, this.state);
+    }
+    if (this.workspace) this.paint(this.workspace, this.owner);
+  }
 
   show(text, quiet = false) { this.state.textContent = text; this.state.hidden = !text; this.state.classList.toggle('quiet', quiet); }
 

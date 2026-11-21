@@ -62,15 +62,19 @@ try {
         const [{OutcomePageLayout},{PurposeLine}]=await Promise.all([import('/outcome-page-layout.mjs'),import('/outcome-purpose.mjs')]);
         const root=document.createElement('div'),header=document.createElement('header'),host=document.createElement('section'),team=document.createElement('section'),description=document.createElement('p'),purposeHost=document.createElement('div');
         host.id='outcome-page';host.className='selection-page';header.append(description,team);host.append(purposeHost);root.append(header,host);document.body.append(root);
-        const original=window.matchMedia;let layout;
+        const original=window.matchMedia;let layout,observer;
         try{
           window.matchMedia=undefined;
           layout=new OutcomePageLayout({host,team,cards:{filter(){}},reader:'probe',color:()=> 'olive'});
           const purpose=new PurposeLine({host:purposeHost,description,save:()=>{throw Error('No save in this rendering probe');}});
+          observer=new MutationObserver(()=>{});
+          observer.observe(header,{childList:true});observer.observe(purposeHost,{childList:true});
           purpose.paint({id:'probe',purpose:'Probe purpose',version:1},true);layout.setPurpose(purpose);
-          return {teamInHeader:team.parentNode===header,purposeInHeader:description.parentNode===header,wideAttribute:host.hasAttribute('data-outcome-wide'),wideSectionAttached:layout.section.isConnected,display:getComputedStyle(host).display,action:purpose.action.textContent};
-        }finally{window.matchMedia=original;layout?.dispose();root.remove();}
+          const movedPurposeNodes=observer.takeRecords().flatMap(change=>[...change.addedNodes,...change.removedNodes]).filter(node=>node===description||node===purpose.action).length;
+          return {teamInHeader:team.parentNode===header,purposeInHeader:description.parentNode===header,movedPurposeNodes,wideAttribute:host.hasAttribute('data-outcome-wide'),wideSectionAttached:layout.section.isConnected,display:getComputedStyle(host).display,action:purpose.action.textContent};
+        }finally{observer?.disconnect();window.matchMedia=original;layout?.dispose();root.remove();}
       });
+      assert.equal(result.probe.movedPurposeNodes,0,'default narrow paint does not reparent the description or action');
       assert.equal(result.probe.teamInHeader,true);assert.equal(result.probe.purposeInHeader,true);assert.equal(result.probe.wideAttribute,false);assert.equal(result.probe.wideSectionAttached,false);assert.notEqual(result.probe.display,'grid');assert.equal(result.probe.action,'Edit purpose');assert.deepEqual(errors,[]);
       result.phases.push('component-scoped media capability absence: original narrow DOM and CSS in native browser');result.passed=true;console.log(JSON.stringify({key,passed:true,probe:result.probe}));await context.close();continue;
     }
