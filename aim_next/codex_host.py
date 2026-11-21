@@ -505,6 +505,7 @@ class HostedThread:
         self.early_ends, self.early_seen = {}, set()
         # Consecutive turns that ended contextWindowExceeded (design §6.1).
         self.context_failures = 0
+        self.ending = False
         self.control_stopped = False
         self.control_stop_at = None
 
@@ -579,6 +580,28 @@ class Host:
         self.current = work
         self.ensure_thread(thread, lambda: self._prepare(work), lambda reason: self._settle(work, "unavailable", None, reason))
 
+    def drain_seat(self, config):
+        """Abandon only this confirmed idle context; never interrupt or kill a shared child."""
+        thread = self.threads.get(config.destination['thread_id'])
+        if thread is None:
+            self.add_seat(config)
+            thread = self.threads[config.destination['thread_id']]
+        if thread.actor != config.profile.actor_id:
+            raise HostFault('route_binding_changed')
+        thread.ending = True
+        if not thread.attached or thread.uncertain:
+            if not thread.attaching:
+                thread.attached = False
+                self.ensure_thread(thread, lambda: None, lambda reason: None)
+            return False
+        if self._control_busy(thread) or thread.status != 'idle':
+            return False
+        if thread.bridge is not None:
+            thread.bridge.close()
+        del self.threads[thread.id]
+        self.log.write('seat_abandoned', thread=thread.id, actor=thread.actor)
+        return True
+
     def abandon(self):
         """The claim's lease ended first; a late response is logged and its thread re-read before the next dispatch.
 
@@ -622,6 +645,7 @@ class Host:
     def apply_controls(self, controls):
         for thread in self.threads.values():
             value = controls.get(thread.actor)
+            thread.ending = thread.ending or value is not None and value.get('ending') is True
             stopped = value is not None and value['desired'] == 'stopped'
             if stopped != thread.control_stopped:
                 thread.control_stopped = stopped
@@ -755,7 +779,9 @@ class Host:
         controls = self.core('hosted_controls', [work.thread.actor]).get('controls')
         if controls is None:
             raise HostFault('runner_lease_lost')
-        self.apply_controls({**{t.actor: {'desired':'stopped' if t.control_stopped else 'running'} for t in self.threads.values()}, **controls})
+        self.apply_controls({**{t.actor: {'desired':'stopped' if t.control_stopped else 'running', 'ending':t.ending} for t in self.threads.values()}, **controls})
+        if (controls.get(work.thread.actor) or {}).get('ending'):
+            return self._settle(work, 'busy', None, 'seat_ending')
         if work.thread.control_stopped:
             return self._settle(work, 'busy', None, 'operator_stopped')
         thread, config, notice = work.thread, work.thread.config, work.notice
@@ -1039,6 +1065,9 @@ class Host:
             return self._attach_failed(thread, "child_exited")
         resumed = thread.status
         last = self._last_turn(thread, result) if error is None else None
+        if thread.ending and (error is not None or resumed not in ('idle', 'active')
+                or resumed == 'active' and (last is None or last['status'] != 'inProgress')):
+            return self._attach_failed(thread, 'end_native_unconfirmed')
         # An in-progress last turn is live only if the resumed thread says it is active.
         live = last is not None and last["status"] == "inProgress" and resumed == "active"
         thread.status, thread.active_turn = resumed, last["id"] if live else None
@@ -1048,7 +1077,7 @@ class Host:
                 self._end_turn(thread, turn_id, last["status"], error_code(last.get("error")) if last["status"] != "completed" else None)
             elif not (live and last["id"] == turn_id):
                 self._end_turn(thread, turn_id, ORPHANED_IN_PROGRESS, None)
-        thread.attached, thread.attaching = True, False
+        thread.attached, thread.attaching, thread.uncertain = True, False, False
         self.log.write("resume", thread=thread.id, status=thread.status)
         waiters, thread.waiters = thread.waiters, []
         for ready, failed in waiters:

@@ -26,7 +26,7 @@ export class SeatAddition {
     this.writes = next; return next;
   }
   async edit(form) {
-    this.row.form = copy(form); this.version++; this.notice = ''; this.changed();
+    this.row.form = copy(form); this.version++; this.notice = ''; this.noticeSeatId = null; this.changed();
     try { await this.save(); } finally { this.changed(); }
   }
   perform(action) {
@@ -57,7 +57,7 @@ export class SeatAddition {
   }
   add() {
     return this.perform(async () => {
-      if (this.row.request) throw Error('The previous Add is unconfirmed. Check or retry that request first.');
+      if (this.row.request) throw Error('The previous seat request is unconfirmed. Check or retry that request first.');
       await this.checkAuthority();
       this.validate(); this.row.request = this.request(); this.row.requestLabel = this.row.form.name; this.version++;
       return this.dispatch(true);
@@ -65,10 +65,21 @@ export class SeatAddition {
   }
   retrySeat(seat, label = seat.agent_id) {
     return this.perform(async () => {
-      if (this.row.request) throw Error('The previous Add is unconfirmed. Check or retry that request first.');
+      if (this.row.request) throw Error('The previous seat request is unconfirmed. Check or retry that request first.');
       if (!seat.retryable) throw Error('This native setup needs reconciliation before retrying.');
       await this.checkAuthority();
       this.row.request = { v: 1, instance_id: this.bootstrap.instance_id, operation_id: this.id(), kind: 'workspace.hosted_seat_retry',
+        target: { workspace_id: this.workspace.id, seat_request_id: seat.id },
+        expected: { authority: authorityOf(this.bootstrap), seat_revision: seat.version }, args: {} };
+      this.row.requestLabel = label; this.version++; return this.dispatch(false);
+    });
+  }
+  endSeat(seat, label = seat.agent_id) {
+    return this.perform(async () => {
+      if (this.row.request) throw Error('A seat request is unconfirmed. Check or retry it first.');
+      if (['ending', 'ended'].includes(seat.state)) throw Error('This seat is already ending or ended.');
+      await this.checkAuthority();
+      this.row.request = { v: 1, instance_id: this.bootstrap.instance_id, operation_id: this.id(), kind: 'workspace.hosted_seat_end',
         target: { workspace_id: this.workspace.id, seat_request_id: seat.id },
         expected: { authority: authorityOf(this.bootstrap), seat_revision: seat.version }, args: {} };
       this.row.requestLabel = label; this.version++; return this.dispatch(false);
@@ -79,7 +90,7 @@ export class SeatAddition {
     await this.checkAuthority();
     const request = copy(this.row.request); let receipt;
     try { receipt = await this.api.command(copy(request)); }
-    catch (error) { this.notice = `Add is unconfirmed: ${error.message} Check or retry the same Add.`; throw Error(this.notice); }
+    catch (error) { this.notice = `Seat request is unconfirmed: ${error.message} Check or retry the same request.`; throw Error(this.notice); }
     if (revisionRetry && receipt?.recorded === true && receipt.status === 'rejected' && receipt.error?.code === 'REVISION_CONFLICT' &&
         receipt.instance_id === request.instance_id && receipt.operation_id === request.operation_id && receipt.kind === request.kind &&
         Number.isSafeInteger(receipt.error.current_versions?.workspace_revision)) {
@@ -94,15 +105,17 @@ export class SeatAddition {
     const exact = receipt?.instance_id === request.instance_id && receipt.operation_id === request.operation_id && receipt.kind === request.kind;
     if (exact && receipt.recorded === true && receipt.status === 'committed') {
       const result = receipt.result;
-      const retry = request.kind === 'workspace.hosted_seat_retry';
+      const retry = request.kind !== 'workspace.hosted_seat_add';
+      const ending = request.kind === 'workspace.hosted_seat_end';
       if (result?.workspace_id !== request.target.workspace_id || typeof result.seat_request_id !== 'string' ||
           result.seat?.id !== result.seat_request_id || result.seat.agent_id !== result.agent?.id ||
           (retry ? result.seat_request_id !== request.target.seat_request_id : result.seat.role !== request.args.role)) {
-        this.notice = 'Add is unconfirmed: its seat identity did not match the request.'; throw Error(this.notice);
+        this.notice = 'Seat request is unconfirmed: its seat identity did not match the request.'; throw Error(this.notice);
       }
       this.row.request = null; this.row.requestLabel = null; this.row.lastSeatId = result.seat_request_id;
       if (!retry && sameForm(this.row.form, request.args)) this.row.form = { name: '', role: '' };
-      this.notice = `${result.agent.name} is on the team and preparing.`;
+      this.noticeSeatId = ending ? result.seat_request_id : null;
+      this.notice = ending ? `${result.agent.name}: ${seatWords(result.seat)}` : `${result.agent.name} is on the team and preparing.`;
       this.version++;
       await this.save(); this.added(result); return result;
     }
@@ -111,7 +124,7 @@ export class SeatAddition {
       this.version++;
       await this.save(); throw Error(this.notice);
     }
-    this.notice = `Add is unconfirmed. ${receipt?.error?.message ?? 'Check or retry the original Add.'}`;
+    this.notice = `Seat request is unconfirmed. ${receipt?.error?.message ?? 'Check or retry the original request.'}`;
     throw Error(this.notice);
   }
   again() {
@@ -121,10 +134,10 @@ export class SeatAddition {
       await this.checkAuthority();
       let answer;
       try { answer = await this.api.view('operation', { operation_id: request.operation_id }, { readClass: 'foreground' }); }
-      catch (error) { this.notice = `Add remains unconfirmed: ${error.message}`; throw Error(this.notice); }
+      catch (error) { this.notice = `Seat request remains unconfirmed: ${error.message}`; throw Error(this.notice); }
       if (answer?.recorded === true) return this.settle(copy(request), answer);
       if (answer?.instance_id !== request.instance_id || answer.operation_id !== request.operation_id || answer.recorded !== false || answer.status !== 'unknown') {
-        this.notice = 'Add remains unconfirmed. Its confirmation could not be read safely.'; throw Error(this.notice);
+        this.notice = 'Seat request remains unconfirmed. Its confirmation could not be read safely.'; throw Error(this.notice);
       }
       return this.dispatch(false);
     });
@@ -147,6 +160,8 @@ const reasons = {
   pin_conflict: 'An existing native context or its owner does not match.', route_conflict: 'An existing work route does not match.',
 };
 export function seatWords(seat) {
+  if (seat.state === 'ending') return 'Ending after the current turn…';
+  if (seat.state === 'ended') return 'Ended · history kept.';
   if (seat.state === 'ready') return 'Ready · first task in Conversation.';
   if (seat.state === 'refused') return `Stopped at ${stages[seat.stage] ?? 'preparation'}: ${reasons[seat.reason] ?? `The host refused this step (${seat.reason}).`}`;
   return 'Preparing…';
@@ -230,9 +245,9 @@ export class HeadlessSeatControl {
     this.retry.hidden = !row?.request;
     this.retry.disabled = blocked || Boolean(owner?.busy);
     if (row?.request) this.retry.textContent = `Check / retry for ${row.requestLabel ?? row.request.args.name ?? 'the previous seat'}`;
-    for (const button of this.list.querySelectorAll('[data-seat-retry]')) button.disabled = Boolean(blocked || !owner || owner.busy || row?.request);
+    for (const button of this.list.querySelectorAll('[data-seat-retry], [data-seat-end]')) button.disabled = Boolean(blocked || !owner || owner.busy || row?.request);
     this.form.setAttribute('aria-busy', owner?.busy ? 'true' : 'false');
-    this.say(owner?.storageError || owner?.notice || this.localError || (row?.request ? 'A previous seat Add is unconfirmed. Open Headless Codex to check its saved request.' : ''));
+    this.say(owner?.storageError || owner?.notice || this.localError || (row?.request ? 'A seat request is unconfirmed. Open Headless Codex to check its saved request.' : ''));
   }
   toggle(open = this.form.hidden, focus = true) {
     if (open && !this.manage) return;
@@ -254,6 +269,13 @@ export class HeadlessSeatControl {
         seats.push(...page.items); cursor = page.next_cursor;
       } while (cursor);
       if (this.disposed || !this.current()) return false;
+      if (this.owner?.noticeSeatId && !this.owner.row.request) {
+        const latest = seats.find(seat => seat.id === this.owner.noticeSeatId);
+        if (latest) {
+          this.owner.notice = `${names.get(latest.agent_id) ?? latest.agent_id}: ${seatWords(latest)}`;
+          this.paintForm();
+        }
+      }
       const signature = JSON.stringify([manage, seats.map(seat => [seat.id, seat.version, names.get(seat.agent_id)])]);
       if (signature !== this.signature) {
         this.signature = signature;
@@ -265,6 +287,11 @@ export class HeadlessSeatControl {
             const retry = element(doc, 'button', { type: 'button', className: 'text-action', textContent: 'Retry setup' });
             retry.dataset.seatRetry = seat.id; retry.setAttribute('aria-label', `Retry setup for ${label}`);
             retry.onclick = () => this.act(() => this.owner.retrySeat(seat, label)); item.append(retry);
+          }
+          if (manage && !['ending', 'ended'].includes(seat.state)) {
+            const end = element(doc, 'button', { type: 'button', className: 'text-action', textContent: 'End seat' });
+            end.dataset.seatEnd = seat.id; end.setAttribute('aria-label', `End seat ${label}`);
+            end.onclick = () => this.act(() => this.owner.endSeat(seat, label)); item.append(end);
           }
           return item;
         }));

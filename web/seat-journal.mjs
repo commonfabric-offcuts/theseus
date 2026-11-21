@@ -31,7 +31,7 @@ export async function openSeatJournal(bootstrap, workspace, indexed = globalThis
     if (request.kind === 'workspace.hosted_seat_add') return same(request.target, { workspace_id: workspace }) &&
       Number.isSafeInteger(request.expected.workspace_revision) && request.expected.workspace_revision >= 0 &&
       Object.keys(request.args ?? {}).length === 2 && typeof request.args.name === 'string' && typeof request.args.role === 'string';
-    return request.kind === 'workspace.hosted_seat_retry' && Object.keys(request.target).length === 2 &&
+    return ['workspace.hosted_seat_retry', 'workspace.hosted_seat_end'].includes(request.kind) && Object.keys(request.target).length === 2 &&
       validActorId(request.target.seat_request_id) && Object.keys(request.args ?? {}).length === 0 &&
       Number.isSafeInteger(request.expected.seat_revision) && request.expected.seat_revision >= 0;
   }

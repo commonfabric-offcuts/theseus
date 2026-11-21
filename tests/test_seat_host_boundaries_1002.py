@@ -13,9 +13,9 @@ class Boundaries(unittest.TestCase):
         loop = SimpleNamespace(watch=SimpleNamespace(stopped=False),
                                _core=Mock(side_effect=AssertionError('An idle seat read opened a guarded write')))
         seats = SeatHost(loop, directory='/scratch/seat-host')
-        seats.read({'pending': False, 'ready_seq': 0})
+        seats.read({'pending': False, 'ending': False, 'ready_seq': 0})
         seats.route_cursor = 12
-        seats.read({'pending': False, 'ready_seq': 12})
+        seats.read({'pending': False, 'ending': False, 'ready_seq': 12})
         loop._core.assert_not_called()
 
     def test_late_child_readiness_cannot_start_a_different_request(self):

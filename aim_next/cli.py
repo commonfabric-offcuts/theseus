@@ -184,7 +184,7 @@ HELD_WORDS = "(held: its author is editing it)"
 USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute/core.sock) [--json] [--outbox DIR] "
          "{binding | view FILE|- | command FILE|- | outcomes [--reached | --ended] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR | coordinator OUTCOME ACTOR|--none | participant TOPIC ACTOR "
-         "| seat-add OUTCOME NAME --role TEXT|- [--operation ID] | seat-retry OUTCOME SEAT_REQUEST [--operation ID] | seat-status OUTCOME [SEAT_REQUEST] "
+         "| seat-add OUTCOME NAME --role TEXT|- [--operation ID] | seat-retry OUTCOME SEAT_REQUEST [--operation ID] | seat-end OUTCOME SEAT_REQUEST [--operation ID] | seat-status OUTCOME [SEAT_REQUEST] "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
          "| inbox | reply MESSAGE [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--part] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
          "| post TOPIC [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--reply-to MESSAGE] [--divergence-reason TEXT] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
@@ -285,6 +285,10 @@ def _parser():
     seat_retry.add_argument("outcome")
     seat_retry.add_argument("seat_request")
     seat_retry.add_argument("--operation")
+    seat_end = verb("seat-end")
+    seat_end.add_argument("outcome")
+    seat_end.add_argument("seat_request")
+    seat_end.add_argument("--operation")
     seat_status = verb("seat-status")
     seat_status.add_argument("outcome")
     seat_status.add_argument("seat_request", nargs="?")
@@ -855,6 +859,11 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         return self._seat_command(RETRY_KIND, {'workspace_id': self.options.outcome,
                                   'seat_request_id': self.options.seat_request}, {})
 
+    def do_seat_end(self):
+        from .hosted_seats import END_KIND
+        return self._seat_command(END_KIND, {"workspace_id": self.options.outcome,
+                                  "seat_request_id": self.options.seat_request}, {})
+
     def _seat_command(self, kind, target, args):
         options = self.options
         operation = self.operation_of()
@@ -873,7 +882,7 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         if saved is not None:
             result = self.dispatch(directory, saved)
         else:
-            if kind == 'workspace.hosted_seat_retry':
+            if kind in ('workspace.hosted_seat_retry', 'workspace.hosted_seat_end'):
                 seat = self.view('hosted_seat', target)['seat']
                 expected = {'seat_revision': seat['version']}
             else:

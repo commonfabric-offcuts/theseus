@@ -71,6 +71,7 @@ A turn behaviour (consumed in order across restarts) may hold:
 
 import json
 import os
+from pathlib import Path
 import re
 import signal
 import subprocess
@@ -169,6 +170,11 @@ class Fake:
                     signal.pause()
                 return 0
             message = json.loads(line)
+            # 1015: an owned file releases one synthetic current turn while
+            # the same child continues serving other seats. No timer/model act.
+            for identity, turn in list(self.active.items()):
+                if turn['behaviour'].get('hold') == 'release' and Path(HOME, 'release-' + identity).exists():
+                    self.finish(identity, 'completed')
             self.wire({"in": message})
             if "method" not in message:
                 self.answered(message)
@@ -432,7 +438,7 @@ class Fake:
             return self.notify("thread/status/changed", {"threadId": thread_id, "status": {"type": "notLoaded"}})
         if hold == "die":
             os.kill(os.getpid(), signal.SIGKILL)
-        if hold == "interrupt" or (hold == "steer" and not turn["steered"]):
+        if hold in ("interrupt", "release") or (hold == "steer" and not turn["steered"]):
             return
         self.finish(thread_id, "failed" if behaviour.get("fail") else "completed")
 

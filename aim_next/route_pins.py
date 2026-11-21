@@ -131,6 +131,8 @@ class RoutePins:
     def _pin_actor(self, db, actor_id):
         try:
             self._actor(db, actor_id)
+            if db.execute("SELECT 1 FROM hosted_seats WHERE agent_id=? AND end_state IS NOT NULL", (actor_id,)).fetchone():
+                raise RoutePinError("SEAT_ENDED", "This seat is ending or ended; its route cannot be adopted")
         except Refusal as error:
             raise RoutePinError(error.code, error.message) from error
 

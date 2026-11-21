@@ -62,6 +62,7 @@ class SeatHost:
         self.current = None
         self.deadline = None
         self.route_cursor = 0
+        self.end_cursor = ""
 
     def _core(self, method, *args):
         answer = self.loop._core(method, *args)
@@ -77,7 +78,7 @@ class SeatHost:
         self.current = answer['seat']
         self.loop._event('seat_step', seat_id=seat['id'], stage=self.current['stage'], state=self.current['state'],
                          reason=self.current['reason'])
-        if self.current['state'] in ('refused', 'ready'):
+        if self.current['state'] in ('refused', 'ready', 'ending', 'ended'):
             self.current, self.deadline = None, None
             return False
         return True
@@ -194,11 +195,16 @@ class SeatHost:
 
     def read(self, schedule):
         """One bounded new route and one pending request, triggered by the normal Core write hint."""
-        if self.current is not None or self.loop.watch.stopped:
+        if self.loop.watch.stopped:
             return
-        if (type(schedule) is not dict or set(schedule) != {'ready_seq', 'pending'} or type(schedule['pending']) is not bool
+        if (type(schedule) is not dict or set(schedule) != {'ready_seq', 'pending', 'ending'} or type(schedule['ending']) is not bool or type(schedule['pending']) is not bool
                 or type(schedule['ready_seq']) is not int or schedule['ready_seq'] < 0):
             raise codex_host.HostFault('seat_schedule_invalid')
+        self.ending_hint = schedule['ending']
+        if schedule['ending']:
+            self._endings()
+        if self.current is not None:
+            return
         route = self._core('hosted_seat_route', self.route_cursor)['seat'] if schedule['ready_seq'] > self.route_cursor else None
         if route is not None:
             try:
@@ -218,6 +224,31 @@ class SeatHost:
             return
         self.current = seat
         self._advance()
+
+    def _endings(self):
+        rows = self._core('hosted_seat_endings', self.end_cursor)['seats']
+        self.end_cursor = rows[-1]['id'] if rows else ''
+        for seat in rows:
+            if self.current is not None and self.current['id'] == seat['id']:
+                self.current, self.deadline = None, None
+            try:
+                # A never-ready setup received no model turn. Unknown creation
+                # can be abandoned; only its original late receipt may be kept.
+                if seat['first_message_id'] is not None:
+                    if self.loop.host is None or not self.loop.host.drain_seat(self._config(seat)):
+                        continue
+                answer = self._core('hosted_seat_retire', seat['id'], seat['version'])
+                if answer['retired']:
+                    actor = seat['agent_id']
+                    self.loop.routes.pop(actor, None)
+                    self.loop.hosted = self.loop.hosted - {actor}
+                    self.loop.routed = sorted(self.loop.routes)
+                    self.loop.read_needed = True
+                    self.loop._event('seat_ended', seat_id=seat['id'], actor=actor)
+                else:
+                    self.loop._event('seat_end_wait', seat_id=seat['id'], reason=answer['reason'])
+            except (SeatRefusal, OSError, ProfileError, broker_routes.BrokerConfigError, codex_host.HostFault):
+                self.loop._event('seat_end_wait', seat_id=seat['id'], reason='native_unconfirmed')
 
     def _advance(self):
         try:
@@ -331,6 +362,8 @@ class SeatHost:
             self._advance()
 
     def tick(self):
+        if not self.loop.watch.stopped and getattr(self, 'ending_hint', False):
+            self._endings()
         if self.current is not None and self.deadline is not None and self.loop.clock.monotonic() >= self.deadline:
             stage = self.current['stage']
             self._refuse('thread_start_uncertain' if stage == 'starting' else

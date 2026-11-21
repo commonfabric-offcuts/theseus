@@ -310,6 +310,8 @@ class EffectsLoop:
                 raise LoopFault(self._pin_reason(error)) from error
             return self._finish(claim,'unavailable',reason='profile_unavailable')
         except Exception as error:
+            if getattr(error, 'code', None) == 'SEAT_ENDED':
+                return self._finish(claim, 'unavailable', reason='seat_ending')
             raise LoopFault(self._pin_reason(error)) from error
         items, complete = self._pending(config)
         if items is None:
