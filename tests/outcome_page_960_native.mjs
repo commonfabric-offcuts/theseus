@@ -89,6 +89,11 @@ try {
     assert.equal(await opening.isVisible(),wide);
     if(wide){
       assert.ok((await opening.innerText()).includes(latest));
+      // 997: below 1100px the bench is three tabs; each part shows once its tab is chosen.
+      const tabbed=width<1100,tab=async key=>{if(tabbed)await page.locator(`#outcome-tab-${key}`).click();};
+      assert.equal(await page.locator('.outcome-tabs').isVisible(),tabbed);
+      if(tabbed){assert.equal(await page.locator('#outcome-page').getAttribute('data-outcome-tab'),'topics');assert.equal(await page.locator('#outcome-agents').isVisible(),false);assert.equal(await page.locator('#outcome-references').isVisible(),false);}
+      await tab('agents');
       assert.equal(await page.locator('#outcome-agents').isVisible(),true);
       assert.equal(await page.locator('#outcome-purpose .purpose-pencil').count(),1);
       const pencil=page.locator('#outcome-purpose .purpose-pencil');await pencil.click();
@@ -101,9 +106,12 @@ try {
       const member=page.locator(`#outcome-agents .outcome-agent[data-actor-id="${facts.actor}"]`);
       assert.ok((await member.innerText()).includes('1 topic waits on you'));await member.click();
       await page.waitForFunction(()=>getComputedStyle(document.querySelector('[data-topic-id="t960one"].outcome-topic-card')).opacity==='0.25');
-      assert.equal(await card.evaluate(n=>getComputedStyle(n).opacity),'1');await member.click();
+      assert.equal(await card.evaluate(n=>getComputedStyle(n).opacity),'1');
+      if(tabbed){assert.equal(await page.locator('#outcome-page').getAttribute('data-outcome-tab'),'topics','picking an agent shows its topics');await tab('agents');}
+      await member.click();
       await page.waitForFunction(()=>getComputedStyle(document.querySelector('[data-topic-id="t960one"].outcome-topic-card')).opacity==='1');
       const add=page.locator('#outcome-agents #team-people .add-chip');await add.click();assert.equal(await add.getAttribute('aria-expanded'),'true');await add.click();
+      await tab('notes');
       const note=page.locator('#outcome-references-list [data-id="n960"]');assert.equal(await note.locator('.outcome-page-opening').innerText(),'The train leaves at seven.');
       const headingBox=await page.locator('#outcome-references>.rail-heading').boundingBox(),noteBox=await note.boundingBox();assert.ok(headingBox.y+headingBox.height<=noteBox.y+1,'Notebook heading is above its page cards');
       const color=await page.locator('#outcome-references').evaluate(n=>getComputedStyle(n).backgroundColor);

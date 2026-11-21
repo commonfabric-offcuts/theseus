@@ -3,6 +3,7 @@ import { currentImages } from './upload-state.mjs';
 import { paintState, paintWork, waitingQuestion } from './topic-state.mjs';
 import { book, scopeOf, arrangeItems, orderOf } from './outline-order.mjs';
 import { menuRouteHash, menuRouteRead, menuRouteValid } from './menu-route.mjs';
+import { oldestFirst, presses } from './waiting-questions.mjs';
 
 const validId = id => typeof id === 'string' && id.length > 0 && [...id].length <= 200 && !/[\x00-\x1f]/.test(id);
 const afterId = (id,previous) => {
@@ -408,10 +409,10 @@ export class TopicRail {
   }
   title(id) { for (const list of this.lists) { const item = list.pages.items.find(item => item.id === id); if (item) return item.title; } return id; }
   // The message of the question a topic waits on the reader for, as the lists last read it, or null.
-  question(id) {
+  question(id, advance = false) {
     for (const list of this.lists) {
       const item = list.pages.items.find(item => item.id === id);
-      if (item) return questionOf(item, this.reader);
+      if (item) return advance ? nextQuestionOf(item, this.reader) : questionOf(item, this.reader);
     }
     return null;
   }
@@ -448,7 +449,7 @@ export class TopicRail {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     if (landsOnUnread(event.target, event)) return this.open(id, this.title(id), null, 'unread');
-    return this.open(id, this.title(id), this.question(id));
+    return this.open(id, this.title(id), this.question(id, true));
   }
   // A second presentation reads the rows this rail actually drew, including
   // order held under the pointer. Visibility comes from the outline's own
@@ -613,7 +614,13 @@ const drawn = new WeakMap();
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 // The message of the question a topic waits on the reader for, or null: its
 // row opens the topic there, so the Reader shows the question (item 148).
-export const questionOf = waitingQuestion;
+const questionsOf = (item, reader) => (Array.isArray(item?.asks) ? item.asks : [])
+  .filter(ask => ask?.actor_id === reader && typeof ask.message_id === 'string')
+  .map(ask => ({ topic_id: item.id, message_id: ask.message_id, ms: ask.since_ms }));
+// Painting is passive; only an actual press advances the reader's questions.
+// Keep Conversation inspection's existing fallback when none waits on this reader.
+export const questionOf = (item, reader) => oldestFirst(questionsOf(item, reader))[0]?.message_id ?? waitingQuestion(item, reader);
+export const nextQuestionOf = (item, reader) => presses.next('topic:' + item.id, questionsOf(item, reader))?.message_id ?? waitingQuestion(item, reader);
 // What a topic's row carries after its title, in the outline and in the right
 // rail alike (item 297): its unread count (marked when part of it was sent to
 // the reader by name), where it stands (Waiting on you, Ready for review…) and
