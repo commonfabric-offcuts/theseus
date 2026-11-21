@@ -4,6 +4,7 @@ import { MentionNotices } from '../web/mention-notices.mjs';
 
 class Element {
   constructor(tag, doc) { Object.assign(this, { tag, ownerDocument: doc, children: [], dataset: {}, attributes: {} }); }
+  get parentElement() { return this.parent; }
   append(...children) { for (const child of children) { child.parent = this; this.children.push(child); } }
   replaceChildren(...children) { this.children = []; this.append(...children); }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); }
@@ -18,7 +19,7 @@ const scope = { kind:'topic', id:'t1', title:'Original topic', revision:7, may_a
 const answer = (people=['outside'], more={}) => ({ instance_id:'i1', message_id:'m-s1', scope,
   items:people.map(actor_id=>({ actor_id, name:actor_id, kind:'agent', may_add:true })), next_cursor:null, ...more });
 function fixture(api={}) {
-  const doc = { createElement: tag => new Element(tag, doc) }, host = new Element('div', doc);
+  const doc = { createElement: tag => new Element(tag, doc) }, host = new Element('div', doc); host.id = 'page-notices';
   let current = true;
   const owner = new MentionNotices({ host, api:{ view:async()=>answer(), ...api }, instanceId:'i1', authority:()=>authority, current:()=>current });
   return { owner, host, buttons:()=>host.all().filter(node=>node.tag==='button'), retire:()=>{ current=false; } };
@@ -29,7 +30,7 @@ test('one notice for a confirmed send, all paged names, repeated confirmation de
   const calls=[]; const f=fixture({ view:async(name,args)=>{ calls.push([name,args]); return args.cursor ? answer(['outside','other']) : answer(['outside'],{next_cursor:23}); } });
   await f.owner.published(null,item()); await f.owner.published(null,item());
   assert.equal(f.host.children.length,1); assert.equal(calls.length,2);
-  assert.deepEqual(f.buttons().map(b=>b.textContent),['Add @outside to topic','Add @other to topic','Dismiss']);
+  assert.deepEqual(f.buttons().map(b=>b.textContent),['Add @outside to topic','Add @other to topic','×']);
   assert.equal(f.host.children[0].attributes.role,'status');
 });
 test('members show no toast; unconfirmed, detached and whisper sends never start the read', async()=>{
@@ -67,7 +68,7 @@ test('add is bound to sent scope; uncertain retry keeps operation; definitive co
 });
 test('outcome permission controls Add; changed authority makes old controls inert',async()=>{
   let commands=0;const f=fixture({view:async()=>answer(['outside'],{scope:{...scope,kind:'outcome',id:'w1',may_add:false}}),command:async()=>{commands++;}});
-  await f.owner.published(null,item());assert.deepEqual(f.buttons().map(b=>b.textContent),['Dismiss']);
+  await f.owner.published(null,item());assert.deepEqual(f.buttons().map(b=>b.textContent),['×']);
   const g=fixture({command:async()=>{commands++;}});await g.owner.published(null,item());g.owner.authority=()=>({...authority,authority_epoch:'changed'});await g.buttons()[0].onclick();assert.equal(commands,0);
 });
 
@@ -81,11 +82,11 @@ test('retryable Core read refusal offers one retry and terminal unsend removes t
 });
 for(const code of ['FORBIDDEN','INVALID_RECIPIENT','TOO_MANY_PARTICIPANTS'])test('rejected Add is definitive visible text and never Check add: '+code,async()=>{
  let calls=0;const reason='Cannot add: '+code;const f=fixture({command:async request=>{calls++;return {instance_id:'i1',operation_id:request.operation_id,status:'rejected',recorded:false,error:{code,message:reason}};}});
- await f.owner.published(null,item());const add=f.buttons()[0];await add.onclick();await add.onclick();assert.equal(calls,1);assert.ok(f.host.all().some(n=>n.textContent===reason));assert.deepEqual(f.buttons().map(b=>b.textContent),['Dismiss']);
+ await f.owner.published(null,item());const add=f.buttons()[0];await add.onclick();await add.onclick();assert.equal(calls,1);assert.ok(f.host.all().some(n=>n.textContent===reason));assert.deepEqual(f.buttons().map(b=>b.textContent),['×']);
 });
 test('a second definitive revision conflict stops after one fresh attempt and says why',async()=>{
  const requests=[];const f=fixture({command:async request=>{requests.push(request);return {instance_id:'i1',operation_id:request.operation_id,status:'rejected',recorded:false,error:{code:'REVISION_CONFLICT',message:'Changed again',current_versions:{topic_revision:request.expected.topic_revision+1}}};}});
- await f.owner.published(null,item());await f.buttons()[0].onclick();assert.equal(requests.length,2);assert.notEqual(requests[0].operation_id,requests[1].operation_id);assert.ok(f.host.all().some(n=>n.textContent==='Changed again'));assert.deepEqual(f.buttons().map(b=>b.textContent),['Dismiss']);
+ await f.owner.published(null,item());await f.buttons()[0].onclick();assert.equal(requests.length,2);assert.notEqual(requests[0].operation_id,requests[1].operation_id);assert.ok(f.host.all().some(n=>n.textContent==='Changed again'));assert.deepEqual(f.buttons().map(b=>b.textContent),['×']);
 });
 test('unknown transport result keeps the exact Add operation for Check add',async()=>{
  const requests=[];const f=fixture({command:async request=>{requests.push(request);return requests.length===1?{instance_id:'i1',operation_id:request.operation_id,status:'unknown',recorded:false}:{instance_id:'i1',operation_id:request.operation_id,status:'committed',recorded:true,result:{present:true,actor_id:'outside',topic_id:'t1'}};}});
@@ -93,5 +94,5 @@ test('unknown transport result keeps the exact Add operation for Check add',asyn
 });
 test('unsubscribed Conversation team agent is warned without an ineffective repeated Add',async()=>{
  const f=fixture({view:async()=>answer(['outside'],{scope:{...scope,kind:'outcome',id:'w1'},items:[{actor_id:'outside',name:'outside',kind:'agent',may_add:false}]})});
- await f.owner.published(null,item());assert.deepEqual(f.buttons().map(b=>b.textContent),['Dismiss']);assert.ok(f.host.all().some(n=>n.textContent?.includes('Name them in To')));
+ await f.owner.published(null,item());assert.deepEqual(f.buttons().map(b=>b.textContent),['×']);assert.ok(f.host.all().some(n=>n.textContent?.includes('Name them in To')));
 });

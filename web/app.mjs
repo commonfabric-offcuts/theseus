@@ -4,6 +4,7 @@ import { reviewDifferences } from './review-differences.mjs';
 import { railDensity } from './rail-density.mjs';
 import { CardReplies } from './card-replies.mjs';
 import { MentionNotices } from './mention-notices.mjs';
+import { finishPageNotice } from './page-notices.mjs';
 import { panes } from './panes.mjs';
 import { stackMenuItems } from './stack-menu-items.mjs';
 import { outcomeMenuItems } from './outcome-menu-items.mjs';
@@ -172,7 +173,7 @@ const review = $('version-review');
 let comparison = null, reviewSerial = 0, reviewOpener = null;
 // Whether each agent's wakes are getting through, said on its name where it is not.
 const wakeLights = new WakeLights({ read: async () => checkedView(await api.view('wakes', {}, { readClass: 'background' }), bootstrap.instance_id),
-  painted: () => { const words = wakeLights.notice(); $('wakes-status').textContent = words ?? ''; $('wakes-status').hidden = !words; } });
+  painted: () => { const words = wakeLights.notice(); $('wakes-status').textContent = words ?? ''; $('wakes-status').hidden = !words; finishPageNotice($('wakes-status')); } });
 const wakeLight = person => person.kind === 'agent' || person.kind === undefined ? wakeLights.words(person.actor_id) : null;
 const sourceIdentity = ref => JSON.stringify(ref);
 const validate = answer => {
@@ -2885,6 +2886,7 @@ function updateStatus(state) {
     : state.message + ' ';
   $('updates-retry').textContent = state.kind === 'reconnect' ? 'Reconnect' : state.kind === 'authority' ? 'Review saved writing' : 'Retry updates';
   $('updates-retry').hidden = state.kind === 'manual';
+  finishPageNotice($('updates-status'));
   // Updates that ran again may be retried after a later refusal.
   if (state.kind === 'current') reconnectRetried = null;
   if (state.kind === 'reconnect') run(reconnect);
@@ -3451,6 +3453,7 @@ async function initialize() {
     edit: (editor, p) => run(() => { if (registry.isCurrent(p, editor)) return registry.edited(editor); }),
     status: editor => registry.status(editor), sign: editor => registry.saveSign(editor).state, savedAt: editor => registry.savedTime(editor), needsReview, reviewState,
     send: (editor, p) => registry.send(editor, { presentation: p, stay: true }),
+    sent: (p, result, current) => landOnMessage(result.receipt.result.message_id, ++landingSerial, current),
     review: (editor, p, opener) => run(() => showVersions(editor, opener, p)),
     renderPending: () => paintReview(),
     retry: () => run(retryInline),
@@ -3534,7 +3537,7 @@ async function initialize() {
   // a window that crosses a phone's width shows or hides it again.
   reader.narrow.addEventListener('change', paintReaderMark);
   registry = new EditorRegistry({ api, bootstrap, journal, present, changed,
-    published: (editor, item) => { cardReplies?.published(editor, item); mentionNotices?.published(editor, item); },
+    published: (editor, item) => { if (inline.editor === editor) inline.published(item); cardReplies?.published(editor, item); mentionNotices?.published(editor, item); },
     activity: () => { inline.paintStatus(); reader.paintStatus(); cardReplies?.paint(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } cardReplies?.readerClosed(presentation); cardReplies?.paint(); noteRead(); } });
   mentionNotices = new MentionNotices({ host: $('page-notices'), api, instanceId: bootstrap.instance_id,

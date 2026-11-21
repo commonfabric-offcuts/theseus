@@ -3200,8 +3200,8 @@ async function runPencilMutants() {
     {name:'overlapping-image-remove',file:'web/aim.css',from:'#inline-composer .image-choice>button[data-method=remove]{position:static;',to:'#inline-composer .image-choice>button[data-method=remove]{position:absolute;top:-1rem;right:-1rem;',case:'late confirmation keeps newer memory-only image',expected:'image opener center is not covered by Remove'},
     {name:'close-newer-images',file:'web/inline-composer.mjs',from:'!currentImages(editor).length && !imageBarrier(editor)',to:'true',case:'late confirmation keeps newer capturing image',expected:'older confirmation keeps newer image writing open'},
     {name:'close-newer-presentation',file:'web/inline-composer.mjs',from:'!this.imagePicker && !this.images?.open && !this.bar.panel && !this.naming.sheet.open &&',to:'true &&',case:'late confirmation keeps newer agent menu presentation',expected:'older confirmation keeps newer presentation open'},
-    {name:'ignore-publication-status',file:'web/inline-composer.mjs',from:"result?.status === 'confirmed' && this.admits(p, editor)",to:'true && this.admits(p, editor)',case:'publication rejected',expected:'sheet stays open'},
-    {name:'stay-after-send',file:'web/inline-composer.mjs',from:"result?.status === 'confirmed' && this.admits(p, editor)",to:'false && this.admits(p, editor)',case:'sends once and closes',expected:'successful send closes the pencil sheet'},
+    {name:'ignore-publication-status',file:'web/inline-composer.mjs',from:"result?.status !== 'confirmed'",to:'false',case:'publication rejected',expected:'sheet stays open'},
+    {name:'stay-after-send',file:'web/inline-composer.mjs',from:'if (!current()) return;',to:'return;',case:'sends once and closes',expected:'successful send closes the pencil sheet'},
   ];
   for (const rule of rules) {
     const file=path.join(root,rule.file),original=await readFile(file,'utf8');
