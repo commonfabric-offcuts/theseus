@@ -19,6 +19,15 @@ shell as it starts, and tells the shell when it is up or that it could not
 start. Its guard hands a confirmed move to the shell, and loads the page as
 before when the shell declines. It renames its own address through the shell.
 
+On a topic or Conversation, plain Return follows the visible strong outline:
+a message or dossier gets the same reply as its Reply arrow; selected or lit
+words retain the existing quoted Reply. With nothing outlined, New message
+opens on the current page without navigating. Hovering a rail row is not
+selection. A button or link showing its focus ring keeps native activation,
+and writing keeps Return. Hidden, clipped or unringed focus cannot take it.
+The row-activation rules below apply when the row shows its focus ring.
+(`web/pane-keys.mjs`, `web/message-menu.mjs`, item 784)
+
 ## The outline
 
 Each outcome has a row with a disclosure chevron, its light, its name and the

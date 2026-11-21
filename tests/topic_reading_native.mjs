@@ -28,6 +28,7 @@ import { onboardingChecks790 } from './onboarding_790_native.mjs';
 import { stackChecks } from './stack_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
+import { visibleReturn784Checks } from './visible_return_784_native.mjs';
 import { whisperOutlineReading } from './whisper_outline_native.mjs';
 import { waitingQuestions372Checks } from './waiting_questions_372_native.mjs';
 
@@ -3805,6 +3806,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     { seed, open, becomes, centre, tap, card, words, openReader, closeReader, into });
   await coverRefreshChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, centre, tap, press, openReader, closeReader, card });
+  await visibleReturn784Checks({ check, page, until, control, shot, facts, observations, engine }, { seed });
+
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
   await editChecks({ check, until, view, control, facts, shot, engine },
