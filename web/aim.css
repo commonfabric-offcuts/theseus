@@ -117,6 +117,11 @@ html:has(#messages:not([hidden])){overflow-anchor:none}
 }
 /* A passage lit on a card under the pointer (web/feed-passages.mjs) is painted as the Reader's is; on the person's own black card, the other way round, so it shows. The highlight paints its words' own height; the rest of the field, as tall line by line as the Reader's, is painted in --lit-field behind them (web/lit-field.mjs). */
 .message-card { --lit-field: #000; }
+/* In the dark scheme every card lifts its lit passage the same grey, the ink at 42% over black (#5e6160): a black field
+   read as nothing on the dark tints and read grounds there (about 1.35:1 on an agent's card). It reads at about 2:1 or
+   more on every card's ground, under white words (6:1). The person's own card is black in both schemes and lifts the
+   same grey in both (1009). */
+@media (prefers-color-scheme: dark) { .message-card { --lit-field: #5e6160; } }
 .message-preview::highlight(lit-passage), .message-preview *::highlight(lit-passage) { background-color: var(--lit-field); color: #fff; }
 .own-message > .message-preview::highlight(lit-passage), .own-message > .message-preview *::highlight(lit-passage) { color: var(--ink); }
 /* Notebook display shares the passage paint, scoped away from messages. */
@@ -133,9 +138,8 @@ html:has(#messages:not([hidden])){overflow-anchor:none}
 .reading-pane.passage-probe { position: fixed; top: 0; left: 0; width: 1px; height: 1px; padding: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
 .message-card.own-message {
   --ink: #e0e8e5;
-  /* Its passage lit under the pointer: the ink at 35% over the black (2.6:1 against it), under the card's own light
-     words (6.4:1). At 20% the field read as nothing on a dossier's own cards (Tony, 1009). */
-  --lit-field: #4e5150;
+  /* Its passage lit under the pointer: the same grey as every card's in the dark scheme (above), in both schemes. */
+  --lit-field: #5e6160;
   --muted: #9aaba8;
   --accent: #79c7ab;
   background: #000;
