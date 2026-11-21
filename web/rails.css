@@ -237,6 +237,8 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 @media all{
   :root[data-look=paper] .things-sec[data-key=notebook] .things-body{padding:.55rem;border-radius:.7rem;background:#f2eee5}
   :root[data-look=paper] .things-sec[data-key=notebook]{--things-tile:#fbf8f1;--things-hair:#ddd5c5;--things-quiet:#6f685c;--ink:#27241f;--accent:#3d7a62}
+  /* The title field uses this Notebook section's paper as well as its ink. */
+  :root[data-look=paper] .things-sec[data-key=notebook] .rail-line input{background:var(--things-tile);border-color:var(--things-hair);--muted:var(--things-quiet)}
 }
 
 /* 973: words quieten without changing a row's layout or its rail line. */
