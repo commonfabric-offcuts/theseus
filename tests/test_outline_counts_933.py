@@ -8,7 +8,7 @@ import reader_fixture as fixtures
 from aim_next.contract import LIMITS
 
 
-FIELDS = {"id", "unread", "addressed", "build", "cover_waiting", "light"}
+FIELDS = {"id", "unread", "addressed", "build", "cover_waiting", "light", "color", "color_revision"}
 
 
 class OutlineCountsCase(fixtures.ReaderCase):

@@ -1,3 +1,4 @@
+import { outcomeColors, validOutcomeColor } from './outcome-colors.mjs';
 import { OutlineMenus } from './outline-menus.mjs';
 // The outline on the left of a topic (pipeline
 // items 272 and 902; docs/rails.md): every outcome, with its own remembered
@@ -248,6 +249,7 @@ export class OutlineRail {
     this.dossiers.begin();
     this.notebookStars.begin();
     this.unlisten?.(); this.unlisten = null;
+    this.colorUnlisten?.(); this.colorUnlisten = null;
     this.watch?.disconnect(); this.watch = null; this.watched = null;
     // The list the run that went drew stays in view until the next run's own
     // has something to show; nothing in it acts meanwhile.
@@ -277,6 +279,8 @@ export class OutlineRail {
     this.outcomesKey = handles.live?.outcomes ?? null; this.readOutcomesKey = null;
     this.starting = handles.route?.kind === 'workspace';
     const { bootstrap } = handles;
+    outcomeColors.bind({ api: handles.api, bootstrap });
+    this.colorUnlisten?.(); this.colorUnlisten = outcomeColors.listen(() => this.paint());
     // What a move of the person's order is sent through, kept for the moments between runs.
     this.sender = { api: handles.api, bootstrap };
     if (!this.started) {
@@ -373,6 +377,7 @@ export class OutlineRail {
     const max = handles.bootstrap.limits?.page_max ?? PAGE;
     const validCount = value => Number.isSafeInteger(value) && value >= 0;
     const fields = ['id', 'unread', 'addressed', 'build', 'cover_waiting', 'light'];
+    const optionalColor = item => Object.hasOwn(item, 'color') ? validOutcomeColor(item) && Object.keys(item).length === fields.length + 2 : Object.keys(item).length === fields.length;
     const fail = () => { throw Error('The outcome counts could not be confirmed. Retry outcomes.'); };
     for (let start = 0; start < ids.length; start += max) {
       const wanted = new Set(ids.slice(start, start + max));
@@ -380,7 +385,7 @@ export class OutlineRail {
       if (!mine()) return;
       if (answer?.instance_id !== handles.bootstrap.instance_id || !Array.isArray(answer.items) || answer.items.length !== wanted.size) fail();
       for (const item of answer.items) {
-        if (!item || Object.keys(item).length !== fields.length || !fields.every(key => Object.hasOwn(item, key)) || !wanted.delete(item.id) ||
+        if (!item || !optionalColor(item) || !fields.every(key => Object.hasOwn(item, key)) || !wanted.delete(item.id) ||
           ![item.unread, item.addressed, item.cover_waiting, item.build?.unread, item.build?.addressed].every(validCount) ||
           !(item.light === null || typeof item.light === 'object' && typeof item.light.light === 'string')) fail();
         updates.push(structuredClone(item));
@@ -797,6 +802,8 @@ export class OutlineRail {
     const focused = [...this.list.children].find(li => li.contains(this.doc.activeElement)) ?? null;
     items.forEach(item => {
       const outcome = this.outcome(item), open = this.isOpen(item.id), visible = shownUnder(this.filter, item);
+      const choice = Object.hasOwn(item, 'color') ? outcomeColors.accept(item) : outcomeColors.get(item.id);
+      if (choice?.color) outcome.li.dataset.color = choice.color; else delete outcome.li.dataset.color;
       shown.add(item.id);
       outcome.li.hidden = !visible;
       outcome.li.toggleAttribute('data-open', open);
