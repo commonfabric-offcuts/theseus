@@ -206,6 +206,15 @@ class ConversationThumbCase(ThumbAnswerCase):
 
 
 class TopicThumbCase(ThumbAnswerCase):
+    def wait_heads(self):
+        """These cases assert the durable compact wait heads and their movement.
+
+        Item 372 expands the reader's topic asks; that complete navigation set
+        is checked in test_waiting_questions_372, separately from these heads.
+        """
+        return self.sql("SELECT actor_id,ask_message_id FROM topic_waiting "
+                        "WHERE topic_id='t1' AND ask_message_id IS NOT NULL ORDER BY actor_id")
+
     def test_a_thumb_by_the_person_asked_answers_the_ask_and_taking_it_back_puts_the_wait_back(self):
         ask = self.ask()
         self.assertEqual(self.asks(), [("owner", ask)])
@@ -227,21 +236,21 @@ class TopicThumbCase(ThumbAnswerCase):
     def test_a_thumb_answers_only_the_ask_it_is_on_and_the_wait_moves_to_the_next_one(self):
         first = self.ask("Which day?")
         second = self.ask("Which hour?")
-        self.assertEqual(self.asks(), [("owner", first)], "the topic waits from the oldest open ask")
+        self.assertEqual(self.wait_heads(), [("owner", first)], "the topic waits from the oldest open ask")
         self.thumb(second)
-        self.assertEqual(self.asks(), [("owner", first)], "the older ask still waits")
+        self.assertEqual(self.wait_heads(), [("owner", first)], "the older ask still waits")
         self.thumb(first)
-        self.assertEqual(self.asks(), [], "both are answered")
+        self.assertEqual(self.wait_heads(), [], "both are answered")
         third = self.ask("And the room?")
         self.thumb(first, on=False)
-        self.assertEqual(self.asks(), [("owner", first)], "the oldest open ask again")
+        self.assertEqual(self.wait_heads(), [("owner", first)], "the oldest open ask again")
         self.thumb(first)
-        self.assertEqual(self.asks(), [("owner", third)], "past the answered second ask, to the third")
+        self.assertEqual(self.wait_heads(), [("owner", third)], "past the answered second ask, to the third")
         self.thumb(second, on=False)
-        self.assertEqual(self.asks(), [("owner", second)], "the second ask, older than the third, waits again")
+        self.assertEqual(self.wait_heads(), [("owner", second)], "the second ask, older than the third, waits again")
         self.thumb(third)
         self.thumb(second)
-        self.assertEqual(self.asks(), [])
+        self.assertEqual(self.wait_heads(), [])
 
     def test_the_wait_moves_to_the_oldest_ask_after_it_and_never_to_a_tell(self):
         first = self.ask("Which day?")
@@ -249,9 +258,9 @@ class TopicThumbCase(ThumbAnswerCase):
         second = self.ask("Which hour?")
         third = self.ask("And the room?")
         self.thumb(first)
-        self.assertEqual(self.asks(), [("owner", second)], "the next ask, past the tell and before the third")
+        self.assertEqual(self.wait_heads(), [("owner", second)], "the next ask, past the tell and before the third")
         self.thumb(second)
-        self.assertEqual(self.asks(), [("owner", third)])
+        self.assertEqual(self.wait_heads(), [("owner", third)])
 
     def test_another_persons_yes_on_a_later_ask_to_both_leaves_it_waiting_on_the_person(self):
         # Review r3: the wait moved past an ask anyone had thumbed yes, so the owner's question dropped off their rail.
@@ -278,17 +287,17 @@ class TopicThumbCase(ThumbAnswerCase):
         # A 👍 from before item 239 holds `up`: it answered nothing.
         self.sql_write("INSERT INTO message_reactions(actor_id,message_id,kind,topic_id,value,at_ms,revision) "
                        "VALUES ('owner','%s','thumb','t1','up',1,1)" % legacy)
-        self.assertEqual(self.asks(), [("other-reader", theirs), ("owner", first)])
+        self.assertEqual(self.wait_heads(), [("other-reader", theirs), ("owner", first)])
         self.thumb(first)
-        self.assertEqual(self.asks()[1:], [("owner", taken_back)],
+        self.assertEqual(self.wait_heads()[1:], [("owner", taken_back)],
                          "not the ask writing answered, another person's, another topic's, nor one whose 👍 was taken back")
         self.thumb(taken_back)
-        self.assertEqual(self.asks()[1:], [("owner", legacy)], "a 👍 that answered nothing leaves its ask waiting")
+        self.assertEqual(self.wait_heads()[1:], [("owner", legacy)], "a 👍 that answered nothing leaves its ask waiting")
         self.thumb(legacy, on=False)
         self.thumb(legacy)
-        self.assertEqual(self.asks()[1:], [("owner", last)])
+        self.assertEqual(self.wait_heads()[1:], [("owner", last)])
         self.thumb(last)
-        self.assertEqual(self.asks()[1:], [])
+        self.assertEqual(self.wait_heads()[1:], [])
 
     def test_a_thumb_that_moves_no_wait_touches_nothing_open_pages_read(self):
         first = self.ask("Which day?")
@@ -296,7 +305,7 @@ class TopicThumbCase(ThumbAnswerCase):
         version, told = self.topic_version(), self.told_waiting("owner", "t1")
         self.assertTrue(self.thumb(second).get("answered"), "it answers the second ask")
         self.thumb(second, on=False)
-        self.assertEqual(self.asks(), [("owner", first)])
+        self.assertEqual(self.wait_heads(), [("owner", first)])
         self.assertEqual((self.topic_version(), self.told_waiting("owner", "t1")), (version, told), "the wait, from the first ask, never changed")
         self.thumb(first)
         self.assertGreater(self.topic_version(), version, "and a thumb that moves it does")
@@ -411,7 +420,7 @@ class TopicThumbCase(ThumbAnswerCase):
         for message, on, asks in ((first, True, [("owner", second)]), (second, True, []), (second, False, [("owner", second)]),
                                   (first, False, [("owner", first)])):
             self.thumb(message, on)
-            self.assertEqual(self.asks(), asks)
+            self.assertEqual(self.wait_heads(), asks)
             self.assertEqual(self.waiting_on_me(), (2, ["t2", "t1"]), "said, t1 is ordered by when it was said")
 
     def test_taking_it_back_in_an_archived_topic_puts_the_wait_back_archived(self):

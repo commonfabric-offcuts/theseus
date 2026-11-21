@@ -4053,17 +4053,17 @@ nameTopicsWith(topicName);
 // from: the link pressed, which takes the focus back when the Reader closes.
 async function openDestination(target, title, from = null, writtenQuery = false) {
   const landing = ++landingSerial;
-  if (writtenQuery && topicLinkNeedsLookup(target, topic?.id)) {
+  if (writtenQuery && (target.kind === 'topic' || target.page || target.kind === 'cards')) {
     const original = target;
     topicNavigation?.cancelPending();
     try {
       target = await resolveTopicLink(target, { read: (name, args) => api.view(name, args, { readClass: 'foreground' }),
         instanceId: bootstrap.instance_id, workspaceId: topic?.workspace_id ?? shell.handles?.workspaceId ?? pageHereOutcome,
-        ownerScope: linkOwnerScope?.(), current: () => !retired && landing === landingSerial });
+        ownerScope: linkOwnerScope?.(), current: () => !retired && landing === landingSerial, confirm: true, currentTopicId: topic?.id });
       if (!target || retired || landing !== landingSerial) return false;
     } catch (error) {
       if (retired || landing !== landingSerial) return false;
-      if (!['TOPIC_NAME_UNKNOWN', 'TOPIC_NAME_AMBIGUOUS'].includes(error.code)) target = original;
+      if (!['TOPIC_NAME_UNKNOWN', 'TOPIC_NAME_AMBIGUOUS', 'LINK_DESTINATION_UNAVAILABLE', 'LINK_DESTINATION_UNCONFIRMED'].includes(error.code)) target = original;
       else {
         if (notebookSheet?.showing && notebookSheet.current) notebookSheet.current.say(error.message, 'attention');
         else if (linkNotice) linkNotice(error.message);
@@ -4203,7 +4203,7 @@ async function initializeOutcomePage(route) {
     for(const child of [...$('topic-navigation').children])if(!child.classList.contains('rail-heading'))child.hidden=true;
     $('topic-navigation').append(cardsHost);
     const topicCards=new OutcomeTopicCards({host:cardsHost,color:agentShown,named:displayActor,painted:values=>outcomePageLayout?.topics(values)});
-    outcomePageLayout=new OutcomePageLayout({host:$('outcome-page'),team:$('outcome-team'),cards:topicCards,reader:bootstrap.actor,color:agentShown});
+    outcomePageLayout=new OutcomePageLayout({host:$('outcome-page'),team:$('outcome-team'),cards:topicCards,reader:bootstrap.actor,color:agentShown,scope:route.id});
     colors??=new AgentColors({api,instanceId:bootstrap.instance_id,authority:()=>bootstrap.authority});
     outcomePageLayout.unlisten=colors.listen(()=>{if(!retired){topicCards.repaint();outcomePageLayout.paint();}});
     run(()=>colors.load('foreground'));
@@ -4602,7 +4602,7 @@ function notebookViewsOf(){return notebookViews??=new NotebookViews(bootstrap);}
 function outcomePages(workspace,recorded) {
   pagesInPlace(workspace,recorded);
   return new OutcomeReferences({scope:workspace,host:$('outcome-references'),create:()=>notebookCreator($('outcome-references'),{kind:'workspace',id:workspace}),list:$('outcome-references-list'),more:$('more-references'),
-    message:$('outcome-references-status'),pageMax:pageMax(),viewPreference:notebookViewsOf(),denied:error=>readFailure(error).kind==='forbidden',
+    message:$('outcome-references-status'),pageMax:pageMax(),viewPreference:notebookViewsOf(),denied:error=>readFailure(error).kind==='forbidden',painted:shown=>outcomePageLayout?.notes(shown),
     read:args=>pipelineView('memory_items',{owner_scope:{kind:'workspace',id:workspace},...args}),open:(ref,row)=>run(()=>openNotebook(ref.id,{opener:row}))});
 }
 // An outcome's team, which its owner and its coordinator may change. The owner

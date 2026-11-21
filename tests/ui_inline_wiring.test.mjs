@@ -8401,6 +8401,13 @@ test('864 ordinary internal destinations do not request topic-name lookup', asyn
 test('864 an unconfirmed authored query uses the existing departure guard and keeps writing', async () => {
   const assigned = [], location = { href: 'https://fixture/?topic=t1', origin: 'https://fixture', assign: href => assigned.push(href), reload() {} };
   const f = fixture('https://fixture/?topic=t1', { location });
+  // Model an interrupted lookup explicitly. The generic fixture returns t1
+  // for every topic read; a mismatched identity now refuses under 958.
+  const read = f.api.view;
+  f.api.view = async (name, args, options) => {
+    if (name === 'topic' && args.topic_id === 't2') throw Object.assign(Error('Connection interrupted'), { code: 'REQUEST_UNCONFIRMED' });
+    return read(name, args, options);
+  };
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
   f.registry.keepEditorsLocal = async () => {};
   Object.assign(f.editor, { localVersion: 1, ackVersion: 0 });
