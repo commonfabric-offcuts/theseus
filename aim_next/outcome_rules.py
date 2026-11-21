@@ -59,8 +59,8 @@ def unreadable(asks, blocking=()):
 def stands(asks, pipeline, talk, waits, done_facts, has_topics, last, created, blocking=()):
     """The light, its lead, its facts and its also-lines (docs/outcome-light.md).
 
-    asks: [{topic_id, title, by, ms}] open questions to the reader in this
-      outcome, newest first.
+    asks: [{topic_id, title, by, ms, message_id?}] distinct eligible questions
+      to the reader in this outcome including its Conversation, newest first.
     pipeline: None while the outcome's pipeline is off; else
       {"now": [{number, title, topic_id, topic_title, work}], "all_shipped",
        "shipped": {count, last_release_ms}, "last_now_work": {...} | None}.
@@ -77,8 +77,8 @@ def stands(asks, pipeline, talk, waits, done_facts, has_topics, last, created, b
     blocking: [{topic_id, blocks: {kind}, ...}] the asks among them that hold a
       piece or a release and still wait on the reader, in the one order
       (blocking.order: a release's first, newest first within each). Waiting
-      on you then says what the first blocks, and its topics' questions come
-      first, in that order.
+      on you then says what the first blocks, and those exact questions come
+      first in that order, preserving all other question identities.
     """
     reached = done_facts.get("reached")
     if reached:
@@ -110,15 +110,16 @@ def stands(asks, pipeline, talk, waits, done_facts, has_topics, last, created, b
         facts = [dict(ask, kind="ask") for ask in asks]
         if blocking:
             # What it blocks rides on the same kind, so a page that knows no more says Waiting on you as before.
-            # Its topics' questions come first in blocking's own order (blocking.order), the one the lead names first,
-            # so "the first" on the card is the question whose kind the lead says; the rest stay newest first.
+            # Exact questions come first in blocking's order; never collapse other asks in their topics (372).
             short["blocking"] = blocking[0]["blocks"]["kind"]
-            by_topic = {fact["topic_id"]: fact for fact in facts}
-            held = {}
+            by_message = {fact.get("message_id"): fact for fact in facts if fact.get("message_id")}
+            held, first = set(), []
             for ask in blocking:
-                held.setdefault(ask["topic_id"], ask["blocks"])
-            facts = ([dict(by_topic[topic], blocking=blocks) for topic, blocks in held.items() if topic in by_topic]
-                     + [fact for fact in facts if fact["topic_id"] not in held])
+                message_id = ask.get("message_id")
+                if message_id in by_message and message_id not in held:
+                    first.append(dict(by_message[message_id], blocking=ask["blocks"]))
+                    held.add(message_id)
+            facts = first + [fact for fact in facts if fact.get("message_id") not in held]
         return {"light": _light("waiting", short), "lead": dict(short), "facts": facts, "also": also}
 
     if pipeline and now_worked:

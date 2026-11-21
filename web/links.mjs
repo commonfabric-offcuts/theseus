@@ -20,7 +20,7 @@ const TOPIC_ID = /t-[0-9a-f]{32}/g;
 // What an address does not end with: sentence punctuation and the marks a line reads.
 const TRAILING = '.,;:!?*_~';
 const CLOSERS = { ')': '(', ']': '[', '}': '{' };
-const IN_APP = new Set(['root', 'topic', 'workspace', 'conversation', 'pipeline', 'item', 'cards']);
+const IN_APP = new Set(['root', 'topic', 'workspace', 'conversation', 'pipeline', 'item', 'cards', 'image']);
 const tick = (meter, steps) => { if (meter) meter.steps += steps; };
 
 let opener = null, namer = () => null, shareOrigin = null;

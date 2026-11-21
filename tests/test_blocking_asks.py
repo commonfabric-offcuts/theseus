@@ -129,10 +129,11 @@ class RecordingCase(BlockingCase):
         self.assertEqual(item["workspace"]["id"], "w1")
         # The light is Waiting on you, saying what it blocks, its topic's question first.
         light = self.light()
-        self.assertEqual((light["light"]["light"], light["light"]["short"]), ("waiting", {"kind": "asks", "count": 1, "blocking": "piece"}))
-        self.assertEqual(light["lead"], {"kind": "asks", "count": 1, "blocking": "piece"})
+        self.assertEqual((light["light"]["light"], light["light"]["short"]), ("waiting", {"kind": "asks", "count": 2, "blocking": "piece"}))
+        self.assertEqual(light["lead"], {"kind": "asks", "count": 2, "blocking": "piece"})
         self.assertEqual(light["facts"][0]["blocking"]["piece_id"], piece)
-        self.assertEqual(self.row_light()["short"], {"kind": "asks", "count": 1, "blocking": "piece"})
+        self.assertEqual(self.row_light()["short"], {"kind": "asks", "count": 2, "blocking": "piece"})
+        self.assertEqual([fact["message_id"] for fact in light["facts"]], [held, plain], "both questions retained; exact blocking ask first")
         # The held row names who it waits on and the ask's first line, for every reader of the pipeline.
         for reader in ("owner", "agent-b"):
             self.assertEqual(self.held(piece, reader), [(held, ["owner"], "Please restart fseventsd.")], reader)

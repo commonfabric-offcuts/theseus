@@ -4,12 +4,13 @@ import { checkedView } from './freshness.mjs';
 const topicId = value => /^t-[0-9a-f]{32}$/.test(value);
 export const topicLinkNeedsLookup = (route, currentTopicId = null) => route?.kind === 'topic' && route.id !== currentTopicId && !topicId(route.id);
 const superseded = () => Object.assign(Error('This link was superseded.'), { code: 'LINK_SUPERSEDED' });
-const invalid = () => Error('The destination could not be confirmed. Retry the link.');
+const invalid = () => Object.assign(Error('The destination could not be confirmed. Retry the link.'), { code: 'LINK_DESTINATION_UNCONFIRMED' });
 const missing = error => ['FORBIDDEN', 'NOT_FOUND', 'TOPIC_NOT_FOUND'].includes(error?.details?.error?.code ?? error?.code);
 
-export async function resolveTopicLink(route, { read, instanceId, workspaceId = null, ownerScope = null, limit = 20, current = () => true }) {
+export async function resolveTopicLink(route, { read, instanceId, workspaceId = null, ownerScope = null, limit = 20, current = () => true, confirm = false, currentTopicId = null }) {
   routeKey(route);
-  if (route.kind !== 'topic' || topicId(route.id)) return route;
+  const pageId = route.page ?? (route.kind === 'cards' ? route.id : null);
+  if (!confirm && (route.kind !== 'topic' || topicId(route.id)) || confirm && route.kind !== 'topic' && !pageId) return route;
   const view = async (name, args) => {
     if (!current()) throw superseded();
     const answer = await read(name, args);
@@ -23,11 +24,21 @@ export async function resolveTopicLink(route, { read, instanceId, workspaceId = 
   };
   try {
     // For a named page link the label cannot override its actual owner.
-    if (route.page) {
-      const page = await view('memory_current', { item_id: route.page }), scope = page.owner_scope;
-      if (page.source_ref?.kind !== 'memory' || page.source_ref.id !== route.page || !['topic', 'workspace'].includes(scope?.kind) || typeof scope.id !== 'string') throw invalid();
-      const resolved = { ...route, kind: scope.kind, id: scope.id }; routeKey(resolved); return resolved;
+    if (pageId) {
+      const page = confirm && route.revision
+        ? await view('source', { source_ref: { kind: 'memory', id: pageId, revision: Number(route.revision) } })
+        : await view('memory_current', { item_id: pageId }), scope = page.owner_scope;
+      if (page.source_ref?.kind !== 'memory' || page.source_ref.id !== pageId || !['topic', 'workspace'].includes(scope?.kind) || typeof scope.id !== 'string' || confirm && route.revision && page.source_ref.revision !== Number(route.revision)) throw invalid();
+      if (confirm && page.deleted) throw Object.assign(Error('Page deleted'), { code: 'PAGE_DELETED' });
+      if (route.kind === 'cards') return route;
+      const resolved = { ...route, kind: scope.kind, id: scope.id };
+      try { routeKey(resolved); } catch (error) { if (confirm) throw invalid(); throw error; }
+      return resolved;
     }
+    // A canonical spelling is not evidence that an authored destination exists.
+    // The already-open topic alone is known; its pages were checked above.
+    if (confirm && route.id === currentTopicId) return route;
+    if (confirm && topicId(route.id)) { await record(route.id); return route; }
     // Older readable ids remain addresses too; only an unavailable noncanonical
     // id is interpreted as a name. Canonical ids retain the existing path.
     try { await record(route.id); return route; } catch (error) { if (!missing(error)) throw error; }
@@ -71,5 +82,12 @@ export async function resolveTopicLink(route, { read, instanceId, workspaceId = 
     } while (cursor !== null);
     const found = choose(matches); if (found) return found;
     throw Object.assign(Error(`No topic is named ${route.id}. Choose the topic from Outcomes.`), { code: 'TOPIC_NAME_UNKNOWN' });
-  } catch (error) { if (error.code === 'LINK_SUPERSEDED') return null; throw error; }
+  } catch (error) {
+    if (error.code === 'LINK_SUPERSEDED') return null;
+    const code = error?.details?.error?.code ?? error?.code;
+    if (confirm && (missing(error) || code === 'PAGE_DELETED')) throw Object.assign(
+      Error(`This ${pageId ? 'page' : 'topic'} could not be found or is not available to you. Stayed here.`), { code: 'LINK_DESTINATION_UNAVAILABLE' });
+    if (confirm && ['INVALID_ARGUMENT', 'INVALID_SOURCE', 'INVALID_FRESHNESS_VIEW'].includes(code)) throw invalid();
+    throw error;
+  }
 }
