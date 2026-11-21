@@ -944,6 +944,7 @@ MESSAGE_READS = {
                                 "and open outcome; private messages are then refused as NOT_A_QUESTION, no words read "
                                 "and no hidden identity returned; wait and change recipients derive from this guarded row", 1),
     "aim_next/dossier_order.py": ("position reads use a canonical root already checked by visible(); publication touches only its message readers, and its numeric topic ceiling returns no message identity or words; the explicit migration enumerates readers internally, groups messages under VISIBLE and resolves only visible roots; return detection uses MEMBERS under VISIBLE; frozen48 migration alone additionally reads each reached message parent/topic, admits each parent only in that topic and under its original whisper rule, and reads only the visible canonical root sequence, never words", 10),
+    "aim_next/source_item_covers.py": ("projection starts from the reader-visible MEMBERS walk and destination membership; the root owner lookup follows that admitted root; notify reads sources only to send opaque keys to _message_readers and retains all addressed-only recipients in bulk, additionally filtered by destination membership (or the affected membership-change reader), never to expose message text", 3),
     "aim_next/hosted_control.py": ("waiting and pending work filtered by VISIBLE and topic/addressed access before LIMIT, then _message_access checks the link again", 2),
     "aim_next/answer_delivery.py": ("receipt insertion guard binds an agent's public question and recipient; admission reads only the actor's "
                                      "pending deliveries in this topic, then checks exact asked-recipient membership and private_to before "
@@ -968,7 +969,6 @@ MESSAGE_READS = {
                               "for a thumb that answers an ask (item 239): the asked person's replies, on the record or whispered to "
                               "whoever asked, and their writing on the record, their next ask and the whispered replies that answered one "
                               "(item 307), never shown, and the asks topic_waiting and held_ask name, which a whisper never is", 10),
-    "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
     "aim_next/blocking.py": ("the message just posted, and asks that name what they block, which only an ask can and a whisper never is", 3),
     "aim_next/store.py": ("the latest message on the record from topic_summaries; the exposure boundary additionally reads ids/revisions only for bounded content identities actually returned by admitted projections, after unsent refusal and excluding held ids; no new words or identities are projected by this read", 2),
     "aim_next/topic_preview.py": ("only the returned topics' public summary messages, additionally private_to IS NULL and removal.VISIBLE; current words use the edit/hold helper and final opening words mark their exact revision", 1),
@@ -977,7 +977,8 @@ MESSAGE_READS = {
                                   "operation id that shows nothing of any message", 2),
     "aim_next/topic_state.py": ("asks, an ask an open record still holds, the ask a wait is from when its person writes, the message a "
                                 "person's whisper replies to (its author and place, never shown), "
-                                "the conversation asks to someone who can no longer read it, and the latest message on the record", 7),
+                                "the conversation asks to someone who can no longer read it, and the latest message on the record; "
+                                "item 372 reader/topic-scoped eligible ask metadata under READABLE and VISIBLE, followed by current public preview words only for those eligible ids, private words empty", 9),
     "aim_next/checks.py": ("held asks and the owner's ask about the target, which a whisper never is; a problem's message, refused "
                            "when it is an agent's whisper, and shown through _message_access; the loop's account on the record only", 7),
     "aim_next/outcome_asks.py": ("asks an open target or owner-gated stage still holds, which a whisper never is", 4),
@@ -999,7 +1000,7 @@ MESSAGE_READS = {
                            "whisper never makes its author a namer; and the members a fold through folds, under the same VISIBLE, "
                            "so it never folds a whisper the reader is outside; the reader's own starred messages of a topic, under "
                            "VISIBLE, which keep a dossier above More for them (item 635); and the root of the dossier their star brings "
-                           "back, found by the same walk, read only to record their Bring back, never shown; the reader's own places (item 550) under VISIBLE; and the source dossier first message; the scoped stars canonical-root SELECT reads the first message and attachment names only after StackRoots.root walks ancestry checked by visible(), within the readable topic; the outcome owner of a cleared cover with pending refresh, by the exact already-visible message id passed to current_acts (no message content or wider scan)", 29),
+                           "back, found by the same walk, read only to record their Bring back, never shown; the reader's own places (item 550) under VISIBLE; and the source dossier first message; the scoped stars canonical-root SELECT reads the first message and attachment names only after StackRoots.root walks ancestry checked by visible(), within the readable topic; the outcome owner of a cleared cover with pending refresh, by the exact already-visible message id passed to current_acts (no message content or wider scan); source-topic clock lookup reads only the already admitted root topic ID", 30),
     "aim_next/reply_passages.py": ("immutable reply-basis receipt lookup by message author/operation; source and topic reads "
                                  "have already checked the message's visibility, and for_reader additionally checks "
                                  "the parent through _message_access and withholds its basis during an edit hold; "

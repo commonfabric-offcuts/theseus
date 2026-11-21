@@ -28,7 +28,7 @@ def candidates(db, actor, topic_id):
         "AND a.kind='join' AND a.owner='' ORDER BY a.revision DESC LIMIT 1),m.reply_to) "
         "AND p.topic_id=m.topic_id AND (p.private_to IS NULL OR p.author_id=:actor OR p.private_to=:actor)) "
         "ORDER BY m.seq LIMIT :limit", {"topic": topic_id, "actor": actor, "limit": LIMITS["root_post_candidates"]}).fetchall()
-    acts = current_acts(db, actor, [row["id"] for row in rows])
+    acts = current_acts(db, actor, [row["id"] for row in rows], source_items=False)
     return [{"root_id": row["id"], "seq": row["seq"],
              "name": ((acts.get(row["id"], EMPTY)["name"] or {}).get("text") or "Message %d" % row["seq"])[:100],
              "name_revision": acts.get(row["id"], EMPTY)["name_revision"],

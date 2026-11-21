@@ -106,7 +106,7 @@ class Blocking:
                    (message["id"], workspace_id, message["topic_id"], message["seq"], kind, str(ref)))
         return {"kind": kind, "ref": ref}
 
-    def _ask_waits(self, db, topic, message, member):
+    def _ask_waits(self, db, topic, message, member, include_archived=False):
         """Whether message, an ask in topic, still waits on member: the one rule that clears an ask, read where it is kept.
 
         The topic waits on member from an ask (its topic_waiting row) only while some ask there does, so none
@@ -118,7 +118,8 @@ class Blocking:
         until member writes there on the record, replies to it by whisper to whoever asked (item 307), or gives
         it a 👍 that answered it (their thumb row)."""
         if (message["intent"] != "ask" or self._question_closed(db, message["id"]) is not None or self._withdrawal_value(db, message["id"]) is not None or db.execute('SELECT 1 FROM message_removals WHERE message_id=?', (message['id'],)).fetchone() is not None or member == message["author_id"] or member not in json.loads(message["addressees"])
-                or db.execute("SELECT 1 FROM topic_waiting WHERE topic_id=? AND actor_id=? AND " + WAITS_FROM_AN_ASK,
+                or db.execute("SELECT 1 FROM topic_waiting WHERE topic_id=? AND actor_id=? AND "
+                              + ("ask_message_id IS NOT NULL" if include_archived else WAITS_FROM_AN_ASK),
                               (topic["id"], member)).fetchone() is None):
             return False
         linked = db.execute("SELECT active FROM ask_cover_links WHERE ask_id=? AND actor_id=?", (message["id"], member)).fetchone()

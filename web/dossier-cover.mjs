@@ -15,8 +15,9 @@ import { coverAnswers } from './cover-answers.mjs';
 import { glyph } from './glyphs.mjs';
 import { linkNode, writtenLink } from './links.mjs';
 import { timeNode } from './times.mjs';
-import { inlineNodes, parseBlocks, formatNodes } from './message-format.mjs';
+import { inlineNodes, parseBlocks } from './message-format.mjs';
 import { literalHTMLNodes } from './interactive-html.mjs';
+import { coverSectionNodes } from './cover-sections.mjs';
 
 const element = (doc, tag, className, text) => {
   const node = doc.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node;
@@ -113,7 +114,7 @@ export function coverSheet(doc, cover, context) {
       if (plain) words.textContent = cover.stands;
       else {
         words.classList.add('formatted');
-        words.append(...formatNodes(cover.stands, { doc }));
+        words.append(...coverSectionNodes(cover.stands, { doc, ...ctx, rootId: cover.root_id ?? ctx.rootId }));
       }
     }
     else words.append(...nodes);
@@ -135,6 +136,7 @@ export function coverSheet(doc, cover, context) {
     const done = payload.done;
     if (done?.how === 'word' && done.message_id && Number.isSafeInteger(done.seq)) row.append(cite(doc, ctx.topicId, done.message_id, done.seq, 'The word that made it done'));
   }
+  for (const item of cover.items ?? []) line('cover-item').append(itemRow(doc, item));
   for (const wait of cover.waiting ?? []) {
     const row = line('cover-wait');
     const words = element(doc, 'span', 'cover-words');
@@ -156,6 +158,17 @@ export function coverSheet(doc, cover, context) {
   return sheet;
 }
 
+// One generated row per actual item, beside the manual fields.
+export function itemRow(doc, item) {
+  const row = element(doc, 'span', 'cover-words');
+  row.append(linkNode(doc, item.title, { route: { kind: 'item', id: item.workspace_id, item: String(item.number) }, written: true }),
+    ' · ', element(doc, 'span', 'cover-item-state', item.state));
+  return row;
+}
+
+export const coverSummary = cover => cover.stands || cover.payload?.text ||
+  (cover.items?.length ? cover.items.map(item => `${item.title} · ${item.state}`).join('; ') : null);
+
 // What a cover on a message on its own shows instead: its payload's pill and
 // one pill for what waits on the owner, under who wrote it. Null with neither.
 export function coverPills(doc, cover, context) {
@@ -163,6 +176,9 @@ export function coverPills(doc, cover, context) {
   const ctx = { ...context, owner: cover.owner };
   const pills = element(doc, 'span', 'row-pills');
   if (cover.payload) pills.append(payloadPill(doc, cover.payload, ctx));
+  for (const item of cover.items ?? []) {
+    const row = element(doc, 'span', 'cover-item'); row.append(itemRow(doc, item)); pills.append(row);
+  }
   if ((cover.waiting ?? []).length) {
     const pill = waitLink(doc, '', cover.waiting[0], ctx); pill.className = 'row-pill pill-waits'; pill.dataset.state = 'waiting';
     const count = cover.waiting.length;
@@ -180,7 +196,7 @@ export function coverPills(doc, cover, context) {
 }
 
 // A key for what a cover shows a reader, so a sheet is drawn again only when it changes.
-export const coverKey = (cover, context) => ((cover = currentQuestionCover(cover)) ? JSON.stringify([cover.stands, cover.waiting, cover.payload, cover.by, cover.at_ms, cover.owner, cover.root_id, cover.revision, cover.writer, cover.refresh, cover.refresh_revision, context.viewer, context.topicId, context.rootId]) : '');
+export const coverKey = (cover, context) => ((cover = currentQuestionCover(cover)) ? JSON.stringify([cover.stands, cover.waiting, cover.payload, cover.items, cover.by, cover.at_ms, cover.owner, cover.root_id, cover.revision, cover.writer, cover.refresh, cover.refresh_revision, context.viewer, context.topicId, context.rootId]) : '');
 
 const pillRows = new WeakMap();
 // The pills of a message on its own that carries a cover, set under its

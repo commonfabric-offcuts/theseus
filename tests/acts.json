@@ -2137,12 +2137,12 @@
   },
   {
    "item": 295,
-   "act": "After Return or Space on ✅ Done the focus lands on the subtitle saying Done",
+   "act": "After Return or Space on ✅ Done the outcome opens with its heading focused",
    "break": [
     [
-     "web/topic-header.mjs",
-     "  subtitle.setAttribute('tabindex', '-1');\n  subtitle.focus();",
-     "  subtitle.setAttribute('tabindex', '-1');"
+     "web/topic-close-ui.mjs",
+     "open({ kind: 'workspace', id: row.workspaceId }, 'Outcome')",
+     "Promise.resolve(false)"
     ]
    ],
    "check": {
@@ -4286,8 +4286,8 @@
    "break": [
     [
      "aim_next/outcome_rules.py",
-     "[dict(by_topic[topic], blocking=blocks) for topic, blocks in held.items() if topic in by_topic]",
-     "[dict(fact, blocking=held[fact[\"topic_id\"]]) for fact in facts if fact[\"topic_id\"] in held]"
+     "for ask in blocking:",
+     "for ask in reversed(blocking):"
     ]
    ],
    "check": {
@@ -5827,7 +5827,7 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && answer.at.messages < known.at.messages",
+     "answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && (answer.at.messages < known.at.messages || compareCoverReads(answer.cover_read_seq, known.cover_read_seq) < 0)",
      "answer.at.acts < known.at.acts || answer.at.messages < known.at.messages"
     ]
    ],
@@ -6216,7 +6216,7 @@
    "break": [
     [
      "web/topic-navigation.mjs",
-     "return this.open(item.id, this.title(item.id), this.question(item.id));",
+     "return this.open(id, this.title(id), this.question(id, true));",
      "return this.open(item.id, this.title(item.id));"
     ]
    ],
@@ -6944,7 +6944,7 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && samePlaces(a, b) && starsOf(a) === starsOf(b) : !b);",
+     "const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && samePlaces(a, b) && starsOf(a) === starsOf(b) && JSON.stringify(a.cover) === JSON.stringify(b.cover) : !b);",
      "const samePlace = (a, b) => JSON.stringify(a) === JSON.stringify(b);"
     ]
    ],

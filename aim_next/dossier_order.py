@@ -56,7 +56,7 @@ def published(db, readers, message):
         if root == message['id']:
             put(db, actor, topic, root, edge(db, actor, topic, True), seq, entry=True)
             continue
-        acts = current_acts(db, actor, [root]).get(root, EMPTY)
+        acts = current_acts(db, actor, [root], source_items=False).get(root, EMPTY)
         through = acts['aside']
         if through is None or message['author_id'] == actor or seq <= through:
             continue
@@ -72,7 +72,7 @@ def placed(db, actor, message, value):
     topic = message['topic_id']
     roots = StackRoots(db, actor)
     root = roots.root(message['id'])
-    acts = current_acts(db, actor, [root]).get(root, EMPTY)
+    acts = current_acts(db, actor, [root], source_items=False).get(root, EMPTY)
     key = acts['placed']
     if key is None:
         key = next((row['placed'] for row in _reader_places(db, actor, topic) if roots.root(row['message_id']) == root), None)
