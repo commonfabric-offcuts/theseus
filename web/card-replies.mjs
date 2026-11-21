@@ -145,6 +145,9 @@ export class CardReplies {
     const id = p?.source?.source_ref?.id, row = this.rows.get(id);
     if (p?.fromCardReply && row?.clickOpened && row.p.editors.reply === p.editors.reply && !keepsReply(p.editors.reply)) this.hide(id, row, { focus: false });
   }
+  published(editor, item) {
+    for (const row of this.rows.values()) if (row.p.editors.reply === editor) row.ui.published(item);
+  }
   async readerSent(p, result, current) {
     const id = p?.source?.source_ref?.id, row = this.rows.get(id);
     if (!p?.fromCardReply || !row || row.p.editors.reply !== p.editors.reply || !current()) return;

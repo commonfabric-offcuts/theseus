@@ -161,7 +161,7 @@ export class InlineComposer {
   $(name) { return this.root.querySelector(`#${this.prefix ?? 'inline-'}${name}`); }
   get editor() { return this.presentation?.editors.reply; }
   dispose() {
-    this.disposed = true; window.removeEventListener('focus', this.windowFocus);
+    this.disposed = true; this.sendOpening = null; window.removeEventListener('focus', this.windowFocus);
     if (this.pencilKey) this.root.ownerDocument.removeEventListener('keydown', this.pencilKey, true);
     this.bar.dispose(); this.images.close(); this.input?.mentions?.dispose();
   }
@@ -530,20 +530,36 @@ export class InlineComposer {
       const sent = this.callbacks.send(editor, p);
       if (this.admits(p, editor) && editor.draft !== draft) { this.drawEditor(); this.paintRecipients(); this.paintStatus(); this.paintChoice(); this.field.focus(); }
       const version = editor.localVersion, cycle = editor.clientCycleId, noticeVersion = this.noticeVersion;
+      const completion = { p, editor, opening, version, cycle, noticeVersion,
+        item: editor.submissions?.find(item => item.status === 'preparing' && !item.detached) };
+      if (this.cardReply) this.sendOpening = completion;
       const result = await sent;
-      // Only confirmed publication closes this opening. An interrupted or refused
-      // act keeps its recovery controls in front; a later opening or new writing
-      // is never dismissed by an older answer.
-      // Image selection/capture does not edit text. Only selections owned by
-      // the successor count here; the sent submission owns its frozen images.
-      if (result?.status === 'confirmed' && this.admits(p, editor) && (this.popped || this.cardReply) &&
-          this.opening === opening && editor.localVersion === version && editor.clientCycleId === cycle &&
-          !currentImages(editor).length && !imageBarrier(editor) &&
-          !this.imagePicker && !this.images?.open && !this.bar.panel && !this.naming.sheet.open &&
-          this.noticeVersion === noticeVersion) {
-        if (this.cardReply) await this.callbacks.sent?.(p, result);
-        else { this.bar.fold(); this.sheet.close(); }
-      }
+      return await this.finishSend(completion, result);
     } catch (error) { this.notice(error, p, editor); }
+  }
+  published(item) {
+    const completion = this.sendOpening;
+    if (completion?.item === item && !item.detached) {
+      this.finishSend(completion, item)?.catch(error => this.notice(error, completion.p, completion.editor));
+    }
+  }
+  async finishSend(completion, result) {
+    if (completion.finished || result?.status !== 'confirmed' || result.detached || completion.editor.authorityRecovery) return;
+    completion.finished = true;
+    if (this.sendOpening === completion) this.sendOpening = null;
+    const { p, editor, opening, version, cycle, noticeVersion } = completion;
+    // Only confirmed publication closes this opening. An interrupted or refused
+    // act keeps its recovery controls in front; a later opening or new writing
+    // is never dismissed by an older answer.
+    // Image selection/capture does not edit text. Only selections owned by
+    // the successor count here; the sent submission owns its frozen images.
+    if (result?.status === 'confirmed' && this.admits(p, editor) && (this.popped || this.cardReply) &&
+        this.opening === opening && editor.localVersion === version && editor.clientCycleId === cycle &&
+        !currentImages(editor).length && !imageBarrier(editor) &&
+        !this.imagePicker && !this.images?.open && !this.bar.panel && !this.naming.sheet.open &&
+        this.noticeVersion === noticeVersion) {
+      if (this.cardReply) await this.callbacks.sent?.(p, result);
+      else { this.bar.fold(); this.sheet.close(); }
+    }
   }
 }
