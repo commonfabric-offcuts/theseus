@@ -552,6 +552,22 @@ class Host:
         for thread in self.threads.values():
             self.ensure_thread(thread, lambda: None, lambda reason: None)
 
+    def add_seat(self, config):
+        """Adopt a newly pinned full-mode seat without replacing a child or another thread."""
+        config = replace(config, protected_homes=self.protected_homes)
+        identity, home = config.destination['thread_id'], config.destination['codex_home']
+        if (self.stopping or config.permission_mode != 'full' or home not in self.executables
+                or self.executables[home] != config.codex_executable):
+            raise HostFault('route_binding_changed')
+        existing = self.threads.get(identity)
+        if existing is not None:
+            if existing.actor != config.profile.actor_id or existing.config != config:
+                raise HostFault('route_binding_changed')
+            return
+        if any(thread.actor == config.profile.actor_id for thread in self.threads.values()):
+            raise HostFault('route_binding_changed')
+        self.threads[identity] = HostedThread(config.profile.actor_id, config)
+
     def dispatch(self, claim, config, notice):
         """Hand one claim's notice to its thread; `settle` receives its outcome, now or from a later event."""
         thread = self.threads.get(config.destination["thread_id"])

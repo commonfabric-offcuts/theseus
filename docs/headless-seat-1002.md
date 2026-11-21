@@ -3,6 +3,8 @@
 Build contract, 21 November 2026. Owner: page-lane6. Coordinator: Fable.
 Independent review and carry: Warp. Tony owns the seat's Stop/Continue control.
 Starting source: live 295, `342f7facab8aebfa92b65ba19adbfc58418fb24a`.
+Warp14946 subsequently orders the work onto 757's corrected source, then onto
+1004's approved head when available; 1002 owns schema 64.
 
 ## Result
 
@@ -54,6 +56,11 @@ explicit provisioning path in the owned running host and a guarded additive
 route update. It must preserve every existing route, pin, active turn and
 delivery. It must not stop the four live lanes as part of an Add action.
 
+New seat routes live in Core's durable seat records and are added to the
+runner's validated route set. The existing operator route-map file stays
+byte-for-byte intact. Startup recovers these managed additions under runner
+ownership; an actor collision with the operator map refuses adoption.
+
 Host configuration explicitly selects the existing authenticated home,
 reviewed executable, CLI, model, effort, permission mode and a dedicated seat
 work root. These values come from trusted host configuration, never from a
@@ -88,6 +95,18 @@ unsupported runtime/settings, path collision, pin conflict, route conflict
 and uncertain thread creation each name the stage and cause. Page/CLI retries
 preserve the operation identity and show the recorded partial result.
 
+The host can name an existing hosted actor as its `--seat-template`; without
+that selection it uses the unique full-mode configuration by home,
+executable, CLI, model and reasoning effort. Multiple matching routes are
+one template; conflicting templates refuse as ambiguous. This lane's current
+non-secret configuration confirms the existing hosted home, reviewed pinned
+runtime, full mode, `gpt-6.1-sol` and `xhigh`; no account/profile contents were
+read to obtain those settings. The new seat receives its own role and work
+directory. This first door does
+not hot-add workspace-mode permission profiles to a running shared native
+child: a host with no full-mode template explicitly refuses that unsupported
+configuration. Existing workspace-mode routes keep their current behavior.
+
 An invitation is durable before the host can finish. A failed host effect
 therefore leaves a visible incomplete seat, not a false rollback claim.
 Native fixture responses prove protocol and recovery behavior, not a live
@@ -114,11 +133,13 @@ verify Browser.close, owned PIDs/profiles and fixture exit/port cleanup.
 Run only the relevant owner cohort, compare unexplained baseline failures
 honestly, and coordinate one substantial workload at a time in Landing.
 
-Live 295 is schema 60; corrected 987 supplies 61 and frozen 757 supplies 62.
-The new durable state needs a coordinated successor migration, with no
-renumbering of either predecessor. Resolve that source composition before
-freezing. Build in parallel; 1002 lands judged, on its own gauntlet after
-987 and 757 and the other queued work, and never holds an ordinary head.
+Warp14946 settles the chain: 987 supplies schema 61, 757 supplies 62, 1004
+supplies 63 and 1002 supplies 64. Work moves onto 757's head now (345376ed
+until its corrected test head is pushed), then onto 1004's approved head once
+available, with the directed rebase if a predecessor changes. No temporary
+shipping schema or renumbering. Resolve the final composition before
+freezing. Build in parallel; 1002 lands judged, on its own gauntlet only after
+1004 and all its predecessors are live, and never holds an ordinary head.
 Freeze when the meaningful owned checks are green, push only this exact
 source branch, and send Warp one diff/test read with HEAD, test files,
 pass/fail evidence and material limitations. Fable/Warp retain stage and
