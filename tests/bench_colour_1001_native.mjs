@@ -18,10 +18,12 @@ function retainChildren() {
     for (const p of list) if (owned.has(p.ppid) && !owned.has(p.pid)) { owned.add(p.pid); changed = true; }
   }
 }
-// The middle column's colour (1001): Slate, Graphite and Umber for each look and theme, chosen at the rail's foot,
-// kept on the device, changing only the middle column and what is drawn from it. The colours a choice must paint:
+// The middle column's colour (1001): Slate, Graphite and the look's own third (Midnight in Bookends, 1011; Umber in
+// Paper) for each look and theme, chosen at the rail's foot, kept on the device, changing only the middle column and
+// what is drawn from it. A third chosen stays the third when the look changes. The colours a choice must paint:
+const THIRD = { bookends: ['midnight', 'Midnight'], paper: ['umber', 'Umber'] };
 const BENCH = {
-  bookends: { dark: { '': '#1d2629', graphite: '#202223', umber: '#25211d' }, light: { '': '#f6f7f4', graphite: '#eff0f1', umber: '#f4efe6' } },
+  bookends: { dark: { '': '#1d2629', graphite: '#202223', midnight: '#171f2b' }, light: { '': '#f6f7f4', graphite: '#eff0f1', midnight: '#eef2f7' } },
   paper: { dark: { '': '#161d20', graphite: '#1b1c1e', umber: '#1f1a16' }, light: { '': '#f4f4f1', graphite: '#f2f3f4', umber: '#f7f2e8' } },
 };
 const rgb = hex => `rgb(${[1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`;
@@ -60,10 +62,11 @@ try{
       // At first: Slate, the look's own colour, with nothing saved; the switch names the look and shows its three.
       const first=await paint(page);seen.push(['first',first]);
       assert.equal(first.bench,'');assert.equal(first.saved,null);assert.equal(first.name,look==='paper'?'Paper':'Bookends');
-      assert.deepEqual(first.pressed,[['','true','Slate'],['graphite','false','Graphite'],['umber','false','Umber']]);
-      assert.deepEqual(first.swatches,['','graphite','umber'].map(v=>rgb(BENCH[look][scheme][v])),'each swatch shows its colour for this look and theme');
+      const [third,thirdName]=THIRD[look];
+      assert.deepEqual(first.pressed,[['','true','Slate'],['graphite','false','Graphite'],[third,'false',thirdName]]);
+      assert.deepEqual(first.swatches,['','graphite',third].map(v=>rgb(BENCH[look][scheme][v])),'each swatch shows its colour for this look and theme');
       shows(look,scheme,'',first);
-      for(const value of ['graphite','umber','']){
+      for(const value of ['graphite',third,'']){
         await page.locator(`.look-switch[data-switch=bench] button[data-value="${value}"]`).click();
         const p=await paint(page);seen.push([value||'slate',p]);
         assert.equal(p.bench,value);assert.equal(p.saved,value||null,'kept on the device; Slate saves nothing');
@@ -75,14 +78,22 @@ try{
         assert.equal(p.ringGap.toLowerCase(),BENCH[look][scheme][value],'the stack ring gap follows the middle colour');
       }
       // The choice is kept across a reload, and a look's change repaints the switch and the bench in the other look.
-      await page.locator('.look-switch[data-switch=bench] button[data-value=umber]').click();
+      await page.locator(`.look-switch[data-switch=bench] button[data-value=${third}]`).click();
       await page.reload();await open();
-      const kept=await paint(page);seen.push(['reload',kept]);assert.equal(kept.bench,'umber');shows(look,scheme,'umber',kept);
-      const other=look==='paper'?'bookends':'paper';
+      const kept=await paint(page);seen.push(['reload',kept]);assert.equal(kept.bench,third);shows(look,scheme,third,kept);
+      // The other look: its own third takes the third's place, chosen, saved, and named on the swatch.
+      const other=look==='paper'?'bookends':'paper',[otherThird,otherName]=THIRD[other];
       await page.locator(`.look-switch[data-switch=look] button[data-value="${other==='paper'?'paper':''}"]`).click();
       const swapped=await paint(page);seen.push(['other look',swapped]);
-      assert.equal(swapped.name,other==='paper'?'Paper':'Bookends');assert.equal(swapped.bench,'umber');shows(other,scheme,'umber',swapped);
-      assert.deepEqual(swapped.swatches,['','graphite','umber'].map(v=>rgb(BENCH[other][scheme][v])));
+      assert.equal(swapped.name,other==='paper'?'Paper':'Bookends');assert.equal(swapped.bench,otherThird);assert.equal(swapped.saved,otherThird);shows(other,scheme,otherThird,swapped);
+      assert.deepEqual(swapped.pressed[2],[otherThird,'true',otherName]);
+      assert.deepEqual(swapped.swatches,['','graphite',otherThird].map(v=>rgb(BENCH[other][scheme][v])));
+      // A Bookends page saved with 1001's Umber opens on Midnight, and saves it.
+      if(look==='bookends'){
+        await page.evaluate(()=>{localStorage.removeItem('theseus-look');localStorage.setItem('theseus-bench','umber');});
+        await page.reload();await open();const old=await paint(page);seen.push(['saved umber in Bookends',old]);
+        assert.equal(old.bench,'midnight');assert.equal(old.saved,'midnight');shows('bookends',scheme,'midnight',old);
+      }
       assert.deepEqual(pageErrors,[]);
     }catch(e){error=e.stack;}
     results.push({key,seen,error:error??null,pageErrors});

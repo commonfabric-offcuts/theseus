@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { miniDocument } from './fixtures/mini_dom.mjs';
-import { TopicPages, TopicRail, WorkspacePages, topicPosition } from '../web/topic-navigation.mjs';
-import { OutlineRail } from '../web/outline-rail.mjs';
+import { miniDocument, matches } from './fixtures/mini_dom.mjs';
+import { TopicPages, TopicRail, WorkspacePages, topicPosition, paintUnread } from '../web/topic-navigation.mjs';
+import { OutlineRail, rowCount } from '../web/outline-rail.mjs';
+import { retiredIds } from '../web/in-place-navigation.mjs';
 import { OutcomeTopicCards } from '../web/outcome-topic-cards.mjs';
 import { OutcomeReferences, pageOpening } from '../web/outcome-references.mjs';
 import { NotebookViews } from '../web/notebook-view.mjs';
@@ -89,19 +90,25 @@ test('847 outline publishes only this outcome and clears its projection on fold,
   outline.handles.route={kind:'topic'};const n=seen.length;outline.publishTopics();assert.equal(seen.length,n);
 });
 
-test('945 outcome-home projection relinquishes stale topic-page adoption before the list loads', async t => {
-  const doc=dom(t),fresh=doc.createElement('div');fresh.dataset.listed='';
-  const outcome={id:'w',adopted:fresh,held:null,own:{hidden:true}},reads=[];
-  doc.getElementById=id=>id==='rail'?{querySelector:()=>fresh}:null;
-  const outline=Object.assign(Object.create(OutlineRail.prototype),{doc,listRead:true,
-    outcomes:new Map([['w',outcome]]),handles:{route:{kind:'workspace'},workspaceId:'w'},
-    adopt(){assert.fail('an outcome-home projection cannot become the list it mirrors');},
-    ownRail(){return{load:async()=>{reads.push('topics');return true;}};},
-    readConversation(){reads.push('conversation');return true;}});
-  outline.place();
-  assert.equal(outcome.adopted,null);assert.equal(outcome.own.hidden,false);
-  assert.equal(await outline.loadTopics(outcome),true);
-  assert.deepEqual(reads,['topics'],'the owner reads topics instead of skipping them for a conversation-only refresh');
+test('945 outcome home keeps the one retained topic owner and never shows empty beside its count', async t => {
+  const f=railFixture(t),a=f.item('a',3,{unread:2}),b=f.item('b',2);
+  f.queue.push(f.page([a]));await f.rail.load();
+  const row=f.rail.links.get('a'),outcome={id:'w',rail:f.rail,li:{hidden:false},topics:{hidden:false},item:{id:'w',unread:2,addressed:0}};
+  const bootstrap={instance_id:'847-test',actor:'reader'};
+  const outline=Object.assign(Object.create(OutlineRail.prototype),{bootstrap,started:true,outcomes:new Map([['w',outcome]]),
+    handles:{route:{kind:'topic',id:'a'},workspaceId:'w',topic:a}});
+  assert.equal(outline.topicsFor(bootstrap,a,20),f.rail,'topic page consumes the already retained owner');
+  outline.handles={route:{kind:'workspace',id:'w'},workspaceId:'w',readable:()=>true,outcomeTopics:values=>f.cards.paint(values)};
+  f.rail.updateCurrent(null);f.rail.painted=()=>outline.publishTopics();outline.publishTopics();
+  outline.outcome({id:'w',title:'This outcome',unread:2,addressed:0});
+  const count=f.node();paintUnread(count,rowCount(outcome.item));
+  const visible=()=>{assert.equal(count.querySelector('.unread-count').textContent,'2');assert.deepEqual(f.ids(),['a']);assert.equal(f.cards.empty.hidden,true,'known topics cannot become No topics while the count remains');};
+  visible();let release;f.queue.push(new Promise(done=>release=done));const before=f.calls.length;
+  const pending=outline.loadTopics(outcome);outline.publishTopics();visible();
+  assert.equal(outcome.rail,f.rail);assert.equal(f.rail.links.get('a'),row);assert.equal(f.calls.length,before+1,'home refreshes this same topic owner');
+  release(f.page([a,b]));assert.equal(await pending,true);
+  assert.deepEqual(f.ids(),['a','b']);assert.equal(f.cards.empty.hidden,true);assert.equal(f.rail.links.get('a'),row);
+  assert.equal(count.querySelector('.unread-count').textContent,'2');assert.equal(outcome.rail,f.rail);
 });
 
 test('945 absent projection is not an empty-list claim; loaded empty, loading and failure stay distinct', t => {
@@ -114,13 +121,20 @@ test('945 absent projection is not an empty-list claim; loaded empty, loading an
   assert.equal(f.cards.empty.hidden,true);assert.equal(f.cards.notice.hidden,false);assert.equal(f.cards.retry.hidden,false);
 });
 
-test('945 retained page-part ids cannot shadow fresh ids while the retired list keeps its look', t => {
-  const f=railFixture(t),old=f.node(),child=f.node();old.setAttribute('id','topic-navigation');child.setAttribute('id','topics');old.append(child);
-  const outline=Object.assign(Object.create(OutlineRail.prototype),{menus:{reset(){}},host:{},run:0,
-    dossiers:{begin(){}},notebookStars:{begin(){}},outcomes:new Map([['w',{adopted:old}]])});
-  outline.begin(false);
-  assert.equal(old.inert,true);assert.ok(!old.getAttribute('id'));assert.ok(!child.getAttribute('id'));
-  assert.equal(old.children[0],child,'retirement keeps the visible old nodes, not their addressability');
+test('945 page ID retirement leaves the retained owner intact and late page callbacks cannot empty its cards', async t => {
+  const f=railFixture(t);f.queue.push(f.page([f.item('a',3,{unread:2})]));await f.rail.load();const row=f.rail.links.get('a');
+  const named=id=>{const node=f.node();node.id=id;node.setAttribute('id',id);node.matches=selector=>matches(node,selector);return node;};
+  const body=named('body');body.root=true;f.doc.body=body;f.doc.getElementById=id=>body.querySelector('#'+id);
+  const host=named('outline'),old=named('topic-navigation'),child=named('topics');old.append(child);host.append(f.parts.host);body.append(host,old);
+  const outline=Object.assign(Object.create(OutlineRail.prototype),{doc:f.doc,menus:{reset(){}},host,run:0,
+    dossiers:{begin(){}},notebookStars:{begin(){}},outcomes:new Map([['w',{rail:f.rail}]]),paintHeader(){}});
+  const retired=retiredIds(f.doc);assert.equal(retired.get('topics'),child);assert.equal([...retired.values()].includes(f.parts.host),false);
+  outline.begin(false);old.remove();
+  const fresh=named('topics'),nav=named('topic-navigation');nav.append(fresh);body.append(nav);
+  assert.equal(f.doc.getElementById('topics'),fresh);assert.equal(f.doc.getElementById('topic-navigation'),nav);
+  retired.get('topics').textContent='late old page response';
+  assert.equal(fresh.textContent,'');assert.equal(f.rail.links.get('a'),row);assert.equal(row.parent,f.parts.host);
+  assert.deepEqual(f.ids(),['a']);assert.equal(f.cards.empty.hidden,true,'page retirement cannot claim the retained topics are empty');
 });
 
 test('847 a directly reached outcome uses its provisional outline row as the topic-list owner', async () => {

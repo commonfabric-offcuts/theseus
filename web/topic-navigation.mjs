@@ -20,7 +20,7 @@ const badRoute = () => { throw Error('This destination link is incomplete or amb
 const OPTIONAL = {cards:['write','view','card'],opening:['from'],topic:['message','land','at','page','revision','act','choice'],workspace:['page','revision','act']};
 const REVISION = /^[1-9][0-9]{0,17}$/;
 export function routeKey(route) {
-  const fields = {root:[],health:[],'phone-check':['id'],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],measurements:['id'],tool:['id','tool'],cards:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
+  const fields = {root:[],health:[],image:['id','message'],'phone-check':['id'],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],measurements:['id'],tool:['id','tool'],cards:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
   const optional = (OPTIONAL[route?.kind] ?? []).filter(key=>key in route);
   if (!fields || Object.keys(route).length !== fields.length + optional.length + 1 || ![...fields,...optional].every(key=>key === 'land' ? route[key] === true : validId(route[key]))) badRoute();
   // Landing-only links name a message, and never imply opening its Reader.
@@ -38,6 +38,7 @@ export function routeKey(route) {
 export function routeHref(route) {
   routeKey(route);
   const page = route.page ? {page:route.page,...(route.revision?{revision:route.revision}:{})} : {};
+  if (route.kind === 'image') return '?' + new URLSearchParams({ image: route.id, message: route.message });
   const params = route.kind === 'root' ? null : route.kind === 'health' ? {health:''} : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{}),...(route.land?{land:'only'}:{}),...(route.at?{at:route.at}:{}),...page} : route.kind === 'conversation' ? {conversation:route.id} :
     route.kind === 'workspace' ? {workspace:route.id,...page} : route.kind === 'pipeline' ? {pipeline:route.id} : route.kind === 'measurements' ? {measurements:route.id} : route.kind === 'tool' ? {workspace:route.id,tool:route.tool} : route.kind === 'cards' ? {cards:route.id,...(route.write?{write:route.write}:{}),...(route.view?{view:route.view}:{}),...(route.card?{card:route.card}:{})} :
     route.kind === 'item' ? {pipeline:route.id,item:route.item} : route.kind === 'phone-check' ? {'phone-check':route.id} : route.kind === 'create' ? {new:'outcome',intent:route.intent} :
@@ -54,6 +55,7 @@ export function parseRoute(url) {
   if (new Set(keys).size !== keys.length) badRoute();
   let route;
   if (!keys.length) route={kind:'root'};
+  else if (keys.length===2 && p.has('image') && p.has('message')) route={kind:'image',id:p.get('image'),message:p.get('message')};
   // The instance's Health page (docs/health.md).
   else if (keys.length===1 && p.get('health')==='') route={kind:'health'};
   else if (keys.length===1 && p.has('topic')) route={kind:'topic',id:p.get('topic')};
@@ -337,6 +339,7 @@ export class TopicRail {
   constructor({ pages, host, more, retry, message, read, open, denied, updated, painted = null, reader = null, pageMax = PAGE, done = null, archived = null, storage = null, area = host, key = null }) {
     Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, painted, reader, pageMax, storage, area, key });
     this.rowItems = new WeakMap();
+    this.epoch = 0; this.selected = pages.current;
     this.denied = false; this.loading = null; this.queued = null; this.queuedAsked = false; this.failedMore = false; this.serial = 0;
     this.lists = [{ name: 'active', pages, host, more }];
     const kept = this.kept();
@@ -414,7 +417,15 @@ export class TopicRail {
     }
     return null;
   }
-  updateCurrent(topic) { for (const list of this.lists) list.pages.current = structuredClone(topic); this.paint(); }
+  // Leaving changes selection at once, retaining the known row until a complete
+  // fresh list replaces it. Current-topic facts are separate from selection.
+  updateCurrent(topic) {
+    this.selected = structuredClone(topic);
+    if (topic) for (const list of this.lists) list.pages.current = structuredClone(topic);
+    this.paint();
+  }
+  invalidate() { ++this.epoch; }
+
   row(item) {
     let link = this.links.get(item.id);
     if (!link) {
@@ -438,7 +449,7 @@ export class TopicRail {
     if (Number.isSafeInteger(item.cover_waiting) && item.cover_waiting > 0) link.setAttribute('data-cover-waiting', '');
     else link.removeAttribute('data-cover-waiting');
     link.href = routeHref(topicTarget(item.id, this.question(item.id)));
-    if (item.id === this.pages.current?.id) link.setAttribute('aria-current', 'page');
+    if (item.id === this.selected?.id) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
     this.rowItems.set(link, item);
     return link;
@@ -546,16 +557,36 @@ export class TopicRail {
     const previousIds = new Set(this.lists.flatMap(list => list.pages.items.map(item => item.id)));
     // Keep busy controls focusable; repeated activation shares this read.
     for (const control of [this.retry, ...this.lists.map(list => list.more)]) control.setAttribute('aria-disabled', 'true');
+    const epoch = this.epoch;
+    const drafts = new Map();
     const reading = list => args => this.read({ workspace_id: this.pages.workspaceId, ...listArgs(list.name, this.pages.apart), ...args });
-    const read = list => (target && !first ? reading(list)({ limit: PAGE, cursor }).then(async answer => {
-      const fresh = list.pages.copy(); fresh.accept(answer, cursor);
-      await currentTail(fresh, reading(list)); takePages(list.pages, fresh);
-    })
-      : reread(list.pages, reading(list), this.pageMax)).then(() => { list.pages.readAt = ++this.serial; });
+    const read = async list => {
+      const fresh = list.pages.copy(); fresh.extent = list.pages.extent;
+      // The injected current row is already drawn even outside the cursor's
+      // extent. On departure, reread through that row before dropping its
+      // overlay; a first-page answer alone cannot disprove its membership.
+      const previous = list.pages.current, last = fresh.last();
+      if (this.selected === null && previous && !fresh.loaded.has(previous.id) &&
+          list.pages.items.some(item => item.id === previous.id) &&
+          (last === null || fresh.precedes(last, topicPosition(previous)))) fresh.loaded.set(previous.id, previous);
+      fresh.current = this.selected === null ? null : structuredClone(list.pages.current);
+      drafts.set(list, fresh);
+      if (target && !first) {
+        fresh.accept(await reading(list)({ limit: PAGE, cursor }), cursor);
+        await currentTail(fresh, reading(list));
+      } else await reread(fresh, reading(list), this.pageMax);
+    };
     const lists = target ? [target] : this.lists.filter(list => list === this.lists[0] || list.details.open);
     for (const list of lists) list.reading = true;
     this.loading = Promise.all(lists.map(read))
       .then(() => {
+        if (epoch !== this.epoch) return true;
+        // Publish all requested lists together, only for the run that read them.
+        for (const list of lists) {
+          const fresh = drafts.get(list); takePages(list.pages, fresh);
+          if (this.selected === null) list.pages.current = null;
+          list.pages.readAt = ++this.serial;
+        }
         for (const list of lists) book.learn(this.scope, list.pages.order);
         for (const list of lists) if (this.extents) {
           list.pages.extent = { last: list.pages.last(), count: list.pages.loaded.size };
@@ -571,6 +602,7 @@ export class TopicRail {
         }
         return true;
       }).catch(error => {
+        if (epoch !== this.epoch || error?.code === 'READ_SUPERSEDED') return true;
         const focused = document.activeElement;
         if (this.isDenied(error)) { this.denied = true; this.paint(asked); }
         this.failedMore = target && !first && !this.denied ? target : false;

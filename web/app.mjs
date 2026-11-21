@@ -26,6 +26,7 @@ import { TopicViews, followEdits } from './topic-views.mjs';
 import { visitNewFor, paintVisitNew } from './visit-new.mjs';
 import { resolveTopicLink, topicLinkNeedsLookup } from './topic-link-route.mjs';
 import { readTopicList, TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, topicTarget, paintChanged, changedSince } from './topic-navigation.mjs';
+import { ImagePage } from './image-page.mjs';
 import { OnboardingPrompt } from './onboarding.mjs';
 import { OutcomeRail } from './outcomes.mjs';
 import { LightPeek, paintAlsoWaiting, paintStanding, paintStandingFailed } from './outcome-light.mjs';
@@ -3686,7 +3687,8 @@ async function initialize() {
   syncCardReplies();
   // Every ordinary topic row, including the conversation; Build topics stay
   // in the right rail (item 297).
-  topicRail = new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic, 'active', true),
+  // A followed outline is the shared owner; without one, this page owns its list.
+  topicRail = shell.outline?.topicsFor(bootstrap, topic, pageMax()) ?? new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic, 'active', true),
     host: $('topics'), more: $('more-topics'), retry: $('retry-topics'), message: $('topics-status'), key: $('topics-key'), ...topicFolds(),
     denied: error => readFailure(error).kind === 'forbidden',
     read: async args => {
@@ -3696,7 +3698,7 @@ async function initialize() {
       return answer;
     },
     open: (id, title, message, at) => openDestination(topicTarget(id, message, at), title),
-    // Read once: the outline takes this list in from then on (outline-rail.mjs).
+    // The standalone list reports its initial read just as before.
     updated: () => { $('topic-navigation').dataset.listed = ''; },
   });
   // The rail shows only this topic's outcome. A message's Add to pipeline
@@ -3755,7 +3757,7 @@ async function initialize() {
   const firstReading = Promise.allSettled([run(loadMarks)]).then(() => { laidOut = true; noteRead(); });
   document.body.dataset.ready = 'true'; enableFreshness(checkpoint, actorCheckpoint);
   // The rails beside the page read through this run from now on (rails.mjs).
-  readyRails(topic.workspace_id, { topic, readable: () => !topicUnavailable && !freshness?.stopped, currentTopic: () => topic,
+  readyRails(topic.workspace_id, { topic, topicRail, topicReadAllowed: () => !authorityReviewPending() && !registry.disposed, readable: () => !topicUnavailable && !freshness?.stopped, currentTopic: () => topic,
     readingNavigation: () => releaseTopArrivals(),
     // The rail's Starred takes a star off (stack-feed.mjs); its Notebook section starts the topic's pages and the outcome's.
     unstar: star => stackFeed?.unstar(star) });
@@ -4168,6 +4170,7 @@ async function initializeOutcomePage(route) {
   if(route.kind==='measurements')return initializeMeasurementsPage(route);
   if(route.kind==='tool')return initializeToolPage(route);
   if(route.kind==='cards')return initializeDeckPage(route);
+  if(route.kind==='image')return initializeImagePage(route);
   if(!['root','workspace'].includes(route.kind))throw Error('This opening link is not available yet. Open Outcomes to choose a place.');
   // A Notebook page's link opens the page in place once the outcome's lists are
   // up; the address then names the outcome alone, as a message's link does.
@@ -4395,6 +4398,18 @@ async function initializeHealthPage() {
   live?.listen(event=>page.heard(event));
   await followCommits(()=>page.load())();
   document.body.dataset.ready='true';
+}
+// A copied image address rechecks its source before showing verified bytes.
+async function initializeImagePage(route) {
+  drawFeed(false, 'topic-pending', 'inline-composer', 'topic-navigation');
+  document.querySelector('.rail').hidden = true;
+  $('topic-title').textContent = 'Image'; $('topic-description').textContent = '';
+  const host = $('image-page'); host.hidden = false;
+  const page = new ImagePage({ host, route, current: () => !retired, handles: { api, bootstrap,
+    view: (name, args) => pipelineView(name, args), inTurn: job => job() } });
+  window.addEventListener('pagehide', () => page.dispose());
+  await followCommits(() => page.load())();
+  document.body.dataset.ready = 'true';
 }
 // A Notebook page as a deck of cards (docs/decks.md): no rail, so the deck has
 // the width; "← Outcomes" and the logo block head it, and the eyebrow goes
