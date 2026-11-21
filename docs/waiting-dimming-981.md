@@ -11,8 +11,10 @@ change. Its on state keeps outcomes/topics present and preserves manual
 open/fold choices, ordering and row geometry. It neither auto-opens all
 outcomes nor rereads the outcome list merely to recolor existing rows.
 
-Waiting dimming is ephemeral and composes as a union with saved0|1|2 dimming:
-a row dimmed by either stays dimmed.0 bypasses saved sets only. Turning the
+Waiting dimming is ephemeral.1003 revises its saved-view composition: a reader
+wait keeps its topic bright over saved0|1|2 choices, and clearing the wait restores
+that exact choice. The waiting pill still dims nonmatching rows.0 bypasses saved
+sets only. Turning the
 pill off removes just its layer, leaving saved set contents/selection and
 manual disclosure choices intact. Existing973 paint remains15% ink/500-weight,
 faded lights/menu, visibility-hidden badges and full hover/selected rows.

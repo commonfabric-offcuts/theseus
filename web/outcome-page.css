@@ -1,7 +1,7 @@
-/* The wide outcome bench (960). Narrow pages retain their original controls
-   and geometry; these extra words come from the same list projections. */
+/* The outcome bench (960), on every screen (985): three columns from 1100px, one column below, with the
+   Notebook as a section after the agents. These extra words come from the same list projections. */
 .outcome-topic-latest,.outcome-topic-footer,.outcome-page-opening,#outcome-agents{display:none}
-@media(min-width:1100px){
+@media all{
   #outcome-page[data-outcome-wide]{
     --op-hair:color-mix(in srgb,var(--line) 70%,transparent);
     --op-quiet:color-mix(in srgb,var(--ink) 58%,transparent);
@@ -94,4 +94,49 @@
   #outcome-page[data-outcome-wide] #outcome-purpose .purpose-pencil svg{width:1rem;height:1rem}
   #outcome-page[data-outcome-wide] #outcome-purpose .purpose-pencil:is(:hover,:focus-visible){opacity:1;color:var(--ink)}
   #outcome-page[data-outcome-wide] #target-panel .tg-card{font-size:.85rem;padding:.9rem 1rem;border:1px solid var(--op-hair);border-radius:.6rem;background:var(--op-tile);box-shadow:none}
+}
+/* Narrower than 1100px the bench is three tabs under the purpose (997): Topics, Agents and Notebook, each with
+   its count, so a long topic list never stands between the reader and the agents or the Notebook. The tabs stay
+   at the top of the page while it scrolls; the tools and the rest follow the topics. */
+.outcome-tabs{display:none}
+@media(max-width:1099px){
+  #outcome-page[data-outcome-wide]:not([hidden]){column-gap:0;grid-template-columns:minmax(0,1fr);grid-template-rows:none;
+    grid-template-areas:"purpose" "tabs" "topics" "agents" "notes" "tools" "target" "pipe" "loop" "problems"}
+  #outcome-page[data-outcome-wide] #outcome-purpose{margin-bottom:.9rem}
+  #outcome-page[data-outcome-wide]>.outcome-tabs{grid-area:tabs;position:sticky;top:0;z-index:3;display:flex;gap:.25rem;margin:0 0 1.1rem;
+    border-bottom:1px solid var(--op-hair);background:var(--op-page,var(--paper))}
+  :root[data-look=paper] #outcome-page[data-outcome-wide]>.outcome-tabs{--op-page:var(--look-floor)}
+  #outcome-page[data-outcome-wide]>.outcome-tabs>button{flex:1 1 0;display:inline-flex;align-items:center;justify-content:center;gap:.4rem;min-width:0;
+    min-height:2.6rem;margin:0 0 -1px;padding:0 .4rem;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;
+    color:var(--op-quiet);font-size:.88rem;font-weight:600}
+  #outcome-page[data-outcome-wide]>.outcome-tabs>button[hidden]{display:none}
+  #outcome-page[data-outcome-wide]>.outcome-tabs>button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent)}
+  #outcome-page[data-outcome-wide]>.outcome-tabs>button:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+  #outcome-page[data-outcome-wide] .outcome-tab-count{min-width:1.35rem;padding:0 .4rem;border-radius:.7rem;background:var(--op-tile);font-size:.72rem;line-height:1.25rem;text-align:center}
+  #outcome-page[data-outcome-wide] .outcome-tab-count:empty{display:none}
+  /* Only the chosen tab's part shows; the tools and the rest go with the topics. */
+  #outcome-page[data-outcome-wide]:not([data-outcome-tab=topics]) :is(#topic-navigation,#outcome-tools,#target-panel,#pipeline-line,#loop-panel,#problems-panel,#page-here){display:none!important}
+  #outcome-page[data-outcome-wide]:not([data-outcome-tab=agents]) #outcome-agents{display:none!important}
+  #outcome-page[data-outcome-wide]:not([data-outcome-tab=notes]) #outcome-references{display:none!important}
+  #main:has(>#outcome-page[data-outcome-wide]:not([hidden]):not([data-outcome-tab=topics]))>#unfinished-work{display:none!important}
+  /* The tab names the part, so each part's own heading keeps only its tools (the pencils). */
+  #outcome-page[data-outcome-wide] :is(#topics-heading,#outcome-agents-heading){position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  #outcome-page[data-outcome-wide] #outcome-references>.rail-heading::before{content:none}
+  #outcome-page[data-outcome-wide] #outcome-references>.rail-heading{justify-content:flex-end}
+  #outcome-page[data-outcome-wide] #outcome-agents>.rail-heading{display:none}
+  #outcome-page[data-outcome-wide] .outcome-agent-list{border-top:0;padding-top:0}
+  #outcome-page[data-outcome-wide] #outcome-references{align-self:auto;margin:0}
+  #outcome-page[data-outcome-wide] #outcome-tools{margin-top:1.6rem}
+  #outcome-page[data-outcome-wide] #page-here:not([hidden]){grid-row:3}
+  #outcome-page[data-outcome-wide] :is(#topic-navigation,#outcome-agents,#outcome-references){scroll-margin-top:3.2rem}
+  #outcome-page[data-outcome-wide] .outcome-topic-card{min-height:5.6rem}
+}
+/* A finger: the agent rows, the pencil and the quiet controls get a full-size target. */
+@media(pointer:coarse){
+  #outcome-page[data-outcome-wide] .outcome-agent{min-height:2.75rem;padding:.5rem .55rem}
+  #outcome-page[data-outcome-wide] .outcome-agent-dot{margin-top:.4rem}
+  #outcome-page[data-outcome-wide] #outcome-purpose .purpose-pencil{position:relative}
+  #outcome-page[data-outcome-wide] #outcome-purpose .purpose-pencil::after{content:"";position:absolute;inset:-.75rem}
+  #outcome-page[data-outcome-wide] :is(#team-people .add-chip,#outcome-tools .finder-open,.outcome-topic-toggle){height:2.5rem}
+  #outcome-page[data-outcome-wide] .rail-heading .notebook-create{width:2.5rem;height:2.5rem}
 }

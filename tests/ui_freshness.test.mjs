@@ -102,7 +102,7 @@ test('completed checkpoint can advance while a failed dependent resource stays d
   const { f, states } = fixture({ api: { view: async (_name, args) => page(3, args.cursor.after_seq < 3 ? [{ seq: 3, resource_kind: 'memory', resource_id: 'n1', version: 4 }] : []) }, refresh: async () => {
     if (fail) throw new AttemptError('busy', 503, { error: { code: 'SERVER_BUSY', retryable: true } }); return true;
   } });
-  await f.request(); assert.deepEqual(f.checkpoint, cursor(3)); assert.equal(f.dirty.size, 1); assert.equal(states.at(-1).kind, 'retry');
+  await f.request(); assert.deepEqual(f.checkpoint, cursor(3)); assert.equal(f.dirty.size, 1); assert.deepEqual(states, [], 'first retryable failure recovers quietly');
   fail = false; await f.request(); assert.equal(f.dirty.size, 0); f.dispose();
 });
 
@@ -119,7 +119,7 @@ test('a dirty resource that keeps failing does not hold up the others', async ()
   await f.request();
   assert.deepEqual(refreshed, ['reaction:m1', 'memory:n1'], 'the others are read in the same pass');
   assert.deepEqual([...f.dirty.keys()], ['topic:t1'], 'the failing one stays dirty for the next pass');
-  assert.equal(states.at(-1).kind, 'retry', 'and the pass says it will retry');
+  assert.deepEqual(states, [], 'first failed pass retries quietly');
   // A failure that stops updates altogether still stops them at once.
   const stopped = [];
   const { f: g } = fixture({ refresh: async key => { if (key === 'topic:t1') throw Object.assign(Error('denied'), { code: 'INVALID_ARGUMENT' }); stopped.push(key); return true; } });
@@ -281,8 +281,9 @@ test('freshness sees the retryable server cause through cleanup deferral without
   const { f, states, times } = fixture({ read: fn => cleanup.read(fn), api: { view: async () => {
     throw new AttemptError('busy', 503, { error: { code: 'SERVER_BUSY', retryable: true } });
   } } });
-  await f.request(); assert.equal(states.at(-1).kind, 'retry'); assert.equal([...times.jobs.values()][0].ms, 500);
-  await f.request(); assert.equal(states.at(-1).kind, 'retry'); assert.equal([...times.jobs.values()][0].ms, 1000);
+  await f.request(); assert.deepEqual(states, []); assert.equal([...times.jobs.values()][0].ms, 500);
+  await f.request(); assert.deepEqual(states, []); assert.equal([...times.jobs.values()][0].ms, 1000);
+  await f.request(); assert.equal(states.at(-1).kind, 'retry'); assert.equal([...times.jobs.values()][0].ms, 2000);
   f.dispose();
 });
 
@@ -467,11 +468,11 @@ test('correction C ordinary epoch cancellation is quiet and does not park', asyn
 for (const status of [502, 503, 504, 200, 400, 418]) test(`correction D actual unreadable HTTP ${status} has bounded classification`, async () => {
   const api = new Api('fixture', async () => new Response('not JSON', { status }));
   const { f, states, times } = fixture({ api });
-  await f.request(); await f.request();
+  await f.request(); await f.request(); await f.request();
   const retry = status >= 500;
   assert.equal(states.at(-1).kind, retry ? 'retry' : 'diagnostic'); assert.equal(f.stopped, !retry);
   assert.equal(times.jobs.size, retry ? 1 : 0);
-  if (retry) assert.equal([...times.jobs.values()][0].ms, 1000);
+  if (retry) assert.equal([...times.jobs.values()][0].ms, 2000);
   f.dispose();
 });
 
@@ -480,4 +481,17 @@ test('correction D uncoded 5xx retries but explicit code precedence remains inta
   for (const [code, kind] of [['INVALID_BINDING','authority'], ['FORBIDDEN','forbidden'], ['SESSION_REQUIRED','reconnect'], ['INVALID_ARGUMENT','diagnostic'], ['UNKNOWN_NONRETRYABLE','diagnostic']]) {
     assert.equal(fresh.readFailure(new AttemptError('refused', 503, { error: { code, retryable: false } })).kind, kind);
   }
+});
+
+// 1005: recovery is attempted before a retryable read becomes a visible delay.
+test('1005 initial failure and first retry stay quiet; exhausted retry recovers and resets', async () => {
+  let fail = true;
+  const { f, states, times } = fixture({ api: { view: async () => {
+    if (fail) throw new AttemptError('busy', 503, {error:{code:'SERVER_BUSY',retryable:true}});
+    return page(0);
+  } } });
+  for (const ms of [500,1000]) { await f.request(); assert.deepEqual(states, []); assert.equal([...times.jobs.values()][0].ms, ms); }
+  await f.request(); assert.equal(states.at(-1).kind,'retry'); assert.equal([...times.jobs.values()][0].ms,2000);
+  fail = false; await f.request(); assert.equal(states.at(-1).kind,'current'); assert.equal(f.failures,0);
+  const before = states.length; fail = true; await f.request(); assert.equal(states.length,before); f.dispose();
 });

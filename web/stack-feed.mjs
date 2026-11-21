@@ -1060,7 +1060,6 @@ export class StackFeed {
     const at = this.doc.activeElement;
     if (writing(at) || at?.closest?.('input, textarea, select, [contenteditable]') ||
         event.target?.closest?.('input, textarea, select, [contenteditable]')) return;
-    if (this.renameKey(event)) return;
     const action = keyAction(event);
     if (!FEED_ACTIONS.includes(action) || this.doc.querySelector('dialog[open]:not([data-card-reply])')) return;
     if (!at || !this.list.contains(at)) return;
@@ -1101,22 +1100,6 @@ export class StackFeed {
     if (found?.head && found.stack.replies.length && found.section?.dataset.headOpen === 'false') return;
     event.preventDefault();
     this.setFold(item, !acts.folded);
-  }
-  // Return on a dossier as a whole, its chevron or its compact header (the
-  // head's row standing for the dossier), edits its title as Rename in ⋯ does
-  // (item 385); Return saves it and Escape cancels, as there. Return on a
-  // message, a head shown whole included, still replies.
-  renameKey(event) {
-    if (event.key !== 'Enter' || event.isComposing || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey || this.doc.querySelector('dialog[open]:not([data-card-reply])')) return false;
-    const at = this.doc.activeElement, section = at && this.list.contains(at) ? at.closest('.reply-stack') : null;
-    const head = section && this.entryFor(section.dataset.stack);
-    if (!head) return false;
-    const whole = at.classList.contains('stack-toggle') || (section.dataset.headOpen === 'false' && at === cardIn(head));
-    const found = whole && stackOf(this.list, head);
-    if (!found?.head || !found.stack.replies.length) return false;
-    event.preventDefault();
-    this.startRename(found.stack);
-    return true;
   }
   // What ⋯ offers for the stack a message is in, with the keys that do the
   // same and each item's glyph (glyphs.mjs, items 602 and 601); on a phone,

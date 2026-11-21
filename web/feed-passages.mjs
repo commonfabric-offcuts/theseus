@@ -19,6 +19,7 @@
 import { drawnDisplayRules, drawnRevision, drawnText, passageSpans, rangeOf, sourcePosition } from './message-format.mjs';
 import { cardIn } from './fold.mjs';
 import { fieldLayers, readerField, wordLines } from './lit-field.mjs';
+import { pointerLight, observePointerLight } from './pointer-light.mjs';
 
 const NAME = 'lit-passage';
 const WORDS = ':scope > .message-preview';
@@ -45,11 +46,13 @@ export class FeedPassages {
     // The words wrapping anew (the window or the card resized, the card
     // growing to its whole message) move the lines the field lies behind.
     this.sized = new this.win.ResizeObserver(() => this.field());
+    this.lightSetting = observePointerLight(doc, () => this.clear());
     // A Shift-click lights, as a Shift-move does, and opens nothing; the
     // browser's own selection is kept from growing beside it, so what lights
     // is what quotes.
     host.addEventListener('pointerdown', event => {
       this.shifted = false;
+      if (!pointerLight(this.doc)) return;
       if (!event.shiftKey || event.button !== 0 || event.pointerType === 'touch') return;
       // A link is only a link, as in the Reader: a Shift-click on one is the
       // browser's, which opens it in a new window, and lights nothing.
@@ -77,6 +80,7 @@ export class FeedPassages {
   // (between lines, beside a short one, on the author's line) the light
   // stays as it was, as in the Reader.
   point(event, entry) {
+    if (!pointerLight(this.doc)) { this.clear(); return; }
     if (!this.supported || event.pointerType === 'touch' || event.buttons) return;
     if (!this.lights()) { this.clear(); return; }
     const now = { x: event.clientX, y: event.clientY };
@@ -109,6 +113,7 @@ export class FeedPassages {
   // Lights a passage of an entry's words; extend grows the light from what
   // is lit there, or from the passages words dragged over in it touch.
   light(entry, { words, span }, extend = false) {
+    if (!pointerLight(this.doc)) { this.clear(); return; }
     if (extend) this.adopt(entry, words);
     const anchor = extend && this.lit?.words === words ? this.lit.anchor : span;
     this.lit = { entry, words, text: drawnText(words), anchor, start: Math.min(anchor.start, span.start), end: Math.max(anchor.end, span.end) };
@@ -198,6 +203,7 @@ export class FeedPassages {
     const words = this.wordsOf(entry), revision = words ? drawnRevision(words) : undefined;
     const selected = this.selected(entry);
     if (selected) return { ...selected, revision };
+    if (!pointerLight(this.doc)) return null;
     const lit = this.lit;
     if (!lit || lit.entry !== entry || !lit.words.isConnected) return null;
     const text = drawnText(lit.words);
@@ -206,6 +212,7 @@ export class FeedPassages {
   // What ⌘C copies with no words selected: the lit passages' words, without
   // the whitespace at their end, which is no words (docs/topic-reading.md).
   copied(entry) {
+    if (!pointerLight(this.doc)) return null;
     const lit = this.lit;
     if (!entry || !lit || lit.entry !== entry || !lit.words.isConnected) return null;
     const text = drawnText(lit.words);

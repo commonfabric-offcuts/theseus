@@ -14,7 +14,7 @@ import { paintImageRows, openImage } from './image-rows.mjs';
 import { WritingInput, onMac, selectAllKey, copyKey } from './writing-input.mjs';
 import { paintChanges } from './page-changes.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
-import { drawPassages, sourcePosition, rangeOf, hasTextDisplayRules } from './message-format.mjs';
+import { drawPassages, sourcePosition, rangeOf, hasTextDisplayRules, inlineNodes } from './message-format.mjs';
 import { pageImages } from './page-image.mjs';
 import { paintChoice, clearChoice, chosen, naming, unnamed, sending, choiceOf, list } from './whisper-choice.mjs';
 import { addressedTo } from './at-names.mjs';
@@ -26,6 +26,7 @@ import { paintRemoval } from './message-removal.mjs';
 import { revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { overhang } from './lit-field.mjs';
 import { coverSheet, coverKey, payloadPill } from './dossier-cover.mjs';
+import { pointerLight, observePointerLight } from './pointer-light.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
@@ -96,6 +97,7 @@ export class Reader {
     this.narrow = window.matchMedia('(max-width: 760px)');
     this.narrow.addEventListener('change', () => { this.placeEnd(); if (this.dialog.open) this.applyLayout(); });
     this.bind();
+    this.lightSetting = observePointerLight(document, () => this.disarm());
     this.syncWidthPlacement = composerWidth(this.dialog, () => this.layout);
   }
   // Capture the source where the gesture began. A step, close or access change
@@ -603,6 +605,7 @@ export class Reader {
   }
 
   light(target, extend, pressed = false) {
+    if (!pointerLight(this.sourceBody?.ownerDocument ?? globalThis.document)) { this.disarm(); return; }
     const span = target.closest('[data-start]');
     if (!span || !this.sourceBody.contains(span)) return;
     if (extend) this.adoptSelection();
@@ -746,7 +749,7 @@ export class Reader {
         return {start:from,end:to};
       }
     }
-    return this.hover?{start:this.hover.start,end:this.hover.end}:null;
+    return pointerLight(this.sourceBody?.ownerDocument ?? globalThis.document) && this.hover ? {start:this.hover.start,end:this.hover.end} : null;
   }
   passageParts(excerpt, range=this.selectedRange()) {
     if(this.source?.source_ref.kind!=='memory')return [excerpt];
@@ -1179,7 +1182,10 @@ export class Reader {
     const words = document.createElement('span'); words.className = 'reader-cover-words';
     const waitingOn = [...new Set(cover.waiting.map(wait => wait.actor_id ?? cover.owner))]
       .map(id => id === shown.viewer ? 'you' : shown.nameOf(id)).join(', ');
-    words.textContent = cover.stands || cover.payload?.text || `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${waitingOn}`;
+    const authored = cover.stands || cover.payload?.text;
+    // Read the inline marks without adding links or extra controls to the summary (989).
+    words.textContent = authored ? inlineNodes(authored, { doc: document }).map(node => node.textContent).join('')
+      : `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${waitingOn}`;
     const label = document.createElement('span'); label.className = 'cover-label'; label.textContent = 'Cover';
     line.replaceChildren(label, ' ', words, ...(cover.payload ? [' ', payloadPill(document, cover.payload, shown)] : []));
     host.append(coverSheet(document, cover, context));

@@ -7,12 +7,12 @@
    (notebook-mode) keeps the Notebook's material. Every screen, like the sheets it
    dresses; write-touch.css sizes them for a finger. */
 @media all{
-  :is(dialog.composer-home[open]:not(.notebook-mode), dialog#reader[open] #reader-composer, .card-reply-composer, .message-edit-field){
+  :is(dialog.composer-home[open]:not(.notebook-mode), dialog.composer-home:not([open]):not(.notebook-mode), dialog#reader[open] #reader-composer, .card-reply-composer, .message-edit-field){
     --panel:#000;--paper:#000;--ink:#e3eae7;--muted:#97a6a3;--line:#2b3436;--soft:#18241f;--accent:#5fae96;--focus:#5fae96;
     --sheet-hair:#2b3436;--sheet-quiet:#97a6a3;
     color:var(--ink);color-scheme:dark}
   dialog.composer-home[open]:not(.notebook-mode){background:#000}
   :is(dialog#reader[open] #reader-composer, .card-reply-composer, .message-edit-field){background:#000}
-  :is(dialog.composer-home[open]:not(.notebook-mode), dialog#reader[open] #reader-composer, .card-reply-composer, .message-edit-field) :is(textarea, input)::placeholder{color:#7d8b89}
+  :is(dialog.composer-home[open]:not(.notebook-mode), dialog.composer-home:not([open]):not(.notebook-mode), dialog#reader[open] #reader-composer, .card-reply-composer, .message-edit-field) :is(textarea, input)::placeholder{color:#7d8b89}
   .message-edit-field::placeholder{color:#7d8b89}
 }

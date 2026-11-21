@@ -358,7 +358,7 @@ fail that check. This unit control alone does not establish native behavior.
 | finish editing a card with children, and fold them away | ← at the very start | |
 | finish editing a card with folded children, and show them | → at the very end | |
 | while editing, move the card past the one above or below it | ⌘↑ ⌘↓ | |
-| while editing, indent or outdent the current line or selected lines | Tab, ⇧Tab | |
+| while editing, indent or outdent the card at the collapsed text start; elsewhere the current line or selected lines | Tab, ⇧Tab | |
 | while editing, move the line the cursor is on past the line above or below it | ⌥↑ ⌥↓ | |
 | while editing, finish the card and go on editing the one above or below | ↑ at the very start, ↓ at the very end | |
 | a new card beside this one | Return while not editing | New card |
@@ -385,8 +385,11 @@ elsewhere. A new card goes beside the picked one, after its children, or with
 ⌥Return right above it, at its depth.
 
 While a card is being written, ⌘↑ and ⌘↓ move it by the same rules; what is
-written, and the cursor, stay where they were. Tab and ⇧Tab instead indent
-and outdent the current line or selected lines inside the card, through the
+written, and the cursor, stay where they were. At the collapsed very first
+text position, Tab and ⇧Tab indent and outdent the card, including a new
+empty box after ⌘Return. A blocked first-card indent or top-level outdent
+keeps the words and focus. Elsewhere, including a selection beginning at
+zero, they indent and outdent the current line or selected lines, through the
 single `WritingInput.indentKey` rule: two spaces in, up to two spaces or one
 leading tab out. A selection ending at the next line's start excludes that
 line. One insertion uses the existing input/autosave path and the field's

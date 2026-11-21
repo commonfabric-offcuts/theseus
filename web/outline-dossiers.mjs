@@ -28,6 +28,14 @@ export class OutlineDossiers {
   }
   begin() {
     this.epoch++;
+    // Retire reads, retaining drawn stars and their links through a move.
+    // The next run refreshes them; a late old reply cannot publish or clear it.
+    for (const state of this.states.values()) {
+      state.busy = null; state.again = false; state.box.setAttribute('aria-busy','false');
+    }
+  }
+  reset() {
+    this.epoch++;
     for (const state of this.states.values()) state.box.remove();
     this.states.clear();
   }
