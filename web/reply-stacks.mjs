@@ -992,6 +992,8 @@ export function arrangeStacks(list, messages, options = {}) {
     top.push(state.controls);
   } else state.controls?.remove();
   top.push(...aside);
+  // The archive shelf: the dossiers below More, in their order, for the right rail's foot.
+  state.on?.archived?.(stacks.filter(stack => state.below.has(stack.id) && (state.showCoordination || !state.coordination.has(stack.id))).map(stack => ({ stack, section: state.sections.get(stack.id) })));
   // Entries the page has that Core's messages do not name stay where they are,
   // and so does anything else that is not a dossier, More or the composer at
   // rest (a line, or what holds the composer's place while it is up).
