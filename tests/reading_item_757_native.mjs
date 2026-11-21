@@ -243,6 +243,8 @@ export async function readingItem757Checks({ check, until, control, view, facts,
       assert.equal(requested.readback.covers.joined.cover.by, null, 'request invents no authored cover');
       assert.equal(requested.readback.covers.joined.cover.refresh.state, 'pending');
       assert.equal(requested.readback.covers.joined.cover.refresh.recipient, 'aim-core');
+      assert.ok(await p.evaluate(`document.querySelector(${JSON.stringify(generated + ' > .dossier-cover')})?.textContent.includes('asked aim-core to write a cover')`),
+        'the visible footer requests a first authored cover, as the control and Core request do');
       await picture(p,key,'first-cover-requested',{readback:requested.readback});
       await noWrong(p,f);
       assert.equal(await p.evaluate('performance.timeOrigin'),origin,'joins/privacy/split refresh the currently loaded document');

@@ -38,6 +38,7 @@ test('757 generated-only rows keep first-cover header menu and sheet controls', 
   const pending = { ...generated, refresh_revision: 1, refresh: { state: 'pending', request_id: 'request757', recipient: 'writer', by: 'owner', at_ms: 1795240000000 } };
   const asked = coverSheet(doc, pending, context); host.append(asked);
   assert.equal(asked.querySelector('.cover-refresh-glyph')?.title, 'Asked writer to write a cover');
+  assert.ok(asked.text.includes('owner asked writer to write a cover'), 'the visible footer agrees with the first-cover control');
 });
 
 test('757 an answer without a cover clock clears the former root projection after a join', () => {

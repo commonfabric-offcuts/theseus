@@ -124,7 +124,7 @@ export function refreshLine(doc, target, context) {
     if (line.hidden) { line.replaceChildren(); return; }
     const cover = target.type === 'cover', name = context.nameOf;
     const words = completed ? `${name(refresh.completed_by)} ${cover ? 'refreshed the cover' : 'updated this message'}`
-      : `${name(refresh.by)} asked ${name(refresh.recipient)} to ${cover ? 'refresh the cover' : 'update this message'}`;
+      : `${name(refresh.by)} asked ${name(refresh.recipient)} to ${cover ? (target.first ? 'write a cover' : 'refresh the cover') : 'update this message'}`;
     line.replaceChildren(words + ' · ', timeNode(completed ? refresh.completed_ms : refresh.at_ms, doc));
   };
   painters.set(line, draw); draw(); return line;

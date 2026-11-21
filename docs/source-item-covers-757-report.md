@@ -158,9 +158,9 @@ assertions all remain.
 Restored Core owners are **73/73** across `test_source_cover_cost_757`,
 `test_source_item_covers`, `test_reading_item_757`,
 `test_source_item_cover_migration_757`, `test_gauntlet_987`,
-`test_cover_refresh` and `test_refresh_requests_829`. Focused clients are
-**30/30** across `ui_source_item_covers`, `ui_reading_item_757`,
-`ui_cover_corner_853` and `ui_dossier_cover`.
+`test_cover_refresh` and `test_refresh_requests_829`. Final focused clients are
+**36/36** across `ui_source_item_covers`, `ui_reading_item_757`,
+`ui_cover_corner_853`, `ui_dossier_cover` and `ui_refresh_requests_829`.
 
 The real publication control inserts a reply into301 existing dossier messages
 with10 actual readers: **zero source-cover projections,7,867 SQLite VM
@@ -185,13 +185,23 @@ first-cover button, checks real Core pending state/recipient and captures its
 new wording. Actual product hashes for13 files are supplied at launch; all five
 served client modules match fetched bytes. All four manifests match the final
 product bytes. Every browser/fixture cleanup passed, including diagnostic runs;
-browser-free14966 is read back.
+both owned browser intervals have browser-free readbacks.
 
 Native header/menu gestures are not claimed. Client controls check their
 availability and labels. Three retained phone-menu attempts encountered hidden
 tools, the old card selector and title-bar rename respectively; the final
 native request uses the sheet's own button, with no forced click or handler
 invocation. Physical-phone, keyboard-up and browser timing remain unmeasured.
+
+Visual inspection after preparation7f617d52 caught one further copy mismatch:
+the pending control/Core request said first cover, but the visible footer said
+refresh. A retained client red now asserts that footer's words. The one-line
+footer correction passed the final36 client controls; all four native matrices
+were repeated, **40/40**, with the visible footer asserted and captured. Final
+Chromium Bookends/WebKit Paper captures were inspected. The129-case affected
+client cohort passed again. No Python product bytes changed after73/73. The
+`final-*` native artifacts/manifests identify these final source bytes; earlier
+matrices and the7f packet are retained preparation evidence.
 
 The affected eight-file Python comparison runs193 tests on each tree with
 **the same82 failures and1 error; the entire name/type multiset is equal**.
