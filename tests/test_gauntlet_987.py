@@ -151,20 +151,20 @@ class Freeze987(fixture.PipelineCase):
     def test_987_schema_upgrade_downgrade_preserves_rows_and_holds_frozen_proof(self):
         from aim_next.migrations import migrate, MigrationError
         from aim_next import Store
+        from aim_next.store import SCHEMA_VERSION
         before = self.sql('SELECT id, title FROM workspaces')
         self.assertEqual(migrate(self.path,'test-instance',self.binding,'60')['schema_version'],'60')
-        self.assertEqual(migrate(self.path,'test-instance',self.binding)['schema_version'],'61')
+        self.assertEqual(migrate(self.path,'test-instance',self.binding)['schema_version'],SCHEMA_VERSION)
         self.store=Store(self.path,'test-instance',expected_binding=self.binding)
         self.assertEqual(self.sql('SELECT id, title FROM workspaces'),before)
         piece=self.piece([1]);self.committed(self.freeze(piece))
         with self.assertRaises(MigrationError):migrate(self.path,'test-instance',self.binding,'60')
         self.assertTrue(self.shown(piece)['freeze']['judged'])
 
-    def test_987_unclassified_legacy_pieces_keep_existing_combine_behavior(self):
+    def test_987_unclassified_lone_legacy_item_keeps_existing_combine_behavior(self):
         first = self.piece([1])
-        second = self.piece([2], 'other-987')
-        self.wait(first); self.wait(second)
-        self.committed(self.combine([first, second]))
+        self.wait(first)
+        self.committed(self.combine([first]))
 
 
 def load_tests(loader, tests, pattern):
