@@ -23,9 +23,11 @@ class SeatMigration(unittest.TestCase):
         # Remove only this slice's empty tables in a scratch store. Every
         # predecessor table/data/authority remains, including987/757 and1004
         # when its approved head is composed. This models the real before-layout.
-        self.before = next((step[0] for step in migrations.STEPS
-                            if any(isinstance(statement, str) and statement.startswith('CREATE TABLE hosted_seats ')
-                                   for statement in step[2])), SCHEMA_VERSION)
+        steps = [step for step in migrations.STEPS
+                 if any(isinstance(statement, str) and statement.startswith('CREATE TABLE hosted_seats ')
+                        for statement in step[2])]
+        self.assertEqual(len(steps), 1, 'One actual shipping step creates hosted seats')
+        self.before, self.after = steps[0][:2]
 
     def predecessor(self):
         with sqlite3.connect(str(self.path)) as db:
@@ -63,9 +65,9 @@ class SeatMigration(unittest.TestCase):
         self.predecessor()
         before = hashlib.sha256(self.path.read_bytes()).hexdigest()
         steps = tuple((old, new, list(up) + ['SELECT missing_1002_column FROM metadata'], down, occupied)
-                      if (old, new) == (self.before, SCHEMA_VERSION) else (old, new, up, down, occupied)
+                      if (old, new) == (self.before, self.after) else (old, new, up, down, occupied)
                       for old, new, up, down, occupied in migrations.STEPS)
-        self.assertEqual(sum(old == self.before and new == SCHEMA_VERSION and up[-1] == 'SELECT missing_1002_column FROM metadata'
+        self.assertEqual(sum(old == self.before and new == self.after and up[-1] == 'SELECT missing_1002_column FROM metadata'
                              for old, new, up, down, occupied in steps), 1)
         with mock.patch.object(migrations, 'STEPS', steps):
             with self.assertRaises(migrations.MigrationError) as failed:

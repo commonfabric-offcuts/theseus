@@ -5625,5 +5625,75 @@
       "scope": "generated/system/product",
       "inputs": []
     }
+  },
+  "tests/test_rail_dimming_1004.py": {
+    "2f8e14d7618a05ea5658f3affc224e3125a76e6a7ea34c5ec88eaca68d9c8ff2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "46e3d8e365c73703c546f640fae1c7e41a84dd878b6de62948ab7f8634f98bd4": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "46e3d8e365c73703c546f640fae1c7e41a84dd878b6de62948ab7f8634f98bd4:1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:3": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:4": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "46e3d8e365c73703c546f640fae1c7e41a84dd878b6de62948ab7f8634f98bd4:2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "2f8e14d7618a05ea5658f3affc224e3125a76e6a7ea34c5ec88eaca68d9c8ff2:1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "46e3d8e365c73703c546f640fae1c7e41a84dd878b6de62948ab7f8634f98bd4:3": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:5": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:6": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:7": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:8": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:9": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:10": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
   }
 }

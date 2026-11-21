@@ -4656,7 +4656,7 @@ async function paintTeam(workspace,refresh,loaded=()=>{}) {
   teamInvite.paint(organises(workspace,bootstrap.actor));teamPanel.paintChoices();
   $('outcome-team').hidden=false;
   loaded(members);
-  const seatsRead=await headlessSeats.refresh({id:workspace.id,version:workspace.version},members,workspace.owner_id===bootstrap.actor);
+  await headlessSeats.refresh({id:workspace.id,version:workspace.version},members,workspace.owner_id===bootstrap.actor);
   return !failed;
 }
 // New topic is one title line in the topic list: Return starts the topic with
