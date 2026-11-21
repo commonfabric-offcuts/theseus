@@ -39,10 +39,10 @@ test('the chips add up what is new and what waits on the reader across every out
   assert.equal(elsewhereWords({ fresh: 0, where: 0, waiting: 0 }), '');
 });
 
-test('a chip shows only the outcomes that hold what it counts', () => {
+test('New filters outcomes while Waiting retains them for dimming', () => {
   const quiet = { unread: 0 }, fresh = { unread: 2 }, waiting = { unread: 0, light: asks(1) };
   assert.deepEqual([quiet, fresh, waiting].map(item => shownUnder('new', item)), [false, true, false]);
-  assert.deepEqual([quiet, fresh, waiting].map(item => shownUnder('waiting', item)), [false, false, true]);
+  assert.deepEqual([quiet, fresh, waiting].map(item => shownUnder('waiting', item)), [true, true, true]);
   assert.deepEqual([quiet, fresh, waiting].map(item => shownUnder(null, item)), [true, true, true]);
 });
 

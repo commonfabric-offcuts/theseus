@@ -16,8 +16,8 @@ import { OutlineMenus } from './outline-menus.mjs';
 // A quiet pencil beside an outcome's name starts a new topic there, and one
 // beside the Outcomes heading a new outcome (item 305): each shows while the
 // pointer is on its row or the keys are on it, and always on a phone. At the
-// top, "N new" and "N waiting on you" add it all up, and a press on one shows
-// only those.
+// top, "N new" shows only what is new; "N waiting on you" dims other rows
+// without replacing the person's disclosure choices or saved dim sets.
 //
 // The outline is the shell's (in-place-navigation.mjs): it stays the same
 // element across moves, with its scroll and the keys' place. It reads what Core
@@ -95,11 +95,9 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 export function elsewhereWords({ fresh, where, waiting }) {
   return [fresh ? `${fresh} new in ${plural(where, 'other outcome', 'other outcomes')}` : '', waiting ? `${waiting} waiting on you` : ''].filter(Boolean).join(' · ');
 }
-// Whether an outcome shows while only what is new, or only what waits on the
-// reader, is shown.
+// Only New hides outcomes. Waiting uses the existing row marks as a dim layer.
 export function shownUnder(filter, item) {
   if (filter === 'new') return count(item?.unread) > 0;
-  if (filter === 'waiting') return waitingIn(item) > 0;
   return true;
 }
 
@@ -215,7 +213,7 @@ export class OutlineRail {
     this.onlyWaiting = element(doc, 'button', { type: 'button', className: 'chip ol-only', id: 'outline-only-waiting' }, lamp, this.waitingCount, ' waiting on you');
     for (const [chip, filter] of [[this.onlyNew, 'new'], [this.onlyWaiting, 'waiting']]) {
       chip.setAttribute('aria-pressed', 'false');
-      chip.onclick = () => { this.filter = this.filter === filter ? null : filter; this.paint(); if (this.filter) this.reload(); };
+      chip.onclick = () => { this.filter = this.filter === filter ? null : filter; this.paint(); if (this.filter === 'new') this.reload(); };
     }
     const sums = element(doc, 'div', { className: 'ol-sums' }, this.onlyNew, this.onlyWaiting);
     sums.setAttribute('role', 'group'); sums.setAttribute('aria-label', 'Across every outcome');
@@ -324,7 +322,7 @@ export class OutlineRail {
   get phone() { return this.doc.defaultView.matchMedia('(max-width: 760px)').matches; }
   currentTopicIn(id) { const topic = this.handles?.route?.kind === 'topic' ? this.handles.topic : null; return topic && topic.workspace_id === id ? topic : null; }
   // Whether an outcome shows its topics (Opened): the one being read, a peek, or every one a chip shows.
-  isOpen(id) { return this.opened.isOpen(id, this.phone ? this.here : null, this.filter); }
+  isOpen(id) { return this.opened.isOpen(id, this.phone ? this.here : null, this.filter === 'new' ? 'new' : null); }
   // The outline is how a person moves, so it reads in the foreground lane, as
   // the side rail did. A run's own reads go through that run (handles.view):
   // one still waiting for its turn when the run goes is never sent.
@@ -872,6 +870,7 @@ export class OutlineRail {
     if (!this.starting) { this.dossiers.sync(); this.notebookStars.sync(); }
     if (this.pages?.started || this.failed) this.handles.outcomeList?.(this.pages.items, this.failed || null, () => this.reload());
     this.publishTopics();
+    this.dimming.paintRows();
   }
   // On a phone: "☰ Outcomes" carries the total and the lit light, and a line
   // under the header says how much is new in the other outcomes. Both are the
