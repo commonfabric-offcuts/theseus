@@ -63,6 +63,7 @@ import { removalItem, paintRemoval, readRemoval, Removals } from './message-remo
 import { cardClass, paintCardColor, agentColor, paneClass } from './author-colors.mjs';
 import { paintWhisperAuthor, mayStartFrom } from './whisper-choice.mjs';
 import { AgentColors } from './colors.mjs';
+import { OutcomeColorPicker } from './outcome-color-picker.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { PageReads } from './page-reads.mjs';
 import { PageHere } from './page-here.mjs';
@@ -110,9 +111,9 @@ import { showLine, lineText } from './lines.mjs';
 // Each page is one run of this module (in-place-navigation.mjs). A run that a
 // move in place has ended finds its own elements still, so work it had under
 // way lands there and never on the page that followed it.
-let retired = null, notebookSheet = null;
+let retired = null, notebookSheet = null, outcomeColorPicker = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
-const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; notebookSheet?.retire(); },
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; notebookSheet?.retire(); outcomeColorPicker?.dispose(); },
   updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
 // The901 shell restores the foot and separator from copies for each run.
 railDensity();
@@ -4190,6 +4191,7 @@ async function initializeOutcomePage(route) {
     // The title, Team and menu share the topic header. Notes, topics and
     // tools come before outcome setup; secondary context follows (item 842).
     $('outcome-page').append($('outcomes-status'),$('retry-workspaces'),$('team-invite'),$('outcome-references'),$('page-here'),$('topic-navigation'),$('outcome-tools'),$('outcome-standing'),$('outcome-purpose'),$('target-panel'),$('pipeline-line'),$('also-waiting'),$('loop-panel'),$('problems-panel'));
+    outcomeColorPicker = new OutcomeColorPicker({ title: $('topic-title'), api, bootstrap, workspaceId: route.id, current: () => !retired && shell.page === thisRun });
     const cardsHost=document.createElement('div');cardsHost.className='outcome-topic-cards';
     // Keep the shared New topic heading, but let the outline own all lists.
     for(const child of [...$('topic-navigation').children])if(!child.classList.contains('rail-heading'))child.hidden=true;
@@ -4263,7 +4265,7 @@ async function initializeOutcomePage(route) {
       catch(error) {
         if(serial!==refreshSerial||retired)return;
         if(readFailure(error).kind==='forbidden') {
-          onboarding.paint(null);permitted=false;$('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
+          onboarding.paint(null);outcomeColorPicker.paint(null);permitted=false;$('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
           $('topic-navigation').hidden=true;$('new-topic').disabled=true;
           // Its Notebook pages, and any open in place, go with it; a recovered read lists them again.
           $('outcome-references').hidden=true;$('page-here').hidden=true;$('outcome-standing').hidden=true;$('also-waiting').hidden=true;$('outcome-tools').hidden=true;
@@ -4277,6 +4279,7 @@ async function initializeOutcomePage(route) {
       permitted=true;
       if (dirty.has('workspace')) {
         $('topic-title').textContent=workspace.title;
+        outcomeColorPicker.paint(workspace);
         purposeLine??=new PurposeLine({host:$('outcome-purpose'),description:$('topic-description'),
           save:(purpose,current)=>setPresence('workspace.update',{workspace_id:current.id},'workspace_revision',current.version,{purpose}).then(receipt=>{run(reload);return receipt;})});
         purposeLine.paint(workspace,organises(workspace,bootstrap.actor));
