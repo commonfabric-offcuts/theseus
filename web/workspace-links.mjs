@@ -12,14 +12,25 @@ export function linkURL(raw) {
   if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) throw Error('Use an HTTP or HTTPS address without a username or password.');
   return url.href;
 }
+// Navigation-equivalent spellings share one icon. Core's exact URL remains
+// the write identity; newest Core update wins (sequence breaks time ties).
+function keptLinks(records) {
+  const kept = new Map();
+  for (const row of records) {
+    const key = linkURL(row.url), before = kept.get(key);
+    if (!before || (row.ms ?? 0) > (before.ms ?? 0) ||
+        (row.ms ?? 0) === (before.ms ?? 0) && (row.seq ?? 0) > (before.seq ?? 0)) kept.set(key, row);
+  }
+  return kept;
+}
 export function outcomeLinks(previews, records) {
   const rows = new Map();
   for (const preview of previews) {
     try { const url = linkURL(preview.url); if (!rows.has(url)) rows.set(url, { ...preview, url, revision: 0 }); } catch { /* not a usable web address */ }
   }
-  for (const record of records) {
-    if (record.removed) rows.delete(record.url);
-    else rows.set(record.url, { ...rows.get(record.url), ...record });
+  for (const [key, record] of keptLinks(records)) {
+    if (record.removed) rows.delete(key);
+    else rows.set(key, { ...rows.get(key), ...record });
   }
   return [...rows.values()];
 }
@@ -122,12 +133,14 @@ export class WorkspaceLinks {
   }
   async write(handles, row, removed = false) {
     const { authority_id, authority_epoch } = handles.bootstrap.authority;
-    const saved = this.records.find(record => record.url === row.url);
+    const saved = this.records.find(record => record.url === row.url) ??
+      ((row.revision ?? 0) === 0 ? keptLinks(this.records).get(linkURL(row.url)) : null);
+    const url = saved?.url ?? row.url;
     const receipt = await this.commands.send(handles, { v: 1, instance_id: handles.bootstrap.instance_id, operation_id: crypto.randomUUID(),
       kind: 'workspace.link_set', target: { workspace_id: handles.workspaceId },
       expected: { authority: { authority_id, authority_epoch }, link_revision: row.revision ?? saved?.revision ?? 0 },
-      args: { url: row.url, title: row.title, removed } });
-    if (receipt.result?.workspace_id !== handles.workspaceId || receipt.result?.link?.url !== row.url) throw Error('The saved Link could not be confirmed.');
+      args: { url, title: row.title, removed } });
+    if (receipt.result?.workspace_id !== handles.workspaceId || receipt.result?.link?.url !== url) throw Error('The saved Link could not be confirmed.');
     return receipt.result.link;
   }
   async submit() {
@@ -136,7 +149,7 @@ export class WorkspaceLinks {
     const current = () => serial === this.serial && this.current(handles);
     this.busy = true; this.save.disabled = true; this.url.readOnly = this.title.readOnly = true;
     try {
-      const url = linkURL(this.url.value);
+      const url = this.record ? this.record.url : linkURL(this.url.value);
       const row = { url, title: this.title.value.trim() || new URL(url).hostname, ...(this.record ? { revision: this.record.revision } : {}) };
       await this.write(handles, row);
       if (current()) { this.close(true); this.rail.changed(); }

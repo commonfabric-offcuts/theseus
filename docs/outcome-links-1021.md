@@ -55,7 +55,7 @@ operation replay. A conflict returns the current revision without a write.
 `workspace_links` reads bounded pages of that outcome, with a stable sequence
 cursor, item revisions, and `reader_may_write`. Limits are owned and advertised
 by Core (500 saved rows including removal overrides; URL4096 and title1024 UTF-8 bytes). Core-kept URL spelling remains the write identity even when the browser normalizes its navigation address differently. The rail merges active rows with existing previews, deduplicates
-canonical URLs and applies removed/title overrides. No unrelated history scan.
+browser-equivalent navigation addresses and applies removed/title overrides, while preserving each exact Core URL as its write identity. If equivalent Core spellings already exist, newest update time then sequence chooses their one icon/override; no rows are rewritten. No unrelated history scan.
 
 Retain a failing real-Core check before product edits, then exercise restart,
 shared reads, URL validation, exact retry, stale revisions, authority/membership

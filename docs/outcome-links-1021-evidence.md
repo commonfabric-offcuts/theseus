@@ -21,6 +21,16 @@ Unknown writes keep their exact operation for an explicit retry while the page
 is open; Core's canonical URL key and revisions prevent duplicate saved rows.
 This is not an IndexedDB form-draft recovery claim.
 
+Fable15314 exposed a missing write/merge regression after the initial read-only
+URL check. Three actual exported-function checks retained the failures. The final
+client separates browser navigation equivalence from the exact Core row URL:
+Rename preserves its captured URL/revision; title/removal overlays share one
+icon; adding an equivalent address reuses the kept row. Stale preview removal
+keeps revision0 so Core refuses a race. Existing equivalent Core rows project
+by newest update time, then sequence; no stored row is rewritten or deleted.
+Final native cases seed the exact a/../work spelling plus its normal preview,
+then use Rename/Remove/Add to prove revisions1→4, one icon and no duplicate row.
+
 The default title is the site's address when no title is entered. No website
 metadata is fetched by Core. Favicon is the site's `/favicon.ico`, no referrer,
 with a browser/globe vector fallback. HTTP/HTTPS image CSP is explicitly added;
@@ -37,13 +47,13 @@ The return attaches raw evidence and hashes. No hosted broad verdict is claimed.
 | Check | Observed result |
 | --- | --- |
 | `tests/test_outcome_links_1021.py` and `tests/test_seat_end_migration_1015.py` |10/10 pass (`core-targeted-final.log`) |
-| Links/rails/788/996/1007/998 focused client cohort |81/81 pass (`ui-targeted-final2.log`) |
-|17-file importer cohort in `node-cohort-files.json` |246 tests,240 pass,6 fail (`node-importer-final.log`) |
+| Links/rails/788/996/1007/998 focused client cohort |84/84 pass (`ui-identity-focused-final.log`) |
+|17-file importer cohort in `node-cohort-files.json` |249 tests,243 pass,6 fail (`node-identity-final.log`) |
 | Existing16-file cohort on pristine306 and final candidate |239 tests,233 pass,6 fail; complete diagnostics equal after durations only |
 | Existing workspace/owner/migrations/SeatEnd/HTTP Core cohort |234 tests,46 pass,93 failures,95 errors on both306 and candidate; complete diagnostics equal after total duration only |
-| Final Chrome for Testing |8/8 (`chrome-final3`) |
-| Final WebKit |8/8 (`webkit-final2`) |
-| Applied scope/revision/downgrade/late-route/grid mutations |Each caught; five exact byte restorations and restored controls pass (`mutations-final`) |
+| Final Chrome for Testing |8/8 (`chrome-identity-final2`) |
+| Final WebKit |8/8 (`webkit-identity-final`) |
+| Applied scope/revision/downgrade/late-route/grid mutations |Each caught; five exact byte restorations and restored controls pass (`mutations-identity-final`) |
 
 Core checks cover reopen/shared read/exact replay, team/coordinator/topic-only
 scope, authority/revision/closed refusal, canonical URL/title bounds, byte-bounded
@@ -79,7 +89,7 @@ the run, and the two final engines have identical measured producer hashes.
 Copy's menu gesture uses an instrumented clipboard port; it does not prove a
 native OS clipboard. Phone viewport/touch emulation does not prove physical
 phone, software keyboard, finger scrolling or performance. Chrome reports no
-active page errors. WebKit retains107 exact `/api/view` access-control read
+active page errors. WebKit retains87 exact `/api/view` access-control read
 cancellations observed only during leaving/reload; the engine/phase/origin/path/
 full-stack predicate is narrow, following the existing1002 harness. Other or
 active-page errors fail. No diagnostic is silently discarded.
@@ -92,6 +102,18 @@ altered to bypass it. Chrome's first full matrix4/8 exposes the separate real
 phone menu-layer defect. WebKit's first full matrix fails its original error
 assertion; full-stack phase evidence in the corrected preflight establishes the
 navigation cancellations. These earlier runs remain failures, not final passes.
+
+The first identity preflight retained a real Rename conflict because a text edit
+had missed submit(); its focused result was83/84, and the premature84/84 progress
+line was corrected in place (15319 revision2). The actual edit then passed the
+focused checks and native scenario. The first identity matrix4/8 has phone
+checks waiting for an old menu accessible-name selector captured before renamed
+text painted; no tap had been dispatched. Final checks wait for the observed
+new title and use the current tile menu control. Neither failure is relabeled
+green. Earlier pre-identity source2f7cc547 remains retained and was never pushed
+or offered as the final source. Final source/test/harness evidence matches the
+correction; native source.json checkout_head records the checkout commit at
+launch, while per-file hashes bind the resulting producer bytes.
 
 Every final browser closes through Browser.close. All observed owned PIDs are
 absent, profiles removed, Core fixture stdin closes with exit0/empty errors and
@@ -110,5 +132,5 @@ For native runs set `AIM_PLAYWRIGHT_CORE` to the installed Playwright module;
 Chrome uses `AIM_CHROME` pointing to Chrome for Testing; WebKit uses
 `AIM_BROWSER=webkit`. The harness creates and verifies removal of its own
 profile and scratch fixtures. `AIM_1021_PREFLIGHT=1` selects one diagnostic cell.
-The attached `run-mutations.py` holds exact applied/restored controls and unique
+The attached `run-mutations-identity.py` holds exact applied/restored controls and unique
 Python cache prefixes; its source paths intentionally bind this owned tree.

@@ -15,7 +15,7 @@ const sourceFiles = ['web/things-rail.mjs','web/workspace-links.mjs','web/glyphs
   'tests/fixtures/ui_http.py','tests/outcome_links_1021_native.mjs'];
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const hashes = Object.fromEntries(await Promise.all(sourceFiles.map(async path => [path, digest(await readFile(path))])));
-await writeFile(`${evidence}/source.json`, JSON.stringify({base:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),hashes},null,2));
+await writeFile(`${evidence}/source.json`, JSON.stringify({checkout_head:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),hashes},null,2));
 const fixture = spawn('/usr/bin/python3',['-B','tests/fixtures/ui_http.py','--freshness','--live']);
 const {control,exit,errors} = fixtureControl(fixture), results = [], cleanup = {}, owned = new Set();
 const ps = () => execFileSync('/bin/ps',['-axo','pid=,ppid=,command='],{encoding:'utf8'}).trim().split('\n').map(line => {
@@ -56,7 +56,7 @@ try {
     const section=page.locator('#things .things-sec[data-key=previews]'),form=section.locator('.link-form');
     const anchor=url=>section.locator(`a[data-outcome-link][href="${url}"]`);
     const press=target=>width<761?target.tap():target.click();
-    const menu=async(url,name)=>{const a=anchor(url);if(width<761)await a.locator('..').getByRole('button',{name:`Menu for ${await a.getAttribute('aria-label')}`,exact:true}).tap();else await a.click({button:'right'});await press(page.getByRole('menu',{name:'Link',exact:true}).getByRole('menuitem',{name,exact:true}));};
+    const menu=async(url,name)=>{const a=anchor(url);if(width<761)await a.locator('..').locator('button[data-link-menu]').tap();else await a.click({button:'right'});await press(page.getByRole('menu',{name:'Link',exact:true}).getByRole('menuitem',{name,exact:true}));};
     try {
       result.pageHeaders=await (await page.goto(`${origin}/?topic=${topic}`)).allHeaders();await page.locator('body[data-ready=true]').waitFor();await openRail();
       await anchor(legacy).waitFor();assert.equal((await section.locator('.things-section-name').textContent()).trim(),'Links');
@@ -103,6 +103,19 @@ try {
       await press(form.getByRole('button',{name:'Cancel',exact:true}));
       result.core=await api.view('workspace_links',{workspace_id:workspace});assert.equal(result.core.items.filter(row=>row.url===custom).length,1);assert.equal(result.core.items.find(row=>row.url===custom).title,'Other device title');
       assert.equal(result.core.items.find(row=>row.url===legacy).removed,true);
+      // Core can retain a spelling different from browser navigation. Real
+      // preview/title/removal/add gestures must keep that one Core identity.
+      const keptURL=`${origin}/kept/a/../work-${key}`,navigationURL=`${origin}/kept/work-${key}`;
+      await control({method:'agent_message',operation_id:`kept-preview-${key}`,sender:'person',whole_topic:true,topic_id:topic,body:`[Kept preview](${navigationURL})`});
+      result.receipts.push(await set(workspace,keptURL,'Core-spelled override'));await anchor(keptURL).waitFor();
+      const equivalent=()=>section.locator('a[data-outcome-link]').evaluateAll((nodes,url)=>nodes.filter(n=>n.href===url).length,navigationURL);
+      assert.equal(await equivalent(),1);await menu(keptURL,'Rename');
+      await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Renamed kept address');await press(form.getByRole('button',{name:'Save',exact:true}));await form.waitFor({state:'hidden'});
+      await anchor(keptURL).filter({hasText:'Renamed kept address'}).waitFor();
+      let keptCore=await api.view('workspace_links',{workspace_id:workspace});assert.equal(keptCore.items.find(row=>row.url===keptURL).revision,2);assert.equal(keptCore.items.find(row=>row.url===keptURL).title,'Renamed kept address');assert.ok(!keptCore.items.some(row=>row.url===navigationURL));
+      await menu(keptURL,'Remove');await anchor(keptURL).waitFor({state:'detached'});assert.equal(await equivalent(),0);
+      await press(section.getByRole('button',{name:'Add link',exact:true}));await form.getByRole('textbox',{name:'Link URL',exact:true}).fill(navigationURL);await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Restored kept address');await press(form.getByRole('button',{name:'Add link',exact:true}));await form.waitFor({state:'hidden'});await anchor(keptURL).waitFor();
+      result.keptIdentity=await api.view('workspace_links',{workspace_id:workspace});const kept=result.keptIdentity.items.find(row=>row.url===keptURL);assert.equal(kept.revision,4);assert.equal(kept.removed,false);assert.equal(kept.title,'Restored kept address');assert.ok(!result.keptIdentity.items.some(row=>row.url===navigationURL));assert.equal(await equivalent(),1);
       // A real team writer becomes topic-only: existing shared Links disappear.
       const shared=await control({method:'agent_topic',operation_id:`shared-${key}`,team:true,title:'Team Links',body:'Independent topic participation'});
       phase='leaving';await page.goto(`${origin}/?topic=${shared.topic_id}`);await page.locator('body[data-ready=true]').waitFor();phase='active';await openRail();

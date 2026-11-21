@@ -57,3 +57,25 @@ test('1021 Core-kept URL spelling survives a different browser URL normalization
   const bad=reader(async()=>({instance_id:'i1',workspace_id:'w1',items:[row(1,'javascript:alert(1)')],next_cursor:null}));
   await assert.rejects(bad.links.read(bad.handles));
 });
+test('1021 browser-equivalent preview overlays deduplicate titles and retain removal',()=>{
+  const previews=[{url:'https://example.test/work',title:'Derived'}],kept={url:'https://example.test/a/../work',title:'Kept title',revision:2,seq:4,ms:10};
+  const named=outcomeLinks(previews,[{...kept,removed:false}]);
+  assert.equal(named.length,1);assert.equal(named[0].title,'Kept title');assert.equal(named[0].url,kept.url);
+  assert.deepEqual(outcomeLinks(previews,[{...kept,removed:true}]),[]);
+  const aliases=[{...kept,removed:false},{url:previews[0].url,title:'Later removal',revision:1,seq:5,ms:20,removed:true}];
+  assert.deepEqual(outcomeLinks(previews,aliases),[]);assert.deepEqual(outcomeLinks(previews,aliases.toReversed()),[]);
+});
+test('1021 Rename submits the exact Core-kept URL and captured row revision',async()=>{
+  const record={url:'https://example.test/a/../work',title:'Old',revision:2};let sent;
+  const handles={workspaceId:'w1'};const links=Object.assign(Object.create(WorkspaceLinks.prototype),{rail:{handles,changed(){}},serial:1,mayWrite:true,record,
+    form:{hidden:false},url:{value:record.url,readOnly:true},title:{value:'Renamed',readOnly:false},save:{disabled:false},
+    write:async(_handles,row)=>{sent=row;},close(){this.serial++;},message(words){throw Error(words);}});
+  await links.submit();assert.deepEqual(sent,{url:record.url,title:'Renamed',revision:2});
+});
+test('1021 adding an equivalent address updates its kept identity, and stale removal still conflicts',async()=>{
+  const kept={url:'https://example.test/a/../work',title:'Old',revision:3,seq:4,ms:10};let sent;
+  const handles={workspaceId:'w1',bootstrap:{instance_id:'i1',authority:{authority_id:'a1',authority_epoch:'e1'}}};
+  const links=Object.assign(Object.create(WorkspaceLinks.prototype),{records:[kept],commands:{send:async(_handles,envelope)=>{sent=envelope;return{result:{workspace_id:'w1',link:{...kept,title:envelope.args.title}}};}}});
+  await links.write(handles,{url:'https://example.test/work',title:'New'});assert.equal(sent.args.url,kept.url);assert.equal(sent.expected.link_revision,3);
+  await links.write(handles,{url:'https://example.test/work',title:'Old',revision:0},true);assert.equal(sent.args.url,kept.url);assert.equal(sent.expected.link_revision,0);assert.equal(sent.args.removed,true);
+});
