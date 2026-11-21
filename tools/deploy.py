@@ -46,19 +46,20 @@ if __package__ in (None, ""):
 
 from aim_next.contract import Refusal
 from aim_next.releases import release_row
-from tools import checks as outcome_checks, known_reds as known_reds_check, release_check, releases, train as train_check, runner_runtime
+from tools import checks as outcome_checks, known_reds as known_reds_check, release_check, releases, train as train_check, runner_runtime, gauntlet_admission
 
 PYTHON = "/usr/bin/python3"
 Config = collections.namedtuple(
     "Config", "live instance python server_profile port tailnet_origin runner_profile runner_id routes outcome reporter_profile "
-    "release_branch repository")
+    "release_branch repository pipeline_outcome pipeline_instance pipeline_broker pipeline_profile", defaults=(None, None, None, None))
 REQUIRED_KEYS = ("live", "instance", "server_profile", "port", "runner_profile", "runner_id", "routes")
 # outcome: the outcome whose checks this deploy measures (docs/targets.md); reporter_profile: the profile of a member, not
 # its coordinator, that reads them, opens fix topics, writes the candidate's run and moves the release piece (D27).
 # release_branch, repository: the branch a merged train lands on and the GitHub repository that branch and its runs are
 # read from (owner/name), which --train needs (tools/train.py). After recording a verified new release,
 # release_branch is also fast-forwarded on the live checkout's origin and read back from that remote.
-OPTIONAL_KEYS = ("python", "tailnet_origin", "outcome", "reporter_profile", "release_branch", "repository")
+OPTIONAL_KEYS = ("python", "tailnet_origin", "outcome", "reporter_profile", "release_branch", "repository",
+                 "pipeline_outcome", "pipeline_instance", "pipeline_broker", "pipeline_profile")
 
 
 class Refused(Exception):
@@ -92,12 +93,22 @@ def load_config(path):
             "deploy config: release_branch is a branch name, such as release/live73")
     require("repository" not in raw or re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", raw["repository"]),
             "deploy config: repository is GitHub's owner/name")
+    admission = {key for key in raw if key.startswith("pipeline_")}
+    if admission:
+        require({"pipeline_outcome", "pipeline_instance"} <= admission and
+                (("pipeline_broker" in admission) != ("pipeline_profile" in admission)),
+                "deploy config: admission needs outcome, instance and exactly one broker or profile")
+        for key in ("pipeline_broker", "pipeline_profile"):
+            require(key not in raw or os.path.isabs(raw[key]), "deploy config: %s must be absolute" % key)
     return Config(live=Path(raw["live"]), instance=instance, python=raw.get("python", PYTHON),
                   outcome=raw.get("outcome"), reporter_profile=instance / raw["reporter_profile"] if "reporter_profile" in raw else None,
                   server_profile=instance / raw["server_profile"], port=raw["port"],
                   tailnet_origin=raw.get("tailnet_origin"), runner_profile=instance / raw["runner_profile"],
                   runner_id=raw["runner_id"], routes=instance / raw["routes"],
-                  release_branch=raw.get("release_branch"), repository=raw.get("repository"))
+                  release_branch=raw.get("release_branch"), repository=raw.get("repository"),
+                  pipeline_outcome=raw.get('pipeline_outcome'), pipeline_instance=raw.get('pipeline_instance'),
+                  pipeline_broker=Path(raw['pipeline_broker']) if raw.get('pipeline_broker') else None,
+                  pipeline_profile=Path(raw['pipeline_profile']) if raw.get('pipeline_profile') else None)
 
 
 def server_argv(config):
@@ -769,6 +780,14 @@ def take_train(config, sha, evidence, train, known_reds, github):
     return trained
 
 
+def admit(config, candidate):
+    """987: callable before a launcher boundary/merge or a human hosted dispatch."""
+    try:
+        return gauntlet_admission.admit(config, candidate, run)
+    except (gauntlet_admission.Refused, OSError, ValueError, TypeError, KeyError) as error:
+        raise Refused(str(error))
+
+
 def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, live_since=None, known_reds=None,
            train=None, github=None, revert=()):
     require(re.fullmatch(r"[0-9a-f]{40}", sha or ""), "give the full 40-character commit, not %r" % sha)
@@ -816,6 +835,8 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     # Each red is recorded with the line the operator reads (known_reds.SAID), and that line is what is printed.
     for line in known_reds_check.said(known or {}):
         print(line)
+    if not unpassed or accepted:
+        admit(config, sha)
     host_policy = runner_policy(config, sha)
     keep_host = host_policy['kind'] == 'keep'
     server_args, runner_args, supervisor_args = server_argv(config), runner_argv(config), supervisor_argv(config)
@@ -855,6 +876,10 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     require(trained is None or head == trained["live"], "the live checkout is at %s now, not %s, which the train's changes "
             "were read from; nothing was stopped" % (head, trained and trained["live"]))
 
+    # Re-read an eligible head before its candidate/report/stop effects; an
+    # earlier empty pipeline snapshot is not an authorization to proceed now.
+    if not unpassed or accepted:
+        admit(config, sha)
     # 02-checks (12, 104): the candidate's readings beside the live release's, read as the reporter.
     view, found = None, []
     if config.outcome:
@@ -1097,6 +1122,19 @@ def publish_release_branch(config, sha, evidence):
 
 def main(argv=None):
     import argparse
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "admit":
+        parser = argparse.ArgumentParser(description="Read judged admission before a hosted run or landing; no effects.")
+        parser.add_argument("candidate")
+        parser.add_argument("--config", required=True)
+        options = parser.parse_args(argv[1:])
+        try:
+            answer = admit(load_config(options.config), options.candidate)
+        except Refused as error:
+            print("refused: %s" % error, file=sys.stderr)
+            return 1
+        print(json.dumps(answer, sort_keys=True))
+        return 0
     parser = argparse.ArgumentParser(description="Deploy a reviewed Theseus commit to a live instance.")
     parser.add_argument("--config", required=True)
     checked = parser.add_mutually_exclusive_group(required=True)

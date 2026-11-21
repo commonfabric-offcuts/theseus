@@ -19,9 +19,10 @@ A judged change pays its own gauntlet, and nothing waits on it.
   rerun. The rerun is its cost, never the others'.
 - A judged item is never combined with another item into one landing, and
   nothing is chained behind it.
-- An item whose files touch the gauntlet's paths is marked judged when it
-  is bound, so the plan around it is known at freeze, not at landing, and
-  its estimate carries the gauntlet's hour.
+- At freeze, the actual head's diff against its release base marks a piece
+  judged when its files touch the gauntlet's paths. The card and combine
+  read that one Core record; before freeze, the card shows no mark.
+  Warp adds the gauntlet's hour on its cover, rather than an ETA in code.
 - The landing tool refuses the other order: it will not start a judged
   head's run or landing while an ordinary approved head is unlanded, and
   combine will not put a judged item in a landing with anything else

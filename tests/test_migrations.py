@@ -192,6 +192,10 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # 987's append-only freeze table is absent from every historical layout
+        # this fixture reconstructs (48 and earlier). Its real 60<->61 migration
+        # and occupied-table refusal are exercised in test_gauntlet_987.py.
+        db.execute("DROP TABLE pipeline_piece_freezes")
         db.execute("DROP TABLE dossier_order")
         if version == "48":
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))

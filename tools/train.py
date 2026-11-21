@@ -31,6 +31,7 @@ import subprocess
 from typing import Protocol
 
 from tools import base_move, ci_known_reds as ci, release_check, ci_input_reads
+from aim_next.judgment import DEPLOY_TOOL, CONTROLLER, MIGRATIONS, guarded
 
 KEYS = ("pr", "merge_commit", "items", "merged_tree", "kind", "hosted_run", "judgment")
 ITEM_FIELDS = ("item", "approved_head", "review")
@@ -43,12 +44,6 @@ SHA = re.compile(r"[0-9a-f]{40}")
 # differs from event base"), the controller (.github/: the workflows and the policy they read) and the service's data
 # migrations, every schema step of which is a row of aim_next/migrations.py's STEPS. tests/test_tools_train.py derives
 # the first two from the code itself, so a module either starts loading is guarded here or that test fails.
-DEPLOY_TOOL = ("tools/deploy.py", "tools/release_check.py", "tools/unit_shards.py", "tools/known_reds.py", "tools/releases.py", "tools/train.py",
-               "tools/checks.py", "tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/ci-input-reads.json",
-               "tools/quarantine.py", "tools/steps_for.py", "tools/base_move.py", "tools/own_case_receipt.py", "tools/continuation_envelope.py",
-               "tools/runner_runtime.py")
-CONTROLLER = ".github/"
-MIGRATIONS = ("aim_next/migrations.py",)
 # GitHub's REST API paths for one workflow run, one check run and one pull request, and its compare of a commit with a
 # branch's tip (repos/R/compare/BASE...HEAD).
 RUN_PATH, CHECK_PATH, PULL_PATH = "repos/%s/actions/runs/%d", "repos/%s/check-runs/%d", "repos/%s/pulls/%d"
@@ -183,9 +178,6 @@ def tree_of(git, commit):
     return _ask(git, "the tree of %s" % commit[:12], "rev-parse", "--verify", commit + "^{tree}").strip()
 
 
-def guarded(paths):
-    """The paths an ordinary train may not change (DEPLOY_TOOL, CONTROLLER, MIGRATIONS)."""
-    return [path for path in paths if path in DEPLOY_TOOL or path in MIGRATIONS or path.startswith(CONTROLLER)]
 
 
 def listed(github, repository, kind, number):
