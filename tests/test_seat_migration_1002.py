@@ -30,10 +30,9 @@ class SeatMigration(unittest.TestCase):
         self.before, self.after = steps[0][:2]
 
     def predecessor(self):
-        with sqlite3.connect(str(self.path)) as db:
-            for statement in SEAT_DOWN:
-                db.execute(statement)
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (self.before,))
+        # Move all later empty layouts back too, rather than retaining their
+        # columns under an older stamp and attempting to add them twice.
+        migrations.migrate(self.path, 'test-instance', self.binding, self.before)
 
     def test_upgrade_preserves_predecessor_data_and_enables_one_recorded_seat(self):
         self.predecessor()

@@ -10,6 +10,9 @@ import { NotebookImages } from './notebook-images.mjs';
 import { ImagePick, paintThumb, readInTurn } from './image-pick.mjs';
 import { DRAFT_TIP } from './topic-navigation.mjs';
 import { NotebookViews } from './notebook-view.mjs';
+import { AGENT_PALETTE } from './author-colors.mjs';
+import { openColorPicker } from './color-picker.mjs';
+import { paintNotebookColor } from './notebook-colors.mjs';
 import { drawnText, drawnRevision, formatWords, literalWords, composeFormattedWords } from './message-format.mjs';
 
 // The draft mark's words (docs/notebook-pages.md, "A draft page").
@@ -33,6 +36,7 @@ export function notebookMenuItems(page) {
       ...(page.menuExtras?.('first')??[]),
       {key:'text',label:'Show as text',glyph:'text',checked:page.mode==='text',act:()=>page.switchView('text')},
       {key:'cards',label:'Show as cards',glyph:'stack',checked:page.mode==='cards',act:()=>page.switchView('cards')},
+      {key:'color',label:'Set color',glyph:'palette',disabled:!canWrite(),act:()=>{if(canWrite())return page.pageColors();}},
       {key:'draft',label:'Private Draft',glyph:'draft',checked:page.drafted(),disabled:!canWrite(),act:()=>{if(canWrite())page.markDraft(!page.drafted());}},
       ...(page.menuExtras?.('beforeImage')??[]),
       {key:'image',label:'Add image…',glyph:'image',disabled:!canWrite(),act:()=>{if(canWrite())page.addImage.onclick();}},
@@ -544,6 +548,29 @@ export class NotebookPage extends DeckPage {
   }
   menuItems() { return notebookMenuItems(this); }
 
+  pageColors() {
+    const w=this.writing;
+    const writable=()=>this.writing===w&&w?.value&&!this.readOnly&&!w.readOnly&&!w.reading&&!w.deleted&&!w.closed&&!w.actionPending&&!w.actionRunning;
+    if(!writable())return;
+    if(this.editing)this.save();this.textEdited();
+    const picker=openColorPicker({anchor:this.more,agent:w.value.title||'Notebook page',palette:AGENT_PALETTE,
+      chosen:w.value.color??null,own:null,resetLabel:'No color',doc:this.doc,
+      choose:async color=>{
+        if(!writable()||!(color===null||AGENT_PALETTE.includes(color)))return {error:{message:'This page cannot be changed.'}};
+        // The same writer journals this choice with its words before transport.
+        // An uncertain earlier envelope is retried intact, then later intent is saved.
+        w.edit({color},w.capture(),this.mode);
+        await w.flush();
+        if(!w.error&&!w.pending&&!w.conflict&&!w.readOnly&&w.dirty)await w.flush();
+        if(!writable()||w.value.color!==color||w.base?.content.color!==color||w.dirty||w.busy||w.conflict||w.error||w.journalError)
+          return {error:{message:w.error??'The color is kept here but not confirmed saved. Try again after saving.'}};
+        return {status:'committed'};
+      }});
+    picker?.root.classList.add('notebook-color-picker');
+    this.listening.signal.addEventListener('abort',()=>picker?.close(false),{once:true});
+    return picker;
+  }
+
   async copyLink() {
     const w=this.writing,source=w?.base?.source;
     if(!source||w.closed)return;
@@ -579,6 +606,7 @@ export class NotebookPage extends DeckPage {
   }
   paintPageState() {
     const w=this.writing;if(!w)return;
+    paintNotebookColor(this.host,w.value?.color===undefined?w.base?.content.color??w.base?.source.color:w.value.color);
     this.more.disabled=Boolean(w.actionRunning||w.actionPending);this.more.hidden=!w.pageState;
     this.pageNotice.replaceChildren();
     if(w.deleted) {

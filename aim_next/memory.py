@@ -5,6 +5,7 @@ import json
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision, _bounded_page
 from .conversation import _preview
 from .whispers import actor_kind, private_source_refused
+from .colors import AGENT_COLORS
 
 
 MEMORY_SCHEMA = [
@@ -45,6 +46,13 @@ MEMORY_ACTION_SCHEMA = [
 ]
 MEMORY_ACTION_DOWN = ("DROP TABLE memory_star_acts", "ALTER TABLE memory_revisions DROP COLUMN deleted")
 MEMORY_ACTION_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM memory_star_acts) OR EXISTS (SELECT 1 FROM memory_revisions WHERE deleted=1)"
+
+# A page's shared colour is content in the same immutable revision stream as
+# its words, never a per-reader preference or an individual card's marker.
+MEMORY_COLOR_SCHEMA = ["ALTER TABLE memory_revisions ADD COLUMN color TEXT CHECK(color IS NULL OR color IN (" +
+                       ",".join("'" + name + "'" for name in AGENT_COLORS) + "))"]
+MEMORY_COLOR_DOWN = ("ALTER TABLE memory_revisions DROP COLUMN color",)
+MEMORY_COLOR_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM memory_revisions WHERE color IS NOT NULL)"
 
 DRAFT_KEPT = ("This page is a draft: its writer keeps it from agents until the draft mark is cleared, so an agent "
               "neither reads, writes nor marks it; nothing was written")
@@ -154,8 +162,8 @@ class Memory:
         if bool(current["deleted"]) == args["deleted"]:
             raise Refusal("REVISION_CONFLICT", "This page's deletion state changed; nothing was changed")
         revision = item["current_revision"] + 1
-        db.execute("INSERT INTO memory_revisions(item_id,revision,author_id,operation_id,title,body,attachments,refs,draft,deleted) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                   (item["id"], revision, actor, envelope["operation_id"], current["title"], current["body"], current["attachments"], current["refs"], current["draft"], int(args["deleted"])))
+        db.execute("INSERT INTO memory_revisions(item_id,revision,author_id,operation_id,title,body,attachments,refs,draft,deleted,color) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                   (item["id"], revision, actor, envelope["operation_id"], current["title"], current["body"], current["attachments"], current["refs"], current["draft"], int(args["deleted"]), current["color"]))
         db.execute("UPDATE memory_items SET current_revision=? WHERE id=?", (revision, item["id"]))
         result, affected = self._memory_changed(db, item["id"], {"kind": item["scope_kind"], "id": item["scope_id"]}, revision)
         return dict(result, deleted=args["deleted"]), affected
@@ -194,7 +202,7 @@ class Memory:
                     raise
         limit = _page_size(args)
         rows = sorted([row for kind, scope in scopes for row in db.execute(
-            "SELECT a.id AS star,a.item_id,i.scope_kind,i.scope_id,i.current_revision,r.title FROM memory_star_acts a "
+            "SELECT a.id AS star,a.item_id,i.scope_kind,i.scope_id,i.current_revision,r.title,r.color FROM memory_star_acts a "
             "JOIN memory_items i ON i.id=a.item_id JOIN memory_revisions r ON r.item_id=i.id AND r.revision=i.current_revision "
             "WHERE a.actor_id=? AND a.scope_kind=? AND a.scope_id=? AND a.id<? AND a.starred=1 AND r.deleted=0 "
             "AND NOT EXISTS (SELECT 1 FROM memory_star_acts n WHERE n.actor_id=a.actor_id AND n.item_id=a.item_id AND n.id>a.id) "
@@ -203,14 +211,17 @@ class Memory:
         return _bounded_page({"instance_id": self.instance_id, "topic_id": topic["id"]}, rows, limit,
                              lambda row: {"star": row["star"], "item_id": row["item_id"], "topic_id": topic["id"],
                                           "owner_scope": {"kind": row["scope_kind"], "id": row["scope_id"]},
-                                          "title": _preview(row["title"], 256), "revision": row["current_revision"]}, "star")
+                                          "title": _preview(row["title"], 256), "color": row["color"], "revision": row["current_revision"]}, "star")
 
     def _memory_content(self, db, actor, args, retained=()):
         # draft is optional: a revision that leaves it out keeps the page's mark.
-        if set(args) - {"draft"} != {"title", "body", "attachments", "references"}:
+        if set(args) - {"draft", "color"} != {"title", "body", "attachments", "references"}:
             raise Refusal("INVALID_ARGUMENT", "Supply a complete Notebook revision")
         if "draft" in args and not isinstance(args["draft"], bool):
             raise Refusal("INVALID_ARGUMENT", "A page's draft mark is true or false")
+        color = args.get("color")
+        if color is not None and (not isinstance(color, str) or color not in AGENT_COLORS):
+            raise Refusal("INVALID_ARGUMENT", "A page color is a palette name, or null for No color")
         title, body = _body(args["title"]), _body(args["body"])
         attachments, refs = args["attachments"], args["references"]
         if not isinstance(attachments, list) or not isinstance(refs, list):
@@ -256,12 +267,13 @@ class Memory:
             scope = {"kind": old["scope_kind"], "id": old["scope_id"]}
             revision = old["current_revision"]
             _revision(envelope["expected"], "item_revision", revision)
-        current = None if creating else db.execute("SELECT attachments,draft FROM memory_revisions WHERE item_id=? AND revision=?",
+        current = None if creating else db.execute("SELECT attachments,draft,color FROM memory_revisions WHERE item_id=? AND revision=?",
                                                    (item_id, revision)).fetchone()
         retained = () if creating else _Carried(db, item_id, json.loads(current["attachments"]))
         title, body, attachments, refs, draft = self._memory_content(db, actor, envelope["args"], retained=retained)
         was = bool(current and current["draft"])
         draft = was if draft is None else draft
+        color = envelope["args"].get("color", current["color"] if current else None)
         # Only a person marks a page or clears its mark, and no agent writes a page it is not given to read.
         if (was or draft) and actor_kind(db, actor) == "agent":
             raise Refusal("FORBIDDEN", DRAFT_KEPT)
@@ -270,9 +282,9 @@ class Memory:
                        (item_id, scope["kind"], scope["id"], actor))
         else:
             db.execute("UPDATE memory_items SET current_revision=? WHERE id=?", (revision + 1, item_id))
-        db.execute("INSERT INTO memory_revisions(item_id,revision,author_id,operation_id,title,body,attachments,refs,draft) "
-                   "VALUES (?,?,?,?,?,?,?,?,?)", (item_id, revision + 1, actor, envelope["operation_id"], title, body,
-                                                   _json(attachments), _json(refs), int(draft)))
+        db.execute("INSERT INTO memory_revisions(item_id,revision,author_id,operation_id,title,body,attachments,refs,draft,color) "
+                   "VALUES (?,?,?,?,?,?,?,?,?,?)", (item_id, revision + 1, actor, envelope["operation_id"], title, body,
+                                                   _json(attachments), _json(refs), int(draft), color))
         # Whoever writes a revision has read it, so their own edit never marks
         # the page changed for them. The write is already its own change.
         db.execute("INSERT INTO memory_reads(actor_id,item_id,revision) VALUES (?,?,?) "
@@ -321,7 +333,7 @@ class Memory:
                 "author": row["author_id"], "creator": item["creator_id"], "title": row["title"],
                 "body": "" if withheld else row["body"], "attachments": [] if withheld else json.loads(row["attachments"]),
                 "references": [] if withheld else references, "version": row["revision"],
-                "draft": bool(row["draft"]), "withheld": withheld, "deleted": deleted,
+                "draft": bool(row["draft"]), "color": row["color"], "withheld": withheld, "deleted": deleted,
                 **self._memory_star(db, actor, item["id"]),
                 "reader_may_delete": self._memory_may_delete(db, actor, item, draft_now),
                 "reader_may_write": not deleted and self._reader_may_write(db, actor, item["scope_kind"], item["scope_id"], draft_now),
@@ -329,10 +341,10 @@ class Memory:
 
     def _view_memory_status(self, db, actor, args):
         item = self._memory_identity(db, actor, args.get("item_id"))
-        row = db.execute("SELECT draft,deleted FROM memory_revisions WHERE item_id=? AND revision=?",
+        row = db.execute("SELECT draft,deleted,color FROM memory_revisions WHERE item_id=? AND revision=?",
                          (item["id"], item["current_revision"])).fetchone()
         return {"instance_id": self.instance_id, "source_ref": {"kind": "memory", "id": item["id"], "revision": item["current_revision"]},
-                "deleted": bool(row["deleted"]), **self._memory_star(db, actor, item["id"]),
+                "deleted": bool(row["deleted"]), "color": row["color"], **self._memory_star(db, actor, item["id"]),
                 "reader_may_delete": self._memory_may_delete(db, actor, item, bool(row["draft"])),
                 "reader_may_write": not row["deleted"] and self._reader_may_write(db, actor, item["scope_kind"], item["scope_id"], bool(row["draft"]))}
 
@@ -348,7 +360,7 @@ class Memory:
         scope = self._memory_scope(db, actor, args.get("owner_scope"))
         limit = _page_size(args)
         agent = actor_kind(db, actor) == "agent"
-        rows = db.execute("SELECT i.*,r.author_id,r.draft,substr(r.title,1,256) AS title,substr(r.body,1,1024) AS body,length(CAST(r.body AS BLOB)) AS body_bytes,"
+        rows = db.execute("SELECT i.*,r.author_id,r.draft,r.color,substr(r.title,1,256) AS title,substr(r.body,1,1024) AS body,length(CAST(r.body AS BLOB)) AS body_bytes,"
                           "coalesce(k.revision,0) AS read_revision FROM memory_items i JOIN memory_revisions r ON r.item_id=i.id AND r.revision=i.current_revision "
                           "LEFT JOIN memory_reads k ON k.actor_id=? AND k.item_id=i.id WHERE i.scope_kind=? AND i.scope_id=? AND r.deleted=0 AND i.seq>? ORDER BY i.seq LIMIT ?",
                           (actor, scope["kind"], scope["id"], args.get("cursor", 0), limit + 1)).fetchall()
@@ -359,7 +371,7 @@ class Memory:
             item = {"id": row["id"], "seq": row["seq"], "owner_scope": scope,
                     "title": _preview(row["title"], 256), "body": body,
                     "preview": not withheld and len(body.encode("utf-8")) < row["body_bytes"],
-                    "draft": bool(row["draft"]), "withheld": withheld,
+                    "draft": bool(row["draft"]), "color": row["color"], "withheld": withheld,
                     "source_ref": {"kind": "memory", "id": row["id"], "revision": row["current_revision"]},
                     "revision": row["current_revision"], "read_revision": row["read_revision"],
                     "author": row["author_id"], "allowed_actions": ["quote", "note.save"]}

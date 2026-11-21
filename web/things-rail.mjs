@@ -32,6 +32,7 @@ import { keyAction } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
 import { nearest } from './arrow-reach.mjs';
 import { glyph } from './glyphs.mjs';
+import { paintNotebookColor } from './notebook-colors.mjs';
 
 // A Notebook page's first words: its body's lines without Markdown marks, joined, after its own title when it opens with
 // it as a heading. The rail clamps them to three lines; this keeps no more than it could show.
@@ -628,9 +629,10 @@ export class ThingsRail {
       return items && this.creators.get('topic')?.available ? { sum: '', key: 'note-none', node: () => element(this.doc, 'p', { className: 'things-quiet', textContent: 'No pages yet.' }) } : null;
     }
     const doc = this.doc, scope = { kind: 'topic', id: found.topicId }, more = found.notebookNext !== null;
-    return { sum: `${items.length}${more ? '+' : ''}`, key: JSON.stringify(['note', scope, more, items.map(item => [item.id, item.title, item.revision, item.read_revision, item.draft === true])]), node: () => {
+    return { sum: `${items.length}${more ? '+' : ''}`, key: JSON.stringify(['note', scope, more, items.map(item => [item.id, item.title, item.revision, item.read_revision, item.draft === true, item.color??null])]), node: () => {
       const list = element(doc, 'ul', { className: 'things-list' }, ...items.map(item => {
         const link = this.placeLink({ ...scope, page: item.id }, this.notebookName(item));
+        paintNotebookColor(link,item.color);
         paintChanged(link, item);
         // A page shows its own first words under its title, so it reads as a page rather than a link.
         const words = openingWords(item.body, this.notebookName(item));

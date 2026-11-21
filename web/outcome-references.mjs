@@ -1,5 +1,6 @@
 import { PAGE, paintChanged, changedSince } from './topic-navigation.mjs';
 import { notebookDocument } from './notebook-view.mjs';
+import { paintNotebookColor } from './notebook-colors.mjs';
 
 export function pageOpening(body, title) {
   let text = String(body ?? '').split(/\n+/).map(line => line.replace(/^#+\s*|[*_`>]/g, '').trim()).filter(Boolean).join(' ');
@@ -18,8 +19,8 @@ export function pageOpening(body, title) {
 // The topic's changes do not cover the outcome's Notebook, so each read tells
 // the Reader the revisions it saw.
 export class OutcomeReferences {
-  constructor({ scope, host, list, more, message, read, open, denied, seen = () => {}, painted = () => {}, create = null, pageMax = PAGE, viewPreference = null }) {
-    Object.assign(this, { scope, host, list, more, message, read, open, isDenied: denied, seen, painted, pageMax, viewPreference });
+  constructor({ scope, host, list, more, message, read, open, menu = null, denied, seen = () => {}, painted = () => {}, create = null, pageMax = PAGE, viewPreference = null }) {
+    Object.assign(this, { scope, host, list, more, message, read, open, menu, isDenied: denied, seen, painted, pageMax, viewPreference });
     this.creation = create?.(); this.creation?.setAvailable(false);
     this.items = []; this.next = null; this.loading = null; this.queued = null;
     more.onclick = () => this.load(true);
@@ -35,6 +36,7 @@ export class OutcomeReferences {
         this.list.append(row);
       }
       row.textContent = item.title || 'Notebook item';
+      paintNotebookColor(row,item.color);
       if (this.viewPreference) {
         const mode = this.viewPreference.get(item.id), label = document.createElement('span'), line = document.createElement('span');
         label.className = 'notebook-document-title'; label.textContent = item.title || 'Notebook item'; label.title = label.textContent;
@@ -49,7 +51,23 @@ export class OutcomeReferences {
         row.dataset.mode = mode;
       }
       else paintChanged(row, item);
-      row.onclick = () => this.open(item.source_ref, row);
+      if(this.menu) {
+        row.onpointerdown=event=>{row.contextTouch=event.pointerType==='touch';row.contextClick=false;
+          row.contextSelected=row.ownerDocument.getSelection?.()?.isCollapsed===false;};
+        row.oncontextmenu=event=>{
+          const selected=row.contextSelected??row.ownerDocument.getSelection?.()?.isCollapsed===false;row.contextSelected=null;
+          if(event.defaultPrevented||event.pointerType==='touch'||row.contextTouch||selected)return;
+          event.preventDefault();event.stopPropagation();row.contextClick=Boolean(event.ctrlKey);
+          this.menu(item,row,{x:event.clientX,y:event.clientY});
+        };
+        row.onkeydown=event=>{
+          if((event.key==='ContextMenu'||event.key==='F10'&&event.shiftKey)&&!event.ctrlKey&&!event.altKey&&!event.metaKey){
+            event.preventDefault();event.stopPropagation();this.menu(item,row,null);
+          }
+        };
+      }
+      row.onclick = event => {const follow=row.contextClick&&event?.ctrlKey&&event.button===0;row.contextClick=false;
+        if(follow){event.preventDefault();return;}return this.open(item.source_ref, row);};
       if (this.list.children[index] !== row) this.list.insertBefore(row, this.list.children[index] ?? null);
     });
     this.more.hidden = this.next === null;

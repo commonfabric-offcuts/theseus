@@ -83,6 +83,7 @@ import { firstLine } from './pipeline-words.mjs';
 import { HealthPage } from './health.mjs';
 import { NotebookPage } from './notebook-page.mjs';
 import { NotebookRailMenu } from './notebook-rail-menu.mjs';
+import { NotebookThumbnailMenu } from './notebook-thumbnail-menu.mjs';
 import { NotebookSheet, notebookDockWanted, returning as notebookReturning } from './notebook-sheet.mjs';
 import { HealthLight } from './health-light.mjs';
 import { phoneCheck } from './phone-check.mjs';
@@ -4635,7 +4636,13 @@ let notebookViews=null;
 function notebookViewsOf(){return notebookViews??=new NotebookViews(bootstrap);}
 function outcomePages(workspace,recorded) {
   pagesInPlace(workspace,recorded);
-  return new OutcomeReferences({scope:workspace,host:$('outcome-references'),create:()=>notebookCreator($('outcome-references'),{kind:'workspace',id:workspace}),list:$('outcome-references-list'),more:$('more-references'),
+  let refs;
+  const menus=new NotebookThumbnailMenu({api,bootstrap,read:pipelineView,open:openNotebook,
+    loaded:id=>notebookSheet?.showing&&notebookSheet.current?.item===id&&!notebookSheet.current.writing?.closed?notebookSheet.current:null,
+    mode:id=>notebookViewsOf().get(id),current:()=>!retired&&outcomeReferences===refs&&here.workspaceId===workspace,
+    notice:what=>showLine($('outcome-references-status'),what),changed:()=>refs.load()});
+  return refs=new OutcomeReferences({scope:workspace,host:$('outcome-references'),create:()=>notebookCreator($('outcome-references'),{kind:'workspace',id:workspace}),list:$('outcome-references-list'),more:$('more-references'),
+    menu:(item,row,at)=>menus.open(item,row,at),
     message:$('outcome-references-status'),pageMax:pageMax(),viewPreference:notebookViewsOf(),denied:error=>readFailure(error).kind==='forbidden',painted:shown=>outcomePageLayout?.notes(shown),
     read:args=>pipelineView('memory_items',{owner_scope:{kind:'workspace',id:workspace},...args}),open:(ref,row)=>run(()=>openNotebook(ref.id,{opener:row}))});
 }

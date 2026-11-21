@@ -25,6 +25,9 @@ class EndMigration(base.HostedSeatCore):
 
     def test_64_to_65_keeps_occupied_seat_and_events_and_refuses_lossy_down(self):
         seat=self.added()['seat']
+        # The independent before-layout below is version65, not a later
+        # layout with only its metadata stamp changed to64.
+        migrations.migrate(self.path,'test-instance',self.binding,'65')
         with sqlite3.connect(str(self.path)) as db:
             # Downgrade only this new, still unused End layout using its actual
             # independent SQL; existing1002 seat/events are retained.
