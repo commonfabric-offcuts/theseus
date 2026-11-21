@@ -275,7 +275,7 @@ export class OutlineRail {
     const { bootstrap } = handles;
     outcomeColors.bind({ api: handles.api, bootstrap });
     this.colorUnlisten?.(); this.colorUnlisten = outcomeColors.listen(() => this.paint());
-    this.dimming.bind(bootstrap.instance_id, bootstrap.actor);
+    this.dimming.bind(bootstrap.instance_id, bootstrap.actor, handles);
     // What a move of the person's order is sent through, kept for the moments between runs.
     this.sender = { api: handles.api, bootstrap };
     this.initialize(bootstrap, handles.pageMax ?? PAGE);

@@ -60,6 +60,7 @@ from .stacks import REFRESH_UP, REFRESH_DOWN, MESSAGE_REFRESH_UP, MESSAGE_REFRES
 from .cover_refresh import WRITER_SCHEMA, WRITER_BACKFILL
 from .piece_freeze import FREEZE_SCHEMA, FREEZE_DOWN, FREEZE_OCCUPIED
 from .source_item_covers import SOURCE_COVER_SCHEMA
+from .rail_dimming import DIM_SCHEMA, DIM_DOWN, DIM_OCCUPIED
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -236,6 +237,7 @@ STEPS = (
     # Item 757: indexed source covers and reconstructible release-item links.
     ("61", "62", SOURCE_COVER_SCHEMA, ("DROP TRIGGER source_cover_release_insert", "DROP TABLE source_cover_releases",
                                       "DROP INDEX source_cover_items", "DROP INDEX source_cover_topics", "DROP INDEX source_cover_changes"), "SELECT 0"),
+    ("62", "63", DIM_SCHEMA, DIM_DOWN, DIM_OCCUPIED),
 )
 
 
