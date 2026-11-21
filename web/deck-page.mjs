@@ -416,6 +416,8 @@ export class DeckPage {
     const bubble = event.target.closest?.('.deck-bubble');
     if (bubble && (event.key === 'Enter' || event.key === ' ')) return;
     if (bubble && event.key === 'ArrowLeft') { event.preventDefault(); this.show(true); return; }
+    // A link in the card's words owns Return, including the browser's modifiers.
+    if (event.key === 'Enter' && event.target.closest?.('a[href]')) return;
     const card = this.deck.cards[this.picked], text = card ? cardText(card) : '', near = this.picked;
     // Past the first card or the last, the arrow goes on to what lies that way
     // on the page: the bar above the cards, the header (arrow-reach.mjs). With
