@@ -14,7 +14,7 @@ import { paintImageRows, openImage } from './image-rows.mjs';
 import { WritingInput, onMac, selectAllKey, copyKey } from './writing-input.mjs';
 import { paintChanges } from './page-changes.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
-import { drawPassages, sourcePosition, rangeOf, hasTextDisplayRules } from './message-format.mjs';
+import { drawPassages, sourcePosition, rangeOf, hasTextDisplayRules, inlineNodes } from './message-format.mjs';
 import { pageImages } from './page-image.mjs';
 import { paintChoice, clearChoice, chosen, naming, unnamed, sending, choiceOf, list } from './whisper-choice.mjs';
 import { addressedTo } from './at-names.mjs';
@@ -1179,7 +1179,10 @@ export class Reader {
     const words = document.createElement('span'); words.className = 'reader-cover-words';
     const waitingOn = [...new Set(cover.waiting.map(wait => wait.actor_id ?? cover.owner))]
       .map(id => id === shown.viewer ? 'you' : shown.nameOf(id)).join(', ');
-    words.textContent = cover.stands || cover.payload?.text || `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${waitingOn}`;
+    const authored = cover.stands || cover.payload?.text;
+    // Read the inline marks without adding links or extra controls to the summary (989).
+    words.textContent = authored ? inlineNodes(authored, { doc: document }).map(node => node.textContent).join('')
+      : `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${waitingOn}`;
     const label = document.createElement('span'); label.className = 'cover-label'; label.textContent = 'Cover';
     line.replaceChildren(label, ' ', words, ...(cover.payload ? [' ', payloadPill(document, cover.payload, shown)] : []));
     host.append(coverSheet(document, cover, context));
