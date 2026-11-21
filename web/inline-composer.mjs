@@ -336,6 +336,7 @@ export class InlineComposer {
     if (!this.sheet || this.sheet.open || this.root.hidden) return;
     // At rest it is among the dossiers (item 465): a holder keeps its place there, so the feed does not move behind it.
     holdPlace(this.sheet);
+    this.popOpener = this.root.ownerDocument.activeElement;
     this.sheet.showModal(); this.popped = true; this.opening = Symbol();
     this.noteTarget = '';
     this.chooseKind?.(this.defaultKind());
@@ -562,7 +563,7 @@ export class InlineComposer {
       !editor.authorityRecovery && !result.detached && this.noticeVersion === noticeVersion;
     if (!current()) return;
     if (this.cardReply) return this.callbacks.sent?.(p, result);
-    const doc = this.root.ownerDocument, focused = this.root.contains(doc.activeElement), popped = this.popped;
+    const doc = this.root.ownerDocument, focused = this.root.contains(doc.activeElement), popped = this.popped, opener = this.popOpener;
     this.bar.fold();
     if (this.sheet?.open) {
       // Native dialog restoration happens as it closes; its queued close event
@@ -572,7 +573,7 @@ export class InlineComposer {
     }
     const returned = doc.activeElement;
     if (focused && current() && (this.root.contains(returned) || returned === doc.body ||
-        popped && returned === doc.querySelector('#new-message'))) {
+        popped && returned === opener)) {
       return this.callbacks.sent?.(p, result, () => current() && doc.activeElement === returned);
     }
   }

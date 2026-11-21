@@ -40,3 +40,10 @@ test('1026 exact reconciled publication lands once; another submission cannot fi
 test('1026 detached publication cannot fold or route',async()=>{
   const f=pencil(),done=f.ui.send();f.resolve({status:'confirmed',detached:true});await done;assert.equal(f.landed.length,0);assert.equal(f.ui.bar.folded,undefined);
 });
+
+test('1026 accepts native restoration to the captured modal opener and guards later focus',async()=>{
+  const f=pencil(),opener=f.doc.createElement('main');f.ui.popped=true;f.ui.popOpener=opener;
+  f.ui.bar.fold=()=>opener.focus();const done=f.ui.send();f.resolve({status:'confirmed'});await done;
+  assert.equal(f.landed.length,1);assert.equal(f.landed[0].current(),true);
+  f.doc.createElement('button').focus();assert.equal(f.landed[0].current(),false);
+});
