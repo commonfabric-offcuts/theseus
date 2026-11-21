@@ -1,6 +1,7 @@
 // Web addresses in a message's words become links (docs/links.md). The words
-// are drawn as text nodes and anchors, never as markup, and only an http or
-// https address is ever a link. A link to a place in this Theseus opens here,
+// are drawn as text nodes and anchors, never as markup. Bare links require
+// http(s); authored query links may name an existing place in this instance.
+// A link to a place in this Theseus opens here,
 // through the page's own navigation; any other opens in a new tab. Clicking a
 // link is only that: the card, fold or passage around it is not pressed.
 // A topic's id in the words (t-…) is a link too, and a link to a topic or to a
@@ -23,7 +24,7 @@ const IN_APP = new Set(['root', 'topic', 'workspace', 'conversation', 'pipeline'
 const tick = (meter, steps) => { if (meter) meter.steps += steps; };
 
 let opener = null, namer = () => null, shareOrigin = null;
-// open(route, title, link): how the page opens one of its own places. Without
+// open(route, title, link, writtenQuery): how the page opens one of its own places. Without
 // it an in-app link navigates this tab.
 export function openLinksWith(open) { opener = open; }
 // name(topicId): the topic's name, null when it is unknown or cannot be read,
@@ -168,7 +169,7 @@ function anchor(doc, words, link) {
     a.addEventListener('click', event => {
       event.stopPropagation();
       if (!opener || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault(); opener(link.route, a.textContent, a);
+      event.preventDefault(); opener(link.route, a.textContent, a, link.writtenQuery === true);
     });
   } else {
     a.href = link.href; a.target = '_blank'; a.rel = 'noopener noreferrer';
@@ -204,12 +205,19 @@ function topicLink(doc, words, link, place) {
 }
 
 // The link its author wrote as [words](target), as { href, route, written },
-// or null when the target is not an http or https address written out. It
+// or null when the target is neither a full http(s) address nor a query
+// naming one of this instance’s existing places. It
 // goes to the target as written, whole: none of a bare address's endings
 // apply, and a link to a topic keeps its words rather than showing the
 // topic's name. Where such a link starts and ends is Markdown's to say
 // (message-format.mjs).
 export function writtenLink(target, { meter } = {}) {
+  if (target.startsWith('?')) {
+    tick(meter, target.length);
+    let url; try { url = new URL(target, globalThis.location.origin + '/'); } catch { return null; }
+    const route = ownPlace(url);
+    return route ? { href: url.href, route, written: true, writtenQuery: true } : null;
+  }
   const url = /^https?:\/\//i.test(target) ? webAddress(target, meter) : null;
   return url ? { href: url.href, route: ownPlace(url), written: true } : null;
 }

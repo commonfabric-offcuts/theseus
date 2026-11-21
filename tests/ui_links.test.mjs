@@ -4,8 +4,9 @@
 // native checks in tests/links_native.mjs press them in a real browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { webLinks, wordNodes, linkWords, openLinksWith, nameTopicsWith, shareLinksFrom, messageLink, pageLink } from '../web/links.mjs';
+import { webLinks, wordNodes, linkWords, writtenLink, openLinksWith, nameTopicsWith, shareLinksFrom, messageLink, pageLink } from '../web/links.mjs';
 import { parseRoute, routeHref } from '../web/topic-navigation.mjs';
+import { inlineNodes } from '../web/message-format.mjs';
 import { closeOnOutsideClick } from '../web/dismiss.mjs';
 import { foldCard, paintFoldWords } from '../web/fold.mjs';
 
@@ -380,4 +381,22 @@ test('a name the page must read first arrives in place: a bare id becomes its li
   assert.deepEqual(drawn(host.children), [['Launch copy', T1, `?topic=${T1}`], ' ', NOWHERE, ' ', T2, ' ',
     ['Launch copy', `https://theseus.example:5211/?topic=${T1}`, `?topic=${T1}`]]);
   assert.equal(host.text, `Launch copy ${NOWHERE} ${T2} Launch copy`);
+});
+
+
+test('864 authored query link renders and uses the existing opener while invalid relative targets stay words', t => {
+  here(t); const target = '?topic=Landing&page=n-864';
+  const link = writtenLink(target); assert.ok(link, 'accepted query is an in-app written link');
+  assert.deepEqual(link.route, { kind: 'topic', id: 'Landing', page: 'n-864' });
+  const nodes = inlineNodes('[The smoke checks](' + target + ')', { doc });
+  const anchor = nodes.find(node => node.tagName === 'A'); assert.ok(anchor);
+  assert.equal(anchor.text, 'The smoke checks');
+  const opened = []; openLinksWith((...args) => opened.push(args));
+  assert.equal(click(anchor).prevented, true); assert.equal(opened.length, 1);
+  assert.deepEqual(opened[0][0], link.route);
+  assert.equal(opened[0][3], true, 'only the authored query asks the app to resolve a label');
+  const [ordinary] = inlineNodes('[Next](https://theseus.example:5211/?topic=Landing)', { doc });
+  click(ordinary); assert.equal(opened.at(-1)[3], false, 'full addresses retain the existing navigation path');
+  for (const bad of ['?bogus=yes', '?topic=Landing&topic=Other', '?topic=Landing&page=n&message=m', '/?topic=Landing', '//elsewhere.invalid/?topic=Landing', 'javascript:alert(1)', 'data:text/html,test', '#topic=Landing']) assert.equal(writtenLink(bad), null, bad);
+  assert.equal(pageLink({ kind: 'topic', id: 't-864' }, 'n-864'), 'https://theseus.example:5211/?topic=t-864&page=n-864', 'copied links stay full and id-based');
 });

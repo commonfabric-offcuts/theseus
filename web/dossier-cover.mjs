@@ -15,7 +15,7 @@ import { coverAnswers } from './cover-answers.mjs';
 import { glyph } from './glyphs.mjs';
 import { linkNode, writtenLink } from './links.mjs';
 import { timeNode } from './times.mjs';
-import { inlineNodes } from './message-format.mjs';
+import { inlineNodes, literalLinkNodes } from './message-format.mjs';
 import { literalHTMLNodes } from './interactive-html.mjs';
 
 const element = (doc, tag, className, text) => {
@@ -105,7 +105,11 @@ export function coverSheet(doc, cover, context) {
     const nodes = literalHTMLNodes(cover.stands, doc);
     // Plain covers retain their original textContent paint, regardless of the
     // document adapter's representation of text nodes. Keep size refusals too.
-    if (!nodes.some(node => node.className === 'html-block' || node.className === 'html-source')) words.textContent = cover.stands;
+    if (!nodes.some(node => node.className === 'html-block' || node.className === 'html-source')) {
+      const linked = literalLinkNodes(cover.stands, { doc });
+      if (linked.some(node => node.tagName === 'A')) words.append(...linked);
+      else words.textContent = cover.stands;
+    }
     else words.append(...nodes);
     line('cover-heading').append(words);
   }
