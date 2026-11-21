@@ -59,6 +59,17 @@ def _receive(sock):
     return header, _read(sock, body, deadline)
 
 
+def _discard(sock):
+    """Drain one bounded request before refusing, without retaining its body."""
+    deadline = time.monotonic() + DEADLINE
+    size, body = struct.unpack('!IQ', _read(sock, 12, deadline))
+    if size > HEADER_LIMIT or body > BODY_LIMIT:
+        raise OSError('broker frame too large')
+    remaining = size + body
+    while remaining:
+        remaining -= len(_read(sock, min(remaining, 65536), deadline))
+
+
 def _send(sock, header, body=b''):
     data = json.dumps(header, ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode('utf-8')
     if len(data) > HEADER_LIMIT or len(body) > BODY_LIMIT:
@@ -100,6 +111,9 @@ class _Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     def process_request(self, request, address):
         if not self.owner.slots.acquire(blocking=False):
             try:
+                # Closing with unread bytes can discard the busy reply or
+                # break the client's send before it gets to read that reply.
+                _discard(request)
                 _send(request, {'failure':dict(code='BROKER_BUSY',message='Broker at capacity; retry the same saved request',
                                                retryable=True,exit_code=75)})
             finally:
@@ -188,7 +202,7 @@ class HostedCLI:
         store = self.profile.store()
         pin = store.read_route_pin(self.profile.actor_id, self.destination)
         if pin.get('destination') != self.destination:
-            raise OSError('broker route changed')
+            raise Refusal('ROUTE_PIN_MISMATCH', 'Route pin changed; nothing sent by this attempt; retain the original binding')
         if method == 'binding':
             return {'binding': self.binding, 'outbox': self.outbox}, b''
         if method == 'view':
@@ -267,7 +281,10 @@ class RemoteStore:
             # exactly the local Store's error-result contract.
             if isinstance(error,BrokerFailure) and error.exit_code == 1:
                 raise
-            return {'instance_id':self.profile.instance_id,'recorded':False,'error':self._error(error)}
+            envelope = values['envelope']
+            return {'instance_id':self.profile.instance_id,'operation_id':envelope.get('operation_id'),
+                    'kind':envelope.get('kind'),'status':'retryable' if getattr(error,'retryable',False) else 'rejected',
+                    'recorded':False,'result':None,'affected':[],'error':self._error(error)}
 
     def command(self, actor, envelope):
         return self._command(actor, 'command', {'envelope': envelope})
