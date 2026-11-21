@@ -205,24 +205,48 @@ export class TopicPages {
     return true;
   }
   empty() { return new TopicPages(this.instanceId, this.workspaceId, this.current, this.list, this.apart); }
+  copy() { const fresh = this.empty(); takePages(fresh, this); fresh.loaded = new Map(this.loaded); return fresh; }
   last() { const item = [...this.loaded.values()].pop(); return item ? topicPosition(item) : null; }
   precedes(a, b) { return compare(position(a), position(b)) < 0; }
 }
 
 export const PAGE = 20;
+// WorkspacePages also uses reread; publication stays a shared adapter rather
+// than requiring a topic-only method on every paged owner.
+function takePages(pages, fresh) {
+  Object.assign(pages, { loaded: fresh.loaded, conversation: fresh.conversation, next: fresh.next,
+    groups: fresh.groups ?? pages.groups, order: fresh.order ?? pages.order, started: true });
+}
+// The current topic is already drawn even beyond the loaded page. A cursor
+// whose only remaining row is that topic promises nothing new. Probe only
+// that possible tail, validate it, and consume a confirmed duplicate/empty
+// answer; an actual unshown row remains behind the original cursor.
+async function currentTail(pages, read) {
+  const current = pages.current, cursor = pages.next;
+  if (!current || cursor === null || pages.loaded.has(current.id) ||
+      !pages.items.some(item => item.id === current.id) || !pages.precedes(cursor, topicPosition(current))) return;
+  const answer = await read({ limit: 1, cursor }), probe = pages.empty();
+  probe.started = true; probe.next = cursor; probe.accept(answer, cursor);
+  if ([...probe.loaded.keys()].every(id => id === current.id)) pages.accept(answer, cursor);
+}
+
+// A route keeps only how far its reader opened this list in this document.
+// Fresh Core reads still own the rows, counts and whether anything remains.
+const topicExtents = new WeakMap();
 // A reload reads again everything the reader has loaded, the pages More added
 // included: from the start, in pages as large as the view allows, until it
 // passes the last row they had. The list changes once, when all have arrived,
 // so a reload never folds the list back to its first page.
 export async function reread(pages, read, pageMax = PAGE) {
-  const fresh = pages.empty(), last = pages.last();
-  const limit = Math.min(pageMax, Math.max(PAGE, pages.loaded.size));
+  const fresh = pages.empty(), last = pages.last() ?? pages.extent?.last ?? null;
+  const limit = Math.min(pageMax, Math.max(PAGE, pages.loaded.size, pages.extent?.count ?? 0));
   let cursor = null;
   do {
     fresh.accept(await read({ limit, ...(cursor === null ? {} : { cursor }) }), cursor);
     cursor = fresh.next;
   } while (cursor !== null && last !== null && fresh.precedes(cursor, last));
-  Object.assign(pages, { loaded: fresh.loaded, conversation: fresh.conversation, next: fresh.next, groups: fresh.groups ?? pages.groups, order: fresh.order ?? pages.order, started: true });
+  await currentTail(fresh, read);
+  takePages(pages, fresh);
 }
 
 // The departure guard. A move waits for a send under way and for writing and
@@ -329,6 +353,15 @@ export class TopicRail {
         this.paint(true);
         if (list.details.open && !list.reading) this.load(list.pages.started ? false : list, true);
       });
+    }
+    if (reader) {
+      let extents = topicExtents.get(document);
+      if (!extents) topicExtents.set(document, extents = new Map());
+      this.extents = extents;
+      for (const list of this.lists) {
+        list.extentKey = JSON.stringify([pages.instanceId, reader, pages.workspaceId, pages.apart, list.name]);
+        list.pages.extent = extents.get(list.extentKey) ?? null;
+      }
     }
     more.onclick = () => this.load(true); retry.onclick = () => this.load(this.failedMore, true);
     // The lists keep still under the pointer: a change found while it is over
@@ -513,13 +546,20 @@ export class TopicRail {
     // Keep busy controls focusable; repeated activation shares this read.
     for (const control of [this.retry, ...this.lists.map(list => list.more)]) control.setAttribute('aria-disabled', 'true');
     const reading = list => args => this.read({ workspace_id: this.pages.workspaceId, ...listArgs(list.name, this.pages.apart), ...args });
-    const read = list => (target && !first ? reading(list)({ limit: PAGE, cursor }).then(answer => { list.pages.accept(answer, cursor); })
+    const read = list => (target && !first ? reading(list)({ limit: PAGE, cursor }).then(async answer => {
+      const fresh = list.pages.copy(); fresh.accept(answer, cursor);
+      await currentTail(fresh, reading(list)); takePages(list.pages, fresh);
+    })
       : reread(list.pages, reading(list), this.pageMax)).then(() => { list.pages.readAt = ++this.serial; });
     const lists = target ? [target] : this.lists.filter(list => list === this.lists[0] || list.details.open);
     for (const list of lists) list.reading = true;
     this.loading = Promise.all(lists.map(read))
       .then(() => {
         for (const list of lists) book.learn(this.scope, list.pages.order);
+        for (const list of lists) if (this.extents) {
+          list.pages.extent = { last: list.pages.last(), count: list.pages.loaded.size };
+          this.extents.set(list.extentKey, list.pages.extent);
+        }
         const focused = document.activeElement;
         this.denied = false;
         this.message.hidden = true; this.retry.hidden = true; this.paint(asked);

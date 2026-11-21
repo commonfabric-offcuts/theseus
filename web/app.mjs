@@ -4053,17 +4053,17 @@ nameTopicsWith(topicName);
 // from: the link pressed, which takes the focus back when the Reader closes.
 async function openDestination(target, title, from = null, writtenQuery = false) {
   const landing = ++landingSerial;
-  if (writtenQuery && topicLinkNeedsLookup(target, topic?.id)) {
+  if (writtenQuery && (target.kind === 'topic' || target.page || target.kind === 'cards')) {
     const original = target;
     topicNavigation?.cancelPending();
     try {
       target = await resolveTopicLink(target, { read: (name, args) => api.view(name, args, { readClass: 'foreground' }),
         instanceId: bootstrap.instance_id, workspaceId: topic?.workspace_id ?? shell.handles?.workspaceId ?? pageHereOutcome,
-        ownerScope: linkOwnerScope?.(), current: () => !retired && landing === landingSerial });
+        ownerScope: linkOwnerScope?.(), current: () => !retired && landing === landingSerial, confirm: true, currentTopicId: topic?.id });
       if (!target || retired || landing !== landingSerial) return false;
     } catch (error) {
       if (retired || landing !== landingSerial) return false;
-      if (!['TOPIC_NAME_UNKNOWN', 'TOPIC_NAME_AMBIGUOUS'].includes(error.code)) target = original;
+      if (!['TOPIC_NAME_UNKNOWN', 'TOPIC_NAME_AMBIGUOUS', 'LINK_DESTINATION_UNAVAILABLE', 'LINK_DESTINATION_UNCONFIRMED'].includes(error.code)) target = original;
       else {
         if (notebookSheet?.showing && notebookSheet.current) notebookSheet.current.say(error.message, 'attention');
         else if (linkNotice) linkNotice(error.message);

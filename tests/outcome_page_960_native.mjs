@@ -85,7 +85,7 @@ try {
     if(width===390)await page.locator('#rail-backdrop').click({position:{x:380,y:500}});
     const card=page.locator('.outcome-topic-card[data-topic-id="t960two"]');await card.waitFor();
     assert.equal(views.filter(name=>name==='topic_messages').length,0,'no per-card topic reads');
-    const wide=width>=1100&&!withoutMedia,opening=card.locator('.outcome-topic-latest');
+    const wide=!withoutMedia,opening=card.locator('.outcome-topic-latest');
     assert.equal(await opening.isVisible(),wide);
     if(wide){
       assert.ok((await opening.innerText()).includes(latest));
@@ -114,10 +114,10 @@ try {
       }
       if(width===1440&&colorScheme==='light'&&look==='bookends'){
         await pencil.click();await field.fill('Unsent resize writing960');
+        // 985: the bench holds at every width, so a narrower window keeps the purpose and its unsent words in place.
         await page.setViewportSize({width:1000,height:1000});
-        await page.locator('.topic-header #topic-description').waitFor({state:'attached'});
-        assert.equal(await field.inputValue(),'Unsent resize writing960');assert.equal(await page.locator('.topic-header #topic-description').count(),1);
-        await page.setViewportSize({width,height:1000});await page.locator('#outcome-purpose>#topic-description').waitFor({state:'attached'});assert.equal(await field.inputValue(),'Unsent resize writing960');await field.press('Escape');
+        assert.equal(await page.locator('#outcome-purpose>#topic-description').count(),1);assert.equal(await field.inputValue(),'Unsent resize writing960');
+        await page.setViewportSize({width,height:1000});assert.equal(await field.inputValue(),'Unsent resize writing960');await field.press('Escape');
         assert.equal(await pencil.evaluate(n=>n===document.activeElement),true);
         // Advance real scratch Core after the immutable request is queued,
         // then deliver it unchanged: this is an actual conflict, not a

@@ -1,7 +1,7 @@
-/* The wide outcome bench (960). Narrow pages retain their original controls
-   and geometry; these extra words come from the same list projections. */
+/* The outcome bench (960), on every screen (985): three columns from 1100px, one column below, with the
+   Notebook as a section after the agents. These extra words come from the same list projections. */
 .outcome-topic-latest,.outcome-topic-footer,.outcome-page-opening,#outcome-agents{display:none}
-@media(min-width:1100px){
+@media all{
   #outcome-page[data-outcome-wide]{
     --op-hair:color-mix(in srgb,var(--line) 70%,transparent);
     --op-quiet:color-mix(in srgb,var(--ink) 58%,transparent);
@@ -94,4 +94,24 @@
   #outcome-page[data-outcome-wide] #outcome-purpose .purpose-pencil svg{width:1rem;height:1rem}
   #outcome-page[data-outcome-wide] #outcome-purpose .purpose-pencil:is(:hover,:focus-visible){opacity:1;color:var(--ink)}
   #outcome-page[data-outcome-wide] #target-panel .tg-card{font-size:.85rem;padding:.9rem 1rem;border:1px solid var(--op-hair);border-radius:.6rem;background:var(--op-tile);box-shadow:none}
+}
+/* Narrower than 1100px the bench is one column: the purpose, the topics, the agents, the Notebook as a section
+   in its own material, then the tools and the rest. */
+@media(max-width:1099px){
+  #outcome-page[data-outcome-wide]:not([hidden]){column-gap:0;grid-template-columns:minmax(0,1fr);grid-template-rows:none;
+    grid-template-areas:"purpose" "topics" "agents" "notes" "tools" "target" "pipe" "loop" "problems"}
+  #outcome-page[data-outcome-wide] #outcome-agents:not([hidden]){margin-top:2rem}
+  #outcome-page[data-outcome-wide] #outcome-references{align-self:auto;margin:2rem 0 0}
+  #outcome-page[data-outcome-wide] #outcome-tools{margin-top:1.6rem}
+  #outcome-page[data-outcome-wide] #page-here:not([hidden]){grid-row:2}
+  #outcome-page[data-outcome-wide] .outcome-topic-card{min-height:5.6rem}
+}
+/* A finger: the agent rows, the pencil and the quiet controls get a full-size target. */
+@media(pointer:coarse){
+  #outcome-page[data-outcome-wide] .outcome-agent{min-height:2.75rem;padding:.5rem .55rem}
+  #outcome-page[data-outcome-wide] .outcome-agent-dot{margin-top:.4rem}
+  #outcome-page[data-outcome-wide] #outcome-purpose .purpose-pencil{position:relative}
+  #outcome-page[data-outcome-wide] #outcome-purpose .purpose-pencil::after{content:"";position:absolute;inset:-.75rem}
+  #outcome-page[data-outcome-wide] :is(#team-people .add-chip,#outcome-tools .finder-open,.outcome-topic-toggle){height:2.5rem}
+  #outcome-page[data-outcome-wide] .rail-heading .notebook-create{width:2.5rem;height:2.5rem}
 }
