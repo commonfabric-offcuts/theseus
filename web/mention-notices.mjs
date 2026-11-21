@@ -1,4 +1,4 @@
-import { checkedView } from './freshness.mjs';
+import { checkedView, readFailure } from './freshness.mjs';
 
 const pair = value => ({authority_id:value?.authority_id,authority_epoch:value?.authority_epoch});
 const same = (a,b) => a?.authority_id === b?.authority_id && a?.authority_epoch === b?.authority_epoch;
@@ -35,14 +35,17 @@ export class MentionNotices {
              typeof page.scope.title!=='string' || typeof page.scope.may_add!=='boolean' || !Number.isSafeInteger(page.scope.revision) ||
              page.next_cursor!==null && (!Number.isSafeInteger(page.next_cursor) || page.next_cursor<=cursor))throw Error('The mention check could not be confirmed.');
           for(const person of page.items) {
-            if(typeof person.actor_id!=='string' || typeof person.name!=='string')throw Error('The mention check could not be confirmed.');
+            if(typeof person.actor_id!=='string' || typeof person.name!=='string' || !['human','agent'].includes(person.kind) || typeof person.may_add!=='boolean')throw Error('The mention check could not be confirmed.');
             people.set(person.actor_id,{...person});
           }
           entry.scope=page.scope;cursor=page.next_cursor;
         }while(cursor!==null);
         entry.people=people;entry.error=false;this.paint(entry);
-      } catch {
-        if(this.live(entry) && !entry.dismissed){entry.error=true;this.paint(entry);}
+      } catch(error) {
+        if(this.live(entry) && !entry.dismissed){
+          if(['retry','defer','resync','superseded'].includes(readFailure(error).kind)){entry.error=true;this.paint(entry);}
+          else {entry.dismissed=true;entry.node?.remove();}
+        }
       } finally {entry.checking=false;}
     })();
     return entry.task;
@@ -56,21 +59,24 @@ export class MentionNotices {
     const button=(label,action)=>{const node=element(doc,'button',label);node.type='button';node.onclick=action;return node;};
     if(entry.error)entry.node.append(element(doc,'p','Sent. Mention membership could not be checked.'),button('Check again',()=>this.check(entry)));
     else {
-      entry.node.append(element(doc,'p',`Sent. These mentions aren’t members of ${entry.scope.title} and won’t receive this message:`));
+      entry.node.append(element(doc,'p',`Sent. These mentions are outside this message’s audience in ${entry.scope.title}:`));
       const list=element(doc,'ul');entry.node.append(list);
       for(const person of entry.people.values()) {
         const row=element(doc,'li'), label=person.name===person.actor_id?`@${person.actor_id}`:`${person.name} (@${person.actor_id})`;
         row.append(element(doc,'span',label));list.append(row);
-        if(entry.scope.may_add) {
+        if(entry.scope.kind==='outcome' && person.kind==='agent')row.append(element(doc,'p','Team membership does not subscribe an agent to this Conversation. Name them in To on future messages.'));
+        if(person.refused)row.append(element(doc,'p',person.refused));
+        else if(person.added)row.append(element(doc,'p',`Added to ${entry.scope.kind} · not resent`));
+        else if(entry.scope.may_add && person.may_add!==false) {
           const add=button(`Add @${person.actor_id} to ${entry.scope.kind}`,()=>this.add(entry,person,add));
-          add.title=`Add to ${entry.scope.kind} for future messages. This message will not be resent.`;row.append(add);
+          add.title=`Add to ${entry.scope.kind} for future ${entry.scope.kind==='outcome' && person.kind==='agent'?'addressing':'messages'}. This message will not be resent.`;row.append(add);
         }
       }
     }
     entry.node.append(button('Dismiss',()=>{entry.dismissed=true;entry.node.remove();}));
   }
   async add(entry,person,button) {
-    if(!this.live(entry) || entry.dismissed || person.busy || person.added)return;
+    if(!this.live(entry) || entry.dismissed || person.busy || person.added || person.refused)return;
     const scope=entry.scope,outcome=scope.kind==='outcome',field=outcome?'workspace_revision':'topic_revision';
     const make=revision=>({v:1,instance_id:this.instanceId,operation_id:crypto.randomUUID(),
       kind:outcome?'workspace.member_set':'participation.set',target:outcome?{workspace_id:scope.id}:{topic_id:scope.id},
@@ -89,14 +95,17 @@ export class MentionNotices {
              receipt.result?.[outcome?'workspace_id':'topic_id']!==scope.id)throw Error('The add could not be confirmed.');
           person.added=true;person.request=null;button.textContent=`Added to ${scope.kind} · not resent`;return;
         }
-        const revision=receipt.error?.code==='REVISION_CONFLICT'?receipt.error.current_versions?.[field]:null;
-        if(receipt.recorded===true)person.request=null;
-        if(attempt===0 && Number.isSafeInteger(revision) && revision!==request.expected[field]) {person.request=make(revision);continue;}
-        throw Error(receipt.error?.message??'The add could not be confirmed.');
+        if(receipt.status==='rejected') {
+          person.request=null;
+          const revision=receipt.error?.code==='REVISION_CONFLICT'?receipt.error.current_versions?.[field]:null;
+          if(attempt===0 && Number.isSafeInteger(revision) && revision!==request.expected[field]) {person.request=make(revision);continue;}
+          person.refused=receipt.error?.message??'Adding this person was refused.';this.paint(entry);return;
+        }
+        throw Error('The add could not be confirmed.');
       }
     } catch(error) {
       if(this.live(entry) && !entry.dismissed){button.textContent=person.request?`Check add @${person.actor_id}`:`Try add @${person.actor_id} again`;button.title=error.message;}
-    } finally {person.busy=false;if(this.live(entry) && !entry.dismissed)button.disabled=Boolean(person.added);}
+    } finally {person.busy=false;if(this.live(entry) && !entry.dismissed)button.disabled=Boolean(person.added || person.refused);}
   }
   dispose(){this.disposed=true;for(const entry of this.entries.values())entry.node?.remove();}
 }

@@ -16,7 +16,7 @@ def resolve(db, token):
     key = token.rstrip('.')
     if not key or len(key) > 200:
         return None
-    columns = 'id,enabled,substr(CAST(name AS BLOB),1,1025) AS name_prefix'
+    columns = 'id,kind,enabled,substr(CAST(name AS BLOB),1,1025) AS name_prefix'
     # Canonical IDs (the picker inserts them) take the actor primary key path.
     row = db.execute('SELECT ' + columns + ' FROM actors WHERE id=?', (key,)).fetchone()
     if row is not None:
@@ -54,9 +54,7 @@ class MentionReach:
             raise Refusal('INVALID_ARGUMENT', 'Invalid mention cursor')
         items, next_cursor = [], None
         if identity['private_to'] is None:
-            members = {p[0] for p in db.execute('SELECT actor_id FROM workspace_members WHERE workspace_id=?', (workspace['id'],))}
-            if not outcome:
-                members.update(p[0] for p in db.execute('SELECT actor_id FROM topic_participants WHERE topic_id=? AND active=1', (topic['id'],)))
+            members = {p[0] for p in db.execute('SELECT actor_id FROM topic_participants WHERE topic_id=? AND active=1', (topic['id'],))}
             members.add(actor)
             seen, examined = set(), 0
             for match in MENTION.finditer(body, at):
@@ -69,11 +67,14 @@ class MentionReach:
                 if person is None or person['id'] in members or person['id'] in seen:
                     continue
                 seen.add(person['id'])
-                # An acknowledged delivery is actual read/receipt evidence. A
-                # merely queued or subsequently cancelled delivery proves none.
-                if db.execute("SELECT 1 FROM deliveries WHERE message_id=? AND recipient_id=? AND state='acknowledged'",
+                # Explicit addressing can reach someone who is no longer a
+                # participant. Pending delivery counts; cancelled delivery does not.
+                if db.execute("SELECT 1 FROM deliveries WHERE message_id=? AND recipient_id=? AND state<>'cancelled'",
                               (message_id, person['id'])).fetchone():
                     continue
                 name, truncated = _prefix(person['name_prefix'])
-                items.append(dict(actor_id=person['id'], name=name, name_truncated=truncated))
+                already_team = outcome and db.execute('SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?',
+                                                       (workspace['id'], person['id'])).fetchone()
+                items.append(dict(actor_id=person['id'], kind=person['kind'], name=name, name_truncated=truncated,
+                                  may_add=scope['may_add'] and not bool(already_team)))
         return dict(instance_id=self.instance_id, message_id=message_id, scope=scope, items=items, next_cursor=next_cursor)

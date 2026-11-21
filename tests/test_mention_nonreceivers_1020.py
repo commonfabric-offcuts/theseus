@@ -15,7 +15,7 @@ class MentionReach1020(test_at_names.AtNamesCase):
         message = self.topic_message(body)
         answer = self.reach(message)
         self.assertNotIn('error', answer, answer)
-        self.assertEqual([(p['actor_id'], p['name']) for p in answer['items']], [('outsider', 'Outside fixture agent')])
+        self.assertEqual([(p['actor_id'], p['name']) for p in answer['items']], [('outsider', 'Outside fixture agent'), ('agent-b', self.sql("SELECT name FROM actors WHERE id='agent-b'")[0][0])])
         self.assertEqual(answer['scope']['kind'], 'topic')
         self.assertTrue(answer['scope']['may_add'])
         self.assertEqual(self.recorded(message), (body, [], None))
@@ -44,24 +44,29 @@ class MentionReach1020(test_at_names.AtNamesCase):
         self.assertEqual(self.reach(message, actor='agent-a')['error']['code'], 'FORBIDDEN')
         self.assertEqual(self.store.view('owner', 'submission_mention_reach', {'submission_id':'missing'})['error']['code'], 'FORBIDDEN')
 
-    def test_added_topic_member_and_outcome_member_need_no_warning(self):
+    def test_added_topic_participant_is_reached_but_conversation_team_agent_is_not(self):
         message = self.topic_message('@outsider hello')
         topic = self.store.view('owner', 'topic', {'topic_id':'t1'})['topic']
         self.committed(self.command('participation.set', {'actor_id':'outsider','present':True},
                                     target={'topic_id':'t1'}, expected={'topic_revision':topic['version']}))
         self.assertEqual(self.reach(message)['items'], [])
-        # The outcome's Conversation uses its team, not the ordinary topic participant.
+        # Conversation routing follows humans and coordinator, not all team agents.
         outcome_message = self.topic_message('Hello @outsider', topic=self.conversation)
         answer = self.reach(outcome_message)
         self.assertEqual([p['actor_id'] for p in answer['items']], ['outsider'])
         self.assertEqual(answer['scope']['kind'], 'outcome')
         self.assertEqual(answer['scope']['add_kind'], 'workspace.member_set')
         self.assertTrue(answer['scope']['may_add'])
+        self.committed(self.command('workspace.member_set', {'actor_id':'outsider','present':True},
+                                    target={'workspace_id':'w1'}, expected={'workspace_revision':answer['scope']['revision']}))
+        answer = self.reach(outcome_message)
+        self.assertEqual([p['actor_id'] for p in answer['items']], ['outsider'])
+        self.assertFalse(answer['items'][0]['may_add'], 'already on the team; adding again cannot subscribe an agent')
 
-    def send_as(self, body, actor='owner', topic='t1', whisper=False, publish=True):
+    def send_as(self, body, actor='owner', topic='t1', whisper=False, publish=True, addressees=None):
         key = 'reach-%s' % (self.serial + 1)
         writing = dict(source_ref={'kind':'topic','id':topic},topic_id=topic,generation='g',body=body,
-                       attachments=[],quotes=[],addressees=['agent-a'] if whisper else [],
+                       attachments=[],quotes=[],addressees=addressees if addressees is not None else (['agent-a'] if whisper else []),
                        **({'whisper':True} if whisper else {'tell_first':True}))
         prior=self.sql("SELECT id,revision,generation FROM drafts WHERE actor_id=? AND topic_id=? AND json_extract(payload,'$.source_ref.kind')='topic'",(actor,topic))
         draft,revision,generation=prior[0] if prior else (key,0,'g')
@@ -99,7 +104,7 @@ class MentionReach1020(test_at_names.AtNamesCase):
         self.rejected(self.command('workspace.member_set',{'actor_id':'outsider','present':True},target={'workspace_id':'w1'},
                                   expected={'workspace_revision':answer['scope']['revision']},actor='other-reader'),'FORBIDDEN')
 
-    def test_acknowledged_delivery_is_evidence_but_cancelled_queue_is_not(self):
+    def test_non_cancelled_delivery_counts_and_cancelled_delivery_does_not(self):
         for acknowledged in (False,True):
             topic=self.store.view('owner','topic',{'topic_id':'t1'})['topic']
             self.committed(self.command('participation.set',{'actor_id':'outsider','present':True},target={'topic_id':'t1'},expected={'topic_revision':topic['version']}))
@@ -109,7 +114,13 @@ class MentionReach1020(test_at_names.AtNamesCase):
             if acknowledged:self.committed(self.command('delivery.ack',target={'delivery_id':delivery},actor='outsider'))
             topic=self.store.view('owner','topic',{'topic_id':'t1'})['topic']
             self.committed(self.command('participation.set',{'actor_id':'outsider','present':False},target={'topic_id':'t1'},expected={'topic_revision':topic['version']}))
-            self.assertEqual([p['actor_id'] for p in self.reach(message)['items']],[] if acknowledged else ['outsider'])
+            self.assertEqual(self.sql('SELECT state FROM deliveries WHERE id=?', (delivery,))[0][0], 'acknowledged' if acknowledged else 'pending')
+            self.assertEqual(self.reach(message)['items'], [])
+            if not acknowledged:
+                # Explicit cancelled-row fixture, distinct from cancelling a subscription reason.
+                self.sql_write("UPDATE deliveries SET state='cancelled' WHERE id='%s'" % delivery)
+                self.assertEqual(self.sql('SELECT state FROM deliveries WHERE id=?', (delivery,))[0][0], 'cancelled')
+                self.assertEqual([p['actor_id'] for p in self.reach(message)['items']], ['outsider'])
 
     def test_view_does_not_write_and_unsent_or_lost_topic_access_is_refused(self):
         key=self.send_as('Hi @outsider')
@@ -126,3 +137,29 @@ class MentionReach1020(test_at_names.AtNamesCase):
         self.committed(self.command('participation.set',{'actor_id':'other-reader','present':False},target={'topic_id':'t1'},
                                     expected={'topic_revision':self.store.view('owner','topic',{'topic_id':'t1'})['topic']['version']}))
         self.assertEqual(self.store.view('other-reader','submission_mention_reach',{'submission_id':key})['error']['code'],'FORBIDDEN')
+
+    def test_team_agents_are_not_subscription_recipients_but_leading_address_is_a_delivery(self):
+        for topic in ('t1', self.conversation):
+            key = self.send_as('Hello @agent-b and @agent-a', topic=topic)
+            message = self.sql('SELECT id FROM messages WHERE operation_id=?', (key+'-send',))[0][0]
+            self.assertEqual(self.sql('SELECT recipient_id FROM deliveries WHERE message_id=? ORDER BY recipient_id', (message,)), [('agent-a',)])
+            self.assertEqual([p['actor_id'] for p in self.reach(message)['items']], ['agent-b'])
+            key = self.send_as('@agent-b hello', topic=topic)
+            message = self.sql('SELECT id FROM messages WHERE operation_id=?', (key+'-send',))[0][0]
+            self.assertEqual(self.addressed_deliveries(message), ['agent-b'])
+            self.assertEqual(self.reach(message)['items'], [])
+
+    def test_removed_creator_explicit_pending_delivery_counts_before_acknowledgement(self):
+        # Isolated fixture identity; real participation changes and real publication follow.
+        self.sql_write("UPDATE topics SET creator_id='outsider' WHERE id='t1'")
+        for present in (True, False):
+            revision = self.store.view('owner','topic',{'topic_id':'t1'})['topic']['version']
+            self.committed(self.command('participation.set',{'actor_id':'outsider','present':present},target={'topic_id':'t1'},expected={'topic_revision':revision}))
+        key = self.send_as('Hello @outsider', addressees=['outsider'])
+        message = self.sql('SELECT id FROM messages WHERE operation_id=?', (key+'-send',))[0][0]
+        delivery, state = self.sql('SELECT id,state FROM deliveries WHERE message_id=? AND recipient_id=?', (message,'outsider'))[0]
+        self.assertEqual(state, 'pending')
+        self.assertEqual(self.addressed_deliveries(message), ['outsider'])
+        self.assertEqual(self.reach(message)['items'], [], 'pending explicit delivery already reaches the removed creator')
+        self.committed(self.command('delivery.ack',target={'delivery_id':delivery},actor='outsider'))
+        self.assertEqual(self.reach(message)['items'], [])
