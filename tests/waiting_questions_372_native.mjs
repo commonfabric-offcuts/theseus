@@ -35,13 +35,16 @@ export async function waitingQuestions372Checks({ check, page, until, control, v
         assert.equal(source.topic_id, record.topic_id);
       }
       observations.push({ name: 'item 372 recorded fixture', engine, width, theme, records: [...records], count: light.light.short.count, asks });
-      const p = await page(oid, null, true, { url: facts.origin + '/?workspace=' + oid, beforeNavigate: async q => {
+      const p = await page(oid, null, true, { url: facts.origin + (phone ? '/?workspace=' + oid : '/?topic=t1'), beforeNavigate: async q => {
         await q.send('Emulation.setDeviceMetricsOverride', { width, height: phone ? 844 : 900, mobile: phone, deviceScaleFactor: 1 });
         if (phone) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
         await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
       } });
       try {
-      const ready = () => until(() => p.evaluate(`document.body.dataset.ready==='true'&&!document.documentElement.hasAttribute('data-rails-reading')`).catch(() => false), oid + ': page and rails ready');
+      const ready = async () => {
+        await until(() => p.evaluate(`document.body.dataset.ready==='true'&&!document.documentElement.hasAttribute('data-rails-reading')`).catch(() => false), oid + ': page and rails ready');
+        await p.readsSettled?.();
+      };
       const press = async selector => {
         await ready();
         const box = await until(() => p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;e.scrollIntoView({block:'center'});const b=e.getBoundingClientRect();const x=b.x+Math.min(8,b.width/2),y=b.y+b.height/2;return e.contains(document.elementFromPoint(x,y))?{x,y,height:b.height,right:b.right,bottom:b.bottom,width:innerWidth,viewportHeight:innerHeight}:null})()`), selector + ': uncovered native target');
@@ -70,26 +73,49 @@ export async function waitingQuestions372Checks({ check, page, until, control, v
         await until(async () => (await shown())?.open === false, oid + ': Reader closes');
         return actual.message_id;
       };
-      // Release277's phone outcome page intentionally hides its standing panel.
-      // Use its actual Outcomes drawer control; desktop keeps the page's light.
+      //14606/14618: phone keeps the drawer cycle; desktop uses the existing
+      // waiting pill and lit TOPIC rows, with no restored standing/cycle button.
       const ensureOutline = async () => {
         if (phone && !await p.evaluate('document.querySelector("#rail").classList.contains("open")')) await press('#rail-open');
       };
-      const lightControl = phone ? `#outline .ol-outcome[data-workspace-id="${oid}"] .ol-waiting` : '#outcome-standing .state-line button.state-question';
+      const lightControl = `#outline .ol-outcome[data-workspace-id="${oid}"] .ol-waiting`;
       const countVisible = () => until(() => p.evaluate(`document.querySelector(${JSON.stringify(lightControl)})?.textContent.includes('4 questions')`), oid + ': four questions rendered');
       const back = async () => {
         await p.evaluate('history.back()');
         await until(() => p.evaluate(`new URL(location.href).searchParams.get('workspace')===${JSON.stringify(oid)}`).catch(() => false), oid + ': Back to outcome');
         await ready(); await ensureOutline(); await countVisible();
       };
-      await ready(); await ensureOutline(); await countVisible();
-      assert.ok(await p.evaluate('!document.querySelector("#reader").open'), 'count read opens nothing');
       const cycle = [];
-      for (let n = 0; n < 5; n++) {
-        if (n) await back();
-        cycle.push(await opened(lightControl, order[n % 4]));
+      if (phone) {
+        await ready(); await ensureOutline(); await countVisible();
+        assert.ok(await p.evaluate('!document.querySelector("#reader").open'), 'count read opens nothing');
+        for (let n = 0; n < 5; n++) {
+          if (n) await back();
+          cycle.push(await opened(lightControl, order[n % 4]));
+        }
+        assert.deepEqual(cycle, [...order.map(q => q.message_id), order[0].message_id]);
+      } else {
+        // Start outside this outcome so its existing left-rail topic rows own
+        // navigation; opening the disclosure is setup and keeps981's folds.
+        await ready();
+        const disclosure=`#outline .ol-outcome[data-workspace-id="${oid}"] .ol-disclosure`;
+        if (!await p.evaluate(`document.querySelector(${JSON.stringify(disclosure)})?.getAttribute('aria-expanded')==='true'`)) await press(disclosure);
+        const places=await view('workspaces',{limit:100});
+        // Existing cover questions contribute separately to the rail total.
+        const expected=places.items.reduce((n,item)=>n+(item.light?.light==='waiting'&&item.light.short?.kind==='asks'?item.light.short.count:0)+(item.cover_waiting??0),0);
+        observations.push({name:'item372 expected desktop total',engine,width,theme,expected,places:places.items.map(({id,light,cover_waiting})=>({id,light,cover_waiting}))});
+        await until(()=>p.evaluate(`Number(document.querySelector('#outline-only-waiting .n')?.textContent)===${expected}`),oid+': pill counts all eligible questions');
+        await press('#outline-only-waiting');
+        assert.equal(await p.evaluate("document.querySelector('#outline-only-waiting').getAttribute('aria-pressed')"),'true');
+        assert.equal(await p.evaluate("document.querySelectorAll('#outline .ol-waiting').length"),0,'desktop has no hidden cycle button');
+        for (const record of records) {
+          const row=`#outline a[data-topic-id="${record.topic_id}"]`;
+          await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(row)})?.dataset.dimmed==='false'`),oid+': waiting topic stays lit');
+          cycle.push(await opened(row,{message_id:record.message_id}));
+        }
+        assert.deepEqual(cycle,records.map(record=>record.message_id),'pill and topic rows reach both Conversation questions');
+        observations.push({name:'item372 desktop waiting pill',engine,width,theme,expected,cycle,control:'#outline-only-waiting',rows:'existing topic rows'});
       }
-      assert.deepEqual(cycle, [...order.map(q => q.message_id), order[0].message_id]);
       assert.equal(new Set(cycle.slice(0, 4)).size, 4, 'each counted source reached once, including second Conversation');
       const still = await view('outcome_light', { workspace_id: oid });
       assert.equal(still.light.short.count, 4, 'opening sources answers no asks');
@@ -97,7 +123,6 @@ export async function waitingQuestions372Checks({ check, page, until, control, v
       const body = `${oid} synthetic question [A second]`;
       const answer = await ask(oid + '-a2', a, body);
       records.push({ topic_id: a, message_id: answer.result.message_id, body });
-      await p.send('Page.navigate', { url: facts.origin + '/?topic=' + a });
       await ready();
       const row = `#outline a[data-topic-id="${a}"]`;
       const drawer = async () => {
@@ -106,14 +131,21 @@ export async function waitingQuestions372Checks({ check, page, until, control, v
       const topicAsks = (await view('topic', { topic_id: a })).topic.asks.filter(q => q.actor_id === facts.actor)
         .sort((x, y) => x.since_ms - y.since_ms || x.message_id.localeCompare(y.message_id));
       assert.equal(topicAsks.length, 2);
+      // Wait for the real row's current public preview, then use its native
+      // navigation owner. A harness goto after the fixture write would bypass
+      // the app's departure guard while the write's live reads are queued.
+      await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(row)})?.querySelector('.topic-state')?.title.includes(${JSON.stringify(body)})`),oid+': row has read the second question');
+      await drawer();
+      await opened(row,topicAsks[phone?0:1]);
       const topicCycle = [];
       const pageOrigin = (await shown()).origin;
       for (let n = 0; n < 3; n++) {
         await drawer();
-        topicCycle.push(await opened(row, topicAsks[n % 2]));
+        topicCycle.push(await opened(row, topicAsks[(n+(phone?1:0)) % 2]));
         assert.equal((await shown()).origin, pageOrigin, 'topic-row press stays on this document');
       }
-      assert.deepEqual(topicCycle, [topicAsks[0].message_id, topicAsks[1].message_id, topicAsks[0].message_id]);
+      const expectedTopicCycle=(phone?[1,0,1]:[0,1,0]).map(index=>topicAsks[index].message_id);
+      assert.deepEqual(topicCycle, expectedTopicCycle,'the desktop row remembers its earlier oldest-question press');
       const overflow = await p.evaluate('document.documentElement.scrollWidth-innerWidth');
       assert.ok(overflow <= tolerances.viewportOverflowPx, `viewportOverflowPx=${tolerances.viewportOverflowPx}: ${overflow}`);
       observations.push({ name: 'item 372 synthetic records and cycles', engine, width, theme, tolerances, records, count: 4, facts: asks, cycle, topicCycle, overflow });

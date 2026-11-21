@@ -14,14 +14,13 @@ Unrelated writing no longer answers every linked ask; exact replies keep their
 current scope. Expanded own-reader rows preserve current excerpt/withheld
 metadata, and Conversation inspection preserves its existing other-reader
 fallback. Current982 read extent and992 row activation/snapshots remain owned
-by the current rail. This is a Core data-layer change, judged under the current
-gauntlet rule; Fable owns rebinding/stages and Warp review/carry/deploy. Old
-allocations, preview gates and frozen native claims below are historical, not
-the resumed workflow. Reconciliation stops if it grows past372.
+by the current rail. Warp14616 classifies372 as ordinary: it adds no schema or
+migration. Fable owns rebinding/stages and Warp review/carry/deploy.
+Reconciliation stays within372; previous allocations are historical.
 
-## Retained original contract
+## Contract
 
-Source-only feel preview under warp 8785. The default is the authenticated
+The default is the authenticated
 reader's currently eligible questions, without an age or unread cutoff. A
 question's identity is its topic and message id, not its topic alone. Its time
 is the original ask time. Nothing in this read marks a message read, answers
@@ -32,7 +31,11 @@ an ask, changes a wait, or opens or focuses anything passively.
 - An outcome's light, outline waiting control and rolled-up waiting count
   include every distinct eligible ask in that outcome's unarchived topics
   **and its Conversation**. With one in A, one in B and two in Conversation,
-  the count is four and all four occur in the outcome's cycle exactly once.
+  the count is four. On a phone all four occur in the drawer's cycle exactly
+  once before wrap. Desktop uses the existing waiting-on-you pill and topic
+  rows under Warp14606/14618: the first row press opens its oldest question,
+  the next its sibling. No desktop cycle button, menu or standing panel is
+  added. Covers retain their separate contribution to the pill's total.
 - A topic row cycles every eligible ask to this reader in that topic. The
   topic and workspace topic reads expand this reader's identities in `asks`,
   still grouped by the actor asked; other actors retain their oldest-ask
@@ -92,11 +95,10 @@ focus, scroll, 44px targets and waiting dots with their owners.
 
 ## Integration boundary
 
-This uses only the supplied base, not in-flight 722/594 source. Any later
-waiting-dot or source-identity integration must retain these exact question
-identities and not restore topic-level deduplication. The supplied base has no
-asker-withdraw command or UI in the inspected conversation, reaction, topic
-state or message-menu source. This preview adds no withdrawal authority or
-schema; a coordinator-supplied ending/withdrawal must feed the same existing
-eligibility records. Withdrawal feel is NOT COVERED until that path is present
-on the hosted copy. Tony tries the candidate before tests or review.
+The current topic rows, dimming, manual folds, document-local reading extent
+and guarded activation keep their existing owners. This adds no dossier
+enumeration or starred-only navigation path. The phone cycle control is
+created only at760px and below, removed on desktop, and recreated when the
+drawer returns. Current withdrawal, resolution and supersession rules are
+checked below the browser; native withdrawal gestures and physical-phone
+feel are outside this slice's evidence. It adds no withdrawal authority.

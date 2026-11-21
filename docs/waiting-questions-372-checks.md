@@ -1,91 +1,92 @@
 # Checks for every waiting question (372)
 
-## Current277 reconciliation checkpoint
+## Current source and scope
 
-Warp14589 assigned a bounded reconciliation and requires stopping if it grows
-past372. The public-command277 count red is3 for4 eligible asks. Updated current
-envelopes, exact-reply/withdrawal/supersession controls pass9/9, client3/3.
-Applied count/reader-scope/client-cycle mutants fail, with the cycle additionally
-caught by native320px taps; byte restoration returns both owners green.
+The retained372 source was reconciled onto actual277/79a44ace under
+Warp14589, then the existing desktop pill/topic-row behavior was confirmed by
+14606/14618. Warp14616 classifies this as ordinary; no schema or migration
+changes. Fable owns Build2 and stages; Warp owns independent review/carry/deploy.
+The earlier9fc9eefc stop is a checkpoint, superseded by the final packet.
 
-Current Chrome matrix: six phone cells pass at320/375/390 × light/dark using
-the actual Outcomes drawer waiting control; both1280px cells fail before the
-first pointer press because the old standing control is hidden.277's
-outcome-page.css hides the standing panel on the current outcome bench;
-rail-dense.css hides the separate waiting button in Compact and Roomy. The
-visible light glyph and its peek have no question-cycle handler. Restoring
-words or inventing another desktop act would cross those accepted owners.
-The desktop control needs Warp's ruling before continuation. No WebKit final
-run was started after this failed Chrome matrix. This checkpoint is not a
-feature freeze or review-ready source.
+The public-command actual277 red reports3 for4 eligible questions after only
+the fixture's required current ask/reply envelopes were supplied. The earlier
+ASK_WAIT_REQUIRED refusal is retained separately and is not that count red.
+Current exact-reply, withdrawal, supersession, held-record and visibility
+rules decide eligibility. An unrelated topic post settles no linked sibling.
 
-Affected Core192 tests retains the same77 failure names as pristine183; Node
-1456 retains the same23 as pristine1453, with full normalized Node diagnostics
-identical. The Core source-read audit retains the same inherited undeclared
-deficits after classifying372's two new/moved query sites. Raw failures remain
-unwaived; old native and allocation notes below are historical. All owned
-Chrome/fixture cleanup is verified, with no remaining workload.
+## Owner checks
 
-## Retained original checks and qualifications
+`tests/test_waiting_questions_372.py` uses isolated Core records and checks
+all four exact source identities, reads without mutation, expanded own-reader
+topic/list metadata with other readers compact, exact settlement, said-wait
+deduplication, archive/done behavior, thumb/undo, current public preview words,
+reader/topic-scoped metadata queries, private visibility and exact blocking
+identity. Attention still counts three places. Final focused run:9/9.
 
-`tests/test_waiting_questions_372.py` creates an isolated outcome with topics
-A and B and two Conversation asks through Core commands. It asserts four
-identities, exact source opening, no database mutation by reads, expanded
-actual-reader topic/list metadata, existing settlement differences, said-wait
-deduplication, archive/done behavior, thumb/undo, metadata query scope and
-exact-message blocking. `attention.waiting_on_me` still counts three places.
+`tests/ui_waiting_questions_372.test.mjs` checks passive oldest-question hrefs,
+actual TopicRail activation, advancement/wrap, sessionStorage and the existing
+other-reader Conversation inspection fallback. The two372 additions in
+`tests/ui_outline_disclosure_902.test.mjs` check the actual desktop pill/row
+owner, absence of a hidden desktop cycle button, and removal/recreation of
+the phone control with focus recovery across resize. These are structural
+owner checks, not native gestures or timing evidence.
 
-`tests/ui_waiting_questions_372.test.mjs` holds passive oldest-question hrefs,
-same-page topic advancement and wrap, four-identity cycles across page loads,
-and independent remembered positions. It is a unit check, not native evidence.
+Actual count, reader-query and first-only row mutants are caught and restored
+byte-for-byte; the first-only row mutant also fails native320px taps. A
+desktop-control mutation diagnostic hung and was stopped; it is retained as
+a diagnostic, not an assertion-level catch. Each Python mutation/restored
+control has its own cache prefix. Final restoration hashes and raw failures
+are in the handoff packet.
+Removing phone-control cleanup on desktop is also caught by the actual resize
+owner's assertion; restoring exact bytes returns all31 Node owner checks green.
 
-`tests/waiting_questions_372_native.mjs`, called by
-`tests/topic_reading_native.mjs`, offers eight `reading item 372` cases to
-`native-reading` and `native-webkit-reading`: 320, 375, 390 and 1280 pixels,
-light and dark. Each records actual synthetic A+B+two-Conversation asks,
-asserts the exact four source identities/count, presses the outcome light five
-times with Back between presses, observes each source once then wrap, and
-adds a second ordinary-topic ask to prove three repeated row presses stay on
-the same document and cycle both asks. Narrow cases use native touch events;
-the laptop uses native pointer events. Escape closes the Reader. Named
-tolerances are viewportOverflowPx=1, targetEdgePx=1 and
-minimumVisibleHeightPx=1; measurements and native targets are retained.
-Existing compact light-control sizing is recorded, not redefined as a new
-44px requirement. This does not qualify general target sizing.
+## Native acceptance
 
-The test builder's raw results, mutation/control logs and exact source
-manifest live under `checks/372-tests9358` in the coordinator's evidence
-directory. An offered case is not proof it ran or passed; consult REPORT,
-SOURCE and ACCEPTANCE there. Cases close their owned pages in `finally`;
-the harness owns browser and fixture teardown and reports actual health.
+`tests/waiting_questions_372_native.mjs` is registered in the main reading
+producer and can also run through `waiting_questions_372_acceptance.mjs`.
+The latter runs only this item's cases with native Playwright pointer/touch
+input, actual scratch Core/HTTP and isolated engine profiles. It verifies
+served topic-navigation/outline bytes and records product/test source hashes.
 
-The supplied preview files remain byte-for-byte unchanged. Parent-96 red
-checks and four applied/caught/restored mutants cover wrong count, second
-Conversation omission, blocking topic deduplication and first-only topic
-presses. Each Python mutation and restored control has its own effective
-CPython 3.9 cache prefix. The first Python invocation accidentally ran the
-candidate before the parent red; its log is retained and this chronology is
-not described as strict red-first execution.
+Eight cases per engine cover320/375/390/1280px in light/dark. Each records
+A+B+two Conversation questions, their exact bodies/ids and the count4.
+Phone taps traverse all four once, then wrap, using the existing Outcomes
+drawer control. Desktop presses the existing waiting pill, verifies its
+question total plus separate cover waits, and presses the lit topic rows,
+including the Conversation row twice. A second A ask then proves same-document
+row advancement and remembered position. Opening a source answers no ask.
+Native targets must be uncovered and within the viewport; overflow tolerance
+is1px. This does not qualify general44px target sizing.
 
-The copied live-data scenario and physical-phone feel were never exercised
-by this seat. Asker withdrawal is absent and NOT COVERED. Neighboring focus,
-To/writing preservation, permission changes while open, recovery, deep paging,
-Only new and both-rail integration remain qualified by the checks actually
-run and source reads; this piece claims no blanket qualification. No scaling
-claim or performance measurement is made.
+The initial current277 run retained six phone passes and two hidden desktop
+control failures. Later canaries retain an expected-total error (separate
+cover waits omitted) and an adapter strict-selector refusal (hidden navigation
+snapshot). Corrected canary passes through actual visible input; those
+diagnostics are not discarded. Early WebKit runs reached the sources but
+failed on API errors from harness-forced page loads. Request/stack traces
+retain those failures. Desktop now starts directly on its required route;
+after adding an ask the case waits for its actual row preview and uses native
+row navigation, preserving the app's departure guard. No error is filtered.
+Final Chromium156.0.8078.47 and WebKit26.6 each pass8/8 on the same source
+hashes and case file. These are engine-at-width results, not physical phones.
 
-The first full Python run retained 3,169 tests and 11 failures. Corrections
-to verification code distinguish compact durable wait heads from expanded
-question navigation, count both blocking and plain asks, repair two ledger
-anchors, classify the relocated visibility query, and declare the own case's
-two generated-database reads. Focused controls cover these corrections; the
-full Python raw result remains failed. Nineteen undeclared input reads also
-exist on parent96 and remain unresolved here.
+Every engine run verifies Browser.close, all observed owned PIDs/profile
+absence and profile removal, fixture stdin EOF/exit0/PID absence/closed port.
+A cleanup failure stops further browser use. No real account records are used.
 
-Verification-order breach: the builder applied two temporary product mutants
-to prove the repaired ledger anchors after the native runs, then restored
-both files byte-for-byte. The brief explicitly invalidates native binding
-after product edits, so those 8/8 results in each engine remain historical
-evidence and are not final qualification. No native retry is authorized by
-the four-slot allocation. The handoff remains not ready despite restored
-product hashes; the coordinator decides the next action.
+## Wider checks and limits
+
+The pre-desktop-cleanup Core affected run192 retains the same77 failure names
+as pristine183; the Node affected run1456 retains the same23 as pristine1453,
+with full normalized Node diagnostics equal. Final outline-affected checks
+and their pristine comparison record1504/1481pass/23fail against
+pristine1499/1476pass/23fail, with identical normalized full diagnostics.
+All baseline reds
+remain explicit and unwaived; there is no broad-green claim. Current source-read
+classification preserves inherited deficits while declaring372's new/moved
+query sites; changed-test filesystem reads have explicit declarations.
+
+Physical-phone feel, native withdrawal gestures, keyboard-up behavior,
+recovery, deep paging, scaling and performance are not qualified by this
+slice. Older parent96 tests, preview allocations and frozen claims are
+historical evidence only and impose no current gate.
