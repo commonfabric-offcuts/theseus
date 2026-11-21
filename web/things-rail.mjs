@@ -27,6 +27,15 @@ import { reloader } from './live.mjs';
 import { listen } from './in-place-navigation.mjs';
 import { KeyTree } from './key-tree.mjs';
 import { panes } from './panes.mjs';
+
+// A Notebook page's first words: its body's lines without Markdown marks, joined, after its own title when it opens with
+// it as a heading. The rail clamps them to three lines; this keeps no more than it could show.
+export function openingWords(body, title) {
+  const text = String(body ?? '').split(/\n+/).map(line => line.replace(/^#+\s*|[*_`>]/g, '').trim()).filter(Boolean).join(' ');
+  const name = String(title ?? '').trim();
+  const rest = name && text.toLowerCase().startsWith(name.toLowerCase()) ? text.slice(name.length).replace(/^[\s:.\u2014-]+/, '') : text;
+  return rest.slice(0, 220);
+}
 import { book, orderOf, placeIn, scopeOf } from './outline-order.mjs';
 
 export const SECTIONS = [
@@ -532,6 +541,9 @@ export class ThingsRail {
       const list = element(doc, 'ul', { className: 'things-list' }, ...items.map(item => {
         const link = this.placeLink({ ...scope, page: item.id }, this.notebookName(item));
         paintChanged(link, item);
+        // A page shows its own first words under its title, so it reads as a page rather than a link.
+        const words = openingWords(item.body, this.notebookName(item));
+        if (words) link.append(element(doc, 'span', { className: 'things-opening', textContent: words }));
         return element(doc, 'li', {}, link);
       }));
       if (!more) return list;
