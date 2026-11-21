@@ -71,16 +71,16 @@
   :root[data-look=paper] dialog.notebook-sheet-dialog .notebook-sheet-page{--paper:#f2eee5;--panel:#f2eee5;--ink:#27241f;--muted:#7a7468;
     --line:#e0dacd;--soft:#e8e2d4;--accent:#3d7a62;--focus:#3d7a62;background:var(--paper);color:var(--ink)}
   @media(prefers-color-scheme:light){:root[data-look=paper] dialog.notebook-sheet-dialog .notebook-sheet-page{--paper:#fbf8f1;--panel:#fbf8f1}}
-  /* The middle column's colour (1001): Slate is each look's own; Graphite is a plain neutral grey and Umber a warm
-     brown-grey, drawn for each look and theme. Only the middle column's ground changes, with what is drawn from it:
+  /* The middle column's colour (1001): Slate is each look's own; Graphite is a plain neutral grey; the third is
+     Midnight, a deep blue, in Bookends (1011) and Umber, a warm brown-grey, in Paper; each drawn for each theme. Only the middle column's ground changes, with what is drawn from it:
      the bench, the ring gap around a stack, and the folder a reply stack sits in. */
   :root:not([data-look=paper])[data-bench=graphite]{--look-bench:#202223;--look-bench-top:#26282a;--stack-ring-gap:var(--look-bench);--stack-folder:#303335}
-  :root:not([data-look=paper])[data-bench=umber]{--look-bench:#25211d;--look-bench-top:#2b2622;--stack-ring-gap:var(--look-bench);--stack-folder:#37312b}
+  :root:not([data-look=paper])[data-bench=midnight]{--look-bench:#171f2b;--look-bench-top:#1c2532;--stack-ring-gap:var(--look-bench);--stack-folder:#26303f}
   :root[data-look=paper][data-bench=graphite]{--look-floor:#1b1c1e;--stack-ring-gap:var(--look-floor)}
   :root[data-look=paper][data-bench=umber]{--look-floor:#1f1a16;--stack-ring-gap:var(--look-floor)}
   @media(prefers-color-scheme:light){
     :root:not([data-look=paper])[data-bench=graphite]{--look-bench:#eff0f1;--look-bench-top:#f5f6f7;--stack-folder:#e1e3e5}
-    :root:not([data-look=paper])[data-bench=umber]{--look-bench:#f4efe6;--look-bench-top:#f9f6f0;--stack-folder:#e7dfd1}
+    :root:not([data-look=paper])[data-bench=midnight]{--look-bench:#eef2f7;--look-bench-top:#f4f7fa;--stack-folder:#dfe5ee}
     :root[data-look=paper][data-bench=graphite]{--look-floor:#f2f3f4}
     :root[data-look=paper][data-bench=umber]{--look-floor:#f7f2e8}
   }
@@ -94,7 +94,7 @@
   .rail-foot .look-swatch:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
   :root:not([data-look=paper]) .look-swatch[data-value=""]{--swatch:#1d2629}
   :root:not([data-look=paper]) .look-swatch[data-value=graphite]{--swatch:#202223}
-  :root:not([data-look=paper]) .look-swatch[data-value=umber]{--swatch:#25211d}
+  :root:not([data-look=paper]) .look-swatch[data-value=midnight]{--swatch:#171f2b}
   :root[data-look=paper] .look-swatch[data-value=""]{--swatch:#161d20}
   :root[data-look=paper] .look-swatch[data-value=graphite]{--swatch:#1b1c1e}
   :root[data-look=paper] .look-swatch[data-value=umber]{--swatch:#1f1a16}
@@ -102,7 +102,7 @@
     .rail-foot .look-swatch::before{box-shadow:0 0 0 1px rgb(0 0 0/.18)}
     :root:not([data-look=paper]) .look-swatch[data-value=""]{--swatch:#f6f7f4}
     :root:not([data-look=paper]) .look-swatch[data-value=graphite]{--swatch:#eff0f1}
-    :root:not([data-look=paper]) .look-swatch[data-value=umber]{--swatch:#f4efe6}
+    :root:not([data-look=paper]) .look-swatch[data-value=midnight]{--swatch:#eef2f7}
     :root[data-look=paper] .look-swatch[data-value=""]{--swatch:#f4f4f1}
     :root[data-look=paper] .look-swatch[data-value=graphite]{--swatch:#f2f3f4}
     :root[data-look=paper] .look-swatch[data-value=umber]{--swatch:#f7f2e8}
