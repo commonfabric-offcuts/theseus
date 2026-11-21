@@ -23,7 +23,12 @@ function page(t, kept, viewport = 1800, instance = 'width-instance', { denyGette
     const previous = Object.fromEntries(['document', 'window', 'ResizeObserver', 'getComputedStyle'].map(key => [key, globalThis[key]]));
     globals.set(t, previous); t.after(() => Object.assign(globalThis, previous));
   }
-  const doc = miniDocument(), make = doc.createElement;
+  const doc = miniDocument(), make = doc.createElement, events = new EventTarget();
+  // The real constructor also owns a document key listener. Keep that DOM
+  // capability here; width assertions and the product's key owner stay intact.
+  doc.addEventListener = events.addEventListener.bind(events);
+  doc.removeEventListener = events.removeEventListener.bind(events);
+  doc.dispatchEvent = events.dispatchEvent.bind(events);
   const observer = class { observe() {} disconnect() {} };
   const win = { innerWidth: viewport, localStorage: kept, ResizeObserver: observer, addEventListener() {}, scrollTo() {},
     matchMedia: () => ({ get matches() { return win.innerWidth <= 760; }, addEventListener() {} }),
