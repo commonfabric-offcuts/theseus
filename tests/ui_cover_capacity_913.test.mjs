@@ -21,11 +21,11 @@ function fixture(t) {
   return { doc, context:{viewer:'reader',nameOf:id=>id,topicId:'topic',rootId:'root'} };
 }
 
-test('913 a long cover keeps all literal words and line breaks in the shared sheet', t => {
+test('913 a long cover keeps all words and line breaks with 963 authored formatting', t => {
   const f=fixture(t), stands='**Literal heading**\n<script>literal</script>\n'+'x'.repeat(20000);
   const sheet=coverSheet(f.doc,{...cover,stands},f.context), words=sheet.querySelector('.cover-stands');
-  assert.equal(words.text,stands);
-  assert.equal(words.children.length,0,'769 literal text remains literal');
+  assert.equal(words.text,stands.replace('**Literal heading**','Literal heading'));
+  assert.equal(words.querySelector('strong').text,'Literal heading');
   assert.equal(sheet.querySelectorAll('script').length,0);
   assert.equal(sheet.querySelectorAll('.cover-refresh').length,1);
 });

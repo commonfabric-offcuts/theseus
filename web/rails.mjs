@@ -50,7 +50,7 @@ shell.extend((doc, win) => {
   // the chips, People, the right rail's name): within that pane, and ← and →
   // past its edge on to the pane beside, as from the messages.
   const feed = () => doc.documentElement.hasAttribute('data-rails');
-  const PANES = [['#rail', 'outline'], ['#main', 'feed'], ['#things', 'things']];
+  const PANES = [['#rail', 'outline'], ['#main', 'feed'], ['#things', 'things'], ['#notebook-sheet-dialog.notebook-docked', 'notebook']];
   arrowReach(doc, {
     listen,
     managed: (at, way) => feed() && ((way === 'up' || way === 'down') && (onNothing(at, doc) && Boolean(doc.querySelector('#messages [data-id]'))) && !doc.getElementById('main')?.inert
