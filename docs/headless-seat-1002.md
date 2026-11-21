@@ -174,15 +174,13 @@ verify Browser.close, owned PIDs/profiles and fixture exit/port cleanup.
 Run only the relevant owner cohort, compare unexplained baseline failures
 honestly, and coordinate one substantial workload at a time in Landing.
 
-Warp15019 clarifies the successor order: 987 supplies schema61 and approved
-757 supplies62. This source builds directly on approved757
-`e6049706c764285e89442b34e01dedb61687db2d` with the actual62→63 seat step.
-1004 has no approved head as this step is registered; it does not block this
-build. If1002 freezes green first,1004 rebases once onto its approved head
-and takes64. Only an earlier1004 approval would move1002 onto that approved
-head with64. No predecessor renumbering or placeholder migration. Each lands
-judged on its own run after its predecessor is live, without holding an
-ordinary head. The actual first approved successor determines the later base.
+Warp15029 settles the successor order: 987 supplies schema61, approved757
+supplies62 and approved1004 supplies63. This source rebases once onto1004
+`54df5fa05785fb6a26ca8b976f046d4a9b75d243` and registers the actual63→64
+seat step. The published47864f5f/63 snapshot and its evidence remain historical;
+shipping checks name the64 composition.1004's Dim tables, view and client
+owners remain intact. No predecessor is renumbered. Each lands judged on its
+own run after its predecessor is live, without holding an ordinary head.
 Freeze when the meaningful owned checks are green, push only this exact
 source branch, and send Warp one diff/test read with HEAD, test files,
 pass/fail evidence and material limitations. Fable/Warp retain stage and
