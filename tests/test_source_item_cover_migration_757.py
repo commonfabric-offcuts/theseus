@@ -2,16 +2,15 @@ from __future__ import annotations
 
 """The source-cover step follows the actual frozen987 schema61 layout."""
 
-from pathlib import Path
 import sqlite3
 from unittest import mock
 
 from aim_next import migrations
 from test_source_item_covers import Fixture, WAIT
+from fixtures.source_covers_757_schema61 import PREDECESSOR_SQL
 
 
-PREDECESSOR = sorted(line.rstrip(";") for line in
-                     (Path(__file__).parent / "fixtures" / "source_covers_757_schema61.sql").read_text().splitlines())
+PREDECESSOR = sorted(PREDECESSOR_SQL)
 
 
 class SourceCoverMigrationCase(Fixture):

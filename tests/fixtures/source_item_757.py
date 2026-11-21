@@ -141,6 +141,11 @@ class SourceItem757:
         elif action == 'split':
             self.act(f, 'stack.join', {'into': None}, {'message_id': f['joined']},
                      {'join_revision': 1}, sender=self.writer)
+        elif action in ('grant-private', 'revoke-private'):
+            current = self.view('workspace', {'workspace_id': f['private_workspace']}, self.private_owner)['workspace']
+            self.act(f, 'workspace.member_set', {'actor_id': self.viewer, 'present': action == 'grant-private'},
+                     {'workspace_id': f['private_workspace']}, {'workspace_revision': current['version']},
+                     sender=self.private_owner)
         else:
             raise ValueError(action)
         return f

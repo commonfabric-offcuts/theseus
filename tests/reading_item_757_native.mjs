@@ -8,7 +8,8 @@ export async function readingItem757Checks({ check, until, control, view, facts,
   const call = async (action, f) => control({ method: 'item_757', action,
     ...(typeof f === 'string' ? { key: f } : { fixture: f }), serial: ++serial });
   const sheet = f => `#messages .reply-stack[data-stack="${f.root}"] > .dossier-cover`;
-  const singleton = f => card(f.lone) + ' > .row-pills';
+  // Current folders, including singletons, draw one actual cover sheet.
+  const singleton = f => `#messages .reply-stack[data-stack="${f.lone}"] > .dossier-cover`;
   // Observe successful real source responses without changing requests/results.
   // Both engines expose the same evidence; no private app object is fabricated.
   const sourceReads = `window.holdReads=true;window.item757Sources=[];{const fetch757=window.fetch;window.fetch=function(input,init){
@@ -40,6 +41,16 @@ export async function readingItem757Checks({ check, until, control, view, facts,
     observations.push({name:'reading item 757 capture',key,surface,engine,actual,...extra});
   };
   const opening = async (p, input, f, key) => {
+    if (input === 'phone') {
+      // The preserved manual wait names this actual dossier root. Its real
+      // link enters the Reader without depending on a separate folded-card
+      // touch owner; source identity and unchanged document are still checked.
+      const link = sheet(f) + ' .cover-wait > a';
+      await centre(p, link); await press(p, input, link);
+      await until(() => p.evaluate(`document.querySelector('#reader')?.open && document.querySelector('#source-body')?.textContent.startsWith('Which weekend suits the cabin trip?')`),
+        'native preserved wait link opens the actual source Reader');
+      return;
+    }
     const toggle = `#messages .reply-stack[data-stack="${f.root}"] > .stack-toggle`;
     const state = () => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(f.root))}),
       t=document.querySelector(${JSON.stringify(toggle)}),w=c?.querySelector(':scope > .message-preview');
@@ -49,6 +60,11 @@ export async function readingItem757Checks({ check, until, control, view, facts,
     if ((await state()).toggle !== 'open') {
       await centre(p,toggle); await press(p,input,toggle);
       await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(toggle)})?.dataset.state==='open'`),'existing dossier control opens the head before Reader input');
+    }
+    if (!(await state()).previewDrawn) {
+      const folded = card(f.root) + ' > .message-folded > .folded-words';
+      await centre(p, folded); await press(p, input, folded);
+      await until(async () => (await state()).previewDrawn, 'native folded-message row reveals its own source words');
     }
     observations.push({name:'reading item 757 opening preconditions',key,phase:'after native control',actual:await state()});
     await openReader(p,input,f.root,'Which weekend suits the cabin trip?');
@@ -189,6 +205,21 @@ export async function readingItem757Checks({ check, until, control, view, facts,
       await opening(p,'phone',f,key);
       await press(p,'phone','#reader-cover > summary');
       await inspectSheet(p,'#reader-cover > .dossier-cover',joined.readback.covers.root.cover);
+      const manual = joined.readback.covers.root;
+      for (const action of ['grant-private', 'revoke-private']) {
+        const changed = await call(action, f); f = changed.fixture;
+        const cover = changed.readback.covers.root.cover;
+        const admitted = action === 'grant-private';
+        assert.equal(cover.items.some(row => row.workspace_id === f.private_workspace), admitted,
+          'actual committed destination membership controls row visibility');
+        assert.equal(changed.readback.covers.root.cover_revision, manual.cover_revision);
+        for (const key of ['stands','payload','waiting','by','at_ms']) assert.deepEqual(cover[key], manual.cover[key]);
+        await inspectSheet(p,'#reader-cover > .dossier-cover',cover);
+        assert.equal(await p.evaluate(`document.querySelector('#reader-cover').textContent.includes('Secret destination title 757')`), admitted,
+          'loaded Reader gains and redacts destination words after actual access changes');
+        await confirmReader(p,f);
+        await picture(p,key,'reader-'+action,{readback:changed.readback});
+      }
       const split=await call('split',f);f=split.fixture;
       assert.equal(split.readback.covers.joined.root_id,f.joined);
       await inspectSheet(p,'#reader-cover > .dossier-cover',split.readback.covers.root.cover);
@@ -196,7 +227,7 @@ export async function readingItem757Checks({ check, until, control, view, facts,
       await confirmReader(p,f);
       await picture(p,key,'reader-split',{readback:split.readback});
       await closeReader(p,'phone');
-      await readyRows(p,card(f.joined)+' > .row-pills',split.readback.covers.joined.cover);
+      await readyRows(p,`#messages .reply-stack[data-stack="${f.joined}"] > .dossier-cover`,split.readback.covers.joined.cover);
       await centre(p,card(f.joined));await picture(p,key,'singleton-after-split');
       await noWrong(p,f);
       assert.equal(await p.evaluate('performance.timeOrigin'),origin,'joins/privacy/split refresh the currently loaded document');

@@ -73,6 +73,14 @@ class Reading757FixtureCase(ReaderCase):
         owner = self.fixture.view('dossier_cover', {'message_id': self.f['root']}, 'other-reader')
         self.assertIn('Secret destination title 757', json.dumps(owner), 'actual private owner sees the item')
         self.assertIsNone(at['covers']['unrelated']['cover'])
+        before = root
+        for action in ('grant-private', 'revoke-private'):
+            self.fixture.transition(self.f, action)
+            changed = self.shown()['covers']['root']
+            self.assertEqual('Secret destination title 757' in json.dumps(changed), action == 'grant-private')
+            self.assertEqual(changed['cover_revision'], before['cover_revision'])
+            for key in ('stands', 'payload', 'waiting', 'by', 'at_ms'):
+                self.assertEqual(changed['cover'][key], before['cover'][key])
         self.fixture.transition(self.f, 'split')
         at = self.shown()
         self.assertEqual(at['covers']['joined']['root_id'], self.f['joined'])
