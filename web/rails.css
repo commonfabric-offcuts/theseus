@@ -194,6 +194,8 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
   .things-sec>summary{min-height:0;height:1.6rem;margin:0 0 .45rem;padding:0 0 .35rem .1rem;border-bottom:1px solid var(--line);
     font-size:.66rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--things-quiet);list-style:none}
   .things-sec>summary::-webkit-details-marker{display:none}
+  .things-sec>summary>.things-disclosure{flex:none;width:1.6rem;height:1.6rem;min-height:0;padding:0;color:inherit}
+  .things-sec>summary>.things-section-name{margin-right:auto}
   .things-sec>summary .sum{font-size:.66rem;font-weight:600;letter-spacing:0;color:var(--things-quiet)}
   .things-sec>summary .notebook-create{width:1.6rem;height:1.6rem;min-height:0;padding:0;margin:0 0 0 auto;border:0;background:transparent;color:var(--things-quiet)}
   .things-sec>summary .notebook-create svg{width:.9rem;height:.9rem}
@@ -216,6 +218,11 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
   .things-thumbs{grid-template-columns:repeat(3,minmax(0,1fr))}
   .things-thumbs a.thumb{border-radius:.5rem}
   .things-thumbs a.thumb:hover{border-color:color-mix(in srgb,var(--accent) 50%,var(--line))}
+}
+/* A new disclosure keeps a finger-sized target in the narrow sheet. */
+@media (pointer:coarse), (max-width:760px){
+  .things-sec>summary{height:auto;min-height:2.75rem}
+  .things-sec>summary>.things-disclosure{width:2.75rem;height:2.75rem;min-height:2.75rem}
 }
 /* Docked beside the page: "In this topic" stays for screen readers, the sections' headings carry the rail, and the rail
    draws no edge of its own (in Paper that line stopped where the rail's contents did). */

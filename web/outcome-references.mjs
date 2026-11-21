@@ -18,8 +18,8 @@ export function pageOpening(body, title) {
 // The topic's changes do not cover the outcome's Notebook, so each read tells
 // the Reader the revisions it saw.
 export class OutcomeReferences {
-  constructor({ scope, host, list, more, message, read, open, denied, seen = () => {}, create = null, pageMax = PAGE, viewPreference = null }) {
-    Object.assign(this, { scope, host, list, more, message, read, open, isDenied: denied, seen, pageMax, viewPreference });
+  constructor({ scope, host, list, more, message, read, open, denied, seen = () => {}, painted = () => {}, create = null, pageMax = PAGE, viewPreference = null }) {
+    Object.assign(this, { scope, host, list, more, message, read, open, isDenied: denied, seen, painted, pageMax, viewPreference });
     this.creation = create?.(); this.creation?.setAvailable(false);
     this.items = []; this.next = null; this.loading = null; this.queued = null;
     more.onclick = () => this.load(true);
@@ -54,6 +54,7 @@ export class OutcomeReferences {
     });
     this.more.hidden = this.next === null;
     this.host.hidden = this.items.length === 0 && this.message.hidden && !this.creation?.available;
+    this.painted({ count: this.items.length, more: this.next !== null, shown: !this.host.hidden });
   }
   // As the rails: a More shares a running read, a reload asked for while one
   // runs follows it, and a reload reads again, from the start, every item the

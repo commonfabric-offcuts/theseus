@@ -16,7 +16,7 @@ who started the outcome from its start record (_created).
 
 import sqlite3
 
-from .contract import _prefix
+from .contract import READABLE, _prefix
 from .delivery import _now_ms
 from . import outcome_rules
 from .work import WORK_WINDOW_MS, work_by_topic
@@ -28,20 +28,21 @@ class OutcomeLight:
     """Store mixin: the `light` on each `workspaces` item, and the `outcome_light` view."""
 
     def _light_asks(self, db, actor, workspace_id):
-        rows = db.execute("SELECT q.topic_id,q.ask_message_id,substr(CAST(t.title AS BLOB),1,1025) AS title_prefix,q.said,q.state_ms,"
-                          "m.author_id AS asked_by,m.sent_ms AS asked_ms,t.state_by "
+        rows = db.execute("SELECT t.id,t.kind,t.workspace_id,substr(CAST(t.title AS BLOB),1,1025) AS title_prefix,q.said,q.ask_message_id,q.state_ms,t.state_by "
                           "FROM topic_waiting q INDEXED BY reader_waiting CROSS JOIN topics t ON t.id=q.topic_id "
-                          "LEFT JOIN messages m ON m.id=q.ask_message_id "
-                          "WHERE q.actor_id=? AND q.archived=0 AND t.workspace_id=? ORDER BY q.state_ms DESC,q.topic_id",
-                          (actor, workspace_id)).fetchall()
+                          "JOIN workspaces w ON w.id=t.workspace_id "
+                          "WHERE q.actor_id=:actor AND q.archived=0 AND t.workspace_id=:workspace AND " + READABLE,
+                          {"actor": actor, "workspace": workspace_id}).fetchall()
         asks = []
         for row in rows:
             title, truncated = _prefix(row["title_prefix"])
-            # Asked by a message, or said by whoever set the topic waiting on the reader.
-            by, ms = (row["asked_by"], row["asked_ms"]) if row["asked_by"] is not None else (row["state_by"], row["state_ms"])
-            asks.append({"topic_id": row["topic_id"], "title": title, "title_truncated": truncated, "by": by, "ms": ms,
-                         **({"message_id": row["ask_message_id"]} if row["ask_message_id"] is not None else {})})
-        return asks
+            place = {"topic_id": row["id"], "title": title, "title_truncated": truncated}
+            questions = self._waiting_asks(db, row, actor) if row["ask_message_id"] is not None else []
+            asks.extend(dict(place, message_id=ask["message_id"], by=ask["by"], ms=ask["since_ms"]) for ask in questions)
+            # A said wait keeps its old topic-only target only when no message asks.
+            if row["said"] and not questions:
+                asks.append(dict(place, by=row["state_by"], ms=row["state_ms"]))
+        return sorted(asks, key=lambda ask: (-(ask["ms"] or 0), ask["topic_id"], ask.get("message_id", "")))
 
     def _light_topics(self, db, actor, rows):
         """[{topic_id, title, activity_ms, work}] for topic rows, with each one's work for this reader."""

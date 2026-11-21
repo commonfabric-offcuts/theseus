@@ -629,7 +629,7 @@ class Conversation:
             item["name"], item["name_truncated"] = _prefix(item.pop("name_prefix") or b"")
             participants.append(item)
         summary = dict(db.execute("SELECT topic_id,message_count,latest_message_id FROM topic_summaries WHERE topic_id=?", (topic["id"],)).fetchone())
-        waits = self._waits_by_topic(db, [topic["id"]])
+        waits = self._waits_by_topic(db, [topic["id"]], reader=actor)
         waiting_on, asks = waits[topic["id"]]
         # reader_may_say: whether the reader may say where it stands, so a page offers its form.
         # The message that reopened or started it is named only to a reader who may see it (whispers.py).

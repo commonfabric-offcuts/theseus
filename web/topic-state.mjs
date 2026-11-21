@@ -252,6 +252,8 @@ export class TopicStatePanel {
     this.painted(topic);
   }
 
+  dispose() { this.topic = null; this.fields = {}; this.controls = null; }
+
   reset() { this.restoreTitleSurface(); this.managedTitle = null; this.controls = null; this.fields = {}; this.kept = null; this.show(null); }
 
   // Whether the reader may say where the topic stands, by Core's rule: its
