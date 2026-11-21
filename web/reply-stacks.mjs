@@ -546,9 +546,10 @@ function paintHead(card, stack, { open, state, unread, nameOf, doc, separate = f
   name.classList.toggle('retracted-words', original && !head.typed && stack.head.removal?.kind === 'retracted');
   name.title = head.typed ? `Named by ${nameOf(head.typed.by)}${head.mintedBy ? ' when the first reply landed' : ''} for everyone here. Click to rename.` : 'Click to give it a short name everyone here sees';
   // A singleton (or Only new) has a title independent of its message's
-  // visibility and between-others fold. Give its rename handle its own keys.
+  // visibility and between-others fold. Rename stays on the pointer/menu path,
+  // outside the feed's Tab and spatial-arrow reading order (954).
   if (separate) {
-    name.setAttribute('role', 'button'); name.tabIndex = 0;
+    name.setAttribute('role', 'button'); name.tabIndex = -1;
     name.setAttribute('aria-label', `Rename dossier: ${head.name}`);
     const rename = event => { event.preventDefault(); event.stopPropagation(); state.on?.rename?.(stack); };
     row.onclick = rename;
