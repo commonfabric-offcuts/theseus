@@ -103,7 +103,7 @@ class ScheduleCase(runner_tests.RunnerCase):
                       lease_until_ms=lease, next_due_ms=due,
                       # This fixture has no page-created seats; the runner still
                       # receives their indexed, read-only scheduling hints.
-                      hosted_seats={"pending": False, "ready_seq": 0},
+                      hosted_seats={"pending": False, "ending": False, "ready_seq": 0},
                       hosted_controls={"agent-a": None, "agent-b": None, "owner": None})
         if reason is not None:
             result["reason_code"] = reason

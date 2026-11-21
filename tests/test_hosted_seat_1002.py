@@ -28,10 +28,10 @@ class HostedSeatCore(unittest.TestCase):
             return db, facts
         with mock.patch.object(storage, '_connect', connect):
             before = self.store.runner_schedule([])
-        self.assertEqual(before['hosted_seats'], {'pending': False, 'ready_seq': 0})
+        self.assertEqual(before['hosted_seats'], {'pending': False, 'ending': False, 'ready_seq': 0})
         self.assertNotIn('BEGIN IMMEDIATE', statements)
         self.added()
-        self.assertEqual(self.store.runner_schedule([])['hosted_seats'], {'pending': True, 'ready_seq': 0})
+        self.assertEqual(self.store.runner_schedule([])['hosted_seats'], {'pending': True, 'ending': False, 'ready_seq': 0})
 
     def add(self, name='Release scribe', role='Keep exact release evidence.\nAsk before changing scope.',
             actor='owner', op=None, revision=None):

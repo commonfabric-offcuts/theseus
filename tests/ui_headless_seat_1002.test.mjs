@@ -109,7 +109,7 @@ test('a wrong receipt cannot clear the original request or invite another actor'
   await state.owner.load(); await state.owner.edit(form); await assert.rejects(state.owner.add(), /unconfirmed/i);
   assert.deepEqual(state.owner.row.request, state.sent[0]);
   await state.owner.edit({ ...form, role: 'Different next writing' });
-  await assert.rejects(state.owner.add(), /previous Add/i); assert.equal(state.sent.length, 1);
+  await assert.rejects(state.owner.add(), /previous seat request/i); assert.equal(state.sent.length, 1);
 });
 
 test('the hosted status distinguishes ready from an actual hello and names uncertain creation', () => {

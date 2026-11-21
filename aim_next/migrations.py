@@ -61,7 +61,7 @@ from .cover_refresh import WRITER_SCHEMA, WRITER_BACKFILL
 from .piece_freeze import FREEZE_SCHEMA, FREEZE_DOWN, FREEZE_OCCUPIED
 from .source_item_covers import SOURCE_COVER_SCHEMA
 from .rail_dimming import DIM_SCHEMA, DIM_DOWN, DIM_OCCUPIED
-from .hosted_seats import SEAT_SCHEMA, SEAT_DOWN, SEAT_OCCUPIED
+from .hosted_seats import SEAT_SCHEMA, SEAT_DOWN, SEAT_OCCUPIED, END_SCHEMA, END_DOWN, END_OCCUPIED
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -240,6 +240,7 @@ STEPS = (
                                       "DROP INDEX source_cover_items", "DROP INDEX source_cover_topics", "DROP INDEX source_cover_changes"), "SELECT 0"),
     ("62", "63", DIM_SCHEMA, DIM_DOWN, DIM_OCCUPIED),
     ("63", "64", SEAT_SCHEMA, SEAT_DOWN, SEAT_OCCUPIED),
+    ("64", "65", END_SCHEMA, END_DOWN, END_OCCUPIED),
 )
 
 
