@@ -1412,7 +1412,7 @@ function paintViews(kind) {
       const author = node('span', undefined, 'message-author');
       card.append(author);
       paintCardAuthor(author, item);
-      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() }));
+      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, replyBasis: item.reply_basis, agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // Its images as thumbnails after its words, each read through the message (card-images.mjs, item 474).
       paintCardImages(card, item, cardImageBytes(item.id));
@@ -2716,7 +2716,7 @@ function repaintEdited(ids, edits) {
     const preview = card.querySelector(':scope > .message-preview');
     const keepingWhole = reader?.card === card && item.preview;
     if (preview && !keepingWhole) {
-      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() });
+      formatWords(preview, item.body, { partial: item.preview === true, replyBasis: item.reply_basis, agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() });
       preview.classList.remove('scroll-in-place');
       const cue = card.querySelector(':scope > .message-preview-cue');
       if (item.preview && !cue) preview.after(node('span', CUE, 'message-preview-cue'));
