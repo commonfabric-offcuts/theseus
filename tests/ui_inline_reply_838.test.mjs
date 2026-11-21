@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import * as compose from '../web/compose-bar.mjs';
 import { Reader } from '../web/reader.mjs';
 const { revealCardReply } = compose;
+import {viewport991} from './fixtures/reply_viewport_991.mjs';
 
 function viewport(top, bottom, vv = null, docked = true) {
   const moves = [], box = { getBoundingClientRect: () => ({ top, bottom }), getClientRects: () => [{}], closest: () => docked };
@@ -33,20 +34,11 @@ test('838 Reader Reply focuses existing writing and then reveals its field', () 
   assert.deepEqual(events, [{ preventScroll: true }, [12, 12]]);
   assert.deepEqual(f.moves, [{ top: 200, behavior: 'instant' }]);
 });
-test('838 keyboard resize reveals the field but ordinary visual viewport scroll leaves it alone', () => {
-  const code = readFileSync(new URL('../web/compose-bar.mjs', import.meta.url), 'utf8');
-  const track = new Function('revealCardReply', 'TYPING', 'KEYBOARD_MIN',
-    `${code.slice(code.indexOf('function trackKeyboard('), code.indexOf('trackKeyboard(globalThis'))}; return trackKeyboard;`)(revealCardReply, 'textarea', 120);
-  const listeners = {}, f = viewport(600, 700), vv = f.win.visualViewport = { height: 800, width: 390, offsetTop: 0,
-    addEventListener: (event, fn) => { listeners[event] = fn; } };
-  f.field.matches = () => true;
-  const doc = { activeElement: f.field, documentElement: { style: { setProperty() {} } }, addEventListener() {} };
-  track(f.win, doc);
-  vv.height = 400; listeners.resize({ type: 'resize' });
-  assert.deepEqual(f.moves, [{ top: 300, behavior: 'instant' }]);
-  listeners.scroll({ type: 'scroll' });
-  assert.equal(f.moves.length, 1, 'scrolling away is not corrected back to the reply');
-});
+test('838 keyboard resize reveals the field and act after layout; unchanged viewport scroll leaves it alone', () => viewport991({boxTop:600,boxBottom:700,sendBottom:744}, f => {
+  f.focus();f.emit('resize',{height:400});assert.deepEqual(f.moves,[],'wait for current layout');f.pump();
+  assert.deepEqual(f.moves,[{who:'window',by:352}]);assert.equal(f.state.sendBottom,392);
+  f.emit('scroll');f.pump();assert.equal(f.moves.length,1,'scrolling away is not corrected back to the reply');
+}));
 
 function placement(full = false) {
   const props = new Map(), preview = { clientHeight: 1000, scrollTop: 0 };

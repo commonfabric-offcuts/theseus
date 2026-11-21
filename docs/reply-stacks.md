@@ -446,13 +446,15 @@ their acts.
   A message that stops
   heading a stack, joined into another or left with no replies, loses the
   row at once and reads as a card.
-- **Replying.** Use Reply on the message's bar, or Return on the selected
-  message, to open the Reader with its reply composer. Return on a selected
-  dossier (its header or chevron) edits its title instead, as ✎ does:
-  Return saves the title, Escape cancels, and Return while writing in a
-  field types there. Stacks have no
-  input-looking reply strip: that control opened the modal rather than
-  accepting writing in place, so Tony asked to remove it.
+- **Replying.** Use Reply on the message's bar, or Return on the visibly
+  outlined message or dossier, to open the same shared reply bar in its card.
+  A compact dossier's outline invokes its title-bar Reply (907: newest loaded message); Return does not rename it.
+  Selected or lit words retain the existing Reader reply with those exact
+  words quoted. With nothing outlined, Return opens New message on this page,
+  without navigating; rail hover is not selection. A button or link showing
+  its focus ring, and writing in a field, retain their own Return.
+  Click the name or ✎ to rename: Return in its title field saves and Escape
+  cancels. (Item 784 supersedes the Return-to-rename entry point.)
   A reply of yours that arrives while this page is open, sent here or from
   another device, stays visible when its answer arrives, even in the same
   update, just as unread replies already in view stay visible. Only your
@@ -545,7 +547,7 @@ On a message (its card focused, never in writing), these keys work:
 | ⌘↓ | move the selected dossier below More; a selected message moves its containing dossier, with Return’s selection |
 | → ← | show every message of its stack, or only its latest and unread; past either, move to the siderail at that end |
 | ⇧⌘↑ ⇧⌘↓ | join its stack to the stack above or below, for everyone |
-| Return | reply to it; on a dossier's header or chevron, edit the dossier's title (Return saves, Escape cancels) |
+| Return | invoke the visibly outlined message or dossier’s current Reply; with nothing outlined, New message here. A ringed control and writing retain Return |
 | x | fold it to its row, for you alone, or unfold it, a dossier's first message as any other; a starred message stays open, and on a dossier as a whole (its chevron, or its title row at latest and unread) x does nothing yet |
 | ⌘Z | undo the last of these, or the last Fold or Unfold (not a fold a reply or a 👍 made) |
 
@@ -983,7 +985,7 @@ twin without judging it, as the rule for that case is still open (item 430).
 | on the page: two places set before item 550 on messages of one dossier that disagree, the one set last placing it, on top or at the bottom; after Let new replies move it and ⌘Z, the same one placing it, on the page and after a reload; a stack placed on the reply heading it, ⌘Z showing its place line and place at once while Core's answers are held | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a dossier placed on two of its messages that disagree …"; in Chrome, "reading stacks ⌘Z of Let new replies move it on a stack placed on the reply heading it …" |
 | on the page: a stack joined into a branch of that dossier that does not head its stack, its join line and Split back out inside the one stack at 320, 375 and 390 and on a laptop, Split back out reaching Core | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a stack joined into a branch of a dossier above the page …" |
 | the head says who minted its name | `tests/ui_stack_order.test.mjs` (`mintedBy`); in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a minted name says Named by …", at 320, 375 and 390 pixels and on a laptop, light and dark, folded and open |
-| Return on a dossier edits its title; Escape cancels; Return in writing types; Return on a message replies | `tests/stack_native.mjs`, "reading stacks Return on a selected dossier edits its title …", in Chrome and Safari's engine |
+| Return answers the outlined dossier; pen/name Rename retains Return save and Escape cancel; writing retains Return | `tests/visible_return_784_native.mjs` N1–N7 and `tests/stack_native.mjs`, "reading stacks Return on a selected dossier invokes its title-bar Reply …", in both engines |
 | the view filter at the right of the Read it row, at a laptop's and a phone's width | `tests/stack_native.mjs`, "reading stacks the feed's view filter sits at the right of the row …" |
 | the older stack case | `tests/topic_reading_native.mjs`, "reading replies gather into a stack …" |
 | earlier messages: which they are, the row's words and count of new, opened rows in place, a fold and a star among them, a join line, seven or fewer showing none | `tests/ui_stack_order.test.mjs` (`earlierOf`, `rowsOf`) |

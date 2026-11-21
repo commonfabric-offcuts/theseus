@@ -8723,8 +8723,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual(q.errors, []); await q.close();
   });
 
-  // Item 385: Return on a dossier selected as a whole edits its title, as Rename in ⋯ does.
-  await check('reading stacks Return on a selected dossier edits its title: Return saves it, Escape cancels, Return in writing types, and Return on a message still replies', async () => {
+  // Item 784 supersedes only item385's Return-to-rename entry point.
+  // Evidence: Tony9689/9698/9705, source9707 SPEC N1/N2 and REPORT Exact limits.
+  // Click/name/pen/menu rename and all title-field checks remain.
+  await check('reading stacks Return on a selected dossier invokes its title-bar Reply: pen rename keeps Return save and Escape cancel, writing types and a message replies', async () => {
     const topic = 'stack-rename-key';
     const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Plan the cabin week.', read: true }],
       ['reply', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A reply to the plan.', read: true }],
@@ -8732,6 +8734,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const p = await open(topic, 'laptop', topic, ids.root);
     await away(p);
     const input = '#messages .reply-stack .stack-rename-input', toggle = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
+    const currentReply = id => p.evaluate(`document.activeElement?.id===${JSON.stringify('reply-'+id+'-writing-body')} && Boolean(document.activeElement.getClientRects().length)`);
+    const closeCurrentReply = async id => { const selector = card(id) + ' .card-reply-close'; await centre(p, selector); await p.point(selector); await until(() => p.evaluate(`document.getElementById(${JSON.stringify('reply-'+id+'-composer')})?.hidden`), 'native Close keeps and hides the current inline reply'); };
     const editing = () => p.evaluate(`document.activeElement?.matches?.(${JSON.stringify(input)}) ? document.activeElement.value : null`);
     // What has the keys, for a failure to name: the title's words while it is edited.
     const keysOn = () => p.evaluate(`(()=>{const e=document.activeElement;return e?.matches?.(${JSON.stringify(input)})?e.value:(e?.className||e?.tagName)+' '+(e?.closest?.('[data-id]')?.dataset.id??'')})()`);
@@ -8740,8 +8744,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await keyTo(p, ids.root);
     assert.equal((await look(p, ids, 'root')).headOpen, 'false', 'the keys are on the dossier\'s compact header');
     await p.key('Enter');
-    await becomes(keysOn, 'Plan the cabin week.', 'Return on the selected dossier opens its title to edit, the cursor in it');
-    assert.equal(await readerOn(p), null, 'and opens no Reader');
+    await until(() => currentReply(ids.reply), 'Return on the selected dossier invokes current907 Reply to the newest message');
+    assert.equal(await editing(), null, 'and edits no title');
+    await closeCurrentReply(ids.reply);
+    await centre(p, section(ids.root) + ' .stack-pen'); await p.point(section(ids.root) + ' .stack-pen');
+    await becomes(keysOn, 'Plan the cabin week.', 'pen click still edits the title');
     await p.send('Input.insertText', { text: 'Cabin week' });
     await p.key('Escape');
     await until(async () => !await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), 'Escape cancels the edit');
@@ -8749,11 +8756,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal(await names(), 0, 'and nothing is sent');
     assert.equal((await actsOf(topic, ids.root))?.name ?? null, null, 'nor held by Core');
     // Its chevron selected stands for the dossier too.
-    await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).focus({preventScroll:true})`);
+    await centre(p, toggle); await p.point(toggle, 'move');
     const fold = (await look(p, ids, 'root')).fold;
     await p.key('Enter');
-    await becomes(keysOn, 'Plan the cabin week.', 'Return on the dossier\'s chevron opens its title to edit');
+    await until(() => currentReply(ids.reply), 'Return on the dossier chevron invokes current907 Reply to the newest message');
+    assert.equal(await editing(), null, 'chevron Return edits no title');
     assert.equal((await look(p, ids, 'root')).fold, fold, 'and does not press the chevron');
+    await closeCurrentReply(ids.reply);
+    await centre(p, section(ids.root) + ' .stack-pen'); await p.point(section(ids.root) + ' .stack-pen');
+    await becomes(keysOn, 'Plan the cabin week.', 'pen starts rename again');
     await p.send('Input.insertText', { text: 'Cabin week' });
     await p.key('Enter');
     await until(async () => (await name()) === 'Cabin week', 'Return in the title saves it');
@@ -8766,13 +8777,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await away(p);
     await keyTo(p, ids.root);
     await p.key('Enter');
-    await until(async () => (await readerOn(p))?.startsWith('Plan the cabin week.'), 'Return on the head shown whole opens the Reader on it');
+    await until(() => currentReply(ids.root), 'Return on the head shown whole opens its current inline Reply');
     assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), false, 'and edits no title');
-    await closeReader(p, 'laptop');
+    await closeCurrentReply(ids.root);
     await keyTo(p, ids.lone);
     await p.key('Enter');
-    await until(async () => (await readerOn(p))?.startsWith('A message on its own.'), 'Return on a message on its own replies');
-    await closeReader(p, 'laptop');
+    await until(() => currentReply(ids.lone), 'Return on a message on its own replies');
+    await closeCurrentReply(ids.lone);
     // In writing Return is a new line, wherever the keys were.
     await keyTo(p, ids.root);
     await p.key('Enter', 4);
@@ -8904,14 +8915,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal(await foldOf(topic, ids.m6), false, 'and not the one the keys were on before');
     await typeX(p);
     await until(async () => !await foldOf(topic, ids.m3), 'x again unfolds it');
-    // A dossier's compact header: the pointer on it gives the dossier the keys, and Return edits its title.
+    // Item 784 (Tony9689/9698/9705, source9707 SPEC N2) supersedes this
+    // item387 Return-to-rename expectation; pointer focus behavior stays held.
     await centre(p, card(ids.root));
     await p.point(card(ids.root) + ' > .stack-head .stack-who', 'move');
     await becomes(at, ids.root, 'the pointer on the dossier\'s compact header puts the keys on the dossier');
     await p.key('Enter');
-    await until(() => p.evaluate(`document.activeElement?.matches?.('.stack-rename-input')`), 'Return edits the hovered dossier\'s title');
-    await p.key('Escape');
-    await until(() => p.evaluate(`!document.querySelector('.stack-rename-input')`), 'Escape cancels it');
+    await until(async () => (await readerOn(p))?.startsWith('Plan the cabin week.'), 'Return replies to the hovered dossier head');
+    assert.equal(await p.evaluate(`Boolean(document.querySelector('.stack-rename-input'))`), false, 'Return does not rename');
+    await centre(p, card(ids.reply) + ' .card-reply-close'); await p.point(card(ids.reply) + ' .card-reply-close');
     // Keys in use under a still pointer: the page scrolls under it, and the keys keep their place.
     await keyTo(p, ids.m5);
     await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.m5))}).scrollIntoView({block:'start'})`);
