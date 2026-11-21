@@ -4,9 +4,9 @@
    Bookends, by redefining the tokens on itself so what is inside follows (look.css does the same), in both
    themes and both looks. Only the writing surface turns: the Reader's page and the dossiers keep theirs. A hair
    edge keeps black apart from black, as on a reply under one of your own messages. The Notebook's own sheet
-   (notebook-mode) keeps the Notebook's material. Fine pointer and wider than a phone only, like the sheets
-   it dresses. */
-@media (pointer:fine) and (min-width:761px){
+   (notebook-mode) keeps the Notebook's material. Every screen, like the sheets it
+   dresses; write-touch.css sizes them for a finger. */
+@media all{
   :is(dialog.composer-home[open]:not(.notebook-mode), dialog#reader[open] #reader-composer, .card-reply-composer, .message-edit-field){
     --panel:#000;--paper:#000;--ink:#e3eae7;--muted:#97a6a3;--line:#2b3436;--soft:#18241f;--accent:#5fae96;--focus:#5fae96;
     --sheet-hair:#2b3436;--sheet-quiet:#97a6a3;

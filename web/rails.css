@@ -187,8 +187,8 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 
 /* ---- The things rail, in the outcome page's grammar (designer, Redesign right siderail) ----
    Every section heading the same small caps as the outcome page's TOPICS, AGENTS and NOTEBOOK; the Notebook's pages as
-   small text pages with their first words; images three to a row. A fine pointer only: a touch keeps its taller rows. */
-@media (pointer:fine) and (min-width:761px){
+   small text pages with their first words; images three to a row. Every screen, the phone's sheet from the bottom too. */
+@media all{
   .things{--things-quiet:color-mix(in srgb,var(--ink) 58%,transparent);--things-tile:color-mix(in srgb,var(--ink) 3%,var(--paper));--things-hair:var(--line)}
   .things-sec{border-top:0;padding:0;margin:0 0 1.35rem}
   .things-sec>summary{min-height:0;height:1.6rem;margin:0 0 .45rem;padding:0 0 .35rem .1rem;border-bottom:1px solid var(--line);
@@ -225,7 +225,7 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
   [data-rails] .things-head h2{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 }
 /* Paper: the Notebook's pages are paper on the rail's dark floor, as in the outcome page's Notebook column. */
-@media (pointer:fine) and (min-width:761px){
+@media all{
   :root[data-look=paper] .things-sec[data-key=notebook] .things-body{padding:.55rem;border-radius:.7rem;background:#f2eee5}
   :root[data-look=paper] .things-sec[data-key=notebook]{--things-tile:#fbf8f1;--things-hair:#ddd5c5;--things-quiet:#6f685c;--ink:#27241f;--accent:#3d7a62}
 }

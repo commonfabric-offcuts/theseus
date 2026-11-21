@@ -1,8 +1,8 @@
 /* The Reader and a message card's inline reply, in the pencil sheet's grammar: one quiet header line with small
    square controls, the words at reading size, and writing that sits in a card of its own: the card carries the
-   focus, not the field. Who sees it, the save dot and the act use the sheet's small chips. Fine pointer and
-   wider than a phone only; a phone keeps today's Reader and inline reply. */
-@media (pointer:fine) and (min-width:761px){
+   focus, not the field. Who sees it, the save dot and the act use the sheet's small chips. Every screen;
+   write-touch.css sizes it for a finger and keeps a phone's one-line bar while reading. */
+@media all{
 dialog#reader[open]:not([data-card-reply]){
   --sheet-hair:color-mix(in srgb,var(--line) 80%,var(--panel));
   --sheet-quiet:color-mix(in srgb,var(--ink) 62%,var(--panel));
