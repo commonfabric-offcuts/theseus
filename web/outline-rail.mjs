@@ -1,3 +1,4 @@
+import { outcomeColors, validOutcomeColor } from './outcome-colors.mjs';
 import { OutlineMenus } from './outline-menus.mjs';
 // The outline on the left of a topic (pipeline
 // items 272 and 902; docs/rails.md): every outcome, with its own remembered
@@ -250,6 +251,7 @@ export class OutlineRail {
     this.dossiers.begin();
     this.notebookStars.begin();
     this.unlisten?.(); this.unlisten = null;
+    this.colorUnlisten?.(); this.colorUnlisten = null;
     this.watch?.disconnect(); this.watch = null; this.watched = null;
     // The list the run that went drew stays in view until the next run's own
     // has something to show; nothing in it acts meanwhile.
@@ -257,7 +259,10 @@ export class OutlineRail {
       outcome.adopted.inert = true;
       // Retired page parts keep their look, but their ids must not shadow
       // the next run's fresh elements. The retired run kept its own id map.
-      for (const node of [outcome.adopted, ...outcome.adopted.querySelectorAll('[id]')]) node.removeAttribute('id');
+      for (const node of [outcome.adopted, ...outcome.adopted.querySelectorAll('[id]')]) {
+        if (node.id === 'topics') node.classList.add('topic-list');
+        node.removeAttribute('id');
+      }
     }
     if (!feed) return;
     // Under the page's header on a phone: how much is new in the other
@@ -279,6 +284,8 @@ export class OutlineRail {
     this.outcomesKey = handles.live?.outcomes ?? null; this.readOutcomesKey = null;
     this.starting = handles.route?.kind === 'workspace';
     const { bootstrap } = handles;
+    outcomeColors.bind({ api: handles.api, bootstrap });
+    this.colorUnlisten?.(); this.colorUnlisten = outcomeColors.listen(() => this.paint());
     this.dimming.bind(bootstrap.instance_id, bootstrap.actor);
     // What a move of the person's order is sent through, kept for the moments between runs.
     this.sender = { api: handles.api, bootstrap };
@@ -376,6 +383,7 @@ export class OutlineRail {
     const max = handles.bootstrap.limits?.page_max ?? PAGE;
     const validCount = value => Number.isSafeInteger(value) && value >= 0;
     const fields = ['id', 'unread', 'addressed', 'build', 'cover_waiting', 'light'];
+    const allowed = new Set([...fields, 'color', 'color_revision']);
     const fail = () => { throw Error('The outcome counts could not be confirmed. Retry outcomes.'); };
     for (let start = 0; start < ids.length; start += max) {
       const wanted = new Set(ids.slice(start, start + max));
@@ -383,10 +391,12 @@ export class OutlineRail {
       if (!mine()) return;
       if (answer?.instance_id !== handles.bootstrap.instance_id || !Array.isArray(answer.items) || answer.items.length !== wanted.size) fail();
       for (const item of answer.items) {
-        if (!item || Object.keys(item).length !== fields.length || !fields.every(key => Object.hasOwn(item, key)) || !wanted.delete(item.id) ||
+        if (!item || !Object.keys(item).every(key => allowed.has(key)) || !fields.every(key => Object.hasOwn(item, key)) || !wanted.delete(item.id) ||
           ![item.unread, item.addressed, item.cover_waiting, item.build?.unread, item.build?.addressed].every(validCount) ||
           !(item.light === null || typeof item.light === 'object' && typeof item.light.light === 'string')) fail();
-        updates.push(structuredClone(item));
+        // Never pair an incomplete color with an older row's revision.
+        const color = validOutcomeColor(item);
+        updates.push({ ...structuredClone(item), color: color ? item.color : undefined, color_revision: color ? item.color_revision : undefined });
       }
     }
     if (!mine()) return;
@@ -800,6 +810,8 @@ export class OutlineRail {
     const focused = [...this.list.children].find(li => li.contains(this.doc.activeElement)) ?? null;
     items.forEach(item => {
       const outcome = this.outcome(item), open = this.isOpen(item.id), visible = shownUnder(this.filter, item);
+      const choice = outcomeColors.forDisplay(item);
+      if (choice?.color) outcome.li.dataset.color = choice.color; else delete outcome.li.dataset.color;
       shown.add(item.id);
       outcome.li.hidden = !visible;
       outcome.li.toggleAttribute('data-open', open);

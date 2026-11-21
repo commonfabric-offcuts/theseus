@@ -1,5 +1,6 @@
 import { recoveryReadOnly } from './upload-state.mjs';
 import { lineMove } from './line-move.mjs';
+import { MentionPick } from './mention-pick.mjs';
 
 // Whether the page runs on a Mac, where ⌘ is the command key and Ctrl-A moves
 // to the start of a line; elsewhere Ctrl is the command key.
@@ -25,7 +26,7 @@ export const typingField = node => Boolean(node && (node.tagName === 'TEXTAREA' 
 // surface without an Editor, as the cards page's box is, gives none, and its
 // field alone holds what is written.
 export class WritingInput {
-  constructor({field,editor=null,admits=()=>true,readOnly=()=>false,beforeEdit=()=>{},changed=()=>{},mac=onMac()}) {
+  constructor({field,editor=null,admits=()=>true,readOnly=()=>false,beforeEdit=()=>{},changed=()=>{},members=null,mentions=()=>true,mac=onMac()}) {
     Object.assign(this,{field,currentEditor:editor??(()=>null),editorless:!editor,admits,surfaceReadOnly:readOnly,beforeEdit,changed,mac});
     // Each line move as the field's Undo has it: Undo of a move puts the
     // cursor back where it was (the browser would select both blocks), Redo
@@ -38,15 +39,18 @@ export class WritingInput {
       else if(!this.moving&&!['historyUndo','historyRedo'].includes(event.inputType))moves.done.length=moves.at;
     });
     if(!editor)return;
-    field.addEventListener('input',()=>{
+    field.addEventListener('input',event=>{
       const current=this.currentEditor();
-      if(this.readOnly()) { if(current)field.value=current.draft.body;return; }
+      if(this.readOnly()) { if(current)field.value=current.draft.body;this.mentions?.close();return; }
       this.beforeEdit();current.edit({body:field.value,caret:this.caret()});this.changed(current);
+      if(!event?.isComposing)this.mentions?.update();
     });
     field.addEventListener('select',()=>{
       const current=this.currentEditor();
       if(current&&this.admits())current.draft.caret=this.caret();
+      if(this.mentions?.open)this.mentions.update();
     });
+    if(members)this.mentions=new MentionPick({field,members,admits:()=>!this.readOnly()&&mentions(),insert:text=>this.insertText(text)});
   }
   caret() { return {start:this.field.selectionStart,end:this.field.selectionEnd}; }
   readOnly() {

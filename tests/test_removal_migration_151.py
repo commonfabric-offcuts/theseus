@@ -14,7 +14,7 @@ import uuid
 
 from aim_next import Store
 from aim_next.migrations import migrate, MigrationError
-from aim_next.store import StoreOpenError
+from aim_next.store import StoreOpenError, SCHEMA_VERSION
 
 
 BASE = 'f41d682691c5a99c177538a87a30f04916ed6e1e'
@@ -75,7 +75,7 @@ class MigrationCase(unittest.TestCase):
                 with self.assertRaises(StoreOpenError) as refused: Store(path, 'test-instance', expected_binding=binding)
                 self.assertEqual(refused.exception.code, 'SCHEMA_MISMATCH'); self.assertEqual(digest(), unchanged)
                 upgrade = migrate(path, 'test-instance', binding)
-                self.assertEqual((upgrade['from_version'], upgrade['schema_version']), (self.source_version, '59'))
+                self.assertEqual((upgrade['from_version'], upgrade['schema_version']), (self.source_version, SCHEMA_VERSION))
                 self.assertEqual(old_records(), before)
                 with sqlite3.connect(str(path)) as db:
                     self.assertEqual(db.execute("SELECT sql FROM sqlite_master WHERE name='topic_reopen_message'").fetchone(),
