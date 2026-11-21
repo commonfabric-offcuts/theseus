@@ -4286,8 +4286,8 @@
    "break": [
     [
      "aim_next/outcome_rules.py",
-     "[dict(by_topic[topic], blocking=blocks) for topic, blocks in held.items() if topic in by_topic]",
-     "[dict(fact, blocking=held[fact[\"topic_id\"]]) for fact in facts if fact[\"topic_id\"] in held]"
+     "for ask in blocking:",
+     "for ask in reversed(blocking):"
     ]
    ],
    "check": {
@@ -6216,7 +6216,7 @@
    "break": [
     [
      "web/topic-navigation.mjs",
-     "return this.open(item.id, this.title(item.id), this.question(item.id));",
+     "return this.open(id, this.title(id), this.question(id, true));",
      "return this.open(item.id, this.title(item.id));"
     ]
    ],

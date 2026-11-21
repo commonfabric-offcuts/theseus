@@ -9,7 +9,8 @@ export function mentionQuery(value, start, end = start) {
 export function mentionChoices(members, filter) {
   const unique = new Map();
   for (const person of members) if (person.enabled !== false && !unique.has(person.id)) unique.set(person.id, person);
-  return [...unique.values()].filter(({id, name}) => id.toLowerCase().includes(filter) || name?.toLowerCase().includes(filter))
+  const prefix = filter.toLowerCase();
+  return [...unique.values()].filter(({id, name}) => id.toLowerCase().startsWith(prefix) || name?.toLowerCase().startsWith(prefix))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
@@ -25,7 +26,7 @@ export class MentionPick {
     on('blur', event => { if (!this.list?.contains(event.relatedTarget)) this.close(); });
     on('compositionstart', () => { this.composing = true; this.close(); });
     on('compositionend', () => { this.composing = false; this.update(); });
-    // Take Return/Escape before the surface can send, quote or close.
+    // Take completion keys/Escape before the surface can send, indent or close.
     on('keydown', event => this.key(event), true);
   }
   get open() { return Boolean(this.query && this.list && !this.list.hidden); }
@@ -51,8 +52,9 @@ export class MentionPick {
     this.field.after(this.list);
   }
   paint() {
-    this.ensureList();
     const choices = mentionChoices(this.members(), this.query.filter);
+    if (!choices.length) { this.close(); return; }
+    this.ensureList();
     this.active = Math.max(0, Math.min(this.active, choices.length - 1));
     const rows = choices.map((person, index) => {
       const row = this.doc.createElement('button'); row.type = 'button'; row.tabIndex = -1;
@@ -61,7 +63,6 @@ export class MentionPick {
       row.textContent = `@${person.id}${person.name && person.name !== person.id ? ' · ' + person.name : ''}`;
       row.onclick = () => this.pick(person.id); return row;
     });
-    if (!rows.length) { const empty = this.doc.createElement('p'); empty.textContent = 'No matching people'; rows.push(empty); }
     this.list.replaceChildren(...rows); this.list.hidden = false;
     this.field.setAttribute('aria-controls', this.list.id); this.field.setAttribute('aria-expanded', 'true');
     this.field.setAttribute('aria-autocomplete', 'list');
@@ -92,7 +93,7 @@ export class MentionPick {
     if (!this.current()) { this.close(); return false; }
     const choices = mentionChoices(this.members(), this.query.filter);
     if (event.key === 'Escape') this.close();
-    else if (event.key === 'Enter' && choices.length) this.pick(choices[this.active]?.id);
+    else if (['Enter','Tab'].includes(event.key) && choices.length) this.pick(choices[this.active]?.id);
     else if (['ArrowDown','ArrowUp'].includes(event.key) && choices.length) {
       this.active = (this.active + (event.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length; this.paint();
     } else return false;

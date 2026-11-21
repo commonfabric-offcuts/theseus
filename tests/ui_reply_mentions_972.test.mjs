@@ -18,7 +18,7 @@ test('enabled members match by name or ID, duplicate names retain distinct IDs',
   const members=[{id:'alpha',name:'Shared'},{id:'beta',name:'Shared'},{id:'alpha'}, {id:'off',name:'Shared',enabled:false}];
   assert.deepEqual(mentionChoices(members,'shared').map(x=>x.id),['alpha','beta']);
   assert.deepEqual(mentionChoices(members,'LP').map(x=>x.id),[],'query supplies lowercase');
-  assert.deepEqual(mentionChoices(members,'lp').map(x=>x.id),['alpha']);
+  assert.deepEqual(mentionChoices(members,'lp').map(x=>x.id),[],'999 matches prefixes, not interior letters');
   assert.deepEqual(mentionChoices(members,'missing'),[]);
 });
 
@@ -75,4 +75,39 @@ test('leading completion retains recipient precedence; a middle mention leaves e
   const f=fixture();f.type('Ask @b');f.picker.pick('beta');
   assert.deepEqual(addressedTo(f.field.value,f.state.members,['alpha']),['alpha']);
   f.type('@b');f.picker.pick('beta');assert.deepEqual(addressedTo(f.field.value,f.state.members,['alpha']),['beta']);
+});
+
+test('999 ID and display-name prefixes match case-insensitively, with no interior matches',()=>{
+  const members=[{id:'alpha',name:'Guide'},{id:'beta',name:'ALbert'},{id:'al-off',enabled:false},{id:'alpha',name:'Other'}];
+  assert.deepEqual(mentionChoices(members,'AL').map(p=>p.id),['alpha','beta']);
+  assert.deepEqual(mentionChoices(members,'gu').map(p=>p.id),['alpha']);
+  assert.deepEqual(mentionChoices(members,'uid'),[]);
+  assert.deepEqual(mentionChoices(members,'lp'),[]);
+});
+
+test('999 Tab and Return complete the highlighted name once, preserving the suffix and focus',()=>{
+  for(const key of ['Tab','Enter']){
+    const f=fixture();f.type('Before @zz after',8);f.key('ArrowDown');
+    const picked=f.key(key);assert.equal(picked.handled,true,key);
+    assert.equal(picked.event.prevented,true);assert.equal(picked.event.stopped,true);
+    assert.equal(f.field.value,'Before @beta after');assert.deepEqual(f.state.edits,['Before @beta after']);
+    assert.equal(f.doc.activeElement,f.field);assert.equal(f.picker.open,false);
+    assert.equal(f.field.getAttribute('aria-activedescendant'),null);
+    const plain=fixture();plain.type('Ask @a');plain.key(key);assert.equal(plain.field.value,'Ask @alpha ');
+  }
+});
+
+test('999 no match closes the list and matching edits reopen it without changing writing',()=>{
+  const f=fixture();f.type('Ask @a');assert.equal(f.picker.open,true);
+  f.type('Ask @az');assert.equal(f.picker.open,false);assert.equal(f.field.getAttribute('aria-expanded'),'false');
+  assert.equal(f.key('Tab').handled,false);assert.equal(f.key('Enter').handled,false);
+  assert.equal(f.field.value,'Ask @az');assert.deepEqual(f.state.edits,[]);
+  f.type('Ask @AL');assert.equal(f.picker.open,true);f.key('Tab');assert.equal(f.field.value,'Ask @alpha ');
+});
+
+test('999 closed, modified and composing Tab retains the native key',()=>{
+  for(const extra of [{shiftKey:true},{metaKey:true},{ctrlKey:true},{altKey:true},{isComposing:true},{keyCode:229},{defaultPrevented:true}]){
+    const f=fixture();f.type('Ask @a');assert.equal(f.key('Tab',extra).handled,false);assert.deepEqual(f.state.edits,[]);
+  }
+  const f=fixture();f.type('Ask @a');f.key('Escape');assert.equal(f.key('Tab').handled,false);assert.equal(f.field.value,'Ask @a');
 });
