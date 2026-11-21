@@ -481,6 +481,11 @@
 .cover-line>.row-pill,.cover-line>.topic-state{margin:0 .4rem 0 0}
 .cover-line>.cover-src{margin-left:.35rem}
 .cover-stands{font-size:.95rem;font-weight:550;white-space:pre-line}
+/* 963: formatted standing words use the message body face and reading size.
+   Literal covers keep their existing type and pixels. */
+.cover-stands.formatted{display:block;font-size:1rem;font-weight:400;line-height:1.5;white-space:normal}
+.cover-stands.formatted .md-block+.md-block{margin-top:.45rem}
+#reader-cover .cover-stands.formatted{font-size:.95rem;line-height:1.6}
 .cover-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:.4rem}
 .cover-refresh{display:inline-flex;align-items:center;gap:.25rem;min-width:0;flex-wrap:wrap;color:var(--muted);font-size:.78rem;font-weight:400}
 /* 853: the last content row shares its corner with the existing control.
