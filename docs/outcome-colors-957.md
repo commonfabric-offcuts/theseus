@@ -43,6 +43,14 @@ interaction reference is Notebook page n-cf58c113e9644aaeb482afe9f6f39f59.
 Access was supplied and revision 1 read through the bound profile. The
 implementation uses its exact bright/deep palette and 45% topic hairline. Colors must be bright on the black rail and deeper on light pages.
 
+Color is optional decoration. A missing, invalid or conflicting color
+projection leaves the outcome uncolored and the list usable. An unconfirmed
+title projection hides the picker until a confirmed projection arrives.
+Counts still refresh when their optional color cannot be confirmed; a partial
+color never inherits a previous row's revision. Valid older projections retain
+the newer confirmed choice. Saving still requires an exact, recorded receipt
+with the expected target, color and revision.
+
 ## Evidence
 
 Core checks cover personal isolation, all three read projections, access,
@@ -53,7 +61,7 @@ choice. Record actual screenshots, receipts, mutations and browser cleanup.
 
 ### Carried candidate and checks
 
-Built on 240, carried cleanly through 242 onto 245 (`a988a19f`). The new
+Built on 240, carried cleanly through 242 and 245 onto 247 (`1c426342`). The new
 schema is 60; the deployment owner must explicitly migrate 59 → 60 before
 starting this code. Normal reads refuse the old schema without changing it.
 Downgrading after any personal choice (even a reset) is refused.
@@ -65,9 +73,29 @@ both native engines pass all five result entries. All observed owned browser
 PIDs, temporary profiles and fixtures are gone, with fixture exit 0 and the
 scratch ports closed.
 
+The returned review finding exposed a display failure on older color
+projections without a revision. Before the fix, broad wiring had 65 failures
+(64 color-confirmation exceptions) against the base's ten. Three added owner
+regressions failed before the fix on 247: a mixed-validity outcome list, an
+older title projection, and a count refresh with incomplete decoration.
+The fix preserves strict save confirmation and drops only unconfirmed display
+color. The broad wiring test and its expectations are unchanged.
+
+On the successor's 247 carry, all 65 Node owner checks and 67 Core checks pass
+(the original 44 plus 960's 15 and 955's eight carry checks). Broad wiring
+passes 485/495, with exactly the same ten failed test identities and
+multiplicities as pristine 247. Those ten failures remain visible; this is a
+baseline comparison, not an all-green broad-suite claim. The new save checks
+also reject missing and incorrect receipt revisions.
+Both successor native engines pass all five result entries, with source
+hashes matching the final product files and owned browser/profile/fixture/port
+cleanup verified.
+
 ```
 PYTHONPATH=tests /usr/bin/python3 -B -m unittest test_outcome_colors test_colors test_outline_counts_933 test_outcome_live_key_904 test_store test_removal_migration_151 -v
+# Successor carry also includes test_topic_latest_960 and test_agent_answer_fold_955.
 node --test tests/ui_outcome_colors_957.test.mjs tests/ui_outcome_refresh_923.test.mjs tests/ui_outcomes.test.mjs tests/ui_outline*.test.mjs
+node --test tests/ui_inline_wiring.test.mjs
 AIM_BROWSER=chromium node tests/outcome_colors_957_native.mjs <evidence-directory>
 AIM_BROWSER=webkit node tests/outcome_colors_957_native.mjs <evidence-directory>
 ```
@@ -108,6 +136,11 @@ directories `957-chromium-245` and `957-webkit-245`; Core/Node logs
 `957-mutations-242/results.json`, `results-revision.json`, and
 `957-css-mutation.json`. Native results count four width/theme entries plus
 the separate-reader entry, not every assertion as a separate test.
+
+The successor evidence uses `957-core-r2-247.log`, `957-node-r2-247.log`,
+`957-review-focused-red247.log`, and `957-review-wiring-comparison247.json`
+with both raw broad-wiring logs. Its engine directories are
+`957-chromium-r2-247` and `957-webkit-r2-247`.
 
 ### Scope of the review
 

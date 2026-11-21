@@ -54,7 +54,8 @@ test('957: a late committed response cannot reverse a newer choice or reset', as
 
 test('957: wrong-instance or wrong-target receipts and malformed projections never paint', async () => {
   for (const alter of [r => ({ ...r, instance_id: 'elsewhere' }), r => ({ ...r, result: { ...r.result, workspace_id: 'another' } }),
-    r => ({ ...r, recorded: false })]) {
+    r => ({ ...r, recorded: false }), r => ({ ...r, result: { ...r.result, color_revision: undefined } }),
+    r => ({ ...r, result: { ...r.result, color_revision: 99 } })]) {
     const book = setup(async request => alter(receipt(request, 'blue', 1)));
     await assert.rejects(book.choose('w', 'blue'), /could not be confirmed/); assert.equal(book.get('w').color, null);
   }

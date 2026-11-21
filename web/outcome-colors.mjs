@@ -20,6 +20,14 @@ export class OutcomeColors {
   listen(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   emit(id) { for (const fn of [...this.listeners]) fn(id); }
   get(id) { return this.choices.get(id) ?? null; }
+  forDisplay(row) {
+    // Color is optional decoration. An older or unconfirmable projection
+    // cannot stop the outcome from being drawn; save receipts stay strict.
+    if (typeof row?.id !== 'string' || !validOutcomeColor(row)) return null;
+    const old = this.get(row.id);
+    if (old && old.color_revision === row.color_revision && old.color !== row.color) return null;
+    return this.accept(row);
+  }
   accept(row, notify = false) {
     if (typeof row?.id !== 'string' || !validOutcomeColor(row)) throw Error('The outcome color could not be confirmed.');
     const old = this.get(row.id);

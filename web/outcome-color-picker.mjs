@@ -20,7 +20,8 @@ export class OutcomeColorPicker {
     if (this.disposed) return;
     if (!workspace) { this.root.hidden = true; this.close(false); return; }
     if (workspace.id !== this.workspaceId) throw Error('The outcome color belongs to another outcome.');
-    outcomeColors.accept(workspace); this.root.hidden = false; this.paintChoice();
+    if (!outcomeColors.forDisplay(workspace)) { this.root.hidden = true; this.close(false); return; }
+    this.root.hidden = false; this.paintChoice();
   }
   paintChoice() {
     if (this.disposed) return;

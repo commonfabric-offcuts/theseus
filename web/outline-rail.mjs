@@ -377,7 +377,7 @@ export class OutlineRail {
     const max = handles.bootstrap.limits?.page_max ?? PAGE;
     const validCount = value => Number.isSafeInteger(value) && value >= 0;
     const fields = ['id', 'unread', 'addressed', 'build', 'cover_waiting', 'light'];
-    const optionalColor = item => Object.hasOwn(item, 'color') ? validOutcomeColor(item) && Object.keys(item).length === fields.length + 2 : Object.keys(item).length === fields.length;
+    const allowed = new Set([...fields, 'color', 'color_revision']);
     const fail = () => { throw Error('The outcome counts could not be confirmed. Retry outcomes.'); };
     for (let start = 0; start < ids.length; start += max) {
       const wanted = new Set(ids.slice(start, start + max));
@@ -385,10 +385,12 @@ export class OutlineRail {
       if (!mine()) return;
       if (answer?.instance_id !== handles.bootstrap.instance_id || !Array.isArray(answer.items) || answer.items.length !== wanted.size) fail();
       for (const item of answer.items) {
-        if (!item || !optionalColor(item) || !fields.every(key => Object.hasOwn(item, key)) || !wanted.delete(item.id) ||
+        if (!item || !Object.keys(item).every(key => allowed.has(key)) || !fields.every(key => Object.hasOwn(item, key)) || !wanted.delete(item.id) ||
           ![item.unread, item.addressed, item.cover_waiting, item.build?.unread, item.build?.addressed].every(validCount) ||
           !(item.light === null || typeof item.light === 'object' && typeof item.light.light === 'string')) fail();
-        updates.push(structuredClone(item));
+        // Never pair an incomplete color with an older row's revision.
+        const color = validOutcomeColor(item);
+        updates.push({ ...structuredClone(item), color: color ? item.color : undefined, color_revision: color ? item.color_revision : undefined });
       }
     }
     if (!mine()) return;
@@ -802,7 +804,7 @@ export class OutlineRail {
     const focused = [...this.list.children].find(li => li.contains(this.doc.activeElement)) ?? null;
     items.forEach(item => {
       const outcome = this.outcome(item), open = this.isOpen(item.id), visible = shownUnder(this.filter, item);
-      const choice = Object.hasOwn(item, 'color') ? outcomeColors.accept(item) : outcomeColors.get(item.id);
+      const choice = outcomeColors.forDisplay(item);
       if (choice?.color) outcome.li.dataset.color = choice.color; else delete outcome.li.dataset.color;
       shown.add(item.id);
       outcome.li.hidden = !visible;
