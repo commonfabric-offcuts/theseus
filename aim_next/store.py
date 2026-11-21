@@ -616,8 +616,6 @@ class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, 
         scope, which holds only these keys, so a page learns who may organise it now."""
         self._change(db, "workspace", workspace_id, "workspace", workspace_id, version)
         self._change(db, "outcome", workspace_id, "workspace", workspace_id, version)
-        from .source_item_covers import notify
-        notify(self, db, workspace_id, "access")
 
     def _command_workspace_create(self, db, actor, envelope):
         args = envelope.get("args", {})

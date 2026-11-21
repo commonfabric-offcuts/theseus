@@ -218,11 +218,15 @@ def _shown(kind, row):
     return {"joined": {"into": value["into"], "by": row["actor_id"], "at_ms": row["at_ms"]} if value["into"] else None}
 
 
-def current_acts(db, actor, message_ids):
+def current_acts(db, actor, message_ids, *, source_items=True, context=None):
     """{message_id: acts} for each message with any act as it stands for actor: their own and the topic's."""
+    context = {} if context is None else context
+    cache = context.setdefault('acts', {})
+    requested = list(dict.fromkeys(message_ids))
+    message_ids = [mid for mid in requested if (source_items, mid) not in cache]
     found = {}
     if not message_ids:
-        return found
+        return {mid: cache[source_items, mid] for mid in requested if cache.get((source_items, mid)) is not None}
     marks = ",".join("?" * len(message_ids))
     rows = db.execute(
         "SELECT a.* FROM message_acts a WHERE a.message_id IN (%s) AND a.owner IN ('',?) AND a.revision="
@@ -244,19 +248,34 @@ def current_acts(db, actor, message_ids):
         else:
             acts.update(_shown(kind, row))
         acts[kind + "_revision"] = row["revision"]
-    from .source_item_covers import project
-    roots = StackRoots(db, actor)
-    snapshots = {}
-    for mid in message_ids:
+    from .source_item_covers import project, has_sources, read_sequence, bulk_sequence
+    roots = context.setdefault('roots', StackRoots(db, actor))
+    snapshots = context.setdefault('clocks', {})
+    bulk = context.setdefault('bulk', {})
+    dossiers = context.setdefault('dossiers', {})
+    for mid in message_ids if source_items else ():
         if roots.root(mid) != mid:
             continue
         acts = found.setdefault(mid, dict(EMPTY))
-        acts["cover"] = project(db, actor, mid, acts["cover"])
-        topic = db.execute("SELECT topic_id FROM messages WHERE id=?", (mid,)).fetchone()[0]
+        row = db.execute("SELECT topic_id,seq FROM messages WHERE id=?", (mid,)).fetchone()
+        topic = row['topic_id']
         if topic not in snapshots:
-            from .source_item_covers import read_sequence
             snapshots[topic] = _seen_acts(db, actor, topic)
-        acts["cover_read_seq"] = [snapshots[topic], read_sequence(db, actor, mid), _dossier(db, actor, mid)[0] or 0]
+        if topic not in bulk:
+            bulk[topic] = bulk_sequence(db, actor, topic)
+        sequence, latest = bulk[topic], row['seq']
+        if has_sources(db, actor, mid):
+            acts['cover'] = project(db, actor, mid, acts['cover'])
+            member_sequence = read_sequence(db, actor, mid)
+            sequence = max(sequence, member_sequence)
+            # An unreadable destination alone leaves exactly the same public
+            # clock as a root with no linked item. A revocation's bulk clock
+            # still overtakes the admitted snapshot even if its rows disappear.
+            if (acts['cover'] or {}).get('items') or member_sequence:
+                if mid not in dossiers:
+                    dossiers[mid] = _dossier(db, actor, mid)
+                latest = dossiers[mid][0] or 0
+        acts['cover_read_seq'] = [snapshots[topic], sequence, latest]
     for message_id, acts in found.items():
         from .removal import unsent
         if acts['joined'] is not None and unsent(db, acts['joined']['into']):
@@ -270,15 +289,18 @@ def current_acts(db, actor, message_ids):
             acts["cover"].update(root_id=message_id, revision=acts["cover_revision"],
                                  writer=writer[0] if writer else None, refresh=acts["cover_refresh"],
                                  refresh_revision=acts["cover_refresh_revision"])
-    return found
+    for mid in message_ids:
+        cache[source_items, mid] = found.get(mid)
+    return {mid: cache[source_items, mid] for mid in requested if cache.get((source_items, mid)) is not None}
 
 
 def act_fields(db, actor, items):
     """Add `acts` to every item of one page of a topic's messages."""
-    found = current_acts(db, actor, [item["id"] for item in items])
+    context = {}
+    found = current_acts(db, actor, [item["id"] for item in items], context=context)
     for item in items:
         item["acts"] = found.get(item["id"], dict(EMPTY))
-    positions = stack_positions(db, actor, items)
+    positions = stack_positions(db, actor, items, context=context)
     for item in items:
         item["stack_position"] = positions[item["id"]]
 
@@ -516,7 +538,7 @@ def _reader_places(db, actor, topic):
                       " AND json_extract(a.value,'$.key') IS NOT NULL ORDER BY a.at_ms DESC,a.id DESC", {"topic": topic, "actor": actor}).fetchall()
 
 
-def stack_positions(db, actor, items):
+def stack_positions(db, actor, items, *, context=None):
     """{message id: its dossier's position for the reader}. `at` is the snapshot it was read at: for a dossier put
     aside, the newest message in it the reader can see (0 for one that is not, which no message moves), and the
     newest act in the topic they hear of. A whisper the reader is outside moves neither, nor does a message outside
@@ -530,20 +552,28 @@ def stack_positions(db, actor, items):
     dossier by them, and Let new replies move it takes each away. The reader's starred messages (item 635), loaded or not,
     light the title star and keep the dossier above More.
     """
-    roots, acts_at, stars, places, positions, result = StackRoots(db, actor), {}, {}, {}, {}, {}
+    context = {} if context is None else context
+    roots = context.setdefault('roots', StackRoots(db, actor))
+    acts_at, aggregates = context.setdefault('clocks', {}), context.setdefault('dossiers', {})
+    stars, places, positions, result = {}, {}, {}, {}
+    root_ids = {item['id']: roots.root(item['id']) for item in items}
+    root_acts = current_acts(db, actor, list(dict.fromkeys(root_ids.values())), context=context)
     for item in items:
         topic = item["topic_id"]
-        if topic not in acts_at:
-            acts_at[topic] = _seen_acts(db, actor, topic)
+        if topic not in stars:
+            if topic not in acts_at:
+                acts_at[topic] = _seen_acts(db, actor, topic)
             stars[topic] = starred_in(db, actor, topic, roots)
             for row in _reader_places(db, actor, topic):
                 places.setdefault(roots.root(row["message_id"]), []).append(
                     {"message_id": row["message_id"], "placed": row["placed"], "place_revision": row["revision"], "at_ms": row["at_ms"]})
-        root = roots.root(item["id"])
+        root = root_ids[item['id']]
         if root not in positions:
-            acts = current_acts(db, actor, [root]).get(root, EMPTY)
+            acts = root_acts.get(root, EMPTY)
             through, starred = acts["aside"], stars[topic].get(root, [])
-            latest, others = _dossier(db, actor, root) if through is not None else (0, None)
+            if through is not None and root not in aggregates:
+                aggregates[root] = _dossier(db, actor, root)
+            latest, others = aggregates[root] if through is not None else (0, None)
             # The dossier's name and its cover (items 470, 624) ride with its place, so a page holding only its
             # replies shows them; read as this reader reads its first message, the root they can see.
             from .dossier_move import move_fields

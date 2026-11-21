@@ -346,11 +346,11 @@ class Pipeline(PieceFreezes):
         """7.2 step 11, in the transaction that writes a release record: the record is a fact of every outcome with a
         pipeline (one that does not ship in releases takes it when it turns releases on), and each outcome's state is
         derived again. Which release piece it ships, and what it ships from where, is derive()'s (pipeline_state)."""
-        for (workspace_id,) in db.execute("SELECT workspace_id FROM pipelines ORDER BY workspace_id").fetchall():
+        for workspace_id, ships in db.execute("SELECT workspace_id,ships_in_releases FROM pipelines ORDER BY workspace_id").fetchall():
             self._fact(db, workspace_id, "record", release["recorded_ms"], None, {"release": release["release"]})
             self._settle(db, workspace_id)
             from .source_item_covers import notify
-            for number in release["items"]:
+            for number in release["items"] if ships else ():
                 notify(self, db, workspace_id, number)
 
     def _settle(self, db, workspace_id):

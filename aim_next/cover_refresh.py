@@ -88,8 +88,10 @@ class CoverRefresh:
             raise Refusal("REVISION_CONFLICT", "This changed; read it again before asking for an update", {revision_field: current})
         if is_cover:
             recipient = self._refresh_recipient(db, actor, message, topic)
+            cover = acts["cover"]
+            written = cover and (cover['by'] is not None or cover['stands'] or cover['payload'])
             opening = ("Please write this dossier's first cover from its latest facts. "
-                       if acts["cover"] is None else "Please rewrite this dossier's cover from its latest facts. ")
+                       if not written else "Please rewrite this dossier's cover from its latest facts. ")
             body = (opening +
                     "Read the whole dossier and its current cover, retain source attribution, waits and defaults, "
                     "payload kind/link and the owner's Done record. Use aim-next cover %s --expected N with the "

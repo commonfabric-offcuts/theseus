@@ -229,6 +229,21 @@ export async function readingItem757Checks({ check, until, control, view, facts,
       await closeReader(p,'phone');
       await readyRows(p,`#messages .reply-stack[data-stack="${f.joined}"] > .dossier-cover`,split.readback.covers.joined.cover);
       await centre(p,card(f.joined));await picture(p,key,'singleton-after-split');
+      await call('first-cover-ready',f);
+      const generated = `#messages .reply-stack[data-stack="${f.joined}"]`;
+      const firstControl = generated + ' > .dossier-cover .cover-refresh-glyph';
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(firstControl)})?.title`), 'Ask for a cover',
+        'generated-only source sheet offers the first authored cover');
+      const header = await p.evaluate(`Array.from(document.querySelector(${JSON.stringify(generated)}).querySelectorAll('.cover-refresh-glyph')).map(n=>n.title)`);
+      assert.ok(header.length >= 2 && header.every(title=>title==='Ask for a cover'), 'header and sheet agree on the first-cover action');
+      await centre(p,firstControl);await press(p,'phone',firstControl);
+      await until(()=>p.evaluate(`/^Asked .+ to write a cover$/.test(document.querySelector(${JSON.stringify(firstControl)})?.title??'')`),
+        'native first-cover request displays its actual coordinator as the writer requested');
+      const requested = await call('read', f);
+      assert.equal(requested.readback.covers.joined.cover.by, null, 'request invents no authored cover');
+      assert.equal(requested.readback.covers.joined.cover.refresh.state, 'pending');
+      assert.equal(requested.readback.covers.joined.cover.refresh.recipient, 'aim-core');
+      await picture(p,key,'first-cover-requested',{readback:requested.readback});
       await noWrong(p,f);
       assert.equal(await p.evaluate('performance.timeOrigin'),origin,'joins/privacy/split refresh the currently loaded document');
       assert.deepEqual(p.errors,[]);

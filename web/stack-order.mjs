@@ -46,9 +46,10 @@ export function laterActs(known, answer) {
     if (!known || !(revision in known)) continue;
     if (!(revision in answer) || answer[revision] < known[revision]) { acts[field] = known[field]; acts[revision] = known[revision]; }
   }
-  if (compareCoverReads(known?.cover_read_seq, answer.cover_read_seq) > 0) {
+  if (answer.cover_read_seq !== undefined && compareCoverReads(known?.cover_read_seq, answer.cover_read_seq) > 0) {
     acts.cover = known.cover; acts.cover_read_seq = known.cover_read_seq;
   }
+  if (answer.cover_read_seq === undefined) delete acts.cover_read_seq;
   if (acts.cover) acts.cover = { ...acts.cover, refresh: acts.cover_refresh ?? acts.cover.refresh,
     refresh_revision: acts.cover_refresh_revision ?? acts.cover.refresh_revision };
   return acts;

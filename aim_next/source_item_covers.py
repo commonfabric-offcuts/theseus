@@ -86,6 +86,23 @@ def project(db, actor, root, cover):
     return dict(cover, items=rows)
 
 
+def has_sources(db, actor, root):
+    """One indexed existence gate; unsourced dossiers need no projection walks."""
+    from .stacks import MEMBERS
+    return bool(db.execute(MEMBERS + " SELECT EXISTS(SELECT 1 FROM members p JOIN pipeline_item_sources s "
+                           "INDEXED BY source_cover_items ON s.message_id=p.id WHERE s.message_id IS NOT NULL)",
+                           {'root': root, 'actor': actor}).fetchone()[0])
+
+
+def _bulk_key(actor, topic):
+    return 'source_cover_bulk:' + json.dumps([actor, topic], separators=(',', ':'))
+
+
+def bulk_sequence(db, actor, topic):
+    row = db.execute('SELECT value FROM metadata WHERE key=?', (_bulk_key(actor, topic),)).fetchone()
+    return int(row[0]) if row else 0
+
+
 def read_sequence(db, actor, root):
     """Newest admitted item/access change on this dossier's visible members."""
     from .stacks import MEMBERS
@@ -108,9 +125,13 @@ def notify(store, db, workspace, record, access_reader=None):
     elif isinstance(record, str) and record.startswith('p-'):
         clause = ' AND s.number IN (SELECT number FROM pipeline_piece_members WHERE piece_id=?)'
         values.append(record)
-    rows = db.execute("SELECT DISTINCT m.id,m.topic_id,m.author_id,m.private_to FROM pipeline_item_sources s "
-                      "JOIN messages m ON m.id=s.message_id WHERE s.workspace_id=? AND s.message_id IS NOT NULL" + clause,
-                      values).fetchall()
+    bulk = record in ('configured', 'stages', 'access') or access_reader is not None
+    columns = 'min(m.id) AS id,m.topic_id,m.author_id,m.private_to' if bulk else 'DISTINCT m.id,m.topic_id,m.author_id,m.private_to'
+    query = ("SELECT " + columns + " FROM pipeline_item_sources s JOIN messages m ON m.id=s.message_id "
+             "WHERE s.workspace_id=? AND s.message_id IS NOT NULL" + clause)
+    if bulk:
+        query += " GROUP BY m.topic_id,m.author_id,m.private_to"
+    rows = db.execute(query, values).fetchall()
     # The source alone never grants destination access. Membership changes
     # explicitly refresh the affected reader once, including on revocation.
     admitted = {row[0] for row in db.execute("SELECT owner_id FROM workspaces WHERE id=? UNION "
@@ -122,10 +143,30 @@ def notify(store, db, workspace, record, access_reader=None):
                 continue
             # Retained per-source keys fence only dossiers that contain this
             # readable member. Topic invalidations stay coalesced for refresh.
-            store._change(db, 'actor', reader, 'source_cover_read', message['id'], 1)
+            if not bulk:
+                store._change(db, 'actor', reader, 'source_cover_read', message['id'], 1)
             key = (reader, message['topic_id'])
             if key in heard:
                 continue
             heard.add(key)
             # No destination title, ID or state in a source-only reader's key.
             store._change(db, 'actor', reader, 'source_cover', message['topic_id'], 1)
+            if bulk:
+                sequence = db.execute('SELECT last_insert_rowid()').fetchone()[0]
+                db.execute("INSERT INTO metadata(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                           (_bulk_key(reader, message['topic_id']), str(sequence)))
+    if bulk:
+        # Public source messages can have different addressed-only readers.
+        # Keep all of those recipients while sharing the topic/member lookup.
+        addressed = db.execute("SELECT DISTINCT d.recipient_id,m.topic_id FROM pipeline_item_sources s "
+                               "JOIN messages m ON m.id=s.message_id JOIN deliveries d ON d.message_id=m.id "
+                               "JOIN delivery_reasons r ON r.delivery_id=d.id AND r.reason='addressed' "
+                               "WHERE s.workspace_id=? AND m.private_to IS NULL", (workspace,)).fetchall()
+        for reader, topic in addressed:
+            if (reader, topic) in heard or (reader != access_reader and (access_reader is not None or reader not in admitted)):
+                continue
+            heard.add((reader, topic))
+            store._change(db, 'actor', reader, 'source_cover', topic, 1)
+            sequence = db.execute('SELECT last_insert_rowid()').fetchone()[0]
+            db.execute("INSERT INTO metadata(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                       (_bulk_key(reader, topic), str(sequence)))

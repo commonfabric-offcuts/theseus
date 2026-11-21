@@ -49,3 +49,26 @@ and late-redaction checks, useful applied/restored mutation, and affected cohort
 against the composed corrected987 base. Audit retained file-read declarations
 and mutation strings before freeze. Defaults and manual data preservation stay
 as above. No historical workflow or test allocation resumes.
+
+## Bounded review14951 correction
+
+Gate dossier source projection behind an indexed source-existence query. Batch
+root acts and share projected acts, dossier aggregates and topic clocks within
+one foreground read; publication ordering and divergence candidates request
+stored acts without item projection. Retain an actual few-hundred-message,
+ten-reader reply/publication control and one projection per linked root.
+
+Configured/stages/access invalidations coalesce by reader/topic, without
+per-message journal rows. A derived reader/topic bulk clock in existing metadata
+advances with that one journal row; item-specific clocks remain scoped to visible
+source members. The bulk clock and item clock must preserve access-revocation
+redaction and exact privacy controls, including an unreadable destination's
+filing/edit leaving the public projection unchanged. No schema renumbering.
+Only release-shipping pipelines receive per-item release notifications.
+
+Generated-only covers have no writer: header/menu/sheet controls offer Ask for a
+cover, then Asked … to write a cover. Authored stands/payload retain their current
+refresh owner. Cover-clock cleanup on joins and the redundant Reader lookup
+branch can be included without changing the owner/default. Retain real reds,
+cost/query/write controls, applied restoration and relevant native checks before
+the next exact freeze; do not reopen the already-reviewed schema/privacy design.

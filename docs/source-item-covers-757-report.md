@@ -123,3 +123,91 @@ three-lens findings remain with him. The local comparison commitd6c0ac04 is
 included as an ancestor of the pushed source branch by a merge verified to leave
 the file tree unchanged, making the exact comparison base remotely reachable.
 This does not change the corrected987 predecessor or schema61→62 order.
+
+## Build3: bounded review14951 correction
+
+This section supersedes the57f39a3 preparation head's runtime evidence above.
+All four review findings have concrete corrections:
+
+- Foreground acts use one indexed source-existence gate, share acts/root/dossier
+  aggregates per read, and read the topic act clock once. Unsourced roots skip
+  all three projection/aggregate walks. Publication, placement and divergence
+  candidates explicitly request stored acts, so they never derive source covers.
+- Bulk configured/stages/access changes group source visibility and emit one
+  opaque source-cover key per reader/topic, with no per-message read keys. A
+  bounded metadata scalar stores each bulk clock; localized item changes retain
+  their visible-member clock. All addressed-only recipients remain included.
+  An actual destination membership removal/regrant invalidates only that reader
+  once, preserving loaded redaction. The redundant workspace-wide access path
+  is removed; release notifications run only for release-shipping pipelines.
+- Generated-only covers retain the first-cover header/menu/sheet action and
+  pending "Asked … to write a cover" wording. The real Core request also asks
+  for the first authored cover. The actual coordinator receives that request;
+  no writer or cover act is invented. Authored manual covers keep refresh.
+- The optional stale joined-root cover/clock cleanup is included. The optional
+  Reader lookup cleanup is not needed and is left unchanged.
+
+The new eight-case cost/control file first retained five old-head failures,
+then caught the duplicate access path and the wrong first-cover request wording.
+Initial fixture errors and corrections are retained separately. The source-cover
+freshness scenario now files an item before testing a visible follow-up: an
+unsourced dossier intentionally does not aggregate its messages for a generated
+cover it does not have. Filing, message, manual-cover, edit and lifecycle
+assertions all remain.
+
+Restored Core owners are **73/73** across `test_source_cover_cost_757`,
+`test_source_item_covers`, `test_reading_item_757`,
+`test_source_item_cover_migration_757`, `test_gauntlet_987`,
+`test_cover_refresh` and `test_refresh_requests_829`. Focused clients are
+**30/30** across `ui_source_item_covers`, `ui_reading_item_757`,
+`ui_cover_corner_853` and `ui_dossier_cover`.
+
+The real publication control inserts a reply into301 existing dossier messages
+with10 actual readers: **zero source-cover projections,7,867 SQLite VM
+instructions**. A page with three linked roots projects each once and reads its
+topic clock once. Four unsourced roots invoke none of project/read_sequence/
+_dossier. Bulk301-source changes emit10 keys for10 readers and zero per-source
+read rows. The prior unrelated-growth probe remains **400→400 instructions**.
+These are query/work controls, not end-to-end timing measurements.
+
+Four actual applied mutations were detected: bypassing the existence gate,
+disabling bulk coalescing, dropping nonrepresentative addressed-only recipients,
+and treating every synthetic cover as written. Exact source hashes were restored
+and the73/30 controls passed. Each Python mutant and restoration used its own
+pycache prefix. The prior privacy/late-response/native-notification mutations
+remain retained evidence, not newly repeated claims.
+
+New native matrices are **40/40**: Chromium156.0.8078.47 and WebKit26.6,
+ten cases per engine in both Bookends and Paper. All previous widths/themes,
+real routes, lifecycle, same-document/source identity and destination access
+checks ran again. The join/split case now taps the generated-only sheet's
+first-cover button, checks real Core pending state/recipient and captures its
+new wording. Actual product hashes for13 files are supplied at launch; all five
+served client modules match fetched bytes. All four manifests match the final
+product bytes. Every browser/fixture cleanup passed, including diagnostic runs;
+browser-free14966 is read back.
+
+Native header/menu gestures are not claimed. Client controls check their
+availability and labels. Three retained phone-menu attempts encountered hidden
+tools, the old card selector and title-bar rename respectively; the final
+native request uses the sheet's own button, with no forced click or handler
+invocation. Physical-phone, keyboard-up and browser timing remain unmeasured.
+
+The affected eight-file Python comparison runs193 tests on each tree with
+**the same82 failures and1 error; the entire name/type multiset is equal**.
+It includes dossier ordering, root publication, stages/records, covers, stacks,
+aside and whispers. These historical failures are not broad green; position
+diagnostics still include the new cover clock. The affected eight-file client
+comparison is **129/129 versus128/128** on the corrected987 comparison base;
+the extra case is the already-recorded actual unloaded-root Reader lookup.
+Whisper-read deficits remain exactly equal, with all three current source-module
+SQL reads classified. Input-read audits each retain302 historical diagnostics
+and no new one. No unrelated assertion or tool/runner was changed.
+
+Raw correction evidence is `core-lane7-757-evidence/review14951` beside the
+earlier packets. Schema61→62 and the corrected987 ancestry remain unchanged.
+The new exact pushed head still requires Warp's stated cohort/three-suite reread;
+landing waits for987 actually live, then actual-live carry and757's own judged
+run. Successor1002/1004 work must reconcile onto the newly approved head, using
+14954/14956's first-green-freeze63, other64 order. No live installation or Tony
+acceptance is claimed.

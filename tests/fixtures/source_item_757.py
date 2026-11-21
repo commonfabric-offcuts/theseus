@@ -141,6 +141,10 @@ class SourceItem757:
         elif action == 'split':
             self.act(f, 'stack.join', {'into': None}, {'message_id': f['joined']},
                      {'join_revision': 1}, sender=self.writer)
+        elif action == 'first-cover-ready':
+            current = self.view('workspace', {'workspace_id': f['workspace']})['workspace']
+            self.act(f, 'workspace.coordinator_set', {'actor_id': self.writer},
+                     {'workspace_id': f['workspace']}, {'workspace_revision': current['version']})
         elif action in ('grant-private', 'revoke-private'):
             current = self.view('workspace', {'workspace_id': f['private_workspace']}, self.private_owner)['workspace']
             self.act(f, 'workspace.member_set', {'actor_id': self.viewer, 'present': action == 'grant-private'},

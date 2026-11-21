@@ -130,7 +130,8 @@ export function refreshLine(doc, target, context) {
   painters.set(line, draw); draw(); return line;
 }
 
-const coverTarget = cover => ({ type: 'cover', id: cover.root_id, revision: cover.revision,
+const writtenCover = cover => Boolean(cover && (cover.by !== null || cover.stands || cover.payload));
+const coverTarget = cover => ({ type: 'cover', first: !writtenCover(cover), id: cover.root_id, revision: cover.revision,
   refresh: cover.refresh, refresh_revision: cover.refresh_revision });
 export const coverRequestLine = (doc, cover, context) => refreshLine(doc, coverTarget(cover), context);
 
@@ -169,10 +170,11 @@ export function refreshControl(doc, cover, context) {
 }
 // The header and all dossier menus use this same admission and request owner.
 export function firstCoverTarget(stack) {
-  if (stack.id !== stack.dossier || stackCover(stack, { alone: true })) return null;
+  const cover = stackCover(stack, { alone: true });
+  if (stack.id !== stack.dossier || writtenCover(cover)) return null;
   const acts = stack.head.acts ?? {};
-  return { type: 'cover', first: true, id: stack.id, revision: acts.cover_revision ?? 0,
-    refresh: acts.cover_refresh, refresh_revision: acts.cover_refresh_revision ?? 0 };
+  return { type: 'cover', first: true, id: stack.id, revision: cover?.revision ?? acts.cover_revision ?? 0,
+    refresh: cover?.refresh ?? acts.cover_refresh, refresh_revision: cover?.refresh_revision ?? acts.cover_refresh_revision ?? 0 };
 }
 export function firstCoverControl(doc, stack, context) {
   const target = firstCoverTarget(stack);

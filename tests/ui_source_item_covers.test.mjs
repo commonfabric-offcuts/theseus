@@ -6,6 +6,7 @@ import { laterActs, laterPosition, stackCover, compareCoverReads } from '../web/
 import { TopicViews } from '../web/topic-views.mjs';
 import { Freshness } from '../web/freshness.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
+import { configureCoverRefresh, firstCoverTarget, firstCoverMenuItem } from '../web/cover-refresh.mjs';
 const context = { viewer: 'owner', nameOf: id => id, topicId: 't1' };
 const rows = [{ workspace_id: 'w1', number: 1, title: 'Make the reader clearer', state: 'Build', sources: ['actual-source'], piece_id: 'actual-piece' },
   { workspace_id: 'w1', number: 2, title: 'Speed up the feed', state: 'Review', sources: ['actual-source'], piece_id: 'second-piece' }];
@@ -14,6 +15,38 @@ const cover = { stands: 'Cabin is booked', payload: { text: 'Cabin decision', me
   refresh: null, refresh_revision: 0 };
 const of = (node, cls) => [...node.descendants()].filter(node => node.classList.contains(cls));
 const href = node => node.href ?? node.getAttribute('href');
+
+test('757 generated-only rows keep first-cover header menu and sheet controls', t => {
+  const doc = miniDocument(), create = doc.createElement, storage = new Map();
+  doc.createElement = tag => {
+    const node = create(tag); node.style = {};
+    node.contains = other => { for (let at = other; at; at = at.parent) if (at === node) return true; return false; };
+    return node;
+  };
+  const host = doc.createElement('div'); host.root = true;
+  doc.querySelectorAll = selector => host.querySelectorAll(selector);
+  doc.defaultView = { localStorage: { getItem: key => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) } };
+  configureCoverRefresh(() => ({ bootstrap: { instance_id: '757-first-' + t.name, actor: 'owner', authority: { authority_id: 'a', authority_epoch: 1 } }, api: {}, changed() {} }));
+  t.after(() => configureCoverRefresh(null));
+  const generated = { ...cover, stands: null, payload: null, by: null, root_id: 'root', revision: 0, waiting: [] };
+  const stack = { id: 'root', dossier: 'root', head: { id: 'root', topic_id: 't1', acts: { cover: generated, cover_revision: 0 } }, replies: [] };
+  assert.equal(firstCoverTarget(stack)?.first, true, 'an item row is not an authored cover');
+  assert.equal(firstCoverMenuItem(doc, stack)?.label, 'Ask for a cover');
+  const sheet = coverSheet(doc, generated, context); host.append(sheet);
+  assert.equal(sheet.querySelector('.cover-refresh-glyph')?.title, 'Ask for a cover');
+  const pending = { ...generated, refresh_revision: 1, refresh: { state: 'pending', request_id: 'request757', recipient: 'writer', by: 'owner', at_ms: 1795240000000 } };
+  const asked = coverSheet(doc, pending, context); host.append(asked);
+  assert.equal(asked.querySelector('.cover-refresh-glyph')?.title, 'Asked writer to write a cover');
+});
+
+test('757 an answer without a cover clock clears the former root projection after a join', () => {
+  const known = { cover, cover_revision: 0, cover_read_seq: [8, 20, 40] };
+  const joined = { cover: null, cover_revision: 0, joined: { into: 'other-root' }, join_revision: 1 };
+  const answer = laterActs(known, joined);
+  assert.equal(answer.cover, null);
+  assert.equal(answer.cover_read_seq, undefined);
+});
 
 test('757 sheet preserves manual lines before and after two independently linked item rows', () => {
   const sheet = coverSheet(miniDocument(), cover, context);

@@ -15,7 +15,8 @@ assert.ok(['bookends', 'paper'].includes(look));
 // bytes without copying product bodies into an oracle or adding file reads.
 const hashes = JSON.parse(process.env.AIM_757_SOURCE_SHA256 ?? '{}');
 for (const file of ['aim_next/source_item_covers.py', 'aim_next/stacks.py', 'aim_next/store.py', 'aim_next/migrations.py',
-  'web/dossier-cover.mjs', 'web/stack-order.mjs', 'web/reader.mjs', 'web/stack-feed.mjs']) {
+  'aim_next/cover_refresh.py', 'aim_next/dossier_order.py', 'aim_next/root_posts.py', 'aim_next/pipeline.py',
+  'web/dossier-cover.mjs', 'web/stack-order.mjs', 'web/reader.mjs', 'web/stack-feed.mjs', 'web/cover-refresh.mjs']) {
   assert.match(hashes[file] ?? '', /^[a-f0-9]{64}$/, 'launch-supplied actual source SHA256: ' + file);
 }
 await mkdir(evidence, { recursive: true });
@@ -83,7 +84,7 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.dataset.look ?? 'bookends'), look);
     await page.locator(card(first)).waitFor();
     const app = await page.evaluate(() => [...document.scripts].find(s => s.src.includes('/app.mjs')).src);
-    for (const file of ['dossier-cover.mjs', 'stack-order.mjs', 'reader.mjs', 'stack-feed.mjs']) {
+    for (const file of ['dossier-cover.mjs', 'stack-order.mjs', 'reader.mjs', 'stack-feed.mjs', 'cover-refresh.mjs']) {
       const served = await page.request.get(new URL('./' + file, app).href);
       assert.equal(served.status(), 200, 'served module status: ' + file);
       assert.equal(createHash('sha256').update(await served.body()).digest('hex'), hashes['web/' + file], 'exact served SHA256: ' + file);
