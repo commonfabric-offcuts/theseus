@@ -57,3 +57,12 @@ All browsers close through Browser.close; observed owned PIDs/profiles,
 fixture EOF/exit0 and closed ports are checked. Artifacts stay outside the
 repository. Freeze with exact source head/tree/base for Warp’s one diff/test
 read. Fable owns pipeline stages and Warp owns carry/deploy.
+
+Review correction14382/14383: the full-page initializer supplies its own lazy
+binding port, including the helper in the route declaration contract and
+constructing the shared controller only when saved words bind in the active
+run. The unchanged867 route cut must still load before picking and preserve
+Cards-over-Text preference. Failure notices hand the error object to the
+existing line writer; retry text accompanies it without losing its type/code.
+Compare every test file naming a touched module against pristine252 before
+the successor freeze. Retain both requested regressions and all baseline reds.

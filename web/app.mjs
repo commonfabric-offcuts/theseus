@@ -4399,8 +4399,11 @@ async function initializeDeckPage(route) {
     try { return {href,title:scope.kind==='topic'?(await pipelineView('topic',{topic_id:scope.id})).topic.title:(await pipelineView('workspace',{workspace_id:scope.id})).workspace.title}; }
     catch { return {href,title:'The page'}; }
   };
+  // Route construction supplies the binding port; only actual saved words
+  // need the shared controller, and a retired run must not create one.
+  const passages={bind(entry,state){if(!retired)notebookPassagesOf().bind(entry,state);}};
   const page=new NotebookPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
-    item:route.id,read:pipelineView,send:pipelineSend,place,askIn:notebookAskIn,api,bootstrap,mode:route.card?'cards':route.view,viewPreference:notebookViewsOf(),passages:notebookPassagesOf()});
+    item:route.id,read:pipelineView,send:pipelineSend,place,askIn:notebookAskIn,api,bootstrap,mode:route.card?'cards':route.view,viewPreference:notebookViewsOf(),passages});
   linkOwnerScope = () => page.source?.owner_scope;
   linkNotice = words => page.say(words, 'attention');
   shell.guard(()=>Boolean(page.writing?.journalPending||page.writing?.journalError));
@@ -4472,8 +4475,9 @@ let notebookPassages = null;
 function notebookPassagesOf() {
   return notebookPassages ??= new NotebookPassages({ template: $('quote-selection'), quote: quoteNotebookPassage });
 }
-function notebookQuoteNotice(words) {
-  if (notebookSheet?.showing) notebookSheet.current?.say(words, 'attention'); else status(words);
+function notebookQuoteNotice(what) {
+  const line = notebookSheet?.showing && notebookSheet.current?.pageNotice;
+  if (line) showLine(line, what); else status(what);
 }
 async function quoteNotebookPassage(choice, opener) {
   try {
@@ -4488,13 +4492,13 @@ async function quoteNotebookPassage(choice, opener) {
     } else {
       await openDestination({ kind: 'topic', id: topicId, page: choice.source.id, revision: String(choice.source.revision) }, 'the page quote', opener);
     }
-  } catch (error) { notebookQuoteNotice(error.message); }
+  } catch (error) { notebookQuoteNotice(error); }
 }
 function receiveNotebookQuote(presentation) {
   if (!topic || presentation.source?.source_ref?.kind !== 'memory') return;
   let transfer, pending;
   try { transfer = new NotebookQuoteTransfer(bootstrap); pending = transfer.forSource(topic.id, presentation.source); }
-  catch (error) { reader.notice(error.message); return; }
+  catch (error) { reader.notice(error); return; }
   if (!pending) return;
   if (presentation.sourceUnavailable || presentation.availabilityUnconfirmed) return;
   const editor = presentation.editors.reply, before = editor.draft.quotes.length;
@@ -4506,17 +4510,17 @@ function receiveNotebookQuote(presentation) {
   // Remove the exact intent before the synchronous edit. A storage refusal
   // leaves both draft and intent untouched, so a reload cannot quote twice.
   try { if (!transfer.claim(pending)) return; }
-  catch (error) { reader.notice(`${error.message} The selected passage is kept for retry.`); return; }
+  catch (error) { reader.notice([error, 'The selected passage is kept for retry.']); return; }
   try {
     if (contiguous) reader.quoteFrom(pending.choice.source, { ...pending.choice, revision: pending.choice.source.revision });
     // Hidden image/detail/stack lines split the displayed selection into
     // exact source substrings; the existing composer joins their writing.
     else reader.quoteInto(parts, null, pending.choice.source.revision);
-  } catch (error) { reader.notice(error.message); }
+  } catch (error) { reader.notice(error); }
   finally {
     if (editor.draft.quotes.length === before) {
       try { transfer.restore(pending); }
-      catch (error) { reader.notice(`${error.message} The passage could not be kept for retry.`); }
+      catch (error) { reader.notice([error, 'The passage could not be kept for retry.']); }
     }
   }
 }
