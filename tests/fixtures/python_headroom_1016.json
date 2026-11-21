@@ -1,0 +1,64 @@
+{
+  "source_base": "bf98f3449b42374de868cf4a2f60ad22412a2dbd",
+  "prior_timeout_minutes": 19,
+  "jobs": [
+    {
+      "id": 136889902421,
+      "name": "python units 2 of 4",
+      "conclusion": "cancelled",
+      "started_at": "2026-11-21T15:21:27Z",
+      "completed_at": "2026-11-21T15:40:51Z",
+      "run_id": 44918716681,
+      "url": "https://github.com/commonfabric-offcuts/theseus/actions/runs/44918716681/job/136889902421",
+      "steps": [
+        {
+          "name": "Release check, python-units",
+          "conclusion": "cancelled",
+          "started_at": "2026-11-21T15:22:12Z",
+          "completed_at": "2026-11-21T15:40:40Z"
+        },
+        {
+          "name": "Write this shard's receipt",
+          "conclusion": "success",
+          "started_at": "2026-11-21T15:40:40Z",
+          "completed_at": "2026-11-21T15:40:41Z"
+        },
+        {
+          "name": "Keep the evidence",
+          "conclusion": "success",
+          "started_at": "2026-11-21T15:40:41Z",
+          "completed_at": "2026-11-21T15:40:44Z"
+        }
+      ]
+    },
+    {
+      "id": 136870458446,
+      "name": "python units 2 of 4",
+      "conclusion": "failure",
+      "started_at": "2026-11-21T14:07:32Z",
+      "completed_at": "2026-11-21T14:26:25Z",
+      "run_id": 44912268547,
+      "url": "https://github.com/commonfabric-offcuts/theseus/actions/runs/44912268547/job/136870458446",
+      "steps": [
+        {
+          "name": "Release check, python-units",
+          "conclusion": "failure",
+          "started_at": "2026-11-21T14:08:11Z",
+          "completed_at": "2026-11-21T14:26:15Z"
+        },
+        {
+          "name": "Write this shard's receipt",
+          "conclusion": "success",
+          "started_at": "2026-11-21T14:26:15Z",
+          "completed_at": "2026-11-21T14:26:15Z"
+        },
+        {
+          "name": "Keep the evidence",
+          "conclusion": "success",
+          "started_at": "2026-11-21T14:26:15Z",
+          "completed_at": "2026-11-21T14:26:18Z"
+        }
+      ]
+    }
+  ]
+}
