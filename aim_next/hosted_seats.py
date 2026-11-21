@@ -12,6 +12,7 @@ from .runner import RunnerError
 
 
 KIND = 'workspace.hosted_seat_add'
+RETRY_KIND = 'workspace.hosted_seat_retry'
 ROLE_BYTES = 16 * 1024
 SEAT_SCHEMA = [
     "CREATE TABLE hosted_seats (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id), "
@@ -19,7 +20,7 @@ SEAT_SCHEMA = [
     "owner_id TEXT NOT NULL REFERENCES actors(id), role TEXT NOT NULL, "
     "state TEXT NOT NULL CHECK(state IN ('pending','preparing','refused','ready')), stage TEXT NOT NULL, "
     "version INTEGER NOT NULL, runner_token TEXT, plan TEXT, thread_id TEXT, reason TEXT, "
-    "first_message_id TEXT REFERENCES messages(id), created_ms INTEGER NOT NULL)",
+    "first_message_id TEXT REFERENCES messages(id), ready_seq INTEGER UNIQUE, created_ms INTEGER NOT NULL)",
     "CREATE INDEX hosted_seats_work ON hosted_seats(state,id)",
     "CREATE INDEX hosted_seats_workspace ON hosted_seats(workspace_id,id)",
     "CREATE TABLE hosted_seat_events (seat_id TEXT NOT NULL REFERENCES hosted_seats(id), version INTEGER NOT NULL, "
@@ -31,6 +32,7 @@ SEAT_SCHEMA = [
     "OR NEW.created_ms IS NOT OLD.created_ms OR (OLD.thread_id IS NOT NULL AND NEW.thread_id IS NOT OLD.thread_id) "
     "OR (OLD.plan IS NOT NULL AND NEW.plan IS NOT OLD.plan) "
     "OR (OLD.first_message_id IS NOT NULL AND NEW.first_message_id IS NOT OLD.first_message_id) "
+    "OR (OLD.ready_seq IS NOT NULL AND NEW.ready_seq IS NOT OLD.ready_seq) "
     "BEGIN SELECT RAISE(ABORT,'immutable hosted seat identity'); END",
     "CREATE TRIGGER hosted_seat_no_delete BEFORE DELETE ON hosted_seats BEGIN SELECT RAISE(ABORT,'immutable hosted seat'); END",
     "CREATE TRIGGER hosted_seat_event_no_update BEFORE UPDATE ON hosted_seat_events BEGIN SELECT RAISE(ABORT,'immutable hosted seat event'); END",
@@ -46,15 +48,45 @@ REASONS = frozenset(('host_not_configured', 'host_template_ambiguous', 'host_tem
     'output_closed', 'pin_conflict', 'route_conflict', 'config_write_failed', 'access_changed'))
 
 
-def _record(row, *, private=False):
-    result = {key: row[key] for key in ('id', 'workspace_id', 'agent_id', 'inviter_id', 'owner_id', 'role',
-        'state', 'stage', 'version', 'thread_id', 'reason', 'first_message_id')}
+SUMMARY_FIELDS = ('id', 'workspace_id', 'agent_id', 'inviter_id', 'owner_id', 'state', 'stage', 'version',
+                  'thread_id', 'reason', 'first_message_id')
+
+
+def _retryable(row):
+    return row['state'] == 'refused' and row['stage'] in ('profile', 'thread', 'pin', 'route', 'delivery')
+
+
+def _record(row, *, private=False, role=True):
+    result = {key: row[key] for key in SUMMARY_FIELDS}
+    result['retryable'] = _retryable(row)
+    if role:
+        result['role'] = row['role']
     if private:
-        result.update(runner_token=row['runner_token'], plan=json.loads(row['plan']) if row['plan'] else None)
+        result.update(runner_token=row['runner_token'], plan=json.loads(row['plan']) if row['plan'] else None, ready_seq=row['ready_seq'])
     return result
 
 
 class HostedSeats:
+    def _command_workspace_hosted_seat_retry(self, db, actor, envelope):
+        target, args = envelope['target'], envelope['args']
+        if set(target) != {'workspace_id', 'seat_request_id'} or args:
+            raise Refusal('INVALID_ARGUMENT', 'Name one outcome and the original seat request')
+        workspace = self._workspace(db, actor, target['workspace_id'], organise=True)
+        identity = _identifier(target['seat_request_id'], 'seat_request_id')
+        row = db.execute('SELECT * FROM hosted_seats WHERE workspace_id=? AND id=?', (workspace['id'], identity)).fetchone()
+        if row is None:
+            raise Refusal('NOT_FOUND', 'No such seat in this outcome')
+        _revision(envelope['expected'], 'seat_revision', row['version'])
+        if not _retryable(row):
+            raise Refusal('SEAT_REQUIRES_RECONCILIATION', 'This seat is active or its native creation/settings need reconciliation. Retry cannot create a replacement context.')
+        if not self._seat_access(db, row):
+            raise Refusal('SEAT_ACCESS_CHANGED', 'The original owner, invitation authority or membership must be restored before this setup can resume.')
+        db.execute("UPDATE hosted_seats SET state='pending',reason=NULL,runner_token=NULL,version=version+1 WHERE id=?", (identity,))
+        row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
+        self._seat_event(db, row)
+        return self._seat_invitation(workspace, row, self._actor(db, row['agent_id'])['name']), [
+            {'kind': 'hosted_seat', 'id': identity, 'version': row['version']}]
+
     def _command_workspace_hosted_seat_add(self, db, actor, envelope):
         target, args = envelope['target'], envelope['args']
         if set(target) != {'workspace_id'} or set(args) != {'name', 'role'}:
@@ -65,6 +97,8 @@ class HostedSeats:
         if owner['kind'] != 'human':
             raise Refusal('HUMAN_OWNER_REQUIRED', 'A headless seat needs a human outcome owner for Stop and Continue')
         role = _body(args['role'])
+        if '\0' in role:
+            raise Refusal('ROLE_INVALID', 'A seat role cannot contain null characters.')
         if not role.strip():
             raise Refusal('ROLE_REQUIRED', 'Describe what this seat does.')
         if len(role.encode('utf-8')) > ROLE_BYTES:
@@ -121,9 +155,13 @@ class HostedSeats:
         cursor = args.get('cursor') or ''
         if not isinstance(cursor, str):
             raise Refusal('INVALID_ARGUMENT', 'Use the previous seat page cursor')
-        rows = db.execute('SELECT * FROM hosted_seats WHERE workspace_id=? AND id>? ORDER BY id LIMIT ?',
-                          (workspace['id'], cursor, limit + 1)).fetchall()
-        return _bounded_page({'instance_id': self.instance_id}, rows, limit, _record, 'id')
+        # The team bounds this work even after years of departed-seat history;
+        # status summaries never pull every seat's potentially16KiB role text.
+        fields = ','.join('s.' + key for key in SUMMARY_FIELDS)
+        rows = db.execute('SELECT ' + fields + ' FROM workspace_members m CROSS JOIN hosted_seats s ON s.agent_id=m.actor_id '
+                          'WHERE m.workspace_id=? AND s.workspace_id=? AND s.id>? ORDER BY s.id LIMIT ?',
+                          (workspace['id'], workspace['id'], cursor, limit + 1)).fetchall()
+        return _bounded_page({'instance_id': self.instance_id}, rows, limit, lambda row: _record(row, role=False), 'id')
 
     def _seat_owned(self, db, guard, token, now):
         return self._ownership(self._runner_state(db), guard, token, now)
@@ -200,6 +238,7 @@ class HostedSeats:
             if next_stage != 'refused' and next_stage != 'profile' and plan is None:
                 raise RunnerError('INVALID_ARGUMENT', 'A seat has no recorded host plan')
             message = row['first_message_id']
+            ready_seq = row['ready_seq']
             if next_stage != 'refused' and not self._seat_access(db, row):
                 next_stage, step_details = 'refused', {'reason': 'access_changed'}
             if next_stage in ('route', 'ready'):
@@ -210,14 +249,15 @@ class HostedSeats:
                         self._seat_pin(db, row, json.loads(plan), thread, now)
                     else:
                         message = self._seat_first_delivery(db, row)
+                        ready_seq = db.execute('SELECT coalesce(max(ready_seq),0)+1 FROM hosted_seats').fetchone()[0]
                 except (Refusal, RoutePinError):
                     db.execute('ROLLBACK TO seat_step')
                     next_stage, step_details = 'refused', {'reason': 'pin_conflict' if next_stage == 'route' else 'access_changed'}
                 finally:
                     db.execute('RELEASE seat_step')
             state = 'refused' if next_stage == 'refused' else 'ready' if next_stage == 'ready' else 'preparing'
-            db.execute('UPDATE hosted_seats SET state=?,stage=?,plan=?,thread_id=?,reason=?,first_message_id=?,version=version+1 WHERE id=?',
-                       (state, previous if next_stage == 'refused' else next_stage, plan, thread, step_details.get('reason'), message, identity))
+            db.execute('UPDATE hosted_seats SET state=?,stage=?,plan=?,thread_id=?,reason=?,first_message_id=?,ready_seq=?,version=version+1 WHERE id=?',
+                       (state, previous if next_stage == 'refused' else next_stage, plan, thread, step_details.get('reason'), message, ready_seq, identity))
             row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
             self._seat_event(db, row)
             return {'status': 'ok', 'seat': _record(row, private=True)}, True
@@ -254,15 +294,14 @@ class HostedSeats:
                 'divergence_reason': 'The newly invited headless seat receives its first Conversation task.'}})
         return result['message_id']
 
-    def hosted_seat_route(self, guard, token, known):
+    def hosted_seat_route(self, guard, token, after):
         """One new managed route, an additive overlay; the operator route file is never rewritten."""
-        from .runner import _routed
-        known = _routed(known)
+        from .runner import MAX_SEQ, _bounded
+        _bounded(after, 0, MAX_SEQ, 'after')
         def action(db, now):
             ownership = self._seat_owned(db, guard, token, now)
             if ownership != 'running':
                 return {'status': ownership}, False
-            row = db.execute("SELECT * FROM hosted_seats WHERE state='ready' AND agent_id NOT IN (SELECT value FROM json_each(?)) "
-                             'ORDER BY id LIMIT 1', (known,)).fetchone()
+            row = db.execute('SELECT * FROM hosted_seats WHERE ready_seq>? ORDER BY ready_seq LIMIT 1', (after,)).fetchone()
             return {'status': 'ok', 'seat': _record(row, private=True) if row else None}, False
         return self._effect(guard, action)

@@ -342,6 +342,7 @@ export class PeoplePanel {
     }
     if (this.beforeChoice) chips.push(this.beforeChoice);
     if (this.extraChoice) chips.push(this.extraChoice);
+    for (const choice of this.extraChoices ?? []) chips.push(choice);
     placeChips(this.choices, chips);
     if (held !== undefined) (chips.find(chip => chip.dataset?.id === held) ?? this.input).focus();
   }
