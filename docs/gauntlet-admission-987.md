@@ -78,3 +78,13 @@ Existing failed-evidence handling remains intact: a candidate that cannot
 pass its checks does not start a landing, and its failure measurements may
 still be reported by the existing deploy path. Eligible heads run admission
 before host policy and again before candidate/report/stopping effects.
+
+Review correction14637: a successfully authenticated `--train` merge is an
+already-started landing. Both deploy floors retain actual classification,
+ancestry and one-item checks, but omit the waiting-piece read on that path;
+a later ordinary approval cannot strand that merge before deployment.
+Pre-merge launcher, human-start CLI and direct-summary deployment continue
+to check waiting pieces. The internal `started_landing` argument defaults
+false; only deploy's successfully returned `take_train` result selects true.
+A refused freeze view uses the normal CLI view/refusal path (coded error,
+exit2), with no attempted freeze write or traceback.
