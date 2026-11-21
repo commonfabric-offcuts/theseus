@@ -63,6 +63,7 @@ COMMANDS = {
     "outcome.reach": "_command_outcome_reach",
     "outcome.end_set": "_command_outcome_end_set",
     "outline.order_set": "_command_outline_order_set",
+    "rail.dimming_set": "_command_rail_dimming_set",
     "message.star": "_command_message_star", "message.deal": "_command_message_deal", "message.fold": "_command_message_fold",
     "message.fold_through": "_command_message_fold_through",
     "stack.aside": "_command_stack_aside", "stack.place": "_command_stack_place", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
@@ -108,6 +109,7 @@ EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish"
             "outcome.reach": {"workspace_revision"},
             "outcome.end_set": {"workspace_revision"},
             "outline.order_set": {"order_revision"},
+            "rail.dimming_set": {"dim_revision"},
             "message.star": {"star_revision"}, "message.deal": {"deal_revision"}, "message.fold": {"fold_revision"}, "message.fold_through": {"fold_revision"}, "stack.aside": {"aside_revision"},
             "stack.place": {"place_revision"}, "stack.name": {"name_revision"}, "stack.join": {"join_revision"},
             "stack.cover": {"cover_revision"}, "stack.cover_refresh": {"cover_revision"},
@@ -126,10 +128,12 @@ REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "dra
                      "message.thumb": "thumb_revision", "message.answer": "answer_revision",
                      "responsibility.set": "responsibility_revision", "workspace.coordinator_set": "workspace_revision",
                      "outline.order_set": "order_revision",
+                     "rail.dimming_set": "dim_revision",
                      "message.star": "star_revision", "message.deal": "deal_revision", "message.fold": "fold_revision", "message.fold_through": "fold_revision", "stack.aside": "aside_revision",
                      "stack.place": "place_revision", "stack.name": "name_revision", "stack.join": "join_revision",
                      "stack.move": "move_revision", "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
 VIEWS = {
+    "rail_dimming": set(),
     "onboarding_prompt": {"workspace_id", "variant"},
     "assessment": {"assessment_id"}, "assessments": {"topic_id","cursor","limit"},
     "changes": {"scope", "cursor", "limit"},

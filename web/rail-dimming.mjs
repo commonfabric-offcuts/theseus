@@ -1,78 +1,12 @@
-// Browser-local dim views (973). No topic read, Core write or timer.
-const valid = id => typeof id === 'string' && id.length > 0 && [...id].length <= 200 && !/[\x00-\x1f]/.test(id);
-const empty = () => ({ focus: null, outcomes: [], topics: [] });
-const fresh = () => ({ version: 1, selected: 0, sets: [empty(), empty()] });
-const LIMIT = 2048;
-export const dimmingKey = (instance, actor) => `aim-next.rail-dimming.v1:${JSON.stringify([instance, actor])}`;
-function decode(raw) {
-  const value = JSON.parse(raw);
-  if (!value || value.version !== 1 || ![0,1,2].includes(value.selected) || !Array.isArray(value.sets) || value.sets.length !== 2) throw Error('Invalid dim views');
-  for (const set of value.sets) {
-    if (!set || !(set.focus === null || Array.isArray(set.focus) && set.focus.length === 2 && valid(set.focus[0]) && (set.focus[1] === null || valid(set.focus[1])))) throw Error('Invalid focus');
-    for (const [name, count] of [['outcomes',2],['topics',3]]) {
-      const entries = set[name], ids = new Set();
-      if (!Array.isArray(entries) || entries.length > LIMIT) throw Error('Invalid choices');
-      for (const row of entries) {
-        if (!Array.isArray(row) || row.length !== count || !row.slice(0,-1).every(valid) || typeof row.at(-1) !== 'boolean') throw Error('Invalid choice');
-        const key = JSON.stringify(row.slice(0,-1)); if (ids.has(key)) throw Error('Repeated choice'); ids.add(key);
-      }
-    }
-  }
-  return value;
-}
-export class DimChoices {
-  constructor(storage = null) { this.storage = storage; this.key = null; this.value = fresh(); this.kept = Boolean(storage); }
-  get selected() { return this.value.selected; }
-  bind(instance, actor) {
-    if (!valid(instance) || !valid(actor)) { this.key = null; this.value = fresh(); return; }
-    const key = dimmingKey(instance, actor);
-    if (key === this.key) return;
-    this.key = key; this.value = fresh(); this.refresh();
-  }
-  refresh() {
-    if (!this.key) return;
-    try { const raw = this.storage?.getItem(this.key); this.value = raw ? decode(raw) : fresh(); this.kept = Boolean(this.storage); }
-    catch { this.value = fresh(); this.kept = false; }
-  }
-  keep() {
-    try { if (!this.storage) throw Error('No storage'); this.storage.setItem(this.key, JSON.stringify(this.value)); this.kept = true; }
-    catch { this.kept = false; }
-  }
-  select(choice) {
-    if (!this.key || ![0,1,2].includes(choice)) return false;
-    this.value.selected = choice; this.keep(); return true;
-  }
-  dimmed(workspace, topic = null) {
-    if (!this.selected) return false;
-    const set = this.value.sets[this.selected - 1];
-    if (this.indexed !== set) {
-      this.indexed = set; this.outcomes = new Map(set.outcomes); this.topics = new Map(set.topics.map(([w,t,on]) => [JSON.stringify([w,t]),on]));
-    }
-    if (topic !== null && this.topics.has(JSON.stringify([workspace,topic]))) return this.topics.get(JSON.stringify([workspace,topic]));
-    if (this.outcomes.has(workspace)) return this.outcomes.get(workspace);
-    return Boolean(set.focus && (workspace !== set.focus[0] || topic !== null && set.focus[1] !== null && topic !== set.focus[1]));
-  }
-  toggle(workspace, topic = null, inverse = false) {
-    if (!this.key || !valid(workspace) || topic !== null && !valid(topic)) return false;
-    if (!this.selected) this.value.selected = 1;
-    const index = this.selected - 1, prior = this.value.sets[index];
-    if (inverse) this.value.sets[index] = { focus: [workspace,topic], outcomes: [], topics: [] };
-    else {
-      const on = !this.dimmed(workspace,topic), next = { focus: prior.focus, outcomes: [...prior.outcomes], topics: [...prior.topics] };
-      if (topic === null) {
-        next.outcomes = next.outcomes.filter(([id]) => id !== workspace); next.outcomes.push([workspace,on]);
-        next.topics = next.topics.filter(([id]) => id !== workspace);
-      } else { next.topics = next.topics.filter(([w,t]) => w !== workspace || t !== topic); next.topics.push([workspace,topic,on]); }
-      if (next.outcomes.length > LIMIT || next.topics.length > LIMIT) return false;
-      this.value.sets[index] = next;
-    }
-    this.keep(); return true;
-  }
-}
+// The existing Dim painter/gestures, with Core synchronization in1004.
+import { DimChoices, valid } from './dim-choices.mjs';
+import { DimmingSync } from './dimming-sync.mjs';
+export { DimChoices, dimmingKey } from './dim-choices.mjs';
 
 export class RailDimming {
   constructor({ host, storage, enabled = () => true, doc = host.ownerDocument }) {
     Object.assign(this, { host, doc, enabled }); this.choices = new DimChoices(storage); this.press = null;
+    this.sync = new DimmingSync({ choices:this.choices, storage, visible:()=>this.doc.visibilityState!=='hidden', changed:()=>this.paint() });
     // Capture only modified name/topic presses. Every other control and
     // ordinary link stays with its existing navigation/menu owner.
     host.addEventListener('pointerdown', event => {
@@ -93,10 +27,17 @@ export class RailDimming {
     });
     this.observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-current','data-topic-id','data-workspace-id','data-only','data-waiting','data-cover-waiting','class'] });
     doc.defaultView.addEventListener?.('storage', event => {
+      if (this.sync.key) return; // Core changes, not another tab's unconfirmed cache, drive this owner.
       if (this.choices.key && (event.key === this.choices.key || event.key === null)) { this.choices.refresh(); this.paint(); }
     });
+    doc.defaultView.addEventListener?.('online',()=>{ if(this.sync.key)this.sync.retry(); });
+    doc.defaultView.addEventListener?.('focus',()=>{ if(this.sync.key)this.sync.retry(); });
+    doc.addEventListener?.('visibilitychange',()=>{ if(this.sync.key&&this.doc.visibilityState!=='hidden')this.sync.retry(); });
   }
-  bind(instance, actor) { this.choices.bind(instance,actor); this.paint(); }
+  bind(instance, actor, handles = null) {
+    if (handles?.api && handles.bootstrap?.authority) this.sync.connect(handles);
+    else { this.sync.disconnect(); this.choices.bind(instance,actor); this.paint(); }
+  }
   target(target) {
     const row = target?.closest?.('a.ol-name[data-workspace-id], a.nav-item[data-topic-id]');
     if (!row || !this.host.contains(row) || row.closest('[inert]')) return null;
@@ -119,7 +60,8 @@ export class RailDimming {
       li.dataset.dimmed = String(this.choices.dimmed(workspace) || waiting && !li.hasAttribute('data-waiting'));
       for (const row of li.querySelectorAll('a.nav-item[data-topic-id]')) {
         const matches = row.hasAttribute('data-cover-waiting') || Boolean(row.querySelector('.topic-state.mine'));
-        row.dataset.dimmed = String(this.choices.dimmed(workspace,row.dataset.topicId) || waiting && !matches);
+        // Preserve live297's1003 rule while composing on the older757 Core base.
+        row.dataset.dimmed = String(!matches && (this.choices.dimmed(workspace,row.dataset.topicId) || waiting));
       }
     }
   }
@@ -138,13 +80,19 @@ export class RailDimming {
         }
         const density = foot.querySelector('.rail-density'); if (density) density.after(group); else foot.append(group);
       }
-      group.title = this.choices.kept ? 'Dim views are kept in this browser' : 'This browser could not keep dim views; they last for this page';
+      group.title = this.sync.key ? this.sync.status : this.choices.kept ? 'Dim views are kept in this browser' : 'This browser could not keep dim views; they last for this page';
       // In-place navigation restores listener-free footer copies (901).
-      for (const button of group.querySelectorAll('button')) {
+      for (const button of group.querySelectorAll('button[data-dim-set]')) {
         const choice = Number(button.dataset.dimSet);
         button.onclick = () => { this.choices.select(choice); this.paint(); };
         button.setAttribute('aria-pressed',String(choice === this.choices.selected));
       }
+      let retry = group.querySelector('.rail-dim-retry');
+      if (this.sync.key && this.sync.error) {
+        if (!retry) { retry=this.doc.createElement('button');retry.type='button';retry.className='rail-dim-retry';group.append(retry); }
+        retry.textContent='Retry';retry.setAttribute('aria-label',this.sync.pending?'Retry Dim save':'Refresh Dim choices');
+        retry.title=this.sync.status;retry.onclick=()=>this.sync.retry();
+      } else retry?.remove();
     }
     this.paintRows();
   }

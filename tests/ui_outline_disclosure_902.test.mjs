@@ -470,11 +470,11 @@ test('981 waiting composes with saved sets and0 without writing or replacing eit
   const saved=JSON.stringify(dim.choices.value),writes=f.storage.writes.length;
   assert.ok(topic981(f,'w1'),'quiet topic exists before the pill');
   f.click(f.outline.onlyWaiting);await tick981();
-  assert.equal(topic981(f,'w1').dataset.dimmed,'true');assert.equal(topic981(f,'w3').dataset.dimmed,'true','saved layer still dims a matching waiting row');
+  assert.equal(topic981(f,'w1').dataset.dimmed,'true');assert.equal(topic981(f,'w3').dataset.dimmed,'false','1003 reader wait overrides the saved layer');
   assert.equal(topic981(f,'w2').dataset.dimmed,'false');assert.equal(JSON.stringify(dim.choices.value),saved);assert.equal(f.storage.writes.length,writes);
   dim.choices.select(0);dim.paint();assert.equal(topic981(f,'w1').dataset.dimmed,'true','0 bypasses saved sets only');assert.equal(topic981(f,'w3').dataset.dimmed,'false');
   dim.choices.select(1);dim.paint();f.click(f.outline.onlyWaiting);await tick981();
-  assert.equal(topic981(f,'w1').dataset.dimmed,'false');assert.equal(topic981(f,'w3').dataset.dimmed,'true');assert.equal(JSON.stringify(dim.choices.value),saved);
+  assert.equal(topic981(f,'w1').dataset.dimmed,'false');assert.equal(topic981(f,'w3').dataset.dimmed,'false');assert.equal(JSON.stringify(dim.choices.value),saved);
 });
 
 test('981 existing row waiting markers repaint without changing saved-set contents',async t=>{
