@@ -15,7 +15,7 @@ import { assertPassagePresentation } from './item_758_oracle.mjs';
 
 // A document whose elements hold child nodes and know their parent, as the browser's do.
 class Text {
-  constructor(data) { Object.assign(this, { nodeType: 3, nodeName: '#text', data: String(data), parentNode: null }); }
+  constructor(data) { Object.assign(this, { nodeType: 3, nodeName: '#text', data: String(data), parentNode: null, childNodes: [] }); }
   get textContent() { return this.data; }
 }
 class Element {
@@ -1006,4 +1006,19 @@ test('867 Notebook hidden lines preserve Reader source offsets and do not hide o
   assert.match(passages(body).textContent,/theseus-card/);
   assert.equal(passages(line,{notebook:true}).textContent,'');
  }
+});
+
+test('962 a Notebook literal title retains its marks and link text while joining the card source', () => {
+  const title = '**Literal** [label](https://example.test/)', heading = '## ' + title;
+  const label = format.literalWords(new Element('span'), title, 4);
+  const body = render('Body paragraph.', { revision: 4 }), row = new Element('li');
+  row.append(label, body);
+  format.composeFormattedWords(row, heading + '\n\nBody paragraph.', 4,
+    [{ node: label, offset: 3, start: 0, end: heading.length }, { node: body, offset: heading.length + 2 }]);
+  assert.equal(label.textContent, title);
+  assert.deepEqual(webLinksOf(label), []);
+  assert.equal(byTag(label, 'strong').length, 0);
+  assert.equal(format.sourcePosition(label.childNodes[0], 0), 0);
+  assert.equal(format.sourcePosition(label.childNodes[0], title.length, true), heading.length);
+  assert.equal(format.drawnRevision(row), 4);
 });

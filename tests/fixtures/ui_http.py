@@ -1290,7 +1290,7 @@ def main():
                         attached = published(request["operation_id"], request.get("attachments", []), "fixture-notebook-agent")
                         answer = command("memory.create", request["operation_id"], {
                             "title": request["title"], "body": request["body"], "attachments": attached, "references": []},
-                            {"item_id": request["item_id"], "owner_scope": {"kind": "topic", "id": request["topic_id"]}},
+                            {"item_id": request["item_id"], "owner_scope": request.get("owner_scope") or {"kind": "topic", "id": request["topic_id"]}},
                             {"item_revision": 0}, sender="fixture-notebook-agent")
                     elif freshness and request["method"] == "agent_view":
                         # What the fixture's agent (or {"actor": an agent}) is given by a view, as its CLI reads it.

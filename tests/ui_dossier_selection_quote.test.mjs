@@ -38,7 +38,7 @@ const guards=[
   ['detached entry','this.host.contains(entry) &&','true &&',f=>{f.c.host.contains=()=>false;}],
   ['same card identity','cardIn(entry) === card &&','true &&',f=>{f.entry.card={};}],
   ['same drawn words','card.querySelector(\':scope > .message-preview\') === words &&','true &&',f=>{f.card.querySelector=()=>({});}],
-  ['dossier membership','Boolean(card.closest(\'.reply-stack\')) &&','true &&',f=>{f.card.closest=()=>null;}],
+  ['dossier membership','Boolean(card.closest(\'.reply-stack\'))','true',f=>{f.card.closest=()=>null;}],
   ['entry id','entry.dataset.id === id &&','true &&',f=>{f.entry.dataset.id='other';}],
   ['card id','card.dataset.id === id &&','true &&',f=>{f.card.dataset.id='other';}],
   ['noncollapsed range','!range.collapsed &&','true &&',f=>{f.range.collapsed=true;}],
