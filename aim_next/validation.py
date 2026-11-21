@@ -9,6 +9,7 @@ COMMANDS = {
     "workspace.create": "_command_workspace_create",
     "workspace.member_set": "_command_workspace_member_set",
     "workspace.agent_invite": "_command_workspace_agent_invite",
+    "workspace.hosted_seat_add": "_command_workspace_hosted_seat_add",
     "workspace.owner_set": "_command_workspace_owner_set",
     "workspace.update": "_command_workspace_update",
     "draft.save": "_command_draft_save",
@@ -80,6 +81,7 @@ EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish"
             "media.begin": {"media_revision"}, "media.publish": {"media_revision"},
             "workspace.member_set": {"workspace_revision"}, "workspace.owner_set": {"workspace_revision"},
             "workspace.agent_invite": {"workspace_revision"},
+            "workspace.hosted_seat_add": {"workspace_revision"},
             "workspace.update": {"workspace_revision"}, "opening.save": {"opening_revision"},
             "opening.publish": {"opening_revision"}, "opening.discard": {"opening_revision"},
             "message.mark": {"mark_revision"}, "color.set": {"color_revision"}, "outcome.color_set": {"color_revision"},
@@ -121,6 +123,7 @@ REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "dra
                      "media.begin": "media_revision", "media.publish": "media_revision",
                      "workspace.member_set": "workspace_revision", "workspace.owner_set": "workspace_revision",
                      "workspace.agent_invite": "workspace_revision",
+                     "workspace.hosted_seat_add": "workspace_revision",
                      "workspace.update": "workspace_revision", "opening.save": "opening_revision",
                      "opening.publish": "opening_revision", "opening.discard": "opening_revision",
                      "message.mark": "mark_revision", "color.set": "color_revision", "outcome.color_set": "color_revision", "message.edit": "message_revision", "message.refresh": "message_revision",
@@ -134,6 +137,8 @@ REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "dra
                      "stack.move": "move_revision", "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
 VIEWS = {
     "rail_dimming": {"candidate"},
+    "hosted_seat": {"workspace_id", "seat_request_id"},
+    "hosted_seats": {"workspace_id", "cursor", "limit"},
     "onboarding_prompt": {"workspace_id", "variant"},
     "assessment": {"assessment_id"}, "assessments": {"topic_id","cursor","limit"},
     "changes": {"scope", "cursor", "limit"},
@@ -260,7 +265,7 @@ def _view_arguments(name, args):
             if cursor != "":
                 from .topic_state import order_position
                 order_position(cursor)
-        elif name in ("workspaces", "openings", "workspace_members", "actors", "colors", "source_topics", "assessments"):
+        elif name in ("workspaces", "openings", "workspace_members", "actors", "colors", "source_topics", "assessments", "hosted_seats"):
             if cursor != "":
                 _identifier(cursor, "cursor")
             elif not isinstance(cursor, str):
