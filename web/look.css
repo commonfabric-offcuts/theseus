@@ -33,8 +33,8 @@
     &{--stack-folder:#2a3538;--stack-lift:0 1px 0 rgb(255 255 255/.05) inset,0 14px 26px -16px rgb(0 0 0/.9),0 2px 4px -2px rgb(0 0 0/.5);}
     dialog.notebook-sheet-dialog .notebook-sheet-pages{background:#000}
     dialog.notebook-sheet-dialog .notebook-sheet-head{border-bottom-color:#1a1f20}
-    dialog.notebook-sheet-dialog .deck-card{background:transparent;border-color:#1c2224}
-    dialog.notebook-sheet-dialog .deck-card[aria-current=true]{background:#0e1513}
+    dialog.notebook-sheet-dialog .deck-card{background:#0f1213;border-color:#1c2224}
+    dialog.notebook-sheet-dialog .deck-card[aria-current=true]{background:#000}
   }
   @media(prefers-color-scheme:light){:root:not([data-look=paper]){
     --look-bench:#f6f7f4;--look-bench-top:#fbfbf9;
