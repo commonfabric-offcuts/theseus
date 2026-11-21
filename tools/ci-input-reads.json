@@ -5471,5 +5471,33 @@
       "inputs": [],
       "scope": "generated/system/product"
     }
+  },
+  "tests/test_waiting_questions_372.py": {
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/waiting_questions_372_acceptance.mjs": {
+    "7d9b3fb3e17446fdb1070b241939d8c10df78e4b7c126222beccc10217bb4a10": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "4aa56026b175042e379cc55d83a6e5ba6024cc1a97c3e84bbd66a66cb80e9c8c": {
+      "scope": "repository",
+      "inputs": [
+        "tests/waiting_questions_372_acceptance.mjs"
+      ]
+    },
+    "d8c35dc186bf225e177f20d64502b5e10c2ffb0dd22a937959d83309cf10e466": {
+      "scope": "repository",
+      "inputs": [
+        "tests/waiting_questions_372_native.mjs"
+      ]
+    }
   }
 }

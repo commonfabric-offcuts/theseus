@@ -942,7 +942,7 @@ class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, 
         items = [redact_topic(db, actor, row) for row in rows]
         latest = latest_by_topic(db, [item["id"] for item in items])
         counts = self._unread(db, actor, topics=[item["id"] for item in items])
-        waits = self._waits_by_topic(db, [item["id"] for item in items])
+        waits = self._waits_by_topic(db, [item["id"] for item in items], reader=actor)
         work = work_by_topic(db, waits, actor)
         cover_waits = self._cover_wait_counts(db, actor, topics=[item["id"] for item in items])
         for item in items:

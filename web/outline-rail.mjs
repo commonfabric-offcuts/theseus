@@ -184,6 +184,8 @@ export class OutlineRail {
     const reload = reloader(async () => { const dirty = full ? null : pending; full = false; pending = new Set(); result = await this.load(dirty); });
     this.reload = (dirty = null) => { if (dirty) for (const key of dirty) pending.add(key); else full = true; return reload().then(() => result); };
     this.build();
+    this.phoneMedia = doc.defaultView.matchMedia('(max-width: 760px)');
+    this.phoneMedia.addEventListener?.('change', () => this.paint());
     this.dimming = new RailDimming({ host, storage, doc, enabled: () => Boolean(this.handles) });
     this.menus = new OutlineMenus(this);
     this.dossiers = new OutlineDossiers(this);
@@ -434,10 +436,9 @@ export class OutlineRail {
     name.dataset.workspaceId = id;
     const disclosure = element(doc, 'button', { type: 'button', className: 'ol-disclosure', tabIndex: 0 }, glyph('chevron', doc));
     // The name still navigates; disclosure is an independent in-place action.
-    const waiting = element(doc, 'button', { type: 'button', className: 'ol-waiting', hidden: true });
     // Beside the name, the pencil that starts a new topic here; a press on it opens and folds nothing.
     const newTopic = pencil(doc, { id: `ol-pencil-${id}`, className: 'ol-new-topic', label: `New topic in ${item.title}`, tip: 'New topic' });
-    const row = element(doc, 'div', { className: 'ol-row' }, disclosure, name, newTopic, waiting);
+    const row = element(doc, 'div', { className: 'ol-row' }, disclosure, name, newTopic);
     // The tree's rows are the names and the topics (key-tree.mjs); what holds them is no list of its own.
     row.setAttribute('role', 'none');
     const topics = element(doc, 'div', { className: 'ol-topics', id: `ol-topics-${id}` });
@@ -464,7 +465,7 @@ export class OutlineRail {
     const own = part('div', { className: 'ol-own' });
     own.append(message, host, more, retry, done.details, archived.details);
     topics.append(own);
-    outcome = { id, item, li, row, disclosure, name, title, standing, waiting, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null, held: null,
+    outcome = { id, item, li, row, disclosure, name, title, standing, waiting: null, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null, held: null,
       parts: { host, more, retry, message, done, archived } };
     disclosure.onclick = event => {
       if (!plainClick(event)) return;
@@ -495,12 +496,25 @@ export class OutlineRail {
       }
       this.open(this.nameTarget(outcome), outcome.item.title);
     };
-    waiting.onclick = () => this.openQuestion(outcome);
     this.topicLine(outcome);
     this.outcomes.set(id, outcome);
     return outcome;
   }
-  async openQuestion(outcome) {
+  // The phone drawer keeps its question cycle. Desktop uses the waiting pill
+  // and topic rows; it carries neither a hidden cycle button nor its handler.
+  phoneQuestionControl(outcome) {
+    if (this.phone && !outcome.waiting) {
+      const waiting = element(this.doc, 'button', { type: 'button', className: 'ol-waiting', hidden: true });
+      waiting.onclick = () => this.openPhoneQuestion(outcome);
+      outcome.row.append(waiting); outcome.waiting = waiting; outcome.said = null;
+    } else if (!this.phone && outcome.waiting) {
+      if (this.doc.activeElement === outcome.waiting) outcome.name.focus({ preventScroll: true });
+      outcome.name.append(outcome.standing);
+      outcome.waiting.remove(); outcome.waiting = null; outcome.said = null;
+    }
+  }
+  async openPhoneQuestion(outcome) {
+    if (!this.phone) return;
     // One read at a time. A busy flag, not disabled: disabling the button would
     // take the focus off it, and the Reader the question opens in gives the
     // focus back to what had it (item 462: the keys stay on the row pressed).
@@ -558,7 +572,7 @@ export class OutlineRail {
       rows.push({ el: outcome.name, level: 1, set: this.list, key: 'outcome:' + id, parent: null, expanded: open, outcome });
       const pen = outcome.newTopic;
       if (open || pen === this.doc.activeElement || pen.getAttribute('aria-expanded') === 'true') rows.push({ el: pen, level: 2, set: outcome.li, key: 'pencil:' + id, parent: outcome.name, outcome, byRight: true });
-      if (!outcome.waiting.hidden && outcome.waiting.getClientRects().length) rows.push({el:outcome.waiting, level:2, set:outcome.li, key:'waiting:'+id, parent:outcome.name, outcome});
+      if (outcome.waiting && !outcome.waiting.hidden && outcome.waiting.getClientRects().length) rows.push({el:outcome.waiting, level:2, set:outcome.li, key:'waiting:'+id, parent:outcome.name, outcome});
       if (!open) continue;
       for (const el of outcome.topics.querySelectorAll('a[href], button, summary')) {
         if (el.closest('.one-line')) continue;
@@ -808,6 +822,7 @@ export class OutlineRail {
     const focused = [...this.list.children].find(li => li.contains(this.doc.activeElement)) ?? null;
     items.forEach(item => {
       const outcome = this.outcome(item), open = this.isOpen(item.id), visible = shownUnder(this.filter, item);
+      this.phoneQuestionControl(outcome);
       const choice = outcomeColors.forDisplay(item);
       if (choice?.color) outcome.li.dataset.color = choice.color; else delete outcome.li.dataset.color;
       shown.add(item.id);
@@ -843,10 +858,12 @@ export class OutlineRail {
         if (lamp) line.prepend(lamp);
         // A separate control reaches the question; the name keeps navigation.
         const waits = asksIn(item) > 0;
-        outcome.waiting.hidden = !waits;
-        outcome.waiting.setAttribute('aria-label', `Open a question waiting on you in ${item.title}`);
+        if (outcome.waiting) {
+          outcome.waiting.hidden = !waits;
+          outcome.waiting.setAttribute('aria-label', `Open a question waiting on you in ${item.title}`);
+        }
         outcome.newTopic.setAttribute('aria-label', `New topic in ${item.title}`);
-        (waits ? outcome.waiting : outcome.name).append(outcome.standing);
+        (waits && outcome.waiting ? outcome.waiting : outcome.name).append(outcome.standing);
       }
     });
     for (const [id, outcome] of this.outcomes) if (!shown.has(id)) { outcome.li.remove(); this.outcomes.delete(id); }

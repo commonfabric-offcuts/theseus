@@ -30,6 +30,7 @@ import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
 import { visibleReturn784Checks } from './visible_return_784_native.mjs';
 import { whisperOutlineReading } from './whisper_outline_native.mjs';
+import { waitingQuestions372Checks } from './waiting_questions_372_native.mjs';
 
 import { betweenOthers } from '../web/fold.mjs';
 import { gather, ordered } from '../web/stack-order.mjs';
@@ -91,6 +92,7 @@ export const readingSeed = control => async (topic, said, before = null) => {
 // windows: the browser's own windows, as it opens them: list() gives each page's id and address, close(id) closes one.
 export async function readingChecks({ check, page, until, view, control, shot, facts, observations, grant = null, windows, engine = 'chrome' }) {
   await onboardingChecks790({check,page,until,control,shot,facts,observations,grant,engine});
+  await waitingQuestions372Checks({check,page,until,view,control,shot,facts,observations,engine});
   // A topic of the person's own, with aim-core and aim-ux in it, and messages
   // said in order: each [name, {sender, body, ...}] as the fixture's agent_message takes it.
   const seed = readingSeed(control);
