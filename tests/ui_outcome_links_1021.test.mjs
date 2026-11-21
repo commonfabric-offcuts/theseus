@@ -55,7 +55,15 @@ test('1021 Core-kept URL spelling survives a different browser URL normalization
   const f=reader(async()=>({instance_id:'i1',workspace_id:'w1',items:[row(1,url)],next_cursor:null,reader_may_write:true}));
   const answer=await f.links.read(f.handles);assert.equal(answer.items[0].url,url);
   const bad=reader(async()=>({instance_id:'i1',workspace_id:'w1',items:[row(1,'javascript:alert(1)')],next_cursor:null}));
-  await assert.rejects(bad.links.read(bad.handles));
+  assert.deepEqual((await bad.links.read(bad.handles)).items,[]);
+});
+test('1021 one unreadable URL cannot deny valid rows, writer access or bounded pagination',async()=>{
+  const f=reader(async(_name,args)=>({instance_id:'i1',workspace_id:'w1',items:args.cursor?[row(1,'https://good.test/')]:[row(3,'http://999.1.1.1/'),row(2,'https://other.test/')],next_cursor:args.cursor?null:2,reader_may_write:true}));
+  const answer=await f.links.read(f.handles);assert.equal(answer.reader_may_write,true);
+  assert.deepEqual(answer.items.map(r=>r.seq),[2,1]);
+  assert.deepEqual(outcomeLinks([],[row(3,'http://999.1.1.1/'),...answer.items]).map(r=>r.seq),[2,1]);
+  const broken=reader(async()=>({instance_id:'i1',workspace_id:'w1',items:[{...row(1),revision:0}],next_cursor:null}));
+  await assert.rejects(broken.links.read(broken.handles),/could not be confirmed/);
 });
 test('1021 browser-equivalent preview overlays deduplicate titles and retain removal',()=>{
   const previews=[{url:'https://example.test/work',title:'Derived'}],kept={url:'https://example.test/a/../work',title:'Kept title',revision:2,seq:4,ms:10};

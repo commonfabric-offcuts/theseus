@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import unittest
+import json
+import subprocess
 from unittest.mock import patch
 
 from aim_next import Store
 from aim_next.contract import LIMITS, _json
 from aim_next.migrations import MigrationError, STEPS, migrate
 from aim_next.store import StoreOpenError
-from aim_next.workspace_links import LINK_SCHEMA
+from aim_next.workspace_links import LINK_SCHEMA, canonical_url
 import test_store as fixtures
 
 
@@ -24,6 +26,52 @@ class OutcomeLinksCase(unittest.TestCase):
 
     def read(self, actor="owner", workspace="w1", **args):
         return self.store.view(actor, "workspace_links", dict(args, workspace_id=workspace))
+
+    def test_browser_href_is_a_core_fixed_point_for_url_components(self):
+        # Independent browser URL implementation, not a copy of Core's encoder.
+        script = r"""
+const inputs = ['https://host/?', 'https://host/#', 'https://host/?#'];
+const chars = Array.from({length:94}, (_,n)=>String.fromCharCode(n+33)).filter(c=>c!=='\\');
+for(const c of chars.concat(['界','ß','☕','😀','%2f','%','%zz']))
+  for(const prefix of ['https://host/a','https://host/?q=','https://host/#f']) inputs.push(prefix+c+'z');
+for(const host of ['xn--fa-hia.de','xn--53h.example','127.0.0.1','[2001:db8::1]','host..','_srv.host','-host','host-'])
+  for(const suffix of ['/?ids[]=1','/docs/[slug]','/?{}|^`','/#a#b','/?','#']) inputs.push('https://'+host+suffix);
+let seed=15423;
+for(let n=0;n<512;n++) {let word='';for(let j=0;j<24;j++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;word+=chars[seed%chars.length];}inputs.push('https://host/'+word+'?'+word+'#'+word);}
+console.log(JSON.stringify([...new Set(inputs.map(raw=>new URL(raw).href))]));
+"""
+        hrefs = json.loads(subprocess.check_output(["node", "-e", script], text=True))
+        differences = []
+        for href in hrefs:
+            try:
+                actual = canonical_url(href)
+            except Exception as error:
+                actual = type(error).__name__ + ': ' + str(error)
+            if actual != href:
+                differences.append((href, actual))
+        self.assertEqual(differences[:12], [], "%d browser/Core spelling differences" % len(differences))
+        self.assertGreater(len(hrefs), 800)
+
+    def test_browser_invalid_hosts_never_poison_saved_collection(self):
+        self.workspace()
+        self.saved()
+        invalid = ['999.1.1.1', '1.2.3.4.5', 'a<b', 'a>b', 'a|b', 'a^b', 'a[b',
+                   'host.123', '1.2.3.256', '0x100000000', '09', 'xn--', 'xn--a',
+                   'a%00b', 'a%3Cb', '[fe80::1%25en0]']
+        for host in invalid:
+            with self.subTest(host=host):
+                self.assertEqual(self.saved(url='http://'+host+'/').get('error', {}).get('code'), 'INVALID_ARGUMENT')
+        self.assertEqual(len(self.read()['items']), 1)
+        # Browser-valid IPv4 variants are retained as their canonical host.
+        for raw, href in [('127.1','127.0.0.1'), ('0x7f.1','127.0.0.1'), ('0177.0.0.1','127.0.0.1'), ('2130706433','127.0.0.1')]:
+            self.assertEqual(canonical_url('http://'+raw+'/'), 'http://'+href+'/')
+
+    def test_title_controls_and_direction_marks_refuse_without_a_partial_row(self):
+        self.workspace()
+        for char in ['\n', '\t', '\x00', '\x7f', '\x85', '\u061c', '\u200e', '\u200f', '\u202a', '\u202e', '\u2066', '\u2069']:
+            with self.subTest(char=repr(char)):
+                self.assertEqual(self.saved(title='Before'+char+'after').get('error', {}).get('code'), 'INVALID_ARGUMENT')
+        self.assertEqual(self.read()['items'], [])
 
     def test_scope_is_outcome_team_and_never_topic_only_or_coordinator_only(self):
         self.workspace()

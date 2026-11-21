@@ -82,3 +82,36 @@ data authority and report the actual classification. Fable owns binding/stages
 and exact freeze readback; Warp owns the route ruling, candidate integration,
 independent read and landing. No live migration or installation edit is part
 of this builder's work.
+
+## Review15423 correction contract
+
+Rejected source9c089b1b remains retained history. The same source branch takes
+one corrected head covering all four faults. Core serialization must preserve
+browser-produced credential-free HTTP/HTTPS hrefs across the printable URL
+character class, including empty query/fragment markers. Host validation must
+refuse forbidden domain characters and invalid numeric IPv4 spellings before
+a row is written. The client skips an individually unusable URL while retaining
+valid rows, bounded pagination, authority and structural-response checks.
+Legacy exact Core URL identities and revision fences remain unchanged.
+
+A touch hold opening the shared sheet consumes its own release, as ImageRailMenu
+does; the next deliberate press works. A second pencil press closes the form
+and reopening retains unsent URL/title, including after an Escape/Cancel close;
+a successful save may clear it. Route/reset and lost-authority clearing remain.
+Retain actual native hold/pencil failures and the browser/Core spelling property
+red before product edits. Final native matrices drive those gestures and real
+query-bracket preview Rename/Remove/Add with Core readback and no duplicate row.
+Chrome native touch proves the hold path; any WebKit touch-driver limitation is
+explicit rather than replacing it with dispatched DOM handlers.
+
+Include the bounded adjacent15423 corrections: reject title controls/bidi marks,
+44px coarse-pointer menu targets, Copy success feedback, removal focus to the
+next tile (previous at the end), and classify workspace_links in the three
+explicit view inventories. No unrelated inventory deficiencies are weakened.
+The judged65→66 route and15268 contract remain; no live installation writes.
+
+Review15443 also requires the seat-migration fixture's scratch predecessor to
+drop the empty later workspace_links table, matching step_back_by_hand in
+test_migrations.py. Only that setup SQL changes; the upgrade, predecessor-data,
+recorded-seat, roundtrip and byte-preservation assertions remain unchanged.
+Actual pre-edit errors in both named tests are retained.

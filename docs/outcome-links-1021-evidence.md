@@ -1,3 +1,125 @@
+# 1021 Build2 — review15423 and15443 correction
+
+This section supersedes the earlier frozen-source returns below. The exact
+corrected commit/tree and full base306 source are named by the accompanying
+source manifest and patch. Same branch `page-lane6/1021-links-306-15256`;
+rejected9c089b1b, b4ca8c9d and their actual failure evidence remain history.
+Latest live read is309/ff7a9222753057d12dc3afecacda2502234c28bd, schema65.
+This source still uses306/5ccd5432284200e823c123c5689383d13f1c8fb7 and65→66,
+under15268; no newer schema step landed. Fable owns canonical freeze/stages;
+Warp owns independent read, actual-live carry, hosted run/Verdict and the
+restart boundary. No approval, hosted-green or landing claim is made here.
+1027 is parked into the designer shelf and has released this builder.
+
+## Corrections
+
+- Core serializes HTTP/HTTPS components using the browser URL component sets,
+  preserving square brackets and other literal query/fragment characters,
+  existing escapes and empty trailing query/fragment markers. The independent
+  Node URL property covers over800 browser-produced hrefs: the printable
+  component character class, Unicode escaping, seeded mixtures and several
+  ASCII/punycode/IPv4/IPv6 hosts. Core refuses forbidden-domain characters,
+  malformed numeric IPv4 hosts, invalid A-labels and IPv6 zone identifiers;
+  browser-valid short/octal/hex IPv4 forms become dotted decimal. Existing
+  exact Core path identities/revisions, including a/../work, remain supported.
+- A legacy unusable URL row is skipped individually. Valid rows, writer access,
+  raw-row pagination bounds, duplicate-sequence and response-scope validation
+  remain. Display merge also tolerates an unusable record. No retained rows
+  are rewritten or deleted as cleanup.
+- The Links touch menu uses the image menu's held-release guard. Its opening
+  release cannot activate the sheet item that appears under the finger; a new
+  deliberate press can act. Reset and cancellation clear the guard.
+- The pencil toggles closed and reopening retains unsent URL/title. A pending
+  save cannot be toggled; closing after completion releases busy state. Route
+  reset clears old writing. Successful Add clears its own draft.
+- Titles refuse control characters and bidi direction marks. Phone menu dots
+  are44px; Copy link says “Link copied.”; removal focuses the next tile, or the
+  preceding tile at the end. workspace_links is classified in the three view
+  inventories without weakening their existing assertions.
+-15443's seat predecessor fixture drops the empty later Links table before
+  reconstructing its older schema, matching test_migrations.py. Its two named
+  upgrade/roundtrip tests pass; every assertion is unchanged.
+
+Component/host rules were checked against the primary
+[URL Standard](https://url.spec.whatwg.org/#url-parsing). This is a bounded
+stdlib implementation, not a complete new WHATWG/UTS46 parser. Direct raw
+Unicode host input retains Python's existing IDNA conversion; browser
+submissions send the browser's ASCII href. The character-class property is
+measurement over its retained corpus, not an exhaustive proof of every URL.
+Malformed legacy rows remain retained and count toward the500-row cap.
+
+## Actual failures retained before product edits
+
+Evidence root: `/Users/commonfabric/.local/share/theseus/page-lane6/evidence/1021-15256/review15423`.
+
+`url-property-red.log` reports528 browser/Core spelling differences against
+9c089b1b. `core-red.log` retains invalid-host/title failures and the initial
+property exception; `client-red.log` retains one-bad-row denial. The corrected
+property catches and records every mismatch rather than stopping at the first
+exception. `seat-migration-red.log` reproduces exactly the two added errors
+reported in15443.
+
+`native-red-hold-tail` retains a real trusted touch sequence at390px: the
+sheet's Remove appears at the held point; lifting fires a trusted click on
+Remove, and real isolated Core reads revision2/removed=true after revision1.
+The same run fails the second-pencil-press-closes assertion. Its15 measured
+product hashes equal rejected9c089b1b (`red-producer-verification.json`); the
+exact red harness is retained and its recovered bytes match the observed
+hash (`native-red-exact-harness.mjs`). Earlier selector, scroll-placement and
+missing-WebKit-revision diagnostic failures remain separately labeled.
+The first corrected preflight also caught a stale busy flag after Save;
+that was corrected before the final matrices. These failures are not green.
+
+## Final checks and precise limits
+
+| Check | Observed result |
+|---|---|
+| `test_outcome_links_1021`, `test_seat_migration_1002`, `test_seat_end_migration_1015` |16/16 pass; actual migration roundtrip/occupied-byte rollback, restart, scope, authority, revisions, exact replay, URL property/host/title refusal |
+| `ui_outcome_links_1021.test.mjs` |11/11 pass; bad-row survival, bounded pages, URL identity, stale and late-route ownership |
+|17 existing importer/canary files listed in `cohort-runs.json` |734 tests,718 pass,16 fail on both source and pristine306; complete output identical after owned paths/durations only |
+|7 existing Core/migration/view-inventory/web-build modules |293 tests,50 pass,148 fail,95 error on both source and pristine306; all243 failure/error names identical |
+| Core diagnostic comparison |242 complete failure/error blocks match after named run noise; one already-red whisper inventory's truncated list changes because workspace_links is now in both inventories. Actual missing11 views are identical. Raw logs and exact comparison are retained; no unrelated assertion was weakened. |
+| Scope, revision, occupied downgrade, late-route, visual-grid applied controls |5 mutations caught;5 exact restorations pass on current bytes, each Python case has unique mutant/restored cache prefixes |
+| Chrome for Testing full matrix |8/8 pass;1280/390 × Bookends/Paper × light/dark, all four phone cells drive actual held touch release and a subsequent deliberate Remove |
+| Installed WebKit2359 full matrix |8/8 pass with the identical product/harness hashes and actual served bytes; native tap doors, no claimed native WebKit held-touch path |
+
+The affected Node total plus Links is745 tests,729 pass,16 inherited failures.
+The Core293 cohort's243 inherited failures/errors remain unwaived. The old
+broader evidence below remains historical; no full224-module/hosted green
+result is claimed. `core-review-comparison.json` names normalization of owned
+paths, durations, traceback lines, generated message/CLI UUIDs, run timestamps
+and unordered-set display. Its sole static diagnostic delta is explicitly
+retained and independently checked against the actual registry difference.
+
+Final native evidence is `chrome-matched-final` and `webkit-installed-final`.
+Both matrices retain pencil close/reopen exact writing, preview query brackets
+Rename/Remove/Add with one Core identity/revisions1→3, explicit bracket-path
+bare?# Add, old raw-path identity1→4, Copy feedback,44px phone menu controls,
+actual icons/fallback HTTP bytes, arrows/Return/menu actions, lost-answer exact
+replay, stale revision writing, and real membership revocation. Chrome's
+trusted release stays at revision1/removed=false; deliberate Remove reaches2
+and focuses its neighbour. WebKit has114 narrowly matched leaving-page API
+read cancellations; active errors are empty. Source and served hashes match.
+
+Browser.close, all22Chrome+2WebKit observed owned PIDs absent, profiles removed,
+fixture EOF/exit0/absence/empty errors, and both fixture/icon ports closed are
+verified. Every earlier diagnostic has its own verified cleanup. The first
+WebKit launch failed before any browser PID: the current Playwright module
+expected2388; the final run explicitly names existing2359/pw_run.sh. No tool,
+runner or installation changed. Driver and executable paths are in source.json.
+Phone viewport/touch emulation is not a physical phone/software keyboard;
+clipboard is instrumented, not native OS clipboard; no performance or physical
+Mac input-method claim. No browser/workload remains.
+
+`run-mutations-current.py`, `cohort-runs.json` and the native harness retain the
+actual commands. Full evidence manifest/archive excludes session-bearing
+failure HTML. Git diff --check passes; the full source manifest, patch and
+exact branch push bind this result for Warp's one new read.
+
+---
+
+# Superseded Build1 and15350 source/evidence history
+
 #1021 built source and evidence
 
 The bounded contract is [outcome-links-1021.md](outcome-links-1021.md).

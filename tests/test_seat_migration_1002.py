@@ -31,6 +31,7 @@ class SeatMigration(unittest.TestCase):
 
     def predecessor(self):
         with sqlite3.connect(str(self.path)) as db:
+            db.execute("DROP TABLE IF EXISTS workspace_links")  # Empty later1021 collection is absent from this predecessor.
             for statement in SEAT_DOWN:
                 db.execute(statement)
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (self.before,))

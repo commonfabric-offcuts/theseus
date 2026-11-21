@@ -15,7 +15,8 @@ const sourceFiles = ['web/things-rail.mjs','web/workspace-links.mjs','web/glyphs
   'tests/fixtures/ui_http.py','tests/outcome_links_1021_native.mjs'];
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const hashes = Object.fromEntries(await Promise.all(sourceFiles.map(async path => [path, digest(await readFile(path))])));
-await writeFile(`${evidence}/source.json`, JSON.stringify({checkout_head:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),hashes},null,2));
+await writeFile(`${evidence}/source.json`, JSON.stringify({checkout_head:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),hashes,
+  driver:process.env.AIM_PLAYWRIGHT_CORE,executable:engine==='chromium'?process.env.AIM_CHROME:process.env.AIM_WEBKIT},null,2));
 const fixture = spawn('/usr/bin/python3',['-B','tests/fixtures/ui_http.py','--freshness','--live']);
 const {control,exit,errors} = fixtureControl(fixture), results = [], cleanup = {}, owned = new Set();
 const ps = () => execFileSync('/bin/ps',['-axo','pid=,ppid=,command='],{encoding:'utf8'}).trim().split('\n').map(line => {
@@ -35,16 +36,17 @@ try {
       expected:{authority:{authority_id:bootstrap.authority.authority_id,authority_epoch:bootstrap.authority.authority_epoch},link_revision:revision},args:{url,title,removed}});assert.equal(receipt.status,'committed');return receipt;
   };
   profile = await mkdtemp(`${evidence}/${engine}-profile-`);
-  const persistent = await engines[engine].launchPersistentContext(profile,{headless:true,...(engine==='chromium'?{executablePath:process.env.AIM_CHROME}:{})});
+  const executablePath=engine==='chromium'?process.env.AIM_CHROME:process.env.AIM_WEBKIT;
+  const persistent = await engines[engine].launchPersistentContext(profile,{headless:true,...(executablePath?{executablePath}:{})});
   browser = persistent.browser(); retain(); assert.ok(owned.size);
-  const cells=process.env.AIM_1021_PREFLIGHT==='1'?[[1280,'bookends','light']]:[1280,390].flatMap(width=>['bookends','paper'].flatMap(look=>['light','dark'].map(theme=>[width,look,theme])));
+  const cells=process.env.AIM_1021_PREFLIGHT==='phone'?[[390,'bookends','light']]:process.env.AIM_1021_PREFLIGHT==='1'?[[1280,'bookends','light']]:[1280,390].flatMap(width=>['bookends','paper'].flatMap(look=>['light','dark'].map(theme=>[width,look,theme])));
   for(const [width,look,colorScheme] of cells) {
     const key=`${width}-${look}-${colorScheme}`, workspace=`links1021-${key}`, result={key,receipts:[],errors:[],iconRequests:[],console:[]};
     await control({method:'team_outcome',operation_id:workspace,workspace_id:workspace,title:`Links ${key}`,team:[facts.agent]});
     const conversation=await control({method:'agent_view',actor:facts.actor,name:'conversation',args:{workspace_id:workspace}}), topic=conversation.conversation.topic_id;
     const legacy=`${origin}/preview/legacy-${key}`;
     await control({method:'agent_message',operation_id:`legacy-${key}`,sender:'person',whole_topic:true,topic_id:topic,body:`[Existing preview](${legacy})`});
-    for(let n=0;n<6;n++)result.receipts.push(await set(workspace,`${origin}/seed/${key}/${n}`,`Link ${n} ${n===2?'with a longer title':''}`));
+    for(let n=0;n<18;n++)result.receipts.push(await set(workspace,`${origin}/seed/${key}/${n}`,`Link ${n} ${n===2?'with a longer title':''}`));
     const iconStart=iconRequests.length,site=`${iconOrigin}/site/${key}`;result.receipts.push(await set(workspace,site,'Site icon fixture'));
     const context=await browser.newContext({viewport:{width,height:950},colorScheme,...(width<761?{isMobile:true,hasTouch:true}:{})});
     await context.addInitScript(look=>{localStorage.setItem('theseus-look',look);window.iconEvents1021=[];addEventListener('error',e=>{if(e.target?.tagName==='IMG')window.iconEvents1021.push({src:e.target.src,html:e.target.outerHTML});},true);window.copied1021=[];Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>window.copied1021.push(text)},configurable:true});},look);
@@ -52,7 +54,7 @@ try {
     // whenever interception is enabled, so no route interception before decode.
     const page=await context.newPage(); activePage=page; page.setDefaultTimeout(6000);let phase='active';result.leavingReadCancellations=[];page.on('pageerror',e=>{const detail={message:e.message,stack:e.stack,phase};const first=e.stack?.split('\n')[0]??'';if(engine==='webkit'&&phase==='leaving'&&first===`Fetch API cannot load ${origin}/api/view due to access control checks.`)result.leavingReadCancellations.push(detail);else result.errors.push(detail);});page.on('request',r=>{if(/favicon|icon-probe/.test(r.url()))result.iconRequests.push({url:r.url(),requested:true});});page.on('console',m=>result.console.push(m.text()));page.on('requestfailed',r=>result.iconRequests.push({url:r.url(),failure:r.failure()}));
     const served={},jobs=[];page.on('response',response=>{const name='web/'+new URL(response.url()).pathname.split('/').at(-1);if(Object.hasOwn(hashes,name))jobs.push(response.body().then(bytes=>served[name]=digest(bytes)));});
-    const openRail=async()=>{if(width<1181&&!(await page.locator('html').getAttribute('data-things-open')))await page.locator('#things-open').click();};
+    const openRail=async()=>{if(width<1181&&!(await page.locator('#things-open').getAttribute('aria-expanded')==='true'))await page.locator('#things-open').click();};
     const section=page.locator('#things .things-sec[data-key=previews]'),form=section.locator('.link-form');
     const anchor=url=>section.locator(`a[data-outcome-link][href="${url}"]`);
     const press=target=>width<761?target.tap():target.click();
@@ -62,7 +64,39 @@ try {
       await anchor(legacy).waitFor();assert.equal((await section.locator('.things-section-name').textContent()).trim(),'Links');
       await page.waitForFunction(url=>[...document.querySelectorAll('a[data-outcome-link]')].find(a=>a.href===url)?.querySelector('img.link-favicon')?.naturalWidth>0,site);
       assert.equal(await anchor(legacy).locator('.link-browser-fallback').count(),1);assert.ok(await anchor(legacy).locator('.link-browser-fallback').evaluate(image=>image.naturalWidth>0));result.iconDecoded=true;result.iconHTTP=iconRequests.slice(iconStart);assert.ok(result.iconHTTP.some(r=>r.url==='/favicon.ico'&&r.referer===null&&r.sha256===digest(iconBytes)));
-      const pencil=section.getByRole('button',{name:'Add link',exact:true});await press(pencil);await form.waitFor();
+      const pencil=section.locator('.link-create');
+      result.reviewFailures=[];
+      const reviewCheck=async(name,task)=>{try{await task();}catch(error){result.reviewFailures.push({name,error:error.stack});}};
+      await reviewCheck('pencil closes and retains unsent writing',async()=>{
+        await press(pencil);await form.waitFor();await form.getByRole('textbox',{name:'Link URL',exact:true}).fill(`${origin}/unsent/a-very-long-path?ids[]=1`);await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Unsent title');
+        await press(pencil);assert.equal(await form.isVisible(),false,'second pencil press closes');
+        assert.equal(await pencil.getAttribute('aria-expanded'),'false');await press(pencil);await form.waitFor();
+        assert.equal(await form.getByRole('textbox',{name:'Link title',exact:true}).inputValue(),'Unsent title');assert.equal(await form.getByRole('textbox',{name:'Link URL',exact:true}).inputValue(),`${origin}/unsent/a-very-long-path?ids[]=1`);
+      });
+      if(await form.isVisible())await press(form.getByRole('button',{name:'Cancel',exact:true}));
+      if(width<761&&engine==='chromium')await reviewCheck('native hold release does not choose Remove under finger',async()=>{
+        const holdURL=`${origin}/seed/${key}/0`;await page.setViewportSize({width,height:580});await openRail();
+        await anchor(holdURL).locator('xpath=..').locator('[data-link-menu]').tap();
+        const sheet=page.getByRole('menu',{name:'Link',exact:true}),remove=sheet.getByRole('menuitem',{name:'Remove',exact:true});
+        const removeBox=await remove.boundingBox();await page.keyboard.press('Escape');
+        await anchor(holdURL).scrollIntoViewIfNeeded();
+        await anchor(holdURL).evaluate((el,y)=>{const b=el.getBoundingClientRect();let parent=el.parentElement;while(parent&&parent.scrollHeight<=parent.clientHeight)parent=parent.parentElement;if(parent)parent.scrollTop+=b.y+b.height/2-y;},removeBox.y+removeBox.height/2);
+        const b=await anchor(holdURL).boundingBox(),point={x:b.x+b.width/2,y:removeBox.y+removeBox.height/2};
+        result.holdGeometry={tile:b,remove:removeBox,point};assert.ok(point.y>=b.y&&point.y<=b.y+b.height,JSON.stringify(result.holdGeometry));
+        await page.evaluate(()=>{window.holdTrace1021=[];for(const type of ['pointerdown','pointerup','pointercancel','click'])document.addEventListener(type,e=>window.holdTrace1021.push({type,trusted:e.isTrusted,target:e.target.textContent?.slice(0,80),pointer:e.pointerType,x:e.clientX,y:e.clientY}),true);});
+        const before=(await api.view('workspace_links',{workspace_id:workspace})).items.find(row=>row.url===holdURL),cdp=await context.newCDPSession(page);
+        await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point]});await sheet.waitFor();
+        result.holdUnderFinger=await page.evaluate(p=>document.elementFromPoint(p.x,p.y)?.closest('[role=menuitem]')?.textContent?.trim(),point);
+        assert.equal(result.holdUnderFinger,'Remove');
+        await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(350);
+        result.holdTrace=await page.evaluate(()=>window.holdTrace1021);result.holdAfter=(await api.view('workspace_links',{workspace_id:workspace})).items.find(row=>row.url===holdURL);
+        assert.equal(result.holdAfter.removed,false,'release must not remove the tile');assert.equal(result.holdAfter.revision,before.revision);
+        assert.equal(await sheet.isVisible(),true);await remove.tap();await anchor(holdURL).waitFor({state:'detached'});
+        result.deliberateRemove=(await api.view('workspace_links',{workspace_id:workspace})).items.find(row=>row.url===holdURL);assert.equal(result.deliberateRemove.removed,true);assert.equal(result.deliberateRemove.revision,before.revision+1);await page.waitForFunction(url=>document.activeElement?.getAttribute('data-outcome-link')===url,`${origin}/seed/${key}/1`);result.neighbourFocus=true;
+        await cdp.detach();
+      });
+      await page.keyboard.press('Escape');await page.setViewportSize({width,height:950});await openRail();
+      await press(pencil);await form.waitFor();
       const custom=`${origin}/added/${key}`;await form.getByRole('textbox',{name:'Link URL',exact:true}).fill(custom);await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Added by native input');
       let lost=true;const attempts=[];
       await page.route('**/api/command',async route=>{const envelope=route.request().postDataJSON();if(envelope.kind!=='workspace.link_set')return route.continue();attempts.push(envelope.operation_id);
@@ -76,7 +110,7 @@ try {
       await menu(custom,'Rename');await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Renamed native link');await press(form.getByRole('button',{name:'Save',exact:true}));await form.waitFor({state:'hidden'});
       await anchor(custom).filter({hasText:'Renamed native link'}).waitFor();
       await anchor(custom).focus();await page.keyboard.press('Shift+F10');await page.getByRole('menu',{name:'Link'}).getByRole('menuitem',{name:'Copy link',exact:true}).click();
-      assert.deepEqual(await page.evaluate(()=>window.copied1021),[custom]);
+      assert.deepEqual(await page.evaluate(()=>window.copied1021),[custom]);await page.locator('#things').getByText('Link copied.',{exact:true}).waitFor();result.copyFeedback=true;
       await menu(legacy,'Remove');await anchor(legacy).waitFor({state:'detached'});
       phase='leaving';await page.reload();await page.locator('body[data-ready=true]').waitFor();phase='active';await openRail();await anchor(custom).waitFor();assert.equal(await anchor(legacy).count(),0);
       const geometry=async()=>section.locator('a[data-outcome-link]').evaluateAll(nodes=>nodes.map(n=>({url:n.href,box:(()=>{const b=n.getBoundingClientRect();return{left:b.left,right:b.right,top:b.top,bottom:b.bottom};})()})));
@@ -116,6 +150,15 @@ try {
       await menu(keptURL,'Remove');await anchor(keptURL).waitFor({state:'detached'});assert.equal(await equivalent(),0);
       await press(section.getByRole('button',{name:'Add link',exact:true}));await form.getByRole('textbox',{name:'Link URL',exact:true}).fill(navigationURL);await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Restored kept address');await press(form.getByRole('button',{name:'Add link',exact:true}));await form.waitFor({state:'hidden'});await anchor(keptURL).waitFor();
       result.keptIdentity=await api.view('workspace_links',{workspace_id:workspace});const kept=result.keptIdentity.items.find(row=>row.url===keptURL);assert.equal(kept.revision,4);assert.equal(kept.removed,false);assert.equal(kept.title,'Restored kept address');assert.ok(!result.keptIdentity.items.some(row=>row.url===navigationURL));assert.equal(await equivalent(),1);
+      const queryURL=`${origin}/preview/query-${key}?ids[]=1&bits={}^|\``;
+      await control({method:'agent_message',operation_id:`query-preview-${key}`,sender:'person',whole_topic:true,topic_id:topic,body:`[Query preview](${queryURL})`});await anchor(queryURL).waitFor();
+      await menu(queryURL,'Rename');await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Bracket query renamed');await press(form.getByRole('button',{name:'Save',exact:true}));await form.waitFor({state:'hidden'});await anchor(queryURL).filter({hasText:'Bracket query renamed'}).waitFor();
+      await menu(queryURL,'Remove');await anchor(queryURL).waitFor({state:'detached'});
+      await press(section.locator('.link-create'));await form.getByRole('textbox',{name:'Link URL',exact:true}).fill(queryURL);await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Bracket query restored');await press(form.getByRole('button',{name:'Add link',exact:true}));await form.waitFor({state:'hidden'});await anchor(queryURL).waitFor();
+      result.queryIdentity=await api.view('workspace_links',{workspace_id:workspace});const queryRows=result.queryIdentity.items.filter(row=>row.url===queryURL);assert.equal(queryRows.length,1);assert.equal(queryRows[0].revision,3);assert.equal(queryRows[0].removed,false);assert.equal(queryRows[0].title,'Bracket query restored');
+      await press(section.locator('.link-create'));const bracketURL=`${origin}/docs/[slug]-${key}?#`;await form.getByRole('textbox',{name:'Link URL',exact:true}).fill(bracketURL);await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Bracket path');await press(form.getByRole('button',{name:'Add link',exact:true}));await form.waitFor({state:'hidden'});await anchor(bracketURL).waitFor();
+      result.bracketIdentity=(await api.view('workspace_links',{workspace_id:workspace})).items.find(row=>row.url===bracketURL);assert.equal(result.bracketIdentity.revision,1);
+      if(width<761){const box=await anchor(bracketURL).locator('xpath=..').locator('[data-link-menu]').boundingBox();assert.ok(box.width>=44&&box.height>=44,JSON.stringify(box));result.menuTouchTarget=box;}
       // A real team writer becomes topic-only: existing shared Links disappear.
       const shared=await control({method:'agent_topic',operation_id:`shared-${key}`,team:true,title:'Team Links',body:'Independent topic participation'});
       phase='leaving';await page.goto(`${origin}/?topic=${shared.topic_id}`);await page.locator('body[data-ready=true]').waitFor();phase='active';await openRail();
@@ -128,7 +171,7 @@ try {
       result.topicOnly=await control({method:'agent_view',actor:facts.actor,name:'workspace_links',args:{workspace_id:shared.workspace_id}});assert.equal(result.topicOnly.error.code,'FORBIDDEN');
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'no horizontal viewport overflow');
       await Promise.all(jobs);result.served=served;for(const [name,sha] of Object.entries(hashes))if(name.startsWith('web/'))assert.equal(served[name],sha,`actual served ${name}`);
-      assert.deepEqual(result.errors,[]);
+      assert.deepEqual(result.errors,[]);assert.deepEqual(result.reviewFailures,[]);
     } catch(error) {result.error=error.stack;result.iconEvents=await page.evaluate(()=>window.iconEvents1021);await page.screenshot({path:`${evidence}/${key}-failure.png`,fullPage:true});await writeFile(`${evidence}/${key}-failure.html`,await page.content());}
     results.push(result);await writeFile(`${evidence}/observations.json`,JSON.stringify(results,null,2));retain();phase='leaving';await context.close();
   }

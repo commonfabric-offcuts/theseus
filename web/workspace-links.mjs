@@ -17,7 +17,8 @@ export function linkURL(raw) {
 function keptLinks(records) {
   const kept = new Map();
   for (const row of records) {
-    const key = linkURL(row.url), before = kept.get(key);
+    let key; try { key = linkURL(row.url); } catch { continue; }
+    const before = kept.get(key);
     if (!before || (row.ms ?? 0) > (before.ms ?? 0) ||
         (row.ms ?? 0) === (before.ms ?? 0) && (row.seq ?? 0) > (before.seq ?? 0)) kept.set(key, row);
   }
@@ -44,8 +45,23 @@ export class WorkspaceLinks {
     const doc = this.doc, part = rail.sections.get('previews');
     this.pencil = node(doc, 'button', { type: 'button', className: 'notebook-create link-create', title: 'Add link', hidden: true }, glyph('pencil', doc));
     this.pencil.setAttribute('aria-label', 'Add link'); this.pencil.setAttribute('aria-expanded', 'false');
-    part.summary.append(this.pencil); this.pencil.onclick = event => { event.preventDefault(); event.stopPropagation(); this.edit(null, this.pencil); };
+    part.summary.append(this.pencil); this.pencil.onclick = event => {
+      event.preventDefault(); event.stopPropagation();
+      if (this.busy) return;
+      if (!this.form.hidden) this.close(true); else this.edit(null, this.pencil);
+    };
     this.cancelDoor = menuDoor(part.body, target => target.closest?.('a[data-outcome-link]'), (anchor, at) => this.menu(anchor, at));
+    // A held finger can be over a newly opened sheet item on release.
+    // Consume that release's click; the next deliberate press resets it.
+    doc.addEventListener('pointerdown', event => {
+      this.holdOpened = false; this.touchDown = event.pointerType === 'touch' && part.body.contains(event.target);
+    }, true);
+    doc.addEventListener('pointerup', () => { this.touchDown = false; }, true);
+    doc.addEventListener('pointercancel', () => { this.touchDown = false; this.holdOpened = false; }, true);
+    doc.addEventListener('click', event => {
+      if (!this.holdOpened) return;
+      this.holdOpened = false; event.preventDefault(); event.stopImmediatePropagation();
+    }, true);
     this.form = node(doc, 'form', { className: 'link-form rail-line', hidden: true });
     this.form.setAttribute('aria-label', 'Save outcome link');
     this.url = node(doc, 'input', { type: 'url', required: true, placeholder: 'https://…' });
@@ -69,6 +85,7 @@ export class WorkspaceLinks {
   reset() {
     ++this.serial; this.records = []; this.mayWrite = false; this.pencil.hidden = true;
     this.cancelDoor(); this.openMenu?.close(false); this.close(false); this.url.value = this.title.value = '';
+    this.newDraft = null; this.touchDown = this.holdOpened = false; this.removedFocus = null;
   }
   current(handles) { return this.rail.handles === handles && handles?.readable?.() !== false; }
   async read(handles) {
@@ -78,11 +95,15 @@ export class WorkspaceLinks {
       const answer = await handles.view('workspace_links', { workspace_id: handles.workspaceId, limit: Math.min(100, handles.bootstrap.limits?.page_max ?? 100),
         ...(cursor === undefined ? {} : { cursor }) });
       if (answer.error) throw Object.assign(Error(answer.error.message), answer.error);
-      if (answer.instance_id !== handles.bootstrap.instance_id || answer.workspace_id !== handles.workspaceId || !Array.isArray(answer.items) ||
-          answer.items.some(row => !Number.isSafeInteger(row.seq) || row.seq <= 0 || !linkURL(row.url) || typeof row.title !== 'string' ||
-            !Number.isSafeInteger(row.revision) || row.revision < 1 || typeof row.removed !== 'boolean' || seen.has(row.seq))) throw Error('The outcome Links could not be confirmed.');
-      for (const row of answer.items) { seen.add(row.seq); items.push(row); }
-      if (items.length > max || !(answer.next_cursor === null || Number.isSafeInteger(answer.next_cursor) && answer.next_cursor > 0 &&
+      if (answer.instance_id !== handles.bootstrap.instance_id || answer.workspace_id !== handles.workspaceId || !Array.isArray(answer.items)) throw Error('The outcome Links could not be confirmed.');
+      for (const row of answer.items) {
+        if (!row || !Number.isSafeInteger(row.seq) || row.seq <= 0 || typeof row.title !== 'string' ||
+            !Number.isSafeInteger(row.revision) || row.revision < 1 || typeof row.removed !== 'boolean' || seen.has(row.seq)) throw Error('The outcome Links could not be confirmed.');
+        seen.add(row.seq);
+        try { linkURL(row.url); } catch { continue; } // One legacy bad URL cannot deny the collection.
+        items.push(row);
+      }
+      if (seen.size > max || !(answer.next_cursor === null || Number.isSafeInteger(answer.next_cursor) && answer.next_cursor > 0 &&
           (cursor === undefined || answer.next_cursor < cursor) && answer.items.at(-1)?.seq === answer.next_cursor)) throw Error('The outcome Links page could not be confirmed.');
       if (answer.next_cursor === null) return { items, reader_may_write: answer.reader_may_write === true };
       cursor = answer.next_cursor;
@@ -119,15 +140,20 @@ export class WorkspaceLinks {
   restoreFocus(url) {
     if (!url || this.doc.activeElement !== this.doc.body) return;
     const anchors = [...this.rail.sections.get('previews').body.querySelectorAll('a[data-outcome-link]')];
-    (anchors.find(el => el.dataset.outcomeLink === url) ?? anchors[0] ?? this.pencil).focus({ preventScroll: true });
+    const target = this.removedFocus?.url === url ? this.removedFocus.next : url; this.removedFocus = null;
+    (anchors.find(el => el.dataset.outcomeLink === target) ?? anchors[0] ?? this.pencil).focus({ preventScroll: true });
   }
   message(words) { this.notice.textContent = words; this.notice.hidden = !words; }
-  close(focus) { ++this.serial; this.form.hidden = true; this.pencil.setAttribute('aria-expanded', 'false'); if (focus) (this.opener?.isConnected ? this.opener : this.pencil).focus(); }
+  close(focus) {
+    if (!this.form.hidden && !this.record) this.newDraft = { url: this.url.value, title: this.title.value };
+    ++this.serial; this.busy = false; this.form.hidden = true; this.pencil.setAttribute('aria-expanded', 'false');
+    if (focus) (this.opener?.isConnected ? this.opener : this.pencil).focus();
+  }
   edit(record, opener) {
     if (!this.mayWrite || !this.rail.handles) return;
     ++this.serial; this.record = record; this.opener = opener; this.busy = false;
     this.url.readOnly = Boolean(record); this.title.readOnly = false; this.save.disabled = false;
-    this.url.value = record?.url ?? ''; this.title.value = record?.title ?? ''; this.save.textContent = record ? 'Save' : 'Add link';
+    this.url.value = record?.url ?? this.newDraft?.url ?? ''; this.title.value = record?.title ?? this.newDraft?.title ?? ''; this.save.textContent = record ? 'Save' : 'Add link';
     this.message(''); this.form.hidden = false; this.rail.sections.get('previews').details.open = true;
     this.pencil.setAttribute('aria-expanded', 'true'); (record ? this.title : this.url).focus();
   }
@@ -152,19 +178,27 @@ export class WorkspaceLinks {
       const url = this.record ? this.record.url : linkURL(this.url.value);
       const row = { url, title: this.title.value.trim() || new URL(url).hostname, ...(this.record ? { revision: this.record.revision } : {}) };
       await this.write(handles, row);
-      if (current()) { this.close(true); this.rail.changed(); }
+      if (current()) { if (!this.record) this.url.value = this.title.value = ''; this.close(true); this.rail.changed(); }
     } catch (error) { if (current()) this.message(error.message); }
     finally { if (current()) { this.busy = false; this.save.disabled = false; this.url.readOnly = Boolean(this.record); this.title.readOnly = false; } }
   }
   menu(anchor, at = null) {
     if (!anchor?.isConnected || !this.current(this.rail.handles)) return;
+    if (this.touchDown) this.holdOpened = true;
     const handles = this.rail.handles, row = anchor.linkRecord;
     const act = task => async () => { try { await task(); } catch (error) { if (this.current(handles)) { this.rail.message.textContent = error.message; this.rail.message.hidden = false; } } };
     this.openMenu = openMessageMenu({ anchor, at, doc: this.doc, win: this.rail.win, sheet: true, label: 'Link', items: [
       { label: 'Open', glyph: 'openpage', act: () => anchor.click() },
-      { label: 'Copy link', glyph: 'copy', act: act(async () => { if (!await copyText(row.url, this.rail.win.navigator)) throw Error('Could not copy this link.'); }) },
+      { label: 'Copy link', glyph: 'copy', act: act(async () => {
+        if (!await copyText(row.url, this.rail.win.navigator)) throw Error('Could not copy this link.');
+        if (this.current(handles)) { this.rail.message.textContent = 'Link copied.'; this.rail.message.hidden = false; }
+      }) },
       { label: 'Rename', glyph: 'pencil', disabled: !this.mayWrite, act: () => this.edit(row, anchor) },
-      { label: 'Remove', glyph: 'drop', disabled: !this.mayWrite, act: act(async () => { await this.write(handles, row, true); if (this.current(handles)) this.rail.changed(); }) },
+      { label: 'Remove', glyph: 'drop', disabled: !this.mayWrite, act: act(async () => {
+        const urls = [...this.rail.sections.get('previews').body.querySelectorAll('a[data-outcome-link]')].map(el => el.dataset.outcomeLink), index = urls.indexOf(row.url);
+        await this.write(handles, row, true);
+        if (this.current(handles)) { this.removedFocus = { url: row.url, next: urls[index + 1] ?? urls[index - 1] ?? null }; this.rail.changed(); }
+      }) },
     ] });
     // The rail can itself be an overlay, as for its existing image menu.
     if (this.openMenu) this.openMenu.root.style.zIndex = String(Math.max(

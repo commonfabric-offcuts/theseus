@@ -2,7 +2,10 @@ from __future__ import annotations
 
 """Outcome-owned Links and title/removal overrides for message previews (1021)."""
 
-from urllib.parse import quote, urlsplit, urlunsplit
+from encodings.idna import nameprep
+from ipaddress import IPv4Address, IPv6Address
+import unicodedata
+from urllib.parse import quote, unquote, urlsplit
 
 from .contract import LIMITS, Refusal, _bounded_page, _page_size, _revision
 from .delivery import _now_ms
@@ -19,25 +22,76 @@ LINK_DOWN = ("DROP TABLE workspace_links",)
 LINK_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM workspace_links)"
 
 
+def unsafe_text(value):
+    return any(unicodedata.category(c) == "Cc" or c in "\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069" for c in value)
+
+
+def _ipv4_number(part):
+    if not part:
+        return None
+    radix = 10
+    if part.lower().startswith("0x"):
+        radix, part = 16, part[2:]
+    elif len(part) > 1 and part.startswith("0"):
+        radix, part = 8, part[1:]
+    if any(c not in "0123456789abcdef"[:radix] for c in part.lower()):
+        return None
+    return int(part, radix) if part else 0
+
+
+def _host(value):
+    # WHATWG special-host forbidden-domain and ends-in-a-number rules.
+    # IPv6 has its own grammar; zone identifiers are not browser URL hosts.
+    if ":" in value:
+        if "%" in value:
+            raise ValueError()
+        return "[" + IPv6Address(value).compressed + "]"
+    value = unquote(value, errors="strict")
+    host = value.lower() if value.isascii() else value.encode("idna").decode("ascii").lower()
+    if not host or any(ord(c) <= 32 or ord(c) == 127 or c in "#/:<>?@[\\]^|%" for c in host):
+        raise ValueError()
+    for label in host.split("."):
+        if label.startswith("xn--"):
+            decoded = label[4:].encode("ascii").decode("punycode")
+            if not decoded or unsafe_text(decoded) or unicodedata.combining(decoded[0]):
+                raise ValueError()
+            nameprep(decoded)  # Reject prohibited and invalid bidi labels.
+    parts = host.split(".")
+    if parts[-1] == "":
+        parts.pop()
+    last = parts[-1] if parts else ""
+    if last and (all(c in "0123456789" for c in last) or _ipv4_number(last) is not None):
+        numbers = [_ipv4_number(part) for part in parts]
+        if (len(numbers) > 4 or any(n is None for n in numbers)
+                or any(n > 255 for n in numbers[:-1]) or numbers[-1] >= 256 ** (5 - len(numbers))):
+            raise ValueError()
+        return str(IPv4Address(numbers[-1] + sum(n * 256 ** (3 - i) for i, n in enumerate(numbers[:-1]))))
+    return host
+
+
+def _url_part(value, excluded):
+    # URL Standard component sets preserve existing '%' escapes and every
+    # printable character its browser serializer leaves literal.
+    return quote(value, safe="".join(chr(n) for n in range(33, 127) if chr(n) not in excluded))
+
+
 def canonical_url(value):
     if (not isinstance(value, str) or not value or len(value.encode("utf-8")) > LIMITS["link_url_utf8_bytes"]
-            or any(c.isspace() or ord(c) < 32 or ord(c) == 127 or c == "\\" for c in value)):
+            or unsafe_text(value) or any(c.isspace() or c == "\\" for c in value)):
         raise Refusal("INVALID_ARGUMENT", "Use a bounded HTTP or HTTPS address without spaces or control characters")
     try:
         parsed = urlsplit(value)
         if parsed.scheme.lower() not in ("http", "https") or not parsed.hostname or parsed.username is not None or parsed.password is not None:
             raise ValueError()
-        host = parsed.hostname.encode("idna").decode("ascii").lower()
+        host = _host(parsed.hostname)
         port = parsed.port
-        if any(c in host for c in "/?#@%"):
-            raise ValueError()
-        if ":" in host:
-            host = "[" + host + "]"
         scheme = parsed.scheme.lower()
         netloc = host + (":" + str(port) if port is not None and (scheme, port) not in (("http", 80), ("https", 443)) else "")
-        safe = "/%:@!$&'()*+,;=-._~"
-        result = urlunsplit((scheme, netloc, quote(parsed.path or "/", safe=safe),
-                            quote(parsed.query, safe=safe + "?"), quote(parsed.fragment, safe=safe + "?")))
+        result = scheme + "://" + netloc + _url_part(parsed.path or "/", '\"#<>?^`{}')
+        if "?" in value.partition("#")[0]:
+            result += "?" + _url_part(parsed.query, '\"#<>\'')
+        if "#" in value:
+            result += "#" + _url_part(parsed.fragment, '\"<>`')
     except (ValueError, UnicodeError):
         raise Refusal("INVALID_ARGUMENT", "Use an HTTP or HTTPS address without a username or password")
     if len(result.encode("utf-8")) > LIMITS["link_url_utf8_bytes"]:
@@ -71,7 +125,7 @@ class WorkspaceLinks:
         self._refuse_if_closed(db, actor, workspace["id"])
         url = canonical_url(args["url"])
         title = args["title"]
-        if (not isinstance(title, str) or not title.strip() or "\0" in title
+        if (not isinstance(title, str) or not title.strip() or unsafe_text(title)
                 or len(title.encode("utf-8")) > LIMITS["link_title_utf8_bytes"] or type(args["removed"]) is not bool):
             raise Refusal("INVALID_ARGUMENT", "A link needs a bounded title and a true or false removal choice")
         title = title.strip()
