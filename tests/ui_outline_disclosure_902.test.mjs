@@ -76,7 +76,7 @@ const memory = () => {
 const item = (id, extra = {}) => ({ id, title: 'Outcome ' + id, title_truncated: false, owner_id: 'reader', version: 1, unread: 2, addressed: 0, light: null, ...extra });
 const contexts = new WeakSet();
 
-async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fixture-902', phone = false, here = 'w1', outcomes = null } = {}) {
+async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fixture-902', phone = false, here = 'w1', outcomes = null, topicRows = null } = {}) {
   if (!contexts.has(t)) {
     contexts.add(t);
     const previous = globalThis.document, listeners = new Set(book.listeners), scopes = new Map(book.scopes);
@@ -104,7 +104,7 @@ async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fi
     }
     if (name === 'workspace_topics') {
       if (refuseTopics) throw Error('Topics unavailable');
-      return { ...base, groups: { done: 0, archived: 0 }, items: [{ id: 't-' + args.workspace_id, workspace_id: args.workspace_id,
+      return { ...base, groups: { done: 0, archived: 0 }, items: topicRows?.[args.workspace_id]?.map((item,index)=>({list_position:index+1,archived:false,...item})) ?? [{ id: 't-' + args.workspace_id, workspace_id: args.workspace_id,
         title: 'Topic ' + args.workspace_id, list_position: 1, state: 'active', archived: false, unread: 0 }] };
     }
     if (name === 'conversation') return { instance_id: instance, conversation: null };
@@ -212,11 +212,11 @@ test('902 only explicit boolean preferences are admitted and new outcomes defaul
   assert.equal(opened.isOpen('current', 'current'), true);
 });
 
-test('902 New and Waiting show every matching outcome open without overwriting kept folds', async t => {
+test('902 New still shows every matching outcome open without overwriting kept folds', async t => {
   const f = await fixture(t);
   f.outline.setOpen(f.outcome('w1'), false); f.outline.setOpen(f.outcome('w2'), true); await f.flush();
   const saved = [...f.storage.values];
-  for (const [chip, shown] of [[f.outline.onlyNew, ['w1', 'w2']], [f.outline.onlyWaiting, ['w3']]]) {
+  for (const [chip, shown] of [[f.outline.onlyNew, ['w1', 'w2']]]) {
     f.click(chip); await f.flush();
     assert.deepEqual([...f.outline.outcomes.values()].filter(o => !o.li.hidden).map(o => o.id), shown);
     for (const id of shown) assert.equal(f.outcome(id).topics.hidden, false);
@@ -380,4 +380,66 @@ test('944 desktop name navigation, topic arrival and reconstruction preserve man
   assert.equal(restored.outcome('w2').topics.hidden, true, 'current outcome remains explicitly folded');
   assert.equal(storage.writes.length, folded);
   assert.equal((await fixture(t,{storage,here:'w2'})).outcome('w2').topics.hidden, true, 'reload does not reopen the current outcome');
+});
+
+
+const waitingRows981 = {
+  w1: [{ id:'q981',workspace_id:'w1',title:'Quiet topic',state:'active',unread:0 }],
+  w2: [{ id:'a981',workspace_id:'w2',title:'A topic waiting on the reader',state:'waiting',waiting_on:['reader'],unread:0 }],
+  w3: [{ id:'c981',workspace_id:'w3',title:'A dossier cover waiting on the reader',state:'active',cover_waiting:1,unread:0 }],
+};
+const waitingOutcomes981 = () => [item('w1'),item('w2',{light:{light:'waiting',short:{kind:'asks',count:1}}}),item('w3',{cover_waiting:1})];
+const tick981 = async()=>{for(let i=0;i<20;i++)await Promise.resolve();};
+const topic981 = (f,w)=>f.outcome(w).parts.host.querySelector('a');
+
+test('981 waiting keeps every row and manual fold, paints said/cover waits and preserves its count without a read',async t=>{
+  const f=await fixture(t,{outcomes:waitingOutcomes981(),topicRows:waitingRows981});
+  for(const id of ['w1','w2','w3'])f.outline.setOpen(f.outcome(id),true);
+  await f.flush();
+  const rows=['w1','w2','w3'].map(id=>f.outcome(id)),links=rows.map(o=>o.parts.host.querySelector('a'));
+  const count=f.outline.waitingCount.textContent,reads=f.reads.length,saved=JSON.stringify([...f.storage.values]);
+  f.click(f.outline.onlyWaiting);await tick981();
+  assert.deepEqual(rows.map(o=>o.li.hidden),[false,false,false],'no outcome disappears');
+  assert.deepEqual(rows.map(o=>o.topics.hidden),[false,false,false],'no disclosure changes');
+  assert.deepEqual(links.map(link=>link.dataset.dimmed),['true','false','false'],'said and cover waiting rows keep their original eligibility');
+  assert.deepEqual(rows.map(o=>o.li.dataset.dimmed),['true','false','false']);
+  assert.equal(f.outline.waitingCount.textContent,count);assert.equal(count,'2');
+  assert.equal(f.reads.length,reads,'paint-only pill does not reread outcomes or topic lists');
+  assert.equal(JSON.stringify([...f.storage.values]),saved);
+  f.click(f.outline.onlyWaiting);await tick981();
+  assert.ok(links.every(link=>link.dataset.dimmed==='false'));assert.equal(f.reads.length,reads);
+  assert.equal(JSON.stringify([...f.storage.values]),saved);
+});
+
+test('981 waiting preserves a folded matching outcome and nonmatching folds instead of opening the rail',async t=>{
+  const f=await fixture(t,{outcomes:waitingOutcomes981(),topicRows:waitingRows981});
+  f.outline.setOpen(f.outcome('w1'),false);f.outline.setOpen(f.outcome('w2'),true);f.outline.setOpen(f.outcome('w3'),false);await f.flush();
+  const folds=['w1','w2','w3'].map(id=>f.outcome(id).topics.hidden),saved=JSON.stringify([...f.storage.values]);
+  f.click(f.outline.onlyWaiting);await tick981();
+  assert.deepEqual(['w1','w2','w3'].map(id=>f.outcome(id).topics.hidden),folds);
+  assert.deepEqual(['w1','w2','w3'].map(id=>f.outcome(id).li.hidden),[false,false,false]);
+  f.click(f.outline.onlyWaiting);await tick981();assert.equal(JSON.stringify([...f.storage.values]),saved);
+});
+
+test('981 waiting composes with saved sets and0 without writing or replacing either set',async t=>{
+  const f=await fixture(t,{outcomes:waitingOutcomes981(),topicRows:waitingRows981});
+  for(const id of ['w1','w2','w3'])f.outline.setOpen(f.outcome(id),true);await f.flush();
+  const dim=f.outline.dimming;dim.choices.toggle('w3','c981');dim.choices.select(2);dim.choices.toggle('w2','a981');dim.choices.select(1);dim.paint();
+  const saved=JSON.stringify(dim.choices.value),writes=f.storage.writes.length;
+  assert.ok(topic981(f,'w1'),'quiet topic exists before the pill');
+  f.click(f.outline.onlyWaiting);await tick981();
+  assert.equal(topic981(f,'w1').dataset.dimmed,'true');assert.equal(topic981(f,'w3').dataset.dimmed,'true','saved layer still dims a matching waiting row');
+  assert.equal(topic981(f,'w2').dataset.dimmed,'false');assert.equal(JSON.stringify(dim.choices.value),saved);assert.equal(f.storage.writes.length,writes);
+  dim.choices.select(0);dim.paint();assert.equal(topic981(f,'w1').dataset.dimmed,'true','0 bypasses saved sets only');assert.equal(topic981(f,'w3').dataset.dimmed,'false');
+  dim.choices.select(1);dim.paint();f.click(f.outline.onlyWaiting);await tick981();
+  assert.equal(topic981(f,'w1').dataset.dimmed,'false');assert.equal(topic981(f,'w3').dataset.dimmed,'true');assert.equal(JSON.stringify(dim.choices.value),saved);
+});
+
+test('981 existing row waiting markers repaint without changing saved-set contents',async t=>{
+  const f=await fixture(t,{outcomes:waitingOutcomes981(),topicRows:waitingRows981});
+  f.outline.setOpen(f.outcome('w1'),true);await f.flush();const row=topic981(f,'w1');assert.ok(row,'quiet row exists before the pill');f.click(f.outline.onlyWaiting);await tick981();
+  const dim=f.outline.dimming,saved=JSON.stringify(dim.choices.value);
+  assert.equal(row.dataset.dimmed,'true');row.setAttribute('data-cover-waiting','');dim.paintRows();assert.equal(row.dataset.dimmed,'false');
+  row.removeAttribute('data-cover-waiting');const state=f.doc.createElement('span');state.className='topic-state mine';row.append(state);dim.paintRows();assert.equal(row.dataset.dimmed,'false');
+  state.remove();dim.paintRows();assert.equal(row.dataset.dimmed,'true');assert.equal(JSON.stringify(dim.choices.value),saved);
 });

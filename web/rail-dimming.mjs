@@ -91,7 +91,7 @@ export class RailDimming {
       if (this.queued) return; this.queued = true;
       queueMicrotask(() => { this.queued = false; this.paintRows(); });
     });
-    this.observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-current','data-topic-id','data-workspace-id'] });
+    this.observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-current','data-topic-id','data-workspace-id','data-only','data-waiting','data-cover-waiting','class'] });
     doc.defaultView.addEventListener?.('storage', event => {
       if (this.choices.key && (event.key === this.choices.key || event.key === null)) { this.choices.refresh(); this.paint(); }
     });
@@ -113,9 +113,14 @@ export class RailDimming {
   }
   paintRows() {
     if (!this.enabled() || !this.choices.key) return;
+    const waiting = this.host.dataset.only === 'waiting';
     for (const li of this.host.querySelectorAll('.ol-outcome')) {
-      const workspace = li.dataset.workspaceId; li.dataset.dimmed = String(this.choices.dimmed(workspace));
-      for (const row of li.querySelectorAll('a.nav-item[data-topic-id]')) row.dataset.dimmed = String(this.choices.dimmed(workspace,row.dataset.topicId));
+      const workspace = li.dataset.workspaceId;
+      li.dataset.dimmed = String(this.choices.dimmed(workspace) || waiting && !li.hasAttribute('data-waiting'));
+      for (const row of li.querySelectorAll('a.nav-item[data-topic-id]')) {
+        const matches = row.hasAttribute('data-cover-waiting') || Boolean(row.querySelector('.topic-state.mine'));
+        row.dataset.dimmed = String(this.choices.dimmed(workspace,row.dataset.topicId) || waiting && !matches);
+      }
     }
   }
   paint() {
