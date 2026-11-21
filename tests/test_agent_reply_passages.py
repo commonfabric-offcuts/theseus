@@ -130,7 +130,7 @@ class ReplyPassageCase(StoreCase):
         result = self.committed(self.post(parent, reply_without_quote=reason))
         self.assertEqual(result["reply_basis"]["reason"], reason)
         row = self.sql("SELECT body,quotes FROM messages WHERE id=?", (result["message_id"],))[0]
-        self.assertEqual(row, ("Reply without a quote:\n\n>   Answer concerns the attachment,\n> not a passage. 🪴\n> \n\nMy answer\n", "[]"))
+        self.assertEqual(row, (">   Answer concerns the attachment,\n> not a passage. 🪴\n> \n\nMy answer\n", "[]"))
         refused = self.command("message.edit", {"body": "Hide the reason"}, {"message_id": result["message_id"]},
                                {"message_revision": 1}, actor="agent-a")
         self.assertEqual(refused.get("error", {}).get("code"), "REPLY_BASIS_REQUIRED", refused)

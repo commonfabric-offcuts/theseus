@@ -255,3 +255,10 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
   .rail-dim{display:grid;grid-template-columns:auto repeat(3,minmax(0,1fr));box-sizing:border-box;width:var(--rail-dim-width,auto)}
   .rail-foot .rail-dim button{padding-inline:0}
 }
+
+/* 1020: a send notice uses the same visible phone/desktop rail host. */
+.mention-notice { overflow-wrap: anywhere; }
+.mention-notice p { margin: 0 0 .4rem; }
+.mention-notice ul { margin: 0; padding-left: 1.2rem; }
+.mention-notice li > span { display: block; }
+.mention-notice button { min-height: 44px; max-width: 100%; white-space: normal; margin: .2rem .3rem .2rem 0; }
