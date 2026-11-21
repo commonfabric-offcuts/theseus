@@ -100,3 +100,36 @@ change; `final-mutation-authority-red.log` is the applied mutation failure and
 its restored control passes. `affected-final2.log`, `chrome-final` and
 `webkit-final` are the final source results. No historical phase is relabeled
 as current proof.
+
+## Review correction 15240
+
+Warp's importer cohort found a deterministic test regression omitted by the
+original fifteen-file set: the Notebook owner's stand-in calls the composer's
+`send` method but did not carry the new `finishSend` method. The named 871
+case passes on 302 and fails on the first returned head with
+`TypeError: this.finishSend is not a function`. The retained local correction
+red reproduces that exact failure. The chosen repair adds
+`finishSend: InlineComposer.prototype.finishSend` to that stand-in; no existing
+assertion changes and no product or native-harness byte changes.
+
+The complete Notebook owner file passes 17/17 both on exact 302 and after the
+correction. A fresh discovery of direct touched-module importers, combined
+with the original named cohort, yields a retained 33-file set. On exact 302
+it reports 1163 tests, 1151 pass and 12 fail; the corrected source reports
+1178 tests, 1166 pass and the same 12 fail, with no cancellations. All complete
+failure diagnostics and stacks match after only per-test duration
+normalization. This set includes the original eleven failures plus the
+pre-existing 721 composition file's historical upload-body equality failure;
+that assertion is retained unchanged. This independently recorded 33-file
+set is distinct from Warp's own 27-file review set and canary inventory.
+
+Correction evidence is under `correction15240/`: raw red, Notebook baseline
+and green, raw expanded baseline and corrected logs, importer/command list,
+comparison and exact source-restoration manifest. The previous fifteen-file
+results remain historical evidence of that named set, not a complete importer
+census. The corrected freeze manifest binds all 33 test files and verifies
+that the twelve measured native producer hashes still match the committed
+bytes. The existing Chrome24/WebKit24 proof and three mutation controls apply
+to these identical product/native bytes; no further browser workload ran.
+Release 304 (1018, ordinary/no restart) was reported during this correction;
+the source retains its 302 base for Warp's carry onto actual live.
