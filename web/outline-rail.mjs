@@ -53,6 +53,7 @@ import { panes } from './panes.mjs';
 import { presses, questionTarget } from './waiting-questions.mjs';
 import { OutlineDossiers } from './outline-dossiers.mjs';
 import { glyph } from './glyphs.mjs';
+import { RailDimming } from './rail-dimming.mjs';
 
 const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
 // The questions waiting on the reader in one outcome, as its light counts them.
@@ -184,6 +185,7 @@ export class OutlineRail {
     const reload = reloader(async () => { const dirty = full ? null : pending; full = false; pending = new Set(); result = await this.load(dirty); });
     this.reload = (dirty = null) => { if (dirty) for (const key of dirty) pending.add(key); else full = true; return reload().then(() => result); };
     this.build();
+    this.dimming = new RailDimming({ host, storage, doc, enabled: () => Boolean(this.handles) });
     this.menus = new OutlineMenus(this);
     this.dossiers = new OutlineDossiers(this);
     this.notebookStars = new OutlineDossiers(this,{pages:true});
@@ -277,6 +279,7 @@ export class OutlineRail {
     this.outcomesKey = handles.live?.outcomes ?? null; this.readOutcomesKey = null;
     this.starting = handles.route?.kind === 'workspace';
     const { bootstrap } = handles;
+    this.dimming.bind(bootstrap.instance_id, bootstrap.actor);
     // What a move of the person's order is sent through, kept for the moments between runs.
     this.sender = { api: handles.api, bootstrap };
     if (!this.started) {
