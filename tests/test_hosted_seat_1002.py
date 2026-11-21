@@ -98,12 +98,14 @@ class HostedSeatCore(unittest.TestCase):
         self.assertEqual(receipts[0].get('status'), 'committed', receipts)
         self.assertEqual(self.sql('SELECT count(*) FROM hosted_seats'), [(1,)])
 
-    def test_member_cannot_add_and_coordinator_keeps_human_control_owner(self):
+    def test_member_and_coordinator_cannot_add_a_human_owners_seat(self):
         denied = self.add(actor='agent-b')
         self.assertEqual(denied.get('error', {}).get('code'), 'FORBIDDEN', denied)
         self.assertEqual(self.sql('SELECT count(*) FROM actors'), [(3,)])
-        self.added(actor='agent-a')
-        self.assertEqual(self.sql('SELECT inviter_id,owner_id FROM hosted_seats'), [('agent-a', 'owner')])
+        denied = self.add(actor='agent-a')
+        self.assertEqual(denied.get('error', {}).get('code'), 'FORBIDDEN', denied)
+        self.added()
+        self.assertEqual(self.sql('SELECT inviter_id,owner_id FROM hosted_seats'), [('owner', 'owner')])
 
     def test_role_change_cannot_adopt_a_pending_or_existing_seat(self):
         original = self.added()
@@ -172,7 +174,7 @@ class HostedSeatCore(unittest.TestCase):
         return seat
 
     def test_ready_atomically_pins_human_control_and_delivers_one_inviter_task(self):
-        result = self.added(actor='agent-a')
+        result = self.added()
         with self.store.runner_guard('host') as guard:
             token = self.store.acquire_runner(guard)['runner_token']
             ready = self.to_stage(guard, token, 'ready')
@@ -184,12 +186,12 @@ class HostedSeatCore(unittest.TestCase):
         self.assertEqual(pin['destination']['thread_id'], ready['thread_id'])
         control = json.loads(self.sql("SELECT value FROM metadata WHERE key='hosted_control.v1:release-scribe'")[0][0])
         self.assertEqual(control['owner_id'], 'owner', 'the inviting agent never owns Stop/Continue')
-        self.assertEqual(self.sql('SELECT author_id FROM messages'), [('agent-a',)], 'a task, never an invented seat hello')
+        self.assertEqual(self.sql('SELECT author_id FROM messages'), [('owner',)], 'the human owner’s task, never an invented seat hello')
         self.assertEqual(self.sql('SELECT first_message_id FROM hosted_seats'), [(ready['first_message_id'],)])
         source = self.store.view('release-scribe', 'source', {'kind': 'message', 'id': ready['first_message_id']})
         self.assertIn('Keep exact release evidence.', source['body'])
         self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE recipient_id='release-scribe'"), [(1,)])
-        original = self.add(actor='agent-a')
+        original = self.add()
         self.assertEqual(original['result']['seat_request_id'], result['seat_request_id'])
         self.assertEqual(self.sql('SELECT count(*) FROM messages'), [(1,)])
 
@@ -266,7 +268,7 @@ class HostedSeatCore(unittest.TestCase):
         self.assertEqual(self.sql('SELECT reason FROM hosted_seat_events ORDER BY version DESC LIMIT 1'), [('pin_conflict',)])
 
     def test_revoked_inviter_cannot_start_and_late_membership_loss_cannot_send(self):
-        self.added(actor='agent-a')
+        self.added()
         with self.store.runner_guard('host') as guard:
             token = self.store.acquire_runner(guard)['runner_token']
             seat = self.to_stage(guard, token, 'delivery')

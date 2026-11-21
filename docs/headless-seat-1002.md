@@ -47,7 +47,7 @@ CLI `seat-retry OUTCOME ID [--operation ID]` share this act. Native starting
 or persisting markers and refused settings require reconciliation; Retry
 cannot create a replacement native context for an uncertain operation.
 
-Only the outcome owner or coordinator may add a seat. Reuse the invitation
+Only the current human outcome owner may add or retry a seat. An agent coordinator cannot mint a seat. Reuse the invitation
 owner's name normalization, collision and team-capacity rules. Retrying the
 same operation returns the same request and actor; recovery after a reload
 finds that request rather than creating another thread. A changed role or a
@@ -186,3 +186,11 @@ source branch, and send Warp one diff/test read with HEAD, test files,
 pass/fail evidence and material limitations. Fable/Warp retain stage and
 deployment authority; this contract is an implementation target, not another
 approval gate.
+
+## Review15041 correction contract
+
+The card says: “This seat runs with full access on this Mac, including sub-agents, as the hosted lanes do.” Owner-only Core and page checks enforce that choice. Pending, preparing and ready page-created seats share an instance cap of8, including retries into active work; exact request/name recovery still returns its recorded seat at the cap.
+
+Seat progress uses the existing workspace change scope only, plus private owner/inviter changes; no unrecognized seat key enters a topic feed. Ready routes exclude disabled/nonmember actors. The current human owner may resume a safe request after the original inviter leaves; original inviter/owner fields remain audit identity, and an existing Stop/Continue owner is not silently replaced. The current owner authors any still-owed first task. Team removal is not a new native thread-termination act; an end-seat command is deferred because it needs an explicit active-turn/Stop lifecycle contract.
+
+A missing host refuses per seat, not the runner. Ownership loss/paused responses use ordinary loop exits; malformed schedules map to the bounded storage-failure pause. Preflight pin/authority failures use the dispatch path's cleanup classifier. A confirmed thread stopped before persistence can resume that same persist stage; uncertain native markers remain nonretryable. Missing Conversation and first-delivery failures retain distinct reasons. Migration failure injection derives the actual seat step from STEPS.

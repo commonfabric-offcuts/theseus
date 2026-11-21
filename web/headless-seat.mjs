@@ -140,7 +140,9 @@ const reasons = {
   thread_start_uncertain: 'Native seat creation is unconfirmed. Its original request is kept; another thread will not be created automatically.',
   thread_persistence_uncertain: 'Saving the native context is unconfirmed. Its known thread is kept.',
   thread_settings_not_applied: 'Codex did not apply the requested runtime settings.',
-  access_changed: 'The outcome’s owner, invitation authority or membership changed.',
+  access_changed: 'The current owner or seat membership changed.',
+  conversation_missing: 'This outcome needs a Conversation before setup can be retried.',
+  first_delivery_failed: 'The first task could not be recorded. Its seat request is kept.',
   profile_conflict: 'An existing seat file does not match.', path_conflict: 'An existing file or directory cannot be replaced safely.',
   pin_conflict: 'An existing native context or its owner does not match.', route_conflict: 'An existing work route does not match.',
 };
@@ -172,6 +174,7 @@ export class HeadlessSeatControl {
     this.submit = make('button', { type: 'submit', id: 'headless-seat-submit', className: 'choice-chip', textContent: 'Add seat' });
     this.retry = make('button', { type: 'button', id: 'headless-seat-retry', className: 'text-action', hidden: true });
     this.form = make('form', { className: 'seat-form', hidden: true },
+      make('p', { className: 'seat-access', textContent: 'This seat runs with full access on this Mac, including sub-agents, as the hosted lanes do.' }),
       make('label', {}, 'Name', this.name), make('label', {}, 'Role', this.role),
       make('div', { className: 'seat-actions' }, this.submit, this.retry));
     this.form.setAttribute('aria-label', 'Add a headless Codex seat');
@@ -229,7 +232,7 @@ export class HeadlessSeatControl {
     if (row?.request) this.retry.textContent = `Check / retry for ${row.requestLabel ?? row.request.args.name ?? 'the previous seat'}`;
     for (const button of this.list.querySelectorAll('[data-seat-retry]')) button.disabled = Boolean(blocked || !owner || owner.busy || row?.request);
     this.form.setAttribute('aria-busy', owner?.busy ? 'true' : 'false');
-    this.say(owner?.storageError ?? owner?.notice ?? this.localError ?? '');
+    this.say(owner?.storageError || owner?.notice || this.localError || (row?.request ? 'A previous seat Add is unconfirmed. Open Headless Codex to check its saved request.' : ''));
   }
   toggle(open = this.form.hidden, focus = true) {
     if (open && !this.manage) return;

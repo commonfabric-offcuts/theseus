@@ -553,7 +553,9 @@ class EffectsLoop:
         except LoopFault as error:
             return self._fault(error.reason,error.child,error.detail)
         except codex_host.HostFault as error:
-            return self._fault(error.reason)
+            if error.reason in ('runner_lease_lost', 'seat_runner_paused'):
+                return self._result('paused', pause_saved=True) if error.reason == 'seat_runner_paused' else self._result('ownership_lost', pause_saved=False)
+            return self._fault('storage_failure' if error.reason == 'seat_schedule_invalid' else error.reason)
         except (Exception,KeyboardInterrupt):
             self.cleanup_uncertain = True
             return self._fault('storage_failure')

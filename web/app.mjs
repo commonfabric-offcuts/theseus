@@ -4656,8 +4656,8 @@ async function paintTeam(workspace,refresh,loaded=()=>{}) {
   teamInvite.paint(organises(workspace,bootstrap.actor));teamPanel.paintChoices();
   $('outcome-team').hidden=false;
   loaded(members);
-  const seatsRead=await headlessSeats.refresh({id:workspace.id,version:workspace.version},members,organises(workspace,bootstrap.actor));
-  return !failed&&seatsRead;
+  const seatsRead=await headlessSeats.refresh({id:workspace.id,version:workspace.version},members,workspace.owner_id===bootstrap.actor);
+  return !failed;
 }
 // New topic is one title line in the topic list: Return starts the topic with
 // the reader in it and opens it; people and the first message are added there.

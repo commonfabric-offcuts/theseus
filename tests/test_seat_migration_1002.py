@@ -63,9 +63,9 @@ class SeatMigration(unittest.TestCase):
         self.predecessor()
         before = hashlib.sha256(self.path.read_bytes()).hexdigest()
         steps = tuple((old, new, list(up) + ['SELECT missing_1002_column FROM metadata'], down, occupied)
-                      if (old, new) == ('63', '64') else (old, new, up, down, occupied)
+                      if (old, new) == (self.before, SCHEMA_VERSION) else (old, new, up, down, occupied)
                       for old, new, up, down, occupied in migrations.STEPS)
-        self.assertEqual(sum(old == '63' and new == '64' and up[-1] == 'SELECT missing_1002_column FROM metadata'
+        self.assertEqual(sum(old == self.before and new == SCHEMA_VERSION and up[-1] == 'SELECT missing_1002_column FROM metadata'
                              for old, new, up, down, occupied in steps), 1)
         with mock.patch.object(migrations, 'STEPS', steps):
             with self.assertRaises(migrations.MigrationError) as failed:

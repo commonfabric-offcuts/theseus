@@ -7,6 +7,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import net from 'node:net';
 import { fixtureControl } from './fixture_control.mjs';
+import { scopedChangesPage } from '../web/freshness.mjs';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const output = path.resolve(process.argv[2]); await mkdir(output, { recursive: true });
@@ -29,8 +30,11 @@ const until = async (act, label, timeout = 20000) => {
 const processes = () => execFileSync('/bin/ps', ['-axo', 'pid=,ppid=,command='], { encoding: 'utf8' }).split('\n')
   .map(line => { const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/); return match && { pid: +match[1], parent: +match[2], command: match[3] }; }).filter(Boolean);
 const present = pid => { try { process.kill(pid, 0); return true; } catch (error) { if (error.code === 'ESRCH') return false; throw error; } };
-for (const engine of engines) {
-  const fixture = spawn('/usr/bin/python3', ['-I', path.join(root, 'tests/fixtures/headless_seat_1002.py'), path.join(output, engine + '-fixture')], { stdio: ['pipe', 'pipe', 'pipe'] });
+// Each isolated instance stays below the production cap8; all32 matrix cells remain.
+const batches = engines.flatMap(engine => (process.env.AIM_SEAT_SMOKE || process.env.AIM_SEAT_RECOVERY_ONLY ? [0] : [0, 1, 2]).map(batch => ({ engine, batch })));
+for (const { engine, batch } of batches) {
+  const fixtureName = engine + (batch ? '-batch-' + batch : '') + '-fixture';
+  const fixture = spawn('/usr/bin/python3', ['-I', path.join(root, 'tests/fixtures/headless_seat_1002.py'), path.join(output, fixtureName)], { stdio: ['pipe', 'pipe', 'pipe'] });
   const channel = fixtureControl(fixture); let browser, persistent, profile, info, tracker; const pids = new Set(), errors = [];
   const phases = new WeakMap();
   const watchPage = page => {
@@ -62,9 +66,10 @@ for (const engine of engines) {
     browser = persistent.browser(); assert.ok(browser, 'an owned browser supports Browser.close');
     result.browsers ??= []; result.browsers.push({ engine, version: browser.version() });
     observe(); tracker = setInterval(observe, 200);
-    const specs = process.env.AIM_SEAT_RECOVERY_ONLY ? [] : process.env.AIM_SEAT_SMOKE ? [{ width: 320, theme: 'dark', look: 'paper' }] :
+    const allSpecs = process.env.AIM_SEAT_RECOVERY_ONLY ? [] : process.env.AIM_SEAT_SMOKE ? [{ width: 320, theme: 'dark', look: 'paper' }] :
       [1280, 390, 375, 320].flatMap(width => ['light', 'dark'].flatMap(theme => ['', 'paper'].map(look => ({ width, theme, look }))));
-    let serial = 0;
+    const specs = process.env.AIM_SEAT_SMOKE || process.env.AIM_SEAT_RECOVERY_ONLY ? allSpecs : allSpecs.slice(batch * 6, batch * 6 + 6);
+    let serial = batch * 6;
     const prepare = async (context, workspace, spec) => {
       await channel.control({ method: 'workspace', workspace });
       await context.addInitScript(look => {
@@ -105,7 +110,9 @@ for (const engine of engines) {
       const context = await browser.newContext({ viewport: { width: spec.width, height: 900 }, hasTouch: touch, isMobile: engine === 'chromium' && touch });
       const page = await prepare(context, row.workspace, spec);
       try {
+        const beforeTopic = await channel.control({ method: 'changes', workspace: row.workspace });
         await open(page, touch);
+        assert.match(await page.locator('.seat-access').innerText(), /full access on this Mac.*sub-agents/);
         const name = 'Fixture ' + engine + ' ' + serial;
         const first = 'Keep Δ bytes exactly.  ';
         await type(page, '#headless-seat-name', name, touch);
@@ -139,10 +146,15 @@ for (const engine of engines) {
         await until(async () => (await page.locator('.seat-statuses').innerText()).includes('Ready'), 'actual Live Team progress');
         row.trusted = await page.evaluate(() => seatTrusted);
         assert.ok(row.trusted.length && row.trusted.every(event => event.trusted), 'all Team input is native');
+        const afterTopic = await channel.control({ method: 'changes', workspace: row.workspace, cursor: beforeTopic.page.checkpoint });
+        scopedChangesPage(afterTopic.page, afterTopic.bootstrap, afterTopic.page.scope, beforeTopic.page.checkpoint);
+        assert.ok(afterTopic.page.items.some(item => item.resource_kind === 'topic'), 'topic progress includes the real first task and hello');
+        row.topic_reader = { before: beforeTopic.page.checkpoint, after: afterTopic.page, accepted: true };
         row.state = state; row.passed = true;
         await page.screenshot({ path: path.join(output, engine + '-' + serial + '-ready.png'), fullPage: true });
       } finally { phases.set(page, 'leaving'); await context.close(); }
     }
+    if (batch === 2 || process.env.AIM_SEAT_SMOKE || process.env.AIM_SEAT_RECOVERY_ONLY) {
     // Durable native IndexedDB, lost committed response, newer typing, whole page close/reopen.
     const spec = { width: 1280, theme: 'light', look: '' }, workspace = 'recover-' + engine;
     const page = await prepare(persistent, workspace, spec); await open(page, false);
@@ -190,6 +202,7 @@ for (const engine of engines) {
     assert.equal(await page.locator('#headless-seat-role').inputValue(), newer);
     await closePage(page);
     const reopened = watchPage(await persistent.newPage()); await reopened.goto(info.origin + '/?workspace=' + workspace);
+    await until(async () => (await reopened.locator('.headless-seats .notice').innerText()).includes('unconfirmed'), 'unconfirmed Add visible before opening its form');
     await open(reopened, false);
     assert.equal(await reopened.locator('#headless-seat-role').inputValue(), newer);
     await press(reopened, '#headless-seat-retry', false);
@@ -257,6 +270,7 @@ for (const engine of engines) {
     assert.equal(opaqueAfter, opaqueBefore, 'the original unreadable record remains byte exact');
     result.cases.push({ engine, name: 'unreadable-device-row-refuses-without-overwrite', passed: true, opaque_sha256: hash(opaqueAfter) });
     await closePage(broken);
+    }
     assert.deepEqual(errors, [], 'no uncaught browser errors');
   } catch (error) {
     result.errors.push({ engine, error: error.stack });
@@ -271,8 +285,8 @@ for (const engine of engines) {
     }
     fixture.stdin.end(); const ended = await channel.exit;
     assert.equal(ended.code, 0, channel.errors()); assert.equal(present(fixture.pid), false);
-    const cleanup = JSON.parse(await readFile(path.join(output, engine + '-fixture/cleanup.json'), 'utf8'));
-    result.cleanup.push({ engine, pids: [...pids], all_absent: absent, browser_close: true, profile_removed: true, fixture_exit: ended, ...cleanup });
+    const cleanup = JSON.parse(await readFile(path.join(output, fixtureName, 'cleanup.json'), 'utf8'));
+    result.cleanup.push({ engine, batch, pids: [...pids], all_absent: absent, browser_close: true, profile_removed: true, fixture_exit: ended, ...cleanup });
     await writeFile(path.join(output, 'results.json'), JSON.stringify(result, null, 2));
   }
 }

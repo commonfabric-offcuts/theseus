@@ -68,7 +68,7 @@ class SeatHost:
         if answer.get('status') != 'ok':
             # Ownership loss is handled by the ordinary loop; no external step follows it.
             self.current, self.deadline = None, None
-            raise codex_host.HostFault('runner_lease_lost')
+            raise codex_host.HostFault('seat_runner_paused' if answer.get('status') == 'paused' else 'runner_lease_lost')
         return answer
 
     def _step(self, stage, details=None):
@@ -163,9 +163,16 @@ class SeatHost:
                  'permission_mode': config.permission_mode, 'reasoning_effort': config.reasoning_effort,
                  'instructions': config.instructions}
         _write_same(Path(config.config_path), (json.dumps(value, sort_keys=True, indent=1) + '\n').encode('utf-8'))
-        return broker_routes.preflight_hosted(config.config_path, seat['agent_id'], self.loop.profile)
+        from .authority import AuthorityError
+        from .route_pins import RoutePinError
+        try:
+            return self.loop._storage(lambda: broker_routes.preflight_hosted(config.config_path, seat['agent_id'], self.loop.profile))
+        except (RoutePinError, AuthorityError) as error:
+            raise SeatRefusal('route_conflict') from error
 
     def _adopt(self, seat, *, install=True):
+        if self.loop.host is None:
+            raise SeatRefusal('host_not_configured')
         config = self._published_config(seat)
         actor = seat['agent_id']
         if self.operator_routes is not None:
@@ -196,8 +203,9 @@ class SeatHost:
         if route is not None:
             try:
                 self._adopt(route)
-            except (SeatRefusal, OSError, ProfileError, broker_routes.BrokerConfigError):
-                refused = self._core('hosted_seat_route_refuse', route['id'], route['version'])['seat']
+            except (SeatRefusal, OSError, ProfileError, broker_routes.BrokerConfigError) as error:
+                reason = error.reason if isinstance(error, SeatRefusal) else 'route_conflict'
+                refused = self._core('hosted_seat_route_refuse', route['id'], route['version'], reason)['seat']
                 self.loop._event('seat_step', seat_id=route['id'], stage=refused['stage'], state='refused', reason=refused['reason'])
             self.route_cursor = route['ready_seq']
             self.loop.read_needed = True

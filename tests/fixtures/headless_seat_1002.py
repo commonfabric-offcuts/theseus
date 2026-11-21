@@ -55,6 +55,13 @@ def main():
                     identity = request['workspace']
                     answer = case.act('workspace.create', {'id': identity, 'title': 'Seat ' + identity,
                         'team': [AGENT], 'coordinator': None}, {})
+                elif method == 'changes':
+                    topic = case.store.view('lead', 'conversation', {'workspace_id': request['workspace']})['conversation']['topic_id']
+                    args = {'scope': {'kind': 'topic', 'id': topic}, 'limit': 50}
+                    if request.get('cursor') is not None:
+                        args['cursor'] = request['cursor']
+                    answer = {'page': case.store.view('lead', 'changes', args),
+                              'bootstrap': {'instance_id': case.store.instance_id, 'actor': 'lead', 'authority': case.store.binding}}
                 elif method == 'inspect':
                     workspace = request['workspace']
                     seats = case.sql('SELECT id,agent_id,state,stage,reason,role,thread_id,first_message_id,version FROM hosted_seats WHERE workspace_id=?', (workspace,))
