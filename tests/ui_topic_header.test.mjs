@@ -319,7 +319,7 @@ test('the top of a topic is the eyebrow, the title row with the gear, the subtit
   assert.match(header, /<section id="topic-people" class="topic-people" aria-labelledby="people-heading"><h2 id="people-heading">Team<\/h2><div id="participants"/);
   assert.equal(main.slice(main.indexOf('</header>')).includes('id="topic-people"'), false, 'no People after the messages');
   // The New message composer at rest is in the feed (reply-stacks.mjs places it just above More).
-  const feed = main.slice(main.indexOf('<section id="messages"'), main.indexOf('<button id="more-messages"'));
+  const feed = main.slice(main.indexOf('<section id="messages"'), main.indexOf('</section>', main.indexOf('<section id="messages"')));
   assert.match(feed, /^<section id="messages" aria-label="Conversation">\s*<div id="agent-coordination-show" class="feed-filter" role="group" aria-label="Agent coordination" hidden><\/div>\s*<dialog id="new-message-sheet" class="composer-home"/);
   const dialog = html.slice(html.indexOf('<dialog id="topic-settings"'), html.indexOf('</dialog>', html.indexOf('<dialog id="topic-settings"')));
   assert.match(dialog, /aria-labelledby="settings-title"/);

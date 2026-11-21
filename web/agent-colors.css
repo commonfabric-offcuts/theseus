@@ -18,25 +18,25 @@
     .agent-olive{--agent-card:#1d200e;--agent-tag:#454c25;--agent-hover:#212513}
   }
   :root[data-agent-colors=vivid]{
-    .agent-green{--agent-card:#2f4b3c;--agent-tag:#406f56;--agent-hover:#365243}
-    .agent-blue{--agent-card:#32465a;--agent-tag:#466687;--agent-hover:#394c61}
-    .agent-indigo{--agent-card:#3f415a;--agent-tag:#5c5f88;--agent-hover:#464861}
-    .agent-violet{--agent-card:#4b3d54;--agent-tag:#70587e;--agent-hover:#52445b}
-    .agent-rose{--agent-card:#563a45;--agent-tag:#815465;--agent-hover:#5d414b}
-    .agent-peach{--agent-card:#553e2e;--agent-tag:#80593f;--agent-hover:#5d4434}
-    .agent-cyan{--agent-card:#264b4c;--agent-tag:#2e6e72;--agent-hover:#2d5153}
-    .agent-olive{--agent-card:#41472d;--agent-tag:#60683d;--agent-hover:#484e33}
+    .agent-green{--agent-card:#2f4b3c;--agent-tag:#406f56;--agent-hover:#365243;--agent-deep:#00341b}
+    .agent-blue{--agent-card:#32465a;--agent-tag:#466687;--agent-hover:#394c61;--agent-deep:#032a4c}
+    .agent-indigo{--agent-card:#3f415a;--agent-tag:#5c5f88;--agent-hover:#464861;--agent-deep:#23234d}
+    .agent-violet{--agent-card:#4b3d54;--agent-tag:#70587e;--agent-hover:#52445b;--agent-deep:#351c43}
+    .agent-rose{--agent-card:#563a45;--agent-tag:#815465;--agent-hover:#5d414b;--agent-deep:#44162a}
+    .agent-peach{--agent-card:#553e2e;--agent-tag:#80593f;--agent-hover:#5d4434;--agent-deep:#441c00}
+    .agent-cyan{--agent-card:#264b4c;--agent-tag:#2e6e72;--agent-hover:#2d5153;--agent-deep:#003338}
+    .agent-olive{--agent-card:#41472d;--agent-tag:#60683d;--agent-hover:#484e33;--agent-deep:#262d00}
   }
 }
 @media (prefers-color-scheme:light){
   :root[data-agent-colors=vivid]{
-    .agent-green{--agent-card:#d6f1e2;--agent-tag:#a9dbbf;--agent-hover:#cdecda}
-    .agent-blue{--agent-card:#d9ecff;--agent-tag:#aed2f7;--agent-hover:#d0e6fd}
-    .agent-indigo{--agent-card:#e4e8ff;--agent-tag:#c5caf8;--agent-hover:#dde1fe}
-    .agent-violet{--agent-card:#f1e3fb;--agent-tag:#dcc2ed;--agent-hover:#ecdcf7}
-    .agent-rose{--agent-card:#fee0eb;--agent-tag:#f1bdd0;--agent-hover:#fad9e4}
-    .agent-peach{--agent-card:#fde4d4;--agent-tag:#f0c3a6;--agent-hover:#f9ddca}
-    .agent-cyan{--agent-card:#d0f1f3;--agent-tag:#9bdbde;--agent-hover:#c5eced}
-    .agent-olive{--agent-card:#e7edd3;--agent-tag:#c9d4a4;--agent-hover:#e0e7c9}
+    .agent-green{--agent-card:#d6f1e2;--agent-tag:#a9dbbf;--agent-hover:#cdecda;--agent-deep:#003c1a}
+    .agent-blue{--agent-card:#d9ecff;--agent-tag:#aed2f7;--agent-hover:#d0e6fd;--agent-deep:#002e5e}
+    .agent-indigo{--agent-card:#e4e8ff;--agent-tag:#c5caf8;--agent-hover:#dde1fe;--agent-deep:#26245f}
+    .agent-violet{--agent-card:#f1e3fb;--agent-tag:#dcc2ed;--agent-hover:#ecdcf7;--agent-deep:#3f1953}
+    .agent-rose{--agent-card:#fee0eb;--agent-tag:#f1bdd0;--agent-hover:#fad9e4;--agent-deep:#520f31}
+    .agent-peach{--agent-card:#fde4d4;--agent-tag:#f0c3a6;--agent-hover:#f9ddca;--agent-deep:#531900}
+    .agent-cyan{--agent-card:#d0f1f3;--agent-tag:#9bdbde;--agent-hover:#c5eced;--agent-deep:#003b42}
+    .agent-olive{--agent-card:#e7edd3;--agent-tag:#c9d4a4;--agent-hover:#e0e7c9;--agent-deep:#2a3300}
   }
 }

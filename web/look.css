@@ -128,3 +128,4 @@
 :root[data-look=paper][data-agent-colors=vivid][data-light-colour=darker]{--light-field:#123908}
 :root[data-light-colour] .message-card,:root[data-light-colour] .notebook-reading-words{--pointer-lit-field:var(--light-field)}
 :root[data-light-colour] .message-card.own-message{--pointer-lit-field:var(--light-own-field,var(--light-field))}
+:root[data-agent-colors=vivid][data-light-colour=darker] .message-card.agent-card{--pointer-lit-field:var(--agent-deep,var(--light-field))}
