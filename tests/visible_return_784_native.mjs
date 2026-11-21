@@ -195,6 +195,11 @@ export async function visibleReturn784Checks({ check, page, until, control, shot
     const closeSheet = async () => { await press('#new-message-close'); await until(() => p.evaluate(`!document.querySelector('#new-message-sheet').open`), 'sheet closed by native control'); };
     const sheet = async before => {
       await until(() => p.evaluate(`document.querySelector('#new-message-sheet').open && document.activeElement?.id==='inline-writing-body'`), 'pencil sheet open with usable writing focus');
+      await until(async () => {
+        const painted = await read(p, '#inline-writing-body');
+        observations.push({ name: 'item784 pencil field visibility', case: spec.name, painted });
+        return painted?.visible && Number(painted.ancestors.find(at=>at.id==='new-message-sheet')?.opacity) === 1;
+      }, 'pencil writing actually visible after the sheet finishes its native fade');
       assertInPlace(before, await state(p));
       assert.equal(await p.evaluate(`document.querySelector('#reader').open`), false, 'no reply Reader');
       assert.equal(await p.evaluate(`document.querySelector('#main').inert`), false, 'writing page no longer inert');
