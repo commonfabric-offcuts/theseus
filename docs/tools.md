@@ -702,3 +702,9 @@ unshipped pieces: land them first, then carry and rerun the judged source on
 live. Missing legacy classification must be recorded or the work landed.
 The launcher owners install the guard and calls; this CLI cannot intercept
 an arbitrary external workflow dispatch.
+
+For an authenticated `--train` merge already on the release branch, deploy
+retains classification, ancestry and one-item enforcement but skips the
+waiting-piece read. Later ordinary approvals cannot strand a started landing.
+The launcher's pre-merge call, human-start CLI and direct-summary deployment
+retain the waiting check (review correction14637).

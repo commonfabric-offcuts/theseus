@@ -351,10 +351,7 @@ class PipelineVerbs:
 
     def do_freeze(self):
         options = self.options
-        observed = self.store.view(self.profile.actor_id, 'pipeline_freeze', {'piece_id': options.piece})
-        if observed.get('error'):
-            self.out.json(observed)
-            self.fail(observed)
+        observed = self.view('pipeline_freeze', {'piece_id': options.piece})
         try:
             files = source_diff(options.repo, options.base, options.head)
         except ValueError as error:

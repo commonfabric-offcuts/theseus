@@ -780,10 +780,10 @@ def take_train(config, sha, evidence, train, known_reds, github):
     return trained
 
 
-def admit(config, candidate):
+def admit(config, candidate, *, started_landing=False):
     """987: callable before a launcher boundary/merge or a human hosted dispatch."""
     try:
-        return gauntlet_admission.admit(config, candidate, run)
+        return gauntlet_admission.admit(config, candidate, run, started_landing=started_landing)
     except (gauntlet_admission.Refused, OSError, ValueError, TypeError, KeyError) as error:
         raise Refused(str(error))
 
@@ -836,7 +836,7 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     for line in known_reds_check.said(known or {}):
         print(line)
     if not unpassed or accepted:
-        admit(config, sha)
+        admit(config, sha, started_landing=trained is not None)
     host_policy = runner_policy(config, sha)
     keep_host = host_policy['kind'] == 'keep'
     server_args, runner_args, supervisor_args = server_argv(config), runner_argv(config), supervisor_argv(config)
@@ -879,7 +879,7 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     # Re-read an eligible head before its candidate/report/stop effects; an
     # earlier empty pipeline snapshot is not an authorization to proceed now.
     if not unpassed or accepted:
-        admit(config, sha)
+        admit(config, sha, started_landing=trained is not None)
     # 02-checks (12, 104): the candidate's readings beside the live release's, read as the reporter.
     view, found = None, []
     if config.outcome:
