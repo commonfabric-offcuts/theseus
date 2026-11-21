@@ -472,7 +472,9 @@ export class CoordinatorChoice {
     this.paintedBinding = binding;
     Object.assign(this, { workspace, members, available });
     const person = members.find(person => person.actor_id === workspace.coordinator_id);
-    this.opener.textContent = `Coordinator: ${workspace.coordinator_id ? person ? distinctName(person, members) : workspace.coordinator_id : 'Nobody'}`;
+    const coordinator = workspace.coordinator_id ? person ? distinctName(person, members) : workspace.coordinator_id : 'Nobody';
+    // The words stay one phrase; data-name lets the panel set the name apart at the row's end (topic-dense.css).
+    this.opener.textContent = `Coordinator: ${coordinator}`; this.opener.dataset.name = coordinator;
     this.opener.hidden = !available; this.opener.disabled = this.busy;
     if (!available) this.toggle(false, false);
     const old = new Map([...this.list.children].map(button => [button.dataset.coordinator, button]));
