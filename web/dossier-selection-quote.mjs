@@ -10,14 +10,14 @@ const sameRange = (a, b) => a && b && a.startContainer === b.startContainer && a
   a.endContainer === b.endContainer && a.endOffset === b.endOffset;
 
 export class DossierSelectionQuote {
-  constructor({ host, template, entryOf, selected, eligible, quote }) {
-    Object.assign(this, { host, entryOf, selected, eligible, quote });
+  constructor({ host, template, entryOf, selected, eligible, quote, surface = null }) {
+    Object.assign(this, { host, entryOf, selected, eligible, quote, surface });
     this.doc = host.ownerDocument; this.win = this.doc.defaultView;
     this.phone = this.win.matchMedia('(pointer: coarse)');
     // Clone the actual current pill, including its glyph, name and theme.
     // The Reader keeps its own node, handlers, focus and selection owners.
     this.pill = template.cloneNode(true);
-    this.pill.id = 'dossier-quote-selection';
+    this.pill.id = surface?.pillId ?? 'dossier-quote-selection';
     this.pill.classList.add('dossier-quote-pill');
     this.pill.title = 'Quote selected text';
     this.pill.disabled = false;
@@ -70,9 +70,9 @@ export class DossierSelectionQuote {
     host.addEventListener('click', event => {
       const selection = this.doc.getSelection();
       if (!this.phone.matches || selection?.isCollapsed !== false) return;
-      const at = element(event.target), entry = this.entryOf(at), card = entry && cardIn(entry);
-      const words = card?.querySelector(':scope > .message-preview');
-      if (!words || !card.closest('.reply-stack') || at.closest('a,input,textarea,select,[contenteditable]')) return;
+      const at = element(event.target), entry = this.entryOf(at), card = entry && (this.surface ? this.surface.cardOf(entry) : cardIn(entry));
+      const words = this.surface ? this.surface.wordsOf(card) : card?.querySelector(':scope > .message-preview');
+      if (!words || !(this.surface ? this.surface.accepts(card) : card.closest('.reply-stack')) || at.closest('a,input,textarea,select,[contenteditable]')) return;
       if (at.closest('button,[role=button]') !== card) return;
       let touchesWords = false;
       for (let i = 0; i < selection.rangeCount; i++) if (selection.getRangeAt(i).intersectsNode(words)) touchesWords = true;
@@ -102,7 +102,7 @@ export class DossierSelectionQuote {
 
   available() {
     return !this.opening && this.phone.matches && this.host.isConnected && this.doc.visibilityState !== 'hidden' &&
-      !this.host.closest('[hidden],[inert]') && !this.doc.querySelector('dialog[open],.message-menu-list');
+      !this.host.closest('[hidden],[inert]') && (this.surface ? this.surface.uncovered() : !this.doc.querySelector('dialog[open],.message-menu-list'));
   }
   viewport() {
     const view = this.win.visualViewport;
@@ -124,10 +124,10 @@ export class DossierSelectionQuote {
     const range = selection.getRangeAt(0);
     if (sameRange(range, this.invalid)) return null;
     this.invalid = null;
-    const entry = this.entryOf(range.startContainer), card = entry && cardIn(entry);
-    const words = card?.querySelector(':scope > .message-preview');
+    const entry = this.entryOf(range.startContainer), card = entry && (this.surface ? this.surface.cardOf(entry) : cardIn(entry));
+    const words = this.surface ? this.surface.wordsOf(card) : card?.querySelector(':scope > .message-preview');
     if (!words || !words.contains(range.startContainer) || !words.contains(range.endContainer) ||
-        !card.closest('.reply-stack')) return null;
+        !(this.surface ? this.surface.accepts(card) : card.closest('.reply-stack'))) return null;
     // Use the same selection mapping as Return on the card, including whole
     // links and formatting marks, and the revision the card actually shows.
     const excerpt = this.selected(entry), revision = drawnRevision(words);
@@ -139,8 +139,9 @@ export class DossierSelectionQuote {
   valid(chosen) {
     const { id, entry, card, words, body, range, excerpt } = chosen;
     return this.available() && this.eligible(id, entry) && this.host.contains(entry) &&
-      cardIn(entry) === card && card.querySelector(':scope > .message-preview') === words &&
-      Boolean(card.closest('.reply-stack')) && entry.dataset.id === id && card.dataset.id === id && !range.collapsed &&
+      (this.surface ? this.surface.cardOf(entry) === card && this.surface.wordsOf(card) === words && this.surface.accepts(card) :
+        cardIn(entry) === card && card.querySelector(':scope > .message-preview') === words &&
+        Boolean(card.closest('.reply-stack'))) && entry.dataset.id === id && card.dataset.id === id && !range.collapsed &&
       words.contains(range.startContainer) && words.contains(range.endContainer) &&
       typeof body === 'string' && drawnText(words) === body && drawnRevision(words) === excerpt.revision &&
       body.slice(excerpt.start, excerpt.end) === excerpt.text &&
@@ -189,6 +190,7 @@ export class DossierSelectionQuote {
     const chosen = this.held ?? this.choice();
     if (!chosen || !this.valid(chosen)) { this.clear(); return; }
     this.current = chosen;
+    this.surface?.placePill?.(this.pill, chosen);
     if (this.pill.hidden) this.pill.hidden = false;
     // A finger already on the pill keeps its target through its release.
     if (this.held) return;

@@ -85,6 +85,8 @@ import { ToolPage, OutcomeTools, ToolsRail, TopicTools } from './skills.mjs';
 import { openDossierMove } from './dossier-move.mjs';
 import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
 import { DossierSelectionQuote } from './dossier-selection-quote.mjs';
+import { NotebookPassages } from './notebook-passages.mjs';
+import { NotebookQuoteTransfer } from './notebook-quote-transfer.mjs';
 import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions, paintReactions, mayAnswer } from './reactions.mjs';
 import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
@@ -624,6 +626,8 @@ async function present(presentation) {
     revokeMedia(); reader.presentation = presentation;
     delete $('reader').dataset.discovered;
     reader.show(presentation.source, presentation.editors, { opener: presentation.opener, topics: [topic], presentation, mode: presentation.mode });
+    $('source-body').classList.toggle('notebook-reading-source', presentation.source.source_ref.kind === 'memory');
+    receiveNotebookQuote(presentation);
     cardReplies?.paint();
     if (presentation.fromCardReply) {
       if (presentation.fromCardReply.wide && !reader.narrow.matches) reader.temporaryWide = true;
@@ -4396,7 +4400,7 @@ async function initializeDeckPage(route) {
     catch { return {href,title:'The page'}; }
   };
   const page=new NotebookPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
-    item:route.id,read:pipelineView,send:pipelineSend,place,askIn:notebookAskIn,api,bootstrap,mode:route.card?'cards':route.view,viewPreference:notebookViewsOf()});
+    item:route.id,read:pipelineView,send:pipelineSend,place,askIn:notebookAskIn,api,bootstrap,mode:route.card?'cards':route.view,viewPreference:notebookViewsOf(),passages:notebookPassagesOf()});
   linkOwnerScope = () => page.source?.owner_scope;
   linkNotice = words => page.say(words, 'attention');
   shell.guard(()=>Boolean(page.writing?.journalPending||page.writing?.journalError));
@@ -4464,13 +4468,65 @@ async function notebookAskIn(scope) {
   const {participants}=await pipelineView('topic',{topic_id:topicId});
   return {topicId,agents:participants.filter(p=>p.kind==='agent'&&p.enabled).map(p=>p.actor_id)};
 }
+let notebookPassages = null;
+function notebookPassagesOf() {
+  return notebookPassages ??= new NotebookPassages({ template: $('quote-selection'), quote: quoteNotebookPassage });
+}
+function notebookQuoteNotice(words) {
+  if (notebookSheet?.showing) notebookSheet.current?.say(words, 'attention'); else status(words);
+}
+async function quoteNotebookPassage(choice, opener) {
+  try {
+    // Reuse the hosting topic's destination, or the Notebook's existing
+    // topic/conversation destination when this page has no composer.
+    const topicId = topic && views ? topic.id : (await notebookAskIn(choice.owner_scope))?.topicId;
+    if (!topicId) throw Error('The page has no conversation to quote into.');
+    new NotebookQuoteTransfer(bootstrap).keep(topicId, choice);
+    if (topic && views) {
+      const open = () => openSource(choice.source, opener);
+      if (notebookSheet?.showing) await notebookSheet.quoteWith(open); else await open();
+    } else {
+      await openDestination({ kind: 'topic', id: topicId, page: choice.source.id, revision: String(choice.source.revision) }, 'the page quote', opener);
+    }
+  } catch (error) { notebookQuoteNotice(error.message); }
+}
+function receiveNotebookQuote(presentation) {
+  if (!topic || presentation.source?.source_ref?.kind !== 'memory') return;
+  let transfer, pending;
+  try { transfer = new NotebookQuoteTransfer(bootstrap); pending = transfer.forSource(topic.id, presentation.source); }
+  catch (error) { reader.notice(error.message); return; }
+  if (!pending) return;
+  if (presentation.sourceUnavailable || presentation.availabilityUnconfirmed) return;
+  const editor = presentation.editors.reply, before = editor.draft.quotes.length;
+  const contiguous = presentation.source.body.includes(pending.choice.text), parts = pending.choice.parts;
+  if (!contiguous && (!Array.isArray(parts) || parts.join('') !== pending.choice.text ||
+      parts.some(part => !presentation.source.body.includes(part)))) {
+    reader.notice('The selected passage could not be matched to this page revision.'); return;
+  }
+  // Remove the exact intent before the synchronous edit. A storage refusal
+  // leaves both draft and intent untouched, so a reload cannot quote twice.
+  try { if (!transfer.claim(pending)) return; }
+  catch (error) { reader.notice(`${error.message} The selected passage is kept for retry.`); return; }
+  try {
+    if (contiguous) reader.quoteFrom(pending.choice.source, { ...pending.choice, revision: pending.choice.source.revision });
+    // Hidden image/detail/stack lines split the displayed selection into
+    // exact source substrings; the existing composer joins their writing.
+    else reader.quoteInto(parts, null, pending.choice.source.revision);
+  } catch (error) { reader.notice(error.message); }
+  finally {
+    if (editor.draft.quotes.length === before) {
+      try { transfer.restore(pending); }
+      catch (error) { reader.notice(`${error.message} The passage could not be kept for retry.`); }
+    }
+  }
+}
 // A Notebook page in the composer over the page being read (item 396; notebook-sheet.mjs): the full page's
 // Text and Cards, saving and recovery. The page showing is read again on every commit; one closed is not.
 function notebookSheetOf() {
   if (notebookSheet) return notebookSheet;
   notebookSheet = new NotebookSheet({
     make: (id, host, header, idSuffix, revisionShown) => {
-      const page = new NotebookPage({ host, header, item: id, read: pipelineView, send: pipelineSend, askIn: notebookAskIn, api, bootstrap, viewPreference: notebookViewsOf(), idSuffix, shortKeys: true, revisionShown,
+      const page = new NotebookPage({ host, header, item: id, read: pipelineView, send: pipelineSend, askIn: notebookAskIn, api, bootstrap, viewPreference: notebookViewsOf(), idSuffix, shortKeys: true, revisionShown, passages: notebookPassagesOf(),
         place: async scope => ({ href: routeHref({ kind: scope.kind, id: scope.id, page: id }), title: '' }) });
       followCommits(() => notebookSheet.followed(page));
       return page;
@@ -4521,7 +4577,7 @@ function pagesInPlace(workspace,recorded) {
     return api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),kind:'memory.read',
       target:{item_id:id},expected:{authority:{authority_id,authority_epoch}},args:{revision}});
   }});
-  pageHere=new PageHere({host:$('page-here'),reads,read:ref=>pipelineView('source',ref),status:id=>pipelineView('memory_status',{item_id:id}),media:pageImage,cards:id=>routeHref({kind:'cards',id,view:'text'})});pageHereOutcome=workspace;
+  pageHere=new PageHere({host:$('page-here'),reads,read:ref=>pipelineView('source',ref),status:id=>pipelineView('memory_status',{item_id:id}),media:pageImage,cards:id=>routeHref({kind:'cards',id,view:'text'}),passages:notebookPassagesOf()});pageHereOutcome=workspace;
   const shown=pageHere;followCommits(()=>shown.follow());
 }
 // The outcome's own page lists its Notebook pages first, each opening
