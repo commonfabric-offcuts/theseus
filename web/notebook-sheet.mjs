@@ -26,6 +26,7 @@ import { timeNode } from './times.mjs';
 import { DeckPage } from './deck-page.mjs';
 import { NotebookDossiers } from './notebook-dossiers.mjs';
 import { panes } from './panes.mjs';
+import { departing, railRowFor, land, rowRect, openFrom } from './paper-flight.mjs';
 
 const RETURN = 'notebook-return';
 // The card box a page had open when it was let go (another page, a move, a reload), opened again with it.
@@ -269,13 +270,18 @@ export class NotebookSheet {
     if (!this.showing && this.messageDialog?.open) this.messageDialog.close();
     if (this.reader?.open && !this.aside) this.doc.getElementById('reader-close')?.click();
     if (!this.showing && !this.place) this.place = { x: globalThis.scrollX, y: globalThis.scrollY, opener: opener ?? this.doc.activeElement };
+    // Opening from the Notebook shut, the page grows out of its row in the right rail, measured before the
+    // Notebook takes the rail's place (prototype, paper-flight.mjs).
+    const growFrom = !this.dialog.open ? rowRect(this.doc, id) : null;
     const { page, first } = this.obtain(id);
+    this.openId = id;
     if (this.current && this.current !== page) this.letGo(this.current);
     if (!page.host.isConnected) this.body.append(page.host);
     this.show(page);
     this.beside = beside;
     this.setDocked((this.beside || this.dockWanted) && this.canDock(), false);
     if (!this.dialog.open) this.dialog.showModal();
+    if (growFrom) openFrom(this.doc, growFrom);
     const kept = first ? take(WRITING + id) : null;
     page.readAt = undefined;
     let loaded = false;
@@ -441,8 +447,14 @@ export class NotebookSheet {
   }
   close() {
     if (!this.showing) return;
+    // Closing flies the page back to its own row in the right rail (prototype): its title and opening words on
+    // a sheet of paper, from where the page was.
+    const title = this.doc.getElementById('notebook-sheet-title')?.textContent?.trim() ?? '';
+    const words = this.current?.host?.querySelector?.('.deck-opening')?.textContent?.trim() ?? '';
+    const flight = departing(this.dialog.querySelector('.notebook-sheet') ?? this.dialog, `${title}\n${words.startsWith(title) ? words.slice(title.length) : words}`);
     this.dialog.close();
     this.closed();
+    land(flight, railRowFor(this.doc, this.openId));
   }
   closed() {
     if (!this.showing) return;

@@ -27,6 +27,7 @@ import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
 import { contact, heard, notTaken, NOT_TAKEN } from './api.mjs';
 import { CoordinationChoice } from './coordination-choice.mjs';
 import { firstCoverMenuItem } from './cover-refresh.mjs';
+import { foldInMotion } from './fold-motion.mjs';
 
 // Why Archive does nothing for a dossier holding a message the reader
 // starred (item 635), as Core says it (aim_next/stacks.py, HELD_BY_STAR): the
@@ -794,7 +795,8 @@ export class StackFeed {
     this.state.peeked.delete(item.id);
     const sent = this.act('message.fold', item, { folded: on });
     if (undoable) this.remember(() => { this.setFold(item, !on, { undoable: false }); });
-    this.arrange();
+    // In motion (fold-motion.mjs): the message closes to its row, or opens out of it.
+    foldInMotion(this.list.ownerDocument, () => this.entryFor(item.id), () => this.arrange(), on);
     if (focus) this.focusOn(item.id);
     this.say(on ? item.yours?.note === true ? 'Fold saved; your private note keeps this message whole' : 'Folded to one line, for you only' : 'Unfolded');
     return sent;
