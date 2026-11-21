@@ -823,6 +823,8 @@ body:has(.rail.open){overflow:hidden}
 .composer[data-compose=writing] .draft-tag,.composer:not([data-has-writing]) .draft-tag{display:none}
 .taller-field{display:none;position:absolute;right:.3rem;top:.15rem;width:2.2rem;height:2.2rem;min-height:0;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted)}
 .taller-field[aria-pressed=true]{color:var(--ink);background:var(--soft)}
+/* Keep the reply controls in place while the height choice is unnecessary. */
+:is(.card-reply-composer,#reader-composer):not(:has(textarea.noting)):not([data-full-field]) .taller-field{visibility:hidden}
 /* Send stands clear of the field, so a touch between them is beyond its reach and never sends (docs/reader.md). */
 .compose-send{min-height:2.5rem;margin-left:1rem;border-radius:1.25rem;padding:.3rem 1rem;font-weight:650;white-space:nowrap}.compose-send>.send-word{margin:0;opacity:1}
 .compose-send[aria-disabled=true]{opacity:.55}
