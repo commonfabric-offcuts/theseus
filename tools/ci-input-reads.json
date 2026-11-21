@@ -5521,7 +5521,8 @@
         "tests/headless_seat_1002_native.mjs",
         "tests/fixtures/headless_seat_1002.py",
         "tests/fixtures/fake_codex_app_server.py",
-        "docs/headless-seat-1002.md"
+        "docs/headless-seat-1002.md",
+        "web/outcome-page-layout.mjs"
       ]
     },
     "7513766ef9310c413a37391a52cb7a7d0989c38fc2b62805ee9c0b472b7370ca": {
@@ -5550,7 +5551,8 @@
         "tests/headless_seat_1002_native.mjs",
         "tests/fixtures/headless_seat_1002.py",
         "tests/fixtures/fake_codex_app_server.py",
-        "docs/headless-seat-1002.md"
+        "docs/headless-seat-1002.md",
+        "web/outcome-page-layout.mjs"
       ]
     }
   },

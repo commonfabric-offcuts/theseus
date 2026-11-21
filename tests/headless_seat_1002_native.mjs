@@ -16,7 +16,7 @@ const engines = process.env.AIM_SEAT_ENGINE ? [process.env.AIM_SEAT_ENGINE] : pr
 const hash = text => createHash('sha256').update(text).digest('hex');
 const sourceFiles = ['aim_next/hosted_seats.py', 'aim_next/seat_host.py', 'aim_next/effects_runner.py', 'aim_next/runner.py',
   'aim_next/codex_host.py', 'aim_next/store.py', 'aim_next/migrations.py', 'aim_next/validation.py', 'aim_next/cli.py', 'tools/deploy.py',
-  'web/headless-seat.mjs', 'web/seat-journal.mjs', 'web/app.mjs', 'web/outcome-refresh.mjs', 'web/people.mjs', 'web/aim.css',
+  'web/headless-seat.mjs', 'web/seat-journal.mjs', 'web/outcome-page-layout.mjs', 'web/app.mjs', 'web/outcome-refresh.mjs', 'web/people.mjs', 'web/aim.css',
   'tests/headless_seat_1002_native.mjs', 'tests/fixtures/headless_seat_1002.py', 'tests/fixtures/fake_codex_app_server.py', 'docs/headless-seat-1002.md'];
 const sourceHashes = Object.fromEntries(await Promise.all(sourceFiles.map(async name => [name, hash(await readFile(path.join(root, name)))])));
 const result = { source: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(), source_files: sourceHashes,
@@ -31,7 +31,7 @@ const processes = () => execFileSync('/bin/ps', ['-axo', 'pid=,ppid=,command='],
   .map(line => { const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/); return match && { pid: +match[1], parent: +match[2], command: match[3] }; }).filter(Boolean);
 const present = pid => { try { process.kill(pid, 0); return true; } catch (error) { if (error.code === 'ESRCH') return false; throw error; } };
 // Each isolated instance stays below the production cap8; all32 matrix cells remain.
-const batches = engines.flatMap(engine => (process.env.AIM_SEAT_SMOKE || process.env.AIM_SEAT_RECOVERY_ONLY ? [0] : [0, 1, 2]).map(batch => ({ engine, batch })));
+const batches = engines.flatMap(engine => (process.env.AIM_SEAT_LAYOUT_ONLY || process.env.AIM_SEAT_SMOKE || process.env.AIM_SEAT_RECOVERY_ONLY ? [0] : [0, 1, 2]).map(batch => ({ engine, batch })));
 for (const { engine, batch } of batches) {
   const fixtureName = engine + (batch ? '-batch-' + batch : '') + '-fixture';
   const fixture = spawn('/usr/bin/python3', ['-I', path.join(root, 'tests/fixtures/headless_seat_1002.py'), path.join(output, fixtureName)], { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -66,7 +66,7 @@ for (const { engine, batch } of batches) {
     browser = persistent.browser(); assert.ok(browser, 'an owned browser supports Browser.close');
     result.browsers ??= []; result.browsers.push({ engine, version: browser.version() });
     observe(); tracker = setInterval(observe, 200);
-    const allSpecs = process.env.AIM_SEAT_RECOVERY_ONLY ? [] : process.env.AIM_SEAT_SMOKE ? [{ width: 320, theme: 'dark', look: 'paper' }] :
+    const allSpecs = process.env.AIM_SEAT_LAYOUT_ONLY || process.env.AIM_SEAT_RECOVERY_ONLY ? [] : process.env.AIM_SEAT_SMOKE ? [{ width: 320, theme: 'dark', look: 'paper' }] :
       [1280, 390, 375, 320].flatMap(width => ['light', 'dark'].flatMap(theme => ['', 'paper'].map(look => ({ width, theme, look }))));
     const specs = process.env.AIM_SEAT_SMOKE || process.env.AIM_SEAT_RECOVERY_ONLY ? allSpecs : allSpecs.slice(batch * 6, batch * 6 + 6);
     let serial = batch * 6;
@@ -154,7 +154,24 @@ for (const { engine, batch } of batches) {
         await page.screenshot({ path: path.join(output, engine + '-' + serial + '-ready.png'), fullPage: true });
       } finally { phases.set(page, 'leaving'); await context.close(); }
     }
-    if (batch === 2 || process.env.AIM_SEAT_SMOKE || process.env.AIM_SEAT_RECOVERY_ONLY) {
+    if (batch === 2 || process.env.AIM_SEAT_LAYOUT_ONLY || process.env.AIM_SEAT_SMOKE) {
+      const held = watchPage(await persistent.newPage());
+      await held.goto(info.origin + '/outcome-page-layout.mjs');
+      await held.evaluate(async () => {
+        const { OutcomePageLayout } = await import('/outcome-page-layout.mjs');
+        const host = document.createElement('main'), team = document.createElement('section'), role = document.createElement('textarea');
+        role.id = 'held-layout-role'; team.append(role); host.append(team); document.body.replaceChildren(host);
+        window.heldSeatLayout = new OutcomePageLayout({ host, team, reader: 'fixture', color: () => '', cards: { filter() {} } });
+      });
+      await held.locator('#held-layout-role').click(); await held.keyboard.insertText('Kept');
+      await held.evaluate(() => heldSeatLayout.setPurpose(null));
+      assert.equal(await held.evaluate(() => document.activeElement?.id), 'held-layout-role', 'a workspace repaint must retain native Team input focus');
+      await held.keyboard.insertText(' newest');
+      assert.equal(await held.locator('#held-layout-role').inputValue(), 'Kept newest');
+      result.cases.push({ engine, name: 'same-parent-Team-repaint-retains-native-writing-focus', passed: true });
+      await closePage(held);
+    }
+    if (!process.env.AIM_SEAT_LAYOUT_ONLY && (batch === 2 || process.env.AIM_SEAT_SMOKE || process.env.AIM_SEAT_RECOVERY_ONLY)) {
     // Durable native IndexedDB, lost committed response, newer typing, whole page close/reopen.
     const spec = { width: 1280, theme: 'light', look: '' }, workspace = 'recover-' + engine;
     const page = await prepare(persistent, workspace, spec); await open(page, false);

@@ -139,7 +139,8 @@ selection into the owned runner; its default remains the unique full-mode
 template. It does not select a new home or copy an account.
 
 Each asynchronous callback is bound to its original seat and step version.
-A late successful creation answer is retained as an orphan thread ID on the
+While the original runner still owns its lease, a late successful creation
+answer is retained as an orphan thread ID on the
 original refused request, with no pin, route or first task. A confirmed route
 that cannot be adopted is refused per seat while existing routes keep running;
 a safe retry keeps its existing first-task ID and gets a fresh route cursor.
@@ -194,3 +195,7 @@ The card says: “This seat runs with full access on this Mac, including sub-age
 Seat progress uses the existing workspace change scope only, plus private owner/inviter changes; no unrecognized seat key enters a topic feed. Ready routes exclude disabled/nonmember actors. The current human owner may resume a safe request after the original inviter leaves; original inviter/owner fields remain audit identity, and an existing Stop/Continue owner is not silently replaced. The current owner authors any still-owed first task. Team removal is not a new native thread-termination act; an end-seat command is deferred because it needs an explicit active-turn/Stop lifecycle contract.
 
 A missing host refuses per seat, not the runner. Ownership loss/paused responses use ordinary loop exits; malformed schedules map to the bounded storage-failure pause. Preflight pin/authority failures use the dispatch path's cleanup classifier. A confirmed thread stopped before persistence can resume that same persist stage; uncertain native markers remain nonretryable. Missing Conversation and first-delivery failures retain distinct reasons. Migration failure injection derives the actual seat step from STEPS.
+
+A native writing check exposed a workspace repaint reattaching the existing Team subtree in the shared outcome layout. Layout now attaches only when the parent changes, so a focused role field survives a same-layout refresh. A controlled real-WebKit focus red and native restored control hold this below the full matrix.
+
+Remaining boundaries: removal/disable prevents route re-adoption but does not terminate an existing native context or retire its ready record/cap slot. Existing Stop/Continue ownership is preserved. A late creation ID received after lease ownership moves can remain unrecorded; its uncertain stage blocks replay until reconciliation. Unrecognized child refusal names remain bounded as incompatible. The status list covers the current team; departed request identities remain available by exact ID and reserve their names. Strict IndexedDB durability support is required for Add; unsupported browsers refuse with retained writing. Authorized members can read operational thread IDs and fixed refusal reasons, never host paths or credentials.
