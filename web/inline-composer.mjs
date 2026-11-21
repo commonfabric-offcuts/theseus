@@ -14,6 +14,7 @@ import { composerWidth } from './composer-width.mjs';
 import { ReaderLayout } from './layout.mjs';
 import { reach } from './arrow-reach.mjs';
 import { departing, landingIn, land, rowAppears, settle } from './paper-flight.mjs';
+import { pencilKey } from './pencil-keys.mjs';
 
 
 // The inline DOM adapter shares the existing registry/session/upload owners.
@@ -104,6 +105,10 @@ export class InlineComposer {
         event.preventDefault(); if (!event.repeat) this.send();
       }
     });
+    if (!cardReply) {
+      this.pencilKey = event => pencilKey(event, this);
+      this.root.ownerDocument.addEventListener('keydown', this.pencilKey, true);
+    }
     this.field.addEventListener('paste', event => this.paste(event));
     this.field.addEventListener('dragover', event => {
       if (this.admits() && !this.state().addDisabled && [...(event.dataTransfer?.items ?? [])].some(item => item.type.startsWith('image/'))) event.preventDefault();
@@ -157,6 +162,7 @@ export class InlineComposer {
   get editor() { return this.presentation?.editors.reply; }
   dispose() {
     this.disposed = true; window.removeEventListener('focus', this.windowFocus);
+    if (this.pencilKey) this.root.ownerDocument.removeEventListener('keydown', this.pencilKey, true);
     this.bar.dispose(); this.images.close(); this.input?.mentions?.dispose();
   }
   admits(p = this.presentation, editor = this.editor) { return Boolean(!this.disposed && editor && this.callbacks.admits(p, editor)); }
