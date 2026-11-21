@@ -10,7 +10,9 @@ no old allocation/approval workflow resumes. Current Landing14500 and12902 gover
 Reconcile to actual277 owners before fresh work: retain its inline Reply,
 quote/selected-source behavior, writing/menus and pane navigation. Plain Return
 uses the visibly outlined message/dossier, including the compact head, and
-invokes the same Reply owner as its arrow. With none visible it opens the page's
+invokes the same Reply owner as its arrow. Current907 dossier Reply answers
+the newest loaded message; invoke that existing title-bar control. A whole
+message uses inlineReply, and selected/lit passages retain quoted Reader. With none visible it opens the page's
 existing pencil sheet without moving its route/history; drawer dismissal is
 part of that current write owner. A visible focus-ring control keeps its Return;
 writing, composing/modified keys and popups keep their own. Pointer rename and
