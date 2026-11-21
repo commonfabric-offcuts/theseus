@@ -184,6 +184,7 @@ HELD_WORDS = "(held: its author is editing it)"
 USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute/core.sock) [--json] [--outbox DIR] "
          "{binding | view FILE|- | command FILE|- | outcomes [--reached | --ended] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR | coordinator OUTCOME ACTOR|--none | participant TOPIC ACTOR "
+         "| seat-add OUTCOME NAME --role TEXT|- [--operation ID] | seat-retry OUTCOME SEAT_REQUEST [--operation ID] | seat-status OUTCOME [SEAT_REQUEST] "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
          "| inbox | reply MESSAGE [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--part] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
          "| post TOPIC [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--reply-to MESSAGE] [--divergence-reason TEXT] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
@@ -275,6 +276,18 @@ def _parser():
     outcome.add_argument("--kind", choices=("reach", "keep"))
     outcome.add_argument("--purpose", default="")
     outcome.add_argument("--team", default="")
+    seat_add = verb("seat-add")
+    seat_add.add_argument("outcome")
+    seat_add.add_argument("name")
+    seat_add.add_argument("--role", required=True)
+    seat_add.add_argument("--operation")
+    seat_retry = verb("seat-retry")
+    seat_retry.add_argument("outcome")
+    seat_retry.add_argument("seat_request")
+    seat_retry.add_argument("--operation")
+    seat_status = verb("seat-status")
+    seat_status.add_argument("outcome")
+    seat_status.add_argument("seat_request", nargs="?")
     owner = verb("owner")
     owner.add_argument("outcome")
     owner.add_argument("owner")
@@ -829,6 +842,70 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         archived = self.last_page["groups"]["archived"]
         if archived:
             self.out.plain("archived (%d): topics %s --archived" % (archived, self.options.outcome))
+
+    def do_seat_add(self):
+        from .hosted_seats import KIND
+        options = self.options
+        role = self.bounded_text(self.stdin) if options.role == '-' else options.role
+        args = {'name': options.name, 'role': role}
+        return self._seat_command(KIND, {'workspace_id': options.outcome}, args)
+
+    def do_seat_retry(self):
+        from .hosted_seats import RETRY_KIND
+        return self._seat_command(RETRY_KIND, {'workspace_id': self.options.outcome,
+                                  'seat_request_id': self.options.seat_request}, {})
+
+    def _seat_command(self, kind, target, args):
+        options = self.options
+        operation = self.operation_of()
+        saved = None
+        if operation is not None:
+            directory = self.outbox()
+            path = directory / (operation + '.request.json')
+            if os.path.lexists(path):
+                saved = _input(str(path), None)
+                envelope = _request(saved, 'command')
+                if saved['binding'] != self.binding:
+                    self.refuse('BINDING_MISMATCH', 'This saved Add belongs to another binding; nothing was sent')
+                if (envelope['operation_id'] != operation or envelope['kind'] != kind
+                        or envelope['target'] != target or envelope['args'] != args):
+                    self.refuse('OPERATION_PAYLOAD_MISMATCH', 'This operation already names different Add words or a different outcome; nothing was sent')
+        if saved is not None:
+            result = self.dispatch(directory, saved)
+        else:
+            if kind == 'workspace.hosted_seat_retry':
+                seat = self.view('hosted_seat', target)['seat']
+                expected = {'seat_revision': seat['version']}
+            else:
+                workspace = self.view('workspace', {'workspace_id': options.outcome})['workspace']
+                expected = {'workspace_revision': workspace['version']}
+            result = self.command(kind, target, args, expected, operation=operation)
+        identity = result['seat_request_id']
+        answer = self.read_back('hosted_seat', {'workspace_id': options.outcome, 'seat_request_id': identity},
+            {'what': 'The seat request was recorded', 'kind': kind, 'it': identity},
+            'seat-status %s %s' % (options.outcome, identity))
+        seat = answer.get('seat') or {}
+        if seat.get('id') != identity or seat.get('workspace_id') != options.outcome or seat.get('agent_id') != result['agent']['id']:
+            _diagnostic(self.out.stderr, 'READ_BACK_UNCONFIRMED: invitation %s was recorded (operation %s); its returned seat identity did not match. Keep the original request.' % (identity, self.operation))
+            raise Failed(1, recorded=True)
+        self._seat_line(seat)
+
+    def _seat_line(self, seat):
+        reason = ' (%s)' % seat['reason'] if seat['reason'] else ''
+        self.out.plain('%s: %s at %s%s [%s]' % (seat['agent_id'], seat['state'], seat['stage'], reason, seat['id']))
+        if seat['first_message_id']:
+            self.out.plain('first task in Conversation: %s' % seat['first_message_id'])
+
+    def do_seat_status(self):
+        options = self.options
+        if options.seat_request:
+            self._seat_line(self.view('hosted_seat', {'workspace_id': options.outcome, 'seat_request_id': options.seat_request})['seat'])
+            return
+        items = self.pages('hosted_seats', {'workspace_id': options.outcome})
+        for seat in items:
+            self._seat_line(seat)
+        if not items:
+            self.out.plain('no headless seats on this team')
 
     def conversation_line(self, outcome):
         """`conversation t-… in "TITLE": fable answers; 1 new`, or None when the outcome has none yet."""

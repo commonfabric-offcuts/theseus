@@ -15,6 +15,7 @@ from .runner import RunnerError
 from .store import StoreOpenError
 from .effects_watch import NativeWatch
 from .profile import ProfileError, load_profile
+from .seat_host import SeatHost
 
 
 _UNCONFIRMED_WATCHES = []
@@ -49,12 +50,14 @@ def _integer(value, nullable=False):
 class EffectsLoop:
     """Serial foreground scheduler using one caller-owned guard and watch.
 
-    The mapping is a validated startup snapshot. Selected route/config/pin
+    The operator mapping is a validated startup snapshot, with confirmed
+    managed-seat routes adopted by this same host. Selected route/config/pin
     checks are repeated for each captured claim. No operation here acknowledges
     a delivery, provisions a pin, creates a service or reloads that mapping.
     """
     def __init__(self, profile, store, guard, watch, routes, *, selected_executable,
-                 resume_version=None, resume_reason=None, clock=None, emit=None, hosted=frozenset(), host_log=None):
+                 resume_version=None, resume_reason=None, clock=None, emit=None, hosted=frozenset(), host_log=None,
+                 seat_directory=None, operator_routes=None, seat_template=None):
         self.profile, self.store, self.guard, self.watch = profile, store, guard, watch
         self.routes = dict(routes)
         # Only these actors are ever claimed; people and unrouted agents stay pending.
@@ -98,6 +101,8 @@ class EffectsLoop:
                     homes.add(route.destination['codex_home'])
             self.host = codex_host.Host(configs, core=self._core, settle=self._hosted_settled, watch=watch,
                                         log=host_log, monotonic=self.clock.monotonic, protected_homes=homes)
+        self.seats = (SeatHost(self, directory=seat_directory, operator_routes=operator_routes, template_actor=seat_template)
+                      if seat_directory is not None else None)
 
     def _event(self, kind, **fields):
         self.emit(dict(event=kind, **fields))
@@ -245,6 +250,8 @@ class EffectsLoop:
         self.reconcile_at = self.clock.monotonic()+60
         if hint: self.last_hint_read = self.clock.monotonic()
         self.dirty_at = None
+        if self.seats is not None and self.token is not None:
+            self.seats.read(value['hosted_seats'])
 
     def _finish(self, claim, outcome, turn=None, reason=None, from_turn=None):
         try:
@@ -497,6 +504,8 @@ class EffectsLoop:
                 # input, and wait for each exit (design §6.3).
                 if self.host is not None:
                     self.host.advance_deadlines()
+                if self.seats is not None:
+                    self.seats.tick()
                 if self.watch.stopped and (self.host is None or self.host.stop_step(self.watch.stop_count)):
                     return self._stopped()
                 now,wall = self.clock.monotonic(),self.clock.wall_ms()
@@ -525,6 +534,8 @@ class EffectsLoop:
                     if result: return result
                     continue
                 deadlines = [self._read_at()]
+                if self.seats is not None and self.seats.deadline is not None:
+                    deadlines.append(self.seats.deadline)
                 if self.host is not None and self.host.next_deadline() is not None:
                     deadlines.append(self.host.next_deadline())
                 if self.token is None:
@@ -542,7 +553,9 @@ class EffectsLoop:
         except LoopFault as error:
             return self._fault(error.reason,error.child,error.detail)
         except codex_host.HostFault as error:
-            return self._fault(error.reason)
+            if error.reason in ('runner_lease_lost', 'seat_runner_paused'):
+                return self._result('paused', pause_saved=True) if error.reason == 'seat_runner_paused' else self._result('ownership_lost', pause_saved=False)
+            return self._fault('storage_failure' if error.reason == 'seat_schedule_invalid' else error.reason)
         except (Exception,KeyboardInterrupt):
             self.cleanup_uncertain = True
             return self._fault('storage_failure')
@@ -556,7 +569,7 @@ def _fault_code(cause):
 
 
 def run_foreground(profile_path, runner_id, routes_path, *, resume_version=None, resume_reason=None,
-                   selected_executable=None, emit=None, host_dir=None):
+                   selected_executable=None, emit=None, host_dir=None, seat_template=None):
     """Dedicated process entry. No successful return implies activation.
 
     No non-SQLite descriptor on db_path may be closed while a SQLite connection
@@ -583,7 +596,8 @@ def run_foreground(profile_path, runner_id, routes_path, *, resume_version=None,
         guard.__enter__()
         loop = EffectsLoop(profile,store,guard,watch,routes,
             selected_executable=executable,resume_version=resume_version,resume_reason=resume_reason,emit=emit,
-            hosted=hosted,host_log=host_log)
+            hosted=hosted,host_log=host_log,operator_routes=routes_path,seat_template=seat_template,
+            seat_directory=host_dir or str(profile.db_path.parent / 'hosted-runner'))
         result = loop.run()
     except (Exception,KeyboardInterrupt) as error:
         # Startup messages are fixed and contain no route/profile or exception
@@ -639,6 +653,7 @@ def main(argv=None):
     parser.add_argument('--resume-reason',choices=['cleanup_confirmed'],
                         help='why this resume is safe, recorded with it: the supervisor saw the paused child\'s group gone')
     parser.add_argument('--host-dir',help='private directory for the host event log, required by hosted routes')
+    parser.add_argument('--seat-template',help='existing hosted actor whose reviewed runtime settings new seats use')
     parser.add_argument('--broker-executable', help='explicit configured broker when the runner uses a pinned source')
     args = parser.parse_args(argv)
     if args.resume_reason is not None and args.resume_version is None:
@@ -647,7 +662,7 @@ def main(argv=None):
         print(json.dumps(event,separators=(',',':')),flush=True)
     result = run_foreground(args.profile,args.runner_id,args.routes,
                             resume_version=args.resume_version,resume_reason=args.resume_reason,
-                            emit=report,host_dir=args.host_dir,
+                            emit=report,host_dir=args.host_dir,seat_template=args.seat_template,
                             **({'selected_executable': args.broker_executable} if args.broker_executable else {}))
     report(result)
     return 0 if result['status']=='stopped' else (75 if result['status']=='idle_lease_lost' else 2)

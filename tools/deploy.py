@@ -51,7 +51,7 @@ from tools import checks as outcome_checks, known_reds as known_reds_check, rele
 PYTHON = "/usr/bin/python3"
 Config = collections.namedtuple(
     "Config", "live instance python server_profile port tailnet_origin runner_profile runner_id routes outcome reporter_profile "
-    "release_branch repository pipeline_outcome pipeline_instance pipeline_broker pipeline_profile", defaults=(None, None, None, None))
+    "release_branch repository pipeline_outcome pipeline_instance pipeline_broker pipeline_profile seat_template", defaults=(None, None, None, None, None))
 REQUIRED_KEYS = ("live", "instance", "server_profile", "port", "runner_profile", "runner_id", "routes")
 # outcome: the outcome whose checks this deploy measures (docs/targets.md); reporter_profile: the profile of a member, not
 # its coordinator, that reads them, opens fix topics, writes the candidate's run and moves the release piece (D27).
@@ -59,7 +59,7 @@ REQUIRED_KEYS = ("live", "instance", "server_profile", "port", "runner_profile",
 # read from (owner/name), which --train needs (tools/train.py). After recording a verified new release,
 # release_branch is also fast-forwarded on the live checkout's origin and read back from that remote.
 OPTIONAL_KEYS = ("python", "tailnet_origin", "outcome", "reporter_profile", "release_branch", "repository",
-                 "pipeline_outcome", "pipeline_instance", "pipeline_broker", "pipeline_profile")
+                 "pipeline_outcome", "pipeline_instance", "pipeline_broker", "pipeline_profile", "seat_template")
 
 
 class Refused(Exception):
@@ -84,6 +84,8 @@ def load_config(path):
     strings = [key for key in REQUIRED_KEYS + OPTIONAL_KEYS if key in raw and key != "port"]
     require(all(isinstance(raw[key], str) and raw[key] for key in strings), "deploy config values must be non-empty strings")
     require(type(raw["port"]) is int and 0 < raw["port"] < 65536, "deploy config: port must be a TCP port number")
+    require('seat_template' not in raw or re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', raw['seat_template']),
+            'deploy config: seat_template must name an existing actor')
     for key in ("live", "instance") + (("python",) if "python" in raw else ()):
         require(os.path.isabs(raw[key]), "deploy config: %s must be an absolute path" % key)
     instance = Path(raw["instance"])
@@ -108,7 +110,8 @@ def load_config(path):
                   release_branch=raw.get("release_branch"), repository=raw.get("repository"),
                   pipeline_outcome=raw.get('pipeline_outcome'), pipeline_instance=raw.get('pipeline_instance'),
                   pipeline_broker=Path(raw['pipeline_broker']) if raw.get('pipeline_broker') else None,
-                  pipeline_profile=Path(raw['pipeline_profile']) if raw.get('pipeline_profile') else None)
+                  pipeline_profile=Path(raw['pipeline_profile']) if raw.get('pipeline_profile') else None,
+                  seat_template=raw.get('seat_template'))
 
 
 def server_argv(config):
@@ -153,6 +156,8 @@ def runner_argv(config, source=_CURRENT_SOURCE):
             "--runner-id", config.runner_id, "--routes", str(config.routes)]
     if source:
         argv += ['--broker-executable', str(config.live / 'bin/aim-next-codex-broker')]
+    if getattr(config, 'seat_template', None):
+        argv += ['--seat-template', config.seat_template]
     return argv
 
 

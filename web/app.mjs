@@ -55,6 +55,7 @@ import { NotebookCreate } from './notebook-create.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from './quick-create.mjs';
 import { PurposeLine } from './outcome-purpose.mjs';
 import { AgentInvite, Invitation } from './agent-invite.mjs';
+import { HeadlessSeatControl } from './headless-seat.mjs';
 import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf, paintNoteCorner } from './marks.mjs';
 import { replyLine, paintReplyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
@@ -4635,7 +4636,7 @@ function outcomePages(workspace,recorded) {
 }
 // An outcome's team, which its owner and its coordinator may change. The owner
 // cannot be removed, so the owner's chip is fixed.
-let teamPanel=null,purposeLine=null,teamInvite=null,coordinatorChoice=null,teamReadSerial=0;
+let teamPanel=null,purposeLine=null,teamInvite=null,headlessSeats=null,headlessGuardPage=null,coordinatorChoice=null,teamReadSerial=0;
 async function paintTeam(workspace,refresh,loaded=()=>{}) {
   const serial=++teamReadSerial;
   const send=(id,present)=>setPresence('workspace.member_set',{workspace_id:workspace.id},'workspace_revision',workspace.version,{actor_id:id,present})
@@ -4665,15 +4666,26 @@ async function paintTeam(workspace,refresh,loaded=()=>{}) {
   teamPanel.paint(members,organises(workspace,bootstrap.actor));teamPanel.error='';
   // The shared Add popover hosts the existing invitation form; its prompt stays on the page.
   if(teamInvite?.outcome!==workspace.id){
+    headlessSeats?.dispose();headlessSeats=null;
     teamInvite?.dispose();
     teamInvite=new AgentInvite({host:$('team-invite'),panel:teamPanel,invitation:new Invitation({api,bootstrap}),workspace:()=>teamInvite.current,invited:()=>run(refresh)});
     teamInvite.outcome=workspace.id;
     const closed=teamPanel.closed;teamPanel.closed=()=>{closed?.();coordinatorChoice.toggle(false,false);};
+    headlessSeats=new HeadlessSeatControl({panel:teamPanel,api,bootstrap,workspace:{id:workspace.id,version:workspace.version},
+      closeOthers:()=>{teamInvite?.toggle(false,false);coordinatorChoice?.toggle(false,false);}});
+    const inviteAction=teamInvite.opener.onclick;
+    teamInvite.opener.onclick=()=>{headlessSeats?.toggle(false,false);inviteAction();};
   }
+  const teamPage=shell.page;
+  headlessSeats.current=()=>!retired&&shell.page===teamPage;
+  headlessSeats.added=()=>run(refresh);
+  if(headlessGuardPage!==teamPage){headlessGuardPage=teamPage;shell.guard(()=>shell.page===teamPage&&Boolean(headlessSeats?.unprotectedWriting));}
   teamInvite.current={id:workspace.id,version:workspace.version};
   teamInvite.paint(organises(workspace,bootstrap.actor));teamPanel.paintChoices();
   $('outcome-team').hidden=false;
   loaded(members);
+  await headlessSeats.refresh({id:workspace.id,version:workspace.version},members,workspace.owner_id===bootstrap.actor);
+  return !failed;
 }
 // New topic is one title line in the topic list: Return starts the topic with
 // the reader in it and opens it; people and the first message are added there.

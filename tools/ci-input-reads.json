@@ -5511,5 +5511,219 @@
       "inputs": [],
       "scope": "generated/system/product"
     }
+  },
+  "tests/fixtures/headless_seat_1002.py": {
+    "3e9d814d39915d4b3757f1407446bf6934135cba0f6d1ca6d7f81b28b10c006c": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "0bf680a488dbb54232a4c8be74ddef6f3070a96c49da44a9753cf5ec518a961f": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "0bf680a488dbb54232a4c8be74ddef6f3070a96c49da44a9753cf5ec518a961f:1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/headless_seat_1002_native.mjs": {
+    "6fb8bae121b78868160c97c969bc671f794c0047646c319fb580ab48d785ee66": {
+      "scope": "repository",
+      "inputs": [
+        "aim_next/hosted_seats.py",
+        "aim_next/seat_host.py",
+        "aim_next/effects_runner.py",
+        "aim_next/runner.py",
+        "aim_next/codex_host.py",
+        "aim_next/store.py",
+        "aim_next/migrations.py",
+        "aim_next/validation.py",
+        "aim_next/cli.py",
+        "tools/deploy.py",
+        "web/headless-seat.mjs",
+        "web/seat-journal.mjs",
+        "web/app.mjs",
+        "web/outcome-refresh.mjs",
+        "web/people.mjs",
+        "web/aim.css",
+        "tests/headless_seat_1002_native.mjs",
+        "tests/fixtures/headless_seat_1002.py",
+        "tests/fixtures/fake_codex_app_server.py",
+        "docs/headless-seat-1002.md",
+        "web/outcome-page-layout.mjs"
+      ]
+    },
+    "7513766ef9310c413a37391a52cb7a7d0989c38fc2b62805ee9c0b472b7370ca": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "6fb8bae121b78868160c97c969bc671f794c0047646c319fb580ab48d785ee66:1": {
+      "scope": "repository",
+      "inputs": [
+        "aim_next/hosted_seats.py",
+        "aim_next/seat_host.py",
+        "aim_next/effects_runner.py",
+        "aim_next/runner.py",
+        "aim_next/codex_host.py",
+        "aim_next/store.py",
+        "aim_next/migrations.py",
+        "aim_next/validation.py",
+        "aim_next/cli.py",
+        "tools/deploy.py",
+        "web/headless-seat.mjs",
+        "web/seat-journal.mjs",
+        "web/app.mjs",
+        "web/outcome-refresh.mjs",
+        "web/people.mjs",
+        "web/aim.css",
+        "tests/headless_seat_1002_native.mjs",
+        "tests/fixtures/headless_seat_1002.py",
+        "tests/fixtures/fake_codex_app_server.py",
+        "docs/headless-seat-1002.md",
+        "web/outcome-page-layout.mjs"
+      ]
+    }
+  },
+  "tests/test_seat_cli_1002.py": {
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:3": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:4": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "882526a102cf1665a892977e6f0737aad7a37ea1a50badcc4c32deeb4e62f406": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/test_seat_host_1002.py": {
+    "2416bc626ca4f9fe5a407d5eea24a3a31fd7e5df79f289befa5b376236d3add6": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "2416bc626ca4f9fe5a407d5eea24a3a31fd7e5df79f289befa5b376236d3add6:1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "2416bc626ca4f9fe5a407d5eea24a3a31fd7e5df79f289befa5b376236d3add6:2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/test_seat_host_boundaries_1002.py": {
+    "08357a3094e4e8ecff73a1d586f060dc332e9308566fcdb8f0940fef5618d113": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "3e8f031c455745641a964d5ce4b6b37cedd395c29786321efa75922f21721f70": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/test_seat_migration_1002.py": {
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:3": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/test_rail_dimming_1004.py": {
+    "2f8e14d7618a05ea5658f3affc224e3125a76e6a7ea34c5ec88eaca68d9c8ff2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "46e3d8e365c73703c546f640fae1c7e41a84dd878b6de62948ab7f8634f98bd4": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "46e3d8e365c73703c546f640fae1c7e41a84dd878b6de62948ab7f8634f98bd4:1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:3": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:4": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "46e3d8e365c73703c546f640fae1c7e41a84dd878b6de62948ab7f8634f98bd4:2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "2f8e14d7618a05ea5658f3affc224e3125a76e6a7ea34c5ec88eaca68d9c8ff2:1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "46e3d8e365c73703c546f640fae1c7e41a84dd878b6de62948ab7f8634f98bd4:3": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:5": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:6": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:7": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:8": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:9": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:10": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
   }
 }

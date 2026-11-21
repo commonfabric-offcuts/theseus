@@ -42,7 +42,12 @@ export class OutcomePageLayout {
   layout() {
     const wide = Boolean(this.media?.matches);
     if (wide) this.host.setAttribute('data-outcome-wide', ''); else this.host.removeAttribute('data-outcome-wide');
-    if (wide) { this.host.append(this.tabs, this.section); this.section.append(this.team); this.paintTabs(); }
+    if (wide) {
+      // A workspace repaint must not detach the Team while someone is typing.
+      if (this.tabs.parentNode !== this.host || this.section.parentNode !== this.host) this.host.append(this.tabs, this.section);
+      if (this.team.parentNode !== this.section) this.section.append(this.team);
+      this.paintTabs();
+    }
     else {
       this.tabs.remove();
       if (this.teamParent && this.team.parentNode !== this.teamParent) this.teamParent.insertBefore(this.team, this.teamNext?.parentNode === this.teamParent ? this.teamNext : null);
