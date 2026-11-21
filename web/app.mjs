@@ -1308,7 +1308,8 @@ function placeLine() {
 function paintMoreMessages() {
   const view = stackFeed ? shownView(stackFeed.state) : null, aside = stackFeed?.state.belowCount;
   $('more-messages').textContent = aside ? 'Earlier messages' : 'More messages';
-  $('more-messages').hidden = Boolean(aside && !view.asideShown) || views.olderCursor === null || (!view?.only &&
+  // With the archive shelf drawn, Archived (N) is on the shelf, not a More to open first.
+  $('more-messages').hidden = Boolean(aside && !view.asideShown && !view.shelved) || views.olderCursor === null || (!view?.only &&
     [...$('messages').children].some(child => child.dataset?.line === 'older' && !child.classList.contains('new-line-read')));
 }
 function paintViews(kind) {
