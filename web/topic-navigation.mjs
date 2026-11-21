@@ -1,3 +1,4 @@
+import { closingTopics, projectClosingTopics } from './topic-close-projection.mjs';
 import { validCardId } from './card-details.mjs';
 import { currentImages } from './upload-state.mjs';
 import { paintState, paintWork, waitingQuestion } from './topic-state.mjs';
@@ -174,7 +175,7 @@ export class TopicPages {
     const items = [...loaded.values()].filter(item => item.id !== current?.id || here)
       .map(item => item.id === current?.id ? { ...item, ...current } : item);
     if (here && !loaded.has(current.id)) items.push(current);
-    return items.sort((a, b) => compare(key(a), key(b)));
+    return projectClosingTopics(this.instanceId, this.workspaceId, items.sort((a, b) => compare(key(a), key(b))));
   }
   accept(answer, cursor = null) {
     if (cursor !== null && (!this.started || cursor !== this.next)) return false;
@@ -383,6 +384,8 @@ export class TopicRail {
       if (touch.clientX < box.left || touch.clientX > box.right || touch.clientY < box.top || touch.clientY > box.bottom) event.preventDefault();
     }, { passive: false });
     this.links = new Map();
+    this.closeProjection = closingTopics(host.ownerDocument ?? globalThis.document);
+    this.stopCloseProjection = this.closeProjection?.subscribe(this, (rail, change) => rail.closingChanged(change));
     // The person's own order of these topics (outline-order.mjs): a move, here
     // or on another device, shows wherever the list is drawn. It is asked for,
     // so it shows under the pointer too.
@@ -390,6 +393,19 @@ export class TopicRail {
     book.listen(scope => { if (scope === this.scope) this.paint(true); }, host);
     this.paint();
   }
+  // An intentional kept act, distinct from a background read publication.
+  closingChanged(change) {
+    if (change.instanceId !== this.pages.instanceId || change.workspaceId !== this.pages.workspaceId) return;
+    for (const list of this.lists) for (const link of [...list.host.children]) {
+      if (link.dataset?.topicId !== change.topic.id) continue;
+      const item = this.rowItems.get(link);
+      if (item && !this.closeProjection.project(this.pages.instanceId, this.pages.workspaceId, [item]).length) {
+        link.remove(); this.links.delete(item.id);
+      }
+    }
+    this.paint(true); this.updated?.();
+  }
+  disposeProjection() { this.stopCloseProjection?.(); this.stopCloseProjection = null; }
   // Which folded lines this person keeps open, on this browser.
   get storageKey() { return `aim-next.topic-lists.${this.pages.instanceId}.${this.reader}`; }
   kept() {
