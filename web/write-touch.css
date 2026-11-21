@@ -3,15 +3,18 @@
    for a finger, keeps typed words at 16px (an iPhone zooms into anything smaller), keeps the Reader's one-line
    bar while reading, and gives the words the full width on a narrow page. */
 @media (pointer:coarse){
-  :is(dialog.composer-home[open]:not(.notebook-mode), dialog#reader[open] #reader-composer, .card-reply-composer){--sheet-chip-h:2rem}
-  :is(dialog.composer-home[open]:not(.notebook-mode), dialog#reader[open] #reader-composer, .card-reply-composer, .message-edit-field) :is(textarea, input){font-size:1rem}
+  :is(dialog.composer-home[open]:not(.notebook-mode), dialog.composer-home:not([open]):not(.notebook-mode), dialog#reader[open] #reader-composer, .card-reply-composer){--sheet-chip-h:2rem}
+  :is(dialog.composer-home[open]:not(.notebook-mode), dialog.composer-home:not([open]):not(.notebook-mode), dialog#reader[open] #reader-composer, .card-reply-composer, .message-edit-field) :is(textarea, input){font-size:1rem}
   .message-edit-field{font-size:1rem}
   :is(dialog#reader[open]:not([data-card-reply]) #reader-composer, .card-reply-composer)>:is(.plus-button, .reply-height, .card-reply-close){width:2.5rem;min-width:2.5rem;height:2.5rem}
   :is(dialog#reader[open]:not([data-card-reply]) #reader-composer, .card-reply-composer)>.compose-send{height:2.5rem;padding:0 1rem;font-size:.9rem}
   :is(dialog#reader[open]:not([data-card-reply]) #reader-composer, .card-reply-composer)>.compose-send>[aria-hidden=true]{display:none}
-  dialog.composer-home[open]:not(.notebook-mode) #inline-composer>:is(.plus-button, .sheet-close){width:2.5rem;min-width:2.5rem;height:2.5rem}
-  dialog.composer-home[open]:not(.notebook-mode) #inline-composer>.compose-send{height:2.5rem;padding:0 1.1rem;font-size:.9rem}
-  dialog.composer-home[open]:not(.notebook-mode) #inline-composer>.compose-send>[aria-hidden=true]{display:none}
+  dialog.composer-home[open]:not(.notebook-mode) #inline-composer>:is(.plus-button, .sheet-close),
+  dialog.composer-home:not([open]):not(.notebook-mode) #inline-composer>:is(.plus-button, .sheet-close){width:2.5rem;min-width:2.5rem;height:2.5rem}
+  dialog.composer-home[open]:not(.notebook-mode) #inline-composer>.compose-send,
+  dialog.composer-home:not([open]):not(.notebook-mode) #inline-composer>.compose-send{height:2.5rem;padding:0 1.1rem;font-size:.9rem}
+  dialog.composer-home[open]:not(.notebook-mode) #inline-composer>.compose-send>[aria-hidden=true],
+  dialog.composer-home:not([open]):not(.notebook-mode) #inline-composer>.compose-send>[aria-hidden=true]{display:none}
   /* The Reader's bar keeps the phone's reading line: the who words and Send wait until writing starts, 👍 stands
      in for Send while nothing is written. */
   dialog#reader[open]:not([data-card-reply]) #reader-composer[data-compose=line]{
@@ -30,6 +33,7 @@
   .card-reply-composer>.reply-height{grid-area:height}
   .card-reply-composer>.compose-send{grid-area:send}
   /* The sheet's header may wrap: who it goes to is never cut off. */
-  dialog.composer-home[open]:not(.notebook-mode) #inline-composer{grid-template-columns:auto minmax(0,1fr) auto auto;
+  dialog.composer-home[open]:not(.notebook-mode) #inline-composer,
+  dialog.composer-home:not([open]):not(.notebook-mode) #inline-composer{grid-template-columns:auto minmax(0,1fr) auto auto;
     grid-template-areas:"kinds status status close" "who who to to" "notice notice notice notice" "panel panel panel panel" "strip strip strip strip" "field field field field" "plus review act act"}
 }
