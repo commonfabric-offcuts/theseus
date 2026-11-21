@@ -44,6 +44,7 @@ try {
     cdp=await browser.newBrowserCDPSession();profile=(await cdp.send('Browser.getBrowserCommandLine')).arguments.find(a=>a.startsWith('--user-data-dir='))?.slice(16);assert.ok(profile);
   }
   result.engine=browser.browserType().name();result.version=browser.version();assert.equal(result.engine,requestedEngine);await observe();assert.ok(owned.size);
+  result.qualifications=requestedEngine==='webkit'?["Tab uses native Option-Tab, Safari's existing all-controls key; plain Tab skips buttons by default.","No native WebKit composition API; IME remains unrun here."]:[];
   const until=async(fn,why)=>{const end=Date.now()+10000;while(Date.now()<end){const value=await fn();if(value)return value;await new Promise(r=>setTimeout(r,30));}throw Error('Timed out: '+why);};
   const bySlug=new Map(cases.map(c=>[`reading-784-${c.id}-${c.size}-${c.theme}`,c]));
   const pageFactory=async(slug,_size,_theme,{url,beforeNavigate})=>{
@@ -53,7 +54,7 @@ try {
     const session=requestedEngine==='chromium'?await context.newCDPSession(page):null;
     let touch=null;
     const p={errors,slug,evaluate:expression=>page.evaluate(expression),
-      async key(key,modifiers=0){const names=[];if(modifiers&1)names.push('Alt');if(modifiers&2)names.push('Control');if(modifiers&4)names.push('Meta');if(modifiers&8)names.push('Shift');await page.keyboard.press([...names,key].join('+'));},
+      async key(key,modifiers=0){const names=[];if((modifiers&1)||(requestedEngine==='webkit'&&key==='Tab'))names.push('Alt');if(modifiers&2)names.push('Control');if(modifiers&4)names.push('Meta');if(modifiers&8)names.push('Shift');await page.keyboard.press([...names,key].join('+'));},
       async send(method,args={}){
         if(method==='Page.addScriptToEvaluateOnNewDocument')return page.addInitScript(args.source);
         if(method==='Emulation.setDeviceMetricsOverride')return page.setViewportSize({width:args.width,height:args.height});
