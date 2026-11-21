@@ -13,6 +13,8 @@ import { currentImages, imageBarrier } from './upload-state.mjs';
 import { composerWidth } from './composer-width.mjs';
 import { ReaderLayout } from './layout.mjs';
 import { reach } from './arrow-reach.mjs';
+import { departing, landingIn, land, rowAppears, settle } from './paper-flight.mjs';
+import { pencilKey } from './pencil-keys.mjs';
 
 
 // The inline DOM adapter shares the existing registry/session/upload owners.
@@ -103,6 +105,10 @@ export class InlineComposer {
         event.preventDefault(); if (!event.repeat) this.send();
       }
     });
+    if (!cardReply) {
+      this.pencilKey = event => pencilKey(event, this);
+      this.root.ownerDocument.addEventListener('keydown', this.pencilKey, true);
+    }
     this.field.addEventListener('paste', event => this.paste(event));
     this.field.addEventListener('dragover', event => {
       if (this.admits() && !this.state().addDisabled && [...(event.dataTransfer?.items ?? [])].some(item => item.type.startsWith('image/'))) event.preventDefault();
@@ -155,7 +161,8 @@ export class InlineComposer {
   $(name) { return this.root.querySelector(`#${this.prefix ?? 'inline-'}${name}`); }
   get editor() { return this.presentation?.editors.reply; }
   dispose() {
-    this.disposed = true; window.removeEventListener('focus', this.windowFocus);
+    this.disposed = true; this.sendOpening = null; window.removeEventListener('focus', this.windowFocus);
+    if (this.pencilKey) this.root.ownerDocument.removeEventListener('keydown', this.pencilKey, true);
     this.bar.dispose(); this.images.close(); this.input?.mentions?.dispose();
   }
   admits(p = this.presentation, editor = this.editor) { return Boolean(!this.disposed && editor && this.callbacks.admits(p, editor)); }
@@ -193,6 +200,8 @@ export class InlineComposer {
   }
   paintKind() {
     const note = this.kind !== 'message';
+    // A Note is written on the Notebook's paper (prototype, paper-flight.css).
+    document.getElementById('inline-composer')?.setAttribute('data-kind', this.kind);
     this.$('kind').hidden = this.callbacks.notebook?.mayWrite !== true;
     for (const kind of this.kinds) {
       const button = this.$('kind-' + kind);
@@ -238,6 +247,11 @@ export class InlineComposer {
     const p = this.presentation, editor = this.editor, opening = this.opening;
     if (job.editor !== editor || !this.admits(p, editor) || !job.id || job.busy) return;
     job.busy = true; this.paintStatus();
+    // Send into the Notebook (prototype, paper-flight.mjs): the writing as it stands, before it is cleared and the
+    // sheet closes. With the Notebook shut, in two stages: the paper goes onto its page's row in the right rail,
+    // and the Notebook then opens out of that row. With it open already, the paper flies into it.
+    const shut = !document.getElementById('notebook-sheet-dialog')?.open;
+    let flight = this.pageUnchanged(job) ? departing(this.$('composer') ?? document.querySelector('#inline-composer'), job.body, { holding: !shut }) : null;
     try {
       if (this.pageUnchanged(job)) {
         let version;
@@ -251,9 +265,19 @@ export class InlineComposer {
         this.drawEditor();
       }
       this.bar.fold(); if (this.sheet.open) this.sheet.close();
-      await this.callbacks.notebook.open(job.id, { mode: job.kind === 'note-card' ? 'cards' : 'text', beside: true, ...(job.card ? { card: job.card } : {}), opener: document.querySelector('#new-message') });
+      const open = () => this.callbacks.notebook.open(job.id, { mode: job.kind === 'note-card' ? 'cards' : 'text', beside: true, ...(job.card ? { card: job.card } : {}), opener: document.querySelector('#new-message') });
+      if (flight && shut) {
+        const row = await rowAppears(document, job.id);
+        const landed = land(flight, row); flight = null; await landed;
+        // A beat on the shelf, then the Notebook opens out of the row (NotebookSheet.open).
+        await settle(row?.getBoundingClientRect ? row : null);
+        await open();
+      } else {
+        await open();
+        land(flight, landingIn(document, job.card ?? null)); flight = null;
+      }
       this.notebookJobs.set(editor, this.pageJobs(editor).filter(other => other !== job));
-    } finally { job.busy = false; if (this.admits(p, editor)) this.paintStatus(); }
+    } finally { land(flight, null); job.busy = false; if (this.admits(p, editor)) this.paintStatus(); }
   }
   pageUnchanged(job) {
     const editor = job.editor;
@@ -506,20 +530,36 @@ export class InlineComposer {
       const sent = this.callbacks.send(editor, p);
       if (this.admits(p, editor) && editor.draft !== draft) { this.drawEditor(); this.paintRecipients(); this.paintStatus(); this.paintChoice(); this.field.focus(); }
       const version = editor.localVersion, cycle = editor.clientCycleId, noticeVersion = this.noticeVersion;
+      const completion = { p, editor, opening, version, cycle, noticeVersion,
+        item: editor.submissions?.find(item => item.status === 'preparing' && !item.detached) };
+      if (this.cardReply) this.sendOpening = completion;
       const result = await sent;
-      // Only confirmed publication closes this opening. An interrupted or refused
-      // act keeps its recovery controls in front; a later opening or new writing
-      // is never dismissed by an older answer.
-      // Image selection/capture does not edit text. Only selections owned by
-      // the successor count here; the sent submission owns its frozen images.
-      if (result?.status === 'confirmed' && this.admits(p, editor) && (this.popped || this.cardReply) &&
-          this.opening === opening && editor.localVersion === version && editor.clientCycleId === cycle &&
-          !currentImages(editor).length && !imageBarrier(editor) &&
-          !this.imagePicker && !this.images?.open && !this.bar.panel && !this.naming.sheet.open &&
-          this.noticeVersion === noticeVersion) {
-        if (this.cardReply) await this.callbacks.sent?.(p, result);
-        else { this.bar.fold(); this.sheet.close(); }
-      }
+      return await this.finishSend(completion, result);
     } catch (error) { this.notice(error, p, editor); }
+  }
+  published(item) {
+    const completion = this.sendOpening;
+    if (completion?.item === item && !item.detached) {
+      this.finishSend(completion, item)?.catch(error => this.notice(error, completion.p, completion.editor));
+    }
+  }
+  async finishSend(completion, result) {
+    if (completion.finished || result?.status !== 'confirmed' || result.detached || completion.editor.authorityRecovery) return;
+    completion.finished = true;
+    if (this.sendOpening === completion) this.sendOpening = null;
+    const { p, editor, opening, version, cycle, noticeVersion } = completion;
+    // Only confirmed publication closes this opening. An interrupted or refused
+    // act keeps its recovery controls in front; a later opening or new writing
+    // is never dismissed by an older answer.
+    // Image selection/capture does not edit text. Only selections owned by
+    // the successor count here; the sent submission owns its frozen images.
+    if (result?.status === 'confirmed' && this.admits(p, editor) && (this.popped || this.cardReply) &&
+        this.opening === opening && editor.localVersion === version && editor.clientCycleId === cycle &&
+        !currentImages(editor).length && !imageBarrier(editor) &&
+        !this.imagePicker && !this.images?.open && !this.bar.panel && !this.naming.sheet.open &&
+        this.noticeVersion === noticeVersion) {
+      if (this.cardReply) await this.callbacks.sent?.(p, result);
+      else { this.bar.fold(); this.sheet.close(); }
+    }
   }
 }

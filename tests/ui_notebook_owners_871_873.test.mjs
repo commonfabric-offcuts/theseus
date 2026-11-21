@@ -73,7 +73,7 @@ test('871 actual composer pop, close and confirmed send preserve docked page, sc
   const f=notebookFixture(t);await f.sheet.open('p');f.sheet.setDocked(true);
   const field=f.doc.createElement('textarea');field.value='Message';f.doc.getElementById('inline-composer').append(field);
   const edit=f.doc.createElement('textarea');edit.value='Notebook draft';f.page.host.append(edit);f.page.editing={field:edit};f.page.host.scrollTop=312;
-  const composer={sheet:f.dialog,root:f.doc.getElementById('inline-composer'),field,bar:{fit(){},fold(){},holdSend:()=>false},naming:{sheet:{open:false}},
+  const composer={finishSend:InlineComposer.prototype.finishSend,sheet:f.dialog,root:f.doc.getElementById('inline-composer'),field,bar:{fit(){},fold(){},holdSend:()=>false},naming:{sheet:{open:false}},
     editor:{draft:{body:'Message',addressees:[],attachments:[],whisper:false},context:{kind:'new'},localVersion:1,clientCycleId:'cycle',edit(){}},
     admits:()=>true,state:()=>({sendDisabled:false}),names:()=>[],kindOf:()=>null,callbacks:{send:async()=>({status:'confirmed'})},notice(error){throw error;}};
   InlineComposer.prototype.pop.call(composer);assert.equal(f.dialog.open,true,'pencil opens existing New message');

@@ -10,7 +10,8 @@ function sending() {
   const editor = { draft: { ...noWriting(), body: 'A reply' }, context: { kind: 'reply' },
     localVersion: 1, clientCycleId: 'first', edit(patch) { Object.assign(this.draft, patch); } };
   const finished = [], ui = {
-    editor, send: InlineComposer.prototype.send,
+    editor, send: InlineComposer.prototype.send, finishSend: InlineComposer.prototype.finishSend,
+    published: InlineComposer.prototype.published,
     presentation: { editors: { reply: editor } }, cardReply: true, kind: 'message', opening: Symbol(),
     admits: () => true, state: () => ({ sendDisabled: false }), names: () => [], kindOf: () => null,
     field: { focus() {} }, bar: { holdSend: () => false, panel: null }, naming: { sheet: { open: false } },
@@ -46,6 +47,42 @@ for (const [name, change] of Object.entries({
 test('937 composer at rest remains open after confirmed sending', async () => {
   const f = sending(); f.ui.cardReply = false;
   const done = f.ui.send(); f.resolve({ status: 'confirmed' }); await done; assert.equal(f.finished.length, 0);
+});
+
+async function reconciled() {
+  const f = sending(), item = { id: 'one-publication', status: 'preparing' };
+  f.editor.submissions = [item];
+  const done = f.ui.send();
+  item.status = 'prepared'; f.resolve(item); await done;
+  assert.equal(f.finished.length, 0, 'losing the answer is not confirmation');
+  return { ...f, item };
+}
+test('979 later confirmation finishes its original empty card opening once', async () => {
+  const f = await reconciled();
+  f.item.status = 'confirmed'; f.ui.published(f.item); await Promise.resolve();
+  assert.equal(f.finished.length, 1);
+  f.ui.published(f.item); assert.equal(f.finished.length, 1, 'a repeated confirmation cannot finish twice');
+});
+for (const [name, change] of Object.entries({
+  writing: f => { ++f.editor.localVersion; f.editor.draft.body = 'New writing'; },
+  cycle: f => { f.editor.clientCycleId = 'newer'; },
+  reopened: f => { f.ui.opening = Symbol(); },
+  source: f => { f.ui.admits = () => false; },
+  image: f => { f.editor.imageReservation = {}; },
+  picker: f => { f.ui.imagePicker = {}; },
+  notice: f => { f.ui.noticeVersion = 2; },
+  names: f => { f.ui.bar.panel = 'names'; },
+  detached: f => { f.item.detached = true; },
+  authority: f => { f.editor.authorityRecovery = { phase: 'review' }; },
+})) test(`979 reconciled publication preserves ${name}`, async () => {
+  const f = await reconciled(); change(f);
+  f.item.status = 'confirmed'; f.ui.published(f.item); await Promise.resolve();
+  assert.equal(f.finished.length, 0);
+});
+test('979 another submission cannot close the awaiting card opening', async () => {
+  const f = await reconciled();
+  f.ui.published({ id: 'another-publication', status: 'confirmed' });
+  assert.equal(f.finished.length, 0);
 });
 
 function cardReply() {

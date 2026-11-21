@@ -39,11 +39,11 @@ const pairedReads = async reads => {
 // Composition owns presentations and scheduling; EditorSession remains the only
 // owner of save/prepare/send envelopes and authority recovery.
 export class EditorRegistry {
-  constructor({ api, bootstrap, journal, present = () => {}, closed = () => {}, changed = () => {}, activity = () => {},
+  constructor({ api, bootstrap, journal, present = () => {}, closed = () => {}, changed = () => {}, published = () => {}, activity = () => {},
     saveDelayMs = 450, maxSaveDelayMs = 2000, pendingPageSize = 20, timers = realTimers }) {
     if (!bootstrap?.actor || !bootstrap.instance_id || bootstrap.error) throw Error('A confirmed instance and actor are required.');
     if (!(saveDelayMs > 0 && maxSaveDelayMs >= saveDelayMs)) throw Error('Saves need bounded idle and maximum delays.');
-    Object.assign(this, { api, bootstrap: copy(bootstrap), journal, present, closed, changed, activity, saveDelayMs, maxSaveDelayMs, pendingPageSize, timers });
+    Object.assign(this, { api, bootstrap: copy(bootstrap), journal, present, closed, changed, published, activity, saveDelayMs, maxSaveDelayMs, pendingPageSize, timers });
     this.runtime = new RuntimeAuthority({ api, instanceId: bootstrap.instance_id, authority: bootstrap.authority });
     this.sessions = new Map(); this.pages = new Map(); this.scheduled = new Map(); this.localWrites = new Map(); this.serverSaves = new Map();
     // When this page last saw each writing kept on this device, and saved to Theseus.
@@ -223,6 +223,7 @@ export class EditorRegistry {
     const session = new EditorSession(editor, { api: this.api, journal: this.journal, authority: this.runtime.current,
       runtime: this.runtime, snapshot: row?.snapshot,
       changed: current => this.changed(current),
+      published: (current, item) => this.published(current, item),
       persisted: (saved, snapshot) => {
         const row = { id: this.journal.id(editor.key), writerId: this.journal.writerId, stamp: 'eligibility',
           active: 1, scope: JSON.stringify([context.instanceId, context.actor]), editorKey: editor.key, snapshot };

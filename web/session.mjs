@@ -58,7 +58,7 @@ export class RuntimeAuthority {
 }
 
 export class EditorSession {
-  constructor(editor, { api, journal, snapshot = null, authority, runtime, id = () => crypto.randomUUID(), changed = () => {}, prepared = () => {}, persisted = () => {} }) {
+  constructor(editor, { api, journal, snapshot = null, authority, runtime, id = () => crypto.randomUUID(), changed = () => {}, prepared = () => {}, published = () => {}, persisted = () => {} }) {
     if (!validAuthority(authority)) throw new Error('Establish valid bootstrap authority before opening an editor session.');
     if (!(runtime instanceof RuntimeAuthority) || runtime.instanceId !== editor.context.instanceId) throw new Error('Editors must share their instance runtime authority.');
     if (snapshot && snapshot.key !== editor.key) throw new Error('Recovery belongs to another editor.');
@@ -68,6 +68,7 @@ export class EditorSession {
     this.id = id;
     this.changed = changed;
     this.prepared = prepared;
+    this.published = published;
     this.persisted = persisted;
     this.acknowledgedSnapshot = null;
     this.runtime = runtime;
@@ -301,6 +302,13 @@ export class EditorSession {
     entry.receipt = copy(receipt);
     entry.error = null;
     await this.persist();
+    // Reconciliation can confirm publication after the original Send ended
+    // without its answer. Tell its surface only after keeping that exact fact.
+    if (entry.envelope.kind === 'message.send' && receipt.status === 'committed' && !this.recovery &&
+        same(authorityPair(this.authority), authorityPair(this.runtime.current))) {
+      const item = this.editor.submissions.find(item => item.sendOperationId === entry.envelope.operation_id);
+      if (item && !item.detached) this.published(this.editor, item);
+    }
     return true;
   }
 
