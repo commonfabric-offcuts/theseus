@@ -1,0 +1,12 @@
+effective_cache=/Users/commonfabric/.local/share/theseus/fable-tools/checks/790-build9837/focused-final2/final-core-cache-51daccac916d4f03ad64d64cbb1531b3
+test_bounded_topics_waits_and_now_excludes_shipped_and_other_sections (test_onboarding_790.OnboardingCase) ... ok
+test_bounds_members_waits_and_release_history_are_explicit (test_onboarding_790.OnboardingCase) ... ok
+test_current_state_and_owner_transfer (test_onboarding_790.OnboardingCase) ... ok
+test_owner_only_and_no_context_read_before_authorization (test_onboarding_790.OnboardingCase) ... ok
+test_secret_canaries_refuse_without_echo_and_private_pages_are_never_read (test_onboarding_790.OnboardingCase) ... ok
+test_variants_facts_and_no_record_changes (test_onboarding_790.OnboardingCase) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.822s
+
+OK

@@ -1,0 +1,7 @@
+effective_cache=/Users/commonfabric/.local/share/theseus/fable-tools/checks/790-build9837/focused-final2/core-current-restored-cache-8a34dc18c8f648f39adf3c59cfa10288
+test_current_state_and_owner_transfer (test_onboarding_790.OnboardingCase) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.044s
+
+OK

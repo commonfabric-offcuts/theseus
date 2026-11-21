@@ -18,6 +18,7 @@ const context = (viewer = 'owner') => ({ viewer, nameOf, topicId: 't-1' });
 const COVER = {
   stands: 'Answered: the second weekend', waiting: [{ text: 'Book the cabin?', default: 'booked Friday' }],
   payload: { text: 'The second weekend', message_id: 'm-answer', seq: 12, link: null, kind: 'answer', done: null },
+  refresh: null, refresh_revision: 0,
   by: 'agent-a', at_ms: 1_700_000_000_000, owner: 'owner',
 };
 const DONE_BY_THUMB = { how: 'thumb', by: 'owner', at_ms: 1_700_000_100_000 };
@@ -25,10 +26,29 @@ const DONE_BY_WORD = { how: 'word', by: 'owner', at_ms: 1_700_000_200_000, messa
 const of = (node, className) => [...node.descendants()].filter(each => each.classList.contains(className));
 const glyphs = node => [...node.descendants()].map(each => each.getAttribute('data-glyph')).filter(Boolean);
 
+test('item 769 the shared sheet draws literal stands lines without parsing labels or changing other fields', () => {
+  const stands = 'Discussed: cabin\nDecisions: none\nNext: choose';
+  const source = { ...COVER, stands }, original = JSON.stringify(source);
+  const sheet = coverSheet(miniDocument(), source, context());
+  assert.equal(of(sheet, 'cover-stands')[0].text, stands);
+  const standsSpan = of(sheet, 'cover-stands')[0];
+  assert.equal(standsSpan.tag, 'span', 'literal stands text stays in a span');
+  assert.equal(standsSpan.parent, sheet.children[0], 'the stands span belongs to the shared heading');
+  assert.equal(standsSpan.children.length, 0, 'literal text creates no parsed label elements');
+  assert.equal(of(sheet, 'cover-wait').length, 1);
+  assert.equal(of(sheet, 'cover-note')[0].text, 'Default: booked Friday.');
+  assert.equal(of(sheet, 'cover-payload').length, 1);
+  assert.equal(of(sheet, 'cover-src')[0].text, '#12');
+  assert.equal(JSON.stringify(source), original, 'drawing leaves source words intact');
+  const oneLine = 'Discussed: cabin Decisions: none Next: choose';
+  assert.equal(of(coverSheet(miniDocument(), { ...COVER, stands: oneLine }, context()), 'cover-stands')[0].text, oneLine);
+  assert.notEqual(coverKey(source, context()), coverKey({ ...COVER, stands: oneLine }, context()), 'new breaks repaint');
+});
+
 test('the sheet says where it stands, its payload with its label, pill and the message that delivered it, and what waits on the owner with its default', () => {
   const doc = miniDocument(), sheet = coverSheet(doc, COVER, context());
   assert.equal(sheet.className, 'dossier-cover');
-  assert.deepEqual(sheet.children.map(line => line.className), ['cover-line cover-stands', 'cover-line cover-payload', 'cover-line cover-wait'], 'stands, then the payload, then each wait');
+  assert.deepEqual(sheet.children.map(line => line.className), ['cover-line cover-heading', 'cover-line cover-payload', 'cover-line cover-wait', 'cover-revision-line'], 'stands, then the payload, then each wait, then the revision footer');
   assert.equal(sheet.children[0].text, 'Answered: the second weekend');
   assert.equal(of(sheet, 'cover-label')[0].text, 'Payload · answer');
   assert.equal(of(sheet, 'row-pill')[0].dataset.state, 'proposed');
@@ -50,11 +70,11 @@ test('the sheet says where it stands, its payload with its label, pill and the m
 test('a sheet holds only the lines its cover says, and one done with nothing waiting says so', () => {
   const doc = miniDocument();
   const bare = coverSheet(doc, { ...COVER, stands: null, waiting: [], payload: { ...COVER.payload, kind: null, done: DONE_BY_THUMB } }, context());
-  assert.deepEqual(bare.children.map(line => line.className), ['cover-line cover-payload']);
+  assert.deepEqual(bare.children.map(line => line.className), ['cover-line cover-payload', 'cover-revision-line']);
   assert.equal(of(bare, 'cover-label')[0].text, 'Payload', 'no kind, no kind in the label');
   assert.equal(bare.dataset.done, 'true');
   const waits = coverSheet(doc, { ...COVER, payload: null }, context());
-  assert.deepEqual(waits.children.map(line => line.className), ['cover-line cover-stands', 'cover-line cover-wait']);
+  assert.deepEqual(waits.children.map(line => line.className), ['cover-line cover-heading', 'cover-line cover-wait', 'cover-revision-line']);
   assert.equal(waits.dataset.done, 'false');
   assert.equal(of(waits, 'row-pill').length, 0, 'no payload, no pill');
 });
@@ -88,11 +108,13 @@ test('a payload\'s link shows its address\'s host and goes where it was written;
   assert.equal(anchor.title, 'https://example.test/cabin/week');
   const pills = coverPills(doc, COVER, context());
   assert.equal(pills.className, 'row-pills');
-  assert.deepEqual(pills.children.map(pill => [pill.dataset.state, of(pill, 'pill-words')[0].text]), [['proposed', 'payload proposed'], ['waiting', 'waits on you']]);
+  assert.deepEqual(pills.children.map(pill => pill.className), ['row-pill pill-payload', 'row-pill pill-waits', 'cover-revision-line']);
+  assert.deepEqual(of(pills, 'row-pill').map(pill => [pill.dataset.state, of(pill, 'pill-words')[0].text]), [['proposed', 'payload proposed'], ['waiting', 'waits on you']]);
   assert.equal(pills.title, 'Answered: the second weekend', 'where it stands, on the pills');
   assert.equal(of(pills, 'dossier-cover').length, 0);
   const many = coverPills(doc, { ...COVER, payload: null, waiting: [COVER.waiting[0], COVER.waiting[0]] }, context('agent-a'));
-  assert.deepEqual(many.children.map(pill => of(pill, 'pill-words')[0].text), ['2 wait on Ana']);
+  assert.deepEqual(many.children.map(pill => pill.className), ['row-pill pill-waits', 'cover-revision-line']);
+  assert.deepEqual(of(many, 'row-pill').map(pill => of(pill, 'pill-words')[0].text), ['2 wait on Ana']);
   assert.equal(coverPills(doc, { ...COVER, payload: null, waiting: [] }, context()), null, 'stands alone gives no pill');
 });
 
@@ -139,4 +161,17 @@ test('a dossier\'s cover comes with its place, so a stack of replies whose first
   assert.equal(stackCover({ head: reply('m-r1', 'm-root'), replies: [] }, { alone: true }), COVER, 'a lone reply\'s pills show its dossier\'s');
   assert.equal(stackCover({ head: { ...reply('m-r1', 'm-root'), stack_position: at(4, { cover: null, cover_revision: 0 }) }, replies: [] }), null, 'a dossier with no cover shows none');
   assert.equal(stackCover({ head: { ...reply('m-r1', 'm-root'), stack_position: at(4) }, replies: [] }), null, 'a place from a Core before covers carries none');
+});
+
+
+test('864 cover written query link stays active alongside 963 formatted words', t => {
+  const previous = globalThis.location; globalThis.location = new URL('https://theseus.example/?topic=t1');
+  t.after(() => { globalThis.location = previous; });
+  const text = 'Discussed: **literal**\nNext: [The smoke checks](?topic=Landing&page=n-864)';
+  const sheet = coverSheet(miniDocument(), { ...COVER, stands: text }, context());
+  const words = of(sheet, 'cover-stands')[0], links = [...words.descendants()].filter(node => node.tag === 'a');
+  assert.equal(links.length, 1, 'the accepted written query target is a cover link');
+  assert.equal(links[0].text, 'The smoke checks');
+  assert.equal(words.text, 'Discussed: literal\nNext: The smoke checks', 'labels and link words remain exact');
+  assert.equal([...words.descendants()].find(node => node.tag === 'strong').text, 'literal');
 });

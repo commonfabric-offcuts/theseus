@@ -32,6 +32,9 @@ from . import web_build
 MEDIA_CHUNK = 65536
 MEDIA_HEADER_BYTES = 8192
 MEDIA_RATE = 256 * 1024
+HTML_SANDBOX_CSP = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+                    "connect-src 'none'; frame-src about:; form-action 'none'; base-uri 'none'; "
+                    "sandbox allow-scripts; frame-ancestors 'self'")
 COMMAND_FIELDS = {"v", "instance_id", "operation_id", "kind", "target", "expected", "args"}
 
 
@@ -306,6 +309,7 @@ class UploadInput:
 
 
 class AIMHTTPServer(ThreadingHTTPServer):
+    request_queue_size = 128
     live_feed = None
     daemon_threads = False
     block_on_close = True
@@ -313,15 +317,8 @@ class AIMHTTPServer(ThreadingHTTPServer):
 
     def process_request(self, request, client_address):
         if not self.connection_slots.acquire(blocking=False):
-            # Refuse this attempt, without assigning a verdict to its operation.
-            body = b'{"recorded":false,"error":{"code":"SERVER_BUSY","retryable":true}}'
             try:
-                request.settimeout(1)
-                request.sendall(b"HTTP/1.0 503 Service Unavailable\r\nConnection: close\r\n"
-                                b"Content-Type: application/json\r\nContent-Length: "
-                                + str(len(body)).encode("ascii") + b"\r\n\r\n" + body)
-            except OSError:
-                pass
+                self.refuse_connection(request)
             finally:
                 self.shutdown_request(request)
             return
@@ -332,10 +329,30 @@ class AIMHTTPServer(ThreadingHTTPServer):
             raise
 
     def process_request_thread(self, request, client_address):
+        # The handler may return this permit while waiting for a kept socket.
+        # Thread-local ownership lets every exit release only what it owns.
+        self.connection_owner.held = True
         try:
             super().process_request_thread(request, client_address)
         finally:
+            self.release_connection_slot()
+            del self.connection_owner.held
+
+    def release_connection_slot(self):
+        if self.connection_owner.held:
+            self.connection_owner.held = False
             self.connection_slots.release()
+
+    def refuse_connection(self, request):
+        # Refuse this attempt, without assigning a verdict to its operation.
+        body = b'{"recorded":false,"error":{"code":"SERVER_BUSY","retryable":true}}'
+        try:
+            request.settimeout(1)
+            request.sendall(b"HTTP/1.0 503 Service Unavailable\r\nConnection: close\r\n"
+                            b"Content-Type: application/json\r\nContent-Length: "
+                            + str(len(body)).encode("ascii") + b"\r\n\r\n" + body)
+        except OSError:
+            pass
 
     def server_close(self):
         # Live streams end before their threads are joined.
@@ -345,7 +362,7 @@ class AIMHTTPServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    protocol_version = "HTTP/1.0"
+    protocol_version = "HTTP/1.1"
     default_request_version = "HTTP/1.0"
     server_version = "AIMNext"
     sys_version = ""
@@ -363,24 +380,74 @@ class Handler(BaseHTTPRequestHandler):
         # Request paths, bodies and authentication never enter an access log.
         pass
 
-    def _send(self, status: int, body: bytes, content_type: str):
-        self._headers(status, content_type, len(body))
+    def handle(self):
+        self.close_connection = True
+        self.handle_one_request()
+        while not self.close_connection:
+            if not self._kept_request_ready():
+                self.close_connection = True
+                return
+            self.body_consumed = 0
+            self.binary_headers_started = False
+            self.handle_one_request()
+
+    def _kept_request_ready(self):
+        idle = self.server.idle_connection_slots
+        if not idle.acquire(blocking=False):
+            return False
+        try:
+            self.server.release_connection_slot()
+            # peek also sees requests already buffered by the previous read.
+            # Only waiting for the next byte gets the shorter idle cutoff.
+            raw = self.rfile.raw
+            raw.deadline = min(self.deadline, time.monotonic() + self.server.keep_alive_timeout)
+            try:
+                ready = bool(self.rfile.peek(1))
+            finally:
+                raw.deadline = self.deadline
+            remaining = self.deadline - time.monotonic()
+            if not ready or remaining <= 0:
+                return False
+            if not self.server.connection_slots.acquire(blocking=False):
+                self.server.refuse_connection(self.connection)
+                return False
+            self.server.connection_owner.held = True
+            self.connection.settimeout(remaining)
+            return True
+        except (OSError, ValueError):
+            return False
+        finally:
+            idle.release()
+
+    def _send(self, status: int, body: bytes, content_type: str, *, static=False, immutable=False):
+        self._headers(status, content_type, len(body), static=static, immutable=immutable)
         try:
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError):
             pass
 
-    def _headers(self, status: int, content_type: str, length=None):
-        self.close_connection = True
+    def _headers(self, status: int, content_type: str, length=None, *, static=False, immutable=False):
+        # Only unambiguously empty requests to public assets reuse a connection.
+        # Parser refusals may precede headers; duplicate fields still count.
+        headers = getattr(self, 'headers', None)
+        lengths = headers.get_all('Content-Length', []) if headers is not None else []
+        transfer = headers.get_all('Transfer-Encoding', []) if headers is not None else []
+        values = headers.get_all('Connection', []) if headers is not None else []
+        connection = {part.strip().lower() for value in values for part in value.split(',')}
+        empty = lengths in ([], ['0']) and not transfer
+        keep = static and empty and self.request_version == 'HTTP/1.1' and 'close' not in connection
+        self.close_connection = not keep
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         if length is not None:
             self.send_header("Content-Length", str(length))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", "public, max-age=31536000, immutable" if immutable else "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Connection", "close")
+        self.send_header("Connection", "keep-alive" if keep else "close")
+        if keep:
+            self.send_header("Keep-Alive", "timeout=%g" % self.server.keep_alive_timeout)
         self.send_header("Content-Security-Policy", self.server.csp)
         self.end_headers()
 
@@ -701,6 +768,27 @@ class Handler(BaseHTTPRequestHandler):
     def _get(self):
         self._host()
         path = urlsplit(self.path).path
+        if path == "/interactive-html":
+            # Public and content-free: no session interpolation or Store call.
+            script = self.server.build.files.get("interactive-html-bootstrap.js")
+            if script is None:
+                raise RequestError(404, "NOT_FOUND", "No such public asset.")
+            body = (b'<!doctype html><meta charset="utf-8"><title>Interactive HTML</title>'
+                    b'<style>html,body{margin:0;width:100%;height:100%;overflow:hidden}</style>'
+                    b'<body><script>' + script + b'</script>')
+            self.close_connection = True
+            self.send_response(200)
+            for name, value in (("Content-Type", "text/html; charset=utf-8"),
+                                ("Content-Length", str(len(body))), ("Cache-Control", "no-store"),
+                                ("X-Content-Type-Options", "nosniff"), ("Referrer-Policy", "no-referrer"),
+                                # The local ReportingObserver needs a named report group;
+                                # no Reporting-Endpoints URL is exposed or contacted.
+                                ("Connection-Allowlist", "(); report-to=html-sandbox"), ("X-DNS-Prefetch-Control", "off"),
+                                ("Connection", "close"), ("Content-Security-Policy", HTML_SANDBOX_CSP)):
+                self.send_header(name, value)
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path == "/api/bootstrap":
             self._authorize()
             capabilities = self._store_call(lambda store: store.view(self.server.actor, "capabilities", {}))
@@ -761,7 +849,8 @@ class Handler(BaseHTTPRequestHandler):
         if name.lstrip("/") in ("", "index.html"):
             body = body.replace(b"__AIM_SESSION_TOKEN__", html.escape(self.server.session_token, quote=True).encode())
             name = "index.html"
-        self._send(200, body, mimetypes.guess_type(name)[0] or "application/octet-stream")
+        self._send(200, body, mimetypes.guess_type(name)[0] or "application/octet-stream",
+                   static=True, immutable=name.startswith(web_build.PREFIX + self.server.build.stamp + '/'))
 
     def _live_handshake(self):
         """Accept a WebSocket for the live feed, or refuse it with the usual JSON error.
@@ -825,11 +914,13 @@ class Handler(BaseHTTPRequestHandler):
             self.connection.setblocking(False)
             sent, pending, ping, received = None, b"", None, b""
             while True:
-                seq, light, ended = feed.snapshot()
+                seq, light, outcomes, ended = feed.commit_snapshot()
                 if not pending and ping is not None:
                     pending, ping = _ws_frame(ping, 10), None
                 elif not pending and seq != sent:
-                    message = {"seq": seq} if light is None else {"seq": seq, "health": light}
+                    message = {"seq": seq, "outcomes": outcomes}
+                    if light is not None:
+                        message['health'] = light
                     pending, sent = _ws_frame(json.dumps(message, separators=(",", ":")).encode("ascii")), seq
                 if ended:
                     pending += _ws_frame(json.dumps({"end": ended}, separators=(",", ":")).encode("ascii")) + _ws_frame(b"\x03\xe8", 8)
@@ -1003,6 +1094,9 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     server.upload_slots = threading.BoundedSemaphore(1)
     server.media_read_slots = threading.BoundedSemaphore(1)
     server.connection_slots = threading.BoundedSemaphore(16)
+    server.connection_owner = threading.local()
+    server.idle_connection_slots = threading.BoundedSemaphore(16)
+    server.keep_alive_timeout = 2.0
     server.authority = "%s:%s" % server.server_address
     server.origin = "http://" + server.authority
     server.origins_by_authority = {server.authority: server.origin}
@@ -1016,7 +1110,7 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
         # at start delays its first message and never disables it.
         try:
             server.live_feed = LiveFeed(*live, runner_gone=runner_gone(store_factory, _stderr),
-                                        health_due=health_due(store_factory, _stderr))
+                                        health_due=health_due(store_factory, _stderr), actor=actor)
         except (WatchError, OSError):
             server.live_feed = None
     return server

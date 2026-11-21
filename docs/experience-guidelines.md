@@ -16,11 +16,24 @@ run's results can be searched for it.
 
 ## Reading and writing come first
 
+Agent replies carry the exact selected parent passage, or a caller's stated
+reason displayed in the reply (item 758, [agent-reply-passages.md](agent-reply-passages.md)).
+`tests/topic_reading_native.mjs` (`native-reading`, `native-webkit-reading`),
+the `reading item 758` cases in `tests/item_758_native.mjs`, check the feed,
+Reader, source navigation and native human manual send at 320, 375, 390 and
+laptop width, light and dark. `tests/test_item_758_fixture.py` checks the same
+native fixture's refusal/retry/publication oracle below the browser. A case
+present here is not a claim it has run; the handoff retains the actual results.
+
 The Reader keeps room to read the message and room to write a useful reply.
 Guidance on the page stays compact and folds away. On a phone with the keyboard
-up, the message still shows enough to read while writing. The Reader and the
-New message sheet are as tall as the window and grow with its width up to a
-maximum, and on a phone never reach past the screen.
+up, the message still shows enough to read while writing. The Reader fills the visible window up to its width maximum. The pencil
+sheet floats at the bottom over the unblurred page; its field starts at one
+line and grows with the text, and confirmed sending closes it. Its inline
+agent menu stays compact. Neither surface reaches past a phone screen.
+The `item 673` cases in `tests/reader_compose_native.mjs` hold these rules
+on topics and Conversations in both engines, all three phone widths and laptop,
+light and dark.
 
 - `tests/reader_native.mjs` (`native-reader`): "default stacks, wide keeps
   writing full height, layout switch preserves typing", "divider click is inert,
@@ -53,6 +66,15 @@ maximum, and on a phone never reach past the screen.
   use native touch drags; WebKit uses native wheel input in a touch-enabled
   desktop context at those widths. Native WebKit finger-drag proof is a gap
   in the existing driver, which supplies taps but no drags.
+
+- Historical “item 650” cases in `tests/composer_width_native.mjs` declare
+  resizing either composer edge symmetrically around the centre, only
+  horizontally, at 320, 375, 390 and laptop in both themes and engines, in
+  each affected state ([composer-width.md](composer-width.md)).
+  Review corrections add held-drag reversal, native Tab reach, topic access
+  and conflict/recovery branches. The source composition retains the base
+  native runner without650 registration; this head is UNRUN. Historical976
+  remains bound to1e462, not this phone correction or composition.
 
 ## Keys mean one thing in each place
 
@@ -207,6 +229,12 @@ at the top of its outcome once, then stays until the reader moves it.
 "rail item 641" cases, check this at 320, 375, 390 and laptop widths, light
 and dark, including the reader’s own native reorder.
 
+Dossiers keep the reader's order in both feeds. Replies leave existing dossiers
+in place; a new dossier enters first and a reawakened one returns last above
+More. The `item 731` cases in `tests/stack_native.mjs` (`native-reading` and
+`native-webkit-reading`) compare actual dossier identities through live
+arrival, reload and the reader's native moves, with the 635 star hold.
+
 Opening, using and closing a card composer keeps the page at its place
 (item 644). Quoting on a laptop opens a stacked reply wide (item 668);
 a phone stays stacked. `tests/notebook_pages_native.mjs` (`native-notebook`,
@@ -311,7 +339,21 @@ press cannot reach.
   group, and the button goes; an active topic shows none", "header ✅ Done is
   reached with Tab and pressed with Return or Space, and the focus lands on the
   subtitle saying Done".
-- Otherwise no automated check. Held by Tony's preview of every new surface.
+- `tests/topic_reading_native.mjs` (`native-reading`, `native-webkit-reading`):
+  the `reading item 649` cases at 320, 375, 390 and laptop, light and dark:
+  the message's own note corner opens the composer to that private note by
+  pointer, keys and first tap; a slow or failed opening retains writing and
+  can be retried, an unavailable source keeps saving held and offers Retry access, and empty
+  or other-reader notes show no corner.
+- `tests/topic_title_native.mjs` (`native-header`, `native-colors`,
+  `native-webkit-colors`): the “item 656” cases keep the Rename topic pencil
+  beside the title, edit there, retain the name in header and rail after
+  reload, preserve settings rename and follow its permission. The “item 656
+  membership-editing” and “membership-busy” cases revoke and regain ownership
+  for a nonparticipant with no previous authorship, retaining exact writing
+  and the pending operation through the read-only rebuild and native Escape. Each state
+  (normal, editing, busy, refused, invalid title, and read-only) is checked
+  at 320, 375, 390 and laptop widths in both themes.
 
 The topic's Team says "Team". + Add becomes Done while the possible agent
 pills and field show; Done or a click outside closes them without adding the
@@ -506,6 +548,19 @@ nothing scrolls sideways, and nothing depends on hover.
 
 ## Plain words
 
+Agent questions to people record their targeted dossier wait in the same act
+(item 759, [asking-person-cover.md](asking-person-cover.md)). Missing metadata
+refuses before publication. Literal choices and defaults, or explicit absence
+with the supplied reason, appear on the feed and Reader; each linked answer
+settles that question alone. `tests/asking_person_cover_native.mjs`, via
+`native-reading` and `native-webkit-reading`, names its cases `item 759` and
+checks laptop and 320/375/390 widths in light/dark, native public/private replies,
+and actual Core refusal/settlement effects. WebKit is a desktop engine at phone
+width, not physical-phone evidence. Core oracles live below the browser in
+`tests/test_item759_native_oracles.py` and `tests/test_asking_person_cover.py`;
+the collapsed Reader's person labels have a red/green unit check in
+`tests/ui_asking_person_reader.test.mjs`.
+
 The page says what happened in words a person uses: what was refused and why,
 and what was kept. It never shows an error code or an id.
 
@@ -562,3 +617,18 @@ Item 655 review checks in `tests/stack_native.mjs` (`native-reading` and
 replies, singleton fallback, remote rename/clear/join/split, each failed
 metadata lookup and settled Conversation return through Only new. Each
 state runs at 320, 375, 390 and laptop, with light/dark screenshots.
+
+## A Notebook page's own actions (792)
+
+Text and Cards share Star, Rename and Delete in ⋯. A star is personal and
+appears under the page's topic (or Conversation); Rename keeps the revision
+stream; Delete confirms once and retains history for Undo. The contracts and
+limits are in [notebook-menu-792.md](notebook-menu-792.md).
+
+`tests/notebook_menu_792_native.mjs`, through `tests/topic_reading_native.mjs`
+(`native-reading`, `native-webkit-reading`), names the `reading item 792`
+cases at laptop and 390px touch width, light and dark, in the sheet and full
+page, plus outcome pages under Conversation and an applied/restored indent
+mutant. Geometry tolerances are named in each observation. Core and serial
+Node controls cover refusal, permissions, retries, privacy and retained writing.
+A native run's report, rather than this entry, records which phases ran.

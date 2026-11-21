@@ -1,6 +1,6 @@
 // A small DOM for checks that paint real view code: elements with children,
 // classes, data and attributes, and the few selectors the views use (a tag,
-// .class, #id, [data-x] or [attr], combined, and comma lists). Native-browser
+// .class, #id, [data-x] or [attr], attribute equality, combined, and comma lists). Native-browser
 // proof stays separate: this fixture shows what is painted, not hit testing,
 // layout or focus order.
 //
@@ -10,20 +10,29 @@
 const camel = name => name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
 
 function parse(selector) {
-  const found = /^([a-zA-Z]*)((?:[.#][\w-]+)*)((?:\[[\w-]+\])*)$/.exec(selector.trim());
+  const found = /^([a-zA-Z]*)((?:[.#][\w-]+)*)((?:\[[\w-]+(?:=(?:"[^"]*"|'[^']*'|[^\]\s]+))?\])*)$/.exec(selector.trim());
   if (!found) throw new Error(`mini_dom cannot match the selector ${selector}`);
   const parts = found[2].match(/[.#][\w-]+/g) ?? [];
   return { tag: found[1].toLowerCase(), classes: parts.filter(part => part[0] === '.').map(part => part.slice(1)),
-    ids: parts.filter(part => part[0] === '#').map(part => part.slice(1)), attributes: found[3].match(/[\w-]+/g) ?? [] };
+    ids: parts.filter(part => part[0] === '#').map(part => part.slice(1)),
+    attributes: [...found[3].matchAll(/\[([\w-]+)(?:=(?:"([^"]*)"|'([^']*)'|([^\]\s]+)))?\]/g)]
+      .map(([, name, quoted, single, bare]) => ({ name, value: quoted ?? single ?? bare })) };
 }
 
 export function matches(node, selector) {
   if (!node || typeof node !== 'object') return false;
   return selector.split(',').some(one => {
+    const excluded = [...one.matchAll(/:not\(([^()]+)\)/g)].map(match => match[1]);
+    if (excluded.some(part => matches(node, part))) return false;
+    one = one.replace(/:not\([^()]+\)/g, '');
     const wanted = parse(one);
     return (!wanted.tag || node.tag === wanted.tag) && wanted.classes.every(name => node.classList.contains(name)) &&
       wanted.ids.every(id => node.id === id) &&
-      wanted.attributes.every(name => name.startsWith('data-') ? Object.hasOwn(node.dataset, camel(name.slice(5))) : Object.hasOwn(node.attributes, name));
+      wanted.attributes.every(({ name, value }) => {
+        const values = name.startsWith('data-') ? node.dataset : node.attributes;
+        const key = name.startsWith('data-') ? camel(name.slice(5)) : name;
+        return Object.hasOwn(values, key) && (value === undefined || String(values[key]) === value);
+      });
   });
 }
 
@@ -76,6 +85,7 @@ export function miniDocument() {
   const ids = new Map();
   const document = { activeElement: null };
   document.createElement = tag => new Element(tag, document);
+  document.createTextNode = text => Object.assign(new Element('text', document), { nodeType: 3, data: String(text), textContent: String(text) });
   document.createElementNS = (ns, tag) => new Element(tag, document);
   document.byId = id => ids.get(id) ?? ids.set(id, Object.assign(document.createElement('div'), { id, root: true })).get(id);
   return document;

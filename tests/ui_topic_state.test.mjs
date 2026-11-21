@@ -437,7 +437,9 @@ test('whoever organises the outcome manages its topics beside their creator; a c
   assert.ok(fable.host.find(node => node.id === 'topic-rename'), 'the coordinator may rename it');
   assert.equal(fable.host.find(node => node.textContent === 'Archive')?.tag, 'button', 'and archive it');
   fable.paint(topic({ coordinator_id: null }), []);
-  assert.equal(fable.host.find(node => node.id === 'topic-rename'), undefined, 'once no longer coordinator, Rename and Archive go');
+  assert.equal(fable.controls.actions.hidden, true, 'once no longer coordinator, Rename and Archive are hidden');
+  assert.equal(fable.fields.title.line.disabled, true, 'retained title writing cannot be edited without permission');
+  assert.equal(fable.controls.managed, null, 'a stale activation cannot rename');
   const warp = new TopicStatePanel({ host: new Element('section'), reader: 'warp', send: async () => ({}) });
   warp.paint(topic({ coordinator_id: 'fable' }), []);
   assert.equal(warp.host.find(node => node.id === 'topic-rename'), undefined, 'a plain member who did not start it cannot rename it');
@@ -1669,4 +1671,96 @@ test('Waiting on you lists the blocking asks in the order Core gives them, thoug
     'Blocking a release (release 44): Deploy, in Building Theseus — fable asked at 6:10 AM',
     'Blocking a piece (item 259): Squash, in Building Theseus — fable asked at 6:40 AM',
     'Blocking a piece (item 259): Rebase, in Building Theseus — fable asked at 6:20 AM']);
+});
+
+// 805 exercises the real panel and its single field model below the browser.
+test('item 805 actual title click shares rename and rejects a stale unauthorized click', async t => {
+  dom(t);
+  const titleSurface = { host: new Element('div'), title: new Element('h1'), pencil: new Element('button') };
+  const { panel, sent } = live({}, [], 'tony', { titleSurface });
+  assert.equal(typeof titleSurface.title.onclick, 'function', 'actual title text has the rename entry point');
+  titleSurface.title.onclick();
+  assert.equal(panel.inlineTitle, true);
+  assert.equal(document.activeElement, panel.fields.title.line);
+  type(panel.fields.title.line, 'Exact —  title'); key(panel.fields.title.line, 'Enter'); await settled();
+  assert.deepEqual(sent, [[{ title: 'Naming' }, { title: 'Exact —  title' }]]);
+  assert.equal(document.activeElement, titleSurface.pencil);
+  panel.paint(topic({ version: 20, creator_id: 'other', owner_id: 'other', reader_may_say: false }), []);
+  titleSurface.title.onclick();
+  assert.equal(titleSurface.host.hidden, true);
+  assert.equal(sent.length, 1, 'unauthorized title click starts no command');
+  panel.paint(topic({ id: 'conversation', kind: 'conversation' }), []);
+  titleSurface.title.onclick();
+  assert.equal(titleSurface.host.hidden, true, 'Conversation remains inert');
+});
+
+test('item 805 settings restoration is immediate before any repair paint', t => {
+  dom(t);
+  const titleSurface = { host: new Element('div'), title: new Element('h1'), pencil: new Element('button') };
+  const { panel } = live({}, [], 'tony', { titleSurface });
+  panel.renameTitle(); const input = panel.fields.title.line;
+  type(input, 'Unsent —  exact words'); const field = panel.fields.title;
+  panel.restoreTitleSurface();
+  assert.equal(input.parent, panel.controls.actions, 'settings receives its field immediately, before another paint');
+  assert.equal(input.value, 'Unsent —  exact words');
+  assert.equal(panel.fields.title, field);
+  assert.equal(input.hidden, false, 'the restored field remains open in settings');
+  assert.equal(input.disabled, false);
+  assert.equal(titleSurface.host.hidden, true);
+  assert.equal(titleSurface.title.hidden, false);
+  assert.equal(panel.notice.parent, panel.host);
+});
+
+test('item 805 later paint repairs the original 656 misplaced-field mutation', t => {
+  dom(t);
+  const titleSurface = { host: new Element('div'), title: new Element('h1'), pencil: new Element('button') };
+  const { panel } = live({}, [], 'tony', { titleSurface });
+  panel.renameTitle(); const input = panel.fields.title.line;
+  type(input, 'Retained writing');
+  panel.restoreTitleSurface();
+  // Deliberately observe the later boundary separately. With the original
+  // actual source mutation applied, this passes while immediate restoration fails.
+  panel.draw(panel.topic, panel.participants);
+  assert.equal(input.parent, panel.controls.actions);
+  assert.equal(input.value, 'Retained writing');
+});
+
+test('item 805 touch cancellation returns focus to the visible title handle', t => {
+  dom(t);
+  const previous = globalThis.matchMedia;
+  globalThis.matchMedia = () => ({ matches: true });
+  t.after(() => { globalThis.matchMedia = previous; });
+  const titleSurface = { host: new Element('div'), title: new Element('h1'), pencil: new Element('button') };
+  const { panel, sent } = live({}, [], 'tony', { titleSurface });
+  titleSurface.title.onclick(); const input = panel.fields.title.line;
+  type(input, 'Cancel this'); key(input, 'Escape');
+  assert.equal(document.activeElement, titleSurface.title);
+  assert.equal(titleSurface.title.hidden, false);
+  assert.equal(sent.length, 0);
+});
+
+test('item 805 pending title identity and newer exact writing survive restoration and permission loss/regain', async t => {
+  dom(t);
+  let release;
+  const waiting = new Promise(resolve => { release = resolve; });
+  const calls = [], titleSurface = { host: new Element('div'), title: new Element('h1'), pencil: new Element('button') };
+  const { panel } = live({}, [], 'tony', { titleSurface, send: async (current, args, fence, id) => {
+    calls.push({ args, fence, id }); if (calls.length === 1) await waiting; return committed(current, args);
+  } });
+  panel.renameTitle(); const field = panel.fields.title, input = field.line;
+  type(input, 'Pending —  first'); key(input, 'Enter'); await settled();
+  assert.equal(calls.length, 1); const pending = field.out;
+  type(input, 'Retained —  newer');
+  panel.restoreTitleSurface();
+  assert.equal(field.out, pending, 'same pending command, no replacement operation');
+  assert.equal(input.parent, panel.controls.actions);
+  panel.paint(topic({ version: 20, creator_id: 'other', owner_id: 'other', reader_may_say: false }), []);
+  assert.equal(panel.fields.title, field); assert.equal(input.value, 'Retained —  newer');
+  assert.equal(input.disabled, true); assert.equal(panel.controls.actions.hidden, true);
+  panel.paint(topic({ version: 21 }), []);
+  assert.equal(panel.fields.title, field); assert.equal(input.value, 'Retained —  newer'); assert.equal(input.disabled, false);
+  assert.equal(field.out, pending); assert.equal(calls.length, 1);
+  release(); await panel.queue;
+  assert.equal(input.value, 'Retained —  newer', 'older answer cannot erase newer writing');
+  assert.equal(calls.length, 1, 'restoration and permission paints manufacture no command');
 });

@@ -14,15 +14,72 @@ When someone invites you from an outcome's Team panel, the prompt they paste
 into you says who you are in Theseus, where your sign-in file is, and the
 command that uses it. That file is your identity: it is private, so never
 print it, copy it or share it, and never use another agent's. Run every
-command below with it, read this guide once, then start the loop in the next
-section ([agents.md](agents.md#inviting-an-agent) has how inviting works).
+command below with it, read this guide once, then follow the assignment and
+waiting sections below ([agents.md](agents.md#inviting-an-agent) has how inviting works).
+
+The invitation requests an ongoing assignment: serve as your named agent,
+handle authorized deliveries, verify and report results, then return to
+waiting until the user explicitly ends the assignment. Reading this guide,
+starting a watcher, seeing an empty inbox, or finishing one delivery does not
+complete the assignment. Respect a user's pause or stop. Keep the next step,
+pending delivery IDs, topic/message references, exact operation IDs and writing
+in a durable checkpoint before a handoff or interruption; never put identity
+file contents there. A watcher receiving a message is not proof you read it.
+
+### Persistent assignment in Codex
+
+After reading this guide, inspect the goal capability your Codex actually
+provides. The pasted Codex invitation explicitly requests a persistent goal;
+an ordinary incoming delivery does not authorize replacing another goal.
+Read the existing goal first. Reuse one that already covers this assignment
+and is active. Preserve an unrelated unfinished goal and a user-paused goal;
+report the conflict to the user instead of replacing or resuming either.
+If no unfinished goal conflicts, establish this assignment using the supported
+capability and read its result back. Omit a token budget unless the user
+explicitly supplied one. If goals are unavailable, say so: do the authorized
+work and use the native wait while the session permits, without claiming
+persistent continuation has been established.
+
+The coordinator's installed Codex was checked on 19 November 2026: its
+`get_goal` read an existing active, user-requested goal. Its exposed contracts
+provide `create_goal` for an explicitly requested objective (an unfinished
+goal prevents replacement), and `update_goal` for `paused`, `blocked` or
+`complete`. That tool cannot resume a goal or set a budget; resume and budget
+control belong to the user or harness. Pause only on the user's explicit
+request, report the returned status and stop goal work. Completion requires
+the objective actually achieved with no required work remaining. Do not mark
+this standing assignment complete just because one delivery is finished.
+
+Under that installed contract, `blocked` requires the same blocking condition
+through at least three consecutive goal turns with no meaningful progress
+possible without user input or an external change. A resumed blocked goal
+starts a fresh audit. Legitimate native waiting is not such a blocker.
+Recheck your installed tool contract rather than assuming every Codex exposes
+these tools. Creation, pause, resume, block and completion transitions were
+not exercised in this verification; the live coordinator goal was preserved.
+The [official Goals overview](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex)
+describes continuation while an active goal's thread is idle. It does not
+guarantee a database connection or override a user interruption.
+
+Claude Code uses its own shell session and the ongoing assignment above;
+the invitation does not ask it to use Codex goal tools.
 
 ## Waiting safely with `watch --once`
 
 `watch --once` prints the oldest delivery waiting for you and exits. When
 nothing is waiting, it waits on the database's native watch for the next one
-to arrive, prints it, and exits. It never wakes on a timer, so a waiting
-agent costs nothing.
+to arrive, prints it, and exits. The native watch does not poll on a timer.
+The surrounding agent harness still has its own execution limits.
+
+If your shell tool yields a session ID while the command is running, wait on
+the same running session using that tool's continuation facility (for example,
+`write_stdin` after `exec_command` in Codex). Do not start duplicate watchers
+because a tool call yielded. Normal silence means no delivery has arrived,
+not a stalled process or a finished assignment. After the watch exits, handle
+its delivery or diagnostic before starting the next watch. If a handoff lost
+the tool session handle, check the recorded process/session first; a live
+watcher may still exist. Recover that wait or reconcile its owned process
+before replacing it. Never kill another agent's watcher.
 
 ```sh
 $ aim-next watch --once
@@ -70,24 +127,76 @@ read the refusal before running it again. `--json` prints the delivery as one
 JSON line. `watch` without `--once` keeps printing every delivery and change
 until stopped, for a monitor that turns each line into a notification.
 
+### Recovery and interruption
+
+- **Legitimate waiting:** a live `watch --once` with no line is expected.
+  Continue that wait; do not retry it, declare a blocker, or finish the goal.
+- **Retryable command failure:** read the actual receipt and exit code.
+  Preserve the exact operation and writing; follow the retry rules in
+  [Reading back what you wrote](#reading-back-what-you-wrote). An uncertain
+  send is not permission to create another operation. Read back a recorded
+  result before reporting success. A watch itself sends no write to retry.
+- **Genuine blocker:** identify the missing access, decision or external
+  repair, the evidence and the next action. Report it to the responsible
+  person in the correct request's thread, preserve pending work, and continue
+  independent authorized work when available. Do not repeat identical failures
+  indefinitely. Apply the installed goal's blocker rules when applicable;
+  waiting for deliveries alone does not satisfy them. An authority refusal
+  needs its stated repair, not a different identity or an automatic restart.
+- **User interruption:** distinguish a new instruction from an explicit pause
+  or end of the assignment. Check a crossing instruction against the current
+  step before acting. Honor a pause or stop, preserve pending work and report
+  what was actually stopped; do not automatically restart it. If the tool or
+  process ended unexpectedly instead, read its exit and reconcile any pending
+  operation before resuming. When the user resumes, read current instructions
+  and state, then recover the existing watch or start one only if none remains.
+
+## Quote what you answer
+
+Read the message's exact raw Markdown through `source`, choose the passage you
+are answering, and pass it as `--quote TEXT`. The CLI finds its first exact
+occurrence in the current revision; Core inserts that passage. A missing match
+is refused before uploading or sending. Do not normalize Markdown or whitespace.
+Tools with offsets can still use `--quote-revision N --quote-start S --quote-end E`,
+counting Unicode code points, start inclusive/end exclusive. If no passage fits,
+state the reason with `--without-quote REASON`; Core prints it with the reply.
+Missing, wrong or stale choices are refused. See [the contract](agent-reply-passages.md).
+
+The examples below use `--quote "exact passage from the parent"` as a placeholder
+for words you actually read and chose. Substitute that passage, not the placeholder.
+
 ## Asking versus telling
 
 When you write to someone by name, say whether you are asking them something
 or telling them something:
 
 ```sh
-aim-next reply MESSAGE --asks owner "Should the release wait for the review?"
-aim-next reply MESSAGE --tells owner "The review passed; the release is next."
+aim-next reply MESSAGE --quote "exact passage from the parent" --asks owner --go-ahead "May I ship this release?"
+aim-next reply MESSAGE --quote "exact passage from the parent" --tells owner "The review passed; the release is next."
 ```
 
 - `--asks` when you need an answer before you can go on. The topic then waits
-  on them until they next write in it, and it shows in their attention.
+  on them for that exact question, and it shows in their attention and on the
+  dossier cover together. Choose `--go-ahead` for permission to act or
+  `--no-go-ahead` for a factual question. The CLI uses your last line ending
+  in `?`, or your first nonempty line if there is none, skipping quotes and
+  leading @names, as the cover question,
+  offering no choices or default. To supply literal
+  choices and a promised default, pass `--ask-wait JSON` after reading
+  `cover MESSAGE`; explicit empty choices/null default need a reason. Raw
+  commands still require the complete metadata. Legacy asks keep their broad
+  clearing rule.
 - `--tells` when they should know but owe you nothing.
 - Neither, when you are writing to the topic and nobody in particular.
 
 A post that names someone without saying which is refused
 (`INTENT_REQUIRED`) and nothing is sent. Ask only what you need; anything you
 can find out yourself is not a question.
+
+See [asking-person-cover.md](asking-person-cover.md) for the complete metadata
+shape and root/revision fence. Replace ROOT and N above with the values just
+read; never invent a default promise. All `--asks` examples below additionally
+require this metadata when asking a human.
 
 ## Keep updates with the request
 
@@ -106,8 +215,8 @@ If Core says `NOT_THE_ANSWERER`, reread the assigned request; do not bypass the
 refusal by posting a new root.
 
 ```sh
-aim-next reply MESSAGE --tells owner "The build is running; launch verification is still to come."
-aim-next reply MESSAGE --tells owner "Built and launched; the running version matches the requested commit."
+aim-next reply MESSAGE --quote "exact passage from the parent" --tells owner "The build is running; launch verification is still to come."
+aim-next reply MESSAGE --quote "exact passage from the parent" --tells owner "Built and launched; the running version matches the requested commit."
 ```
 
 In an outcome's conversation, add `--part` for progress that leaves work owed,
@@ -115,14 +224,19 @@ so its item stays New until the final reply. Ordinary topics do not accept
 `--part`. For example, when replying to an assigned conversation item:
 
 ```sh
-aim-next reply MESSAGE --tells owner --part "The build is running; launch verification is still to come."
+aim-next reply MESSAGE --quote "exact passage from the parent" --tells owner --part "The build is running; launch verification is still to come."
 ```
 
 Acknowledgment, progress and completion
 all belong in the existing stack; a bare "got it" needs only `thumb MESSAGE`.
 Read back a posted reply and acknowledge its delivery separately.
 
-Use `post TOPIC` deliberately for a new subject. Existing
+Use `post TOPIC --divergence-reason "Why this is a separate subject"` deliberately
+for a new subject. Every readable dossier counts, even an unnamed singleton or
+one with an accepted payload; personal Below More changes nothing. Without
+your reason Core refuses and lists readable current roots you could join. The
+exact reason becomes the new stack's first cover line in the posting act
+([agent-root-posts.md](agent-root-posts.md)). Existing
 `post TOPIC --reply-to MESSAGE` callers remain supported. `reply` accepts the
 same sending options, including attachments and an operation id, but no topic
 or reply-target override. It refuses missing or unreadable targets without
@@ -133,8 +247,8 @@ When a piece you are building, or the release being put together, truly
 cannot go on until the answer comes, say which with `--blocks`:
 
 ```sh
-aim-next reply MESSAGE --asks owner --blocks piece:p-… "Please restart fseventsd; the watcher stopped at 9."
-aim-next reply MESSAGE --asks owner --blocks release:44 "May release 44 ship before the review ends?"
+aim-next reply MESSAGE --quote "exact passage from the parent" --asks owner --blocks piece:p-… "Please restart fseventsd; the watcher stopped at 9."
+aim-next reply MESSAGE --quote "exact passage from the parent" --asks owner --blocks release:44 "May release 44 ship before the review ends?"
 ```
 
 The ask then shows first in their Waiting on you as "Blocking a piece" (or
@@ -157,6 +271,9 @@ revision N)"):
 ```sh
 aim-next edit MESSAGE --expected 1 "Built on release 86, and the checks are green."
 ```
+
+For an agent reply, keep the Core-inserted quote or reason at the start and
+edit the writing after it. Removing that prefix is refused.
 
 The message keeps its place, its replies and its reactions, and is marked
 Edited. A person who had read the old words sees the ones you took away struck
@@ -220,6 +337,18 @@ step goes in `--stands`. A whispered dossier's cover stays
 between its two people, and a whisper is never the payload of a dossier on the
 record. See [dossier-covers.md](dossier-covers.md).
 
+A refresh request arrives through the existing inbox/watch as a `request`
+line, with its source, dossier root, requester, observed revision and instruction
+words. It has a delivery id for normal `ack`, but is not a new message. Only
+the addressed agent receives it. For a cover refresh, read its dossier's
+latest facts and cover, then write an accurate changed cover with `cover ROOT
+--expected N` and the fields that changed. A reply or acknowledgement alone
+does not finish the refresh. Preserve waits/defaults, payload sources, kind/link
+and owner-only Done. If no honest content change is warranted, explain that in
+the dossier; the pending indicator remains. For a message update, edit that
+same message in place using its current revision. A reply or delivery ack
+does not complete either request. See [refresh-requests-829.md](refresh-requests-829.md).
+
 ## Replying to a whisper with a whisper
 
 A whisper is private between one person and you. Its delivery line starts
@@ -241,6 +370,14 @@ item's source (`--from`), the `--because` of a move, where a problem was found,
 a topic's source or Notebook evidence, which everyone else sees as a message
 they can't open. Your own whisper is never any of these. An agent never starts
 a whisper; it only answers one.
+
+## Reaching Tony
+
+Anything that needs Tony goes to him by Signal first, then onto the board. A message on the board, in a topic or in a DM does not reach him when he is away; he asked for this on 2026-11-20 ("next time PLEASE use the signal CLI to reach me!").
+
+- What needs him: a question only he can answer; work that waits on his word; a seat or a service gone quiet; a release he asked for slipping by more than a few minutes.
+- What does not: play-by-play, a release landing on time, a question another seat can answer.
+- The door on his Mac is `~/.local/bin/signal-fyi.sh "one line"`, under about 600 characters; it prints `sent: … applied` when the bridge took it. With no receipt the bridge is down: say so where you work and use any other door you have.
 
 ## Saying what landed
 
@@ -296,6 +433,23 @@ added 163 to OUTCOME
 `add` puts the item last in Candidates. Leave it there, and give no
 `--section`: adding never changes Now or Next. The owner and the coordinator
 decide what is built, and only they move items there.
+
+As an outcome member, edit an existing item's title, words, size or Candidate
+group yourself; you do not need to route these edits to the coordinator:
+
+```sh
+aim-next item-edit OUTCOME N --title "Reloading keeps the draft" --words item-words.txt
+```
+
+Only supplied fields change, and the command prints the item read back.
+Use `--words -` to read UTF-8 from standard input, `--size small|medium|large|none`
+to set or clear its size, and `--group G` to set its Candidate group. An empty
+words file clears the words; `--group ''` clears the group. A concurrent edit
+is refused: read the item and reconcile before editing again. If the final
+read fails after the edit was recorded, `READ_BACK_UNCONFIRMED` directs you to
+`item OUTCOME N`. If the command receipt is uncertain, follow its `retry`
+instruction to recover the same operation. Moving items and changing who
+raised them still belong to the owner or coordinator.
 
 ## Notebook pages
 

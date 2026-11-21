@@ -96,7 +96,11 @@ dots (docs/conversation.md: the same element, `waitingDots` in
 `web/outcome-conversation.mjs`, pulsing in turn in the card's own ink and
 still under reduced motion), at the foot of the card, until the first reply
 from anyone else, a person or an agent. Named "Waiting for a reply" for a
-screen reader and the pointer; they are a mark, not a control.
+screen reader and the pointer. Their button opens a popover with one action,
+Silence, with a check mark (722). Silence stops only this message's pulse for
+this waiting episode in this document: the static dots, waiting words and
+underlying request remain. Repainting keeps the choice; another request and
+a reload start unsilenced. A reply still arrives and ends the wait normally.
 
 - A reply is what Theseus already reads as answering a message, by someone
   else:
@@ -184,6 +188,36 @@ on the arrow or its words opens the reply; a tap anywhere else puts the words
 away. A reply written while the page is open moves the arrow at once
 (`learnReply`).
 
+## Your note corner (649)
+
+A message with your private note shows a small note corner; pressing it opens
+the composer to that note. The shortcut is on the drawn message card, with the
+existing note glyph and an “Open your private note” name and tooltip. Pointer,
+keyboard and a phone's first tap all open the Reader directly to the exact note.
+The reply and its destination stay as they were. A note saved without a caret
+opens at the end of its words and can return to the reply without an error. The time's passive marks and
+collapsed dossier rows keep their existing behavior.
+
+The corner follows Core's reader-scoped `yours.note`: no corner for an empty
+note or another actor's note. It disappears when your saved note is emptied.
+Opening uses the existing foreground source/editor read, retains writing during
+a slow or failed read, and permits retry from the same corner. Unavailable
+sources retain the existing note recovery with saving held. No note text is put in the
+feed or the shortcut's attributes. The `reading item 649` native cases in
+`tests/topic_reading_native.mjs` cover these branches at 320, 375, 390 and laptop,
+light and dark, in Chromium and WebKit. Measured bounds use a named 1px tolerance.
+
+The corner takes its own 44px row in the card's normal flow, after the words
+and other card content. The card painter adds it after reading controls, and
+later reaction controls insert before it, so an author repaint cannot put it
+between the author and the message. A dossier root stays static so its tab still belongs
+to the folder. A covered reply keeps the card system's ordinary bottom padding
+and overlap allowance below the corner: the next sheet covers no part of its
+target. Root and last-reply notes remain distinct. The B1/B2 cases measure
+containment and test points across the full target, including its bottom edge,
+then press the actual corners and the message words separately. Their named
+1px layout tolerance permits rounding, never covered hit area.
+
 ## What a card carries (127)
 
 A card shows at a glance what its message carries: a small, quiet glyph in
@@ -265,7 +299,8 @@ order and folds, and the one file that sets the look. In short:
 - A link to a message a stack folds away opens the stack first and lands on
   the message. That holds for a tag's link, the reply arrow's, a message's
   address and a link written inside a message, which then opens the Reader
-  as before. A row of the right rail's Starred lands without opening it.
+  as before. A starred dossier title in the outline opens its dossier through
+  the writing guard; the right rail has no Starred section.
 
 The one New line goes under the lowest stack holding anything new, never
 inside one. What the page reports as read (`topic.read_through`) is only
@@ -395,3 +430,54 @@ and a link's target is read as an address once (brackets that share a target
 that is no address, or sit inside one, are words), so a
 hostile message costs work in proportion to its length, not to its square. What it draws is too: a table draws no more cells
 than were written, plus one a short row, never its rows times its columns.
+
+## A message no agent received (676)
+On the reader's own public messages in an ordinary topic, where reply waiting
+already applies, `no_agent_notified` is true when publication delivered to no
+agent and addressed no agent. The delivery record preserves the audience at
+send time. A static crossed-eye glyph occupies the reply-indicator position,
+with accessible words saying no agent was addressed or listening when sent.
+It makes no claim about read access. Existing addressed/listener reply waiting
+is unchanged. Private messages and the Conversation keep their existing rules.
+
+## New arrivals above the reading place (785)
+
+At document top, an outside arrival that would enter between the visible
+header and the card being read waits behind the existing New above marker.
+Its real card stays connected but hidden, outside dossier layout; its record
+still contributes to header New and Only new. Nothing in view moves. The
+marker draws it and takes the reader to it. Scrolling until the insertion
+point is above the window draws it through the same reading hold. A deliberate
+view change draws it explicitly at its destination: opening a message,
+a confirmed own send to this topic, New, either More, or feed navigation.
+Feed navigation keys draw it only with focus in the feed, outside writing,
+inputs and contenteditable elements. Typing, caret movement, selection and
+ordinary clicks do not draw it; neither do star, unstar or card-menu actions,
+which retain their pre-action card hold. Traversing controls to reach the marker
+does not itself draw the waiting arrival. Access and current-view checks still
+apply, and a held card is never reported as seen.
+
+New above remembers arrivals by message identity. Activating it retires the
+arrival actually reached, after its current topic, message and connected card
+are confirmed and focus lands inside it visibly. A fractional scroll edge
+within one CSS pixel counts as a landing. Other arrivals still above sight
+keep their offers. The pill centres on the message column when CSS anchor
+positioning is supported; its fallback keeps the legacy inline left edge.
+
+More new below follows the New line's oldest unread message, loads the real
+older pages until it is available and gives that message visible focus.
+Generic More messages retains its existing first-loaded-card landing rule.
+The focused item 785 native checks distinguish these destinations. Their
+document-top control waits for observed scroll completion or a bounded quiet
+frame fallback before introducing an arrival; the same-card drift limit stays
+one CSS pixel. This control does not change product anchoring.
+
+The continuous reading hold belongs to recorded outside arrivals and edited
+message repaints above the reading place. It absorbs only their own height
+changes. It retains the actual message and entry identities, and checks the
+arrival height against the displacement of the reading place and the other
+cards. A later page or person scroll invalidates the hold before any restore;
+so does unrelated layout, including the sheet, Reader or composer. A whole-page
+observer does not grant arrival ownership. Existing synchronous writing,
+caret/selection, acted-card/title and More repaint owners keep their rules.
+Generic writing and card acts still do not accept waiting arrivals.

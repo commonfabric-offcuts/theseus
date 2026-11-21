@@ -1,3 +1,4 @@
+import { glyph } from './glyphs.mjs';
 // How each card in a topic reads to the person (docs/topic-reading.md):
 // whether they have read it, whether it is talk between agents, and whether
 // they have replied to it. Each is a data attribute on the card, so the
@@ -5,6 +6,7 @@
 import { datedTime, shownTime } from './times.mjs';
 import { reactionsOf } from './reactions.mjs';
 import { waitingDots } from './outcome-conversation.mjs';
+import { waitingEnded, waitingSilence } from './waiting-silence.mjs';
 
 // Talk between agents: an agent wrote it, by name to agents only, and the
 // reader is not among them, did not write it, and wrote nothing it answers.
@@ -76,16 +78,26 @@ export function learnAnswered(messages, viewer, kindOf) {
 }
 
 export const AWAITING_WORDS = 'Waiting for a reply';
+export const UNWATCHED_WORDS = 'No agent was woken: no agent was addressed or listening when this message was sent.';
 // The Conversation's three dots at the foot of the card (outcome-conversation.mjs),
 // in the card's own ink, while the message waits for a reply; gone once it does
 // not. Repainting keeps one.
 export function paintAwaiting(card, item, doc = card.ownerDocument) {
   const row = card.querySelector(':scope > .reply-wait');
-  if (item.awaiting_reply !== true) { row?.remove(); return; }
-  if (row) return;
+  const unwatched = item.no_agent_notified === true;
+  const key = item.id ?? card;
+  if (item.awaiting_reply !== true || unwatched) waitingEnded(doc, key);
+  if (item.awaiting_reply !== true && !unwatched) { row?.remove(); return; }
+  if (row?.dataset.unwatched === String(unwatched)) return;
+  row?.remove();
   const host = doc.createElement('span'); host.className = 'item-tags reply-wait';
   const group = doc.createElement('span'); group.className = 'item-tag-group';
-  group.append(waitingDots(doc, AWAITING_WORDS));
+  host.dataset.unwatched = String(unwatched);
+  if (unwatched) {
+    const mark = doc.createElement('span'); mark.className = 'no-agent-notified';
+    mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', UNWATCHED_WORDS); mark.title = UNWATCHED_WORDS;
+    mark.append(glyph('unwatched', doc, 18)); group.append(mark);
+  } else group.append(waitingSilence(waitingDots(doc, AWAITING_WORDS), key, doc));
   host.append(group);
   card.append(host);
 }
@@ -100,6 +112,22 @@ function arrowIcon(doc) {
   return svg;
 }
 const repliedWords = sent => (sent === null ? 'You replied' : `You replied at ${shownTime(sent)}`);
+
+// Keep the shown tip inside the page's viewport, including when its arrow
+// is near either edge. innerWidth can already include page overflow on a
+// phone; clientWidth is the device-sized layout we must keep (831).
+function placeReplyTip(arrow) {
+  const tip = arrow.querySelector('.replied-words');
+  // Measure off the left edge first: even a temporary right overflow can
+  // enlarge WebKit's page scroll area before the final placement.
+  tip.style.setProperty('--reply-tip-left', '-100vw');
+  const size = tip.getBoundingClientRect().width;
+  if (!size) return;
+  const at = arrow.getBoundingClientRect();
+  const edge = 16, width = arrow.ownerDocument.documentElement.clientWidth;
+  const left = Math.max(edge, Math.min(at.left, width - edge - size));
+  tip.style.setProperty('--reply-tip-left', `${left - at.left}px`);
+}
 
 // The card's read and agent-talk state, and its reply arrow: on the card's
 // author line, beside the time, shown once the person has replied. It sits
@@ -131,12 +159,13 @@ export function paintReading(card, item, { read, quiet, go }) {
   arrow.title = sent === null ? words : `You replied at ${datedTime(sent)}`;
   const shown = arrow.querySelector('.replied-words');
   if (shown.textContent !== words) shown.textContent = words;
+  arrow.onpointerenter = () => placeReplyTip(arrow);
   arrow.onpointerdown = event => { arrow.dataset.pointer = event.pointerType; };
   arrow.onclick = event => {
     event.stopPropagation();
     const touched = arrow.dataset.pointer === 'touch' || arrow.dataset.pointer === 'pen';
     delete arrow.dataset.pointer;
-    if (touched && !('shown' in arrow.dataset)) { arrow.dataset.shown = ''; return; }
+    if (touched && !('shown' in arrow.dataset)) { arrow.dataset.shown = ''; placeReplyTip(arrow); return; }
     delete arrow.dataset.shown;
     go(item.replied.id);
   };
@@ -150,6 +179,9 @@ const page = globalThis.document;
 page?.addEventListener?.('pointerdown', event => {
   for (const arrow of page.querySelectorAll('.replied-mark[data-shown]')) if (!arrow.contains(event.target)) delete arrow.dataset.shown;
 }, true);
+page?.defaultView?.addEventListener?.('resize', () => {
+  for (const arrow of page.querySelectorAll('.replied-mark:is([data-shown],:hover)')) placeReplyTip(arrow);
+});
 
 // A quiet message (talk between agents) wakes when the person presses it: a
 // tap or click on its line or card lifts the dim for the rest of the visit,

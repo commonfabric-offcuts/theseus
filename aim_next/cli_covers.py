@@ -22,7 +22,9 @@ def register(verb):
     cover = verb("cover")
     cover.add_argument("message")
     cover.add_argument("--expected", type=int)
-    # Where it stands, in one line; "" clears it.
+    cover.add_argument("--refresh", action="store_true")
+    cover.add_argument("--operation")
+    # Where it stands, retaining its lines; "" clears it.
     cover.add_argument("--stands")
     # What waits on the owner, each with its default: --waits TEXT --default TEXT, once per thing waiting, in order.
     cover.add_argument("--waits", action="append", default=[])
@@ -53,9 +55,17 @@ def cover_lines(root, revision, cover, owner):
         return ["no cover on the dossier of %s (revision %d)" % (root, revision)]
     lines = ["cover of the dossier of %s (revision %d, by %s at %s)" % (root, revision, cover["by"], _at(cover["at_ms"]))]
     if cover["stands"]:
-        lines.append("  stands: %s" % cover["stands"])
+        # Output.plain sanitizes embedded controls, including LF. Emit each
+        # supplied line separately so the terminal readback retains the breaks.
+        lines.extend(("  stands: " + cover["stands"]).split("\n"))
     for wait in cover["waiting"]:
-        lines.append("  waits on %s: %s (default: %s)" % (owner, wait["text"], wait["default"]))
+        details = []
+        if 'options' in wait:
+            details.append('Options: ' + ' | '.join(wait['options']) if wait['options'] else 'No choices')
+        details.append('Default: ' + wait['default'] if wait['default'] is not None else 'No default promised')
+        if wait.get('reason'):
+            details.append(wait['reason'])
+        lines.append("  waits on %s: %s (%s)" % (wait.get('actor_id', owner), wait['text'], '; '.join(details)))
     payload = cover["payload"]
     if payload:
         lines.append("  payload%s: %s  [%s #%s]%s" % (" (%s)" % payload["kind"] if payload.get("kind") else "", payload["text"],
@@ -75,7 +85,7 @@ class CoverVerbs:
         if len(options.waits) != len(options.defaults):
             self.refuse("INVALID_ARGUMENT", "Each --waits names its --default, what holds if the owner says nothing; nothing was sent")
         if options.waits:
-            args["waiting"] = [{"text": text, "default": default} for text, default in zip(options.waits, options.defaults)]
+            args["waiting"] = [{"text": text, "default": default, "message_id": options.message} for text, default in zip(options.waits, options.defaults)]
         elif options.no_waits:
             args["waiting"] = []
         named = options.payload is not None or options.payload_from or options.link or options.kind or options.done_by
@@ -95,7 +105,23 @@ class CoverVerbs:
     def do_cover(self):
         args = self.cover_args()
         found = self.view("dossier_cover", {"message_id": self.options.message})
+        if self.options.operation and not self.options.refresh:
+            self.refuse("INVALID_ARGUMENT", "--operation on cover accompanies --refresh; nothing was sent")
+        if self.options.refresh:
+            if args:
+                self.refuse("INVALID_ARGUMENT", "--refresh requests a new cover; it takes no cover-writing options")
+            expected = found["cover_revision"] if self.options.expected is None else self.options.expected
+            result = self.command("stack.cover_refresh", {"message_id": found["root_id"]}, {},
+                                  {"cover_revision": expected}, operation=self.operation_of())
+            refresh = result["refresh"]
+            self.out.plain("awaiting a new cover from %s (request %s, observed revision %d)" %
+                           (refresh["recipient"], refresh.get("request_id") or refresh["request_message_id"], refresh["observed_revision"]))
+            return
         if not args:
+            if found.get("refresh"):
+                refresh = found["refresh"]
+                self.out.plain("cover refresh %s: %s (request %s, observed revision %d)" %
+                               (refresh["state"], refresh["recipient"], refresh.get("request_id") or refresh["request_message_id"], refresh["observed_revision"]))
             for line in cover_lines(found["root_id"], found["cover_revision"], found["cover"], found["owner"]):
                 self.out.plain(line)
             return

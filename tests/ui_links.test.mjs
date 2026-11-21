@@ -4,21 +4,39 @@
 // native checks in tests/links_native.mjs press them in a real browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { webLinks, wordNodes, linkWords, openLinksWith, nameTopicsWith, shareLinksFrom, messageLink, pageLink } from '../web/links.mjs';
+import { webLinks, wordNodes, linkWords, writtenLink, openLinksWith, nameTopicsWith, shareLinksFrom, messageLink, pageLink } from '../web/links.mjs';
 import { parseRoute, routeHref } from '../web/topic-navigation.mjs';
+import { inlineNodes } from '../web/message-format.mjs';
 import { closeOnOutsideClick } from '../web/dismiss.mjs';
-import { foldCard } from '../web/fold.mjs';
+import { foldCard, paintFoldWords } from '../web/fold.mjs';
 
 // A document that makes text nodes and elements, each element listening.
 class Element {
   constructor(tag) { Object.assign(this, { tagName: tag.toUpperCase(), children: [], handlers: {}, dataset: {}, attributes: {}, textContent: '', className: '', href: '', target: '', rel: '' }); }
   addEventListener(name, fn) { (this.handlers[name] ??= []).push(fn); }
-  replaceChildren(...nodes) { this.children = nodes; for (const node of nodes) node.parentNode = this; }
-  append(...nodes) { for (const node of nodes.map(node => typeof node === 'string' ? doc.createTextNode(node) : node)) { node.parentNode = this; this.children.push(node); } }
+  replaceChildren(...nodes) { for (const node of this.children) node.parentNode = null; this.children = []; this.append(...nodes); }
+  append(...nodes) {
+    for (const node of nodes.map(node => typeof node === 'string' ? doc.createTextNode(node) : node)) {
+      if (node.parentNode) node.parentNode.children.splice(node.parentNode.children.indexOf(node), 1);
+      node.parentNode = this; this.children.push(node);
+    }
+  }
   replaceChild(node, old) { this.children[this.children.indexOf(old)] = node; node.parentNode = this; old.parentNode = null; }
   setAttribute(name, value) { this.attributes[name] = String(value); }
   get ownerDocument() { return doc; }
   get text() { return this.children.length ? this.children.map(child => child.text ?? child.data).join('') : this.textContent; }
+  get classList() {
+    return { contains: name => this.className.split(/\s+/).includes(name), toggle: (name, force) => {
+      const names = new Set(this.className.split(/\s+/).filter(Boolean)), on = force ?? !names.has(name);
+      if (on) names.add(name); else names.delete(name);
+      this.className = [...names].join(' '); return Boolean(on);
+    } };
+  }
+  matches(selector) { return selector.startsWith('.') ? this.classList.contains(selector.slice(1)) : this.tagName.toLowerCase() === selector.toLowerCase(); }
+  querySelectorAll(selector) { return this.children.flatMap(node => node instanceof Element ? [...(node.matches(selector) ? [node] : []), ...node.querySelectorAll(selector)] : []); }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
+  closest(selector) { for (let node = this; node; node = node.parentNode) if (node instanceof Element && node.matches(selector)) return node; return null; }
+  remove() { if (this.parentNode) this.parentNode.children.splice(this.parentNode.children.indexOf(this), 1); this.parentNode = null; }
 }
 const doc = { createElement: tag => new Element(tag), createTextNode: data => ({ nodeType: 3, data, text: data }) };
 const words = text => webLinks(text).map(link => text.slice(link.start, link.end));
@@ -209,6 +227,34 @@ test('a folded message\'s line shows its first line\'s web addresses as links, a
   } finally { globalThis.document = previous; }
 });
 
+test('a retracted folded link keeps its destination and original-word strike outside the terminal label', t => {
+  here(t);
+  const previous = globalThis.document; globalThis.document = doc;
+  t.after(() => { globalThis.document = previous; });
+  const item = { id: 'retracted-link', seq: 1, author_id: 'writer', addressees: ['reader'],
+    body: 'Original link https://other.example/kept', removal: { kind: 'retracted', by: 'writer', at_ms: 1234567890000 } };
+  const fold = foldCard(new Element('article'), item, doc);
+  for (let paint = 0; paint < 2; ++paint) {
+    paintFoldWords(fold, item);
+    const words = fold.querySelector('.fold-words'), link = words.querySelector('a');
+    assert.equal(words.text, ' to reader: ' + item.body);
+    assert.equal(link.href, 'https://other.example/kept');
+    assert.equal(link.closest('.retracted-words'), words, 'the original link is inside the struck word span');
+    const pressed = click(link);
+    assert.deepEqual([pressed.stopped, pressed.prevented, link.target], [true, false, '_blank']);
+    const labels = fold.querySelectorAll('.message-retracted');
+    assert.equal(labels.length, 1, 'repaint retains one terminal label');
+    const time = labels[0].querySelector('time');
+    assert.equal(time.dataset.ms, String(item.removal.at_ms));
+    assert.equal(labels[0].closest('.retracted-words'), null);
+    assert.equal(time.closest('.retracted-words'), null);
+  }
+  paintFoldWords(fold, { ...item, removal: null });
+  assert.equal(fold.querySelector('.fold-words').classList.contains('retracted-words'), false, 'a different fixture state leaves no stale word decoration');
+  assert.equal(fold.querySelector('.message-retracted'), null);
+  assert.equal(fold.querySelector('a').href, 'https://other.example/kept');
+});
+
 // docs/links.md, "A message's link" and "Topics named in a message".
 const T1 = 't-' + '1'.repeat(32), T2 = 't-' + 'a'.repeat(32), NOWHERE = 't-' + 'f'.repeat(32);
 const names = new Map([[T1, 'Launch copy'], [T2, 'Where the plan carried on']]);
@@ -335,4 +381,22 @@ test('a name the page must read first arrives in place: a bare id becomes its li
   assert.deepEqual(drawn(host.children), [['Launch copy', T1, `?topic=${T1}`], ' ', NOWHERE, ' ', T2, ' ',
     ['Launch copy', `https://theseus.example:5211/?topic=${T1}`, `?topic=${T1}`]]);
   assert.equal(host.text, `Launch copy ${NOWHERE} ${T2} Launch copy`);
+});
+
+
+test('864 authored query link renders and uses the existing opener while invalid relative targets stay words', t => {
+  here(t); const target = '?topic=Landing&page=n-864';
+  const link = writtenLink(target); assert.ok(link, 'accepted query is an in-app written link');
+  assert.deepEqual(link.route, { kind: 'topic', id: 'Landing', page: 'n-864' });
+  const nodes = inlineNodes('[The smoke checks](' + target + ')', { doc });
+  const anchor = nodes.find(node => node.tagName === 'A'); assert.ok(anchor);
+  assert.equal(anchor.text, 'The smoke checks');
+  const opened = []; openLinksWith((...args) => opened.push(args));
+  assert.equal(click(anchor).prevented, true); assert.equal(opened.length, 1);
+  assert.deepEqual(opened[0][0], link.route);
+  assert.equal(opened[0][3], true, 'only the authored query asks the app to resolve a label');
+  const [ordinary] = inlineNodes('[Next](https://theseus.example:5211/?topic=Landing)', { doc });
+  click(ordinary); assert.equal(opened.at(-1)[3], false, 'full addresses retain the existing navigation path');
+  for (const bad of ['?bogus=yes', '?topic=Landing&topic=Other', '?topic=Landing&page=n&message=m', '/?topic=Landing', '//elsewhere.invalid/?topic=Landing', 'javascript:alert(1)', 'data:text/html,test', '#topic=Landing']) assert.equal(writtenLink(bad), null, bad);
+  assert.equal(pageLink({ kind: 'topic', id: 't-864' }, 'n-864'), 'https://theseus.example:5211/?topic=t-864&page=n-864', 'copied links stay full and id-based');
 });

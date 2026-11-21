@@ -43,9 +43,9 @@ class StackCase(fixtures.ReaderCase):
         self.assertNotIn("error", page, page)
         return next(item["acts"] for item in page["items"] if item["id"] == message)
 
-    def told(self, topic="t1"):
+    def told(self, topic="t1", after=0):
         """Who was sent an `acts` change for the topic, and in which scopes."""
-        return sorted({tuple(row) for row in self.sql("SELECT scope_kind,scope_id FROM changes WHERE resource_kind='acts' AND resource_id=?", (topic,))})
+        return sorted({tuple(row) for row in self.sql("SELECT scope_kind,scope_id FROM changes WHERE resource_kind='acts' AND resource_id=? AND seq>?", (topic, after))})
 
     def rows(self, kind):
         return self.sql("SELECT message_id,owner,actor_id,value,revision FROM message_acts WHERE kind=? ORDER BY id", (kind,))
@@ -54,6 +54,8 @@ class StackCase(fixtures.ReaderCase):
 class StarCase(StackCase):
     def test_a_star_is_the_readers_own_held_in_core_and_no_one_else_sees_it(self):
         message = self.post()
+        # Root creation publishes a shared reason cover; this assertion concerns only the later private stars.
+        after_root = self.sql("SELECT coalesce(max(seq),0) FROM changes")[0][0]
         starred = self.committed(self.star(message))
         self.assertEqual((starred["starred"], starred["star_revision"], starred["changed"]), (True, 1, True))
         self.assertEqual((self.acts(message)["starred"], self.acts(message)["star_revision"]), (True, 1))
@@ -64,7 +66,7 @@ class StarCase(StackCase):
         # agent-a's own star is its own: owner's stays as it was.
         self.committed(self.star(message, actor="agent-a"))
         self.assertEqual((self.acts(message)["star_revision"], self.acts(message, actor="agent-a")["star_revision"]), (1, 1))
-        self.assertEqual(self.told(), [("actor", "agent-a"), ("actor", "owner")], "each told only of their own star")
+        self.assertEqual(self.told(after=after_root), [("actor", "agent-a"), ("actor", "owner")], "each told only of their own star")
         unstarred = self.committed(self.star(message, on=False, revision=1))
         self.assertEqual((unstarred["starred"], unstarred["star_revision"]), (False, 2))
         self.assertEqual(self.store.view("owner", "stars", {})["items"], [])
@@ -376,12 +378,15 @@ class AnsweredFoldCase(StackCase):
         self.committed(self.command("message.post", {"body": "And one more thing", "reply_to": mine}, target={"topic_id": "t1"}, actor="owner"))
         self.assertEqual(self.folded(mine), (True, 1))
 
-    def test_an_agents_reply_or_thumbs_up_folds_nothing(self):
+    def test_an_agents_reply_folds_the_author_only_and_its_thumb_adds_no_fold(self):
         mine = self.post("For the agent", actor="owner")
-        self.committed(self.command("message.post", {"body": "Done", "reply_to": mine}, target={"topic_id": "t1"}, actor="agent-a"))
+        self.committed(self.command("message.post", {"body": "Done", "reply_to": mine,
+                                                      "reply_without_quote": "The fixture answers the complete request"},
+                                    target={"topic_id": "t1"}, actor="agent-a"))
+        self.assertEqual((self.folded(mine, "agent-a"), self.folded(mine)), ((False, 0), (True, 1)))
         self.committed(self.thumb(mine, actor="agent-a"))
-        self.assertEqual((self.folded(mine, "agent-a"), self.folded(mine)), ((False, 0), (False, 0)), "an agent folds nothing by replying or a thumbs-up")
-        self.assertEqual(self.rows("fold"), [])
+        self.assertEqual((self.folded(mine, "agent-a"), self.folded(mine)), ((False, 0), (True, 1)), "an agent thumb changes no fold")
+        self.assertEqual(len(self.rows("fold")), 1, "only the955 author-personal reply fold was recorded")
 
     def test_an_answer_to_a_go_ahead_ask_is_a_reply_and_folds_the_ask(self):
         ask = self.post("May I ship the copy?", addressees=["owner"], intent="ask", go_ahead=True)
@@ -578,7 +583,7 @@ class ReadCase(StackCase):
         shown = self.acts(message)
         self.assertEqual((shown["starred"], shown["placed"], shown["folded"], shown["name"]["text"], shown["joined"]), (True, 4, True, "Later", None))
         self.assertEqual(set(shown), {"aside", "aside_revision", "starred", "star_revision", "dealt", "deal_revision", "folded", "fold_revision", "placed", "place_revision",
-                                      "name", "name_revision", "joined", "join_revision", "cover", "cover_revision"})
+                                      "name", "name_revision", "joined", "join_revision", "cover", "cover_revision", "cover_refresh", "cover_refresh_revision"})
         # And the next act is fenced on it as on any other.
         self.committed(self.name(message, "Typed", revision=1))
 

@@ -1,0 +1,333 @@
+✖ item 805 settings restoration is immediate before any repair paint (3.13825ms)
+✔ item 805 later paint repairs the original 656 misplaced-field mutation (0.211ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 64.013416
+
+✖ failing tests:
+
+test at tests/ui_topic_state.test.mjs:1697:1
+✖ item 805 settings restoration is immediate before any repair paint (3.13825ms)
+  AssertionError [ERR_ASSERTION]: settings receives its field immediately, before another paint
+  + actual - expected
+  
+    <ref *1> Element {
+      attributes: {},
+      children: [
+        Element {
+  +       attributes: {
+  +         'aria-label': 'Title'
+  +       },
+  +       autocomplete: 'off',
+  -       attributes: {},
+          children: [],
+          classes: Set(1) {
+  +         'rename-line'
+  -         'text-action'
+          },
+          dataset: {},
+          disabled: false,
+  +       enterKeyHint: 'done',
+  +       hidden: false,
+  +       id: 'topic-rename',
+  +       listeners: {
+  +         blur: [
+  +           [Function (anonymous)]
+  +         ]
+  -       hidden: true,
+  -       listeners: {},
+  -       onclick: [Function (anonymous)],
+  -       parent: [Circular *1],
+  -       tag: 'button',
+  -       type: 'button',
+  -       words: 'Rename'
+  -     },
+  -     Element {
+  -       attributes: {},
+  -       children: [],
+  -       classes: Set(1) {
+  -         'text-action'
+          },
+  +       onblur: [Function: leave],
+  +       oninput: [Function: touch],
+  +       onkeydown: [Function (anonymous)],
+  -       dataset: {},
+  -       disabled: false,
+  -       hidden: true,
+  -       listeners: {},
+  -       onclick: [Function (anonymous)],
+          parent: [Circular *1],
+  +       selected: true,
+  +       tag: 'input',
+  +       type: 'text',
+  +       value: 'Unsent —  exact words'
+  -       tag: 'button',
+  -       type: 'button',
+  -       words: 'Archive'
+        }
+      ],
+  +   classes: Set(0) {},
+  -   classes: Set(1) {
+  -     'settings-actions'
+  -   },
+      dataset: {},
+  +   hidden: true,
+  -   hidden: false,
+      listeners: {},
+  +   parent: null,
+  -   parent: <ref *2> Element {
+  -     attributes: {},
+  -     children: [
+  -       Element {
+  -         attributes: {},
+  -         children: [],
+  -         classes: Set(0) {},
+  -         dataset: {},
+  -         hidden: false,
+  -         id: 'stand-heading',
+  -         listeners: {},
+  -         parent: [Circular *2],
+  -         tag: 'h3',
+  -         words: 'Where it stands'
+  -       },
+  -       <ref *3> Element {
+  -         attributes: {
+  -           'aria-labelledby': 'stand-heading',
+  -           role: 'group'
+  -         },
+  -         children: [
+  -           Element {
+  -             attributes: {
+  -               'aria-pressed': 'true'
+  -             },
+  -             children: [],
+  -             classes: Set(1) {
+  -               'choice-chip'
+  -             },
+  -             dataset: {
+  -               state: 'active'
+  -             },
+  -             hidden: false,
+  -             listeners: {},
+  -             onclick: [Function (anonymous)],
+  -             parent: [Circular *3],
+  -             tag: 'button',
+  -             type: 'button',
+  -             words: 'Active'
+  -           },
+  -           Element {
+  -             attributes: {
+  -               'aria-pressed': 'false'
+  -             },
+  -             children: [],
+  -             classes: Set(1) {
+  -               'choice-chip'
+  -             },
+  -             dataset: {
+  -               state: 'waiting'
+  -             },
+  -             hidden: false,
+  -             listeners: {},
+  -             onclick: [Function (anonymous)],
+  -             parent: [Circular *3],
+  -             tag: 'button',
+  -             type: 'button',
+  -             words: 'Waiting'
+  -           },
+  -           Element {
+  -             attributes: {
+  -               'aria-pressed': 'false'
+  -             },
+  -             children: [],
+  -             classes: Set(1) {
+  -               'choice-chip'
+  -             },
+  -             dataset: {
+  -               state: 'review'
+  -             },
+  -             hidden: false,
+  -             listeners: {},
+  -             onclick: [Function (anonymous)],
+  -             parent: [Circular *3],
+  -             tag: 'button',
+  -             type: 'button',
+  -             words: 'Ready for review'
+  -           },
+  -           Element {
+  -             attributes: {
+  -               'aria-pressed': 'false'
+  -             },
+  -             children: [],
+  -             classes: Set(1) {
+  -               'choice-chip'
+  -             },
+  -             dataset: {
+  -               state: 'done'
+  -             },
+  -             hidden: false,
+  -             listeners: {},
+  -             onclick: [Function (anonymous)],
+  -             parent: [Circular *3],
+  -             tag: 'button',
+  -             type: 'button',
+  -             words: 'Done'
+  -           }
+  -         ],
+  -         classes: Set(1) {
+  -           'state-chips'
+  -         },
+  -         dataset: {},
+  -         hidden: false,
+  -         listeners: {},
+  -         parent: [Circular *2],
+  -         tag: 'div'
+  -       },
+  -       <ref *4> Element {
+  -         attributes: {},
+  -         children: [
+  -           Element {
+  -             attributes: {},
+  -             children: [],
+  -             classes: Set(1) {
+  -               'chips-label'
+  -             },
+  -             dataset: {},
+  -             hidden: false,
+  -             id: 'waiting-label',
+  -             listeners: {},
+  -             parent: [Circular *4],
+  -             tag: 'span',
+  -             words: 'Waiting on'
+  -           },
+  -           Element {
+  -             attributes: {
+  -               'aria-labelledby': 'waiting-label',
+  -               role: 'group'
+  -             },
+  -             children: [],
+  -             classes: Set(2) {
+  -               'people-chips',
+  -               'state-chips'
+  -             },
+  -             dataset: {},
+  -             hidden: false,
+  -             listeners: {},
+  -             parent: [Circular *4],
+  -             tag: 'div'
+  -           }
+  -         ],
+  -         classes: Set(1) {
+  -           'waiting-on'
+  -         },
+  -         dataset: {},
+  -         hidden: true,
+  -         listeners: {},
+  -         parent: [Circular *2],
+  -         tag: 'div'
+  -       },
+  -       Element {
+  -         attributes: {
+  -           'aria-label': 'Note'
+  -         },
+  -         autocomplete: 'off',
+  -         children: [],
+  -         classes: Set(0) {},
+  -         dataset: {},
+  -         enterKeyHint: 'done',
+  -         hidden: false,
+  -         id: 'topic-state-note',
+  -         listeners: {},
+  -         maxLength: 1024,
+  -         onblur: [Function: save],
+  -         oninput: [Function: touch],
+  -         onkeydown: [Function (anonymous)],
+  -         parent: [Circular *2],
+  -         placeholder: 'Add a note…',
+  -         tag: 'input',
+  -         type: 'text',
+  -         value: ''
+  -       },
+  -       Element {
+  -         attributes: {},
+  -         children: [],
+  -         classes: Set(2) {
+  -           'muted',
+  -           'state-by'
+  -         },
+  -         dataset: {},
+  -         hidden: true,
+  -         listeners: {},
+  -         parent: [Circular *2],
+  -         tag: 'p'
+  -       },
+  -       <ref *5> Element {
+  -         attributes: {},
+  -         children: [
+  -           Element {
+  -             attributes: {
+  -               'aria-label': 'Who is responsible for what'
+  -             },
+  -             children: [],
+  -             classes: Set(1) {
+  -               'responsibilities'
+  -             },
+  -             dataset: {},
+  -             hidden: true,
+  -             listeners: {},
+  -             parent: [Circular *5],
+  -             tag: 'ul'
+  -           }
+  -         ],
+  -         classes: Set(1) {
+  -           'settings-part'
+  -         },
+  -         dataset: {},
+  -         hidden: false,
+  -         listeners: {},
+  -         parent: [Circular *2],
+  -         tag: 'div'
+  -       },
+  -       Element {
+  -         attributes: {
+  -           role: 'status'
+  -         },
+  -         children: [],
+  -         classes: Set(1) {
+  -           'notice'
+  -         },
+  -         dataset: {},
+  -         hidden: true,
+  -         listeners: {},
+  -         parent: [Circular *2],
+  -         tag: 'p',
+  -         words: ''
+  -       },
+  -       [Circular *1]
+  -     ],
+  -     classes: Set(0) {},
+  -     dataset: {},
+  -     hidden: false,
+  -     listeners: {},
+  -     parent: null,
+  -     tag: 'section'
+  -   },
+      tag: 'div'
+    }
+  
+      at TestContext.<anonymous> (file:///Users/commonfabric/aim-worktrees/page-lane5-805-title-live210/tests/ui_topic_state.test.mjs:1704:10)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [Element],
+    expected: [Element],
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

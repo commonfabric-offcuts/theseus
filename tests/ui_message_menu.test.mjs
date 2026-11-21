@@ -33,6 +33,19 @@ const key = (root, name) => {
 const tap = button => button.onclick({ stopPropagation() {} });
 const labels = menu => menu.root.children.map(button => button.textContent);
 
+test('a dossier address focuses its requested menu item without running it, on desktop and phone', () => {
+  for (const phone of [false, true]) {
+    const { doc, win, anchor } = page(); win.matchMedia = () => ({ matches: phone });
+    let changes = 0;
+    const menu = openMessageMenu({ anchor, sheet: true, focusKey: 'move-up', items: [
+      { key: 'copy', label: 'Copy Link', glyph: 'link', act() {} },
+      { key: 'move-up', label: 'Move its stack up', glyph: 'up', act() { ++changes; } },
+    ], doc, win });
+    assert.ok(doc.activeElement === menu.root.children[1], 'requested choice owns the focus'); assert.equal(changes, 0);
+    tap(doc.activeElement); assert.equal(changes, 1);
+  }
+});
+
 test('a message\'s menu lists its items in order as a menu, takes the focus, and one tap does that item and closes it, giving the focus back', () => {
   const { doc, win, anchor } = page(), done = [];
   const menu = openMessageMenu({ anchor, items: [{ label: 'Copy Link', glyph: 'link', act: () => done.push('copy') }, { label: 'Mark unread', glyph: 'unread', act: () => done.push('mark') }], label: 'This message', doc, win });

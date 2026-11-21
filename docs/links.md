@@ -8,7 +8,9 @@ a folded message's line, Notebook cards, the Reader's source text, a Notebook
 page opened on an outcome's page, the messages sent to the person by name, and
 the message a new topic answers. `web/links.mjs` draws them.
 
-- Only an `http://` or `https://` address becomes a link. The words are drawn
+- A bare address becomes a link only for `http://` or `https://`. An authored
+  `[words](?query)` link may also name an existing place in this instance,
+  under the route rules below. The words are drawn
   as text nodes and anchors, never as markup.
 - An address ends at a space, an angle bracket, a quote mark or an ellipsis,
   and in a message's formatted words at an escape, as in
@@ -57,6 +59,32 @@ the message a new topic answers. `web/links.mjs` draws them.
   the brackets that would end there, and any inside it, are words. A link written this way to a
   topic keeps its words; it does not show the topic's name.
 - Writing stays plain text: nothing becomes a link while it is written.
+
+## Written query links and topic names
+
+An explicit link such as `[The smoke checks](?topic=Landing&page=n-…)`
+opens here. Its target must start with `?` and be a complete, unambiguous
+route this page already supports. Other relative paths, protocol-relative
+addresses and non-web schemes stay words. Dossier cover stands and an item
+record's description admit these explicit links too, keeping other text and
+formatting marks literal. Notebook Text remains a writing field; rendered
+Notebook words in the Reader, Cards and sheets follow the same link rules.
+
+A topic name in such a route is compared without regard to case against
+complete titles in the current outcome first, then the reader's other
+outcomes. Conversation, done and archived topics count too. More than one
+match at the chosen scope or an unknown name refuses the move with an
+explanation; no match is guessed. When lookup cannot confirm a destination,
+the route as written follows the existing navigation and writing guards.
+Only authored query links request click-time name lookup; generated routes
+and full web addresses keep their existing path. A standalone Cards page uses
+its Notebook owner's outcome as that context. With no known outcome, names
+are sought across readable outcomes. Names are read afresh when followed.
+
+For a named topic/page link, the page's recorded Notebook owner decides
+where it opens, even if the written topic label is stale. Revision, message
+and oldest-unread route rules still apply. Id-based links keep working;
+Copy Link continues to produce full addresses with ids.
 
 ## Topics named in a message
 
@@ -162,10 +190,17 @@ and the bar's ⋯ is one more tap. The items:
   closes and the focus goes back to the message's card. Everyone sees the new
   words marked "Edited" (docs/message-edit.md).
 
-The Reader's header has the same ⋯ in place of the Wide/Stacked button: Copy
-Link, Edit on the person's own message (the Reader turns to its edit mode in
-place, and back to the message when it ends, the focus on its ⋯), and the mark
-for a message, and Wide layout or Stacked layout where the
+The Reader's header uses the same message-action list as the feed (861),
+including Star/Unstar, Archive/Bring back and Rename on a loaded dossier's
+first message. Both offer Start a topic from this, Add to pipeline and Start
+a new dossier. The latter quotes the full message and its link in the existing
+New message composer; in the Reader it also moves the reply text and its
+effective audience, only when both drafts can safely make that move
+(shared-message-menus-861.md). The feed alone adds its arrangement actions
+and Show full message; the Reader alone adds Quote selection and layout.
+Edit on the person's own message turns the Reader to its edit mode in
+place, and back to the message when it ends, the focus on its ⋯.
+The Reader offers Wide layout or Stacked layout where the
 window is wide enough to choose. While a message is edited, ⌘↑ and ⌘↓ step
 nowhere and Escape leaves the edit, its writing kept on the device for the
 next Edit. Up and Down move through a menu, Escape

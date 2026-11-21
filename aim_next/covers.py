@@ -16,18 +16,61 @@ people, as its messages do.
 fenced on.
 """
 
+import json
+
 from .contract import Refusal
 from .cover_values import DONE_REFUSED, done_of, owners_word, shown, stored_value, written
 from .stacks import EMPTY, MEMBERS, StackRoots, current_acts
 from .whispers import STAYS, VISIBLE
 
 
+COVER_WAIT_SCHEMA = [
+    "CREATE TABLE cover_waiting (message_id TEXT PRIMARY KEY REFERENCES messages(id), topic_id TEXT NOT NULL REFERENCES topics(id), workspace_id TEXT NOT NULL REFERENCES workspaces(id))",
+    "CREATE INDEX outcome_cover_waiting ON cover_waiting(workspace_id,topic_id,message_id)",
+    "CREATE INDEX topic_cover_waiting ON cover_waiting(topic_id,message_id)",
+]
+COVER_WAIT_BACKFILL = [
+    "INSERT INTO cover_waiting SELECT a.message_id,a.topic_id,t.workspace_id FROM message_acts a JOIN topics t ON t.id=a.topic_id "
+    "WHERE a.kind='cover' AND a.owner='' AND json_array_length(a.value,'$.waiting')>0 "
+    "AND a.revision=(SELECT max(b.revision) FROM message_acts b WHERE b.message_id=a.message_id AND b.kind='cover' AND b.owner='')"
+]
+COVER_WAIT_DOWN = ["DROP TABLE cover_waiting"]
+
+
 class Covers:
+    def _index_cover_wait(self, db, message, value):
+        """One current candidate per cover, changed with its immutable act, never from a read."""
+        db.execute("DELETE FROM cover_waiting WHERE message_id=?", (message["id"],))
+        if value.get("waiting"):
+            db.execute("INSERT INTO cover_waiting SELECT ?,id,workspace_id FROM topics WHERE id=?",
+                       (message["id"], message["topic_id"]))
+
+    def _cover_wait_counts(self, db, actor, workspace_id=None, topics=None):
+        """Only current candidates of one listed outcome or a bounded topic page, never act history.
+        The owner is read now so handing an outcome on cannot leave another reader's count behind."""
+        if topics is not None and not topics:
+            return {}
+        scope = "c.workspace_id=:workspace" if topics is None else "c.topic_id IN (SELECT value FROM json_each(:topics))"
+        params = {"actor": actor, "workspace": workspace_id, "topics": json.dumps(topics)}
+        rows = db.execute("SELECT c.message_id,c.topic_id FROM cover_waiting c "
+                          + ("INDEXED BY outcome_cover_waiting " if topics is None else "INDEXED BY topic_cover_waiting ")
+                          + "CROSS JOIN topics t ON t.id=c.topic_id JOIN workspaces w ON w.id=t.workspace_id "
+                          "JOIN messages m ON m.id=c.message_id WHERE " + scope + " AND t.archived=0 AND EXISTS ("
+                          "SELECT 1 FROM json_each((SELECT a.value FROM message_acts a WHERE a.message_id=c.message_id "
+                          "AND a.kind='cover' AND a.owner='' ORDER BY a.revision DESC LIMIT 1), '$.waiting') wait "
+                          "WHERE coalesce(json_extract(wait.value,'$.actor_id'),w.owner_id)=:actor) AND " + VISIBLE,
+                          params)
+        counts, roots = {}, StackRoots(db, actor)
+        for row in rows:
+            if roots.root(row["message_id"]) == row["message_id"]:
+                counts[row["topic_id"]] = counts.get(row["topic_id"], 0) + 1
+        return counts
+
     def _cover_owner(self, db, topic_id):
         """The owner of the topic's outcome: the one whose 👍 or word gives a payload Done."""
         return db.execute("SELECT w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=?", (topic_id,)).fetchone()[0]
 
-    def _cover_payload(self, db, actor, root, message_id):
+    def _cover_payload(self, db, actor, root, message_id, what="payload"):
         """The message a payload names, as its writer reads it: one of the dossier root heads, which everyone who reads
         the cover can read. Refused as one that is not there otherwise, so no refusal names a whisper."""
         message = db.execute("SELECT m.id,m.seq,m.topic_id,m.author_id,m.private_to FROM messages m WHERE m.id=:id AND " + VISIBLE,
@@ -35,12 +78,12 @@ class Covers:
         member = message is not None and message["topic_id"] == root["topic_id"] and db.execute(
             MEMBERS + " SELECT 1 FROM members WHERE id=:payload", {"root": root["id"], "actor": actor, "payload": message_id}).fetchone()
         if not member:
-            raise Refusal("INVALID_ARGUMENT", "A payload names a message of this dossier; nothing was changed")
+            raise Refusal("INVALID_ARGUMENT", "A %s names a message of this dossier; nothing was changed" % what)
         # A cover is read by everyone who reads the dossier's first message: a whisper is a payload only on a whispered
         # dossier between the same two people.
         if message["private_to"] is not None and (root["private_to"] is None or
                                                   {message["author_id"], message["private_to"]} != {root["author_id"], root["private_to"]}):
-            raise Refusal(STAYS, "A whisper stays between the two people in it: it is never a cover's payload on the record; nothing was changed")
+            raise Refusal(STAYS, "A whisper stays between the two people in it: it is never a cover's %s on the record; nothing was changed" % what)
         return message
 
     def _cover_done_by(self, db, actor, owner, payload):
@@ -68,7 +111,13 @@ class Covers:
         if envelope["expected"]["cover_revision"] != current:
             raise Refusal("REVISION_CONFLICT", "This cover changed since it was read; nothing was changed", {"cover_revision": current})
         before = stored_value(self._act_value(db, message["id"], "cover", ""))
+        if "waiting" in fields:
+            fields["waiting"] += [w for w in before["waiting"] if w.get("ask_id")]
         value = dict(before, **fields)
+        if "waiting" in fields:
+            for wait in fields["waiting"]:
+                if wait.get("message_id") is not None:
+                    self._cover_payload(db, actor, message, wait["message_id"], what="wait source")
         owner = self._cover_owner(db, message["topic_id"])
         if value["payload"] is not None:
             payload = value["payload"]
@@ -82,6 +131,7 @@ class Covers:
             acts = current_acts(db, actor, [message["id"]]).get(message["id"], EMPTY)
             return dict(result, cover=acts["cover"], cover_revision=current, changed=False), []
         version = self._record_act(db, "cover", message, "", actor, value, current + 1)
+        version = self._cover_refreshed(db, actor, message, before, value, current + 1, version)
         cover = current_acts(db, actor, [message["id"]])[message["id"]]["cover"]
         return dict(result, cover=cover, cover_revision=current + 1, changed=True, acts_version=version), [
             {"kind": "acts", "id": message["topic_id"], "version": version}]
@@ -121,4 +171,5 @@ class Covers:
         root = StackRoots(db, actor).root(message["id"])
         acts = current_acts(db, actor, [root]).get(root, EMPTY)
         return {"instance_id": self.instance_id, "message_id": message["id"], "topic_id": message["topic_id"], "root_id": root,
-                "cover": acts["cover"], "cover_revision": acts["cover_revision"], "owner": self._cover_owner(db, message["topic_id"])}
+                "cover": acts["cover"], "cover_revision": acts["cover_revision"], "owner": self._cover_owner(db, message["topic_id"]),
+                "refresh": acts.get("cover_refresh"), "refresh_revision": acts.get("cover_refresh_revision", 0)}

@@ -1,0 +1,29 @@
+# Item 792 correction — SPEC (before implementation)
+
+Exact starting source: 55a5c42b67740ada187b53de3a606b70058ad7a6, tree 554bcc434f698e7cf299d2927bdf4c68cb07ab8d. Fresh isolated owned checkout: codex-792-fence10030. Original source, native records, and auditor proofs are immutable inputs. This correction does not resume the previous workflow.
+
+## Product contract
+
+`loadShownPage` captures its Reader presentation, registry generation, source identity and displayed revision before its asynchronous current-page read. Before ANY response effect (clearing source body or attachments, making editors unavailable, cancelling saves, revoking media, hiding source, painting marks/offers or observing revisions), it must confirm that the captured presentation is still current, the generation has not changed, the registry remains alive with no opening or close in progress, the same source is still shown, and the answer is at least the currently shown/known revision. Matching item ID alone is insufficient. A deletion at revision 2 arriving after Undo/reopen at revision 3 must leave the newer presentation, private writing, saves and media alone. A current deletion must still hide the intended source, cancel its saves and release its media. Stale rename reads cannot move revision knowledge backwards or repaint an unrelated lifetime.
+
+Keep current read/write access, writer/outcome-owner deletion default, personal star ownership, retained immutable history/Undo, exact operation receipts and recovery unchanged. No schema/migration changes or slot allocation. Original candidate schema evidence remains historical. Current independent chain is 738→48,731→49,756→50,366→51; later whole approvals order 774/757/759/792 at 52+. No actual102 composition claim.
+
+## Regression evidence
+
+First establish the failure from real Core deletion2/Undo3 answers applied to the actual source controller with real EditorRegistry presentation/lifetime checks. Bind DOM/media calls explicitly below browser; no claim that those bindings prove native UI. Include current deletion, same-page reopen, same-object revision advancement, generation change, pending open/close, disposed lifetime, different page and stale rename. Preserve the initial failing log. Apply actual changed-source mutants to each load-bearing fence and current-deletion effect, verify a meaningful failing assertion, restore identical bytes, and run green controls. Local tests are focused Node concurrency1 and CPython3.9, one workload at a time. Each Python workload/mutant/restoration asserts a distinct effective -X pycache_prefix.
+
+Complete real isolated Core fixture setup and committed preflight without starting HTTP locally. Core setup must fail on a noncommitted receipt. Assert revision2 tombstone and revision3 restoration plus exact old-receipt replay. Preserve snapshots/readbacks and cleanup.
+
+## Native instrument contract
+
+Retain all original eleven literal `reading item 792` names through the full actual reading entrypoint in both engines. Add stale deletion/Undo controls within an existing relevant phase where real Reader routing can exercise it; otherwise record the exact boundary rather than a fabricated native proof. Full-page title is outside #deck-page; assert title using its actual heading identity separately from retained body. Navigate explicitly through the established page route to reopen after reload; a per-document identity marker must distinguish replacement documents, with optional body guards. Conversation destination is conversation=w1 and its actual Core topic parent.
+
+Phone overflow investigation records actual trusted/native event targets, their composed path, target rectangles, hit-test and settlement samples before/after input. Aim only once the actual control settles, without forcing focus, invoking handlers or substituting selectors. Compare targets after input and fail explicitly if input lands on Draft. Preserve original raw trace and avoid inferring a product cause or committed write from a request alone. No timeout-only fix. Any unresolved product/runner boundary returns before broader product changes.
+
+Failure artifacts are captured before close: DOM, URL/document/source identity, geometry, input events, requests/readbacks and screenshot. Each capture component retains its own error; capture failures never replace the primary test error. Native pointer/touch/keys only for actions. Every measured size/position assertion has a named engine-realistic tolerance and an actual source mutant crossing its bound with byte-restored green control; avoid adding geometry claims without this proof. Dry-enumerate both complete entrypoints before freezing. Bind all new native helper/fixture/product captures and explicitly list any source omissions.
+
+## Freeze, pool and return
+
+No local HTTP, browser, full suite, push, PR, install, deploy, board/stage/flight mutation, profile/key/session/token/env/auth read, signal or delegation. No live/foreign/frozen edits. Driver pool_requests only. One prior actual start; old WebKit allocation HELD, not available for this source. Two new calls reserved serially: 792-fence-chr10030 native-reading ^reading item 792 max1; inspect complete first raw result; only then 792-fence-wk10030 native-webkit-reading same frozen head max1. Own product failure stops spending. No interengine edits, retries or extra calls. Fourteen unallocated under18 after reservations.
+
+Deliver REPORT and this SPEC, exact clean commit/tree/ordered parents, complete binary diff, all tracked source SHA256, explicit original/local/native evidence manifests, capture bindings and omissions, literal outcomes/unrun tails, red/mutant/restored controls, fixture exit/health/owned Browser.close evidence and cumulative budget. No selfapproval; independent root/auditor judgment and later composition remain required.

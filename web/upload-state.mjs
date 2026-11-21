@@ -1,3 +1,4 @@
+import { keptCopy } from './writing-comparison.mjs';
 // Client ownership is independent of the server's reusable draft slot.
 export const imageTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 export const pair = a => ({ authority_id: a?.authority_id, authority_epoch: a?.authority_epoch });
@@ -17,7 +18,7 @@ export function copyNeedsImageReview(row, editor) {
   if (row.snapshot?.format !== 2) return false;
   if (!readableUploads(row.snapshot)) return true;
   return row.snapshot.uploadState.entries.some(e => e.selected && e.owner.kind === 'cycle') ||
-    refusedCopyAtDraft(row, editor?.recoveryServerDraft) && !editor?.refusedCopyChoices?.has(copyChoiceKey(editor, row));
+    refusedCopyAtDraft(row, editor?.recoveryServerDraft) && !keptCopy(editor, row) && !editor?.refusedCopyChoices?.has(copyChoiceKey(editor, row));
 }
 export function currentImages(editor) {
   return (Array.isArray(editor.uploadState?.entries) ? editor.uploadState.entries : []).filter(e => e?.owner?.kind === 'cycle' && e.owner.id === editor.clientCycleId && e.selected);

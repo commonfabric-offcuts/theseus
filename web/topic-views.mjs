@@ -1,4 +1,4 @@
-import { checkedView, RevisionTargets } from './freshness.mjs';
+import { checkedView, readFailure, RevisionTargets } from './freshness.mjs';
 import { oldestUnreadOf } from './unanswered.mjs';
 import { learnReactions, reactionsOf } from './reactions.mjs';
 import { laterActs, laterPosition } from './stack-order.mjs';
@@ -13,7 +13,7 @@ const integer = n => Number.isSafeInteger(n) && n >= 0;
 // Revisions of the dossier's name, cover and personal place, its historical
 // places (550) and the reader's starred messages (635) each affect its drawing.
 // A position snapshot alone is not a change.
-const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];
+const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];
 const starsOf = position => (position.starred ?? []).join(' ');
 const samePlaces = (a, b) => JSON.stringify(a?.places ?? []) === JSON.stringify(b?.places ?? []);
 const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && samePlaces(a, b) && starsOf(a) === starsOf(b) : !b);
@@ -22,6 +22,9 @@ const behind = () => Object.assign(Error('The requested version is not available
 // A reply's line reads how the message it answers begins: its first 120
 // characters, as Core cuts it (aim_next/conversation.py, reply_to_excerpt).
 const excerptOf = body => Array.from(body).slice(0, 120).join('');
+const terminalFields = item => {
+  if (item.removal) Object.assign(item, { removal_action: null, go_ahead: false, blocks: null, no_answer: false, awaiting_reply: false, no_agent_notified: false });
+};
 // What else on the page holds messages' words (the conversation's own items,
 // keyed by id) follows each edited message: its later revision, and the line
 // of each reply to it that shows one. edits: id -> the message as read.
@@ -46,10 +49,12 @@ export class TopicViews {
   // reading(what): a read of what shows the cards ('acts', 'reaction:<id>')
   // begins; the function it returns is called once that read has landed, so
   // what was said of an act on a card goes (stack-feed.mjs answered).
-  constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {}, holds = () => false, reading = () => () => {} }) {
-    Object.assign(this, { instanceId, topicId, reader, paint, invalidate, holds, reading });
+  constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {}, holds = () => false, reading = () => () => {}, actMessages = null, arrived = () => {} }) {
+    Object.assign(this, { instanceId, topicId, reader, paint, invalidate, holds, reading, actMessages, arrived });
     this.scope = { kind: 'topic', id: topicId };
-    this.messages = new Map(); this.memory = new Map(); this.revisions = new RevisionTargets();
+    this.membershipRevision = 0; this.movedPointers = [];
+    this.messages = new Map(); this.memory = new Map(); this.deletedMemory = new Map(); this.revisions = new RevisionTargets();
+    this.removals = new Map();
     // Loaded messages form runs, each holding every topic message between its
     // oldest and newest; a gap between runs holds messages never loaded.
     this.runs = new Map(); this.runCount = 0;
@@ -84,6 +89,65 @@ export class TopicViews {
     this.revised = new Set(); this.edits = new Map(); this.quoted = new Map();
     // yours: the messages whose card's marks of the person's own note and saved reply changed (item 127).
     this.yours = new Set();
+    // Item 803: discovery is by canonical dossier id, never by star count.
+    // History uses the ordinary frontier/runs; there is no supplemental run.
+    this.starRoots = new Set(); this.starCursor = null; this.starsLoaded = false;
+    this.starSerial = 0; this.starredPending = false; this.starredError = null;
+    this.starHistoryChanged = false;
+  }
+  resetStars() {
+    ++this.starSerial; this.starRoots.clear(); this.starCursor = null; this.starsLoaded = false;
+    this.starredPending = true; this.starredError = null;
+    this.invalidate('starred', 0, true); this.paint('starred');
+  }
+  // One bounded read per refresh turn. Exhaust history to establish that no
+  // admitted reply is missing, including replies older than a starred root's
+  // currently loaded branches. Foreground reads can interrupt every turn.
+  async readStarred(read, current) {
+    const serial = this.starSerial, mine = () => current() && serial === this.starSerial;
+    try {
+      if (!this.starsLoaded) {
+        const cursor = this.starCursor;
+        const page = checkedView(await read('stars', { topic_id: this.topicId, limit: 50, ...(cursor === null ? {} : { cursor }) }), this.instanceId);
+        if (!mine()) return false;
+        let previous = cursor ?? Infinity;
+        if (!Array.isArray(page.items) || page.items.some(item => {
+          const bad = item?.topic_id !== this.topicId || typeof item?.dossier?.id !== 'string' || !item.dossier.id ||
+            !integer(item.star) || item.star < 1 || item.star >= previous;
+          previous = item?.star; return bad;
+        }) || !(page.next_cursor === null || integer(page.next_cursor) && page.items.length && page.next_cursor === page.items.at(-1).star)) throw invalid('The starred dossiers page is malformed.');
+        for (const item of page.items) if (![item.message_id, item.dossier.id].some(id => this.removals.get(id)?.kind === 'unsent')) this.starRoots.add(item.dossier.id);
+        this.starCursor = page.next_cursor; this.starsLoaded = page.next_cursor === null;
+      } else if (this.starRoots.size && this.olderCursor !== null) {
+        const cursor = this.olderCursor;
+        const page = await read('topic_messages', { topic_id: this.topicId, audience: 'all', direction: 'before', cursor, limit: 30 });
+        if (!mine()) return false;
+        // A simultaneous More or commit reload owns its own frontier. Retry
+        // from that frontier rather than claiming continuity across its gap.
+        if (cursor !== this.olderCursor) return false;
+        this.page(page, 'topic');
+        if (page.next_cursor !== null && (!page.items.length || page.next_cursor !== page.items[0].seq || page.next_cursor >= cursor)) throw invalid('The starred history paging made no progress.');
+        // Keep bounded history reads interruptible, but draw the accumulated
+        // history once it is complete. Redrawing every older page constructs
+        // all its unrelated cards and starts more missing-head reads while
+        // the starred dossiers are still loading.
+        if (this.messagesPage(page, { cursor, draw: false })) this.starHistoryChanged = true;
+      }
+      const complete = this.starsLoaded && (!this.starRoots.size || this.olderCursor === null);
+      if (complete && this.starHistoryChanged) { this.paintMessages(); this.starHistoryChanged = false; }
+      this.starredPending = !complete; this.starredError = null; this.paint('starred');
+      return complete;
+    } catch (error) {
+      if (!mine()) return false;
+      const failure = readFailure(error);
+      // A failed fill still shows the history it successfully read. Do not
+      // publish cached material while authority or access is being rechecked.
+      if (this.starHistoryChanged && !['authority', 'forbidden', 'reconnect'].includes(failure.kind)) {
+        this.paintMessages(); this.starHistoryChanged = false;
+      }
+      if (failure.kind !== 'defer') { this.starredError = error; this.paint('starred'); }
+      throw error;
+    }
   }
   // The ids whose marks changed since the last call, once.
   takeYours() { const ids = this.yours; this.yours = new Set(); return ids; }
@@ -97,6 +161,24 @@ export class TopicViews {
   // The ids repainted for an edit since the last call, once.
   takeRevised() { const ids = this.revised; this.revised = new Set(); return ids; }
   takeEdits() { const edits = this.edits; this.edits = new Map(); return edits; }
+  learnRemoval(id, removal) {
+    if (!removal || this.removals.has(id)) return;
+    this.removals.set(id, removal);
+    if (removal.kind === 'unsent') {
+      this.messages.delete(id); this.runs.delete(id); this.starRoots.delete(id);
+      this.edits.delete(id); this.quoted.delete(id); this.revised.delete(id);
+      if (this.alone?.id === id) this.alone = null;
+    } else {
+      const item = this.messages.get(id);
+      if (item) { item.removal = removal; terminalFields(item); this.revised.add(id); }
+    }
+    for (const item of this.messages.values()) {
+      if (item.reply_to === id && typeof item.reply_to_excerpt === 'string' && !item.reply_to_withheld) {
+        item.reply_to_removal = removal; this.revised.add(item.id);
+      }
+    }
+    this.paintMessages();
+  }
   // A loaded reply's line shows how message id begins.
   quotes(id) { for (const other of this.messages.values()) if (other.reply_to === id && typeof other.reply_to_excerpt === 'string') return true; return false; }
   // The reply line of each loaded reply to an edited message reads its latest words.
@@ -111,7 +193,11 @@ export class TopicViews {
   // and a loaded reply to it reads its new first words. An answer read before
   // the edit, at a lower revision, changes nothing. True when one was taken.
   learnRevision(item, known = this.messages.get(item.id)) {
+    if (this.removals.get(item.id)?.kind === 'unsent') return false;
     if (!known || revisionOf(item) <= revisionOf(known)) return false;
+    item.withdrawal = known.withdrawal ?? item.withdrawal;
+    item.removal = this.removals.get(item.id) ?? known.removal ?? item.removal;
+    terminalFields(item);
     if (known.acts) item.acts = laterActs(known.acts, item.acts);
     item.yours = this.laterYours(known, item);
     item.stack_position = laterPosition(known.stack_position, item.stack_position);
@@ -121,6 +207,7 @@ export class TopicViews {
   }
   // An edited message no loaded page holds: the lines that show it read its words, unless a later revision was read.
   learnQuoted(item) {
+    if (this.removals.get(item.id)?.kind === 'unsent') return false;
     if (revisionOf(item) <= (this.quoted.get(item.id) ?? 1)) return false;
     this.quoted.set(item.id, revisionOf(item)); this.requote(item);
     return true;
@@ -129,7 +216,7 @@ export class TopicViews {
   // it, its acts are kept as the loaded messages' are. True when that asks for
   // a read of the acts. The item, once its acts are read: aloneItem.
   showAlone(id, seq) {
-    if (id === null || this.messages.has(id) || !integer(seq)) { this.alone = null; return false; }
+    if (id === null || this.removals.get(id)?.kind === 'unsent' || this.messages.has(id) || !integer(seq)) { this.alone = null; return false; }
     if (this.alone?.id === id) return false;
     this.alone = { id, seq }; return true;
   }
@@ -160,9 +247,13 @@ export class TopicViews {
         !integer(answer.relevant_versions?.[versionKey])) throw invalid('The list page is malformed.');
     return answer;
   }
-  messagesPage(answer, { initial = false, cursor, live = false, anchored = false } = {}) {
+  messagesPage(answer, { initial = false, cursor, live = false, anchored = false, draw = true } = {}) {
     // An explicit return to an old message adds one bounded run without moving the ordinary paging frontier.
     this.page(answer, 'topic');
+    const membership = answer.membership_revision ?? 0;
+    if (membership < this.membershipRevision) return false;
+    if (membership > this.membershipRevision) this.invalidate('dossier_move', membership);
+    this.membershipRevision = membership;
     const moved = this.learnUnread(answer);
     if (!initial && !live && !anchored && cursor !== this.olderCursor || live && cursor !== this.newest) { if (moved) this.paint('line'); return false; }
     let previous = -1;
@@ -191,9 +282,20 @@ export class TopicViews {
     // was read, and the latest revision of its words the page has seen.
     for (const item of answer.items) {
       const known = this.messages.get(item.id);
+      if (this.removals.get(item.id)?.kind === 'unsent') continue;
+      const parentRemoval = typeof item.reply_to_excerpt === 'string' && !item.reply_to_withheld
+        ? this.removals.get(item.reply_to) ?? known?.reply_to_removal ?? item.reply_to_removal ?? null : null;
+      if (known && JSON.stringify(parentRemoval) !== JSON.stringify(known.reply_to_removal ?? null)) this.revised.add(item.id);
+      item.reply_to_removal = parentRemoval;
+      if (known) known.reply_to_removal = parentRemoval;
+      item.withdrawal = known?.withdrawal ?? item.withdrawal;
+      item.removal = this.removals.get(item.id) ?? known?.removal ?? item.removal;
+      if (item.removal) { this.removals.set(item.id, item.removal); terminalFields(item); }
       if (known && revisionOf(item) !== revisionOf(known)) {
         if (!this.learnRevision(item, known)) {
           if (known.acts || item.acts) known.acts = laterActs(known.acts, item.acts);
+          known.withdrawal ??= item.withdrawal;
+          known.removal ??= item.removal;
           known.yours = this.laterYours(known, item);
         }
         this.runs.set(item.id, run); continue;
@@ -216,10 +318,17 @@ export class TopicViews {
     if (live && this.reader !== null && answer.items.some(item => item.author_id === this.reader)) this.sight.clear();
     this.newest = Math.max(this.newest, ...answer.items.map(item => item.seq));
     if (!live && !anchored) this.olderCursor = answer.next_cursor;
+    if (this.starsLoaded && this.starRoots.size && this.olderCursor !== null) {
+      this.starredPending = true; this.invalidate('starred', 0); this.paint('starred');
+    }
+    if (live) this.arrived(answer.items);
+    if (draw) this.paintMessages();
+    return true;
+  }
+  paintMessages() {
     this.paint('messages');
     if (this.revised.size) this.paint('edited');
     if (this.yours.size) this.paint('yours');
-    return true;
   }
   // Whether the line holds: a message at or above it (its own or a newer one)
   // is unread, as the answer that drives the counts and the Unread pills says,
@@ -314,9 +423,12 @@ export class TopicViews {
   // newest act the change named, which the answer must have reached.
   async readActs(version, read, current) {
     const alone = this.alone;
-    if (!this.messages.size && !alone) return true;
+    // Supplemental admitted originals share current acts/positions without
+    // entering pagination runs or being removed and fetched after a star.
+    const messages = this.actMessages?.() ?? this.messages;
+    if (!messages.size && !alone) return true;
     let oldest = alone?.seq ?? Infinity;
-    for (const item of this.messages.values()) oldest = Math.min(oldest, item.seq);
+    for (const item of messages.values()) oldest = Math.min(oldest, item.seq);
     const found = new Map(), landed = this.reading('acts');
     let cursor = null, reached = null;
     do {
@@ -342,8 +454,9 @@ export class TopicViews {
     // revision: an answer read before a commit the page has since heard of
     // puts back nothing (stack-order.mjs, laterActs).
     let changed = false;
+    const currentMessages = this.actMessages?.() ?? this.messages;
     for (const [id, acts] of found) {
-      const item = this.messages.get(id) ?? (alone?.id === id ? alone : null), later = item && laterActs(item.acts, acts);
+      const item = currentMessages.get(id) ?? (alone?.id === id ? alone : null), later = item && laterActs(item.acts, acts);
       if (item && JSON.stringify(item.acts) !== JSON.stringify(later)) { item.acts = later; changed = true; }
     }
     // A message the answers never named has had no act made.
@@ -370,15 +483,16 @@ export class TopicViews {
   // own row places it (item 470).
   learnPositions(rows) {
     let changed = false;
+    const messages = this.actMessages?.() ?? this.messages;
     const read = new Set(rows.filter(row => row.stack_position).map(row => row.message_id));
     for (const row of rows) {
       if (!row.stack_position) continue;
-      const item = this.messages.get(row.message_id);
+      const item = messages.get(row.message_id);
       if (!item) continue;
       const position = laterPosition(item.stack_position, row.stack_position);
       if (!samePlace(position, item.stack_position)) changed = true;
       item.stack_position = position;
-      for (const [id, other] of this.messages) {
+      for (const [id, other] of messages) {
         if (read.has(id) || other.stack_position?.root_id !== position.root_id) continue;
         const next = laterPosition(other.stack_position, position);
         if (!samePlace(next, other.stack_position)) changed = true;
@@ -390,8 +504,9 @@ export class TopicViews {
   async readPositions(read, current = () => true) {
     // A cached pre-355 Core has no position contract; its ordinary act reads
     // remain usable until the page is reloaded onto the new release.
-    if (![...this.messages.values()].some(item => item.stack_position)) return;
-    const ids = [...this.messages.keys()]; let changed = false;
+    const messages = this.actMessages?.() ?? this.messages;
+    if (![...messages.values()].some(item => item.stack_position)) return;
+    const ids = [...messages.keys()]; let changed = false;
     // A page learned before a later one fails is drawn, as in readActs.
     try {
       for (let start = 0; start < ids.length; start += 100) {
@@ -413,6 +528,8 @@ export class TopicViews {
   }
   memoryItem(item) {
     this.validMemory(item);
+    if((this.deletedMemory.get(item.id)?.revision??0)>=item.revision)return;
+    this.deletedMemory.delete(item.id);
     const old = this.memory.get(item.id);
     // A read only moves forward, so an answer older than the one shown, at
     // the same revision, never relights a page the reader has read since.
@@ -462,7 +579,39 @@ export class TopicViews {
     if (refused(named)) return true;
     return checkedView(named, this.instanceId);
   }
+  async readMoved(read, current) {
+    let cursor = null, pointers = [], arrivals = [], at = this.membershipRevision;
+    do {
+      const answer = checkedView(await read('dossier_moves', { topic_id: this.topicId, limit: 100, ...(cursor === null ? {} : { cursor }) }), this.instanceId);
+      if (!current()) return false;
+      at = Math.max(at, answer.membership_revision);
+      pointers.push(...answer.items); arrivals.push(...answer.arrivals);
+      cursor = answer.next_cursor;
+    } while (cursor !== null);
+    const ids = [...this.messages.keys()];
+    for (let n = 0; n < ids.length; n += 100) {
+      const batch = ids.slice(n, n + 100), answer = checkedView(await read('topic_membership', { topic_id: this.topicId, message_ids: batch }), this.instanceId);
+      if (!current()) return false;
+      if (answer.membership_revision < at) throw behind();
+      at = Math.max(at, answer.membership_revision);
+      const kept = new Set(answer.message_ids);
+      for (const id of batch) if (!kept.has(id)) { this.messages.delete(id); this.runs.delete(id); this.positions?.delete(id); }
+    }
+    this.membershipRevision = at; this.movedPointers = pointers;
+    // A moved dossier can predate the newest loaded message. Load its root by a bounded page,
+    // keeping the ordinary earlier-messages frontier and any unsent writing.
+    for (const root of arrivals) if (!this.messages.has(root.root_id)) {
+      const answer = await read('topic_messages', { topic_id: this.topicId, direction: 'after', cursor: root.seq - 1, limit: 30 });
+      if (!current()) return false;
+      // Anchored page validation expects an upper cursor. It does not move the paging frontier.
+      if (!this.messagesPage(answer, { anchored: true, cursor: Number.MAX_SAFE_INTEGER })) throw behind();
+    }
+    this.newest = Math.max(0, ...[...this.messages.values()].map(item => item.seq));
+    this.paint('messages');
+    return true;
+  }
   async refresh(key, version, read, current = () => true) {
+    if (key === 'dossier_move') return this.readMoved(read, current);
     if (key === 'topic') {
       const answer = checkedView(await read('topic', { topic_id: this.topicId }), this.instanceId);
       if (!current()) return false;
@@ -550,12 +699,20 @@ export class TopicViews {
       return answer.next_cursor === null;
     }
     if (key.startsWith('memory:')) {
-      const id = key.slice(7), old = this.memory.get(id);
+      const id = key.slice(7), old = this.memory.get(id)??this.deletedMemory.get(id);
       if (!old) return true;
       const answer = this.page(await read('memory_items', { owner_scope: this.scope, cursor: old.seq - 1, limit: 1 }), 'notebook');
       if (!current()) return false;
       const item = answer.items[0];
-      if (answer.items.length !== 1 || item?.id !== id || item.seq !== old.seq) throw invalid('The requested Notebook item was not returned.');
+      if(item?.id!==id) {
+        const latest=checkedView(await read('memory_current',{item_id:id}),this.instanceId);
+        if(!current())return false;
+        if(latest.source_ref?.id!==id||latest.source_ref.revision<Math.max(version,old.revision)||latest.deleted!==true)
+          throw invalid('The requested Notebook item was not returned.');
+        this.deletedMemory.set(id,{seq:old.seq,revision:latest.source_ref.revision});this.memory.delete(id);
+        this.revisions.observe(id,latest.source_ref.revision);this.paint('memory');this.paint('offer');return true;
+      }
+      if (answer.items.length !== 1 || item.seq !== old.seq) throw invalid('The requested Notebook item was not returned.');
       this.validMemory(item);
       if (item.revision < Math.max(version, this.memory.get(id)?.revision ?? 0)) throw behind();
       this.memoryItem(item); this.paint('memory'); this.paint('offer'); return true;

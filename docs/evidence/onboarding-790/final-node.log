@@ -1,0 +1,17 @@
+{"item790NativeCases":["reading item 790 laptop: owner chooses both variants and copies current prompt by native paste","reading item 790 laptop: refused clipboard keeps readable text and retry copies fresh state","reading item 790 laptop: non-owner has no overflow and Core refuses the prompt","reading item 790 phone: owner chooses both variants and copies current prompt by native paste","reading item 790 phone: refused clipboard keeps readable text and retry copies fresh state","reading item 790 phone: non-owner has no overflow and Core refuses the prompt"],"perEngine":6,"runnerStarts":0}
+✔ item 790 only the exact owner has the overflow and opening alone neither reads nor copies (0.596917ms)
+✔ item 790 each variant immediately copies newly read facts, announces success and shows the exact text (0.327333ms)
+✔ item 790 clipboard refusal keeps readable selected text, truthfully offers retry and rereads current facts (0.124625ms)
+✔ item 790 read refusal clears earlier text and never echoes transport or private context (0.110333ms)
+✔ item 790 closed, superseded and newly non-owner reads cannot copy or repaint (0.230375ms)
+✔ item 790 native clipboard helper starts promised-data write synchronously and reports refusal accurately (0.208125ms)
+✔ item 790 native case enumeration is six literal reading cases for laptop and phone (21.7935ms)
+✔ item 790 every generated browser expression parses, state/layout readers execute below browser (0.760416ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 87.74875

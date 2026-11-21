@@ -363,7 +363,7 @@
    "break": [
     [
      "aim_next/reactions.py",
-     "body = ANSWERS[answer] + (\" (I changed my answer)\" if row is not None else \"\")",
+     "body = ANSWERS[answer] + (\" (I changed my answer)\" if row is not None and row[\"value\"] is not None else \"\")",
      "body = ANSWERS[answer]"
     ]
    ],
@@ -1303,8 +1303,8 @@
    "break": [
     [
      "aim_next/reactions.py",
-     "\"AND (private_to IS NULL OR private_to=?) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])",
-     "\"AND (1 OR private_to=?) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])"
+     "\"AND (private_to IS NULL OR private_to=?) AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])",
+     "\"AND (1 OR private_to=?) AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])"
     ]
    ],
    "check": {
@@ -1331,7 +1331,7 @@
    "break": [
     [
      "aim_next/reactions.py",
-     "answered=answered_yes(row), changed=False",
+     "answered=answered_yes(row) and removal_value(db, message['id']) is None, changed=False",
      "answered=False, changed=False"
     ]
    ],
@@ -1461,7 +1461,7 @@
    "break": [
     [
      "web/panes.mjs",
-     "    if (to === 'feed') return onScreen(doc.getElementById('main')) && this.feed(doc);",
+     "    if (to === 'feed') return onScreen(doc.getElementById('main')) && this.feed(doc, undefined, navigate);",
      "    if (to === 'feed') return false;"
     ]
    ],
@@ -2201,7 +2201,7 @@
    "break": [
     [
      "web/panes.mjs",
-     "  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : panes.step('feed', 'right', doc);\n",
+     "  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1], navigate) : panes.step('feed', 'right', doc, navigate);\n",
      ""
     ]
    ],
@@ -2216,8 +2216,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "&& panes.feed(doc, { first: true })) ||",
-     "&& panes.feed(doc)) ||"
+     "panes.feed(doc, { first: true }, navigate)",
+     "panes.feed(doc, undefined, navigate)"
     ]
    ],
    "check": {
@@ -2500,7 +2500,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);",
+     "      this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null, ...(typeof position.order_key === 'number' ? { order_key: position.order_key } : {}) }]] : []);",
      ""
     ]
    ],
@@ -2536,7 +2536,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks ⌘↑ ⌘↓ move a stack"
+    "case": "stacks reorder up by key and down by menu"
    }
   },
   {
@@ -2551,7 +2551,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks ⌘↑ ⌘↓ move a stack"
+    "case": "stacks reorder up by key and down by menu"
    }
   },
   {
@@ -2566,7 +2566,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks ⌘↑ ⌘↓ move a stack"
+    "case": "stacks reorder up by key and down by menu"
    }
   },
   {
@@ -2581,7 +2581,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks ⌘↑ ⌘↓ move a stack"
+    "case": "stacks reorder up by key and down by menu"
    }
   },
   {
@@ -2596,7 +2596,7 @@
    ],
    "check": {
     "native": "reading",
-    "case": "stacks ⌘↑ ⌘↓ move a stack"
+    "case": "stacks reorder up by key and down by menu"
    }
   },
   {
@@ -2692,8 +2692,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    const at = this.doc.activeElement;\n    if (!at || !this.list.contains(at)) return;\n    if (action === 'undo' && at === this.state.more) { event.preventDefault(); this.undo(); return; }\n    const toggle = at.classList?.contains('stack-toggle');\n    const entry = toggle ? this.entryFor(at.closest('.reply-stack')?.dataset.stack) : entryOf(this.list, at);\n    if (!entry || !(toggle || at === cardIn(entry) || at.classList?.contains('fold-line'))) return;",
-     "    const entry = this.entryFor(this.list.dataset.lastMessage);\n    if (!entry) return;"
+     "    const at = this.doc.activeElement;\n    if (writing(at) || at?.closest?.('input, textarea, select, [contenteditable]') ||\n        event.target?.closest?.('input, textarea, select, [contenteditable]')) return;\n    if (this.renameKey(event)) return;\n    const action = keyAction(event);\n    if (!FEED_ACTIONS.includes(action) || this.doc.querySelector('dialog[open]:not([data-card-reply])')) return;\n    if (!at || !this.list.contains(at)) return;\n    if (action === 'undo' && at === this.state.more) {\n      event.preventDefault();\n      this.undo(); return;\n    }\n    const toggle = at.classList?.contains('stack-toggle');\n    const entry = toggle ? this.entryFor(at.closest('.reply-stack')?.dataset.stack) : entryOf(this.list, at);\n    if (!entry || !(toggle || at === cardIn(entry) || at.classList?.contains('fold-line'))) return;",
+     "    const at = this.doc.activeElement;\n    if (this.renameKey(event)) return;\n    const action = keyAction(event);\n    if (!FEED_ACTIONS.includes(action) || this.doc.querySelector('dialog[open]:not([data-card-reply])')) return;\n    const entry = this.entryFor(this.list.dataset.lastMessage);\n    if (!entry) return;"
     ],
     [
      "web/pane-keys.mjs",
@@ -2971,7 +2971,7 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "export const keyOf = stack => stack.placed ?? stack.lifted;",
+     "export const keyOf = stack => stack.orderKey ?? stack.placed ?? stack.lifted;",
      "export const keyOf = stack => stack.lifted;"
     ]
    ],
@@ -3041,8 +3041,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "        if message is None or not visible(message, actor):",
-     "        if message is None:"
+     "        if message is None or not visible(message, actor) or unsent(db, message_id):",
+     "        if message is None or unsent(db, message_id):"
     ]
    ],
    "check": {
@@ -4817,8 +4817,8 @@
    "break": [
     [
      "aim_next/reactions.py",
-     "\"AND w.private_to=m.author_id) ORDER BY a.seq\"",
-     "\"AND w.private_to='nobody') ORDER BY a.seq\""
+     "\"AND w.private_to=m.author_id AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=w.id)) ORDER BY a.seq\"",
+     "\"AND w.private_to='nobody' AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=w.id)) ORDER BY a.seq\""
     ]
    ],
    "check": {
@@ -4957,8 +4957,8 @@
    "break": [
     [
      "aim_next/reactions.py",
-     "\"AND (private_to IS NULL OR private_to=?) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])",
-     "\"AND (private_to IS NULL OR private_to='nobody' OR ?='') LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])"
+     "\"AND (private_to IS NULL OR private_to=?) AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])",
+     "\"AND (private_to IS NULL OR private_to='nobody' OR ?='') AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])"
     ]
    ],
    "check": {
@@ -5111,7 +5111,7 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, .image-thumb') && cardIn(entry).dataset.folded !== 'true') {",
+     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, .image-thumb, .note-corner, .cover-refresh-glyph') && cardIn(entry).dataset.folded !== 'true') {",
      "if (false) {"
     ]
    ],
@@ -6677,8 +6677,8 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "node.hidden = aside.includes(node) && !asideShown;",
-     "node.hidden = aside.includes(node) && !state.moreOpen;"
+     "node.hidden = state.waiting.has(node.dataset.id) || aside.includes(node) && !asideShown;",
+     "node.hidden = state.waiting.has(node.dataset.id) || aside.includes(node) && !state.moreOpen;"
     ]
    ],
    "check": {
@@ -6930,8 +6930,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];",
-     "const PLACING = ['root_id', 'name_revision', 'place_revision', 'cover_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];",
+     "const PLACING = ['root_id', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];"
     ]
    ],
    "check": {
@@ -7216,8 +7216,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "const reach = el => { el.focus({ preventScroll: true }); revealSelection(el); return true; };",
-     "const reach = el => { el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'nearest' }); return true; };"
+     "  revealSelection(el);\n  return true;",
+     "  el.scrollIntoView({ block: 'nearest' });\n  return true;"
     ]
    ],
    "check": {
@@ -9284,7 +9284,7 @@
    "break": [
     [
      "web/panes.mjs",
-     "    else if (action === 'up' && rows.length && atTop(doc)) moved = reach(landing(rows[rows.length - 1]));\n",
+     "    else if (action === 'up' && rows.length && atTop(doc)) moved = reach(landing(rows[rows.length - 1]), readingDestination);\n",
      ""
     ]
    ],
@@ -9329,7 +9329,7 @@
    "break": [
     [
      "web/panes.mjs",
-     "  if (action === 'up') return r > 0 && reach(landing(rows[r - 1]));\n",
+     "  if (action === 'up') return r > 0 && reach(landing(rows[r - 1]), navigate);\n",
      ""
     ]
    ],
@@ -9344,7 +9344,7 @@
    "break": [
     [
      "web/panes.mjs",
-     "  if (action === 'up') return r > 0 && reach(landing(rows[r - 1]));\n",
+     "  if (action === 'up') return r > 0 && reach(landing(rows[r - 1]), navigate);\n",
      ""
     ]
    ],
@@ -9359,7 +9359,7 @@
    "break": [
     [
      "web/panes.mjs",
-     "  if (action === 'down' && r < rows.length - 1) return reach(landing(rows[r + 1]));\n",
+     "  if (action === 'down' && r < rows.length - 1) return reach(landing(rows[r + 1]), navigate);\n",
      ""
     ]
    ],
@@ -9404,8 +9404,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : panes.step('feed', 'right', doc);\n",
-     "  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : false;\n"
+     "  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1], navigate) : panes.step('feed', 'right', doc, navigate);\n",
+     "  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1], navigate) : false;\n"
     ]
    ],
    "check": {
@@ -9419,7 +9419,7 @@
    "break": [
     [
      "web/panes.mjs",
-     "  if (action === 'left') return at > 0 ? reach(buttons[at - 1]) : panes.step('feed', 'left', doc);\n",
+     "  if (action === 'left') return at > 0 ? reach(buttons[at - 1], navigate) : panes.step('feed', 'left', doc, navigate);\n",
      ""
     ]
    ],
@@ -10720,8 +10720,8 @@
    "break": [
     [
      "aim_next/conversation.py",
-     "if args.get(\"message_ids\") is not None:",
-     "if False:"
+     "if args.get(\"message_ids\") is not None:\n            # Named messages of this topic, in page shape (a page refreshing one it holds, docs/message-edit.md).",
+     "if False:\n            # Named messages of this topic, in page shape (a page refreshing one it holds, docs/message-edit.md)."
     ]
    ],
    "check": {
@@ -11000,8 +11000,8 @@
    "break": [
     [
      "web/fold.mjs",
-     "if (fold) linkWords(fold.words, foldWords(item), { partial: cutShort(item) });",
-     "void fold;"
+     "    linkWords(fold.words, foldWords(item), { partial: cutShort(item) });",
+     "    void fold;"
     ]
    ],
    "check": {
@@ -12554,7 +12554,7 @@
    "break": [
     [
      "aim_next/store.py",
-     "        if not grows:\n            db.rollback()\n            return answer",
+     "        if not grows and not first:\n            db.rollback()\n            return answer",
      "        if False:\n            db.rollback()\n            return answer"
     ]
    ],
@@ -13669,8 +13669,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'place_revision', 'cover_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];"
     ]
    ],
    "check": {
@@ -13742,8 +13742,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();",
-     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();"
+     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place') await this.refreshPositions();",
+     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.place') await this.refreshPositions();"
     ]
    ],
    "check": {
@@ -13856,87 +13856,12 @@
   },
   {
    "item": 400,
-   "act": "On a laptop the New message sheet is as tall as what shows of the window",
-   "break": [
-    [
-     "web/aim.css",
-     "dialog.composer-home[open]{top:auto;bottom:1.5rem;height:calc(var(--vv-height,100dvh) - 3rem);",
-     "dialog.composer-home[open]{top:auto;bottom:1.5rem;height:auto;"
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size laptop 1440×960, empty"
-   }
-  },
-  {
-   "item": 400,
-   "act": "On a phone the New message sheet is as tall as what shows above the keyboard",
-   "break": [
-    [
-     "web/aim.css",
-     "dialog.composer-home[open]{width:100%;max-width:100%;height:calc(var(--vv-height,100dvh) - .75rem);",
-     "dialog.composer-home[open]{width:100%;max-width:100%;height:auto;"
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size phone 320×568, empty"
-   }
-  },
-  {
-   "item": 400,
-   "act": "Alone in the sheet, the composer's field takes the height the rest leaves",
-   "break": [
-    [
-     "web/aim.css",
-     "dialog.composer-home[open] .inline-composer textarea{--fit:none;height:100%;",
-     "dialog.composer-home[open] .inline-composer textarea{--fit:none;"
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size laptop 1440×960, empty"
-   }
-  },
-  {
-   "item": 400,
-   "act": "A draft held at the page's end fills the sheet when ✎ takes it up, not the height it grew to",
-   "break": [
-    [
-     "web/inline-composer.mjs",
-     "    this.bar.fit();\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size laptop 1440×960, a long draft"
-   }
-  },
-  {
-   "item": 400,
    "act": "On a laptop the sheet's who panel opens inside the sheet, under its head",
    "break": [
     [
      "web/aim.css",
      "@media(min-width:761px){dialog.composer-home[open] .inline-composer>.who-panel{position:static;",
      "@media(min-width:761px){dialog.composer-home[open] .inline-composer>.who-panel{"
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size laptop 1440×960, empty"
-   }
-  },
-  {
-   "item": 400,
-   "act": "On a laptop the sheet's + panel opens over the field's foot, inside the sheet",
-   "break": [
-    [
-     "web/aim.css",
-     "dialog.composer-home[open] .inline-composer>.plus-panel{bottom:3.75rem}",
-     "dialog.composer-home[open] .inline-composer>.plus-panel{}"
     ]
    ],
    "check": {
@@ -13976,51 +13901,6 @@
   },
   {
    "item": 400,
-   "act": "Alone in the sheet, the composer taller than the sheet scrolls inside itself rather than past the sheet",
-   "break": [
-    [
-     "web/aim.css",
-     "1fr;align-content:stretch;overflow-y:auto;",
-     "1fr;align-content:stretch;"
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size phone 320×568, a refused image"
-   }
-  },
-  {
-   "item": 400,
-   "act": "Alone in the sheet, the field keeps its line however little the rows above it leave",
-   "break": [
-    [
-     "web/aim.css",
-     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) 1fr;",
-     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(0,1fr);"
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size phone 320×568, a refused image"
-   }
-  },
-  {
-   "item": 400,
-   "act": "In the sheet each row above the field keeps its whole height, so the image's choices are never drawn under Send",
-   "break": [
-    [
-     "web/aim.css",
-     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) 1fr;",
-     "dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:auto auto auto auto auto 1fr;"
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size phone 320×568, a refused image"
-   }
-  },
-  {
-   "item": 400,
    "act": "In the stacked Reader on a phone each row above the field keeps its whole height, so the image's choices are never drawn over the head or the field",
    "break": [
     [
@@ -14047,21 +13927,6 @@
    "check": {
     "native": "compose",
     "case": "chromium size phone 320×568, a refused image"
-   }
-  },
-  {
-   "item": 400,
-   "act": "On a phone the New message sheet has no ⤢, its field already the sheet's height",
-   "break": [
-    [
-     "web/aim.css",
-     "dialog.composer-home[open] .inline-composer .taller-field{display:none}\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "compose",
-    "case": "chromium size phone 320×568, empty"
    }
   },
   {
@@ -20654,7 +20519,7 @@
     ],
     [
      "aim_next/store.py",
-     "SCHEMA_VERSION = \"47\"",
+     "SCHEMA_VERSION = \"49\"",
      "SCHEMA_VERSION = \"46\""
     ]
    ],
@@ -21021,8 +20886,8 @@
    "break": [
     [
      "web/panes.mjs",
-     " || reachOn(doc.activeElement, 'down', { within: doc.getElementById('main'), doc });",
-     ";"
+     "const moved = reachOn(doc.activeElement, 'down', { within, doc });",
+     "const moved = false;"
     ]
    ],
    "check": {
@@ -23136,8 +23001,8 @@
    "break": [
     [
      "web/app.mjs",
-     "freshness?.invalidate('acts', 0, true); freshness?.request();",
-     "freshness?.invalidate('acts', 0); freshness?.request();"
+     "reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }",
+     "reread: () => { freshness?.invalidate('acts', 0); freshness?.request(); }"
     ]
    ],
    "check": {
@@ -23617,8 +23482,8 @@
    "break": [
     [
      "web/app.mjs",
-     "if (!(short > 0) || !resting && (list.contains(hold) ||",
-     "if (!(short > 0) || (list.contains(hold) ||"
+     "if (!(short > 0) || !resting && !list.contains(hold) &&",
+     "if (!(short > 0) || !list.contains(hold) &&"
     ]
    ],
    "check": {
@@ -24838,8 +24703,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "item[\"author_id\"] == actor and not item.get(\"whisper\")\n",
-     "item[\"author_id\"] == actor\n"
+     "item[\"author_id\"] == actor and not item.get(\"whisper\") and not item.get('removal')\n",
+     "item[\"author_id\"] == actor and not item.get('removal')\n"
     ]
    ],
    "check": {
@@ -27743,8 +27608,8 @@
    "break": [
     [
      "aim_next/cli_covers.py",
-     "expected = found[\"cover_revision\"] if self.options.expected is None else self.options.expected",
-     "expected = found[\"cover_revision\"]"
+     "expected = found[\"cover_revision\"] if self.options.expected is None else self.options.expected\n        result = self.command(\"stack.cover\",",
+     "expected = found[\"cover_revision\"]\n        result = self.command(\"stack.cover\","
     ]
    ],
    "check": {
@@ -27757,8 +27622,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "joined: 'join_revision', cover: 'cover_revision' }",
-     "joined: 'join_revision' }"
+     "joined: 'join_revision', cover: 'cover_revision', cover_refresh: 'cover_refresh_revision' }",
+     "joined: 'join_revision', cover_refresh: 'cover_refresh_revision' }"
     ]
    ],
    "check": {
@@ -27958,8 +27823,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];",
-     "'aside_revision', 'name_revision', 'place_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];"
     ]
    ],
    "check": {
@@ -28807,8 +28672,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "!event.target.closest?.('a, .fold-line, .image-thumb')",
-     "!event.target.closest?.('a, .fold-line')"
+     "!event.target.closest?.('a, .fold-line, .image-thumb, .note-corner')",
+     "!event.target.closest?.('a, .fold-line, .note-corner')"
     ]
    ],
    "check": {
@@ -29713,8 +29578,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc);",
-     "moved = messagesSideways(doc.activeElement, doc) && panes.step('feed', action, doc);"
+     "moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc, readingDestination);",
+     "moved = messagesSideways(doc.activeElement, doc) && panes.step('feed', action, doc, readingDestination);"
     ]
    ],
    "check": {
@@ -29728,8 +29593,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc);",
-     "moved = messagesSideways(doc.activeElement, doc) && panes.step('feed', action, doc);"
+     "moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc, readingDestination);",
+     "moved = messagesSideways(doc.activeElement, doc) && panes.step('feed', action, doc, readingDestination);"
     ]
    ],
    "check": {
@@ -30587,7 +30452,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);",
+     "this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null, ...(typeof position.order_key === 'number' ? { order_key: position.order_key } : {}) }]] : []);",
      "this.act('message.star', item, { starred: on }, []);"
     ]
    ],
@@ -31130,7 +30995,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "        if ('placed' in pending) stack_position = { ...stack_position, placed: pending.placed };\n",
+     "        if ('placed' in pending) stack_position = { ...stack_position, placed: pending.placed,\n          ...('order_key' in stack_position ? { order_key: pending.placed ?? stack_position.order_entry_key } : {}) };\n",
      ""
     ]
    ],
@@ -31145,7 +31010,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     " || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();",
+     " || kind === 'stack.place') await this.refreshPositions();",
      ") await this.refreshPositions();"
     ]
    ],
@@ -31189,8 +31054,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "'name_revision', 'place_revision', 'cover_revision'];",
-     "'name_revision', 'cover_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];"
     ]
    ],
    "check": {
@@ -31481,8 +31346,8 @@
    "break": [
     [
      "web/app.mjs",
-     "run(() => { fillFrom($('messages')); return listPage('messages', true); });",
-     "run(() => listPage('messages', true));"
+     "    fillFrom($('messages'));\n    const outcome = await listPage('messages', true);",
+     "    const outcome = await listPage('messages', true);"
     ]
    ],
    "check": {
@@ -32391,6 +32256,607 @@
    "check": {
     "native": "compose",
     "case": "item 648"
+   }
+  },
+  {
+   "item": 704,
+   "act": "A whisper keeps its existing dotted frame on standalone cards and dossier sheets without a solid spread rim",
+   "break": [
+    [
+     "web/aim.css",
+     "/*704-card*/border-style:dashed",
+     "/*704-card*/border-style:solid"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 704 feed-rest"
+   }
+  },
+  {
+   "item": 704,
+   "act": "The selection rectangle on a whisper card or folded row is dotted and remains visible",
+   "break": [
+    [
+     "web/aim.css",
+     "/*704-selection*/outline:2px dashed var(--focus)",
+     "/*704-selection*/outline:2px solid var(--focus)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 704 feed-selected"
+   }
+  },
+  {
+   "item": 704,
+   "act": "A whisper drawn as a dossier header keeps a dotted frame on both folder and tab",
+   "break": [
+    [
+     "web/aim.css",
+     "/*704-header*/outline:1px dashed var(--whisper-line)",
+     "/*704-header*/outline:1px solid var(--whisper-line)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 704 dossier-header-rest"
+   }
+  },
+  {
+   "item": 704,
+   "act": "A selected whisper dossier header has dotted selection on both folder and tab",
+   "break": [
+    [
+     "web/aim.css",
+     "/*704-header-selection*/outline:2px dashed var(--focus)",
+     "/*704-header-selection*/outline:2px solid var(--focus)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 704 dossier-header-selected"
+   }
+  },
+  {
+   "item": 704,
+   "act": "Keyboard focus on a whispered composer source or quoted whisper writing stays visible and dotted",
+   "break": [
+    [
+     "web/aim.css",
+     "/*704-focus*/outline-style:dashed",
+     "/*704-focus*/outline-style:solid"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 704 composer source-keyboard"
+   }
+  },
+  {
+   "item": 704,
+   "act": "A whisper has no solid spread rim outside its dotted border",
+   "break": [
+    [
+     "web/aim.css",
+     "/*704-card*/border-style:dashed;border-color:var(--whisper-line);box-shadow:none",
+     "/*704-card*/border-style:dashed;border-color:var(--whisper-line);box-shadow:0 0 0 2px #000"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 704 feed-rest"
+   }
+  },
+  {
+   "item": 704,
+   "act": "A whisper dossier selection never adds a solid rectangle under its nested tab",
+   "break": [
+    [
+     "web/aim.css",
+     "/*704-header-selection*/outline:2px dashed var(--focus);outline-offset:0;box-shadow:none;--stack-tab-shadow:none",
+     "/*704-header-selection*/outline:2px dashed var(--focus);outline-offset:0;box-shadow:none;--stack-tab-shadow:0 0 0 2px var(--stack-ring)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 704 dossier-header-selected"
+   }
+  },
+  {
+   "item": 649,
+   "act": "Only your saved private note offers a corner; emptying it removes the corner",
+   "break": [
+    [
+     "web/marks.mjs",
+     "if (item?.yours?.note !== true)",
+     "if (false)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 649.*empty and other actor notes"
+   }
+  },
+  {
+   "item": 649,
+   "act": "Pressing the note corner opens the composer directly to your exact note, keeping the reply and destination",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "editors: { reply, note }, mode, opener, mark:",
+     "editors: { reply, note }, mode: 'reply', opener, mark:"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 649.*normal corner"
+   }
+  },
+  {
+   "item": 649,
+   "act": "A first phone tap on the note corner opens the private note",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "'a, .fold-line, .image-thumb, .note-corner'",
+     "'a, .fold-line, .image-thumb'"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 649.*normal corner"
+   }
+  },
+  {
+   "item": 649,
+   "act": "The note corner is a named 44px touch target",
+   "break": [
+    [
+     "web/aim.css",
+     "width:2.75rem;height:2.75rem;margin-left:auto;color:var(--muted);cursor:pointer",
+     "width:1rem;height:1rem;margin-left:auto;color:var(--muted);cursor:pointer"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 649.*normal corner"
+   }
+  },
+  {
+   "item": 649,
+   "act": "A saved note without a caret can be opened and returned from without losing writing",
+   "break": [
+    [
+     "web/reader.mjs",
+     "const caret = this.editor.draft.caret ?? { start: this.field.value.length, end: this.field.value.length };",
+     "const caret = this.editor.draft.caret;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_marks.test.mjs"
+   }
+  },
+  {
+   "item": 400,
+   "act": "On a laptop the sheet's + panel opens inside the floating sheet, above the field",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer>.plus-panel{position:static;",
+     "dialog.composer-home[open] .inline-composer>.plus-panel{"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size laptop 1440×960, empty"
+   }
+  },
+  {
+   "item": 400,
+   "act": "Alone in the sheet, the composer taller than the sheet scrolls inside itself rather than past the sheet",
+   "break": [
+    [
+     "web/aim.css",
+     "minmax(2.5rem,auto);align-content:start;overflow-y:auto;",
+     "minmax(2.5rem,auto);align-content:start;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "Alone in the sheet, the field keeps its line however little the rows above it leave",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer{height:auto;max-height:calc(var(--vv-height,100dvh) - 3rem);grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.5rem,auto);",
+     "dialog.composer-home[open] .inline-composer{height:auto;max-height:calc(var(--vv-height,100dvh) - 3rem);grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(0,1fr);"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "In the sheet each row above the field keeps its whole height, so the image's choices are never drawn under Send",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer{height:auto;max-height:calc(var(--vv-height,100dvh) - 3rem);grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.5rem,auto);",
+     "dialog.composer-home[open] .inline-composer{height:auto;max-height:calc(var(--vv-height,100dvh) - 3rem);grid-template-rows:auto auto auto auto auto minmax(2.5rem,auto);"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, a refused image"
+   }
+  },
+  {
+   "item": 400,
+   "act": "On a phone the New message sheet needs no taller toggle, its field grows with its writing",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home[open] .inline-composer .taller-field{display:none}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium size phone 320×568, empty"
+   }
+  },
+  {
+   "item": 673,
+   "act": "Confirmed Send or Cmd-Return closes the pencil sheet; an interrupted send stays open",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "result?.status === 'confirmed' && this.admits(p, editor)",
+     "false && this.admits(p, editor)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 673 topic phone-320 light: Send sends once and closes the pencil sheet|item 673 topic phone-320 light: Cmd-Return sends once and closes the pencil sheet"
+   }
+  },
+  {
+   "item": 670,
+   "act": "The pencil field starts at one line and grows and shrinks with its text",
+   "break": [
+    [
+     "web/aim.css",
+     "textarea{--fit:auto;height:auto;max-height:min(40dvh,",
+     "textarea{--fit:none;height:16rem;max-height:min(40dvh,"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 673 topic phone-320 light: starts at one line and grows and shrinks"
+   }
+  },
+  {
+   "item": 671,
+   "act": "The pencil sheet floats at the bottom over an unblurred readable page",
+   "break": [
+    [
+     "web/aim.css",
+     "dialog.composer-home:not(.notebook-mode)::backdrop{background:transparent;backdrop-filter:none}",
+     "dialog.composer-home:not(.notebook-mode)::backdrop{background:#17252666;backdrop-filter:blur(2px)}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 673 topic phone-320 light: floats at the bottom without blurring"
+   }
+  },
+  {
+   "item": 672,
+   "act": "The inline menu for adding agents uses compact spacing and content height",
+   "break": [
+    [
+     "web/aim.css",
+     "#inline-who-panel{gap:.25rem;padding:.25rem .5rem .35rem}",
+     "#inline-who-panel{gap:1rem;padding:1rem}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 673 topic phone-320 light: inline agent menu keeps compact spacing"
+   }
+  },
+  {
+   "item": 671,
+   "act": "The pencil sheet fits its contents and leaves the page visible above it",
+   "break": [
+    [
+     "web/aim.css",
+     "[open]:not(.notebook-mode){height:auto;",
+     "[open]:not(.notebook-mode){height:calc(var(--vv-height,100dvh) - 3rem);"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 673 topic phone-320 light: floats at the bottom"
+   }
+  },
+  {
+   "item": 673,
+   "act": "An unavailable pencil composer keeps its reason clear of the Retry button",
+   "break": [
+    [
+     "web/aim.css",
+     "#inline-composer>#inline-retry{grid-area:retry}",
+     "#inline-composer>#inline-retry{grid-area:notice}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 673 topic phone-320 light: unavailable composer stays disabled"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: wrong recipient",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "candidates = [writer[0] if writer else None, topic[\"coordinator_id\"]]",
+     "candidates = [topic[\"coordinator_id\"], writer[0] if writer else None]"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: duplicate prompt",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "if pending and pending[\"state\"] == \"pending\":",
+     "if False and pending and pending[\"state\"] == \"pending\":"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: human completes",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "or self._actor(db, actor)[\"kind\"] != \"agent\"",
+     "or False"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: empty completes",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "or not (value[\"stands\"] or value[\"waiting\"] or value[\"payload\"])",
+     "or False"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: no completion",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "version = self._cover_refreshed(db, actor, message, before, value, current + 1, version)",
+     "# mutant removes completion in the cover transaction"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: stale refresh",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "if envelope[\"expected\"][\"cover_revision\"] != current:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: private prompt leaks",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "private = message[\"private_to\"] is not None",
+     "private = False"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: self delivery",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "if recipient == actor:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: human is writer",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "row[\"kind\"] != \"agent\"",
+     "False"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: disabled writer",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "or not row[\"enabled\"]",
+     "or False"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: missing writer backfill",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "FROM content WHERE previous IS NULL OR value<>previous",
+     "FROM content WHERE 0"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Pending cover refresh uses the existing sent-message dots without a visible pending label",
+   "break": [
+    [
+     "web/cover-refresh.mjs",
+     "status.textContent = local.error;",
+     "status.textContent = local.error || (pending ? 'Awaiting new cover' : 'Requesting update');"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 738"
+   }
+  },
+  {
+   "item": 738,
+   "act": "The refresh request publication and pending intent roll back together",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "version = self._record_act(db, \"cover_refresh\", message, \"\", actor, value, acts.get(\"cover_refresh_revision\", 0) + 1)",
+     "version = 0"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "A closed outcome cannot publish a cover refresh request",
+   "break": [
+    [
+     "aim_next/outcome_end.py",
+     "def _closed(self, db, workspace_id):",
+     "def _closed(self, db, workspace_id):\n        return None  # actual closed-outcome boundary removed"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "One native tap on a singleton cover refresh glyph requests the rewrite instead of only lighting the card",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "!event.target.closest?.('a, .fold-line, .image-thumb, .note-corner, .cover-refresh-glyph')",
+     "!event.target.closest?.('a, .fold-line, .image-thumb, .note-corner')"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 738 singleton"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Native Tab reaches the cover request in the Reader and activates its actual recorded link",
+   "break": [
+    [
+     "web/cover-refresh.mjs",
+     "control.className = 'cover-refresh-glyph';",
+     "control.tabIndex=-1; control.className = 'cover-refresh-glyph';"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 738 applied source controls"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Native Tab leaves the expanded Reader cover summary and reaches its refresh control in WebKit",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (target.closest?.('#reader-cover')) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "item 738 applied source controls"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Native backward Tab enters the Reader cover from the natively tapped source article in WebKit",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (event.shiftKey && target === this.sourceBody) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "item 738 applied source controls"
    }
   }
  ]

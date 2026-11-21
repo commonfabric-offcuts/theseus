@@ -6,18 +6,18 @@
 // (tests/outcome_rail_native.mjs) press the same things in a real browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { asksIn, rowCount, totals, elsewhere, elsewhereWords, shownUnder, Opened } from '../web/outline-rail.mjs';
-import { movesInPlace, Places, Scope, Shell, Superseded, oneAtATime, buildOf, servedBuild } from '../web/in-place-navigation.mjs';
+import { asksIn, rowCount, totals, elsewhere, elsewhereWords, shownUnder, Opened, OutlineRail } from '../web/outline-rail.mjs';
+import { movesInPlace, hasRails, Places, Scope, Shell, Superseded, oneAtATime, buildOf, servedBuild } from '../web/in-place-navigation.mjs';
 import { linksIn, pullRequest, isPreview, thingsIn, waitingFor, SectionFolds } from '../web/things-rail.mjs';
 
 const asks = n => ({ light: 'waiting', short: { kind: 'asks', count: n } });
 
-test('a folded outcome counts everything new inside it; an open one counts only its Conversation', () => {
+test('a folded outcome counts everything new inside it; an open one leaves the conversation count on its topic row', () => {
   const item = { id: 'w1', unread: 9, addressed: 2 };
   const conversation = { unread: 3, addressed: 1 };
   assert.deepEqual(rowCount(item), { unread: 9, addressed: 2 });
   assert.deepEqual(rowCount(item, { open: false, conversation }), { unread: 9, addressed: 2 });
-  assert.deepEqual(rowCount(item, { open: true, conversation }), { unread: 3, addressed: 1 });
+  assert.deepEqual(rowCount(item, { open: true, conversation }), { unread: 0, addressed: 0 });
   // Open with its Conversation not read yet (or none): nothing on the row, the topics show their own.
   assert.deepEqual(rowCount(item, { open: true }), { unread: 0, addressed: 0 });
   // What is not a count counts nothing.
@@ -39,10 +39,10 @@ test('the chips add up what is new and what waits on the reader across every out
   assert.equal(elsewhereWords({ fresh: 0, where: 0, waiting: 0 }), '');
 });
 
-test('a chip shows only the outcomes that hold what it counts', () => {
+test('New filters outcomes while Waiting retains them for dimming', () => {
   const quiet = { unread: 0 }, fresh = { unread: 2 }, waiting = { unread: 0, light: asks(1) };
   assert.deepEqual([quiet, fresh, waiting].map(item => shownUnder('new', item)), [false, true, false]);
-  assert.deepEqual([quiet, fresh, waiting].map(item => shownUnder('waiting', item)), [false, false, true]);
+  assert.deepEqual([quiet, fresh, waiting].map(item => shownUnder('waiting', item)), [true, true, true]);
   assert.deepEqual([quiet, fresh, waiting].map(item => shownUnder(null, item)), [true, true, true]);
 });
 
@@ -51,31 +51,36 @@ const memory = (initial = {}) => {
   return { getItem: key => held.get(key) ?? null, setItem: (key, value) => held.set(key, value), held };
 };
 
-test('the outline tidies itself: only the outcome being read is open, a key\'s open or fold or every one lasts until the next place, and nothing is kept on the browser', () => {
-  const opened = new Opened();
+test('902 the outline keeps each choice; arriving opens its current outcome and never folds another', () => {
+  const storage = memory(), opened = new Opened(storage, 'outline-fixture');
   assert.deepEqual([opened.isOpen('w1', 'w1'), opened.isOpen('w2', 'w1')], [true, false], 'the outcome being read is open, every other folded');
   opened.set('w2', true); opened.set('w1', false);
   assert.deepEqual([opened.isOpen('w1', 'w1'), opened.isOpen('w2', 'w1')], [false, true], '⌘→ opens another, ⌘← folds the one being read');
-  opened.tidy();
-  assert.deepEqual([opened.isOpen('w1', 'w2'), opened.isOpen('w2', 'w2')], [false, true], 'arriving at another place tidies to it alone');
-  opened.all(true);
-  assert.deepEqual(['w1', 'w2', 'w9'].map(id => opened.isOpen(id, 'w2')), [true, true, true], '⇧⌘→ opens every one, those listed later too');
+  opened.set('w2', true);
+  assert.deepEqual([opened.isOpen('w1', 'w2'), opened.isOpen('w2', 'w2')], [false, true], 'arrival retains the other explicit fold');
+  opened.all(true, ['w1', 'w2', 'w9']);
+  assert.deepEqual(['w1', 'w2', 'w9'].map(id => opened.isOpen(id, 'w2')), [true, true, true], '⇧⌘→ opens every known outcome');
+  assert.equal(opened.isOpen('new', 'w2'), true, 'open-all applies to outcomes first encountered later');
   opened.set('w9', false);
   assert.equal(opened.isOpen('w9', 'w2'), false, 'one folded after stays folded');
-  opened.all(false);
+  opened.all(false, ['w1', 'w2', 'w9']);
   assert.deepEqual(['w1', 'w2', 'w9'].map(id => opened.isOpen(id, 'w2')), [false, false, false], '⇧⌘← folds every one, the one being read too');
-  opened.tidy();
-  assert.deepEqual(['w1', 'w2'].map(id => opened.isOpen(id, 'w2')), [false, true], 'and the next place tidies back to it alone');
+  opened.set('w2', true);
+  assert.deepEqual(['w1', 'w2'].map(id => opened.isOpen(id, 'w2')), [false, true], 'the next arrival opens just its current outcome');
   assert.deepEqual(['w1', 'w2'].map(id => opened.isOpen(id, 'w2', 'new')), [true, true], 'while a chip shows only some, each shown is open');
-  assert.equal(new Opened().isOpen('w2', 'w1'), false, 'a new page starts tidy: no fold is kept');
+  assert.equal(new Opened(storage, 'outline-fixture').isOpen('w2', 'w1'), true, 'a new page restores the kept open choice');
 });
 
-test('only moves between an outcome Conversation and topics are made in place', () => {
+test('901 topics, Conversations, outcomes and root move in place; other pages load', () => {
   const topic = { kind: 'topic', id: 't1' }, conversation = { kind: 'conversation', id: 'w1' };
   assert.equal(movesInPlace(topic, { kind: 'topic', id: 't2' }), true);
   assert.equal(movesInPlace(topic, conversation), true);
   assert.equal(movesInPlace(conversation, topic), true);
-  for (const other of [{ kind: 'root' }, { kind: 'workspace', id: 'w1' }, { kind: 'pipeline', id: 'w1' }, { kind: 'health' }, null]) {
+  for (const place of [{ kind: 'root' }, { kind: 'workspace', id: 'w1' }]) {
+    assert.equal(movesInPlace(topic, place), true);
+    assert.equal(movesInPlace(place, topic), true);
+  }
+  for (const other of [{ kind: 'pipeline', id: 'w1' }, { kind: 'health' }, null]) {
     assert.equal(movesInPlace(topic, other), false, `to ${other?.kind}`);
     assert.equal(movesInPlace(other, topic), false, `from ${other?.kind}`);
   }
@@ -158,18 +163,19 @@ function shellAt(href, { guard = () => true, build = null, served = undefined } 
   return { shell, win, h, moves, page, goTo, moving, started, up };
 }
 
-test('a link between feeds moves in place with a new entry; any other loads as before', () => {
+test('901 a link between supported places moves in place with a new entry; other routes load', () => {
   const { shell, h, moves } = shellAt('?topic=t1');
   assert.equal(shell.go({ kind: 'topic', id: 't2' }), true);
   assert.deepEqual([h.entries, moves.length], [['?topic=t2'], 1]);
-  assert.equal(shell.go({ kind: 'workspace', id: 'w1' }), false, 'the outcome page loads');
-  assert.equal(shell.go({ kind: 'root' }), false, 'the Outcomes home loads');
-  assert.deepEqual([h.entries.length, moves.length], [1, 1]);
+  assert.equal(shell.go({ kind: 'workspace', id: 'w1' }), true, 'the outcome page moves in place');
+  assert.equal(shell.go({ kind: 'root' }), true, 'the Outcomes home moves in place');
+  assert.equal(shell.go({ kind: 'pipeline', id: 'w1' }), false, 'the pipeline still loads');
+  assert.deepEqual([h.entries, moves.length], [['?topic=t2', '?workspace=w1', '/'], 3]);
   shell.moving = true;
   assert.equal(shell.go({ kind: 'topic', id: 't3' }), false, 'a move under way is not stacked');
   shell.moving = false; shell.handles = null;
   assert.equal(shell.go({ kind: 'topic', id: 't3' }), true, 'before the page is up the move waits for it');
-  assert.deepEqual([h.entries.length, moves.length], [1, 1], 'nothing moved yet');
+  assert.deepEqual([h.entries.length, moves.length], [3, 3], 'nothing more moved yet');
 });
 
 test('a back, a forward, a place chosen or a link pressed while a run is on its way waits for that run, and never loads the page', async () => {
@@ -536,7 +542,8 @@ test('back and forward go through the page guard; a refusal puts the address bac
   const away = shellAt('?topic=t1');
   away.shell.places.push('?topic=t2'); away.goTo('/');
   await away.shell.popstate({ state: { aimPlace: 0 } });
-  assert.deepEqual([away.win.reloads, away.page.opened.length], [1, 0], 'back to a page that is not a feed loads');
+  assert.deepEqual([away.win.reloads, away.page.opened.length, away.moves.length], [0, 1, 1], '901 back to Outcomes home moves in place');
+  assert.deepEqual(away.page.opened, [{ kind: 'root' }]);
 });
 
 test('the right rail finds previews and pull requests in messages, newest first, each once', () => {
@@ -554,13 +561,10 @@ test('the right rail finds previews and pull requests in messages, newest first,
   assert.deepEqual(previews.map(preview => [preview.url, preview.message.id]), [['https://box.ts.net/p', 'new']]);
 });
 
-test('Waiting for… holds what the reader raised that is not shipped, and their Conversation posts not taken up', () => {
+test('Waiting for… holds what the reader raised in this topic that is not shipped', () => {
   const now = [{ title: 'Mine', raised_by: 'me', stage: { name: 'Build', entered_ms: 5 }, pieceTopic: 't1' }, { title: 'Theirs', raised_by: 'them' }];
   const next = [{ title: 'Later', raised_by: 'me', section: 'next', pieceTopic: 't2' }, { title: 'Shipped', raised_by: 'me', shipped: true }];
-  const conversation = [{ author_id: 'me', body: 'Please add rails', item: { state: 'new', takes: [] } }, { author_id: 'me', body: 'done', item: { state: 'done' } }, { author_id: 'them', body: 'x', item: { state: 'new' } }];
-  assert.deepEqual(waitingFor({ reader: 'me', now, next, conversation }).map(row => [row.what, row.where.stage ?? row.where.words]),
-    [['Mine', 'Build'], ['Later', 'Next'], ['Please add rails', 'Not taken up yet']]);
-  assert.deepEqual(waitingFor({ reader: 'me', now, next, conversation, topic: 't1' }).map(row => row.what), ['Mine'], 'on a topic: only its own');
+  assert.deepEqual(waitingFor({ reader: 'me', now, next, topic: 't1' }).map(row => row.what), ['Mine'], 'on a topic: only its own');
 });
 
 test('right rail sections stay open until folded, per viewer', () => {
@@ -652,17 +656,17 @@ test('the right rail\'s Build rows follow the reader\'s own order where they pla
     'the reader\'s order in each group; d, never placed, after c, which Core lists before it');
 });
 
-test('an open outcome\'s row counts its Conversation and its Build topics, which have no row in the outline; folded, everything', async () => {
+test('an open outcome\'s row counts only its Build topics, which have no row in the outline; folded, everything', async () => {
   const { countedWhere } = await import('../web/outline-rail.mjs');
   const item = { id: 'w1', unread: 9, addressed: 3, build: { unread: 3, addressed: 1 } };
-  assert.deepEqual(rowCount(item, { open: true, conversation: { unread: 2, addressed: 1 } }), { unread: 5, addressed: 2 }, 'open: its Conversation\'s and its Build topics\'');
+  assert.deepEqual(rowCount(item, { open: true, conversation: { unread: 2, addressed: 1 } }), { unread: 3, addressed: 1 }, 'the conversation has its own row');
   assert.deepEqual(rowCount(item, { open: true }), { unread: 3, addressed: 1 }, 'its Build topics\' while its Conversation is not read yet');
   assert.deepEqual(rowCount(item, { open: false, conversation: { unread: 2, addressed: 1 } }), { unread: 9, addressed: 3 }, 'folded: everything, the Build topics\' once');
-  assert.deepEqual(rowCount({ id: 'w2', unread: 4, build: { unread: 0, addressed: 0 } }, { open: true, conversation: { unread: 1 } }), { unread: 1, addressed: 0 }, 'nothing new in a Build topic adds nothing');
+  assert.deepEqual(rowCount({ id: 'w2', unread: 4, build: { unread: 0, addressed: 0 } }, { open: true, conversation: { unread: 1 } }), { unread: 0, addressed: 0 }, 'nothing new in a Build topic adds nothing');
   assert.deepEqual(rowCount({ id: 'w3', unread: 4, build: { unread: -2, addressed: 'x' } }, { open: true }), { unread: 0, addressed: 0 }, 'what is not a count counts nothing');
-  assert.equal(countedWhere(item, { unread: 2 }), 'its Conversation and its Build topics');
+  assert.equal(countedWhere(item, { unread: 2 }), 'its Build topics');
   assert.equal(countedWhere(item, { unread: 0 }), 'its Build topics');
-  assert.equal(countedWhere({ build: { unread: 0 } }, { unread: 1 }), 'its Conversation');
+  assert.equal(countedWhere({ build: { unread: 0 } }, { unread: 1 }), '');
 });
 
 test('the right rail reads the Build topics a page at a time, as many as asked for, and says whether there are more and what is new in all of them', async () => {
@@ -720,4 +724,35 @@ test('a press on a Build row\'s unread count opens its topic at the oldest unrea
   assert.deepEqual(closed, [false, false], 'on a phone the drawer closes either way');
   const [, none] = row('t-calm', 0);
   assert.equal(none, null, 'a topic with nothing unread shows no count');
+});
+
+
+test('844 and 901 outcome homes use the shared rail shell and in-place navigation', () => {
+  assert.equal(hasRails({kind:'workspace',id:'w1'}),true);
+  assert.equal(hasRails({kind:'topic',id:'t1'}),true);
+  assert.equal(hasRails({kind:'root'}),false);
+  assert.equal(movesInPlace({kind:'topic',id:'t1'},{kind:'workspace',id:'w1'}),true);
+  const {shell}=shellAt('?workspace=w1'), attributes=[], starts=[];
+  shell.doc={documentElement:{toggleAttribute:(name,on)=>attributes.push([name,on])}};
+  shell.follow({begin:(shown,route)=>starts.push([shown,route.kind])});
+  shell.begin({open(){}});
+  assert.equal(shell.feed,true,'Back and forward can move from the outcome in place');
+  assert.deepEqual(attributes,[['data-rails',true]],'same responsive layout and drawer controls');
+  assert.deepEqual(starts,[[true,'workspace']],'the existing shell followers show on an outcome');
+});
+test('844 the outline reads its own current-outcome topics when the home keeps its list in the middle', () => {
+  const read=[], rail=Object.create(OutlineRail.prototype);
+  const handles={workspaceId:'w1',route:{kind:'workspace',id:'w1'},bootstrap:{instance_id:'fixture',actor:'fixture-person'}};
+  let reloads=0;
+  Object.assign(rail,{started:true,opened:new Opened(),outcomes:new Map(),doc:{getElementById:()=>null,defaultView:{matchMedia:()=>({matches:false})}},paint(){},reload(){reloads++;}});
+  rail.ready(handles);
+  assert.equal(rail.handles,handles,'shared outline accepts the outcome home');
+  assert.equal(reloads,1);
+  rail.ownRail=outcome=>({load:()=>{read.push(outcome.id);return true;}});
+  rail.loadTopics({id:'w1'});
+  assert.deepEqual(read,['w1']);
+  rail.handles.route={kind:'topic',id:'t1'};
+  rail.loadTopics({id:'w1'});
+  rail.loadTopics({id:'w2'});
+  assert.deepEqual(read,['w1','w2'],'topic pages still provide their adoptable current list');
 });

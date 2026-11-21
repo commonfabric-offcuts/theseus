@@ -1,0 +1,100 @@
+/* The top of the topic page, in the pencil sheet's grammar: the outcome's name and the title in quieter, tighter type,
+   the page's controls as small square buttons, the team as the sheet's small chips (an agent keeps its colour, a
+   chip's × shows on hover or focus), + Add a quiet hairline chip, and adding someone a small panel under the team,
+   closed with × like the sheet's panels. Every screen; topic-touch.css sizes it for a finger. */
+@media all{
+.topic-header{
+  --sheet-hair:color-mix(in srgb,var(--line) 80%,var(--panel));
+  --sheet-quiet:color-mix(in srgb,var(--ink) 62%,var(--panel));
+  --sheet-chip-h:1.5rem;
+  --topic-ctl:1.85rem;
+  .eyebrow{font-size:.78rem;color:var(--sheet-quiet)}
+  .title-row{align-items:center;gap:.35rem}
+  .topic-title-area{padding-top:.1rem;line-height:1.5}
+  .title-row h1{font-size:1.5rem;font-weight:680;letter-spacing:-.012em}
+  /* The page's controls: small quiet squares, as in the sheet's head. */
+  :is(.new-message,.settings-gear,.message-menu){width:var(--topic-ctl);height:var(--topic-ctl);min-height:0;padding:0;border:0;border-radius:.45rem;
+    background:transparent;color:var(--sheet-quiet);font-size:1rem}
+  :is(.new-message,.settings-gear) svg{width:16px;height:16px}
+  :is(.new-message,.settings-gear,.message-menu):hover{background:var(--soft);color:var(--ink)}
+  .topic-subtitle{margin-top:.15rem;font-size:.85rem}
+  /* The topic's state: the Reader's small hairline chip. Its own colours (mine, review) stay. */
+  .topic-subtitle .topic-state{height:1.25rem;display:inline-flex;align-items:center;padding:0 .45rem;border-radius:.4rem;font-size:.7rem;font-weight:600;line-height:1;vertical-align:.1em}
+
+  /* The team: one line of the sheet's chips. */
+  .topic-people{align-items:center;gap:.45rem;margin-top:.1rem}
+  .topic-people h2{margin:0;font-size:.72rem;font-weight:500;letter-spacing:0;color:var(--sheet-quiet)}
+  .topic-people .participants{position:relative;align-items:center}
+  .topic-people .participants>.chips>:not(:first-child){margin-inline-start:.3rem}
+  .person-pill{min-height:0;height:var(--sheet-chip-h);border-radius:.45rem;font-size:.75rem;font-weight:600}
+  .person-pill>:first-child{border-top-left-radius:.45rem;border-bottom-left-radius:.45rem}
+  .person-pill>:last-child{border-top-right-radius:.45rem;border-bottom-right-radius:.45rem}
+  .person-pill .pill-name{min-height:0;height:100%;padding:0 .55rem}
+  .person-pill .pill-remove{min-width:0;min-height:0;width:0;height:100%;padding:0;overflow:hidden;font-size:.8rem;font-weight:500;opacity:.7;
+    transition:width .12s,opacity .12s}
+  .person-pill .pill-remove::before{display:none}
+  .person-pill:is(:hover,:focus-within) .pill-remove{width:1.3rem;margin-left:-.25rem}
+  .person-pill .pill-remove:hover{opacity:1}
+  .person-pill.own-pill{box-shadow:0 0 0 1px var(--sheet-hair)}
+  .add-chip{min-height:0;height:var(--sheet-chip-h);padding:0 .55rem;border:1px solid var(--sheet-hair);border-radius:.45rem;background:transparent;
+    font-size:.75rem;font-weight:500;color:var(--sheet-quiet)}
+  .add-chip:hover{background:var(--soft);color:var(--ink)}
+  /* Adding someone: the chip turns into the panel's ×, and the panel opens under the team. */
+  .topic-people .add-chip::before{content:"✕";grid-area:word;visibility:hidden;font-size:.8rem}
+  /* It keeps the width "+ Add" gives it, so opening moves nothing in the row; its × sits where the words were. */
+  .topic-people .add-chip[aria-expanded=true]{border-color:transparent}
+  .topic-people .add-chip[aria-expanded=true]::before{visibility:visible}
+  .topic-people .add-chip[aria-expanded=true]>span{visibility:hidden}
+  .topic-people .participants>.people-add{position:absolute;z-index:6;top:calc(100% + .35rem);right:0;width:17rem;margin:0;padding:.45rem .55rem .5rem;
+    display:flex;flex-direction:column;align-items:stretch;gap:.4rem;contain:none;
+    border:1px solid var(--sheet-hair);border-radius:.55rem;background:color-mix(in srgb,var(--ink) 3%,var(--panel));box-shadow:0 12px 30px -14px rgb(0 0 0/.4)}
+  .topic-people .participants>.people-add[hidden]{display:none}
+  .people-add input{order:-1;flex:none;width:100%;max-width:none;height:1.6rem;padding:0 .5rem;border:1px solid var(--sheet-hair);border-radius:.4rem;
+    background:transparent;font-size:.78rem}
+  .people-add input:focus{outline:none;border-color:color-mix(in srgb,var(--accent) 55%,var(--sheet-hair))}
+  .people-add input::placeholder{color:var(--sheet-quiet)}
+  .people-chips{display:flex;flex-wrap:wrap;gap:.3rem}
+  .people-chips .choice-chip{min-height:0;height:var(--sheet-chip-h);padding:0 .6rem;border-radius:.45rem;font-size:.75rem}
+  .people-add .state-chips .muted{font-size:.72rem;color:var(--sheet-quiet)}
+
+  /* The outcome's team panel, as one small menu: a find field across the top, the names you can add, then two rows
+     like a menu's: who coordinates (its choices open under it as a list with a check), and inviting an agent. */
+  #team-people>.people-add{flex-flow:row wrap;align-items:center;width:17rem;gap:0;padding:0 0 .25rem;overflow:hidden}
+  #team-people>.people-add>.people-chips{display:contents}
+  #team-people>.people-add>input{order:0;flex:1 0 100%;height:2.1rem;padding:0 .75rem;border:0;border-bottom:1px solid var(--sheet-hair);border-radius:0;font-size:.8rem}
+  #team-people>.people-add>input:focus{border-color:var(--sheet-hair)}
+  #team-people>.people-add>.people-chips>:is([data-id],.muted){order:1;margin:.5rem 0 .1rem .3rem}
+  #team-people>.people-add>.people-chips>[data-id]:first-of-type{margin-left:.65rem}
+  /* The two menu rows: a hairline above each, the words at the left, their state at the right. */
+  #team-people>.people-add>.people-chips>:is(.coordinator-choice,#invite-agent){flex:1 0 100%;display:flex;align-items:center;gap:.5rem;height:2rem;
+    margin:.45rem 0 0;padding:0 .75rem;border:0;border-top:1px solid var(--sheet-hair);border-radius:0;background:transparent;font-size:.78rem;font-weight:500;color:var(--ink);box-shadow:none}
+  #team-people>.people-add>.people-chips>.coordinator-choice{order:2}
+  /* Its words stay "Coordinator: Name" for every reader; drawn, the word sits quiet at the left and the name at the right
+     with a chevron. The drawn parts carry empty alternative text, so the name is heard once. */
+  #team-people>.people-add>.people-chips>:is(.coordinator-choice,#invite-agent).coordinator-choice{font-size:0}
+  #team-people>.people-add>.people-chips>.coordinator-choice::before{content:"Coordinator" / "";font-size:.78rem;color:var(--sheet-quiet)}
+  #team-people>.people-add>.people-chips>.coordinator-choice::after{content:attr(data-name) "  ⌄" / "";margin-left:auto;font-size:.78rem;font-weight:600;color:var(--ink);white-space:pre}
+  #team-people>.people-add>.people-chips>.coordinator-choice[aria-expanded=true]::after{content:attr(data-name) "  ⌃" / ""}
+  #team-people>.people-add>.people-chips>#invite-agent{order:4;margin-top:0;color:var(--accent);font-weight:600}
+  #team-people>.people-add>.people-chips>.coordinator-choice+#invite-agent,#team-people>.people-add>.coordinator-choices:not([hidden])~* #invite-agent{margin-top:0}
+  #team-people>.people-add>.people-chips>:is(.coordinator-choice,#invite-agent):is(:hover,:focus-visible){background:var(--soft);outline:none}
+  /* The coordinator's choices: a list, one per row, the current one checked. */
+  #team-people>.people-add>.coordinator-choices{order:3;flex:1 0 100%;display:flex;flex-direction:column;gap:0;padding:0 0 .2rem}
+  #team-people>.people-add>.coordinator-choices[hidden]{display:none}
+  #team-people>.people-add>.coordinator-choices .choice-chip{display:flex;align-items:center;justify-content:space-between;width:100%;height:1.75rem;min-height:0;
+    padding:0 .75rem 0 1.5rem;border:0;border-radius:0;background:transparent;font-size:.78rem;font-weight:500;color:var(--ink);box-shadow:none;outline:none}
+  #team-people>.people-add>.coordinator-choices .choice-chip:is(:hover,:focus-visible){background:var(--soft)}
+  #team-people>.people-add>.coordinator-choices .choice-chip[aria-pressed=true]{font-weight:650}
+  #team-people>.people-add>.coordinator-choices .choice-chip[aria-pressed=true]::after{content:"";width:.6rem;height:.32rem;margin-top:-.2rem;border:solid var(--accent);
+    border-width:0 0 1.6px 1.6px;transform:rotate(-45deg)}
+  /* Inviting an agent: its name and where it runs, in place under the row. */
+  #team-people>.people-add>.invite-line{order:5;flex:1 0 100%;display:flex;flex-wrap:wrap;gap:.3rem;padding:.1rem .75rem .35rem}
+  #team-people>.people-add>.invite-line[hidden]{display:none}
+  #team-people>.people-add>.invite-line input{flex:1 0 100%;width:100%;height:1.6rem;min-height:0;padding:0 .5rem;border:1px solid var(--sheet-hair);border-radius:.4rem;
+    background:transparent;font-size:.78rem}
+  #team-people>.people-add>.invite-line input:focus{outline:none;border-color:color-mix(in srgb,var(--accent) 55%,var(--sheet-hair))}
+  #team-people>.people-add>.invite-line .choice-chip{min-height:0;height:var(--sheet-chip-h);padding:0 .6rem;border-radius:.45rem;font-size:.75rem;box-shadow:none}
+  #team-people>.people-add>.invite-line .choice-chip[aria-pressed=true]{background:var(--soft);color:var(--ink);border-color:color-mix(in srgb,var(--accent) 55%,var(--sheet-hair));font-weight:650}
+  #team-people>.people-add>.invite-line .invite-state{flex:1 0 100%;margin:0;font-size:.72rem;color:var(--sheet-quiet)}
+}
+}

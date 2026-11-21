@@ -1,3 +1,4 @@
+import { cardDetails, withCardDetails, stripDetails, mergeDetails, detailsLine } from './card-details.mjs';
 // A deck of cards is a Notebook page (docs/decks.md). Each card is a heading
 // of two to six #s and the words under it, up to the next such heading; a
 // heading inside a fenced block is not one. A card's depth is its #s past two,
@@ -15,6 +16,7 @@
 // revision of the page, and it answers the act that takes it back.
 
 import { fenceEnd, fenceOpen } from './fences.mjs';
+import { isEscapable } from './characters.mjs';
 
 const CARD = /^ {0,3}(#{2,6})(?:[ \t]+(.*?))?[ \t]*$/;
 // The deepest a card can be, since a heading has at most six #s.
@@ -87,7 +89,7 @@ export const IMAGE_GLYPH = '🖼';
 const standIn = name => `${IMAGE_GLYPH} ${name.trim() || 'Image'}`;
 const CUT_LINE = /^[ \t]*!\[([^\]\n]*)\]\(([A-Za-z0-9._:-]*)$/;
 export function imageStandIns(text, { partial = false } = {}) {
-  const lines = String(text ?? '').split('\n');
+  const lines = stripDetails(String(text ?? ''), {partial}).split('\n');
   let fence = null;
   return lines.map((line, i) => {
     const before = fence;
@@ -110,13 +112,24 @@ export function imageLine(name, id) {
 // What a card box makes of its card: what is written, then the lines naming its images and its stacks under it. A
 // new card holding only images is named for the first of them, so it is made with them; a card cleared of all its
 // text is still removed, its images with it, and a new card with nothing in it is never made.
-export function boxText({ written, images = [], stacks = [], fresh = false }) {
+export function boxText({ written, images = [], stacks = [], details = [], fresh = false }) {
   const kept = [...images, ...stacks];
-  if (!kept.length) return written;
-  if (/\S/.test(written)) return `${written.trimEnd()}\n\n${kept.join('\n')}`;
+  if (!kept.length&&!details.length) return written;
+  const restore = text => {
+    if(!details.length)return text;
+    const detail=cardDetails(details.join('\n')),restored=withCardDetails(text,detail);
+    if(restored.startsWith(detailsLine(detail)+'\n\n')){
+      // withCardDetails placed it before an open fence. Keep the editor's
+      // first nonblank line as the title, and insert metadata just after it.
+      const lines=text.split('\n'),first=lines.findIndex(line=>/\S/.test(line));
+      lines.splice(first+1,0,'',detailsLine(detail),'');return lines.join('\n');
+    }
+    return restored;
+  };
+  if (/\S/.test(written)) return restore([written.trimEnd(),kept.join('\n')].filter(Boolean).join('\n\n'));
   if (!fresh || !images.length) return written;
   const [first] = cardImages(images[0]).images;
-  return `${first.name.replace(/\.[A-Za-z0-9]{1,5}$/, '').trim() || 'Image'}\n\n${kept.join('\n')}`;
+  return restore(`${first.name.replace(/\.[A-Za-z0-9]{1,5}$/, '').trim() || 'Image'}\n\n${kept.join('\n')}`);
 }
 
 // A card from the text a person wrote: the first line that is not blank is
@@ -190,8 +203,14 @@ export function writtenAt(written, shown, at) {
 // The card whose text is this one, nearest to where it stood; -1 when none is.
 export function findCard(deck, text, near = 0) {
   let found = -1;
+  const ids = cardDetails(text).ids;
+  const visible = value => {
+    const at=value.indexOf('\n'),title=at<0?value:value.slice(0,at),words=at<0?'':cardDetails(value.slice(at+1)).words;
+    return words?title+'\n'+words:title;
+  };
   deck.cards.forEach((card, i) => {
-    if (cardText(card) === text && (found < 0 || Math.abs(i - near) < Math.abs(found - near))) found = i;
+    if (ids.length && !cardDetails(card.words).ids.some(id=>ids.includes(id))) return;
+    if (visible(cardText(card)).trimEnd() === visible(text).trimEnd() && (found < 0 || Math.abs(i - near) < Math.abs(found - near))) found = i;
   });
   return found;
 }
@@ -202,10 +221,10 @@ export function findCard(deck, text, near = 0) {
 // its parent's children or deeper than DEEPEST, or an edit changes nothing.
 // Every act takes a card's children with it.
 //   {kind: 'move', text, step, near}       moves the card past the one beside it, up (-1) or down (1)
-//   {kind: 'merge', text, step, near}      the card and the one beside it become one under the upper
-//                                          card's title, the lower card's title a bold line in it
-//   {kind: 'split', text, upper, lower, keep, near}  a merged card becomes its two cards again, the
-//                                          first `keep` children staying with the upper
+//   {kind: 'merge', text, step, near}      appends the picked card's plain title, words and children
+//                                          to its neighbour, which keeps its title
+//   {kind: 'split', text, upper, lower, keep, step, near}  restores the two cards and their child groups;
+//                                          `keep` children belonged to the upper, `step` names the merge
 //   {kind: 'edit', text, to, near}         the card's text becomes `to`; no text removes the card
 //   {kind: 'add', after, text, depth, rest, near}  a new card right after the card `after` (null:
 //                                          first), and the cards `rest`, each {text, depth}, after it
@@ -246,24 +265,59 @@ export function applyAct(deck, act) {
       const j = sibling(cards, i, act.step);
       if (j < 0) return null;
       const top = Math.min(i, j), bottom = Math.max(i, j), upper = cards[top], lower = cards[bottom];
-      const merged = { title: upper.title, depth: upper.depth, words: [upper.words, lower.title && `**${lower.title}**`, lower.words].filter(Boolean).join('\n\n'), written: true };
-      cards.splice(bottom, 1);
-      cards[top] = merged;
-      return done(top, { kind: 'split', text: cardText(merged), upper: cardText(upper), lower: cardText(lower), keep: bottom - top - 1, near: top });
+      const target = cards[j], moved = cards[i], targetChildren = cards.slice(j + 1, groupEnd(cards, j)), movedChildren = cards.slice(i + 1, end);
+      const plainTitle = [...moved.title].map(char => isEscapable(char) ? '\\' + char : char).join('');
+      const targetDetails = cardDetails(target.words), movedDetails = cardDetails(moved.words);
+      const merged = { title: target.title, depth, words: withCardDetails([targetDetails.words, plainTitle, movedDetails.words].filter(Boolean).join('\n\n'), mergeDetails(targetDetails, movedDetails)), written: true };
+      cards.splice(top, groupEnd(cards, bottom) - top, merged, ...targetChildren, ...movedChildren);
+      return done(top, { kind: 'split', text: cardText(merged), upper: cardText(upper), lower: cardText(lower), upperTitle: upper.title, lowerTitle: lower.title, keep: bottom - top - 1, step: act.step, near: top });
     }
     case 'split': {
       const keep = Math.min(act.keep ?? 0, end - i - 1);
-      cards.splice(i, 1, { ...textCard(act.upper), depth });
-      cards.splice(i + 1 + keep, 0, { ...textCard(act.lower), depth });
-      return done(i, { kind: 'merge', text: act.upper, step: 1, near: i });
+      const children = cards.slice(i + 1, end), down = act.step > 0;
+      const upperChildren = down ? children.slice(children.length - keep) : children.slice(0, keep);
+      const lowerChildren = down ? children.slice(0, children.length - keep) : children.slice(keep);
+      const upper = textCard(act.upper), lower = textCard(act.lower);
+      // A link allocated after the merge belongs to its surviving target,
+      // while the old moved identities return to the separated card.
+      const target=down?lower:upper,original=cardDetails(target.words),merged=cardDetails(cards[i].words);
+      const known=new Set([...cardDetails(upper.words).ids,...cardDetails(lower.words).ids]);
+      const added=merged.ids.filter(id=>!known.has(id));
+      if(added.length){
+        const id=original.id??merged.id,aliases=[...new Set([...original.aliases,...added])].filter(each=>each!==id);
+        target.words=withCardDetails(target.words,{id,aliases,color:merged.color});
+      }
+      // Titles are literal on a card, even when they begin with Markdown heading characters.
+      cards.splice(i, end - i, { ...upper, title: act.upperTitle ?? upper.title, depth }, ...upperChildren,
+        { ...lower, title: act.lowerTitle ?? lower.title, depth }, ...lowerChildren);
+      const at = down ? i : i + 1 + keep;
+      return done(at, { kind: 'merge', text: down ? act.upper : act.lower, step: down ? 1 : -1, near: at });
+    }
+    case 'details': {
+      const before = cardDetails(cards[i].words);
+      if (act.fromColor !== undefined && act.fromColor !== before.color) return null;
+      const id = before.id ?? act.id ?? null, aliases = before.aliases.filter(each=>each!==id);
+      const color = act.color === undefined ? before.color : act.color;
+      const changed = withCardDetails(cards[i].words, {id, aliases, color});
+      if (changed === cards[i].words) return null;
+      cards[i] = {...cards[i], words: changed, written: true};
+      return done(i, {kind: 'details', text: cardText(cards[i]), near: i, color: before.color, fromColor: color});
     }
     case 'edit': {
       if (act.to === act.text) return null;
       const card = textCard(act.to);
       if (!cardText(card)) return applyAct(deck, { kind: 'remove', text: act.text, near: i });
       if (cardText(card) === act.text) return null;
-      cards[i] = { ...card, depth };
-      return done(i, { kind: 'edit', text: cardText(card), to: act.text, near: i });
+      const details = cardDetails(cards[i].words);
+      let editedWords = card.words;
+      if (details.ids.length) {
+        // A heading typed into the body starts a new card. The old identity
+        // belongs before that heading, on the card whose title was edited.
+        const visible = cardDetails(editedWords).words, nested = parseDeck(visible);
+        editedWords = withCardDetails(nested.opening, details) + (nested.cards.length ? '\n\n' + visible.slice(nested.opening.length) : '');
+      }
+      cards[i] = { ...card, words: editedWords, depth };
+      return done(i, { kind: 'edit', text: cardText(cards[i]), to: cardText(deck.cards[i]), near: i });
     }
     case 'add': {
       const card = { ...textCard(act.text), depth: act.depth ?? 0 }, anchor = act.after === null ? -1 : findCard(deck, act.after, act.near);
@@ -274,7 +328,7 @@ export function applyAct(deck, act) {
     }
     case 'remove': {
       const removed = cards.splice(i, end - i), rest = removed.slice(1).map(card => ({ text: cardText(card), depth: card.depth }));
-      return done(Math.min(i, cards.length - 1), { kind: 'add', after: i > 0 ? cardText(deck.cards[i - 1]) : null, text: act.text, depth, rest, near: i - 1 });
+      return done(Math.min(i, cards.length - 1), { kind: 'add', after: i > 0 ? cardText(deck.cards[i - 1]) : null, text: cardText(removed[0]), depth, rest, near: i - 1 });
     }
     case 'indent':
       if (sibling(cards, i, -1) < 0 || cards.slice(i, end).some(card => card.depth >= DEEPEST)) return null;

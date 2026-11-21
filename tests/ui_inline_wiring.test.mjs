@@ -1,9 +1,11 @@
+import * as uploadState931 from '../web/upload-state.mjs';
 // Exercises actual app/inline-adapter functions below the native browser. Only
 // imports and auto-start are replaced; no product function body is copied.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { readerArchive } from './fixtures/reader_archive.mjs';
 import * as writing from '../web/writing-helpers.mjs';
 import { readFailure, checkedView, bindingOf, Freshness } from '../web/freshness.mjs';
 import { currentImages } from '../web/upload-state.mjs';
@@ -14,7 +16,7 @@ import { ReadThrough } from '../web/read-through.mjs';
 import { Live, liveOffered, reloader } from '../web/live.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 import { RecoveryCleanup } from '../web/cleanup.mjs';
-import { replyLine } from '../web/replies.mjs';
+import { replyLine, paintReplyLine } from '../web/replies.mjs';
 import { placeNewLine } from '../web/unanswered.mjs';
 import { revealSelection } from '../web/reveal.mjs';
 import { cardClass, paintCardColor, agentColor, AGENT_PALETTE } from '../web/author-colors.mjs';
@@ -28,11 +30,19 @@ import { PageReads } from '../web/page-reads.mjs';
 import { PageHere } from '../web/page-here.mjs';
 import { hasTitle } from '../web/creation.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
+import { Reader as RealReader } from '../web/reader.mjs';
+import { configureCoverAnswers } from '../web/cover-answers.mjs';
+import { coverSheet } from '../web/dossier-cover.mjs';
+import { miniDocument } from './fixtures/mini_dom.mjs';
+import { MessageEdit as RealMessageEdit } from '../web/message-edit.mjs';
+import { MessageEditWriting as RealMessageEditWriting } from '../web/message-edit-writing.mjs';
 import { entries } from '../web/reply-stacks.mjs';
 // A message's entry in the list, on its own or in its reply stack (reply-stacks.mjs).
 const entryIn = (f, id) => entries(f.get('messages')).find(entry => entry.dataset.id === id);
-// The list's messages, stacks and lines in their order, leaving out the New message composer resting among them (item 465).
-const listed = f => f.get('messages').children.filter(child => child !== f.get('new-message-sheet'));
+// A singleton's folder still contains one message. Helpers which inspect
+// messages, multi-message stacks and lines read through that wrapper.
+const singleEntry = node => node.dataset.single === 'true' ? node.children.find(child => child.dataset.id) : node;
+const listed = f => f.get('messages').children.filter(child => child !== f.get('new-message-sheet')).map(singleEntry);
 import { SessionRenewal } from '../web/session-renewal.mjs';
 import { phoneCheck } from '../web/phone-check.mjs';
 import { Api as RealApi, AttemptError, Deadline, notAnswering, unreached } from '../web/api.mjs';
@@ -43,22 +53,35 @@ const defer = () => { let resolve, reject; const promise = new Promise((yes, no)
 // not already hold (a fake below, a test's override, or a module imported natively above) comes from its module's own source:
 // each module once, its dependencies first, with its imports and exports taken off. A module the page newly imports is wired
 // here as the browser wires it, so the app's wiring stays covered without a line added for it.
-const IMPORTS = /^import \{([^}]*)\} from '\.\/([^']+)';$/gm;
+const IMPORTS = /^import (\{[^}]*\}|\* as [\w$]+) from '\.\/([^']+)';$/gm;
 const webSource = file => readFileSync(new URL('../web/' + file, import.meta.url), 'utf8');
 function loadPageScope(context, root) {
   const wanted = new Map(), order = [];
   const want = file => {
-    for (const [, list, from] of webSource(file).matchAll(IMPORTS)) for (const entry of list.split(',').map(s => s.trim()).filter(Boolean)) {
-      const [name, alias = name] = entry.split(/\s+as\s+/);
-      if (alias in context) continue;
-      if (!wanted.has(from)) { wanted.set(from, new Map()); want(from); order.push(from); }
-      wanted.get(from).set(alias, name);
+    for (const [, clause, from] of webSource(file).matchAll(IMPORTS)) {
+      const entries = clause.startsWith('* as ') ? [['*', clause.slice(5)]]
+        : clause.slice(1, -1).split(',').map(s => s.trim()).filter(Boolean).map(entry => {
+          const [name, alias = name] = entry.split(/\s+as\s+/); return [name, alias];
+        });
+      for (const [name, alias] of entries) {
+        if (alias in context) continue;
+        if (!wanted.has(from)) { wanted.set(from, new Map()); want(from); order.push(from); }
+        wanted.get(from).set(alias, name);
+      }
     }
   };
   want(root);
   for (const file of order) {
-    const body = webSource(file).replace(/^import [^;]*;\n/gm, '').replace(/^export (?=(const|let|class|function|async function) )/gm, '');
-    const names = [...wanted.get(file)].map(([alias, name]) => alias === name ? name : alias + ': ' + name);
+    const source = webSource(file);
+    // ES module imports are lexical bindings. Capture them before app.mjs
+    // introduces a same-named local (for example its own paintMarks), so an
+    // imported card renderer still calls topic-navigation's paintMarks.
+    const imports = [...source.matchAll(IMPORTS)].flatMap(([, clause]) => clause.startsWith('* as ')
+      ? [clause.slice(5)] : clause.slice(1, -1).split(',').map(s => s.trim()).filter(Boolean).map(entry => entry.split(/\s+as\s+/).at(-1)));
+    const body = (imports.length ? `const { ${imports.join(', ')} } = globalThis;\n` : '')
+      + source.replace(/^import [^;]*;\n/gm, '').replace(/^export (?=(const|let|class|function|async function) )/gm, '');
+    const exports = [...webSource(file).matchAll(/^export (?:const|let|class|function|async function) ([\w$]+)/gm)].map(match => match[1]);
+    const names = [...wanted.get(file)].map(([alias, name]) => name === '*' ? alias + ': Object.freeze({ ' + exports.join(', ') + ' })' : alias === name ? name : alias + ': ' + name);
     vm.runInContext('Object.assign(globalThis, (() => {\n' + body + '\nreturn { ' + names.join(', ') + ' }; })())', context, { filename: file });
   }
 }
@@ -67,14 +90,29 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const elements = new Map(), events = [], calls = [], paints = [], observers = [], days = [];
   class Element {
     constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true;
-      this.style = {}; this.scrollTop = 0; this.scrollHeight = 600; this.clientHeight = 600; }
+      this.style = {
+        setProperty(name, value) { this[name] = String(value); },
+        removeProperty(name) { const previous = this[name] ?? ''; delete this[name]; return previous; },
+      }; this.scrollTop = 0; this.scrollHeight = 600; this.clientHeight = 600; }
     addEventListener(name, fn) { this.handlers[name] = fn; }
+    // The real selection-quote owner clones the Reader's pill. Clone its
+    // content and reflected attributes, without copying event listeners.
+    cloneNode(deep = false) {
+      const clone = new Element(this.id);
+      for (const name of ['tagName', 'namespaceURI', 'className', 'textContent', 'title', 'type', 'hidden', 'disabled', 'value']) {
+        if (name in this) clone[name] = this[name];
+      }
+      clone.dataset = { ...this.dataset }; clone.style = { ...this.style };
+      if (deep) clone.append(...this.children.map(child => child instanceof Element ? child.cloneNode(true)
+        : typeof child === 'object' ? { data: child.data, textContent: child.textContent, children: [] } : child));
+      return clone;
+    }
     get classList() {
       const names = () => String(this.className ?? '').split(' ').filter(Boolean), set = list => { this.className = list.join(' '); };
       return { add: name => { if (!names().includes(name)) set([...names(), name]); }, remove: name => set(names().filter(n => n !== name)),
         contains: name => names().includes(name), toggle: (name, on = !names().includes(name)) => { set(on ? [...names().filter(n => n !== name), name] : names().filter(n => n !== name)); return on; } };
     }
-    append(...items) { for (const item of items) { if (typeof item === 'object') item.parent = this; this.children.push(item); } }
+    append(...items) { for (const item of items) { if (typeof item === 'object') { item.remove?.(); item.parent = this; } this.children.push(item); } }
     replaceChildren(...items) { this.children = []; this.append(...items); }
     prepend(...items) { for (const item of items) item.remove(); this.children.unshift(...items); for (const item of items) item.parent = this; }
     after(...items) { const host = this.parent; if (!host) return; for (const item of items) item.remove(); host.children.splice(host.children.indexOf(this) + 1, 0, ...items); for (const item of items) item.parent = host; }
@@ -84,22 +122,38 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     get ownerDocument() { return this.owner ?? document; }
     set ownerDocument(value) { this.owner = value; }
     get firstElementChild() { return this.children[0]; }
+    get firstChild() { return this.children[0] ?? null; }
     // What a panel's in-place repaint (web/repaint.mjs) walks; this fixture keeps no attribute list to carry.
     get nodeType() { return 1; }
     get childNodes() { return this.children; }
     get lastChild() { return this.children[this.children.length - 1] ?? null; }
+    get lastElementChild() { return this.children[this.children.length - 1] ?? null; }
     getAttributeNames() { return []; }
     hasAttribute(name) { return name in this; }
     toggleAttribute(name, force = !this.hasAttribute(name)) { if (force) this.setAttribute(name, ''); else this.removeAttribute(name); return force; }
-    // A bare tag name finds the first such element inside, a :scope chain the first it reaches; any other selector names an element by id.
+    // Tags, data attributes and :scope chains find descendants. Named page
+    // elements keep the fixture's existing id lookup.
     querySelector(selector) {
-      if (selector.startsWith(':scope')) return this.querySelectorAll(selector)[0] ?? null;
+      if (selector.startsWith(':scope') || selector.startsWith('[data-')) return this.querySelectorAll(selector)[0] ?? null;
+      // 151's star painter finds its nested words in this link; an absent
+      // descendant must not fabricate a document-level fixture element.
+      if (selector === '.ol-dossier-words') {
+        for (const child of this.children) {
+          if (child.classList?.contains('ol-dossier-words')) return child;
+          const inner = child.querySelector?.(selector); if (inner) return inner;
+        }
+        return null;
+      }
       if (!/^[a-z][a-z0-9]*$/.test(selector)) return get(selector.slice(1));
-      for (const child of this.children) { if (child.tagName === selector.toUpperCase()) return child; const inner = child.querySelector?.(selector); if (inner) return inner; }
+      for (const child of this.children) { if (child.tagName?.toLowerCase() === selector) return child; const inner = child.querySelector?.(selector); if (inner) return inner; }
       return null;
     }
     // The rail's sideways strips are a phone layout this fixture does not draw.
     querySelectorAll(selector = '') {
+      if (selector.startsWith('[data-')) {
+        const found = [], walk = host => { for (const child of host.children) if (child instanceof Element) { if (isStep(child, selector)) found.push(child); walk(child); } };
+        walk(this); return found;
+      }
       // A list's entries, read as the reply stacks read them (':scope > [data-id], :scope > .reply-stack > [data-id]', reply-stacks.mjs), in the page's order.
       if (selector.startsWith(':scope')) {
         const chains = selector.split(',').map(chain => chain.split('>').slice(1).map(step => step.trim()));
@@ -117,7 +171,13 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     scrollIntoView() {}
     scrollBy(options) { this.scrollTop += options.top; events.push(['scroll', this.id, options]); }
     contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
-    closest(selector) { for (let at = this; at; at = at.parent) if (selector.startsWith('.') && String(at.className ?? '').split(' ').includes(selector.slice(1))) return at; return null; }
+    compareDocumentPosition(other) {
+      if (other === this) return 0;
+      let root = this; while (root.parent) root = root.parent;
+      const order = [], walk = node => { order.push(node); for (const child of node.children ?? []) walk(child); }; walk(root);
+      const at = order.indexOf(other); return at < 0 ? 1 : at > order.indexOf(this) ? 4 : 2;
+    }
+    closest(selector) { for (let at = this; at; at = at.parent) if (selector.startsWith('.') && isStep(at, selector)) return at; return null; }
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
     // Where it is on screen: wholly in view, unless a check places it (box).
     getBoundingClientRect() {
@@ -131,9 +191,15 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     replaceWith(next) { if (this.parent) { this.parent.insertBefore(next, this); this.remove(); } }
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
-  // One step of a selector: [data-name], or a tag, a .class or both (tag.class).
+  // One step of a selector: a tag or classes, optionally with a data
+  // attribute's presence or exact quoted/bare value.
   const isStep = (el, step) => {
-    if (step.startsWith('[data-')) return el.dataset[step.slice(6, -1).replace(/-(.)/g, (_, c) => c.toUpperCase())] !== undefined;
+    const data = step.match(/\[data-([\w-]+)(?:=(?:"([^"]*)"|'([^']*)'|([^\]\s]+)))?\]$/);
+    if (data) {
+      const actual = el.dataset[data[1].replace(/-(.)/g, (_, c) => c.toUpperCase())], expected = data[2] ?? data[3] ?? data[4];
+      if (actual === undefined || (expected !== undefined && String(actual) !== expected)) return false;
+      step = step.slice(0, -data[0].length);
+    }
     const [tag, ...classes] = step.split('.'), names = String(el.className ?? '').split(' ');
     return (tag === '' || el.tagName === tag.toUpperCase()) && classes.every(name => names.includes(name));
   };
@@ -142,19 +208,24 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const document = { body: get('body'), documentElement: get('html'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
     createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }),
     // The bars' glyphs (glyphs.mjs) are svg elements.
-    createElementNS: (ns, tag) => Object.assign(new Element(), { tagName: String(tag), namespaceURI: ns }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: s => s === '[data-unreached]' ? [...elements.values()].filter(el => 'unreached' in el.dataset) : [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
-    addEventListener(name, fn) { events.push(['document-handler', name, fn]); },
+    createElementNS: (ns, tag) => Object.assign(new Element(), { tagName: String(tag), namespaceURI: ns }), createTextNode: data => ({ nodeType: 3, data, textContent: data, children: [] }), querySelectorAll: s => s === '[data-unreached]' ? [...elements.values()].filter(el => 'unreached' in el.dataset) : [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
+    addEventListener(name, fn, options) { events.push(['document-handler', name, fn, options]); },
     removeEventListener(name, fn) { const at = events.findIndex(([kind, n, f]) => kind === 'document-handler' && n === name && f === fn); if (at >= 0) events.splice(at, 1); },
     // The page's window, as a test may replace it, with the size watch the message bar keeps (message-menu.mjs).
     get defaultView() { return { ResizeObserver: class { observe() {} }, MutationObserver: class { observe() {} }, ...context.window }; } };
+  get('reader-aside').append(readerArchive(document));
   const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', actor_kind: 'human', authority: { id: 'a', epoch: 'e' } };
   const topic = { id: 't1', title: 'Fixture', workspace_id: 'w1' };
   const api = { bootstrap: async () => bootstrap, view: async (name, args) => {
     calls.push({ name, args });
     if (name === 'topic') return { instance_id: 'fixture', topic, participants: [] };
     if (name === 'workspace') return { instance_id: 'fixture', workspace: { title: 'Workspace' } };
+    if (name === 'workspace_counts') return { instance_id: 'fixture', items: args.workspace_ids.map(id => ({ id, unread: 0, addressed: 0, build: { unread: 0, addressed: 0 }, cover_waiting: 0, light: null })) };
     if (name === 'marks') return { instance_id: 'fixture', topic_id: args.topic_id, items: [], next_cursor: null };
     if (name === 'colors') return { instance_id: 'fixture', palette: [...AGENT_PALETTE], items: [], next_cursor: null };
+    if (name === 'source' && args.source_ref?.kind === 'message' && views.messages.has(args.source_ref.id)) {
+      return { instance_id: 'fixture', source_ref: args.source_ref, topic_id: topic.id, attachments: [], ...views.messages.get(args.source_ref.id) };
+    }
     // An outcome to keep with no target and no checks yet, as Core answers for one (docs/targets.md).
     if (name === 'outcome_checks') return { instance_id: 'fixture', workspace_id: args.workspace_id, workspace_title: 'Workspace', owner: 'owner', coordinator: 'agent-a',
       you_own: false, you_steer: false, target: null, kind: { kind: 'keep', started_by: 'owner', started_ms: null, you_change: false }, word: null, failing_check: null,
@@ -167,7 +238,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const editor = { key: 'inline', dirty: true, submissions: [], draft: { body: 'kept', addressees: [], attachments: [], caret: { start: 0, end: 0 } }, context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'topic', id: 't1' } } };
   const p = { surface: 'inline', initialized: true, topic, mode: 'reply', editors: { reply: editor } };
   const uploads = { current: () => [], running: new Map(), status: () => 'Ready' };
-  const registry = { inline: p, current: null, sessions: new Map([[editor.key, { editor, underWay: () => false }]]), disposed: false,
+  const registry = { cards: new Map(), inline: p, current: null, sessions: new Map([[editor.key, { editor, underWay: () => false }]]), disposed: false,
     get interactive() { return this.current ?? this.inline; },
     isCurrent(p) { return !!p && this.interactive === p; }, isSourceCurrent(p) { return !!p && this.current?.source === p.source; },
     cancelSave(e) { events.push(['cancel', e.key]); }, schedule(e) { events.push(['schedule', e.key]); }, resumeHeld() { events.push(['resume-held']); return Promise.resolve(); },
@@ -186,14 +257,17 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
       list: action => action({ readClass: 'foreground' }) },
     runtime: { current: bootstrap.authority },
   };
-  const reader = { narrow: { addEventListener() {} }, layoutChoice: null, notice: what => { showLine(get('reader-notice'), what); events.push(['reader-notice', lineText(what)]); }, paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]), paintTitle: source => events.push(['title', source.title]) };
+  const reader = { keepReplyVisible: RealReader.prototype.keepReplyVisible, narrow: { addEventListener() {} }, layoutChoice: null, notice: what => { showLine(get('reader-notice'), what); events.push(['reader-notice', lineText(what)]); }, paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]), paintTitle: source => events.push(['title', source.title]) };
   const views = { scope: {}, messages: new Map(), retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, readState: async () => true, placeAfresh() {}, sighted() {}, opened() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1, showAlone: () => false, aloneItem: () => null };
+  Object.assign(views, { instanceId: bootstrap.instance_id, topicId: topic.id, starRoots: new Set(), starSerial: 0,
+    resetStars: TopicViews.prototype.resetStars, readStarred: TopicViews.prototype.readStarred, paint() {}, invalidate() {} });
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
+    unobserve(target) { this.targets = this.targets.filter(each => each !== target); }
   }
-  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} }, innerHeight: 600, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, paintReplyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} unobserve() {} disconnect() {} }, MutationObserver: class { observe() {} disconnect() {} takeRecords() { return []; } }, innerHeight: 600, innerWidth: 1000, Node: { DOCUMENT_POSITION_FOLLOWING: 4, TEXT_NODE: 3 }, requestAnimationFrame: callback => setImmediate(callback), cancelAnimationFrame: clearImmediate, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     // The window's own location and history are the page's, as in a browser (the shell reads them there).
     window: { innerHeight: 600, scrollY: 0,
       getComputedStyle: el => ({ overflowY: 'visible', position: 'static', scrollPaddingTop: '0px', scrollPaddingBottom: '0px', ...el.style }),
@@ -205,7 +279,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
     Reader: class { constructor(callbacks) { reader.callbacks = callbacks; return reader; } },
-    TopicViews: class { constructor() { return views; } }, Freshness: class { constructor(options) { fresh.options = options; return fresh; } },
+    TopicViews: class { constructor({ paint, invalidate }) { Object.assign(views, { paint, invalidate }); return views; } }, Freshness: class { constructor(options) { fresh.options = options; return fresh; } },
     initialViews: async () => ({}), actorBaseline: async () => null, readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '',
     openIntentJournal: async () => { events.push(['intent-journal']); throw Error('No browser intent storage in this fixture'); },
     openOpeningStore: async () => { events.push(['opening-store']); return { close() {} }; },
@@ -230,8 +304,77 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   context.wiring.inject({ api, bootstrap, registry, reader, inline, topic, views, freshness: fresh,
     marks: new context.Marks({ api, instanceId: 'fixture', authority: () => bootstrap.authority, doc: null, win: null }) });
   const state = (ref = editor.context.sourceRef) => ({ instance_id: 'fixture', source_ref: ref, destination: { topic_id: 't1' }, source_available: true, destination_available: true });
-  return { ...context.wiring, makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap, views, document, observers, days };
+  return { ...context.wiring, runObservation: source => vm.runInContext(source, context), makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap, views, document, observers, days };
 }
+
+// Outcome cards are a projection of the shell's real outline owner. Mount
+// that owner beside the actual app initializer for the checks which follow
+// its reads; the generic inline fixture otherwise mounts no shell rail.
+function mountOutcomeOutline(f) {
+  f.get('new-message').append(f.document.createElementNS('http://www.w3.org/2000/svg', 'svg'));
+  f.get('topic-navigation').append(f.get('topics'), f.get('topics-status'), f.get('retry-topics'));
+  return f.runObservation(`(() => {
+    const outline = new OutlineRail({ host: document.getElementById('outline'),
+      read: (name, args, readClass) => shell.view(name, args, readClass),
+      open: (target, title) => shell.open(target, title) });
+    shell.follow(outline);
+    return outline;
+  })()`);
+}
+const outcomeCards = f => walk(f.get('topic-navigation')).filter(node => node.classList?.contains('outcome-topic-card'));
+const outcomeCardTitles = f => outcomeCards(f).map(card => card.children[0].textContent);
+
+for (const [kind, query, workspace] of [['root', '/', null], ['workspace', '/?workspace=w1', 'w1']]) {
+  test(`901 actual ${kind} initializer supplies shell handles and routes through the shared move callback`, async () => {
+    const f = fixture('https://fixture' + query);
+    const view = f.api.view;
+    f.api.view = (name, args) => name === 'workspace' ? Promise.resolve({ instance_id: 'fixture', workspace: { id: 'w1', title: 'Workspace' } }) : view(name, args);
+    f.runObservation(`globalThis.moves901 = []; shell.go = (target, still) => {
+      moves901.push({ target, safe: still() }); return true;
+    };`);
+    await f.initialize(); await drain();
+    assert.equal(f.runObservation('shell.handles?.workspaceId'), workspace);
+    assert.equal(f.runObservation('shell.handles?.route.kind'), kind);
+    assert.equal(f.get('rail').hidden, kind === 'root', 'the existing root/outcome presentation is kept');
+    await f.runObservation("openDestination({ kind: 'topic', id: 't2' }, 'Next')");
+    assert.deepEqual(JSON.parse(f.runObservation('JSON.stringify(moves901)')), [{ target: { kind: 'topic', id: 't2' }, safe: true }]);
+    assert.equal(f.events.some(([event]) => event === 'navigate' || event === 'reload'), false);
+    f.runObservation('shell.go = () => false');
+    await f.runObservation("openDestination({ kind: 'pipeline', id: 'w1' }, 'Pipeline')");
+    assert.deepEqual(f.events.filter(([event]) => event === 'navigate'), [['navigate', '?pipeline=w1']], 'unsupported moves retain the shared document-load fallback');
+  });
+}
+
+// Item 859 put Team in the shared header. This fixture does not parse HTML;
+// read that shipped placement as well as the app's live middle-page order.
+const assertOutcomeTeamHeader = f => {
+  const html = webSource('index.html'), header = html.match(/<header class="topic-header">([\s\S]*?)<\/header>/);
+  assert.ok(header, 'the shared topic header exists');
+  assert.match(header[1], /<section id="outcome-team" class="topic-people"[^>]*>[\s\S]*?id="team-people"[\s\S]*?<\/section>/);
+  assert.ok(header.index < html.indexOf('id="outcome-page"'), 'Team in the header precedes the outcome middle');
+  assert.equal(f.get('outcome-team').hidden, false, 'the outcome Team is shown');
+  assert.equal(f.get('outcome-page').contains(f.get('outcome-team')), false, 'initialization keeps Team in the header');
+};
+
+test('876 inline fixture selects exact descendant data values and walks past text children', () => {
+  const f = fixture(), host = f.document.createElement('div'), nested = f.document.createElement('div');
+  const buttons = ['reply', 'aside', 'menu', ''].map(tool => Object.assign(f.document.createElement('button'), { dataset: { tool } }));
+  const absent = f.document.createElement('button');
+  host.append('before', buttons[0], nested); nested.append('between', ...buttons.slice(1), absent);
+  assert.equal(walk(host).length, 6, 'text children do not become element descendants');
+  assert.deepEqual(walk(host).map(node => node === nested ? 'nested' : buttons.indexOf(node)), [0, 'nested', 1, 2, 3, -1]);
+  for (const [index, tool] of ['reply', 'aside', 'menu', ''].entries()) {
+    for (const selector of [`[data-tool="${tool}"]`, `[data-tool='${tool}']`, ...(tool ? [`[data-tool=${tool}]`] : [])]) {
+      assert.equal(host.querySelector(selector) === buttons[index], true, `${selector} finds its actual descendant`);
+      assert.equal(host.querySelectorAll(selector).length, 1, `${selector} matches exactly one value`);
+    }
+  }
+  assert.equal(nested.querySelector('[data-tool=reply]'), null, 'lookup stays inside its host');
+  assert.equal(host.querySelector('[data-tool=missing]'), null, 'a missing value creates no fake global-id node');
+  assert.equal(host.querySelectorAll('[data-tool]').length, 4, 'presence includes empty and excludes absent');
+  assert.equal(host.querySelector(':scope > [data-tool=menu]'), null, 'direct-child scope excludes nested tools');
+  assert.equal(host.querySelector(':scope > div > [data-tool=menu]') === buttons[2], true);
+});
 
 test('the inline fixture reveals an offscreen card through real window and scroller geometry', () => {
   const geometryTolerance = .5;
@@ -274,6 +417,7 @@ const commit = async (live, seq) => { live.emit({ kind: 'commit', seq }); await 
 
 test('outcome detail keeps transient choices, hides denied content, and recovers on the next commit', async () => {
   const f = fixture('https://fixture/?workspace=w1'), live = stream();
+  mountOutcomeOutline(f);
   f.inject({ api:f.api, bootstrap:f.bootstrap }); f.useLive(live);
   let failure = null;
   f.api.view = async name => {
@@ -283,16 +427,19 @@ test('outcome detail keeps transient choices, hides denied content, and recovers
     }
     return {instance_id:'fixture',items:name==='workspace_topics'?[{...f.topic,activity_ms:1,list_position:1}]:[],next_cursor:null};
   };
-  await f.initialize();
+  await f.initialize(); await drain();
   assert.equal(f.get('topic-title').textContent,'Real outcome');
-  assert.equal(f.get('topics').children.length,1);
+  assert.equal(f.get('topics').hidden,true,'the retired page topic list is hidden');
+  assert.deepEqual(outcomeCardTitles(f),['Fixture'],'the shared outline supplies the visible card');
   failure = Object.assign(Error('Temporarily offline'),{code:'DATABASE_BUSY'});
   await commit(live, 2);
   assert.equal(f.get('topic-navigation').hidden,false);
   assert.equal(f.get('topic-title').textContent,'Real outcome');
+  assert.deepEqual(outcomeCardTitles(f),['Fixture'],'a transient failure preserves readable cards');
   failure = Object.assign(Error('Access denied'),{code:'FORBIDDEN'});
   await commit(live, 3);
   assert.equal(f.get('topic-navigation').hidden,true,'confirmed denial removes stale topic choices');
+  assert.deepEqual(outcomeCards(f),[],'the outline publishes no cards while the outcome is denied');
   assert.equal(f.get('topic-title').textContent,'Outcome unavailable');
   assert.equal(f.get('topic-description').textContent,'');
   assert.equal(f.get('app-status').hidden,false);
@@ -300,6 +447,7 @@ test('outcome detail keeps transient choices, hides denied content, and recovers
   assert.equal(f.get('topic-navigation').hidden,false);
   assert.equal(f.get('topic-title').textContent,'Real outcome');
   assert.equal(f.get('app-status').hidden,true);
+  assert.deepEqual(outcomeCardTitles(f),['Fixture'],'the recovered outline supplies the card again');
 });
 
 // Back from a refusal, the outcome's page comes back whole: its topics show
@@ -307,6 +455,7 @@ test('outcome detail keeps transient choices, hides denied content, and recovers
 // not move down under a pointer as each read lands.
 test('an outcome page back from a refusal shows its topics only once what stands above them is painted again', async () => {
   const f = fixture('https://fixture/?workspace=w1'), live = stream();
+  mountOutcomeOutline(f);
   f.inject({ api:f.api, bootstrap:f.bootstrap }); f.useLive(live);
   let denied = false;
   const held = new Map();
@@ -1203,8 +1352,11 @@ test('property: after every step of any interleaving of requests, the live feed 
   };
   const words = { refusal: 'This topic is closed.', nothing: 'Connection interrupted. Confirmation is unknown; your writing is kept.',
     proxy: 'AIM returned an unreadable response. Confirmation is unknown.', session: 'Open this instance to establish a session.', ranOut: timedOut };
-  const SEEDS = 40, STEPS = 60;
-  let checked = 0, shown = 0, hidden = 0, doubted = 0, renewed = 0;
+  // Leave one of the document's four foreground places for renewal/bootstrap.
+  // Held reads still overlap; an arbitrary queued read cannot finish before
+  // the earlier gates which this same sequential driver alone can release.
+  const SEEDS = 40, STEPS = 60, MAX_HELD_READS = 3;
+  let checked = 0, shown = 0, hidden = 0, doubted = 0, renewed = 0, peakHeld = 0;
   const seen = new Set();
   for (let seed = 1; seed <= SEEDS; seed++) {
     const random = seeded(seed), pick = list => list[Math.floor(random() * list.length)];
@@ -1226,7 +1378,7 @@ test('property: after every step of any interleaving of requests, the live feed 
     const pending = [], history = [];
     let seq = 0;
     for (let step = 1; step <= STEPS; step++) {
-      const kinds = ['start', 'start', 'renew', ...(pending.length ? ['end', 'end', 'end'] : []), ...(live.state === 'live' ? ['message', 'down'] : ['up', 'up'])];
+      const kinds = [...(pending.length < MAX_HELD_READS ? ['start', 'start'] : []), 'renew', ...(pending.length ? ['end', 'end', 'end'] : []), ...(live.state === 'live' ? ['message', 'down'] : ['up', 'up'])];
       const kind = pick(kinds);
       let did = kind;
       if (kind === 'start') {
@@ -1237,6 +1389,7 @@ test('property: after every step of any interleaving of requests, the live feed 
           entry.done = f.run(() => entry.gate.promise.then(() => deadline.bound(request)));
         } else entry.done = f.run(() => new RealApi('fixture-session', async () => { await entry.gate.promise; return endings[entry.ending](); }).view('topic', {}));
         pending.push(entry); did = entry.bounded ? 'start a bounded read' : 'start a request';
+        peakHeld = Math.max(peakHeld, pending.length);
       } else if (kind === 'end') {
         const entry = pending.splice(Math.floor(random() * pending.length), 1)[0];
         entry.ending = entry.bounded ? 'ranOut' : pick(Object.keys(endings));
@@ -1281,6 +1434,7 @@ test('property: after every step of any interleaving of requests, the live feed 
     await new Promise(resolve => setTimeout(resolve, 2)); await Promise.all(pending.map(entry => entry.done)); await drain();
   }
   assert.equal(checked, SEEDS * STEPS);
+  assert.equal(peakHeld, MAX_HELD_READS, 'the driver still reaches overlapping held reads');
   // Every kind of step ran, and connection lines both showed and were hidden.
   assert.deepEqual([...seen].sort(), ['down', 'end: nothing', 'end: proxy', 'end: ranOut', 'end: refusal', 'end: session', 'end: success', 'message',
     'renewal answered', 'renewal not answered', 'start a bounded read', 'start a request', 'up']);
@@ -1757,6 +1911,54 @@ async function readingPage() {
   return { f, ranges, card };
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
+
+// Item 857 starts ordinary dossiers open. A check about a folded dossier
+// makes that choice through the actual chevron before checking its behavior.
+const foldDossier = (f, id) => {
+  const folder = entryIn(f, id)?.closest('.reply-stack');
+  assert.equal(folder?.dataset.fold, 'open', `${id} starts open before the explicit fold`);
+  const toggle = folder.children.find(node => node.classList?.contains('stack-toggle'));
+  toggle.onclick();
+  assert.equal(folder.dataset.fold, 'folded', `${id} takes the explicit folded choice`);
+};
+
+test('843 actual dossier chevron clears its session marks on collapse, preserves them on expand and leaves other dossiers alone', async () => {
+  const { f } = await readingPage();
+  // This fixture supplies the browser microtask primitive used by clearVisitNew.
+  f.runObservation('globalThis.queueMicrotask = fn => Promise.resolve().then(fn)');
+  const items = [
+    { id: 'm1', seq: 1, body: 'Head' },
+    { id: 'm2', seq: 2, body: 'Reply', reply_to: 'm1' },
+    { id: 'm3', seq: 3, body: 'Newest reply', reply_to: 'm1' },
+    { id: 'm4', seq: 4, body: 'Unrelated dossier' },
+  ].map(item => ({ ...item, author_id: 'agent-a', topic_id: 't1', unread: false, acts: { folded: false, fold_revision: 0 } }));
+  for (const item of items) f.views.messages.set(item.id, item);
+  const stored = JSON.stringify(items), commands = f.calls.filter(c => c.kind).length;
+  // An already-folded dossier receives these arrivals. Seeding the earlier
+  // choice avoids handling these very messages in a setup collapse (843).
+  f.runObservation("stackState(document.getElementById('messages')).levels.set('m1', 'folded')");
+  f.runObservation('visitNew.arrive([...views.messages.values()])');
+  f.paintViews('messages'); await settle();
+  const marks = () => [...f.runObservation('visitNew.arrivals')].sort();
+  const walk = node => (node.children ?? []).filter(e => e && typeof e === 'object').flatMap(e => [e, ...walk(e)]);
+  const chevron = () => walk(f.get('messages')).find(e => e.classList?.contains('stack-toggle') && e.closest('.reply-stack')?.dataset.stack === 'm1');
+  assert.deepEqual(marks(), ['m1', 'm2', 'm3', 'm4']);
+  assert.equal(chevron().dataset.state, 'folded');
+  chevron().onclick(); await settle();
+  assert.equal(chevron().dataset.state, 'open');
+  assert.deepEqual(marks(), ['m1', 'm2', 'm3', 'm4'], 'expansion is not handling the messages');
+  chevron().onclick(); await settle();
+  assert.equal(chevron().dataset.state, 'folded');
+  assert.deepEqual(marks(), ['m4'], 'collapse handles the loaded dossier, not just its head');
+  f.runObservation('stackFeed.undos.pop()()'); await settle();
+  assert.equal(chevron().dataset.state, 'open');
+  f.runObservation('visitNew.arrive([...views.messages.values()]); paintMessageUpdates()');
+  assert.deepEqual(marks(), ['m4'], 'Undo or a repeated live page cannot resurrect handled marks');
+  f.runObservation("visitNew.arrive([{id:'later',author_id:'agent-a'}])");
+  assert.deepEqual(marks(), ['later', 'm4'], 'later arrivals still become new');
+  assert.equal(JSON.stringify(items), stored, 'stored read and fold facts remain untouched');
+  assert.equal(f.calls.filter(c => c.kind).length, commands, 'collapse sends no Core command');
+});
 const messages = (from, through) => Array.from({ length: through - from + 1 }, (_, i) => ({ id: 'm' + (from + i), seq: from + i, author_id: 'agent-a', body: 'Body ' + (from + i), topic_id: 't1' }));
 const page = (from, through, next) => ({ instance_id: 'fixture', items: messages(from, through), next_cursor: next, relevant_versions: { topic: 1 } });
 
@@ -1942,7 +2144,7 @@ test('a report whose answer is lost after Core recorded it keeps the New line un
 test('no card is read on screen until every fill drawn above the messages has had its first answer, read or refused, and a fill of the rail holds none back', async t => {
   const fills = [
     { fill: 'the marks line', page: 'topic', holds: name => name === 'marks', above: true },
-    { fill: 'the conversation\'s Show row', page: 'conversation', holds: name => name === 'conversation', above: true },
+    { fill: 'conversation reply metadata', page: 'conversation', holds: name => name === 'conversation', above: false },
     { fill: 'the topics rail', page: 'topic', holds: name => name === 'workspace_topics', above: false },
     { fill: 'the conversation row', page: 'topic', holds: name => name === 'conversation', above: false },
     { fill: 'the Pipeline row', page: 'topic', holds: name => name === 'pipeline_row', above: false },
@@ -1965,7 +2167,7 @@ test('no card is read on screen until every fill drawn above the messages has ha
       const ranges = () => f.calls.filter(c => c.kind === 'topic.read_through').map(c => [c.envelope.args.from_seq, c.envelope.args.seq]);
       await f.initialize(); await settle();
       assert.equal(held.length, 1, label + ': the page asked for it once, and it is held');
-      assert.equal(f.document.body.classList.contains('conversation-page'), kind === 'conversation', label + ': the page is the kind it says');
+      assert.equal(f.document.body.classList.contains('conversation-page'), false, label + ': every topic uses the ordinary page');
       for (let seq = 20; seq <= 22; seq++) f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body ' + seq, topic_id: 't1' });
       f.views.newest = 22; f.paintViews('messages'); await settle();
       const card = seq => f.observers[0].targets.find(target => target.dataset.seq === seq);
@@ -2031,7 +2233,7 @@ test('a message sent by name opens where it can even when the page never started
 
 // The pickers: who may change a topic's participants or an outcome's team gets
 // a field fed by the directory, and the composer offers who can be sent to.
-const walk = node => node.children.flatMap(child => [child, ...walk(child)]);
+const walk = node => (node.children ?? []).filter(child => child && typeof child === 'object').flatMap(child => [child, ...walk(child)]);
 // A person in the topic's people: one pill, at the bottom of the page.
 const isPill = node => String(node.className ?? '').split(' ').includes('person-pill');
 // A small stand-in for Core: participation.set and workspace.member_set check
@@ -2206,12 +2408,13 @@ test('an outcome\'s owner changes its team on the outcome page; the owner cannot
   assert.deepEqual(sentOf(f, 'workspace.member_set', 'workspace_revision'),
     [[5, { actor_id: 'tony', present: true }], [6, { actor_id: 'ally', present: false }], [7, { actor_id: 'ally', present: false }]]);
   assert.deepEqual(f.pickers.members.map(row => row.actor_id), ['fixture-person', 'tony']);
-  assert.deepEqual(walk(team).filter(node => node.className === 'chip').map(node => node.children[0].textContent), ['Fixture', 'tony'], 'the panel shows the reread team');
+  const people = () => walk(team).filter(node => node.classList?.contains('person-pill')).map(node => node.children[0].textContent);
+  assert.deepEqual(people(), ['Fixture', 'tony'], 'the shared participant pills show the reread team');
 
   // A team that cannot be read keeps the chips it had and says so.
   f.pickers.membersRefused = true;
   await commit(f.live, 2);
-  assert.deepEqual(walk(team).filter(node => node.className === 'chip').map(node => node.children[0].textContent), ['Fixture', 'tony']);
+  assert.deepEqual(people(), ['Fixture', 'tony']);
   assert.match(walk(team).find(node => node.className === 'notice').textContent, /^The team could not be read/);
 
   // Someone else's commit: the page rereads the outcome, so its revision and team stay current.
@@ -2232,7 +2435,7 @@ test('an outcome\'s owner changes its team on the outcome page; the owner cannot
   pickerApi(other, { workspace: { owner_id: 'tony' } });
   await other.initialize();
   assert.equal(walk(other.get('team-people')).find(node => node.className === 'people-add').hidden, true);
-  assert.equal(walk(other.get('team-people')).some(node => node.textContent === '+ Add'), false);
+  assert.equal(walk(other.get('team-people')).some(node => node.textContent === '+ Add'), true, 'a member can open Coordinator; team management and Invite keep their existing rights');
   assert.deepEqual([f.get('outcome-purpose').hidden, other.get('outcome-purpose').hidden], [false, true], 'its owner sets the purpose in place; a member reads it');
 
   // Its coordinator organises it beside the owner, so they set the purpose too.
@@ -2448,7 +2651,7 @@ test('a card in the topic log says when its message was sent, and a message from
   f.views.messages.set('m4', { id: 'm4', seq: 4, author_id: 'fable', body: 'Earlier', topic_id: 't1', sent_ms: new Date(2026, 10, 3, 7, 41).getTime() });
   f.paintViews('messages');
   // The author line follows the card's ⋯ (docs/links.md).
-  const author = id => f.get('messages').children.find(card => card.dataset.id === id).children.find(node => node.className === 'message-author');
+  const author = id => entryIn(f, id).children.find(node => node.className === 'message-author');
   const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
   // The star in the header (item 376) comes after who and when, and is no part of the time.
   const parts = id => author(id).children.filter(node => node.className !== 'card-star').map(text);
@@ -2470,7 +2673,7 @@ test('the page watches the viewer\'s day once, and at a new day repaints every s
   await f.initialize();
   f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'tony', body: 'Timed', topic_id: 't1', sent_ms: new Date(2026, 10, 5, 5, 44).getTime() });
   f.paintViews('messages');
-  const time = f.get('messages').children[0].children.find(node => node.className === 'message-author').children[1].children[1];
+  const time = entryIn(f, 'm1').children.find(node => node.className === 'message-author').children[1].children[1];
   assert.equal(time.textContent, '5:44 AM');
   const query = f.document.querySelectorAll;
   f.document.querySelectorAll = selector => selector === 'time[data-ms]' ? [time] : query(selector);
@@ -2490,8 +2693,10 @@ test('a reply card says quietly which message it answers, and a message answerin
     reply_to: 'm1', reply_to_author: 'fable', reply_to_excerpt: 'Ship the table' });
   f.paintViews('messages');
   const card = id => entryIn(f, id);
-  // A line's words are its text and link nodes' (links.mjs).
-  const lines = id => card(id).children.filter(node => node.className === 'message-reply-to').map(node => node.children.map(child => child.textContent).join(''));
+  // This DOM stores appended strings and nested elements separately. Read
+  // through the parent-word span and links as a browser's textContent does.
+  const words = node => typeof node === 'string' ? node : (node.textContent ?? '') + (node.children ?? []).map(words).join('');
+  const lines = id => card(id).children.filter(node => node.className === 'message-reply-to').map(words);
   assert.deepEqual(lines('m2'), ['Replying to fable: Ship the table']);
   assert.deepEqual(lines('m1'), []);
   // The ⋯ is on the one bar over a lit card (message-menu.mjs), not on the card; the words are formatted (message-format.mjs).
@@ -2700,20 +2905,31 @@ test('a commit while a reload reads the outcomes is read after it, and a failed 
   assert.equal(f.get('retry-workspaces').hidden, true);
 });
 
-// The outcome's own page has no rail, so it shows no list of outcomes; it reads
-// that list only for the line naming other outcomes' questions (item 86).
-test('on an outcome page a commit reads the outcome, its topics and, for the line of other outcomes\' questions, the list of outcomes it never shows', async () => {
-  const f = fixture('https://fixture/?workspace=w1'), live = stream(), o = outcomesPage(f);
+// The shell's single outcome-list answer also serves the body's Also waiting.
+// The main column does not show the old outcomes list.
+test('on an outcome page a commit refreshes the shared outline and republishes its cards beside the other outcome reads', async () => {
+  const f = fixture('https://fixture/?workspace=w1'), live = stream(), outline = mountOutcomeOutline(f);
   f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
-  o.answers.push(o.page(['w1']), o.page(['w1', 'w2']));
+  const view = f.api.view;
+  let title = 'Before the commit';
+  f.api.view = async (name, args, options) => {
+    if (name === 'workspace') { f.calls.push({ name, args }); return { instance_id: 'fixture', workspace: { id: 'w1', title: 'Outcome', owner_id: 'fixture-person', version: 1 } }; }
+    if (name === 'workspaces') { f.calls.push({ name, args }); return { instance_id: 'fixture', items: [{ id: 'w1', title: 'Outcome', title_truncated: false, owner_id: 'fixture-person', version: 1 }], next_cursor: null }; }
+    if (name === 'workspace_topics') { f.calls.push({ name, args }); return { instance_id: 'fixture', items: [{ ...f.topic, title, list_position: 1, activity_ms: 1 }], next_cursor: null }; }
+    return view(name, args, options);
+  };
   await f.initialize(); await drain();
   const count = name => f.calls.filter(call => call.name === name).length;
   const before = { workspaces: count('workspaces'), workspace: count('workspace'), topics: count('workspace_topics') };
-  assert.equal(before.workspaces, 1, 'the page reads the list of outcomes once as it opens');
+  assert.equal(before.topics, 1, 'only the outline owns the outcome topic read');
+  assert.deepEqual(outcomeCardTitles(f), ['Before the commit']);
+  title = 'After the commit';
   live.emit({ kind: 'commit', seq: 9 }); await drain();
   assert.deepEqual({ workspaces: count('workspaces'), workspace: count('workspace'), topics: count('workspace_topics') },
     { workspaces: before.workspaces + 1, workspace: before.workspace + 1, topics: before.topics + 1 });
-  assert.equal(f.get('rail').hidden, true, 'the outcome page has no rail');
+  assert.equal(outline.outcomes.get('w1').rail.pages.items[0].title, title);
+  assert.deepEqual(outcomeCardTitles(f), ['After the commit'], 'the outline republishes its new state to the cards');
+  assert.equal(f.get('rail').hidden, false, 'the outcome page keeps the shared rail');
   assert.equal(f.get('outcome-navigation').hidden, true, 'and shows no list of outcomes');
   f.document.visibilityState = 'hidden';
   live.emit({ kind: 'commit', seq: 10 }); await drain();
@@ -2726,6 +2942,7 @@ test('on an outcome page a commit reads the outcome, its topics and, for the lin
 // outcome rows the reader can list, each { id, asks }.
 const lightAndLine = async (waits, listed) => {
   const f = fixture('https://fixture/?workspace=w5'), live = stream();
+  mountOutcomeOutline(f);
   f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
   const state = { waits, listed, failing: null };
   const lit = asks => asks ? { light: 'waiting', label: 'Waiting on you', short: { kind: 'asks', count: asks }, unreadable: false }
@@ -2799,7 +3016,7 @@ test('the page starts its attention from the bootstrap\'s number', async () => {
   assert.equal(f.owners().attention.after, 41);
 });
 
-test('a Mark read that fails says so and reads attention again, leaving nothing unhandled', async () => {
+test('835 removes Sent to you by name without marking any delivery read', async () => {
   const f = fixture('https://fixture/?'), o = outcomesPage(f), view = f.api.view;
   o.answers.push(o.page([]));
   const lost = { id: 'd1', seq: 3, topic_readable: false, topic: { id: 't9', title: 'Lost', title_truncated: false }, message: { author_id: 'tony', body: 'Hi' } };
@@ -2807,15 +3024,8 @@ test('a Mark read that fails says so and reads attention again, leaving nothing 
   f.inject({ api: f.api, bootstrap: f.bootstrap });
   await f.initialize(); await drain();
   const nodes = host => host.children.filter(child => typeof child === 'object').flatMap(child => [child, ...nodes(child)]);
-  const mark = nodes(f.get('sent-to-you')).find(node => node.textContent === 'Mark read');
-  assert.ok(mark, 'a lost topic offers Mark read');
-  f.api.command = async () => { throw Object.assign(Error('Connection interrupted. Confirmation is unknown; your writing is kept.'), { status: 0 }); };
-  const reads = f.calls.filter(call => call.name === 'attention').length;
-  await mark.onclick();
-  assert.match(f.get('app-status').textContent, /Connection interrupted/);
-  assert.equal(f.get('app-status').hidden, false);
-  assert.equal(f.calls.filter(call => call.name === 'attention').length, reads + 1, 'what Core holds is read again');
-  assert.equal(mark.disabled, false);
+  assert.equal(nodes(f.get('sent-to-you')).length,0,'835 removes the play-by-play wall even when there are addressed messages');
+  assert.equal(f.calls.filter(call=>call.kind==='delivery.ack').length,0,'hiding the wall acknowledges nothing');
 });
 
 // A topic page whose server keeps the read lanes apart, with the real recovery
@@ -2880,7 +3090,9 @@ test('a commit\'s rail reload leaves a freshness pass already reading alone', as
 // them: anything saved while it was down changes its first number, which comes
 // as a commit. A topic's page lists no outcome Notebook (item 464); its own
 // Notebook is read with the topic's changes.
-for (const [route, lists] of [['?', ['workspaces']], ['?workspace=w1', ['workspace', 'workspace_topics']], ['?topic=t1', ['workspace_topics']]]) {
+// Outcome topic failures belong to the shell outline, exercised below; the
+// outcome body's reconnect still owes its own failed workspace read.
+for (const [route, lists] of [['?', ['workspaces']], ['?workspace=w1', ['workspace']], ['?topic=t1', ['workspace_topics']]]) {
   test(`the stream coming back rereads the lists on ${route} only after a reload that failed`, async () => {
     const f = fixture('https://fixture/' + route), live = stream(), failing = new Set();
     if (route !== '?topic=t1') f.inject({ api: f.api, bootstrap: f.bootstrap });
@@ -2906,6 +3118,51 @@ for (const [route, lists] of [['?', ['workspaces']], ['?workspace=w1', ['workspa
     }
   });
 }
+
+test('847 the outline republishes failed topic reads, reconnect recovery and Retry to the outcome cards', async () => {
+  const f = fixture('https://fixture/?workspace=w1'), live = stream(), outline = mountOutcomeOutline(f);
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
+  const view = f.api.view, opened = [];
+  let failure = null, title = 'Before disconnection';
+  outline.open = (target, label) => opened.push({ target, label });
+  f.api.view = async (name, args, options) => {
+    if (name === 'workspace') { f.calls.push({ name, args }); return { instance_id: 'fixture', workspace: { id: 'w1', title: 'Outcome', owner_id: 'fixture-person', version: 1 } }; }
+    if (name === 'workspace_topics') {
+      f.calls.push({ name, args }); if (failure) throw failure;
+      return { instance_id: 'fixture', items: [{ ...f.topic, title, unread: 2,
+        asks: [{ actor_id: 'fixture-person', message_id: 'q1' }], list_position: 1, activity_ms: 1 }], next_cursor: null };
+    }
+    return view(name, args, options);
+  };
+  await f.initialize(); await drain();
+  const cardsHost = () => f.get('topic-navigation').children.find(node => node.className === 'outcome-topic-cards');
+  const notice = () => cardsHost().children.find(node => node.className === 'notice');
+  const retry = () => cardsHost().children.find(node => node.textContent === 'Retry topics');
+  const reads = () => f.calls.filter(call => call.name === 'workspace_topics').length;
+  assert.deepEqual(outcomeCardTitles(f), ['Before disconnection']);
+  failure = Object.assign(Error('This read could not enter its bounded lane.'), { status: 503 });
+  await commit(live, 20);
+  assert.deepEqual(outcomeCardTitles(f), ['Before disconnection'], 'a transient failure keeps the readable card');
+  assert.equal(notice().hidden, false); assert.match(notice().textContent, /bounded lane/);
+  assert.equal(retry().hidden, false, 'the cards expose the outline retry');
+  failure = null; title = 'Recovered on reconnect'; const before = reads();
+  live.emit({ kind: 'state', state: 'down' }); live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.equal(reads(), before + 1, 'the outline rereads on reconnect');
+  assert.deepEqual(outcomeCardTitles(f), ['Recovered on reconnect'], 'reconnect republishes the recovered cards');
+  assert.equal(notice().hidden, true); assert.equal(retry().hidden, true);
+  failure = Object.assign(Error('Busy again'), { status: 503 }); await commit(live, 21);
+  assert.equal(retry().hidden, false);
+  failure = null; title = 'Recovered by Retry'; await retry().onclick(); await drain();
+  assert.deepEqual(outcomeCardTitles(f), ['Recovered by Retry']);
+  assert.equal(notice().hidden, true); assert.equal(retry().hidden, true);
+  const card = outcomeCards(f)[0], unread = walk(card).find(node => node.classList?.contains('unread-count'));
+  assert.ok(unread, 'the actual card carries its unread count');
+  assert.equal(unread.dataset.lands, 'unread');
+  card.onclick({ button: 0, target: card, preventDefault() {} });
+  card.onclick({ button: 0, target: unread, preventDefault() {} });
+  assert.deepEqual(JSON.parse(JSON.stringify(opened.map(row => row.target))),
+    [{ kind: 'topic', id: 't1', message: 'q1' }, { kind: 'topic', id: 't1', at: 'unread' }], 'question and unread navigation use the outline activation');
+});
 
 test('a New line read that failed after a commit is read again when the stream returns, and only then', async () => {
   const f = fixture('https://fixture/?topic=t1'), live = stream();
@@ -3001,7 +3258,7 @@ test('clicking an agent\'s name on its card opens its color picker, not the mess
   const add = (seq, author_id, author_kind) => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id, author_kind, body: 'Body', topic_id: 't1' });
   add(1, 'fable', 'agent'); add(2, 'fixture-person', 'human'); add(3, 'fable', 'agent'); add(4, 'dan', 'human');
   f.paintViews('messages');
-  const card = id => f.get('messages').children.find(child => child.dataset.id === id);
+  const card = id => entryIn(f, id);
   const name = id => card(id).children.find(node => node.className === 'message-author').children[0];
   const opens = () => f.calls.filter(c => c.name === 'source' || c.name === 'editor_state').length;
   const before = opens();
@@ -3104,7 +3361,7 @@ test('an agent reading the page sees a message between others as a card, since i
   await f.initialize();
   f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'aim-core', author_kind: 'agent', body: 'Body', topic_id: 't1', addressees: ['aim-ux'] });
   f.paintViews('messages');
-  const entry = f.get('messages').children.find(child => child.dataset.id === 'm1');
+  const entry = entryIn(f, 'm1');
   assert.equal(entry.className.split(' ')[0], 'message-card', 'not folded for an agent');
 });
 
@@ -3121,7 +3378,7 @@ test('a folded message the person marked unread carries the pill on its line, th
   await marker.onclick(); await settle();
   const order = () => listed(f).map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
   assert.equal(order().split(' ').slice(-7).join(' '), '6 5 new 4 3 2 1', 'the New line sits just below the fold');
-  const fold = f.get('messages').children.find(child => child.dataset.id === 'm5'), [line, card] = fold.children;
+  const fold = entryIn(f, 'm5'), [line, card] = fold.children;
   assert.equal(fold.className, 'message-fold');
   assert.deepEqual([card.hidden, line['aria-expanded'], f.document.activeElement], [false, 'true', card], 'older-below opened the fold and focused its card');
   const pills = node => typeof node === 'string' ? 0 : (node.className === 'unread-mark' ? 1 : 0) + node.children.reduce((n, child) => n + pills(child), 0);
@@ -3242,7 +3499,7 @@ test('pressing the older-below line while the page may not read stops at once an
 
 test('during a visit the New line holds as the person reads, fades once nothing above it is unread, moves to show more, and only Mark read places it afresh, the card being read held still', async () => {
   const scrolls = [];
-  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y), matchMedia: () => ({ matches: false, addEventListener() {} }) }, innerHeight: 800 });
+  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => { const delta = typeof x === 'object' ? x.top : y; if (delta) scrolls.push(delta); }, matchMedia: () => ({ matches: false, addEventListener() {} }) }, innerHeight: 800 });
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
   Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
   const live = stream(); f.useLive(live);
@@ -3339,32 +3596,36 @@ test('during a visit the New line holds as the person reads, fades once nothing 
   assert.equal(order(), '26 25 24 new 23 22 21 20');
 });
 
-test('at the top of a topic a new message comes into view; read further down, the page holds still', async () => {
-  const scrolls = [];
-  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y), matchMedia: () => ({ matches: false, addEventListener() {} }) }, innerHeight: 800 });
-  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
-  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
-  await f.initialize(); await settle();
-  // Cards are laid out 100px apart from where the list starts, measured when
-  // asked: a new card above pushes the rest down.
-  let listTop = 0;
-  const cards = () => f.get('messages').children.filter(child => child.dataset.seq);
-  for (const kind of ['querySelectorAll', 'querySelector']) assert.equal(typeof f.document[kind], 'function');
-  f.document.querySelectorAll = () => cards();
-  // The first message entry, on its own or in a reply stack (app.mjs MESSAGE_ENTRIES): here every card is on its own.
-  f.document.querySelector = selector => selector.startsWith('#messages > [data-id]') ? cards()[0] ?? null : selector.startsWith('meta') ? { content: 'fixture-session' } : f.get(selector.slice(1));
-  const add = seq => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
-  const paint = () => { f.paintViews('messages'); for (const card of cards()) card.getBoundingClientRect = () => { const top = listTop + cards().indexOf(card) * 100; return { top, bottom: top + 90 }; }; };
-  for (let seq = 20; seq <= 25; seq++) add(seq);
-  paint();
-  listTop = 120; add(26); paint();
-  assert.deepEqual(scrolls, [], 'the newest card showed from its top edge: the new one comes into view above it');
-  listTop = -450; add(27); paint();
-  assert.deepEqual(scrolls, [100], 'read further down, the card in view is held where it was');
-  listTop = -100; add(28); paint();
-  assert.deepEqual(scrolls, [100, 100], 'the newest card just out of sight above: the card that heads the view is held too');
-  listTop = -50; add(29); paint();
-  assert.deepEqual(scrolls, [100, 100, 100], 'the newest card partly above the top is being read, not shown from its top edge: it is held');
+test('785 a document-top arrival waits behind New above; below the header its displacement is absorbed', async () => {
+  for (const startY of [0, 570]) {
+    const scrolls = [];
+    const win = { scrollY: startY, addEventListener() {}, removeEventListener() {},
+      scrollBy({ top }) { this.scrollY += top; if (top) scrolls.push(top); },
+      matchMedia: () => ({ matches: false, addEventListener() {} }) };
+    const f = fixture(undefined, { window: win, innerHeight: 800 });
+    f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+    Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+    await f.initialize(); await settle();
+    const list = f.get('messages'), cards = () => entries(list), visible = () => cards().filter(card => !card.hidden);
+    const proto = Object.getPrototypeOf(list), originalRect = proto.getBoundingClientRect;
+    proto.getBoundingClientRect = function() {
+      if (!this.dataset.id && this !== list) return originalRect.call(this);
+      const top = this.hidden ? 0 : 120 + (this === list ? 0 : visible().indexOf(this) * 100) - win.scrollY;
+      const height = this.hidden ? 0 : this === list ? visible().length * 100 : 90;
+      return { top, bottom: top + height, height, left: 0, right: 300, width: 300 };
+    };
+    f.document.querySelectorAll = () => visible();
+    const add = seq => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
+    for (let seq = 20; seq <= 25; seq++) add(seq);
+    f.paintViews('messages'); scrolls.length = 0;
+    const held = visible().find(card => card.getBoundingClientRect().bottom > 0), before = held.getBoundingClientRect().top;
+    add(26); f.paintViews('messages');
+    assert.equal(held.getBoundingClientRect().top, before, 'same visible card keeps its position');
+    assert.equal(entryIn(f, 'm26').isConnected, true);
+    assert.equal(entryIn(f, 'm26').hidden, startY === 0);
+    assert.equal(f.runObservation("stackState($('messages')).waiting.has('m26')"), startY === 0);
+    assert.deepEqual(scrolls, startY === 0 ? [] : [100]);
+  }
 });
 
 test('an agent\'s card in the topic log carries its color, and the person\'s own keeps its black', async () => {
@@ -3383,12 +3644,13 @@ test('the New message composer rests just above More, under the last message sho
   const add = seq => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', author_kind: 'agent', body: 'Body ' + seq, topic_id: 't1' });
   add(1); add(2); add(3);
   f.paintViews('messages');
-  const order = () => f.get('messages').children.map(child => child === f.get('new-message-sheet') ? 'composer' : child.className === 'stack-more' ? 'More' : child.dataset.id);
+  const order = () => f.get('messages').children.map(singleEntry).map(child => child === f.get('new-message-sheet') ? 'composer' : child.className === 'stack-controls' ? 'More' : child.dataset.id);
   assert.deepEqual(order(), ['m3', 'm2', 'm1', 'composer'], 'under the last message, with nothing below More');
   // m2 put below More: the composer stays above More, under m1.
   f.views.messages.get('m2').stack_position = { root_id: 'm2', through: 2, aside_revision: 1, below: true, at: { messages: 2, acts: 1 } };
   f.paintViews('acts');
   assert.deepEqual(order(), ['m3', 'm1', 'composer', 'More', 'm2'], 'between the last message above More and the More line');
+  assert.equal(f.get('messages').querySelector(':scope > .stack-controls > .stack-more').textContent, 'Archived (1)');
 });
 
 test('your own message keeps its own style when it arrives live and when More loads it, among agents\' colors', async () => {
@@ -3439,12 +3701,10 @@ test('More messages shows the older messages of the dossier it fills where its b
     m38: ['true', 'false', 'false'], m37: ['true', 'false', 'false'], m36: ['true', 'false', 'false'], m1: ['true', 'false', 'false'] });
 });
 
-// Item 550, its fix round's B1: More messages shows every older message it loads where its button was, of whichever
-// dossier. Here the last card above the button is a message of its own (m36), and the older page holds only replies of
-// a dossier whose first message (m1) is above the page and whose stack (m37..m41) sits higher up. Each older reply
-// shows below m36, newest first; the cards shown keep their order and how they show, and the stack higher up keeps
-// its head and its messages: none of the older replies goes into it.
-test('More messages shows every older message it loads where its button was, those of a dossier whose stack sits higher up too, and what was shown holds', async () => {
+// Item 799, shipped b8d449218cb01c42e003e76bc588637f3c99f252, replaced the apart branch:
+// More-loaded replies stay inside their existing dossier, keeping its head and existing order.
+// Here m36 is a separate dossier below m37..m41; older replies join that higher dossier.
+test('More keeps older replies inside their existing dossier with its head retained through both presses (799 b8d44921)', async () => {
   const { f } = await readingPage();
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
@@ -3464,26 +3724,26 @@ test('More messages shows every older message it loads where its button was, tho
   assert.deepEqual([before.at(-1), stackOf('m41'), ['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf)], [['m36', true], 'm37', Array(5).fill('m37')],
     'm36 is the last card above More, and the dossier\'s five replies are one stack higher up, headed by m37');
   await f.get('more-messages').onclick(); await settle(); await settle();
-  assert.deepEqual(drawn(), [...before, ...run(6, 35, seq => ['m' + (41 - seq), true])],
-    'what was shown keeps its order and how it shows; below it, every older message, newest first, each shown');
-  assert.deepEqual([['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf), run(6, 35, seq => stackOf('m' + seq)).filter(Boolean)], [Array(5).fill('m37'), []],
-    'the stack higher up keeps its head and its messages: no older reply goes into it, or into a stack of its own');
-  // Pressed again, the last card above the button is m6, a card of its own of that same dossier: the next older
-  // replies (m2..m5) show below it too, newest first, as cards of their own, and nothing shown moves; none goes into
-  // the stack higher up (the second press is where the fault showed, fix round's re-review B1).
+  assert.deepEqual(drawn(), [...before.slice(0, -1), ...run(6, 35, seq => ['m' + (41 - seq), true]), before.at(-1)],
+    'existing cards keep their relative order and visibility; older replies stay in their dossier before m36');
+  assert.deepEqual([['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf), run(6, 35, seq => stackOf('m' + seq)).filter(Boolean)], [Array(5).fill('m37'), Array(30).fill('m37')],
+    'the higher dossier retains m37 as its head and owns every older reply');
+  // The separate m36 dossier remains last. A second More press adds the next older replies
+  // to the same higher dossier, after its previous older page, without changing its head.
   const shown = drawn();
-  assert.deepEqual(shown.at(-1), ['m6', true], 'm6, a card of its own, is the last card above More');
+  assert.deepEqual(shown.at(-1), ['m36', true], 'the separate m36 dossier stays last above More');
   f.api.view = async (name, args) => name === 'topic_messages' ? page(run(2, 5, seq => item(seq, 'm1', 'm1')), null, 1)
     : name === 'memory_items' ? { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } } : view(name, args);
   await f.get('more-messages').onclick(); await settle(); await settle();
-  assert.deepEqual(drawn(), [...shown, ['m5', true], ['m4', true], ['m3', true], ['m2', true]],
-    'pressed again: what was shown keeps its order, and below it every older message, newest first, each shown');
-  assert.deepEqual([['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf), run(2, 35, seq => stackOf('m' + seq)).filter(Boolean)], [Array(5).fill('m37'), []],
-    'pressed again, the stack higher up still keeps its head and its messages alone');
+  assert.deepEqual(drawn(), [...shown.slice(0, -1), ['m5', true], ['m4', true], ['m3', true], ['m2', true], shown.at(-1)],
+    'pressed again: older replies remain together in their dossier before m36, newest first and shown');
+  assert.deepEqual([['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf), run(2, 35, seq => stackOf('m' + seq)).filter(Boolean)], [Array(5).fill('m37'), Array(34).fill('m37')],
+    'pressed again, the higher dossier still keeps its head and owns all of its older replies');
 });
 
-// Merge B3: an older card kept apart by More is not the dossier's lone loaded message.
-test('B3 More keeps one cover per dossier, never pills on older cards kept apart, including its root on a second press', async () => {
+// Item 803, shipped cdfeae10cff085a744c7ab48d570c8c43890d806, frames every admitted message.
+// A nonempty cover has one sheet even for a lone reply; More and root arrival duplicate no cover pills.
+test('B3 More keeps one cover sheet per dossier with no duplicate pills through root arrival (803 cdfeae10)', async () => {
   for (const folder of [false, true]) for (const state of ['empty', 'stands', 'waiting', 'proposed', 'thumb', 'word']) {
     const { f } = await readingPage();
     f.document.createElementNS = (_ns, tag) => f.document.createElement(tag);
@@ -3502,19 +3762,27 @@ test('B3 More keeps one cover per dossier, never pills on older cards kept apart
     const descendants = () => walk(f.get('messages'));
     const pills = () => descendants().filter(e => e.classList?.contains('row-pills'));
     const sheets = () => descendants().filter(e => e.classList?.contains('dossier-cover'));
-    const hasPills = !folder && ['waiting', 'proposed', 'thumb', 'word'].includes(state);
-    assert.equal(pills().length, hasPills ? 1 : 0, `${folder}/${state}: a genuinely lone reply keeps its pills`);
-    assert.equal(sheets().length, folder && cover ? 1 : 0);
+    const checkOrder = () => {
+      for (const sheet of sheets()) {
+        const siblings = sheet.parentElement.children;
+        const card = siblings.find(e => e.dataset?.id);
+        assert.ok(card && siblings.indexOf(sheet) < siblings.indexOf(card), '783 cover precedes the first message, including a lone reply');
+      }
+    };
+    assert.equal(pills().length, 0, `${folder}/${state}: a lone reply is framed and uses its cover sheet`);
+    assert.equal(sheets().length, cover ? 1 : 0);
+    checkOrder();
     const view = f.api.view;
     for (const [items, next] of [[[item(2), item(3)], 2], [[item(1)], null]]) {
       f.api.view = async (name, args) => name === 'topic_messages' ? page(items, next)
         : name === 'memory_items' ? { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } } : view(name, args);
       await f.get('more-messages').onclick(); await settle(); await settle();
-      assert.equal(pills().length, hasPills ? 1 : 0, `${folder}/${state}: More never duplicates the dossier cover as pills`);
-      assert.equal(sheets().length, folder && cover ? 1 : 0, 'the original sheet stays');
+      assert.equal(pills().length, 0, `${folder}/${state}: More never duplicates the dossier cover as pills`);
+      assert.equal(sheets().length, cover ? 1 : 0, 'the original sheet stays');
+      checkOrder();
       for (const older of [1, 2, 3]) {
         const entry = entryIn(f, 'm' + older);
-        if (entry) assert.equal(walk(entry).some(e => e.classList?.contains('row-pills')), false, 'an apart reply or root has no cover pills');
+        if (entry) assert.equal(walk(entry).some(e => e.classList?.contains('row-pills')), false, 'a reply or arriving root has no duplicate cover pills');
       }
     }
   }
@@ -3534,6 +3802,7 @@ test('folded, a stack gathered under a first message not loaded shows its head\'
   const items = [...[2, 3, 4, 5].map(seq => item(seq, 'm1', { reply_to: 'm1', unread: true })), ...[20, 21, 22].map(seq => item(seq, 'm10', { reply_to: 'm10' })),
     item(40, 'm40'), item(41, 'm40', { reply_to: 'm40' })];
   views.messagesPage({ instance_id: 'fixture', items, next_cursor: null, relevant_versions: { topic: 1 } }, { initial: true }); await settle();
+  for (const id of ['m2', 'm20', 'm40']) foldDossier(f, id);
   const section = id => entryIn(f, id)?.closest('.reply-stack') ?? null;
   const look = id => [section(id)?.dataset.stack, section(id)?.dataset.fold, section(id)?.dataset.headOpen];
   assert.deepEqual([look('m2'), look('m20'), look('m40')], [['m2', 'folded', 'true'], ['m20', 'folded', 'true'], ['m40', 'folded', 'false']],
@@ -3641,14 +3910,16 @@ test('a Notebook page read at an older revision shows what changed since then; o
   assert.equal(shown.length, 1, 'a Reader showing something else is left alone');
 });
 
-test('on an outcome page its Notebook pages are listed after its topics and read again with them on each commit', async () => {
+test('on an outcome page its Notebook pages precede its topics and read again with them on each commit', async () => {
   const f = fixture('https://fixture/?workspace=w1'), live = stream(), o = outcomesPage(f);
   f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
   o.answers.push(o.page(['w1']), o.page(['w1']));
   await f.initialize(); await drain();
+  assertOutcomeTeamHeader(f);
   const page = f.get('outcome-page').children.map(child => child.id);
-  assert.ok(page.indexOf('outcome-references') === page.indexOf('topic-navigation') + 1, 'right after the topics: ' + page);
-  assert.ok(page.indexOf('page-here') === page.indexOf('outcome-references') + 1, 'and the page that opens in place after them');
+  assert.deepEqual(page.slice(page.indexOf('team-invite'), page.indexOf('topic-navigation') + 1),
+    ['team-invite', 'outcome-references', 'page-here', 'topic-navigation'], 'below Team, its invitation, Notebook and the open page precede the topic cards');
+  assert.ok(f.get('topic-navigation').children.some(node => node.className === 'outcome-topic-cards'));
   const pages = () => JSON.parse(JSON.stringify(f.calls.filter(call => call.name === 'memory_items').map(call => call.args.owner_scope)));
   assert.deepEqual(pages(), [{ kind: 'workspace', id: 'w1' }]);
   live.emit({ kind: 'commit', seq: 9 }); await drain();
@@ -3675,7 +3946,7 @@ test('an outcome that becomes unavailable stops showing its Notebook pages and t
   assert.equal(f.get('outcome-references').hidden, false, 'recovery lists them again');
 });
 
-test('a page in the topic\'s own Notebook carries the changed light, and a commit, such as the person\'s own read, puts it out', async () => {
+test('a cached topic Notebook page keeps its read revision across commits without a bottom-feed card', async () => {
   const f = fixture(), live = stream(); Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
   f.useLive(live);
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
@@ -3690,21 +3961,19 @@ test('a page in the topic\'s own Notebook carries the changed light, and a commi
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
   views.memoryPage({ instance_id: 'fixture', items: [shown], next_cursor: null, relevant_versions: { notebook: 3 } }, { initial: true });
-  const light = () => {
-    const card = f.get('memory-items').children.find(child => child.dataset.id === 'n1');
-    const badge = card.children[0].children.find(child => typeof child === 'object' && /\bchanged\b/.test(child.className ?? ''));
-    return badge ? [badge.textContent, card.children[0].children.find(child => child.className === 'sr-only').textContent] : null;
-  };
-  assert.deepEqual(light(), ['2', ', changed since you read it, 2 new revisions']);
+  const state = () => [views.memory.get('n1').revision, views.memory.get('n1').read_revision];
+  assert.deepEqual(state(), [3, 1]);
+  assert.equal(f.get('memory-items').children.length, 0, 'the right rail owns the visible page list');
   const asked = () => f.calls.filter(call => call.name === 'memory_items' && call.args.owner_scope?.kind === 'topic').length;
   const before = asked();
   shown = page(3, 3);
   live.emit({ kind: 'commit', seq: 9 }); await drain();
   assert.equal(asked(), before + 1, 'a commit reads the topic Notebook\'s read state again');
-  assert.equal(light(), null, 'read, the light goes out');
+  assert.deepEqual(state(), [3, 3], 'read, the cache records that revision');
   shown = page(4, 3);
   live.emit({ kind: 'commit', seq: 10 }); await drain();
-  assert.deepEqual(light(), ['1', ', changed since you read it, 1 new revision'], 'revised again, it comes back on');
+  assert.deepEqual(state(), [4, 3], 'revised again, the cache retains the read revision');
+  assert.equal(f.get('memory-items').children.length, 0, 'commits do not recreate bottom-feed pages');
 });
 
 test('once the topic is denied, or the runtime changed, a commit reads none of its Notebook\'s read state and puts nothing in the page status', async () => {
@@ -3925,13 +4194,14 @@ for (const route of ['?', '?new=outcome&intent=i1']) {
   });
 }
 
-test('on an outcome\'s own page the logo block heads the main column, then "← Outcomes", and the rail is hidden', async () => {
+test('844 outcome home keeps the brand and navigation in the visible side rail', async () => {
   const f = fixture('https://fixture/?workspace=w1');
   f.inject({ api: f.api, bootstrap: f.bootstrap });
   f.api.view = async name => name === 'workspace' ? { instance_id: 'fixture', workspace: { id: 'w1', title: 'Real outcome', purpose: '' } } : { instance_id: 'fixture', items: [], next_cursor: null };
   await f.initialize(); await drain();
-  assert.deepEqual(f.get('main').children.slice(0, 3).map(child => child.id), ['brand', 'page-notices', 'outcomes-home']);
-  assert.equal(f.get('rail').hidden, true);
+  assert.deepEqual(f.get('rail').children.slice(0, 2).map(child => child.id), ['brand', 'page-notices']);
+  assert.equal(f.get('rail').hidden, false);
+  assert.ok(!f.get('main').children.includes(f.get('brand')));
   let opened = false; await f.get('outcomes-home').onclick({ button: 0, preventDefault() { opened = true; } });
   assert.equal(opened, true, '"← Outcomes" opens the Outcomes home');
 });
@@ -3944,7 +4214,7 @@ const clicked = (a, fields = {}) => {
   a.handlers.click(event); return event;
 };
 
-test('a message card, the line a reply quotes and a Notebook card show their web addresses as links that press nothing under them', async () => {
+test('a message card and the line a reply quotes show web links that press nothing under them; Notebook stays in cache', async () => {
   const f = fixture();
   Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
   await f.initialize();
@@ -3963,8 +4233,8 @@ test('a message card, the line a reply quotes and a Notebook card show their web
   assert.deepEqual([press.stopped, press.prevented], [true, false], 'the browser follows it, and the card under it hears nothing');
   f.views.memory.set('n1', { id: 'n1', seq: 1, title: 'Plan', body: 'Lives at https://docs.example/plan.', source_ref: { kind: 'memory', id: 'n1', revision: 1 } });
   f.paintViews('memory');
-  const notebook = f.get('memory-items').children.find(node => node.dataset.id === 'n1');
-  assert.deepEqual(shown(notebook.children[1]), [['https://docs.example/plan', 'https://docs.example/plan', '_blank', 'noopener noreferrer']]);
+  assert.equal(f.get('memory-items').children.length, 0, 'Notebook body rendering at the bottom of the feed is retired');
+  assert.equal(f.views.memory.get('n1').body, 'Lives at https://docs.example/plan.');
 });
 
 test('a link to a place in this Theseus opens it as the rail does, keeping writing that is not yet saved', async () => {
@@ -3980,7 +4250,7 @@ test('a link to a place in this Theseus opens it as the rail does, keeping writi
   await f.initialize(); await drain();
   f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'fable', body: 'Carried on in https://fixture/?topic=t2 now.', topic_id: 't1', sent_ms: null, reply_to: null });
   f.paintViews('messages');
-  const [a] = linksIn(f.get('messages').children.find(node => node.dataset.id === 'm1'));
+  const [a] = linksIn(entryIn(f, 'm1'));
   assert.deepEqual([a.href, a.target ?? ''], ['?topic=t2', ''], 'it stays in this tab');
   const press = clicked(a);
   assert.deepEqual([press.stopped, press.prevented], [true, true], 'the page opens it, not the browser');
@@ -4468,9 +4738,9 @@ test('cards inside a reply stack count as read on screen, and a range breaks at 
 // (ui_conversation.test.mjs) and the browser's (conversation_native.mjs) read
 // their words; here each painter records the card it was given and the link it
 // follows, so these checks read what the page hands them for a stacked message.
-async function conversationPage(list, { waits = [], href = 'https://fixture/?topic=t1' } = {}) {
-  const painted = { tags: new Map(), asks: new Map(), about: new Map() };
-  const f = fixture(href, { history: { state: null, replaceState() {} },
+async function conversationPage(list, { waits = [], href = 'https://fixture/?topic=t1', folded = [] } = {}) {
+  const painted = { tags: new Map(), asks: new Map(), about: new Map() }, renames=[];
+  const f = fixture(href, { history: { state: null, replaceState(_state,_title,url) {renames.push(url);} },
     paintItemTags: (card, item, shownWaits, _reader, open) => painted.tags.set(card.dataset.id, { card, item, waits: shownWaits, open }),
     paintAsksYou: (author, item, shownWaits, reader) => painted.asks.set(item.id, (shownWaits ?? []).some(wait => wait.on === reader && wait.ask_message_id === item.id)),
     paintAbout: (card, item, _reader, open) => painted.about.set(card.dataset.id, { item, open }) });
@@ -4478,12 +4748,20 @@ async function conversationPage(list, { waits = [], href = 'https://fixture/?top
   f.topic.kind = 'conversation';
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
   const opens = [];
-  f.registry.open = async (ref, options) => { opens.push([ref.id, options.opener?.dataset?.id ?? null]); return null; };
+  f.registry.open = async (ref, options) => {
+    opens.push([ref.id, options.opener?.dataset?.id ?? null]);
+    const presentation = { token: f.registry.generation, source: { instance_id: 'fixture', source_ref: ref }, editors: {} };
+    f.registry.current = presentation;
+    Object.assign(f.reader, { dialog: { open: true }, presentation, source: presentation.source });
+    return presentation;
+  };
   Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
   for (const message of list) f.views.messages.set(message.id, { topic_id: 't1', sent_ms: null, reply_to: null, unread: false, item: null, ...message });
   f.views.newest = Math.max(...list.map(message => message.seq));
   // The first page of messages is painted as the page starts, as TopicViews paints it.
-  f.views.messagesPage = () => f.paintViews('messages');
+  // Tests of links may need a folded destination before initialize handles
+  // the address. Choose it on the actual first paint, through its chevron.
+  f.views.messagesPage = () => { f.paintViews('messages'); for (const id of folded) foldDossier(f, id); };
   const view = f.api.view;
   f.api.view = async (name, args, options) => {
     if (name === 'conversation') return { instance_id: 'fixture', conversation: { topic_id: 't1', version: 1, coordinator: { actor_id: 'agent-a' },
@@ -4492,9 +4770,9 @@ async function conversationPage(list, { waits = [], href = 'https://fixture/?top
     return view(name, args, options);
   };
   await f.initialize(); for (let n = 0; n < 6; n++) await settle();
-  assert.equal(f.document.body.classList.contains('conversation-page'), true, 'the page is the conversation');
-  const stackOf = id => entryIn(f, id)?.closest('.reply-stack') ?? null;
-  return { f, painted, opens, stackOf };
+  assert.equal(f.document.body.classList.contains('conversation-page'), false, 'the conversation uses the ordinary topic page');
+  const stackOf = id => { const folder = entryIn(f, id)?.closest('.reply-stack'); return folder?.dataset.single === 'true' ? null : folder ?? null; };
+  return { f, painted, opens, stackOf, renames };
 }
 // One item answered, asked back about, and replied to, beside a new item of its own:
 // m1 the person's item, answered by the coordinator's m2 and asked back about in m4 (which waits on them);
@@ -4510,13 +4788,13 @@ const conversationMessages = () => [
 ];
 const ASKED = [{ ask_message_id: 'm4', on: 'fixture-person', by: 'agent-a', since_ms: TODAY, item_id: 'm1', excerpt: 'which Friday?' }];
 
-test('a covered dossier keeps its first sheet beside the title tools through an edit and a cover rewrite', async () => {
+test('a covered dossier keeps its first sheet above every message through an edit and a cover rewrite', async () => {
   const list = conversationMessages();
   list[0].acts = { cover: { stands: 'Ready for Friday', waiting: [], payload: null, owner: 'fixture-person' }, cover_revision: 1 };
   const { f, stackOf, opens } = await conversationPage(list);
   const parts = () => stackOf('m1').children;
   const checkParts = stands => {
-    const [head, cover, toggle, tools, replies] = parts();
+    const [cover, head, toggle, tools, replies] = parts();
     assert.equal(head.dataset.id, 'm1');
     assert.equal(cover.className, 'dossier-cover');
     assert.equal(cover.children[0].children[0].textContent, stands);
@@ -4527,21 +4805,23 @@ test('a covered dossier keeps its first sheet beside the title tools through an 
     assert.equal(stackOf('m1').dataset.covered, 'true');
   };
   checkParts('Ready for Friday');
-  const original = parts()[1];
+  const original = parts()[0];
   f.views.messages.set('m1', { ...f.views.messages.get('m1'), body: 'The launch now stands at Saturday.', revision: 2 });
   f.paintViews('messages'); await settle();
   checkParts('Ready for Friday');
-  assert.equal(parts()[1], original, 'an edit keeps the existing cover sheet');
+  assert.equal(parts()[0], original, 'an edit keeps the existing cover sheet');
   const root = f.views.messages.get('m1');
   f.views.messages.set('m1', { ...root, acts: { ...root.acts, cover: { ...root.acts.cover, stands: 'Ready for Saturday' }, cover_revision: 2 } });
   f.paintViews('messages'); await settle();
   checkParts('Ready for Saturday');
+  f.runObservation('replyInCard = async id => { globalThis.latestReply907 = id; }');
   parts()[3].children[0].onclick(); await settle();
-  assert.equal(opens.at(-1)?.[0], 'm1', 'Reply still opens the dossier first message');
+  const latest = list.find(item => item.id === 'm5'); // newest nested reply in m1's dossier
+  assert.equal(f.runObservation('latestReply907'), latest.id, 'Reply opens the latest message in this dossier');
 });
 
 test('on the conversation page replies stack under the message they answer, as in any topic, and its own marks reach every stacked message', async () => {
-  const { f, painted, stackOf } = await conversationPage(conversationMessages(), { waits: ASKED });
+  const { f, painted, stackOf } = await conversationPage(conversationMessages(), { waits: ASKED, folded: ['m1'] });
   assert.ok(stackOf('m2'), 'a reply on the conversation page is in a reply stack');
   const stack = stackOf('m1');
   assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => stackOf(id) === stack), [true, true, true, true], 'every reply up the chain, in the one stack of the message they answer');
@@ -4556,50 +4836,67 @@ test('on the conversation page replies stack under the message they answer, as i
     'read asks and unsettled items do not override latest plus unread');
   assert.equal(toggle.getAttribute('aria-expanded'), 'true');
   assert.equal(toggle.className, 'stack-toggle');
-  // The conversation's marks are painted on every message entry, stacked or not, with its item.
-  assert.deepEqual([...painted.tags.keys()].sort(), ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'], 'each card gets its tags, stacked ones included');
-  assert.deepEqual(['m1', 'm3', 'm6', 'm2'].map(id => entryIn(f, id).dataset.item), ['settled', 'new', 'new', 'none'], 'each entry says its item for Only new');
-  assert.deepEqual(painted.tags.get('m1').waits, ASKED, 'the stacked item\'s wait is handed to its tags');
+  assert.equal(painted.tags.size, 0, 'the retired item-tag painter is never called');
+  assert.ok(['m1','m2','m3','m4','m5','m6'].every(id => entryIn(f,id).dataset.item === undefined), 'no Only new markers');
   assert.deepEqual([painted.asks.get('m4'), painted.asks.get('m2')], [true, false], '"Asks you" on the stacked ask, and on no other');
 });
 
 test('on the conversation page a link to a message folded in a stack opens its stack and lands on it, from a tag or from the address', async () => {
-  const { f, painted, opens, stackOf } = await conversationPage(conversationMessages(), { waits: ASKED });
+  const { f, painted, opens, stackOf } = await conversationPage(conversationMessages(), { waits: ASKED, folded: ['m1'] });
   const scrolled = [];
   for (const id of ['m2', 'm4']) entryIn(f, id).scrollIntoView = () => scrolled.push(id);
   assert.equal(entryIn(f, 'm2').hidden, true, 'the reply the item\'s Answered tag names is folded away');
   // "agent-a's reply" on m1's Answered tag.
-  painted.tags.get('m1').open('message', 'm2'); await settle();
+  painted.about.get('m1').open('message', 'm2'); await settle();
   assert.equal(stackOf('m2').dataset.fold, 'open', 'its stack opens');
   assert.deepEqual([entryIn(f, 'm2').hidden, scrolled, opens.at(-1)], [false, ['m2'], ['m2', 'm2']],
     'the reply shows, is brought into view, and opens in the Reader from its own card');
   // The ask in m1's "Waiting on you" tag, kept in view: it is brought into view and opened the same way.
-  painted.tags.get('m1').open('message', 'm4'); await settle();
+  painted.about.get('m1').open('message', 'm4'); await settle();
   assert.deepEqual([scrolled, opens.at(-1)], [['m2', 'm4'], ['m4', 'm4']]);
   // A message that is not on the page opens in the Reader alone, from where the person is.
-  painted.tags.get('m1').open('message', 'elsewhere'); await settle();
+  painted.about.get('m1').open('message', 'elsewhere'); await settle();
   assert.equal(opens.at(-1)[0], 'elsewhere');
   // A message's link (docs/links.md) to a folded reply in the conversation.
-  const linked = await conversationPage(conversationMessages(), { waits: ASKED, href: 'https://fixture/?topic=t1&message=m2' });
+  const linked = await conversationPage(conversationMessages(), { waits: ASKED, href: 'https://fixture/?topic=t1&message=m2', folded: ['m1'] });
   assert.deepEqual([linked.stackOf('m2').dataset.fold, entryIn(linked.f, 'm2').hidden, linked.opens.at(-1)], ['open', false, ['m2', 'm2']],
     'the address opens the stack and the Reader on the message, from its card');
 });
 
 test('on the conversation page More messages brings a stack\'s first message: the replies gather under it, and its tags and what it keeps in view follow', async () => {
   const all = conversationMessages(), first = all[0];
-  const { f, painted, stackOf } = await conversationPage(all.slice(1), { waits: ASKED });
+  const { f, painted, stackOf } = await conversationPage(all.slice(1), { waits: ASKED, folded: ['m2'] });
   // Its parent not loaded, the ask heads nothing and stands alone; m2 heads its own replies.
   assert.deepEqual([stackOf('m4'), stackOf('m3') === stackOf('m2'), entryIn(f, 'm2').closest('.reply-stack')?.children[0].dataset.id], [null, true, 'm2']);
   f.views.messages.set(first.id, { topic_id: 't1', sent_ms: null, reply_to: null, unread: false, ...first });
   f.paintViews('messages'); await settle();
   const stack = stackOf('m1');
   assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => stackOf(id) === stack), [true, true, true, true], 'the older message heads the one stack');
+  // This legacy response omits Core's stack_position. Until m1 is loaded,
+  // it names m2 and m4 as separate dossiers; m1 therefore starts a new view.
+  foldDossier(f, 'm1');
   assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, true, true, true], 'read asks and New items do not add extra messages');
-  assert.deepEqual([painted.tags.get('m1')?.item.item, entryIn(f, 'm1').dataset.item], [ANSWERED, 'settled'], 'the loaded message gets its tags from its item');
+  assert.equal(entryIn(f, 'm1').dataset.item, undefined, 'More paints no retired Only new marker');
+  assert.equal(painted.about.get('m1').item.id, 'm1', 'More keeps ordinary source-link context');
+
+  // A current Core response identifies the canonical dossier even before
+  // its first message is loaded. Its explicit fold must survive reheading.
+  const positioned = all.map(message => ({ ...message, stack_position: {
+    root_id: message.id === 'm6' ? 'm6' : 'm1', through: null, below: false, aside_revision: 0,
+    name: null, name_revision: 0, at: { acts: 1, messages: 0 },
+  } }));
+  const current = await conversationPage(positioned.slice(1), { waits: ASKED, folded: ['m2'] });
+  assert.equal(current.stackOf('m4') === current.stackOf('m2'), true, 'Core identifies the unloaded first message for every branch');
+  current.f.views.messages.set('m1', { topic_id: 't1', sent_ms: null, reply_to: null, unread: false, ...positioned[0] });
+  current.f.paintViews('messages'); await settle();
+  assert.equal(current.stackOf('m1').dataset.fold, 'folded', 'the canonical dossier keeps its chosen fold when its first message loads');
+  assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => current.stackOf(id) === current.stackOf('m1')), [true, true, true, true]);
+  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(current.f, id).hidden), [false, true, true, true]);
+  assert.equal(current.painted.about.get('m1').item.id, 'm1');
 });
 
 test('on the conversation page a reply folded in its stack is never reported read, as in any topic', async () => {
-  const { f } = await conversationPage(conversationMessages(), { waits: ASKED });
+  const { f } = await conversationPage(conversationMessages(), { waits: ASKED, folded: ['m1'] });
   const ranges = () => f.calls.filter(c => c.kind === 'topic.read_through').map(c => [c.envelope.args.from_seq, c.envelope.args.seq]);
   // On screen, as a browser sees it: every entry shown, and none folded away.
   const [observer] = f.observers;
@@ -4613,6 +4910,58 @@ test('on the conversation page a reply folded in its stack is never reported rea
   assert.deepEqual(ranges(), [[5, 6]], 'the messages on screen are read, the folded reply is not, and the person\'s own is never reported');
 });
 
+
+for (const ending of ['confirmed', 'refused', 'unknown', 'new writing', 'new opening', 'closed']) test(`item 673: inline send closes only its confirmed unchanged opening: ${ending}`, async () => {
+  const f = fixture('https://fixture/?topic=t1', { window: { addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }),
+    getComputedStyle: () => ({ getPropertyValue: () => 'none' }) } });
+  const answer=defer(), sheet=f.get('new-message-sheet');
+  f.inline.popped=true;f.inline.opening=Symbol();sheet.open=true;sheet.close=function(){this.open=false;};
+  f.inline.callbacks.send=()=>answer.promise;
+  f.editor.edit=patch=>Object.assign(f.editor.draft,patch);
+  const sending=f.inline.send();
+  if(ending==='new writing')f.editor.localVersion=(f.editor.localVersion??0)+1;
+  if(ending==='new opening')f.inline.opening=Symbol();
+  if(ending==='closed'){f.inline.popped=false;sheet.open=false;}
+  answer.resolve({status:['refused','unknown'].includes(ending)?ending:'confirmed'});
+  await sending;
+  assert.equal(sheet.open,!['confirmed','closed'].includes(ending),ending);
+});
+
+// Independent reviewer reproducer: real Editor and Uploads; only transport and DOM are fixtures.
+for (const newer of ['text', 'picker', 'capturing image', 'image needing a choice', 'memory-only image', 'image recovery error']) test(`review 673: late confirmation keeps newer ${newer} open`, async () => {
+  const { Uploads } = await import('../web/uploads.mjs');
+  const f=fixture('https://fixture/?topic=t1',{window:{addEventListener(){},matchMedia:()=>({matches:false,addEventListener(){}}),getComputedStyle:()=>({getPropertyValue:()=> 'none'})}});
+  const editor=new Editor({...f.editor.context,instanceId:'fixture',actor:'fixture-person'}, {id:'draft',generation:'g',revision:1,body:'First message.'});
+  f.p.editors.reply=editor;
+  const answer=defer(), capture=defer(), sheet=f.get('new-message-sheet');
+  f.inline.popped=true; f.inline.opening=Symbol(); sheet.open=true; sheet.close=function(){this.open=false;};
+  f.inline.callbacks.send=e=>{e.beginPrepare({prepareOperationId:'prepare',sendOperationId:'send',submissionId:'submission'});return answer.promise;};
+  const sending=f.inline.send(), version=editor.localVersion;
+  let choosing;
+  if(newer==='text')editor.edit({body:'Second message.'});
+  else {
+    const authority={authority_id:'a',authority_epoch:'e'};
+    const session={editor,api:{},authority,snapshot:()=>editor.snapshot(),persist:async()=>{},journal:{writerId:'review',capture:async(_key,_snapshot,_bytes,entry)=>{await capture.promise;if(newer==='memory-only image')throw Error('Fixture device capture refused');entry.bytes_state='durable';entry.bytes_ref='review-bytes';}}};
+    const registry={disposed:false,sessions:new Map([[editor.key,session]]),runtime:{current:authority},isCurrent:()=>true,changed(){},bootstrap:{limits:{media_name_utf8_bytes:255,image_bytes:1000000,media_file_bytes:1000000,attachment_count:10,attachment_bytes:10000000}}};
+    const uploads=new Uploads(session,registry);
+    const token=uploads.reserve(f.p);
+    const file=Object.assign(new Blob(['phone photo'],{type:'image/heic'}),{name:'IMG_3307.heic',lastModified:0});
+    if(newer==='picker'){
+      answer.resolve({status:'confirmed'});await sending;const stayed=sheet.open;uploads.cancel(token);assert.equal(stayed,true,'an older Send must not dismiss the reserved successor picker');return;
+    }
+    choosing=uploads.choose(token,file);
+    if(['image needing a choice','memory-only image','image recovery error'].includes(newer)){capture.resolve();await choosing;}
+    if(newer==='memory-only image')assert.equal(uploads.current()[0].bytes_state,'memory-only','actual capture refusal retains the memory-only selection');
+    if(newer==='image recovery error')editor.imageStorageError='The image change could not be kept';
+    assert.equal(uploads.current().length,1,'a real image selection belongs to the successor writing');
+    assert.equal(editor.localVersion,version,'image selection does not advance the text version');
+    console.log(JSON.stringify({newer,version,imageVersion:editor.uploadState.revision,bytes:uploads.current()[0].bytes_state}));
+  }
+  answer.resolve({status:'confirmed'});await sending;
+  const stayed=sheet.open;
+  capture.resolve();if(choosing)await choosing;
+  assert.equal(stayed,true,`an older Send must not dismiss newer ${newer}`);
+});
 
 async function starred655() {
   const f = fixture();
@@ -4669,6 +5018,36 @@ test('item 655 B2 freshness follows unloaded rename clear join split and loaded 
   assert.equal(f.readerDossierName(source), null, 'a loaded singleton never falls back to a cached old dossier name');
 });
 
+test('item 932 remote question state invalidates acts without painting an unloaded dossier', async () => {
+  const { f, p, source } = await starred655();
+  await f.present(p);
+  f.enableFreshness({});
+  const invalidations = [];
+  f.fresh.invalidate = (...args) => invalidations.push(args);
+  const question = { state: 'resolved', waiting_on: [], may_resolve: false, by: 'asker', at_ms: 42, superseded_by: null };
+  await assert.doesNotReject(f.fresh.options.refresh('question:' + source.source_ref.id, 1,
+    async name => { assert.equal(name, 'source'); return { ...source, question }; }, () => true));
+  assert.equal(source.question.state, 'resolved', 'the open Reader learns its exact source');
+  assert.deepEqual(invalidations, [['acts', 0, true]], 'the view redraw follows ordinary freshness instead of a direct paint');
+});
+
+test('item 932 topic freshness updates only its open Reader question without reopening it', async () => {
+  const { f, p, source } = await starred655();
+  source.question = { state: 'waiting', waiting_on: ['answerer'], may_resolve: true, archived: false };
+  await f.present(p);
+  f.enableFreshness({});
+  const reads = [];
+  f.views.refresh = async () => true;
+  await f.fresh.options.refresh('topic', 2, async (name, ref) => {
+    reads.push([name, ref.id]);
+    return { ...source, question: { state: 'answered', waiting_on: [], may_resolve: false, archived: true } };
+  }, () => true);
+  assert.deepEqual(reads, [['source', source.source_ref.id]]);
+  assert.equal(source.question.archived, true);
+  assert.equal(f.reader.dialog.open, true);
+  assert.equal(f.reader.presentation.source, source);
+});
+
 for (const failedRead of ['stack_positions', 'topic_messages']) test(`item 655 B3 ${failedRead} lookup failure opens the exact source and shows a notice`, async () => {
   const { f, p, source } = await starred655();
   source.source_ref.id = 'old-reply';
@@ -4680,23 +5059,7 @@ for (const failedRead of ['stack_positions', 'topic_messages']) test(`item 655 B
   assert.match(f.get('reader-notice').textContent, /Dossier name could not be read/);
 });
 
-test('item 655 B4 title return clears Only new after preservation succeeds, while dismissal and refused close keep it', async () => {
-  const { f, p, source } = await starred655();
-  const here = { page: true, onlyNew: true, items: new Map(), view: null };
-  f.views.messages.set(source.source_ref.id, { id: source.source_ref.id });
-  f.inject({ ...f.owners(), api: f.api, bootstrap: f.bootstrap, reader: f.reader, topic: f.topic, views: f.views, here });
-  f.registry.close = async () => { f.registry.current = null; return true; };
-  f.reader.presentation = p;
-  assert.equal(await f.reader.callbacks.close(null, 'close'), true);
-  assert.equal(here.onlyNew, true, 'ordinary dismissal preserves the filter');
-  f.registry.current = p;
-  f.registry.close = async () => false;
-  assert.equal(await f.reader.callbacks.close(null, 'parent'), false);
-  assert.equal(here.onlyNew, true, 'refused preservation changes no filter');
-  f.registry.close = async () => { f.registry.current = null; return true; };
-  assert.equal(await f.reader.callbacks.close(null, 'parent'), true);
-  assert.equal(here.onlyNew, false, 'an explicit return reveals the settled source by clearing Only new');
-});
+
 
 
 test('item 655 B1 a loaded root whose replies are still outside the page agrees with its scoped title', async () => {
@@ -4745,4 +5108,3322 @@ test('item 655 B3 a metadata failure from an abandoned opening cannot paint over
   await old;
   assert.equal(f.reader.presentation, next);
   assert.doesNotMatch(f.get('reader-notice').textContent, /Dossier name could not be read/);
+});
+
+for (const act of ['agent menu', 'image list', 'picker owner', 'new error', 'same error again']) test(`item 673: late confirmation preserves successor presentation ownership: ${act}`, async () => {
+  const f=fixture('https://fixture/?topic=t1',{window:{addEventListener(){},matchMedia:()=>({matches:false,addEventListener(){}}),getComputedStyle:()=>({getPropertyValue:()=> 'none'})}});
+  const answer=defer(),sheet=f.get('new-message-sheet');
+  f.inline.popped=true;f.inline.opening=Symbol();sheet.open=true;sheet.close=function(){this.open=false};
+  f.inline.callbacks.send=()=>answer.promise;
+  f.editor.edit=patch=>Object.assign(f.editor.draft,patch);
+  if(act==='same error again')f.inline.notice('The newer image could not be read.');
+  const sending=f.inline.send();
+  if(act==='agent menu')f.inline.bar.panel='who';
+  if(act==='image list')f.inline.images={open:true};
+  if(act==='picker owner')f.inline.imagePicker={token:{}};
+  if(['new error','same error again'].includes(act))f.inline.notice('The newer image could not be read.');
+  answer.resolve({status:'confirmed'});await sending;
+  assert.equal(sheet.open,true,`older confirmation retains ${act}`);
+});
+
+for (const outcome of ['confirmed', 'refused', 'recovery error']) test(`item 673 final observer: delayed startup and actual send continuation ${outcome}`, async () => {
+  const { PENCIL_OBSERVE } = await import('./pencil-states.mjs');
+  let notify, disconnected = false;
+  const f = fixture('https://fixture/?topic=t1', { MutationObserver: class {
+    constructor(fn) { notify = fn; } observe() {} disconnect() { disconnected = true; }
+  } });
+  // Execute the injected observer in the app's own lexical scope, while begin
+  // still waits on initialization. The actual begin and send bodies run.
+  const owner = f.inline, initialization = defer(), answer = defer();
+  f.runObservation('globalThis.retainedInline=inline; inline=undefined;');
+  f.runObservation(PENCIL_OBSERVE);
+  assert.equal(f.runObservation('window.pencil.inline'), undefined);
+  const original = owner.send;
+  const started = f.begin(async () => {
+    await initialization.promise;
+    f.runObservation('inline=globalThis.retainedInline');
+    f.document.body.dataset.ready = 'true'; notify();
+  });
+  await Promise.resolve(); assert.equal(owner.send, original, 'startup scheduling remains delayed');
+  initialization.resolve(); assert.equal(await started, true); assert.equal(disconnected, true);
+  assert.notEqual(owner.send, original, 'wrapper installs after initialization');
+  owner.callbacks.send = () => answer.promise;
+  f.editor.edit = patch => Object.assign(f.editor.draft, patch);
+  owner.popped = true; owner.opening = Symbol(); const sheet = f.get('new-message-sheet');
+  sheet.open = true; sheet.close = function () { this.open = false; };
+  const sending = owner.send();
+  assert.equal(f.runObservation('window.pencilSendSettled'), false);
+  assert.equal(sheet.open, true);
+  if (outcome === 'recovery error') answer.reject(Error('Real pending send recovery failed'));
+  else answer.resolve({ status: outcome });
+  await sending; await Promise.resolve();
+  assert.equal(f.runObservation('window.pencilSendSettled'), true, 'only the actual send continuation settles observation');
+  assert.equal(f.runObservation('window.pencil.calls.length'), 1);
+  assert.equal(sheet.open, outcome !== 'confirmed');
+  if (outcome === 'recovery error') assert.match(f.get('inline-notice').textContent, /recovery failed/);
+});
+
+
+test('835 legacy conversation links resolve to the ordinary topic with its actual title and unchanged writing destination',async()=>{
+  const {f,renames}=await conversationPage(conversationMessages(),{waits:ASKED,href:'https://fixture/?conversation=w1'});
+  assert.ok(renames.some(url=>url.startsWith('?topic=t1')), 'legacy address replaced with real topic identity');
+  assert.equal(f.owners().registry.inline.topic.id,'t1');
+  assert.equal(f.owners().registry.inline.editors.reply.context.topicId,'t1');
+  assert.equal(f.owners().registry.inline.editors.reply.draft.body,'kept');
+  assert.equal(f.get('settings-open').hidden,true,'Core still refuses conversation settings');
+  assert.equal(f.get('topic-title').textContent,'Fixture');
+  assert.equal(f.get('conversation-show').children.length,0);
+  assert.equal(f.get('conversation-row').children.length,0);
+});
+
+test('847, 852 and 879 outcome home keeps Team, Notebook and pencil without a right rail; topic context remains',async()=>{
+  const thumbnails=[], live=stream(); let denied=false;
+  const f=fixture('https://fixture/?workspace=w1',{paintThumb:(_host,_key,load)=>thumbnails.push(load), listen:(target,type,fn)=>target.addEventListener(type,fn), KeyTree:class {constructor(){} refresh(){} }}), original=f.api.view;
+  f.topic.list_position=0;
+  const pencil=f.get('new-topic-pencil-fixture');
+  f.get('new-message').querySelector=selector=>selector==='svg'?pencil:null;
+  f.api.media=async(instance,attachment,ref)=>{assert.equal(instance,'fixture');assert.equal(attachment.id,'image835');assert.equal(ref.id,'retained835');return {blob:'fixture image bytes'};};
+  f.api.view=async(name,args,options)=>{
+    if(['workspace','pipeline','conversation','stars','topic_messages','topic_images','topic_tools'].includes(name))f.calls.push({name,args});
+    if(name==='workspace'){if(denied)throw Object.assign(Error('No access'),{code:'FORBIDDEN'});return {instance_id:'fixture',workspace:{id:'w1',title:'Launch',purpose:'Ship',owner_id:'owner'}};}
+    if(name==='topic_tools')return {instance_id:'fixture',linked:[]};
+    if(name==='pipeline')return {instance_id:'fixture',pipeline:null,items:[],next_cursor:null};
+    if(name==='conversation')return {instance_id:'fixture',conversation:{topic_id:'t1',version:1}};
+    if(name==='stars')return {instance_id:'fixture',items:[{workspace_id:'w1',topic_id:'t1',message_id:'retained835',author_id:'fixture-person',excerpt:'Keep this reference',star_revision:1}]};
+    if(name==='topic_messages')return {instance_id:'fixture',items:[{id:'retained835',topic_id:'t1',author_id:'fixture-person',body:'[Preview](https://example.test/preview/835) [Change](https://github.com/example/project/pull/835)',item:{state:'new',takes:[]}}],next_cursor:null};
+    if(name==='topic_images')return {instance_id:'fixture',items:[{topic_id:'t1',author_id:'fixture-person',source_ref:{kind:'message',id:'retained835'},attachment:{id:'image835',name:'Plan.png'}}],next_cursor:null};
+    return original(name,args,options);
+  };
+  f.inject({api:f.api,bootstrap:f.bootstrap}); f.useLive(live);
+  await f.initialize();await drain();
+  assertOutcomeTeamHeader(f);
+  const ids=f.get('outcome-page').children.map(node=>node.id);
+  assert.deepEqual(ids,['outcomes-status','retry-workspaces','team-invite','outcome-references','page-here','topic-navigation','outcome-tools','outcome-standing','outcome-purpose','target-panel','pipeline-line','also-waiting','loop-panel','problems-panel']);
+  assert.equal(f.get('new-topic').children[0]?.id,pencil.id);
+  assert.notEqual(f.get('new-topic').children[0],pencil);
+  assert.equal(f.get('new-topic').getAttribute('aria-label'),'New topic');
+  const handles=f.runObservation('shell.handles');
+  assert.equal(handles?.workspaceId,'w1','outcome initializes the same shell as topics');
+  assert.equal(handles.topic,null);
+  assert.equal(handles.api,f.api);
+  assert.equal(Boolean(f.owners().topicRail),false,'the outcome page does not create an independent topic-list owner');
+  assert.equal(typeof handles.outcomeTopics,'function','the outline publishes its current rows to the middle');
+  assert.equal(typeof handles.centerPane?.focus,'function');
+  assert.equal(typeof handles.centerPane?.key,'function');
+  assert.equal(typeof handles.notebookCreate,'function');
+  assert.equal(f.calls.some(call=>call.name==='stars'),false,'closed references read no stars');
+  const count=name=>f.calls.filter(call=>call.name===name).length, notes=count('memory_items'),tools=count('tools');
+  const rail=f.runObservation("(() => {const rail=new ThingsRail({host:document.getElementById('things'),backdrop:document.getElementById('things-backdrop'),doc:document,win:window});shell.follow(rail);return rail;})()");
+  rail.begin(true,{kind:'workspace',id:'w1'});
+  rail.ready(handles);
+  assert.equal(rail.handles,null,'879 outcome home starts no right-rail owner');
+  assert.equal(rail.host.hidden,true);
+  rail.open(); await rail.reload(); await drain();
+  assert.equal(f.calls.some(call=>call.name==='stars'),false);
+  assert.equal(count('memory_items'),notes);assert.equal(count('tools'),tools);
+  denied=true; live.emit({kind:'commit',seq:20}); await drain();
+  assert.equal(handles.readable(),false);
+  assert.ok([...rail.sections.values()].every(part=>part.details.hidden),'permission loss leaves no retained outcome context');
+  denied=false; live.emit({kind:'commit',seq:21}); await drain(); await rail.reload();
+  assert.equal(handles.readable(),true);
+  assert.equal(rail.host.hidden,true,'recovery does not restore a removed home rail');
+  // Retain the existing bounded context assertions on a real topic route,
+  // where 788 now fixes it to this topic, with no scope-switch surface.
+  f.runObservation("location.href='https://fixture/?topic=t1'");
+  await f.initialize(); await drain();
+  const topicHandles=f.runObservation('shell.handles');
+  assert.equal(rail.handles,topicHandles);assert.equal(topicHandles.route.kind,'topic');
+  assert.equal(typeof rail.choose,'undefined','788 retires the scope-choice handler');
+  const toolsBeforeRail = count('tools');
+  rail.open(); await rail.reload();await drain();
+  assert.equal(f.calls.some(call=>call.name==='stars'),false,'788 removes the rail Stars read');
+  assert.ok(count('memory_items')>notes,'the right rail includes its existing Notebook');
+  assert.equal(count('tools'),toolsBeforeRail,'opening the topic rail does not read outcome tools');
+  assert.ok(f.calls.some(call=>call.name==='topic_tools'&&call.args.topic_id==='t1'),'the rail reads this topic’s tools');
+  const walk=node=>[node,...(node.children??[]).flatMap(walk)], nodes=walk(f.get('things'));
+  const shown=nodes.filter(node=>node.className==='things-sec'&&!node.hidden).map(node=>node.dataset.key);
+  assert.deepEqual(shown,['prs','images','previews']);
+  assert.ok(nodes.some(node=>node.href==='https://example.test/preview/835'));
+  assert.ok(nodes.some(node=>node.href==='https://github.com/example/project/pull/835'));
+  assert.equal(nodes.filter(node=>node.href==='?topic=t1&message=retained835').length,1,'the image keeps its message destination; retired Starred and outcome Waiting do not appear');
+  assert.equal(thumbnails.length,1);
+  assert.equal(await thumbnails[0](),'fixture image bytes','right-rail image uses the current page media reader');
+  assert.equal(rail.sections.get('images').details.hidden,false,'the topic rail still reads current context');
+});
+
+// 860: initialized page's actual Reader handler, Reactions and card callback.
+// The API is a controlled peer; this does not claim a native click.
+const decisionReactions860 = more => ({ version: 5, thumbs: [], answers: [], thumb_revision: 1, answer_revision: 7, ...more });
+async function decisionPage860({ loaded = true } = {}) {
+  const item = { id: 'decision860', seq: 1, author_id: 'agent-a', body: 'May I proceed?', intent: 'ask', go_ahead: true,
+    addressees: ['fixture-person'], reactions: decisionReactions860() };
+  const { f } = await conversationPage([item]);
+  const presentation = { source: { ...item, author: item.author_id, source_ref: { kind: 'message', id: item.id } }, editors: { reply: f.editor }, mode: 'reply' };
+  f.registry.current = presentation; Object.assign(f.reader, { dialog: { open: true }, presentation });
+  let closes = 0; f.registry.close = async () => { closes++; };
+  // These reaction checks observe close requests; item889 below executes
+  // the real Reader/registry/device-save chain separately.
+  f.reader.close = () => f.registry.close(f.reader.presentation);
+  if (!loaded) f.views.messages.delete(item.id);
+  let current = decisionReactions860(), command = null;
+  const commands = [], original = f.api.view;
+  f.api.view = async (name, args, options) => name === 'reactions'
+    ? { instance_id: 'fixture', message_id: args.message_id, go_ahead: true, reactions: current } : original(name, args, options);
+  f.api.command = async envelope => {
+    commands.push(envelope); if (command) return command(envelope);
+    current = decisionReactions860({ version: current.version + 1, answer_revision: current.answer_revision + 1,
+      answers: [{ actor_id: 'fixture-person', answer: envelope.args.answer }] });
+    return { status: 'committed', result: { message_id: envelope.target.message_id } };
+  };
+  const paint = () => f.runObservation('paintReaderThumb$()'); paint();
+  return { f, item, presentation, commands, paint, get closes() { return closes; },
+    answer: choice => f.get('reader-reactions').querySelector(`[data-react="${choice}"]`),
+    setCommand: value => { command = value; }, setCurrent: value => { current = value; } };
+}
+const cardDecision860 = (f, choice) => entryIn(f, 'decision860')?.querySelector(`[data-react="${choice}"]`);
+
+test('860/889 actual Reader answer uses the current revision, paints the card and requests close without losing writing', async () => {
+  const d = await decisionPage860(), { f } = d;
+  assert.ok(d.answer('yes'), 'the actual Reader exposes Go ahead'); const stale = d.answer('yes');
+  f.views.messages.set(d.item.id, { ...f.views.messages.get(d.item.id), reactions: decisionReactions860({ answer_revision: 19 }) });
+  const held = defer(); d.setCommand(async () => held.promise); const sent = stale.onclick();
+  assert.equal(d.commands.length, 1); assert.equal(d.commands[0].kind, 'message.answer');
+  assert.equal(d.commands[0].target.message_id, 'decision860'); assert.equal(d.commands[0].expected.answer_revision, 19, 'latest revision at press');
+  assert.deepEqual({ ...d.commands[0].expected.authority }, { authority_id: 'a1', authority_epoch: 'e1' });
+  assert.equal(d.commands[0].args.answer, 'yes');
+  assert.equal(d.answer('yes').disabled, true); assert.equal(d.answer('no').disabled, true);
+  assert.equal(d.answer('yes'), stale, 'pending repaint keeps the same control');
+  await stale.onclick(); assert.equal(d.commands.length, 1, 'pending duplicate cannot send');
+  f.editor.draft.body = 'newer writing while the decision waits';
+  d.setCurrent(decisionReactions860({ version: 6, answer_revision: 20, answers: [{ actor_id: 'fixture-person', answer: 'yes' }] }));
+  held.resolve({ status: 'committed', result: { message_id: 'decision860' } }); await sent; await drain();
+  assert.equal(d.answer('yes').getAttribute('aria-pressed'), 'true'); assert.equal(d.answer('yes').disabled, false);
+  assert.equal(d.answer('yes'), stale, 'learned-result repaint keeps the same control');
+  assert.equal(cardDecision860(f, 'yes').classList.contains('mine'), true, 'Reader result paints the actual card');
+  assert.equal(f.editor.draft.body, 'newer writing while the decision waits');
+  assert.equal(f.registry.current, d.presentation); assert.equal(d.closes, 1);
+});
+
+test('860 the actual card answer callback paints the open Reader and the card', async () => {
+  const d = await decisionPage860(), { f } = d;
+  await f.runObservation("menu.answer(views.messages.get('decision860'), 'no')"); await drain();
+  assert.ok(d.answer('no'), 'the open Reader offers the same decisions');
+  assert.equal(d.commands.length, 1); assert.equal(d.commands[0].args.answer, 'no');
+  assert.equal(d.answer('no').getAttribute('aria-pressed'), 'true');
+  assert.equal(cardDecision860(f, 'no').classList.contains('mine'), true);
+});
+
+test('860 source-only Reader preserves refused or lost answers in words and learns a committed decision', async () => {
+  for (const outcome of ['refused', 'lost', 'committed']) {
+    const d = await decisionPage860({ loaded: false }), { f } = d;
+    assert.ok(d.answer('no'), 'source-only Reader has a decision button');
+    d.setCommand(async () => {
+      if (outcome === 'lost') throw new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.');
+      if (outcome === 'refused') return { status: 'rejected', error: { code: 'FORBIDDEN', message: 'This question is no longer yours' } };
+      d.setCurrent(decisionReactions860({ version: 6, answers: [{ actor_id: 'fixture-person', answer: 'no' }] }));
+      return { status: 'committed', result: { message_id: 'decision860' } };
+    });
+    await d.answer('no').onclick(); await drain();
+    assert.equal(d.commands.length, 1); assert.equal(d.commands[0].expected.answer_revision, 7);
+    assert.equal(d.answer('no').disabled, false); assert.equal(d.closes, outcome === 'committed' ? 1 : 0); assert.equal(f.editor.draft.body, 'kept');
+    if (outcome === 'lost') assert.match(f.get('reader-notice').textContent, /Connection interrupted; whether that was saved is unknown/);
+    if (outcome === 'refused') assert.match(f.get('reader-notice').textContent, /This question is no longer yours/);
+    if (outcome === 'committed') assert.equal(d.answer('no').getAttribute('aria-pressed'), 'true');
+  }
+});
+
+test('860 stale Reader button cannot answer after source, permission or withdrawal changes', async () => {
+  for (const change of ['source', 'unavailable', 'non-message', 'agent', 'unaddressed', 'withdrawn']) {
+    const d = await decisionPage860(), { f } = d;
+    assert.ok(d.answer('yes'), 'start with an eligible button'); const stale = d.answer('yes');
+    if (change === 'source') d.presentation.source = { ...d.item, author: 'dan', source_ref: { kind: 'message', id: 'other860' } };
+    if (change === 'unavailable') d.presentation.sourceUnavailable = true;
+    if (change === 'non-message') d.presentation.source.source_ref.kind = 'memory';
+    if (change === 'agent') f.bootstrap.actor_kind = 'agent';
+    if (change === 'unaddressed') f.views.messages.get(d.item.id).addressees = [];
+    if (change === 'withdrawn') f.views.messages.get(d.item.id).withdrawal = { reason: 'Superseded' };
+    await stale.onclick(); await drain(); assert.equal(d.commands.length, 0, change);
+    d.paint();
+    if (change === 'source') { assert.equal(d.answer('yes').dataset.messageId, 'other860'); assert.notEqual(d.answer('yes'), stale); }
+    else assert.equal(d.answer('yes'), null, change);
+  }
+});
+
+test('860 late refusal cannot replace another Reader source or its notice and writing', async () => {
+  const d = await decisionPage860(), { f } = d, held = defer();
+  assert.ok(d.answer('yes'), 'start with an eligible button');
+  d.setCommand(() => held.promise); const sent = d.answer('yes').onclick();
+  const next = { source: { source_ref: { kind: 'memory', id: 'note860' } }, editors: { reply: f.editor } };
+  f.registry.current = next; f.editor.draft.body = 'new source writing'; f.reader.notice('Current source notice'); d.paint();
+  held.resolve({ status: 'rejected', error: { code: 'FORBIDDEN', message: 'Old question refused' } }); await sent; await drain();
+  assert.equal(f.registry.current, next); assert.equal(f.editor.draft.body, 'new source writing');
+  assert.equal(f.get('reader-notice').textContent, 'Current source notice');
+  assert.equal(f.get('reader-reactions').hidden, true); assert.equal(d.answer('yes'), null); assert.equal(d.closes, 0);
+});
+
+// 880 uses this file's actual app loader and the real TopicViews renderer.
+// Only transport and the device journal are held in memory; no store opens.
+function startup880(t, { answers = {}, journalError = null, prerequisites = false } = {}) {
+  const names = ['topic_messages', 'memory_items', 'colors', 'journal', ...(prerequisites ? ['workspace', 'wakes', 'workspace_members'] : [])];
+  const gates = new Map(names.map(name => [name, defer()])), asked = [], baselines = [];
+  let closes = 0, settled = false, f;
+  const opened = { close() { closes++; } };
+  f = fixture('https://fixture/?topic=t1', {
+    TopicViews,
+    initialViews: async () => { baselines.push('feed'); return {}; },
+    actorBaseline: async () => { baselines.push('actor'); return null; },
+    openJournal: async options => {
+      asked.push({ name: 'journal', args: options });
+      await gates.get('journal').promise;
+      if (journalError) throw journalError;
+      return opened;
+    },
+  });
+  const message = { id: 'm880', seq: 1, topic_id: 't1', author_id: 'fixture-writer', body: 'Message words 880', sent_ms: null, reply_to: null };
+  const note = { id: 'n880', seq: 1, title: 'Notebook 880', body: 'Notebook words 880', revision: 2,
+    owner_scope: { kind: 'topic', id: 't1' }, source_ref: { kind: 'memory', id: 'n880', revision: 2 } };
+  const values = {
+    topic_messages: { instance_id: 'fixture', items: [message], next_cursor: null, relevant_versions: { topic: 1 } },
+    memory_items: { instance_id: 'fixture', items: [note], next_cursor: null, relevant_versions: { notebook: 1 } },
+    colors: { instance_id: 'fixture', palette: [...AGENT_PALETTE], items: [], next_cursor: null },
+    workspace: { instance_id: 'fixture', workspace: { id: 'w1', title: 'Workspace' } },
+    wakes: { instance_id: 'fixture', quiet: [] },
+    workspace_members: { instance_id: 'fixture', items: [], next_cursor: null },
+    ...answers,
+  };
+  const read = f.api.view;
+  f.api.view = async (name, args, options) => {
+    if (!gates.has(name)) return read(name, args, options);
+    asked.push({ name, args, options, baselines: [...baselines] });
+    await gates.get(name).promise;
+    const value = values[name]; if (value instanceof Error) throw value;
+    return structuredClone(value);
+  };
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  // The normal fixture has an already-present editor for its other checks;
+  // this scenario begins with no startup owner and observes its construction.
+  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  const started = f.initialize().then(() => { settled = true; return { ok: true }; }, error => { settled = true; return { ok: false, error }; });
+  const release = name => gates.get(name).resolve();
+  const releaseAll = () => names.forEach(release);
+  t.after(async () => { releaseAll(); await started; await drain(); });
+  const unpublished = () => {
+    assert.equal(f.events.filter(e => e[0] === 'registry').length, 0, 'no editor registry before the startup join');
+    assert.equal(f.get('messages').querySelector('[data-id]'), null, 'no clickable message source');
+    assert.equal(f.get('memory-items').querySelector('[data-id]'), null, 'no clickable Notebook source');
+    assert.equal(f.get('body').dataset.ready, undefined, 'page is not marked ready');
+  };
+  const text = node => typeof node === 'string' ? node : node?.textContent || (node?.children ?? []).map(text).join('');
+  const page = () => {
+    const views = f.runObservation('views');
+    return { title: f.get('topic-title').textContent, messages: [...views.messages.values()].map(x => [x.id, x.body]),
+      memory: [...views.memory.values()].map(x => [x.id, x.title, x.body, x.revision]),
+      messageText: text(entryIn(f, 'm880')?.querySelector(':scope > .message-preview')),
+      memoryText: text(f.get('memory-items').querySelector('[data-id=n880]')?.children[1]),
+      sourceClickable: typeof entryIn(f, 'm880')?.onclick, memoryClickable: typeof f.get('memory-items').querySelector('[data-id=n880]')?.onclick,
+      ready: f.get('body').dataset.ready };
+  };
+  return { f, names, asked, gates, opened, started, release, releaseAll, unpublished, page, closes: () => closes, settled: () => settled };
+}
+const expected880 = { title: 'Fixture', messages: [['m880', 'Message words 880']], memory: [['n880', 'Notebook 880', 'Notebook words 880', 2]],
+  messageText: 'Message words 880', memoryText: '', sourceClickable: 'function', memoryClickable: 'undefined', ready: 'true' };
+
+test('880 all four startup reads are already asked while messages are held, with exact bounds and baselines', async t => {
+  const s = startup880(t); await drain();
+  assert.deepEqual(s.asked.map(x => x.name).sort(), ['colors', 'journal', 'memory_items', 'topic_messages']);
+  const one = name => s.asked.find(x => x.name === name);
+  assert.deepEqual(JSON.parse(JSON.stringify(one('topic_messages').args)), { topic_id: 't1', audience: 'all', direction: 'before', limit: 30 });
+  assert.deepEqual(JSON.parse(JSON.stringify(one('memory_items').args)), { owner_scope: { kind: 'topic', id: 't1' }, limit: 20 });
+  assert.deepEqual(JSON.parse(JSON.stringify(one('colors').args)), { limit: 100 });
+  assert.deepEqual(JSON.parse(JSON.stringify(one('colors').options)), { readClass: 'foreground' });
+  assert.deepEqual(JSON.parse(JSON.stringify(one('journal').args)), { instanceId: 'fixture', actor: 'fixture-person' });
+  for (const name of ['topic_messages', 'memory_items']) assert.deepEqual(one(name).baselines, ['feed', 'actor']);
+  s.unpublished();
+  for (const name of ['memory_items', 'colors', 'journal']) s.release(name);
+  await drain(); assert.equal(s.settled(), false); s.unpublished();
+  s.release('topic_messages'); assert.equal((await s.started).ok, true); await drain();
+  assert.deepEqual(s.page(), expected880); assert.equal(s.closes(), 0, 'successful startup keeps its journal');
+  assert.equal(s.f.events.filter(e => e[0] === 'registry').length, 1);
+  assert.equal(s.f.registry.options.journal === s.opened, true, 'the startup owner adopts this exact journal');
+  assert.deepEqual(s.asked.map(x => x.name).sort(), ['colors', 'journal', 'memory_items', 'topic_messages'], 'no extra startup read was introduced');
+});
+
+const permutations880 = values => values.length ? values.flatMap((value, index) => permutations880(values.filter((_, at) => at !== index)).map(rest => [value, ...rest])) : [[]];
+for (const order of permutations880(['topic_messages', 'memory_items', 'colors', 'journal'])) {
+  test('880 release order ' + order.join(' > ') + ' paints the same page without early sources', async t => {
+    const s = startup880(t); await drain(); s.unpublished();
+    for (const [index, name] of order.entries()) {
+      s.release(name); await drain();
+      if (index < order.length - 1) { assert.equal(s.settled(), false); s.unpublished(); }
+    }
+    assert.equal((await s.started).ok, true); await drain(); assert.deepEqual(s.page(), expected880);
+    assert.equal(s.closes(), 0); assert.equal(s.f.events.filter(e => e[0] === 'registry').length, 1);
+  });
+}
+
+for (const name of ['topic_messages', 'memory_items']) for (const failure of ['refused answer', 'wrong instance', 'transport refusal']) {
+  test('880 ' + name + ' ' + failure + ' refuses startup and leaves no sources', async t => {
+    const refused = Object.assign(Error('Transport refused880'), { status: 403, code: 'FORBIDDEN' });
+    const answer = failure === 'wrong instance' ? { instance_id: 'other-instance', items: [], next_cursor: null } :
+      failure === 'refused answer' ? { instance_id: 'fixture', error: { code: 'FORBIDDEN', message: 'List refused880' } } : refused;
+    const s = startup880(t, { answers: { [name]: answer } }); s.releaseAll();
+    const result = await s.started; assert.equal(result.ok, false);
+    if (failure === 'wrong instance') assert.match(result.error.message, /another instance or is malformed/);
+    else if (failure === 'transport refusal') assert.equal(result.error, refused);
+    else { assert.equal(result.error.message, 'List refused880'); assert.equal(result.error.details.error.code, 'FORBIDDEN'); }
+    s.unpublished();
+  });
+}
+
+test('880 rejected journal refuses startup; rejected colors keep their existing fallback', async t => {
+  const error = Error('Device journal refused880'), failed = startup880(t, { journalError: error });
+  failed.releaseAll(); const result = await failed.started;
+  assert.equal(result.ok, false); assert.equal(result.error, error); failed.unpublished();
+  const colorFailure = startup880(t, { answers: { colors: Error('Color read refused880') } });
+  colorFailure.releaseAll(); assert.equal((await colorFailure.started).ok, true); await drain();
+  assert.deepEqual(colorFailure.page(), expected880); assert.equal(colorFailure.closes(), 0);
+});
+
+for (const name of ['topic_messages', 'memory_items']) for (const when of ['before', 'after']) test('880 journal resolved ' + when + ' refused ' + name + ' is closed exactly once', async t => {
+  const refused = Object.assign(Error('List refused880'), { status: 403 });
+  const s = startup880(t, { answers: { [name]: refused } }); await drain();
+  assert.equal(s.asked.filter(x => x.name === 'journal').length, 1, 'journal was opened concurrently');
+  if (when === 'before') { s.release('journal'); await drain(); assert.equal(s.closes(), 0); }
+  s.release(name); await drain();
+  assert.equal(s.settled(), true, 'a refusal settles without waiting for held sibling reads');
+  const result = await s.started;
+  assert.equal(result.ok, false); assert.equal(result.error, refused); s.unpublished();
+  if (when === 'after') { assert.equal(s.closes(), 0); s.release('journal'); }
+  await drain(); assert.equal(s.closes(), 1); s.releaseAll(); await drain(); assert.equal(s.closes(), 1);
+});
+
+test('880 confirmed topic precedes the startup join; the existing color read keeps its early start', async t => {
+  const held = defer(), s = startup880(t), read = s.f.api.view;
+  s.f.api.view = async (name, args, options) => { if (name === 'topic') await held.promise; return read(name, args, options); };
+  try {
+    await drain(); assert.deepEqual(s.asked.map(x => x.name), ['colors']); s.unpublished();
+    held.resolve(); await drain();
+    assert.deepEqual(s.asked.map(x => x.name).sort(), ['colors', 'journal', 'memory_items', 'topic_messages']);
+  } finally { held.resolve(); s.releaseAll(); }
+  assert.equal((await s.started).ok, true); await drain(); assert.deepEqual(s.page(), expected880);
+});
+
+const startup886 = (t, options = {}) => startup880(t, { ...options, prerequisites: true });
+test('886 all independent topic reads start before any answer, after topic and baseline, with unchanged bounds', async t => {
+  const s = startup886(t); await drain();
+  assert.deepEqual(s.asked.map(x => x.name).sort(), [...s.names].sort());
+  const one = name => s.asked.find(x => x.name === name);
+  for (const name of ['topic_messages', 'memory_items']) assert.deepEqual(one(name).baselines, ['feed', 'actor']);
+  assert.deepEqual(JSON.parse(JSON.stringify(one('workspace').args)), { workspace_id: 'w1' });
+  assert.deepEqual(JSON.parse(JSON.stringify(one('workspace_members').args)), { workspace_id: 'w1', limit: 100 });
+  assert.deepEqual(JSON.parse(JSON.stringify(one('wakes').args)), {});
+  for (const name of ['wakes', 'workspace_members']) assert.equal(one(name).options.readClass, 'background');
+  s.unpublished(); s.releaseAll(); assert.equal((await s.started).ok, true); await drain();
+  assert.deepEqual(s.page(), expected880); assert.equal(s.asked.length, 7, 'no duplicate color or other startup request');
+});
+for (const held of ['workspace', 'wakes', 'workspace_members', 'topic_messages', 'memory_items', 'colors', 'journal']) {
+  test('886 held ' + held + ' does not stop sibling reads or admit early sources', async t => {
+    const s = startup886(t); await drain();
+    assert.equal(s.asked.length, 7);
+    for (const name of s.names) if (name !== held) s.release(name);
+    await drain(); assert.equal(s.settled(), false); s.unpublished();
+    s.release(held); assert.equal((await s.started).ok, true); await drain();
+    assert.deepEqual(s.page(), expected880); assert.equal(s.closes(), 0);
+  });
+}
+for (const name of ['workspace', 'wakes', 'workspace_members']) test('886 ' + name + ' refusal retains its existing nonfatal fallback', async t => {
+  const s = startup886(t, { answers: { [name]: Error('Optional read refused886') } });
+  s.releaseAll(); assert.equal((await s.started).ok, true); await drain(); assert.deepEqual(s.page(), expected880);
+  if (name === 'workspace') assert.equal(s.f.get('workspace-name').textContent, 'w1');
+  if (name === 'workspace_members') assert.equal(s.f.runObservation('outcomeMembers'), null);
+});
+for (const name of ['topic_messages', 'memory_items']) test('886 refused ' + name + ' settles while workspace and other prerequisites stay held; late journal closes', async t => {
+  const refused = Error('List refused886'), s = startup886(t, { answers: { [name]: refused } }); await drain();
+  assert.equal(s.asked.length, 7); s.release(name); await drain();
+  assert.equal(s.settled(), true, 'fatal startup refusal does not wait for optional read gates');
+  const result = await s.started; assert.equal(result.ok, false); assert.equal(result.error, refused); s.unpublished();
+  assert.equal(s.closes(), 0); s.release('journal'); await drain(); assert.equal(s.closes(), 1);
+  s.releaseAll(); await drain(); assert.equal(s.closes(), 1); s.unpublished();
+});
+test('886 topic identity is confirmed before new independent reads; colors retains its earlier start', async t => {
+  const topic = defer(), s = startup886(t), read = s.f.api.view;
+  s.f.api.view = async (name, ...args) => { if (name === 'topic') await topic.promise; return read(name, ...args); };
+  try {
+    await drain(); assert.deepEqual(s.asked.map(x => x.name), ['colors']); s.unpublished();
+    topic.resolve(); await drain(); assert.equal(s.asked.length, 7);
+  } finally { topic.resolve(); s.releaseAll(); }
+  assert.equal((await s.started).ok, true);
+});
+
+test('886 actual dossier adapter keeps batched reads background and checks the instance before admitting words', async t => {
+  const s = startup886(t); s.releaseAll(); assert.equal((await s.started).ok, true); await drain();
+  const heads = s.f.runObservation('dossierHeads'), reads = [];
+  let foreign = false, paints = 0; heads.changed = () => paints++;
+  s.f.api.view = async (name, args, options) => {
+    reads.push({ name, args: JSON.parse(JSON.stringify(args)), options: JSON.parse(JSON.stringify(options)) });
+    return { instance_id: foreign ? 'foreign' : 'fixture', items: args.message_ids.map(id => ({ id, topic_id: 't1', body: 'Admitted words', stack_position: { root_id: id } })) };
+  };
+  const messages = new Map(['a', 'b'].map(id => ['reply-' + id, { id: 'reply-' + id, reply_to: id, stack_position: { root_id: id } }]));
+  heads.sync(messages); await heads.readTail;
+  assert.deepEqual(reads, [{ name: 'topic_messages', args: { topic_id: 't1', message_ids: ['a', 'b'] }, options: { readClass: 'background' } }]);
+  assert.equal(paints, 1); assert.equal(heads.messages(new Map()).size, 2);
+  heads.invalidate(); foreign = true; heads.sync(messages); await heads.readTail;
+  assert.equal(reads.length, 2); assert.equal(paints, 2); assert.equal(heads.messages(new Map()).size, 0);
+  assert.deepEqual([...heads.records.values()].map(record => record.state), ['error', 'error']);
+});
+
+test('886 Landing-shaped opening counts actual full-feed arrangements and identifies later repaint triggers', async t => {
+  const roots = ['head-886-a', 'head-886-b', 'head-886-c', 'head-886-d'];
+  const position = (id, revision = 0) => ({ root_id: id, at: { acts: revision, messages: 130 }, order_key: roots.indexOf(id), order_tie: 1,
+    cover_revision: revision, cover: revision ? { stands: `Cover revision ${revision}`, waiting: [], payload: null } : null });
+  const messages = Array.from({ length: 30 }, (_, index) => ({ id: `reply-886-${index}`, seq: 101 + index, topic_id: 't1', author_id: 'fixture-writer', body: `Landing-shaped reply ${index}`, sent_ms: null,
+    reply_to: roots[index % 4], stack_position: position(roots[index % 4]),
+    attachments: index === 0 ? [{ id: 'image-886', inline: true, content_type: 'image/png', name: 'Fixture image' }] : [] }));
+  const heads = roots.map((id, index) => ({ id, seq: index + 1, topic_id: 't1', author_id: 'fixture-writer', body: `Original ${id}`, sent_ms: null, reply_to: null, stack_position: position(id) }));
+  const s = startup886(t, { answers: { topic_messages: { instance_id: 'fixture', items: messages, next_cursor: 101, relevant_versions: { topic: 1 } } } });
+  // Wrappers delegate to the actual app/StackFeed implementations. This is
+  // not a DossierHeads.changed count: full arrangements render real stacks.
+  const trace = s.f.runObservation(`(() => {
+    const trace = { phase: 'opening', events: [] }, paint = paintViews, arrange = StackFeed.prototype.arrange;
+    paintViews = function(kind) { trace.events.push({ owner: 'paintViews', kind, phase: trace.phase, stack: new Error().stack }); return paint(kind); };
+    StackFeed.prototype.arrange = function(...args) {
+      const stack = new Error().stack, result = arrange.apply(this, args);
+      trace.events.push({ owner: 'StackFeed.arrange', phase: trace.phase, stacks: this.state.stacks.length, entries: entries(this.list).length, stack });
+      return result;
+    };
+    return trace;
+  })()`);
+  const headGate = defer(), markGate = defer(), imageGate = defer(), requests = [], read = s.f.api.view;
+  s.f.api.view = async (name, args, options) => {
+    if (name === 'topic_messages' && args.message_ids) {
+      requests.push({ name, ids: [...args.message_ids], readClass: options?.readClass }); await headGate.promise;
+      return { instance_id: 'fixture', items: heads.filter(item => args.message_ids.includes(item.id)), next_cursor: null };
+    }
+    if (name === 'marks') { await markGate.promise; return { instance_id: 'fixture', topic_id: 't1', items: [{ message_id: messages[0].id, seq: 101, mark_revision: 1 }], next_cursor: null }; }
+    return read(name, args, options);
+  };
+  let imageReads = 0, imageURL;
+  s.f.api.media = async () => { imageReads++; await imageGate.promise; return { blob: new Blob(['in-memory image bytes'], { type: 'image/png' }) }; };
+  t.after(() => { headGate.resolve(); markGate.resolve(); imageGate.resolve(); if (imageURL) URL.revokeObjectURL(imageURL); });
+  s.releaseAll(); assert.equal((await s.started).ok, true); await drain();
+  const arrangements = () => Array.from(trace.events).filter(event => event.owner === 'StackFeed.arrange');
+  const count = phase => arrangements().filter(event => event.phase === phase).length;
+  assert.equal(s.f.runObservation('views.messages.size'), 30); assert.equal(arrangements()[0].stacks, 4);
+  assert.equal(count('opening'), 1, 'one initial full feed arrangement before the held arrivals');
+  trace.phase = 'marks'; markGate.resolve(); await drain(); assert.equal(count('marks'), 0);
+  trace.phase = 'image';
+  for (const observer of s.f.observers.filter(each => each.options?.rootMargin === '50% 0px')) observer.callback([...observer.targets].map(target => ({ target, isIntersecting: true })));
+  await drain(); assert.equal(imageReads, 1); imageGate.resolve(); await drain();
+  const image = entryIn(s.f, messages[0].id).querySelector(':scope > .card-images').querySelector(':scope > .card-image').querySelector(':scope > img.image-thumb');
+  imageURL = image?.src; assert.equal(image?.hidden, false, 'actual thumbnail completion is observed'); assert.equal(count('image'), 0);
+  trace.phase = 'heads'; headGate.resolve(); await s.f.runObservation('dossierHeads.readTail'); await drain();
+  assert.deepEqual(requests.map(each => ({ ...each, ids: [...each.ids].sort() })), [{ name: 'topic_messages', ids: roots, readClass: 'background' }]);
+  assert.equal(count('heads'), 1, 'all four heads cause one actual full feed arrangement');
+  assert.equal(trace.events.filter(event => event.owner === 'paintViews' && event.kind === 'messages' && event.phase === 'heads').length, 1);
+  assert.equal(arrangements().at(-1).stacks, 4); assert.equal(s.f.runObservation('feedMessages().size'), 34);
+  const openingAfterFirst = arrangements().slice(1).map(event => event.phase);
+  assert.deepEqual(openingAfterFirst, ['heads']);
+
+  // Additional explicit arrivals are probes, not assertions that these
+  // changes happened in Tony's opening. Exercise the app's freshness callback
+  // and actual TopicViews, retaining the fixture's deterministic feed driver.
+  const refresh = async (phase, revision, withAct = false) => {
+    trace.phase = phase;
+    const read = async name => name === 'message_acts'
+      ? { instance_id: 'fixture', topic_id: 't1', version: revision, next_cursor: null,
+        items: withAct ? [{ message_id: roots[0], seq: 1, acts: { name: { text: 'Changed dossier name' }, name_revision: 1 } }] : [] }
+      : { instance_id: 'fixture', topic_id: 't1', items: roots.map(id => ({ message_id: id, stack_position: position(id, revision) })) };
+    await s.f.fresh.options.refresh('acts', revision, read, () => true); await drain();
+  };
+  await refresh('freshness unchanged', 0); assert.equal(count('freshness unchanged'), 0);
+  await refresh('cover positions changed', 1); assert.equal(count('cover positions changed'), 1);
+  await refresh('acts and positions changed', 2, true); assert.equal(count('acts and positions changed'), 2, 'existing readPositions and readActs each paint the changed feed');
+  t.diagnostic('886 repaint trace ' + JSON.stringify({ openingAfterFirst, counts: Object.fromEntries(['opening', 'marks', 'image', 'heads', 'freshness unchanged', 'cover positions changed', 'acts and positions changed'].map(phase => [phase, count(phase)])), requests, events: trace.events }));
+});
+
+test('872 app gives New message the verified instance for width preferences even before its editor loads', async () => {
+  const f = fixture();
+  await f.initialize();
+  const inline = f.owners().inline;
+  assert.equal(inline.callbacks.instanceId, f.bootstrap.instance_id);
+  assert.equal(inline.layoutInstance, f.bootstrap.instance_id);
+  assert.equal(inline.layout.widthKeys['new-message'], JSON.stringify(['aim-next', f.bootstrap.instance_id, 'composer-width', 'new-message']));
+});
+
+test('788 revised page markup has no bottom Notebook container or paging control', async () => {
+  const html = webSource('index.html');
+  assert.doesNotMatch(html, /id="(?:notebook|memory-items|more-memory)"/);
+});
+test('788 revised memory paint keeps admitted pages in cache without rendering bottom-feed cards', async t => {
+  const s = startup880(t); s.releaseAll(); assert.equal((await s.started).ok, true); const f = s.f;
+  const item = { id: 'n788', seq: 1, title: 'Plan', body: 'Exact cached words', revision: 2, read_revision: 1,
+    owner_scope: { kind: 'topic', id: 't1' }, source_ref: { kind: 'memory', id: 'n788', revision: 2 } };
+  const views = f.runObservation('views');
+  views.memoryPage({ instance_id: 'fixture', items: [item], next_cursor: null, relevant_versions: { notebook: 2 } }, { initial: true });
+  assert.equal(f.get('memory-items').children.length, 0);
+  assert.deepEqual(views.memory.get(item.id), item);
+});
+
+test('788 revised a current-topic Notebook link still opens the shared sheet with its opener', async () => {
+  const f = fixture(); await f.initialize();
+  f.runObservation("globalThis.notebookOpened788 = []; notebookSheet = { open: (id, options) => notebookOpened788.push([id, options.opener.id]) };");
+  await f.runObservation("openDestination({ kind: 'topic', id: 't1', page: 'n788' }, 'Plan', document.getElementById('opener788'))");
+  assert.deepEqual(JSON.parse(JSON.stringify(f.runObservation('notebookOpened788'))), [['n788', 'opener788']]);
+  assert.equal(f.get('memory-items').children.length, 0);
+});
+
+// 889: the real app/Reader/registry close chain, with only the device persist
+// adapter kept in memory. No Core, device database, server or browser opens.
+async function decisionPage889(options) {
+  const d = await decisionPage860(options), { f } = d, saved = [], closes = [];
+  let device = null, failSave = false;
+  const session = { attempts: [], persist() {
+    const copy = structuredClone({ draft: f.editor.draft, context: f.editor.context, localVersion: f.editor.localVersion });
+    saved.push(copy); return device ? device.promise : failSave ? Promise.reject(Error('device unavailable')) : Promise.resolve();
+  } };
+  f.editor.localVersion = 2;
+  f.editor.context = { kind: 'reply', topicId: 't1', sourceRef: { kind: 'message', id: d.item.id } };
+  Object.assign(f.editor.draft, { body: 'unsent exact words', addressees: ['agent-a'], attachments: [{ id: 'fixture-image-889' }] });
+  Object.assign(f.registry, { generation: 1, localWrites: new Map(), timers: { now: () => 100 }, activity() {}, changed() {}, sessionFor: () => session,
+    close: EditorRegistry.prototype.close, keepLocal: EditorRegistry.prototype.keepLocal, keepEditorsLocal: EditorRegistry.prototype.keepEditorsLocal,
+    persistLocal: EditorRegistry.prototype.persistLocal, savedAt: EditorRegistry.prototype.savedAt, closeRefusal: EditorRegistry.prototype.closeRefusal,
+    closed: f.registry.options.closed });
+  Object.assign(f.reader, { viewToken: 1, editor: f.editor, sessions: d.presentation.editors, opener: f.get('opener889'),
+    rememberPlace() {}, caret: () => ({ start: 3, end: 5 }), placeReply() {}, disarm() {}, close: RealReader.prototype.close, finishClose: RealReader.prototype.finishClose });
+  f.reader.dialog.close = () => { closes.push(f.reader.presentation); f.reader.dialog.open = false; };
+  const coverDoc = miniDocument(), cover = { owner: 'fixture-person', stands: 'A choice waits', payload: null, waiting: [{ actor_id: 'fixture-person', ask_id: 'linked889', message_id: 'linked889', text: 'Proceed?', go_ahead: true, answer_revision: 4 }] };
+  f.reader.$ = id => coverDoc.byId(id);
+  f.reader.callbacks.dossierCover = () => ({ rootId: 'root889', topicId: 't1', cover });
+  const paintCover = () => {
+    const before = globalThis.document; globalThis.document = coverDoc;
+    try { RealReader.prototype.paintCover.call(f.reader, f.reader.presentation.source); }
+    finally { if (before === undefined) delete globalThis.document; else globalThis.document = before; }
+    return coverDoc.byId('reader-cover').querySelectorAll('button.cover-answer');
+  };
+  return { ...d, f, saved, closes, paintCover, coverDoc, cover,
+    holdDevice() { device = defer(); return device; }, refuseDevice() { failSave = true; },
+    configureCover() { configureCoverAnswers(() => ({ reactions: f.runObservation('reactions'), changed() {} })); } };
+}
+
+// 908 reuses the actual close/save chain, and binds the actual Reader gesture
+// to the app's existing callback. Only event/transport/device ports are fake.
+async function foldPage908(acts = {}) {
+  const d = await decisionPage889(), { f } = d;
+  f.views.ownAct = TopicViews.prototype.ownAct;
+  const item = f.views.messages.get(d.item.id); item.acts = { fold_revision: 3, ...acts };
+  d.presentation.source.topic_id = 't1';
+  Object.assign(f.reader, { source: d.presentation.source, sourceBody: f.get('source-body') });
+  f.paintViews('messages');
+  await drain(); d.commands.length = 0; // Finish the initial reading mark before measuring the swipe.
+  let pending;
+  const fold = f.reader.callbacks.foldMessage;
+  f.reader.callbacks.foldMessage = source => { pending = fold(source); return pending; };
+  const target = { parentElement: f.reader.sourceBody, scrollWidth: 100, clientWidth: 100, closest: () => null };
+  RealReader.prototype.bindSwipe.call(f.reader);
+  const swipe = () => {
+    const before = globalThis.window; globalThis.window = { getSelection: () => ({ isCollapsed: true }) };
+    let prevented = false;
+    try { f.reader.sourceBody.handlers.wheel({ target, deltaX: -100, deltaY: 0, deltaMode: 0, timeStamp: 500, preventDefault() { prevented = true; } }); }
+    finally { if (before === undefined) delete globalThis.window; else globalThis.window = before; }
+    assert.equal(prevented, true); return pending;
+  };
+  return { ...d, item, swipe, feed: f.runObservation('stackFeed') };
+}
+
+test('908 Reader swipe waits for the committed fold and existing writing save before closing', async () => {
+  const d = await foldPage908(), answer = defer(), device = d.holdDevice();
+  d.setCommand(() => answer.promise); const done = d.swipe(); await drain();
+  assert.equal(d.commands.length, 1); assert.equal(d.commands[0].kind, 'message.fold');
+  assert.equal(d.commands[0].expected.fold_revision, 3); assert.equal(d.commands[0].args.folded, true);
+  assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0);
+  d.f.editor.draft.body = 'new writing while the fold waits';
+  answer.resolve({ status: 'committed', result: { message_id: d.item.id, folded: true, fold_revision: 4 } }); await drain();
+  assert.equal(d.saved.length, 1, d.f.get('reader-notice').textContent); assert.equal(d.closes.length, 0);
+  assert.equal(d.saved[0].draft.body, 'new writing while the fold waits');
+  assert.deepEqual(d.saved[0].draft.attachments, [{ id: 'fixture-image-889' }]);
+  device.resolve(); await done; await drain();
+  assert.equal(d.closes.length, 1); assert.equal(d.f.reader.dialog.open, false);
+  assert.equal(d.item.acts.folded, true); assert.equal(d.f.editor.draft.body, 'new writing while the fold waits');
+});
+
+for (const kind of ['refused', 'lost']) test(`908 ${kind} fold keeps Reader writing and shows its notice`, async () => {
+  const d = await foldPage908();
+  d.setCommand(async () => { if (kind === 'lost') throw new AttemptError('Connection interrupted');
+    return { status: 'rejected', error: { code: 'FORBIDDEN', message: 'Folding is not allowed here' } }; });
+  await d.swipe(); await drain();
+  assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0);
+  assert.equal(d.f.reader.dialog.open, true); assert.equal(d.f.editor.draft.body, 'unsent exact words');
+  assert.match(d.f.get('reader-notice').textContent, kind === 'lost' ? /connection was interrupted/i : /Folding is not allowed here/);
+  assert.notEqual(d.item.acts.folded, true); d.feed.deafen();
+});
+
+test('908 a late committed fold cannot close a replacement Reader', async () => {
+  const d = await foldPage908(), answer = defer(); d.setCommand(() => answer.promise);
+  const done = d.swipe(); await drain();
+  const next = { source: { source_ref: { kind: 'memory', id: 'next908' } }, editors: { reply: d.f.editor } };
+  d.f.registry.current = next; d.f.reader.presentation = next; d.f.reader.viewToken++;
+  answer.resolve({ status: 'committed', result: { message_id: d.item.id, folded: true, fold_revision: 4 } }); await done; await drain();
+  assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0); assert.equal(d.f.registry.current, next);
+  assert.equal(d.item.acts.folded, true, 'the original fold really committed');
+});
+
+test('908 a failed device save after the fold keeps Reader and writing open', async () => {
+  const d = await foldPage908(); d.refuseDevice();
+  d.setCommand(async () => ({ status: 'committed', result: { message_id: d.item.id, folded: true, fold_revision: 4 } }));
+  await d.swipe(); await drain();
+  assert.equal(d.item.acts.folded, true); assert.equal(d.saved.length, 1);
+  assert.equal(d.closes.length, 0); assert.equal(d.f.reader.dialog.open, true);
+  assert.equal(d.f.editor.draft.body, 'unsent exact words');
+  assert.match(d.f.get('reader-notice').textContent, /kept|save|device/i);
+});
+
+test('908 a feed fold still leaves the open Reader and writing alone', async () => {
+  const d = await foldPage908();
+  d.setCommand(async () => ({ status: 'committed', result: { message_id: d.item.id, folded: true, fold_revision: 4 } }));
+  await d.feed.swipeAct(entryIn(d.f, d.item.id), true);
+  assert.equal(d.item.acts.folded, true); assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0);
+});
+
+for (const [acts, reason] of [[{ starred: true }, 'Starred messages stay in view; unstar it to fold.'], [{ folded: true }, 'Already folded.']])
+  test(`917 Reader refused swipe says ${reason}`, async () => {
+    const d = await foldPage908(acts); await d.swipe(); await drain();
+    assert.equal(d.commands.length, 0); assert.equal(d.closes.length, 0);
+    assert.equal(d.f.get('app-status').textContent, reason); assert.equal(d.f.get('reader-notice').textContent, reason);
+  });
+
+test('917 a qualifying feed swipe with no message is consumed and says what happened', async () => {
+  const d = await foldPage908(); let prevented = false;
+  d.feed.wheeled({ target: d.f.get('messages'), deltaX: -100, deltaY: 0, deltaMode: 0, timeStamp: 500, preventDefault() { prevented = true; } });
+  assert.equal(prevented, true); assert.equal(d.commands.length, 0);
+  assert.equal(d.f.get('app-status').textContent, 'Nothing to fold here'); assert.equal(d.closes.length, 0);
+});
+
+test('917 a Reader without a message consumes its swipe and gives the existing notice', async () => {
+  const d = await foldPage908(); d.f.reader.source = null; RealReader.prototype.bindSwipe.call(d.f.reader);
+  await d.swipe(); await drain();
+  assert.equal(d.commands.length, 0); assert.equal(d.closes.length, 0);
+  assert.equal(d.f.get('reader-notice').textContent, 'Nothing to fold here');
+  assert.equal(d.f.get('app-status').textContent, 'Nothing to fold here');
+});
+
+test('917 a starred feed message consumes wheel and touch refusals without a command', async () => {
+  const d = await foldPage908({ starred: true }), card = entryIn(d.f, d.item.id);
+  d.f.document.getSelection = () => ({ isCollapsed: true });
+  let consumed = 0;
+  d.feed.wheeled({ target: card, deltaX: -100, deltaY: 0, deltaMode: 0, timeStamp: 500, preventDefault() { consumed++; } });
+  d.feed.swipe = { x: 0, y: 0, target: card };
+  d.feed.swiped({ changedTouches: [{ clientX: 100, clientY: 0 }], preventDefault() { consumed++; } });
+  assert.equal(consumed, 2); assert.equal(d.commands.length, 0);
+  assert.equal(d.f.get('app-status').textContent, 'Starred messages stay in view; unstar it to fold.');
+});
+
+test('919 the Reader star agrees on first paint and immediately after unstar', async () => {
+  const d = await foldPage908({ starred: true });
+  d.f.runObservation('paintReaderStar()');
+  assert.equal(d.f.get('reader-star').hidden, false); assert.equal(d.f.get('reader-star').getAttribute('aria-pressed'), 'true');
+  assert.equal(d.f.get('reader-star').textContent, '★');
+  d.item.acts = { starred: false, star_revision: 2 }; d.f.paintViews('acts');
+  assert.equal(d.f.get('reader-star').getAttribute('aria-pressed'), 'false');
+  assert.equal(d.f.get('reader-star').textContent, '☆');
+});
+
+test('917 a starred message retains a disabled Fold menu row with the same reason', async () => {
+  const d = await foldPage908({ starred: true });
+  const choice = d.feed.menuItems(d.item, { reader: true }).first.find(item => item.key === 'fold');
+  assert.ok(choice); assert.equal(choice.disabled, true);
+  assert.match(choice.label, /Starred messages stay in view; unstar it to fold\./);
+});
+
+test('919 starred first card paints its filled star and dossier cue without a pointer event', async () => {
+  const { f, stackOf } = await conversationPage([
+    { id: 'star919', seq: 1, author_id: 'agent-a', body: 'Starred first message', acts: { starred: true, star_revision: 1 } },
+    { id: 'reply919', seq: 2, author_id: 'dan', reply_to: 'star919', body: 'A reply' },
+  ]);
+  const card = entryIn(f, 'star919'), star = card.querySelector(':scope > .message-author > .card-star');
+  assert.equal(card.dataset.starred, 'true'); assert.equal(star.textContent, '★'); assert.equal(star.getAttribute('aria-pressed'), 'true');
+  const nodes = node => [node, ...(node.children ?? []).flatMap(nodes)];
+  const headerStar = nodes(stackOf('star919')).find(node => node.classList?.contains('stack-star'));
+  assert.equal(headerStar.textContent, '★\uFE0E'); assert.equal(headerStar.getAttribute('aria-pressed'), 'true');
+  f.views.messages.get('star919').acts = { starred: false, star_revision: 2 }; f.paintViews('acts');
+  assert.equal(card.dataset.starred, 'false'); assert.equal(star.textContent, '☆');
+});
+
+test('919 a starred first card has no CSS exception hiding its painted star until hover', () => {
+  const look = webSource('stack-look.css');
+  assert.match(look, /\[data-starred=true\] \.card-star\{visibility:visible\}/);
+  assert.doesNotMatch(look, /\.stack-head-card\[data-starred=true\][^{]*\{[^}]*visibility:hidden/);
+});
+
+test('889 both Reader decisions wait for recorded success and the real device-save barrier before closing', async () => {
+  for (const choice of ['yes', 'no']) {
+    const d = await decisionPage889(), { f } = d, answer = defer(); d.setCommand(() => answer.promise);
+    const device = d.holdDevice(), sent = d.answer(choice).onclick();
+    assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0);
+    f.editor.draft.body = 'newer unsent words while answer waits';
+    answer.resolve({ status: 'committed', result: { message_id: d.item.id } }); await drain();
+    assert.equal(d.saved.length, 1, 'actual keepLocal reaches the persist adapter'); assert.equal(f.reader.dialog.open, true);
+    assert.equal(d.saved[0].draft.body, 'newer unsent words while answer waits');
+    assert.deepEqual(d.saved[0].draft.addressees, ['agent-a']); assert.deepEqual(d.saved[0].draft.attachments, [{ id: 'fixture-image-889' }]);
+    assert.deepEqual(d.saved[0].draft.caret, { start: 3, end: 5 }); assert.deepEqual(d.saved[0].context, f.editor.context);
+    device.resolve(); await sent; await drain();
+    assert.equal(d.closes.length, 1); assert.equal(f.reader.dialog.open, false); assert.equal(f.registry.current, null);
+    assert.equal(f.editor.draft.body, 'newer unsent words while answer waits');
+  }
+});
+test('889 refused and lost Reader answers keep the Reader and writing with their notice', async () => {
+  for (const kind of ['refused', 'lost']) {
+    const d = await decisionPage889({ loaded: false }); d.setCommand(async () => {
+      if (kind === 'lost') throw new AttemptError('Connection interrupted.');
+      return { status: 'rejected', error: { code: 'FORBIDDEN', message: 'Question is no longer yours' } };
+    });
+    await d.answer('no').onclick(); await drain(); assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0);
+    assert.equal(d.f.reader.dialog.open, true); assert.equal(d.f.editor.draft.body, 'unsent exact words');
+    assert.match(d.f.get('reader-notice').textContent, kind === 'lost' ? /Connection interrupted/ : /Question is no longer yours/);
+  }
+});
+test('889 local-save failure or a held image keeps a successfully answered Reader open', async () => {
+  for (const kind of ['device', 'image']) {
+    const d = await decisionPage889(); if (kind === 'device') d.refuseDevice(); else d.f.editor.imageReservation = {};
+    const warn = console.warn; console.warn = () => {};
+    try { await d.answer('yes').onclick(); await drain(); } finally { console.warn = warn; }
+    assert.equal(d.commands.length, 1); assert.equal(d.closes.length, 0); assert.equal(d.f.reader.dialog.open, true);
+    assert.equal(d.f.editor.draft.body, 'unsent exact words'); assert.match(d.f.get('reader-notice').textContent, kind === 'device' ? /Not closed.*keep your writing/ : /image/i);
+  }
+});
+test('889 a successful late answer never closes a replacement Reader', async () => {
+  const d = await decisionPage889(), held = defer(); d.setCommand(() => held.promise); const sent = d.answer('yes').onclick();
+  const next = { source: { source_ref: { kind: 'memory', id: 'new889' } }, editors: { reply: d.f.editor } };
+  d.f.registry.current = next; d.f.reader.presentation = next; d.f.reader.viewToken++;
+  held.resolve({ status: 'committed', result: { message_id: d.item.id } }); await sent; await drain();
+  assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0); assert.equal(d.f.registry.current, next);
+});
+test('889 a duplicate pending answer does not close early and a feed-card decision never closes Reader', async () => {
+  const d = await decisionPage889(), held = defer(); d.setCommand(() => held.promise);
+  const first = d.answer('yes').onclick(); await d.answer('no').onclick(); assert.equal(d.commands.length, 1); assert.equal(d.closes.length, 0);
+  held.resolve({ status: 'rejected', error: { code: 'FORBIDDEN', message: 'not taken' } }); await first;
+  d.setCommand(null); await d.f.runObservation("menu.answer(views.messages.get('decision860'), 'no')"); await drain();
+  assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0); assert.equal(d.f.reader.dialog.open, true);
+});
+test('889 Reader Waiting-on buttons share the close owner and their observed answer revision', async () => {
+  for (const index of [0, 1]) {
+    const d = await decisionPage889(); d.configureCover();
+    try {
+      const buttons = d.paintCover(); assert.equal(buttons.length, 2);
+      await buttons[index].onclick({ stopPropagation() {} }); await drain();
+      assert.equal(d.commands[0].target.message_id, 'linked889'); assert.equal(d.commands[0].expected.answer_revision, 4);
+      assert.equal(d.commands[0].args.answer, index ? 'no' : 'yes');
+      assert.equal(d.closes.length, 1); assert.equal(d.saved.length, 1, 'the cover answer keeps writing before closing');
+      assert.equal(d.saved[0].draft.body, 'unsent exact words'); assert.equal(d.f.registry.current, null);
+    } finally { configureCoverAnswers(null); }
+  }
+});
+test('889 Waiting-on refusal and lost answer retain their status and a late success cannot close another Reader', async () => {
+  for (const kind of ['refused', 'lost', 'late']) {
+    const d = await decisionPage889(), held = defer(); d.configureCover();
+    try {
+      d.setCommand(() => held.promise); const sent = d.paintCover()[0].onclick({ stopPropagation() {} });
+      if (kind === 'late') { const p = { source: { source_ref: { kind: 'memory', id: 'next889' } }, editors: { reply: d.f.editor } }; d.f.registry.current = p; d.f.reader.presentation = p; }
+      if (kind === 'lost') held.reject(new AttemptError('Connection interrupted.'));
+      else held.resolve(kind === 'refused' ? { status: 'rejected', error: { code: 'FORBIDDEN', message: 'Not your choice' } } : { status: 'committed', result: { message_id: 'linked889' } });
+      await sent; await drain(); assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0); assert.equal(d.f.reader.dialog.open, true);
+      if (kind !== 'late') assert.match(d.coverDoc.byId('reader-cover').querySelector('.cover-answer-status').textContent, kind === 'lost' ? /Connection interrupted/ : /Not your choice/);
+    } finally { configureCoverAnswers(null); }
+  }
+});
+test('889 a reused unchanged cover captures its Reader at press, not when the cover was painted', async () => {
+  const d = await decisionPage889(); d.configureCover();
+  try {
+    const old = d.paintCover()[0], next = { ...d.presentation, source: { ...d.presentation.source, source_ref: { kind: 'message', id: 'other-in-dossier889' } } };
+    d.f.registry.current = next; d.f.reader.presentation = next; assert.equal(d.paintCover()[0] === old, true, 'actual unchanged cover reuses the control');
+    await old.onclick({ stopPropagation() {} }); await drain(); assert.equal(d.closes.length, 1); assert.equal(d.closes[0] === next, true);
+  } finally { configureCoverAnswers(null); }
+});
+
+test('889 feed-cover answers keep Reader open and duplicate pending Reader-cover answers cannot close early', async () => {
+  const d = await decisionPage889(), held = defer(); d.configureCover();
+  try {
+    const feed = coverSheet(d.coverDoc, d.cover, { viewer: 'fixture-person', nameOf: id => id, topicId: 't1', rootId: 'root889' });
+    await feed.querySelector('button.cover-answer').onclick({ stopPropagation() {} }); await drain();
+    assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0); assert.equal(d.commands.length, 1);
+    d.setCommand(() => held.promise); const buttons = d.paintCover(), sent = buttons[0].onclick({ stopPropagation() {} });
+    await buttons[1].onclick({ stopPropagation() {} }); assert.equal(d.commands.length, 2); assert.equal(d.closes.length, 0); assert.equal(d.saved.length, 0);
+    held.resolve({ status: 'committed', result: { message_id: 'linked889' } }); await sent; await drain();
+    assert.equal(d.closes.length, 1); assert.equal(d.saved.length, 1);
+  } finally { configureCoverAnswers(null); }
+});
+test('889 the existing close generation protects a Reader replaced while its device save is pending', async () => {
+  const d = await decisionPage889(), device = d.holdDevice(), sent = d.answer('yes').onclick(); await drain();
+  assert.equal(d.saved.length, 1); assert.equal(d.closes.length, 0);
+  const next = { source: { source_ref: { kind: 'memory', id: 'after-save889' } }, editors: { reply: d.f.editor } };
+  d.f.registry.current = next; d.f.registry.generation++; d.f.reader.presentation = next; d.f.reader.viewToken++;
+  d.f.editor.draft.body = 'new Reader writing'; device.resolve(); await sent; await drain();
+  assert.equal(d.closes.length, 0); assert.equal(d.f.registry.current, next); assert.equal(d.f.reader.dialog.open, true);
+  assert.equal(d.saved[0].draft.body, 'unsent exact words'); assert.equal(d.f.editor.draft.body, 'new Reader writing');
+});
+
+// 890 uses the actual app loader and shared menu descriptor. The final edit
+// endpoint is observed here; separate checks execute the Reader edit owner.
+test('890 app supplies the bar the same current Edit descriptor and opener as the shared message menu', async () => {
+  const f = fixture(); f.bootstrap.actor_kind = 'human'; await f.initialize();
+  f.runObservation("globalThis.edits890 = []; editMessage = async (id, opener) => edits890.push([id, opener.id]);");
+  const owner = f.runObservation('menu');
+  assert.equal(typeof owner.editChoice, 'function', 'the bar receives the shared descriptor owner');
+  const item = { id: 'm890', topic_id: 't1', author_id: f.bootstrap.actor, body: 'Exact words' }, anchor = f.get('opener890');
+  const choice = owner.editChoice(item, anchor);
+  assert.equal(choice?.label, 'Edit'); assert.equal(choice.glyph, 'pencil');
+  await choice.act();
+  assert.deepEqual(JSON.parse(JSON.stringify(f.runObservation('edits890'))), [['m890', 'opener890']]);
+  assert.equal(owner.editChoice({ ...item, author_id: 'another-person' }, anchor), undefined);
+  f.runObservation('outcomeReached = true'); assert.equal(owner.editChoice(item, anchor), undefined);
+  f.runObservation('outcomeReached = false; topicUnavailable = true'); assert.equal(owner.editChoice(item, anchor), undefined);
+  f.runObservation('topicUnavailable = false; messageEdit = {}'); assert.equal(owner.editChoice(item, anchor), undefined);
+});
+
+// A DOM event boundary for 890 only. The page's registered document handlers
+// run in capture order; a consumed overlay click never reaches its target.
+// The source-read adapter is in memory; openSource, menus and card handlers
+// are the shipped owners. Native gesture dispatch remains unproven here.
+async function editClick890(options = {}) {
+  // Native module bindings keep MessageEdit's ENDED distinct from the
+  // Notebook writer's same-named export in the broad app VM adapter.
+  const f = fixture(undefined, { MessageEdit: RealMessageEdit, MessageEditWriting: RealMessageEditWriting });
+  f.runObservation('globalThis.selectionClears890 = 0; window.getSelection = () => ({ removeAllRanges() { selectionClears890++; } });');
+  f.registry.initializeInline = async () => f.p;
+  Object.assign(f.views, { memory: new Map(), memoryMap: new Map(), olderCursor: null, memoryCursor: null, newest: 1 });
+  options.beforeInitialize?.(f);
+  await f.initialize(); await settle();
+  const item = { id: 'm890', seq: 1, topic_id: 't1', author_id: options.author ?? 'fixture-person', author_kind: 'human', body: 'My exact words', revision: 1 };
+  f.views.messages.set(item.id, item); f.paintViews('messages');
+  const entry = entryIn(f, item.id), card = f.runObservation('cardIn')(entry), words = card.children.find(child => child.classList?.contains('message-preview'));
+  assert.ok(words, 'actual painted message body: ' + card.children.map(child => child.className).join(', '));
+  const overlay = f.get('reader'); overlay.tagName = 'DIALOG';
+  const closest = function(selector) {
+    for (let at = this; at; at = at.parent) for (const part of selector.split(',').map(s => s.trim())) {
+      if (part.startsWith('#') ? at.id === part.slice(1) : part.startsWith('.') ? at.classList.contains(part.slice(1)) : part === '[role="button"]' ? at.getAttribute('role') === 'button' : part === '[contenteditable]' ? at.hasAttribute('contenteditable') : at.tagName?.toLowerCase() === part) return at;
+    }
+    return null;
+  };
+  card.closest = words.closest = overlay.closest = closest;
+  let opened = 0, edits = [], pending = null;
+  const cards = f.runObservation('cardReplies = { sync() {}, paint() {} }');
+  let inlineOpens = 0, replyShown = false;
+  cards.open = async () => { ++inlineOpens; if (pending) await pending.promise; replyShown = true; return { surface: 'card', source: { source_ref: { kind: 'message', id: item.id } } }; };
+  cards.shown = () => replyShown && !overlay.open;
+  cards.from = () => ({ wide: false });
+
+  f.registry.generation = 1;
+  f.reader.dialog = overlay;
+  f.owners().marks.open = async (_registry, ref, { opener }) => {
+    opened++;
+    const p = { token: 1, surface: 'reader', source: { instance_id: 'fixture', source_ref: ref, author: item.author_id, body: item.body, revision: 1, attachments: [] }, opener, editors: {} };
+    if (pending) await pending.promise;
+    f.registry.current = p; f.reader.presentation = p; f.reader.source = p.source; overlay.open = true;
+    return p;
+  };
+  f.runObservation('globalThis.edits890 = [];');
+  if (!options.realEdit) f.runObservation('editMessage = async (id, opener) => edits890.push([id, opener]);');
+  edits = f.runObservation('edits890');
+  const emit = (type, target = words, props = {}) => {
+    const event = { type, target, button: 0, pointerType: 'mouse', pointerId: 1, detail: 1, clientX: 20, clientY: 30, timeStamp: 1000,
+      preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }, stopImmediatePropagation() { this.stopped = this.immediate = true; }, ...props };
+    for (const [kind, name, fn, options] of f.events) if (kind === 'document-handler' && name === type && (options === true || options?.capture)) { fn(event); if (event.immediate) break; }
+    if (!event.stopped && type === 'click' && target !== card && target !== overlay) target.onclick?.(event);
+    if (!event.stopped && target !== overlay && card.contains(target)) { card.handlers[type]?.(event); if (type === 'click') card.onclick(event); }
+    if (!event.stopped && type === 'click' && target === overlay) event.overlayAction = true;
+    return event;
+  };
+  const click = (target = words, props = {}) => { emit('pointerdown', target, props); emit('mousedown', target, props); emit('pointerup', target, props); return emit('click', target, props); };
+  const control = (tag, host = words, id = '') => { const node = id ? f.get(id) : f.document.createElement(tag); node.tagName = tag.toUpperCase(); node.closest = closest; host.append(node); return node; };
+  return { f, card, words, overlay, item, edits, emit, click, control, opened: () => opened, inlineOpens: () => inlineOpens, hold() { pending = defer(); return pending; } };
+}
+
+test('907 R2 a failed card source read falls back to the Reader without starting Edit', async () => {
+  const x=await editClick890();
+  x.f.runObservation('cardReplies').open=async()=>{throw Error('This message is not available to you.');};
+  x.click();await settle();assert.equal(x.opened(),1);assert.equal(x.overlay.open,true);assert.equal(x.edits.length,0);
+});
+test('907 first body click opens only its reply; the second opens Reader and shared Edit once', async () => {
+  const x = await editClick890(); x.click();
+  assert.equal(x.inlineOpens(), 1); assert.equal(x.opened(), 0); await settle();
+  const second = x.click(x.words, { timeStamp: 1400, clientX: 26 }); await settle();
+  assert.equal(second.defaultPrevented, true); assert.equal(x.opened(), 1);
+  assert.equal(x.edits.length, 1); assert.equal(x.edits[0][0], 'm890');
+  assert.equal(x.edits[0][1], x.f.get('reader-menu'));
+});
+test('907 double click while the reply read waits opens Reader only after that reply arrives', async () => {
+  const x = await editClick890(), held = x.hold(); x.click();
+  const second = x.click(x.words, { timeStamp: 1100, detail: 2 });
+  assert.equal(second.defaultPrevented, true); assert.equal(x.opened(), 0);
+  held.resolve(); await settle(); assert.equal(x.opened(), 1); assert.equal(x.edits.length, 1);
+});
+test('907 double-click timing and travel boundaries apply while the first reply read waits', async () => {
+  for (const [props, accepted] of [[{ timeStamp: 1400, clientX: 26 }, true], [{ timeStamp: 1401 }, false],
+    [{ timeStamp: 1800, detail: 2 }, true], [{ clientX: 26.01 }, false]]) {
+    const x = await editClick890(), held = x.hold(); x.click(); const second = x.click(x.words, props);
+    assert.equal(Boolean(second.defaultPrevented), accepted); held.resolve(); await settle();
+    assert.equal(x.opened(), accepted ? 1 : 0);
+  }
+});
+test('907 another author opens Reader without Edit; touch uses the same click model', async () => {
+  for (const own of [true, false]) {
+    const x = await editClick890(own ? {} : { author: 'another-person' });
+    x.click(x.words, { pointerType: 'touch' }); await settle();
+    x.click(x.words, { pointerType: 'touch', timeStamp: 1100 }); await settle();
+    assert.equal(x.opened(), 1); assert.equal(x.edits.length, own ? 1 : 0);
+  }
+});
+test('907 controls retain their actions and a drag never becomes a body click', async () => {
+  for (const tag of ['a', 'button', 'img', 'input', 'textarea', 'select']) {
+    const x = await editClick890(); x.click(); await settle();
+    const control = x.control(tag); let acts = 0; control.onclick = event => { ++acts; event.stopPropagation(); };
+    const second = x.click(control, { timeStamp: 1100, detail: 2 }); await settle();
+    assert.equal(acts, 1); assert.equal(x.opened(), 0); assert.notEqual(second.defaultPrevented, true);
+  }
+  const x = await editClick890(); x.emit('pointerdown'); x.emit('pointermove', x.words, { clientX: 25 }); x.emit('pointerup'); x.emit('click');
+  await settle(); assert.equal(x.inlineOpens(), 0); assert.equal(x.opened(), 0);
+});
+test('907 R2 a refused first reply tries Reader; retired or superseded opens cannot open a later Reader', async () => {
+  for (const mode of ['failed', 'retired', 'superseded']) {
+    const x = await editClick890(), held = x.hold(); x.click(); x.click(x.words, { timeStamp: 1100 });
+    if (mode === 'failed') held.reject(Error('source refused'));
+    else if(mode==='retired'){ x.f.runObservation('retired = new Set()'); held.reject(Error('late source refusal')); }
+    else { x.f.runObservation('opening++'); held.reject(Error('superseded source refusal')); }
+    await settle(); assert.equal(x.opened(), mode==='failed'?1:0);assert.equal(x.edits.length,0);
+  }
+});
+
+// Build2 executes the actual Reader start/stop/Escape and MessageEdit endings.
+// Only transport, source opening and the device journal are in-memory adapters.
+async function editFinish890() {
+  const x = await editClick890({ realEdit: true }), { f } = x, commands = [];
+  f.runObservation(`globalThis.device890 = { held: null, get: async () => null, put: async value => { device890.held = value; }, delete: async () => { device890.held = null; }, close() {} };
+    messageEditStore = async () => device890;`);
+  Object.assign(f.reader, { $: f.get, sourceBody: f.get('source-body'), disarm() {}, placeEnd() {}, redrawSource() {},
+    startEdit: RealReader.prototype.startEdit, stopEdit: RealReader.prototype.stopEdit, escape: RealReader.prototype.escape });
+  Object.assign(f.bootstrap.authority, { authority_id: 'a890', authority_epoch: 'e890' });
+  let conflict = false;
+  const read = f.api.view;
+  f.api.view = async (name, args, options) => conflict && name === 'source'
+    ? { instance_id: 'fixture', revision: 2, body: 'Saved on another device' } : read(name, args, options);
+  f.api.command = async sent => {
+    commands.push(sent);
+    const receipt = { instance_id: sent.instance_id, operation_id: sent.operation_id, kind: sent.kind, status: 'committed', recorded: true };
+    if (sent.kind === 'message.edit_open') return { ...receipt, result: { message_id: 'm890', session_revision: 1, base_revision: 1, base_words: x.item.body, draft: x.item.body } };
+    if (sent.kind === 'message.edit') return conflict ? { ...receipt, status: 'rejected', error: { code: 'REVISION_CONFLICT', current_versions: { message_revision: 2 } } }
+      : { ...receipt, result: { message_id: 'm890', revision: 2, edited_ms: 42, session_closed: true, session_revision: 2 } };
+    assert.equal(sent.kind, 'message.edit_close'); return { ...receipt, result: { message_id: 'm890' } };
+  };
+  return { ...x, commands, conflict() { conflict = true; } };
+}
+for (const ending of ['Save', 'Cancel', 'Use saved', 'Escape']) test('890 Build2 ' + ending + ' after second-click Edit keeps Reader focus exactly as its More Edit does', async () => {
+  for (const entry of ['Reader More', 'second click']) {
+    const x = await editFinish890(), { f } = x;
+    try {
+      if (entry === 'second click') { x.click(); await settle(); x.click(x.words, { timeStamp: 1100 }); }
+      else {
+        await f.owners().marks.open(f.registry, { kind: 'message', id: 'm890' }, { opener: x.card });
+        f.runObservation('globalThis.choices890 = null; openMessageMenu = options => { choices890 = options.items; }; openReaderMenu();');
+        await f.runObservation("choices890.find(item => item.label === 'Edit').act()");
+      }
+      await settle();
+      const session = f.runObservation('messageEdit'); assert.ok(session, entry + ' starts a real edit');
+      const host = f.get('message-edit'), field = host.children[0];
+      assert.equal(f.document.activeElement === field, true); assert.equal(f.reader.dialog.dataset.editing, 'true');
+      field.value = 'Exact revised words'; field.handlers.input();
+      if (ending === 'Use saved') {
+        x.conflict(); await host.querySelector('[data-act="save"]').onclick(); await settle();
+        assert.equal(session.writing.state, 'conflict'); assert.equal(host.children[1].hidden, false);
+        await host.querySelector('[data-act="saved"]').onclick();
+      } else if (ending === 'Save') await host.querySelector('[data-act="save"]').onclick();
+      else if (ending === 'Cancel') await host.querySelector('[data-act="cancel"]').onclick();
+      else f.reader.escape();
+      await settle();
+      assert.equal(f.runObservation('messageEdit'), null, entry + ': the actual finish/leave owner ended Edit');
+      assert.equal(f.reader.dialog.open, true); assert.equal(f.reader.editing, null); assert.equal(f.reader.sourceBody.hidden, false);
+      assert.equal(f.document.activeElement === f.get('reader-menu'), true, entry + ': focus returns to the Reader More control, not its inert feed card');
+      assert.equal(session.writing.closed, true);
+      assert.equal(session.writing.state, { Save: 'saved', Cancel: 'cancelled', 'Use saved': 'discarded', Escape: 'editing' }[ending]);
+      assert.deepEqual(x.commands.map(sent => sent.kind), ending === 'Save' ? ['message.edit_open', 'message.edit']
+        : ending === 'Use saved' ? ['message.edit_open', 'message.edit', 'message.edit_close']
+        : ending === 'Cancel' ? ['message.edit_open', 'message.edit_close'] : ['message.edit_open']);
+      if (ending === 'Save') assert.equal(f.registry.current.source.body, 'Exact revised words');
+      if (ending === 'Use saved') assert.equal(f.registry.current.source.body, 'Saved on another device');
+      if (ending === 'Escape') assert.equal(f.runObservation('device890.held.value'), 'Exact revised words');
+    } finally { f.runObservation('messageEdit?.writing.close()'); }
+  }
+});
+test('890 Build2 a late outcome_light answer removes the stale pencil when its shared Edit recheck refuses', async () => {
+  const light = defer();
+  const x = await editClick890({ beforeInitialize(f) {
+    const read = f.api.view; f.api.view = (name, args, options) => name === 'outcome_light' ? light.promise : read(name, args, options);
+  } }), { f } = x, menu = f.runObservation('menu');
+  try {
+    // The bar borrows the page's New message SVG; this check is eligibility,
+    // while the shared glyph fixture owns drawing assertions.
+    f.get('new-message').append(f.document.createElement('svg'));
+    menu.lit = x.card; menu.paintBar(); assert.equal(menu.buttons.edit.hidden, false);
+    light.resolve({ instance_id: 'fixture', lead: { kind: 'reached' } }); await settle();
+    assert.equal(f.runObservation('outcomeReached'), true, 'actual background read changed shared rights');
+    assert.equal(menu.buttons.edit.hidden, false, 'no background repaint: this is the stale control');
+    await menu.buttons.edit.onclick(); await settle();
+    assert.equal(x.edits.length, 0); assert.equal(menu.buttons.edit.hidden, true, 'the rejected stale press repaints the bar');
+  } finally { light.resolve({ instance_id: 'fixture' }); }
+});
+
+// Item899 exercises actual + Add, command adapter, outcome refresh and topic
+// projection owners. Transport records/receipts and DOM are in memory only.
+async function coordinatorPage899({ owner = 'fixture-person', coordinator = 'ally', member = true, prepare = () => {} } = {}) {
+  const f = fixture('https://fixture/?workspace=w1');
+  // This picker is removed and reoffered as permissions change. Native
+  // remove() clears parentNode; the generic inline fake only unlists it.
+  const create = f.document.createElement.bind(f.document);
+  f.document.createElement = tag => {
+    const element = create(tag), remove = element.remove.bind(element);
+    element.remove = () => { remove(); element.parent = null; };
+    return element;
+  };
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.live = stream(); f.useLive(f.live);
+  Object.assign(f.bootstrap.authority, { authority_id: 'a899', authority_epoch: 'e899' });
+  pickerApi(f, { workspace: { owner_id: owner, coordinator_id: coordinator } });
+  if (!member) f.pickers.members = f.pickers.members.filter(row => row.actor_id !== 'fixture-person');
+  f.pickers.members.push({ actor_id: 'other899', name: 'Other member', kind: 'human', enabled: true });
+  f.pickers.actors.push({ id: 'outside899', name: 'Not on team', kind: 'agent' });
+  const receipts = new Map();
+  const exact = (request, more) => ({ instance_id: 'fixture', operation_id: request.operation_id, kind: request.kind, recorded: true, ...more });
+  const apply = request => {
+    if (receipts.has(request.operation_id)) return receipts.get(request.operation_id);
+    assert.equal(request.kind, 'workspace.coordinator_set');
+    let answer;
+    if (request.expected.workspace_revision !== f.pickers.workspace.version) answer = exact(request, { status: 'rejected', error: { code: 'REVISION_CONFLICT', message: 'Writing changed; preserve this attempt and reconcile', current_versions: { workspace_revision: f.pickers.workspace.version } } });
+    else if (request.args.actor_id !== null && !f.pickers.members.some(row => row.actor_id === request.args.actor_id)) answer = exact(request, { status: 'rejected', error: { code: 'INVALID_RECIPIENT', message: 'The coordinator must belong to the outcome’s team.' } });
+    else {
+      if (f.pickers.workspace.coordinator_id !== request.args.actor_id) { f.pickers.workspace.coordinator_id = request.args.actor_id; f.pickers.workspace.version++; }
+      answer = exact(request, { status: 'committed', result: { workspace_id: 'w1', coordinator_id: request.args.actor_id, version: f.pickers.workspace.version } });
+    }
+    receipts.set(request.operation_id, answer); return answer;
+  };
+  f.api.command = async request => { f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); return apply(request); };
+  await prepare(f, { apply, exact });
+  await f.initialize(); await drain();
+  const panel = () => f.runObservation('teamPanel');
+  const row = () => walk(f.get('team-people')).find(node => node.classList?.contains('coordinator-choice'));
+  const choices = () => walk(f.get('team-people')).filter(node => node.dataset?.coordinator !== undefined);
+  const notice = () => walk(f.get('team-people')).find(node => node.classList?.contains('coordinator-notice'));
+  const open = () => {
+    assert.ok(panel().opener.parentNode, 'this team member can open + Add');
+    panel().toggle(true); assert.ok(row(), 'Coordinator row is offered'); row().onclick();
+    return choices();
+  };
+  const choose = async id => {
+    const button = choices().find(node => node.dataset.coordinator === (id ?? ''));
+    assert.ok(button, 'only an offered member or Nobody can be picked');
+    await button.onclick(); await drain();
+  };
+  const sent = () => f.calls.filter(call => call.kind === 'workspace.coordinator_set').map(call => call.envelope);
+  return { f, panel, row, choices, notice, open, choose, sent, apply, exact };
+}
+
+test('899 Coordinator row names current member above Invite and offers only team plus Nobody', async () => {
+  const p = await coordinatorPage899(); p.open();
+  assert.equal(p.row().textContent, 'Coordinator: Ally');
+  assert.deepEqual(p.choices().map(node => [node.dataset.coordinator, node.textContent]), [['', 'Nobody'], ['fixture-person', 'Fixture'], ['ally', 'Ally'], ['other899', 'Other member']]);
+  const extra = p.panel().choices.children;
+  assert.ok(extra.indexOf(p.row()) >= 0); assert.ok(extra.indexOf(p.row()) < extra.indexOf(p.f.runObservation('teamInvite.opener')));
+  assert.equal(extra.at(-1), p.f.runObservation('teamInvite.opener'), 'Invite remains last');
+  assert.equal(p.sent().length, 0, 'opening makes no change');
+});
+
+test('899 ordinary member may choose coordinator without management controls or Invite', async () => {
+  const p = await coordinatorPage899({ owner: 'someone-else' }); p.open();
+  assert.equal(p.panel().input.hidden, true);
+  assert.equal(walk(p.f.get('team-people')).some(node => node.textContent === '×'), false);
+  assert.equal(p.f.runObservation('teamInvite.opener.hidden'), true);
+  assert.equal(p.f.get('outcome-purpose').hidden, true);
+  await p.choose('other899'); assert.equal(p.row().textContent, 'Coordinator: Other member');
+});
+
+test('899 nonmember receives no coordinator capability', async () => {
+  const p = await coordinatorPage899({ owner: 'someone-else', coordinator: 'ally', member: false });
+  assert.equal(p.panel().opener.parentNode === null, true);
+  assert.ok(!p.row() || p.row().hidden); assert.equal(p.sent().length, 0);
+});
+
+test('899 a pick sends one exact viewed-revision authority command then rereads actual coordinator', async () => {
+  const p = await coordinatorPage899(); p.open(); await p.choose('other899');
+  assert.equal(p.sent().length, 1);
+  const request = p.sent()[0];
+  assert.deepEqual([request.kind, request.target, request.expected, request.args], ['workspace.coordinator_set', { workspace_id: 'w1' }, { workspace_revision: 5, authority: { authority_id: 'a899', authority_epoch: 'e899' } }, { actor_id: 'other899' }]);
+  assert.ok(request.operation_id); assert.equal(p.row().textContent, 'Coordinator: Other member');
+  assert.equal(p.f.calls.filter(call => call.name === 'workspace').length >= 2, true);
+});
+
+test('899 Nobody clears coordinator immediately with null', async () => {
+  const p = await coordinatorPage899(); p.open(); await p.choose(null);
+  assert.equal(p.sent()[0].args.actor_id, null); assert.equal(p.row().textContent, 'Coordinator: Nobody');
+});
+
+test('899 stale pick refuses once, preserves reason and shows actual current coordinator', async () => {
+  const p = await coordinatorPage899(); p.open();
+  p.f.pickers.workspace.version++; p.f.pickers.workspace.coordinator_id = 'fixture-person';
+  await p.choose('other899');
+  assert.equal(p.sent().length, 1, 'no setPresence conflict auto-retry');
+  assert.equal(p.notice().textContent, 'Someone else changed this at the same moment. Try again.'); assert.equal(p.notice().hidden, false);
+  assert.equal(p.row().textContent, 'Coordinator: Fixture');
+});
+
+test('899 a target who left the team is refused and removed from refreshed choices', async () => {
+  const p = await coordinatorPage899(); p.open();
+  p.f.pickers.members = p.f.pickers.members.filter(row => row.actor_id !== 'other899');
+  await p.choose('other899');
+  assert.match(p.notice().textContent, /must belong/); assert.equal(p.row().textContent, 'Coordinator: Ally');
+  p.open(); assert.equal(p.choices().some(node => node.dataset.coordinator === 'other899'), false);
+});
+
+test('899 pending pick never relabels coordinator or sends a double pick', async () => {
+  const gate = defer();
+  const p = await coordinatorPage899({ prepare(f, { apply }) { f.api.command = async request => { f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); await gate.promise; return apply(request); }; } });
+  p.open(); const target = p.choices().find(node => node.dataset.coordinator === 'other899');
+  const pending = target.onclick(); await settle(); const second = target.onclick(); await settle();
+  try {
+    assert.equal(p.sent().length, 1); assert.equal(p.row().textContent, 'Coordinator: Ally');
+    assert.ok(p.choices().every(node => node.disabled));
+  } finally { gate.resolve(); await Promise.all([pending, second]); await drain(); }
+  assert.equal(p.row().textContent, 'Coordinator: Other member');
+});
+
+test('899 lost response retry keeps exact operation without claiming success', async () => {
+  let attempts = 0;
+  const p = await coordinatorPage899({ prepare(f, { apply }) { f.api.command = async request => { f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); if (++attempts === 1) throw Error('Fixture connection lost'); return apply(request); }; } });
+  p.open(); await p.choose('other899'); assert.match(p.notice().textContent, /connection lost/);
+  assert.equal(p.row().textContent, 'Coordinator: Ally');
+  p.open(); await p.choose('other899');
+  assert.deepEqual(p.sent()[1], p.sent()[0]); assert.equal(p.row().textContent, 'Coordinator: Other member');
+});
+
+test('899 unconfirmed receipt never claims success and a failed reread stays visible', async () => {
+  const p = await coordinatorPage899(); p.open();
+  p.f.api.command = async request => { p.f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); return p.exact(request, { status: 'committed', operation_id: 'some-other-operation', result: { workspace_id: 'w1', coordinator_id: 'other899', version: 6 } }); };
+  const view = p.f.api.view;
+  p.f.api.view = async (name, args) => { if (name === 'workspace') throw Error('Fixture refresh offline'); return view(name, args); };
+  await p.choose('other899');
+  assert.equal(p.row().textContent, 'Coordinator: Ally'); assert.match(p.notice().textContent, /not confirmed/i); assert.match(p.notice().textContent, /refresh offline/);
+});
+
+test('899 actual picker key handlers reach choices and Escape returns to Coordinator then Add', async () => {
+  const p = await coordinatorPage899(); p.panel().toggle(true); assert.ok(p.row(), 'Coordinator row is offered');
+  const key = (node, key) => { const event = { key, isComposing: false, target: p.f.document.activeElement, preventDefault() {}, stopPropagation() {} }; (node.onkeydown ?? node.handlers.keydown)(event); };
+  p.row().focus(); key(p.row(), 'ArrowDown'); assert.equal(p.f.document.activeElement, p.choices()[0]);
+  const list = walk(p.f.get('team-people')).find(node => node.classList?.contains('coordinator-choices'));
+  key(list, 'ArrowDown'); assert.equal(p.f.document.activeElement, p.choices()[1]);
+  key(list, 'End'); assert.equal(p.f.document.activeElement, p.choices().at(-1));
+  key(list, 'Escape'); assert.equal(list.hidden, true); assert.equal(p.f.document.activeElement, p.row());
+  key(p.row(), 'Escape'); assert.equal(p.panel().row.hidden, true); assert.equal(p.f.document.activeElement, p.panel().opener);
+  assert.equal(p.sent().length, 0);
+});
+
+test('899 existing commit refresh updates another open outcome page', async () => {
+  const p = await coordinatorPage899(), other = await coordinatorPage899(); other.open();
+  p.open(); await p.choose('other899');
+  other.f.pickers.workspace = { ...p.f.pickers.workspace };
+  await commit(other.f.live, 7);
+  assert.equal(other.row().textContent, 'Coordinator: Other member');
+});
+
+test('899 duplicate displayed names use the same distinct team labels', async () => {
+  const p = await coordinatorPage899({ prepare(f) { f.pickers.members[1].name = 'Alex'; f.pickers.members[2].name = 'Alex'; } });
+  p.open(); assert.equal(p.row().textContent, 'Coordinator: Alex (ally)');
+  assert.deepEqual(p.choices().filter(node => node.dataset.coordinator === 'ally' || node.dataset.coordinator === 'other899').map(node => node.textContent), ['Alex (ally)', 'Alex (other899)']);
+});
+
+test('899 late command result cannot repaint or refresh a replacement page choice', async () => {
+  const gate = defer();
+  const p = await coordinatorPage899({ prepare(f, { exact }) { f.api.command = async request => { f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); await gate.promise; return exact(request, { status: 'committed', result: { workspace_id: 'w1', coordinator_id: request.args.actor_id, version: 6 } }); }; } });
+  p.open(); const pending = p.choices().find(node => node.dataset.coordinator === 'other899').onclick();
+  p.f.runObservation("coordinatorChoice.paint({id:'w2',version:9,coordinator_id:null}, [{actor_id:'new-member',name:'Replacement'}], true)");
+  const reads = p.f.calls.filter(call => call.name === 'workspace').length;
+  gate.resolve(); await pending; await drain();
+  assert.equal(p.row().textContent, 'Coordinator: Nobody');
+  assert.equal(p.f.calls.filter(call => call.name === 'workspace').length, reads, 'the old command does not refresh a different page');
+  assert.equal(p.notice().hidden, true); assert.equal(p.row().disabled, false);
+});
+
+test('899 older team read cannot restore an obsolete coordinator or choices', async () => {
+  const p = await coordinatorPage899(); p.open(); const gate = defer(), view = p.f.api.view; let count = 0;
+  p.f.api.view = async (name, args) => name === 'workspace_members' && ++count === 1 ? gate.promise : view(name, args);
+  const older = p.f.runObservation("paintTeam({id:'w1',version:6,owner_id:'fixture-person',coordinator_id:'ally'}, async()=>{})");
+  await settle();
+  p.f.pickers.members = p.f.pickers.members.filter(row => row.actor_id !== 'ally');
+  await p.f.runObservation("paintTeam({id:'w1',version:7,owner_id:'fixture-person',coordinator_id:'other899'}, async()=>{})");
+  gate.resolve({ instance_id: 'fixture', items: [{ actor_id: 'fixture-person', name: 'Fixture' }, { actor_id: 'ally', name: 'Old Ally' }], next_cursor: null });
+  await older;
+  assert.equal(p.row().textContent, 'Coordinator: Other member'); p.open();
+  assert.equal(p.choices().some(node => node.dataset.coordinator === 'ally'), false);
+});
+
+test('899 losing membership on refusal keeps its reason visible outside the closed Add popover', async () => {
+  const p = await coordinatorPage899({ owner: 'someone-else' }); p.open();
+  p.f.api.command = async request => { p.f.pickers.members = p.f.pickers.members.filter(row => row.actor_id !== 'fixture-person'); return p.exact(request, { status: 'rejected', error: { message: 'You are no longer on this team.' } }); };
+  await p.choose('other899'); assert.equal(p.panel().opener.parentNode, null);
+  assert.match(p.notice().textContent, /no longer on this team/);
+  for (let at = p.notice(); at && at !== p.f.get('team-people'); at = at.parentElement) assert.equal(at.hidden, false, 'refusal remains readable after the capability goes away');
+});
+
+test('899 closing Add while a pick is pending keeps dismissal focus after success', async () => {
+  const gate = defer();
+  const p = await coordinatorPage899({ prepare(f, { apply }) { f.api.command = async request => { await gate.promise; return apply(request); }; } });
+  p.open(); p.choices()[3].focus(); const pending = p.choices()[3].onclick();
+  p.panel().toggle(false); assert.equal(p.f.document.activeElement, p.panel().opener);
+  gate.resolve(); await pending; await drain();
+  assert.equal(p.panel().row.hidden, true); assert.equal(p.f.document.activeElement === p.panel().opener, true);
+});
+
+test('899 changed authority drops an obsolete pending presentation without freezing the new one', async () => {
+  const gate = defer();
+  const p = await coordinatorPage899({ prepare(f, { exact }) { f.api.command = async request => { f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); await gate.promise; return exact(request, { status: 'committed', result: { workspace_id: 'w1', coordinator_id: request.args.actor_id, version: 6 } }); }; } });
+  p.open(); const pending = p.choices()[3].onclick();
+  p.f.bootstrap.authority.authority_epoch = 'new-epoch';
+  p.f.runObservation('coordinatorChoice.paint()');
+  gate.resolve(); await pending; await drain();
+  assert.equal(p.row().textContent, 'Coordinator: Ally'); assert.equal(p.row().disabled, false);
+  assert.equal(p.notice().hidden, true);
+});
+
+test('899 mismatched committed target is not treated as saved', async () => {
+  const p = await coordinatorPage899(); p.open();
+  p.f.api.command = async request => p.exact(request, { status: 'committed', result: { workspace_id: 'different-outcome', coordinator_id: 'other899', version: 6 } });
+  await p.choose('other899'); assert.equal(p.row().textContent, 'Coordinator: Ally');
+  assert.match(p.notice().textContent, /not confirmed/i);
+});
+
+test('899 existing workspace change key refreshes topic management through actual TopicViews', async () => {
+  const f = fixture(); pickerApi(f, { topic: { owner_id: 'someone-else', creator_id: 'someone-else', coordinator_id: null } });
+  await f.initialize(); await drain();
+  const canAdd = () => Boolean(f.runObservation('participantsPanel.opener.parentNode'));
+  assert.equal(canAdd(), false);
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => { if (kind === 'topic') { Object.assign(f.views, { topic: views.topic, participants: views.participants }); f.paintViews('topic'); } }, invalidate() {} });
+  const keys = views.keys({ resource_kind: 'workspace', resource_id: 'w1', version: 8 });
+  assert.deepEqual(keys, [{ key: 'topic', version: 0 }]);
+  const read = async (name, args) => { assert.equal(name, 'topic'); assert.deepEqual(args, { topic_id: 't1' }); return { instance_id: 'fixture', topic: { ...f.pickers.topic, coordinator_id: 'fixture-person' }, participants: f.pickers.participants, summary: { topic_id: 't1', latest_message_id: null } }; };
+  await views.refresh(keys[0].key, keys[0].version, read, () => true);
+  assert.equal(canAdd(), true, 'existing topic refresh grants current coordinator management');
+});
+
+test('899 loss of outcome access keeps the refused pick reason on the surviving page notice', async () => {
+  const p = await coordinatorPage899({ owner: 'someone-else' }); p.open();
+  const view = p.f.api.view; let denied = false;
+  p.f.api.command = async request => { denied = true; return p.exact(request, { status: 'rejected', error: { message: 'You are no longer on this team.' } }); };
+  p.f.api.view = async (name, args) => {
+    if (denied && name === 'workspace') throw Object.assign(Error('Outcome access was removed.'), { code: 'FORBIDDEN' });
+    return view(name, args);
+  };
+  await p.choose('other899');
+  assert.equal(p.f.get('outcome-team').hidden, true);
+  assert.match(p.f.get('app-status').textContent, /no longer on this team/);
+  assert.match(p.f.get('app-status').textContent, /Outcome access was removed/);
+});
+
+test('899 lost committed response rereads actual state and retry preserves the same operation', async () => {
+  let attempts = 0;
+  const p = await coordinatorPage899({ prepare(f, { apply }) { f.api.command = async request => {
+    f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); const receipt = apply(request);
+    if (++attempts === 1) throw Error('Fixture response lost after record'); return receipt;
+  }; } });
+  p.open(); await p.choose('other899');
+  assert.equal(p.row().textContent, 'Coordinator: Other member', 'the refreshed record, not the transport failure, owns the displayed coordinator');
+  assert.match(p.notice().textContent, /not confirmed/i); const version = p.f.pickers.workspace.version;
+  p.open(); await p.choose('other899');
+  assert.deepEqual(p.sent()[1], p.sent()[0]); assert.equal(p.f.pickers.workspace.version, version);
+  assert.equal(p.notice().hidden, true);
+});
+
+test('899 failed membership read offers no stale choices and a later commit restores the capability', async () => {
+  const p = await coordinatorPage899(); p.open();
+  p.f.pickers.membersRefused = true; await commit(p.f.live, 11);
+  assert.equal(p.row().hidden, true); assert.equal(p.choices().length, 0);
+  assert.match(p.panel().notice.textContent, /team could not be read/i);
+  assert.equal(p.sent().length, 0);
+  p.f.pickers.membersRefused = false; await commit(p.f.live, 12); p.open();
+  assert.equal(p.row().hidden, false); assert.equal(p.choices().length, 4);
+});
+
+test('899 a newer actual coordinator wins over the older successful receipt', async () => {
+  const gate = defer();
+  const p = await coordinatorPage899({ prepare(f, { exact }) { f.api.command = async request => {
+    f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); await gate.promise;
+    return exact(request, { status: 'committed', result: { workspace_id: 'w1', coordinator_id: request.args.actor_id, version: 6 } });
+  }; } });
+  p.open(); const pending = p.choices()[3].onclick();
+  p.f.pickers.workspace.coordinator_id = 'fixture-person'; p.f.pickers.workspace.version = 8;
+  gate.resolve(); await pending; await drain();
+  assert.equal(p.row().textContent, 'Coordinator: Fixture');
+  assert.equal(p.f.pickers.workspace.version, 8);
+});
+
+// 894: actual composer, editor, creation owner and memory command adapter.
+function pencil894(answer, { popped = true } = {}) {
+  const f = fixture(), requests = [], opened = [], saved = [];
+  const editor = new Editor({ ...f.editor.context, instanceId: 'fixture', actor: 'fixture-person' }, { id: 'draft-894', generation: 'g', revision: 1, body: 'Title\nBody' });
+  f.p.editors.reply = editor;
+  const api = { command: async request => {
+    requests.push(structuredClone(request));
+    if (answer) return answer(request, requests.length);
+    return receipt894(request);
+  } };
+  f.inline.callbacks.notebook = { api, bootstrap: f.bootstrap, mayWrite: true, open: async (id, options) => opened.push({ id, options }) };
+  f.inline.callbacks.edit = e => { saved.push(e.draft.body); return Promise.resolve(); };
+  const sheet = f.inline.sheet; sheet.open = false;
+  sheet.showModal = () => { sheet.open = true; };
+  sheet.close = () => { sheet.open = false; sheet.handlers.close?.(); };
+  sheet.getBoundingClientRect = () => ({ height: 80 }); sheet.before = () => {};
+  sheet.style.removeProperty = name => delete sheet.style[name]; sheet.style.setProperty = (name, value) => { sheet.style[name] = value; };
+  f.document.defaultView.getComputedStyle = () => ({ marginTop: '0px', marginBottom: '0px' });
+  f.inline.bar.fit = () => {}; // Geometry only; real folding, admission and handlers remain.
+  // These selectors must find actual intent descendants, never the generic fixture's id fallback.
+  const scoped = node => {
+    const one = node.querySelector.bind(node), all = node.querySelectorAll.bind(node);
+    node.querySelectorAll = selector => selector === 'button[data-intent]'
+      ? walk(node).filter(child => child.tagName === 'BUTTON' && child.dataset.intent !== undefined) : all(selector);
+    node.querySelector = selector => ['.intent-choice', '.audience-line'].includes(selector)
+      ? walk(node).find(child => child.classList?.contains(selector.slice(1))) ?? null : one(selector);
+    return node;
+  };
+  const create = f.document.createElement; f.document.createElement = tag => scoped(create(tag));
+  scoped(f.get('inline-intent-row')); scoped(f.get('inline-who-sentence'));
+  f.get('inline-who-panel').append(f.get('inline-intent-row'), f.get('inline-who-sentence'));
+  let noticeText = '';
+  Object.defineProperty(f.get('inline-notice'), 'textContent', { get: () => noticeText,
+    set(value) { noticeText = value; this.replaceChildren(); } });
+  // Mount the controls under the real root so ComposeBar owns their focus and fold.
+  const root = f.inline.root, group = f.get('inline-kind');
+  const fieldBox = f.document.createElement('div'); fieldBox.className = 'field-box'; fieldBox.append(f.inline.field);
+  root.append(group, f.get('inline-notice'), f.get('inline-who-chip'), f.get('inline-who-panel'),
+    f.get('inline-plus-button'), f.get('inline-plus-panel'), f.get('inline-attachments'), fieldBox, f.get('inline-send'));
+  for (const kind of ['message', 'note-card']) group.append(f.get('inline-kind-' + kind));
+  for (const node of [f.inline.field, ...group.children]) {
+    node.focus = () => { f.document.activeElement = node; root.handlers.focusin({ target: node }); };
+    node.blur = () => { if (f.document.activeElement === node) f.document.activeElement = null; };
+  }
+  f.inline.presentation = null; f.inline.show(f.p); if (popped) f.inline.pop();
+  const choose = kind => { const button = f.get('inline-kind-' + kind); button.focus();
+    assert.ok(root.contains(button)); assert.equal(typeof button.handlers.click, 'function'); return button.handlers.click(); };
+  const write = body => { editor.edit({ body, caret: { start: body.length, end: body.length } }); f.inline.drawEditor(); };
+  return { ...f, editor, requests, opened, saved, sheet, choose, write };
+}
+function receipt894(request) {
+  return { instance_id: request.instance_id, operation_id: request.operation_id, kind: request.kind, status: 'committed', recorded: true,
+    result: { item_id: request.target.item_id, revision: 1, owner_scope: request.target.owner_scope } };
+}
+
+function target911(f, value) {
+  const select = f.get('inline-note-page'); select.value = value;
+  select.handlers.change?.({ target: select });
+}
+function destinations911(f, append = async () => {}) {
+  const added = [];
+  Object.assign(f.inline.callbacks.notebook, {
+    pages: async () => [{ id: 'n-newer', name: 'Newest page' }, { id: 'n-older', name: 'Notebook page' }],
+    append: async (id, job) => { added.push({ id, job }); await append(id, job); job.card = 'c-added'; },
+  });
+  return added;
+}
+test('911 Note offers rail names with New page first; Message hides the selector', async () => {
+  const f = pencil894(); destinations911(f);
+  assert.equal(f.get('inline-note-page').hidden, true);
+  f.choose('note-card'); await drain();
+  const select = f.get('inline-note-page');
+  assert.equal(select.hidden, false);
+  assert.deepEqual(select.children.map(option => [option.value, option.textContent]), [['', 'New page'], ['n-newer', 'Newest page'], ['n-older', 'Notebook page']]);
+  assert.equal(select.value, '');
+  f.choose('message'); assert.equal(select.hidden, true);
+});
+test('911 chosen page appends and opens the confirmed card without creating a page', async () => {
+  const f = pencil894(), added = destinations911(f);
+  f.choose('note-card'); await drain(); target911(f, 'n-older');
+  assert.equal(f.get('inline-send').querySelector('.send-word').textContent, 'Add card');
+  await f.inline.send();
+  assert.equal(added.length, 1); assert.equal(added[0].id, 'n-older'); assert.equal(added[0].job.body, 'Title\nBody');
+  assert.equal(f.requests.length, 0); assert.equal(f.editor.draft.body, '');
+  assert.equal(f.opened[0].id, 'n-older'); assert.equal(f.opened[0].options.card, 'c-added');
+  assert.equal(f.opened[0].options.mode, 'cards'); assert.equal(f.opened[0].options.beside, true);
+});
+test('911 vanished page refuses with writing kept and no fallback creation', async () => {
+  const f = pencil894(); destinations911(f, async () => { throw Error('This Notebook page is no longer available.'); });
+  f.choose('note-card'); await drain(); target911(f, 'n-older'); await f.inline.send();
+  assert.equal(f.editor.draft.body, 'Title\nBody'); assert.equal(f.sheet.open, true);
+  assert.equal(f.requests.length, 0); assert.equal(f.opened.length, 0);
+  assert.match(f.get('inline-notice').textContent, /no longer available/);
+});
+test('911 each sheet opening resets the target to New page while retaining writing', async () => {
+  const f = pencil894(); destinations911(f);
+  f.choose('note-card'); await drain(); target911(f, 'n-older');
+  f.sheet.close(); f.inline.pop(); f.choose('note-card'); await drain();
+  assert.equal(f.get('inline-note-page').value, '');
+  await f.inline.send(); assert.equal(f.requests.length, 1); assert.equal(f.requests[0].kind, 'memory.create');
+});
+test('911 an append answering after another opening cannot consume newer writing', async () => {
+  const gate = defer(), f = pencil894(), added = destinations911(f, () => gate.promise);
+  f.choose('note-card'); await drain(); target911(f, 'n-older'); const saving = f.inline.send();
+  f.sheet.close(); f.inline.pop(); f.write('Later writing'); gate.resolve(); await saving;
+  assert.equal(added.length, 1); assert.equal(f.requests.length, 0);
+  assert.equal(f.editor.draft.body, 'Later writing'); assert.equal(f.sheet.open, true); assert.equal(f.opened.length, 0);
+});
+test('911 empty topic keeps only New page and a stale list cannot repaint a later opening', async () => {
+  const f = pencil894(null, { popped: false }), gate = defer();
+  f.inline.callbacks.notebook.pages = () => gate.promise;
+  f.choose('note-card');
+  assert.deepEqual(f.get('inline-note-page').children.map(option => option.textContent), ['New page']);
+  f.inline.pop(); gate.resolve([{ id: 'stale', name: 'Old opening' }]); await drain();
+  assert.equal(f.get('inline-note-page').hidden, true);
+  assert.equal(f.inline.notePages.length, 0);
+  f.inline.callbacks.notebook.pages = async () => []; f.choose('note-card'); await drain();
+  assert.deepEqual(f.get('inline-note-page').children.map(option => option.textContent), ['New page']);
+});
+test('911 actual app connects the current topic rail and existing Notebook sheet append owner', async () => {
+  const added = [], opened = [];
+  const f = fixture(undefined, { NotebookSheet: class {
+    appendNote(id, job) { added.push({ id, job }); }
+    canDock() { return true; } holds() { return false; }
+    open(id, options) { opened.push({ id, options }); }
+  } });
+  const view = f.api.view;
+  f.api.view = async (name, args, options) => {
+    const result = await view(name, args, options);
+    return name === 'memory_items' ? { ...result, items: [{ id: 'p-real', title: 'Rail name' }] } : result;
+  };
+  f.registry.initializeInline = async () => f.p;
+  await f.initialize(); await drain();
+  // initialize() starts a page run without begin()'s persistent shell DOM.
+  // Supply that shell-owned rail with its actual list methods and page port.
+  f.runObservation('panes.things = Object.create(ThingsRail.prototype); panes.things.handles = { topic, view: pipelineView };');
+  const notebook = f.owners().inline.callbacks.notebook, job = { words: 'Exact writing' };
+  assert.deepEqual(JSON.parse(JSON.stringify(await notebook.pages())), [{ id: 'p-real', name: 'Rail name' }]);
+  await notebook.append('p-real', job); assert.equal(added[0].id, 'p-real'); assert.ok(added[0].job === job);
+  await notebook.open('p-real', { mode: 'cards', beside: true, card: 'c-target' });
+  assert.equal(opened[0].id, 'p-real'); assert.equal(opened[0].options.card, 'c-target');
+});
+
+test('925 two choices use one writing field, keep caret and default to Message on every opening', () => {
+  const f = pencil894();
+  assert.equal(f.get('inline-kind').hidden, false);
+  assert.equal(f.get('inline-kind-message').getAttribute('aria-checked'), 'true');
+  const words = f.editor.draft.body, caret = f.editor.draft.caret;
+  for (const kind of ['note-card', 'message']) {
+    f.choose(kind); assert.equal(f.editor.draft.body, words); assert.deepEqual(f.editor.draft.caret, caret);
+    assert.equal(f.get('inline-kind-' + kind).getAttribute('aria-checked'), 'true');
+  }
+  f.choose('note-card'); f.sheet.close(); f.inline.pop();
+  assert.equal(f.get('inline-kind-message').getAttribute('aria-checked'), 'true', 'a Note chosen last time does not carry over');
+  assert.equal(f.requests.length, 0);
+  const html = webSource('index.html');
+  assert.match(html, /id="inline-kind"[^>]*role="radiogroup"[^>]*aria-label="Create"/);
+  assert.equal((html.match(/id="inline-kind-[^"]+"[^>]*role="radio"/g) ?? []).length, 2);
+});
+
+test('894 radio arrows and Home/End select, focus and wrap with one tab stop', () => {
+  const f = pencil894();
+  const press = (from, key, to) => {
+    let stopped = false;
+    assert.equal(typeof f.get('inline-kind-' + from).handlers.keydown, 'function', 'radio keys are wired');
+    f.get('inline-kind-' + from).handlers.keydown({ key, preventDefault() { stopped = true; }, stopPropagation() {} });
+    assert.ok(stopped); assert.equal(f.document.activeElement, f.get('inline-kind-' + to));
+    assert.equal(f.get('inline-kind-' + to).tabIndex, 0);
+    for (const kind of ['message', 'note-card'].filter(k => k !== to)) assert.equal(f.get('inline-kind-' + kind).tabIndex, -1);
+  };
+  press('message', 'ArrowLeft', 'note-card'); press('note-card', 'ArrowRight', 'message');
+  press('message', 'ArrowDown', 'note-card'); press('message', 'End', 'note-card'); press('note-card', 'Home', 'message');
+});
+
+for (const kind of ['note-card']) test(`894 ${kind} sends only memory.create and opens the intended view after confirmed save`, async () => {
+  const f = pencil894(); f.choose(kind);
+  await f.inline.send();
+  assert.equal(f.requests.length, 1);
+  const request = f.requests[0];
+  assert.equal(request.kind, 'memory.create'); assert.deepEqual(request.target.owner_scope, { kind: 'topic', id: 't1' });
+  assert.equal(request.args.title, 'Title'); assert.equal(request.args.body, kind === 'note-card' ? '## Title\n\nBody\n' : 'Body');
+  assert.deepEqual(Object.keys(request.args).sort(), ['attachments', 'body', 'references', 'title']);
+  assert.equal(f.editor.draft.body, ''); assert.deepEqual(f.saved, ['']); assert.equal(f.sheet.open, false);
+  assert.equal(f.opened.length, 1); assert.equal(f.opened[0].id, request.target.item_id);
+  assert.equal(f.opened[0].options.mode, kind === 'note-card' ? 'cards' : 'text'); assert.equal(f.opened[0].options.beside, true);
+});
+
+for (const kind of ['note-card']) test(`894 empty ${kind} starts Notebook page`, async () => {
+  const f = pencil894(); f.write(''); f.choose(kind);
+  assert.equal(f.get('inline-send').disabled, false);
+  await f.inline.send(); assert.equal(f.requests.length, 1); assert.equal(f.requests[0].args.title, 'Notebook page');
+  assert.equal(f.requests[0].args.body, kind === 'note-card' ? '## Notebook page\n' : '');
+});
+
+test('894 Notebook recipient controls stay hidden; 926 image controls remain available', async () => {
+  const f = pencil894(); f.editor.edit({ addressees: ['fable'], intent: 'ask' });
+  f.choose('note-card'); f.inline.paintStatus();
+  for (const name of ['who-chip', 'who-panel', 'writing-to']) assert.equal(f.get('inline-' + name).hidden, true, name);
+  for (const name of ['plus-button', 'attachments']) assert.equal(f.get('inline-' + name).hidden, false, name);
+  assert.equal(f.get('inline-send').querySelector('.send-word').textContent, 'Start page');
+  f.inline.addName('warp'); f.inline.choose('tell');
+  assert.deepEqual(f.editor.draft.addressees, ['fable']); assert.equal(f.editor.draft.intent, 'ask');
+  assert.equal(f.inline.imagePicker, undefined); assert.equal(f.requests.length, 0);
+  f.choose('message'); assert.equal(f.get('inline-who-chip').hidden, false); assert.equal(f.get('inline-plus-button').hidden, false);
+});
+
+test('894 refused creation keeps writing, message choices and the sheet, with the reason visible', async () => {
+  const f = pencil894(r => ({ ...receipt894(r), status: 'rejected', error: { code: 'FORBIDDEN', message: 'This topic is read-only.' } }));
+  f.choose('note-card'); await f.inline.send();
+  assert.equal(f.editor.draft.body, 'Title\nBody'); assert.equal(f.sheet.open, true); assert.equal(f.opened.length, 0);
+  assert.match(f.get('inline-notice').textContent, /This topic is read-only/);
+});
+
+test('894 lost answer retries the exact operation for unchanged writing and kind', async () => {
+  const f = pencil894((r, n) => { if (n === 1) throw Error('offline'); return receipt894(r); });
+  f.choose('note-card'); await f.inline.send();
+  assert.match(f.get('inline-notice').textContent, /Choose Start page to try once more/);
+  f.choose('note-card'); await f.inline.send(); assert.equal(f.requests.length, 2); assert.deepEqual(f.requests[1], f.requests[0]);
+  assert.equal(f.opened.length, 1);
+});
+
+test('894 a late confirmation keeps a reopened sheet and newer writing, and offers the created page without another create', async () => {
+  const d = defer(), f = pencil894(r => d.promise.then(() => receipt894(r)));
+  f.choose('note-card'); const sending = f.inline.send();
+  assert.equal(f.inline.field.readOnly, true); assert.equal(f.get('inline-send').disabled, true);
+  await f.inline.send(); assert.equal(f.requests.length, 1);
+  f.sheet.close(); f.inline.pop();
+  f.editor.edit({ body: 'Newer recovered writing' }); // a recovery owner can replace writing while the DOM is disabled.
+  d.resolve(); await sending;
+  assert.equal(f.sheet.open, true); assert.equal(f.editor.draft.body, 'Newer recovered writing'); assert.equal(f.opened.length, 0);
+  const button = f.get('inline-notice').children.find(n => n.textContent === 'Open started page'); assert.ok(button);
+  await button.onclick(); assert.equal(f.requests.length, 1); assert.equal(f.opened.length, 1); assert.equal(f.editor.draft.body, 'Newer recovered writing');
+});
+
+test('894 Message retains its publication callback and never creates a Notebook page', async () => {
+  const f = pencil894(); f.choose('message'); let sends = 0;
+  f.inline.callbacks.send = async () => { sends++; return { status: 'confirmed' }; };
+  await f.inline.send(); assert.equal(sends, 1); assert.equal(f.requests.length, 0); assert.equal(f.opened.length, 0);
+});
+
+test('894 another opening during the writing save cannot be dismissed by completion', async () => {
+  const f = pencil894(), saved = defer();
+  f.inline.callbacks.edit = () => saved.promise;
+  f.choose('note-card'); const sending = f.inline.send();
+  await new Promise(setImmediate); // create confirmed; clearing exact writing now awaits its existing save owner
+  f.sheet.close(); f.inline.pop(); f.editor.edit({ body: 'Fresh words' });
+  saved.resolve(); await sending;
+  assert.equal(f.sheet.open, true); assert.equal(f.editor.draft.body, 'Fresh words'); assert.equal(f.opened.length, 0);
+  assert.ok(f.get('inline-notice').children.find(n => n.textContent === 'Open started page'));
+});
+
+test('926 changing kind preserves the shared file reservation for the same writing', async () => {
+  const f = pencil894(), calls = [];
+  f.inline.imagePicker = { token: 'pending', uploads: { cancel: id => calls.push(['cancel', id]), choose: () => calls.push(['choose']) } };
+  f.choose('note-card'); await f.get('inline-image-file').onchange({ target: { files: [{}] } });
+  assert.deepEqual(calls, [['choose']]); assert.equal(f.editor.draft.body, 'Title\nBody');
+});
+
+test('894 real app constructor wires the existing command client and bootstrap into Notebook creation', () => {
+  const f = fixture(), app = webSource('app.mjs');
+  const owner = app.slice(app.indexOf('  inline = new InlineComposer({'), app.indexOf('  reader = new Reader({'));
+  const capability = f.runObservation('(() => { const topicImages = () => {}, imageBytes = () => {}, memoryAnswer = { reader_may_write: true }; ' + owner + '; return inline.callbacks.notebook; })()');
+  assert.ok(capability, 'topic pencil receives Notebook creation capability');
+  assert.equal(capability.api, f.api); assert.equal(capability.bootstrap, f.bootstrap); assert.equal(typeof capability.open, 'function'); assert.equal(capability.mayWrite, true);
+});
+
+test('894 a confirmation for an inactive presentation never clears writing or navigates', async () => {
+  const d = defer(), f = pencil894(r => d.promise.then(() => receipt894(r)));
+  f.choose('note-card'); const sending = f.inline.send(); f.registry.current = { surface: 'reader' };
+  d.resolve(); await sending;
+  assert.equal(f.editor.draft.body, 'Title\nBody'); assert.equal(f.opened.length, 0);
+  f.registry.current = null; f.inline.show(f.p);
+  const open = f.get('inline-notice').children.find(n => n.textContent === 'Open started page'); assert.ok(open);
+  await open.onclick(); assert.equal(f.requests.length, 1); assert.equal(f.opened.length, 1);
+});
+
+test('894 empty Notebook starts still honor access, recovery, conflict and in-flight message preparation', async () => {
+  const f = pencil894(); f.write(''); f.choose('note-card');
+  for (const flag of ['adopting', 'unavailable', 'authorityRecovery', 'conflict']) {
+    f.editor[flag] = true; await f.inline.send(); assert.equal(f.requests.length, 0, flag); f.editor[flag] = null;
+  }
+  f.editor.submissions.push({ status: 'preparing' }); await f.inline.send(); assert.equal(f.requests.length, 0);
+  f.editor.submissions = []; f.registry.current = {}; await f.inline.send(); assert.equal(f.requests.length, 0);
+});
+
+test('894 a reopened unchanged draft is not consumed or closed by its earlier create', async () => {
+  const d = defer(), f = pencil894(r => d.promise.then(() => receipt894(r)));
+  f.choose('note-card'); const sending = f.inline.send(); f.sheet.close(); f.inline.pop();
+  d.resolve(); await sending;
+  assert.equal(f.sheet.open, true); assert.equal(f.editor.draft.body, 'Title\nBody'); assert.equal(f.opened.length, 0);
+});
+
+test('894 a recovered newer version in the same opening is not dismissed by an older create', async () => {
+  const d = defer(), f = pencil894(r => d.promise.then(() => receipt894(r)));
+  f.choose('note-card'); const sending = f.inline.send(); f.editor.edit({ body: 'Recovered newer writing' });
+  d.resolve(); await sending;
+  assert.equal(f.sheet.open, true); assert.equal(f.editor.draft.body, 'Recovered newer writing'); assert.equal(f.opened.length, 0);
+});
+
+test('894 openNotebook is the single opening door for docked and phone/full-page creations', async () => {
+  const app = webSource('app.mjs');
+  const body = app.slice(app.indexOf('function openNotebook(id,'), app.indexOf('// An outcome\'s Notebook page opening'));
+  const calls = [], sheet = { canDock: () => true, open: (id, options) => calls.push(['sheet', id, options]) };
+  const open = new Function('notebookSheetOf', 'openDestination', body + '\nreturn openNotebook;')(() => sheet, (route, label) => calls.push(['page', route, label]));
+  open('new', { beside: true, mode: 'text' }); assert.equal(calls[0][0], 'sheet');
+  sheet.canDock = () => false;
+  open('phone', { beside: true, mode: 'text' }); assert.deepEqual(calls[1][1], { kind: 'cards', id: 'phone', view: 'text' });
+  open('card', { beside: true, mode: 'cards' }); assert.deepEqual(calls[2][1], { kind: 'cards', id: 'card' });
+  open('existing'); assert.equal(calls[3][0], 'sheet', 'ordinary Notebook openings keep their behavior');
+});
+
+// Build 2: the mounted owner catches folding/blur, and the actual image gate is driven.
+test('894 B2 mounted radio clicks preserve writing state, caret, and focus', () => {
+  const f = pencil894(); f.editor.edit({ caret: { start: 2, end: 4 } }); f.inline.drawEditor();
+  for (const kind of ['note-card', 'message']) {
+    f.choose(kind);
+    assert.equal(f.inline.root.dataset.compose, 'writing');
+    assert.equal(f.document.activeElement, f.get('inline-kind-' + kind));
+    assert.equal(f.inline.field.selectionStart, 2); assert.equal(f.inline.field.selectionEnd, 4);
+  }
+});
+
+test('894 B2 Message restores its label, recipients, intent and images after Note and close', () => {
+  const f = pencil894(); f.editor.edit({ addressees: ['fable'], intent: 'ask' });
+  const image = { selection_id: 'image', file: { name: 'kept.png' }, attempts: [], choice: 0, bytes_state: 'durable', version: 1 };
+  f.inline.callbacks.uploads = () => ({ current: () => [image], running: new Map(), status: () => 'Ready' });
+  for (const kind of ['note-card']) {
+    f.choose(kind); f.choose('message');
+    assert.equal(f.get('inline-attachments').hidden, false);
+    assert.ok(f.get('inline-attachments').children.length, 'retained image is painted');
+    assert.equal(f.get('send-word').textContent, 'Ask');
+    assert.equal(f.get('inline-who-chip').hidden, false); assert.equal(f.get('inline-plus-button').hidden, false);
+    assert.deepEqual(f.editor.draft.addressees, ['fable']); assert.equal(f.editor.draft.intent, 'ask');
+    const ask = f.get('inline-intent-row').querySelectorAll('button[data-intent]').find(button => button.dataset.intent === 'ask');
+    assert.ok(ask); assert.equal(ask.getAttribute('aria-pressed'), 'true'); assert.equal(ask.disabled, false);
+  }
+  f.choose('note-card'); f.sheet.close();
+  // Closing goes back to Message (item 925): the image and the Ask intent are painted again.
+  assert.equal(f.get('inline-attachments').hidden, false); assert.equal(f.get('send-word').textContent, 'Ask');
+  f.inline.pop(); assert.equal(f.get('inline-attachments').hidden, false); assert.equal(f.get('send-word').textContent, 'Ask');
+  f.choose('note-card'); assert.equal(f.get('inline-attachments').hidden, false); assert.equal(f.get('send-word').textContent, 'Start page');
+  f.choose('message'); assert.equal(f.get('inline-attachments').hidden, false); assert.equal(f.get('send-word').textContent, 'Ask');
+});
+
+test('910 kind selector shows in the resting feed but requires explicit Notebook write access', () => {
+  const f = pencil894(); f.sheet.close(); f.inline.paintStatus(); assert.equal(f.get('inline-kind').hidden, false);
+  for (const permission of [false, undefined, 'true']) {
+    f.inline.callbacks.notebook.mayWrite = permission; f.inline.pop();
+    assert.equal(f.get('inline-kind').hidden, true); f.choose('note-card'); assert.equal(f.inline.kind, 'message'); f.sheet.close();
+  }
+  f.inline.callbacks.notebook.mayWrite = true; f.inline.pop(); assert.equal(f.get('inline-kind').hidden, false);
+});
+
+test('926 actual ImagePick admission serves Note and Message', () => {
+  const f = pencil894(); f.inline.callbacks.images = async () => []; f.choose('message');
+  assert.equal(f.inline.images.admits(), true);
+  f.choose('note-card'); assert.equal(f.inline.images.admits(), true);
+  f.choose('note-card'); assert.equal(f.inline.images.admits(), true);
+  f.choose('message'); assert.equal(f.inline.images.admits(), true);
+});
+
+test('894 B2 late refusal reaches the reopened same editor', async () => {
+  const d = defer(), f = pencil894(r => d.promise.then(() => ({ ...receipt894(r), status: 'rejected', error: { code: 'FORBIDDEN', message: 'Notebook access was removed.' } })));
+  f.choose('note-card'); const sending = f.inline.send(); f.sheet.close(); f.inline.pop();
+  d.resolve(); await sending;
+  assert.match(f.get('inline-notice').textContent, /Notebook access was removed/); assert.equal(f.sheet.open, true);
+  assert.equal(f.editor.draft.body, 'Title\nBody');
+});
+
+test('894 B2 a confirmed earlier page does not take over Start page for new writing', async () => {
+  const d = defer(), f = pencil894((r, n) => n === 1 ? d.promise.then(() => receipt894(r)) : receipt894(r));
+  f.choose('note-card'); const sending = f.inline.send(); f.editor.edit({ body: 'New title\nNew body' });
+  d.resolve(); await sending;
+  const earlier = f.get('inline-notice').children.find(n => n.textContent === 'Open started page'); assert.ok(earlier);
+  await f.inline.send(); assert.equal(f.requests.length, 2); assert.equal(f.requests[1].args.title, 'New title');
+  assert.notEqual(f.requests[1].operation_id, f.requests[0].operation_id); assert.equal(f.opened[0].id, f.requests[1].target.item_id);
+  f.inline.show(f.p); assert.ok(f.get('inline-notice').children.find(n => n.textContent === 'Open started page'));
+  await earlier.onclick(); assert.equal(f.opened[1].id, f.requests[0].target.item_id);
+});
+
+test('894 B2 uncertain earlier writing allows a new page and keeps an exact retry action', async () => {
+  const f = pencil894((r, n) => { if (n === 1) throw Error('offline'); return receipt894(r); });
+  f.choose('note-card'); await f.inline.send();
+  f.write('New page\nDifferent words'); f.choose('note-card'); await f.inline.send();
+  assert.equal(f.requests.length, 2); assert.equal(f.requests[1].args.title, 'New page');
+  f.inline.show(f.p); f.inline.pop(); f.write('Writing after both attempts');
+  const retry = f.get('inline-notice').children.find(n => /Retry earlier page/.test(n.textContent)); assert.ok(retry); assert.equal(retry.disabled, false);
+  await retry.onclick(); assert.deepEqual(f.requests[2], f.requests[0]); assert.equal(f.opened.length, 1);
+  assert.equal(f.editor.draft.body, 'Writing after both attempts'); assert.equal(f.sheet.open, true);
+  assert.ok(f.get('inline-notice').children.find(n => n.textContent === 'Open started page'));
+});
+
+test('926 image storage barriers hold both Message and Note until recovery', async () => {
+  const f = pencil894(); f.choose('message'); f.editor.imageStorageError = Error('image still saving'); f.inline.paintStatus();
+  assert.equal(f.get('inline-send').disabled, true);
+  f.choose('note-card'); assert.equal(f.get('inline-send').disabled, true);
+  await f.inline.send(); assert.equal(f.requests.length, 0);
+  f.editor.imageStorageError = null; f.inline.paintStatus();
+  await f.inline.send(); assert.equal(f.requests.length, 1); assert.deepEqual(f.requests[0].args.attachments, []);
+});
+
+test('894 B2 kind controls occupy a full grid row in normal and retry layouts', () => {
+  const css = webSource('aim.css');
+  assert.match(css, /\.pencil-kinds\{[^}]*grid-area:kinds/);
+  const normal = css.match(/#inline-composer\{([^}]+)\}/)?.[1]; assert.ok(normal);
+  const retry = css.match(/#inline-composer:has\(>#inline-retry:not\(\[hidden\]\)\)\{([^}]+)\}/)?.[1]; assert.ok(retry);
+  for (const rule of [normal, retry]) assert.match(rule, /"kinds kinds kinds kinds"/);
+});
+
+for (const kind of ['note-card']) test(`894 B2 ${kind} uses the card box first-line rule`, async () => {
+  const f = pencil894(); f.write('\r\n  \r\n## A title\r\n\r\nSome words\r\n'); f.choose(kind); await f.inline.send();
+  assert.equal(f.requests[0].args.title, 'A title');
+  assert.equal(f.requests[0].args.body, kind === 'note-card' ? '## A title\n\nSome words\n' : 'Some words');
+});
+
+test('894 B2 page refusal reaches the line as the original error object', async () => {
+  const f = pencil894(), failure = Object.assign(Error('Refused by Notebook'), { code: 'FORBIDDEN' }), notices = [];
+  f.runObservation('NotebookStart.prototype').create = async () => { throw failure; };
+  f.inline.notice = what => notices.push(what);
+  f.choose('note-card'); await f.inline.send();
+  assert.ok(notices.some(parts => Array.isArray(parts) && parts.includes(failure)));
+});
+
+test('894 B2 a failed page opening keeps its confirmed result for another Open', async () => {
+  const f = pencil894(); let opens = 0;
+  f.inline.callbacks.notebook.open = async () => { if (++opens === 1) throw Error('Could not open the page.'); };
+  f.choose('note-card'); await f.inline.send();
+  const open = f.get('inline-notice').children.find(n => n.textContent === 'Open started page'); assert.ok(open);
+  assert.equal(open.disabled, false); await open.onclick(); assert.equal(opens, 2); assert.equal(f.requests.length, 1);
+});
+
+for (const retry of [false, true]) test(`894 B3 phone panels have their own row below writing and Send (${retry ? 'retry' : 'normal'})`, () => {
+  const css = webSource('aim.css');
+  const template = (retry
+    ? css.match(/#inline-composer:has\(>#inline-retry:not\(\[hidden\]\)\)\{([^}]+)\}/)
+    : css.match(/#inline-composer\{([^}]+)\}/))?.[1];
+  assert.ok(template);
+  const areas = template.match(/grid-template-areas:([^;}]*)/)?.[1]; assert.ok(areas);
+  const rows = [...areas.matchAll(/"([^"]+)"/g)].map(match => match[1].split(/\s+/));
+  const common = css.match(/\.composer>\.compose-panel\{([^}]+)\}/)?.[1]; assert.ok(common);
+  const pencil = css.match(/#inline-composer>\.compose-panel\{([^}]+)\}/)?.[1] ?? '';
+  // The shared phone placement is overridden by the pencil's more specific
+  // rule. Interpret grid-area's row reset as well as an explicit grid-row.
+  let area, row;
+  for (const declaration of (common + ';' + pencil).split(';')) {
+    const [property, value] = declaration.split(':').map(part => part.trim());
+    if (property === 'grid-area') { area = value; row = undefined; }
+    if (property === 'grid-row') row = Number(value) - 1;
+  }
+  const panelRow = row ?? rows.findIndex(cells => cells.includes(area));
+  const writingRow = rows.findIndex(cells => cells.includes('field'));
+  const sendRow = rows.findIndex(cells => cells.includes('act'));
+  assert.ok(writingRow >= 0 && sendRow >= 0);
+  assert.ok(panelRow > Math.max(writingRow, sendRow), `panel row ${panelRow + 1} must follow writing/Send row ${Math.max(writingRow, sendRow) + 1}`);
+  assert.ok(rows[panelRow]?.every(cell => cell === area), 'panel owns a named, full-width row');
+});
+
+for (const kind of ['note-card']) test(`926 ${kind} and Message share image reservation through working uploads`, async () => {
+  const f = pencil894(), reservations = [], choices = [];
+  const uploads = { current: () => [], running: new Map(), status: () => 'Ready',
+    reserve: presentation => { const token = { presentation }; reservations.push(token); return token; },
+    choose: async (token, file) => { choices.push({ token, file }); } };
+  f.inline.callbacks.uploads = () => uploads;
+  const file = { name: 'fixture.png', type: 'image/png' };
+  f.choose(kind); await f.inline.addImages([file]);
+  assert.equal(reservations.length, 1, 'Note reserves through the upload owner');
+  assert.equal(choices.length, 1, 'Note passes image bytes to the same owner');
+  f.choose('message'); await f.inline.addImages([file]);
+  assert.equal(reservations.length, 2); assert.equal(choices.length, 2);
+  assert.equal(reservations[0].presentation, f.p);
+  assert.equal(choices[0].token, reservations[0]); assert.equal(choices[0].file, file);
+});
+
+for (const permission of [false, undefined]) test(`894 B3 actual app wiring denies Notebook write when permission is ${String(permission)}`, () => {
+  const f = fixture(), app = webSource('app.mjs');
+  const owner = app.slice(app.indexOf('  inline = new InlineComposer({'), app.indexOf('  reader = new Reader({'));
+  const memoryAnswer = JSON.stringify(permission === undefined ? {} : { reader_may_write: permission });
+  const capability = f.runObservation('(() => { const topicImages = () => {}, imageBytes = () => {}, memoryAnswer = ' + memoryAnswer + '; ' + owner + '; return inline.callbacks.notebook; })()');
+  assert.equal(capability.mayWrite, false);
+  assert.equal(capability.api, f.api); assert.equal(capability.bootstrap, f.bootstrap);
+});
+
+test('894 B3 typing in Note keeps Start page and hides the To line', () => {
+  const f = pencil894(); f.write(''); f.choose('note-card');
+  const field = f.inline.field; field.focus(); field.value = 'x'; field.setSelectionRange(1, 1);
+  assert.equal(typeof field.handlers.input, 'function');
+  field.handlers.input({ inputType: 'insertText', data: 'x' });
+  assert.equal(f.editor.draft.body, 'x'); assert.equal(f.saved.at(-1), 'x');
+  assert.equal(f.get('inline-send').querySelector('.send-word').textContent, 'Start page');
+  assert.equal(f.get('inline-writing-to').hidden, true);
+});
+
+
+test('925 resting composer starts on Message; a press on Note starts a new page in Cards without opening the sheet', async () => {
+  const f = pencil894(undefined, { popped: false });
+  assert.equal(f.sheet.open, false); assert.equal(f.inline.kind, 'message');
+  assert.equal(f.get('inline-kind').hidden, false);
+  assert.equal(f.get('inline-send').querySelector('.send-word').textContent, 'Send');
+  f.choose('note-card');
+  assert.equal(f.get('inline-send').querySelector('.send-word').textContent, 'Start page');
+  await f.get('inline-send').onclick();
+  assert.equal(f.requests.length, 1); assert.equal(f.requests[0].kind, 'memory.create');
+  assert.equal(f.requests[0].args.body, '## Title\n\nBody\n');
+  assert.equal(f.opened.length, 1); assert.equal(f.opened[0].options.mode, 'cards');
+  assert.equal(f.editor.draft.body, '');
+});
+
+test('910 resting selector keeps exact writing and Message still uses the existing send owner', async () => {
+  const f = pencil894(undefined, { popped: false }), sent = [];
+  f.inline.callbacks.send = (editor, presentation) => { sent.push({ body: editor.draft.body, presentation }); return Promise.resolve({}); };
+  f.editor.edit({ caret: { start: 1, end: 4 } }); f.inline.drawEditor();
+  f.choose('message'); f.choose('note-card'); f.choose('message');
+  assert.equal(f.inline.field.value, 'Title\nBody'); assert.equal(f.inline.field.selectionStart, 1); assert.equal(f.inline.field.selectionEnd, 4);
+  await f.inline.send(); assert.equal(sent.length, 1); assert.equal(sent[0].body, 'Title\nBody'); assert.equal(sent[0].presentation, f.p);
+  assert.equal(f.requests.length, 0);
+});
+
+test('910 opening the sheet while an inline Note saves keeps the later opening and writing', async () => {
+  const d = defer(), f = pencil894(r => d.promise.then(() => receipt894(r)), { popped: false });
+  f.choose('note-card');
+  const sending = f.inline.send(); f.inline.pop(); d.resolve(); await sending;
+  assert.equal(f.sheet.open, true); assert.equal(f.editor.draft.body, 'Title\nBody'); assert.equal(f.opened.length, 0);
+  assert.ok(f.get('inline-notice').children.find(n => n.textContent === 'Open started page'));
+});
+
+test('910 removed Note page cannot be selected; the title remains a screen-reader label', () => {
+  const f = pencil894(); assert.equal(f.inline.chooseKind('note-page'), false); assert.equal(f.inline.kind, 'message');
+  const html = webSource('index.html');
+  assert.doesNotMatch(html, /id="inline-kind-note-page"/);
+  assert.match(html, /<h2 id="inline-writing-title" class="sr-only">New Notebook page<\/h2>/);
+  assert.match(html, /id="new-message-sheet"[^>]*aria-labelledby="inline-writing-title"/);
+});
+
+// 905 binds the actual Reader paint owners to the actual app callbacks. Only
+// DOM ports are supplied here: descendant selectors and a local document for
+// the natively imported Reader modules. No product body or source read is added.
+async function conversationReader905() {
+  const f = fixture();
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.live = stream(); f.useLive(f.live);
+  pickerApi(f);
+  f.pickers.members.push({ actor_id: 'other905', name: 'Other agent', kind: 'agent', enabled: true });
+  let coordinator = 'ally';
+  const view = f.api.view;
+  f.api.view = async (name, args, options) => {
+    if (name !== 'conversation') return view(name, args, options);
+    f.calls.push({ name, args, options });
+    return { instance_id: 'fixture', conversation: { topic_id: 'conversation905', coordinator: { actor_id: coordinator }, waits: [] } };
+  };
+  await f.initialize(); await drain();
+  assert.equal(f.runObservation('here.conversation'), false, 'this is an ordinary topic');
+  assert.equal(f.runObservation('here.view.coordinator.actor_id'), 'ally');
+  const adapt = node => {
+    const query = node.querySelector.bind(node), all = node.querySelectorAll.bind(node);
+    const matches = (child, selector) => {
+      const simple = selector.match(/^([a-z]+)?(?:\.([\w-]+))?(?:\[data-([\w-]+)\])?$/);
+      if (!simple || !child?.tagName && !child?.classList) return false;
+      const [, tag, cls, data] = simple;
+      return (!tag || child.tagName === tag.toUpperCase()) && (!cls || child.classList.contains(cls))
+        && (!data || child.dataset?.[data.replace(/-(.)/g, (_, c) => c.toUpperCase())] !== undefined);
+    };
+    node.querySelectorAll = selector => {
+      if (/^(?:[a-z]+)?(?:\.[\w-]+)?(?:\[data-[\w-]+\])?$/.test(selector)) return walk(node).filter(child => matches(child, selector));
+      if (selector.startsWith(':scope > ')) return node.children.filter(child => matches(child, selector.slice(9)));
+      return all(selector);
+    };
+    node.querySelector = selector => selector.startsWith('.') || selector.startsWith(':scope > ') || /^[a-z]+\[data-/.test(selector)
+      ? node.querySelectorAll(selector)[0] ?? null : query(selector);
+    return node;
+  };
+  const create = f.document.createElement.bind(f.document);
+  f.document.createElement = tag => adapt(create(tag));
+  const who = adapt(f.get('who-row-905')), label = adapt(f.get('who-label-905'));
+  who.className = 'who-row'; label.className = 'who-label'; label.textContent = 'To';
+  const audience = adapt(f.get('reply-audience')), chips = adapt(f.get('recipient-chips')), input = adapt(f.get('recipient-input'));
+  chips.className = 'chips'; input.className = 'name-filter'; audience.append(chips, input); who.append(label, audience);
+  for (const id of ['intent-row', 'who-sentence', 'send-reply']) adapt(f.get(id));
+  const editor = { ...f.editor, key: 'reply905', draft: { ...f.editor.draft, body: '', addressees: [] }, context: { ...f.editor.context, topicId: 'conversation905' } };
+  Object.assign(f.reader, { $: f.get, mode: 'reply', sessions: { reply: editor }, field: f.get('reply-field'),
+    source: { source_ref: { kind: 'message', id: 'message905' }, topic_id: 't1' },
+    presentation: { surface: 'reader', editors: { reply: editor } }, paintLine() {}, naming: null, compose: null });
+  const withDocument = action => {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
+    Object.defineProperty(globalThis, 'document', { configurable: true, writable: true, value: f.document });
+    try { return action(); } finally { if (previous) Object.defineProperty(globalThis, 'document', previous); else delete globalThis.document; }
+  };
+  for (const name of ['paintRecipients', 'paintChoice', 'own', 'names', 'members', 'place', 'answering']) {
+    f.reader[name] = (...args) => withDocument(() => RealReader.prototype[name].apply(f.reader, args));
+  }
+  Object.defineProperty(f.reader, 'kindOf', { get: () => Object.getOwnPropertyDescriptor(RealReader.prototype, 'kindOf').get.call(f.reader) });
+  f.reader.paintRecipients(); f.reader.paintChoice();
+  const defaults = () => walk(audience).filter(node => node.dataset?.answerer !== undefined && node.getAttribute('aria-pressed') === 'true').map(node => node.dataset.answerer);
+  const refresh = async () => {
+    coordinator = 'other905';
+    const before = f.calls.length;
+    assert.equal(await f.runObservation('loadConversation()'), true);
+    assert.equal(f.runObservation('here.view.coordinator.actor_id'), 'other905', 'the actual app accepted the newer view');
+    assert.deepEqual(structuredClone(f.calls.slice(before)), [{ name: 'conversation', args: { workspace_id: 'w1' }, options: { readClass: 'background' } }], 'repaint needs no extra read');
+  };
+  return { f, label, defaults, refresh };
+}
+
+test('905 keyboard pick returns focus to Coordinator after disabling the focused choice', async () => {
+  const gate = defer();
+  const p = await coordinatorPage899({ prepare(f, { apply }) { f.api.command = async request => {
+    f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); await gate.promise; return apply(request);
+  }; } });
+  p.panel().toggle(true);
+  const key = (node, value) => node.onkeydown({ key: value, preventDefault() {}, stopPropagation() {} });
+  key(p.row(), 'ArrowDown'); const list = p.choices()[0].parentNode;
+  key(list, 'End'); const choice = p.f.document.activeElement;
+  assert.equal(choice.dataset.coordinator, 'other899');
+  // Native disabling removes focus from this button. Keep that DOM behavior
+  // local; the generic fixture and all its existing controls remain unchanged.
+  let disabled = choice.disabled;
+  Object.defineProperty(choice, 'disabled', { configurable: true, get: () => disabled, set(value) {
+    disabled = value;
+    if (value && p.f.document.activeElement === choice) p.f.document.activeElement = p.f.document.body;
+  } });
+  const pending = choice.onclick(); // Native Return activates this same handler; no native gesture claim.
+  try { await drain(); assert.equal(choice.disabled, true); assert.equal(p.f.document.activeElement === p.f.document.body, true); }
+  finally { gate.resolve(); await pending; await drain(); }
+  assert.equal(p.row().textContent, 'Coordinator: Other member');
+  assert.equal(list.hidden, true);
+  assert.equal(p.f.document.activeElement === p.row(), true, 'settled keyboard pick returns to the Coordinator row');
+  key(p.row(), 'Escape');
+  assert.equal(p.panel().row.hidden, true); assert.equal(p.f.document.activeElement === p.panel().opener, true);
+});
+
+test('905 conversation refresh repaints the real Reader Answered by default', async () => {
+  const p = await conversationReader905();
+  assert.equal(p.label.textContent, 'Answered by'); assert.deepEqual(p.defaults(), ['ally']);
+  await p.refresh();
+  assert.deepEqual(p.defaults(), ['other905']);
+});
+
+test('905 conversation refresh repaints the real Reader answers there note', async () => {
+  const p = await conversationReader905();
+  assert.equal(p.f.get('destination-note').textContent, "Goes to the outcome's conversation with a link to this message. ally answers there; nobody in this topic is woken.");
+  await p.refresh();
+  assert.equal(p.f.get('destination-note').textContent, "Goes to the outcome's conversation with a link to this message. other905 answers there; nobody in this topic is woken.");
+  assert.equal(p.f.get('destination-note').hidden, false);
+});
+
+test('905 a page-learned workspace revision is sent by the next pick and commits its row', async () => {
+  const p = await coordinatorPage899(); p.open();
+  p.f.pickers.workspace.version = 7; p.f.pickers.workspace.coordinator_id = 'fixture-person';
+  await commit(p.f.live, 7);
+  assert.equal(p.row().textContent, 'Coordinator: Fixture', 'the page actually learned the intervening workspace');
+  await p.choose('other899');
+  assert.equal(p.sent().length, 1);
+  assert.equal(p.sent()[0].expected.workspace_revision, 7, 'use the newer page-learned revision, not the opening revision');
+  assert.equal(p.f.pickers.workspace.version, 8);
+  assert.equal(p.row().textContent, 'Coordinator: Other member', 'the asserted revision allowed the real adapter to commit');
+});
+
+test('905 a pending pick preserves focus moved to a different control', async () => {
+  const gate = defer();
+  const p = await coordinatorPage899({ prepare(f, { apply }) { f.api.command = async request => {
+    f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); await gate.promise; return apply(request);
+  }; } });
+  p.open(); const choice = p.choices().find(node => node.dataset.coordinator === 'other899'); choice.focus();
+  const elsewhere = p.f.document.createElement('button'); elsewhere.textContent = 'Another control'; p.f.document.body.append(elsewhere);
+  const pending = choice.onclick();
+  try {
+    await drain(); assert.equal(choice.disabled, true);
+    elsewhere.focus(); assert.equal(p.f.document.activeElement === elsewhere, true);
+    assert.equal(p.panel().row.hidden, false, 'the panel was not dismissed');
+  } finally { gate.resolve(); await pending; await drain(); }
+  assert.equal(p.sent().length, 1); assert.equal(p.row().textContent, 'Coordinator: Other member');
+  assert.equal(p.panel().row.hidden, false);
+  assert.equal(p.f.document.activeElement === elsewhere, true, 'settled pick must not take focus from another control');
+});
+
+// 905 Build2: actual picker command/refresh and key handlers, with native
+// disabled-button focus represented only on this case's chosen button.
+async function refusedKeyboardPick905B2({ moveFocus = false } = {}) {
+  const gate = defer();
+  const p = await coordinatorPage899({ prepare(f, { apply }) { f.api.command = async request => {
+    f.calls.push({ kind: request.kind, envelope: structuredClone(request) }); await gate.promise; return apply(request);
+  }; } });
+  const key = (node, value) => node.onkeydown({ key: value, preventDefault() {}, stopPropagation() {} });
+  p.panel().toggle(true); key(p.row(), 'ArrowDown');
+  const list = p.choices()[0].parentNode; key(list, 'End');
+  const choice = p.f.document.activeElement; assert.equal(choice.dataset.coordinator, 'other899');
+  let disabled = choice.disabled;
+  Object.defineProperty(choice, 'disabled', { configurable: true, get: () => disabled, set(value) {
+    disabled = value;
+    if (value && p.f.document.activeElement === choice) p.f.document.activeElement = p.f.document.body;
+  } });
+  const elsewhere = p.f.document.createElement('button'); elsewhere.textContent = 'Another control'; p.f.document.body.append(elsewhere);
+  const pending = choice.onclick();
+  try {
+    await drain(); assert.equal(choice.disabled, true); assert.equal(p.f.document.activeElement === p.f.document.body, true);
+    p.f.pickers.workspace.version++; p.f.pickers.workspace.coordinator_id = 'fixture-person';
+    if (moveFocus) { elsewhere.focus(); assert.equal(p.f.document.activeElement === elsewhere, true); }
+    assert.equal(p.panel().row.hidden, false);
+  } finally { gate.resolve(); await pending; await drain(); }
+  assert.equal(p.sent().length, 1, 'a refused revision is not automatically retried');
+  assert.equal(p.notice().textContent, 'Someone else changed this at the same moment. Try again.');
+  assert.equal(p.notice().hidden, false); assert.equal(p.row().textContent, 'Coordinator: Fixture');
+  assert.equal(list.hidden, false); assert.equal(p.choices()[0].disabled, false);
+  return { p, list, key, elsewhere };
+}
+
+test('905 B2 refused keyboard pick restores the first eligible choice and Escape works', async () => {
+  const { p, list, key } = await refusedKeyboardPick905B2();
+  assert.equal(p.f.document.activeElement === p.choices()[0], true, 'refused pick returns focus to its first eligible choice');
+  key(list, 'Escape'); assert.equal(list.hidden, true); assert.equal(p.f.document.activeElement === p.row(), true);
+  key(p.row(), 'Escape'); assert.equal(p.panel().row.hidden, true); assert.equal(p.f.document.activeElement === p.panel().opener, true);
+});
+
+test('905 B2 refused pick preserves focus moved to a different control', async () => {
+  const { p, elsewhere } = await refusedKeyboardPick905B2({ moveFocus: true });
+  assert.equal(p.panel().row.hidden, false);
+  assert.equal(p.f.document.activeElement === elsewhere, true, 'a refusal must not take focus from a different control');
+});
+
+// Actual Reader callbacks remember their completed paint.
+test('905 B2 an unchanged coordinator does not repaint the real Reader again', async () => {
+  const p = await conversationReader905();
+  const recipients = p.f.reader.paintRecipients, choice = p.f.reader.paintChoice;
+  let recipientPaints = 0, choicePaints = 0;
+  p.f.reader.paintRecipients = (...args) => { recipientPaints++; return recipients(...args); };
+  p.f.reader.paintChoice = (...args) => { choicePaints++; return choice(...args); };
+  await p.refresh();
+  assert.equal(recipientPaints, 1, 'the changed coordinator repaints recipients once');
+  assert.equal(choicePaints, 1, 'the changed coordinator repaints the destination note once');
+  await p.refresh();
+  assert.equal(recipientPaints, 1, 'an unchanged coordinator already painted by the real Reader is not repainted');
+  assert.equal(choicePaints, 1, 'the already painted destination note is not repainted');
+});
+
+// 926: the real upload owner, with only byte storage and transport in memory.
+async function imageNote926(answer, options) {
+  const f = pencil894(answer, options), { Uploads } = await import('../web/uploads.mjs');
+  const pin = { authority_id: 'fixture-authority', authority_epoch: 'fixture-epoch' }, bytes = new Map(), begins = new Map();
+  const receipt = (request, result) => ({ ...receipt894(request), result });
+  const api = {
+    command: async request => { begins.set(request.target.media_id, request.args); return receipt(request, { media_id: request.target.media_id, media_revision: 1, state: 'pending' }); },
+    upload: async (request, blob) => { const file = begins.get(request.target.media_id); assert.equal(blob.size, file.size_bytes);
+      return receipt(request, { instance_id: 'fixture', media_id: request.target.media_id, media_revision: 2, state: 'ready', ...file, inline: true }); }
+  };
+  const journal = { writerId: 'fixture-926',
+    capture: async (_key, _snapshot, row, entry, current) => { assert.ok(current()); bytes.set(row.id, row); entry.bytes_ref = row.id; entry.bytes_state = 'durable'; },
+    readBytes: async (_key, id) => bytes.get(id),
+    transition: async (_key, _snapshot, mutate, current) => { assert.ok(current()); mutate(); }
+  };
+  const session = { editor: f.editor, api, journal, authority: pin, snapshot: () => f.editor.snapshot(), persist: async () => {},
+    envelope: (kind, operation_id, target, expected, args) => ({ v: 1, instance_id: 'fixture', kind, operation_id, target, expected, args }) };
+  const registry = { sessions: new Map([[f.editor.key, session]]), runtime: { current: pin }, disposed: false,
+    isCurrent: p => p === f.p, changed() {}, schedule() {}, bootstrap: { limits: { media_name_utf8_bytes: 255,
+      image_bytes: 1000000, media_file_bytes: 1000000, attachment_count: 10, attachment_bytes: 10000000 } } };
+  const uploads = new Uploads(session, registry); f.inline.callbacks.uploads = () => uploads;
+  const file = Object.assign(new Blob(['fixture image bytes'], { type: 'image/png' }), { name: 'photo.png', lastModified: 0 });
+  f.choose('note-card');
+  return { ...f, uploads, file, bytes };
+}
+test('911 Add card receives the shared ready images and consumes them only after confirmation', async () => {
+  const f = await imageNote926(), added = destinations911(f);
+  await f.uploads.add(f.file); f.choose('note-card'); await drain(); target911(f, 'n-older');
+  const before = structuredClone(f.editor.draft.attachments);
+  await f.inline.send();
+  assert.equal(added.length, 1); assert.deepEqual(added[0].job.attachments, before);
+  assert.equal(added[0].job.images.length, 1); assert.ok(added[0].job.cardWords.includes(`](attachment:${before[0].id})`));
+  assert.equal(f.requests.length, 0); assert.equal(f.editor.draft.body, '');
+  assert.equal(currentImages(f.editor).length, 0); assert.equal(f.opened[0].id, 'n-older');
+});
+test('911 refused Add card keeps the shared ready images and words', async () => {
+  const f = await imageNote926(); destinations911(f, async () => { throw Error('This page was deleted.'); });
+  await f.uploads.add(f.file); f.choose('note-card'); await drain(); target911(f, 'n-older');
+  const before = structuredClone(f.editor.draft);
+  await f.inline.send();
+  assert.deepEqual(f.editor.draft, before); assert.equal(currentImages(f.editor).length, 1);
+  assert.equal(f.requests.length, 0); assert.equal(f.opened.length, 0);
+  assert.match(f.get('inline-notice').textContent, /deleted/);
+});
+
+for (const popped of [false, true]) test(`926 Note paste creates the first card with its image (${popped ? 'sheet' : 'feed'})`, async () => {
+  const f = await imageNote926(null, { popped });
+  assert.equal(f.get('inline-plus-button').hidden, false);
+  assert.equal(f.get('inline-attachments').hidden, false);
+  let prevented = false;
+  await f.inline.field.handlers.paste({ clipboardData: { items: [{ type: f.file.type, getAsFile: () => f.file }] }, preventDefault() { prevented = true; } });
+  assert.equal(prevented, true); assert.equal(f.uploads.current().length, 1);
+  const media = f.editor.draft.attachments[0].id;
+  f.write('First card\nWords\n\n## Another card\nOther words'); await f.inline.send();
+  assert.equal(f.requests.length, 1); assert.deepEqual(f.requests[0].args.attachments, [{ id: media }]);
+  const { parseDeck, cardImages } = await import('../web/deck.mjs');
+  const cards = parseDeck(f.requests[0].args.body).cards;
+  assert.equal(cards.length, 2); assert.equal(cards[0].title, 'First card');
+  assert.deepEqual(cardImages(cards[0].words).images.map(image => image.id), [media]);
+  assert.deepEqual(cardImages(cards[1].words).images, []);
+  assert.equal(f.opened[0].options.mode, 'cards');
+  assert.equal(f.editor.draft.body, ''); assert.deepEqual(f.editor.draft.attachments, []); assert.equal(f.uploads.current().length, 0);
+});
+
+test('926 a refused Note start keeps exact words and ready image selections', async () => {
+  const f = await imageNote926(request => ({ ...receipt894(request), status: 'rejected', error: { code: 'FORBIDDEN', message: 'This topic is read-only.' } }));
+  await f.uploads.add(f.file); const images = structuredClone(f.editor.draft.attachments);
+  await f.inline.send();
+  assert.deepEqual(f.requests[0].args.attachments, images);
+  assert.equal(f.editor.draft.body, 'Title\nBody'); assert.deepEqual(f.editor.draft.attachments, images);
+  assert.equal(f.uploads.current().length, 1); assert.equal(f.sheet.open, true);
+  assert.match(f.get('inline-notice').textContent, /read-only/);
+});
+
+test('926 pending image bytes hold Start page until the shared upload barrier clears', async () => {
+  const f = await imageNote926(); await f.uploads.add(f.file, { start: false });
+  f.inline.paintStatus(); await f.inline.send();
+  assert.equal(f.requests.length, 0); assert.equal(f.get('inline-send').disabled, true);
+  assert.equal(f.uploads.current().length, 1); assert.equal(f.editor.draft.body, 'Title\nBody');
+});
+
+for (const kind of ['note-card', 'message']) test(`926 ${kind} drop and file choice share the actual image owner`, async () => {
+  const f = await imageNote926(); f.choose(kind);
+  let prevented = 0;
+  assert.equal(typeof f.inline.field.handlers.drop, 'function');
+  await f.inline.field.handlers.drop({ dataTransfer: { files: [f.file] }, preventDefault() { prevented++; } });
+  assert.equal(prevented, 1); assert.equal(f.uploads.current().length, 1);
+  f.inline.chooseFile(); assert.ok(f.inline.imagePicker);
+  await f.get('inline-image-file').onchange({ target: { files: [f.file] } });
+  assert.equal(f.uploads.current().length, 2); assert.equal(f.editor.draft.attachments.length, 2);
+  const first = f.uploads.current()[0].selection_id;
+  await f.uploads.remove(first); f.inline.paintStatus();
+  assert.equal(f.editor.draft.attachments.length, 1); assert.equal(f.uploads.current().length, 1);
+});
+
+test('926 lost creation retries the identical image envelope and confirms only once', async () => {
+  const f = await imageNote926((request, n) => { if (n === 1) throw Error('connection lost'); return receipt894(request); });
+  await f.uploads.add(f.file); const images = structuredClone(f.editor.draft.attachments);
+  await f.inline.send(); assert.equal(f.uploads.current().length, 1); assert.deepEqual(f.editor.draft.attachments, images);
+  await f.inline.send(); assert.equal(f.requests.length, 2); assert.deepEqual(f.requests[1], f.requests[0]);
+  assert.equal(f.opened.length, 1); assert.equal(f.uploads.current().length, 0);
+});
+
+test('926 an older creation cannot consume a newer image whose capture changed no text version', async () => {
+  const gate = defer(), f = await imageNote926(request => gate.promise.then(() => receipt894(request)));
+  await f.uploads.add(f.file); const sending = f.inline.send(), version = f.editor.localVersion;
+  await f.uploads.add(f.file, { start: false }); // A recovered/new selection; capture itself does not edit the draft.
+  assert.equal(f.editor.localVersion, version); assert.equal(f.uploads.current().length, 2);
+  gate.resolve(); await sending;
+  assert.equal(f.editor.draft.body, 'Title\nBody'); assert.equal(f.uploads.current().length, 2);
+  assert.equal(f.opened.length, 0); assert.equal(f.sheet.open, true);
+});
+
+test('926 an image cleanup persistence wait cannot dismiss newer writing', async () => {
+  const f = await imageNote926(); await f.uploads.add(f.file);
+  const gate = defer(), entered = defer(), transition = f.uploads.journal.transition;
+  f.uploads.journal.transition = async (...args) => { await transition(...args); entered.resolve(); await gate.promise; };
+  const sending = f.inline.send(); await entered.promise;
+  f.editor.edit({ body: 'Newer writing after the journal mutation' });
+  gate.resolve(); await sending;
+  assert.equal(f.editor.draft.body, 'Newer writing after the journal mutation');
+  assert.equal(f.sheet.open, true); assert.equal(f.opened.length, 0);
+});
+
+test('926 first-card images survive the actual Text projection and an unfinished code fence', async () => {
+  const f = await imageNote926(); await f.uploads.add(f.file);
+  const media = f.editor.draft.attachments[0].id;
+  f.write('Code example\n```js\nconst kept = true;'); await f.inline.send();
+  const { parseDeck, cardImages } = await import('../web/deck.mjs');
+  const { CardTextProjection } = await import('../web/notebook-card-text.mjs');
+  const projection = new CardTextProjection(), body = f.requests[0].args.body;
+  projection.show(body, body);
+  assert.match(projection.text, new RegExp('attachment:' + media));
+  assert.deepEqual(cardImages(parseDeck(projection.text).cards[0].words).images.map(image => image.id), [media]);
+  assert.equal(projection.edit(projection.text, null), body);
+});
+
+test('926 changed writing before the image journal mutation keeps every selection', async () => {
+  const f = await imageNote926(); await f.uploads.add(f.file);
+  const before = structuredClone(f.editor.draft.attachments), entered = defer(), gate = defer(), transition = f.uploads.journal.transition;
+  f.uploads.journal.transition = async (...args) => { entered.resolve(); await gate.promise; return transition(...args); };
+  const sending = f.inline.send(); await entered.promise;
+  f.editor.edit({ body: 'Recovered while cleanup waits' }); gate.resolve(); await sending;
+  assert.equal(f.editor.draft.body, 'Recovered while cleanup waits');
+  assert.deepEqual(f.editor.draft.attachments, before); assert.equal(f.uploads.current().length, 1);
+  assert.equal(f.sheet.open, true); assert.equal(f.opened.length, 0);
+});
+
+// Item 891 uses the actual app, withdrawal, grouping and stack painters. Only
+// the transport, registry persistence and DOM are in memory; source records
+// remain available even when this viewer's visible projection omits a row.
+const content891 = node => typeof node === 'string' ? node : String(node?.textContent ?? '') + (node?.children ?? []).map(content891).join('');
+const withdrawn891 = { by: 'fixture-person', at_ms: TODAY, revision: 1 };
+const ask891 = (more = {}) => ({ id: 'q891', seq: 1, author_id: 'fixture-person', author_kind: 'human',
+  intent: 'ask', body: 'WITHDRAWN QUESTION WORDS', go_ahead: true, addressees: ['dan'], withdrawal: withdrawn891, ...more });
+const reply891 = (id = 'r891', seq = 2, more = {}) => ({ id, seq, author_id: 'dan', author_kind: 'human',
+  intent: 'tell', body: 'Authored reply survives', reply_to: 'q891', reply_to_author: 'fixture-person', reply_to_excerpt: 'WITHDRAWN QUESTION WORDS', ...more });
+async function questionPage891(items, { viewer = 'fixture-person', heads = [], href = 'https://fixture/?topic=t1' } = {}) {
+  const f = fixture(href, { history: { state: null, replaceState() {} } }), reads = [], opens = [];
+  // The generic inline fake maps named page lookups by id. These message
+  // checks need real descendant class lookups, including a genuinely absent
+  // withdrawal marker; no product painter or eligibility decision is mocked.
+  const create = f.document.createElement.bind(f.document);
+  f.document.createElement = tag => {
+    const element = create(tag), query = element.querySelector.bind(element);
+    element.querySelector = selector => /^\.[\w-]+$/.test(selector)
+      ? walk(element).find(child => child.classList?.contains(selector.slice(1))) ?? null : query(selector);
+    return element;
+  };
+  f.runObservation('window.localStorage = { getItem() { return null; }, setItem() {}, removeItem() {} }');
+  f.bootstrap.actor = viewer;
+  Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
+  f.registry.generation = 1;
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  f.reader.dialog = { open: false };
+  Object.assign(f.views, { messages: new Map(items.map(item => [item.id, { topic_id: 't1', sent_ms: null, reply_to: null, unread: false, ...structuredClone(item) }])), memory: new Map(), olderCursor: null, memoryCursor: null, newest: Math.max(0, ...items.map(item => item.seq)) });
+  const sources = new Map([...f.views.messages, ...heads.map(item => [item.id, { topic_id: 't1', sent_ms: null, unread: false, ...structuredClone(item) }])]);
+  f.views.messagesPage = () => f.paintViews('messages');
+  const view = f.api.view;
+  f.api.view = async (name, args, options) => {
+    reads.push([name, structuredClone(args)]);
+    if (name === 'source') {
+      const item = sources.get((args.source_ref ?? args).id);
+      return { instance_id: 'fixture', source_ref: args.source_ref ?? args, topic_id: 't1', attachments: [], ...structuredClone(item), author: item?.author_id };
+    }
+    if (name === 'topic_messages') return { instance_id: 'fixture', items: (args.message_ids ?? []).map(id => structuredClone(sources.get(id))).filter(Boolean), next_cursor: null };
+    return view(name, args, options);
+  };
+  f.registry.open = async (ref, options) => {
+    const source = checkedView(await f.api.view('source', { source_ref: ref }), 'fixture');
+    const p = { token: f.registry.generation, source, editors: { reply: f.editor }, mode: 'reply' };
+    opens.push({ ref, options, p }); f.registry.current = p;
+    Object.assign(f.reader, { presentation: p, source }); f.reader.dialog.open = true;
+    return p;
+  };
+  await f.initialize(); for (let i = 0; i < 6; i++) await settle();
+  const state = () => f.runObservation("stackState($('messages'))");
+  const ids = () => Array.from(state().stacks, stack => [stack.head.id, ...stack.replies.map(item => item.id)]);
+  const visible = id => {
+    let entry = entryIn(f, id);
+    if (!entry || !f.get('messages').contains(entry)) return false;
+    while (entry && entry !== f.get('messages')) { if (entry.hidden) return false; entry = entry.parentElement; }
+    return true;
+  };
+  const text = node => !node || node.hidden ? '' : [typeof node === 'string' ? node : node.textContent ?? '', ...(node.children ?? []).map(text)].join(' ');
+  const words = () => text(f.get('messages'));
+  const arrange = () => f.runObservation('stackMessages()');
+  return { f, sources, reads, opens, state, ids, visible, words, arrange };
+}
+
+test('891 own withdrawn root leaves feed and dossier projection but retains its exact record', async () => {
+  const p = await questionPage891([ask891()]);
+  assert.deepEqual(p.ids(), [], 'the withdrawn question supplies no head, tab or row');
+  assert.equal(p.visible('q891'), false); assert.doesNotMatch(p.words(), /WITHDRAWN QUESTION WORDS/);
+  assert.equal(p.f.views.messages.get('q891').body, 'WITHDRAWN QUESTION WORDS');
+  p.arrange(); assert.deepEqual(p.ids(), [], 'a second arrangement cannot admit the retained record');
+});
+
+test('891 other viewer keeps withdrawn question and cue with no answer action', async () => {
+  const p = await questionPage891([ask891()], { viewer: 'dan' });
+  assert.deepEqual(p.ids(), [['q891']]); assert.equal(p.visible('q891'), true);
+  assert.match(p.words(), /WITHDRAWN QUESTION WORDS/); assert.match(p.words(), /Question withdrawn/);
+  assert.equal(p.f.runObservation("mayAnswer(views.messages.get('q891'), bootstrap.actor, bootstrap.actor_kind)"), false);
+});
+
+test('891 unwithdrawn own asks and nonquestions are not hidden by the author rule', async () => {
+  const p = await questionPage891([ask891({ withdrawal: null }), ask891({ id: 'tell891', seq: 2, intent: 'tell' })]);
+  assert.deepEqual(p.ids(), [['tell891'], ['q891']]); assert.equal(p.visible('q891'), true); assert.equal(p.visible('tell891'), true);
+});
+
+test('891 replies survive hidden root with neutral tab, author cue and unchanged authored quotation', async () => {
+  const p = await questionPage891([ask891(), reply891('r891', 2, { body: 'I explicitly quote WITHDRAWN QUESTION WORDS.' })]);
+  assert.deepEqual(p.ids(), [['r891']]); assert.equal(p.visible('q891'), false); assert.equal(p.visible('r891'), true);
+  const folder = entryIn(p.f, 'r891').closest('.reply-stack');
+  assert.equal(folder.querySelector(':scope > .stack-header')?.querySelector(':scope > .stack-head')?.querySelector(':scope > .stack-name')?.textContent
+    ?? walk(folder).find(node => node.classList?.contains('stack-name'))?.textContent, 'Dossier');
+  assert.equal(content891(entryIn(p.f, 'r891').querySelector(':scope > .message-reply-to')), 'Replying to fixture-person');
+  assert.equal(content891(entryIn(p.f, 'r891').querySelector(':scope > .message-preview')), 'I explicitly quote WITHDRAWN QUESTION WORDS.');
+  assert.equal(p.state().stacks[0].dossier, 'q891');
+});
+
+for (const minted of [false, true]) test(`891 ${minted ? 'minted' : 'explicit'} dossier name and independent cover survive for own and other viewers`, async () => {
+  const cover = { stands: 'Independent dossier state', waiting: [], owner: 'fixture-person', payload: null };
+  const root = ask891({ acts: { name: { text: 'Independent name', minted, by: 'agent-a' }, cover, starred: true } });
+  for (const viewer of ['fixture-person', 'dan']) {
+    const p = await questionPage891([root, reply891()], { viewer });
+    assert.match(p.words(), /Independent name/); assert.match(p.words(), /Independent dossier state/);
+    assert.equal(/Named by/.test(p.words()), minted);
+    assert.equal(p.state().starred.has('q891'), true, 'hiding a row does not remove a dossier star');
+    assert.match(p.words(), /★/, 'the title bar still marks that dossier star');
+    assert.deepEqual(p.ids(), [viewer === 'fixture-person' ? ['r891'] : ['q891', 'r891']]);
+  }
+});
+
+test('891 nested withdrawn ask keeps descendant ancestry and original dossier order across arrangements', async () => {
+  const p = await questionPage891([
+    { id: 'root891', seq: 1, author_id: 'dan', body: 'Visible ancestor' },
+    ask891({ seq: 3, reply_to: 'root891' }), reply891('r891', 4),
+    { id: 'separate891', seq: 2, author_id: 'dan', body: 'Separate dossier' },
+  ]);
+  assert.deepEqual(p.ids(), [['root891', 'r891'], ['separate891']]);
+  p.arrange(); p.arrange(); assert.deepEqual(p.ids(), [['root891', 'r891'], ['separate891']]);
+  assert.doesNotMatch(p.words(), /WITHDRAWN QUESTION WORDS/);
+});
+
+test('891 fold, Earlier and Only new cannot restore a hidden question while replies remain', async () => {
+  const p = await questionPage891([ask891({ acts: { folded: true, starred: true } }), ...Array.from({ length: 10 }, (_, n) => reply891('reply' + n, n + 2, { unread: true }))]);
+  const expected = Array.from({ length: 10 }, (_, n) => 'reply' + n);
+  for (const level of ['folded', 'open']) for (const only of [false, true]) {
+    const s = p.state(), id = s.stacks[0].id; s.levels.set(id, level); s.earlier.add(id); s.only = only ? item => item.unread === true : null; p.arrange();
+    assert.deepEqual(p.ids(), [expected]); assert.equal(p.visible('q891'), false); assert.doesNotMatch(p.words(), /WITHDRAWN QUESTION WORDS/);
+  }
+});
+
+const sourcePosition891 = { root_id: 'q891', order_key: 100, order_tie: 1, at: { acts: 0, messages: 8 }, name: null, cover: null };
+test('891 supplemental withdrawn root never promotes back into head or generated reply excerpt', async () => {
+  const p = await questionPage891([reply891('r891', 8, { stack_position: sourcePosition891 })], { heads: [ask891({ stack_position: sourcePosition891 })] });
+  assert.ok(p.reads.some(([name, args]) => name === 'topic_messages' && args.message_ids?.includes('q891')));
+  assert.equal(p.f.views.messages.has('q891'), false, 'source head does not enter loaded page or frontier');
+  assert.deepEqual(p.ids(), [['r891']]); assert.doesNotMatch(p.words(), /WITHDRAWN QUESTION WORDS/);
+  assert.equal(p.f.runObservation("dossierHeads.records.get('q891').item.body"), 'WITHDRAWN QUESTION WORDS');
+});
+
+test('891 scoped withdrawal refresh reaches cached-only root and suppresses its existing reply excerpt', async () => {
+  const p = await questionPage891([reply891('r891', 8, { stack_position: sourcePosition891 })], { heads: [ask891({ withdrawal: null, stack_position: sourcePosition891 })] });
+  assert.deepEqual(p.ids(), [['q891', 'r891']]);
+  const reads = [];
+  const answer = await p.f.fresh.options.refresh('withdrawal:q891', 1, async (name, args) => {
+    reads.push([name, args.id]); return { instance_id: 'fixture', withdrawal: withdrawn891 };
+  }, () => true);
+  assert.equal(answer, true); assert.deepEqual(reads, [['source', 'q891']]);
+  assert.deepEqual(p.ids(), [['r891']]); assert.doesNotMatch(p.words(), /WITHDRAWN QUESTION WORDS/);
+  assert.equal(p.f.views.messages.has('q891'), false);
+});
+
+test('891 committed withdrawal updates same Reader but preserves writing and removes visible ask only after success', async () => {
+  const p = await questionPage891([ask891({ withdrawal: null }), reply891()]);
+  await p.f.openSource({ kind: 'message', id: 'q891' }, entryIn(p.f, 'q891'));
+  const shown = p.f.registry.current, kept = p.f.editor.draft.body, gate = defer();
+  p.f.api.command = async request => { assert.equal(request.kind, 'message.withdraw'); return gate.promise; };
+  const pending = p.f.runObservation("withdrawals.withdraw(views.messages.get('q891'))");
+  assert.deepEqual(p.ids(), [['q891', 'r891']], 'in-flight command does not hide a question');
+  gate.resolve({ recorded: true, status: 'committed', result: { message_id: 'q891', withdrawal: withdrawn891 } });
+  await pending; await settle();
+  assert.deepEqual(p.ids(), [['r891']]); assert.doesNotMatch(p.words(), /WITHDRAWN QUESTION WORDS/);
+  assert.equal(p.f.registry.current, shown); assert.equal(p.f.reader.source, shown.source);
+  assert.deepEqual(shown.source.withdrawal, withdrawn891); assert.equal(p.f.editor.draft.body, kept);
+});
+
+test('891 refused withdrawal leaves question and generated reply excerpt visible', async () => {
+  const p = await questionPage891([ask891({ withdrawal: null }), reply891()]);
+  p.f.api.command = async () => ({ recorded: true, status: 'refused', error: { message: 'Ask cannot be withdrawn' } });
+  assert.equal(await p.f.runObservation("withdrawals.withdraw(views.messages.get('q891'))"), null);
+  assert.deepEqual(p.ids(), [['q891', 'r891']]); assert.match(p.words(), /WITHDRAWN QUESTION WORDS/);
+  assert.equal(p.f.views.messages.get('q891').withdrawal, null);
+});
+
+test('891 direct message link opens exact hidden question in Reader without putting it back in feed', async () => {
+  const p = await questionPage891([ask891(), reply891()], { href: 'https://fixture/?topic=t1&message=q891' });
+  assert.equal(p.opens.length, 1); assert.equal(p.f.reader.dialog.open, true);
+  assert.equal(p.f.reader.source.source_ref.id, 'q891'); assert.equal(p.f.reader.source.body, 'WITHDRAWN QUESTION WORDS');
+  assert.deepEqual(p.f.reader.source.withdrawal, withdrawn891);
+  assert.deepEqual(p.ids(), [['r891']]); assert.equal(p.visible('q891'), false);
+});
+
+test('891 other viewers and unknown parents keep generated context, independent of author bodies', async () => {
+  const p = await questionPage891([ask891(), reply891()], { viewer: 'dan' });
+  assert.equal(content891(entryIn(p.f, 'r891').querySelector(':scope > .message-reply-to')), 'Replying to fixture-person: WITHDRAWN QUESTION WORDS');
+  const unknown = await questionPage891([reply891()]);
+  assert.equal(content891(entryIn(unknown.f, 'r891').querySelector(':scope > .message-reply-to')), 'Replying to fixture-person: WITHDRAWN QUESTION WORDS');
+});
+
+test('891 late loaded parent and actual edit repaint keep only the reply author cue', async () => {
+  const p = await questionPage891([reply891()]);
+  assert.match(content891(entryIn(p.f, 'r891').querySelector(':scope > .message-reply-to')), /WITHDRAWN QUESTION WORDS/);
+  p.f.views.messages.set('q891', { topic_id: 't1', ...ask891() });
+  p.f.paintViews('messages');
+  assert.equal(content891(entryIn(p.f, 'r891').querySelector(':scope > .message-reply-to')), 'Replying to fixture-person');
+  const reply = p.f.views.messages.get('r891'); reply.body = 'Revised authored words'; reply.revision = 2;
+  p.f.runObservation("repaintEdited(['r891'], [])");
+  assert.equal(content891(entryIn(p.f, 'r891').querySelector(':scope > .message-reply-to')), 'Replying to fixture-person');
+  assert.equal(content891(entryIn(p.f, 'r891').querySelector(':scope > .message-preview')), 'Revised authored words');
+  assert.deepEqual(p.ids(), [['r891']]);
+});
+
+test('891 joined descendants keep canonical grouping and original explicit position with hidden root', async () => {
+  const position = { ...sourcePosition891, order_key: 40, order_tie: 1, name: { text: 'Position name' }, cover: { stands: 'Position cover', waiting: [], payload: null } };
+  const p = await questionPage891([
+    ask891({ stack_position: position, acts: { name: position.name, cover: position.cover } }), reply891('r891', 2, { stack_position: position }),
+    { id: 'joined891', seq: 3, author_id: 'dan', body: 'Joined content', acts: { joined: { into: 'q891', by: 'dan', at_ms: TODAY } }, stack_position: position },
+    { id: 'joined-reply891', seq: 4, author_id: 'dan', body: 'Joined descendant', reply_to: 'joined891', stack_position: position },
+    { id: 'above891', seq: 5, author_id: 'dan', body: 'Above by position', stack_position: { ...position, root_id: 'above891', order_key: 90 } },
+  ]);
+  assert.deepEqual(p.ids(), [['above891'], ['r891', 'joined891', 'joined-reply891']]);
+  assert.equal(p.state().stacks[1].orderKey, 40); assert.equal(p.state().stacks[1].dossier, 'q891');
+  assert.match(p.words(), /Position name/); assert.match(p.words(), /Position cover/);
+  p.arrange(); assert.deepEqual(p.ids(), [['above891'], ['r891', 'joined891', 'joined-reply891']]);
+});
+
+test('891 stale withdrawal answer cannot hide or mutate cached source', async () => {
+  const p = await questionPage891([reply891('r891', 8, { stack_position: sourcePosition891 })], { heads: [ask891({ withdrawal: null, stack_position: sourcePosition891 })] });
+  let current = true; const gate = defer(), read = [];
+  const pending = p.f.fresh.options.refresh('withdrawal:q891', 1, async (name, args) => { read.push([name, args.id]); return gate.promise; }, () => current);
+  current = false; gate.resolve({ instance_id: 'fixture', withdrawal: withdrawn891 });
+  assert.equal(await pending, false); assert.deepEqual(read, [['source', 'q891']]);
+  assert.deepEqual(p.ids(), [['q891', 'r891']]); assert.equal(p.f.runObservation("dossierHeads.records.get('q891').item.withdrawal"), null);
+});
+
+test('891 withdrawal refresh refusal leaves visible question and reply context intact', async () => {
+  const p = await questionPage891([ask891({ withdrawal: null }), reply891()]);
+  await assert.rejects(p.f.fresh.options.refresh('withdrawal:q891', 1, async () => { throw Error('Fixture source refused'); }, () => true), /Fixture source refused/);
+  assert.deepEqual(p.ids(), [['q891', 'r891']]); assert.match(p.words(), /WITHDRAWN QUESTION WORDS/);
+});
+
+test('891 withdrawn ask adds no answer or waiting cue while another active question still asks', async () => {
+  const p = await questionPage891([ask891(), ask891({ id: 'active891', seq: 2, author_id: 'dan', addressees: ['fixture-person'], withdrawal: null, body: 'Still waiting on you' })]);
+  assert.deepEqual(p.ids(), [['active891']]);
+  assert.equal(p.f.runObservation("mayAnswer(views.messages.get('q891'), 'dan', 'human')"), false);
+  assert.equal(p.f.runObservation("mayAnswer(views.messages.get('active891'), bootstrap.actor, 'human')"), true);
+  assert.equal(walk(entryIn(p.f, 'q891')).some(node => node.classList?.contains('reaction-choice')), false);
+  assert.equal(walk(entryIn(p.f, 'active891')).some(node => node.classList?.contains('reaction-choice')), true);
+});
+
+test('891 newer position held by hidden root still places surviving replies below More', async () => {
+  const old = { ...sourcePosition891, below: false, at: { acts: 1, messages: 8 }, aside_revision: 0 };
+  const latest = { ...old, below: true, at: { acts: 2, messages: 8 }, aside_revision: 1 };
+  const p = await questionPage891([ask891({ stack_position: latest }), reply891('r891', 8, { stack_position: old })]);
+  assert.deepEqual(p.ids(), [['r891']]);
+  assert.equal(p.state().below.has('r891'), true); assert.equal(p.visible('r891'), false);
+  assert.equal(p.f.runObservation("positionOf(stackState($('messages')).stacks[0]).aside_revision"), 1);
+  p.state().moreOpen = true; p.arrange(); assert.equal(p.visible('r891'), true); assert.equal(p.visible('q891'), false);
+});
+
+// 891 Build2: preserve questionPage891 and its source reads. This wrapper
+// supplies in-memory response/lifecycle ports, and invokes the imported real
+// Reader title, close and step methods with the actual app callbacks.
+async function questionPage891B2(items, options = {}) {
+  const p = await questionPage891(items, options), { f } = p, r = f.reader;
+  const create = f.document.createElement.bind(f.document);
+  f.document.createElement = tag => {
+    const element = create(tag);
+    element.matches = selector => /^\.[\w-]+$/.test(selector) && element.classList.contains(selector.slice(1));
+    return element;
+  };
+  f.get('reader').close = function () { this.open = false; };
+  const withDocument = action => {
+    const previous = globalThis.document; globalThis.document = f.document;
+    try { return action(); } finally { if (previous === undefined) delete globalThis.document; else globalThis.document = previous; }
+  };
+  Object.assign(r, { $: f.get, dialog: f.get('reader'), sourceBody: f.get('source-body'), positions: new Map(),
+    viewToken: 0, card: null, editor: null, paintPending() {}, paintRecipients() {}, paintQuote() {} });
+  for (const name of ['paintTitle', 'paintCover', 'finishClose', 'disarm']) r[name] = (...args) => withDocument(() => RealReader.prototype[name].apply(r, args));
+  for (const name of ['close', 'step', 'stepTo', 'rememberPlace', 'placeKey', 'placeReply']) r[name] = (...args) => RealReader.prototype[name].apply(r, args);
+  r.show = (source, sessions, { topics, presentation, opener, mode }) => {
+    Object.assign(r, { source, sessions, topics, presentation, opener, mode }); ++r.viewToken;
+    r.dialog.open = true; r.paintTitle(source);
+  };
+  f.registry.close = async presentation => {
+    if (!f.registry.isCurrent(presentation)) return false;
+    f.registry.current = null; f.registry.options.closed(presentation); return true;
+  };
+  const view = f.api.view;
+  f.api.view = async (name, args, options) => {
+    if (name === 'stack_positions') {
+      p.reads.push([name, structuredClone(args)]);
+      return { instance_id: 'fixture', topic_id: 't1', items: args.message_ids.map(id => ({ message_id: id,
+        stack_position: structuredClone(p.sources.get(id)?.stack_position ?? sourcePosition891) })) };
+    }
+    return view(name, args, options);
+  };
+  const open = f.registry.open;
+  f.registry.open = async (...args) => { const presentation = await open(...args); await f.present(presentation); return presentation; };
+  return { ...p, title: () => content891(f.get('reader-title')), open: async id => {
+    await f.openSource({ kind: 'message', id }, entryIn(f, id) ?? f.get('main')); await drain(); return f.registry.current;
+  }, land: id => f.runObservation(`landOnMessage(${JSON.stringify(id)})`) };
+}
+function dossier891B2(name = null) {
+  const position = { ...sourcePosition891, can_move: true, move_revision: 0, aside_revision: 0, through: null,
+    has_other_messages: true, below: false, name, name_revision: name ? 1 : 0 };
+  return [ask891({ stack_position: position, acts: { name } }), reply891('r891', 2, { stack_position: position }), reply891('r891b', 3, { stack_position: position })];
+}
+
+for (const [kind, name, expected] of [
+  ['neutral', null, 'Dossier'],
+  ['explicit', { text: 'Independent title', by: 'fixture-person', at_ms: TODAY }, 'Independent title'],
+  ['minted', { text: 'Minted title', by: 'agent-a', at_ms: TODAY, minted: true }, 'Minted title'],
+]) test(`891 B2 Reader uses the shown ${kind} dossier name without extra metadata reads`, async () => {
+  const p = await questionPage891B2(dossier891B2(name));
+  const section = p.state().sections.get('r891'), tab = section.querySelector('.stack-head');
+  assert.ok(content891(tab).includes(expected), 'the real feed painter shows the expected name');
+  const before = p.reads.length; await p.open('r891');
+  assert.equal(p.title(), expected);
+  assert.deepEqual(p.reads.slice(before).filter(([read]) => ['stack_positions', 'topic_messages'].includes(read)), [], 'a loaded shown name needs no metadata fallback');
+  assert.deepEqual(p.ids(), [['r891', 'r891b']]);
+});
+
+test('891 B2 other reader keeps the question-derived dossier title and visible question', async () => {
+  const p = await questionPage891B2(dossier891B2(), { viewer: 'dan' });
+  await p.open('r891'); assert.equal(p.title(), 'WITHDRAWN QUESTION WORDS');
+  assert.equal(p.visible('q891'), true); assert.deepEqual(p.ids(), [['q891', 'r891', 'r891b']]);
+});
+
+for (const [kind, name, expected] of [['neutral', null, 'Dossier'], ['named', { text: 'Independent title', by: 'fixture-person', at_ms: TODAY }, 'Independent title']])
+  test(`891 B2 refused archive notice uses the shown ${kind} dossier name`, async () => {
+    const p = await questionPage891B2(dossier891B2(name));
+    const sent = []; p.f.api.command = async request => { sent.push(request); return { recorded: true, status: 'rejected', error: { code: 'REVISION_CONFLICT', message: 'The dossier changed elsewhere.' } }; };
+    const feed = p.f.runObservation('stackFeed');
+    assert.equal(feed.setAside(p.state().stacks[0], true, { focus: false }), true);
+    await feed.chain; await drain();
+    assert.equal(sent.length, 1); assert.equal(sent[0].kind, 'stack.aside');
+    assert.equal(sent[0].target.message_id, 'q891', 'the canonical command target stays the root');
+    const words = p.f.get('app-status').textContent;
+    assert.match(words, new RegExp(`Archiving “${expected}” was not saved`));
+    assert.doesNotMatch(words, /WITHDRAWN QUESTION WORDS/);
+    assert.deepEqual(p.ids(), [['r891', 'r891b']]);
+  });
+
+test('891 B2 land-only hidden root focuses the first visible dossier card without opening Reader', async () => {
+  const p = await questionPage891B2(dossier891B2()); const kept = p.f.editor.draft.body;
+  assert.equal(await p.land('q891'), true);
+  assert.equal(p.f.document.activeElement?.dataset.id, 'r891'); assert.equal(p.visible('r891'), true);
+  assert.equal(p.visible('q891'), false); assert.equal(p.opens.length, 0);
+  assert.equal(p.f.editor.draft.body, kept); assert.deepEqual(p.ids(), [['r891', 'r891b']]);
+});
+
+test('891 B2 land-only nested hidden question selects the same dossier first visible card', async () => {
+  const root = { id: 'root891b2', seq: 1, author_id: 'dan', body: 'Visible first message' };
+  const q = ask891({ seq: 2, reply_to: root.id }), reply = reply891('r891', 3);
+  const p = await questionPage891B2([root, q, reply]);
+  assert.equal(await p.land('q891'), true); assert.equal(p.f.document.activeElement?.dataset.id, root.id);
+  assert.equal(p.visible(root.id), true); assert.deepEqual(p.ids(), [[root.id, 'r891']]);
+});
+
+test('891 B2 land-only dossier with no visible card opens its exact question in Reader', async () => {
+  const p = await questionPage891B2([ask891()]);
+  assert.equal(await p.land('q891'), true);
+  assert.equal(p.opens.length, 1); assert.equal(p.f.reader.dialog.open, true);
+  assert.equal(p.f.reader.source.source_ref.id, 'q891'); assert.equal(p.f.reader.source.body, 'WITHDRAWN QUESTION WORDS');
+  assert.equal(p.visible('q891'), false); assert.deepEqual(p.ids(), []);
+});
+
+test('891 B2 Reader title return from the direct hidden question lands on a visible reply', async () => {
+  const p = await questionPage891B2(dossier891B2()); await p.open('q891');
+  assert.equal(p.f.reader.source.source_ref.id, 'q891', 'ordinary direct opening still selects its exact source');
+  const kept = p.f.editor.draft.body, button = p.f.get('reader-title').firstElementChild;
+  assert.ok(button, 'real Reader paintTitle creates its destination button');
+  await button.onclick(); await drain();
+  assert.equal(p.f.reader.dialog.open, false); assert.equal(p.f.document.activeElement?.dataset.id, 'r891');
+  assert.equal(p.f.editor.draft.body, kept); assert.deepEqual(p.ids(), [['r891', 'r891b']]);
+});
+
+test('891 B2 New line stays below its visible dossier when the hidden ask is newest', async () => {
+  const root = { id: 'root891b2', seq: 1, author_id: 'dan', body: 'Visible first message' };
+  const reply = reply891('r891', 2, { reply_to: root.id });
+  const q = ask891({ seq: 9, reply_to: root.id });
+  const other = { id: 'other891b2', seq: 6, author_id: 'dan', body: 'Other dossier' };
+  const p = await questionPage891B2([root, reply, q, other]);
+  p.f.views.line = { seq: 1, id: root.id, sent_ms: null }; p.f.views.held = true; p.arrange();
+  const children = p.f.get('messages').children, section = p.state().sections.get(root.id), line = children.find(node => node.dataset.line === 'new');
+  assert.ok(line, 'actual placeLine paints a New line');
+  assert.equal(section.dataset.seq, '2', 'folder sequence comes from visible messages');
+  assert.equal(children[children.indexOf(section) + 1] === line, true, 'the actual New line follows its folder, not the hidden top entry');
+  assert.equal(p.visible('q891'), false); assert.deepEqual(p.ids(), [[other.id], [root.id, 'r891']]);
+});
+
+for (const [direction, key] of [[1, 'next'], [-1, 'previous']]) test(`891 B2 Reader ${key} at the page edge refuses the loaded hidden question`, async () => {
+  const p = await questionPage891B2(dossier891B2());
+  const id = direction > 0 ? 'r891' : 'r891b'; await p.open(id);
+  p.f.registry.current.core = { next: null, previous: null, [key]: { id: 'q891', position: sourcePosition891 } };
+  const opened = p.opens.length; await p.f.reader.step(direction); await drain();
+  assert.equal(p.opens.length, opened, 'actual Reader step and app onPage do not reopen the hidden loaded question');
+  assert.equal(p.f.registry.current.source.source_ref.id, id); assert.equal(p.visible('q891'), false);
+});
+
+test('891 B2 Reader page edge still opens a genuinely unloaded readable neighbor', async () => {
+  const p = await questionPage891B2(dossier891B2());
+  p.sources.set('outside891b2', { id: 'outside891b2', seq: 20, topic_id: 't1', author_id: 'dan', body: 'Unread outside loaded page', attachments: [], intent: 'tell', stack_position: { ...sourcePosition891, root_id: 'outside891b2', has_other_messages: false } });
+  await p.open('r891');
+  p.f.registry.current.core = { next: { id: 'outside891b2', position: { root_id: 'outside891b2' } }, previous: null };
+  await p.f.reader.step(1); await drain();
+  assert.equal(p.f.registry.current.source.source_ref.id, 'outside891b2'); assert.equal(p.f.reader.dialog.open, true);
+  assert.deepEqual(p.ids(), [['r891', 'r891b']]);
+});
+
+test('891 B2 initial land-only URL lands visibly without opening the hidden source', async () => {
+  const p = await questionPage891(dossier891B2(), { href: 'https://fixture/?topic=t1&message=q891&land=only' });
+  assert.equal(p.f.document.activeElement?.dataset.id, 'r891'); assert.equal(p.visible('r891'), true);
+  assert.equal(p.opens.length, 0); assert.deepEqual(p.ids(), [['r891', 'r891b']]);
+});
+
+test('891 B2 same-topic dossier rail destination uses the visible landing owner', async () => {
+  const p = await questionPage891B2(dossier891B2());
+  await p.f.runObservation("openDestination({kind:'topic',id:'t1',message:'q891',land:true}, 'Fixture dossier')"); await drain();
+  assert.equal(p.f.document.activeElement?.dataset.id, 'r891'); assert.equal(p.visible('r891'), true);
+  assert.equal(p.opens.length, 0); assert.deepEqual(p.ids(), [['r891', 'r891b']]);
+});
+
+test('891 B2 Reader title return with no visible member reopens the exact source', async () => {
+  const p = await questionPage891B2([ask891()]); await p.open('q891');
+  const first = p.f.registry.current, opened = p.opens.length, kept = p.f.editor.draft.body;
+  const button = p.f.get('reader-title').firstElementChild;
+  assert.ok(button, 'real Reader title supplies the parent destination');
+  await button.onclick(); await drain();
+  assert.equal(p.opens.length, opened + 1);
+  assert.equal(p.f.registry.current !== first, true, 'the existing close owner completes before the exact source reopens');
+  assert.equal(p.f.reader.dialog.open, true);
+  assert.equal(p.f.reader.source.source_ref.id, 'q891');
+  assert.equal(p.f.reader.source.body, 'WITHDRAWN QUESTION WORDS');
+  assert.equal(p.f.editor.draft.body, kept); assert.deepEqual(p.ids(), []);
+  assert.equal(p.visible('q891'), false);
+});
+
+test('891 B2 Reader edge refuses a known question in an entirely omitted dossier', async () => {
+  const other = { id: 'visible891b2', seq: 2, author_id: 'dan', body: 'Visible dossier',
+    stack_position: { ...sourcePosition891, root_id: 'visible891b2', has_other_messages: false } };
+  const p = await questionPage891B2([ask891(), other]); await p.open(other.id);
+  p.f.registry.current.core = { next: { id: 'q891', position: sourcePosition891 }, previous: null };
+  const opened = p.opens.length; await p.f.reader.step(1); await drain();
+  assert.equal(p.opens.length, opened);
+  assert.equal(p.f.registry.current.source.source_ref.id, other.id);
+  assert.deepEqual(p.ids(), [[other.id]]); assert.equal(p.visible('q891'), false);
+});
+
+for (const answer of ['refused', 'unreached']) test(`891 B3 ${answer} split-out names the split message, not its containing dossier`, async () => {
+  const p = await questionPage891([
+    { id: 'rootB3', seq: 1, author_id: 'dan', body: 'Root words', acts: { name: { text: 'Bravo dossier', by: 'dan', at_ms: TODAY } } },
+    { id: 'joinedB3', seq: 2, author_id: 'dan', body: 'Message to split', acts: { joined: { into: 'rootB3', by: 'dan', at_ms: TODAY }, join_revision: 7 } },
+  ]);
+  const feed = p.f.runObservation('stackFeed'), item = p.f.views.messages.get('joinedB3'), sent = [];
+  assert.equal(feed.dossierName(item.id), 'Bravo dossier');
+  p.f.api.command = async request => {
+    sent.push(structuredClone(request));
+    if (answer === 'unreached') throw new AttemptError('Connection interrupted');
+    return { recorded: true, status: 'rejected', error: { code: 'REVISION_CONFLICT', message: 'The dossier changed elsewhere.' } };
+  };
+  feed.split(item); await feed.chain; await drain();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].kind, 'stack.join'); assert.equal(sent[0].target.message_id, 'joinedB3');
+  assert.equal(sent[0].args.into, null); assert.equal(sent[0].expected.join_revision, 7);
+  const words = p.f.get('app-status').textContent;
+  assert.match(words, answer === 'refused' ? /^Splitting out “Message to split” was not saved:/ : /^Not known yet whether splitting out “Message to split” was saved:/);
+  assert.doesNotMatch(words, /Bravo dossier/);
+  assert.equal(item.acts.joined.into, 'rootB3', 'a failed split leaves the recorded join intact');
+  assert.equal(feed.doubts.size, answer === 'unreached' ? 1 : 0);
+  if (answer === 'unreached') {
+    const kept = [...feed.doubts.values()][0].envelope;
+    assert.equal(kept.operation_id, sent[0].operation_id, 'recovery retains this exact operation');
+    feed.deafen();
+  }
+});
+
+function outcomeReads923({ conversation = false } = {}) {
+  const f = fixture('https://fixture/?workspace=w1');
+  const outline = mountOutcomeOutline(f), calls = [], original = f.api.view;
+  const conversationTopic = { ...f.topic, id: 'conversation-923', kind: 'conversation', version: 1, activity_ms: 1, list_position: 1 };
+  f.api.view = async (name, args) => {
+    calls.push({ name, args });
+    if (name === 'workspace') return { instance_id: 'fixture', workspace: { id: 'w1', title: 'Outcome 923', owner_id: 'fixture-person', version: 1 } };
+    if (name === 'workspace_topics') return { instance_id: 'fixture', items: [{ ...f.topic, activity_ms: 2, list_position: 2 }], next_cursor: null };
+    if (name === 'conversation') return { instance_id: 'fixture', conversation: conversation ? { topic_id: conversationTopic.id } : null };
+    if (name === 'topic' && args.topic_id === conversationTopic.id) return { instance_id: 'fixture', topic: conversationTopic, participants: [] };
+    return original(name, args);
+  };
+  return { f, outline, calls };
+}
+
+test('923 actual outcome topics are asked before outcomes and paint while team and panels are held', async () => {
+  const { f, calls } = outcomeReads923(), gate = defer(), view = f.api.view;
+  const withheld = new Set(['wakes', 'workspace_members', 'outcome_checks', 'outcome_light', 'tools', 'memory_items', 'pipeline']);
+  f.api.view = async (name, args) => { if (withheld.has(name)) await gate.promise; return view(name, args); };
+  const opening = f.initialize(); await drain();
+  const early = { cards: outcomeCardTitles(f), names: calls.map(call => call.name) };
+  gate.resolve(); await opening; await drain();
+  assert.deepEqual(early.cards, ['Fixture'], 'actual shared topic rows paint without waiting for the team or panels');
+  assert.ok(early.names.indexOf('workspace_topics') >= 0);
+  assert.ok(early.names.indexOf('workspaces') < 0 || early.names.indexOf('workspace_topics') < early.names.indexOf('workspaces'), 'current topics enter the lane first: ' + early.names.join(', '));
+});
+
+for (const conversation of [false, true]) test(`923 actual outline shares its one Conversation answer (${conversation ? 'present' : 'absent'})`, async () => {
+  const { f, outline, calls } = outcomeReads923({ conversation });
+  await f.initialize(); await drain();
+  assert.equal(calls.filter(call => call.name === 'conversation').length, 1);
+  assert.deepEqual(outcomeCardTitles(f), conversation ? ['Fixture', 'Fixture'] : ['Fixture']);
+  assert.equal(outline.outcomes.get('w1').conversationRead, true);
+  assert.equal(outline.outcomes.get('w1').conversation?.topic_id ?? null, conversation ? 'conversation-923' : null);
+});
+
+test('923 reopening an outcome shares its list Conversation answer too', async () => {
+  const { f, outline, calls } = outcomeReads923({ conversation: true });
+  await f.initialize(); await drain();
+  const outcome = outline.outcomes.get('w1');
+  outline.setOpen(outcome, false); calls.length = 0;
+  outline.setOpen(outcome, true); await drain();
+  assert.equal(calls.filter(call => call.name === 'conversation').length, 1);
+  assert.equal(outcome.conversation.topic_id, 'conversation-923');
+});
+
+function scopedOutcome923(options = {}) {
+  const setup = outcomeReads923(options), { f } = setup, history = { workspace: [], actor: [] };
+  let seq = 0, denied = false;
+  Object.assign(f.bootstrap, { authority: { authority_id: 'a', authority_epoch: 'e' }, transport: { read_admission: {
+    version: 1, header: 'X-AIM-Read-Class', foreground: { slots: 1, max_waiters: 8, queue_timeout_ms: 5000 },
+    background: { slots: 1, max_waiters: 2, queue_timeout_ms: 500 } } } });
+  const view = f.api.view, changes = [];
+  f.api.view = async (name, args) => {
+    if (denied && (name === 'workspace' || name === 'changes' && args.scope.kind === 'workspace')) throw Object.assign(Error('No permission for this workspace'), { code: 'FORBIDDEN' });
+    if (name !== 'changes') return view(name, args);
+    changes.push(args);
+    const { scope, cursor } = args, versions = scope.kind === 'actor' ? {} : { workspace: 1, notebook: 0 };
+    return { instance_id: 'fixture', scope, baseline: !cursor, items: cursor ? history[scope.kind].filter(item => item.seq > cursor.after_seq) : [],
+      has_more: false, continuation: null, covered_versions: versions,
+      checkpoint: { v: 1, kind: 'checkpoint', instance_id: 'fixture', authority_id: 'a', authority_epoch: 'e', actor_id: f.bootstrap.actor, scope, after_seq: seq } };
+  };
+  return { ...setup, changes, deny: value => { denied = value; }, add: (scope, kind, id = 'w1') => {
+    history[scope].push({ seq: ++seq, resource_kind: kind, resource_id: id, version: 1 }); return seq;
+  } };
+}
+
+for (const route of ['workspace', 'topic']) test(`904 actual ${route} outline refreshes a remote rename on its key, not an ordinary message`, async () => {
+  const setup = route === 'workspace' ? scopedOutcome923() : (() => {
+    const f = fixture('https://fixture/?topic=t1');
+    return { f, outline: mountOutcomeOutline(f) };
+  })();
+  const { f, outline } = setup, live = stream(); live.outcomes = 'first'; f.useLive(live);
+  const view = f.api.view; let title = 'First title', reads = 0, fail = false;
+  f.api.view = async (name, args) => {
+    if (name === 'workspaces') {
+      reads++; if (fail) throw Error('List interrupted');
+      return { instance_id: 'fixture', items: [{ id: 'w1', title, title_truncated: false, owner_id: 'fixture-person', version: 1 }], next_cursor: null };
+    }
+    return view(name, args);
+  };
+  await f.initialize(); await drain();
+  assert.equal(outline.pages.items[0].title, title);
+  reads = 0; setup.add?.('workspace', 'topic', 't1');
+  live.emit({ kind: 'commit', seq: 1, outcomes: 'first' }); await drain();
+  assert.equal(reads, 0, 'ordinary message keeps the global list cached');
+  title = 'Renamed elsewhere';
+  live.emit({ kind: 'commit', seq: 2, outcomes: 'second' }); await drain();
+  assert.equal(reads, 1, 'one remote rename commit refreshes the actual list');
+  assert.equal(outline.pages.items[0].title, title);
+  fail = true; title = 'Retried title';
+  live.emit({ kind: 'commit', seq: 3, outcomes: 'third' }); await drain();
+  assert.equal(outline.pages.items[0].title, 'Renamed elsewhere');
+  fail = false;
+  live.emit({ kind: 'commit', seq: 4, outcomes: 'third' }); await drain();
+  assert.equal(outline.pages.items[0].title, title, 'failed key remains owed');
+});
+
+test('923 actual commit refresh leaves unrelated private work alone and refreshes only the changed panels or stars', async () => {
+  const { f, calls, changes, add } = scopedOutcome923(), live = stream(); f.useLive(live);
+  await f.initialize(); await drain(); calls.length = changes.length = 0;
+  add('actor', 'draft', 'private-draft'); await commit(live, 10);
+  const lists = new Set(['workspaces', 'workspace', 'workspace_topics', 'conversation', 'workspace_members', 'outcome_checks', 'outcome_light', 'tools', 'memory_items', 'pipeline_row', 'stars', 'memory_stars']);
+  assert.deepEqual(calls.filter(call => lists.has(call.name)), [], 'a private writing key changes none of these lists');
+  assert.equal(changes.length, 2, 'both exact scopes are checked');
+  calls.length = 0;
+  add('workspace', 'checks', 'check-1'); await commit(live, 11);
+  assert.deepEqual(calls.filter(call => lists.has(call.name)).map(call => call.name).sort(), ['outcome_checks', 'outcome_light']);
+  calls.length = 0;
+  add('actor', 'acts', 't1'); await commit(live, 12);
+  assert.deepEqual(calls.filter(call => lists.has(call.name)).map(call => call.name), ['stars'], 'personal dossier changes refresh their actual star owner, once');
+});
+
+test('923 scoped access refusal hides the outcome and its cards, and a later permitted change recovers', async () => {
+  const { f, deny, add } = scopedOutcome923(), live = stream(); f.useLive(live);
+  await f.initialize(); await drain();
+  assert.deepEqual(outcomeCardTitles(f), ['Fixture']);
+  deny(true); await commit(live, 20);
+  assert.equal(f.get('topic-title').textContent, 'Outcome unavailable');
+  assert.equal(f.get('topic-navigation').hidden, true);
+  assert.deepEqual(outcomeCardTitles(f), []);
+  deny(false); add('workspace', 'workspace'); await commit(live, 21);
+  assert.equal(f.get('topic-title').textContent, 'Outcome 923');
+  assert.equal(f.get('topic-navigation').hidden, false);
+  assert.deepEqual(outcomeCardTitles(f), ['Fixture']);
+});
+
+test('923 a failed full refresh remains owed even when the next change window is empty', async () => {
+  const { f } = scopedOutcome923(), live = stream(); f.useLive(live);
+  await f.initialize(); await drain();
+  const view = f.api.view; let tools = 0;
+  f.api.view = async (name, args) => {
+    if (name === 'tools' && ++tools === 1) throw Error('The tools read was interrupted');
+    return view(name, args);
+  };
+  for (const event of f.events.filter(event => event[0] === 'document-handler' && event[1] === 'visibilitychange')) event[2]({});
+  await drain(); assert.equal(tools, 1);
+  live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.equal(tools, 2, 'the failed full read is retried without needing a new resource key');
+});
+
+test('923 B2 ordinary commit refreshes do not read the global list, but explicit workspace and visibility changes do', async () => {
+  const { f, calls, add } = scopedOutcome923(), live = stream(); f.useLive(live);
+  await f.initialize(); await drain();
+  for (const [scope, kind] of [['workspace', 'topic'], ['workspace', 'pipeline'], ['actor', 'mark'], ['actor', 'delivery'], ['actor', 'waiting']]) {
+    calls.length = 0; await commit(live, add(scope, kind));
+    assert.equal(calls.filter(call => call.name === 'workspaces').length, 0, scope + ':' + kind);
+    assert.ok(calls.some(call => call.name === 'workspace_topics'), 'local topic owner still refreshes');
+  }
+  calls.length = 0; await commit(live, add('workspace', 'workspace'));
+  assert.equal(calls.filter(call => call.name === 'workspaces').length, 1);
+  calls.length = 0;
+  for (const event of f.events.filter(event => event[0] === 'document-handler' && event[1] === 'visibilitychange')) event[2]({});
+  await drain(); assert.equal(calls.filter(call => call.name === 'workspaces').length, 1);
+});
+
+test('923 B2 failed changes read falls back to full lists and retries the same checkpoint', async () => {
+  const { f, calls, changes, add } = scopedOutcome923(), live = stream(); f.useLive(live);
+  await f.initialize(); await drain(); const view = f.api.view; let fail = true, refusedCursor;
+  f.api.view = async (name, args) => {
+    if (name === 'changes' && args.cursor && fail) { refusedCursor = args.cursor.after_seq; throw Error('Changes interrupted'); }
+    return view(name, args);
+  };
+  calls.length = 0; await commit(live, add('workspace', 'checks'));
+  assert.ok(calls.some(call => call.name === 'workspace'), 'failed scoped changes must not silently suppress the refresh');
+  assert.ok(calls.some(call => call.name === 'outcome_checks'));
+  fail = false; changes.length = 0; calls.length = 0; await commit(live, 50);
+  assert.equal(changes[0].cursor.after_seq, refusedCursor, 'failed changes were never accepted');
+  assert.ok(calls.some(call => call.name === 'outcome_checks'));
+});
+
+test('923 B2 a star commit during More reads a fresh star page before settling', async () => {
+  const { f, outline, add } = scopedOutcome923(), live = stream(); f.useLive(live);
+  await f.initialize(); await drain();
+  // The outcome's center cards are not rail anchors. Model one visible topic
+  // row while retaining the actual outline refresh and star sync/read/paint.
+  const parent = f.document.createElement('a'); parent.dataset.topicId = 't1'; outline.list.append(parent);
+  outline.dossiers.parents = () => [parent]; outline.dossiers.sync();
+  await outline.dossiers.states.get('t1').busy;
+  const view = f.api.view, old = defer(), fresh = defer(), reads = [];
+  f.api.view = async (name, args) => {
+    if (name !== 'stars') return view(name, args);
+    reads.push(args); return reads.length === 1 ? old.promise : fresh.promise;
+  };
+  const state = outline.dossiers.states.get('t1'); state.next = 10;
+  let done = false; const more = outline.dossiers.load(state, true).then(() => { done = true; });
+  await drain(); await commit(live, add('actor', 'acts', 't1'));
+  old.resolve({ instance_id: 'fixture', items: [], next_cursor: null }); await drain();
+  assert.equal(reads.length, 2, 'the commit needs a newer page than the held More response');
+  assert.equal(reads[1].cursor, undefined); assert.equal(done, false);
+  fresh.resolve({ instance_id: 'fixture', items: [{ topic_id: 't1', star: 11, dossier: { id: 'star-923', name: 'New star' } }], next_cursor: null });
+  await more; await drain();
+  // 151 wraps original star words so a retracted name can be decorated.
+  const words = node => typeof node === 'string' ? node : (node.textContent ?? '') + (node.children ?? []).map(words).join('');
+  assert.equal(words(state.links.get('star-923')), '★ New star');
+});
+
+for (const conversation of [false, true]) test(`923 actual app read trace reaches topics in bounded rounds (${conversation ? 'Conversation' : 'no Conversation'})`, async t => {
+  const { f, calls } = scopedOutcome923({ conversation }), pending = [], trace = [];
+  let round = 0, active = 0, max = 0, complete = false, failed = null, painted = null;
+  const actual = new RealApi('fixture', (path, options) => {
+    const body = options.body ? JSON.parse(options.body) : null, foreground = options.headers['X-AIM-Read-Class'] !== 'background';
+    if (foreground) max = Math.max(max, ++active);
+    trace.push({ round, name: body?.name ?? 'bootstrap' });
+    return new Promise(resolve => pending.push(async () => {
+      const value = path === '/api/bootstrap' ? f.bootstrap : await f.api.view(body.name, body.args);
+      resolve({ ok: true, json: async () => { if (foreground) active--; return value; } });
+    }));
+  });
+  // The only substituted boundary is the network: app, Api, Shell and Outline
+  // retain their actual queues and call sites. No socket or store is opened.
+  f.runObservation('globalThis.makeApi923 = null');
+  f.runObservation('Api = class { constructor() { return globalThis.makeApi923(); } }');
+  // Pass this real API through the existing VM observation door, without a
+  // second app body or a different source loader.
+  f.runObservation('globalThis.apiDoor923 = value => { globalThis.makeApi923 = () => value; }')(actual);
+  const opening = f.initialize().then(() => { complete = true; }, error => { failed = error; complete = true; });
+  for (let step = 0; step < 35; step++) {
+    await drain();
+    if (outcomeCardTitles(f).length && painted === null) painted = round;
+    if (complete && !pending.length) break;
+    const batch = pending.splice(0); round++;
+    await Promise.all(batch.map(release => release()));
+  }
+  await opening; await drain();
+  if (failed) throw failed;
+  t.diagnostic(JSON.stringify({ conversation, roundsToTopics: painted, totalReads: trace.length, foregroundMaximum: max, trace }));
+  assert.ok(complete);
+  assert.equal(painted, conversation ? 6 : 5, 'actual dependent rounds to first topic cards, including bootstrap and scoped baselines');
+  assert.ok(max <= 4, `actual API foreground maximum ${max}`);
+  assert.equal(trace.filter(call => call.name === 'conversation').length, 1);
+});
+
+// Real app listeners on the Reader source body; the fixture only supplies DOM
+// propagation. Shared descriptors and (above) all four real Edit endings run.
+function readerText909(x) {
+  const body = x.f.get('source-body'); x.overlay.append(body);
+  const words = x.control('span', body); words.textContent = x.item.body;
+  return { body, words, emit(type, target = words, props = {}) {
+    const event = { target, button: 0, detail: 2, preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }, ...props };
+    body.handlers[type]?.(event); return event;
+  } };
+}
+test('909 Reader own-text double click uses More Edit and replaces word selection without reopening', async () => {
+  const x = await editClick890(); await openReader909(x); const r = readerText909(x);
+  assert.equal(r.emit('mousedown', r.words, { detail: 1 }).defaultPrevented, undefined);
+  assert.equal(r.emit('mousedown').defaultPrevented, true);
+  const event = r.emit('dblclick'); await settle();
+  assert.equal(event.defaultPrevented, true); assert.equal(event.stopped, true);
+  assert.equal(x.edits.length, 1); assert.equal(x.edits[0][0], x.item.id);
+  assert.equal(x.edits[0][1], x.f.get('reader-menu'));
+  assert.equal(x.opened(), 1); assert.equal(x.overlay.open, true);
+  assert.equal(x.f.runObservation('selectionClears890'), 1);
+});
+test('909 Reader Edit eligibility is rechecked for each gesture', async () => {
+  for (const mode of ['other author', 'agent', 'reached', 'unavailable', 'source unavailable', 'memory', 'closed', 'already editing']) {
+    const x = await editClick890(mode === 'other author' ? { author: 'someone-else' } : {});
+    await openReader909(x); const r = readerText909(x);
+    if (mode === 'agent') x.f.bootstrap.actor_kind = 'agent';
+    if (mode === 'reached') x.f.runObservation('outcomeReached = true');
+    if (mode === 'unavailable') x.f.runObservation('topicUnavailable = true');
+    if (mode === 'source unavailable') x.f.registry.current.sourceUnavailable = true;
+    if (mode === 'memory') x.f.registry.current.source.source_ref.kind = 'memory';
+    if (mode === 'closed') x.overlay.open = false;
+    if (mode === 'already editing') x.f.runObservation('messageEdit = {}');
+    const down = r.emit('mousedown'), event = r.emit('dblclick'); await settle();
+    assert.equal(down.defaultPrevented, undefined, mode); assert.equal(event.defaultPrevented, undefined, mode);
+    assert.equal(x.edits.length, 0, mode); assert.equal(x.f.runObservation('selectionClears890'), 0, mode);
+  }
+});
+test('909 controls, Reader whitespace, outside text and modified clicks keep their actions', async () => {
+  const x = await editClick890(); await openReader909(x); const r = readerText909(x);
+  for (const tag of ['a', 'button', 'input', 'textarea', 'select', 'img', 'svg']) {
+    const control = x.control(tag, r.words), nested = x.control('span', control);
+    for (const target of [control, nested]) {
+      assert.equal(r.emit('mousedown', target).defaultPrevented, undefined, tag);
+      assert.equal(r.emit('dblclick', target).defaultPrevented, undefined, tag);
+    }
+  }
+  for (const [attr, value] of [['contenteditable', 'true'], ['role', 'button']]) {
+    const control = x.control('span', r.words); control.setAttribute(attr, value);
+    assert.equal(r.emit('dblclick', control).defaultPrevented, undefined, attr);
+  }
+  for (const target of [r.body, x.words, x.f.get('reader-menu')]) assert.equal(r.emit('dblclick', target).defaultPrevented, undefined);
+  for (const props of [{ button: 1 }, { ctrlKey: true }, { altKey: true }, { metaKey: true }, { shiftKey: true }])
+    assert.equal(r.emit('dblclick', r.words, props).defaultPrevented, undefined);
+  await settle(); assert.equal(x.edits.length, 0);
+});
+
+async function openReader909(x) {
+  await x.f.owners().marks.open(x.f.registry, { kind: 'message', id: x.item.id }, { opener: x.card });
+  await settle();
+}
+for (const ending of ['Save', 'Cancel', 'Use saved', 'Escape']) test('909 ' + ending + ' after Reader text double-click keeps the Reader and More focus', async () => {
+  {
+    const entry = 'Reader double click', x = await editFinish890(), { f } = x;
+    try {
+      await openReader909(x); readerText909(x).emit('dblclick');
+      await settle();
+      const session = f.runObservation('messageEdit'); assert.ok(session, entry + ' starts a real edit');
+      const host = f.get('message-edit'), field = host.children[0];
+      assert.equal(f.document.activeElement === field, true); assert.equal(f.reader.dialog.dataset.editing, 'true');
+      field.value = 'Exact revised words'; field.handlers.input();
+      if (ending === 'Use saved') {
+        x.conflict(); await host.querySelector('[data-act="save"]').onclick(); await settle();
+        assert.equal(session.writing.state, 'conflict'); assert.equal(host.children[1].hidden, false);
+        await host.querySelector('[data-act="saved"]').onclick();
+      } else if (ending === 'Save') await host.querySelector('[data-act="save"]').onclick();
+      else if (ending === 'Cancel') await host.querySelector('[data-act="cancel"]').onclick();
+      else f.reader.escape();
+      await settle();
+      assert.equal(f.runObservation('messageEdit'), null, entry + ': the actual finish/leave owner ended Edit');
+      assert.equal(f.reader.dialog.open, true); assert.equal(f.reader.editing, null); assert.equal(f.reader.sourceBody.hidden, false);
+      assert.equal(f.document.activeElement === f.get('reader-menu'), true, entry + ': focus returns to the Reader More control, not its inert feed card');
+      assert.equal(session.writing.closed, true);
+      assert.equal(session.writing.state, { Save: 'saved', Cancel: 'cancelled', 'Use saved': 'discarded', Escape: 'editing' }[ending]);
+      assert.deepEqual(x.commands.map(sent => sent.kind), ending === 'Save' ? ['message.edit_open', 'message.edit']
+        : ending === 'Use saved' ? ['message.edit_open', 'message.edit', 'message.edit_close']
+        : ending === 'Cancel' ? ['message.edit_open', 'message.edit_close'] : ['message.edit_open']);
+      if (ending === 'Save') assert.equal(f.registry.current.source.body, 'Exact revised words');
+      if (ending === 'Use saved') assert.equal(f.registry.current.source.body, 'Saved on another device');
+      if (ending === 'Escape') assert.equal(f.runObservation('device890.held.value'), 'Exact revised words');
+    } finally { f.runObservation('messageEdit?.writing.close()'); }
+  }
+});
+
+
+test('929 modified second clicks do not become a pending double-click or replace selection', async () => {
+  for (const key of ['ctrlKey', 'metaKey', 'altKey', 'shiftKey']) {
+    const x = await editClick890(), held = x.hold(); x.click();
+    const second = x.click(x.words, { [key]: true, detail: 2, timeStamp: 1100 });
+    assert.notEqual(second.defaultPrevented, true, key); held.resolve(); await settle();
+    assert.equal(x.opened(), 0, key); assert.equal(x.edits.length, 0, key);
+    assert.equal(x.f.runObservation('selectionClears890'), 0, key);
+  }
+});
+test('929 a key between presses cancels the pending double-click', async () => {
+  const x = await editClick890(), held = x.hold(); x.click();
+  x.emit('keydown', x.words, { key: 'Escape' });
+  const second = x.click(x.words, { detail: 2, timeStamp: 1100 });
+  assert.notEqual(second.defaultPrevented, true); held.resolve(); await settle();
+  assert.equal(x.opened(), 0); assert.equal(x.edits.length, 0); assert.equal(x.f.runObservation('selectionClears890'), 0);
+});
+test('929 Space uses the card action once; repeat, modifiers and nested fields keep their keys', async () => {
+  const x = await editClick890(); x.card.click = () => x.emit('click', x.card, { detail: 0 });
+  for (const props of [{ repeat: true }, { ctrlKey: true }, { metaKey: true }, { altKey: true }, { isComposing: true }, { target: x.words }])
+    x.card.handlers.keydown({ target: x.card, key: ' ', preventDefault() {}, ...props });
+  await settle(); assert.equal(x.inlineOpens(), 0); assert.equal(x.opened(), 0);
+  x.card.handlers.keydown({ target: x.card, key: ' ', preventDefault() {} }); await settle();
+  assert.equal(x.inlineOpens(), 1); assert.equal(x.opened(), 0);
+  x.card.handlers.keydown({ target: x.card, key: ' ', preventDefault() {} }); await settle();
+  assert.equal(x.opened(), 1); assert.equal(x.edits.length, 1);
+});
+
+// 933: actual app/OutlineRail/OutcomeChanges. Read-port answers only; no
+// browser, Core, HTTP or time claim in these Node checks.
+function countsOutline933(route = 'workspace') {
+  const setup = route === 'workspace' ? scopedOutcome923() : (() => {
+    const f = fixture('https://fixture/?topic=t1'); return { f, outline: mountOutcomeOutline(f) };
+  })();
+  const { f } = setup, live = stream(); live.outcomes = 'stable'; f.useLive(live);
+  const metrics = (id, unread = 0) => ({ id, unread, addressed: 0, build: { unread: 0, addressed: 0 }, cover_waiting: 0, light: null });
+  const rows = ['w1', 'w2'].map(id => ({ id, title: 'Outcome ' + id, title_truncated: false, owner_id: 'fixture-person', version: 1, ...metrics(id) }));
+  const counts = new Map(rows.map(row => [row.id, metrics(row.id)])), calls = [], view = f.api.view;
+  let fail = false, hold = null;
+  f.api.view = async (name, args) => {
+    calls.push({ name, args: structuredClone(args) });
+    if (name === 'workspaces') return { instance_id: 'fixture', items: structuredClone(rows), next_cursor: null, order: { ids: ['w2', 'w1'], revision: 1 } };
+    if (name === 'workspace_counts') {
+      const answer = { instance_id: 'fixture', items: args.workspace_ids.map(id => structuredClone(counts.get(id))) };
+      if (hold) await hold.promise;
+      if (fail) throw Error('Counts interrupted');
+      return answer;
+    }
+    return view(name, args);
+  };
+  return { ...setup, live, rows, counts, calls, fail: value => { fail = value; }, hold: value => { hold = value; } };
+}
+
+for (const route of ['workspace', 'topic']) test(`933 ${route}: arrival in folded Y updates its count/lamp and elsewhere in one commit without a list reread`, async () => {
+  const { f, outline, live, counts, calls, add } = countsOutline933(route);
+  await f.initialize(); await drain();
+  outline.opened.set('w2', false); outline.paint();
+  const y = outline.outcomes.get('w2'), node = y.li, before = outline.pages.items.map(row => [row.id, row.title]);
+  const order = outline.pages.order, next = outline.pages.next;
+  counts.set('w2', { id: 'w2', unread: 3, addressed: 2, build: { unread: 1, addressed: 1 }, cover_waiting: 1,
+    light: { light: 'waiting', label: 'Waiting on you', short: { kind: 'asks', count: 2 }, unreadable: false } });
+  calls.length = 0;
+  live.emit({ kind: 'commit', seq: add?.('actor', 'delivery', 'foreign-message') ?? 2, outcomes: 'stable' }); await drain();
+  assert.equal(outline.pages.loaded.get('w2').unread, 3);
+  assert.equal(y.item.light.light, 'waiting');
+  assert.equal(y.li.hasAttribute('data-fresh'), true, 'actual folded row paints new');
+  assert.equal(y.li.hasAttribute('data-waiting'), true, 'actual folded row paints waiting');
+  assert.equal(y.li, node); assert.equal(outline.isOpen('w2'), false);
+  assert.deepEqual(outline.pages.items.map(row => [row.id, row.title]), before);
+  assert.equal(outline.pages.order, order); assert.equal(outline.pages.next, next);
+  assert.match(f.get('outline-elsewhere').children.map(child => child.textContent).join(' '), /3 new in 1 other outcome/);
+  assert.equal(calls.filter(call => call.name === 'workspaces').length, 0);
+  assert.equal(calls.filter(call => call.name === 'workspace_counts').length, 1);
+  assert.deepEqual(calls.find(call => call.name === 'workspace_counts').args.workspace_ids, ['w1', 'w2']);
+});
+
+test('933 counts failure retains the scoped window; retry and a mark clear the count without a list read', async () => {
+  const { f, outline, live, counts, calls, add, fail, changes } = countsOutline933();
+  await f.initialize(); await drain();
+  counts.get('w2').unread = 4; fail(true); calls.length = 0;
+  await commit(live, add('actor', 'waiting', 'other-topic'));
+  assert.equal(outline.pages.loaded.get('w2').unread, 0, 'failed answer publishes no counts');
+  const refusedAt = changes.filter(args => args.scope.kind === 'actor' && args.cursor).at(-1).cursor.after_seq;
+  fail(false); changes.length = 0; await commit(live, 20);
+  assert.equal(outline.pages.loaded.get('w2').unread, 4);
+  assert.equal(changes.find(args => args.scope.kind === 'actor' && args.cursor).cursor.after_seq, refusedAt);
+  counts.get('w2').unread = 0;
+  await commit(live, add('actor', 'mark', 'other-message'));
+  assert.equal(outline.pages.loaded.get('w2').unread, 0);
+  assert.equal(calls.filter(call => call.name === 'workspaces').length, 0);
+});
+
+test('933 a retired run cannot merge late counts', async () => {
+  const { f, outline, counts, hold } = countsOutline933();
+  await f.initialize(); await drain();
+  const gate = defer(); counts.get('w2').unread = 7; hold(gate);
+  const loading = outline.load(new Set(['counts'])); await drain();
+  outline.begin(true); gate.resolve(); await loading;
+  assert.equal(outline.pages.loaded.get('w2').unread, 0);
+  hold(null);
+  assert.equal(outline.handles, null);
+});
+
+test('933 bounded chunks publish atomically and reject missing, duplicate or foreign count rows', async () => {
+  const { f, outline, counts, calls } = countsOutline933();
+  await f.initialize(); await drain();
+  f.bootstrap.limits = { page_max: 2 };
+  outline.pages.loaded.set('w3', { ...outline.pages.loaded.get('w2'), id: 'w3' });
+  counts.set('w3', { ...counts.get('w2'), id: 'w3' });
+  for (const row of counts.values()) row.unread = 5;
+  const view = f.api.view; let mode = 'failed-second';
+  f.api.view = async (name, args) => {
+    const answer = await view(name, args);
+    if (name !== 'workspace_counts') return answer;
+    if (mode === 'failed-second' && args.workspace_ids.includes('w3')) throw Error('Second chunk interrupted');
+    if (mode === 'missing') answer.items.pop();
+    if (mode === 'duplicate') answer.items[1] = answer.items[0];
+    if (mode === 'foreign') answer.instance_id = 'foreign';
+    return answer;
+  };
+  calls.length = 0;
+  assert.equal(await outline.load(new Set(['counts'])), false);
+  assert.equal(outline.pages.loaded.get('w1').unread, 0, 'successful first chunk cannot publish before the second');
+  assert.deepEqual(calls.filter(call => call.name === 'workspace_counts').map(call => call.args.workspace_ids), [['w1', 'w2'], ['w3']]);
+  for (mode of ['missing', 'duplicate', 'foreign']) {
+    assert.equal(await outline.load(new Set(['counts'])), false, mode);
+    assert.equal(outline.pages.loaded.get('w1').unread, 0, mode);
+  }
+  mode = 'valid';
+  assert.equal(await outline.load(new Set(['counts'])), true);
+  assert.deepEqual(Array.from(outline.pages.items, row => row.unread), [5, 5, 5]);
+  assert.equal(calls.filter(call => call.name === 'workspaces').length, 0);
+});
+
+function review931() {
+  const f = fixture('https://fixture/?topic=t1', { refusedAtDraft: uploadState931.refusedAtDraft, refusedCopyAtDraft: uploadState931.refusedCopyAtDraft, readableUploads: uploadState931.readableUploads });
+  f.editor.sourceRef = structuredClone(f.editor.context.sourceRef);
+  Object.assign(f.editor, { localVersion: 4, ackVersion: 4, clientCycleId: 'cycle931',
+    uploadState: { format: 2, revision: 1, client_cycle_id: 'cycle931', entries: [], submission_links: {} } });
+  Object.assign(f.editor.draft, { id: 'draft931', generation: 'generation931', revision: 3, quotes: [], intent: 'tell', whisper: false });
+  const row = (draft = f.editor.draft) => ({ id: 'copy931', stamp: 'stamp931', availability: 'available',
+    snapshot: { format: 1, draft: structuredClone(draft), localVersion: 4, ackVersion: 4, submissions: [] } });
+  const list = items => f.owners().candidates.set(f.editor.key, { items, nextCursor: null });
+  return { f, row, list, needs: () => f.runObservation('needsReview(registry.inline.editors.reply)') };
+}
+test('931 an empty upload state and ordinary newer typing ask for no version decision', () => {
+  const { f, needs } = review931(); assert.equal(needs(), false);
+  f.editor.draft.body += ' and more'; f.editor.localVersion++; assert.equal(needs(), false);
+});
+test('931 identical saved writing ignores caret and save metadata, before and after more typing', () => {
+  const { f, row, list, needs } = review931(); const saved = row(); saved.snapshot.draft.caret = { start: 2, end: 2 };
+  saved.snapshot.draft.revision = 2; list([saved]); assert.equal(needs(), false);
+  f.editor.draft.body += ' newer'; f.editor.localVersion++; assert.equal(needs(), false, 'a known older saved revision in this generation is not competing writing');
+});
+test('931 unreadable copies and unloaded pages do not claim a known writing difference', () => {
+  const { f, list, needs } = review931(); list([{ id: 'held', availability: 'open-in-another-tab' }]); assert.equal(needs(), false);
+  f.owners().candidates.set(f.editor.key, { items: [], nextCursor: 'later-page' }); assert.equal(needs(), false);
+});
+test('931 a different unsaved copy asks for a decision while an identical unsaved copy does not', () => {
+  const { row, list, needs } = review931(); const saved = row(); saved.snapshot.localVersion = 5;
+  list([saved]); assert.equal(needs(), false);
+  saved.snapshot.draft.body = 'Other words'; assert.equal(needs(), true);
+});
+test('931 the frozen refused writing is compared even when its successor draft matches', () => {
+  const { f, row, list, needs } = review931(); const saved = row();
+  saved.snapshot.format = 2; saved.snapshot.clientCycleId = f.editor.clientCycleId; saved.snapshot.uploadState = structuredClone(f.editor.uploadState);
+  saved.snapshot.submissions = [{ status: 'refused', receipt: { kind: 'submission.prepare' }, snapshot: { ...structuredClone(f.editor.draft), body: 'Earlier refused words' } }];
+  f.editor.recoveryServerDraft = structuredClone(f.editor.draft); list([saved]); assert.equal(needs(), true);
+});
+
+test('931 the pill names the actual refused difference and opens with it first', async () => {
+  const { f, row, list } = review931(); const saved = row(); saved.snapshot.localVersion++;
+  saved.snapshot.draft.body = 'The different saved words'; list([saved]);
+  const state = f.runObservation('reviewState(registry.inline.editors.reply)');
+  assert.equal(state.text, 'Review versions'); assert.match(state.title, /copy.*differs from this field/);
+  f.registry.recoveryCandidates = async (_editor, _options, shown) => { const page = { items: [], nextCursor: null }; shown(page, false); return page; };
+  f.get('version-review').showModal = function() { this.open = true; };
+  await f.showVersions(f.editor, f.get('opener'), f.p);
+  assert.equal(f.get('review-content').children[0].children.at(-1).textContent, 'The different saved words');
+});
+test('931 runtime recovery retains its action without claiming a known version difference', () => {
+  const { f, needs } = review931(); f.editor.authorityRecovery = { phase: 'parked' };
+  assert.equal(needs(), false); const state = f.runObservation('reviewState(registry.inline.editors.reply)');
+  assert.equal(state.hidden, false); assert.equal(state.text, 'Check recovery');
+});
+test('931 identical writing with an unknown public send keeps a recovery action', () => {
+  const { f, row, list, needs } = review931(), saved = row(); saved.snapshot.submissions = [{ status: 'prepared' }]; list([saved]);
+  assert.equal(needs(), false);
+  const state = f.runObservation('reviewState(registry.inline.editors.reply)'); assert.equal(state.hidden, false); assert.equal(state.text, 'Check recovery');
+  assert.equal(saved.snapshot.submissions[0].status, 'prepared');
+});
+
+test('931 R2 a plain other-tab journal row without snapshot keeps the recovery door', () => {
+  const { f, list, needs } = review931();
+  const held = { id: 'held', editorKey: f.editor.key, writerId: 'other-tab', stamp: 's', availability: 'open-in-another-tab', uploadPresent: false };
+  assert.equal(Object.hasOwn(held, 'snapshot'), false);
+  list([held]); assert.equal(needs(), false);
+  let state = f.runObservation('reviewState(registry.inline.editors.reply)');
+  assert.equal(state.hidden, false); assert.equal(state.text, 'Check recovery');
+  list([{ ...held, availability: 'unreadable' }]);
+  assert.equal(f.runObservation('reviewState(registry.inline.editors.reply)').hidden, false);
+  list([{ ...held, active: 0, superseded_by: 'new-writer' }]);
+  assert.equal(f.runObservation('reviewState(registry.inline.editors.reply)').hidden, true, 'retired rows need no recovery action');
+});
+test('931 R2 cleanup failure keeps the only door to retry', () => {
+  const { f, needs } = review931(); f.editor.cleanupError = 'Could not check the saved writing';
+  assert.equal(needs(), false);
+  const state = f.runObservation('reviewState(registry.inline.editors.reply)');
+  assert.equal(state.hidden, false); assert.equal(state.text, 'Check recovery');
+});
+test('931 R2 own retained bytes and unsettled image attempts keep recovery reachable', () => {
+  const { f, needs } = review931();
+  for (const entry of [
+    { selected: false, bytes_ref: 'retained-file', attempts: [] },
+    { selected: false, bytes_ref: null, attempts: [{ phase: 'publish-unknown', begin_response: { recorded: true }, publish_response: null }] },
+  ]) {
+    f.editor.uploadState.entries = [entry]; assert.equal(needs(), false);
+    const state = f.runObservation('reviewState(registry.inline.editors.reply)');
+    assert.equal(state.hidden, false); assert.equal(state.text, 'Check recovery');
+  }
+  f.editor.uploadState.entries = [{ selected: false, bytes_ref: null, attempts: [{ phase: 'ready', publish_response: { recorded: true } }] }];
+  assert.equal(f.runObservation('reviewState(registry.inline.editors.reply)').hidden, true, 'receipted work without bytes is quiet');
+});
+test('931 R2 opaque upload metadata keeps recovery reachable without reading malformed entries', () => {
+  const { f } = review931(); f.editor.uploadOpaque = true;
+  for (const entries of [undefined, {}, [null], [{ attempts: [null] }]]) {
+    f.editor.uploadState = { format: 2, entries };
+    const state = f.runObservation('reviewState(registry.inline.editors.reply)');
+    assert.equal(state.hidden, false); assert.equal(state.text, 'Check recovery');
+  }
+});
+test('931 R2 every conflict review rereads the remote, including its first comparison', async () => {
+  const { f } = review931();
+  const currentWords = f.editor.draft.body;
+  const remote = body => ({ ...structuredClone(f.editor.draft), body });
+  f.editor.conflict = { remote: remote('Obsolete remote'), attempted: structuredClone(f.editor.draft) };
+  f.registry.recoveryCandidates = async (_editor, _options, shown) => { const page = { items: [], nextCursor: null }; shown(page, false); return page; };
+  f.get('version-review').showModal = function() { this.open = true; };
+  let latest = 'Fresh remote one', reads = 0; const view = f.api.view;
+  f.api.view = async (name, args) => name === 'editor_state'
+    ? (++reads, { ...f.state(), draft: remote(latest) }) : view(name, args);
+  for (const words of ['Fresh remote one', 'Fresh remote two']) {
+    latest = words; await f.showVersions(f.editor, f.get('opener'), f.p);
+    assert.equal(f.get('review-content').children[0].children.at(-1).textContent, words);
+  }
+  assert.equal(reads, 2);
+  assert.equal(f.editor.draft.body, currentWords, 'fresh reads never overwrite current writing');
+});
+
+
+for (const failed of [false, true]) test(`864 startup ${failed ? 'unconfirmed' : 'empty'} lookup retains the original initializer`, async () => {
+  const f = fixture('https://fixture/?topic=t1', { resolveTopicLink: async () => {
+    if (failed) throw Error('Destination could not be confirmed');
+    return null;
+  } });
+  await f.initialize(); await drain();
+  assert.equal(f.get('body').dataset.ready, 'true');
+  assert.equal(f.get('topic-title').textContent, 'Fixture');
+  assert.equal(f.runObservation('topic.id'), 't1');
+});
+
+test('864 ordinary internal destinations do not request topic-name lookup', async () => {
+  let lookups = 0;
+  const f = fixture('https://fixture/', { resolveTopicLink: async () => { lookups++; throw Error('Unconfirmed'); } });
+  await f.initialize(); await drain();
+  f.runObservation('shell.go = () => true');
+  await f.runObservation("openDestination({ kind: 'topic', id: 't2' }, 'Known route')");
+  assert.equal(lookups, 0);
+});
+
+test('864 an unconfirmed authored query uses the existing departure guard and keeps writing', async () => {
+  const assigned = [], location = { href: 'https://fixture/?topic=t1', origin: 'https://fixture', assign: href => assigned.push(href), reload() {} };
+  const f = fixture('https://fixture/?topic=t1', { location });
+  // Model an interrupted lookup explicitly. The generic fixture returns t1
+  // for every topic read; a mismatched identity now refuses under 958.
+  const read = f.api.view;
+  f.api.view = async (name, args, options) => {
+    if (name === 'topic' && args.topic_id === 't2') throw Object.assign(Error('Connection interrupted'), { code: 'REQUEST_UNCONFIRMED' });
+    return read(name, args, options);
+  };
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  f.registry.keepEditorsLocal = async () => {};
+  Object.assign(f.editor, { localVersion: 1, ackVersion: 0 });
+  Object.defineProperty(f.editor, 'dirty', { get: () => f.editor.ackVersion < f.editor.localVersion });
+  f.registry.flush = async () => ({ recorded: false, status: 'unknown' });
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize(); await drain();
+  f.views.messages.set('m864', { id: 'm864', seq: 1, author_id: 'fable', body: '[Next](?topic=t2)', topic_id: 't1', sent_ms: null, reply_to: null });
+  f.paintViews('messages');
+  const [a] = linksIn(entryIn(f, 'm864'));
+  assert.equal(a.href, '?topic=t2');
+  clicked(a); await drain();
+  assert.deepEqual(assigned, []);
+  assert.equal(f.editor.draft.body, 'kept');
+  assert.match(f.get('topic-navigation-status').textContent, /not confirmed saved/);
+  f.registry.flush = async () => { f.editor.ackVersion = 1; return { recorded: true, status: 'committed' }; };
+  clicked(a); await drain();
+  assert.deepEqual(assigned, ['?topic=t2']);
 });

@@ -35,6 +35,8 @@ The script may also set:
 
 A turn behaviour (consumed in order across restarts) may hold:
   reply      text posted in each topic ("{history}" is this thread's previous reply)
+  reply_to_delivery  reply to the named delivery message through the current
+             quoted-reply CLI contract instead of starting a new dossier
   commands   how many non-CLI commandExecution items to report first
   hold       "steer": stay active until one steer arrives; "die": SIGKILL itself
              once the turn's input is seen; "interrupt": stay active until interrupted;
@@ -96,6 +98,16 @@ def _load(name, default):
 class Fake:
     def __init__(self):
         self.script = _load("fake-script.json", {})
+        self.launch_config = {'features': {}, 'permissions': {}}
+        for index, option in enumerate(sys.argv[:-1]):
+            if option == '-c':
+                key, value = sys.argv[index + 1].split('=', 1)
+                if key == 'features.network_proxy':
+                    self.launch_config['features']['network_proxy'] = json.loads(value)
+                elif key == 'permissions':
+                    self.launch_config['permissions'] = json.loads(re.sub(r'("(?:[^"\\]|\\.)*")\s*=', r'\1:', value))
+        if self.script.get('drop_proxy_override'):
+            self.launch_config['features']['network_proxy'] = False
         self.state = _load("fake-state.json", {"threads": {}, "turn_index": 0})
         self.loaded = {}
         self.active = {}
@@ -138,6 +150,16 @@ class Fake:
         if data is not None:
             error["data"] = data
         self.send({"id": request["id"], "error": error})
+
+    def on_config_read(self, request, params):
+        self.send({'id': request['id'], 'result': {'config': self.launch_config}})
+
+    def on_command_exec(self, request, params):
+        profile = params.get('permissionProfile')
+        allowed = (self.launch_config['features'].get('network_proxy') is True and
+                   profile in self.launch_config['permissions'] and not self.script.get('proxy_probe_fails'))
+        self.send({'id': request['id'], 'result': {'exitCode': 0 if allowed else 17,
+                  'stdout': 'theseus-proxy-denied\n' if allowed else '', 'stderr': ''}})
 
     def run(self):
         while True:
@@ -186,11 +208,18 @@ class Fake:
         record = self.state["threads"][thread_id]
         roots = params.get("config", {}).get("sandbox_workspace_write", {}).get("writable_roots", [])
         widened = widened or self.script.get("echo_widened")
-        return {"thread": self.thread(thread_id, status or {"type": "idle"}), "approvalPolicy": params.get("approvalPolicy", "on-request"),
+        profile_id = params.get('permissions')
+        profile = params.get('config', {}).get('permissions', {}).get(profile_id)
+        if profile:
+            roots = [path for path, access in profile['filesystem'].items() if access == 'write' and path != record['cwd']]
+        result = {"thread": self.thread(thread_id, status or {"type": "idle"}), "approvalPolicy": params.get("approvalPolicy", "on-request"),
                 "approvalsReviewer": "user", "cwd": record["cwd"], "model": params.get("model", "fake-model"), "modelProvider": "openai",
                 "reasoningEffort": params.get("config", {}).get("model_reasoning_effort"),
-                "sandbox": {"type": "dangerFullAccess"} if params.get("sandbox") == "danger-full-access" and not widened else {"type": "workspaceWrite", "writableRoots": ["/"] if widened else roots, "networkAccess": bool(widened),
+                "sandbox": {"type": "dangerFullAccess"} if params.get("sandbox") == "danger-full-access" and not widened else {"type": "workspaceWrite", "writableRoots": ["/"] if widened else roots, "networkAccess": bool(widened or profile and profile['network']['enabled']),
                             "excludeSlashTmp": True, "excludeTmpdirEnvVar": True}}
+        if profile:
+            result['activePermissionProfile'] = {'id': profile_id, 'extends': profile['extends']}
+        return result
 
     def once(self, key):
         """True the first time a once-only script setting applies, across restarts."""
@@ -358,7 +387,7 @@ class Fake:
         for line in params["input"][0]["text"].splitlines():
             match = DELIVERY.match(line)
             if match:
-                turn["deliveries"].append({"topic": match.group(1), "delivery": match.group(4)})
+                turn["deliveries"].append({"topic": match.group(1), "message": match.group(2), "delivery": match.group(4)})
         self.notify("item/completed", {"threadId": thread_id, "turnId": turn["id"], "completedAtMs": 0,
                                        "item": {"type": "userMessage", "id": "item-" + uuid.uuid4().hex,
                                                 "clientId": params.get("clientUserMessageId"), "content": params["input"]}})
@@ -430,7 +459,12 @@ class Fake:
                     topics.append(item["topic"])
             reply = behaviour.get("reply", "ok").format(history=(record["history"] or [""])[-1])
             for topic in topics:
-                self.cli(thread_id, turn, ["post", topic, "-"], reply)
+                if behaviour.get('reply_to_delivery'):
+                    message = next(item['message'] for item in turn['deliveries'] if item['topic'] == topic)
+                    self.cli(thread_id, turn, ['reply', message, '--tells', 'lead', '--without-quote',
+                                              'Scripted scratch deploy fixture tests execution.', '-'], reply)
+                else:
+                    self.cli(thread_id, turn, ["post", topic, "-"], reply)
             if turn["deliveries"]:
                 self.cli(thread_id, turn, ["ack"] + [item["delivery"] for item in turn["deliveries"]])
             record["history"].append(reply)

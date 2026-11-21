@@ -1,8 +1,17 @@
 # Trains
 
-A train carries approved pieces from the pipeline ([pipeline.md](pipeline.md))
-onto the release branch, and after its judged run, into a release. This page
-holds the rules a train runs by. The deploy's mechanics are in
+The current standing rule is [Landing a change](landing.md): ordinary approved
+pieces open a PR immediately, receive an independent combined-diff read, and
+deploy through the guards with broad judgment pending, followed by the immediate
+live surface check and broad checks. Judged-first changes complete judgment
+before deployment. That page also owns classification, source identity,
+recovery, tool rollout and measurements.
+
+The sections below preserve the **historical train process**, including its
+hourly cuts, path-based routing, pre-push thresholds and next-train recovery.
+Those descriptions explain earlier trains; they do not impose waits, establish
+ordinary eligibility or delay recovery under the current landing rule.
+The pipeline record is in [pipeline.md](pipeline.md). The deploy's mechanics are in
 [tools.md](tools.md#deploy-toolsdeploypy), the record it writes in
 [releases.md](releases.md), and the known reds and the quarantine in
 [ci-known-reds.md](ci-known-reds.md).

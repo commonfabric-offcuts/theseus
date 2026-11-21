@@ -16,7 +16,7 @@ export class NotebookImages {
   // says what was not added and why.
   admit(file) {
     const w=this.writing, limits=w.bootstrap.limits;
-    if(w.closed||w.readOnly)throw Error('This page cannot be changed here.');
+    if(w.closed||w.readOnly||w.deleted)throw Error('This page cannot be changed here.');
     const name=file.name||'Pasted image.'+(file.type.split('/')[1]||'png');
     if(!TYPES.has(file.type)||!file.size)throw Error(`${name} was not added: it is not a PNG, JPEG, GIF or WebP image.`);
     if(file.size>limits.image_bytes)throw Error(`${name} was not added: an image may be at most ${megabytes(limits.image_bytes)}.`);
@@ -37,7 +37,7 @@ export class NotebookImages {
     this.arriving.set(media,{media,name,type:file.type,size:file.size,file});
     let bytes;
     try {bytes=await file.arrayBuffer();} finally {this.arriving.delete(media);}
-    if(w.closed||w.readOnly||discarded!==w.discardVersion)throw Error('This page is no longer open for writing.');
+    if(w.closed||w.readOnly||w.deleted||discarded!==w.discardVersion)throw Error('This page is no longer open for writing.');
     if(this.dropped.delete(media))return null;
     const entry={id:crypto.randomUUID(),media,name,type:file.type,size:file.size,bytes,begin:null,publish:null,begun:false,ready:null,associated:false,removed:false,error:null};
     w.images.push(entry); w.notify();
@@ -48,7 +48,7 @@ export class NotebookImages {
   // keep: × in a card took it off (docs/decks.md, "Images in a card"), so Undo may put it back.
   async remove(id, {keep=false}={}) {
     const w=this.writing, entry=w.images.find(i=>i.id===id||i.media===id||i.ready?.media_id===id), arriving=this.arriving.get(id);
-    if(w.closed||w.readOnly)return;
+    if(w.closed||w.readOnly||w.deleted)return;
     // An image still being read in is not taken in at all.
     if(arriving)this.dropped.add(id);
     const media=entry?.ready?.media_id??id;
@@ -64,7 +64,7 @@ export class NotebookImages {
   // a writer of a page that has carried it. An image never taken off this page is left alone.
   async restore(media) {
     const w=this.writing, kept=this.released.get(media);
-    if(!kept||w.closed||w.readOnly)return null;
+    if(!kept||w.closed||w.readOnly||w.deleted)return null;
     this.released.delete(media);
     const old=kept.entry;
     if(!old) {
@@ -82,7 +82,7 @@ export class NotebookImages {
     await this.running.get(old.id);
     Object.assign(entry,{begin:old.begin,publish:old.publish,begun:old.begun,ready:old.ready});
     if(entry.ready)entry.bytes=null;
-    if(w.closed||w.readOnly||entry.removed)return entry;
+    if(w.closed||w.readOnly||w.deleted||entry.removed)return entry;
     this.run(entry); return entry;
   }
   run(entry) {
@@ -91,7 +91,7 @@ export class NotebookImages {
     this.running.set(entry.id,job);return job;
   }
   async upload(e) {
-    const w=this.writing, valid=()=>!w.closed&&!w.readOnly&&!e.removed;
+    const w=this.writing, valid=()=>!w.closed&&!w.readOnly&&!w.deleted&&!e.removed;
     if(!valid())return;
     try {
       e.error=null;
@@ -136,7 +136,7 @@ export class NotebookImages {
   }
   associate(e) {
     const w=this.writing;
-    if(w.closed||w.readOnly||e.removed||e.associated)return;
+    if(w.closed||w.readOnly||w.deleted||e.removed||e.associated)return;
     e.associated=true;
     if(!w.value.attachments.some(a=>a.id===e.ready.media_id))w.edit({attachments:[...w.value.attachments,{id:e.ready.media_id}]},w.capture());
     else w.persist().catch(error=>{e.error=error.message;w.notify();});

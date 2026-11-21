@@ -1,0 +1,7 @@
+effective_cache=/Users/commonfabric/.local/share/theseus/fable-tools/checks/790-build9837/focused-final2/core-scope-restored-cache-f478822d61fc44dc9454150a92dabfba
+test_secret_canaries_refuse_without_echo_and_private_pages_are_never_read (test_onboarding_790.OnboardingCase) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.047s
+
+OK

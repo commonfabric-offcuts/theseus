@@ -55,13 +55,13 @@ test('a card moves one place, keeps its exact words, and moving back gives the p
   assert.equal(after('## A\nwords\n## B\n## C\n## D', { kind: 'move', text: 'D', step: -1, near: 3 }), '## A\nwords\n## B\n\n## D\n\n## C\n');
 });
 
-test('a merge keeps every word of both cards under the upper title, and its undo gives both cards back', () => {
+test('a merge appends the picked card under the adjacent title, and its undo gives both cards back', () => {
   const done = applyAct(parseDeck(PAGE), { kind: 'merge', text: 'Beta\nsecond words\nmore', step: 1, near: 1 });
   assert.equal(done.at, 1);
-  assert.equal(deckBody(done.deck), '# Talk\n\nThe key ideas.\n\n## Alpha\n\nfirst words\n\n## Beta\n\nsecond words\nmore\n\n**Gamma**\n');
+  assert.equal(deckBody(done.deck), '# Talk\n\nThe key ideas.\n\n## Alpha\n\nfirst words\n\n## Gamma\n\nBeta\n\nsecond words\nmore\n');
   assert.equal(deckBody(applyAct(parseDeck(deckBody(done.deck)), done.undo).deck), PAGE);
   const up = applyAct(parseDeck(PAGE), { kind: 'merge', text: 'Beta\nsecond words\nmore', step: -1, near: 1 });
-  assert.equal(cardText(up.deck.cards[0]), 'Alpha\nfirst words\n\n**Beta**\n\nsecond words\nmore');
+  assert.equal(cardText(up.deck.cards[0]), 'Alpha\nfirst words\n\nBeta\n\nsecond words\nmore');
   assert.equal(after(PAGE, { kind: 'merge', text: 'Alpha\nfirst words', step: -1, near: 0 }), null);
 });
 
@@ -111,7 +111,7 @@ test("a card's reply stacks are the lines holding only a link to one of them, ou
   // A merge keeps both cards' stacks, and a card read back with nothing done to it keeps its lines exactly.
   const page = `## A\n\nwords\n\n${stackLine('https://here.example/?topic=t&message=m1')}\n\n## B\n\n${stackLine('https://here.example/?topic=t&message=m2')}\n`;
   assert.equal(deckBody(parseDeck(page)), page);
-  assert.deepEqual(cardStacks(parseDeck(after(page, { kind: 'merge', text: cardText(parseDeck(page).cards[0]), step: 1, near: 0 })).cards[0].words, stackOf).stacks, ['m1', 'm2']);
+  assert.deepEqual(cardStacks(parseDeck(after(page, { kind: 'merge', text: cardText(parseDeck(page).cards[0]), step: 1, near: 0 })).cards[0].words, stackOf).stacks, ['m2', 'm1']);
 });
 
 const GROUPS = '## P\n\np words\n\n### P1\n\none\n\n### P2\n\ntwo\n\n## Q\n\nq words\n';
@@ -171,11 +171,11 @@ test('Tab, shift-Tab, cmd-Up and cmd-Down take a new card not yet made where the
   assert.equal(placeNew(deck, { after: 'gone', near: 1, depth: 0 }, indent), null);
 });
 
-test('a merge takes the lower card\'s children, a removed card takes its own, and each undo gives them back', () => {
+test('a merge puts the moved card\'s children after the destination\'s, a removed card takes its own, and each undo gives them back', () => {
   const merged = there(GROUPS, { kind: 'merge', text: P, step: 1, near: 0 });
-  assert.equal(merged, '## P\n\np words\n\n**Q**\n\nq words\n\n### P1\n\none\n\n### P2\n\ntwo\n');
+  assert.equal(merged, '## Q\n\nq words\n\nP\n\np words\n\n### P1\n\none\n\n### P2\n\ntwo\n');
   const absorbed = '## A\n\n## B\n\n### B1\n';
-  assert.equal(there(absorbed, { kind: 'merge', text: 'A', step: 1, near: 0 }), '## A\n\n**B**\n\n### B1\n');
+  assert.equal(there(absorbed, { kind: 'merge', text: 'A', step: 1, near: 0 }), '## B\n\nA\n\n### B1\n');
   assert.equal(there(GROUPS, { kind: 'remove', text: P, near: 0 }), '## Q\n\nq words\n');
   assert.equal(there(GROUPS, { kind: 'remove', text: P1, near: 1 }), '## P\n\np words\n\n### P2\n\ntwo\n\n## Q\n\nq words\n');
 });

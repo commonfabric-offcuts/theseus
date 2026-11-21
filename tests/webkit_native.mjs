@@ -1,3 +1,4 @@
+import { inputs704 } from './whisper_outline_native.mjs';
 // Checks written for Chrome for Testing, run again in Safari's engine
 // (Playwright's WebKit), against the same isolated fixture. The page object is
 // the persistence harness's, with Playwright's WebKit input in place of CDP:
@@ -210,13 +211,13 @@ const untilChecks = async ({ check, page }) => {
   });
 };
 
-const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', ...(['--colors', '--new-line', '--reading'].includes(mode) ? ['--agent-colors'] : []), ...(mode === '--reading' ? ['--other-person'] : []), '--freshness', '--images', '--media'], { cwd: root });
+const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', ...(['--colors', '--new-line', '--reading'].includes(mode) ? ['--agent-colors'] : []), ...(mode === '--reading' ? ['--other-person', '--item-785'] : []), '--freshness', '--images', '--media'], { cwd: root });
 let fixtureSerial = 0, fixtureErrors = '';
 const requests = new Map();
 fixture.stderr.on('data', data => { fixtureErrors += data; });
 createInterface({ input: fixture.stdout }).on('line', line => {
   const result = JSON.parse(line), request = requests.get(result.id); requests.delete(result.id);
-  if (result.failure) request.reject(Error(result.failure)); else request.resolve(result.answer);
+  if (Object.hasOwn(result, 'failure')) request.reject(Error(result.failure)); else request.resolve(result.answer);
 });
 const fixtureExit = new Promise(resolve => fixture.once('exit', code => {
   for (const request of requests.values()) request.reject(Error(`Fixture exited ${code}: ${fixtureErrors}`));
@@ -228,9 +229,9 @@ const control = data => new Promise((resolve, reject) => {
 });
 
 const results = [], observations = [], hashes = {};
-for (const filename of [...(mode==='--reading'?['tests/visible_return_784_native.mjs','tests/ui_visible_return_784_native.test.mjs','web/pane-keys.mjs','web/rails.css','web/in-place-navigation.mjs','tests/fixtures/item_645_original_web.json', 'tests/fixtures/item_645_original_web.tar.gz', 'web/dossier-cover.mjs', 'tests/stack_native.mjs', 'tests/topic_reading_native.mjs', 'tests/ui_folded_names.test.mjs', 'tests/fixtures/ui_http.py', 'tests/native-calls.mjs', 'tests/press-fell.mjs', 'web/reply-stacks.mjs', 'web/app.mjs', 'web/aim.css', 'web/stack-look.css', 'web/unanswered.mjs', 'web/outcome-conversation.mjs', 'web/read-through.mjs', 'web/stack-feed.mjs', 'web/stack-order.mjs', 'web/outcome-scope.mjs', 'tools/native.py', 'tools/release_check.py']:[]),...['tests/webkit_native.mjs', 'tests/reader_colors_native.mjs', 'tests/whisper_native.mjs', 'tests/notebook_pages_native.mjs','tests/notebook_sheet_native.mjs','tests/notebook_card_images_native.mjs','web/notebook-sheet.mjs',
+for (const filename of [...(mode==='--rail'?['tests/desktop_outcome_disclosure_944_native.mjs','web/outline-rail.mjs']:[]),...(mode==='--reading'?['tests/dossier_command_down_705_native.mjs','web/pane-keys.mjs','web/stack-menu-items.mjs','tests/saved_inline_reply_851_native.mjs','web/card-replies.mjs']:[]),...(mode==='--reading'?["tests/cover_783_comparator.mjs","tests/cover_783_lf.mjs","tests/cover_783_renderers.mjs","tests/local_build_783.mjs","tests/retained_783_controls.mjs","tests/ui_cover_783_comparator.test.mjs","docs/checks/item-783-comparator10013-SPEC.md","aim_next/cover_values.py","aim_next/covers.py","web/reader.mjs","tests/core_seed_783.mjs", "docs/checks/item-783-fix9912-SPEC.md", "tests/fixtures/mini_dom.mjs", "tests/cover_783_native.mjs", "tests/cover_783_oracle.mjs", "tests/fixtures/item_783_builds.py", "tests/ui_cover_783.test.mjs", "tests/test_cover_783_builds.py", "tests/fixtures/item_783_original.json", "tests/fixtures/item_783_original.tar.gz", "tests/fixtures/item_783_flat.json", "tests/fixtures/item_783_flat.tar.gz", "docs/checks/item-783-SPEC.md"]:[]),...(mode==='--reading'?JSON.parse(await readFile(path.join(root,'tests/reading_785_sources.json'),'utf8')):[]),...(mode === '--reading' ? ['tests/dossier_selection_quote_native.mjs','tests/fixtures/item_674_runtime.py','tests/fixtures/item_674_original_web.json','tests/fixtures/item_674_original_web.json.gz','web/dossier-selection-quote.mjs','web/reader.mjs','web/index.html'] : []),...(mode === '--reading' ? inputs704 : []), ...(mode==='--reading'?['tests/cover_refresh_native.mjs','tests/fixtures/item_738_live_web.json','tests/fixtures/item_738_live_web.tar.gz','web/cover-refresh.mjs','aim_next/cover_refresh.py','aim_next/covers.py','aim_next/migrations.py','aim_next/validation.py','tests/test_cover_refresh.py','docs/cover-refresh.md','tests/fixtures/item_645_original_web.json', 'tests/fixtures/item_645_original_web.tar.gz', 'web/dossier-cover.mjs', 'tests/stack_native.mjs', 'tests/topic_reading_native.mjs', 'tests/ui_folded_names.test.mjs', 'tests/fixtures/ui_http.py', 'tests/native-calls.mjs', 'tests/press-fell.mjs', 'web/reply-stacks.mjs', 'web/app.mjs', 'web/aim.css', 'web/stack-look.css', 'web/unanswered.mjs', 'web/outcome-conversation.mjs', 'web/read-through.mjs', 'web/stack-feed.mjs', 'web/stack-order.mjs', 'web/outcome-scope.mjs', 'tools/native.py', 'tools/release_check.py']:[]),...['tests/webkit_native.mjs', 'tests/reader_colors_native.mjs', 'tests/whisper_native.mjs', 'tests/notebook_pages_native.mjs','tests/notebook_sheet_native.mjs','tests/notebook_card_images_native.mjs','web/notebook-sheet.mjs',
   'web/notebook-page.mjs', 'web/notebook-writing.mjs', 'web/notebook-images.mjs', 'web/deck-page.mjs', 'web/deck.mjs', 'web/image-pick.mjs',
-  'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/native-page-cleanup.mjs', 'web/arrow-reach.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py', 'web/index.html', 'aim_next/web_build.py', 'web/boot.js', 'web/in-place-navigation.mjs', 'web/aim.css', 'web/app.mjs', 'web/app-session.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs', 'tests/outline_stars_native.mjs', 'tests/outline_stars_oracle.mjs', 'web/outline-dossiers.mjs', 'web/outline-rail.mjs', 'web/rails.css', 'aim_next/stacks.py', 'aim_next/validation.py',
+  'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/arrow_parts_564_native.mjs', 'web/message-controls.mjs', 'web/panes.mjs', 'web/reply-stacks.mjs', 'web/message-menu.mjs', 'tests/native-page-cleanup.mjs', 'web/arrow-reach.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py', 'web/marks.mjs', 'web/index.html', 'aim_next/web_build.py', 'web/boot.js', 'web/in-place-navigation.mjs', 'web/aim.css', 'web/app.mjs', 'web/app-session.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs', 'tests/outline_stars_native.mjs', 'tests/outline_stars_oracle.mjs', 'web/outline-dossiers.mjs', 'web/outline-rail.mjs', 'web/rails.css', 'aim_next/stacks.py', 'aim_next/validation.py',
   'web/message-menu.mjs', 'web/glyphs.mjs', 'tests/menu_glyphs.mjs', 'web/feed-passages.mjs', 'web/lit-field.mjs', 'web/message-format.mjs', 'web/reveal.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/outcome-conversation.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
   'tests/team_invite_native.mjs', 'web/agent-invite.mjs', 'aim_next/invite.py',
   'tests/health_native.mjs', 'web/health.mjs', 'web/health-light.mjs', 'aim_next/health.py',
@@ -413,11 +414,11 @@ try {
     };
     // A control the composer or the ⋯ keeps out of sight is reached first, as a person does (compose-reach.mjs).
     const reach = reachWith({ evaluate, point: selector => point(selector), until });
-    const key = async (name, modifiers = 0) => {
+    const key = async (name, modifiers = 0, { plainTab = false } = {}) => {
       const held = [[1, 'Alt'], [2, 'Control'], [4, 'Meta'], [8, 'Shift']].filter(([bit]) => modifiers & bit).map(([, word]) => word);
       // Safari's plain Tab reaches only fields unless "Press Tab to highlight each item" is on;
       // Option-Tab is its key for every item, so a check's Tab is pressed as that.
-      if (name === 'Tab' && !held.includes('Alt')) { held.unshift('Alt'); qualifications.add('Tab is pressed as Option-Tab, Safari\'s key for every item; plain Tab skips buttons and cards in Safari by default'); }
+      if (name === 'Tab' && !plainTab && !held.includes('Alt')) { held.unshift('Alt'); qualifications.add('Tab is pressed as Option-Tab, Safari\'s key for every item; plain Tab skips buttons and cards in Safari by default'); }
       await pw.keyboard.press([...held, name].join('+'));
     };
     const close = () => pw.close();
@@ -560,7 +561,7 @@ try {
     await whispersChecks({ check, page, until, facts, view, control, replace, shot });
   } else if (mode === '--notebook') {
     await untilChecks({ check, page });
-    await notebookChecks({ check, page, until, control, view, facts, shot });
+    await notebookChecks({ check, page, until, control, view, facts, shot, observations, engine: 'webkit' });
   } else if (mode === '--pipeline') {
     await pipelineChecks({ check, page, until, control, view, facts, shot });
   } else if (mode === '--rail') {
@@ -625,7 +626,7 @@ try {
   fixture.stdin.end();
   fixtureExitCode = await fixtureExit;
   await writeFile(path.join(evidencePath, 'native.json'), JSON.stringify({ mode, engine: 'webkit', webkitVersion: version, chromeArgumentIgnored: chromePath ?? null,
-    qualifications: [...qualifications], skipped: SKIPPED, hashes, results, observations, fixtureExitCode, fixtureErrors, browserClosed }, null, 2));
+    qualifications: [...qualifications], skipped: SKIPPED, hashes, results, observations, owned: { fixturePid: fixture.pid, origin: facts?.origin }, fixtureExitCode, fixtureErrors, browserClosed }, null, 2));
   assert.equal(fixtureExitCode, 0, fixtureErrors);
 }
 assert.ok(results.length && results.every(result => result.passed), 'see native.json for exact failing assertions');

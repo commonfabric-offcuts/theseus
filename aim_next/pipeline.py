@@ -32,6 +32,7 @@ from .work import work_by_topic
 from .standing_conversation import partial
 from .whispers import actor_kind, private_source_refused
 from .message_edit import held_refusal, is_held, words as message_words, withheld
+from .removal import value as removal_value
 
 
 # A stage entry keeps its past: once left, nothing in it changes, but (version 30) the derived end _settle wrote on a
@@ -240,11 +241,14 @@ class Pipeline:
         return row
 
     def _build_topics(self, db, workspace_id):
-        """The outcome's Build topics (item 297): every topic a piece of its pipeline is built in, a release's among them,
+        """The outcome's Build topics (items 297, 837): agent-created topics a piece is built in, releases among them.
+        Human-created topics stay in the ordinary sidebar when work is linked to them. Build topics exist only
         while its pipeline is on; none while it is off or there is none, since then there is no pipeline to show them in."""
         if not db.execute("SELECT 1 FROM pipelines WHERE workspace_id=? AND enabled=1", (workspace_id,)).fetchone():
             return set()
-        return {row[0] for row in db.execute("SELECT DISTINCT topic_id FROM pipeline_pieces WHERE workspace_id=?", (workspace_id,))}
+        return {row[0] for row in db.execute(
+            "SELECT DISTINCT p.topic_id FROM pipeline_pieces p JOIN topics t ON t.id=p.topic_id "
+            "JOIN actors a ON a.id=t.creator_id WHERE p.workspace_id=? AND a.kind='agent'", (workspace_id,))}
 
     def _open_build_topics(self, db, workspace_id):
         """The outcome's Build topics the right rail lists (item 297): the ones neither Done nor archived, the Conversation
@@ -959,7 +963,9 @@ class Pipeline:
         row = db.execute("SELECT m.author_id,m.sent_ms," + message_words("m", plain=True) + " AS body,m.reply_to,t.workspace_id FROM messages m JOIN topics t ON t.id=m.topic_id "
                          "WHERE m.id=?", (message["id"],)).fetchone()
         words = dict(SECTION_WORDS, **_loads(pipeline["section_words"], {}), dropped="Dropped")
-        if row["workspace_id"] != workspace["id"]:
+        if removal_value(db, message["id"]) is not None:
+            why = "it was retracted"
+        elif row["workspace_id"] != workspace["id"]:
             why = "it is in another outcome"
         elif row["author_id"] != owner:
             why = "it is %s's message" % row["author_id"]
@@ -1057,6 +1063,7 @@ class Pipeline:
         topic = self._topic(db, actor, args.get("topic_id"))
         if topic["workspace_id"] != workspace["id"]:
             raise Refusal("TOPIC_OUTSIDE_OUTCOME", "The topic doing the work belongs to this outcome")
+        self._piece_topic(db, topic)
         if db.execute("SELECT 1 FROM pipeline_pieces p JOIN pipeline_stage_entries e ON e.piece_id=p.id AND e.left_ms IS NULL WHERE p.topic_id=?",
                       (topic["id"],)).fetchone():
             raise Refusal("TOPIC_HAS_PIECE", "That topic already holds a piece of work under way")
@@ -1093,6 +1100,42 @@ class Pipeline:
             raise Refusal("NOT_FOUND", "No such piece of work")
         workspace = self._workspace(db, actor, row["workspace_id"])
         return row, workspace
+
+    def _piece_topic(self, db, topic):
+        """The opening actor is retained as creator, even when dossiers move (632)."""
+        if topic["kind"] != "topic":
+            raise Refusal("PIECE_TOPIC_REQUIRED", "Create a separate topic for this piece of work")
+        if self._actor(db, topic["creator_id"])["kind"] != "agent":
+            raise Refusal("PERSON_TOPIC", "A person's topic stays theirs; create a separate topic for the piece")
+
+    def _command_pipeline_piece_move(self, db, actor, envelope):
+        target, args = envelope["target"], envelope["args"]
+        if set(target) != {"piece_id"} or set(args) != {"topic_id"} or "piece_revision" not in envelope["expected"]:
+            raise Refusal("INVALID_ARGUMENT", "Name the piece, its new topic and the piece revision read")
+        piece, workspace = self._piece(db, actor, target["piece_id"])
+        self._steerer(db, actor, workspace["id"])
+        self._pipeline_on(db, workspace["id"])
+        self._check_revision(envelope, "piece_revision", piece["version"])
+        if piece["kind"] != "piece":
+            raise Refusal("INVALID_ARGUMENT", "Move a piece of work, not a release")
+        topic = self._topic(db, actor, args["topic_id"])
+        if topic["workspace_id"] != workspace["id"]:
+            raise Refusal("TOPIC_OUTSIDE_OUTCOME", "The topic doing the work belongs to this outcome")
+        self._piece_topic(db, topic)
+        before = piece["topic_id"]
+        if before == topic["id"]:
+            return {"piece_id": piece["id"], "from_topic_id": before, "topic_id": before,
+                    "piece_revision": piece["version"], "pipeline_revision": self._pipeline_row(db, workspace["id"])["version"]}, []
+        if db.execute("SELECT 1 FROM pipeline_pieces p JOIN pipeline_stage_entries e ON e.piece_id=p.id AND e.left_ms IS NULL "
+                      "WHERE p.topic_id=? AND p.id!=?", (topic["id"], piece["id"])).fetchone():
+            raise Refusal("TOPIC_HAS_PIECE", "That topic already holds a piece of work under way")
+        db.execute("UPDATE pipeline_pieces SET topic_id=?,version=version+1 WHERE id=?", (topic["id"], piece["id"]))
+        self._settle(db, workspace["id"])
+        self._build_moved(db, {before, topic["id"]})
+        version = self._bump(db, workspace["id"], piece["id"])
+        return {"piece_id": piece["id"], "from_topic_id": before, "topic_id": topic["id"],
+                "piece_revision": db.execute("SELECT version FROM pipeline_pieces WHERE id=?", (piece["id"],)).fetchone()[0],
+                "pipeline_revision": version}, []
 
     def _command_pipeline_stage_enter(self, db, actor, envelope):
         target, args = envelope["target"], envelope["args"]
@@ -1202,10 +1245,10 @@ class Pipeline:
         if set(target) != {"piece_id"} or set(args) - {"note"}:
             raise Refusal("INVALID_ARGUMENT", "Name the piece that is done")
         piece, workspace = self._piece(db, actor, target["piece_id"])
-        pipeline = self._pipeline_on(db, workspace["id"])
+        # Any pipeline's piece can be finished, a release pipeline's too: a record can miss what shipped, and the agent who
+        # knows says so here rather than leaving the board wrong.
+        self._pipeline_on(db, workspace["id"])
         self._check_revision(envelope, "piece_revision", piece["version"])
-        if pipeline["ships_in_releases"]:
-            raise Refusal("RELEASE_PIPELINE_SHIPS_BY_RECORD", "This pipeline's items finish when a release record ships them")
         entry = self._open_entry(db, piece["id"])
         if entry is None:
             raise Refusal("PIECE_CLOSED", "This piece of work has finished")
@@ -1313,7 +1356,7 @@ class Pipeline:
                           "substr(CAST(r.title AS BLOB),1,257) AS page_prefix FROM pipeline_item_sources s "
                           "LEFT JOIN messages m ON m.id=s.message_id LEFT JOIN topics t ON t.id=m.topic_id "
                           "LEFT JOIN memory_items i ON i.id=s.memory_item_id LEFT JOIN memory_revisions r ON r.item_id=i.id AND r.revision=i.current_revision "
-                          "WHERE s.workspace_id=? AND s.number=? ORDER BY s.position", (workspace_id, number)).fetchall()
+                          "WHERE s.workspace_id=? AND s.number=? AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=s.message_id AND r.kind='unsent') ORDER BY s.position", (workspace_id, number)).fetchall()
         shown, topics, messages, notes, yours = [], [], 0, 0, 0
         for row in rows:
             if row["message_id"] is not None:
@@ -1349,6 +1392,9 @@ class Pipeline:
         if not value:
             return None
         if "message_id" in value:
+            from .removal import unsent
+            if unsent(db, value['message_id']):
+                return None
             try:
                 row = self._message_access(db, actor, value["message_id"])
             except Refusal:

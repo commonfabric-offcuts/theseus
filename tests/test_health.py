@@ -123,8 +123,9 @@ class NoticeCase(HealthCase):
         """Each fixed code codex_host settles a claim with, directly or through a thread or a Codex
         process that cannot serve, has words of its own, never "the agent runner said <code>"."""
         source = (Path(__file__).resolve().parent.parent / "aim_next" / "codex_host.py").read_text()
-        codes = set(re.findall(r'(?:_settle\((?:work|self\.current), "[a-z]+", None, |_attach_failed\(thread, |[ .]failed\(|_fail_child\(child, )"([A-Za-z_]+)"', source))
-        self.assertTrue({"resume_failed", "settings_not_applied", "child_exited", "not_steerable", "stalled", "protocol_error"} <= codes, codes)
+        codes = set(re.findall(r'''(?:_settle\((?:work|self\.current), ["'][a-z]+["'], None, |_attach_failed\(thread, |[ .]failed\(|_fail_child\(child, )["']([A-Za-z_]+)["']''', source))
+        self.assertTrue({"resume_failed", "settings_not_applied", "child_exited", "not_steerable", "stalled", "protocol_error", "broker_unavailable", "route_configuration_changed", "proxy_unverified",
+                         "workspace_policy_not_attached", "invalid_cwd", "operator_stopped"} <= codes, codes)
         for code in sorted(codes - {"thread_"}):
             self.assertNotIn("the agent runner said", why_words(code, "unavailable"), code)
         self.assertEqual(why_words("thread_notLoaded", "unavailable"), "its Codex thread is not loaded")

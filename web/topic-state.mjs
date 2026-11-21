@@ -17,6 +17,12 @@ const named = (id, reader) => id === reader ? 'you' : id;
 
 // The open asks a topic carries: each waits on the person asked until they write in it.
 const asksOf = item => Array.isArray(item?.asks) ? item.asks.filter(ask => typeof ask?.actor_id === 'string') : [];
+// A Conversation's wait can be inspected by anyone who reads it. Prefer the
+// reader's own question; ordinary topics retain their personal destination.
+export const waitingQuestion = (item, reader) => {
+  const asks = asksOf(item).filter(ask => typeof ask.message_id === 'string');
+  return (asks.find(ask => ask.actor_id === reader) ?? (item?.kind === 'conversation' ? asks[0] : null))?.message_id ?? null;
+};
 
 // Who a topic waits on: those its waiting state names, then those asked and not yet answered.
 export function waitsOn(item) {
@@ -41,8 +47,13 @@ const askParts = (item, reader) => asksOf(item).map(ask => ({ words: `${named(as
 // "fable asked you, since 7:41 AM Thu Nov 5": how long each open ask has
 // waited, dated, for a title.
 export function askLines(item, reader) {
-  return askParts(item, reader).map(({ words, since }) => words + (since === null ? '' : `, since ${datedTime(since)}`));
+  const asks = asksOf(item);
+  return askParts(item, reader).map(({ words, since }, index) => words +
+    (!asks[index].withheld && asks[index].excerpt ? `: ${asks[index].excerpt}` : '') + (since === null ? '' : `, since ${datedTime(since)}`));
 }
+
+export const stateTitle = (item, reader) => [stateLabel(item, reader),
+  ...(typeof item.state_note === 'string' && item.state_note ? [item.state_note] : []), ...askLines(item, reader)].join(' · ');
 
 // Whether work is observed on a topic, by the server's one rule (aim_next/work.py),
 // as a state and a time (item 86): "aim-spec · 6:45 AM" (who worked in it
@@ -97,7 +108,7 @@ export function paintState(host, item, reader) {
   if (waitsOn(item).includes(reader)) mark.classList.add('mine');
   mark.textContent = stateLabel(item, reader);
   // A long state ends in an ellipsis; its title holds the whole of it, and how long each ask has waited.
-  mark.title = [mark.textContent, ...(typeof item.state_note === 'string' && item.state_note ? [item.state_note] : []), ...askLines(item, reader)].join(' · ');
+  mark.title = stateTitle(item, reader);
   host.append(mark);
 }
 
@@ -115,6 +126,14 @@ const known = state => STATES.includes(state) ? state : 'active';
 // What Core holds for each field of the topic itself, as last read.
 const HELD = { title: topic => topic.title, archived: topic => topic.archived === true, state: topic => known(topic.state),
   note: topic => topic.state_note ?? '', waiting_on: topic => Array.isArray(topic.waiting_on) ? topic.waiting_on : [] };
+export const topicFieldKeys = (topic, name) => name === 'state' || name === 'people'
+  ? ['state', 'waiting_on', ...(topic.state_message_id ? ['note'] : [])] : [name];
+export const topicFieldFences = (topic, name) => Object.fromEntries(topicFieldKeys(topic, name).map(key => [key, HELD[key](topic)]));
+export function topicUpdateEnvelope(bootstrap, topic, args, fields, operation_id = crypto.randomUUID()) {
+  const { authority_id, authority_epoch } = bootstrap.authority;
+  return { v: 1, instance_id: bootstrap.instance_id, operation_id, kind: 'topic.update', target: { topic_id: topic.id },
+    expected: { topic_fields: fields, authority: { authority_id, authority_epoch } }, args };
+}
 // What Core's answer to a topic.update says of the topic, and what its answer
 // to Your part says of the reader's own row; everything else only a read says.
 const SAID = ['title', 'archived', 'state', 'state_note', 'waiting_on', 'state_by', 'state_ms', 'state_message_id'];
@@ -187,8 +206,8 @@ export class TopicStatePanel {
   // topic painted; read() gives {topic, participants}, read once after a
   // refusal or a lost answer to show what Core holds; attention() asks the
   // page to show Topic settings when a line's words are refused.
-  constructor({ host, reader, send, sendNote = null, refresh = () => {}, painted = () => {}, read = null, attention = () => {} }) {
-    Object.assign(this, { host, reader, send, sendNote, refresh, painted, read, attention });
+  constructor({ host, reader, send, sendNote = null, refresh = () => {}, painted = () => {}, read = null, attention = () => {}, titleSurface = null }) {
+    Object.assign(this, { host, reader, send, sendNote, refresh, painted, read, attention, titleSurface });
     // kept: the refusal said over a line's words, while they stay unsaved.
     // running: each answer still awaited. at: the topic version Core said
     // each part of what shows at: the last read, what a topic.update answers
@@ -199,6 +218,14 @@ export class TopicStatePanel {
     // One notice, kept in place, so a screen reader announces each new text.
     this.notice = element('p', { className: 'notice', hidden: true });
     this.notice.setAttribute('role', 'status');
+    if (titleSurface) {
+      titleSurface.host.replaceChildren(); titleSurface.host.hidden = true; titleSurface.title.hidden = false;
+      titleSurface.pencil.onclick = () => this.renameTitle();
+      titleSurface.title.onclick = () => this.renameTitle();
+      titleSurface.title.onkeydown = event => {
+        if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); this.renameTitle(); }
+      };
+    }
   }
 
   // A read of the topic and its participants.
@@ -225,7 +252,7 @@ export class TopicStatePanel {
     this.painted(topic);
   }
 
-  reset() { this.controls = null; this.fields = {}; this.kept = null; this.show(null); }
+  reset() { this.restoreTitleSurface(); this.managedTitle = null; this.controls = null; this.fields = {}; this.kept = null; this.show(null); }
 
   // Whether the reader may say where the topic stands, by Core's rule: its
   // participants, its creator, whoever organises the outcome and whoever has
@@ -239,6 +266,10 @@ export class TopicStatePanel {
   // The chips, the note and the quiet line of who said it: chips to tap for
   // those who may say where it stands, the state alone for everyone else.
   build(says) {
+    // Reclaim the same field before replacing its panel; pending writing and
+    // operation identity survive a permission rebuild.
+    this.restoreTitleSurface();
+    const titleFields = Object.fromEntries(['title', 'archived'].filter(name => this.fields[name]).map(name => [name, this.fields[name]]));
     const chips = element('div', { className: 'state-chips' });
     chips.setAttribute('role', 'group'); chips.setAttribute('aria-labelledby', 'stand-heading');
     const states = new Map();
@@ -247,7 +278,7 @@ export class TopicStatePanel {
     people.setAttribute('role', 'group'); people.setAttribute('aria-labelledby', 'waiting-label');
     const waiting = element('div', { className: 'waiting-on', hidden: true }, waitingLabel, people);
     let note;
-    this.fields = {};
+    this.fields = titleFields;
     if (says) {
       for (const value of STATES) {
         const button = chip(LABELS[value], () => this.tap('state', () => value));
@@ -291,7 +322,7 @@ export class TopicStatePanel {
   // chip where the topic stands and who it waits on, which a state also sets,
   // and the note after a reopen, which Core then starts afresh.
   snapshot(name) {
-    const keys = name === 'state' || name === 'people' ? ['state', 'waiting_on', ...(this.topic.state_message_id ? ['note'] : [])] : [name];
+    const keys = topicFieldKeys(this.topic, name);
     return Object.fromEntries(keys.map(key => [key, { ...this.held(key), version: key === 'duty' ? this.at.duty : this.at.said }]));
   }
 
@@ -299,13 +330,13 @@ export class TopicStatePanel {
   // topic's creator: two quiet actions. Rename puts a one-line title in their place.
   manage(manager) {
     const controls = this.controls;
-    if (manager && !controls.managed) {
+    if (manager && !this.managedTitle) {
       const unchanged = () => this.fields.title?.line.value === this.topic?.title;
       const title = this.line('title', { id: 'topic-rename', className: 'rename-line', hidden: true },
-        { cancel: () => { this.renaming(false); return true; }, leave: () => { if (!unchanged()) this.save('title'); } });
+        { cancel: () => { this.renaming(false); return true; }, leave: () => { if (!this.movingTitle && !unchanged()) this.save('title'); } });
       title.setAttribute('aria-label', 'Title');
       // Leaving the title unchanged puts the actions back, where the focus went.
-      title.addEventListener('blur', () => { if (unchanged() && !title.hidden) this.renaming(false, false); });
+      title.addEventListener('blur', () => { if (!this.movingTitle && unchanged() && !title.hidden) this.renaming(false, false); });
       const rename = element('button', { type: 'button', className: 'text-action', textContent: 'Rename' });
       rename.onclick = () => this.renaming(true);
       // Archive means what it said when pressed.
@@ -314,24 +345,53 @@ export class TopicStatePanel {
       this.fields.archived = { name: 'archived' };
       controls.actions.replaceChildren(title, rename, archive);
       controls.actions.hidden = false;
-      controls.managed = { title, rename, archive };
-    } else if (!manager && controls.managed) {
-      controls.actions.replaceChildren(); controls.actions.hidden = true; controls.managed = null;
-      delete this.fields.title; delete this.fields.archived;
+      this.managedTitle = { title, rename, archive };
+    }
+    if (this.managedTitle) {
+      if (!manager) this.restoreTitleSurface();
+      const { title, rename, archive } = this.managedTitle;
+      if (!controls.actions.contains(title) && !this.inlineTitle) controls.actions.replaceChildren(title, rename, archive);
+      title.disabled = rename.disabled = archive.disabled = !manager;
+      controls.actions.hidden = !manager;
+      controls.managed = manager ? this.managedTitle : null;
     }
   }
 
-  // Whether the one-line title shows in place of Rename and Archive.
+  // The header borrows the existing field/notice and save model.
+  renameTitle() {
+    const managed = this.controls?.managed, surface = this.titleSurface;
+    if (!managed || !surface || this.topic.kind === 'conversation') return;
+    this.inlineTitle = true;
+    surface.title.hidden = surface.pencil.hidden = true; surface.host.hidden = false;
+    surface.host.append(managed.title, this.notice);
+    this.show(null); this.renaming(true);
+  }
+
+  // Restore immediately, rather than relying on a later paint to repair it.
+  restoreTitleSurface() {
+    if (!this.inlineTitle) return;
+    const managed = this.controls?.managed, surface = this.titleSurface;
+    this.inlineTitle = false; this.movingTitle = true;
+    try {
+      if (managed) this.controls.actions.prepend(managed.title);
+      this.host.insertBefore(this.notice, this.controls?.actions ?? null);
+    } finally { this.movingTitle = false; }
+    surface.host.hidden = true; surface.title.hidden = false;
+    surface.pencil.hidden = !managesTopic(this.topic, this.reader) || this.topic.kind === 'conversation';
+  }
+
+  // Whether the one-line title shows in the header or settings actions.
   // focus: whether the focus moves too, to the title or back to Rename.
   renaming(on, focus = true) {
     const managed = this.controls?.managed;
     if (!managed) return;
     const had = managed.title === document.activeElement;
-    if (!on) this.cancel('title');
+    const opener = this.inlineTitle ? (globalThis.matchMedia?.('(hover:none)').matches ? this.titleSurface.title : this.titleSurface.pencil) : managed.rename;
+    if (!on) { this.cancel('title'); this.restoreTitleSurface(); }
     managed.title.hidden = !on; managed.rename.hidden = managed.archive.hidden = on;
     if (!focus) return;
     if (on) { managed.title.focus(); managed.title.select(); }
-    else if (had || document.activeElement === document.body || !document.activeElement) managed.rename.focus();
+    else if (had || document.activeElement === document.body || !document.activeElement) opener.focus();
   }
 
   // The reader's own part, for a participant: only they say what they do here.
@@ -468,7 +528,7 @@ export class TopicStatePanel {
         if (answer) field.start = this.snapshot(field.name);
         message = kept(field.name, answer ? this.held(field.name).value : null);
         this.kept = { name: field.name, message };
-        this.attention();
+        if (!(field.name === 'title' && this.inlineTitle)) this.attention();
       } else {
         message = field.line ? `${KEPT[field.name]}, so yours was not saved.` : CHANGED;
         if (!field.line) this.stop(field);
@@ -620,7 +680,9 @@ export class TopicStatePanel {
   }
 
   hide() {
-    this.host.hidden = true; this.host.replaceChildren(); this.topic = null; this.controls = null; this.fields = {}; this.kept = null; this.at = null; this.show(null);
+    this.restoreTitleSurface();
+    this.host.hidden = true; this.host.replaceChildren(); this.topic = null; this.managedTitle = null; this.controls = null; this.fields = {}; this.kept = null; this.at = null; this.show(null);
+    if (this.titleSurface) { this.titleSurface.pencil.hidden = true; this.titleSurface.title.tabIndex = -1; this.titleSurface.title.classList.toggle('renamable', false); }
   }
 }
 

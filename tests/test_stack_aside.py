@@ -242,7 +242,7 @@ class StarHoldCase(StackCase):
         self.committed(self.star(later))
         refused = self.aside(root, self.latest())
         self.rejected(refused, 'STARRED_IN_DOSSIER')
-        self.assertIn('has a message you starred', refused['error']['message'])
+        self.assertEqual(refused['error']['message'], 'This dossier has a message you starred: unstar it to archive it')
         self.assertEqual(self.rows('aside'), [], 'nothing moved')
         self.assertFalse(self.position(root)['below'])
         self.assertEqual(self.position(root).get('starred'), [later], 'the position names the star the title bar shows')
@@ -425,7 +425,7 @@ class StarHoldCLICase(AgentCLIBase):
         before = self.rows('aside')
         code, result, _ = self.aside_cli(root)
         self.assertEqual((code, result.get('status'), result.get('error', {}).get('code')), (2, 'rejected', 'STARRED_IN_DOSSIER'), result)
-        self.assertIn('has a message you starred', result['error']['message'])
+        self.assertEqual(result['error']['message'], 'This dossier has a message you starred: unstar it to archive it')
         self.assertEqual(self.rows('aside'), before, 'nothing moved')
         # Unstarred, the same command moves it.
         self.committed(self.star(later, on=False, revision=1, actor='agent-a'))
@@ -447,6 +447,10 @@ class AsideMigrationCase(StackCase):
         rows = self.sql('SELECT * FROM message_acts ORDER BY id')
         with sqlite3.connect(str(self.path)) as db:
             db.execute("UPDATE sqlite_sequence SET seq=17 WHERE name='message_acts'")
+            # This test isolates the historical 37/38 aside step. Remove the
+            # later 731 positions explicitly; test_dossier_order checks the
+            # real schema-48 preservation and downgrade refusal separately.
+            db.execute("DELETE FROM dossier_order")
         migrate(self.path, 'test-instance', self.binding, '37')
         self.assertEqual(self.sql('SELECT * FROM message_acts ORDER BY id'), rows)
         migrate(self.path, 'test-instance', self.binding)
