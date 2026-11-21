@@ -26,6 +26,7 @@ import { TopicViews, followEdits } from './topic-views.mjs';
 import { visitNewFor, paintVisitNew } from './visit-new.mjs';
 import { resolveTopicLink, topicLinkNeedsLookup } from './topic-link-route.mjs';
 import { readTopicList, TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, topicTarget, paintChanged, changedSince } from './topic-navigation.mjs';
+import { ImagePage } from './image-page.mjs';
 import { OnboardingPrompt } from './onboarding.mjs';
 import { OutcomeRail } from './outcomes.mjs';
 import { LightPeek, paintAlsoWaiting, paintStanding, paintStandingFailed } from './outcome-light.mjs';
@@ -4053,17 +4054,17 @@ nameTopicsWith(topicName);
 // from: the link pressed, which takes the focus back when the Reader closes.
 async function openDestination(target, title, from = null, writtenQuery = false) {
   const landing = ++landingSerial;
-  if (writtenQuery && topicLinkNeedsLookup(target, topic?.id)) {
+  if (writtenQuery && (target.kind === 'topic' || target.page || target.kind === 'cards')) {
     const original = target;
     topicNavigation?.cancelPending();
     try {
       target = await resolveTopicLink(target, { read: (name, args) => api.view(name, args, { readClass: 'foreground' }),
         instanceId: bootstrap.instance_id, workspaceId: topic?.workspace_id ?? shell.handles?.workspaceId ?? pageHereOutcome,
-        ownerScope: linkOwnerScope?.(), current: () => !retired && landing === landingSerial });
+        ownerScope: linkOwnerScope?.(), current: () => !retired && landing === landingSerial, confirm: true, currentTopicId: topic?.id });
       if (!target || retired || landing !== landingSerial) return false;
     } catch (error) {
       if (retired || landing !== landingSerial) return false;
-      if (!['TOPIC_NAME_UNKNOWN', 'TOPIC_NAME_AMBIGUOUS'].includes(error.code)) target = original;
+      if (!['TOPIC_NAME_UNKNOWN', 'TOPIC_NAME_AMBIGUOUS', 'LINK_DESTINATION_UNAVAILABLE', 'LINK_DESTINATION_UNCONFIRMED'].includes(error.code)) target = original;
       else {
         if (notebookSheet?.showing && notebookSheet.current) notebookSheet.current.say(error.message, 'attention');
         else if (linkNotice) linkNotice(error.message);
@@ -4168,6 +4169,7 @@ async function initializeOutcomePage(route) {
   if(route.kind==='measurements')return initializeMeasurementsPage(route);
   if(route.kind==='tool')return initializeToolPage(route);
   if(route.kind==='cards')return initializeDeckPage(route);
+  if(route.kind==='image')return initializeImagePage(route);
   if(!['root','workspace'].includes(route.kind))throw Error('This opening link is not available yet. Open Outcomes to choose a place.');
   // A Notebook page's link opens the page in place once the outcome's lists are
   // up; the address then names the outcome alone, as a message's link does.
@@ -4203,7 +4205,7 @@ async function initializeOutcomePage(route) {
     for(const child of [...$('topic-navigation').children])if(!child.classList.contains('rail-heading'))child.hidden=true;
     $('topic-navigation').append(cardsHost);
     const topicCards=new OutcomeTopicCards({host:cardsHost,color:agentShown,named:displayActor,painted:values=>outcomePageLayout?.topics(values)});
-    outcomePageLayout=new OutcomePageLayout({host:$('outcome-page'),team:$('outcome-team'),cards:topicCards,reader:bootstrap.actor,color:agentShown});
+    outcomePageLayout=new OutcomePageLayout({host:$('outcome-page'),team:$('outcome-team'),cards:topicCards,reader:bootstrap.actor,color:agentShown,scope:route.id});
     colors??=new AgentColors({api,instanceId:bootstrap.instance_id,authority:()=>bootstrap.authority});
     outcomePageLayout.unlisten=colors.listen(()=>{if(!retired){topicCards.repaint();outcomePageLayout.paint();}});
     run(()=>colors.load('foreground'));
@@ -4395,6 +4397,18 @@ async function initializeHealthPage() {
   live?.listen(event=>page.heard(event));
   await followCommits(()=>page.load())();
   document.body.dataset.ready='true';
+}
+// A copied image address rechecks its source before showing verified bytes.
+async function initializeImagePage(route) {
+  drawFeed(false, 'topic-pending', 'inline-composer', 'topic-navigation');
+  document.querySelector('.rail').hidden = true;
+  $('topic-title').textContent = 'Image'; $('topic-description').textContent = '';
+  const host = $('image-page'); host.hidden = false;
+  const page = new ImagePage({ host, route, current: () => !retired, handles: { api, bootstrap,
+    view: (name, args) => pipelineView(name, args), inTurn: job => job() } });
+  window.addEventListener('pagehide', () => page.dispose());
+  await followCommits(() => page.load())();
+  document.body.dataset.ready = 'true';
 }
 // A Notebook page as a deck of cards (docs/decks.md): no rail, so the deck has
 // the width; "← Outcomes" and the logo block head it, and the eyebrow goes
@@ -4602,7 +4616,7 @@ function notebookViewsOf(){return notebookViews??=new NotebookViews(bootstrap);}
 function outcomePages(workspace,recorded) {
   pagesInPlace(workspace,recorded);
   return new OutcomeReferences({scope:workspace,host:$('outcome-references'),create:()=>notebookCreator($('outcome-references'),{kind:'workspace',id:workspace}),list:$('outcome-references-list'),more:$('more-references'),
-    message:$('outcome-references-status'),pageMax:pageMax(),viewPreference:notebookViewsOf(),denied:error=>readFailure(error).kind==='forbidden',
+    message:$('outcome-references-status'),pageMax:pageMax(),viewPreference:notebookViewsOf(),denied:error=>readFailure(error).kind==='forbidden',painted:shown=>outcomePageLayout?.notes(shown),
     read:args=>pipelineView('memory_items',{owner_scope:{kind:'workspace',id:workspace},...args}),open:(ref,row)=>run(()=>openNotebook(ref.id,{opener:row}))});
 }
 // An outcome's team, which its owner and its coordinator may change. The owner

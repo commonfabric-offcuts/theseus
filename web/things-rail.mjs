@@ -18,7 +18,7 @@
 // the page when there is room; it reads only while it shows. What it shows
 // is drawn for one topic: when it changes, what was shown goes at once, and a
 // read for a topic left behind draws nothing.
-import { paintChanged, paintMarks, questionOf, landsOnUnread } from './topic-navigation.mjs';
+import { paintChanged, paintMarks, questionOf, nextQuestionOf, landsOnUnread } from './topic-navigation.mjs';
 import { paintThumb } from './image-pick.mjs';
 import { clock, shownTime, datedTime } from './times.mjs';
 import { readFailure } from './freshness.mjs';
@@ -27,6 +27,10 @@ import { reloader } from './live.mjs';
 import { listen } from './in-place-navigation.mjs';
 import { KeyTree } from './key-tree.mjs';
 import { panes } from './panes.mjs';
+import { ImageRailMenu } from './image-rail-menu.mjs';
+import { keyAction } from './pane-keys.mjs';
+import { revealSelection } from './reveal.mjs';
+import { glyph } from './glyphs.mjs';
 
 // A Notebook page's first words: its body's lines without Markdown marks, joined, after its own title when it opens with
 // it as a heading. The rail clamps them to three lines; this keeps no more than it could show.
@@ -163,10 +167,11 @@ export class ThingsRail {
     this.kept = new Map();
     this.reload = reloader(() => this.load());
     this.build();
+    this.imageMenus = new ImageRailMenu(this);
     // The keys move through the sections and their rows as one tree
-    // (key-tree.mjs): ↑ ↓ between them, → ← and ⌘→ ⌘← open and fold a
-    // section, Return opens a row, ← from a folded section goes back to the
-    // messages (panes.mjs). The generic arrow owner reaches only controls
+    // (key-tree.mjs): ↑ ↓ between them, → and ⌘→ ⌘← open and fold a
+    // section, Return opens a row, and plain ← goes back to the messages
+    // without folding. The generic arrow owner reaches only controls
     // actually present; this rail has no scope controls or name row.
     this.tree = new KeyTree({ root: this.holder, doc, label: 'The topic\'s things', column: this.host, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows) });
     // The sheet closes with Escape, its ✕ and a tap beside it; the shell keeps these across moves.
@@ -185,13 +190,29 @@ export class ThingsRail {
     const holder = this.holder = element(doc, 'div', { className: 'things-sections' });
     for (const [key, label] of SECTIONS) {
       const sum = element(doc, 'span', { className: 'sum' }), body = element(doc, 'div', { className: 'things-body' });
-      const summary = element(doc, 'summary', {}, element(doc, 'span', { textContent: label }), sum);
+      const disclosure = element(doc, 'button', { type: 'button', className: 'things-disclosure ol-disclosure', tabIndex: 0 }, glyph('chevron', doc));
+      const summary = element(doc, 'summary', {}, disclosure, element(doc, 'span', { className: 'things-section-name', textContent: label }), sum);
       const details = element(doc, 'details', { className: 'things-sec', hidden: true }, summary, body);
       details.dataset.key = key;
+      body.id = 'things-' + key + '-body';
+      disclosure.setAttribute('aria-controls', body.id);
+      const paintDisclosure = () => {
+        disclosure.setAttribute('aria-expanded', String(Boolean(details.open)));
+        disclosure.setAttribute('aria-label', `${details.open ? 'Fold' : 'Open'} ${label}`);
+      };
+      const part = { details, summary, disclosure, sum, body, drawn: null, paintDisclosure };
+      disclosure.onclick = event => {
+        if (!plainClick(event)) return;
+        event.preventDefault(); event.stopPropagation();
+        details.open = !details.open; paintDisclosure();
+      };
+      disclosure.onkeydown = event => this.sectionKey(event, part);
+      summary.onkeydown = event => { if (keyAction(event) === 'left') this.sectionKey(event, part); };
+      paintDisclosure();
       // What the person folds or opens is kept; the rail sets a fold only as its section appears (paint).
-      details.addEventListener('toggle', () => { if (this.folds) this.folds.set(key, details.open); });
+      details.addEventListener('toggle', () => { paintDisclosure(); if (this.folds) this.folds.set(key, details.open); });
       holder.append(details);
-      this.sections.set(key, { details, sum, body, drawn: null });
+      this.sections.set(key, part);
     }
     this.nothing = element(doc, 'p', { className: 'things-empty', hidden: true });
     this.message = element(doc, 'p', { className: 'notice', hidden: true }); this.message.setAttribute('role', 'status');
@@ -199,6 +220,28 @@ export class ThingsRail {
     this.retry.onclick = () => this.reload();
     this.host.replaceChildren(element(doc, 'div', { className: 'things-head' }, this.heading, this.closer), holder, this.nothing, this.message, this.retry);
     this.host.hidden = true;
+  }
+  // A disclosure is its own stop, like the outline's. Its ↑/↓ continue at
+  // the heading's place in the tree; → retains the Notebook pencil's stop.
+  sectionKey(event, part) {
+    const action = keyAction(event), { details, summary, disclosure } = part;
+    const consume = () => { event.preventDefault(); event.stopPropagation(); };
+    if (action === 'left') { consume(); panes.step('things', 'left', this.doc); return; }
+    if (event.target !== disclosure) return;
+    if (!event.defaultPrevented && !event.isComposing && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && ['Enter', ' '].includes(event.key)) {
+      consume();
+      if (!event.repeat) { details.open = !details.open; part.paintDisclosure(); }
+      return;
+    }
+    const rows = this.tree.list(), at = rows.findIndex(row => row.el === summary);
+    if (action === 'up' || action === 'down') {
+      const next = rows[at + (action === 'up' ? -1 : 1)];
+      if (next) { consume(); this.tree.go(next); }
+    } else if (action === 'right') {
+      const control = [...summary.querySelectorAll('button:not([disabled]), a[href]')]
+        .find(el => el !== disclosure && el.isConnected && (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length));
+      if (control) { consume(); control.focus({ preventScroll: true }); revealSelection(control); }
+    }
   }
   // Each section shown, and under an open one what can be pressed in it.
   treeRows() {
@@ -216,10 +259,8 @@ export class ThingsRail {
   }
   act(action, row, rows) {
     const section = row.level === 1 ? row.el.parentElement : row.el.closest('details');
-    // → and ← open and fold as in the outline: → opens a folded section or
-    // goes to its first row; ← folds an open one, goes from a row to its
-    // section, and from a folded section back to the messages.
-    if (action === 'left') { if (!this.tree.stepOut(row, rows, each => { each.el.parentElement.open = false; })) panes.step('things', 'left', this.doc); return; }
+    // A plain Left always crosses the pane; folding is an explicit action.
+    if (action === 'left') { panes.step('things', 'left', this.doc); return; }
     if (action === 'right') { this.tree.stepIn(row, rows, each => { each.el.parentElement.open = true; }); return; }
     // ⌘Return: a new message in the page's place, the panel over the page put away first.
     if (action === 'write') { this.leave(); panes.write?.(null); return; }
@@ -316,6 +357,7 @@ export class ThingsRail {
   // Nothing of the topic before stays on screen: every section goes,
   // with its words, until this one's read lands.
   clear() {
+    this.imageMenus?.reset();
     for (const part of this.sections.values()) { part.drawn = null; part.details.hidden = true; part.body.replaceChildren(); part.sum.textContent = ''; }
     for (const creator of this.creators.values()) creator.setAvailable(false);
     this.nothing.hidden = true; this.message.hidden = true; this.retry.hidden = true;
@@ -498,6 +540,15 @@ export class ThingsRail {
     const topicRow = (row, sub = null) => {
       if (!row.topic) return element(doc, 'span', { className: 'row' }, row.title, sub);
       const link = this.placeLink({ kind: 'topic', id: row.topic, ...(row.item && questionOf(row.item, reader) ? { message: questionOf(row.item, reader) } : {}) }, row.title);
+      link.onclick = event => {
+        if (!plainClick(event) || !this.handles) return;
+        event.preventDefault();
+        const unread = landsOnUnread(event.target, event);
+        const message = !unread && row.item ? nextQuestionOf(row.item, reader) : null;
+        const target = { kind: 'topic', id: row.topic, ...(unread ? { at: 'unread' } : message ? { message } : {}) };
+        if (!this.wide?.matches) this.close(false);
+        this.handles.open(target, row.title, link);
+      };
       if (row.item) paintMarks(link, row.item, reader);
       if (sub) link.append(sub);
       if (row.topic === here) link.setAttribute('aria-current', 'page');
@@ -588,10 +639,11 @@ export class ThingsRail {
   imageSection(images, reader) {
     if (!images.length) return null;
     const doc = this.doc, { api, bootstrap, inTurn } = this.handles;
-    return { sum: String(images.length), key: JSON.stringify(['img', images.map(image => image.attachment.id)]), node: () => element(doc, 'div', { className: 'things-thumbs' }, ...images.map(image => {
+    return { sum: String(images.length), key: JSON.stringify(['img', images.map(image => [image.source_ref.id, image.attachment.id, image.attachment.sha256])]), node: () => element(doc, 'div', { className: 'things-thumbs' }, ...images.map(image => {
       const label = `${image.attachment.name ?? 'Image'}, from ${image.author_id === reader ? 'you' : image.author_id}, ${datedTime(image.sent_ms)}`;
       const link = this.placeLink({ kind: 'topic', id: image.topic_id, message: image.source_ref.id }, '');
       link.className = 'thumb'; link.title = label; link.setAttribute('aria-label', label);
+      link.dataset.railImage = image.attachment.id; link.railImage = image;
       paintThumb(link, `${image.source_ref.id}:${image.attachment.id}`, () => inTurn(async () => (await api.media(bootstrap.instance_id, image.attachment, image.source_ref)).blob));
       return link;
     })) };

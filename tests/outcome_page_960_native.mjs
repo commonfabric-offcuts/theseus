@@ -85,10 +85,15 @@ try {
     if(width===390)await page.locator('#rail-backdrop').click({position:{x:380,y:500}});
     const card=page.locator('.outcome-topic-card[data-topic-id="t960two"]');await card.waitFor();
     assert.equal(views.filter(name=>name==='topic_messages').length,0,'no per-card topic reads');
-    const wide=width>=1100&&!withoutMedia,opening=card.locator('.outcome-topic-latest');
+    const wide=!withoutMedia,opening=card.locator('.outcome-topic-latest');
     assert.equal(await opening.isVisible(),wide);
     if(wide){
       assert.ok((await opening.innerText()).includes(latest));
+      // 997: below 1100px the bench is three tabs; each part shows once its tab is chosen.
+      const tabbed=width<1100,tab=async key=>{if(tabbed)await page.locator(`#outcome-tab-${key}`).click();};
+      assert.equal(await page.locator('.outcome-tabs').isVisible(),tabbed);
+      if(tabbed){assert.equal(await page.locator('#outcome-page').getAttribute('data-outcome-tab'),'topics');assert.equal(await page.locator('#outcome-agents').isVisible(),false);assert.equal(await page.locator('#outcome-references').isVisible(),false);}
+      await tab('agents');
       assert.equal(await page.locator('#outcome-agents').isVisible(),true);
       assert.equal(await page.locator('#outcome-purpose .purpose-pencil').count(),1);
       const pencil=page.locator('#outcome-purpose .purpose-pencil');await pencil.click();
@@ -101,9 +106,12 @@ try {
       const member=page.locator(`#outcome-agents .outcome-agent[data-actor-id="${facts.actor}"]`);
       assert.ok((await member.innerText()).includes('1 topic waits on you'));await member.click();
       await page.waitForFunction(()=>getComputedStyle(document.querySelector('[data-topic-id="t960one"].outcome-topic-card')).opacity==='0.25');
-      assert.equal(await card.evaluate(n=>getComputedStyle(n).opacity),'1');await member.click();
+      assert.equal(await card.evaluate(n=>getComputedStyle(n).opacity),'1');
+      if(tabbed){assert.equal(await page.locator('#outcome-page').getAttribute('data-outcome-tab'),'topics','picking an agent shows its topics');await tab('agents');}
+      await member.click();
       await page.waitForFunction(()=>getComputedStyle(document.querySelector('[data-topic-id="t960one"].outcome-topic-card')).opacity==='1');
       const add=page.locator('#outcome-agents #team-people .add-chip');await add.click();assert.equal(await add.getAttribute('aria-expanded'),'true');await add.click();
+      await tab('notes');
       const note=page.locator('#outcome-references-list [data-id="n960"]');assert.equal(await note.locator('.outcome-page-opening').innerText(),'The train leaves at seven.');
       const headingBox=await page.locator('#outcome-references>.rail-heading').boundingBox(),noteBox=await note.boundingBox();assert.ok(headingBox.y+headingBox.height<=noteBox.y+1,'Notebook heading is above its page cards');
       const color=await page.locator('#outcome-references').evaluate(n=>getComputedStyle(n).backgroundColor);
@@ -114,10 +122,10 @@ try {
       }
       if(width===1440&&colorScheme==='light'&&look==='bookends'){
         await pencil.click();await field.fill('Unsent resize writing960');
+        // 985: the bench holds at every width, so a narrower window keeps the purpose and its unsent words in place.
         await page.setViewportSize({width:1000,height:1000});
-        await page.locator('.topic-header #topic-description').waitFor({state:'attached'});
-        assert.equal(await field.inputValue(),'Unsent resize writing960');assert.equal(await page.locator('.topic-header #topic-description').count(),1);
-        await page.setViewportSize({width,height:1000});await page.locator('#outcome-purpose>#topic-description').waitFor({state:'attached'});assert.equal(await field.inputValue(),'Unsent resize writing960');await field.press('Escape');
+        assert.equal(await page.locator('#outcome-purpose>#topic-description').count(),1);assert.equal(await field.inputValue(),'Unsent resize writing960');
+        await page.setViewportSize({width,height:1000});assert.equal(await field.inputValue(),'Unsent resize writing960');await field.press('Escape');
         assert.equal(await pencil.evaluate(n=>n===document.activeElement),true);
         // Advance real scratch Core after the immutable request is queued,
         // then deliver it unchanged: this is an actual conflict, not a

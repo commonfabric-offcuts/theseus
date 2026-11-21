@@ -12,7 +12,8 @@ or has to remember to. The rules are `aim_next/outcome_rules.py`; the reads are
 In this order, the first that holds:
 
 1. **Waiting on you** (the only lit one): a question to the reader is open in
-   one of the outcome's topics. "Waiting on you · 2 questions". When one of
+   one of the outcome's topics or its Conversation. Every eligible question
+   counts, including several in the same place. "Waiting on you · 2 questions". When one of
    them holds a piece or a release until it is answered
    ([attention.md](attention.md#an-ask-that-holds-work)), it says so instead
    of the count: "Blocking a release: waiting on you" (a release before a
@@ -148,3 +149,16 @@ Conversation; this explicit choice survives that navigation (item 320). Return
 on the name opens the Conversation with its topics, as before; ⌘← folds them. The focus goes where any press in the outline
 puts it, on the heading of the page reached or stayed on.
 Waiting on you is a separate keyboard-reachable control, not a nested link.
+
+### Every waiting question (372)
+
+The light's ask facts contain every distinct eligible message ask to its
+reader, including every open Conversation ask. Its count and click cycle use
+that same set. Blocking annotations reorder exact message facts without
+collapsing their topics' other asks. Topic/list `asks` expand the actual
+reader's questions, and both rails cycle them using the same oldest-first
+comparator and a shared `topic:ID` position. Other actors and work/attention
+summaries retain their compact oldest-ask form. A said wait without a message
+keeps its one topic-only target; alongside message asks it adds nothing.
+The defaults, scopes, visibility and integration limits are specified in
+[waiting-questions-372.md](waiting-questions-372.md).

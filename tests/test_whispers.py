@@ -968,7 +968,6 @@ MESSAGE_READS = {
                               "for a thumb that answers an ask (item 239): the asked person's replies, on the record or whispered to "
                               "whoever asked, and their writing on the record, their next ask and the whispered replies that answered one "
                               "(item 307), never shown, and the asks topic_waiting and held_ask name, which a whisper never is", 10),
-    "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
     "aim_next/blocking.py": ("the message just posted, and asks that name what they block, which only an ask can and a whisper never is", 3),
     "aim_next/store.py": ("the latest message on the record from topic_summaries; the exposure boundary additionally reads ids/revisions only for bounded content identities actually returned by admitted projections, after unsent refusal and excluding held ids; no new words or identities are projected by this read", 2),
     "aim_next/topic_preview.py": ("only the returned topics' public summary messages, additionally private_to IS NULL and removal.VISIBLE; current words use the edit/hold helper and final opening words mark their exact revision", 1),
@@ -977,7 +976,8 @@ MESSAGE_READS = {
                                   "operation id that shows nothing of any message", 2),
     "aim_next/topic_state.py": ("asks, an ask an open record still holds, the ask a wait is from when its person writes, the message a "
                                 "person's whisper replies to (its author and place, never shown), "
-                                "the conversation asks to someone who can no longer read it, and the latest message on the record", 7),
+                                "the conversation asks to someone who can no longer read it, and the latest message on the record; "
+                                "item 372 reader/topic-scoped eligible ask metadata under READABLE and VISIBLE, followed by current public preview words only for those eligible ids, private words empty", 9),
     "aim_next/checks.py": ("held asks and the owner's ask about the target, which a whisper never is; a problem's message, refused "
                            "when it is an agent's whisper, and shown through _message_access; the loop's account on the record only", 7),
     "aim_next/outcome_asks.py": ("asks an open target or owner-gated stage still holds, which a whisper never is", 4),
