@@ -438,6 +438,11 @@ export class NotebookPage extends DeckPage {
   }
   key(event) {
     if (this.keyScope && !this.keyScope(event.target)) return;
+    // Even an empty Notebook editor owns its caret arrows. Keep an unused
+    // key from reaching the window's spatial fallback; leave its native
+    // text action and the editor's own key handling intact.
+    if (event.key.startsWith('Arrow') && (event.target === this.editing?.field ||
+        this.mode === 'text' && event.target === this.text)) event.stopPropagation?.();
     const picker=this.mode==='text'?this.textImages:this.cardImages;
     if(event.target===picker?.field&&picker.key(event))return;
     if(this.mode==='text') {
