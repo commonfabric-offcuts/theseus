@@ -172,3 +172,13 @@ test('901 a changed build still loads safely or keeps held writing with the exis
     assert.equal(f.events.some(([name]) => name === 'updated'), holding);
   }
 });
+
+test('1005 a shared queued read retired by navigation is never dispatched; the new run reads',async()=>{
+  const {shell}=fixture(),gate=held(),entered=held(),calls=[];
+  shell.ready({view:async(name)=>{calls.push(name);if(name==='held'){entered.resolve();await gate.promise;}return{name};}});
+  const first=shell.view('held',{});await entered.promise;
+  let current=true;const old=shell.view('retired',{},'foreground',()=>current);
+  const rejected=assert.rejects(old,error=>error.code==='READ_SUPERSEDED');current=false;
+  gate.resolve();await first;await rejected;assert.deepEqual(calls,['held']);
+  assert.deepEqual(await shell.view('new',{},'foreground'),{name:'new'});assert.deepEqual(calls,['held','new']);
+});

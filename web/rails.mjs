@@ -16,7 +16,8 @@ export const shell = host;
 shell.extend((doc, win) => {
   const outline = doc.getElementById('outline'), things = doc.getElementById('things');
   if (outline) {
-    const rail = new OutlineRail({ host: outline, open: (target, title) => shell.open(target, title), read: (name, args, readClass) => shell.view(name, args, readClass), storage: storage(win) });
+    const rail = new OutlineRail({ host: outline, open: (target, title) => shell.open(target, title), read: (name, args, readClass, current) => shell.view(name, args, readClass, current), storage: storage(win) });
+    shell.topicsFor = (bootstrap, topic, pageMax) => rail.topicsFor(bootstrap, topic, pageMax);
     shell.follow(rail);
     listen(doc, 'visibilitychange', () => rail.shown());
     panes.outline = rail;

@@ -507,3 +507,12 @@ test('981 existing row waiting markers repaint without changing saved-set conten
   row.removeAttribute('data-cover-waiting');const state=f.doc.createElement('span');state.className='topic-state mine';row.append(state);dim.paintRows();assert.equal(row.dataset.dimmed,'false');
   state.remove();dim.paintRows();assert.equal(row.dataset.dimmed,'true');assert.equal(JSON.stringify(dim.choices.value),saved);
 });
+
+test('1005 topic pages and outcome homes consume one persistent rail; clearing current keeps rows until read',async t=>{
+ const f=await fixture(t),outcome=f.outcome('w1'),rail=outcome.rail,nodes=[...outcome.parts.host.children];
+ const bootstrap=f.outline.bootstrap,topic={id:'t-w1',workspace_id:'w1',title:'Topic w1',list_position:1,state:'active'};
+ assert.equal(f.outline.topicsFor(bootstrap,topic,20),rail);assert.equal(f.outline.topicsFor(bootstrap,{...topic,title:'New title'},20),rail);
+ assert.deepEqual(outcome.parts.host.children,nodes);rail.updateCurrent(null);
+ assert.deepEqual(outcome.parts.host.children,nodes);assert.equal(nodes[0].getAttribute('aria-current'),null);
+ await f.arrive('w2');assert.equal(f.outcome('w1').rail,rail);assert.deepEqual(outcome.parts.host.children,nodes);
+});

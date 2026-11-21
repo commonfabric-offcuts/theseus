@@ -3686,19 +3686,7 @@ async function initialize() {
   syncCardReplies();
   // Every ordinary topic row, including the conversation; Build topics stay
   // in the right rail (item 297).
-  topicRail = new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic, 'active', true),
-    host: $('topics'), more: $('more-topics'), retry: $('retry-topics'), message: $('topics-status'), key: $('topics-key'), ...topicFolds(),
-    denied: error => readFailure(error).kind === 'forbidden',
-    read: async args => {
-      if (authorityReviewPending()) throw Error('The runtime changed. Review saved writing before reloading.');
-      const answer = checkedView(await registry.cleanup.list(options => readTopicList((name, query) => api.view(name, query, options), args)), bootstrap.instance_id);
-      if (registry.disposed || authorityReviewPending()) throw Error('The runtime changed. Reload after reviewing saved writing.');
-      return answer;
-    },
-    open: (id, title, message, at) => openDestination(topicTarget(id, message, at), title),
-    // Read once: the outline takes this list in from then on (outline-rail.mjs).
-    updated: () => { $('topic-navigation').dataset.listed = ''; },
-  });
+  topicRail = shell.topicsFor(bootstrap, topic, pageMax());
   // The rail shows only this topic's outcome. A message's Add to pipeline
   // follows the Pipeline row's read.
   const pipeline = pipelineSection(topic.workspace_id, false, paintReaderMark); pipelineRow = pipeline.row;
@@ -3755,7 +3743,7 @@ async function initialize() {
   const firstReading = Promise.allSettled([run(loadMarks)]).then(() => { laidOut = true; noteRead(); });
   document.body.dataset.ready = 'true'; enableFreshness(checkpoint, actorCheckpoint);
   // The rails beside the page read through this run from now on (rails.mjs).
-  readyRails(topic.workspace_id, { topic, readable: () => !topicUnavailable && !freshness?.stopped, currentTopic: () => topic,
+  readyRails(topic.workspace_id, { topic, topicRail, topicReadAllowed: () => !authorityReviewPending() && !registry.disposed, readable: () => !topicUnavailable && !freshness?.stopped, currentTopic: () => topic,
     readingNavigation: () => releaseTopArrivals(),
     // The rail's Starred takes a star off (stack-feed.mjs); its Notebook section starts the topic's pages and the outcome's.
     unstar: star => stackFeed?.unstar(star) });
