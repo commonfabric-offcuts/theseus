@@ -1,0 +1,30 @@
+/* Paper flights (designer's prototype): a sheet of paper with words on it, in flight (paper-flight.mjs). */
+.paper-ghost{position:fixed;z-index:2000;display:flex;flex-direction:column;gap:.35rem;margin:0;padding:1rem 1.2rem;overflow:hidden;box-sizing:border-box;pointer-events:none;transform-origin:0 0;
+  color:var(--ink);background:var(--panel);border:1px solid color-mix(in srgb,var(--ink) 22%,transparent);border-radius:12px;box-shadow:0 14px 36px rgb(0 0 0 / .4);font-size:.95rem;line-height:1.35}
+.paper-ghost strong{font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.paper-ghost span{color:color-mix(in srgb,var(--ink) 75%,transparent);overflow:hidden}
+/* Sending, a new page's row in the rail is drawn as the paper lands on it. */
+.paper-landing{opacity:0}
+/* Sending, nothing of the new page is drawn (its title, its words, its cards) until the paper lands in it. */
+#notebook-sheet-dialog .notebook-sheet>*{transition:opacity .18s ease-out}
+body.paper-sending #notebook-sheet-dialog .notebook-sheet>*{opacity:0;transition:none}
+
+/* A Note is written on the Notebook's paper: the pencil sheet in Note takes the Notebook's ground and ink, in
+   Bookends (one black material, both themes) or Paper (cream, a book face), and the paper in flight is the same. */
+#inline-composer,dialog.composer-home{transition:background-color .25s ease,color .25s ease}
+:root:not([data-look=paper]){
+  #inline-composer[data-kind=note-card],.paper-ghost{--paper:#000;--panel:#0b0f10;--ink:#e3eae7;--muted:#97a6a3;--line:#252c2e;--soft:#18241f;--accent:#5fae96;--focus:#5fae96;color:var(--ink);background:#000}
+  dialog.composer-home[open]:has(#inline-composer[data-kind=note-card]){background:#000}
+  .paper-ghost{border-color:#252c2e}
+}
+:root[data-look=paper]{
+  #inline-composer[data-kind=note-card],.paper-ghost{--paper:#f2eee5;--panel:#f2eee5;--ink:#27241f;--muted:#7a7468;--line:#e0dacd;--soft:#e8e2d4;--accent:#3d7a62;--focus:#3d7a62;color:var(--ink);background:#f2eee5}
+  dialog.composer-home[open]:has(#inline-composer[data-kind=note-card]){background:#f2eee5}
+  #inline-composer[data-kind=note-card] textarea,.paper-ghost{font-family:var(--look-book)}
+  #inline-composer[data-kind=note-card] textarea{font-size:1.04rem;line-height:1.6}
+  .paper-ghost{border-color:#e0dacd;border-radius:.45rem}
+}
+@media(prefers-color-scheme:light){:root[data-look=paper]{
+  #inline-composer[data-kind=note-card],.paper-ghost{--paper:#fbf8f1;--panel:#fbf8f1;background:#fbf8f1}
+  dialog.composer-home[open]:has(#inline-composer[data-kind=note-card]){background:#fbf8f1}
+}}

@@ -97,7 +97,11 @@ class HostedControl:
         # A bad seat fails closed without breaking the shared runner or Health.
         # Commands and provisioning still use the strict reader and refuse.
         try:
-            return self._hosted_control(db, actor_id)
+            value = self._hosted_control(db, actor_id)
+            ending = db.execute("SELECT 1 FROM hosted_seats WHERE agent_id=? AND end_state IS NOT NULL", (actor_id,)).fetchone()
+            if ending:
+                return dict(value or {"desired":"running"}, ending=True)
+            return value
         except Refusal as error:
             return {"desired":"stopped", "fault":error.code}
 
@@ -126,6 +130,9 @@ class HostedControl:
         if set(target) != {"actor_id"} or set(args) != {"desired"} or args["desired"] not in ("running", "stopped"):
             raise Refusal("INVALID_ARGUMENT", "Name a hosted agent and running or stopped")
         agent = _identifier(target["actor_id"], "actor_id")
+        if (args['desired'] == 'running' and
+                db.execute("SELECT 1 FROM hosted_seats WHERE agent_id=? AND end_state IS NOT NULL", (agent,)).fetchone()):
+            raise Refusal("SEAT_ENDED", "This seat is ending or ended; Continue cannot revive it")
         current = self._hosted_control(db, agent)
         if current is None or self._hosted_thread(db, agent) is None:
             raise Refusal("HOSTED_CONTROL_MISSING", "This hosted seat has no operator controls provisioned")

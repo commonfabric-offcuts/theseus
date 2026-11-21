@@ -310,6 +310,8 @@ class EffectsLoop:
                 raise LoopFault(self._pin_reason(error)) from error
             return self._finish(claim,'unavailable',reason='profile_unavailable')
         except Exception as error:
+            if getattr(error, 'code', None) == 'SEAT_ENDED':
+                return self._finish(claim, 'unavailable', reason='seat_ending')
             raise LoopFault(self._pin_reason(error)) from error
         items, complete = self._pending(config)
         if items is None:
@@ -536,6 +538,8 @@ class EffectsLoop:
                 deadlines = [self._read_at()]
                 if self.seats is not None and self.seats.deadline is not None:
                     deadlines.append(self.seats.deadline)
+                if self.seats is not None and self.seats.next_deadline() is not None:
+                    deadlines.append(self.seats.next_deadline())
                 if self.host is not None and self.host.next_deadline() is not None:
                     deadlines.append(self.host.next_deadline())
                 if self.token is None:
