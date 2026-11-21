@@ -15,7 +15,7 @@ import { coverAnswers } from './cover-answers.mjs';
 import { glyph } from './glyphs.mjs';
 import { linkNode, writtenLink } from './links.mjs';
 import { timeNode } from './times.mjs';
-import { inlineNodes, literalLinkNodes } from './message-format.mjs';
+import { inlineNodes, parseBlocks, formatNodes } from './message-format.mjs';
 import { literalHTMLNodes } from './interactive-html.mjs';
 
 const element = (doc, tag, className, text) => {
@@ -103,12 +103,18 @@ export function coverSheet(doc, cover, context) {
   if (cover.stands) {
     const words = element(doc, 'span', 'cover-words cover-stands');
     const nodes = literalHTMLNodes(cover.stands, doc);
-    // Plain covers retain their original textContent paint, regardless of the
-    // document adapter's representation of text nodes. Keep size refusals too.
+    // Complete HTML covers retain their existing isolated fence contract.
+    // Plain paragraphs retain their literal node and pixels, including LF.
     if (!nodes.some(node => node.className === 'html-block' || node.className === 'html-source')) {
-      const linked = literalLinkNodes(cover.stands, { doc });
-      if (linked.some(node => node.tagName === 'A')) words.append(...linked);
-      else words.textContent = cover.stands;
+      const inline = inlineNodes(cover.stands, { doc });
+      const plain = inline.every(node => node.nodeType === 3) &&
+        inline.map(node => node.textContent).join('') === cover.stands &&
+        parseBlocks(cover.stands).every(block => block.kind === 'paragraph');
+      if (plain) words.textContent = cover.stands;
+      else {
+        words.classList.add('formatted');
+        words.append(...formatNodes(cover.stands, { doc }));
+      }
     }
     else words.append(...nodes);
     line('cover-heading').append(words);

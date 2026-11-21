@@ -79,7 +79,7 @@ const reach = (el, navigate = () => {}) => {
 export const panes = {
   // Set by rails.mjs: each rail's { host, focus(), leave()? }, leave closing it when it is open over the page;
   // write(target, title), a new message in the place named, or in the page's own (in-place-navigation.mjs).
-  outline: null, things: null, write: null, center: null,
+  outline: null, things: null, notebook: null, write: null, center: null,
   // The button the keys were last on in each row of the buttons at the top of
   // the feed, by the row's element, so coming back to the row finds it.
   button: new WeakMap(),
@@ -95,7 +95,10 @@ export const panes = {
   },
   // From the pane named, one step: 'left' or 'right'. Answers whether the keys moved.
   step(from, way, doc, navigate = () => {}) {
-    const order = ['outline', 'feed', 'things'], at = order.indexOf(from) + (way === 'right' ? 1 : -1);
+    // The docked Notebook occupies the right rail's column. Its page owns
+    // the retained card/editor, just as each rail owns its retained row.
+    const order = ['outline', 'feed', this.notebook?.active() ? 'notebook' : 'things'];
+    const at = order.indexOf(from) + (way === 'right' ? 1 : -1);
     const to = order[at];
     if (!to) return false;
     this[from]?.leave?.();

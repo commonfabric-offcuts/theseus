@@ -52,3 +52,33 @@ test('799 actual renderer draws the real head and reply once, keeps More frontie
   assert.equal([...list.descendants()].filter(e => e.dataset.id === 'root').length, 1);
   assert.equal(cards.get('reply').parentElement.className, 'stack-replies');
 });
+
+for (const filtered of [false, true]) test(`954 separate rename handle stays out of reading order; Only-new=${filtered}`, () => {
+  const doc = miniDocument(); withReaderArchive(doc);
+  const list = doc.createElement('div'); list.root = true;
+  const position = { root_id: 'root', at: { acts: 1, messages: 2 }, name: null };
+  const root = { id: 'root', topic_id: 't', seq: 1, author_id: 'me', body: 'Dossier title', acts: {}, stack_position: position };
+  const messages = new Map([['root', root]]), calls = [];
+  if (filtered) messages.set('reply', { ...root, id: 'reply', seq: 2, body: 'Reply', reply_to: 'root' });
+  for (const item of messages.values()) {
+    const card = doc.createElement('button'); card.className = 'message-card'; card.dataset.id = item.id; card.dataset.seq = String(item.seq);
+    const author = doc.createElement('span'); author.className = 'message-author';
+    const body = doc.createElement('span'); body.className = 'message-preview'; body.textContent = item.body;
+    card.append(author, body); list.append(card);
+  }
+  const state = stackState(list); state.only = filtered ? () => true : null;
+  const draw = () => arrangeStacks(list, messages, { doc, viewer: 'me', on: {
+    rename: stack => calls.push(['rename', stack.id]), star: stack => calls.push(['star', stack.id]),
+  } });
+  draw();
+  const section = state.sections.get('root'), name = section.querySelector('.stack-name'), pen = section.querySelector('.stack-pen'), star = section.querySelector('.stack-star');
+  const event = { preventDefault() {}, stopPropagation() {}, target: pen };
+  name.parentElement.onclick(event); star.onclick(event);
+  assert.deepEqual(calls, [['rename', 'root'], ['star', 'root']], 'pointer rename and the independent star retain their owners');
+  assert.equal(name.getAttribute('role'), 'button'); assert.equal(pen.getAttribute('aria-hidden'), 'true');
+  assert.equal(star.tabIndex, 0, 'the star remains in reading order');
+  assert.equal(name.tabIndex, -1, 'the rename handle adds no Tab/arrow stop');
+  root.body = 'Changed title'; draw();
+  assert.equal(section.querySelector('.stack-name').tabIndex, -1, 'repaint keeps the skipped stop');
+  assert.equal(section.querySelector('.stack-star'), star, 'repaint preserves the star node');
+});
