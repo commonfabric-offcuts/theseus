@@ -10,6 +10,7 @@ import { NotebookImages } from './notebook-images.mjs';
 import { ImagePick, paintThumb, readInTurn } from './image-pick.mjs';
 import { DRAFT_TIP } from './topic-navigation.mjs';
 import { NotebookViews } from './notebook-view.mjs';
+import { drawnText, drawnRevision, formatWords, literalWords, composeFormattedWords } from './message-format.mjs';
 
 // The draft mark's words (docs/notebook-pages.md, "A draft page").
 const DRAFT = { off: 'Mark as a draft: agents see its title and that it is a draft, never its words',
@@ -50,6 +51,7 @@ export function notebookMenuItems(page) {
 export class NotebookPage extends DeckPage {
   constructor(options) {
     super({ ...options, interactiveHTML: true });
+    this.passages = options.passages;
     this.viewPreference = options.viewPreference ?? new NotebookViews(options.bootstrap ?? {});
     Object.assign(this, { api: options.api, bootstrap: options.bootstrap, mode: options.mode ?? this.viewPreference.get(options.item) });
     this.viewPreference.set(options.item, this.mode);
@@ -206,6 +208,49 @@ export class NotebookPage extends DeckPage {
     this.listening.abort();
     this.textProjection?.close();
     if(this.writing&&!this.writing.closed){this.writing.close();this.writing.serial.finally(()=>this.store.close());}
+  }
+  readingPassages() {
+    const source = this.source, revision = source?.source_ref?.revision;
+    if (!this.passages || !revision || !this.writing) return;
+    if (deckBody(this.deck) !== source.body) return;
+    const saved = parseDeck(source.body), starts = [];
+    let offset = saved.opening.length;
+    for (const card of saved.cards) { starts.push(offset); offset += card.raw.length; }
+    const current = () => !this.writing.closed && !this.writing.deleted && !this.editing && !this.asking &&
+      this.source === source && this.writing.base?.source === source &&
+      this.writing.value.body === source.body && this.mode === 'cards';
+    const openingText = drawnText(this.opening);
+    if (openingText !== undefined) {
+      if (drawnRevision(this.opening) !== revision) formatWords(this.opening, openingText, { copyFences: true, interactiveHTML: true, revision });
+      this.passages.bind(this.opening, { source, current, bounds: { start: 0, end: saved.opening.length } });
+    }
+    for (const row of this.list.querySelectorAll('.deck-card:not(.deck-writing):not(.deck-asking)')) {
+      const index = Number(row.dataset.index), card = saved.cards[index];
+      if (!card) continue;
+      const start = starts[index];
+      const end = start + card.raw.length, headingEnd = source.body.indexOf('\n', start);
+      const words = row.querySelector(':scope > .deck-words');
+      const text = drawnText(words);
+      if (text === undefined) continue;
+      if (drawnRevision(words) !== revision) formatWords(words, text, { copyFences: true, interactiveHTML: true, revision });
+      const title = row.querySelector(':scope > .deck-title');
+      const heading = `${'#'.repeat(card.depth + 2)}${card.title ? ' ' + card.title : ''}`;
+      const whole = heading + (text ? '\n\n' + text : '');
+      const parts = [{ node: words, offset: heading.length + 2, end: whole.length }];
+      if (card.title && title) {
+        let shown = title.querySelector('.notebook-title-words');
+        if (!shown) {
+          shown = this.node('span', 'notebook-title-words');
+          // The title's own chevron keeps its place and control owner.
+          if (title.lastChild?.nodeType === 3) title.lastChild.remove();
+          title.append(shown);
+        }
+        if (drawnRevision(shown) !== revision) literalWords(shown, card.title, revision);
+        parts.unshift({ node: shown, offset: card.depth + 3, start: 0, end: heading.length });
+      }
+      composeFormattedWords(row, whole, revision, parts);
+      this.passages.bind(row, { source, current, bounds: { start, end } });
+    }
   }
   mergeIncoming(base,mine,theirs) {
     if(this.mode!=='cards')return null;
@@ -383,7 +428,10 @@ export class NotebookPage extends DeckPage {
     if(this.paintedDraft!==undefined&&this.paintedDraft!==on)this.paint();
     this.paintedDraft=on;
   }
-  paint() { if(this.mode!=='text')super.paint(); this.surfaceChanged?.(); }
+  paint() {
+    if(this.mode!=='text') { super.paint(); this.readingPassages(); }
+    this.surfaceChanged?.();
+  }
   say(words, state = null, again = null) {
     if (this.presentStatus) this.presentStatus(words, state, again);
     else super.say(words, state, again);
@@ -444,6 +492,7 @@ export class NotebookPage extends DeckPage {
     // A person Core does not let write the page reads it: no writing controls, and nothing to pause.
     this.readOnly=w.readOnly||w.reading||w.deleted||Boolean(w.actionPending); this.text.readOnly=this.readOnly;
     this.paintPageState();
+    if(this.passages)this.readingPassages();
     if(this.editing)this.editing.field.readOnly=this.readOnly;
     this.host.classList.toggle('deck-read-only',this.readOnly);
     this.paintDraft();
