@@ -105,7 +105,7 @@ export function keyAction(event) {
 // The keys, in plain words, as the outline's legend and the guide list them.
 export const KEY_WORDS = [
   ['↑ ↓', 'move through the outcomes and topics; Home and End go to the first and last'],
-  ['Return', 'replies to the visibly outlined message or dossier; with nothing outlined, opens New message here. Rail hover is not selection. Writing and a button or link showing its focus ring keep their own Return'],
+  ['Return', 'replies to the visibly outlined message or dossier; with nothing outlined, opens New message here. Rail hover is not selection. Writing and a button or link showing its focus ring keep their own Return. On an outline row showing its focus ring, Return opens the topic at its oldest unread message when it has an unread count, or the outcome home with its topics, without folding other outcomes; on a pencil, a new topic\'s or outcome\'s title line'],
   ['⌘→ ⌘←', 'open and fold an outcome'],
   ['⇧⌘→ ⇧⌘←', 'open every outcome, or fold every one'],
   ['→ ←', 'open or fold, then move between the outline, the messages and the right rail'],
