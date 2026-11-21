@@ -33,6 +33,7 @@ import { keptToRead } from './outcome-light-words.mjs';
 import { paintKeptLine, sendEnd } from './outcome-end.mjs';
 import { OutcomeReferences } from './outcome-references.mjs';
 import { OutcomeTopicCards } from './outcome-topic-cards.mjs';
+import { OutcomePageLayout } from './outcome-page-layout.mjs';
 import { NotebookViews } from './notebook-view.mjs';
 import { openIntentJournal } from './intent-journal.mjs';
 import { OpeningDraft } from './opening.mjs';
@@ -63,6 +64,7 @@ import { removalItem, paintRemoval, readRemoval, Removals } from './message-remo
 import { cardClass, paintCardColor, agentColor, paneClass } from './author-colors.mjs';
 import { paintWhisperAuthor, mayStartFrom } from './whisper-choice.mjs';
 import { AgentColors } from './colors.mjs';
+import { OutcomeColorPicker } from './outcome-color-picker.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { PageReads } from './page-reads.mjs';
 import { PageHere } from './page-here.mjs';
@@ -112,9 +114,10 @@ import { showLine, lineText } from './lines.mjs';
 // Each page is one run of this module (in-place-navigation.mjs). A run that a
 // move in place has ended finds its own elements still, so work it had under
 // way lands there and never on the page that followed it.
-let retired = null, notebookSheet = null;
+let retired = null, notebookSheet = null, outcomeColorPicker = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
-const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; notebookSheet?.retire(); },
+let outcomePageLayout = null;
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); },
   updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
 // The901 shell restores the foot and separator from copies for each run.
 railDensity();
@@ -4194,11 +4197,16 @@ async function initializeOutcomePage(route) {
     // The title, Team and menu share the topic header. Notes, topics and
     // tools come before outcome setup; secondary context follows (item 842).
     $('outcome-page').append($('outcomes-status'),$('retry-workspaces'),$('team-invite'),$('outcome-references'),$('page-here'),$('topic-navigation'),$('outcome-tools'),$('outcome-standing'),$('outcome-purpose'),$('target-panel'),$('pipeline-line'),$('also-waiting'),$('loop-panel'),$('problems-panel'));
+    outcomeColorPicker = new OutcomeColorPicker({ title: $('topic-title'), api, bootstrap, workspaceId: route.id, current: () => !retired && shell.page === thisRun });
     const cardsHost=document.createElement('div');cardsHost.className='outcome-topic-cards';
     // Keep the shared New topic heading, but let the outline own all lists.
     for(const child of [...$('topic-navigation').children])if(!child.classList.contains('rail-heading'))child.hidden=true;
     $('topic-navigation').append(cardsHost);
-    const topicCards=new OutcomeTopicCards({host:cardsHost});
+    const topicCards=new OutcomeTopicCards({host:cardsHost,color:agentShown,named:displayActor,painted:values=>outcomePageLayout?.topics(values)});
+    outcomePageLayout=new OutcomePageLayout({host:$('outcome-page'),team:$('outcome-team'),cards:topicCards,reader:bootstrap.actor,color:agentShown});
+    colors??=new AgentColors({api,instanceId:bootstrap.instance_id,authority:()=>bootstrap.authority});
+    outcomePageLayout.unlisten=colors.listen(()=>{if(!retired){topicCards.repaint();outcomePageLayout.paint();}});
+    run(()=>colors.load('foreground'));
     const topicPencil = $('new-message').querySelector('svg')?.cloneNode(true);
     if (topicPencil) $('new-topic').replaceChildren(topicPencil);
     $('new-topic').classList.add('notebook-create');
@@ -4267,10 +4275,11 @@ async function initializeOutcomePage(route) {
       catch(error) {
         if(serial!==refreshSerial||retired)return;
         if(readFailure(error).kind==='forbidden') {
-          onboarding.paint(null);permitted=false;$('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
+          onboarding.paint(null);outcomeColorPicker.paint(null);permitted=false;$('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
           $('topic-navigation').hidden=true;$('new-topic').disabled=true;
           // Its Notebook pages, and any open in place, go with it; a recovered read lists them again.
           $('outcome-references').hidden=true;$('page-here').hidden=true;$('outcome-standing').hidden=true;$('also-waiting').hidden=true;$('outcome-tools').hidden=true;
+          outcomePageLayout.members([]);
           shell.topicChanged();
         }
         await rails;
@@ -4281,15 +4290,17 @@ async function initializeOutcomePage(route) {
       permitted=true;
       if (dirty.has('workspace')) {
         $('topic-title').textContent=workspace.title;
+        outcomeColorPicker.paint(workspace);
         purposeLine??=new PurposeLine({host:$('outcome-purpose'),description:$('topic-description'),
           save:(purpose,current)=>setPresence('workspace.update',{workspace_id:current.id},'workspace_revision',current.version,{purpose}).then(receipt=>{run(reload);return receipt;})});
         purposeLine.paint(workspace,organises(workspace,bootstrap.actor));
+        outcomePageLayout.setPurpose(purposeLine);
         onboarding.paint(workspace);
         $('workspace-name').hidden=true;enableNewTopic(workspace.id);here.title=workspace.title;
         shell.topicChanged();
       }
       if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
-      const jobs = [['team',()=>paintTeam(workspace,()=>reload())], ['standing',()=>stands(workspace)], ['targets',()=>targets.load()],
+      const jobs = [['team',()=>paintTeam(workspace,()=>reload(),members=>{outcomeMembers=members;outcomePageLayout.members(members);topicCards.repaint();})], ['standing',()=>stands(workspace)], ['targets',()=>targets.load()],
         ['tools',()=>outcomeTools.load()], ['references',()=>outcomeReferences.load()],
         ['pipeline',()=>paintPipelineLine($('pipeline-line'),{workspace:route.id,read:pipelineView})]];
       return (await Promise.all([rails,...jobs.filter(([key])=>dirty.has(key)).map(([,read])=>read())])).every(read=>read!==false);
@@ -4597,7 +4608,7 @@ function outcomePages(workspace,recorded) {
 // An outcome's team, which its owner and its coordinator may change. The owner
 // cannot be removed, so the owner's chip is fixed.
 let teamPanel=null,purposeLine=null,teamInvite=null,coordinatorChoice=null,teamReadSerial=0;
-async function paintTeam(workspace,refresh) {
+async function paintTeam(workspace,refresh,loaded=()=>{}) {
   const serial=++teamReadSerial;
   const send=(id,present)=>setPresence('workspace.member_set',{workspace_id:workspace.id},'workspace_revision',workspace.version,{actor_id:id,present})
     .then(receipt=>{run(refresh);return receipt;});
@@ -4634,6 +4645,7 @@ async function paintTeam(workspace,refresh) {
   teamInvite.current={id:workspace.id,version:workspace.version};
   teamInvite.paint(organises(workspace,bootstrap.actor));teamPanel.paintChoices();
   $('outcome-team').hidden=false;
+  loaded(members);
 }
 // New topic is one title line in the topic list: Return starts the topic with
 // the reader in it and opens it; people and the first message are added there.

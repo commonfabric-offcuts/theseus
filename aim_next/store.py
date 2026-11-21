@@ -29,7 +29,8 @@ from .changes import Changes
 from .topic_state import ACTIVITY_SCHEMA, ASK_WAIT_SCHEMA, TopicState, TOPIC_STATE_SCHEMA, WAITING_ORDER_SCHEMA, derived_conversation, order_cursor, order_position
 from .work import OTHERS_SCHEMA, TURN_ACTIVITY_BACKFILL, WORK_SCHEMA, work_by_topic
 from .marks import Marks, MARK_SCHEMA
-from .colors import Colors, COLOR_SCHEMA
+from .colors import Colors, COLOR_SCHEMA, AGENT_COLORS
+from .outcome_colors import OutcomeColors, OUTCOME_COLOR_SCHEMA
 from .responsibility import Responsibility, RESPONSIBILITY_SCHEMA
 from .sources import Sources, SOURCE_SCHEMA
 from .wake_health import WakeHealth, WAKE_HEALTH_SCHEMA
@@ -66,7 +67,7 @@ from . import message_edit, removal
 from .removal import Removal, REMOVAL_UP
 
 
-SCHEMA_VERSION = "59"
+SCHEMA_VERSION = "60"
 
 
 def commit_identity_intact(metadata):
@@ -142,7 +143,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_MESSAGE_REFRESH + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA + TOPIC_POSITION_SCHEMA + WRITER_SCHEMA + COVER_WAIT_SCHEMA + MEMORY_ACTION_SCHEMA + MOVE_SCHEMA + ASK_COVER_SCHEMA + DOSSIER_ORDER_SCHEMA + WITHDRAWAL_SCHEMA + REQUEST_UP + QUESTION_SCHEMA + ANSWER_UP + REMOVAL_UP:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_MESSAGE_REFRESH + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA + TOPIC_POSITION_SCHEMA + WRITER_SCHEMA + COVER_WAIT_SCHEMA + MEMORY_ACTION_SCHEMA + MOVE_SCHEMA + ASK_COVER_SCHEMA + DOSSIER_ORDER_SCHEMA + WITHDRAWAL_SCHEMA + REQUEST_UP + QUESTION_SCHEMA + ANSWER_UP + REMOVAL_UP + OUTCOME_COLOR_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -182,7 +183,7 @@ class StoreOpenError(StoreError):
 _TOPIC_SUMMARY = "LEFT JOIN topic_summaries s ON s.topic_id=t.id LEFT JOIN messages m ON m.id=s.latest_message_id "
 
 
-class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
+class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, OutcomeColors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
             OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Covers, CoverRefresh, DossierMove, AskCover, Blocking, MessageEdit, Invites, Tools, Withdrawal, RefreshDelivery, Questions, AnswerDelivery, Removal):
     def __init__(self, db_path, expected_instance_id, *, expected_binding, machine=None, tools=None):
         self.path = Path(db_path).resolve()
@@ -661,7 +662,9 @@ class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, 
         conversation = self._conversation_of(db, workspace["id"])
         # Whether it is archived or completed, by whom and when (item 404), or null.
         return {"instance_id": self.instance_id, "workspace": dict(workspace, conversation_id=conversation["id"] if conversation else None,
-                                                                    end=end_view(self._end(db, workspace["id"]))),
+                                                                    end=end_view(self._end(db, workspace["id"])),
+                                                                    **self._outcome_color(db, actor, workspace["id"])),
+                "color_palette": list(AGENT_COLORS),
                 "relevant_versions": {"workspace": workspace["version"]}}
 
     def _view_workspaces(self, db, actor, args):
@@ -711,10 +714,11 @@ class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, 
                     "reached_ms": facts["reached"]["ms"] if facts["reached"] else None,
                     "end": end_view(self._end(db, row["id"])),
                     "cover_waiting": sum(self._cover_wait_counts(db, actor, workspace_id=row["id"]).values()),
-                    "light": self._outcome_stands(db, actor, row)["light"]}
+                    "light": self._outcome_stands(db, actor, row)["light"],
+                    **self._outcome_color(db, actor, row["id"])}
         # The person's own order of their outcomes, on every page (outline_order.py).
         return _bounded_page({"instance_id": self.instance_id, "reached_count": reached_count, "ended_count": ended_count,
-                              "order": self._outline_order(db, actor)}, rows, limit, item, "id")
+                              "order": self._outline_order(db, actor), "color_palette": list(AGENT_COLORS)}, rows, limit, item, "id")
 
     def _view_workspace_counts(self, db, actor, args):
         """Count/light refresh for already loaded outline rows; no list traversal."""
@@ -745,7 +749,8 @@ class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, 
             items.append({"id": row["id"], "unread": unread, "addressed": addressed,
                           "build": self._build_counts(counts, self._open_build_topics(db, row["id"])),
                           "cover_waiting": sum(self._cover_wait_counts(db, actor, workspace_id=row["id"]).values()),
-                          "light": self._outcome_stands(db, actor, row)["light"]})
+                          "light": self._outcome_stands(db, actor, row)["light"],
+                    **self._outcome_color(db, actor, row["id"])})
         answer = {"instance_id": self.instance_id, "items": items}
         if len(_json(answer).encode("utf-8")) > LIMITS["summary_utf8_bytes"]:
             raise Refusal("VIEW_TOO_LARGE", "The named counts cannot fit in one bounded response")

@@ -20,6 +20,7 @@ export function outcomeInvalidation(workspace, actor) {
     if (kind === 'workspace' || kind === 'participation') return outcomeReads();
     if (['waiting', 'delivery', 'mark'].includes(kind)) add('topics', 'standing', 'counts');
     if (kind === 'outcome_order') add('outcomes');
+    if (kind === 'outcome_color') add('workspace', 'counts');
     if (kind === 'topic_order') add('topics');
     if (['acts', 'dossier_move', 'edit'].includes(kind)) add('stars', 'counts');
     if (kind === 'memory_star') add('pages');

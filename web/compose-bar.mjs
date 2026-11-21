@@ -140,8 +140,24 @@ export class ComposeBar {
     this.phone.addEventListener('change', this.widthChanged);
     // Whatever stops showing the composer (the Reader closing, the topic page
     // giving way to another view) puts its open panel away (unseen).
-    this.observer = new ResizeObserver(() => { if (!this.disposed) this.unseen(); });
+    this.observer = new ResizeObserver(entries => {
+      if (this.disposed) return;
+      this.unseen();
+      const fieldSize = entries.find(entry => entry.target === field)?.contentRect;
+      // Wrapping can change without input, including when the Reader changes
+      // layout. Ignore height-only notifications from our own fit.
+      if (fieldSize?.width > 0 && fieldSize.width !== this.fieldWidth) {
+        this.fieldWidth = fieldSize.width;
+        // Fit outside ResizeObserver delivery: changing the observed height
+        // here otherwise produces undelivered-notification loops in WebKit.
+        if (this.fitFrame == null) this.fitFrame = this.win.requestAnimationFrame(() => {
+          this.fitFrame = null;
+          if (!this.disposed) this.fit();
+        });
+      }
+    });
     this.observer.observe(root);
+    this.observer.observe(field);
     if (naming) this.wireNaming(naming);
   }
 
@@ -149,6 +165,7 @@ export class ComposeBar {
     this.disposed = true; this.close();
     this.win.removeEventListener('click', this.outsideClick, true);
     this.phone.removeEventListener('change', this.widthChanged); this.observer.disconnect();
+    if (this.fitFrame != null) { this.win.cancelAnimationFrame(this.fitFrame); this.fitFrame = null; }
   }
 
   // Naming someone on a phone is two steps (docs/reader.md). The who panel
@@ -353,11 +370,24 @@ export class ComposeBar {
   // would be pulled down by it at each key, so it is put back as it was.
   fit() {
     const field = this.field, style = this.win.getComputedStyle(field);
-    if (style.getPropertyValue('--fit').trim() === 'none') { field.style.height = ''; return; }
+    if (style.getPropertyValue('--fit').trim() === 'none') {
+      field.style.height = ''; this.root.toggleAttribute('data-full-field', false); return;
+    }
     const keep = field.scrollTop, back = this.holds();
+    const max = parseFloat(style.maxHeight);
+    let normalMax = max;
+    if (this.root.hasAttribute('data-tall')) {
+      // The down control stays available at the ordinary cap after expansion.
+      // Measure the current CSS cap (including phone/look changes) without
+      // changing the person's height choice or duplicating CSS dimensions.
+      this.root.toggleAttribute('data-tall', false);
+      try { normalMax = parseFloat(this.win.getComputedStyle(field).maxHeight); }
+      finally { this.root.toggleAttribute('data-tall', true); }
+    }
     field.style.height = '0px';
     const borders = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
-    const max = parseFloat(style.maxHeight), wanted = field.scrollHeight + borders;
+    const wanted = field.scrollHeight + borders;
+    this.root.toggleAttribute('data-full-field', Number.isFinite(normalMax) && wanted >= normalMax - 1);
     field.style.height = `${Number.isFinite(max) ? Math.min(wanted, max) : wanted}px`;
     field.scrollTop = keep;
     back();

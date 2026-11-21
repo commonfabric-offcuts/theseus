@@ -8,6 +8,7 @@ import { Element, matches } from './fixtures/mini_dom.mjs';
 import { book } from '../web/outline-order.mjs';
 import { KEY_WORDS } from '../web/pane-keys.mjs';
 import { RULES } from '../web/interaction-guide.mjs';
+import { OutcomeColorPicker } from '../web/outcome-color-picker.mjs';
 
 class OutlineElement extends Element {
   get ownerDocument() { return this.document; }
@@ -82,7 +83,8 @@ async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fi
     const previous = globalThis.document, listeners = new Set(book.listeners), scopes = new Map(book.scopes);
     t.after(() => { globalThis.document = previous; book.listeners = listeners; book.scopes = scopes; });
   }
-  const doc = { visibilityState: 'visible', listeners: {}, addEventListener: OutlineElement.prototype.addEventListener };
+  const doc = { visibilityState: 'visible', listeners: {}, addEventListener: OutlineElement.prototype.addEventListener,
+    removeEventListener: OutlineElement.prototype.removeEventListener };
   doc.createElement = tag => new OutlineElement(tag, doc);
   doc.createElementNS = (_ns, tag) => doc.createElement(tag);
   doc.body = doc.createElement('body'); doc.body.root = true; doc.activeElement = doc.body;
@@ -130,6 +132,46 @@ async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fi
     outcome: id => outline.outcomes.get(id), click: (node, options) => emit(node, 'click', options),
     key: (node, key, options) => emit(node, 'keydown', { key, ...options }), refuseTopics: () => { refuseTopics = true; } };
 }
+
+test('957 unconfirmed decoration never refuses the outline or another outcome', async t => {
+  const f = await fixture(t, { instance: '957-unconfirmed', outcomes: [
+    item('w1', { color: 'blue' }), item('w2', { color: 'unknown', color_revision: 1 }),
+    item('w3', { color: 'blue', color_revision: 1 }),
+  ] });
+  assert.equal(f.outline.list.children.length, 3);
+  assert.equal(f.outcome('w1').li.dataset.color, undefined);
+  assert.equal(f.outcome('w2').li.dataset.color, undefined);
+  assert.equal(f.outcome('w3').li.dataset.color, 'blue');
+  f.rows[2].color = 'rose'; await f.flush();
+  assert.equal(f.outcome('w3').li.dataset.color, undefined, 'same revision with conflicting color is unconfirmed');
+  assert.equal(f.outline.list.children.length, 3);
+  f.rows[2].color = null; f.rows[2].color_revision = 0; await f.flush();
+  assert.equal(f.outcome('w3').li.dataset.color, 'blue', 'an older valid projection cannot reverse a confirmed choice');
+});
+
+test('957 an older workspace response leaves the title usable without offering an unconfirmed picker', async t => {
+  const f = await fixture(t, { instance: '957-unconfirmed-title' });
+  const title = f.doc.createElement('h1'); title.textContent = 'Readable outcome'; f.doc.body.append(title);
+  const picker = new OutcomeColorPicker({ title, api: {}, bootstrap: { instance_id: '957-unconfirmed-title', actor: 'reader' }, workspaceId: 'w1' });
+  t.after(() => picker.dispose());
+  assert.doesNotThrow(() => picker.paint(item('w1', { color: 'blue' })));
+  assert.equal(title.textContent, 'Readable outcome'); assert.equal(picker.root.hidden, true);
+  picker.paint(item('w1', { color: 'blue', color_revision: 1 }));
+  assert.equal(picker.root.hidden, false); assert.equal(picker.trigger.dataset.color, 'blue');
+});
+
+test('957 unconfirmed count decoration cannot block counts or inherit a previous color revision', async t => {
+  const f = await fixture(t, { instance: '957-unconfirmed-counts', outcomes: [item('w1', { color: 'blue', color_revision: 1 })] });
+  const counts = extra => ({ id: 'w1', unread: 7, addressed: 0, build: { unread: 0, addressed: 0 }, cover_waiting: 0, light: null, ...extra });
+  for (const decoration of [{ color: 'rose' }, { color: 'unknown', color_revision: 2 }, {}]) {
+    await f.outline.loadCounts(async () => ({ instance_id: '957-unconfirmed-counts', items: [counts(decoration)] }), f.outline.handles, () => true);
+    f.outline.paint();
+    assert.equal(f.outcome('w1').item.unread, 7);
+    assert.equal(f.outcome('w1').li.dataset.color, undefined);
+  }
+  await assert.rejects(f.outline.loadCounts(async () => ({ instance_id: '957-unconfirmed-counts', items: [counts({ unread: -1 })] }),
+    f.outline.handles, () => true), /counts could not be confirmed/);
+});
 
 test('902 disclosure opens and folds two actual topic lists without navigation or an outcome-page read', async t => {
   const f = await fixture(t), second = f.outcome('w2'), third = f.outcome('w3');

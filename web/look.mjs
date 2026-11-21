@@ -15,6 +15,13 @@ for (const s of SWITCHES) { const saved = get(s.key); s.value = s.choices.some((
 const apply = s => { if (s.value) root.dataset[s.attr] = s.value; else delete root.dataset[s.attr]; };
 SWITCHES.forEach(apply);
 const paint = s => s.el?.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.value === s.value)));
+// Dim follows the switch directly below it (980), including a later font or
+// label-size change. The shared width survives the footer's in-place copies.
+const dimWidth = el => {
+  const width = el.getBoundingClientRect().width;
+  if (width > 0) root.style.setProperty('--rail-dim-width', `${width}px`);
+};
+const dimSize = new ResizeObserver(entries => entries.forEach(({ target }) => dimWidth(target)));
 // The page swaps its rail foot in place (in-place-navigation.mjs) and may carry copies of the switches: only this
 // module's own switches, in the foot on the page now, stay.
 function mount() {
@@ -31,8 +38,10 @@ function mount() {
         button.addEventListener('click', () => { s.value = value; put(s.key, value); apply(s); paint(s); });
         s.el.append(button);
       }
+      if (s.attr === 'agentColors') dimSize.observe(s.el);
     }
     paint(s); foot.append(s.el);
+    if (s.attr === 'agentColors') dimWidth(s.el);
   }
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
