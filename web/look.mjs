@@ -16,6 +16,8 @@ const SWITCHES = [
     ['', 'Quiet', 'Agents in deep, even tints that sit low on the page'], ['vivid', 'Vivid', 'Agents in lighter, more colorful tints']] },
   { key: 'theseus-pointer-light', attr: 'pointerLight', label: 'Passage lighting under the pointer', choices: [
     ['', 'Light on', 'Light passages under the pointer'], ['off', 'Light off', 'Keep pointer passage lighting off; keyboard outlines stay on']] },
+  { key: 'theseus-light-colour', attr: 'lightColour', label: 'Passage lighting colour', choices: [
+    ['lighter', 'lighter', 'A lighter field behind the passage'], ['', 'Middle', 'The existing passage colour'], ['darker', 'darker', 'A darker field behind the passage']] },
   { key: 'theseus-bench', attr: 'bench', label: 'Middle colour', swatches: true, choices: [
     ['', 'Slate', 'Slate: the cool grey-green the middle column has always had'], ['graphite', 'Graphite', 'Graphite: a plain neutral grey'],
     ['umber', 'Umber', 'Umber: a warm brown-grey']] },
@@ -36,6 +38,7 @@ const fitBench = () => {
 };
 SWITCHES.forEach(apply); fitBench();
 const paint = s => {
+  if (s.attr === 'lightColour' && s.el) s.el.hidden = root.dataset.pointerLight === 'off';
   if (s.swatches) s.el?.querySelectorAll('button').forEach((b, i) => {
     const [value, label, tip] = s.choices[i]; b.dataset.value = value; b.title = tip; b.setAttribute('aria-label', label);
   });
@@ -51,13 +54,18 @@ const dimWidth = el => {
   if (width > 0) root.style.setProperty('--rail-dim-width', `${width}px`);
 };
 const dimSize = new ResizeObserver(entries => entries.forEach(({ target }) => dimWidth(target)));
+let lightRow;
 // The page swaps its rail foot in place (in-place-navigation.mjs) and may carry copies of the switches: only this
 // module's own switches, in the foot on the page now, stay.
 function mount() {
   const foot = document.querySelector('.rail-foot');
+  if (foot && !lightRow) { lightRow = document.createElement('span'); lightRow.className = 'look-light-row'; }
+  for (const copy of document.querySelectorAll('.look-light-row')) if (copy !== lightRow) copy.remove();
   for (const s of SWITCHES) {
+    const host = s.attr === 'pointerLight' || s.attr === 'lightColour' ? lightRow : foot;
+    if (foot && s.attr === 'pointerLight' && lightRow.parentElement !== foot) foot.append(lightRow);
     for (const copy of document.querySelectorAll(`.look-switch[data-switch="${s.attr}"]`)) if (copy !== s.el) copy.remove();
-    if (!foot || s.el?.parentElement === foot) continue;
+    if (!foot || s.el?.parentElement === host) continue;
     if (!s.el) {
       s.el = document.createElement('span');
       s.el.className = 'look-switch'; s.el.dataset.switch = s.attr; s.el.setAttribute('role', 'group'); s.el.setAttribute('aria-label', s.label);
@@ -71,7 +79,7 @@ function mount() {
       }
       if (s.attr === 'agentColors') dimSize.observe(s.el);
     }
-    paint(s); foot.append(s.el);
+    paint(s); host.append(s.el);
     if (s.attr === 'agentColors') dimWidth(s.el);
   }
 }
