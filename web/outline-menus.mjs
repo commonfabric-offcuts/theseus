@@ -114,7 +114,9 @@ export class OutlineMenus {
     if (key === 'state' || key === 'archive') {
       const field = key === 'state' ? 'state' : 'archived';
       const args = key === 'state' ? { state: topic.state === 'done' ? 'active' : 'done', keep_note: true } : { archived: !topic.archived };
-      await this.commands.send(handles, topicUpdateEnvelope(handles.bootstrap, topic, args, topicFieldFences(topic, field)));
+      const envelope = topicUpdateEnvelope(handles.bootstrap, topic, args, topicFieldFences(topic, field));
+      if (handles.closeTopic && (args.archived === true || args.state === 'done')) await handles.closeTopic(topic, envelope);
+      else await this.commands.send(handles, envelope);
     } else if (key === 'read') {
       if (!await this.commands.readTopic(handles, topic.id, () => this.outline.handles === handles && handles.readable?.() !== false)) return;
     } else return false;

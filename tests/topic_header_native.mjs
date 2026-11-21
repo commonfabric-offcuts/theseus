@@ -83,14 +83,14 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.deepEqual([top.hint, top.thisTopic, top.stateInMain, top.stateInDialog], [false, false, false, true], 'no hint, no "This topic" row, and where it stands only inside Topic settings');
     assert.deepEqual((await subtitle(p)).states, [], 'a plainly Active topic shows no state word');
     await shot(p, 'header-top');
-    // Done, tapped in Topic settings: the subtitle follows at once, the word
-    // then the whole note, which stays with the topic across the tap.
+    // A remote Done update changes the subtitle without taking over reading.
+    // This person's own closing acts leave for the outcome (item1000).
     await openByPointer(p);
     const before = p.calls.length;
-    await p.point('#topic-state [data-state=done]');
-    const done = await until(async () => { const s = await subtitle(p); return s.states[0] === 'Done' && s; }, 'the subtitle shows Done without a reload');
+    await setState('header-top-remote-done', { state: 'done', note: NOTE });
+    const done = await until(async () => { const s = await subtitle(p); return s.states[0] === 'Done' && s; }, 'the subtitle shows remote Done without a reload');
     assert.equal(done.text, 'Done ' + NOTE, 'the state word, a space, then every word of the note, "Ongoing:" kept');
-    assert.deepEqual(updates(p, before).map(u => u.args), [{ state: 'done', keep_note: true }], 'one tap, one change; Core keeps the note');
+    assert.deepEqual(updates(p, before), [], 'a remote update makes no new local command');
     // A new note, saved on Return, follows too; Return does not close Topic settings.
     await p.point('#topic-state-note'); await p.key('a', 4);
     await p.send('Input.insertText', { text: 'Ongoing: shipped in release 21' });
@@ -125,7 +125,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
   };
   const LIVE = 'Live in release 43 since 9:05 AM Tue Nov 10';
 
-  await check('header a topic Ready for review shows ✅ Done beside its state; a click marks it Done, into the Done group, and the button goes; an active topic shows none', async () => {
+  await check('header a topic Ready for review shows ✅ Done beside its state; a click keeps Done and opens its outcome and Done group; an active topic shows none', async () => {
     await setState('header-done-active', { state: 'active', note: NOTE });
     const p = await page('header-done-click', null, true);
     await until(async () => (await subtitle(p)).text === 'Each release and what comes next', 'the active topic painted');
@@ -137,27 +137,26 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     const before = p.calls.length, count = Number(((await doneGroup(p))?.label.match(/\d+/) ?? [0])[0]);
     await shot(p, 'header-review-done-button');
     await p.point('#topic-description .mark-done');
-    const done = await until(async () => { const s = await subtitle(p); return s.states[0] === 'Done' && s; }, 'one click: the topic reads Done');
-    assert.equal(done.text, 'Done ' + LIVE, 'the note stays with it');
-    assert.equal(await doneButton(p), null, 'and the button is gone');
+    await until(() => p.evaluate(`location.search==='?workspace=w1' && document.body.dataset.ready==='true' && !document.querySelector('#reader').open && Boolean(document.querySelector('#outline a.ol-name[data-workspace-id="w1"][aria-current="page"]'))`), 'Done opens its actual parent outcome, Reader closed and outcome current');
+    assert.equal(await doneButton(p), null, 'the topic button is gone from the outcome');
     assert.deepEqual(updates(p, before).map(u => u.args), [{ state: 'done', keep_note: true }], 'one click, one change, as the Done chip makes it');
     assert.deepEqual([(await held()).state, (await held()).state_note, (await held()).state_by], ['done', LIVE, facts.actor]);
     // It moves into the outcome's Done group in the outline, as the chip moves it.
     await until(async () => { const g = await doneGroup(p); return g && !g.hidden && !g.activeRow && g.label === `Done (${count + 1})`; }, 'the outline counts it Done and lists it no more among the active topics');
     // The outline at rest first, as outcome_rail_native.mjs's outlineAtRest has it: the commit is read again, and a
     // read that lands under the press moves the rows.
-    await until(() => p.evaluate(`!document.documentElement.hasAttribute('data-rails-reading') && Boolean(document.querySelector('#outline #topic-navigation:not([inert])')) && !document.querySelector('#retry-topics[aria-disabled]')`), 'the outline is at rest');
-    if (!(await doneGroup(p)).open) await p.point('#outline details.topic-group:not([hidden]) > summary');
+    await until(() => p.evaluate(`!document.documentElement.hasAttribute('data-rails-reading') && Boolean(document.querySelector('#outline a.ol-name[data-workspace-id="w1"][aria-current="page"]')) && !document.querySelector('#outline [aria-disabled="true"]')`), 'the outline is at rest');
+    if (await p.evaluate(`document.querySelector('#outline [aria-controls="ol-topics-w1"]')?.getAttribute('aria-expanded')==='false'`)) await p.point('#outline [aria-controls="ol-topics-w1"]');
+    if (!(await doneGroup(p)).open) await p.point('#outline #ol-topics-w1 details.topic-group:not([hidden]) > summary');
     await until(async () => (await doneGroup(p))?.inDone, 'opened, the Done group lists it');
     await shot(p, 'header-review-marked-done');
     assert.deepEqual(p.errors, []);
   });
 
-  await check('header ✅ Done is reached with Tab and pressed with Return or Space, and the focus lands on the subtitle saying Done', async () => {
-    await setState('header-done-keys-review', { state: 'review', note: LIVE });
-    const p = await page('header-done-keys', null, true);
-    await until(async () => (await doneButton(p))?.visible, '✅ Done shows');
+  await check('header ✅ Done is reached with Tab and pressed with Return or Space, and opens its outcome with the heading focused', async () => {
     for (const [press, name] of [[q => q.key('Enter'), 'Return'], [space, 'Space']]) {
+      await setState('header-done-keys-' + name, { state: 'review', note: LIVE });
+      const p = await page('header-done-keys-' + name, null, true);
       await until(async () => (await doneButton(p))?.visible, `✅ Done shows for ${name}`);
       await p.evaluate(`document.querySelector('#settings-open').focus()`);
       let stops = 0;
@@ -167,12 +166,11 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       assert.equal(await p.evaluate(`document.activeElement.matches(':focus-visible')`), true, 'its focus shows');
       const before = p.calls.length;
       await press(p);
-      await until(async () => (await subtitle(p)).states[0] === 'Done' && !await doneButton(p), `${name} marks it Done and the button goes`);
+      await until(() => p.evaluate(`location.search==='?workspace=w1' && document.body.dataset.ready==='true' && document.activeElement===document.querySelector('#main h1')`), `${name} opens the outcome with its heading focused`);
       assert.deepEqual(updates(p, before).map(u => u.args), [{ state: 'done', keep_note: true }]);
-      assert.equal(await focused(p), 'topic-description', 'the focus is on the subtitle, which says Done');
-      if (name === 'Return') await setState('header-done-keys-again', { state: 'review', note: LIVE });
+      assert.deepEqual([(await held()).state, (await held()).state_note], ['done', LIVE]);
+      assert.deepEqual(p.errors, []);
     }
-    assert.deepEqual(p.errors, []);
   });
 
   await check('header a reader who may not say where a topic stands sees Ready for review and no ✅', async () => {

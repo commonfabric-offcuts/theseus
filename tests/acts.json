@@ -2137,12 +2137,12 @@
   },
   {
    "item": 295,
-   "act": "After Return or Space on ✅ Done the focus lands on the subtitle saying Done",
+   "act": "After Return or Space on ✅ Done the outcome opens with its heading focused",
    "break": [
     [
-     "web/topic-header.mjs",
-     "  subtitle.setAttribute('tabindex', '-1');\n  subtitle.focus();",
-     "  subtitle.setAttribute('tabindex', '-1');"
+     "web/topic-close-ui.mjs",
+     "open({ kind: 'workspace', id: row.workspaceId }, 'Outcome')",
+     "Promise.resolve(false)"
     ]
    ],
    "check": {
