@@ -20,6 +20,7 @@ export function readFailure(value) {
   const code = error?.code, status = value?.status ?? 0;
   const result = kind => ({ kind, code: code ?? 'READ_FAILED', message: error?.message ?? value?.message ?? 'The view could not be read.' });
   if (['AUTHORITY_CHANGED', 'INVALID_BINDING'].includes(code)) return result('authority');
+  if (code === 'READ_SUPERSEDED') return result('superseded');
   if (code === 'CLEANUP_DEFERRED') return result('defer');
   if (code === 'RESYNC_REQUIRED') return result('resync');
   if (['FORBIDDEN','PAGE_DELETED'].includes(code)) return result('forbidden');
@@ -233,6 +234,11 @@ export class Freshness {
     this.schedule(this.delay ?? 500);
     return this.running;
   }
+  retryLater(failure) {
+    this.delay = failure.kind !== 'retry' ? 500 : Math.min(5000, 500 * 2 ** Math.min(this.failures++, 4) + Math.floor(this.random() * 100));
+    // Initial attempt plus two automatic retries precede a visible delay.
+    if (failure.kind === 'defer' || failure.kind === 'retry' && this.failures >= 3) this.status(failure);
+  }
   async drain() {
     const epoch = this.epoch;
     const read = (name, args) => this.readAt(epoch, name, args);
@@ -292,20 +298,18 @@ export class Freshness {
           await this.rebuild(read, current);
           if (!current()) return;
           this.checkpoint = copy(baseline.checkpoint); this.continuation = null; this.requested = true;
-          this.status({ kind: 'retry', message: 'Refreshing this topic after a history change.' });
         } catch (resyncError) {
           if (!current()) return;
           const result = readFailure(resyncError);
           if (result.kind === 'forbidden') { await this.stopDenied(result, read, current); return; }
           if (result.kind === 'authority') { await this.stopAuthority(result); return; }
-          else if (!['retry', 'defer'].includes(result.kind)) this.stopped = true;
-          this.status(result);
+          if (['retry', 'defer', 'superseded'].includes(result.kind)) this.retryLater(result);
+          else { this.stopped = true; this.status(result); }
         }
       } else if (failure.kind === 'forbidden') {
         await this.stopDenied(failure, read, current);
-      } else if (['retry', 'defer'].includes(failure.kind)) {
-        this.delay = failure.kind === 'defer' ? 500 : Math.min(5000, 500 * 2 ** Math.min(this.failures++, 4) + Math.floor(this.random() * 100));
-        this.status(failure);
+      } else if (['retry', 'defer', 'superseded'].includes(failure.kind)) {
+        this.retryLater(failure);
       } else { this.stopped = true; this.clearTimer(); this.status(failure); }
     } finally {
       // A command/recovery probe may have learned the new authority first.

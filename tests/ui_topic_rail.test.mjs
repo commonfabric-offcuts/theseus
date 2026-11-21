@@ -558,3 +558,45 @@ test('a press on a topic row\'s unread count opens it at its oldest unread messa
   row('a').onclick({ button: 0, metaKey: true, target: count('a'), preventDefault() { prevented++; } });
   assert.deepEqual([opened, prevented, row('a').href], [[], 0, '?topic=a']);
 });
+
+test('1005 retired read cannot publish partial lists, erase rows or show a move notice', async t => {
+  const f=fixture(t,{folds:true}); f.queue.push(f.page(['a','b'])); await f.rail.load();
+  const nodes=[...f.host.children], before=structuredClone(f.rail.pages.items);
+  let release;const held=new Promise(done=>release=done);
+  f.rail.read=async()=>{await held;return f.page(['c']);};
+  const run=f.rail.load(); f.rail.invalidate(); release(); await run;
+  assert.deepEqual(f.rail.pages.items,before);assert.deepEqual(f.host.children,nodes);
+  assert.equal(f.message.hidden,true);assert.equal(f.retry.hidden,true);
+  f.rail.read=async()=>f.page(['c']);await f.rail.load();assert.ok(f.host.children.some(n=>n.dataset.topicId==='c'));
+});
+test('1005 only typed supersession is quiet; unreadable and access failures remain visible',async t=>{
+  const f=fixture(t);f.queue.push(f.page(['a']));await f.rail.load();const nodes=[...f.host.children];
+  f.rail.read=async()=>{throw Object.assign(Error('The page moved on before this was read.'),{code:'READ_SUPERSEDED'});};
+  await f.rail.load();assert.equal(f.message.hidden,true);assert.deepEqual(f.host.children,nodes);
+  f.rail.read=async()=>{throw Error('AIM returned an unreadable response. Confirmation is unknown.');};
+  await f.rail.load();assert.equal(f.message.hidden,false);assert.match(f.message.textContent,/unreadable/);assert.deepEqual(f.host.children,nodes);
+  f.rail.read=async()=>{throw Object.assign(Error('Gone'),{status:403});};await f.rail.load();assert.match(f.message.textContent,/unavailable/);assert.equal(f.host.hidden,true);
+});
+
+test('1005 all open lists publish together; a failed folded-list read keeps the prior active extent',async t=>{
+ const f=fixture(t,{folds:true});f.queue.push(f.page(['a','b']));await f.rail.load();f.done.details.open=true;
+ const before=structuredClone(f.rail.pages.items),nodes=[...f.host.children];
+ f.rail.read=async args=>{if(args.done)throw Error('Done read failed');return f.page(['c']);};
+ assert.equal(await f.rail.load(),false);assert.deepEqual(f.rail.pages.items,before);assert.deepEqual(f.host.children,nodes);
+ f.rail.read=async args=>args.done?{instance_id:'i1',items:[],next_cursor:null}:f.page(['c']);
+ assert.equal(await f.rail.load(),true);assert.ok(f.host.children.some(n=>n.dataset.topicId==='c'));
+});
+
+test('1005 a late list cannot overwrite newer current-topic facts',async t=>{
+ const f=fixture(t);f.queue.push(f.page(['a']));await f.rail.load();let release;
+ f.rail.read=async()=>new Promise(done=>release=done);const loading=f.rail.load();
+ const newer={...f.rail.pages.current,title:'Newer title while read was out'};f.rail.updateCurrent(newer);
+ release(f.page(['a']));await loading;assert.equal(f.rail.pages.current.title,newer.title);assert.equal(f.host.children.find(n=>n.dataset.topicId===newer.id).textContent,newer.title);
+});
+
+test('1005 leaving a current topic beyond the first page cannot drop its already drawn row',async t=>{
+ const f=more982(t,41);f.rail.updateCurrent(f.rows[40]);await f.rail.load();const before=[...f.host.children].map(n=>n.dataset.topicId);
+ f.rail.updateCurrent(null);assert.deepEqual(f.host.children.map(n=>n.dataset.topicId),before);
+ await f.rail.load();for(const id of before)assert.ok(f.host.children.some(n=>n.dataset.topicId===id),id);
+ assert.equal(f.rail.pages.current,null);assert.ok(f.reads.every(q=>q.limit<=20));
+});

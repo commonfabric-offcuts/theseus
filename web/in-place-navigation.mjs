@@ -155,7 +155,7 @@ export function oneAtATime(busy = () => {}) {
 // A read a run asked for that reached its turn after a newer run became the
 // page: it is never sent, and whoever asked drops it.
 export class Superseded extends Error {
-  constructor() { super('The page moved on before this was read.'); this.name = 'Superseded'; }
+  constructor() { super('The page moved on before this was read.'); this.name = 'Superseded'; this.code = 'READ_SUPERSEDED'; }
 }
 
 // The build a module's address names (/b/<build>/name), or null for one served outside a build.
@@ -293,12 +293,12 @@ export class Shell {
   // A read for what the shell keeps for itself (the outline's own topic
   // lists, an outcome's Conversation): asked while no run is up, it waits for
   // one; it goes through the newest run's reads when its turn comes.
-  async view(name, args, readClass) {
+  async view(name, args, readClass, current = () => true) {
     if (!this.handles) {
       if (!this.up) { let resolve; const promise = new Promise(done => { resolve = done; }); this.up = { promise, resolve }; }
       await this.up.promise;
     }
-    return this.inTurn(() => this.read(name, args, readClass));
+    return this.inTurn(() => { if (!current()) throw new Superseded(); return this.read(name, args, readClass); });
   }
   // The run names its own place anew as it starts (a message's link becomes
   // its topic's, a Conversation's topic its Conversation): the address
@@ -363,6 +363,9 @@ export class Shell {
     if (this.handles) listener.ready?.(this.handles);
     return () => this.listeners.delete(listener);
   }
+  // A followed outline owns retained topic lists regardless of how the page
+  // mounted it. Standalone pages may have no outline at all.
+  get outline() { return [...this.listeners].find(owner => typeof owner.topicsFor === 'function') ?? null; }
   route() { try { return parseRoute(new URL(this.win.location.href)); } catch { return null; } }
   // Whether a feed's run is on its way: a move under way, or a run not up yet.
   get between() { return this.installed && this.feed && (this.moving || (!this.handles && Boolean(this.page))); }

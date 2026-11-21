@@ -68,3 +68,12 @@ for (const fails of [false, true]) test(`923 B2 refresh waits for a queued star 
   assert.deepEqual(await refreshed, [!fails]); await busy;
   assert.equal(f.state.stars[0].dossier.id, fails ? 'old' : 'new');
 });
+
+test('1005 navigation retains starred nodes and fences a late read before a fresh publication',async()=>{
+  const f=fixture();f.subject.states=new Map([['t',f.state]]);f.state.stars=[star(1,'kept')];f.state.loaded=true;
+  const box=f.state.box;let release;f.queue.push(()=>new Promise(done=>release=done));
+  const old=f.subject.load(f.state);await Promise.resolve();f.subject.begin();
+  assert.equal(f.state.box,box);assert.equal(f.state.stars[0].dossier.id,'kept');assert.equal(f.state.busy,null);
+  release(f.page([star(2,'old-run')])());await old;assert.equal(f.state.stars[0].dossier.id,'kept');
+  f.queue.push(f.page([star(3,'fresh')]));await f.subject.load(f.state);assert.equal(f.state.stars[0].dossier.id,'fresh');
+});
