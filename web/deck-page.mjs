@@ -865,7 +865,7 @@ export class DeckPage {
     this.listening?.signal.addEventListener('abort',()=>picker?.close(false),{once:true});
     return picker;
   }
-  openCardMenu(index,anchor) {
+  openCardMenu(index,anchor,at=null) {
     // The pressed row owns the target, including the holder after sync moved
     // it. Follow the actual applied act before re-finding its identity/words.
     const row=anchor.closest?.('.deck-card');
@@ -879,7 +879,7 @@ export class DeckPage {
       anchor=this.list.querySelector(`.deck-card[data-index="${index}"]`)?.querySelector('.deck-menu')??anchor;
     }
     const ref=this.cardRef(index);if(!ref)return;
-    const menu=openMessageMenu({anchor,items:this.cardMenuItems(ref,anchor),label:'This card',sheet:true,doc:this.doc});
+    const menu=openMessageMenu({anchor,at,items:this.cardMenuItems(ref,anchor),label:'This card',sheet:true,doc:this.doc});
     this.listening?.signal.addEventListener('abort',()=>menu?.close(false),{once:true});
     return menu;
   }
