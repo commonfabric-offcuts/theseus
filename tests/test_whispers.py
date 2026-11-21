@@ -898,7 +898,7 @@ VIEW_PATHS = {
     "marks": "visible() before a mark; the reader's own marks",
     "changes": "a whisper writes only to its two people's actor scopes",
     "topic": "summaries, waits and participation are untouched by a whisper; the message that reopened or started it through redact_topic",
-    "workspace_topics": "summaries, activity, order and waits are untouched by a whisper; each topic's reopening and source through redact_topic",
+    "workspace_topics": "summaries, activity, order and waits are untouched by a whisper; each topic's reopening and source through redact_topic; latest_message reads only the public summary message with private_to IS NULL",
     "workspaces": "per-reader delivery counts",
     "outcome_light": "reads asks and summaries, which a whisper never writes",
     "source_topics": "_message_access applies visible()",
@@ -971,6 +971,7 @@ MESSAGE_READS = {
     "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
     "aim_next/blocking.py": ("the message just posted, and asks that name what they block, which only an ask can and a whisper never is", 3),
     "aim_next/store.py": ("the latest message on the record from topic_summaries; the exposure boundary additionally reads ids/revisions only for bounded content identities actually returned by admitted projections, after unsent refusal and excluding held ids; no new words or identities are projected by this read", 2),
+    "aim_next/topic_preview.py": ("only the returned topics' public summary messages, additionally private_to IS NULL and removal.VISIBLE; current words use the edit/hold helper and final opening words mark their exact revision", 1),
     "aim_next/topic_reading.py": ("the reader's own replies (author_id is the reader) to messages on a page already read through VISIBLE; "
                                   "whether the reader's own prepared reply was sent, an EXISTS over their own messages by the send's "
                                   "operation id that shows nothing of any message", 2),
