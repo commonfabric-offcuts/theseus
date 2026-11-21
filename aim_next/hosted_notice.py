@@ -22,21 +22,25 @@ SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 UNNAMED = "(not shown: run inbox)"
 
 
-def cli_command(cli, profile_path):
-    return "/usr/bin/python3 -I %s --profile %s" % (cli, profile_path)
+def cli_command(cli, profile_path, broker=None):
+    return "/usr/bin/python3 -I %s --%s %s" % (cli, 'broker' if broker else 'profile', broker or profile_path)
 
 
-def developer_instructions(actor_id, cli, profile_path):
+def developer_instructions(actor_id, cli, profile_path, broker=None):
     """The thread-level instructions (design §3.8); identical on start and on every resume."""
     return "\n".join((
         "You are Theseus actor %s. Your work arrives as Theseus deliveries." % actor_id,
-        "Your CLI: %s" % cli_command(cli, profile_path),
+        "Your CLI: %s" % cli_command(cli, profile_path, broker),
         "  inbox                      pending deliveries (does not acknowledge)",
         "  read TOPIC --after SEQ     full messages",
         "  reply MESSAGE [--asks A | --tells A] [--part] -   reply in that message's stack (body on stdin);",
         "  post TOPIC [--asks A | --tells A] -   deliberately start a new subject, not a progress update;",
         "Keep progress, questions and completion about a request in its existing stack using reply MESSAGE.",
         "Reply to the relevant request or follow-up, never guess from the newest message or another active job.",
+        "Every agent reply (reply, post --reply-to, whisper or prepared send) must name a passage or say why it has no quote.",
+        "Read source's raw Markdown and current revision; use --quote-revision N --quote-start S --quote-end E (zero-based Unicode code points).",
+        "Core inserts that exact passage. Alternatively pass --without-quote REASON; Core shows the reason. A missing or stale choice is refused.",
+        "The reply examples below also need your actual chosen passage flags or explicit reason.",
         "For progress: reply MESSAGE --tells PERSON \"The build is running; verification is next.\"",
         "In an outcome's conversation add --part while work is still owed; ordinary topics do not accept --part.",
         "For completion: reply MESSAGE --tells PERSON \"Built and verified; here is the result.\"",
@@ -83,6 +87,9 @@ def developer_instructions(actor_id, cli, profile_path):
         "a new id.",
         "A correction says its author edited a message you were sent: it is not a new ask, Tell or",
         "reply. Read the message again, act on its latest words, then ack the correction's delivery.",
+        "A request delivery asks for a cover refresh or an in-place message update. Its instructions are in inbox;",
+        "read its source and dossier, perform the requested write, then ack its delivery. It is not a message",
+        "in the requester's name, and neither a reply nor an acknowledgement completes that request.",
     ))
 
 
@@ -130,6 +137,26 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     # Each dossier to name is said once, on its first delivery listed.
     to_name = set()
     for number, item in enumerate(listed, 1):
+        if item.get('retraction'):
+            removed = item['retraction']
+            lines.append('%d. retraction: message %s was retracted by %s; it no longer asks, answers or holds a wait. '
+                         'Its original words remain only as a retracted record. Acknowledge delivery %s.' % (
+                             number, _named(removed['message_id']), _named(removed['by']), _named(item['id'])))
+            continue
+        if item.get('answer'):
+            answer = item['answer']
+            lines.append('%d. answer in topic %s from %s to question %s (seq %d), delivery %s; '
+                         'read the answer in inbox and the question, then acknowledge this delivery before asking again in its dossier.' % (
+                             number, _named(item['topic']['id']), _named(answer['actor_id']), _named(answer['message_id']),
+                             item['message']['seq'], _named(item['id'])))
+            continue
+        if item.get("request"):
+            request = item["request"]
+            lines.append("%d. request in topic %s, from %s, source %s, dossier %s, observed revision %d, delivery %s; "
+                         "read its instructions in inbox, perform the requested write, then ack the delivery." % (
+                             number, _named(item["topic"]["id"]), _named(request["requester_id"]),
+                             _named(request["message_id"]), _named(request["root_id"]), request["observed_revision"], _named(item["id"])))
+            continue
         message = item["message"]
         if item.get("correction"):
             # Core's words: its author edited a message this agent was sent (docs/message-edit.md). It is not new work, and
@@ -167,6 +194,8 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
                                           " Titles and previews are in the untrusted context." if PREVIEWS_IN_CONTEXT else ""))
     first = {}
     for item in listed:
+        if item.get("request") or item.get('retraction'):
+            continue
         topic = item["topic"]["id"]
         if _named(topic) != UNNAMED:
             first[topic] = min(first.get(topic, item["message"]["seq"]), item["message"]["seq"])
@@ -175,8 +204,11 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     context = None
     if PREVIEWS_IN_CONTEXT:
         previews = "\n".join("%s: %s" % (_named(item["id"]), json.dumps(
-            {"topic": item["topic"]["id"], "title": _title(item["topic"]), "from": item["message"]["author_id"],
-             "body": item["message"]["body"]}, ensure_ascii=False)) for item in listed)
+            {"topic": item["topic"]["id"], "title": _title(item["topic"]),
+             "from": item['retraction']['by'] if item.get('retraction') else item['answer']['actor_id'] if item.get('answer') else item["request"]["requester_id"] if item.get("request") else item["message"]["author_id"],
+             "body": 'Message retracted.' if item.get('retraction') else (('%s: %s%s; question: ' % (item['answer']['kind'], item['answer']['value'],
+                       '' if item['answer']['stands'] else ' (no longer stands)')) + item['message']['body']) if item.get('answer') else
+                     item["request"]["body"] if item.get("request") else item["message"]["body"]}, ensure_ascii=False)) for item in listed)
         context = {"theseus.previews." + attempt_id: {"kind": "untrusted", "value": previews}}
     return {"input": [{"type": "text", "text": "\n".join(lines), "text_elements": []}],
             "additionalContext": context, "announced_seq": max(item["seq"] for item in listed)}

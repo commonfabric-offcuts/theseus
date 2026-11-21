@@ -68,11 +68,30 @@ class AgentCLIBase(fixtures.ReaderCase):
         return code, result, stderr.getvalue()
 
     def records_beside_exposures(self):
-        """Every record but the exposures and the commit metadata of their write (its sequence, id and Health light): an agent's read records the messages it
-        was handed (docs/message-edit.md, "What counts as handed"), so a read that writes nothing else is checked by
-        this and by exposures()."""
+        """Agent-only reads may record the handed revisions and one first
+        person-authored exposure in that same write. Check those first facts
+        against the independent existing revision ledger before excluding them
+        from the complete non-exposure-record comparison. Existing call sites
+        assert the exact messages/revisions handed as well.
+        """
+        eligible = {}
+        for message, reader in self.sql(
+                "SELECT e.message_id,e.actor_id FROM message_exposures e JOIN messages m ON m.id=e.message_id "
+                "JOIN actors author ON author.id=m.author_id WHERE author.kind='human' AND e.actor_id<>m.author_id "
+                "AND m.seq>max((SELECT seq FROM message_removal_horizon),(SELECT seq FROM message_edit_horizon))"):
+            eligible.setdefault(message, set()).add(reader)
+        first = {message: (reader, at) for message, reader, at in
+                 self.sql("SELECT message_id,by,at_ms FROM message_first_exposures")}
+        self.assertEqual(set(first), set(eligible), "first exposures must match eligible words actually handed to these agent readers")
+        for message, (reader, at) in first.items():
+            self.assertIn(reader, eligible[message], "the first reader must have been handed this person's words")
+            self.assertIsInstance(at, int)
+        for message, previous in getattr(self, '_first_exposure_snapshot', {}).items():
+            self.assertEqual(first.get(message), previous, "a prior first exposure remains byte-for-byte the same")
+        self._first_exposure_snapshot = first
         commit = tuple('INSERT INTO "metadata" VALUES(\'%s\'' % key for key in ("commit_seq", "commit_id", "health_light"))
-        return tuple(line for line in self.records() if not line.startswith(('INSERT INTO "message_exposures"',) + commit))
+        return tuple(line for line in self.records() if not line.startswith(
+            ('INSERT INTO "message_exposures"', 'INSERT INTO "message_first_exposures"') + commit))
 
     def exposures(self, actor="agent-a"):
         return {message: revision for message, revision in
@@ -280,17 +299,22 @@ class AgentCLICase(AgentCLIBase):
         save, prepare, send = self.reply_commands()
         save["args"]["source_ref"] = old_ref
         save["args"]["quotes"] = [{"source": old_ref, "excerpt": "Exact old @outsider words"}]
+        reason = "This reply forwards the selected Notebook revision rather than a parent passage."
+        save["args"]["reply_without_quote"] = reason
         for act in (save, prepare, send):
             code, receipt, _ = self.invoke("command", act)
             self.assertEqual(code, 0)
             self.committed(receipt)
         sent = self.source({"kind": "message", "id": receipt["result"]["message_id"]})
+        self.assertEqual(sent["body"], "Reply without a quote:\n\n> " + reason + "\n\n" + save["args"]["body"])
         self.assertEqual(sent["quotes"], save["args"]["quotes"])
         self.assertEqual(sent["addressees"], ["owner"])
 
     def test_explicit_reply_is_literal_once_and_newer_private_draft_survives(self):
         before_pending = self.store.view("agent-a", "deliveries", {})
         save, prepare, send = self.reply_commands()
+        passage = {"source": dict(self.opening, revision=1), "start": 0, "end": 7}
+        save["args"]["reply_passage"] = passage
         for act in (save, prepare):
             code, receipt, _ = self.invoke("command", act)
             self.assertEqual(code, 0)
@@ -307,8 +331,8 @@ class AgentCLICase(AgentCLIBase):
         self.assertEqual(self.invoke("command", send)[:2], (0, receipt))
         source = self.source({"kind": "message", "id": result["message_id"]})
         self.assertEqual(source["author"], "agent-a")
-        self.assertEqual(source["body"], save["args"]["body"])
-        self.assertEqual(source["quotes"], save["args"]["quotes"])
+        self.assertEqual(source["body"], "> Opening\n\n" + save["args"]["body"])
+        self.assertEqual(source["quotes"], save["args"]["quotes"] + [dict(passage, excerpt="Opening")])
         self.assertEqual(source["addressees"], ["owner"])
         self.assertEqual(source["reply_to"], self.opening["id"])
         self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE operation_id='cli-send'"), [(1,)])
@@ -650,15 +674,16 @@ class AgentCLICase(AgentCLIBase):
         selected = self.memory_ref()
         namespace = {}
         exec(compile(blocks[0], str(documentation), "exec"), namespace)
+        reason = "This reply forwards the selected Notebook revision rather than a parent passage."
         output = namespace["agent_example"](root / "bin" / "aim-next", self.profiles["agent-a"],
-            Path(self.temp.name) / "example-requests", selected, "doc-act", "Exact documented reply", ["owner"], "tell")
+            Path(self.temp.name) / "example-requests", selected, "doc-act", "Exact documented reply", ["owner"], "tell", reason)
         self.assertTrue(output["exits"])
         self.assertTrue(all(code == 0 for code in output["exits"].values()), output["exits"])
         self.assertEqual(output["selected"]["source_ref"], selected)
         self.assertEqual(output["selected"]["body"], "Selected revision one")
         message = self.source({"kind": "message", "id": output["sent"]["result"]["message_id"]})
         self.assertEqual(message["author"], "agent-a")
-        self.assertEqual(message["body"], "Exact documented reply")
+        self.assertEqual(message["body"], "Reply without a quote:\n\n> " + reason + "\n\nExact documented reply")
         self.assertEqual(message["quotes"], [{"source": selected, "excerpt": "Selected revision one"}])
         self.assertEqual(message["addressees"], ["owner"])
         self.assertEqual(message["intent"], "tell")

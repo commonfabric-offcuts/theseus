@@ -1,0 +1,38 @@
+effective_cache=/Users/commonfabric/aim-worktrees/codex-790-paste9912/docs/evidence/onboarding-790-paste/cache-viewport-crosses-1px-mutant-8e9dbffcd75649d082068ce002341587
+{"ownedLiteralCases":{"chrome":["reading item 790 clipboard-control: fixture-only raw Meta+V versus native paste editing command","reading item 790 laptop: owner chooses both variants and copies current prompt by native paste","reading item 790 laptop: refused clipboard keeps readable text and retry copies fresh state","reading item 790 laptop: non-owner has no overflow and Core refuses the prompt","reading item 790 phone: owner chooses both variants and copies current prompt by native paste","reading item 790 phone: refused clipboard keeps readable text and retry copies fresh state","reading item 790 phone: non-owner has no overflow and Core refuses the prompt"],"webkit":["reading item 790 laptop: owner chooses both variants and copies current prompt by native paste","reading item 790 laptop: refused clipboard keeps readable text and retry copies fresh state","reading item 790 laptop: non-owner has no overflow and Core refuses the prompt","reading item 790 phone: owner chooses both variants and copies current prompt by native paste","reading item 790 phone: refused clipboard keeps readable text and retry copies fresh state","reading item 790 phone: non-owner has no overflow and Core refuses the prompt"]},"executedBodies":0,"runnerStarts":0}
+✔ safe diagnostics retain hashes, actual focus and native phases on success without text (0.766083ms)
+✔ exact equality rejects different text even at same length and leaves failure diagnostics (1.971375ms)
+✔ wrong clipboard content stops before paste, retains safe product defect classification (0.089625ms)
+✔ native editing command carries no text and raw path preserves original key call (0.2675ms)
+✔ clipboard read denial is diagnostic refusal without exception text or product failure claim (0.151792ms)
+✖ all diagnostic browser expressions parse and viewport tolerance catches actual expression crossing (0.517667ms)
+✔ actual reading entry point enumerates Chromium seven and WebKit original six without execution (32.313584ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 6
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 87.801208
+
+✖ failing tests:
+
+test at tests/clipboard_790_diagnostics.test.mjs:58:1
+✖ all diagnostic browser expressions parse and viewport tolerance catches actual expression crossing (0.517667ms)
+  AssertionError [ERR_ASSERTION]: sheet stays in viewport, viewportTolerance790Px=1
+      at assertViewport790 (file:///Users/commonfabric/aim-worktrees/codex-790-paste9912/tests/clipboard_790_diagnostics.mjs:26:10)
+      at TestContext.<anonymous> (file:///Users/commonfabric/aim-worktrees/codex-790-paste9912/tests/clipboard_790_diagnostics.test.mjs:61:79)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

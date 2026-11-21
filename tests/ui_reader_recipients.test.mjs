@@ -12,6 +12,7 @@ class Element {
   append(...nodes) { for (const node of nodes) if (typeof node === 'object') node.parent = this; this.children.push(...nodes); }
   // What it says: its own text, then its children's, a string child as itself.
   get text() { return this.textContent + this.children.map(node => typeof node === 'string' ? node : node.text).join(''); }
+  *descendants() { for (const node of this.children) if (typeof node === 'object') { yield node; yield* node.descendants(); } }
   replaceChildren(...nodes) { for (const node of this.children) if (typeof node === 'object') node.parent = null; this.children = []; this.textContent = ''; this.append(...nodes); }
   remove() { if (this.parent) { this.parent.children = this.parent.children.filter(node => node !== this); this.parent = null; } }
   insertBefore(node, before) { node.remove(); this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, node); node.parent = this; }
@@ -128,18 +129,19 @@ test('the origin line names the author, a Notebook page and its revision, and wh
   const origin = new Element('div');
   const whispering = [];
   const reader = Object.assign(Object.create(Reader.prototype), { $: id => { assert.equal(id, 'reader-origin'); return origin; },
+    callbacks: { actor: () => 'fixture-reader' },
     sourceBody: { classList: { toggle: (name, on) => whispering.push([name, on]) } } });
   const sent_ms = new Date(2026, 10, 5, 5, 44).getTime();
   clock.now = () => new Date(2026, 10, 6, 9, 0).getTime();
   reader.paintOrigin({ author: 'tony', source_ref: { kind: 'message', id: 'm1' }, sent_ms });
   assert.equal(origin.text, 'tony · Yesterday 5:44 AM');
-  assert.equal(origin.children.find(node => node.tag === 'time')?.title, '5:44 AM Thu Nov 5', 'its title keeps the date');
+  assert.equal([...origin.descendants()].find(node => node.tag === 'time')?.title, '5:44 AM Thu Nov 5', 'its title keeps the date');
   clock.now = () => new Date(2026, 10, 9, 9, 0).getTime();
   reader.paintOrigin({ author: 'tony', source_ref: { kind: 'message', id: 'm1' }, sent_ms });
   assert.equal(origin.text, 'tony · 5:44 AM Thu Nov 5', 'from before yesterday: dated');
   reader.paintOrigin({ author: 'tony', source_ref: { kind: 'memory', id: 'n1', revision: 3 } });
   assert.equal(origin.text, 'tony · Notebook · revision 3');
-  reader.callbacks = { actorName: id => id === 'codex-worker' ? 'codex' : id };
+  reader.callbacks.actorName = id => id === 'codex-worker' ? 'codex' : id;
   const source = { author: 'codex-worker', source_ref: { kind: 'message', id: 'm2' } };
   reader.paintOrigin(source);
   assert.equal(origin.text, 'codex');

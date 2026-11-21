@@ -21,7 +21,11 @@ const mergeTextContent = (base,mine,theirs) => mergeFields(FIELDS,base,mine,thei
 const content = source => ({ title: source.title, body: source.body ?? '',
   attachments: source.attachments.map(({ id }) => ({ id })), references: copy(source.references), draft: source.draft === true });
 const authority = bootstrap => ({ authority_id: bootstrap.authority.authority_id, authority_epoch: bootstrap.authority.authority_epoch });
-const readOnly = new Set(['FORBIDDEN', 'OUTCOME_REACHED', 'AUTHORITY_CHANGED']);
+export function notebookActionEnvelope(bootstrap, item, state, kind, args) {
+  return { v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind, target: { item_id: item }, args: copy(args),
+    expected: { authority: authority(bootstrap), ...(kind === 'memory.star' ? { star_revision: state.star_revision ?? 0 } : { item_revision: state.source_ref.revision }) } };
+}
+const readOnly = new Set(['FORBIDDEN', 'OUTCOME_REACHED', 'AUTHORITY_CHANGED', 'PAGE_DELETED']);
 
 // The one revision stream behind Text and Cards. The journal owns only local,
 // unconfirmed writing. Core still owns the page and every confirmed revision.
@@ -37,19 +41,19 @@ export class NotebookWriting {
     this.journalPending = 0; this.journalError = null;
     // reading: Core does not let this person write the page (its reader_may_write), so nothing new is written
     // here; writing already kept on this device still goes, and Core answers it.
-    this.reading = false;
+    this.reading = false; this.actionPending = null; this.actionRunning = null; this.pageState = null; this.deleted = false;
   }
   get dirty() { return Boolean(this.value && !sameContent(this.value, this.base?.content)); }
   get hasLocal() { return this.dirty || this.localActive(); }
-  get busy() { return Boolean(this.running || this.pending); }
+  get busy() { return Boolean(this.running || this.pending || this.actionRunning || this.actionPending); }
   get binding() { return { instance_id: this.bootstrap.instance_id, actor_id: this.bootstrap.actor, item_id: this.item }; }
   snapshot() {
-    if (!this.dirty && !this.pending && !this.conflict && !this.images.some(image => !image.removed && !image.associated)) return null;
+    if (!this.dirty && !this.pending && !this.actionPending && !this.conflict && !this.images.some(image => !image.removed && !image.associated)) return null;
     // Bytes are immutable and held separately by the store. Do not clone a
     // pending photograph every time a single character changes.
     const images = this.images.map(({bytes, ...image}) => ({...copy(image), bytes}));
     return { ...copy({ v: 1, binding: this.binding, base: this.base, value: this.value, pending: this.pending,
-      conflict: this.conflict, localVersion: this.localVersion }), images };
+      conflict: this.conflict, actionPending: this.actionPending, pageState:this.pageState, localVersion: this.localVersion }), images };
   }
   persist() {
     const snapshot = this.snapshot();
@@ -67,28 +71,37 @@ export class NotebookWriting {
         source.source_ref.id !== this.item || !Number.isInteger(source.source_ref.revision)) throw Error('This is not the requested Notebook page.');
     // Each read of the page as it stands says whether Core lets this person write it now (refresh, a newer
     // revision answering a save, Discard my writing): no path that takes the latest page back can miss it.
-    this.reading = source.reader_may_write === false;
+    this.observe(source);
     return { revision: source.source_ref.revision, content: content(source), source };
+  }
+  async readStatus() {
+    if(this.closed||this.pending||this.running||this.actionPending||this.actionRunning)return;
+    const state=await this.api.view('memory_status',{item_id:this.item});
+    if(state.instance_id!==this.bootstrap.instance_id||state.source_ref?.kind!=='memory'||state.source_ref.id!==this.item||
+        !Number.isSafeInteger(state.source_ref.revision))throw Error('The page status could not be confirmed.');
+    this.observe(state);this.notify();
   }
   async open() {
     const held = await this.store.get();
     if (held) {
       if (held.v !== 1 || !same(held.binding, this.binding)) throw Error('The saved writing belongs to a different Notebook page.');
       Object.assign(this, copy({ base: held.base, value: held.value, pending: held.pending,
-        conflict: held.conflict, localVersion: held.localVersion, images: held.images ?? [] }));
+        conflict: held.conflict, actionPending: held.actionPending ?? null, localVersion: held.localVersion, images: held.images ?? [] }));
+      if(held.pageState??held.base?.source)this.observe(held.pageState??held.base.source);
       // Refusals are scoped to this opening. A fresh bootstrap and a new
       // revision-fenced request decide access again, including old v1 journals.
     }
+    if (this.actionPending) await this.retryAction();
     if (this.pending) await this.flush();
     await this.refresh();
-    if (this.dirty && !this.pending && !this.conflict && !this.readOnly) this.schedule();
+    if (this.dirty && !this.pending && !this.actionPending && !this.conflict && !this.readOnly) this.schedule();
     this.notify();
   }
   capture() { return {revision:this.base?.revision,content:copy(this.value)}; }
   edit(patch, seen, mode = 'text', acts = []) {
     // A caller must name the content it actually edited. In particular an
     // empty, not-yet-drawn surface must never borrow the current revision.
-    if (!seen?.content || !Number.isInteger(seen.revision) || !this.value || this.readOnly || this.reading || this.closed) return false;
+    if (!seen?.content || !Number.isInteger(seen.revision) || !this.value || this.readOnly || this.reading || this.deleted || this.actionPending || this.actionRunning || this.closed) return false;
     const next = { ...seen.content, ...copy(patch) };
     if (sameContent(next, seen.content)) return false;
     let merged;
@@ -114,15 +127,26 @@ export class NotebookWriting {
     this.timer = setTimeout(() => { this.timer = null; this.flush(); }, Math.max(0,Math.min(this.delay,3000-(Date.now()-this.dirtySince))));
   }
   async refresh() {
-    if (this.running || this.pending || this.closed) return false;
+    if (this.running || this.pending || this.actionRunning || this.actionPending || this.closed) return false;
     try {
       const latest = await this.read();
-      if (this.running || this.pending || this.closed || (this.base && latest.revision <= this.base.revision)) return true;
+      if (this.running || this.pending || this.actionRunning || this.actionPending || this.closed || (this.base && latest.revision <= this.base.revision)) return true;
       this.takeLatest(latest);
       await this.persist(); this.error = null; this.notify(); return true;
     } catch (error) { this.error = `The page could not be read: ${error.message}`; this.notify(); return false; }
   }
+  observe(source) {
+    if (this.pageState && source.source_ref.revision < this.pageState.source_ref.revision) return;
+    const laterStar=(this.pageState?.star_revision??0)>(source.star_revision??0)?{starred:this.pageState.starred,star_revision:this.pageState.star_revision}:{};
+    this.pageState = {...this.pageState,...copy(source),...laterStar}; this.deleted = source.deleted === true;
+    this.reading = source.reader_may_write === false;
+  }
   takeLatest(latest) {
+    // A tombstone hides content but never replaces unfinished writing with an empty body.
+    if (latest.source.deleted && this.base) {
+      this.base = {...this.base, revision:latest.revision, source:latest.source};
+      return;
+    }
     if (this.base && this.hasLocal) {
       const merged = this.reconcile(this.base.content, this.value, latest.content);
       if (merged === null) { this.conflict = latest; return; }
@@ -136,7 +160,7 @@ export class NotebookWriting {
   flush() {
     clearTimeout(this.timer); this.timer = null;
     if (this.running) return this.running;
-    if (this.closed || this.readOnly || this.conflict || !this.base || (!this.pending && !this.dirty)) return Promise.resolve(null);
+    if (this.closed || this.deleted || this.actionPending || this.actionRunning || this.readOnly || this.conflict || !this.base || (!this.pending && !this.dirty)) return Promise.resolve(null);
     this.running = this.send().finally(() => { this.running = null; this.notify(); if (!this.error) this.schedule(); });
     this.notify(); return this.running;
   }
@@ -158,6 +182,10 @@ export class NotebookWriting {
         const source = { ...this.base.source, ...copy(sent.args), source_ref: copy(receipt.result.source_ref),
           attachments: sent.args.attachments.map(ref => this.described.get(ref.id) ?? ref) };
         // own: the person's own revision, which Core counts as read by them (notebook-sheet.mjs reads the others).
+        if (this.pageState?.source_ref.revision > receipt.result.revision) {
+          this.pending=null; await this.persist(); this.notify(); return receipt;
+        }
+        this.observe(source);
         this.base = { revision: receipt.result.revision, content: copy(sent.args), source, own: true };
         this.pending = null; this.error = null; this.dirtySince=null;
         await this.persist(); this.notify();
@@ -172,6 +200,54 @@ export class NotebookWriting {
       }
       await this.persist(); this.notify(); return receipt;
     } catch (error) { this.error = `Not saved yet: ${error.message}`; this.notify(); return null; }
+  }
+  async action(kind, args) {
+    if (this.closed || this.actionRunning || this.actionPending || !this.pageState) return null;
+    if (kind === 'memory.delete' && args.deleted) {
+      await this.flush();
+      if (this.dirty || this.pending || this.running || this.conflict || this.error || this.journalError ||
+          this.images.some(i=>!i.removed&&!i.associated)) {
+        this.actionError='Your writing is kept. Finish saving it before deleting this page.'; this.notify(); return null;
+      }
+    }
+    const state=this.pageState;
+    this.actionPending=notebookActionEnvelope(this.bootstrap,this.item,state,kind,args);
+    return this.retryAction();
+  }
+  retryAction() {
+    if (this.closed || !this.actionPending) return Promise.resolve(null);
+    if (this.actionRunning) return this.actionRunning;
+    this.actionRunning=this.sendAction().finally(()=>{this.actionRunning=null;this.notify();this.schedule();});
+    this.notify(); return this.actionRunning;
+  }
+  async sendAction() {
+    try {
+      await this.persist();
+      const sent=copy(this.actionPending),r=await this.api.command(sent);
+      if(r?.instance_id!==sent.instance_id||r.operation_id!==sent.operation_id||r.kind!==sent.kind||
+          !['committed','rejected','retryable'].includes(r.status)) throw Error('The confirmation does not match this page action.');
+      if(r.status==='retryable')throw Error(r.error?.message??'Theseus is busy.');
+      if(r.status==='committed') {
+        if(r.recorded!==true||r.result?.item_id!==this.item)throw Error('The page action is not confirmed.');
+        if(sent.kind==='memory.star') {
+          if(r.result.starred!==sent.args.starred||!Number.isSafeInteger(r.result.star_revision)||r.result.star_revision<=sent.expected.star_revision)
+            throw Error('The star confirmation is uncertain.');
+          this.pageState={...this.pageState,starred:r.result.starred,star_revision:r.result.star_revision};
+        } else {
+          if(r.result.deleted!==sent.args.deleted||r.result.revision!==sent.expected.item_revision+1||
+            r.result.source_ref?.id!==this.item||r.result.source_ref?.kind!=='memory'||r.result.source_ref?.revision!==r.result.revision)
+            throw Error('The deletion confirmation is uncertain.');
+          this.observe({...this.pageState,source_ref:copy(r.result.source_ref),deleted:r.result.deleted,
+            reader_may_write:!r.result.deleted&&this.pageState.reader_may_write});
+          if(this.base&&r.result.deleted)this.base={...this.base,revision:r.result.revision,source:copy(this.pageState)};
+        }
+        this.actionPending=null;this.actionError=null;await this.persist();
+        // Refresh the same operation's confirmed state; an older read cannot reverse it.
+        this.notify();return r;
+      }
+      this.actionPending=null;this.actionError=r.error?.message??'The page was not changed.';
+      await this.persist();this.notify();return r;
+    } catch(error) {this.actionError='Not confirmed yet: '+error.message;this.notify();return null;}
   }
   async resolve(useMine) {
     if (!this.conflict || this.pending || this.running || this.readOnly) return;
@@ -215,7 +291,7 @@ export async function notebookStore(binding, win = globalThis) {
       resolve(true); await lifetime;
     }).catch(reject);
   });
-  if (!await acquired) throw Error('This Notebook page is being written in another tab. Close that editor, then reload here.');
+  if (!await acquired) throw Error('This Notebook page is being written in another tab. Close the page in the other tab, then reload this one, or keep reading here.');
   let db;
   try {
     db = await new Promise((resolve, reject) => {
@@ -376,10 +452,17 @@ export function mergeCardContent(base, mine, theirs) {
   const original=chunks(base.body),left=cardEdits(original,chunks(mine.body)),right=cardEdits(original,chunks(theirs.body));
   if(!left||!right)return null;
   const all=[...left];
-  for(const r of right) {
+  // An identical replacement can begin a larger hunk that also removes its
+  // neighbour. Keep the shared replacement once and merge the remaining edit.
+  const startsWithEdit=(whole,part)=>part.start===whole.start&&part.end<=whole.end&&
+    part.end>part.start&&part.put.length===part.end-part.start&&
+    part.put.every((chunk,i)=>chunk===whole.put[i]);
+  for(let r of right) {
     let identical=false;
     for(const l of left) {
       if(same(l,r)){identical=true;break;}
+      if(startsWithEdit(l,r)){identical=true;break;}
+      if(startsWithEdit(r,l)){r={...r,start:l.end,put:r.put.slice(l.put.length)};continue;}
       const li=l.start===l.end,ri=r.start===r.end;
       if((li&&ri&&l.start===r.start)||(!li&&!ri&&l.start<r.end&&r.start<l.end)||
         (li&&l.start>r.start&&l.start<r.end)||(ri&&r.start>l.start&&r.start<l.end))return null;

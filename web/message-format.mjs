@@ -1,11 +1,14 @@
 import { pairFeedFence } from './feed-fence-copy.mjs';
+import { detailRanges, stripDetails } from './card-details.mjs';
+import { applyTextDisplayRules } from './text-display-rules.mjs';
 // A message's words as they were written to be read: headings, lists and task
 // lists, tables (with a dash row, as an agent types them without one, or drawn
 // in box lines), quotes holding blocks, code and rules, with bold, italics,
 // struck words, inline code and links in the lines (docs/topic-reading.md,
 // "Formatted words"). A message body is plain text in Core; this reads its
 // Markdown on the page and builds nodes, never markup, so nothing in a message
-// can become HTML. Web addresses become links as everywhere else (links.mjs).
+// can become application HTML. Notebook HTML fences alone opt into a separate
+// opaque document (interactive-html.mjs). Web addresses become links as everywhere else (links.mjs).
 //
 // Every node drawn knows which characters of the message it shows, so the
 // Reader quotes the author's own words for whatever is selected
@@ -16,6 +19,7 @@ import { addressAt, addressStarts, lastWords, linkNode, topicAt, topicStarts, wo
 import { deferFencePaint, fenceCopyButton } from './fence-copy.mjs';
 import { fenceEnd, fenceOpen } from './fences.mjs';
 import { charAt, charBefore, isEscapable, isPunctuation, isSpace } from './characters.mjs';
+import { interactiveHTML } from './interactive-html.mjs';
 
 // ---- Words and where each of their characters is in the message
 
@@ -28,7 +32,14 @@ class Mapped {
   constructor(text, runs, left) { this.text = text; this.runs = runs; this.left = left; }
 
   // A message's body as lines without the CR of a CR LF.
-  static of(body) {
+  static of(body, notebook = false) {
+    if(notebook){
+      const parts=[];let at=0;
+      const keep=end=>{if(end<=at)return;const part=Mapped.of(body.slice(at,end));part.runs=part.runs.map(([t,s])=>[t,s+at]);part.left=at;parts.push(part);};
+      for(const range of detailRanges(body)){keep(range.start);at=range.end;}
+      keep(body.length);
+      return parts.length?Mapped.join(parts):new Mapped('',[[0,body.length]],body.length);
+    }
     const runs = [[0, 0]];
     let text = '', from = 0;
     for (let cr = body.indexOf('\r\n'); cr >= 0; cr = body.indexOf('\r\n', from)) {
@@ -270,7 +281,7 @@ function blocksOf(m, partial, depth, meter, images = null) {
       const payloadAt = fence.payloadAt ?? (ownLine && j === i + 1 && fence.info ? fence.after : null);
       const from = payloadAt !== null ? line.s + payloadAt : (lines[i + 1]?.s ?? line.e);
       const to = end < 0 ? m.text.length : ownLine ? lines[j - 1].e : lines[j].s + end;
-      blocks.push({ kind: 'code', fenced: true, complete: !partial || j < n - 1, lang: payloadAt !== null ? '' : fence.lang, ...span(i, Math.min(j, n - 1)), words: m.slice(from, to) });
+      blocks.push({ kind: 'code', fenced: true, html: end >= 0 && fence.lang.toLowerCase() === 'html', complete: !partial || j < n - 1, lang: payloadAt !== null ? '' : fence.lang, ...span(i, Math.min(j, n - 1)), words: m.slice(from, to) });
       i = j + 1; continue;
     }
     const image = images?.of(line.text);
@@ -400,7 +411,7 @@ export function parseBlocks(text, { partial = false, meter, images = null } = {}
 // A link's target with its escapes read: \) is ).
 const unescaped = target => target.replace(/\\([!-/:-@[-`{-~])/g, '$1');
 
-function readLine(m, { doc = globalThis.document, partial = false, meter } = {}) {
+function readInlineSpans(m, { partial = false, meter } = {}) {
   const text = m.text, n = text.length;
   const escapes = k => text[k] === '\\' && isEscapable(text[k + 1]);
   // Each run of backticks, by its length: where code that opens with a run of
@@ -597,7 +608,12 @@ function readLine(m, { doc = globalThis.document, partial = false, meter } = {})
     pairMarks(marks);
   };
   read(0, n, true);
+  return spans;
+}
 
+function readLine(m, { doc = globalThis.document, partial = false, meter, spans = null } = {}) {
+  const text = m.text, n = text.length;
+  spans ??= readInlineSpans(m, { partial, meter });
   const element = (tag, className, start, end) => { const node = doc.createElement(tag); if (className) node.className = className; return placed(node, { start: m.at(start), end: m.at(end) }); };
   const textNode = words => placed(doc.createTextNode(words.text), { words });
   const unplaced = node => { SOURCE.delete(node); for (const child of node.childNodes ?? []) unplaced(child); return node; };
@@ -651,6 +667,54 @@ export function inlineNodes(input, options = {}) {
   return line.draw(line.items, 0, m.text.length);
 }
 
+// Literal fields keep every character outside explicit authored links. Reuse
+// the same bracket/code/escape reader, without enabling unrelated formatting.
+export function literalLinkNodes(input, options = {}) {
+  const text = String(input ?? ''), m = Mapped.of(text), doc = options.doc ?? globalThis.document;
+  const spans = readInlineSpans(m, options), nodes = []; let at = 0;
+  for (const span of spans) if (span?.kind === 'link' && span.link.written && span.start >= at) {
+    if (span.start > at) nodes.push(doc.createTextNode(text.slice(at, span.start)));
+    nodes.push(...inlineNodes(m.slice(span.start, span.end), options)); at = span.end;
+  }
+  if (at < text.length || !nodes.length) nodes.push(doc.createTextNode(text.slice(at)));
+  return nodes;
+}
+
+// Sentence reading shared by the light and display rules. No nodes or source
+// characters are changed here. Inline spans at the top protect all nested marks.
+function paragraphReading(block, { partial = false, meter } = {}) {
+  const text = block.words.text, spans = readInlineSpans(block.words, { partial, meter });
+  const items = [];
+  for (let i = 0; i < text.length;) {
+    const span = spans[i];
+    if (span) { items.push(span); i = span.end; } else i++;
+  }
+  const segments = typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter(undefined, { granularity: 'sentence' }).segment(text)
+    : [...text.matchAll(/[^\n]+(?:\n+|$)|\n+/g)].map(match => ({ segment: match[0], index: match.index }));
+  const passages = [];
+  let item = 0;
+  for (const { segment, index } of segments) {
+    tick(meter, segment.length);
+    while (item < items.length && items[item].end <= index) item++;
+    const last = passages.at(-1), to = index + segment.length;
+    if (last && item < items.length && items[item].start < index) last.to = to;
+    else passages.push({ from: index, to });
+  }
+  return { ...block, passages, inlineSpans: spans, protectedSpans: items };
+}
+
+function displayBlocks(blocks, enabled, options = {}) {
+  if (!enabled?.length) return blocks;
+  return applyTextDisplayRules(blocks.map((block, index) => {
+    const partial = options.partial && index === blocks.length - 1;
+    if (block.kind === 'paragraph') return paragraphReading(block, { ...options, partial });
+    if (block.kind === 'list') return { ...block, items: block.items.map((item, k) =>
+      paragraphReading(item, { ...options, partial: partial && k === block.items.length - 1 })) };
+    return block;
+  }), enabled);
+}
+
 // ---- Nodes
 
 function el(doc, tag, className, children = [], span = null) {
@@ -685,15 +749,26 @@ function edgeFades(box, held) {
 
 const MARKS = { open: '☐', done: '☑' };
 
+// Paint may join display-only paragraph breaks, but never an authored break.
+// This marker changes no words, source positions, layout or passage boundary.
+function sentencePart(node, block) {
+  if (block.sentenceParagraph) node.dataset.sentenceParagraph = block.paragraphEnd === false ? 'more' : 'end';
+  return node;
+}
+
 // One block as nodes. Inside a card (a button), every block is a span shown
 // as a block, but for a table, which needs its own elements. cut: the block
 // ends an excerpt, so its last words may be cut.
-function blockNode(block, doc, cut, meter, copyFences = false) {
+function blockNode(block, doc, cut, meter, copyFences = false, html = false) {
   const inline = (words, last = cut) => inlineNodes(words, { doc, partial: last, meter });
   const span = { start: block.start, end: block.end };
   if (block.kind === 'heading') return el(doc, 'span', `md-block md-heading md-h${Math.min(block.level, 4)}`, inline(block.words), span);
   if (block.kind === 'rule') return el(doc, 'span', 'md-block md-rule', [], span);
   if (block.kind === 'code') {
+    if (html && block.html) {
+      const start = html.source.lastIndexOf('\n', block.start - 1) + 1;
+      return placed(interactiveHTML(block.lang ? block.words.text : '', doc, html.source.slice(start, block.end)), span);
+    }
     const code = el(doc, 'span', block.box ? 'md-block md-pre md-box' : 'md-block md-pre', [], span);
     if (block.lang) code.dataset.lang = block.lang;
     if (block.words.text) code.append(placed(doc.createTextNode(block.words.text), { words: block.words }));
@@ -714,21 +789,25 @@ function blockNode(block, doc, cut, meter, copyFences = false) {
     return wrap;
   }
   if (block.kind === 'quote') {
-    const inner = block.blocks ? block.blocks.map((b, k) => blockNode(b, doc, cut && k === block.blocks.length - 1, meter, copyFences)) : inline(block.words);
+    const inner = block.blocks ? block.blocks.map((b, k) => blockNode(b, doc, cut && k === block.blocks.length - 1, meter, copyFences, html)) : inline(block.words);
     return el(doc, 'span', 'md-block md-quote', inner, span);
   }
   if (block.kind === 'list') {
     return el(doc, 'span', 'md-block md-list', block.items.map((item, n) => {
       const glyph = item.task ? MARKS[item.task] : /\d/.test(item.marker) ? item.marker : '•';
       const marker = el(doc, 'span', 'md-marker', [placed(doc.createTextNode(glyph), { start: item.start, end: item.words.left })], { start: item.start, end: item.words.left });
-      const words = el(doc, 'span', 'md-item-words', inline(item.words, cut && n === block.items.length - 1), { start: item.words.left, end: item.words.end() });
+      const last = cut && n === block.items.length - 1;
+      const content = item.paragraphs ? item.paragraphs.map((part, k) =>
+        sentencePart(el(doc, 'span', 'sentence-paragraph', inline(part.words, last && k === item.paragraphs.length - 1), { start: part.start, end: part.end }), part))
+        : inline(item.words, last);
+      const words = el(doc, 'span', 'md-item-words', content, { start: item.words.left, end: item.words.end() });
       const row = el(doc, 'span', `md-item${item.task ? ' md-task' : ''}${item.task === 'done' ? ' md-done' : ''}`, [marker, words], { start: item.start, end: item.end });
       row.style.setProperty('--md-depth', String(Math.min(item.depth, 6)));
       return row;
     }), span);
   }
   if (block.kind === 'table') return tableNode(block, doc, meter);
-  return el(doc, 'span', 'md-block md-p', inline(block.words), span);
+  return sentencePart(el(doc, 'span', 'md-block md-p', inline(block.words), span), block);
 }
 
 // A table scrolls inside its own box, so a wide one never widens the card or the page.
@@ -760,16 +839,17 @@ function tableNode(block, doc, meter) {
 }
 
 // text as nodes for a card or any other place that shows a message's words.
-export function formatNodes(text, { doc = globalThis.document, partial = false, meter, copyFences = false } = {}) {
-  const blocks = parseBlocks(text, { partial, meter });
+export function formatNodes(text, { doc = globalThis.document, partial = false, meter, copyFences = false, displayRules = [], interactiveHTML: html = false } = {}) {
+  const blocks = displayBlocks(parseBlocks(text, { partial, meter }), displayRules, { partial, meter });
   if (!blocks.length) return wordNodes(String(text ?? ''), { doc, partial });
-  return blocks.map((block, n) => blockNode(block, doc, partial && n === blocks.length - 1, meter, copyFences));
+  return blocks.map((block, n) => blockNode(block, doc, partial && n === blocks.length - 1, meter, copyFences, html ? { source: String(text ?? '') } : false));
 }
 
 // A Notebook revision opened in place shows its source verbatim, with links.
 // Replace only fence lines, and, given images ({of, node}, as for drawPassages), each image line, by
 // images.node(image), the line break after it with it. Raw gaps keep even quote prefixes and CRLFs.
 export function linkedFenceNodes(text, doc, images = null) {
+  text=stripDetails(text);
   const nodes = [];
   let at = 0;
   const emit = blocks => {
@@ -778,7 +858,7 @@ export function linkedFenceNodes(text, doc, images = null) {
         // A quoted block may start after its opening line's quote prefix.
         const start = text.lastIndexOf('\n', block.start - 1) + 1;
         if (at < start) nodes.push(...wordNodes(text.slice(at, start), { doc }));
-        nodes.push(blockNode(block, doc, false, undefined, true));
+        nodes.push(blockNode(block, doc, false, undefined, true, { source: text }));
         at = block.end;
       } else if (block.kind === 'image') {
         if (at < block.start) nodes.push(...wordNodes(text.slice(at, block.start), { doc }));
@@ -801,6 +881,9 @@ export function formatWords(host, text, options = {}) {
   strike(host, options.struck);
   host.classList.add('formatted');
   DRAWN.set(host, String(text ?? ''));
+  if (options.displayRules !== undefined) MESSAGE_DRAWINGS.set(host, { ...options });
+  else MESSAGE_DRAWINGS.delete(host);
+  DISPLAY_RULES.set(host, options.displayRules ?? []);
   if (options.revision === undefined) REVISIONS.delete(host); else REVISIONS.set(host, options.revision);
   return host;
 }
@@ -808,11 +891,62 @@ export function formatWords(host, text, options = {}) {
 // The text a host's words were drawn from (formatWords, drawPassages), which
 // the positions its nodes know are positions in; undefined for a host neither drew.
 const DRAWN = new WeakMap();
+const MESSAGE_DRAWINGS = new WeakMap();
+// The rules of the actual drawing, updated only when a deferred paint applies.
+// Copy must follow the words on screen, rather than a preference changed while
+// a held fence press still defers their redraw.
+const DISPLAY_RULES = new WeakMap();
+export const hasTextDisplayRules = host => Boolean(DISPLAY_RULES.get(host)?.length);
+export const drawnDisplayRules = host => DISPLAY_RULES.get(host) ?? [];
+// Redraw an opted-in message only, retaining its exact revision, strike and
+// excerpt options. No fetch, read mark or writing lifecycle is involved.
+export function redrawMessageWords(host, displayRules) {
+  const options = MESSAGE_DRAWINGS.get(host);
+  if (options) formatWords(host, DRAWN.get(host), { ...options, displayRules });
+}
 export const drawnText = host => DRAWN.get(host);
 // The revision of a message those words are (formatWords' revision), when the
 // one who drew them said: a quote of them names it (docs/message-edit.md).
 const REVISIONS = new WeakMap();
 export const drawnRevision = host => REVISIONS.get(host);
+
+// An existing literal label can join a formatted source without interpreting
+// its Markdown or adding links. Notebook card titles already draw literally.
+export function literalWords(host, text, revision) {
+  const words = Mapped.of(String(text));
+  host.replaceChildren(placed(host.ownerDocument.createTextNode(words.text), { words }));
+  SOURCE.set(host, { start: 0, end: words.text.length });
+  DRAWN.set(host, words.text); REVISIONS.set(host, revision); DISPLAY_RULES.set(host, []);
+  return host;
+}
+
+// A display card can keep its title, controls and body in their existing
+// elements while sharing one passage/selection source. Parts were drawn by
+// this formatter; only their source coordinates move, never their nodes.
+const PART_OFFSETS = new WeakMap();
+export function composeFormattedWords(host, text, revision, parts) {
+  for (const { node, offset, start = offset, end = offset + drawnText(node).length } of parts) {
+    const before = PART_OFFSETS.get(node), same = before?.first === node.firstChild && before?.last === node.lastChild &&
+      before?.text === drawnText(node) && before?.revision === revision;
+    const delta = offset - (same ? before.offset : 0);
+    const shift = at => {
+      const span = SOURCE.get(at);
+      if (span && delta) {
+        const shifted = { ...span };
+        if (span.words) shifted.words = new Mapped(span.words.text, span.words.runs.map(([t, s]) => [t, s + delta]), span.words.left + delta);
+        if (span.start !== undefined) shifted.start += delta;
+        if (span.end !== undefined) shifted.end += delta;
+        SOURCE.set(at, shifted);
+      }
+      for (const child of at.childNodes) shift(child);
+    };
+    shift(node);
+    SOURCE.set(node, { start, end });
+    PART_OFFSETS.set(node, { offset, first: node.firstChild, last: node.lastChild, text: drawnText(node), revision });
+  }
+  DRAWN.set(host, text); REVISIONS.set(host, revision); DISPLAY_RULES.set(host, []);
+  return host;
+}
 
 // The Reader's source as passages (reader.mjs): every child of host is one
 // passage with the span of the text it shows (data-start, data-end), and the
@@ -822,34 +956,27 @@ export const drawnRevision = host => REVISIONS.get(host);
 // one passage, shown as a block. A passage never cuts a link, code or a
 // mark: the sentences one spans join, as the line's own reading says. images, for a Notebook page: images.of(line)
 // names the image a line puts there, and that line is a passage of its own holding images.node(image, doc).
-export function drawPassages(host, body, doc = globalThis.document, { meter, copyFences = false, images = null, struck = null } = {}) {
-  if (deferFencePaint(host, () => drawPassages(host, body, doc, { meter, copyFences, images, struck }))) return;
+export function drawPassages(host, body, doc = globalThis.document, { meter, copyFences = false, images = null, struck = null, displayRules = [], notebook = false } = {}) {
+  if (deferFencePaint(host, () => drawPassages(host, body, doc, { meter, copyFences, images, struck, displayRules, notebook }))) return;
   body = String(body ?? '');
   host.replaceChildren();
-  const blocks = blocksOf(Mapped.of(body), false, 0, meter, images), drawn = [];
+  const blocks = displayBlocks(blocksOf(Mapped.of(body, notebook), false, 0, meter, images), displayRules, { meter }), drawn = [];
   blocks.forEach((block, n) => {
     const next = blocks[n + 1];
     if (block.kind === 'paragraph') {
-      const words = block.words, text = words.text;
-      const segments = typeof Intl.Segmenter === 'function'
-        ? new Intl.Segmenter(undefined, { granularity: 'sentence' }).segment(text)
-        : [...text.matchAll(/[^\n]+(?:\n+|$)|\n+/g)].map(match => ({ segment: match[0], index: match.index }));
-      // A sentence end inside a link, code or a mark joins the sentences around it.
-      const line = readLine(words, { doc, meter }), items = line.items, parts = [];
+      const words = block.words, reading = block.passages ? block : paragraphReading(block, { meter });
+      // Split blocks must read their own inline offsets; untouched paragraphs
+      // reuse the pure reading instead of parsing it a second time.
+      const line = readLine(words, { doc, meter, spans: block.sentenceParagraph ? null : reading.inlineSpans });
+      const items = line.items, parts = reading.passages;
       let item = 0;
-      for (const { segment, index } of segments) {
-        tick(meter, segment.length);
-        while (item < items.length && items[item].end <= index) item++;
-        const last = parts.at(-1);
-        if (last && item < items.length && items[item].start < index) last.segment += segment;
-        else parts.push({ segment, index });
-      }
-      item = 0;
       parts.forEach((part, k) => {
-        const final = k === parts.length - 1, from = part.index, to = from + (final ? part.segment.trimEnd() : part.segment).length;
+        const final = k === parts.length - 1 && block.paragraphEnd !== false, from = part.from,
+          to = final ? from + words.text.slice(from, part.to).trimEnd().length : part.to;
         const held = [];
         while (item < items.length && items[item].end <= to) held.push(items[item++]);
         const span = doc.createElement('span');
+        if (block.sentenceParagraph) span.classList.add('sentence-paragraph');
         for (const node of line.draw(held, from, to)) span.append(node);
         // The paragraph's last sentence keeps a blank line before a following paragraph.
         const tail = final ? (next?.kind === 'paragraph' ? '\n\n' : next ? '\n' : '') : '';
@@ -870,7 +997,7 @@ export function drawPassages(host, body, doc = globalThis.document, { meter, cop
       });
       return;
     }
-    drawn.push({ node: blockNode(block, doc, false, meter, copyFences), start: block.start });
+    drawn.push({ node: blockNode(block, doc, false, meter, copyFences, notebook ? { source: body } : false), start: block.start });
   });
   drawn.forEach(({ node, start, tail, from }, k) => {
     const end = k + 1 < drawn.length ? drawn[k + 1].start : body.length;
@@ -882,6 +1009,7 @@ export function drawPassages(host, body, doc = globalThis.document, { meter, cop
   });
   strike(host, struck);
   DRAWN.set(host, body);
+  DISPLAY_RULES.set(host, displayRules);
 }
 
 // Words a person had read that its agent author's edit took away (item 614,
@@ -932,16 +1060,17 @@ export function strike(host, cuts) {
 // words as blocks, not passages, so what lights on it is read from here.
 // Drawn once into a node no page holds, and kept for the few texts read last.
 const SPANS = new Map();
-export function passageSpans(text, doc = globalThis.document) {
+export function passageSpans(text, doc = globalThis.document, displayRules = []) {
   text = String(text ?? '');
-  let spans = SPANS.get(text);
+  const key = JSON.stringify([displayRules, text]);
+  let spans = SPANS.get(key);
   if (!spans) {
     const host = doc.createElement('div');
-    drawPassages(host, text, doc);
+    drawPassages(host, text, doc, { displayRules });
     spans = [...host.childNodes].map(part => ({ start: Number(part.dataset.start), end: Number(part.dataset.end) }));
     if (SPANS.size >= 32) SPANS.delete(SPANS.keys().next().value);
   }
-  SPANS.delete(text); SPANS.set(text, spans);
+  SPANS.delete(key); SPANS.set(key, spans);
   return spans;
 }
 

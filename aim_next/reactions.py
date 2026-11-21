@@ -45,6 +45,7 @@ from .contract import READABLE, Refusal, _identifier
 from .delivery import _now_ms
 from .outcome_asks import held_ask, record_ask
 from .standing_conversation import is_conversation
+from .removal import value as removal_value
 
 
 # The version after 29 (provisional; the release train renumbers).
@@ -163,10 +164,12 @@ class Reactions:
         result = {"message_id": message["id"], "topic_id": message["topic_id"], "seq": message["seq"]}
         if thumbed == (current % 2 == 1):
             # Unchanged, it reports what the thumb on the message does: a 👍 that answered an ask holds `yes`, a taken-back one nothing.
-            return dict(result, thumbed=thumbed, thumb_revision=current, answered=answered_yes(row), changed=False, settled=False), []
+            return dict(result, thumbed=thumbed, thumb_revision=current, answered=answered_yes(row) and removal_value(db, message['id']) is None, changed=False, settled=False), []
         value, waits = self._thumb_answer(db, actor, message, thumbed, answered_yes(row))
         # A thumb given reads the message; one taken back reads and clears nothing.
         version, settled, cleared = self._react(db, actor, message, "thumb", value, current + 1, _now_ms(), thumbed)
+        if value == 'yes':
+            self._record_answer_receipt(db, actor, message, 'thumb', current + 1, value)
         # A thumbs-up given folds the message for its giver (Stacks._fold_answered); one taken back unfolds nothing.
         folded = self._fold_answered(db, actor, message["id"]) if thumbed else []
         # The owner's 👍 on a cover's payload makes it Done, and taking it back takes Done back (Covers._cover_settle).
@@ -194,6 +197,10 @@ class Reactions:
         topic = self._thumb_ask_topic(db, actor, message)
         if topic is None:
             return ("up" if thumbed else None), []
+        link = db.execute("SELECT active FROM ask_cover_links WHERE ask_id=? AND actor_id=?", (message["id"], actor)).fetchone()
+        covered = []
+        if link is not None and not self._answered_since(db, topic, actor, message):
+            covered = self._set_linked_wait(db, actor, message["id"], not thumbed)
         if is_conversation(topic):
             if thumbed:
                 answered = changed = db.execute("DELETE FROM conversation_waits WHERE ask_id=? AND actor_id=?", (message["id"], actor)).rowcount > 0
@@ -209,8 +216,9 @@ class Reactions:
             # Unless their writing has answered the ask since, the 👍 answers it, and taking the 👍 back unanswers it.
             answered = not self._answered_since(db, topic, actor, message)
             changed = answered and (self._topic_ask_answered if thumbed else self._topic_ask_unthumbed)(db, topic, actor, message)
-        affected = []
-        if changed:
+        self._sync_linked_attention(db, topic, actor)
+        affected = covered
+        if changed or covered:
             version = self._touch_topic(db, topic)
             self._change(db, "actor", actor, "waiting", topic["id"], version)
             affected.append({"kind": "topic", "id": topic["id"], "version": version})
@@ -220,12 +228,14 @@ class Reactions:
         """Whether actor, a person, has answered message, an ask in topic, by writing since it was sent: a reply to it,
         on the record or by whisper to whoever asked, the one who can read it (StandingConversation._conversation_record,
         TopicState._answered); and in a topic any writing there on the record, which answers every ask there to its
-        writer. A whisper replying to anything else, or to anyone else, answers nothing."""
-        if db.execute("SELECT 1 FROM messages INDEXED BY message_reply_links WHERE reply_to=? AND author_id=? "
-                      "AND (private_to IS NULL OR private_to=?) LIMIT 1", (message["id"], actor, message["author_id"])).fetchone():
+        writer for legacy asks only. Linked asks always require the exact reply. A whisper replying to anything else, or to anyone else, answers nothing."""
+        if db.execute("SELECT 1 FROM messages m INDEXED BY message_reply_links WHERE reply_to=? AND author_id=? "
+                      "AND (private_to IS NULL OR private_to=?) AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) LIMIT 1", (message["id"], actor, message["author_id"])).fetchone():
             return True
-        return not is_conversation(topic) and db.execute(
-            "SELECT 1 FROM messages INDEXED BY topic_messages WHERE topic_id=? AND seq>? AND author_id=? AND private_to IS NULL LIMIT 1",
+        linked = db.execute("SELECT 1 FROM ask_cover_links WHERE ask_id=? AND actor_id=?", (message["id"], actor)).fetchone()
+        return not linked and not is_conversation(topic) and db.execute(
+            "SELECT 1 FROM messages m INDEXED BY public_actor_writing WHERE topic_id=? AND seq>? AND author_id=? AND private_to IS NULL "
+            "AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) LIMIT 1",
             (topic["id"], message["seq"], actor)).fetchone() is not None
 
     def _thumb_ask_topic(self, db, actor, message):
@@ -233,7 +243,7 @@ class Reactions:
         ask (no go-ahead, no record's) to actor, a person, in a topic they read that still keeps its waits
         (not replaced by a conversation, its outcome not reached, archived or completed). A whisper never asks (whispers.py's
         whisper_shape), and message.thumb refuses a thumb on one's own message, so neither is asked here."""
-        if (message["intent"] != "ask" or message["go_ahead"] or actor not in json.loads(message["addressees"])
+        if (message["intent"] != "ask" or self._question_closed(db, message["id"]) is not None or self._withdrawal_value(db, message["id"]) is not None or removal_value(db, message["id"]) is not None or message["go_ahead"] or actor not in json.loads(message["addressees"])
                 or self._actor(db, actor)["kind"] != "human"):
             return None
         topic = db.execute("SELECT t.*,w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=:topic AND t.replaced_by IS NULL "
@@ -289,11 +299,16 @@ class Reactions:
         their thumb row, read by the key message.thumb fences on (_reaction_row) and read as every reader reads it
         (answered_yes); whether a record answers it is outcome_asks.record_ask."""
         found = None
-        for row in db.execute("SELECT m.id,m.seq,m.sent_ms FROM message_addressees a CROSS JOIN messages m ON m.seq=a.seq "
-                              "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>? AND m.intent='ask' AND NOT EXISTS (SELECT 1 FROM messages w "
+        for row in db.execute("SELECT m.id,m.seq,m.sent_ms,m.author_id FROM message_addressees a CROSS JOIN messages m ON m.seq=a.seq "
+                              "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>? AND m.intent='ask' AND NOT EXISTS (SELECT 1 FROM question_closures c WHERE c.message_id=m.id) AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) AND NOT EXISTS (SELECT 1 FROM message_withdrawals x WHERE x.message_id=m.id) AND NOT EXISTS (SELECT 1 FROM messages w "
                               "INDEXED BY message_reply_links WHERE w.reply_to=m.id AND w.author_id=a.actor_id "
-                              "AND w.private_to=m.author_id) ORDER BY a.seq",
+                              "AND w.private_to=m.author_id AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=w.id)) ORDER BY a.seq",
                               (topic["id"], member, after_seq)):
+            linked = db.execute("SELECT active FROM ask_cover_links WHERE ask_id=? AND actor_id=?", (row["id"], member)).fetchone()
+            if linked is not None and not linked["active"]:
+                continue
+            if self._answered_since(db, topic, member, row):
+                continue
             if not (answered_yes(self._reaction_row(db, member, row["id"], "thumb"))
                     or record_ask(db, row["id"], topic["workspace_id"], topic["id"])):
                 found = row
@@ -314,6 +329,10 @@ class Reactions:
             raise Refusal("NOT_A_GO_AHEAD", "This message does not ask for a go-ahead; reply to it instead")
         if actor not in json.loads(message["addressees"]) or self._actor(db, actor)["kind"] != "human":
             raise Refusal("NOT_ASKED", "Only a person this message asks can answer it")
+        if self._withdrawal_value(db, message["id"]) is not None or removal_value(db, message["id"]) is not None:
+            raise Refusal("QUESTION_WITHDRAWN", "This question was withdrawn; reply in words instead", recorded=False)
+        if self._question_closed(db, message["id"]) is not None:
+            raise Refusal("QUESTION_CLOSED", "This question is closed; reply in words instead", recorded=False)
         row = self._reaction_row(db, actor, message["id"], "answer")
         current = row["revision"] if row else 0
         if envelope["expected"]["answer_revision"] != current:
@@ -325,10 +344,11 @@ class Reactions:
         version, _settled, cleared = self._react(db, actor, message, "answer", answer, current + 1, _now_ms(), True)
         # The asker is told as a reply is: a short message from the person to
         # the agent, answering the ask, which also clears the topic's wait.
-        body = ANSWERS[answer] + (" (I changed my answer)" if row is not None else "")
+        body = ANSWERS[answer] + (" (I changed my answer)" if row is not None and row["value"] is not None else "")
         said, affected = self._publish(db, actor, envelope["operation_id"], message["topic_id"], {
             "body": body, "attachments": [], "quotes": [], "addressees": [message["author_id"]],
             "reply_to": message["id"], "intent": "tell"})
+        self._record_answer_receipt(db, actor, message, 'answer', current + 1, answer, said['message_id'])
         return self._read_by(dict(result, answer_revision=current + 1, reaction_version=version, reply_id=said["message_id"], changed=True), affected + [
             {"kind": "reaction", "id": message["id"], "version": version}], message, cleared)
 
@@ -347,8 +367,8 @@ class Reactions:
             if row["kind"] == "thumb" and row["revision"] % 2 == 1:
                 thumb = {"actor_id": row["actor_id"], "at_ms": row["at_ms"]}
                 # A thumb that answered an ask yes says so (item 239).
-                entry["thumbs"].append(dict(thumb, answered=True) if answered_yes(row) else thumb)
-            elif row["kind"] == "answer":
+                entry["thumbs"].append(dict(thumb, answered=True) if answered_yes(row) and removal_value(db, row['message_id']) is None else thumb)
+            elif row["kind"] == "answer" and row['value'] is not None and removal_value(db, row['message_id']) is None:
                 entry["answers"].append({"actor_id": row["actor_id"], "answer": row["value"], "at_ms": row["at_ms"]})
         return found
 

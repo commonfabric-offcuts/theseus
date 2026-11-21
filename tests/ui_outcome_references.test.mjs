@@ -188,11 +188,12 @@ test('the outcome Notebook is no section of the side rail: it waits in the page 
   assert.ok(section, 'the section waits in the page');
   assert.match(section, /^<section id="outcome-references"[^>]*\bhidden>/, 'hidden until the outcome\'s own page shows it');
   assert.ok(main.indexOf('id="outcome-references"') < main.indexOf('id="page-here"'), 'before the page that opens in place');
-  // Named for the outcome, so neither eyes nor a screen reader take it for the topic's own Notebook.
-  assert.match(section, /<h2 id="notebook-heading">Outcome Notebook<\/h2>/);
-  const topicNotebook = /<section id="notebook"[^>]*>[\s\S]*?<h2>([^<]*)<\/h2>/.exec(main)?.[1];
-  const headings = [...html.matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map(match => match[1]);
-  assert.equal(headings.filter(text => text === topicNotebook).length, 1, 'one heading of each name: ' + headings);
+  // 852 removes the visible heading; the section keeps its accessible name.
+  assert.match(section, /aria-label="Outcome Notebook"/);
+  assert.doesNotMatch(section, /<h2/);
+  const notebookName = /aria-label="([^"]+)"/.exec(section)?.[1];
+  const notebooks = [...html.matchAll(/<section\b[^>]*aria-label="([^"]+)"/g)].map(match => match[1]);
+  assert.equal(notebooks.filter(name => name === notebookName).length, 1, 'one named Outcome Notebook on the outcome page');
   assert.doesNotMatch(section, /<details/);
   assert.ok(section.indexOf('id="outcome-references-status"') < section.indexOf('id="outcome-references-list"'));
   const css = readFileSync(new URL('../web/aim.css', import.meta.url), 'utf8');

@@ -10,16 +10,22 @@
 // tests/reader_compose_native.mjs (the Reader's ⋯), tests/pipeline_native.mjs
 // (a pipeline item's ⋯) and tests/notebook_pages_native.mjs (the Reader's ⋯ on
 // a Notebook page).
+import { shippedUnwatched } from './fixtures/shipped_unwatched_865.mjs';
+
 export const GLYPH_OF = Object.freeze({
+  'Copy text':'copy', 'Copy link':'link', 'Set color':'palette',
+  'Open as a full page':'openpage', Done:'pencil', 'Show as text':'text', 'Show as cards':'stack', 'Private Draft':'draft', 'Choose dossier…':'dossier', 'Add image…':'image', 'Side by side':'layout', Star:'star', Delete:'drop', 'Undo delete':'undo',
   'Star for me': 'star', Unstar: 'starred', Rename: 'pencil', 'Show all messages': 'all', 'Show latest and unread replies': 'latest',
   Fold: 'fold', Unfold: 'unfold', 'Fold message': 'fold', 'Unfold message': 'unfold', 'Split back out': 'split',
   // A dossier's title bar ⋯ on a phone (item 473): Reply to the first message takes the title bar's own Reply.
   'Reply to the first message': 'reply',
+  'Ask for a cover': 'coverplus',
+  'Open the cover request': 'link',
   'Copy Link': 'link', 'Show full message': 'full', Edit: 'pencil', 'Edit page': 'pencil', 'Mark unread': 'unread', 'Mark read': 'read',
   // Item 601: an archive act shows the Reader's archive tray, in every menu.
-  'Move below More': 'archive', 'Bring back above More': 'back',
+  'Archive': 'archive', 'Bring back': 'back',
   'Move its stack up': 'up', 'Move its stack down': 'down', 'Fold its stack': 'chevron', 'Open its stack': 'chevdown',
-  'Join the stack above': 'joinup', 'Join the stack below': 'joindown', 'Let new replies move it': 'unpin', Undo: 'undo',
+  'Join the stack above': 'joinup', 'Join the stack below': 'joindown', 'Let new replies move it': 'unpin', 'Reset position': 'unpin', Undo: 'undo',
   'Move or join…': 'move', 'Quote selection': 'quote', 'Start a topic from this': 'topic', 'Add to pipeline': 'pipeline',
   'Wide layout': 'layout', 'Stacked layout': 'layout',
   'Move up': 'up', 'Move down': 'down', 'Open its record': 'openpage', 'Drop…': 'drop',
@@ -32,9 +38,25 @@ export const glyphOf = label => (Object.hasOwn(GLYPH_OF, label) ? GLYPH_OF[label
 
 // Each glyph as the approved design page draws it (item 602's design pass), by name: a line drawing on a 24-unit
 // grid (vb, its viewBox, where it differs), stroked in the text's colour, sw wide, filled where fill; or a character,
-// text. Written out here, not read from web/glyphs.mjs, so a drawing blanked, swapped with another or redrawn there
-// fails the checks that read it (misdrawn below).
+// text. The original catalog is written here; unwatched is rendered from a pinned shipped module. Neither reads
+// today's web/glyphs.mjs, so a drawing blanked, swapped or redrawn there fails these checks (misdrawn below).
 export const APPROVED = Object.freeze({
+  // Item 867: overlapping sheets for Copy text; a paint palette for Set color.
+  copy: { d: 'M8 8h13v13H8Z M4 16H3V3h13v1' },
+  palette: { d: 'M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-3.7 1.5 1.5 0 0 1 1-2.8h2a4 4 0 0 0 4-4A9 9 0 0 0 12 3 M7 8h.01 M12 6h.01 M17 9h.01 M6 13h.01' },
+  // Notebook menu: text lines, a draft sheet, an image and a dossier folder (873).
+  text: { d: 'M4 5h16 M4 10h16 M4 15h16 M4 20h10' },
+  draft: { d: 'M14 3H5v18h14V8Z M14 3v5h5 M8 12h8 M8 16h5' },
+  image: { d: 'M3 4h18v16H3Z M3 17l5-5 4 4 4-6 5 7 M8 8h.01' },
+  dossier: { d: 'M3 7V4h7l3 3h8v13H3Z M3 7h18' },
+  // Item 870, Tony's selected B drawing.
+  stack: { vb: '3 15 56 39', sw: '1.6', d: 'M10.6 37.4 4 40 26 53 54 43 47.4 38.8 M13.4 31.7 6 35 29 47 56 35 50.1 31.9 M8 29 32 41 58 28 34 16Z M21.5 29.6 35 23.2 M26.5 32.2 36 27.6' },
+  // Item 676's shipped drawing, independently rendered from its pinned module.
+  unwatched: shippedUnwatched,
+  // Item 738's approved cover refresh drawing, frozen independently of its implementation.
+  refresh: { d: 'M20 10a8 8 0 1 0-1.8 7 M20 4v6h-6' },
+  // Item 840's cover sheet with a plus, shared by its title button and menu.
+  coverplus: { d: 'M13 4H4v16h15V11 M7 9h4 M7 13h8 M7 17h6 M18 2v6 M15 5h6' },
   archive: { vb: '0 0 20 20', sw: '1.6', d: 'M2.5 3.5h15V7h-15zM3.75 7v9.5h12.5V7M8 10.5h4' },
   reply: { d: 'M9.5 7 4.5 12l5 5 M5 12h9.5a5 5 0 0 1 5 5v1' },
   back: { d: 'M4 14v4.5h16V14 M12 14V4 M8 8l4-4 4 4' },

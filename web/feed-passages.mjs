@@ -16,7 +16,7 @@
 // words on the background of the box they show in (the card, or a code block,
 // a table or an excerpt that clips them), which moves nothing on the card and
 // is clipped and scrolled with the words.
-import { drawnRevision, drawnText, passageSpans, rangeOf, sourcePosition } from './message-format.mjs';
+import { drawnDisplayRules, drawnRevision, drawnText, passageSpans, rangeOf, sourcePosition } from './message-format.mjs';
 import { cardIn } from './fold.mjs';
 import { fieldLayers, readerField, wordLines } from './lit-field.mjs';
 
@@ -27,8 +27,8 @@ export class FeedPassages {
   // host: the list of messages. lights(): whether Return on the lit message
   // would answer it now, so a passage may light (message-menu.mjs, returns).
   // entryOf(target): the entry a target is in.
-  constructor({ host, lights, entryOf, doc = globalThis.document }) {
-    Object.assign(this, { host, lights, entryOf, doc });
+  constructor({ host, lights, entryOf, doc = globalThis.document, wordsOf = entry => cardIn(entry)?.querySelector(WORDS), highlight = NAME, fieldOf = words => words.parentElement }) {
+    Object.assign(this, { host, lights, entryOf, doc, wordsOf, highlight, fieldOf });
     this.win = doc.defaultView;
     this.lit = null; this.pointer = null; this.shifted = false; this.fielded = [];
     // A card drawn again under its light with other words (the whole of a
@@ -89,7 +89,7 @@ export class FeedPassages {
   // The card's words and the passage of them under a point, or null when
   // the point is not on them.
   at(x, y, entry) {
-    const card = cardIn(entry), words = card?.querySelector(WORDS), text = words && drawnText(words);
+    const words = this.wordsOf(entry), text = words && drawnText(words);
     if (text === undefined || !words.getClientRects().length) return null;
     const caret = this.doc.caretPositionFromPoint?.(x, y), range = caret ? null : this.doc.caretRangeFromPoint?.(x, y);
     const node = caret ? caret.offsetNode : range?.startContainer, offset = caret ? caret.offset : range?.startOffset;
@@ -98,7 +98,7 @@ export class FeedPassages {
     if (position === null) return null;
     // A caret falls between two characters: the passage is the one whose
     // words are under the point, of those either side of it.
-    const spans = passageSpans(text, this.doc).filter(span => span.start <= position && position <= span.end);
+    const spans = passageSpans(text, this.doc, drawnDisplayRules(words)).filter(span => span.start <= position && position <= span.end);
     const under = spans.find(span => {
       const shown = rangeOf(words, span.start, span.end);
       return shown && [...shown.getClientRects()].some(box => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom);
@@ -119,7 +119,7 @@ export class FeedPassages {
   adopt(entry, words) {
     const chosen = this.selected(entry);
     if (!chosen) return;
-    const touched = passageSpans(drawnText(words), this.doc).filter(span => span.start < chosen.end && span.end > chosen.start);
+    const touched = passageSpans(drawnText(words), this.doc, drawnDisplayRules(words)).filter(span => span.start < chosen.end && span.end > chosen.start);
     if (!touched.length) return;
     const anchor = { start: touched[0].start, end: touched.at(-1).end };
     this.lit = { entry, words, anchor, ...anchor };
@@ -135,7 +135,7 @@ export class FeedPassages {
     if (!lit) return;
     const range = this.range(lit);
     if (!range) { this.clear(); return; }
-    this.win.CSS.highlights.set(NAME, new this.win.Highlight(range));
+    this.win.CSS.highlights.set(this.highlight, new this.win.Highlight(range));
     this.field(range);
     this.redrawn.disconnect();
     this.redrawn.observe(lit.words, { childList: true, subtree: true });
@@ -151,7 +151,7 @@ export class FeedPassages {
   // scrolls with them.
   field(range = this.range()) {
     this.unfield();
-    const card = this.lit?.words.parentElement, lines = range && card ? wordLines(range, card) : [];
+    const card = this.lit?.words && this.fieldOf(this.lit.words), lines = range && card ? wordLines(range, card) : [];
     const height = lines.length && readerField(this.doc);
     if (!height) return;
     const boxes = new Map();
@@ -174,7 +174,7 @@ export class FeedPassages {
     this.lit = null; this.pointer = null;
     this.redrawn.disconnect(); this.sized.disconnect(); this.sizing = null;
     this.unfield();
-    if (this.supported) this.win.CSS.highlights.delete(NAME);
+    if (this.supported) this.win.CSS.highlights.delete(this.highlight);
   }
   // The light follows the message's: lighting another message, or none, puts it out.
   follow(entry) { if (this.lit && this.lit.entry !== entry) this.clear(); }
@@ -182,7 +182,7 @@ export class FeedPassages {
   // Words selected wholly inside the entry's words: {start, end, text}, the
   // author's own words for them (as the Reader quotes a selection), or null.
   selected(entry) {
-    const words = cardIn(entry)?.querySelector(WORDS), text = words && drawnText(words), selection = this.doc.getSelection();
+    const words = this.wordsOf(entry), text = words && drawnText(words), selection = this.doc.getSelection();
     if (text === undefined || !selection?.rangeCount || selection.isCollapsed) return null;
     const range = selection.getRangeAt(0);
     if (!words.contains(range.startContainer) || !words.contains(range.endContainer)) return null;
@@ -195,7 +195,7 @@ export class FeedPassages {
   // quote names, since its words come from the card (docs/message-edit.md).
   chosen(entry) {
     if (!entry) return null;
-    const words = cardIn(entry)?.querySelector(WORDS), revision = words ? drawnRevision(words) : undefined;
+    const words = this.wordsOf(entry), revision = words ? drawnRevision(words) : undefined;
     const selected = this.selected(entry);
     if (selected) return { ...selected, revision };
     const lit = this.lit;

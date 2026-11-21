@@ -25,7 +25,8 @@ function quote(text) {
   assert.equal(field.value, '> Exact words\n\n');
   assert.deepEqual([field.selectionStart, field.selectionEnd], [field.value.length, field.value.length]);
   assert.equal(calls.length, 1); assert.equal(calls[0][1].preventScroll, true);
-  assert.equal(reader.layout.mode, 'wide');
+  assert.equal(reader.layout.mode, 'stacked');
+  assert.equal(reader.temporaryWide, true);
   assert.equal(selection.type, 'Caret', "the document's selection is the field's caret");
 }
 

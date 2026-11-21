@@ -45,15 +45,20 @@ test('item 648: short, left, vertical, zoom, control, selection and sideways scr
   assert.deepEqual(f.calls, []);
 });
 
-test('item 648: unavailable, unconfirmed, closed, empty and Notebook sources admit no fold', t => {
+test('item 648: unavailable, unconfirmed and closed sources admit no fold', t => {
   const f = setup(t);
   for (const state of ['sourceUnavailable', 'availabilityUnconfirmed']) {
     f.r.presentation[state] = true; f.touch(100); f.wheel(-100); f.gap(); delete f.r.presentation[state];
   }
   f.r.dialog.open = false; f.touch(100); f.wheel(-100); f.gap(); f.r.dialog.open = true;
+  assert.deepEqual(f.calls, []);
+});
+
+test('917 empty and Notebook Reader swipes reach the shared no-message refusal and are consumed', t => {
+  const f = setup(t);
   f.r.source = null; f.touch(100); f.wheel(-100); f.gap();
   f.r.source = { source_ref: { kind: 'memory', id: 'page' } }; f.touch(100); f.wheel(-100);
-  assert.deepEqual(f.calls, []);
+  assert.deepEqual(f.calls, [null, null, f.r.source, f.r.source]);
 });
 
 test('item 648: cancellation, multi-touch and changing source mid-gesture fold neither source', t => {

@@ -26,8 +26,11 @@ page or actor starts with no cached titles from the previous one.
 
 Rows join the outline's single Tab stop and native arrow navigation as children
 of their topic. Return, a click or a phone tap opens the canonical root in its
-actual topic. Within the current topic this opens a Reader; leaving the topic
-uses the existing writing guard. Children never reorder their
+actual topic. The topic opens, the dossier is revealed for this visit, scrolled into view
+and selected as by the arrows. No Reader or reply box opens (item 780;
+[landing contract](starred-dossier-landing.md)). Leaving the topic uses the
+existing writing guard. An already-open same-topic Reader retains its source
+and writing; landing opens no additional presentation. Children never reorder their
 parents, act as topics for reorder/write, or expose another reader's stars.
 An empty list adds no heading, placeholder or decorative control. This is a
 read-only navigation surface: it introduces no saving operation. Read-only
@@ -63,3 +66,12 @@ and press the real child. Actor-isolation ends after its own denied-actor
 assertions, and failures capture state and screenshots before owned pages close.
 The route mutant opens a different real root, must fail that identity oracle,
 and is restored byte for byte before a passing control in the same engine run.
+
+## Notebook pages (792)
+
+Personal page stars use a separate bounded `memory_stars` stream. They share
+the loaded topic parent's outline navigation and failure behavior; their row
+opens the actual page as it stands. Outcome-scoped pages appear under an
+explicit Conversation parent within their outcome. Current titles follow
+revisions, and deletion removes the projection without erasing any reader's
+star. See [the page menu contract](notebook-menu-792.md).

@@ -11,6 +11,13 @@ WAIT = [{"text": "Choose the cabin", "default": "Keep the current booking"}]
 
 
 class Fixture(PipelineCase):
+    def post(self, body, actor="owner", topic="t1", **args):
+        # Human reports have no agent divergence cover. Agent replies retain
+        # the current explicit passage contract in this isolated fixture.
+        if actor != "owner" and args.get("reply_to"):
+            args.setdefault("reply_without_quote", "Synthetic source-cover fixture follow-up")
+        return super().post(body, actor=actor, topic=topic, **args)
+
     def setUp(self):
         super().setUp()
         self.committed(self.on())
@@ -35,14 +42,13 @@ class Fixture(PipelineCase):
                         sources=[{"message_id": message} for message in messages])
 
     def topic(self, topic_id):
-        source = {"kind": "new_topic", "id": "opening-" + topic_id, "workspace_id": "w1"}
-        self.committed(self.save_draft("draft-" + topic_id, source, topic_id, "Synthetic work topic",
-                                      opening={"workspace_id": "w1", "title": "Synthetic work", "participants": ["agent-a"]}))
-        self.committed(self.prepare("draft-" + topic_id, topic_id, submission="sub-" + topic_id, send_op="open-" + topic_id))
-        self.committed(self.command("topic.create_and_send", {"submission_id": "sub-" + topic_id},
-                                   {"topic_id": topic_id}, op="open-" + topic_id))
+        return self.build_topic(topic_id, "Synthetic work topic")
 
-    def start(self, number, topic="t1", stage="build"):
+    def start(self, number, topic=None, stage="build"):
+        if topic is None:
+            topic = "work-757-" + str(number)
+            if not self.sql("SELECT 1 FROM topics WHERE id=?", (topic,)):
+                self.topic(topic)
         return self.committed(self.command("pipeline.piece_start",
                               {"numbers": [number], "topic_id": topic, "stage_id": stage},
                               {"workspace_id": "w1"}))["piece_id"]
@@ -444,11 +450,11 @@ class IntegrationCase(Fixture):
         from aim_next.migrations import migrate
         record = {"release": 1, "commit": "6" * 40, "deployed_at": "2026-11-06T05:28:35-08:00", "items": [777], "source": "backfill"}
         self.store.record_release(record)
-        self.assertTrue(migrate(self.path, "test-instance", target="47", binding=self.binding)["migrated"])
+        self.assertTrue(migrate(self.path, "test-instance", target="60", binding=self.binding)["migrated"])
         self.assertEqual(self.sql("SELECT name FROM sqlite_master WHERE name='source_cover_releases'"), [])
-        self.assertTrue(migrate(self.path, "test-instance", target="48", binding=self.binding)["migrated"])
+        self.assertTrue(migrate(self.path, "test-instance", target="61", binding=self.binding)["migrated"])
         self.assertEqual(self.sql("SELECT item,release FROM source_cover_releases"), [(777, 1)])
-        self.assertFalse(migrate(self.path, "test-instance", target="48", binding=self.binding)["migrated"])
+        self.assertFalse(migrate(self.path, "test-instance", target="61", binding=self.binding)["migrated"])
 
     def test_private_source_membership_and_same_number_in_different_outcomes(self):
         source = self.post("Shared dossier")

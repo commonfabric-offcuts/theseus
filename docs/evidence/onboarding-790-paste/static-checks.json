@@ -1,0 +1,28 @@
+{
+  "python": "3.9.6 (default, Oct 19 2026, 19:18:13) \n[Clang 21.0.0 (clang-2100.4.1.1)]",
+  "effective_cache": "/Users/commonfabric/.cache/790-paste9912-syntax-20261118b",
+  "python_ast": "passed",
+  "node_syntax": [
+    {
+      "file": "tests/clipboard_790_diagnostics.mjs",
+      "exit": 0
+    },
+    {
+      "file": "tests/clipboard_790_diagnostics.test.mjs",
+      "exit": 0
+    },
+    {
+      "file": "tests/onboarding_790_native.mjs",
+      "exit": 0
+    },
+    {
+      "file": "tests/reader_persistence_native.mjs",
+      "exit": 0
+    },
+    {
+      "file": "tests/ui_onboarding_790.test.mjs",
+      "exit": 0
+    }
+  ],
+  "product_core_web_unchanged": true
+}

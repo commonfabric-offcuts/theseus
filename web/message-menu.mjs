@@ -1,11 +1,13 @@
-import { feedControl, feedFence } from './feed-fence-copy.mjs';
+import { feedFence } from './feed-fence-copy.mjs';
+import { inlineStops, focusStop } from './message-controls.mjs';
 // The topic page's light and message bar (docs/interaction.md).
 //
 // The message under the pointer lights, as a passage lights in the Reader,
-// and a small bar of buttons sits over its top corner: 👍 (read and
+// and a small bar of buttons sits over its top corner: Edit for an editable
+// own message, then 👍 (read and
 // understood), ✅ and 🚫 when the message asks the reader for a go-ahead,
-// Reply's glyph (the Reader opens on the message with the cursor in the
-// reply), Show full message while the card cuts the message off, Fold (Unfold
+// Reply's glyph (the shared reply bar opens inside that message's card),
+// Show full message while the card cuts the message off, Fold (Unfold
 // on a folded message; none on a starred one), and ⋯, the message's menu (Copy
 // Link, Mark read or unread; docs/links.md), which a right-click on the message
 // opens too, where the pointer is (item 473: glyphs, each named, with its name
@@ -23,13 +25,15 @@ import { feedControl, feedFence } from './feed-fence-copy.mjs';
 // the cards themselves (buttons, folded into quiet lines between others) keep
 // their shape. The bar never covers the reply arrow beside a card's time.
 import { cardIn } from './fold.mjs';
-import { pageItself, writing } from './pane-keys.mjs';
+import { pageItself, writing, readingMovement } from './pane-keys.mjs';
 import { copyKey, onMac } from './writing-input.mjs';
 import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
 import { entries, entryOf, navigationStops, shownSelected, stopAt, onEarlierRow } from './reply-stacks.mjs';
 import { revealSelection } from './reveal.mjs';
 import { showGlyph } from './glyphs.mjs';
 import { FeedPassages } from './feed-passages.mjs';
+import { hasTextDisplayRules } from './message-format.mjs';
+import { noteAt } from './press-note.mjs';
 import { reach } from './arrow-reach.mjs';
 import { glyph } from './glyphs.mjs';
 import { listen } from './in-place-navigation.mjs';
@@ -38,61 +42,45 @@ import { listen } from './in-place-navigation.mjs';
 // (in-place-navigation.mjs): the light a move makes afresh knows that a
 // finger's tap began the move (item 613: a tap on a topic's count lands on
 // its message, and WebKit's mouse move after the landing's scroll then only
-// places the pointer, lighting no card that came under the finger).
+// places the pointer, lighting no card that came under the finger). Keep the
+// mouse's last position too: WebKit may repeat it after the new topic scrolls,
+// and that stationary event must not clear the landing's selection.
 const presses = new WeakMap();
 function pressOf(doc) {
   let press = presses.get(doc);
   if (press) return press;
-  press = { touch: false }; presses.set(doc, press);
-  if (typeof EventTarget === 'function' && doc instanceof EventTarget) listen(doc, 'pointerdown', event => { press.touch = event.pointerType === 'touch'; }, true);
+  press = { touch: false, pointer: null }; presses.set(doc, press);
+  if (typeof EventTarget === 'function' && doc instanceof EventTarget) {
+    listen(doc, 'pointerdown', event => {
+      press.touch = event.pointerType === 'touch';
+      press.pointer = press.touch ? null : { x: event.screenX, y: event.screenY };
+    }, true);
+    listen(doc, 'pointermove', event => {
+      if (event.pointerType !== 'touch') press.pointer = { x: event.screenX, y: event.screenY };
+    }, true);
+  }
   return press;
 }
 
 const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 
-// External Copy buttons take the place of their fences among a card's links.
-function inlineStops(card) {
-  const stops = [];
-  for (const node of card.querySelectorAll('a[href],button,[tabindex],.feed-fence-anchor')) {
-    if (!node.getClientRects().length) continue;
-    const external = feedControl(node);
-    if (external) stops.push(external);
-    else if (node.tabIndex >= 0 && !node.disabled) stops.push(node);
-  }
-  return stops;
-}
-
-function focusStop(target) {
-  const anchor = feedFence(target);
-  if (anchor) {
-    const card = anchor.closest('.message-card').getBoundingClientRect();
-    const top = anchor.getBoundingClientRect().top;
-    const win = anchor.ownerDocument.defaultView;
-    const height = parseFloat(win.getComputedStyle(anchor).paddingTop);
-    // The Copy button occupies the top lane. 'nearest' may leave that lane
-    // clipped when the fence spans both edges of an inner scrolling card.
-    if (top < Math.max(0, card.top) || top + height > Math.min(win.innerHeight, card.bottom)) {
-      anchor.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'instant' });
-    }
-    target.hidden = false;
-  }
-  target.focus({ preventScroll: true });
-}
-
 export class MessageMenu {
   // host: #messages. item(id): its loaded topic_messages item. viewer, kind:
   // who reads. reply(id, card): the Reader on it, the cursor in the reply.
+  // inlineReply(id, card): the hover/touch bar's Reply in that source card.
   // thumb(item, on) and answer(item, yes|no): the person's acts.
   // expand(card, item): reads a cut-off card on in place. more(item, button):
   // the message's ⋯ menu, opened from the bar's ⋯ (openMessageMenu).
+  // editChoice(item, card): the shared menu's current Edit descriptor, or none.
   // copy(item, words): puts the message's words on the clipboard, or the
   // words given, a passage of them (⌘C, copies). quote(id, card, chosen): the
   // Reader on it with chosen ({start, end, text} of its words) quoted.
   // clipped(card, item): whether the card cuts its message off; showFull(card, item): shows it whole there, as ⋯'s
   // Show full message does. foldState(item): 'fold', 'unfold' or null (none); fold(item): folds or unfolds it.
-  constructor({ host, item, viewer, kind, reply, quote = (id, card) => reply(id, card), thumb, answer, more, expand = () => {}, copy = () => {},
-    clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {}, mac = onMac(), doc = document }) {
-    Object.assign(this, { host, item, viewer, kind, reply, quote, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, mac, doc });
+  // navigate(): materialize waiting arrivals at a confirmed feed-key destination.
+  constructor({ host, item, viewer, kind, reply, inlineReply = reply, quote = (id, card) => reply(id, card), thumb, answer, more, editChoice = () => null, expand = () => {}, copy = () => {},
+    clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {}, acted = () => {}, navigate = () => {}, mac = onMac(), doc = document }) {
+    Object.assign(this, { host, item, viewer, kind, reply, inlineReply, quote, thumb, answer, more, editChoice, expand, copy, clipped, showFull, foldState, fold, acted, navigate, mac, doc });
     this.lit = null; this.touch = pressOf(doc).touch; this.before = null;
     // The bar's buttons it has put behind its ⋯ for want of room in the window (fit).
     this.behind = new Set();
@@ -101,7 +89,7 @@ export class MessageMenu {
     // Scrolling or a repaint can put another card under a stationary pointer
     // and fire pointerover. Only actual pointer movement takes the light from
     // the keyboard; otherwise repeated arrows can bounce between stacks.
-    let pointer = null, reverseTab = null;
+    let pointer = pressOf(doc).pointer, reverseTab = null;
     doc.addEventListener('pointermove', event => {
       if (event.pointerType === 'touch') return;
       // WebKit also emits pointermove after a scroll with unchanged screen
@@ -124,14 +112,23 @@ export class MessageMenu {
     });
     // What was lit when the press began: the press itself focuses the card,
     // which lights it, before its click arrives.
-    doc.addEventListener('pointerdown', event => { reverseTab = null; this.touch = event.pointerType === 'touch'; this.before = this.lit; }, true);
+    doc.addEventListener('pointerdown', event => {
+      reverseTab = null; this.touch = event.pointerType === 'touch'; this.before = this.lit;
+      // Every tap starts afresh, including the second tap in the rail drawer.
+      pointer = this.touch ? null : { x: event.screenX, y: event.screenY };
+    }, true);
     // A press on a word of the card's own reaction line acts, and opens nothing,
     // but for a tap on the 👍 count: on a phone that lights the card, which
     // names who (the bar's 👍 thumbs it).
-    // On a phone, the first tap on a card lights it; the next opens it.
+    // A phone tap on the message body goes straight to its reply (907).
+    // Other non-control parts of a card still light it before opening it.
     host.addEventListener('click', event => {
+      if (event.target.closest?.('#reader')) return;
       const entry = this.entryOf(event.target);
       if (!entry) return;
+      // A tap on a message is an action for its visit-only arrival mark.
+      // Stack controls act on their own target; expanding preserves replies.
+      if (this.touch && !event.target.closest?.('.stack-head, .fold-line, .stack-earlier')) this.acted(entry.dataset.id);
       const react = event.target.closest?.('[data-react]');
       if (react && cardIn(entry).contains(react)) {
         event.preventDefault(); event.stopPropagation();
@@ -143,7 +140,7 @@ export class MessageMenu {
       // drawn whole under Only new, light first as any card's does.
       if (onEarlierRow(entry, event.target)) return;
       // A message folded to its row unfolds at the first tap (reply-stacks.mjs).
-      if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, .image-thumb') && cardIn(entry).dataset.folded !== 'true') {
+      if (this.touch && entry !== this.before && !event.target.closest?.('a, .message-preview, .card-reply-composer, .fold-line, .image-thumb, .note-corner, .cover-refresh-glyph, .waiting-silence, .stack-new-action, .stack-star') && cardIn(entry).dataset.folded !== 'true') {
         this.light(entry);
         // The reply arrow answers its own first tap with its words (card-reading.mjs).
         if (event.target.closest?.('.replied-mark')) return;
@@ -193,6 +190,7 @@ export class MessageMenu {
       else if (!entry && !pageItself(at, doc) && !this.ownsControls(at)) this.light(null);
     }, true);
     doc.addEventListener('keydown', event => this.key(event));
+    doc.addEventListener('copy', event => this.copySelection(event));
     doc.defaultView.addEventListener('scroll', () => this.place(), { passive: true });
     doc.defaultView.addEventListener('resize', () => this.place());
     // Content above the lit card can grow or shrink without a scroll (the
@@ -226,10 +224,11 @@ export class MessageMenu {
       return button;
     };
     this.buttons = {
+      edit: make('edit', '', 'Edit'),
       thumb: make('thumb', '👍', 'Thumbs-up: read and understood'),
       yes: make('yes', '✅', 'Go ahead'),
       no: make('no', '🚫', "Don't"),
-      reply: make('reply', '', 'Reply (Return)'),
+      reply: make('reply', '', 'Reply'),
       full: make('full', '', 'Show full message'),
       fold: make('fold', '', 'Fold'),
       more: make('more', '⋯', 'More for this message'),
@@ -242,7 +241,10 @@ export class MessageMenu {
   }
   // The list entry a target is in: a card, or a fold holding its card, on its
   // own or in a reply stack (reply-stacks.mjs).
-  entryOf(target) { return entryOf(this.host, feedFence(target?.closest?.('.feed-fence-copy')) ?? target); }
+  entryOf(target) {
+    if (target?.closest?.('#reader')) return null;
+    return entryOf(this.host, feedFence(target?.closest?.('.feed-fence-copy')) ?? target);
+  }
   // A dossier's title bar glyphs are its controls too (reply-stacks.mjs): pressing or focusing one keeps the light.
   ownsControls(target) { return this.bar.contains(target) || Boolean(target?.closest?.('.message-menu-list, .stack-tools')); }
   // The entries on show, in the page's order; a stack's folded replies are not.
@@ -265,7 +267,7 @@ export class MessageMenu {
   // ends a drag selecting words leaves it, so the words stay selected.
   claim(target) {
     const at = target?.nodeType === 1 ? target : target?.parentElement, focused = this.doc.activeElement;
-    if (!at || writing(at) || writing(focused) || focused?.isContentEditable || this.doc.getSelection?.()?.isCollapsed === false) return;
+    if (!at || at.closest('.waiting-silence, .stack-star') || writing(at) || writing(focused) || focused?.isContentEditable || this.doc.getSelection?.()?.isCollapsed === false) return;
     const header = at.closest('.stack-toggle');
     const entry = header ? null : this.entryOf(at);
     const stop = header ?? (entry && (cardIn(entry).hidden ? entry.querySelector('.fold-line') : cardIn(entry)));
@@ -279,7 +281,7 @@ export class MessageMenu {
   // Writing keeps the focus (claim), and so do an open menu, the Reader or any
   // other dialog, so typing and their keys never go elsewhere.
   hover(event) {
-    if (event.buttons || open || this.host.closest('[inert]') || this.doc.querySelector('dialog[open]')) return;
+    if (event.buttons || open || this.host.closest('[inert]') || this.doc.querySelector('dialog[open]:not([data-card-reply])')) return;
     this.claim(event.target);
   }
   light(entry) {
@@ -302,6 +304,10 @@ export class MessageMenu {
     // viewport to measure until the original card becomes visible.
     const card = cardIn(this.lit);
     if (item.preview && !card.hidden) this.expand(card, item);
+    // The shared menu owns whether Edit exists. Borrow its pencil only when
+    // offered; the bar and activation do not maintain a second permissions rule.
+    this.buttons.edit.hidden = !this.editChoice?.(item, card);
+    if (!this.buttons.edit.hidden) showGlyph(this.buttons.edit, 'pencil', this.doc);
     const { thumb, yes, no } = this.buttons;
     thumb.hidden = !mayThumb(item, this.viewer);
     thumb.setAttribute('aria-pressed', String(thumbed(item, this.viewer)));
@@ -390,7 +396,14 @@ export class MessageMenu {
     const entry = this.lit, item = entry && this.item(entry.dataset.id);
     if (!item) return;
     const card = cardIn(entry);
-    if (name === 'reply') return this.reply(item.id, card);
+    if (name === 'edit') {
+      const choice = this.editChoice?.(item, card);
+      if (!choice) { this.paintBar(); return; }
+      this.acted(item.id);
+      return choice.act();
+    }
+    this.acted(item.id);
+    if (name === 'reply') return this.inlineReply(item.id, card);
     if (name === 'more') return this.more(item, this.buttons.more);
     if (name === 'full') return Promise.resolve(this.showFull(card, item)).then(() => { if (this.lit === entry) this.paintBar(); });
     if (name === 'fold') return this.fold(item);
@@ -403,9 +416,33 @@ export class MessageMenu {
     if (this.copies(event)) return;
     if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || (event.altKey && event.key !== 'Tab')) return;
     if (event.key === 'Tab') return this.tab(event);
-    // Nor under a drawer or sheet open over the page, which makes the page inert.
-    if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key) || this.doc.querySelector('dialog[open]') || this.host.closest('[inert]')) return;
     const at = this.doc.activeElement;
+    if (writing(at) || at?.closest?.('input, textarea, select, [contenteditable]') ||
+        event.target?.closest?.('input, textarea, select, [contenteditable]')) return;
+    // Nor under a drawer or sheet open over the page, which makes the page inert.
+    if (this.doc.querySelector('dialog[open]:not([data-card-reply])') || this.host.closest('[inert]')) return;
+    // These keys scroll the feed through the browser's own default action.
+    // A control's Space/Home/End belongs to that control, not to navigation.
+    if (['PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) {
+      const entry = this.host.contains(at) && this.entryOf(at);
+      if (event.isTrusted && !event.shiftKey && this.doc.getSelection?.()?.isCollapsed !== false &&
+          (pageItself(at, this.doc) || entry && (at === cardIn(entry) || at.classList?.contains('fold-line')))) {
+        // Space on a native button activates it; its successful open owns the
+        // release. A scroll key at the end of every scrolling box goes nowhere.
+        if (event.key === ' ' && at?.matches?.('button, input, select, summary')) return;
+        const up = event.key === 'PageUp' || event.key === 'Home', view = this.doc.defaultView;
+        for (let box = at; box; box = box.parentElement) {
+          if (box === this.doc.scrollingElement || box === this.doc.body || box === this.doc.documentElement) continue;
+          const style = view.getComputedStyle(box);
+          if (!/^(auto|scroll|overlay)$/.test(style.overflowY) || box.clientHeight <= 0) continue;
+          if (up ? box.scrollTop > 0 : box.scrollTop < box.scrollHeight - box.clientHeight) { this.navigate(); return; }
+        }
+        const page = this.doc.scrollingElement;
+        if (page && page.clientHeight > 0 && (up ? page.scrollTop > 0 : page.scrollTop < page.scrollHeight - page.clientHeight)) this.navigate();
+      }
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) return;
     if (at?.matches?.(EDITABLE) || at?.closest?.('.rail')) return;
     // The bar's own buttons, and every control in the list but a card itself (a
     // folded line, a link in the words, a reaction, the reply arrow, a stack's
@@ -421,9 +458,11 @@ export class MessageMenu {
       // as the Reader opens on it; with none, Return replies as Reply does.
       const chosen = this.passages.chosen(this.lit), item = this.item(this.lit.dataset.id);
       if (chosen && item) this.quote(item.id, cardIn(this.lit), chosen);
-      else this.act('reply');
+      else if (item) this.reply(item.id, cardIn(this.lit));
       return;
     }
+    // Keep the selection guard from before focus can collapse it.
+    const reading = !event.shiftKey && this.doc.getSelection?.()?.isCollapsed !== false;
     const entries = this.entries();
     if (!entries.length) return;
     // A dossier's chevron holding the focus is where the keys are, whether it
@@ -445,7 +484,14 @@ export class MessageMenu {
       // feed), the keys go on to what lies that way in the page's column: More
       // messages, the People row, the Notebook and the reply (arrow-reach.mjs).
       const from = between || !selected ? at : cardIn(selected).hidden ? selected.querySelector('.fold-line') : cardIn(selected);
-      if (from && reach(from, step > 0 ? 'down' : 'up', { within: this.host.closest('#main') ?? null, doc: this.doc })) event.preventDefault();
+      const within = this.host.closest('#main') ?? null;
+      // reach can approach a control by scrolling, or try to focus it. Confirm
+      // the actual movement too: a refused focus is not a reading destination.
+      const moved = readingMovement(this.doc, within, at);
+      if (from && reach(from, step > 0 ? 'down' : 'up', { within, doc: this.doc })) {
+        event.preventDefault();
+        if (reading && moved()) this.navigate();
+      }
       return;
     }
     event.preventDefault();
@@ -454,19 +500,34 @@ export class MessageMenu {
     this.light(next.matches('.stack-toggle') ? null : next);
     const target = cardIn(next).hidden ? next.querySelector('.fold-line') : cardIn(next);
     target?.focus({ preventScroll: true });
+    if (reading && target && target !== at && this.doc.activeElement === target) this.navigate();
     revealSelection(shownSelected(next));
     this.place();
+  }
+  // Native selected Copy only for this feature's drawing. Reuse exactly what
+  // Return quotes at the selected endpoints, even when no passage is lit.
+  copySelection(event) {
+    if (event.defaultPrevented || this.doc.querySelector('dialog[open]:not([data-card-reply])') || this.host.closest('[inert]') ||
+        writing(this.doc.activeElement) || this.doc.activeElement?.isContentEditable) return;
+    const selection = this.doc.getSelection();
+    if (!selection?.rangeCount || selection.isCollapsed) return;
+    const start = selection.getRangeAt(0).startContainer;
+    const entry = this.entryOf(start.nodeType === 1 ? start : start.parentElement);
+    const words = entry && cardIn(entry)?.querySelector(':scope > .message-preview');
+    if (!words || !hasTextDisplayRules(words)) return;
+    const selected = this.passages.selected(entry);
+    if (selected && !copySelectedText(event, selected.text)) noteAt(words, SELECTION_COPY_REFUSED, this.doc);
   }
   // ⌘C (Ctrl-C off a Mac) with no words selected copies the lit message's
   // words as written, as the Reader's ⇧⌘C copies the message it shows: the
   // message the pointer or the keys lit last, which Return would answer, or
   // the passage of it lit under the pointer, which Return would quote. Words
-  // selected anywhere, the focus in writing or a pop-up, or no lit message
-  // leave the key to the browser, which copies as it always does. Whether it
-  // took the key.
+  // selected anywhere leave the key to native Copy (copySelection handles this
+  // feature's drawing at that event). Writing, a pop-up or no lit message also
+  // leave the key alone. Whether it took the key.
   copies(event) {
     if (event.defaultPrevented || event.isComposing || !copyKey(event, this.mac) || !this.lit?.isConnected) return false;
-    if (this.doc.querySelector('dialog[open]') || this.host.closest('[inert]') || writing(this.doc.activeElement)) return false;
+    if (this.doc.querySelector('dialog[open]:not([data-card-reply])') || this.host.closest('[inert]') || writing(this.doc.activeElement)) return false;
     if (this.doc.getSelection?.()?.isCollapsed === false) return false;
     const item = this.item(this.lit.dataset.id);
     if (!item) return false;
@@ -536,7 +597,7 @@ const element = (doc, tag, props = {}) => Object.assign(doc.createElement(tag), 
 // item's end.
 // sheet: on a phone (a narrow window) the menu opens as a sheet from the
 // bottom of the window, its items full width, rather than under its button.
-export function openMessageMenu({ anchor, at = null, items, label = 'Message', sheet = false, doc = globalThis.document, win = globalThis }) {
+export function openMessageMenu({ anchor, at = null, items, label = 'Message', sheet = false, focusKey = null, doc = globalThis.document, win = globalThis }) {
   if (open?.anchor === anchor && !at) { open.close(true); return null; }
   // Every item's glyph is drawn before anything changes on the page: an item that names none, or one nobody draws, opens nothing.
   const glyphs = items.map(item => glyph(item.glyph, doc));
@@ -546,23 +607,34 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
   root.setAttribute('role', 'menu'); root.setAttribute('aria-label', label);
   const buttons = items.map((item, index) => {
     const button = element(doc, 'button', { type: 'button', textContent: item.label });
-    button.setAttribute('role', 'menuitem');
+    button.disabled = Boolean(item.disabled);
+    button.setAttribute('role', item.checked === undefined ? 'menuitem' : 'menuitemcheckbox');
+    if (item.checked !== undefined) button.setAttribute('aria-checked', String(item.checked));
+    if (item.description) {
+      const words = element(doc, 'span', { className: 'menu-description' });
+      words.append(element(doc, 'span', { textContent: item.label }), element(doc, 'small', { textContent: item.description }));
+      button.replaceChildren(words);
+    }
     // The glyph follows the words in the document and is drawn before them (aim.css), so the row reads as its words.
     button.append(glyphs[index]);
     if (item.keys) { button.append(element(doc, 'span', { className: 'menu-keys', textContent: item.keys })); }
-    button.onclick = event => { event.stopPropagation(); menu.close(true); item.act(); };
+    button.onclick = event => { event.stopPropagation(); if (button.disabled) return; menu.close(true); item.act(); };
     return button;
   });
   root.append(...buttons);
+  const enabled = buttons.filter(button => !button.disabled);
+  const requested = focusKey === null ? null : buttons[items.findIndex(item => item.key === focusKey)];
+  const first = requested && !requested.disabled ? requested : enabled[0];
   const keys = event => {
     event.stopPropagation();
     if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); menu.close(true); return; }
     const step = { ArrowDown: 1, ArrowUp: -1, Home: -Infinity, End: Infinity }[event.key];
     if (step === undefined) return;
     event.preventDefault();
-    const now = buttons.indexOf(doc.activeElement);
-    const next = step === -Infinity ? 0 : step === Infinity ? buttons.length - 1 : ((now < 0 ? 0 : now) + step + buttons.length) % buttons.length;
-    buttons[next].focus({ preventScroll: true });
+    if (!enabled.length) return;
+    const now = enabled.indexOf(doc.activeElement);
+    const next = step === -Infinity ? 0 : step === Infinity ? enabled.length - 1 : ((now < 0 ? 0 : now) + step + enabled.length) % enabled.length;
+    enabled[next].focus({ preventScroll: true });
   };
   const outside = event => { if (!root.contains(event.target) && !(at === null && anchor.contains(event.target))) menu.close(false); };
   const scrolled = event => {
@@ -589,7 +661,7 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
   const box = anchor.getBoundingClientRect();
   if (sheet && win.matchMedia?.('(max-width: 760px)').matches) {
     root.classList.add('menu-sheet');
-    buttons[0].focus({ preventScroll: true });
+    first?.focus({ preventScroll: true });
     return menu;
   }
   const width = root.offsetWidth || 0, height = root.offsetHeight || 0;
@@ -598,7 +670,7 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
   const x = at ? at.x : box.right - width, below = at ? at.y : box.bottom + 4, above = (at ? at.y : box.top - 4) - height;
   const top = below + height + 8 <= H || above < 8 ? below : above;
   Object.assign(root.style, { position: 'fixed', top: `${Math.round(Math.max(8, top))}px`, left: `${Math.round(Math.max(8, Math.min(x, W - width - 8)))}px` });
-  buttons[0].focus({ preventScroll: true });
+  first?.focus({ preventScroll: true });
   return menu;
 }
 
@@ -627,6 +699,17 @@ export function unsay(button) {
 
 // What a copy the clipboard refused says, wherever a message's words are copied.
 export const COPY_REFUSED = 'Could not copy. Select the text and use Copy.';
+export const SELECTION_COPY_REFUSED = 'Could not copy this selection. Turn Break out paragraphs off and use Copy again.';
+// Writes an existing quote projection during native Copy. Cancel even on a
+// refusal so the browser cannot substitute the newly drawn paragraph breaks.
+export function copySelectedText(event, text) {
+  event.preventDefault();
+  try {
+    if (!event.clipboardData) return false;
+    event.clipboardData.setData('text/plain', text);
+    return true;
+  } catch { return false; }
+}
 // Puts text on the clipboard. Settles true when it is there.
 export async function copyText(text, nav = globalThis.navigator) {
   try { await nav.clipboard.writeText(text); return true; } catch { return false; }

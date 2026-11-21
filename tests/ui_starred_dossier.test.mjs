@@ -5,12 +5,14 @@ import { routeKey } from '../web/topic-navigation.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 
-test('item 655 Starred emits a valid cross-topic message route', () => {
+// 788 retires the right-rail Starred list, not the shared cross-topic link
+// route or the dossier's paging/presentation checks below.
+test('item 655 shared rail message link retains the valid cross-topic route after 788 removes Starred', () => {
   const targets = [];
-  const rail = { doc: miniDocument(), handles: { workspaceId: 'w' }, placeLink: target => { targets.push(target); return 'link'; } };
-  const section = ThingsRail.prototype.starredSection.call(rail,
-    [{ topic_id: 'second-topic', workspace_id: 'w', message_id: 'reply', excerpt: 'Reply', author_id: 'agent' }], { byTopic: true, topicId: 'first-topic' }, 'reader');
-  section.node();
+  const rail = { doc: miniDocument(), handles: { open: target => targets.push(target) }, wide: { matches: true } };
+  const link = ThingsRail.prototype.placeLink.call(rail, { kind: 'topic', id: 'second-topic', message: 'reply' }, 'Reply');
+  assert.equal(link.href, '?topic=second-topic&message=reply');
+  link.onclick({ target: link, button: 0, preventDefault() {} });
   assert.equal(targets.length, 1);
   assert.doesNotThrow(() => routeKey(targets[0]));
   assert.deepEqual(targets[0], { kind: 'topic', id: 'second-topic', message: 'reply' });
@@ -42,7 +44,10 @@ function opening655(present) {
   Object.assign(registry, { generation: 0, disposed: false, bootstrap: { instance_id: 'i', actor: 'reader' }, activity() {},
     cleanup: { foreground: () => ({ read: work => work({}), release() {} }) },
     keepBeforeStep: async () => {}, api: { view: async name => name === 'source' ? source : { submissions: [], destination_available: true } },
-    validateState() {}, setPending() {}, register: async () => ({ read() {} }), present });
+    validateState() {}, setPending() {}, register: async () => ({ read() {} }),
+    // Real registered editors have a session; this presentation-only fixture
+    // does not construct them.800 reads the note's session before presenting.
+    sessionFor: () => ({ unsettledSave: () => false }), present });
   return { registry, open: () => registry.open(ref, { topicId: 't' }) };
 }
 test('item 655 B3 open waits for presentation and reports a presentation failure', async () => {

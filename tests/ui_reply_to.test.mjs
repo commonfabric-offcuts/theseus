@@ -177,7 +177,7 @@ test('after typing, one press on the offered author\'s remove takes them off, an
     { addressees: [], chips: [] }, 'emptying the reply does not offer them again');
 });
 
-test('a reply offered to an agent shows Tell from the start, and typing that takes the author keeps it', t => {
+test('a reply offered to an agent shows Ask from the start, and typing that takes the author keeps it', t => {
   const previous = { document: globalThis.document, window: globalThis.window, MutationObserver: globalThis.MutationObserver, ResizeObserver: globalThis.ResizeObserver };
   const document = miniDocument();
   // The page's own listeners and its end-of-message line are not what this checks.
@@ -203,11 +203,11 @@ test('a reply offered to an agent shows Tell from the start, and typing that tak
   reader.bind();
   const checked = () => element('intent-row').querySelectorAll('button[data-intent]').find(chip => chip.getAttribute('aria-pressed') === 'true')?.dataset.intent;
   reader.paintChoice();
-  assert.deepEqual([reply.draft.addressees, checked()], [[], 'tell'], 'an empty reply only offers the author, and already shows how it would go: a Tell');
+  assert.deepEqual([reply.draft.addressees, checked()], [[], 'ask'], 'an empty reply only offers the author, and already shows how it would go: an Ask (848)');
   field.value = 'H'; field.selectionStart = field.selectionEnd = 1;
   field.listeners.input();
   assert.deepEqual(reply.draft.addressees, ['fable'], 'the first letter took the offered author');
-  assert.equal(checked(), 'tell', 'the reply now names them, and is still a Tell');
+  assert.equal(checked(), 'ask', 'the reply now names them, and is still an Ask');
   // A click outside, on the backdrop, closes the Reader as × does; one inside does not.
   let closes = 0;
   reader.close = () => { closes++; };

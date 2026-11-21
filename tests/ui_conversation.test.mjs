@@ -1,88 +1,12 @@
-// An outcome's conversation on the page (item 82, docs/conversation.md): the
-// tags under each card, the waiting tags, "Asks you", the Only new chip, the
-// empty words, the side rail's row, the Reader's To chips, the Answered by
-// chips and the conversation's address. The views are painted for real into a
-// small DOM; the native conversation checks show the same in a browser.
+// Reply destinations and saved writing survive retiring the special page (835).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { itemTags, paintItemTags, paintAbout, paintAsksYou, paintOnlyNew, paintEmpty, paintConversationRow, conversationDestination,
-  answererChoices, paintAnswerers, subtitle, CONVERSATION_NOTE, NOBODY_ANSWERS, switchWriting } from '../web/outcome-conversation.mjs';
+import { paintAbout, paintAsksYou, conversationDestination,
+  answererChoices, paintAnswerers, CONVERSATION_NOTE, switchWriting } from '../web/outcome-conversation.mjs';
 import { parseRoute, routeHref, routeKey } from '../web/topic-navigation.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 import { Editor, WRITING_FIELDS, noWriting, written } from '../web/editor.mjs';
 import { choiceOf, chosen, sending } from '../web/whisper-choice.mjs';
-
-const AT = Date.UTC(2026, 10, 6, 18, 0);
-const words = tags => tags.map(tag => [tag.tag, tag.parts.map(part => typeof part === 'string' ? part : part.link ?? (part.time !== undefined ? '<time>' : '')).join('')]);
-const item = (state, takes = []) => ({ id: 'm-item', item: { state, takes } });
-
-test('each take is one tag under its card in the words of what became of it, and the item waits for an answer while only part was taken', () => {
-  assert.deepEqual(itemTags({ id: 'm-plain', item: null }, [], 'tony'), [], 'a message that is not an item has no tags');
-  assert.deepEqual(words(itemTags(item('new'), [], 'tony')), [['Waiting for an answer', '']]);
-  assert.equal(itemTags(item('new'), [], 'tony')[0].waiting, true, 'an item nothing has settled waits, drawn as three dots');
-  const part = { kind: 'answer', ref: 'm-a', actor_id: 'fable', at_ms: AT, part: true };
-  assert.deepEqual(words(itemTags(item('new', [part]), [], 'tony')), [['Waiting for an answer', 'part taken so far'], ['Answered', "fable's reply · <time>"]]);
-  assert.deepEqual(itemTags(item('settled', [{ ...part, part: false }]), [], 'tony').filter(tag => tag.waiting), [], 'a settled item waits for nothing');
-  assert.deepEqual(words(itemTags(item('settled', [{ ...part, part: false, actor_id: 'tony' }]), [], 'tony')), [['Answered', 'your reply · <time>']]);
-  // An answer by whisper, read by someone outside it: who answered and when, never a link to the reply.
-  const hidden = itemTags(item('settled', [{ ...part, part: false, ref: null, readable: false }]), [], 'warp');
-  assert.deepEqual(words(hidden), [['Answered', "fable, in a message you can't open · <time>"]]);
-  assert.ok(hidden[0].parts.every(part => typeof part === 'string' || part.message === undefined), 'nothing links to it');
-  const topic = { kind: 'topic', ref: 't-9', title: 'Onboarding', readable: true, actor_id: 'fable', at_ms: AT, part: false };
-  assert.deepEqual(words(itemTags(item('settled', [topic]), [], 'tony')), [['Taken into a topic', 'Onboarding · fable, <time>']]);
-  assert.equal(itemTags(item('settled', [topic]), [], 'tony')[0].parts[0].topic, 't-9', 'the title links to its topic');
-  assert.deepEqual(words(itemTags(item('settled', [{ ...topic, readable: false, title: null }]), [], 'tony')),
-    [['Taken into a topic', 'a topic you cannot open · fable, <time>']]);
-  assert.deepEqual(words(itemTags(item('settled', [{ ...topic, readable: false }]), [], 'tony')),
-    [['Taken into a topic', 'a topic you cannot open · fable, <time>']], 'a title the reader cannot open is never shown');
-  const pipeline = { kind: 'pipeline', numbers: [10, 22, 74], added: false, actor_id: 'fable', at_ms: AT, part: false };
-  assert.deepEqual(words(itemTags(item('settled', [pipeline, { ...pipeline, numbers: [92], added: true }]), [], 'tony')),
-    [['On the pipeline', 'as 10, 22 and 74 · fable, <time>'], ['On the pipeline', 'added to 92 · fable, <time>']]);
-});
-
-test('a wait on an item sits beside its takes, says who asked, and is "Waiting on you" only for whoever it waits on', () => {
-  const answered = item('settled', [{ kind: 'answer', ref: 'm-a', actor_id: 'fable', at_ms: AT, part: false }]);
-  const long = 'Which of the two launch dates should the announcement and the store listing both use from now on?';
-  const waits = [{ ask_message_id: 'm-ask', on: 'tony', by: 'fable', since_ms: AT, item_id: 'm-item', excerpt: long },
-    { ask_message_id: 'm-other', on: 'tony', by: 'fable', since_ms: AT, item_id: 'm-elsewhere', excerpt: 'Elsewhere?' }];
-  const mine = itemTags(answered, waits, 'tony');
-  assert.deepEqual(mine.map(tag => [tag.tag, Boolean(tag.mine)]), [['Answered', false], ['Waiting on you', true]], 'a wait on another item is not here');
-  assert.equal(mine[1].parts[1].link, `${long.slice(0, 59).trimEnd()}…`, 'the ask in sixty characters');
-  assert.equal(mine[1].parts[1].message, 'm-ask');
-  const theirs = itemTags(answered, waits, 'cynthia');
-  assert.deepEqual(theirs.map(tag => [tag.tag, Boolean(tag.mine)]), [['Answered', false], ['Waiting on tony', false]]);
-  assert.equal(theirs[1].parts[0], 'fable asked: ');
-});
-
-test('the tags paint at the foot of the card, a link follows without opening the card, and no tags leave no row', () => {
-  const doc = miniDocument(), card = doc.createElement('article'), opened = [];
-  const topic = { kind: 'topic', ref: 't-9', title: 'Onboarding', readable: true, actor_id: 'fable', at_ms: AT, part: false };
-  paintItemTags(card, item('settled', [topic]), [], 'tony', (kind, id) => opened.push([kind, id]), doc);
-  const row = card.querySelector(':scope > .item-tags');
-  assert.ok(row);
-  assert.deepEqual(row.querySelectorAll('.item-tag').map(tag => tag.textContent), ['Taken into a topic']);
-  let stopped = false;
-  row.querySelector('.item-link').onclick({ stopPropagation: () => { stopped = true; }, preventDefault() {} });
-  assert.deepEqual(opened, [['topic', 't-9']]);
-  assert.ok(stopped, 'the card under the link is not opened as well');
-  paintItemTags(card, { id: 'm-item', item: null }, [], 'tony', () => {}, doc);
-  assert.equal(card.querySelector(':scope > .item-tags'), null);
-});
-
-test('an item that waits for an answer paints three dots named by its words in place of a word chip, and they go once it is answered (item 389)', () => {
-  const doc = miniDocument(), card = doc.createElement('article');
-  const part = { kind: 'answer', ref: 'm-a', actor_id: 'fable', at_ms: AT, part: true };
-  paintItemTags(card, item('new', [part]), [], 'tony', () => {}, doc);
-  const dots = card.querySelector('.item-waiting');
-  assert.ok(dots, 'the dots are drawn');
-  assert.equal(dots.children.length, 3, 'three of them');
-  assert.deepEqual([dots.getAttribute('role'), dots.getAttribute('aria-label'), dots.title],
-    ['img', 'Waiting for an answer · part taken so far', 'Waiting for an answer · part taken so far'], 'named and titled in words');
-  assert.deepEqual(card.querySelectorAll('.item-tag').map(tag => tag.textContent), ['Answered'], 'no word chip says New: only the answer so far');
-  paintItemTags(card, item('settled', [{ ...part, part: false }]), [], 'tony', () => {}, doc);
-  assert.equal(card.querySelector('.item-waiting'), null, 'answered, the dots go');
-  assert.deepEqual(card.querySelectorAll('.item-tag').map(tag => tag.textContent), ['Answered']);
-});
 
 test('a message sent from another topic says which message it is about, unless the reader cannot open it', () => {
   const doc = miniDocument(), card = doc.createElement('article'), opened = [];
@@ -105,19 +29,8 @@ test('a message sent from another topic says which message it is about, unless t
 // what was read among them, and paints each card's tags and About line again.
 // A link that is replaced as the person presses it, or that holds the focus,
 // is lost under them; so a paint that changes nothing keeps every link.
-test('a read that changes nothing on a card keeps its tag and About links, so a press or the focus on one lands; a change paints them anew', () => {
+test('a read that changes nothing on a card keeps its About link, so a press or the focus on one lands; a change paints them anew', () => {
   const doc = miniDocument(), card = doc.createElement('article'), opened = [];
-  const answered = item('settled', [{ kind: 'answer', ref: 'm-a', actor_id: 'fable', at_ms: AT, part: false }]);
-  const tagLink = () => card.querySelector(':scope > .item-tags').querySelector('.item-link');
-  paintItemTags(card, answered, [], 'tony', (kind, id) => opened.push(['first', kind, id]), doc);
-  const link = tagLink();
-  paintItemTags(card, structuredClone(answered), [], 'tony', (kind, id) => opened.push(['second', kind, id]), doc);
-  assert.equal(tagLink(), link, 'the same link after a read that changed nothing');
-  link.onclick({ stopPropagation() {}, preventDefault() {} });
-  assert.deepEqual(opened, [['second', 'message', 'm-a']], 'it follows as the newest paint says');
-  const wait = { ask_message_id: 'm-ask', on: 'tony', by: 'fable', since_ms: AT, item_id: 'm-item', excerpt: 'Which day?' };
-  paintItemTags(card, answered, [wait], 'tony', () => {}, doc);
-  assert.deepEqual(card.querySelector(':scope > .item-tags').querySelectorAll('.item-tag').map(tag => tag.textContent), ['Answered', 'Waiting on you'], 'a change is painted');
   const about = { message_id: 'm-src', topic_id: 't-1', topic_title: 'Agent loop', author_id: 'fable' };
   paintAbout(card, { about }, 'tony', () => {}, doc);
   const aboutLink = card.querySelector(':scope > .about-line').querySelector('.item-link');
@@ -143,60 +56,6 @@ test('"Asks you" follows the author only while an open ask on that card waits on
   paintAsksYou(author, { id: 'm-ask' }, [wait], 'tony', doc);
   paintAsksYou(author, { id: 'm-ask' }, [], 'tony', doc);
   assert.equal(author.querySelector('.asks-you'), null, 'gone once answered');
-});
-
-test('Only new is one chip with its count, pressed while on, and away while nothing is new and it is off', () => {
-  const doc = miniDocument(), host = doc.createElement('div'), shown = [];
-  paintOnlyNew(host, { view: { new_items: 2 }, onlyNew: false, show: value => shown.push(value), doc });
-  const chip = host.querySelector('button');
-  assert.deepEqual([chip.textContent, chip.getAttribute('aria-pressed'), host.hidden], ['Only new (2)', 'false', false]);
-  chip.onclick();
-  assert.deepEqual(shown, [true]);
-  paintOnlyNew(host, { view: { new_items: 0 }, onlyNew: true, show: value => shown.push(value), doc });
-  assert.deepEqual([host.querySelector('button'), chip.getAttribute('aria-pressed'), host.hidden], [chip, 'true', false], 'pressed stays to be turned off');
-  chip.onclick();
-  assert.deepEqual(shown, [true, false]);
-  paintOnlyNew(host, { view: { new_items: 0 }, onlyNew: false, show() {}, doc });
-  assert.equal(host.hidden, true);
-});
-
-test('an empty conversation says what it is for, who answers, and which topics it replaced', () => {
-  const doc = miniDocument(), host = doc.createElement('div');
-  paintEmpty(host, { view: { coordinator: { actor_id: 'fable' }, replaced: [] }, doc });
-  assert.deepEqual(host.children.map(node => node.textContent), ['Nothing here yet.',
-    'Write below to ask where things stand, or to raise a friction or a request. fable answers each one here or takes it into a topic, and the card says which.']);
-  paintEmpty(host, { view: { coordinator: null, replaced: [{ title: "What's live and what's next" }, { title: 'Friction log' }] }, doc });
-  assert.equal(host.children[1].textContent, `Write below to ask where things stand, or to raise a friction or a request. ${NOBODY_ANSWERS}`);
-  assert.equal(host.children[2].textContent,
-    "What's live and what's next, and Friction log, were closed when this conversation started. Both stay readable under Archived topics.");
-  paintEmpty(host, { view: { coordinator: null, replaced: [{ title: 'Friction log' }] }, doc });
-  assert.equal(host.children[2].textContent, 'Friction log was closed when this conversation started. It stays readable under Archived topics.');
-  paintEmpty(host, { view: { coordinator: null, replaced: [{ title: 'A' }, { title: 'B' }, { title: 'C' }] }, doc });
-  assert.equal(host.children[2].textContent, 'A, B, and C, were closed when this conversation started. They stay readable under Archived topics.');
-});
-
-test('the side rail row counts what is unread, says Waiting on you, and never lights for new items', () => {
-  const doc = miniDocument(), host = doc.createElement('div'), opened = [];
-  assert.equal(paintConversationRow(host, { view: null, title: 'Launch', reader: 'tony', href: '?conversation=w1', open() {}, doc }), false);
-  assert.deepEqual(host.children, []);
-  const quiet = { unread: 0, addressed: 0, new_items: 3, waits: [], work: null };
-  assert.equal(paintConversationRow(host, { view: quiet, title: 'Launch', reader: 'tony', href: '?conversation=w1', open: () => opened.push(1), doc }), true);
-  const row = host.children[0];
-  assert.equal(row.text, 'LaunchStatus, friction, requests');
-  assert.equal(row.querySelector('.unread-count'), null, 'three new items light nothing (D5)');
-  assert.equal(row.querySelector('.topic-state'), null);
-  row.onclick({ button: 0, preventDefault() {} });
-  row.onclick({ button: 0, metaKey: true, preventDefault() {} });
-  assert.deepEqual(opened, [1], 'a modified click is left to the browser');
-  const busy = { unread: 2, addressed: 1, new_items: 0, waits: [{ on: 'tony', ask_message_id: 'm-ask' }], work: null };
-  paintConversationRow(host, { view: busy, title: 'Launch', reader: 'tony', current: true, href: '?conversation=w1', open() {}, doc });
-  const now = host.children[0];
-  assert.equal(now.querySelector('.unread-count').className, 'unread-count addressed');
-  assert.equal(now.querySelector('.unread-count').textContent, '2');
-  assert.equal(now.querySelector('.topic-state').textContent, 'Waiting on you');
-  assert.equal(now.getAttribute('aria-current'), 'page');
-  paintConversationRow(host, { view: busy, title: 'Launch', reader: 'cynthia', href: '?conversation=w1', open() {}, doc });
-  assert.equal(host.children[0].querySelector('.topic-state'), null, 'a wait on someone else is not on the reader');
 });
 
 test("the Reader's To is two chips, this topic and the conversation, with the chosen one pressed", () => {
@@ -312,12 +171,12 @@ test("Whisper, Tell or Ask is never mixed between drafts: onto writing it stays 
       }
     }
   }
-  // One agent named and no choice made is a Tell in a topic and in the conversation alike, so it arrives as the same Tell.
+  // One agent named and no choice made is Ask in a topic and in the conversation alike, so the default follows the writing.
   for (const [from, to] of [['t1', CONVERSATION], [CONVERSATION, 't1']]) {
     const there = at(to);
     await switched(at(from, { body: 'Status, please.', addressees: one }), there);
     assert.deepEqual([there.draft.whisper ?? null, there.draft.intent ?? null], [null, null], `from ${from}: nothing is written down for it`);
-    assert.deepEqual(sends(there.draft, namesOf(there))[1], { whisper: false, intent: 'tell' }, `from ${from}: a Tell where it was written is sent as a Tell`);
+    assert.deepEqual(sends(there.draft, namesOf(there))[1], { whisper: false, intent: 'ask' }, `from ${from}: Ask where it was written is sent as Ask`);
   }
   // Whisper chosen before a word is written, to the author the reply is offered to: it goes on to that author.
   for (const offeredThere of [true, false]) {
@@ -361,9 +220,7 @@ test('conversation answerer labels use current names and still toggle the canoni
   host.children[1].onclick(); assert.deepEqual(toggled, [['warp', true]]);
 });
 
-test("the conversation's heading names who answers, and its address is ?conversation=OUTCOME", () => {
-  assert.equal(subtitle('fable'), 'Ask where things stand, or raise a friction or a request. fable answers here; others answer only when you name them.');
-  assert.equal(subtitle(null), `Ask where things stand, or raise a friction or a request. ${NOBODY_ANSWERS}`);
+test("legacy conversation addresses stay valid and unambiguous", () => {
   // A refused address is its words, so a missing route fails as an assertion.
   const parsed = search => { try { return parseRoute(new URL(`https://aim.test/${search}`)); } catch (error) { return error.message; } };
   assert.deepEqual(parsed('?conversation=w1'), { kind: 'conversation', id: 'w1' });
@@ -371,22 +228,4 @@ test("the conversation's heading names who answers, and its address is ?conversa
   assert.deepEqual(parseRoute(new URL('https://aim.test/?topic=t-1')), { kind: 'topic', id: 't-1' });
   assert.throws(() => routeKey({ kind: 'conversation', id: 'w1', extra: 'x' }));
   assert.throws(() => parseRoute(new URL('https://aim.test/?conversation=w1&topic=t-1')));
-});
-
-// Item 148: the Conversation row's Waiting on you takes the reader to the
-// question: the oldest ask waiting on them in the Conversation, at its
-// message, then each next one, round to the oldest again. A wait on someone
-// else is not theirs, and with none on them the row opens the Conversation.
-test('the Conversation row waiting on the reader opens its oldest question first, then each next one', () => {
-  const doc = miniDocument(), host = doc.createElement('div'), opened = [];
-  const wait = (id, on, ms) => ({ ask_message_id: id, on, by: 'fable', since_ms: ms, item_id: null, excerpt: id });
-  const view = { topic_id: 't-conv', unread: 0, addressed: 0, new_items: 0, work: null,
-    waits: [wait('m-new', 'tony', AT + 60000), wait('m-other', 'cynthia', AT - 60000), wait('m-old', 'tony', AT)] };
-  paintConversationRow(host, { view, title: 'Launch', reader: 'tony', href: '?conversation=w1', open: target => opened.push(target ?? 'conversation'), doc });
-  for (let n = 0; n < 3; n++) host.children[0].onclick({ button: 0, preventDefault() {} });
-  assert.deepEqual(opened, [{ kind: 'topic', id: 't-conv', message: 'm-old' }, { kind: 'topic', id: 't-conv', message: 'm-new' }, { kind: 'topic', id: 't-conv', message: 'm-old' }]);
-  opened.length = 0;
-  paintConversationRow(host, { view: { ...view, waits: [wait('m-other', 'cynthia', AT)] }, title: 'Launch', reader: 'tony', href: '?conversation=w1', open: target => opened.push(target ?? 'conversation'), doc });
-  host.children[0].onclick({ button: 0, preventDefault() {} });
-  assert.deepEqual(opened, ['conversation'], 'nothing waits on the reader, so the row opens the Conversation');
 });

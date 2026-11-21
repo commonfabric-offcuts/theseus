@@ -2,6 +2,8 @@ from __future__ import annotations
 
 """Explicit local Store calls; transport success never acknowledges delivery."""
 
+from .hosted_cli import BrokerFailure
+
 import argparse
 import hashlib
 import io
@@ -179,29 +181,30 @@ def _output(stdout, stderr, result, code):
 LEGACY_VERBS = ("binding", "view", "command")
 # What a held message shows in place of its words (docs/message-edit.md): its author has it open in Edit.
 HELD_WORDS = "(held: its author is editing it)"
-USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DIR] "
+USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute/core.sock) [--json] [--outbox DIR] "
          "{binding | view FILE|- | command FILE|- | outcomes [--reached | --ended] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR | coordinator OUTCOME ACTOR|--none | participant TOPIC ACTOR "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
-         "| inbox | reply MESSAGE [--asks A,B [--go-ahead] | --tells A,B] [--part] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
-         "| post TOPIC [--asks A,B [--go-ahead] | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
-         "| thumb MESSAGE [--off] | mint MESSAGE [--expected N] WORDS|- | edit MESSAGE --expected N TEXT|- "
-         "| cover MESSAGE [--expected N] [--stands TEXT] [--waits TEXT --default TEXT]... [--no-waits] "
+         "| inbox | reply MESSAGE [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--part] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
+         "| post TOPIC [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--reply-to MESSAGE] [--divergence-reason TEXT] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
+         "| thumb MESSAGE [--off] | withdraw MESSAGE [--operation ID] | mint MESSAGE [--expected N] WORDS|- | edit MESSAGE --expected N TEXT|- "
+         "| cover MESSAGE [--refresh [--operation ID]] [--expected N] [--stands TEXT] [--waits TEXT --default TEXT]... [--no-waits] "
          "[--payload TEXT --from MESSAGE [--link URL] [--kind answer|decision|preview|page|release] [--done-by MESSAGE]] [--no-payload] "
          "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] [--attach FILE]... TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
          "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch [--once] | retry OPERATION | releases [--limit N] | health "
-         "| attachment ATTACHMENT --message MESSAGE --out FILE "
+         "| attachment ATTACHMENT (--message MESSAGE | --page PAGE) --out FILE "
          "| notes SCOPE [--topic] | note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE|- "
          "| note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE|- "
          "| note read ITEM [--revision N] | note link ITEM [--revision N] [--origin URL] "
-         "| pipeline OUTCOME [--section S] | item OUTCOME N | pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off] "
+         "| pipeline OUTCOME [--section S] | item OUTCOME N | item-edit OUTCOME N [--title T] [--size S] [--group G] [--words FILE|-] "
+         "| pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off] "
          "| stages OUTCOME [--set FILE] | add OUTCOME --title T [--size S] [--section S] [--group G] [--from m-…] [--note TEXT] TEXT|- "
          "| add-source OUTCOME N (--from m-… | --page ID | --note TEXT) | move OUTCOME N (--above M | --below M | --to SECTION [--note TEXT] | --undo EVENT) "
          "| piece OUTCOME N,M --topic TOPIC --stage S | enter-stage PIECE STAGE [--round N] [--left approved|sent-back|passed|held] "
-         "| stage-note PIECE TEXT | combine OUTCOME --release N --pieces P,Q --topic TOPIC [--ask MSG] | finish PIECE "
-         "| checks OUTCOME [--readings] [--live COMMIT] | target OUTCOME [--origin NOTE] [--ask m-… | --ask-in TOPIC] TEXT|- | target-settle OUTCOME REVISION accepted|declined "
+         "| move-piece PIECE --topic TOPIC --expected N | stage-note PIECE TEXT | combine OUTCOME --release N --pieces P,Q --topic TOPIC [--ask MSG] | finish PIECE "
+         "| checks OUTCOME [--readings] [--live COMMIT] | target OUTCOME [--origin NOTE] [--ask m-… | --ask-in TOPIC --ask-wait JSON] TEXT|- | target-settle OUTCOME REVISION accepted|declined "
          "| check-define OUTCOME FILE | check-report OUTCOME FILE | accept-worse OUTCOME CHECK RUN TEXT|- "
          "| problem OUTCOME --kind defect|design-miss (--from m-… | --note TEXT) TEXT|- | problem-cover OUTCOME PROBLEM [--item N] [--test T] TEXT|- "
          "| outcome-kind OUTCOME reach|keep | reached OUTCOME [--unmet] TEXT|- | outcome-end OUTCOME archived|completed|open "
@@ -235,9 +238,19 @@ def _media_type(name, data):
     return guessed
 
 
+def self_quote_options(parser):
+    parser.add_argument("--quote")
+    parser.add_argument("--quote-revision", type=int)
+    parser.add_argument("--quote-start", type=int)
+    parser.add_argument("--quote-end", type=int)
+    parser.add_argument("--without-quote")
+
+
 def _parser():
     parser = Parser(prog="aim-next", add_help=False)
-    parser.add_argument("--profile", required=True)
+    transport = parser.add_mutually_exclusive_group(required=True)
+    transport.add_argument("--profile")
+    transport.add_argument("--broker")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--outbox")
     verbs = parser.add_subparsers(dest="verb", parser_class=Parser)
@@ -281,12 +294,17 @@ def _parser():
             post.add_argument("topic")
             post.add_argument("--reply-to")
         # A message to someone asks or tells them; --to, which said neither, is refused by name.
+        self_quote_options(post)
+        post.add_argument("--divergence-reason")
         post.add_argument("--asks")
+        post.add_argument("--ask-wait", help="literal ask_wait JSON; omitted agent asks use the last question line, or first line, with no choices/default")
         post.add_argument("--tells")
         post.add_argument("--to")
         post.add_argument("--part", action="store_true")
         # An Ask that offers its people ✅ (go ahead) and 🚫 (don't) (docs/thumbs.md).
-        post.add_argument("--go-ahead", action="store_true")
+        decision = post.add_mutually_exclusive_group()
+        decision.add_argument("--go-ahead", dest="go_ahead", action="store_const", const=True, default=None)
+        decision.add_argument("--no-go-ahead", dest="go_ahead", action="store_const", const=False)
         # --blocks piece:p-… | release:N: the one piece or release an ask holds until it is answered (item 259).
         post.add_argument("--blocks")
         # --operation ID: a retry sends the same saved request, not another message.
@@ -294,6 +312,9 @@ def _parser():
         post.add_argument("--attach", action="append", default=[])
         post.add_argument("--subject")
         post.add_argument("text")
+    withdraw = verb("withdraw")
+    withdraw.add_argument("message")
+    withdraw.add_argument("--operation")
     thumb = verb("thumb")
     thumb.add_argument("message")
     thumb.add_argument("--off", action="store_true")
@@ -311,6 +332,7 @@ def _parser():
     whisper.add_argument("topic")
     whisper.add_argument("--to", required=True)
     whisper.add_argument("--reply-to")
+    self_quote_options(whisper)
     whisper.add_argument("text")
     start = verb("start")
     start.add_argument("outcome")
@@ -362,7 +384,9 @@ def _parser():
     verb("health")
     attachment = verb("attachment")
     attachment.add_argument("attachment")
-    attachment.add_argument("--message", required=True)
+    attachment_source = attachment.add_mutually_exclusive_group(required=True)
+    attachment_source.add_argument("--message")
+    attachment_source.add_argument("--page")
     attachment.add_argument("--out", required=True)
     # Notebook pages (docs/agent-cli.md, "Notebook pages"). SCOPE is an outcome,
     # or with --topic a topic, whose Notebook holds the pages.
@@ -599,7 +623,8 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         if chosen is None:
             if not SAFE_NAME.fullmatch(self.actor):
                 raise UsageError()
-            directory = Path(self.options.profile).parent / (self.actor + ".outbox")
+            directory = (self.profile.outbox_path if self.options.broker else
+                         Path(self.options.profile).parent / (self.actor + ".outbox"))
         elif not Path(chosen).is_absolute():
             raise UsageError()
         else:
@@ -985,13 +1010,17 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
             heading += " (edited, revision %d)" % item["revision"]
         self.out.plain("")
         self.out.plain(heading)
+        if item.get('removal'):
+            self.out.plain('  (Retracted at %s by %s)' % (time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item['removal']['at_ms'] / 1000.0)), item['removal']['by']))
         if item.get("blocks"):
             self.out.plain("  (holds %s %s until it is answered)" % (item["blocks"]["kind"], item["blocks"]["ref"]))
         reactions = item.get("reactions") or {}
-        if item.get("go_ahead"):
+        if item.get("go_ahead") and not item.get('removal'):
             said = ", ".join("%s %s" % (answer["actor_id"], "✅ go ahead" if answer["answer"] == "yes" else "🚫 don't")
                              for answer in reactions.get("answers", []))
             self.out.plain("  (asks for a go-ahead%s)" % (": " + said if said else "; not answered yet"))
+        if item.get("withdrawal"):
+            self.out.plain("  (Question withdrawn)")
         if reactions.get("thumbs"):
             # A person's 👍 on an ask to them answers it yes (item 239): "(👍 tony (yes))".
             self.out.plain("  (👍 " + ", ".join(thumb["actor_id"] + (" (yes)" if thumb.get("answered") else "")
@@ -1019,15 +1048,23 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         self.item_lines(item, waits)
 
     def do_attachment(self):
-        """Save one attachment's bytes to a new file, read through the message that carries it.
+        """Save one attachment's bytes to a new file, through its message or current page.
 
-        The same read as the web page's (open_media with the message as its
-        source): only someone who can read the message gets the bytes, which
+        The same read as the web page's (open_media with the selected source):
+        only someone who can read that source gets the bytes, which
         Core has checked against the attachment's size and sha256."""
         options = self.options
+        page = options.page is not None
+        source = {"kind": "message", "id": options.message}
+        if page:
+            status = self.store.view(self.actor, "memory_status", {"item_id": options.page})
+            if status.get("error"):
+                self.out.raw(status)
+                self.fail(status["error"])
+            source = status["source_ref"]
         try:
             with self.store.open_media(self.actor, {"media_id": options.attachment,
-                                                    "source_ref": {"kind": "message", "id": options.message}}) as resource:
+                                                    "source_ref": source}) as resource:
                 descriptor = dict(resource.descriptor)
                 data = b"".join(iter(lambda: resource.read(65536), b""))
         except Refusal as refusal:
@@ -1048,7 +1085,8 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         except OSError as error:
             self.refuse("OUT_UNAVAILABLE", "%s could not be written (%s); %s" % (options.out, error.strerror, _remove_partial(options.out, created)))
         attachment = {key: descriptor[key] for key in ("name", "content_type", "size_bytes", "sha256", "inline")}
-        self.out.raw({"attachment": dict(attachment, id=descriptor["media_id"]), "message_id": options.message, "path": options.out})
+        self.out.raw({"attachment": dict(attachment, id=descriptor["media_id"]),
+                      **({"page_id": options.page} if page else {"message_id": options.message}), "path": options.out})
         self.out.plain("saved %s (%s, %s bytes, sha256 %s) to %s" % (descriptor["name"], descriptor["content_type"],
                                                                     descriptor["size_bytes"], descriptor["sha256"], options.out))
 
@@ -1270,6 +1308,21 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
 
     @staticmethod
     def delivery_line(item):
+        if item.get('retraction'):
+            removed = item['retraction']
+            return 'retraction "%s" %s retracted %s; it no longer asks, answers or holds a wait.  [%s in %s]' % (
+                _one_line(item['topic']['title'], 60), removed['by'], removed['message_id'], item['id'], item['topic']['id'])
+        if item.get('answer'):
+            answer = item['answer']
+            return 'answer "%s" %s from %s to question %s: %s%s  [%s in %s]' % (
+                _one_line(item['topic']['title'], 60), answer['kind'], answer['actor_id'], answer['message_id'],
+                answer['value'], '' if answer['stands'] else ' (no longer stands)', item['id'], item['topic']['id'])
+        if item.get("request"):
+            request = item["request"]
+            return 'request "%s" %s from %s, source %s, dossier %s, observed revision %s: %s  [%s in %s]' % (
+                _one_line(item["topic"]["title"], 60), request["kind"], request["requester_id"],
+                request["message_id"], request["root_id"], request["observed_revision"],
+                _one_line(request["body"], len(request["body"])), item["id"], request["topic_id"])
         message = item["message"]
         if item.get("correction"):
             # Its author edited a message this agent was sent: read it again, act on its latest words, then ack this line's id.
@@ -1313,11 +1366,37 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         self.options.reply_to = self.options.message
         self.do_post()
 
+    def reply_choice(self, args):
+        options = self.options
+        offsets = (options.quote_revision, options.quote_start, options.quote_end)
+        if options.quote is not None:
+            if not options.reply_to or not options.quote or options.without_quote is not None or any(value is not None for value in offsets):
+                self.refuse("INVALID_REPLY_PASSAGE", "Choose nonempty --quote text with a reply target, without offsets or --without-quote")
+            source = self.view("source", {"source_ref": {"kind": "message", "id": options.reply_to}})
+            if source["withheld"]:
+                self.refuse("MESSAGE_HELD", "Its author is editing this message; read it again before replying")
+            start = source["body"].find(options.quote)
+            if start < 0:
+                self.refuse("INVALID_REPLY_PASSAGE", "That text isn't in the message you're replying to")
+            args["reply_passage"] = {"source": dict(source["source_ref"], revision=source["revision"]),
+                                     "start": start, "end": start + len(options.quote)}
+        if any(value is not None for value in offsets):
+            if not options.reply_to or any(value is None for value in offsets):
+                self.refuse("INVALID_REPLY_PASSAGE", "A quoted reply needs its target, revision, start and end")
+            args["reply_passage"] = {"source": {"kind": "message", "id": options.reply_to,
+                "revision": options.quote_revision}, "start": options.quote_start, "end": options.quote_end}
+        if options.without_quote is not None:
+            args["reply_without_quote"] = options.without_quote
+
     def do_post(self):
         options = self.options
         if options.to is not None or (options.asks is not None and options.tells is not None):
             self.refuse("INTENT_REQUIRED", "A message to someone says whether it asks or tells: use --asks A,B or --tells A,B "
                         "(not --to, and not both); nothing was sent")
+        if options.asks is not None and options.go_ahead is None:
+            self.refuse("GO_AHEAD_REQUIRED", "An Ask explicitly chooses --go-ahead or --no-go-ahead; nothing was sent")
+        if options.asks is None and options.go_ahead is not None:
+            self.refuse("INVALID_ARGUMENT", "--go-ahead and --no-go-ahead belong to --asks; nothing was sent")
         named = options.asks if options.asks is not None else options.tells
         addressees = _names(named or "")
         if named is not None and not addressees:
@@ -1325,16 +1404,36 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
             self.refuse("INVALID_ARGUMENT", "%s names who it is to (%s A,B), and these name nobody; nothing was sent" % (flag, flag))
         operation = self.operation_of()
         args = {"body": self.text(), "addressees": addressees}
+        if options.ask_wait is not None:
+            try:
+                args["ask_wait"] = json.loads(options.ask_wait)
+            except (ValueError, TypeError):
+                self.refuse("INVALID_ARGUMENT", "--ask-wait needs a JSON object; nothing was sent")
+        self.reply_choice(args)
+        if options.attach and options.reply_to and self.view("capabilities", {})["actor_kind"] == "agent":
+            # Refuse invalid passage requests before publishing attachment bytes.
+            from . import reply_passages
+            source = self.view("source", {"kind": "message", "id": options.reply_to})
+            if source.get("whisper"):
+                self.refuse("WHISPER_STAYS_PRIVATE", "Answer a whisper with whisper; nothing was uploaded or sent")
+            if source["topic_id"] != options.topic:
+                self.refuse("INVALID_REPLY", "Reply context must belong to the destination topic")
+            try:
+                reply_passages.select(source, dict(args, reply_to=options.reply_to))
+            except Refusal as error:
+                self.refuse(error.code, error.message)
         if options.attach:
             args["attachments"] = self.attach()
         if addressees:
             args["intent"] = "ask" if options.asks is not None else "tell"
+        if getattr(options, "divergence_reason", None) is not None:
+            args["divergence_reason"] = options.divergence_reason
         if options.reply_to:
             args["reply_to"] = options.reply_to
         if options.part:
             args["part"] = True
-        if options.go_ahead:
-            args["go_ahead"] = True
+        if options.go_ahead is not None:
+            args["go_ahead"] = options.go_ahead
         if options.subject:
             # --subject item:92,item:31: what the post is about, written with it.
             args["subjects"] = [dict(zip(("kind", "ref"), part.strip().split(":", 1))) for part in options.subject.split(",") if part.strip()]
@@ -1342,12 +1441,61 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
             # --blocks release:44, or piece:p-…: Core checks it names this outcome's piece or release, and that the post asks.
             kind, _, ref = options.blocks.partition(":")
             args["blocks"] = {"kind": kind.strip(), "ref": ref.strip()}
+        if options.asks is not None and options.ask_wait is None:
+            self.default_ask_wait(args, operation)
         result = self.command("message.post", {"topic_id": options.topic}, args, operation=operation)
         held = result.get("blocks")
         self.out.plain("posted %s in %s (%s deliveries queued)%s" % (result["message_id"], result["topic"]["id"], result["delivery"]["queued"],
                                                                      "; it holds %s %s until it is answered" % (held["kind"], held["ref"]) if held else ""))
         if options.reply_to:
             self.namer_hint(result["message_id"])
+
+    def default_ask_wait(self, args, operation):
+        """Keep ordinary CLI asks usable without inventing choices or promises.
+
+        The outbox pins derived cover metadata just as it pins the writing.
+        Repeating --operation must not regenerate a now-stale cover fence.
+        """
+        if operation is not None:
+            path = self.outbox() / (operation + ".request.json")
+            if path.exists():
+                saved = _input(str(path), None)
+                envelope = _request(saved, "command")
+                if saved["binding"] != self.binding or envelope["operation_id"] != operation:
+                    self.refuse("BINDING_MISMATCH", "This saved request belongs to another binding or operation")
+                previous = envelope["args"]
+                if (envelope["kind"] != "message.post" or envelope["target"] != {"topic_id": self.options.topic}
+                        or {key: value for key, value in previous.items() if key != "ask_wait"} != args):
+                    self.refuse("OPERATION_PAYLOAD_MISMATCH", "Operation %s already names a different request; nothing was sent" % operation)
+                if "ask_wait" in previous:
+                    args["ask_wait"] = previous["ask_wait"]
+                return
+        if self.view("capabilities", {})["actor_kind"] != "agent":
+            return
+        named = set(args["addressees"]) - {self.actor}
+        people = [person["id"] for person in self.pages("actors", {"kind": "human"}) if person["id"] in named]
+        if not people:
+            return
+        root, revision = None, 0
+        if args.get("reply_to"):
+            cover = self.view("dossier_cover", {"message_id": args["reply_to"]})
+            root, revision = cover["root_id"], cover["cover_revision"]
+        first, question = None, None
+        for line in args["body"].splitlines():
+            # Agent replies often lead with @names and a quote of the person.
+            # Use the agent's own words, not that addressing or quoted writing.
+            line = re.sub(r"^(?:@[\w.-]+[,:]?(?:\s+|$))+", "", line.strip()).strip()
+            if line and not line.startswith(">"):
+                if first is None:
+                    first = line
+                if line.endswith("?"):
+                    question = line
+        text = question or first or "Please respond to this message."
+        text = text if len(text) <= 300 else text[:299] + "…"
+        args["ask_wait"] = {"root_id": root, "cover_revision": revision, "questions": [
+            {"actor_id": person, "text": text, "options": [], "default": None,
+             "reason": "No choices or default were supplied; waiting for your response."}
+            for person in people]}
 
     def namer_hint(self, message_id):
         """After a reply: when this agent now names its dossier, which nobody has named (item 479), the mint to run.
@@ -1390,6 +1538,7 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         args = {"body": self.text(), "addressees": _names(options.to), "whisper": True}
         if options.reply_to:
             args["reply_to"] = options.reply_to
+        self.reply_choice(args)
         result = self.command("message.post", {"topic_id": options.topic}, args)
         self.out.plain("whispered %s to %s in %s" % (result["message_id"], ", ".join(args["addressees"]), result["topic"]["id"]))
 
@@ -1473,6 +1622,10 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         self.out.plain('started %s "%s" in %s with %s' % (opening["topic_id"], _one_line(opening.get("title", ""), 60),
                                                           opening["workspace_id"], result["message_id"] or "no message yet"))
 
+    def do_withdraw(self):
+        result = self.command("message.withdraw", {"message_id": self.options.message}, {}, operation=self.operation_of())
+        self.out.plain("Question withdrawn: %s%s" % (result["message_id"], "" if result["changed"] else " (already so)"))
+
     def do_thumb(self):
         """A thumbs-up: read and understood, said without a message (docs/thumbs.md)."""
         message = self.options.message
@@ -1515,6 +1668,8 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         return result
 
     def do_watch(self):
+        if self.options.broker:
+            self.refuse('WATCH_UNAVAILABLE', 'Hosted deliveries drive this route; use inbox for a bounded pending read')
         try:
             # The authority anchor is watched as well: a recovery activation
             # replaces it and never writes this database again.
@@ -1686,7 +1841,7 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
                     "acknowledged %s" % identity if kind == "delivery" and version == 2 else "change %s %s v%s" % (kind, identity, version))
 
 
-PATH_OPTIONS = {"profile", "outbox", "outbox_after", "out", "file", "attach"}
+PATH_OPTIONS = {"profile", "broker", "outbox", "outbox_after", "out", "file", "attach"}
 
 
 def _utf8_arguments(options):
@@ -1698,6 +1853,13 @@ def _utf8_arguments(options):
                     item.encode("utf-8")
                 except UnicodeError as error:
                     raise InvalidRequest() from error
+
+
+def _selected_profile(options):
+    if options.broker:
+        from .hosted_cli import RemoteProfile
+        return RemoteProfile.connect(options.broker)
+    return load_profile(options.profile)
 
 
 def _agent_verb(options, stdin, stdout, stderr):
@@ -1718,9 +1880,18 @@ def _agent_verb(options, stdin, stdout, stderr):
     try:
         try:
             _utf8_arguments(options)
-            agent = Agent(load_profile(options.profile), options, stdin, lines)
+            agent = Agent(_selected_profile(options), options, stdin, lines)
             getattr(agent, "do_" + options.verb.replace("-", "_"))()
             return agent.exit
+        except BrokerFailure as error:
+            if error.exit_code != 1:
+                lines.raw(_attempt(error.code, error.message, error.retryable))
+            lines.problem('%s: %s' % (error.code, error.message))
+            if error.exit_code == 1 and agent is not None and agent.operation:
+                unconfirmed(error.code)
+            return error.exit_code
+        except Refusal as error:
+            return attempt(error.code, error.message)
         except InvalidRequest:
             return attempt("INVALID_REQUEST", "Use bounded UTF-8 text, or a saved request with an exact binding.")
         except (ProfileError, AuthorityError, StoreOpenError) as error:
@@ -1748,13 +1919,14 @@ def main(argv=None, *, stdin=None, stdout=None, stderr=None):
     parser = _parser()
     try:
         options = parser.parse_args(argv)
-        if not Path(options.profile).is_absolute():
+        selected = options.broker if options.broker is not None else options.profile
+        if not selected or not Path(selected).is_absolute():
             raise UsageError()
         if options.verb not in LEGACY_VERBS:
             return _agent_verb(options, stdin, stdout, stderr)
         if options.json or options.outbox is not None or (options.verb == "binding") != (options.request is None):
             raise UsageError()
-        profile = load_profile(options.profile)
+        profile = _selected_profile(options)
         if options.verb == "binding":
             result, code = {"v": 1, "binding": _binding(profile)}, 0
         else:
@@ -1775,6 +1947,11 @@ def main(argv=None, *, stdin=None, stdout=None, stderr=None):
         return 2
     except InvalidRequest:
         return _output(stdout, stderr, _attempt("INVALID_REQUEST", "Use one bounded finite UTF-8 JSON request with an exact binding."), 2)
+    except BrokerFailure as error:
+        if error.exit_code == 1:
+            _diagnostic(stderr, '%s: %s; retain the original operation for reconciliation.' % (error.code,error.message))
+            return 1
+        return _output(stdout, stderr, _attempt(error.code, error.message, error.retryable), error.exit_code)
     except (ProfileError, AuthorityError, StoreOpenError) as error:
         code = error.code or "PROFILE_UNAVAILABLE"
         message = str(error) if code == "SCHEMA_MISMATCH" else "The explicit profile or authority is unavailable; preserve the original binding."

@@ -48,20 +48,20 @@ class SourceItem757:
             'source_ref': {'kind': 'new_topic', 'id': topic + '-opening', 'workspace_id': f['workspace']},
             'topic_id': topic, 'generation': topic + '-generation', 'body': 'Synthetic fixture opening',
             'opening': {'workspace_id': f['workspace'], 'title': 'Source rows ' + name,
-                        'participants': [self.writer]}}, {'draft_id': draft}, {'draft_revision': 0})
+                        'participants': [self.writer, self.viewer]}}, {'draft_id': draft}, {'draft_revision': 0}, sender=self.writer)
         self.act(f, 'submission.prepare', {'draft_id': draft, 'submission_id': draft,
                                          'send_operation_id': topic + '-send'},
-                 {'topic_id': topic}, {'draft_revision': 1})
+                 {'topic_id': topic}, {'draft_revision': 1}, sender=self.writer)
         # The stable send identity belongs to the prepared submission.
         receipt = self.command('topic.create_and_send', topic + '-send', {'submission_id': draft},
-                               {'topic_id': topic}, {}, self.viewer)
+                               {'topic_id': topic}, {}, self.writer)
         assert receipt['status'] == 'committed', receipt
         return topic
 
     def post(self, f, body, reply=None):
         return self.act(f, 'message.post', dict(body=body, addressees=[self.viewer], intent='tell',
-                                              **({'reply_to': reply} if reply else {})),
-                        {'topic_id': f['topic']}, sender=self.writer)['message_id']
+                                              **({'reply_to': reply, 'reply_without_quote': 'Synthetic cabin reply for source-cover checks'} if reply else {})),
+                        {'topic_id': f['topic']}, sender=self.writer if reply else self.viewer)['message_id']
 
     def file(self, f, title, sources, workspace=None, sender=None):
         return self.act(f, 'pipeline.item_add', {'title': title, 'section': 'now', 'size': 'small',

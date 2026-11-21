@@ -98,8 +98,7 @@ class AtNamesCase(test_conversation.ConversationCase):
         self.assertEqual(self.recorded(self.topic_message("To everyone")), ("To everyone", [], None))
 
     def test_an_agents_post_keeps_the_addressees_it_names(self):
-        posted = self.committed(self.command("message.post", {"body": "@agent-b over to you", "addressees": ["owner"], "intent": "ask"},
-                                             target={"topic_id": "t1"}, actor="agent-a"))["message_id"]
+        posted = self.posted("@agent-b over to you", addressees=["owner"], intent="ask", topic="t1", actor="agent-a")
         self.assertEqual(self.recorded(posted)[1:], (["owner"], "ask"))
 
     def sql_write(self, statement):

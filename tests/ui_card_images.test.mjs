@@ -47,9 +47,9 @@ test('a card\'s images and reply stacks are told apart, and both go with the car
   // A move keeps both cards' words byte for byte, their images among them.
   const moved = after(page, { kind: 'move', text: cardText(b), step: -1, near: 1 });
   assert.deepEqual(parseDeck(moved).cards.map(card => cardImages(card.words).images.map(image => image.id)), [['m-2'], ['m-1']]);
-  // A merge keeps every image of both cards in the upper card.
+  // A merge keeps every image of both cards in the destination card.
   const merged = after(page, { kind: 'merge', text: cardText(a), step: 1, near: 0 });
-  assert.deepEqual(cardImages(parseDeck(merged).cards[0].words).images.map(image => image.id), ['m-1', 'm-2']);
+  assert.deepEqual(cardImages(parseDeck(merged).cards[0].words).images.map(image => image.id), ['m-2', 'm-1']);
   // A remove takes its images with it, and its undo puts them back.
   const removed = applyAct(deck, { kind: 'remove', text: cardText(b), near: 1 });
   assert.equal(deckBody(removed.deck).includes('m-2'), false);

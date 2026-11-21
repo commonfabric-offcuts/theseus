@@ -16,8 +16,9 @@ import test_assessments
 
 class Native:
     """Persistent native history shared by successive drivers; no model or live account."""
-    def __init__(self, source):
+    def __init__(self, source, passage):
         self.threads, self.calls, self.fail, self.active, self.source = {}, [], None, False, source
+        self.passage = passage
 
     def call(self, method, params):
         self.calls.append((method,params))
@@ -39,7 +40,8 @@ class Native:
             result = {'data':[{'turnId':params['turnId'],'item':{'type':'agentMessage','phase':'final_answer',
                 'text':json.dumps({'body':'Continue: the named artifact is present; the queue is external.',
                     'recommendation':'continue','evidence_message_ids':[self.source],
-                    'next_checkpoint':'Verify the deployed artifact'})}}], 'nextCursor':None}
+                    'next_checkpoint':'Verify the deployed artifact',
+                    'reply_passage':self.passage})}}], 'nextCursor':None}
         else:
             raise AssertionError(method)
         if self.fail == method:
@@ -67,7 +69,14 @@ class DispatchCase(unittest.TestCase):
             cwd=str(self.path.parent),model=None,reasoning_effort=None,codex_executable='/explicit/codex',
             destination={'codex_home':'/explicit/home'})
         self.identity = self.ok(self.request())['assessment_id']
-        self.native = Native(self.source)
+        source = self.core.view('source', {'kind':'message', 'id':self.source})
+        # This synthetic assessor answers the assignment's requested artifact.
+        # Select that fragment explicitly; neither the dispatcher nor fake wire
+        # invents a reason or chooses the whole parent for a missing caller.
+        self.assertEqual(source['body'][10:28], 'requested artifact')
+        self.passage = {'source':dict(source['source_ref'], revision=source['revision']),
+                        'start':10, 'end':28}
+        self.native = Native(self.source, self.passage)
 
     def run_assessment(self):
         return drive(self.core,self.config,self.identity,self.native)
@@ -79,6 +88,10 @@ class DispatchCase(unittest.TestCase):
         result = self.run_assessment()
         self.assertEqual(result['status'],'reported')
         self.assertIn('queue is external',result['body'])
+        source = self.core.view('source', {'kind':'message', 'id':result['message_id']})
+        self.assertEqual(source['quotes'], [dict(self.passage, excerpt='requested artifact')])
+        self.assertEqual(source['reply_basis'], dict(self.passage, excerpt='requested artifact', author_id='owner'))
+        self.assertTrue(result['body'].startswith('> requested artifact\n\n'))
         calls = list(self.native.calls)
         self.assertEqual(self.run_assessment(),result)
         self.assertEqual(self.native.calls,calls)
@@ -174,7 +187,8 @@ class DispatchCase(unittest.TestCase):
         self.config.destination = {'codex_home':str(home)}
         self.config.codex_executable = str(root / 'tests/fixtures/fake_assessment_server.py')
         report = dict(body='Continue after checking the actual artifact. Résumé 👍',recommendation='continue',
-                      evidence_message_ids=[self.source],next_checkpoint='Deploy and verify')
+                      evidence_message_ids=[self.source],next_checkpoint='Deploy and verify',
+                      reply_passage=self.passage)
         (home/'fake-script.json').write_text(json.dumps({'signed_in':True,'report':report,
                                                         'assessment_die_after_finish':True}))
         with request_lock(self.profile,self.identity) as fd:
@@ -192,7 +206,7 @@ class DispatchCase(unittest.TestCase):
             finally:
                 self.assertEqual(rpc.close(),0)
 
-        self.assertEqual(result['body'],report['body'])
+        self.assertEqual(result['body'],'> requested artifact\n\n'+report['body'])
         self.assertEqual(result['thread_id'],thread)
         state = json.loads((home/'fake-state.json').read_text())
         self.assertEqual(len(state['threads']),1)
@@ -265,20 +279,21 @@ class DispatchCase(unittest.TestCase):
         self.config.destination = {'codex_home':str(home)}
         self.config.codex_executable = str(root/'tests/fixtures/fake_assessment_server.py')
         report = dict(body='Continue: original source inspected.',recommendation='continue',
-                      evidence_message_ids=[self.source],next_checkpoint='Verify deployment')
+                      evidence_message_ids=[self.source],next_checkpoint='Verify deployment',
+                      reply_passage=self.passage)
         (home/'fake-script.json').write_text(json.dumps({'signed_in':True,'report':report,
             'assessment_read_source':self.source,'assessment_source_body':'Build the requested artifact'}))
         with request_lock(self.profile,self.identity) as fd:
             rpc = Session(self.config,fd)
             try: result = drive(self.core,self.config,self.identity,rpc)
             finally: self.assertEqual(rpc.close(),0)
-        self.assertEqual(result['body'],report['body'])
+        self.assertEqual(result['body'],'> requested artifact\n\n'+report['body'])
 
     def test_completed_invalid_reports_end_once_instead_of_pinning_the_assignment(self):
         for evidence in [None,[self.source,'deadbeef'],[self.source,self.source],['docs/team-assessments.md']]:
             with self.subTest(evidence=evidence):
                 self.identity=self.ok(self.request(op='bad-'+str(self.serial),assignment='Bad report '+str(self.serial)))['assessment_id']
-                self.native=Native(self.source)
+                self.native=Native(self.source, self.passage)
                 original=self.native.call
                 def bad_report(method,params):
                     result=original(method,params)
@@ -303,7 +318,7 @@ class DispatchCase(unittest.TestCase):
         for key,value in [('approvalPolicy','on-request'),('sandbox',{'type':'workspaceWrite'}),('cwd','/wrong')]:
             with self.subTest(key=key):
                 self.identity=self.ok(self.request(op='settings-'+key,assignment='Settings '+key))['assessment_id']
-                self.native=Native(self.source); original=self.native.call
+                self.native=Native(self.source, self.passage); original=self.native.call
                 def changed(method,params):
                     result=original(method,params)
                     if method=='thread/start': result[key]=value

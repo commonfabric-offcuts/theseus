@@ -1,0 +1,12 @@
+[
+  {
+    "name": "final-core",
+    "exit": 0,
+    "sha256": "1e411a12b04d263db71b8c8f5c1854edebd9cecb12694adf28dc1efacdda2add"
+  },
+  {
+    "name": "final-node",
+    "exit": 0,
+    "sha256": "e92436c817d8f6acaedf6c374f7ddc14e019baf71bec93f9e20aafdcb02563f1"
+  }
+]

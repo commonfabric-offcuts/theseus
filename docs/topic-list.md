@@ -55,9 +55,9 @@ said, and for a reader outside a person's whisper that reopened the topic
   archived. With `done: true`, the done ones that are not archived. With
   `archived: true`, every archived topic, done or not: the ones not done
   first, then the done ones.
-- An outcome's Build topics (item 297) are the topics a piece of its pipeline
-  is built in, a release's among them, while its pipeline is on; while it is
-  off, or there is none, it has none. `build`, an optional boolean, splits the
+- An outcome's Build topics (items 297, 837) are the agent-created topics a
+  piece of its pipeline is built in, a release's among them, while its pipeline
+  is on; while it is off, or there is none, it has none. `build`, an optional boolean, splits the
   open list: `build: true` lists only the Build topics neither done nor
   archived, and `build: false` the open topics without them, each in the same
   order with the same cursors. It is refused with `done` or `archived`
@@ -67,6 +67,14 @@ said, and for a reader outside a person's whisper that reopened the topic
   false` and the right rail with `build: true` (docs/rails.md); the CLI asks
   without it. Finding the Build topics reads the outcome's pieces, which the
   page's cost then follows as well as its own size.
+- Human-created topics stay ordinary topics even when a piece or release
+  names them. The topic's durable creator decides this, not the person who
+  links the work or reads the sidebar. Linking work does not remove a human's
+  topic from the ordinary sidebar; Archive and Done still remove it from the
+  open list. Existing linked human topics return by this same view rule,
+  without rewriting topics, messages, pieces, or their history (item 837).
+  A human-created Conversation also loses any derived Build flag; it keeps
+  its separate Conversation row, outside the ordinary topic lists.
 - Asked with `build: true`, the answer also carries `builds: {unread,
   addressed}`: what all the outcome's open Build topics hold for the reader,
   not only the page's, so the right rail's Pipeline heading counts them; and
@@ -98,6 +106,22 @@ said, and for a reader outside a person's whisper that reopened the topic
   how many topics the outcome has done or archived, and every page carries it.
 
 ## In the web app
+
+Each returned topic also carries `latest_message`: null without a public
+message, otherwise `{id, revision, author_id, author_kind, sent_ms, opening,
+truncated, withheld, removed}` (960). This is the public summary's latest
+message at its current revision; a newer whisper never replaces it. `opening`
+is at most 180 Unicode code points, without quote lines, reply prefaces,
+image Markdown or prose formatting. `truncated` says more prose remains.
+An image-only message keeps its identity and an empty opening. A retraction
+keeps identity/time with `removed: true` and no opening; an unsend falls back
+to the surviving public message. An agent's held preview has no words and
+`withheld: true`. Reading actual words uses the existing first-exposure and
+revision-exposure boundary, including the two-phase recheck before recording.
+The extra query batches only the returned topics' summary IDs and streams
+their current bodies, never topic history or one query per card. This changes
+no grouping, position, paging, unread or topic state. See
+[the page contract](outcome-page-960.md) for the subsequent client composition.
 
 The topic list in the sidebar, and on the outcome page, shows the topics that
 are neither done nor archived, in the server's order, with More for the next

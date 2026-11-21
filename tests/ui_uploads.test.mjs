@@ -68,6 +68,12 @@ export function memoryBackend(writerId = 'fixture-writer', rows = new Map()) {
   const puts = [], backend = {
     put: async (row, guard = () => true) => { assert.ok(guard()); puts.push({ kind: row.kind, bytes: countBlobs(row) }); rows.set(row.id, copy(row)); },
     get: async id => copy(rows.get(id)),
+    keepCandidate: async (key, candidate, choice, guard) => {
+      const row = rows.get(candidate.id);
+      if (backend.failChoice || !guard() || row?.stamp !== candidate.stamp || row.editorKey !== key) throw Error('Choice not saved');
+      const stamp = crypto.randomUUID(), next = { ...copy(row), stamp, reviewChoice: { ...copy(choice), stamp } };
+      rows.set(row.id, copy(next)); return next;
+    },
     forEditor: async key => ({ items: [...rows.values()].filter(r => r.editorKey === key && r.active === 1 && r.writerId !== writerId).map(r => ({ ...copy(r), availability: 'available' })), nextCursor: null }),
     currentCandidates: async (key, ids) => ids.map(id => rows.get(id)).filter(r => r?.editorKey === key && r.active === 1 && r.writerId !== writerId).map(r => ({ ...copy(r), availability: 'available' })),
     history: async () => ({ items: [], nextCursor: null }),
@@ -112,6 +118,7 @@ test('capture owns one byte row; typing and caret persistence carry no Blob byte
   assert.ok(f.puts.filter(p => p.bytes).every(p => p.kind === 'upload-bytes-v1'));
   assert.equal([...f.rows.values()].filter(r => r.kind === 'upload-bytes-v1').length, 1);
 });
+
 test('every-put instrument rejects bytes hidden in metadata, independent of sibling count', () => {
   const row = { snapshot: { nested: { memory: new Blob(['wrong place']) } } };
   assert.equal(countBlobs(row), 11);
@@ -515,16 +522,16 @@ test('X2 corrected and superseded refused preparations do not block current writ
 });
 test('X2 Keep current writing preserves refused history and is scoped to stamp cycle and selected images', async t => {
   const f = await fixture(t); f.editor.recoveryServerDraft = copy(f.editor.draft); f.editor.edit({ body: 'Current B only' });
-  const row = refusedCopy(f.editor, f.editor.recoveryServerDraft); f.rows.set(row.id, copy(row));
+  let row = refusedCopy(f.editor, f.editor.recoveryServerDraft); f.rows.set(row.id, copy(row));
   f.editor.imageCopies = new Map([[row.id, row]]); f.registry.updateImageBarrier(f.editor);
   assert.equal(f.u.pending(), true);
-  await f.registry.keepCurrentWriting(f.editor, row);
-  assert.equal(f.u.pending(), false); assert.deepEqual(f.rows.get(row.id), row); assert.equal(f.editor.draft.body, 'Current B only');
+  const original = copy(row.snapshot); row = await f.registry.keepCurrentWriting(f.editor, row);
+  assert.equal(f.u.pending(), false); assert.deepEqual(f.rows.get(row.id).snapshot, original); assert.equal(f.editor.draft.body, 'Current B only');
   row.stamp = 'refused-v2'; f.rows.set(row.id, copy(row)); f.registry.updateImageBarrier(f.editor);
   assert.equal(f.u.pending(), true); await assert.rejects(f.registry.keepCurrentWriting(f.editor, { ...row, stamp: 'refused-v1' }), /changed|review/i);
-  await f.registry.keepCurrentWriting(f.editor, row); f.editor.clientCycleId = 'next-cycle'; f.registry.updateImageBarrier(f.editor);
+  row = await f.registry.keepCurrentWriting(f.editor, row); f.editor.clientCycleId = 'next-cycle'; f.registry.updateImageBarrier(f.editor);
   assert.equal(f.u.pending(), true);
-  row.snapshot.uploadState.entries.push(entry(f.editor));
+  row.snapshot.uploadState.entries.push(entry(f.editor)); f.rows.set(row.id, copy(row));
   await f.registry.keepCurrentWriting(f.editor, row); assert.equal(f.u.pending(), true, 'refusal choice cannot waive selected image work');
 });
 test('X2 B saved in a later revision does not restore a false refused-A conflict', () => {
@@ -596,4 +603,26 @@ test('X2 a failed current-slot read keeps newly discovered refused history block
   f.api.view = async () => { throw Error('Current slot unavailable'); };
   await assert.rejects(f.registry.recoveryCandidates(f.editor), /unavailable/);
   assert.equal(f.u.pending(), true, 'a stale cached slot cannot clear a newly discovered refusal');
+});
+
+test('931 a kept refusal survives a new writer only for the same canonical writing and authority', async t => {
+  const f = await fixture(t); f.editor.recoveryServerDraft = copy(f.editor.draft); f.editor.edit({ body: 'Chosen B' });
+  const row = refusedCopy(f.editor, { ...f.editor.recoveryServerDraft, body: 'Frozen A' }); f.rows.set(row.id, copy(row));
+  f.editor.imageCopies = new Map([[row.id, row]]); f.registry.updateImageBarrier(f.editor);
+  const kept = await f.registry.keepCurrentWriting(f.editor, row);
+  const { keptCopy } = await import('../web/writing-comparison.mjs');
+  const restored = new Editor(f.editor.context, copy(f.editor.draft));
+  restored.reviewWriterId = 'new-document'; restored.reviewAuthority = copy(f.session.authority);
+  assert.equal(keptCopy(restored, kept), true);
+  restored.draft.body += ' changed elsewhere'; assert.equal(keptCopy(restored, kept), false);
+  restored.draft.body = 'Chosen B'; restored.reviewAuthority.authority_epoch = 'other-runtime'; assert.equal(keptCopy(restored, kept), false);
+  assert.deepEqual(f.rows.get(row.id).snapshot, row.snapshot, 'choice changes no frozen writing or send history');
+});
+test('931 a failed choice write leaves the refusal blocking and the source intact', async t => {
+  const f = await fixture(t); f.editor.recoveryServerDraft = copy(f.editor.draft);
+  const row = refusedCopy(f.editor); f.rows.set(row.id, copy(row)); f.editor.imageCopies = new Map([[row.id, row]]);
+  f.registry.updateImageBarrier(f.editor); f.backend.failChoice = true;
+  await assert.rejects(f.registry.keepCurrentWriting(f.editor, row), /not saved/);
+  assert.equal(f.u.pending(), true); assert.deepEqual(f.rows.get(row.id), row);
+  assert.equal(f.editor.refusedCopyChoices?.size ?? 0, 0);
 });

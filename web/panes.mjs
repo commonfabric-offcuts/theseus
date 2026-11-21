@@ -10,9 +10,11 @@
 // writing starts a new message (write).
 import { cardIn } from './fold.mjs';
 import { navigationStops, shownSelected, stopAt } from './reply-stacks.mjs';
-import { keyAction, writing, pageItself } from './pane-keys.mjs';
+import { keyAction, writing, pageItself, readingMovement } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
 import { reach as reachOn } from './arrow-reach.mjs';
+import { messageWordsKey } from './message-controls.mjs';
+import { feedFence } from './feed-fence-copy.mjs';
 
 const shown = el => Boolean(el?.isConnected) && (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length > 0);
 // On screen: shown, inside the window, and not behind an open drawer.
@@ -46,7 +48,8 @@ export function feedStop(doc, { first = false } = {}) {
 // settings, New message and the rest drawn there; on a phone the line under it
 // saying what is new in the other outcomes (outline-rail.mjs), a row of its
 // own; then the row of view filters just over the messages ("Read it", Only
-// new, Show agent coordination). A row with none shown is left out. The
+// new). Agent coordination shares the Archived row within the feed (467).
+// A row with none shown is left out. The
 // filters were once nobody's, so the keys on one, reached by Tab or a click,
 // moved nothing (item 403); as a row of these the keys leave them like any
 // other: ↑ and ↓ go from row to row, and pass over none of them (item 301).
@@ -65,32 +68,48 @@ function atTop(doc) {
   if (!first || stopAt(list, at, stops) !== first) return false;
   return at.matches('.stack-toggle') || at === cardIn(first) || at === first.querySelector('.fold-line');
 }
-const reach = el => { el.focus({ preventScroll: true }); revealSelection(el); return true; };
+const reach = (el, navigate = () => {}) => {
+  el.focus({ preventScroll: true });
+  if (el.ownerDocument.activeElement !== el) return false;
+  navigate();
+  revealSelection(el);
+  return true;
+};
 
 export const panes = {
   // Set by rails.mjs: each rail's { host, focus(), leave()? }, leave closing it when it is open over the page;
   // write(target, title), a new message in the place named, or in the page's own (in-place-navigation.mjs).
-  outline: null, things: null, write: null,
+  outline: null, things: null, notebook: null, write: null, center: null,
   // The button the keys were last on in each row of the buttons at the top of
   // the feed, by the row's element, so coming back to the row finds it.
   button: new WeakMap(),
-  feed(doc, options) {
+  feed(doc, options, navigate = () => {}) {
+    const center = this.center?.();
+    if (center && shown(center.host) && !center.host.closest('[inert]') && center.focus(options, navigate)) return true;
     const stop = feedStop(doc, options) ?? doc.getElementById('main');
     if (!stop || stop.closest('[inert]')) return false;
     stop.focus({ preventScroll: true });
+    if (doc.activeElement === stop) navigate();
     if (stop !== doc.getElementById('main')) revealSelection(shownSelected(stop.matches('.stack-toggle') ? stop : stop.closest('[data-id]')));
     return true;
   },
   // From the pane named, one step: 'left' or 'right'. Answers whether the keys moved.
-  step(from, way, doc) {
-    const order = ['outline', 'feed', 'things'], at = order.indexOf(from) + (way === 'right' ? 1 : -1);
+  step(from, way, doc, navigate = () => {}) {
+    // The docked Notebook occupies the right rail's column. Its page owns
+    // the retained card/editor, just as each rail owns its retained row.
+    const order = ['outline', 'feed', this.notebook?.active() ? 'notebook' : 'things'];
+    const at = order.indexOf(from) + (way === 'right' ? 1 : -1);
     const to = order[at];
     if (!to) return false;
     this[from]?.leave?.();
-    if (to === 'feed') return onScreen(doc.getElementById('main')) && this.feed(doc);
+    if (to === 'feed') return onScreen(doc.getElementById('main')) && this.feed(doc, undefined, navigate);
     const rail = this[to];
     // Back from the messages, the outline takes the keys to the place being read.
-    return Boolean(rail && onScreen(rail.host) && rail.focus({ reading: from === 'feed' }));
+    const moved = Boolean(rail && onScreen(rail.host) && rail.focus({ reading: from === 'feed' }));
+    // The rail owns its row choice and can refuse focus even with its host shown.
+    // Its own reveal has run; only an actual landing authorizes materialization.
+    if (moved && rail.host.contains(doc.activeElement)) navigate();
+    return moved;
   },
 };
 
@@ -102,7 +121,9 @@ export const inMessages = (at, doc) => Boolean(doc.getElementById('messages')?.c
 // along that row to the nearest control that way (arrow-reach.mjs): from ⋯ to Move below More, Reply and the chevron;
 // past its end, on to the pane beside, as from the messages.
 export const onTitleBar = at => Boolean(at?.closest?.('.reply-stack > .stack-tools'));
-export const messagesSideways = (at, doc) => inMessages(at, doc) && !onTitleBar(at);
+export const onStackControls = at => Boolean(at?.closest?.('.stack-controls'));
+// A code fence's external Copy button belongs to the same horizontal route.
+export const messagesSideways = (at, doc) => (inMessages(at, doc) || Boolean(feedFence(at))) && !onTitleBar(at) && !onStackControls(at);
 
 // Whether the keys are in the feed: on a message, or on the page itself (pane-keys.mjs).
 export function inFeed(doc) {
@@ -123,14 +144,22 @@ const landing = row => { const last = panes.button.get(row.host); return row.but
 // from the top row, ← or → past an end with no rail on screen that way) goes
 // on to the nearest control that way in the column (arrow-reach.mjs, by
 // rails.mjs), so on a phone ↑ from Topic settings reaches the right rail's button above it.
-function headerKey(action, rows, r, doc) {
+function headerKey(action, rows, r, doc, navigate) {
   const buttons = rows[r].buttons, at = buttons.indexOf(doc.activeElement);
-  if (action === 'up') return r > 0 && reach(landing(rows[r - 1]));
-  if (action === 'down' && r < rows.length - 1) return reach(landing(rows[r + 1]));
+  if (action === 'up') return r > 0 && reach(landing(rows[r - 1]), navigate);
+  if (action === 'down' && r < rows.length - 1) return reach(landing(rows[r + 1]), navigate);
   // With no message to go to (a Conversation not yet written in), on down the column: the reply.
-  if (action === 'down') return (Boolean(feedStop(doc, { first: true })) && panes.feed(doc, { first: true })) || reachOn(doc.activeElement, 'down', { within: doc.getElementById('main'), doc });
-  if (action === 'left') return at > 0 ? reach(buttons[at - 1]) : panes.step('feed', 'left', doc);
-  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : panes.step('feed', 'right', doc);
+  if (action === 'down') {
+    if (feedStop(doc, { first: true }) && panes.feed(doc, { first: true }, navigate)) return true;
+    // Share MessageMenu's actual focus/scroll check; reach can report true
+    // even when the control refused focus.
+    const within = doc.getElementById('main'), movement = readingMovement(doc, within);
+    const moved = reachOn(doc.activeElement, 'down', { within, doc });
+    if (moved && movement()) navigate();
+    return moved;
+  }
+  if (action === 'left') return at > 0 ? reach(buttons[at - 1], navigate) : panes.step('feed', 'left', doc, navigate);
+  if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1], navigate) : panes.step('feed', 'right', doc, navigate);
   return false;
 }
 
@@ -138,18 +167,42 @@ function headerKey(action, rows, r, doc) {
 // the message at its top onto the row of buttons just above it, and on those headerKey;
 // ⌘Return, from anywhere outside writing, a new message in this page's place.
 // Nothing in writing or while a pop-up is open; the feed's ⌘ arrows stay its own.
-export function feedKey(event, doc) {
+export function feedKey(event, doc, navigate = () => {}) {
   const action = keyAction(event);
-  if (!action || doc.querySelector('dialog[open]') || writing(doc.activeElement)) return false;
+  if (!action || doc.querySelector('dialog[open]:not(.notebook-docked)') || writing(doc.activeElement) ||
+      doc.activeElement?.closest?.('input, textarea, select, [contenteditable]') ||
+      event.target?.closest?.('input, textarea, select, [contenteditable]')) return false;
+  // Focus can collapse a selection: retain the guard from before the move.
+  const selecting = doc.getSelection?.()?.isCollapsed === false;
+  const readingDestination = () => { if (!selecting) navigate(); };
+  if ((action === 'left' || action === 'right') && messageWordsKey(doc.activeElement, action)) {
+    event.preventDefault(); readingDestination(); return true;
+  }
   let moved = false;
+  const center = panes.center?.();
+  const cardKeys = center?.ownsKeys?.(doc.activeElement);
+  if (action !== 'write' && center && shown(center.host) && !center.host.closest('[inert]') && (pageItself(doc.activeElement, doc) || (cardKeys ?? center.host.contains(doc.activeElement)))) {
+    // A grid card owns its spatial arrows, including its edges. The page
+    // itself keeps pane crossings; buttons and fields keep their own grammar.
+    moved = (action === 'left' || action === 'right') && !cardKeys ? panes.step('feed', action, doc, readingDestination) : center.key(action, readingDestination);
+    if (moved) event.preventDefault();
+    return moved;
+  }
   if (action === 'write') moved = Boolean(panes.write?.(null));
   else {
     const rows = headerRows(doc), r = rows.findIndex(row => row.buttons.includes(doc.activeElement));
-    if (r >= 0) { panes.button.set(rows[r].host, doc.activeElement); moved = headerKey(action, rows, r, doc); }
-    else if (!inFeed(doc)) return false;
+    if (r >= 0) {
+      panes.button.set(rows[r].host, doc.activeElement); moved = headerKey(action, rows, r, doc, readingDestination);
+    }
+    else if (!inFeed(doc) && !feedFence(doc.activeElement)) return false;
     // ← and → from the messages, or the page itself, go on to the pane beside; on a title bar's glyphs, along its row.
-    else if (action === 'left' || action === 'right') moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc);
-    else if (action === 'up' && rows.length && atTop(doc)) moved = reach(landing(rows[rows.length - 1]));
+    else if ((action === 'left' || action === 'right') && onStackControls(doc.activeElement)) {
+      const buttons = [...doc.activeElement.closest('.stack-controls').querySelectorAll('button')].filter(button => !button.disabled && shown(button));
+      const next = buttons[buttons.indexOf(doc.activeElement) + (action === 'right' ? 1 : -1)];
+      moved = next ? reach(next, readingDestination) : panes.step('feed', action, doc, readingDestination);
+    }
+    else if (action === 'left' || action === 'right') moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc, readingDestination);
+    else if (action === 'up' && rows.length && atTop(doc)) moved = reach(landing(rows[rows.length - 1]), readingDestination);
   }
   if (!moved) return false;
   event.preventDefault();

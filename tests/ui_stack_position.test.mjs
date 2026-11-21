@@ -204,3 +204,15 @@ test('queue42 cover stars and both personal place shapes independently refresh p
     assert.equal(views.learnPositions([{message_id:'a',stack_position:{...changed,at:{messages:4,acts:3}}}]),false,'a watermark alone redraws nothing');
   }
 });
+
+test('item 731 an order key refreshes every loaded branch and a stale page cannot reverse it', () => {
+  const views = new TopicViews({instanceId:'i',topicId:'t'});
+  const first = position(0,1,{below:false,order_key:5,order_tie:1,order_entry_key:5});
+  for (const id of ['reply-a','reply-b']) views.messages.set(id,{id,stack_position:first});
+  const moved = {...first,order_key:8,at:{messages:0,acts:2}};
+  assert.equal(views.learnPositions([{message_id:'reply-a',stack_position:moved}]),true);
+  for (const id of ['reply-a','reply-b']) assert.equal(views.messages.get(id).stack_position.order_key,8);
+  assert.equal(views.learnPositions([{message_id:'reply-b',stack_position:first}]),false);
+  const onlyKey = {...moved,order_key:9};
+  assert.equal(views.learnPositions([{message_id:'reply-a',stack_position:onlyKey}]),true,'order data itself invalidates the arranged page');
+});

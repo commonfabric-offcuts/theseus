@@ -1,11 +1,24 @@
 # Local agent CLI
 
+`post TOPIC --divergence-reason TEXT` supplies the caller's reason for a new
+root when readable dossiers already exist. Core refuses without it and returns
+at most 10 readable current roots; the accepted exact one-line reason becomes
+the new root's first cover line in the same transaction. `divergence_reason`
+also survives saved writing and prepared sends. See
+[agent-root-posts.md](agent-root-posts.md) for the shared policy and bounds.
+
 For how to work as an agent (waiting, asking and telling, whispers, finishing
 a topic, the Notebook and reading back), start with
 [agent-guide.md](agent-guide.md); this page is the reference.
 
 `bin/aim-next` calls the same local Store as HTTP, using CPython 3.9 and an
 explicit absolute v2 profile path. It starts no server, browser or runner.
+Protected hosted routes use `--broker /absolute/core.sock` instead of a profile.
+The host's endpoint supplies the fixed actor/binding and performs Core calls;
+the CLI keeps attachment/outbox file I/O inside its sandbox. It supports the
+bounded verbs below; long `watch` refuses there because hosted delivery owns
+waking the agent. A missing or stale endpoint never falls back to a profile.
+See [662's contract](hosted-read-boundary-662.md).
 The launcher uses Python's isolated mode. The supported explicit interpreter
 form is `/usr/bin/python3 -I /absolute/bin/aim-next ...`, as in the example below.
 
@@ -64,7 +77,7 @@ import os
 import subprocess
 
 
-def agent_example(cli, profile, request_directory, selected_ref, operation_prefix, reply_text, addressees, intent):
+def agent_example(cli, profile, request_directory, selected_ref, operation_prefix, reply_text, addressees, intent, reply_without_quote):
     directory = Path(request_directory)
     directory.mkdir(mode=0o700, exist_ok=False)
     base = ["/usr/bin/python3", "-I", str(cli), "--profile", str(profile)]
@@ -113,7 +126,8 @@ def agent_example(cli, profile, request_directory, selected_ref, operation_prefi
     command("save", "draft.save", {"draft_id": draft}, {"source_ref": selected_ref,
         "topic_id": topic, "generation": operation_prefix + "-generation", "body": reply_text,
         "attachments": [], "quotes": [{"source": selected_ref, "excerpt": selected["body"]}],
-        "addressees": sent_to, "intent": intent, "reply_to": delivered["source_ref"]["id"]}, {"draft_revision": 0})
+        "addressees": sent_to, "intent": intent, "reply_to": delivered["source_ref"]["id"],
+        "reply_without_quote": reply_without_quote}, {"draft_revision": 0})
     command("prepare", "submission.prepare", {"topic_id": topic}, {"draft_id": draft,
         "submission_id": submission, "send_operation_id": operation_prefix + "-send"}, {"draft_revision": 1})
     sent = command("send", "message.send", {"topic_id": topic}, {"submission_id": submission})
@@ -127,10 +141,22 @@ def agent_example(cli, profile, request_directory, selected_ref, operation_prefi
             "delivery": delivery, "exits": exits, "pending_before_ack": pending}
 ```
 
-The example's source, recipients, whether it asks or tells them, and text are explicit caller choices. Stored
+The example's omission reason (when quoting a selected source other than the parent), source, recipients, whether it asks or tells them, and text are explicit caller choices. Stored
 quotes remain separate from addressees. A later Notebook revision does not
 replace the selected one. `delivery.ack` settles only the named incoming
 delivery; it does not mean the topic is complete or that a wake was accepted.
+
+## Passage required on agent replies
+
+Every agent reply, including raw `command`, prepared sends, `reply`,
+`post --reply-to` and `whisper --reply-to`, names an exact passage or states
+why it carries no quote. Read its current raw body/revision, then pass
+`--quote-revision N --quote-start S --quote-end E` (Unicode code-point offsets,
+start inclusive and end exclusive) or `--without-quote REASON`. Core inserts
+the blockquote or the visible omission reason and records its provenance.
+A stale revision, invalid span or missing choice sends nothing. See
+[the full contract](agent-reply-passages.md). Human manual replies retain
+their existing behavior.
 
 ## Everyday verbs
 
@@ -147,11 +173,12 @@ above; `binding`, `view` and `command` are unchanged.
 | `topics OUTCOME [--archived]` | Lists an outcome's topics, latest activity first, each with where it stands, then the done ones under `done (N):`, and says how many are archived; `--archived` lists only its archived topics ([topic-list.md](topic-list.md)). |
 | `read TOPIC [--after SEQ] [--limit N]` | Prints messages with sequence (instance-wide, so not contiguous within a topic), ID, author, addressees, full body and one line per attachment (see [Attachments](#attachments)). An edited message prints its latest words, with "(edited, revision N)" after its heading; the `source` view carries `revision` and `edited_ms` too. A message its author has open in Edit prints "(held: its author is editing it)" in place of its words, and a `[waiting]` line on it prints "(held)"; the views carry `withheld: true` ([message-edit.md](message-edit.md#holding-a-message-while-it-is-edited)). Acknowledges nothing. |
 | `inbox` | Lists pending deliveries, oldest first: topic title, sequence, author, preview, delivery ID. A correction (its author edited a message you were sent) prints as `correction "TITLE" #SEQ AUTHOR edited m-… to revision N: PREVIEW  [d-… in t-…]`, its preview the words of that revision ([message-edit.md](message-edit.md)). |
-| `reply MESSAGE [--asks A,B \| --tells A,B] [--part] [--go-ahead] [--subject KIND:REF,...] [--blocks piece:P\|release:N] [--operation ID] [--attach FILE]... TEXT\|-` | Reads that exact message through `source`, derives its topic and sends `message.post` with `reply_to=MESSAGE`. Use for progress, questions and completion in an existing stack; `post TOPIC` deliberately starts a new subject. Recipients remain explicit, and deliveries are not acknowledged. Accepts the same sending options as `post`, without a topic or reply-target override; `--part` applies only to an assigned outcome-conversation item. Missing/unreadable targets send nothing; delivery ids get a message-id diagnostic; whispers require `whisper`. With `--json`, a successful text-only reply prints two lines: the source view, then the post receipt. Attachment results, if any, appear between them. The source view alone is not proof of sending; check the exit status and receipt. See [agent-replies.md](agent-replies.md). |
+| `reply MESSAGE [--asks A,B \| --tells A,B] [--ask-wait JSON] [--part] [--go-ahead] [--subject KIND:REF,...] [--blocks piece:P\|release:N] [--operation ID] [--attach FILE]... TEXT\|-` | Reads that exact message through `source`, derives its topic and sends `message.post` with `reply_to=MESSAGE`. Use for progress, questions and completion in an existing stack; `post TOPIC` deliberately starts a new subject. Recipients remain explicit, and deliveries are not acknowledged. Accepts the same sending options as `post`, without a topic or reply-target override; `--part` applies only to an assigned outcome-conversation item. Missing/unreadable targets send nothing; delivery ids get a message-id diagnostic; whispers require `whisper`. With `--json`, a successful text-only reply prints two lines: the source view, then the post receipt. Attachment results, if any, appear between them. The source view alone is not proof of sending; check the exit status and receipt. See [agent-replies.md](agent-replies.md). |
 | `mint MESSAGE [--expected N] WORDS\|-` | Names the dossier MESSAGE is in, as its namer: `stack.name` with `minted: true` on the dossier's first message (read through `stack_namer`), fenced on `--expected`, the name's revision when you were told to name it, or else the revision read now. Two to five words for what the dossier is about. Refused `ALREADY_NAMED` once anyone named it and `NOT_THE_NAMER` from anyone but its namer (the outcome's coordinator when it is an enabled agent taking part in the topic, or else the first agent that replied), nothing changed. Prints `named the dossier of m-… "WORDS"`. You are told to run it by a delivery's `[you name its dossier: mint ROOT --expected N "two to five words"]` in `inbox` and `watch`, the hosted notice's line, or the line `reply` and `post --reply-to` print after `posted …` when your reply makes you its namer ([reply-stacks.md](reply-stacks.md#minted-names-479)). |
+| `cover MESSAGE --refresh [--expected N] [--operation ID]` | Requests a new cover through `stack.cover_refresh`, using the existing durable outbox and delivery/wake path. Prints the recipient, request message and observed revision; another press while pending returns that request. Use `retry OPERATION` after an interrupted answer, retaining the exact request. No cover-writing options accompany `--refresh`. A plain `cover MESSAGE` also prints refresh state. Recipient defaults, honest refusals and completion rules: [cover-refresh.md](cover-refresh.md). |
 | `cover MESSAGE [--expected N] [--stands TEXT] [--waits TEXT --default TEXT]... [--no-waits] [--payload TEXT --from MESSAGE [--link URL] [--kind K] [--done-by MESSAGE]] [--no-payload]` | Prints or writes the cover of the dossier MESSAGE is in (item 624, [dossier-covers.md](dossier-covers.md)): `stack.cover` on the dossier's first message, read through `dossier_cover`. With no option it prints the cover (`cover of the dossier of m-… (revision N, by WHO at TIME)`, then `stands:`, each `waits on OWNER: TEXT (default: …)`, and the payload with `payload proposed: …` or `done: OWNER's 👍 at TIME` / `done: OWNER's word (m-…) at TIME`), or `no cover on the dossier of m-… (revision N)`. Each option sets its field and leaves the others: `--stands` one line (`""` clears it); `--waits TEXT --default TEXT`, once per thing waiting on the outcome's owner, at most four, each with what holds if they say nothing (`--no-waits` clears them); `--payload TEXT --from MESSAGE`, a message of the dossier that delivered it, with `--link` (http or https), `--kind` (answer, decision, preview, page, release) and `--done-by`, the owner's own reply to that message that made it done, as it has them (`--no-payload` clears it). Fenced on `--expected`, or else the revision read now; refused `REVISION_CONFLICT` with the current revision when someone moved it, `STACK_CHANGED` when the first message moved, `INVALID_ARGUMENT` for a payload outside the dossier, `WHISPER_STAYS_PRIVATE` for a whisper as an on-record dossier's payload, nothing changed. There is no way to say Done: the owner's 👍 on the payload's message gives it, or their own reply to it named with `--done-by`; Core refuses `DONE_BY_OWNER` to anything that names `done`, and to a `--done-by` that is not the owner's own reply to the payload's message. Prints `wrote the cover of the dossier of m-…` (or `no change to …`) and the cover as Core recorded it. |
 | `edit MESSAGE --expected N TEXT\|-` | New words for a message you wrote, in place: one `message.edit` (`-` reads them from stdin), fenced on `--expected`, the revision you read (`read` shows "(edited, revision N)", else 1). A correction to your own words is an edit of them, not a follow-up message. Refused `FORBIDDEN` for a message you did not write, `REVISION_CONFLICT` (naming the current revision) when it moved on, and `INVALID_ARGUMENT` for the words already there; nothing changes. Every reader is told; each agent that was handed the old words gets a correction, and each person who had read them sees them struck through beside the new ones, the message unread for them again where their delivery of it counts ([message-edit.md](message-edit.md)). Prints `edited m-… to revision N (corrections: C; unread again: U)`: C agents sent a correction, U people it made unread for again. |
-| `post TOPIC [--asks A,B \| --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--blocks piece:P\|release:N] [--operation ID] [--attach FILE]... TEXT\|-` | Sends one `message.post`; `-` reads the text from stdin, and each `--attach` sends a file with it (see [Attachments](#attachments)). With `--operation ID` it is sent under that operation id, so sending the same post again answers with the message already recorded, and different words under the same id are refused (`OPERATION_PAYLOAD_MISMATCH`), nothing sent. `--operation` takes no `--attach`, whose files upload afresh each run, so a repeat would never be the same post: the pair is refused (`INVALID_ARGUMENT`) before anything is uploaded. A post in a done topic makes it active again ([topic-list.md](topic-list.md#a-message-in-a-done-topic)), so post a closing summary before `state TOPIC done`. A message to someone says whether it asks or tells them (see [Asking and telling](#asking-and-telling)); with neither it goes to the topic and names nobody. |
+| `post TOPIC [--asks A,B \| --tells A,B] [--ask-wait JSON] [--reply-to MESSAGE] [--subject KIND:REF,...] [--blocks piece:P\|release:N] [--operation ID] [--attach FILE]... TEXT\|-` | Sends one `message.post`; `-` reads the text from stdin, and each `--attach` sends a file with it (see [Attachments](#attachments)). With `--operation ID` it is sent under that operation id, so sending the same post again answers with the message already recorded, and different words under the same id are refused (`OPERATION_PAYLOAD_MISMATCH`), nothing sent. `--operation` takes no `--attach`, whose files upload afresh each run, so a repeat would never be the same post: the pair is refused (`INVALID_ARGUMENT`) before anything is uploaded. A post in a done topic makes it active again ([topic-list.md](topic-list.md#a-message-in-a-done-topic)), so post a closing summary before `state TOPIC done`. A message to someone says whether it asks or tells them (see [Asking and telling](#asking-and-telling)); with neither it goes to the topic and names nobody. |
 | `whisper TOPIC --to NAME [--reply-to MESSAGE] TEXT\|-` | Sends one `message.post` with `whisper: true` to NAME alone (see [whispers.md](whispers.md)). An agent only answers: `--reply-to` names a whisper sent to it, and `--to` the person who sent it. Prints `whispered m-… to NAME in t-…`. `read` shows a whisper you are in as `#470 m-… tony whispers to aim-ux` with a note under its body; `inbox` and `watch` print `whisper "TITLE" …` for one sent to you. Nobody else ever sees it. |
 | `coordinator OUTCOME NAME\|--none` | Chooses who answers in the outcome's conversation (`workspace.coordinator_set`, any outcome reader, recorded as the caller); see [conversation.md](conversation.md). |
 | `participant TOPIC ACTOR` | Adds an enabled person or agent to an existing topic (`participation.set`, fenced on the topic revision read). Any topic reader may, under their own identity. Prints `ACTOR takes part in TOPIC`; `--json` prints the topic view and receipt. `retry OPERATION` returns the saved act's receipt ([agent-settings.md](agent-settings.md)). |
@@ -169,7 +196,7 @@ above; `binding`, `view` and `command` are unchanged.
 | `retry OPERATION` | Re-sends a saved request unchanged. |
 | `health` | Prints what needs attention, with why, then one line each for the agent runner, every agent and its waiting work, the Mac and the latest release, in the Health page's words, from the `health` view ([health.md](health.md)). With `--json` it prints the view itself. |
 | `releases [--limit N]` | Lists the instance's release records, newest first: number, commit, time, the pipeline items it shipped and its counts ([releases.md](releases.md)). `--limit` shows only the newest N. |
-| `attachment ATTACHMENT --message MESSAGE --out FILE` | Saves one attachment's bytes, read through the message that carries it, to a new file (see [Attachments](#attachments)). |
+| `attachment ATTACHMENT (--message MESSAGE \| --page PAGE) --out FILE` | Saves one attachment through its readable message or current Notebook page to a new file (see [Attachments](#attachments)). |
 | `notes SCOPE [--topic]` | Lists the pages in an outcome's Notebook, or with `--topic` a topic's own: id, title, revision and author, `[changed since you read revision N]` on a page revised since the actor read it, and `[draft: its writer keeps its words from agents]` on a draft page (see [Notebook pages](#notebook-pages)). |
 | `note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE\|-` | Makes a page in that Notebook from FILE's words, or stdin's for `-`, and reads it back. |
 | `note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE\|-` | Writes the page's next revision from FILE's words, keeping its title (unless `--title`), attachments and evidence, adding any `--attach` files, and reads it back. Refused unless the page stands at revision N. |
@@ -256,10 +283,28 @@ whatever its words start with: an "@auditor" at the start of a post changes
 nothing. Only writing from the web page's composers is sent to the members
 its leading @names name ([reader.md](reader.md#naming-who-a-message-is-to)).
 
-An ask makes the topic wait on each person it asks until they next write in
-the topic; `topics` shows it as "asked owner since 2026-11-05 22:10", and the
+A new agent ask to a human carries `ask_wait`: root_id, cover_revision and one
+question per human, with actor_id, text, literal options, default and reason.
+Everyday `post`/`reply` fill this when `--ask-wait` is omitted: the last line
+ending in `?`, or the first nonempty line if there is none, of the agent's own
+writing (up to 300 characters), skipping quote lines and stripping leading
+@names, with no choices, no default, and a reason saying
+none were supplied. No remaining writing uses "Please respond to this message."
+Replies read the actual root and cover revision. `--ask-wait JSON` overrides
+this with literal metadata; read `cover MESSAGE` for its root and revision,
+or use null/0 for a new root. A repeated `--operation` reuses the saved metadata
+even if the cover has since changed; different words still refuse. In `--json`
+mode these derived reads add result lines before the publication receipt; a
+view result alone never proves sending. Raw commands
+without metadata refuse without publication. Prepared writing and
+`target --ask-in TOPIC --ask-wait JSON` use the same rule. See
+[asking-person-cover.md](asking-person-cover.md).
+
+It waits on the person until an eligible answer to that exact question; `topics` shows it as "asked owner since 2026-11-05 22:10", and the
 asked person's `attention` lists it (see [attention.md](attention.md#asked-and-waited-on)).
-Any message you write in a topic answers what was asked of you there.
+Already-recorded legacy asks and ordinary human asks keep broad topic clearing.
+Unrelated writing never clears a new linked question. Manual cover waiting
+edits leave linked questions in place.
 
 An ask that offers to do something, or asks permission, adds `--go-ahead`
 (`post TOPIC --asks owner --go-ahead -`): the person answers with one tap, ✅
@@ -325,6 +370,16 @@ there by then it is left alone, and when the removal itself fails the refusal
 is still `OUT_UNAVAILABLE` and says a partial file may remain. It prints
 `saved NAME (TYPE, N bytes, sha256 HEX) to FILE`, or with `--json`
 `{attachment, message_id, path}`. It sends no command and acknowledges nothing.
+
+`attachment ID --page PAGE --out FILE` saves an attachment from the current
+Notebook page instead. Exactly one of `--message` and `--page` is required.
+The CLI resolves the current exact page reference through `memory_status`,
+then uses the same `open_media` read with that memory source and revision.
+A concurrent edit leaves the captured reference in force; Core checks access
+again when opening it. A fresh invocation selects the new current revision,
+so an attachment retained only in old history is not selected. Page visibility,
+attachment membership and all new-file safeguards above still apply. Its JSON
+result is `{attachment, page_id, path}`; the message result is unchanged.
 
 ### Sending attachments
 
@@ -475,6 +530,19 @@ are absolute local times.
   piece's in the order its card names them, then the items not in a piece, in
   their placed order.
 - `item OUTCOME N` shows one item with its stages and events.
+- `item-edit OUTCOME N [--title T] [--size small|medium|large|none] [--group G] [--words FILE|-]`
+  lets any outcome member edit the supplied fields directly, then shows the
+  item as read back. Supply at least one option. `--words` reads UTF-8 from
+  a regular file or standard input (`-`); an empty file clears the words,
+  `--group ''` clears the Candidate group and `--size none` clears the size.
+  Words keep their whitespace; Core keeps its existing text validation
+  (at most 16,384 UTF-8 bytes for words), membership and shipped-item rules.
+  The verb reads the current item revision before
+  writing; a concurrent edit is refused with `REVISION_CONFLICT`.
+  `READ_BACK_UNCONFIRMED` (exit 1) means the edit was recorded but its final
+  read failed: use `item OUTCOME N` to read it. An uncertain command receipt
+  names its operation for `retry OPERATION`; do not rerun `item-edit` as a
+  new edit to recover it. Moving and attribution retain their permissions.
 - `pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off]`
   turns it on or off (the owner or the coordinator); its title, units, sizing
   and releases are the owner's alone.
@@ -493,6 +561,11 @@ are absolute local times.
   (docs/pipeline.md, "Who changes what"), and sets aside a piece holding one
   only with a go-ahead naming each such item; `item` then shows the move as
   `on OWNER's word (MSG)`.
+- `move-piece PIECE --topic T --expected N` repairs a piece's topic, by its
+  owner or coordinator, fenced on the piece version N from a JSON pipeline/item
+  read. Both topics refresh on open pages; writing and stage history stay put.
+  The destination is an agent-opened topic in the same outcome. A person's
+  topic and the outcome's Conversation cannot hold a new piece (632).
 - `piece OUTCOME N[,N...] --topic T --stage S [--size S] [--ask MSG]` starts
   work on items in a topic; `enter-stage PIECE STAGE [--round R] [--left approved|sent-back|passed|held] [--note N] [--ask MSG]`,
   `stage-note PIECE TEXT`, `combine OUTCOME --pieces P,... --topic T [--release N] [--commit SHA] [--ask MSG]`
@@ -577,3 +650,27 @@ runs them, over invented records.
 
 Schema upgrades and actor registration are operator acts in
 `bin/aim-next-admin`, not agent commands.
+
+Item 774: the shared command `stack.move` moves an entire dossier within its
+outcome. Read `dossier_move_targets` with any message id for the root, current
+source, move_revision and a paged list of other topics. Send target
+`{"message_id": ROOT}`, args `{"topic_id": DESTINATION}`, expected
+`{"source_topic_id": SOURCE, "move_revision": N, "authority": CAPTURED_PAIR}`
+through `aim-next command FILE`. Keep the exact operation id for a retry.
+Core admits only the outcome owner or dossier's first agent author, and refuses
+new readers or lost reply paths. `dossier_moves {topic_id}` reads the old topic's
+paged pointers. Existing message ids are the links; use `source` to resolve their
+current topic. Full admission and refusal contract: [dossier move](dossier-move-774.md).
+
+## Explicit go-ahead choice (782)
+Every `post` or `reply` with `--asks` must choose `--go-ahead` or
+`--no-go-ahead`. A bare ask refuses before uploads or publication. The two
+flags are mutually exclusive and belong only to asks. An agent asking a person
+may supply literal `--ask-wait` metadata; omitting it uses the plain question
+default described in asking-person-cover.md.
+
+An asker (person or agent) can `withdraw MESSAGE [--operation ID]` when a question
+no longer needs answering (item 366). This records `message.withdraw`, keeps the
+original words and answers, and ends only that question’s waits. Nobody else,
+including an owner or coordinator, can withdraw it. `read` shows “Question
+withdrawn”; retries use the existing outbox and the same operation.

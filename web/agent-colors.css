@@ -1,0 +1,42 @@
+/* How strongly agents are tinted, chosen at the rail's foot and kept on this device (look.mjs,
+   data-agent-colors on <html>). Each family is even: one lightness and one strength for every hue, so no agent
+   stands out over another and none sinks into the folder behind it.
+   - Quiet (the default): in the dark, deep tints a step below the dossier's folder, near the black ends of the
+     page; in the light, the pale tints the cards always had.
+   - Vivid: lighter, more colourful tints, a step above the folder in the dark and stronger in the light.
+   These override the palette in aim.css by specificity (:root before the class), so a person's own colour choices
+   (colors.mjs) still pick which family member an agent gets. */
+@media (prefers-color-scheme:dark){
+  :root:not([data-agent-colors=vivid]){
+    .agent-green{--agent-card:#102319;--agent-tag:#28523c;--agent-hover:#14281d}
+    .agent-blue{--agent-card:#121f2d;--agent-tag:#2e4a67;--agent-hover:#172432}
+    .agent-indigo{--agent-card:#1b1c2d;--agent-tag:#414468;--agent-hover:#202132}
+    .agent-violet{--agent-card:#231a29;--agent-tag:#533e5f;--agent-hover:#281e2e}
+    .agent-rose{--agent-card:#2a181f;--agent-tag:#613a49;--agent-hover:#2f1c24}
+    .agent-peach{--agent-card:#2a1a0f;--agent-tag:#613f27;--agent-hover:#2f1f14}
+    .agent-cyan{--agent-card:#082324;--agent-tag:#145154;--agent-hover:#0d2729}
+    .agent-olive{--agent-card:#1d200e;--agent-tag:#454c25;--agent-hover:#212513}
+  }
+  :root[data-agent-colors=vivid]{
+    .agent-green{--agent-card:#2f4b3c;--agent-tag:#406f56;--agent-hover:#365243}
+    .agent-blue{--agent-card:#32465a;--agent-tag:#466687;--agent-hover:#394c61}
+    .agent-indigo{--agent-card:#3f415a;--agent-tag:#5c5f88;--agent-hover:#464861}
+    .agent-violet{--agent-card:#4b3d54;--agent-tag:#70587e;--agent-hover:#52445b}
+    .agent-rose{--agent-card:#563a45;--agent-tag:#815465;--agent-hover:#5d414b}
+    .agent-peach{--agent-card:#553e2e;--agent-tag:#80593f;--agent-hover:#5d4434}
+    .agent-cyan{--agent-card:#264b4c;--agent-tag:#2e6e72;--agent-hover:#2d5153}
+    .agent-olive{--agent-card:#41472d;--agent-tag:#60683d;--agent-hover:#484e33}
+  }
+}
+@media (prefers-color-scheme:light){
+  :root[data-agent-colors=vivid]{
+    .agent-green{--agent-card:#d6f1e2;--agent-tag:#a9dbbf;--agent-hover:#cdecda}
+    .agent-blue{--agent-card:#d9ecff;--agent-tag:#aed2f7;--agent-hover:#d0e6fd}
+    .agent-indigo{--agent-card:#e4e8ff;--agent-tag:#c5caf8;--agent-hover:#dde1fe}
+    .agent-violet{--agent-card:#f1e3fb;--agent-tag:#dcc2ed;--agent-hover:#ecdcf7}
+    .agent-rose{--agent-card:#fee0eb;--agent-tag:#f1bdd0;--agent-hover:#fad9e4}
+    .agent-peach{--agent-card:#fde4d4;--agent-tag:#f0c3a6;--agent-hover:#f9ddca}
+    .agent-cyan{--agent-card:#d0f1f3;--agent-tag:#9bdbde;--agent-hover:#c5eced}
+    .agent-olive{--agent-card:#e7edd3;--agent-tag:#c9d4a4;--agent-hover:#e0e7c9}
+  }
+}

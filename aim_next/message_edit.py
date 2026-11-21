@@ -72,16 +72,16 @@ DELIVERY_INDEXES = [
 ]
 
 
-def _rebuilt_deliveries(table):
+def _rebuilt_deliveries(table, columns=DELIVERY_COLUMNS):
     """Build deliveries again as table, keeping every row, its id and seq, where the next seq goes on from
     (sqlite_sequence), its indexes and trigger. delivery_reasons refers to deliveries, so its rows are kept
     aside first and put back after."""
-    return ["CREATE TABLE deliveries_kept AS SELECT %s FROM deliveries" % DELIVERY_COLUMNS,
+    return ["CREATE TABLE deliveries_kept AS SELECT %s FROM deliveries" % columns,
             "CREATE TABLE delivery_reasons_kept AS SELECT delivery_id,reason,topic_id,participant_epoch FROM delivery_reasons",
             "CREATE TABLE deliveries_sequence AS SELECT seq FROM sqlite_sequence WHERE name='deliveries'",
             "DELETE FROM delivery_reasons",
             "DROP TABLE deliveries", table,
-            "INSERT INTO deliveries(%s) SELECT %s FROM deliveries_kept ORDER BY seq" % (DELIVERY_COLUMNS, DELIVERY_COLUMNS),
+            "INSERT INTO deliveries(%s) SELECT %s FROM deliveries_kept ORDER BY seq" % (columns, columns),
             "DELETE FROM sqlite_sequence WHERE name='deliveries'",
             "INSERT INTO sqlite_sequence(name,seq) SELECT 'deliveries',seq FROM deliveries_sequence",
             "INSERT INTO delivery_reasons(delivery_id,reason,topic_id,participant_epoch) SELECT delivery_id,reason,topic_id,participant_epoch "
@@ -539,16 +539,18 @@ BASE = "base_revision is one of the message's revisions"
 
 
 class MessageEdit:
-    def _editable(self, db, actor, message_id, reached=True, people=True):
+    def _editable(self, db, actor, message_id, reached=True, people=True, removed=False):
         """The checks after the words' size, in order: the actor reaches the message (a whisper outside them, or a
         message they cannot read, is refused as an unknown id), is a person when people is true (an edit session's
         commands; message.edit passes False, item 614), wrote it, and its outcome is not kept to read (skipped by
         message.edit_close, so a hold can always be ended)."""
-        message = self._message_access(db, actor, _identifier(message_id, "message_id"))
+        message = self._message_access(db, actor, _identifier(message_id, "message_id"), removal=removed)
         if people and self._actor(db, actor)["kind"] != "human":
             raise Refusal("FORBIDDEN", ONLY_PEOPLE)
         if message["author_id"] != actor:
             raise Refusal("FORBIDDEN", ONLY_AUTHOR)
+        if not removed and db.execute('SELECT 1 FROM message_removals WHERE message_id=?', (message_id,)).fetchone():
+            raise Refusal('MESSAGE_REMOVED', 'This message was removed; its original words are kept.', recorded=False)
         if reached:
             # An edit writes only actor-scoped changes, which the guard passes: refused here in an outcome kept to
             # read, reached, archived or completed (item 404).
@@ -566,6 +568,8 @@ class MessageEdit:
         # 5. Fenced on the revision the editor started from.
         now_words, current, _ = current_words(db, message["id"], plain=True)
         _revision(envelope["expected"], "message_revision", current)
+        from .reply_passages import keep_on_edit
+        keep_on_edit(db, message["id"], body)
         # 6-7. Words or an attachment, and words that differ.
         attachments = json.loads(db.execute("SELECT attachments FROM messages WHERE id=?", (message["id"],)).fetchone()[0])
         if not body.strip() and not attachments:
@@ -617,8 +621,10 @@ class MessageEdit:
         unread_again = self._unread_again(db, message, readers, current) if self._actor_kind(db, actor) == "agent" else 0
         for reader in readers:
             self._change(db, "actor", reader, "edit", message["id"], number)
+        refresh_version = self._complete_refresh(db, actor, message, "message_refresh", number)
         return (dict(result, corrections=len(exposed), unread_again=unread_again),
-                [{"kind": "message", "id": message["id"], "version": number}])
+                [{"kind": "message", "id": message["id"], "version": number}] +
+                ([{"kind": "acts", "id": message["topic_id"], "version": refresh_version}] if refresh_version else []))
 
     def _unread_again(self, db, message, readers, revision):
         """For each person among the readers who had read the message when its agent author edited it (item 614):
@@ -650,6 +656,14 @@ class MessageEdit:
                        (delivery["seq"], delivery["seq"], delivery["group_id"]))
             self._eligibility_changed(db, reader, 1)
             self._change(db, "actor", reader, "delivery", delivery["id"], 1)
+            # This genuinely new unread ends the reader's saved boundary.
+            # Use Bring back's existing personal act, fence and bottom admission;
+            # reading the message later must not hide its dossier again.
+            from .stacks import stack_positions
+            if stack_positions(db, reader, [message])[message["id"]]["below"]:
+                back = self._brought_back(db, reader, message)
+                self._record_act(db, "aside", back["root"], reader, reader,
+                                 {"through": None}, back["aside_revision"])
             count += 1
         return count
 
@@ -814,9 +828,8 @@ class MessageEdit:
                           (agent,) + ((message_id,) if message_id is not None else ())).fetchall()
 
     def _correction_readable(self, db, actor, row):
-        """Whether the actor may be shown this delivery: any delivery but a correction, and a correction of a message
-        the actor can read now."""
-        if row["revision"] == 1:
+        """Ordinary deliveries keep their addressed reach. Corrections and answer receipts require current source access."""
+        if row["revision"] == 1 and row['answer_id'] is None:
             return True
         try:
             self._message_access(db, actor, row["message_id"])
@@ -825,12 +838,23 @@ class MessageEdit:
         return True
 
     def _settle_unreadable_corrections(self, db, actor):
-        """In the write that takes a message from the actor, settle its corrections of messages it can no longer read,
+        """In the write that takes a message from the actor, settle corrections and answer receipts it can no longer read,
         so no count, wake or notice keeps them; the wake's claim does the same before it hands work (runner.py).
-        The walk is the actor's own pending corrections. Returns how many it settled."""
+        The walk is the actor's own pending corrections and answers. Returns how many it settled."""
         settled = 0
-        for row in self._pending_corrections(db, actor):
+        answers = db.execute("SELECT d.* FROM delivery_groups g CROSS JOIN deliveries d INDEXED BY pending_group_deliveries "
+                             "ON d.group_id=g.id AND d.state='pending' WHERE g.recipient_id=? AND g.kind='answer' AND g.active=1", (actor,)).fetchall()
+        for row in self._pending_corrections(db, actor) + answers:
             if not self._correction_readable(db, actor, row):
+                self._acknowledge(db, actor, row)
+                settled += 1
+        # Retractions use the same durable correction lifecycle, with their own
+        # typed identity. Membership changes and wake claims share this owner.
+        rows = db.execute("SELECT d.* FROM delivery_groups g CROSS JOIN deliveries d INDEXED BY pending_group_deliveries "
+                          "ON d.group_id=g.id AND d.state='pending' WHERE g.recipient_id=? AND g.kind='retraction' AND g.active=1",
+                          (actor,)).fetchall()
+        for row in rows:
+            if not self._retraction_readable(db, actor, row):
                 self._acknowledge(db, actor, row)
                 settled += 1
         return settled

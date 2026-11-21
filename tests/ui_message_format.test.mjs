@@ -11,10 +11,11 @@ import * as format from '../web/message-format.mjs';
 import { nameTopicsWith, openLinksWith, wordNodes } from '../web/links.mjs';
 import { routeHref } from '../web/topic-navigation.mjs';
 import { CardScroll } from '../web/card-scroll.mjs';
+import { assertPassagePresentation } from './item_758_oracle.mjs';
 
 // A document whose elements hold child nodes and know their parent, as the browser's do.
 class Text {
-  constructor(data) { Object.assign(this, { nodeType: 3, nodeName: '#text', data: String(data), parentNode: null }); }
+  constructor(data) { Object.assign(this, { nodeType: 3, nodeName: '#text', data: String(data), parentNode: null, childNodes: [] }); }
   get textContent() { return this.data; }
 }
 class Element {
@@ -61,6 +62,22 @@ const texts = nodes => nodes.map(n => n.textContent);
 const render = (text, options = {}) => format.formatWords(new Element('span'), text, options);
 const kinds = text => format.parseBlocks(text).map(block => block.kind);
 const webLinksOf = node => byTag(node, 'a').map(a => a.textContent);
+
+test('item 758 native presentation oracle reads the actual quote renderer in feed and Reader', () => {
+  const reason = 'This is a status update about the whole assignment.';
+  for (const [kind, body] of [
+    ['quoted', '>   **Keep these words** 🪴\n\nThe corrected reply is in the same dossier.'],
+    ['exception', 'Reply without a quote:\n\n> ' + reason + '\n\nThis answer concerns the surrounding work.']]) {
+    for (const surface of ['feed', 'Reader']) {
+      const host = new Element('span');
+      if (surface === 'feed') format.formatWords(host, body);
+      else format.drawPassages(host, body, doc);
+      assertPassagePresentation({ raw: format.drawnText(host), text: host.textContent,
+        quoteCount: byClass(host, 'md-quote').length, quote: byClass(host, 'md-quote')[0]?.textContent,
+        bold: byTag(host, 'strong')[0]?.textContent }, body, kind, reason);
+    }
+  }
+});
 
 // AIM's fixture (tests/test_aim_ui.py BOX_TABLE): a table a terminal drew.
 const BOX_TABLE = `Where each lane lives
@@ -974,4 +991,34 @@ test('a card read on in place, or shown full, strikes what the whole message too
     assert.equal(await own.showFull(tall.card, { id: 'm', preview: false, body: whole, revision: 2, struck }), true, name);
     assert.deepEqual([tall.preview.textContent, struckOf(tall.preview)], [shown, words], `a whole card shown full, ${name}`);
   }
+});
+
+test('867 Notebook hidden lines preserve Reader source offsets and do not hide ordinary message examples',()=>{
+ const line='<!-- theseus-card: {"id":"c-11111111111111111111111111111111","aliases":[],"color":"blue"} -->';
+ for(const newline of ['\n','\r\n']){
+  const body=['## First','',line,'','Before words.','','## Second','','After words.'].join(newline);
+  const host=passages(body,{notebook:true});assert.doesNotMatch(host.textContent,/theseus-card|aliases/);
+  for(const word of ['Before words.','After words.']){
+   const node=walk(host).find(n=>n.nodeType===3&&n.data.includes(word));assert.ok(node);
+   const start=format.sourcePosition(node,node.data.indexOf(word)),end=format.sourcePosition(node,node.data.indexOf(word)+word.length,true);
+   assert.equal(body.slice(start,end),word);
+  }
+  assert.match(passages(body).textContent,/theseus-card/);
+  assert.equal(passages(line,{notebook:true}).textContent,'');
+ }
+});
+
+test('962 a Notebook literal title retains its marks and link text while joining the card source', () => {
+  const title = '**Literal** [label](https://example.test/)', heading = '## ' + title;
+  const label = format.literalWords(new Element('span'), title, 4);
+  const body = render('Body paragraph.', { revision: 4 }), row = new Element('li');
+  row.append(label, body);
+  format.composeFormattedWords(row, heading + '\n\nBody paragraph.', 4,
+    [{ node: label, offset: 3, start: 0, end: heading.length }, { node: body, offset: heading.length + 2 }]);
+  assert.equal(label.textContent, title);
+  assert.deepEqual(webLinksOf(label), []);
+  assert.equal(byTag(label, 'strong').length, 0);
+  assert.equal(format.sourcePosition(label.childNodes[0], 0), 0);
+  assert.equal(format.sourcePosition(label.childNodes[0], title.length, true), heading.length);
+  assert.equal(format.drawnRevision(row), 4);
 });

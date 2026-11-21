@@ -6,7 +6,8 @@ from .authority import AuthorityError
 
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
 from .conversation import INTENT_REQUIRED
-from . import addressing, whispers
+from . import addressing, whispers, reply_passages
+from .root_posts import reason
 from .topic_reading import writing_version
 
 
@@ -52,7 +53,7 @@ def _source_key(ref):
 
 def _holds_writing(payload):
     return bool(payload.get("body") or payload.get("attachments") or payload.get("quotes") or payload.get("addressees") or
-                any(payload.get(name) is not None for name in ("reply_to", "exchange_id", "opening")))
+                any(payload.get(name) is not None for name in ("reply_to", "exchange_id", "opening", "divergence_reason")))
 
 
 def _topic_composition(ref, topic_id):
@@ -138,9 +139,11 @@ class Drafts:
         for recipient in result["addressees"]:
             _identifier(recipient, "addressee")
         result["addressees"] = list(dict.fromkeys(result["addressees"]))
-        for name in ("reply_to", "exchange_id", "caret", "opening", "intent", "whisper", "part"):
+        for name in ("reply_to", "exchange_id", "caret", "opening", "intent", "whisper", "part", "ask_wait", "reply_passage", "reply_without_quote"):
             if name in args:
                 result[name] = args[name]
+        if "divergence_reason" in args:
+            result["divergence_reason"] = reason(args["divergence_reason"])
         whispers.whispering(result)
         # Whether a message to someone asks or tells; none means the sender has not said.
         if result.get("intent") not in (None, "ask", "tell"):
@@ -227,7 +230,7 @@ class Drafts:
         snapshot = self._as_shown(db, actor, row["topic_id"], json.loads(row["payload"]))
         # The durable saved revision, never a late HTTP payload, is the source
         # of the frozen act. Callers may echo fields, but cannot override them.
-        for name in ("body", "attachments", "quotes", "addressees", "reply_to", "exchange_id", "opening", "intent", "whisper", "part"):
+        for name in ("body", "attachments", "quotes", "addressees", "reply_to", "exchange_id", "opening", "intent", "whisper", "part", "ask_wait", "reply_passage", "reply_without_quote", "divergence_reason"):
             if name in args and args[name] != snapshot.get(name):
                 raise Refusal("REVISION_CONFLICT", "Save this exact writing before preparing it")
         # Writing that starts with @names of the topic's members goes to exactly them, frozen
@@ -243,6 +246,16 @@ class Drafts:
             raise Refusal("INTENT_REQUIRED", INTENT_REQUIRED)
         if intent is not None:
             snapshot["intent"] = intent
+        if self._actor(db, actor)["kind"] == "agent":
+            self._resolve_reply(db, snapshot, row["topic_id"])
+            parent = None
+            if snapshot.get("reply_to"):
+                self._topic(db, actor, row["topic_id"])
+                parent = self._message_access(db, actor, snapshot["reply_to"])
+                if parent["topic_id"] != row["topic_id"]:
+                    raise Refusal("INVALID_REPLY", "Reply context must belong to the destination topic")
+            whispers.check_publish(db, actor, snapshot, parent)
+            reply_passages.validate(self, db, actor, snapshot)
         snapshot["attachments"] = self._attachment_refs(db, actor, snapshot["attachments"], ready=True)
         submission_id = _identifier(args.get("submission_id"), "submission_id")
         send_op = _identifier(args.get("send_operation_id"), "send_operation_id")
@@ -285,6 +298,8 @@ class Drafts:
 
     def _view_submission(self, db, actor, args):
         row, snapshot = self._submission(db, actor, args.get("submission_id"))
+        if db.execute("SELECT 1 FROM messages m JOIN message_removals r ON r.message_id=m.id WHERE m.author_id=? AND m.operation_id=? AND r.kind='unsent'", (actor, row['send_operation_id'])).fetchone():
+            raise Refusal('FORBIDDEN', 'No private submission for this actor')
         receipt = db.execute("SELECT outcome FROM operations WHERE actor_id=? AND id=?", (actor, row["send_operation_id"])).fetchone()
         # Its shape stays as it was: a page checks it field for field (cleanup.mjs), so whether the reply is set
         # aside is said only by the unsent list leaving it out.
@@ -338,6 +353,7 @@ class Drafts:
         if not isinstance(unsent, bool):
             raise Refusal("INVALID_ARGUMENT", "unsent is true or false")
         where, values = "s.actor_id=?", [actor]
+        where += " AND NOT EXISTS (SELECT 1 FROM messages m JOIN message_removals r ON r.message_id=m.id WHERE m.author_id=s.actor_id AND m.operation_id=s.send_operation_id AND r.kind='unsent')"
         if "source_ref" in args:
             key = _source_key(args["source_ref"])
             _topic_composition(args["source_ref"], args.get("topic_id"))
@@ -379,7 +395,7 @@ class Drafts:
         try:
             self._validate_source_ref(db, actor, args["source_ref"])
         except Refusal as exc:
-            if exc.code != "FORBIDDEN" or (draft is None and note is None):
+            if exc.code not in ("FORBIDDEN", "PAGE_DELETED") or (draft is None and note is None):
                 raise
             source_available = False
         destination_available = source_available and not note_only

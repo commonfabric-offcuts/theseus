@@ -1,6 +1,6 @@
 // The New message sheet (#new-message-sheet) at rest is in the feed, just above More (item 465), among the
-// dossiers; up over the feed, as the New message composer (inline-composer.mjs) or a Notebook page
-// (notebook-sheet.mjs), it leaves its place there. A holder of its height keeps that place, so nothing behind the
+// dossiers; up over the feed, as the New message composer (inline-composer.mjs), it leaves its place there.
+// Notebook has its own dialog (notebook-sheet.mjs). A holder of its height keeps that place, so nothing behind the
 // backdrop moves. Whether the holder is drawn is the browser's own word on the sheet, read by one rule (aim.css,
 // `.sheet-holder:has(+dialog[open])`): drawn while the sheet just after it is open, and nothing the moment it
 // closes, however it closes. Nothing here takes it away or puts it back on an event, so no listener, early or late,

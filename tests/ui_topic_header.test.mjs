@@ -27,6 +27,7 @@ class Element {
   addEventListener(name, fn) { this.handlers[name] = fn; }
   focus() { globalThis.document.activeElement = this; }
   get isConnected() { return true; }
+  contains(node) { return node === this || this.all().includes(node); }
   all() { return this.children.flatMap(node => node instanceof Element ? [node, ...node.all()] : []); }
   find(predicate) { return this.all().find(predicate); }
   filter(predicate) { return this.all().filter(predicate); }
@@ -305,18 +306,21 @@ test('the top of a topic is the eyebrow, the title row with the gear, the subtit
   const order = ids => ids.map(id => header.indexOf(`id="${id}"`));
   const [eyebrow, title, gear, subtitle] = order(['workspace-name', 'topic-title', 'settings-open', 'topic-description']);
   assert.ok(eyebrow >= 0 && eyebrow < title && title < gear && gear < subtitle, 'eyebrow, title, gear, subtitle');
-  assert.match(header, /<div class="title-row"><h1 id="topic-title"><\/h1><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden>/);
-  assert.doesNotMatch(main, /This topic/);
+  assert.match(header, /<div class="title-row"><div class="topic-title-area"><h1 id="topic-title"><\/h1>/);
+  assert.match(header, /<button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden>/);
+  // 862 added the overflow; 893 puts it after New message and settings.
+  const [write, settings, menu] = order(['new-message', 'settings-open', 'topic-menu']);
+  assert.ok(title < write && write < settings && settings < menu && menu < subtitle);
+  assert.match(header, /id="topic-menu"[^>]*aria-label="This topic"/);
   assert.equal(main.includes('id="topic-state"'), false, 'where it stands is not on the page');
   // Item 465: the people are the Team, in the header after the subtitle, which aim.css sets on the title row's right.
   const team = header.indexOf('id="topic-people"');
   assert.ok(team > subtitle, 'the Team follows the subtitle, in the header');
   assert.match(header, /<section id="topic-people" class="topic-people" aria-labelledby="people-heading"><h2 id="people-heading">Team<\/h2><div id="participants"/);
   assert.equal(main.slice(main.indexOf('</header>')).includes('id="topic-people"'), false, 'no People after the messages');
-  // The New message composer at rest is in the feed (reply-stacks.mjs places it just above More), not after the Notebook.
+  // The New message composer at rest is in the feed (reply-stacks.mjs places it just above More).
   const feed = main.slice(main.indexOf('<section id="messages"'), main.indexOf('<button id="more-messages"'));
-  assert.match(feed, /^<section id="messages" aria-label="Conversation">\s*<dialog id="new-message-sheet" class="composer-home"/);
-  assert.ok(main.indexOf('id="new-message-sheet"') < main.indexOf('id="notebook"'), 'before the Notebook');
+  assert.match(feed, /^<section id="messages" aria-label="Conversation">\s*<div id="agent-coordination-show" class="feed-filter" role="group" aria-label="Agent coordination" hidden><\/div>\s*<dialog id="new-message-sheet" class="composer-home"/);
   const dialog = html.slice(html.indexOf('<dialog id="topic-settings"'), html.indexOf('</dialog>', html.indexOf('<dialog id="topic-settings"')));
   assert.match(dialog, /aria-labelledby="settings-title"/);
   assert.match(dialog, /<h2 id="settings-title" tabindex="-1">Topic settings<\/h2><button id="settings-close" type="button" aria-label="Close topic settings">✕<\/button>/);

@@ -1,0 +1,18 @@
+/* Where you write is black, because what you write is (designer prototype). Your messages wear black in the
+   feed in both themes; so do the places you write them: the pencil's sheet, the Reader's reply bar, a reply
+   under a card, and a message you are editing. Each takes the black material the rail and Notebook wear in
+   Bookends, by redefining the tokens on itself so what is inside follows (look.css does the same), in both
+   themes and both looks. Only the writing surface turns: the Reader's page and the dossiers keep theirs. A hair
+   edge keeps black apart from black, as on a reply under one of your own messages. The Notebook's own sheet
+   (notebook-mode) keeps the Notebook's material. Every screen, like the sheets it
+   dresses; write-touch.css sizes them for a finger. */
+@media all{
+  :is(dialog.composer-home[open]:not(.notebook-mode), dialog#reader[open] #reader-composer, .card-reply-composer, .message-edit-field){
+    --panel:#000;--paper:#000;--ink:#e3eae7;--muted:#97a6a3;--line:#2b3436;--soft:#18241f;--accent:#5fae96;--focus:#5fae96;
+    --sheet-hair:#2b3436;--sheet-quiet:#97a6a3;
+    color:var(--ink);color-scheme:dark}
+  dialog.composer-home[open]:not(.notebook-mode){background:#000}
+  :is(dialog#reader[open] #reader-composer, .card-reply-composer, .message-edit-field){background:#000}
+  :is(dialog.composer-home[open]:not(.notebook-mode), dialog#reader[open] #reader-composer, .card-reply-composer, .message-edit-field) :is(textarea, input)::placeholder{color:#7d8b89}
+  .message-edit-field::placeholder{color:#7d8b89}
+}

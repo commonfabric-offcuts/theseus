@@ -10,7 +10,7 @@ export const recipientChoices = names => names.map(name => ({ name, removeLabel:
 // can hold while the acts wait (the Reader during a step). sign: the saving
 // sign's state for the save status; other words in its place carry none.
 export function writingState(editor, { active = true, writable = active, note = false, status, sign } = {}) {
-  const barrier = imageBarrier(editor);
+  const barrier = note ? null : imageBarrier(editor);
   const readOnly = Boolean(!writable || editor.adopting || recoveryReadOnly(editor) || editor.conflict?.error?.code === 'INVALID_TOPIC_COMPOSITION');
   const preparing = editor.submissions.some(item => item.status === 'preparing' && !item.detached);
   return {

@@ -1,0 +1,33 @@
+effective_cache=/Users/commonfabric/.local/share/theseus/fable-tools/checks/790-build9837/focused-final2/core-owner-mutant-cache-5543f81858b343bfb5e13440830759bb
+test_owner_only_and_no_context_read_before_authorization (test_onboarding_790.OnboardingCase) ... FAIL
+
+======================================================================
+FAIL: test_owner_only_and_no_context_read_before_authorization (test_onboarding_790.OnboardingCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/codex-790-build9837/tests/test_onboarding_790.py", line 34, in test_owner_only_and_no_context_read_before_authorization
+    answer = self.read(actor)
+  File "/Users/commonfabric/aim-worktrees/codex-790-build9837/tests/test_onboarding_790.py", line 22, in read
+    return self.store.view(actor, "onboarding_prompt", dict(workspace_id=workspace, variant=variant, **more))
+  File "/Users/commonfabric/aim-worktrees/codex-790-build9837/aim_next/store.py", line 466, in view
+    return self._view(actor, view_name, args)
+  File "/Users/commonfabric/aim-worktrees/codex-790-build9837/aim_next/store.py", line 494, in _view
+    return self._hand_over(db, fence, actor, kind, args, handler, between, marks)
+  File "/Users/commonfabric/aim-worktrees/codex-790-build9837/aim_next/store.py", line 534, in _hand_over
+    answer, pairs, now = self._read_once(db, actor, kind, args, handler, marks)
+  File "/Users/commonfabric/aim-worktrees/codex-790-build9837/aim_next/store.py", line 519, in _read_once
+    answer = handler(db, actor, args)
+  File "/Users/commonfabric/aim-worktrees/codex-790-build9837/aim_next/onboarding.py", line 47, in _view_onboarding_prompt
+    self._workspace(db, actor, workspace_id)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/unittest/mock.py", line 1093, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/unittest/mock.py", line 1097, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/unittest/mock.py", line 1152, in _execute_mock_call
+    raise effect
+AssertionError: context read before owner check
+
+----------------------------------------------------------------------
+Ran 1 test in 0.033s
+
+FAILED (failures=1)

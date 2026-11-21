@@ -1,0 +1,26 @@
+[
+  {
+    "engine": "chromium",
+    "browserVersion": "156.0.8078.47",
+    "profile": "/var/folders/y8/b2hrtp5904l5cvxxlth7t2zr0000gn/T/playwright_chromiumdev_profile-yd7xyw"
+  },
+  {
+    "error": "AssertionError [ERR_ASSERTION]: title-adjacent pencil exists on actual page\n\n0 !== 1\n\n    at file:///Users/commonfabric/aim-worktrees/page-lane5-805-title-live210/tests/topic_title_805_native.mjs:54:16\n    at runNextTicks (node:internal/process/task_queues:65:5)\n    at process.processImmediate (node:internal/timers:541:9)"
+  },
+  {
+    "browserClosed": true,
+    "profile": "/var/folders/y8/b2hrtp5904l5cvxxlth7t2zr0000gn/T/playwright_chromiumdev_profile-yd7xyw",
+    "remaining": []
+  },
+  {
+    "fixture": {
+      "code": 0,
+      "signal": null
+    },
+    "fixturePid": 34359,
+    "absent": true,
+    "port": "55984",
+    "portClosed": true,
+    "errors": []
+  }
+]

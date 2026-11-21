@@ -1,0 +1,36 @@
+effective_cache=/Users/commonfabric/aim-worktrees/codex-790-paste9912/docs/evidence/onboarding-790-paste/cache-length-instead-of-exact-mutant-e2abfc85c3004b2b9598d0590de9ecf7
+{"ownedLiteralCases":{"chrome":["reading item 790 clipboard-control: fixture-only raw Meta+V versus native paste editing command","reading item 790 laptop: owner chooses both variants and copies current prompt by native paste","reading item 790 laptop: refused clipboard keeps readable text and retry copies fresh state","reading item 790 laptop: non-owner has no overflow and Core refuses the prompt","reading item 790 phone: owner chooses both variants and copies current prompt by native paste","reading item 790 phone: refused clipboard keeps readable text and retry copies fresh state","reading item 790 phone: non-owner has no overflow and Core refuses the prompt"],"webkit":["reading item 790 laptop: owner chooses both variants and copies current prompt by native paste","reading item 790 laptop: refused clipboard keeps readable text and retry copies fresh state","reading item 790 laptop: non-owner has no overflow and Core refuses the prompt","reading item 790 phone: owner chooses both variants and copies current prompt by native paste","reading item 790 phone: refused clipboard keeps readable text and retry copies fresh state","reading item 790 phone: non-owner has no overflow and Core refuses the prompt"]},"executedBodies":0,"runnerStarts":0}
+✔ safe diagnostics retain hashes, actual focus and native phases on success without text (0.733625ms)
+✖ exact equality rejects different text even at same length and leaves failure diagnostics (1.980541ms)
+✔ wrong clipboard content stops before paste, retains safe product defect classification (0.096417ms)
+✔ native editing command carries no text and raw path preserves original key call (0.258333ms)
+✔ clipboard read denial is diagnostic refusal without exception text or product failure claim (0.140041ms)
+✔ all diagnostic browser expressions parse and viewport tolerance catches actual expression crossing (0.471ms)
+✔ actual reading entry point enumerates Chromium seven and WebKit original six without execution (29.994625ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 6
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 82.309291
+
+✖ failing tests:
+
+test at tests/clipboard_790_diagnostics.test.mjs:31:1
+✖ exact equality rejects different text even at same length and leaves failure diagnostics (1.980541ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///Users/commonfabric/aim-worktrees/codex-790-paste9912/tests/clipboard_790_diagnostics.test.mjs:35:57)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

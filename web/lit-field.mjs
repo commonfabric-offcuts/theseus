@@ -96,9 +96,23 @@ export function wordLines(range, stop) {
 export function fieldLayers(host, lines, height) {
   const box = host.getBoundingClientRect();
   const left = box.left + host.clientLeft - host.scrollLeft, top = box.top + host.clientTop - host.scrollTop;
-  return lines.map(line => {
+  const layers = lines.map(line => {
     const words = line.bottom - line.top, tall = Math.max(height, words);
     const at = Math.round(line.top - (tall - words) / 2);
     return { x: line.left - left, y: at - top, width: line.right - line.left, height: Math.round(tall) };
   });
+  // With Break out paragraphs on, adjacent selected parts of one authored
+  // paragraph share their field through the display spacing. Only their
+  // horizontal overlap joins; ordinary blocks, different list items and
+  // unselected passages keep their existing gaps. These are paint layers on
+  // the same clipping/scrolling host, never layout or selection changes.
+  const joins = [];
+  for (let i = 1; i < lines.length; i++) {
+    const previous = lines[i - 1].block, next = lines[i].block;
+    if (previous?.dataset.sentenceParagraph !== 'more' || previous.nextSibling !== next || !next?.dataset.sentenceParagraph) continue;
+    const a = layers[i - 1], b = layers[i], x = Math.max(a.x, b.x), y = a.y + a.height;
+    const width = Math.min(a.x + a.width, b.x + b.width) - x, gap = b.y - y;
+    if (width > 0 && gap > 0) joins.push({ x, y, width, height: gap });
+  }
+  return [...layers, ...joins];
 }

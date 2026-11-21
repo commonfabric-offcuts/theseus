@@ -898,7 +898,7 @@ VIEW_PATHS = {
     "marks": "visible() before a mark; the reader's own marks",
     "changes": "a whisper writes only to its two people's actor scopes",
     "topic": "summaries, waits and participation are untouched by a whisper; the message that reopened or started it through redact_topic",
-    "workspace_topics": "summaries, activity, order and waits are untouched by a whisper; each topic's reopening and source through redact_topic",
+    "workspace_topics": "summaries, activity, order and waits are untouched by a whisper; each topic's reopening and source through redact_topic; latest_message reads only the public summary message with private_to IS NULL",
     "workspaces": "per-reader delivery counts",
     "outcome_light": "reads asks and summaries, which a whisper never writes",
     "source_topics": "_message_access applies visible()",
@@ -937,11 +937,25 @@ VIEW_PATHS = {
 }
 # Each read of the messages table outside the visibility rule, and why it shows no whisper to anyone outside it.
 MESSAGE_READS = {
+    "aim_next/drafts.py": ("the actor-owned submission and submission list exclude a published unsent message by the same actor and exact send operation; existence-only checks return no message identity or words; private unsent draft/prepared content remains its owner's", 2),
+    "aim_next/removal.py": ("migration horizon and trigger constraints return no content; first exposure reads only bounded final-projection ids, human non-author rows beyond both horizons; eligibility reads only the checked human author's message and existence of indexed replies; removal starts through _editable/_message_access; notice history and decision receipt lookup use that exact owned message, its original operation and still-current answer revision; wait recovery walks only the removing actor's earlier addressed asks in the same topic, which cannot be whispers; summary repair reads only public surviving messages; no SQL read here returns message words", 14),
+    "aim_next/withdrawal.py": ("one ask's id/topic/sequence/author/intent/addressees/private status only, after _editable "
+                                "uses canonical _message_access (visible plus topic/delivered reach), checks its author "
+                                "and open outcome; private messages are then refused as NOT_A_QUESTION, no words read "
+                                "and no hidden identity returned; wait and change recipients derive from this guarded row", 1),
+    "aim_next/dossier_order.py": ("position reads use a canonical root already checked by visible(); publication touches only its message readers, and its numeric topic ceiling returns no message identity or words; the explicit migration enumerates readers internally, groups messages under VISIBLE and resolves only visible roots; return detection uses MEMBERS under VISIBLE; frozen48 migration alone additionally reads each reached message parent/topic, admits each parent only in that topic and under its original whisper rule, and reads only the visible canonical root sequence, never words", 10),
     "aim_next/source_item_covers.py": ("projection starts from the reader-visible MEMBERS walk and destination membership; the root owner lookup follows that admitted root; notify reads sources only to send opaque keys to _message_readers, additionally filtered by destination membership (or the affected membership-change reader), never to expose message text", 2),
     "aim_next/hosted_control.py": ("waiting and pending work filtered by VISIBLE and topic/addressed access before LIMIT, then _message_access checks the link again", 2),
+    "aim_next/answer_delivery.py": ("receipt insertion guard binds an agent's public question and recipient; admission reads only the actor's "
+                                     "pending deliveries in this topic, then checks exact asked-recipient membership and private_to before "
+                                     "returning an actual reply identity; current dossier roots use StackRoots under visibility", 3),
     "aim_next/delivery.py": ("migration backfill or settling, before any whisper exists or of the reader's own deliveries", 8),
     "aim_next/conversation.py": ("the topic page and its images to pick (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations, "
-                                 "and the messages a page names to refresh, each reached through _message_access and read under VISIBLE", 22),
+                                 "and the messages a page names to refresh, each reached through _message_access and read under VISIBLE; "
+                                 "the newly published root read by id to record its initial cover inside the same command transaction, never shown", 23),
+    "aim_next/root_posts.py": ("candidate roots in the destination topic under VISIBLE before LIMIT; effective parent existence "
+                               "in that same topic checked for visibility (public, author or private recipient) before suppressing a root; "
+                               "only readable current root ids, sequences and bounded names are returned, no bodies or hidden counts", 2),
     "aim_next/message_edit.py": ("one message's words, a revision of them or every revision, and its attachments, each read for a message "
                                  "the caller reached through _message_access; the horizon the version 41 step sets, a number; the stored "
                                  "quotes of messages whose marked words an answer already carries, read only to record what was handed; "
@@ -949,10 +963,7 @@ MESSAGE_READS = {
                                  "sequence and its author's kind against the horizon or the first post recording agents' messages; "
                                  "and, for an agent's edit (item 614), the edited message's addressees and the author of the message it "
                                  "answers, to leave a message between others as it was; none of them shown", 10),
-    "aim_next/standing_conversation.py": ("a conversation's items and asks, which a whisper never is, the about links of a page already read through VISIBLE, "
-                                          "a pipeline item's message sources, which _source_rows read through _message_access, the message a person's "
-                                          "whisper replies to, to see that it goes to that message's author, and an answer take's reply, "
-                                          "shown through visible()", 10),
+    "aim_next/standing_conversation.py": ("a conversation's items and asks, which a whisper never is, the about links of a page already read through VISIBLE, a pipeline item's message sources, which _source_rows read through _message_access, the message a person's whisper replies to, to see that it goes to that message's author, and an answer take's reply, shown through visible(); removal follows only the checked owned reply's exact parent id to recompute its indexed surviving takes; that internal update returns no message words or hidden identity", 11),
     "aim_next/marks.py": ("the reader's own marks, or a row checked by visible()", 4),
     "aim_next/reactions.py": ("a row checked by visible() before a reaction or its view, the occupied probe, and go-ahead flags of messages the caller checked; "
                               "for a thumb that answers an ask (item 239): the asked person's replies, on the record or whispered to "
@@ -960,7 +971,8 @@ MESSAGE_READS = {
                               "(item 307), never shown, and the asks topic_waiting and held_ask name, which a whisper never is", 10),
     "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
     "aim_next/blocking.py": ("the message just posted, and asks that name what they block, which only an ask can and a whisper never is", 3),
-    "aim_next/store.py": ("the latest message on the record from topic_summaries", 1),
+    "aim_next/store.py": ("the latest message on the record from topic_summaries; the exposure boundary additionally reads ids/revisions only for bounded content identities actually returned by admitted projections, after unsent refusal and excluding held ids; no new words or identities are projected by this read", 2),
+    "aim_next/topic_preview.py": ("only the returned topics' public summary messages, additionally private_to IS NULL and removal.VISIBLE; current words use the edit/hold helper and final opening words mark their exact revision", 1),
     "aim_next/topic_reading.py": ("the reader's own replies (author_id is the reader) to messages on a page already read through VISIBLE; "
                                   "whether the reader's own prepared reply was sent, an EXISTS over their own messages by the send's "
                                   "operation id that shows nothing of any message", 2),
@@ -988,7 +1000,11 @@ MESSAGE_READS = {
                            "whisper never makes its author a namer; and the members a fold through folds, under the same VISIBLE, "
                            "so it never folds a whisper the reader is outside; the reader's own starred messages of a topic, under "
                            "VISIBLE, which keep a dossier above More for them (item 635); and the root of the dossier their star brings "
-                           "back, found by the same walk, read only to record their Bring back, never shown; the reader's own places (item 550) under VISIBLE; and the source dossier first message; the scoped stars canonical-root SELECT reads the first message and attachment names only after StackRoots.root walks ancestry checked by visible(), within the readable topic; source-topic clock lookup reads only the already admitted root topic ID", 29),
+                           "back, found by the same walk, read only to record their Bring back, never shown; the reader's own places (item 550) under VISIBLE; and the source dossier first message; the scoped stars canonical-root SELECT reads the first message and attachment names only after StackRoots.root walks ancestry checked by visible(), within the readable topic; the outcome owner of a cleared cover with pending refresh, by the exact already-visible message id passed to current_acts (no message content or wider scan); source-topic clock lookup reads only the already admitted root topic ID", 30),
+    "aim_next/reply_passages.py": ("immutable reply-basis receipt lookup by message author/operation; source and topic reads "
+                                 "have already checked the message's visibility, and for_reader additionally checks "
+                                 "the parent through _message_access and withholds its basis during an edit hold; "
+                                 "keep_on_edit runs only after ownership/access checks", 1),
     "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
     "aim_next/covers.py": ("a cover's payload message, read under VISIBLE as its writer reads it, then refused as a whisper unless the "
                            "dossier is a whisper between the same two people; the owner's reply a payload names as done_by, read under "

@@ -1,7 +1,9 @@
 import { Editor, editorKey, restoreEditor, holdsWriting, noWriting } from './editor.mjs';
+import { dossierImage, dossierOccupied, dossierWriting } from './dossier-writing.mjs';
 import { EditorSession, RuntimeAuthority } from './session.mjs';
 import { RecoveryCleanup, eligible } from './cleanup.mjs';
 import { Uploads } from './uploads.mjs';
+import { writingValue, imageValues } from './writing-comparison.mjs';
 import { uploadWork, readableUploads, copyNeedsImageReview, refusedCopyAtDraft, copyChoiceKey, currentImages } from './upload-state.mjs';
 
 const copy = value => structuredClone(value);
@@ -49,6 +51,7 @@ export class EditorRegistry {
     this.pendingDetails = new Map(); this.pendingReceipts = new Map(); this.registering = new Map();
     // The replies this page set aside (setAside), which are in doubt no more.
     this.asides = new Set();
+    this.cards = new Map(); this.cardOpenings = new Map();
     this.current = null; this.inline = null; this.generation = 0; this.disposed = false; this.leaving = null; this.closing = null;
     this.neighborGeneration = 0;
     this.cleanup = new RecoveryCleanup({ api, bootstrap: this.bootstrap, journal, runtime: this.runtime,
@@ -66,7 +69,8 @@ export class EditorRegistry {
   // The presentation in front, holding this registered editor, whether or not
   // an open is under way.
   holds(presentation, editor) {
-    return Boolean(presentation && this.interactive === presentation && !this.disposed &&
+    return Boolean(presentation && (this.interactive === presentation || !this.current && presentation?.surface === 'card' &&
+      this.cards.get(presentation.source.source_ref.id) === presentation && !presentation.hidden && !presentation.closing) && !this.disposed &&
       (presentation.surface !== 'inline' || presentation.initialized) &&
       (!editor || Object.values(presentation.editors).includes(editor) && this.sessions.get(editor.key)?.editor === editor));
   }
@@ -83,7 +87,7 @@ export class EditorRegistry {
   // so what it keeps is all there is when the Reader goes.
   isWritable(presentation, editor) {
     return this.holds(presentation, editor) && !this.closing &&
-      (!this.pendingOpen || presentation.surface !== 'inline' && this.leaving !== this.pendingOpen);
+      (!this.pendingOpen || !['inline', 'card'].includes(presentation.surface) && this.leaving !== this.pendingOpen);
   }
   // A close under way is keeping this presentation's writing on this device.
   isClosing(presentation) { return Boolean(presentation && this.closing?.presentation === presentation); }
@@ -114,6 +118,65 @@ export class EditorRegistry {
     };
     this.initializingInline = initialize();
     try { return await this.initializingInline; } finally { this.initializingInline = null; }
+  }
+
+  // Each message reply has its own presentation, but its registered writing is
+  // the same EditorSession the Reader uses. Loading a saved reply opens no Reader.
+  async initializeCard(sourceRef, topic) {
+    const id = sourceRef.id;
+    if (this.cards.has(id)) return this.cards.get(id);
+    if (this.cardOpenings.has(id)) return this.cardOpenings.get(id);
+    const foreground = this.cleanup.foreground();
+    const load = async () => {
+      const [source, state] = await foreground.read(options => pairedReads([
+        this.api.view('source', sourceRef, options),
+        this.api.view('editor_state', { source_ref: sourceRef, topic_id: topic.id, limit: this.pendingPageSize, unsent: true }, options),
+      ]));
+      this.validateState(state, sourceRef, topic.id);
+      if (source?.error || source?.instance_id !== this.bootstrap.instance_id || !same(source.source_ref, sourceRef) || !state.source_available)
+        throw Error('This message is not available to you.');
+      if (this.disposed) return null;
+      const context = { instanceId: this.bootstrap.instance_id, actor: this.bootstrap.actor, sourceRef, topicId: topic.id, kind: 'reply' };
+      this.setPending(editorKey(context), copy(state.submissions));
+      const reply = await this.register(context, state.draft);
+      if (this.disposed) return null;
+      reply.unavailable = !state.destination_available; reply.read(sourceRef);
+      const p = { surface: 'card', source, topic: copy(topic), editors: { reply }, mode: 'reply',
+        destinationAvailable: state.destination_available, hidden: false };
+      this.cards.set(id, p); this.activity(); return p;
+    };
+    const loading = load(); this.cardOpenings.set(id, loading);
+    try { return await loading; }
+    finally { foreground.release(); if (this.cardOpenings.get(id) === loading) this.cardOpenings.delete(id); }
+  }
+  async hideCard(p) {
+    if (!p || this.cards.get(p.source.source_ref.id) !== p || this.disposed || p.closing) return false;
+    p.closing = true; this.activity();
+    try {
+      await this.keepLocal(p);
+      if (this.disposed) return false;
+      p.hidden = true; return true;
+    } catch (error) { throw this.closeRefusal(error); }
+    finally { p.closing = false; this.activity(); }
+  }
+
+  async refreshCard(p, read, current = () => true) {
+    const editor = p.editors.reply, serial = p.accessSerial = (p.accessSerial ?? 0) + 1;
+    const sameCard = () => !this.disposed && this.cards.get(p.source.source_ref.id) === p &&
+      p.accessSerial === serial && this.sessions.get(editor.key)?.editor === editor;
+    p.availabilityChecking = true; p.availabilityUnconfirmed = true;
+    editor.unavailable = true; this.cancelSave(editor); this.changed(editor);
+    try {
+      const state = await read('editor_state', { source_ref: editor.context.sourceRef, topic_id: p.topic.id });
+      if (!sameCard() || !current()) return;
+      this.validateState(state, editor.context.sourceRef, p.topic.id);
+      p.availabilityUnconfirmed = false; p.sourceUnavailable = !state.source_available;
+      p.destinationAvailable = state.destination_available;
+      editor.unavailable = !state.source_available || !state.destination_available;
+      if (!editor.unavailable && editor.dirty && !editor.authorityRecovery && !editor.conflict) this.schedule(editor);
+    } finally {
+      if (sameCard()) { p.availabilityChecking = false; this.changed(editor); }
+    }
   }
 
   validateState(state, sourceRef, topicId) {
@@ -172,6 +235,7 @@ export class EditorRegistry {
         }
       } });
     this.sessions.set(key, session);
+    Object.defineProperties(editor, { reviewWriterId: { value: this.journal.writerId }, reviewAuthority: { get: () => session.authority } });
     session.registered = () => this.sessions.get(key) === session && !this.disposed;
     // From here this writing can be in doubt, so the page is told now, as
     // setPending tells it of every later list.
@@ -219,13 +283,14 @@ export class EditorRegistry {
         editor.uploadState?.entries.some(e => e.selected && ['memory-only', 'capturing'].includes(e.bytes_state)))) throw new ImageHeld();
   }
 
-  async open(sourceRef, { topicId, opener } = {}) {
+  async open(sourceRef, { topicId, opener, mode = 'reply', replyCard = null, fromCardReply = false } = {}) {
     const foreground = this.cleanup.foreground();
     const token = ++this.generation;
     this.pendingOpen = token;
     this.activity();
     try {
     await this.keepBeforeStep(this.interactive);
+    if (this.cards?.size) await this.keepEditorsLocal([...this.cards.values()].flatMap(p => Object.values(p.editors)));
     const [sourceAnswer, state] = await foreground.read(options => pairedReads([
       this.api.view('source', sourceRef, options),
       this.api.view('editor_state', { source_ref: sourceRef, topic_id: topicId ?? null, limit: this.pendingPageSize, unsent: true }, options),
@@ -233,9 +298,10 @@ export class EditorRegistry {
     // A message the person may not read, such as a whisper they are not in, is
     // refused exactly as one that is not there (docs/whispers.md): a link to
     // either opens nothing of it, and says so in plain words (docs/links.md).
+    if(sourceAnswer?.error?.code==='PAGE_DELETED'&&state?.error?.code==='PAGE_DELETED')throw Error('This Notebook page was deleted. Its history is kept.');
     if (sourceAnswer?.error?.code === 'FORBIDDEN' && state?.error?.code === 'FORBIDDEN') throw Error('This message is not available to you.');
     this.validateState(state, sourceRef, topicId);
-    const sourceUnavailable = sourceAnswer?.error?.code === 'FORBIDDEN' && state.source_available === false && Boolean(state.draft || state.note);
+    const sourceUnavailable = ['FORBIDDEN','PAGE_DELETED'].includes(sourceAnswer?.error?.code) && state.source_available === false && Boolean(state.draft || state.note);
     if (!sourceUnavailable && (sourceAnswer?.error || sourceAnswer?.instance_id !== this.bootstrap.instance_id ||
         !same(sourceAnswer.source_ref, sourceRef))) throw Error('The full source identity could not be confirmed.');
     if (token !== this.generation || this.disposed) return null;
@@ -245,6 +311,17 @@ export class EditorRegistry {
     const reply = await this.register({ ...context, kind: 'reply' }, state.draft);
     const note = await this.register({ ...context, kind: 'note' }, state.note);
     if (token !== this.generation || this.disposed) return null;
+    // A corner can appear after this document saved an empty note. Reuse its
+    // editor, but admit the newer saved words while there is no local writing
+    // or unsettled save to protect. Never replace a nonempty or uncertain copy.
+    const noteSession = this.sessionFor(note);
+    if (mode === 'note' && state.note && state.note.revision > (note.draft.revision ?? 0) &&
+        (!note.draft.revision || state.note.id === note.draft.id) && !holdsWriting(note.draft) &&
+        !note.dirty && !note.conflict && !note.authorityRecovery && !note.journalError && !noteSession.unsettledSave()) {
+      note.draft = { ...noWriting(), ...copy(state.note) };
+      await noteSession.persist();
+      if (token !== this.generation || this.disposed) return null;
+    }
     // Writing typed while the step waited is kept on this device before the
     // step replaces it, or the step is refused and the writing stays in front.
     this.leaving = token; this.activity();
@@ -257,7 +334,7 @@ export class EditorRegistry {
     const source = sourceUnavailable ? { instance_id: this.bootstrap.instance_id, source_ref: copy(sourceRef),
       topic_id: topicId ?? null, title: 'Source unavailable', body: '', attachments: [] } : sourceAnswer;
     const presentation = { token, source, sourceUnavailable, destinationAvailable: state.destination_available,
-      editors: { reply, note }, mode: 'reply', opener, mark: state.mark ?? null };
+      editors: { reply, note }, mode, opener, mark: state.mark ?? null, replyCard, fromCardReply };
     this.pendingOpen = null;
     this.current = presentation; await this.present(presentation);
     if (token !== this.generation || this.disposed) return null;
@@ -330,6 +407,68 @@ export class EditorRegistry {
     if (editor.unavailable) throw Error('The source or destination is unavailable. Your writing is kept on this device.');
     this.cancelSave(editor);
     return this.sessionFor(editor).send({ ...options, presentation: options.presentation ?? this.interactive });
+  }
+
+  // Move text to the existing topic composer, keeping the destination before
+  // clearing the reply. The close barrier stops typing, sends and image choices;
+  // every await also checks the generation and both registered editor versions.
+  async startDossier(presentation, { link, names = [], kindOf = () => null, moveReply = true } = {}) {
+    const target = this.inline, left = presentation?.editors.reply, there = target?.editors.reply;
+    const source = presentation?.source;
+    if (!this.isCurrent(presentation, left) || presentation.sourceUnavailable || presentation.availabilityUnconfirmed ||
+        source?.source_ref?.kind !== 'message' || !target?.initialized ||
+        source.topic_id !== target.topic.id || typeof link !== 'string' || !link) return false;
+    if (!there.validateComposition() || there.context.topicId !== target.topic.id) {
+      throw Error('Finish reviewing New message before starting a new dossier.');
+    }
+    const ready = (editor, where) => {
+      const session = this.sessionFor(editor);
+      if (dossierImage(editor)) throw Error('Finish or remove the image in ' + where + ' before starting a new dossier.');
+      if (editor.unavailable || editor.conflict || editor.authorityRecovery || session.recovery || editor.journalError ||
+          this.serverSaves.has(editor.key) || session.sends.size || session.unsettledSave() ||
+          editor.submissions.some(item => !item.detached && ['preparing', 'prepared', 'refused'].includes(item.status))) {
+        throw Error('Finish saving or reviewing ' + where + ' before starting a new dossier.');
+      }
+    };
+    ready(left, 'the reply'); ready(there, 'New message');
+    if (dossierOccupied(there)) throw Error('Finish New message first. Your reply has not moved.');
+    const writing = dossierWriting(source, left, { link, names, kindOf, moveReply, actor: this.bootstrap.actor });
+    const generation = this.generation;
+    let leftVersion = left.localVersion, thereVersion = there.localVersion;
+    const stop = this.closing = { presentation };
+    const current = () => !this.disposed && this.generation === generation && this.current === presentation &&
+      this.inline === target && this.closing === stop && !this.pendingOpen &&
+      this.sessions.get(left.key)?.editor === left && this.sessions.get(there.key)?.editor === there &&
+      left.localVersion === leftVersion && there.localVersion === thereVersion;
+    this.cancelSave(left); this.cancelSave(there); this.activity();
+    try {
+      try { await this.keepLocal(presentation); }
+      catch (error) { throw Error('The reply could not be kept on this device. It stays here; keep this page open.', { cause: error }); }
+      if (!current()) return false;
+      ready(left, 'the reply'); ready(there, 'New message');
+      if (dossierOccupied(there)) throw Error('Finish New message first. Your reply has not moved.');
+      there.receive(writing); thereVersion = there.localVersion;
+      try { await this.persistLocal(there); }
+      catch (error) { throw Error('The new dossier could not be kept on this device. Your reply stays here; keep this page open.', { cause: error }); }
+      if (!current()) return false;
+      ready(left, 'the reply'); ready(there, 'New message');
+      // Private notes remain in their own editor. Feed-menu use does not take a
+      // saved reply that the person did not choose to move from the Reader.
+      if (moveReply) {
+        left.edit(noWriting()); leftVersion = left.localVersion;
+        try { await this.persistLocal(left); }
+        catch (error) { throw Error('New message holds your writing, but the old reply could not be cleared on this device. Keep this page open.', { cause: error }); }
+      }
+      if (!current()) return false;
+      this.current = null; ++this.generation; this.closed(presentation);
+      return true;
+    } finally {
+      if (this.closing === stop) this.closing = null;
+      for (const editor of [left, there]) {
+        if (!this.disposed && editor.dirty && !editor.conflict && !editor.authorityRecovery && !editor.unavailable) this.schedule(editor);
+      }
+      this.activity();
+    }
   }
 
   async close(presentation, { explicit = false } = {}) {
@@ -489,7 +628,20 @@ export class EditorRegistry {
     const result = await this.cleanup.discover(this.sessionFor(editor), async () => {
       const page = await this.journal.candidates(editor.key, { ...options, limit });
       return Array.isArray(page) ? { items: page, nextCursor: null } : page;
-    }, page => {
+    }, async page => {
+      // Compare unknown saved image bytes under the journal's scoped writer
+      // lock. Digests are read evidence on this page, never edits to its copy.
+      for (const row of page.items) if (row.availability === 'available' && row.snapshot?.uploadState?.entries?.some(e => e.selected && e.owner.kind === 'cycle' && !e.file?.sha256 && !e.ready_descriptor && !e.retained_ref)) {
+        try { row.comparisonDigests = await this.journal.comparisonImages(editor.key, row); }
+        catch { /* Unknown bytes remain unknown; the image recovery gate stays. */ }
+      }
+      const session = this.sessionFor(editor);
+      for (const e of currentImages(editor)) if (!e.file?.sha256 && e.bytes_state === 'durable' && !e.ready_descriptor && !e.retained_ref) {
+        try {
+          const { hash } = await session.uploads.bytes(e);
+          if (this.sessions.get(editor.key) === session && currentImages(editor).includes(e)) (editor.comparisonDigests ??= {})[e.selection_id] = hash;
+        } catch { /* An unfinished selection is handled by its image owner. */ }
+      }
       const continued = Boolean(options?.cursor);
       if (continued && options.cursor !== editor.candidatesNext) { stale = true; return; }
       editor.candidatesNext = page.nextCursor;
@@ -585,14 +737,26 @@ export class EditorRegistry {
   }
 
   async keepCurrentWriting(editor, candidate) {
-    const session = this.sessionFor(editor), cycle = editor.clientCycleId;
-    const row = editor.imageCopies?.get(candidate.id);
-    if (!row || row.stamp !== candidate.stamp || !refusedCopyAtDraft(row, editor.recoveryServerDraft)) throw Error('This saved refusal changed. Review it again.');
-    await this.journal.inspectCandidate(editor.key, candidate);
-    if (this.sessions.get(editor.key) !== session || editor.clientCycleId !== cycle || editor.imageCopies?.get(row.id)?.stamp !== row.stamp) throw Error('This writing changed. Review the saved copy again.');
-    (editor.refusedCopyChoices ??= new Set()).add(copyChoiceKey(editor, row));
-    this.updateImageBarrier(editor);
+    const session = this.sessionFor(editor), cycle = editor.clientCycleId, version = editor.localVersion, images = editor.uploadState?.revision;
+    const kept = await this.cleanup.enqueue(editor.key, async () => {
+      const row = editor.imageCopies?.get(candidate.id);
+      if (!row || row.stamp !== candidate.stamp || !refusedCopyAtDraft(row, editor.recoveryServerDraft)) throw Error('This saved refusal changed. Review it again.');
+      const authority = copy(session.authority);
+      const guard = () => this.sessions.get(editor.key) === session && !this.disposed && editor.clientCycleId === cycle &&
+        editor.localVersion === version && editor.uploadState?.revision === images && same(session.authority, authority) && editor.imageCopies?.get(row.id)?.stamp === row.stamp;
+      await this.journal.inspectCandidate(editor.key, candidate);
+      if (!guard()) throw Error('This writing changed. Review the saved copy again.');
+      const result = await this.journal.keepCandidate(editor.key, row, { writerId: this.journal.writerId, cycle, authority,
+        draftId: editor.draft.id, generation: editor.draft.generation, writing: writingValue(editor.draft),
+        images: imageValues(editor.draft, editor.uploadState, cycle, editor.comparisonDigests) }, guard);
+      if (!guard()) throw Error('The choice was saved for earlier writing. Review this writing again.');
+      const kept = { ...result, ...(row.comparisonDigests ? { comparisonDigests: row.comparisonDigests } : {}), availability: 'available' };
+      editor.imageCopies.set(kept.id, kept);
+      (editor.refusedCopyChoices ??= new Set()).add(copyChoiceKey(editor, kept));
+      this.updateImageBarrier(editor); return kept;
+    });
     await session.uploads.validateRetained();
+    return kept;
   }
 
   async adoptCandidate(editor, candidate, presentation) {
@@ -609,7 +773,9 @@ export class EditorRegistry {
       await this.journal.adopt(editor.key, { id: candidate.id, stamp: candidate.stamp }, current);
       this.sessions.delete(editor.key);
       const restored = await this.register(editor.context, editor.context.kind === 'note' ? state.note : state.draft);
-      presentation.editors[editor.context.kind] = restored;
+      for (const shown of new Set([presentation, this.current, this.inline, ...this.cards.values()])) {
+        if (shown?.editors[editor.context.kind] === editor) shown.editors[editor.context.kind] = restored;
+      }
       if (this.isCurrent(presentation)) await this.present(presentation);
       return restored;
     } finally { editor.adopting = false; this.changed(editor); }

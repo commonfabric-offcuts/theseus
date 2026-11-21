@@ -1,3 +1,4 @@
+import { currentQuestionCover } from './question-state.mjs';
 // How a topic's loaded messages read as reply stacks (docs/reply-stacks.md):
 // which stack each message is in, the order inside a stack and of the stacks,
 // what a fold shows, which messages read as one line because the reader
@@ -10,17 +11,18 @@
 // dossier Core names for each (item 550). The message it starts with (its head)
 // stays at the top; every other message in it reads as a chat does, oldest
 // first, a joined stack's among the rest, as one run. The
-// stacks themselves keep the topic newest on top: each sits where its newest
-// message would, unless the reader placed it somewhere of their own, where it
-// holds whatever replies arrive. A reply of the reader's own never lifts it:
-// what they answer stays where they were reading it.
+// stacks themselves follow Core's stable personal order (731). Incoming replies
+// never lift one. Older Core responses without an order key retain the legacy
+// activity ordering below.
+
+import { ownWithdrawnQuestion } from './question-withdrawal.mjs';
 
 // Acts recorded about a message (Core's message_acts, as topic_messages
 // carries them): absent on a page from a Core before them, read as none.
 const actsOf = item => item?.acts ?? {};
 
 // Each act and the revision Core counts it by.
-const REVISIONS = { aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision', cover: 'cover_revision' };
+const REVISIONS = { aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision', cover: 'cover_revision', cover_refresh: 'cover_refresh_revision', message_refresh: 'message_refresh_revision' };
 
 // What Core holds of a message's acts, from what the page knew and an answer
 // it read or was given since: each act as the later of the two by its
@@ -47,6 +49,8 @@ export function laterActs(known, answer) {
   if (compareCoverReads(known?.cover_read_seq, answer.cover_read_seq) > 0) {
     acts.cover = known.cover; acts.cover_read_seq = known.cover_read_seq;
   }
+  if (acts.cover) acts.cover = { ...acts.cover, refresh: acts.cover_refresh ?? acts.cover.refresh,
+    refresh_revision: acts.cover_refresh_revision ?? acts.cover.refresh_revision };
   return acts;
 }
 
@@ -164,8 +168,24 @@ export function gather(items, { has = null, viewer = null, filled = new Set(), a
     const alone = apart.has(head.id), placed = !alone && typeof place === 'number' ? place : null;
     const newest = list => list.reduce((most, item) => Math.max(most, item.seq), 0);
     const own = item => item.id !== head.id && !joins.has(item.id) && viewer !== null && item.author_id === viewer;
-    return { id: head.id, head, replies, joins, newest: newest(members), lifted: newest(members.filter(item => !own(item))), placed, dossier: root,
-      filled: new Set(late.map(item => item.id)), branches: head.id === root || alone ? null : new Set(tops.filter(item => item !== head).map(item => item.id)) };
+    return { id: head.id, head, replies, joins, newest: newest(members), lifted: newest(members.filter(item => !own(item))), placed: typeof position?.order_key === 'number' && position.order_key !== placed ? null : placed, dossier: root, orderKey: alone ? null : position?.order_key, orderTie: position?.order_tie,
+      parents: new Map(members.map(item => [item.id, up(item.id)?.id ?? null])), filled: new Set(late.map(item => item.id)), branches: head.id === root || alone ? null : new Set(tops.filter(item => item !== head).map(item => item.id)) };
+  });
+}
+
+// Group and order original records first, including supplemental heads. The
+// author's withdrawn asks contribute no visible row, tab, excerpt or count.
+// Keep the original stack only for independent dossier metadata and position;
+// it is never used as the list of messages to paint (item 891).
+export function visibleStacks(stacks, viewer) {
+  return stacks.flatMap(stack => {
+    const all = [stack.head, ...stack.replies], visible = all.filter(item => !ownWithdrawnQuestion(item, viewer));
+    if (visible.length === all.length) return [stack];
+    if (!visible.length) return [];
+    const [head, ...replies] = visible;
+    return [{ ...stack, id: head.id, head, replies, sourceStack: stack,
+      newest: Math.max(...visible.map(item => item.seq)),
+      sourceHead: head === stack.head && stack.sourceHead }];
   });
 }
 
@@ -196,11 +216,11 @@ export function reheaded(before, after) {
 }
 
 // Where a stack sorts: its own place, else its newest message that lifts it.
-export const keyOf = stack => stack.placed ?? stack.lifted;
+export const keyOf = stack => stack.orderKey ?? stack.placed ?? stack.lifted;
 
 // The stacks newest on top, each placed one where the reader put it.
 export function ordered(stacks) {
-  return [...stacks].sort((a, b) => keyOf(b) - keyOf(a) || b.lifted - a.lifted);
+  return [...stacks].sort((a, b) => keyOf(b) - keyOf(a) || (b.orderTie ?? b.lifted) - (a.orderTie ?? a.lifted));
 }
 
 // The two stack states a person steps between (item 394): latest plus unread
@@ -239,12 +259,29 @@ export function earlierOf(stack, level, { held = null } = {}) {
 // filled), and folded, a stack gathered from branches under a first message
 // the page has not loaded keeps each branch's head in view (branches): before
 // 550 each was a stack of its own, its card in view, and a fold loses none.
-export function shown(stack, item, { level = 'folded', kept = () => false, earlier = false, held = null } = {}) {
-  if (stack.filled?.has(item.id)) return true;
+function shownWithoutContext(stack, item, { level = 'folded', kept = () => false, earlier = false, held = null } = {}) {
+  if (stack.filled?.has(item.id) || item.yours?.note === true) return true;
   if (!earlier && earlierOf(stack, level, { held }).includes(item)) return false;
   if (level === 'open') return true;
   if (level === 'head') return false;
   return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack) || Boolean(stack.branches?.has(item.id));
+}
+
+// Context is one effective-parent edge for a new reply, never a traversal.
+// Keep the same cycle-cut join/reply links as gather, and add only parents
+// that the collapsed view would otherwise hide. Roots already have a tab.
+function contextParents(stack, options) {
+  if ((options.level ?? 'folded') !== 'folded') return new Set();
+  const newReply = options.newReply ?? (() => false), rows = new Map(stack.replies.map(item => [item.id, item])), result = new Set();
+  for (const reply of stack.replies) {
+    if (!shownWithoutContext(stack, reply, options) || !newReply(reply)) continue;
+    const parent = rows.get(stack.parents?.get(reply.id));
+    if (parent && !shownWithoutContext(stack, parent, options)) result.add(parent.id);
+  }
+  return result;
+}
+export function shown(stack, item, options = {}) {
+  return shownWithoutContext(stack, item, options) || (options.context ?? contextParents(stack, options)).has(item.id);
 }
 
 // Whether a message reads as its one-line row: the reader folded it (their
@@ -253,7 +290,7 @@ export function shown(stack, item, { level = 'folded', kept = () => false, earli
 // (peeked(item)), which shows it whole without unfolding it.
 export function rowFolded(item, { peeked = () => false } = {}) {
   const acts = actsOf(item);
-  return acts.folded === true && acts.starred !== true && !peeked(item);
+  return acts.folded === true && acts.starred !== true && item.yours?.note !== true && !peeked(item);
 }
 const newestReply = stack => stack.replies.reduce((most, item) => Math.max(most, item.seq), 0);
 
@@ -269,11 +306,15 @@ const messages = n => (n === 1 ? 'message' : 'messages');
 // words, fresh }, one row for its earlier messages (earlierOf, the first
 // message among them, held as earlierOf takes it), and their replies are
 // drawn only once it is opened (earlier), each { kind: 'reply', item,
-// earlier: true } in its place.
-export function rowsOf(stack, { level = 'folded', kept, unread = () => false, peeked = () => false, earlier = false, held = null } = {}) {
-  const rows = [], all = stack.replies, show = item => shown(stack, item, { level, kept, earlier, held });
+// earlier: true } in its place. A first message shown whole by a landing
+// (headWhole, 875) is omitted from that row's count and press target, without
+// moving the held boundary for the newest seven.
+export function rowsOf(stack, { level = 'folded', kept, unread = () => false, newReply = unread, peeked = () => false, earlier = false, held = null, headWhole = false } = {}) {
+  const options = { level, kept, newReply, earlier, held }, context = contextParents(stack, options);
+  const rows = [], all = stack.replies, show = item => shown(stack, item, { ...options, context });
   const earliest = earlierOf(stack, level, { held });
-  if (earliest.length && !earlier) rows.push({ kind: 'earlier', items: earliest, words: `${earliest.length} earlier ${messages(earliest.length)}`, fresh: earliest.filter(unread).length });
+  const hiddenEarlier = earliest.filter(item => item.yours?.note !== true && (!headWhole || item !== stack.head));
+  if (hiddenEarlier.length && !earlier) rows.push({ kind: 'earlier', items: hiddenEarlier, words: `${hiddenEarlier.length} earlier ${(headWhole ? replies : messages)(hiddenEarlier.length)}`, fresh: hiddenEarlier.filter(unread).length });
   let run = [], before = true;
   const flush = () => {
     if (!run.length) return;
@@ -286,7 +327,7 @@ export function rowsOf(stack, { level = 'folded', kept, unread = () => false, pe
     if (!show(item)) { if (!earliest.includes(item)) run.push(item); continue; }
     flush(); before = false;
     if (stack.joins.has(item.id)) rows.push({ kind: 'join', item, join: stack.joins.get(item.id) });
-    rows.push({ kind: 'reply', item, folded: rowFolded(item, { peeked }) });
+    rows.push({ kind: 'reply', item, folded: rowFolded(item, { peeked }) || context.has(item.id) && !peeked(item), context: context.has(item.id) });
     if (earliest.includes(item)) rows[rows.length - 1].earlier = true;
   }
   flush();
@@ -301,13 +342,23 @@ export function rowsOf(stack, { level = 'folded', kept, unread = () => false, pe
 // message, its own acts say it. mintedBy: the agent that minted the name
 // (item 479), which the row says as "Named by"; null for a typed name or none.
 export function headOf(stack, { preview = item => String(item.body ?? '').split('\n')[0], unread = () => false } = {}) {
-  const position = positionOf(stack);
-  const typed = position && position.root_id !== stack.head.id && 'name' in position ? position.name : actsOf(stack.head).name;
+  const naming = stack.sourceStack ?? stack, position = positionOf(naming);
+  const typed = position && position.root_id !== naming.head.id && 'name' in position ? position.name : actsOf(naming.head).name;
   const repliers = [];
   for (const item of stack.replies) if (!repliers.includes(item.author_id)) repliers.push(item.author_id);
   const headNew = unread(stack.head);
-  return { name: typed?.text || preview(stack.head), typed: typed ?? null, mintedBy: typed?.text && typed.minted === true ? typed.by : null, count: stack.replies.length, repliers,
+  // A withdrawal projection's surviving reply has no first-message title.
+  // Keep its neutral shown name in every consumer, not only the feed painter.
+  const name = typed?.text || (stack.sourceStack && stack.id !== stack.dossier ? 'Dossier' : preview(stack.head));
+  return { name, typed: typed ?? null, mintedBy: typed?.text && typed.minted === true ? typed.by : null, count: stack.replies.length, repliers,
     headNew, fresh: headNew ? 0 : stack.replies.filter(unread).length };
+}
+
+// The header's explicit New act takes one message, newest sequence first.
+// The page's retained unread predicate owns the candidates; never sort source order.
+export function newestNew(stack, unread) {
+  return [stack.head, ...stack.replies].reduce((latest, item) =>
+    unread(item) && (!latest || item.seq > latest.seq) ? item : latest, null);
 }
 
 // A dossier's cover (item 624), on its name's terms: its first message's,
@@ -317,11 +368,12 @@ export function headOf(stack, { preview = item => String(item.body ?? '').split(
 // dossier with none, and for a message on its own unless alone: true asks for
 // the cover its pills show (dossier-cover.mjs).
 export function stackCover(stack, { alone = false } = {}) {
+  if (stack.sourceStack) return stackCover(stack.sourceStack, { alone });
   const position = positionOf(stack);
-  if (position && position.root_id !== stack.head.id) return position.cover ?? null;
+  if (position && position.root_id !== stack.head.id) return currentQuestionCover(position.cover ?? null);
   const acts = actsOf(stack.head);
-  if (position?.cover_read_seq !== undefined && compareCoverReads(position.cover_read_seq, acts.cover_read_seq) >= 0 && position.cover_revision >= (acts.cover_revision ?? 0)) return stack.replies.length || alone ? position.cover ?? null : null;
-  return stack.replies.length || alone ? actsOf(stack.head).cover ?? null : null;
+  if (position?.cover_read_seq !== undefined && compareCoverReads(position.cover_read_seq, acts.cover_read_seq) >= 0 && position.cover_revision >= (acts.cover_revision ?? 0)) return stack.replies.length || alone ? currentQuestionCover(position.cover ?? null) : null;
+  return stack.replies.length || alone ? currentQuestionCover(actsOf(stack.head).cover ?? null) : null;
 }
 
 // The index, in the stacks as shown, of the lowest one holding anything new
@@ -380,7 +432,7 @@ export function drawnBelow(stack, here = () => null) {
 // The dossier a stack is drawn from: Core's first message of it (positionOf),
 // or the stack's own head where Core sent no position. A dossier whose first
 // message the page has not loaded is drawn as more than one stack.
-export const dossierOf = stack => positionOf(stack)?.root_id ?? stack.id;
+export const dossierOf = stack => positionOf(stack)?.root_id ?? (stack.sourceStack ? dossierOf(stack.sourceStack) : stack.id);
 
 // The dossiers the reader starred a message in (item 635), by dossierOf: one
 // a stack drawn from it shows a starred message of (its acts as the page shows
@@ -406,14 +458,19 @@ export const placeOf = position => (position ? `${position.root_id}:${position.a
 // sits, top to bottom, those not on show included (readingOrder of the stacks
 // above More, then below it); order, those of them on show (view.hidden), and
 // with view.only (the Conversation's Only new) just the messages it draws;
-// shown, their ids; loaded, the ids of all; hiddenRoots, the dossier (Core's
+// shown, their ids; loaded, the ids of all plus known own withdrawn questions
+// omitted from the projection; hiddenRoots, the dossier (Core's
 // root_id) of each stack drawn but not on show; asideShown, whether a dossier
 // put below More is on show (More open, or Only new).
-export function pageOf(stacks, view) {
+export function pageOf(stacks, view, { known = [], viewer = null } = {}) {
   const all = readingOrder(shownOrder(stacks, { below: view.below, hidden: () => false }));
   const hiddenRoots = new Set(stacks.filter(stack => view.hidden(stack)).flatMap(stack => [stack.id, positionOf(stack)?.root_id ?? stack.id]));
   const order = readingOrder(shownOrder(stacks, view)).filter(item => !view.only || view.only(item));
-  return { all, order, shown: new Set(order.map(item => item.id)), loaded: new Set(all.map(item => item.id)),
+  const loaded = new Set(all.map(item => item.id));
+  // Projection can omit an entire dossier. Its known withdrawn question is
+  // still loaded, so a Core neighbor must not reopen it as an outside edge.
+  for (const item of known) if (ownWithdrawnQuestion(item, viewer)) loaded.add(item.id);
+  return { all, order, shown: new Set(order.map(item => item.id)), loaded,
     hiddenRoots, asideShown: Boolean(view.asideShown), only: view.only ?? null };
 }
 
@@ -526,9 +583,120 @@ export function laterPosition(known, answer) {
 // positions Core sent before it on the messages it moved; such a position is
 // another dossier's, and null where none fits.
 export function positionOf(stack) {
+  if (stack.sourceStack) return positionOf(stack.sourceStack);
   const inside = new Set(stack.replies.map(item => item.id));
   const hangs = Boolean(actsOf(stack.head).joined?.into || stack.head.reply_to);
   const fits = position => ('dossier' in stack ? position.root_id === stack.dossier : position.root_id === stack.head.id || hangs && !inside.has(position.root_id));
   return [stack.head, ...stack.replies].map(item => item.stack_position).filter(position => position && fits(position))
     .reduce((known, next) => laterPosition(known, next), null);
+}
+
+// Item 799. Admitted heads are a separate, visit-scoped presentation cache.
+// They never enter the topic's loaded runs or pagination frontiers.
+export class DossierHeads {
+  constructor({ topicId, read, changed = () => {}, current = () => true }) {
+    Object.assign(this, { topicId, read, changed, current });
+    this.records = new Map(); this.serial = 0; this.readTail = Promise.resolve();
+    // A reference to TopicViews' terminal knowledge, never another act store.
+    this.removals = null;
+  }
+  invalidate(id = null) {
+    for (const [root, record] of this.records) if (id === null || root === id) {
+      this.records.delete(root); ++this.serial;
+    }
+  }
+  sync(messages, removals = this.removals) {
+    this.removals = removals;
+    const wanted = new Set([...dossiersOf([...messages.values()]).values()].filter(id => !messages.has(id) && removals?.get(id)?.kind !== 'unsent'));
+    for (const id of this.records.keys()) if (!wanted.has(id)) this.records.delete(id);
+    const added = [];
+    for (const id of wanted) if (!this.records.has(id)) {
+      const record = { state: 'loading', token: ++this.serial };
+      this.records.set(id, record); added.push([id, record]);
+    }
+    // At most one request occupies the background lane, leaving room for
+    // the change feed. Core admits up to100 named messages in one read.
+    for (let at = 0; at < added.length; at += 100) {
+      const batch = added.slice(at, at + 100);
+      this.readTail = this.readTail.then(() => this.readBatch(batch));
+    }
+  }
+  async readBatch(queued) {
+    const current = ([id, record]) => this.current() && this.records.get(id) === record;
+    const batch = queued.filter(current), settled = new Set();
+    let discarded = false;
+    if (!batch.length) return;
+    const refused = error => ['FORBIDDEN', 'SOURCE_UNAVAILABLE', 'NOT_FOUND', 'INVALID_ARGUMENT'].includes(error?.details?.error?.code);
+    const failed = (entry, error) => {
+      if (!current(entry)) return;
+      entry[1].state = refused(error) ? 'refused' : 'error'; settled.add(entry);
+    };
+    const accept = (entries, page) => {
+      if (!Array.isArray(page?.items)) throw Error('The dossier source could not be read.');
+      const remaining = [];
+      for (const entry of entries) {
+        if (!current(entry)) continue;
+        const [id, record] = entry, item = page.items.find(item => item.id === id);
+        // Terminal knowledge wins even over an omitted row in a cut answer.
+        // Keep 886's one repaint at the end of this current batch.
+        if (this.removals?.get(id)?.kind === 'unsent') { this.records.delete(id); discarded = true; continue; }
+        // Core's byte limit can cut a named-ID answer before all its rows.
+        // An omitted head is missing only when the answer is complete.
+        if (!item && page.next_cursor != null) { remaining.push(entry); continue; }
+        if (item && (item.topic_id !== this.topicId || item.stack_position?.root_id !== id)) {
+          failed(entry, Error('The dossier source identity changed.')); continue;
+        }
+        Object.assign(record, item?.withheld ? { state: 'refused' } : item ? { state: 'available', item: { ...item, dossierSource: true } } : { state: 'missing' });
+        settled.add(entry);
+      }
+      return remaining;
+    };
+    const read = entries => this.read('topic_messages', { topic_id: this.topicId, message_ids: entries.map(([id]) => id) });
+    let pending = batch;
+    try {
+      while (pending.length) {
+        const remaining = accept(pending, await read(pending));
+        if (remaining.length === pending.length) throw Error('The dossier source answer made no progress.');
+        pending = remaining.filter(current);
+      }
+    }
+    catch (error) {
+      // A refused batch identifies no particular head. Read each still-wanted
+      // head once, serially, so one refusal cannot hide admitted siblings.
+      // Transport/malformed failures do not fan out into another request run.
+      if (refused(error) && pending.length > 1) {
+        for (const entry of pending) {
+          if (!current(entry)) continue;
+          try {
+            if (accept([entry], await read([entry])).length) throw Error('The dossier source answer made no progress.');
+          } catch (failure) { failed(entry, failure); }
+        }
+      } else for (const entry of pending) failed(entry, error);
+    }
+    // A fallback can await a sibling after settling another head; invalidating
+    // that earlier head while waiting must not cause a stale repaint either.
+    if (discarded && this.current() || [...settled].some(current)) this.changed();
+  }
+  messages(loaded) {
+    const result = new Map(loaded);
+    for (const [id, record] of this.records) if (record.state === 'available' && !result.has(id)) {
+      const removal = this.removals?.get(id) ?? record.item.removal;
+      if (removal?.kind === 'unsent') continue;
+      if (removal) Object.assign(record.item, { removal, removal_action: null, go_ahead: false,
+        blocks: null, no_answer: false, awaiting_reply: false, no_agent_notified: false });
+      result.set(id, record.item);
+    }
+    return result;
+  }
+}
+
+// Decorate only after gathering/ordering the actual loaded page. A fetched
+// head contributes neither a sorting key nor an implied intervening message.
+export function withDossierHeads(stacks, sources, { apart = new Set(), sourceRoots = new Set() } = {}) {
+  return stacks.map(stack => {
+    const root = sources.get(stack.dossier);
+    if (!root || !root.dossierSource && !sourceRoots.has(root.id) || stack.id === stack.dossier || apart.has(stack.id)) return stack;
+    return { ...stack, id: root.id, head: root, replies: [stack.head, ...stack.replies],
+      branches: new Set([stack.head.id, ...(stack.branches ?? [])]), sourceHead: true };
+  });
 }

@@ -1,0 +1,2 @@
+# Preserve the test runner's raw diagnostic spacing byte for byte.
+*.log -whitespace

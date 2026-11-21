@@ -421,12 +421,13 @@ class Checks:
 
     def _send_target_ask(self, db, actor, workspace, operation_id, ask):
         """D8: the ask to the owner that new words need, posted in a topic of this outcome; (message id, affected)."""
-        if not isinstance(ask, dict) or set(ask) != {"topic_id", "body"}:
+        if not isinstance(ask, dict) or not {"topic_id", "body"} <= set(ask) <= {"topic_id", "body", "ask_wait", "reply_to"}:
             raise Refusal("INVALID_ARGUMENT", "The ask is the topic it goes in and its words")
         row = db.execute("SELECT workspace_id FROM topics WHERE id=?", (_identifier(ask["topic_id"], "topic_id"),)).fetchone()
         if row is None or row["workspace_id"] != workspace["id"]:
             raise Refusal("ASK_REQUIRED", "The ask goes in a topic of this outcome")
-        snapshot = self._writing({"body": ask["body"], "addressees": [workspace["owner_id"]], "intent": "ask"})
+        snapshot = self._writing(dict({"body": ask["body"], "addressees": [workspace["owner_id"]], "intent": "ask"},
+                                      **{key: ask[key] for key in ("ask_wait", "reply_to") if key in ask}))
         result, affected = self._publish(db, actor, operation_id, ask["topic_id"], snapshot)
         return result["message_id"], affected
 
@@ -951,7 +952,7 @@ class Checks:
             if fix_topics:
                 # The whole outcome reads the account, so it is a message on the record, never a whisper.
                 account = db.execute("SELECT m.id,m.topic_id,m.author_id,m.sent_ms," + words("m", chars=400) + " AS excerpt FROM message_subjects s "
-                                     "JOIN messages m ON m.id=s.message_id WHERE s.workspace_id=? AND s.kind='check' AND m.private_to IS NULL AND m.topic_id IN "
+                                     "JOIN messages m ON m.id=s.message_id WHERE s.workspace_id=? AND s.kind='check' AND m.private_to IS NULL AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) AND m.topic_id IN "
                                      "(SELECT value FROM json_each(?)) ORDER BY m.seq DESC LIMIT 1", (workspace["id"], _json(fix_topics))).fetchone()
                 if account is not None:
                     candidate["account"] = {"message_id": account["id"], "topic_id": account["topic_id"], "by": account["author_id"],

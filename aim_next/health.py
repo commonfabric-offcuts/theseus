@@ -203,6 +203,12 @@ WHY = {
     "protocol_error": "Codex answered in a way Theseus does not understand",
     "resume_failed": "Codex would not open its thread again",
     "settings_not_applied": "Codex opened its thread with settings other than the ones Theseus sent, so it was not used",
+    "broker_unavailable": "the local command link for its sandbox could not be started",
+    "route_configuration_changed": "its route changed while Codex was opening its thread, so this wake was not sent",
+    "proxy_unverified": "its sandbox network restrictions could not be verified, so its thread was not used",
+    "workspace_policy_not_attached": "its thread is not attached with the required sandbox policy",
+    "invalid_cwd": "its work directory reaches a protected path, so its thread was not used",
+    "operator_stopped": "an operator stopped its thread",
     "spawn_failed": "the Codex process that hosts its turns could not be started",
     "stopping": "the agent runner was stopping",
     "stalled": "the Codex process that hosts its turns stopped answering, so it was ended",
@@ -598,9 +604,9 @@ class Health:
     def _on_record_waiting(db, agent):
         """Pending deliveries on the record for agent, in live groups, and the oldest one's send time."""
         return tuple(db.execute(
-            "SELECT count(*),min(m.sent_ms) FROM delivery_groups g INDEXED BY eligible_groups "
+            "SELECT count(*),min(coalesce(ar.at_ms,m.sent_ms)) FROM delivery_groups g INDEXED BY eligible_groups "
             "CROSS JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
-            "JOIN messages m ON m.id=d.message_id WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0 AND m.private_to IS NULL",
+            "JOIN messages m ON m.id=d.message_id LEFT JOIN answer_receipts ar ON ar.id=d.answer_id WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0 AND m.private_to IS NULL",
             (agent,)).fetchone())
 
     def _health_reds(self, db, now, routes=None):
@@ -860,9 +866,9 @@ class Health:
             # What waits, as the reader may see it: an agent's whispers count for that agent itself, and each for the
             # person who wrote it (whispers.READ_BY).
             waiting, oldest = db.execute(
-                "SELECT count(*),min(m.sent_ms) FROM delivery_groups g INDEXED BY eligible_groups "
+                "SELECT count(*),min(coalesce(ar.at_ms,m.sent_ms)) FROM delivery_groups g INDEXED BY eligible_groups "
                 "CROSS JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
-                "JOIN messages m ON m.id=d.message_id WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0"
+                "JOIN messages m ON m.id=d.message_id LEFT JOIN answer_receipts ar ON ar.id=d.answer_id WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0"
                 + ("" if row["id"] == actor else " AND " + READ_BY), (row["id"],) if row["id"] == actor else (row["id"], actor)).fetchone()
             item = {"actor_id": row["id"], "name": row["name"], "route": route, "waiting": waiting, "waiting_since_ms": oldest}
             if row["scheduled"]:

@@ -1,3 +1,4 @@
+import { literalLinkNodes } from './message-format.mjs';
 // The pipeline page, an item's record, the steer menu, the one-line add at the top
 // of each section with words and size set on the item in place, Change stages,
 // and the rail's Pipeline row (item 84; docs/pipeline.md). Every word comes
@@ -169,6 +170,10 @@ export class PipelinePage {
   // With `inPlace` (the owner's pipeline), the title is a line edited where it stands.
   paintHeader(eyebrow, title, description, inPlace = null) {
     this.header.eyebrow.textContent = eyebrow; this.header.description.textContent = description;
+    if (String(description ?? '').includes('](')) {
+      const links = literalLinkNodes(description, { doc: this.header.description.ownerDocument ?? document });
+      if (links.some(node => node.tagName === 'A')) this.header.description.replaceChildren(...links);
+    }
     if (inPlace) this.titleInPlace(inPlace); else this.header.title.textContent = title;
     document.title = `${title} · Theseus`;
   }

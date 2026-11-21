@@ -1,8 +1,12 @@
+import { questionPill } from './question-state.mjs';
+import { detailParts } from './card-details.mjs';
+import { messageUpdateActivity, refreshLine } from './cover-refresh.mjs';
 import { messageFoldSwipe } from './message-fold-swipe.mjs';
 import { keyAction, holdsWriting, written } from './editor.mjs';
 import { showLine } from './lines.mjs';
 import { ReaderLayout } from './layout.mjs';
-import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
+import { composerWidth } from './composer-width.mjs';
+import { imageBarrier, recoveryReadOnly, currentImages } from './upload-state.mjs';
 import { paintAddress } from './people.mjs';
 import { timeNode } from './times.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, sourceChange, paintSaveTime } from './writing-helpers.mjs';
@@ -10,13 +14,15 @@ import { paintImageRows, openImage } from './image-rows.mjs';
 import { WritingInput, onMac, selectAllKey, copyKey } from './writing-input.mjs';
 import { paintChanges } from './page-changes.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
-import { drawPassages, sourcePosition, rangeOf } from './message-format.mjs';
+import { drawPassages, sourcePosition, rangeOf, hasTextDisplayRules, inlineNodes } from './message-format.mjs';
 import { pageImages } from './page-image.mjs';
 import { paintChoice, clearChoice, chosen, naming, unnamed, sending, choiceOf, list } from './whisper-choice.mjs';
 import { addressedTo } from './at-names.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
-import { ComposeBar } from './compose-bar.mjs';
-import { copyText, COPY_REFUSED } from './message-menu.mjs';
+import { ComposeBar, revealCardReply } from './compose-bar.mjs';
+import { copyText, copySelectedText, COPY_REFUSED, SELECTION_COPY_REFUSED } from './message-menu.mjs';
+import { paintWithdrawal } from './question-withdrawal.mjs';
+import { paintRemoval } from './message-removal.mjs';
 import { revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { overhang } from './lit-field.mjs';
 import { coverSheet, coverKey, coverSummary, payloadPill } from './dossier-cover.mjs';
@@ -74,6 +80,8 @@ export class Reader {
   constructor(callbacks) {
     this.callbacks = callbacks;
     this.dialog = document.querySelector('#reader');
+    this.home = { parent: this.dialog.parentNode, next: this.dialog.nextSibling };
+    this.card = null;
     this.field = document.querySelector('#writing-body');
     this.sourceBody = document.querySelector('#source-body');
     this.mac = onMac();
@@ -88,13 +96,14 @@ export class Reader {
     this.narrow = window.matchMedia('(max-width: 760px)');
     this.narrow.addEventListener('change', () => { this.placeEnd(); if (this.dialog.open) this.applyLayout(); });
     this.bind();
+    this.syncWidthPlacement = composerWidth(this.dialog, () => this.layout);
   }
   // Capture the source where the gesture began. A step, close or access change
   // during the gesture cannot fold another source or touch private writing.
   bindSwipe() {
     messageFoldSwipe(this.sourceBody, () => {
       const source = this.source;
-      const available = () => this.dialog.open && this.source === source && source?.source_ref?.kind === 'message'
+      const available = () => this.dialog.open && this.source === source
         && !this.presentation?.sourceUnavailable && !this.presentation?.availabilityUnconfirmed;
       return available() ? () => { if (available()) this.callbacks.foldMessage?.(source); } : null;
     });
@@ -123,6 +132,7 @@ export class Reader {
     this.$('plus-quote').onclick = () => { this.compose.close(); this.quote(); };
     // A quote pill shows while words are selected or a passage is pressed lit.
     document.addEventListener('selectionchange', () => { if (this.dialog.open) this.paintQuote(); });
+    document.addEventListener('copy', event => this.copySelection(event));
     // A tap on the message on a phone puts the keyboard away and folds the
     // reply to its line, its writing kept. A press that selects words, a
     // long-press, a link or a control is not such a tap.
@@ -221,6 +231,7 @@ export class Reader {
     // Writing can take the author a reply is offered to, so the choice is redrawn with it.
     // A notice says what last happened; writing on is the next thing, so it goes.
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.writes(),
+      members:()=>this.members(),mentions:()=>this.mode==='reply',
       beforeEdit:()=>this.disarm(),changed:editor=>{if(!this.quoting)this.notice('');this.callbacks.edit(editor);this.paintStatus();this.paintChoice();this.images?.update();}});
     this.field.addEventListener('paste', event => this.paste(event));
     // #img lists the topic's recent images under the writing (image-pick.mjs).
@@ -273,7 +284,16 @@ export class Reader {
       if (!this.returnQuotes()) this.disarm();
     });
     this.sourceBody.addEventListener('pointermove', event => this.point(event));
-    this.dialog.addEventListener('keydown', event => this.key(event));
+    this.dialog.addEventListener('keydown', event => {
+      if (this.card && event.target.closest('dialog') === this.dialog && event.key === 'Escape' && !event.isComposing) {
+        // A nonmodal inline reply gets no native dialog cancel event. Let
+        // ComposeBar put away its panel first, as in the phone composer.
+        this.compose.heard(event);
+        if (!event.defaultPrevented) { event.preventDefault(); this.escape(); }
+        return;
+      }
+      this.key(event);
+    });
   }
 
   async paste(event) {
@@ -323,12 +343,14 @@ export class Reader {
   }
 
   show(source, sessions, { opener, topics = [], canPrevious = false, canNext = false, presentation, mode = 'reply' } = {}) {
+    const page = { left: window.scrollX, top: window.scrollY };
     ++this.viewToken;
     this.presentation = presentation;
     // Moving on to another message from one whose reply holds writing says it
     // is kept. The same message shown again is no move: the composer, its
     // panel, the focus and the place in the message stay as they are.
     const same = this.dialog.open && sameSource(this.source?.source_ref, source.source_ref);
+    if (!same || this.layoutInstance !== sessions.reply.context.instanceId) this.temporaryWide = false;
     const left = this.dialog.open && this.sessions && !same && holdsWriting(this.sessions.reply.draft);
     if (this.source) this.rememberPlace();
     this.source = source;
@@ -337,9 +359,7 @@ export class Reader {
     this.compose?.writes(this.placeKey());
     if (this.layoutInstance !== sessions.reply.context.instanceId) {
       this.layoutInstance = sessions.reply.context.instanceId;
-      let storage;
-      try { storage = window.localStorage; } catch { /* no persisted preference */ }
-      this.layout = new ReaderLayout(this.layoutInstance, storage);
+      this.layout = new ReaderLayout(this.layoutInstance);
     }
     this.mode = mode;
     this.notice('');
@@ -355,6 +375,13 @@ export class Reader {
     this.opener = next;
     this.disarm();
     this.topics = topics;
+    // Only a confirmed source can dock in its own visible card. This is the
+    // same Reader and DOM, not another editor or a copied phone bar.
+    const card = presentation?.replyCard;
+    const dock = !presentation?.sourceUnavailable && source.source_ref.kind === 'message' &&
+      card?.dataset.id === source.source_ref.id && card.isConnected && card.getClientRects().length ? card : null;
+    if (same && this.card && !dock) this.widenInlineReply();
+    this.placeReply(dock);
     // The cover's sheet is opened by a press, for the message it was pressed on: any other message, or this one
     // opened again, starts at the cover's one line (paintCover).
     if (!same) this.$('reader-cover').open = false;
@@ -375,13 +402,83 @@ export class Reader {
     this.drawAttachments(this.$('source-attachments'), source.attachments);
     this.drawEditor();
     this.paintPending();
-    if (!this.dialog.open) this.dialog.showModal();
+    const opening = !this.dialog.open;
+    if (opening) { if (this.card) this.dialog.show(); else this.dialog.showModal(); }
     // A message opens to be read: the reply is its one line until written in.
     if (!same) { this.kept = null; this.held = null; this.compose?.fold(); }
     if (left) this.notice(KEPT);
-    this.applyLayout();
+    this.applyLayout({ opening });
     this.moveTo(this.positions.get(this.placeKey()) ?? 0);
-    if (!same) this.sourceBody.focus({ preventScroll: true });
+    if (mode === 'note') this.field.focus({ preventScroll: true });
+    else if (!same && !this.card) this.sourceBody.focus({ preventScroll: true });
+    if (this.card) window.scrollTo({ ...page, behavior: 'instant' });
+  }
+
+  // Move the one reply surface without changing its sessions, writing,
+  // uploads or destination. A nonmodal dialog keeps the existing event and
+  // control ownership while its writing sits in the card's face.
+  placeReply(card) {
+    if (card === this.card) return;
+    if (this.naming?.sheet.open) this.naming.sheet.close();
+    if (this.dialog.open) this.dialog.close();
+    if (this.card) {
+      const preview = this.card.querySelector?.(':scope > .message-preview');
+      const scroll = preview?.scrollTop ?? 0;
+      this.card.removeAttribute('data-card-reply'); this.card.setAttribute('role', 'button');
+      this.dialog.removeAttribute('data-card-reply'); this.dialog.removeAttribute('role');
+      this.home.parent.insertBefore(this.dialog, this.home.next);
+      this.card.style?.removeProperty('--reply-message-height');
+      this.card.style?.removeProperty('--reply-card-height');
+      if (preview && this.card.dataset.full !== 'shown') { preview.scrollTop = 0; this.card.scrollTop = scroll; }
+    }
+    this.card = card;
+    if (card) {
+      const preview = card.querySelector(':scope > .message-preview'), scroll = card.scrollTop;
+      if (preview && card.dataset.full !== 'shown') {
+        // The outer card must grow to hold the reply, so only its words take
+        // the old scrolling room. Measure before docking, excluding the
+        // header, padding and cue, and retain the old height for a late read.
+        const height = Math.max(1, Math.min(preview.clientHeight, card.clientHeight - (card.scrollHeight - preview.clientHeight)));
+        card.style.setProperty('--reply-message-height', `${height}px`);
+        card.style.setProperty('--reply-card-height', `${card.getBoundingClientRect().height}px`);
+      }
+      card.dataset.cardReply = ''; card.setAttribute('role', 'group');
+      this.dialog.dataset.cardReply = ''; this.dialog.setAttribute('role', 'region');
+      card.append(this.dialog);
+      if (preview && card.dataset.full !== 'shown') { card.scrollTop = 0; preview.scrollTop = scroll; }
+    }
+    this.syncWidthPlacement?.();
+  }
+
+  // A feed/access change must never hide the active writing with its card.
+  // Keep the same presentation in the full Reader if the card ceases to show.
+  keepReplyVisible() {
+    if (!this.card || this.card.isConnected && this.dialog.getClientRects().length) return;
+    this.expandReply();
+  }
+
+  expandReply() {
+    if (!this.card) return;
+    this.widenInlineReply();
+    this.presentation.replyCard = null;
+    this.placeReply(null);
+    this.dialog.showModal(); this.applyLayout({ opening: true }); this.field.focus({ preventScroll: true });
+  }
+
+  // Only expanding an inline reply uses its writing to choose temporary room.
+  // Measure wrapping at the inline field's width, even while its quiet line is folded.
+  widenInlineReply() {
+    if (!this.layout || this.narrow.matches || this.layout.mode === 'wide') return;
+    if (this.sessions.reply.draft.quotes?.length) { this.temporaryWide = true; return; }
+    if (!this.sessions.reply.draft.body) return;
+    const field = this.field, style = getComputedStyle(field), line = parseFloat(style.lineHeight);
+    const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    if (!(line > 0) || !Number.isFinite(padding)) return;
+    const height = field.style.height, whiteSpace = field.style.whiteSpace, scroll = field.scrollTop;
+    try {
+      field.style.height = '0px'; field.style.whiteSpace = 'pre-wrap';
+      if (field.scrollHeight > 4 * line + padding + 1) this.temporaryWide = true;
+    } finally { field.style.height = height; field.style.whiteSpace = whiteSpace; field.scrollTop = scroll; }
   }
 
   // What changed in the Notebook page shown since the revision the reader
@@ -392,18 +489,20 @@ export class Reader {
     this.$('source-changes').open = true; this.$('source-changes').hidden = false;
   }
 
-  get layoutShape() { return this.narrow.matches ? 'stacked' : this.layout.mode; }
+  get layoutShape() { return this.card || this.narrow.matches ? 'stacked' : this.temporaryWide ? 'wide' : this.layout.mode; }
   // Wide or Stacked, from the ⋯ menu; a phone is always stacked, so it has no choice.
-  get layoutChoice() { return this.narrow.matches || !this.layout ? null : this.layout.mode === 'wide' ? 'Stacked layout' : 'Wide layout'; }
+  get layoutChoice() { return this.narrow.matches || !this.layout ? null : this.layoutShape === 'wide' ? 'Stacked layout' : 'Wide layout'; }
   toggleLayout() {
-    this.layout.setMode(this.layout.mode === 'wide' ? 'stacked' : 'wide');
+    this.layout.setMode(this.layoutShape === 'wide' ? 'stacked' : 'wide');
+    this.temporaryWide = false;
     this.applyLayout();
   }
 
-  applyLayout() {
+  applyLayout({ opening = false } = {}) {
     const place = this.captureVisiblePlace();
     const shape = this.layoutShape, share = this.layout.share('wide');
     this.dialog.dataset.layout = shape;
+    this.syncWidthPlacement?.({ opening });
     // In hundredths of the room, so when one pane keeps a floor (aim.css) the other
     // still takes all that is left: shares that sum to under 1fr would leave a gap.
     this.dialog.style.setProperty('--reading-share', `${(1 - share) * 100}fr`);
@@ -473,6 +572,8 @@ export class Reader {
   drawSource(body) {
     const source = this.source, page = source?.source_ref?.kind === 'memory' && this.callbacks.pageImage;
     drawPassages(this.sourceBody, body, document, { copyFences: true, struck: source?.source_ref?.kind === 'message' ? source.struck?.cuts : null,
+      notebook: source?.source_ref?.kind === 'memory',
+      displayRules: source?.source_ref?.kind === 'message' ? this.callbacks.displayRules?.() ?? [] : [],
       images: page ? pageImages(source, attachment => this.callbacks.pageImage(attachment, source.source_ref)) : null });
     this.placeEnd();
   }
@@ -518,6 +619,7 @@ export class Reader {
   get chosen() {
     const p = this.presentation;
     if (!this.source || p?.sourceUnavailable || p?.availabilityUnconfirmed) return false;
+    if (this.card) return Boolean(this.callbacks.cardSelection?.(this.card));
     const selection = window.getSelection();
     const selected = selection?.rangeCount && !selection.isCollapsed && this.sourceBody.contains(selection.getRangeAt(0).commonAncestorContainer);
     return Boolean(selected || this.hover?.pressed);
@@ -528,7 +630,9 @@ export class Reader {
   // Takes what a press on an offer of Quote (by: its id) would quote, before
   // the press moves the focus or lets the selection go; nothing when nothing is chosen.
   hold(by) {
-    this.held = this.chosen ? { excerpt: this.selectedPassage(), place: this.quotedPlace(), by } : null;
+    const cardWords = this.card && this.chosen ? this.callbacks.cardSelection?.(this.card) : null;
+    this.held = cardWords ? { excerpt: cardWords.text, revision: cardWords.revision, by }
+      : this.chosen ? { excerpt: this.selectedPassage(), range:this.selectedRange(), place: this.quotedPlace(), by } : null;
     this.paintQuote();
   }
   paintQuote() {
@@ -612,18 +716,43 @@ export class Reader {
     else if (top < room.top && bottom < room.bottom) this.moveTo(this.sourceBody.scrollTop + Math.max(top - room.top, bottom - room.bottom));
   }
 
+  // This feature's selected Copy uses Return's existing endpoint projection.
+  copySelection(event) {
+    if (event.defaultPrevented || !this.dialog.open || this.source?.source_ref?.kind !== 'message' ||
+        this.editing || this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed ||
+        !hasTextDisplayRules(this.sourceBody) ||
+        document.activeElement?.closest('input,textarea,select,[contenteditable]')) return;
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    if (!this.sourceBody.contains(range.startContainer) || !this.sourceBody.contains(range.endContainer)) return;
+    // This is the selection branch of the existing quote projection, with no
+    // trim or hover/whole-message fallback. Native Copy keeps its selection.
+    if (!copySelectedText(event, this.selectedPassage())) this.notice(SELECTION_COPY_REFUSED);
+  }
+
   // The source's own words a selection covers, never what the page shows for
   // them: a link showing a topic's name is quoted as the words it stands for.
   selectedPassage() {
+    if (this.card) return this.callbacks.cardSelection?.(this.card)?.text ?? '';
+    const range=this.selectedRange();return range?this.source.body.slice(range.start,range.end):'';
+  }
+  selectedRange() {
     const selection = window.getSelection();
     if (selection?.rangeCount && !selection.isCollapsed) {
       const range = selection.getRangeAt(0);
       if (this.sourceBody.contains(range.startContainer) && this.sourceBody.contains(range.endContainer)) {
         const from = this.sourceOffset(range.startContainer, range.startOffset), to = this.sourceOffset(range.endContainer, range.endOffset, true);
-        return this.source.body.slice(from, to);
+        return {start:from,end:to};
       }
     }
-    return this.hover ? this.source.body.slice(this.hover.start, this.hover.end) : '';
+    return this.hover?{start:this.hover.start,end:this.hover.end}:null;
+  }
+  passageParts(excerpt, range=this.selectedRange()) {
+    if(this.source?.source_ref.kind!=='memory')return [excerpt];
+    const body=this.source.body;
+    const start=range&&body.slice(range.start,range.end)===excerpt?range.start:body.indexOf(excerpt);
+    return start<0?[]:detailParts(body,start,start+excerpt.length);
   }
 
   // given: words chosen on the message's card (quoteFrom), quoted as they are,
@@ -631,6 +760,7 @@ export class Reader {
   quote(given = '', revision = undefined) {
     if (this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed) { this.notice('Source availability needs to be checked before quoting.'); return; }
     const held = this.held; this.held = null;
+    const cardWords = this.card ? this.callbacks.cardSelection?.(this.card) : null;
     const excerpt = given || this.selectedPassage() || held?.excerpt;
     if (!excerpt || !this.sessions) return;
     const place = this.quotedPlace() ?? held?.place;
@@ -639,7 +769,7 @@ export class Reader {
     // after, and its own writing does not take that away.
     this.notice('');
     this.quoting = true;
-    try { this.quoteInto(excerpt, place, given ? revision : undefined); } finally { this.quoting = false; }
+    try { this.quoteInto(this.passageParts(excerpt, given?null:this.selectedRange()??held?.range), place, given ? revision : cardWords?.revision ?? held?.revision); } finally { this.quoting = false; }
   }
 
   quoteInto(excerpt, place, revision = undefined) {
@@ -648,14 +778,16 @@ export class Reader {
     if (!this.writes(editor)) return;
     if (editor.adopting || recoveryReadOnly(editor)) { this.notice('Review saved image copies before changing this reply.'); return; }
     // Quoting on a laptop opens room to reply; a phone has only its stacked layout.
-    if (!this.narrow.matches && this.layout.mode !== 'wide') {
-      this.layout.setMode('wide'); this.applyLayout();
+    if (!this.card && !this.narrow.matches && this.layout.mode !== 'wide' && !this.temporaryWide) {
+      this.temporaryWide = true; this.applyLayout();
     }
     const prefix = editor.draft.body ? (editor.draft.body.endsWith('\n\n') ? '' : editor.draft.body.endsWith('\n') ? '\n' : '\n\n') : '';
-    const addition = prefix + excerpt.split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
+    const excerpts = Array.isArray(excerpt) ? excerpt : [excerpt];
+    if (!excerpts.length) return;
+    const addition = prefix + excerpts.join('').split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
     // The quote is writing like any other, so it goes through the editor's
     // edit, which brings in the author a reply is offered to.
-    editor.edit({ quotes: [...editor.draft.quotes, { source: quoteSource(this.source, revision), excerpt }] });
+    editor.edit({ quotes: [...editor.draft.quotes, ...excerpts.map(excerpt => ({ source: quoteSource(this.source, revision), excerpt }))] });
     // The message's selection is let go before the field takes focus: once
     // the field is focused the document's selection is its caret, and
     // clearing it then leaves no caret drawn until the window is refocused.
@@ -730,8 +862,9 @@ export class Reader {
     const at = this.source?.source_ref;
     if (!this.sessions || at?.kind !== ref.kind || at.id !== ref.id) return false;
     if (this.mode === 'note') this.switchMode('reply');
-    this.field.focus();
+    this.field.focus({ preventScroll: Boolean(this.card) });
     this.field.setSelectionRange(this.field.value.length, this.field.value.length);
+    if (this.card) revealCardReply(this.field);
     return true;
   }
 
@@ -749,7 +882,7 @@ export class Reader {
     this.disarm();
     this.drawEditor();
     this.field.focus();
-    const caret = this.editor.draft.caret;
+    const caret = this.editor.draft.caret ?? { start: this.field.value.length, end: this.field.value.length };
     this.field.setSelectionRange(caret.start, caret.end);
   }
 
@@ -759,6 +892,7 @@ export class Reader {
   }
 
   drawEditor() {
+    this.input?.mentions?.close();
     const note = this.mode === 'note';
     this.images?.close();
     this.$('writing-label').textContent = note ? 'Private note' : 'Reply';
@@ -774,7 +908,13 @@ export class Reader {
     if (note) this.$('send-reply').textContent = 'Done';
     else { const word = node('span', 'Send', 'send-word'), keys = node('span', '⌘↵'); keys.setAttribute('aria-hidden', 'true'); this.$('send-reply').replaceChildren(word, ' ', keys); }
     this.$('send-reply').classList.toggle('primary', !note);
+    // Setting value resets the browser's selection even for unchanged words.
+    // Keep a live selection on repaint; a newly opened editor uses its saved one.
+    const caret = document.activeElement === this.field && this.field.value === this.editor.draft.body
+      ? { start: this.field.selectionStart, end: this.field.selectionEnd, direction: this.field.selectionDirection }
+      : this.editor.draft.caret;
     this.field.value = this.editor.draft.body;
+    if (caret) this.field.setSelectionRange(caret.start, caret.end, caret.direction ?? 'none');
     this.paintImages();
     this.paintRecipients();
     this.paintChoice();
@@ -959,6 +1099,7 @@ export class Reader {
     this.$('choose-image').disabled = state.addDisabled;
     this.$('cancel-image').hidden = note || !editor.imageReservation;
     this.field.readOnly = state.readOnly;
+    if(state.readOnly)this.input?.mentions?.close();
     this.$('recipient-input').disabled = this.field.readOnly;
     this.paintChoice();
     this.$('quote-selection').disabled = Boolean(this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed || this.sessions.reply.adopting || recoveryReadOnly(this.sessions.reply));
@@ -1023,7 +1164,10 @@ export class Reader {
     const host = this.$('reader-cover'), line = this.$('reader-cover-line');
     const dossier = found?.rootId ?? null;
     if (dossier !== (this.coverDossier ?? null)) { host.open = false; this.coverDossier = dossier; }
-    const context = found ? { viewer: this.callbacks.actor?.() ?? null, nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: found.topicId } : null;
+    const context = found ? { viewer: this.callbacks.actor?.() ?? null, nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: found.topicId, rootId: dossier,
+      // An unchanged cover can keep its buttons when Reader moves within the
+      // dossier. Capture the presentation at the press, not at this paint.
+      answering: () => { const presentation = this.presentation; return receipt => this.callbacks.answered?.(presentation, receipt); } } : null;
     // Drawn again only when what it says changes; a Reader that never showed one has nothing to take away.
     const key = found ? coverKey(found.cover, context) : '';
     if ((this.coverShown ?? '') === key) return;
@@ -1033,7 +1177,12 @@ export class Reader {
     if (!found) { line.replaceChildren(); return; }
     const { cover } = found, shown = { ...context, owner: cover.owner };
     const words = document.createElement('span'); words.className = 'reader-cover-words';
-    words.textContent = coverSummary(cover) || `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${cover.owner === shown.viewer ? 'you' : shown.nameOf(cover.owner)}`;
+    const waitingOn = [...new Set(cover.waiting.map(wait => wait.actor_id ?? cover.owner))]
+      .map(id => id === shown.viewer ? 'you' : shown.nameOf(id)).join(', ');
+    const authored = coverSummary(cover);
+    // Read the inline marks without adding links or extra controls to the summary (989).
+    words.textContent = authored ? inlineNodes(authored, { doc: document }).map(node => node.textContent).join('')
+      : `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${waitingOn}`;
     const label = document.createElement('span'); label.className = 'cover-label'; label.textContent = 'Cover';
     line.replaceChildren(label, ' ', words, ...(cover.payload ? [' ', payloadPill(document, cover.payload, shown)] : []));
     host.append(coverSheet(document, cover, context));
@@ -1047,7 +1196,28 @@ export class Reader {
     // A message whose words were changed after it was sent says so (docs/message-edit.md).
     const edited = source.source_ref.kind === 'message' && wasEdited(source) ? [' · Edited'] : [];
     const author = this.callbacks?.actorName?.(source.author) ?? source.author;
-    this.$('reader-origin').replaceChildren([author, provenance].filter(Boolean).join(' · '), ...sent, ...edited);
+    const originText = node('span', undefined, 'reader-origin-text');
+    originText.append([author, provenance].filter(Boolean).join(' · '), ...sent, ...edited);
+    paintWithdrawal(originText, source, document, true);
+    paintRemoval(originText, source, document, true);
+    this.sourceBody.classList.toggle('retracted-message', source.removal?.kind === 'retracted');
+    this.$('reader-origin').replaceChildren(originText);
+    const question = questionPill(document, source, { nameOf: id => this.callbacks.actorName?.(id) ?? id,
+      resolve: this.callbacks.resolveQuestion, busy: this.callbacks.resolvingQuestion?.(source.source_ref.id) });
+    if (question) this.$('reader-origin').append(' ', question);
+    if (source.source_ref.kind === 'message') {
+      const context = { viewer: this.callbacks.actor?.(), nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: source.topic_id };
+      const update = messageUpdateActivity(document, source, context);
+      if (update) this.$('reader-origin').append(update);
+      // A first-cover request has no sheet yet. Its source still carries the
+      // same timed line; once a cover exists its shared sheet owns that line.
+      if (!source.acts?.cover && source.acts?.cover_refresh?.request_id) {
+        const line = refreshLine(document, { type: 'cover', id: source.source_ref.id,
+          revision: source.acts.cover_revision ?? 0, refresh: source.acts.cover_refresh,
+          refresh_revision: source.acts.cover_refresh_revision ?? 0 }, context);
+        if (line) this.$('reader-origin').append(line);
+      }
+    }
     this.paintTone(source);
   }
   // The page the source is read on: an agent's message wears its color, as
@@ -1058,6 +1228,7 @@ export class Reader {
     if (pane) pane.className = (source && this.callbacks.paneClass?.(source)) || 'reading-pane';
   }
   hideUnavailableSource() {
+    this.expandReply();
     this.disarm(); this.sourceBody.replaceChildren(); this.$('source-attachments').replaceChildren();
     this.$('reader-title').textContent = 'Source unavailable';
     this.$('reader-origin').textContent = 'Source unavailable'; this.paintTone(null); this.sourceBody.classList.remove('whispering');
@@ -1128,7 +1299,7 @@ export class Reader {
   }
 
   // A failure goes to the notice as the error itself (lines.mjs).
-  notice(what) { showLine(this.$('reader-notice'), what); }
+  notice(what) { this.noticeVersion = (this.noticeVersion ?? 0) + 1; showLine(this.$('reader-notice'), what); }
 
   // Done, by its button or ⌘ Return, waits for a step as sending does. The
   // note saves as it is written; Done confirms the save. A saved note leaves
@@ -1171,13 +1342,23 @@ export class Reader {
     // The writing goes as the choice shows: a whisper, or a tell or ask that says so, to
     // whom the line said; Core records a leading @name's members itself (addressing.py).
     editor.edit(sending(editor.draft, this.names(editor), this.kindOf, this.answering()));
-    const draft = editor.draft;
+    const draft = editor.draft, presentation = this.presentation, token = this.viewToken;
+    const returnToCard = Boolean(presentation?.fromCardReply && !stay);
     try {
       // The controller freezes A synchronously. Reflect that deliberate act
       // before awaiting its journal or network; later receipts only paint status.
-      const sending = this.callbacks.send(editor, { stay });
+      const sending = this.callbacks.send(editor, { stay: returnToCard || stay });
       if (this.editor === editor && editor.draft !== draft) { this.drawEditor(); this.field.focus(); }
-      await sending;
+      const version = editor.localVersion, cycle = editor.clientCycleId, notice = this.noticeVersion;
+      // This Reader shares an inline field. Keep its recovery controls until
+      // publication, then let the card owner close both surfaces and land.
+      const current = () => this.presentation === presentation && this.viewToken === token &&
+        this.mode === 'reply' && this.admits(editor, presentation) && editor.localVersion === version &&
+        editor.clientCycleId === cycle && !holdsWriting(editor.draft) && !currentImages(editor).length && !imageBarrier(editor) &&
+        !this.imagePicker && !this.images?.open && !this.compose.panel && !this.naming.sheet.open &&
+        this.noticeVersion === notice;
+      const result = await sending;
+      if (returnToCard && result?.status === 'confirmed' && current()) await this.callbacks.sent?.(presentation, result, current);
     } catch (error) { this.callbacks.error?.(error); }
   }
 
@@ -1191,13 +1372,16 @@ export class Reader {
   }
 
   finishClose() {
+    this.input?.mentions?.close();
     // An edit under way is left as Escape leaves it: its writing stays on the device.
     this.editing?.leave({ closing: true });
     ++this.viewToken;
+    this.temporaryWide = false;
     this.held = null;
     // The naming sheet is a modal of its own: it goes with the Reader.
     if (this.naming?.sheet.open) this.naming.sheet.close();
     this.dialog.close();
+    this.placeReply(null);
     this.disarm();
     // An opener the open itself hid (Read it, once the last mark clears)
     // hands focus to the page rather than dropping it to the body.
@@ -1236,6 +1420,31 @@ export class Reader {
     if (event.isComposing || event.keyCode === 229) return;
     const target = event.target;
     if (event.key === 'Tab') {
+      if (this.card) return; // An inline reply is part of the page's tab order.
+      // WebKit can leave native Tab on an expanded cover's summary even
+      // though its controls are visible and the event was not cancelled.
+      // Keep this boundary in the Reader's keyboard order in either engine;
+      // use actual eligible stops so a disabled or removed stop is skipped.
+      const coverStops = [...this.dialog.querySelectorAll('summary,button,textarea,select,input,a[href],[tabindex]')]
+        .filter(el => visible(el) && (el.tabIndex >= 0 || el.matches('summary:not([tabindex])')));
+      // A source tap focuses the article after the cover. Backward Tab must
+      // enter its preceding stop too, before the inside-cover order can help.
+      if (event.shiftKey && target === this.sourceBody) {
+        const previous = coverStops[coverStops.indexOf(target) - 1];
+        if (previous?.closest('#reader-cover')) {
+          event.preventDefault();
+          previous.focus();
+          return;
+        }
+      }
+      if (target.closest?.('#reader-cover')) {
+        const index = coverStops.indexOf(target);
+        if (index >= 0) {
+          event.preventDefault();
+          coverStops[(index + (event.shiftKey ? -1 : 1) + coverStops.length) % coverStops.length]?.focus();
+          return;
+        }
+      }
       const stops = [...this.dialog.querySelectorAll('button,textarea,select,input,a[href],[tabindex="0"]')].filter(visible);
       if (event.shiftKey && target === stops[0]) { event.preventDefault(); stops.at(-1)?.focus(); }
       else if (!event.shiftKey && target === stops.at(-1)) { event.preventDefault(); stops[0]?.focus(); }
@@ -1268,7 +1477,7 @@ export class Reader {
     // ⌘C with a passage lit and no words selected copies the passage's words,
     // as Return would quote them, as on the topic page (message-menu.mjs).
     if (!inEditor && copyKey(event, this.mac) && this.hover && window.getSelection()?.isCollapsed !== false && this.source) {
-      event.preventDefault(); copyText(this.selectedPassage().trimEnd()).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
+      event.preventDefault(); copyText(this.passageParts(this.selectedPassage()).join('').trimEnd()).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
     }
     if (!inEditor && event.metaKey && event.shiftKey && event.code === 'KeyC' && this.source?.source_ref.kind === 'message') {
       event.preventDefault(); copyText(this.source.body).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;

@@ -1,0 +1,105 @@
+effective_cache=/Users/commonfabric/aim-worktrees/codex-790-paste9912/docs/evidence/onboarding-790-paste/cache-missing-observation-mutant-b7b1fe7de64d4e638907fdab2343d0dc
+{"ownedLiteralCases":{"chrome":["reading item 790 clipboard-control: fixture-only raw Meta+V versus native paste editing command","reading item 790 laptop: owner chooses both variants and copies current prompt by native paste","reading item 790 laptop: refused clipboard keeps readable text and retry copies fresh state","reading item 790 laptop: non-owner has no overflow and Core refuses the prompt","reading item 790 phone: owner chooses both variants and copies current prompt by native paste","reading item 790 phone: refused clipboard keeps readable text and retry copies fresh state","reading item 790 phone: non-owner has no overflow and Core refuses the prompt"],"webkit":["reading item 790 laptop: owner chooses both variants and copies current prompt by native paste","reading item 790 laptop: refused clipboard keeps readable text and retry copies fresh state","reading item 790 laptop: non-owner has no overflow and Core refuses the prompt","reading item 790 phone: owner chooses both variants and copies current prompt by native paste","reading item 790 phone: refused clipboard keeps readable text and retry copies fresh state","reading item 790 phone: non-owner has no overflow and Core refuses the prompt"]},"executedBodies":0,"runnerStarts":0}
+✖ safe diagnostics retain hashes, actual focus and native phases on success without text (1.314291ms)
+✖ exact equality rejects different text even at same length and leaves failure diagnostics (1.691542ms)
+✔ wrong clipboard content stops before paste, retains safe product defect classification (0.105666ms)
+✔ native editing command carries no text and raw path preserves original key call (0.259042ms)
+✖ clipboard read denial is diagnostic refusal without exception text or product failure claim (0.15775ms)
+✔ all diagnostic browser expressions parse and viewport tolerance catches actual expression crossing (0.467334ms)
+✔ actual reading entry point enumerates Chromium seven and WebKit original six without execution (30.142292ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 4
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 83.395917
+
+✖ failing tests:
+
+test at tests/clipboard_790_diagnostics.test.mjs:22:1
+✖ safe diagnostics retain hashes, actual focus and native phases on success without text (1.314291ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - {
+  -   complete: true,
+  -   device: 'laptop',
+  -   dispatched: [
+  -     {
+  -       phase: 'rawKeyDown',
+  -       route: 'native-paste-command'
+  -     },
+  -     {
+  -       phase: 'keyUp',
+  -       route: 'native-paste-command'
+  -     }
+  -   ],
+  -   events: [
+  -     {
+  -       trusted: true,
+  -       type: 'paste'
+  -     },
+  -     {
+  -       inputType: 'insertFromPaste',
+  -       trusted: true,
+  -       type: 'input'
+  -     }
+  -   ],
+  -   exact: true,
+  -   expected: {
+  -     length: 27,
+  -     sha256: '2ae449e4deecaf48b5f8792ec45af51b9af490fbe5f72646c453615bd928cbdc'
+  -   },
+  -   focus: {
+  -     id: 'onboarding-paste-proof',
+  -     tag: 'TEXTAREA',
+  -     type: 'textarea'
+  -   },
+  -   focusAfter: {
+  -     id: 'onboarding-paste-proof',
+  -     tag: 'TEXTAREA',
+  -     type: 'textarea'
+  -   },
+  -   name: 'reading item 790 clipboard diagnostic',
+  -   pasted: {
+  -     length: 27,
+  -     sha256: '2ae449e4deecaf48b5f8792ec45af51b9af490fbe5f72646c453615bd928cbdc'
+  -   },
+  -   readback: {
+  -     exact: true,
+  -     length: 27,
+  -     ok: true,
+  -     sha256: '2ae449e4deecaf48b5f8792ec45af51b9af490fbe5f72646c453615bd928cbdc'
+  -   },
+  -   route: 'native-paste-command',
+  -   stage: 'current-retry',
+  -   variant: 'claude'
+  - }
+  
+      at TestContext.<anonymous> (file:///Users/commonfabric/aim-worktrees/codex-790-paste9912/tests/clipboard_790_diagnostics.test.mjs:24:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { name: 'reading item 790 clipboard diagnostic', device: 'laptop', variant: 'claude', stage: 'current-retry', route: 'native-paste-command', expected: { length: 27, sha256: '2ae449e4deecaf48b5f8792ec45af51b9af490fbe5f72646c453615bd928cbdc' }, readback: { ok: true, length: 27, sha256: '2ae449e4deecaf48b5f8792ec45af51b9af490fbe5f72646c453615bd928cbdc', exact: true }, focus: { tag: 'TEXTAREA', id: 'onboarding-paste-proof', type: 'textarea' }, dispatched: [ [Object], [Object] ], events: [ [Object], [Object] ], pasted: { length: 27, sha256: '2ae449e4deecaf48b5f8792ec45af51b9af490fbe5f72646c453615bd928cbdc' }, exact: true, complete: true, focusAfter: { tag: 'TEXTAREA', id: 'onboarding-paste-proof', type: 'textarea' } },
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/clipboard_790_diagnostics.test.mjs:31:1
+✖ exact equality rejects different text even at same length and leaves failure diagnostics (1.691542ms)
+  TypeError [Error]: Cannot read properties of undefined (reading 'readback')
+      at TestContext.<anonymous> (file:///Users/commonfabric/aim-worktrees/codex-790-paste9912/tests/clipboard_790_diagnostics.test.mjs:34:60)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at tests/clipboard_790_diagnostics.test.mjs:52:1
+✖ clipboard read denial is diagnostic refusal without exception text or product failure claim (0.15775ms)
+  TypeError [Error]: Cannot read properties of undefined (reading 'failure')
+      at TestContext.<anonymous> (file:///Users/commonfabric/aim-worktrees/codex-790-paste9912/tests/clipboard_790_diagnostics.test.mjs:55:40)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)

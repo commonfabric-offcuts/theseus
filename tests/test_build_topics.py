@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Build topics shown once, in the right rail (item 297; docs/rails.md, docs/topic-list.md).
 
-On an outcome whose pipeline is on, a topic some piece is built in is a Build
+On an outcome whose pipeline is on, an agent-created topic some piece is built in is a Build
 topic: `workspace_topics` says so on each item, and lists those topics apart
 from the outcome's other open topics (`build: true`), or leaves them out
 (`build: false`), so the outline and the right rail each show one of the two.
@@ -10,6 +10,7 @@ A Build topic Done is in the done list as any topic is, and an archived one in
 the archived list; an outcome with no pipeline on has no Build topics."""
 
 import unittest
+import sqlite3
 
 import test_pipeline_stages as stages
 from test_pipeline_steering import PipelineCase
@@ -17,7 +18,43 @@ from test_pipeline_steering import PipelineCase
 
 class BuildTopicsCase(PipelineCase):
     start = stages.StagesCase.start
-    topic = stages.StagesCase.topic
+
+    def legacy_start(self, topic, **args):
+        """Pre-632 wrong link, seeded only in this temporary classification DB.
+
+        The public start now refuses it. Retain 837's full classification
+        assertions against existing human-linked records, including history.
+        """
+        receipt = self.start(topic="t1", **args)
+        piece = self.committed(receipt)["piece_id"]
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE pipeline_pieces SET topic_id=? WHERE id=?", (topic, piece))
+        return receipt
+
+    def create_topic(self):
+        self.workspace()
+        return self.topic("t1", "Topic")
+
+    def topic(self, topic_id, title="Another topic", actor="agent-a"):
+        # These fixtures exercise Build topics, so create them as an agent.
+        # Human-created topics have their own cases below; no identity/history
+        # is rewritten to manufacture either kind.
+        draft, submission, operation = "draft-" + topic_id, "sub-" + topic_id, "open-" + topic_id
+        self.committed(self.command("draft.save", {
+            "source_ref": {"kind": "new_topic", "id": "opening-" + topic_id, "workspace_id": "w1"},
+            "topic_id": topic_id, "generation": "gA", "body": "Opening " + title,
+            "attachments": [], "quotes": [], "addressees": [],
+            "opening": {"workspace_id": "w1", "title": title, "participants": ["owner", "agent-a"]},
+        }, target={"draft_id": draft}, expected={"draft_revision": 0}, actor=actor))
+        self.committed(self.command("submission.prepare", {
+            "draft_id": draft, "submission_id": submission, "send_operation_id": operation,
+        }, target={"topic_id": topic_id}, expected={"draft_revision": 1}, actor=actor))
+        result = self.committed(self.command("topic.create_and_send", {"submission_id": submission},
+                                             target={"topic_id": topic_id}, actor=actor, op=operation))
+        # Counts below concern later posts, not the fixture's opening.
+        seq = self.sql("SELECT seq FROM messages WHERE id=?", (result["message_id"],))[0][0]
+        self.committed(self.command("topic.read_through", {"seq": seq}, target={"topic_id": topic_id}))
+        return {"kind": "message", "id": result["message_id"]}
 
     def setUp(self):
         super().setUp()
@@ -58,6 +95,111 @@ class BuildTopicsCase(PipelineCase):
         self.assertEqual(self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["build"], False)
         self.committed(self.on())
         self.assertEqual(self.ids(build=True), ["t1"], "on again, it is again")
+
+    def test_933_count_only_refresh_keeps_build_counts_and_pipeline_changes(self):
+        self.committed(self.start(numbers=(1,), topic="t1"))
+        self.post("Build update", topic="t1", addressees=["owner"], intent="tell")
+        counts = self.store.view("owner", "workspace_counts", {"workspace_ids": ["w1"]})
+        self.assertNotIn("error", counts, counts)
+        row = counts["items"][0]
+        self.assertGreater(row["build"]["unread"], 0)
+        self.assertGreater(row["build"]["addressed"], 0)
+        listed = self.store.view("owner", "workspaces", {})["items"][0]
+        self.assertEqual(row, {key: listed[key] for key in row})
+        self.committed(self.on(enabled=False))
+        without_build = self.store.view("owner", "workspace_counts", {"workspace_ids": ["w1"]})["items"][0]
+        self.assertEqual(without_build["build"], {"unread": 0, "addressed": 0})
+        self.assertEqual(without_build["unread"], row["unread"])
+
+    def test_human_topic_stays_in_the_sidebar_when_an_agent_links_finishes_and_reuses_it(self):
+        self.topic("human", "My tracking topic", actor="owner")
+        self.assertIn("human", self.ids(build=False))
+        before = self.sql("SELECT creator_id,title FROM topics WHERE id='human'")
+        first = self.committed(self.legacy_start(numbers=(1,), topic="human", actor="agent-a"))["piece_id"]
+        self.assertIn("human", self.ids(build=False), "linking work must not remove a human's topic")
+        self.assertNotIn("human", self.ids(build=True))
+        for actor in ("owner", "agent-a", "agent-b"):
+            self.assertFalse(self.store.view(actor, "topic", {"topic_id": "human"})["topic"]["build"])
+            self.assertIn("human", self.ids(actor, build=False))
+        self.committed(self.command("pipeline.piece_finish", {}, {"piece_id": first}))
+        self.assertIn("human", self.ids(build=False), "historical links do not hide the topic either")
+        second = self.add("Another piece", section="now", size="small")
+        self.committed(self.legacy_start(numbers=(second,), topic="human", actor="owner"))
+        self.assertIn("human", self.ids(build=False))
+        self.committed(self.on(enabled=False))
+        self.committed(self.on())
+        self.assertFalse(self.flags()["human"])
+        self.assertEqual(self.sql("SELECT creator_id,title FROM topics WHERE id='human'"), before)
+        self.assertEqual(len(self.sql("SELECT id FROM pipeline_pieces WHERE topic_id='human'")), 2,
+                         "the linked pieces and their history are retained")
+
+    def test_human_and_agent_topics_are_paged_and_counted_in_their_own_lists(self):
+        self.topic("human", "My tracking topic", actor="owner")
+        self.committed(self.legacy_start(numbers=(1,), topic="human", actor="agent-a"))
+        number = self.add("Agent work", section="now", size="small")
+        self.committed(self.start(numbers=(number,), topic="t1", actor="owner"))
+        self.post("Human topic update", topic="human", addressees=["owner"], intent="tell")
+        self.post("Agent topic update", topic="t1")
+        self.topic("plain", "Another ordinary topic", actor="owner")
+        before = self.records()
+        seen, cursor = [], ""
+        while True:
+            answer = self.store.view("owner", "workspace_topics", {
+                "workspace_id": "w1", "build": False, "limit": 1, "cursor": cursor})
+            seen.extend(item["id"] for item in answer["items"])
+            cursor = answer["next_cursor"]
+            if cursor is None:
+                break
+        self.assertEqual(seen, ["plain", "human"])
+        answer = self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "build": True, "limit": 1})
+        self.assertEqual([item["id"] for item in answer["items"]], ["t1"])
+        self.assertEqual([item["id"] for item in answer["building"]], ["t1"])
+        self.assertEqual(answer["builds"], {"unread": 1, "addressed": 0})
+        self.assertEqual(self.build_count(), answer["builds"])
+        ordinary = self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "build": False})
+        human = next(item for item in ordinary["items"] if item["id"] == "human")
+        self.assertEqual((human["build"], human["unread"], human["addressed"]), (False, 1, 1))
+        self.assertEqual(self.records(), before, "classification reads do not rewrite any records")
+        self.assertEqual(self.store.view("outsider", "workspace_topics", {"workspace_id": "w1", "build": False})["error"]["code"],
+                         "FORBIDDEN", "classification does not widen outcome access")
+
+    def test_archive_and_done_still_remove_a_linked_human_topic_from_the_open_sidebar(self):
+        self.topic("human", "My tracking topic", actor="owner")
+        self.committed(self.legacy_start(numbers=(1,), topic="human", actor="agent-a"))
+        self.say("human", state="review")
+        self.assertIn("human", self.ids(build=False), "review is still an ordinary open topic")
+        self.say("human", state="done")
+        self.assertNotIn("human", self.ids(build=False))
+        self.assertNotIn("human", self.ids(build=True))
+        self.assertEqual(self.flags(done=True), {"human": False})
+        self.say("human", state="active")
+        self.assertIn("human", self.ids(build=False))
+        self.say("human", archived=True)
+        self.assertNotIn("human", self.ids(build=False))
+        self.assertNotIn("human", self.ids(build=True))
+        self.assertEqual(self.flags(archived=True), {"human": False})
+        self.say("human", archived=False)
+        self.assertIn("human", self.ids(build=False))
+
+    def test_a_release_link_does_not_reclassify_a_human_created_topic(self):
+        self.store.record_release({"release": 22, "commit": "4" * 40, "deployed_at": "2026-11-06T05:28:35-08:00", "items": [], "source": "backfill"})
+        self.committed(self.on(ships_in_releases=True))
+        self.stages({"stage_id": "build", "name": "Build"}, {"stage_id": "checks", "name": "Release checks", "scope": "release"})
+        self.topic("human", "My release tracking", actor="owner")
+        piece = self.committed(self.start(numbers=(1,), topic="t1"))["piece_id"]
+        self.committed(self.command("pipeline.combine", {"piece_ids": [piece], "topic_id": "human"}, {"workspace_id": "w1"}, actor="agent-a"))
+        self.assertIn("human", self.ids(build=False), "a release reference also leaves a human's topic in place")
+        self.assertEqual(self.ids(build=True), ["t1"])
+        self.assertFalse(self.flags()["human"])
+
+    def test_a_linked_human_created_conversation_keeps_its_separate_row(self):
+        conversation = self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["conversation_id"]
+        self.committed(self.legacy_start(numbers=(1,), topic=conversation, actor="agent-a"))
+        topic = self.store.view("owner", "topic", {"topic_id": conversation})["topic"]
+        self.assertEqual((topic["creator_id"], topic["kind"], topic["build"]), ("owner", "conversation", False))
+        self.assertNotIn(conversation, self.ids(build=False), "Conversation retains its separate row")
+        self.assertNotIn(conversation, self.ids(build=True))
+        self.assertEqual(self.build_count(), {"unread": 0, "addressed": 0})
 
     def test_a_build_topic_ready_for_review_stays_apart_until_done_then_is_in_the_done_list(self):
         self.topic("t2", "Plain talk")
