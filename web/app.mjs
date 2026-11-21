@@ -26,6 +26,7 @@ import { TopicViews, followEdits } from './topic-views.mjs';
 import { visitNewFor, paintVisitNew } from './visit-new.mjs';
 import { resolveTopicLink, topicLinkNeedsLookup } from './topic-link-route.mjs';
 import { readTopicList, TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, topicTarget, paintChanged, changedSince } from './topic-navigation.mjs';
+import { ImagePage } from './image-page.mjs';
 import { OnboardingPrompt } from './onboarding.mjs';
 import { OutcomeRail } from './outcomes.mjs';
 import { LightPeek, paintAlsoWaiting, paintStanding, paintStandingFailed } from './outcome-light.mjs';
@@ -4169,6 +4170,7 @@ async function initializeOutcomePage(route) {
   if(route.kind==='measurements')return initializeMeasurementsPage(route);
   if(route.kind==='tool')return initializeToolPage(route);
   if(route.kind==='cards')return initializeDeckPage(route);
+  if(route.kind==='image')return initializeImagePage(route);
   if(!['root','workspace'].includes(route.kind))throw Error('This opening link is not available yet. Open Outcomes to choose a place.');
   // A Notebook page's link opens the page in place once the outcome's lists are
   // up; the address then names the outcome alone, as a message's link does.
@@ -4396,6 +4398,18 @@ async function initializeHealthPage() {
   live?.listen(event=>page.heard(event));
   await followCommits(()=>page.load())();
   document.body.dataset.ready='true';
+}
+// A copied image address rechecks its source before showing verified bytes.
+async function initializeImagePage(route) {
+  drawFeed(false, 'topic-pending', 'inline-composer', 'topic-navigation');
+  document.querySelector('.rail').hidden = true;
+  $('topic-title').textContent = 'Image'; $('topic-description').textContent = '';
+  const host = $('image-page'); host.hidden = false;
+  const page = new ImagePage({ host, route, current: () => !retired, handles: { api, bootstrap,
+    view: (name, args) => pipelineView(name, args), inTurn: job => job() } });
+  window.addEventListener('pagehide', () => page.dispose());
+  await followCommits(() => page.load())();
+  document.body.dataset.ready = 'true';
 }
 // A Notebook page as a deck of cards (docs/decks.md): no rail, so the deck has
 // the width; "← Outcomes" and the logo block head it, and the eyebrow goes
