@@ -42,7 +42,7 @@ held keys and disposed/unavailable composers have focused controls.
 - Six-file Node cohort579 tests,569 pass/10 fail; unchanged302 has556 tests,
   546 pass/the same10 fail. The complete failure diagnostics and every stack
   match after only own source-root paths and per-test durations are
-  normalized. No existing assertion was changed or excluded. The files are
+  normalized. The original six-file run changed no existing assertion. The files are
   `ui_pencil_keys_1018`, `ui_arrow_reach`, `ui_inline_send_937`,
   `ui_quoted_inline_send_941`, `ui_inline_reply_838` and `ui_inline_wiring`,
   all under `tests/` with `.test.mjs` suffixes. The10 failures are the existing
@@ -91,3 +91,36 @@ These are desktop engine proofs. The Dead/µ and composition guards are
 focused handler controls, not a physical Mac layout/IME demonstration. No
 installed Safari, physical phone, software keyboard, latency, Tony acceptance,
 deployment or whole hosted-gauntlet result is claimed.
+
+## Correction for Warp15215
+
+The width-preference stand-in omitted the document event methods now used by
+the real constructor. The selected repair supplies a real `EventTarget`'s
+add/remove/dispatch methods in that stand-in. Product listener installation
+and disposal are unchanged, and every width assertion remains. The retained
+local red has1/12 pass and11 constructor failures; the corrected file is12/12.
+
+The importer cohort also exposed the exact legend inventory's new label and
+its lowercase-description rule. The expected inventory now includes
+`Option-N · Option-M`, retaining all eight prior labels and every key action
+assertion. The new legend description follows the existing lowercase style.
+This is a wording correction; the key router, send/finishPage methods and
+all other product modules remain byte-identical to70034ef8.
+
+The expanded17-file importer/affected cohort is705/718 against unchanged302's
+682/695, with the same13 complete failure diagnostics/stacks after only own
+root paths and per-test durations are normalized. The original canary's10
+and the other importers'3 remain explicit failures. No width or key action
+assertion is relaxed. `review15215-cohort-files.json` records every test file;
+`review15215-corrected-comparison.json` carries the exact comparison. The
+intermediate inventory/style failures remain separately labeled, as do both
+original source and native phases. Corrected-source native proof is retained
+under `review15215-chrome` and `review15215-webkit`:52/52 each on the same
+retained harness, with four served-module hashes exact in every matrix cell
+and20 committed exact Core source readbacks per engine. Both strict cleanup
+records pass; Chrome9 observed owned PIDs and WebKit2 are absent, profiles
+removed, fixture EOF exit0/absence and closed ports verified. This is the
+corrected source's104/104 proof, distinct from70034ef8's retained proof.
+No other product or test change follows this green freeze. Correction evidence
+is packaged separately at the sibling `artifacts/1018-review15215` root and
+extends the original15212 packet without relabeling it.
