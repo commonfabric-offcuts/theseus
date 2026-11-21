@@ -133,8 +133,9 @@ html:has(#messages:not([hidden])){overflow-anchor:none}
 .reading-pane.passage-probe { position: fixed; top: 0; left: 0; width: 1px; height: 1px; padding: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
 .message-card.own-message {
   --ink: #e0e8e5;
-  /* Its passage lit under the pointer: the ink at 20% over the black, under the card's own light words. */
-  --lit-field: #2d2e2e;
+  /* Its passage lit under the pointer: the ink at 35% over the black (2.6:1 against it), under the card's own light
+     words (6.4:1). At 20% the field read as nothing on a dossier's own cards (Tony, 1009). */
+  --lit-field: #4e5150;
   --muted: #9aaba8;
   --accent: #79c7ab;
   background: #000;
