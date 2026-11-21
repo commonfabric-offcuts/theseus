@@ -62,7 +62,7 @@ def jobs(root, weights):
         measured = bucket['minutes'] + config['setup_minutes']
         result.append({'name': 'python units %d of %d' % (i, len(bins)), 'steps': 'python-units',
                        'python_shard': '%d/%d' % (i, len(bins)), 'files': sorted(bucket['files']),
-                       'timeout': math.ceil(measured * 1.5)})
+                       'timeout': max(math.ceil(measured * 1.5), config.get('python_timeout_floor_minutes', 0))})
     for name in ('node-units', 'deploy-refusals'):
         result.append({'name': name, 'steps': name,
                        'timeout': math.ceil((config['minutes'][name] + config['setup_minutes']) * 1.5)})
