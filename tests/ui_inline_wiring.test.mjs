@@ -5843,7 +5843,7 @@ test('919 starred first card paints its filled star and dossier cue without a po
   assert.equal(card.dataset.starred, 'true'); assert.equal(star.textContent, '★'); assert.equal(star.getAttribute('aria-pressed'), 'true');
   const nodes = node => [node, ...(node.children ?? []).flatMap(nodes)];
   const headerStar = nodes(stackOf('star919')).find(node => node.classList?.contains('stack-star'));
-  assert.equal(headerStar.textContent, '★'); assert.equal(headerStar.getAttribute('aria-pressed'), 'true');
+  assert.equal(headerStar.textContent, '★\uFE0E'); assert.equal(headerStar.getAttribute('aria-pressed'), 'true');
   f.views.messages.get('star919').acts = { starred: false, star_revision: 2 }; f.paintViews('acts');
   assert.equal(card.dataset.starred, 'false'); assert.equal(star.textContent, '☆');
 });

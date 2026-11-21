@@ -586,7 +586,8 @@ function paintHead(card, stack, { open, state, unread, nameOf, doc, separate = f
   if (!star) {
     star = element(doc, 'span', 'stack-act stack-star');
     star.setAttribute('role', 'button'); star.tabIndex = 0; star.dataset.stackAct = 'star';
-    star.onpointerdown = event => event.preventDefault();
+    // Preserve writing focus without suppressing WebKit's touch click (951).
+    star.onmousedown = event => event.preventDefault();
     star.onkeydown = event => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault(); event.stopPropagation(); star.click();
@@ -595,7 +596,7 @@ function paintHead(card, stack, { open, state, unread, nameOf, doc, separate = f
   star.onclick = event => { event.preventDefault(); event.stopPropagation(); state.on?.star?.(stack); };
   const firstStarred = state.on?.firstStarred?.(stack) ?? (original ? Boolean(stack.head.acts?.starred) : Boolean(positionOf(stack)?.starred?.includes(dossierOf(stack))));
   const starWords = firstStarred ? 'Unstar' : 'Star for me';
-  star.textContent = firstStarred ? '★' : '☆';
+  star.textContent = firstStarred ? '★\uFE0E' : '☆\uFE0E';
   star.setAttribute('aria-label', starWords); star.title = starWords;
   star.setAttribute('aria-pressed', String(firstStarred));
   // The first message's marks stand beside who began it, then its minted name.

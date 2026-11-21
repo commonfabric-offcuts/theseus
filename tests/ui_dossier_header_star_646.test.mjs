@@ -74,3 +74,15 @@ test('646 unloaded first follows fresh dossier membership after an external unst
   const f = fixture(); await f.feed.starDossier(f.stack); assert.equal(f.feed.firstStarred(f.stack), true);
   f.reply.stack_position.starred = ['reply']; assert.equal(f.feed.firstStarred(f.stack), false);
 });
+
+for (const loaded of [false, true]) test(`951 consecutive presses toggle the same first message without reload; loaded=${loaded}`, async () => {
+  const f = fixture({ loaded });
+  await f.feed.starDossier(f.stack);
+  assert.equal(f.feed.firstStarred(f.stack), true);
+  await f.feed.starDossier(f.stack);
+  assert.equal(f.feed.firstStarred(f.stack), false);
+  assert.deepEqual(f.calls.map(call => [call.target.message_id, call.args.starred, call.expected.star_revision]),
+    [['first', true, 7], ['first', false, 8]]);
+  assert.equal(f.reply.acts.starred, true);
+  assert.equal(f.messages.has('first'), loaded);
+});
