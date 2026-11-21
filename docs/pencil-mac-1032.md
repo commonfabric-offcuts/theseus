@@ -1,0 +1,15 @@
+# Pencil modal Mac shortcuts (1032)
+
+Base: actual live309 ff7a9222753057d12dc3afecacda2502234c28bd. Fresh branch core-lane7/1032-modal-mac-keys-309, independent of preserved1023/1024. Fable opening15488/Warp15482 names this priority before1024. No1024 product edit exists.
+
+Option-N and Option-M switch Note and Message in pencil-owned text, including the modal opened by a pencil click. Match physical code KeyN/KeyM plus Alt without other modifiers before treating keyCode229 as unrelated composition. Prevent only the recognized chord; arbitrary IME input and unrelated controls retain their owners. Keep exact writing, caret and target; keep busy/admission/nested-dialog guards, text Return newline, field Command-Return and mode-pill Send owners.
+
+Before choosing the fix, retain unchanged309 native traces of modal root visibility/connectivity, field containment, admission, document capture/bubble and exact Dead/KeyN/229 and µ/KeyM/77 events; observe the keydown result separately from keyup. The first diagnostic driver can send another keydown at keyup; its passing result cannot stand for the229 keydown. Report these observations before editing product. Source-matched native driver events are trusted CDP emulation on a Mac, not proof of a physical keyboard or native input-method sequence. Composition follow-up must be tested separately from ordinary writing and must not erase unrelated composition.
+
+Keep1023 meaningful controls and actual mutation/restoration evidence, compare affected imports against309 with complete inherited failures, native Chrome/WebKit where supported and exact served identities. Strict Browser.close/ownedPID/profile/fixture EOFexit0/absence/ports cleanup. One green frozen/pushed source for Warp read; Fable owns classification/stages and Warp carry/landing. No new approval gate.
+
+## Ownership boundary
+
+A recognized chord may bypass the composition guard in pencil-owned text or when opening from outside any text field. A composing field in another surface keeps its input-method owner, even for Alt+N/M; The global opening from non-text must consume the initial Dead/229 before focus moves into the sheet (Warp15539); a different composing text field remains untouched. The first candidate lacked that restriction: two additional outside-text controls failed, then the restriction restored them. This is a pencil-key handler change; no input writer, composition event listener, DOM mutation, new timer or stored state is added. Preventing the recognized keydown stops its default character insertion; unrelated composed text already present is kept.
+
+The two old composition examples in each1018/1023 unit loop now use Alt+KeyA, because Alt+KeyN/M under composition are deliberately owned by1032. Already-prevented Alt+N and other modifier assertions are kept. New positive and negative1032 controls explicitly test the intended composing chords and the outside-text boundary. The committed report records the observed results rather than treating this contract as proof.
