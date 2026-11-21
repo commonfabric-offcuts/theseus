@@ -13,6 +13,12 @@ export class SeatAddition {
     this.row = null; this.busy = null; this.writes = Promise.resolve(); this.notice = ''; this.storageError = null;
     this.version = 0; this.savedVersion = 0;
   }
+  get notice() { return this._notice ?? ''; }
+  set notice(words) { this._notice = words; this.noticeSeatId = null; }
+  followSeat(seat, label) {
+    this.notice = `${label}: ${seatWords(seat)}`;
+    this.noticeSeatId = seat.id;
+  }
   async load() {
     this.row = await this.journal.get() ?? { revision: 0, form: { name: '', role: '' }, request: null, lastSeatId: null };
     this.changed(); return this;
@@ -31,7 +37,7 @@ export class SeatAddition {
   }
   perform(action) {
     if (this.busy) return this.busy;
-    const work = Promise.resolve().then(action);
+    const work = Promise.resolve().then(action).catch(error => { this.notice = error.message; throw error; });
     this.busy = work; this.changed();
     const finish = () => { if (this.busy === work) this.busy = null; this.changed(); };
     work.then(finish, finish); return work;
@@ -114,8 +120,8 @@ export class SeatAddition {
       }
       this.row.request = null; this.row.requestLabel = null; this.row.lastSeatId = result.seat_request_id;
       if (!retry && sameForm(this.row.form, request.args)) this.row.form = { name: '', role: '' };
-      this.noticeSeatId = ending ? result.seat_request_id : null;
-      this.notice = ending ? `${result.agent.name}: ${seatWords(result.seat)}` : `${result.agent.name} is on the team and preparing.`;
+      if (ending) this.followSeat(result.seat, result.agent.name);
+      else this.notice = `${result.agent.name} is on the team and preparing.`;
       this.version++;
       await this.save(); this.added(result); return result;
     }
@@ -272,7 +278,7 @@ export class HeadlessSeatControl {
       if (this.owner?.noticeSeatId && !this.owner.row.request) {
         const latest = seats.find(seat => seat.id === this.owner.noticeSeatId);
         if (latest) {
-          this.owner.notice = `${names.get(latest.agent_id) ?? latest.agent_id}: ${seatWords(latest)}`;
+          this.owner.followSeat(latest, names.get(latest.agent_id) ?? latest.agent_id);
           this.paintForm();
         }
       }

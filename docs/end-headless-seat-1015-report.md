@@ -1,72 +1,102 @@
-# 1015 review handoff
+# 1015 corrected review handoff
 
-Build owner core-lane8. Medium Build1, piece p-95e8ab37f1ea4d899974485e,
-topic t-0ca589133c3efd31a2d1559ef8b2f0d7. Parent is approved1002
-`d4c0401bc9d9c80a0acc13f61e16eda2967e22e3`; schema64 becomes65.
-The exact review HEAD/tree are in the attached handoff and source manifest.
+Core-lane8, medium Build2, piece p-95e8ab37f1ea4d899974485e. This is the one
+corrected return for Warp15072 and15082 in the existing1015 dossier. Parent
+approved1002 remains `d4c0401bc9d9c80a0acc13f61e16eda2967e22e3`; the first
+review head `eb4bafed31a9d5b150eb15b4298f0a9d1ed5924c` is historical. The
+attached handoff names the exact corrected HEAD/tree and same pushed branch.
+Schema65 and the original identities, authority and recorded history are kept.
 
-The human outcome owner can End a seat in Team or with `seat-end`. Core records
-one authoritative End intent, blocks new claims/setup/adoption, drains or
-reconciles the original native context, then retires its exact pin/control and
-instance cap slot. A running or uncertain native context remains Ending. End
-never calls turn/interrupt or kills the shared child. Original seat/events,
-identities, pending deliveries, membership and native history remain. Unknown
-responses keep the exact operation envelope; reload can read or retry it without
-clearing the next Add draft. Final UI notices follow the current Core state.
+The current human outcome owner ends a seat from Team or `seat-end`. New work
+is fenced immediately; its admitted current turn finishes normally, then the
+same native context is confirmed idle and retired. End itself never interrupts
+or kills the shared child. Unknown responses keep the original operation and
+unsent next-seat writing. The contract is `docs/end-headless-seat-1015.md`.
 
-The contract preceded product edits: `docs/end-headless-seat-1015.md`.
-Page6 handed off hosted_seats/seat_host15056 and the final parent15062; Fable
-confirmed the Now/medium/Build1 binding15063. No installed/live source, account,
-operator route map or peer tree was edited. Landing/carry and pipeline stages
-remain with Fable/Warp; the item is judged after1002 on actual live with its own run.
+## Seven review findings
 
-## Checks and retained evidence
+1. Retirement validates the control's exact actor/authority binding, allowing
+   ownership to change before pinning. It does not compare with or rewrite the
+   seat's immutable original owner/inviter. The owner-transfer case retires.
+2. Startup skips an ending/ended hosted entry in an operator map without
+   rewriting the map. The End tombstone precedes actor-enabled checks, so a
+   subsequently disabled ended entry cannot stop peer startup either.
+3. A refused or mismatched resume for an ending context remains locally
+   unconfirmed and occupied. It cannot pause the shared runner or create a
+   replacement context. A real isolated missing-rollout case serves peer work.
+4. Ending work runs on its initial schedule hint, successful native attach or
+   turn completion, or1,2,4,…30-second retry backoff. Unrelated loop wakes and
+   unchanged diagnostic reads do not repeat Core transactions or native resume.
+   The effects loop includes that deadline. Idle confirmation retains the
+   context until Core retires it, avoiding re-resume churn on a refused retire.
+5. The recorded human control owner can explicitly Stop a runaway Ending turn.
+   Continue remains refused. The process wire distinguishes this explicit Stop
+   interrupt from the normal End path's zero interrupts.
+6. A later validation, refusal or authority notice permanently releases the old
+   End notice. The End status row still follows Core. Actual native validation
+   stays visible through a real Core purpose change and Team repaint.
+7. Health has readable words for `end_native_unconfirmed` and `seat_ending`.
+   The existing complete settlement-reason notice check failed before the words
+   were added and passes with all seven NoticeCase checks afterwards.
 
-Evidence directory: `/Users/commonfabric/.local/share/theseus/core-lane8/evidence/1015`.
-The attached archive excludes Python caches and includes logs, source patch,
-source hashes, process wire/events, scratch native fixtures and cleanup records.
+Bounded findings also covered: human non-owner/coordinator refusal; late native
+ID retention after thread_start_uncertain followed by End; typed host End
+arguments; duplicate End returns no affected entry; paused/lost ownership exits
+its batch; busy current/attaching work precedes uncertainty reconciliation.
+The two original1002 indexes are retained for historical query/migration
+compatibility; active readers use the new partial indexes.
 
-- `core-exact.txt`:78/78. New End Core/CLI/boundary/migration tests plus the
-  existing1002 Core/CLI/migration/review/boundary and runner_schedule checks.
-  Schema65 preserves occupied1002 rows/events; injected migration failure and
-  occupied downgrade leave original database bytes unchanged.
-- `final-client.txt`:17/17, including existing Add recovery and four End cases.
-- `process-exact.txt`:3/3 real isolated runner/CLI process cases with a synthetic
-  app-server: active normal drain beside another seat, idle retirement/restart,
-  and offline End reconciled against the same context on restart. Wire retains
-  zero End interrupts, no replacement thread/start, original history/pending
-  work and unchanged operator-map hashes. All owned children exit cleanly.
-- `native-final/results.json`:2/2 actual Chrome for Testing cases:1280 keyboard
-  End with lost committed response, reload and exact receipt recovery;320 touch
-  End.44px controls, no horizontal overflow, retained unsent draft/history and
-  terminal notice verified. Browser.close, all captured PIDs absent, profile
-  removal, fixture/runner/child exit0 and port closure are recorded.
-- `mutations.json`:three applied/caught/byte-restored controls for claim fencing,
-  active drain and foreign-pin preservation. Every mutant and restored control
-  uses its own Python cache. `mutant-*.txt`/`restored-*.txt` retain actual results.
-- `core-red.txt`:five actual preimplementation UNKNOWN_COMMAND reds. Native
-  first-pass observation red and stale-notice screenshots are retained; final
-  native assertions cover their corrected observations/behavior.
-- Earlier predecessor seat run:53/53 (`predecessor-seats2.txt`).
+## Evidence
 
-Two inherited `test_hosted_controls` missing-reply assertions fail in this tree
-and reproduce unchanged on the exact approved parent in an isolated owned
-reference tree (`parent-controls.txt` vs `small-checks.txt`):
-`DeploymentLaunchCase.test_ordinary_deploy_arguments_run_a_hosted_seat_and_keep_private_logs`
-and `OperatorControlCase.test_stop_and_continue_survive_restart_without_clearing_pending_work`.
-They are reported failures, not weakened assertions or claimed passes. The four
-other selected hosted-control/deadline checks passed. No broad suite was added
-as a gate.
+Directory `/Users/commonfabric/.local/share/theseus/core-lane8/evidence/1015/review15072`;
+the attachment includes first-head evidence as history and this correction's
+actual reds, greens, source patch/hashes and cleanup. Python mutation caches are
+excluded from the archive; each mutant and restored control used its own cache.
 
-## Defaults and limits
+- `coupled.txt`:134/134, all new End suites and1002 Core/CLI/migration/review/
+  boundary predecessors, runner_schedule, broker routes and route pins.
+- `loop.txt`:6/6 selected effects-loop and immediate Stop recheck cases.
+- `health-red.txt` and `health-green.txt`: the actual new cohort regression and
+  its seven passing notice cases; no assertion changed.
+- `client-first.txt`:20/20, existing Add recovery and the End/notice cases.
+- `process.txt`:6/6 real isolated runner/CLI cases with a synthetic app-server.
+  Idle/active/offline retirement, mapped ending/ended-disabled startup, missing
+  rollout isolation and explicit owner Stop retain wire, state/events, unchanged
+  map hashes and confirmed owned process cleanup.
+- `native/results.json`:2/2 actual Chrome for Testing keyboard/touch cases,
+  lost committed response/reload/exact operation recovery, unsent draft/history,
+  terminal notice and later validation after a Core Team repaint.18 selected
+  runtime/harness hashes stayed exact during the run. Screenshots inspected.
+  Browser.close, all8 captured Chrome PIDs absent, profile removed, fixture/
+  runner/child exit0 and port closure are recorded. Health's later two-wording
+  additions are checked by NoticeCase, not attributed to this earlier UI run.
+- `mutations.json`:four applied/caught/byte-restored controls: claim fence,
+  current-turn uncertainty, foreign pin and retry gating; all restored tests
+  pass. `core-host-red.txt`, `client-red.txt`, `map-red.txt` retain the review
+  scenarios' earlier failures, including actual STARTUP_REFUSED/SEAT_ENDED.
 
-End is permanent; Continue, Retry, same-name Add and pin provisioning cannot
-revive it. Another seat needs a new name/identity. An already admitted dispatch
-counts as the current turn. Instance cap8 is freed only at terminal retirement;
+The first packet's two inherited `test_hosted_controls` missing-reply assertions
+remain reported failures, reproduced on exact approved parent d4c in the retained
+`parent-controls.txt`: DeploymentLaunchCase's default launch and
+OperatorControlCase's Stop/Continue restart case. Assertions are preserved.
+Warp15082 independently reports its224-file cohort equal to the parent except
+for the now-corrected Health wording regression. No broader cohort pass is
+claimed by this builder.
+
+## Defaults and handoff
+
+End is permanent. Another seat needs a new name/identity; Continue, Retry and pin
+provisioning cannot revive the old one. An admitted dispatch counts as the
+current turn. Instance cap8 is freed only when Core confirms terminal retirement;
 Team membership limit128 remains because membership/history are retained.
-Native contexts are abandoned and retained, not erased or archived. Unknown
-native reconciliation stays Ending and occupies its existing cap slot until a
-runner can establish idle. Never-ready setup received no model turn, so its
-uncertain creation can be abandoned without replay; only the original owned
-late answer may retain its native ID. No real model reply was generated or
-claimed; native UI evidence uses a synthetic app-server.
+Native contexts are abandoned, not erased or archived. Unknown/refused native
+reconciliation remains Ending and occupies its existing slot until idle can be
+established, with bounded retries and no peer pause. Never-ready setup received
+no model turn; its creation is not replayed and its original late receipt can
+only retain its ID. No actual model reply is generated or claimed.
+
+Source is frozen after meaningful green and pushed only on its own branch.
+Fable owns the exact pipeline freeze/stages; Warp owns review/carry/landing.
+Release301 and the lifted boundary were read back.1015 still follows1002 on
+actual live with its own judged run and boundary. No installed/live source,
+account, operator map or peer worktree was edited. No workload/browser remains.

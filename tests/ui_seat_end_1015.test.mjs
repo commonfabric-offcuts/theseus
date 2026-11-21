@@ -48,3 +48,23 @@ test('End and ended name the turn boundary and retained history',()=>{
   assert.equal(seatWords({state:'ending'}),'Ending after the current turn…');
   assert.equal(seatWords({state:'ended'}),'Ended · history kept.');
 });
+
+test('an Add validation notice ends ownership by the earlier End notice',async()=>{
+  const s=setup(),owner=s.make();await owner.load();s.api.command=async r=>s.receipt(r);
+  await owner.endSeat(seat,'Scribe');assert.equal(owner.noticeSeatId,seat.id);
+  await assert.rejects(owner.add(),/Give the seat a name/);
+  assert.equal(owner.noticeSeatId,null);assert.match(owner.notice,/Give the seat a name/);
+});
+test('an authority change after End keeps its parked notice through later Team refreshes',async()=>{
+  const s=setup(),owner=s.make();await owner.load();s.api.command=async r=>s.receipt(r);await owner.endSeat(seat,'Scribe');
+  s.api.bootstrap=async()=>({...bootstrap,actor:'another'});
+  await assert.rejects(owner.add(),/authority changed/);
+  assert.equal(owner.noticeSeatId,null);assert.equal(owner.parked,true);assert.match(owner.notice,/authority changed/);
+});
+test('a recorded refusal after End replaces the old End notice',async()=>{
+  const s=setup(),owner=s.make();await owner.load();await owner.edit({name:'Next seat',role:'Keep this role'});
+  s.api.command=async r=>s.receipt(r);await owner.endSeat(seat,'Scribe');
+  s.api.command=async r=>({...s.receipt(r),status:'rejected',result:null,error:{message:'This seat name already exists.'}});
+  await assert.rejects(owner.add(),/already exists/);
+  assert.equal(owner.noticeSeatId,null);assert.match(owner.notice,/already exists/);
+});

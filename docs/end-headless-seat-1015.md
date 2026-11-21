@@ -1,7 +1,7 @@
 # End a headless seat (1015)
 
 Parent: approved1002 d4c0401bc9d9c80a0acc13f61e16eda2967e22e3,
-schema64. Owner: core-lane8; medium Build1, piece p-95e8ab37f1ea4d899974485e.
+schema64. Owner: core-lane8; medium Build2, piece p-95e8ab37f1ea4d899974485e.
 
 The current human outcome owner chooses **End seat** in Team. This records
 `workspace.hosted_seat_end`, target `{workspace_id, seat_request_id}`, empty
@@ -25,15 +25,17 @@ in the record; they are neither acknowledged nor delivered again by this seat.
 An already admitted native dispatch counts as the current turn. A running turn
 keeps its profile and board access until it finishes normally.
 End never sends turn/interrupt, never ends a shared child and never rewrites the
-operator route map. Existing Stop/Continue semantics stay intact; End wins over
-Continue and the existing control cannot revive it.
+operator route map. The control’s recorded human owner can still explicitly Stop a runaway turn
+while Ending. Continue cannot revive the seat. End never transfers that
+existing control to another person.
 
 The guarded runner reads a bounded, indexed page of ending seats independently
 of setup and ready routes. For a known thread it reconciles the same native
 context through the existing resume/last-turn path, never thread/start. An
 active, uncertain, attaching or dispatching context remains Ending. Once native
-idle is confirmed and Core has no open handed turn or claim, the host abandons
-that context by detaching its in-memory route/bridge. Native history is retained;
+idle is confirmed, the host retains that context until Core confirms retirement
+with no open handed turn or claim. It then abandons the context by detaching its
+in-memory route/bridge. Native history is retained;
 End does not promise to erase or archive it. Failed/unknown native reconciliation
 keeps the slot occupied and Ending, allowing a later runner to reconcile again.
 A setup that never reached ready has never received a model turn: it can be
@@ -41,7 +43,9 @@ abandoned without replaying creation/injection. A late original creation answer
 retains its thread ID for audit and cannot make an ended seat ready.
 
 Final retirement is a guarded, versioned Core effect. It refuses a conflicting
-pin/control rather than deleting another route. It removes only this recorded
+pin or invalid bound control rather than deleting another route. Control identity
+comes from its exact actor/authority binding, allowing a legitimate human owner
+change before pinning while retaining the original seat audit identities. It removes only this recorded
 seat's exact pin and control, appends an ended event and releases the instance
 cap slot atomically. Ending retains its prior occupied slot until retirement.
 Seat records, membership and original audit IDs are retained, including disabled
@@ -58,3 +62,12 @@ pin conflicts and cap reuse. Applied mutation controls must catch claim or
 retirement-fence regressions and restore exact bytes. Process/app-server fixtures
 are synthetic control evidence; native browser evidence uses isolated scratch
 records and actual gestures, and is never described as a model reply.
+
+An ending/ended operator-map entry is skipped without rewriting the map or
+stopping peers, including when the retired actor is later disabled. A refused
+End-context resume remains locally unconfirmed; it cannot pause the shared
+runner. End retries use1,2,4,…30-second backoff and a successful native attach or
+turn completion wakes them promptly. Repeated loop wakes and unchanged diagnostic
+schedule reads do not create retry transactions. A later form/error or authority
+notice permanently replaces the prior End notice; the seat’s own status row
+continues following Core.

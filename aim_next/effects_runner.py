@@ -538,6 +538,8 @@ class EffectsLoop:
                 deadlines = [self._read_at()]
                 if self.seats is not None and self.seats.deadline is not None:
                     deadlines.append(self.seats.deadline)
+                if self.seats is not None and self.seats.next_deadline() is not None:
+                    deadlines.append(self.seats.next_deadline())
                 if self.host is not None and self.host.next_deadline() is not None:
                     deadlines.append(self.host.next_deadline())
                 if self.token is None:

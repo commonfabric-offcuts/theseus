@@ -5,11 +5,20 @@ import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fixtureControl } from './fixture_control.mjs';
+import { createHash } from 'node:crypto';
 const { chromium } = await import(process.env.AIM_PLAYWRIGHT_CORE);
 const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),'..');
 const out=path.resolve(process.argv[2]);await mkdir(out,{recursive:true});
 const fixture=spawn('/usr/bin/python3',['-I',path.join(root,'tests/fixtures/headless_seat_1002.py'),path.join(out,'fixture')],{stdio:['pipe','pipe','pipe']});
-const channel=fixtureControl(fixture), result={cases:[],errors:[]}, pids=new Set();
+const sourceFiles=['aim_next/hosted_seats.py','aim_next/seat_host.py','aim_next/codex_host.py','aim_next/effects_runner.py',
+ 'aim_next/runner.py','aim_next/route_pins.py','aim_next/hosted_control.py','aim_next/broker_routes.py','aim_next/store.py',
+ 'aim_next/validation.py','aim_next/migrations.py','web/headless-seat.mjs','web/seat-journal.mjs',
+ 'tests/seat_end_1015_native.mjs','tests/fixtures/headless_seat_1002.py','tests/fixtures/fake_codex_app_server.py',
+ 'tests/test_codex_host.py','tests/test_seat_host_1002.py'];
+const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+const hashes=Object.fromEntries(await Promise.all(sourceFiles.map(async name=>[name,digest(await readFile(path.join(root,name)))])));
+const channel=fixtureControl(fixture), result={cases:[],errors:[],source_files:hashes,
+ working_tree_base:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim()}, pids=new Set();
 let browser,profile,tracker;
 const present=pid=>{try{process.kill(pid,0);return true;}catch(e){if(e.code==='ESRCH')return false;throw e;}};
 const processes=()=>execFileSync('/bin/ps',['-axo','pid=,ppid=,command='],{encoding:'utf8'}).split('\n').map(line=>{
@@ -74,7 +83,19 @@ try{
   assert.deepEqual(after.messages,before.messages,'End retains the original task and fixture reply');
   const acts=await page.evaluate(()=>nativeActs);assert.ok(acts.length&&acts.every(e=>e.trusted));
   await page.screenshot({path:path.join(out,'ended-'+width+'.png'),fullPage:true});
-  result.cases.push({width,passed:true,geometry,acts,seat:after.seats[0]});await page.close();
+  // A later validation notice must survive a real Core-driven Team repaint.
+  if(!await page.locator('#headless-seat-name').isVisible()){
+    if(!await page.locator('#add-headless-seat').isVisible())await page.locator('#team-people .add-chip').click();
+    await page.locator('#add-headless-seat').click();
+  }
+  await page.locator('#headless-seat-name').click();await page.keyboard.press('Meta+A');await page.keyboard.press('Backspace');
+  await page.locator('#headless-seat-submit').click();
+  await until(async()=> (await page.locator('.headless-seats .notice').innerText()).includes('Give the seat a name'),'Add validation notice');
+  const purpose='Fresh Core purpose '+width;
+  await channel.control({method:'purpose',workspace,purpose});await page.getByText(purpose,{exact:true}).waitFor();
+  assert.equal(await page.locator('.headless-seats .notice').innerText(),'Give the seat a name.');
+  await page.screenshot({path:path.join(out,'validation-'+width+'.png'),fullPage:true});
+  result.cases.push({width,passed:true,geometry,acts,seat:after.seats[0],validation_after_repaint:true});await page.close();
  }
 }catch(error){result.errors.push(error.stack);process.exitCode=1;}
 finally{
@@ -87,4 +108,5 @@ finally{
  result.cleanup={browser_close:true,pids:[...pids],all_absent:absent,profile_removed:true,fixture_exit:exited,...cleanup};
  await writeFile(path.join(out,'results.json'),JSON.stringify(result,null,2));
 }
+for(const name of sourceFiles)assert.equal(digest(await readFile(path.join(root,name))),hashes[name],'source stayed exact during native run: '+name);
 assert.deepEqual(result.errors,[]);console.log(JSON.stringify({passed:result.cases.length,cleanup:result.cleanup}));

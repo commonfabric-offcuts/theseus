@@ -25,11 +25,13 @@ class EndBoundaries(unittest.TestCase):
             self.assertIs(host.threads['thread'],thread)
             host.core.assert_not_called()
 
-    def test_idle_context_detaches_only_itself_and_never_calls_interrupt(self):
+    def test_idle_confirmation_keeps_context_until_retirement_then_detaches_only_itself(self):
         host,thread,config=self.host()
         peer=object();host.threads['peer']=peer
         thread.bridge=NS(close=Mock())
-        self.assertTrue(host.drain_seat(config));self.assertEqual(host.threads,{'peer':peer})
+        self.assertTrue(host.drain_seat(config))
+        self.assertIs(host.threads['thread'],thread);thread.bridge.close.assert_not_called()
+        host.forget_seat(config);self.assertEqual(host.threads,{'peer':peer})
         thread.bridge.close.assert_called_once();host.core.assert_not_called()
 
     def test_restart_requires_reconciliation_before_idle_counts(self):

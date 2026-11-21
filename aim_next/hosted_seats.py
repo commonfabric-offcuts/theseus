@@ -99,14 +99,16 @@ class HostedSeats:
                          (workspace['id'], _identifier(target['seat_request_id'], 'seat_request_id'))).fetchone()
         if row is None:
             raise Refusal('NOT_FOUND', 'No such seat in this outcome')
+        affected = []
         if row['end_state'] is None:
             _revision(envelope['expected'], 'seat_revision', row['version'])
             db.execute("UPDATE hosted_seats SET end_state='ending',end_by=?,end_ms=?,end_version=version,version=version+1 WHERE id=?",
                        (actor, _now_ms(), row['id']))
             row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (row['id'],)).fetchone()
             self._seat_event(db, row)
+            affected = [{'kind':'hosted_seat', 'id':row['id'], 'version':row['version']}]
         name = db.execute('SELECT name FROM actors WHERE id=?', (row['agent_id'],)).fetchone()[0]
-        return self._seat_invitation(workspace, row, name), [{'kind':'hosted_seat', 'id':row['id'], 'version':row['version']}]
+        return self._seat_invitation(workspace, row, name), affected
 
     def _command_workspace_hosted_seat_retry(self, db, actor, envelope):
         target, args = envelope['target'], envelope['args']
@@ -365,7 +367,9 @@ class HostedSeats:
                 return {'status': ownership}, False
             row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
             if (row is not None and row['end_state'] is not None and row['runner_token'] == token
-                    and row['stage'] == 'starting' and row['end_version'] == version and row['thread_id'] is None):
+                    and row['stage'] == 'starting' and row['thread_id'] is None and
+                    (row['end_version'] == version or row['end_version'] == version + 1 and
+                     row['state'] == 'refused' and row['reason'] == 'thread_start_uncertain')):
                 db.execute('UPDATE hosted_seats SET thread_id=?,version=version+1 WHERE id=?', (thread, identity))
                 row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
                 self._seat_event(db, row)
@@ -434,6 +438,8 @@ class HostedSeats:
 
     def hosted_seat_endings(self, guard, token, after=''):
         """One indexed page, including disabled/departed seats; no membership adoption."""
+        if not isinstance(after, str) or len(after) > 200 or any(ord(c) < 32 for c in after):
+            raise RunnerError('INVALID_ARGUMENT', 'Use the previous ending-seat cursor')
         def action(db, now):
             owned = self._seat_owned(db, guard, token, now)
             if owned != 'running':
@@ -443,8 +449,11 @@ class HostedSeats:
         return self._effect(guard, action)
 
     def hosted_seat_retire(self, guard, token, identity, version):
-        """The host has abandoned this idle context; retire its exact authority only."""
+        """The host confirmed this context idle; retire its exact authority only."""
         from .route_pins import _key, _stored, RoutePinError, HOSTED_KIND
+        if (not isinstance(identity, str) or not identity or len(identity) > 200 or
+                any(ord(c) < 32 for c in identity) or type(version) is not int or version < 1):
+            raise RunnerError('INVALID_ARGUMENT', 'Use a seat identity and exact positive version')
         def action(db, now):
             owned = self._seat_owned(db, guard, token, now)
             if owned != 'running':
@@ -473,9 +482,10 @@ class HostedSeats:
                 if pin is not None and (plan is None or pin != {'v':1, 'binding':binding, 'destination':{
                         'kind':HOSTED_KIND, 'protocol_version':1, 'codex_home':plan['codex_home'], 'thread_id':row['thread_id']}}):
                     return answer(False, 'pin_conflict'), False
-                control = self._hosted_control(db, row['agent_id'])
-                if control is not None and control['owner_id'] != row['owner_id']:
-                    return answer(False, 'control_conflict'), False
+                # The strict control reader proves this exact bound actor and
+                # authority. Its human owner may legitimately differ from the
+                # immutable original owner after a transfer before pinning.
+                self._hosted_control(db, row['agent_id'])
             except (RoutePinError, Refusal, ValueError, KeyError):
                 return answer(False, 'pin_conflict'), False
             db.execute('DELETE FROM metadata WHERE key IN (?,?)', (key, 'hosted_control.v1:' + row['agent_id']))

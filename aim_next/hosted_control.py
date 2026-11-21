@@ -126,13 +126,13 @@ class HostedControl:
         return True
 
     def _command_agent_execution(self, db, actor, envelope):
-        target_actor = envelope["target"].get("actor_id")
-        if db.execute("SELECT 1 FROM hosted_seats WHERE agent_id=? AND end_state IS NOT NULL", (target_actor,)).fetchone():
-            raise Refusal("SEAT_ENDED", "This seat is ending or ended; Continue cannot revive it")
         target, args = envelope["target"], envelope["args"]
         if set(target) != {"actor_id"} or set(args) != {"desired"} or args["desired"] not in ("running", "stopped"):
             raise Refusal("INVALID_ARGUMENT", "Name a hosted agent and running or stopped")
         agent = _identifier(target["actor_id"], "actor_id")
+        if (args['desired'] == 'running' and
+                db.execute("SELECT 1 FROM hosted_seats WHERE agent_id=? AND end_state IS NOT NULL", (agent,)).fetchone()):
+            raise Refusal("SEAT_ENDED", "This seat is ending or ended; Continue cannot revive it")
         current = self._hosted_control(db, agent)
         if current is None or self._hosted_thread(db, agent) is None:
             raise Refusal("HOSTED_CONTROL_MISSING", "This hosted seat has no operator controls provisioned")
