@@ -60,3 +60,10 @@ test('a long line is left for the page\'s ellipsis, and only past 200 characters
   // Spaces fold to one, as a typed name's do, so a name saved unchanged is the same line.
   assert.equal(messagePreview({ body: 'Two\t spaces  here ' }), 'Two spaces here');
 });
+
+test('1025 reason replies preview their own words without the historical generated heading',()=>{
+ const body='Reply without a quote:\n\n> Entire assignment.\n\nActual answer.';
+ assert.equal(messagePreview({body,reply_basis:{reason:'Entire assignment.'},author_kind:'agent',reply_to:'parent'}),'Actual answer.');
+ assert.equal(messagePreview({body,reply_basis:null,author_kind:'agent',reply_to:'parent'}),'Actual answer.');
+ assert.equal(messagePreview({body,author_kind:'human'}),'Reply without a quote:');
+});

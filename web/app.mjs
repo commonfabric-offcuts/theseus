@@ -3,6 +3,7 @@ import { QuestionStates, configureQuestionStates, questionOf, questionPill, Reso
 import { reviewDifferences } from './review-differences.mjs';
 import { railDensity } from './rail-density.mjs';
 import { CardReplies } from './card-replies.mjs';
+import { MentionNotices } from './mention-notices.mjs';
 import { panes } from './panes.mjs';
 import { stackMenuItems } from './stack-menu-items.mjs';
 import { outcomeMenuItems } from './outcome-menu-items.mjs';
@@ -117,10 +118,10 @@ import { showLine, lineText } from './lines.mjs';
 // Each page is one run of this module (in-place-navigation.mjs). A run that a
 // move in place has ended finds its own elements still, so work it had under
 // way lands there and never on the page that followed it.
-let retired = null, notebookSheet = null, outcomeColorPicker = null;
+let retired = null, notebookSheet = null, outcomeColorPicker = null, mentionNotices = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
 let outcomePageLayout = null, topicClosing = null;
-const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); },
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); },
   updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
 // The901 shell restores the foot and separator from copies for each run.
 railDensity();
@@ -1412,7 +1413,7 @@ function paintViews(kind) {
       const author = node('span', undefined, 'message-author');
       card.append(author);
       paintCardAuthor(author, item);
-      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() }));
+      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, replyBasis: item.reply_basis, agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // Its images as thumbnails after its words, each read through the message (card-images.mjs, item 474).
       paintCardImages(card, item, cardImageBytes(item.id));
@@ -2716,7 +2717,7 @@ function repaintEdited(ids, edits) {
     const preview = card.querySelector(':scope > .message-preview');
     const keepingWhole = reader?.card === card && item.preview;
     if (preview && !keepingWhole) {
-      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() });
+      formatWords(preview, item.body, { partial: item.preview === true, replyBasis: item.reply_basis, agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() });
       preview.classList.remove('scroll-in-place');
       const cue = card.querySelector(':scope > .message-preview-cue');
       if (item.preview && !cue) preview.after(node('span', CUE, 'message-preview-cue'));
@@ -3533,9 +3534,11 @@ async function initialize() {
   // a window that crosses a phone's width shows or hides it again.
   reader.narrow.addEventListener('change', paintReaderMark);
   registry = new EditorRegistry({ api, bootstrap, journal, present, changed,
-    published: (editor, item) => cardReplies?.published(editor, item),
+    published: (editor, item) => { cardReplies?.published(editor, item); mentionNotices?.published(editor, item); },
     activity: () => { inline.paintStatus(); reader.paintStatus(); cardReplies?.paint(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } cardReplies?.readerClosed(presentation); cardReplies?.paint(); noteRead(); } });
+  mentionNotices = new MentionNotices({ host: $('page-notices'), api, instanceId: bootstrap.instance_id,
+    authority: () => registry.runtime.current, current: () => !retired && !registry.disposed && !authorityReviewPending() });
   cardReplies = new CardReplies({ template: $('inline-composer'), registry, topic: () => topic,
     callbacks: { ...inline.callbacks, notebook: null, recipientsPainted: null, retry: retryCard,
       sent: (result, current) => landOnMessage(result.receipt.result.message_id, ++landingSerial, current) }, offer: offerAuthor, discover, say: status });
@@ -3759,7 +3762,7 @@ async function initialize() {
   window.addEventListener('beforeunload', () => marks.leave());
   shell.guard(() => registry.hasUnprotectedWriting);
   // An edit open in the Reader sends nothing at unload (its hold lapses), and lets its Web Lock go.
-  window.addEventListener('pagehide', () => { topicState?.dispose(); freshness?.dispose(); registry.dispose(); cardReplies?.dispose(); journal.close(); revokeMedia(); messageEdit?.writing.close(); });
+  window.addEventListener('pagehide', () => { topicState?.dispose(); freshness?.dispose(); registry.dispose(); cardReplies?.dispose(); mentionNotices?.dispose(); journal.close(); revokeMedia(); messageEdit?.writing.close(); });
   views.messagesPage(messageAnswer, { initial: true }); views.memoryPage(memoryAnswer, { initial: true });
   // What is drawn above the messages after they paint, in their column: the
   // marks line ("1 marked unread · Read it") and, on a conversation page, its

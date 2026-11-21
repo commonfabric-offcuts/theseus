@@ -786,6 +786,16 @@ def main():
                 # made, as a reply left in doubt for good (item 548): a
                 # submission with a send operation id and no outcome.
                 return {"submission_id": operation + "-submission", "send_operation_id": operation}
+            if request.get("legacy_reason_1025"):
+                # A historical receipt/body pair in this isolated fixture, never a row rewrite.
+                from unittest.mock import patch
+                from aim_next import reply_passages
+                select = reply_passages.select
+                def legacy_select(source, snapshot):
+                    return {key:value for key,value in select(source,snapshot).items() if key != 'reason_format'}
+                with patch('aim_next.reply_passages.select', side_effect=legacy_select):
+                    return read(command("message.send", operation, {"submission_id": operation + "-submission"},
+                                        {"topic_id": topic_id}, sender=sender))
             return read(command("message.send", operation, {"submission_id": operation + "-submission"},
                                 {"topic_id": topic_id}, sender=sender))
 
