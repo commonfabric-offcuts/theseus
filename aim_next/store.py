@@ -39,6 +39,7 @@ from . import delivery as _delivery
 from .releases import Releases, JUDGMENT_SCHEMA, RELEASE_SCHEMA, write_judgment, write_release
 from .outcome_light import OutcomeLight
 from .whispers import WHISPER_SCHEMA, redact_topic
+from .topic_preview import latest_by_topic
 from .standing_conversation import StandingConversation, STANDING_SCHEMA
 from .pipeline import Pipeline, PIPELINE_DECIDED_AGAIN_UP, PIPELINE_FACTS_SCHEMA, PIPELINE_SCHEMA, import_seed
 from .checks import Checks, CHECKS_SCHEMA, PROBLEMS_SCHEMA, import_checks, record_checks
@@ -939,11 +940,13 @@ class Store(Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, 
         and whether it is a Build topic (builds, item 297)."""
         # A topic names the message that reopened or started it only to a reader who may see it (whispers.py).
         items = [redact_topic(db, actor, row) for row in rows]
+        latest = latest_by_topic(db, [item["id"] for item in items])
         counts = self._unread(db, actor, topics=[item["id"] for item in items])
         waits = self._waits_by_topic(db, [item["id"] for item in items])
         work = work_by_topic(db, waits, actor)
         cover_waits = self._cover_wait_counts(db, actor, topics=[item["id"] for item in items])
         for item in items:
+            item["latest_message"] = latest.get(item["id"])
             item["unread"], item["addressed"] = counts.get(item["id"], (0, 0, None))[:2]
             item["archived"] = bool(item["archived"])
             item["waiting_on"], item["asks"] = waits[item["id"]]
