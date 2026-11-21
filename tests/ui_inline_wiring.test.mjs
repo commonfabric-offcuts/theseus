@@ -160,7 +160,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
         const found = [], walk = host => { for (const child of host.children) if (child instanceof Element) { if (chains.some(chain => inChain(child, chain, this))) found.push(child); walk(child); } };
         walk(this); return found;
       }
-      return selector.includes('#topics') ? [] : [...elements.values()].filter(el => el.id.startsWith('inline-') && el.id !== 'inline-composer');
+      return selector.includes('#topics') ? [] : [...elements.values()].filter(el => el.id?.startsWith('inline-') && el.id !== 'inline-composer');
     }
     setAttribute(name, value) { this[name] = value; }
     removeAttribute(name) { delete this[name]; }
@@ -270,7 +270,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, paintReplyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} unobserve() {} disconnect() {} }, MutationObserver: class { observe() {} disconnect() {} takeRecords() { return []; } }, innerHeight: 600, innerWidth: 1000, Node: { DOCUMENT_POSITION_FOLLOWING: 4, TEXT_NODE: 3 }, requestAnimationFrame: callback => setImmediate(callback), cancelAnimationFrame: clearImmediate, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     // The window's own location and history are the page's, as in a browser (the shell reads them there).
     window: { innerHeight: 600, scrollY: 0,
-      getComputedStyle: el => ({ overflowY: 'visible', position: 'static', scrollPaddingTop: '0px', scrollPaddingBottom: '0px', ...el.style }),
+      getComputedStyle: el => ({ overflowY: 'visible', position: 'static', scrollPaddingTop: '0px', scrollPaddingBottom: '0px', ...el.style, getPropertyValue: () => '' }),
       scrollBy(options) { scope.window.scrollY += options.top; events.push(['scroll', 'window', options]); },
       addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }), get location() { return scope.location; }, get history() { return scope.history; } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     // A page that loads another asks Theseus nothing more until it stays (api.mjs depart, stay); here each fixture's page says
@@ -4913,17 +4913,30 @@ test('on the conversation page a reply folded in its stack is never reported rea
 });
 
 
+// This suite's old sheet double only toggled `open`. 1026 waits for the
+// browser's queued close event; preserve its installed handler and once waiter.
+function closeSheet673(sheet) {
+  const installed = sheet.handlers.close, add = sheet.addEventListener.bind(sheet), waiters = [];
+  sheet.addEventListener = (type, fn, options) => {
+    if (type === 'close' && options?.once) waiters.push(fn); else add(type, fn, options);
+  };
+  sheet.close = function () {
+    this.open = false;
+    queueMicrotask(() => { installed?.(); for (const fn of waiters.splice(0)) fn(); });
+  };
+}
+
 for (const ending of ['confirmed', 'refused', 'unknown', 'new writing', 'new opening', 'closed']) test(`item 673: inline send closes only its confirmed unchanged opening: ${ending}`, async () => {
   const f = fixture('https://fixture/?topic=t1', { window: { addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }),
     getComputedStyle: () => ({ getPropertyValue: () => 'none' }) } });
   const answer=defer(), sheet=f.get('new-message-sheet');
-  f.inline.popped=true;f.inline.opening=Symbol();sheet.open=true;sheet.close=function(){this.open=false;};
+  f.inline.popped=true;f.inline.opening=Symbol();sheet.open=true;closeSheet673(sheet);
   f.inline.callbacks.send=()=>answer.promise;
   f.editor.edit=patch=>Object.assign(f.editor.draft,patch);
   const sending=f.inline.send();
   if(ending==='new writing')f.editor.localVersion=(f.editor.localVersion??0)+1;
   if(ending==='new opening')f.inline.opening=Symbol();
-  if(ending==='closed'){f.inline.popped=false;sheet.open=false;}
+  if(ending==='closed')sheet.close();
   answer.resolve({status:['refused','unknown'].includes(ending)?ending:'confirmed'});
   await sending;
   assert.equal(sheet.open,!['confirmed','closed'].includes(ending),ending);
@@ -4936,7 +4949,7 @@ for (const newer of ['text', 'picker', 'capturing image', 'image needing a choic
   const editor=new Editor({...f.editor.context,instanceId:'fixture',actor:'fixture-person'}, {id:'draft',generation:'g',revision:1,body:'First message.'});
   f.p.editors.reply=editor;
   const answer=defer(), capture=defer(), sheet=f.get('new-message-sheet');
-  f.inline.popped=true; f.inline.opening=Symbol(); sheet.open=true; sheet.close=function(){this.open=false;};
+  f.inline.popped=true; f.inline.opening=Symbol(); sheet.open=true; closeSheet673(sheet);
   f.inline.callbacks.send=e=>{e.beginPrepare({prepareOperationId:'prepare',sendOperationId:'send',submissionId:'submission'});return answer.promise;};
   const sending=f.inline.send(), version=editor.localVersion;
   let choosing;
@@ -5115,7 +5128,7 @@ test('item 655 B3 a metadata failure from an abandoned opening cannot paint over
 for (const act of ['agent menu', 'image list', 'picker owner', 'new error', 'same error again']) test(`item 673: late confirmation preserves successor presentation ownership: ${act}`, async () => {
   const f=fixture('https://fixture/?topic=t1',{window:{addEventListener(){},matchMedia:()=>({matches:false,addEventListener(){}}),getComputedStyle:()=>({getPropertyValue:()=> 'none'})}});
   const answer=defer(),sheet=f.get('new-message-sheet');
-  f.inline.popped=true;f.inline.opening=Symbol();sheet.open=true;sheet.close=function(){this.open=false};
+  f.inline.popped=true;f.inline.opening=Symbol();sheet.open=true;closeSheet673(sheet);
   f.inline.callbacks.send=()=>answer.promise;
   f.editor.edit=patch=>Object.assign(f.editor.draft,patch);
   if(act==='same error again')f.inline.notice('The newer image could not be read.');
@@ -5152,7 +5165,7 @@ for (const outcome of ['confirmed', 'refused', 'recovery error']) test(`item 673
   owner.callbacks.send = () => answer.promise;
   f.editor.edit = patch => Object.assign(f.editor.draft, patch);
   owner.popped = true; owner.opening = Symbol(); const sheet = f.get('new-message-sheet');
-  sheet.open = true; sheet.close = function () { this.open = false; };
+  sheet.open = true; closeSheet673(sheet);
   const sending = owner.send();
   assert.equal(f.runObservation('window.pencilSendSettled'), false);
   assert.equal(sheet.open, true);

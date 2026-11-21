@@ -28,6 +28,7 @@ import { contact, heard, notTaken, NOT_TAKEN } from './api.mjs';
 import { CoordinationChoice } from './coordination-choice.mjs';
 import { firstCoverMenuItem } from './cover-refresh.mjs';
 import { foldInMotion } from './fold-motion.mjs';
+import { ArchiveShelf } from './archive-shelf.mjs';
 
 // Why Archive does nothing for a dossier holding a message the reader
 // starred (item 635), as Core says it (aim_next/stacks.py, HELD_BY_STAR): the
@@ -307,6 +308,17 @@ export class StackFeed {
         const entry = this.entryFor(latest.id); if (entry) this.reply(latest.id, cardIn(entry));
       },
       aside: (stack, below) => this.setAside(stack, below),
+      // The shelf drawn or not decides whether the feed's Archived (N) and Earlier messages show (shownView's shelved).
+      // The shelf taking over Archived (N) closes it, so it comes back closed should the shelf go (this arrange then
+      // hides what sits below More, as shownView is read after this).
+      archived: list => {
+        if (!this.list.isConnected) return;
+        const shelf = this.archiveShelf(), was = Boolean(this.state.shelved); shelf?.paint(list);
+        this.state.shelved = Boolean(shelf?.drawn);
+        if (this.state.shelved === was) return;
+        if (this.state.shelved) this.state.moreOpen = false;
+        this.moreChanged();
+      },
       menu: (stack, anchor, first) => { const item = this.messages().get(stack.id); if (item) this.menu(item, anchor, first); },
       landedBelow: (id, mark) => this.landedBelow(id, mark),
     } }));
@@ -975,6 +987,16 @@ export class StackFeed {
   // focus: false leaves the focus where it is, as on the Reader's archive
   // button, whose dialog keeps it while the page behind it changes. at: the
   // control pressed, where a refusal is said.
+  // The archive shelf, at the foot of the right rail: none where the page has no right rail, and
+  // there the feed keeps its own Archived (N).
+  archiveShelf() {
+    if (!this.shelf && !this.list.ownerDocument.getElementById('things')) return null;
+    // Brought back from the shelf, the dossier keeps the keys, as the feed's own Bring back does.
+    this.shelf ??= new ArchiveShelf({ doc: this.list.ownerDocument,
+      restore: stack => this.setAside(stack, false), undo: () => this.undo(),
+      changed: drawn => { this.state.shelved = drawn; if (drawn) this.state.moreOpen = false; this.arrange(); this.moreChanged(); } });
+    return this.shelf;
+  }
   setAside(stack, below, { undoable = true, restoreThrough, restoreKey, focus = true, at = null } = {}) {
     const found = this.rootOf(stack);
     if (!found) return false;
@@ -990,16 +1012,26 @@ export class StackFeed {
     for (const each of this.messages().values()) if (each.stack_position?.root_id === root) { this.state.peeked.delete(each.id); this.state.here.delete(each.id); }
     // Core refuses it too, for a star the page has not read yet (made on another device): its reason is
     // said on the status line as any refusal is (failed), and the dossier shows where Core holds it.
+    // The archive shelf's flight: a copy of the dossier as it sits now, before it moves.
+    const flight = below ? this.archiveShelf()?.departing(this.state.sections?.get(stack.id)) ?? null : null;
+    // Brought back from the shelf: where its replica sits now, for the flight back up.
+    const from = !below ? this.shelf?.replicaRect(stack.id) ?? null : null;
+    if (below) this.shelf?.putAway(stack.id); else this.shelf?.broughtBack(stack.id);
     this.act('stack.aside', item, { through, ...(typeof restoreKey === 'number' ? { key: restoreKey } : {}) });
     if (undoable) this.remember(at => this.setAside(stack, position.through !== null, { undoable: false, restoreThrough: position.through, restoreKey: position.order_key, at }));
     this.arrange();
     // Focus goes to More where the page's one view draws it (Only new does
     // not); there the dossier keeps it, on the first message the view draws.
     if (focus) {
-      if (below && this.state.more?.isConnected && !shownView(this.state).only) this.state.more.focus({ preventScroll: true });
+      // Archived, it is on the shelf: the focus goes with it to its replica.
+      const shelved = below ? this.shelf?.replicas.get(stack.id) : null;
+      if (shelved?.isConnected && shelved.getClientRects().length) shelved.focus({ preventScroll: true });
+      else if (below && this.state.more?.isConnected && !shownView(this.state).only) this.state.more.focus({ preventScroll: true });
       else this.focusOn(stack.id);
     }
     this.say(below ? 'Archived, for you only' : 'Brought back');
+    if (flight) this.shelf.fly(flight, stack.id);
+    if (from && this.state.sections?.get(stack.id)) this.shelf.back(from, this.state.sections.get(stack.id));
     return true;
   }
   // What a swipe over target acts on: the dossier as a whole on its title bar

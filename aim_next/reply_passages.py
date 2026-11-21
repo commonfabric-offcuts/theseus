@@ -7,11 +7,12 @@ import json
 from .contract import Refusal, _body
 
 FIELDS = ("reply_passage", "reply_without_quote")
+LEGACY_HEADING = "Reply without a quote:\n\n"
 
 
 def prefix(basis):
     text = basis["reason"] if "reason" in basis else basis["excerpt"]
-    heading = "Reply without a quote:\n\n" if "reason" in basis else ""
+    heading = LEGACY_HEADING if "reason" in basis and basis.get("reason_format") != 2 else ""
     return heading + "\n".join("> " + line for line in text.split("\n")) + "\n\n"
 
 
@@ -53,6 +54,9 @@ def select(source, snapshot):
         if not isinstance(reason, str) or not reason.strip():
             raise Refusal("INVALID_REPLY_PASSAGE", "State why this reply has no quoted passage")
         basis["reason"] = _body(reason)
+        # Old immutable receipts have no format: their heading stays protected.
+        # The new format omits that heading, including on edit and readback.
+        basis["reason_format"] = 2
         return basis
     passage = snapshot["reply_passage"]
     if not isinstance(passage, dict) or set(passage) != {"source", "start", "end"}:

@@ -75,25 +75,10 @@
   .ol-topics :is(.topic-list,#topics) a.nav-item:hover{background:var(--rail-hover);color:var(--ink)}
   .ol-topics :is(.topic-list,#topics) a.nav-item:has(.unread-count){color:var(--ink);font-weight:450;padding-right:1.9rem}
   .ol-topics :is(.topic-list,#topics) a.nav-item[aria-current=page]{background:var(--soft);color:var(--ink);font-weight:500;border:0}
-  /* Topics carry no activity ring: their counts and the outcome's light already say it. Bold means an outcome;
-     an unread topic is full ink, and its plain count a number rather than a pill. */
-  .ol-topics a.nav-item .topic-work{display:none}
-  /* A question waiting on you: a small filled ?, before the count. Other states: a quiet word. */
-  .ol-topics a.nav-item .topic-state{position:absolute;right:.35rem;top:50%;transform:translateY(-50%);margin:0;max-width:5.5rem;height:1rem;padding:0 .35rem;font-size:.62rem;line-height:.9rem;background:var(--rail-hover)}
-  .ol-topics a.nav-item:has(.unread-count) .topic-state{right:1.85rem}
+  /* The marks a topic carries (its state, its count) are shared with Roomy, below; here, the room they keep. */
   .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state){padding-right:6.4rem}
-  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state.mine){padding-right:1.9rem}
-  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state.mine):has(.unread-count){padding-right:3.1rem}
-  .ol-topics a.nav-item .topic-state.mine{width:.95rem;height:.95rem;padding:0;border:0;border-radius:50%;background:var(--accent);font-size:0;line-height:.95rem;text-align:center}
-  .ol-topics a.nav-item .topic-state.mine::before{content:"?";font-size:.6rem;font-weight:800;color:var(--on-accent)}
-  .ol-topics a.nav-item .unread-count:not(.addressed){background:transparent;color:var(--rail-ink-2);font-weight:600}
-  .ol-topics a.nav-item .unread-count.addressed{background:var(--accent);color:var(--on-accent)}
-  .ol-topics a.nav-item:has(.topic-state.mine) .unread-count.addressed{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--rail-ink-2)}
-  /* Waiting on someone else: a small open ring with an ellipsis, the same size as your "?"; its hover names who and the question. */
-  .ol-topics a.nav-item .topic-state[data-state=waiting]:not(.mine){width:.95rem;height:.95rem;padding:0;border:1.2px solid var(--muted);border-radius:50%;background:transparent;font-size:0;line-height:.75rem;text-align:center;box-sizing:border-box}
-  .ol-topics a.nav-item .topic-state[data-state=waiting]:not(.mine)::before{content:"\2026";font-size:.6rem;font-weight:800;color:var(--muted)}
-  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state[data-state=waiting]){padding-right:1.9rem}
-  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state[data-state=waiting]):has(.unread-count){padding-right:3.1rem}
+  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state.mine),.ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state[data-state=waiting]){padding-right:1.9rem}
+  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state.mine):has(.unread-count),.ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state[data-state=waiting]):has(.unread-count){padding-right:3.1rem}
   /* Starred dossiers and Notebook pages under their topic: one line each, a step in from the topic's title. */
   .ol-dossiers{margin:0 0 .1rem 1.15rem}
   .ol-dossiers:empty{margin-bottom:0}
@@ -118,6 +103,30 @@
   .rail-foot .rail-density button{padding:0 .45rem;font-size:.68rem}
 }
 }
+/* The marks a topic carries, in both spacings: no activity ring (the counts and the outcome's light say it); a
+   question waiting on you is a small filled ?, one waiting on someone else a small open ring with an ellipsis, whose
+   hover names who and the question; any other state a quiet word; the count flush right, so counts line up down
+   the rail, a plain number unless it is addressed to you. Roomy draws them a size up, against a title's first line
+   (its titles wrap). */
+@media (pointer:fine) and (min-width:761px){
+:root{--rail-mark:.95rem;--rail-mark-glyph:.6rem;--rail-mark-y:50%;--rail-mark-gap:1.85rem}
+:root[data-rail-roomy]{--rail-mark:1.1rem;--rail-mark-glyph:.7rem;--rail-mark-y:1.17rem;--rail-mark-gap:2.1rem}
+.ol-topics a.nav-item{position:relative}
+.ol-topics a.nav-item .topic-work{display:none}
+.ol-topics a.nav-item .topic-state{position:absolute;right:.35rem;top:var(--rail-mark-y);transform:translateY(-50%);margin:0;max-width:5.5rem;height:1rem;padding:0 .35rem;font-size:.62rem;line-height:.9rem;background:var(--rail-hover,color-mix(in srgb,var(--ink) 5%,var(--paper)))}
+.ol-topics a.nav-item:has(.unread-count) .topic-state{right:var(--rail-mark-gap)}
+.ol-topics a.nav-item .topic-state:is(.mine,[data-state=waiting]){width:var(--rail-mark);height:var(--rail-mark);padding:0;border-radius:50%;font-size:0;line-height:var(--rail-mark);text-align:center;box-sizing:border-box}
+.ol-topics a.nav-item .topic-state.mine{border:0;background:var(--accent)}
+.ol-topics a.nav-item .topic-state.mine::before{content:"?";font-size:var(--rail-mark-glyph);font-weight:800;color:var(--on-accent)}
+.ol-topics a.nav-item .topic-state[data-state=waiting]:not(.mine){border:1.2px solid var(--muted);background:transparent;line-height:calc(var(--rail-mark) - .2rem)}
+.ol-topics a.nav-item .topic-state[data-state=waiting]:not(.mine)::before{content:"\2026";font-size:var(--rail-mark-glyph);font-weight:800;color:var(--muted)}
+.ol-topics a.nav-item .unread-count{position:absolute;right:.35rem;top:var(--rail-mark-y);transform:translateY(-50%);margin:0;min-width:1.15rem;height:1rem;padding:0 .3rem;font-size:.66rem;line-height:1rem;font-variant-numeric:tabular-nums}
+.ol-topics a.nav-item .unread-count:not(.addressed){background:transparent;color:color-mix(in srgb,var(--ink) 78%,var(--paper));font-weight:600}
+.ol-topics a.nav-item .unread-count.addressed{background:var(--accent);color:var(--on-accent)}
+.ol-topics a.nav-item:has(.topic-state.mine) .unread-count.addressed{background:color-mix(in srgb,var(--accent) 16%,transparent);color:color-mix(in srgb,var(--ink) 78%,var(--paper))}
+/* An outcome's light carries a halo while a question waits; the boxed "Waiting on" line under it goes. */
+.ol-name-line .outcome-light[data-light=waiting]{box-shadow:0 0 0 .12rem color-mix(in srgb,var(--accent) 28%,transparent)}
+}
 /* Roomy keeps today's row heights and words, without the deep left indent: the chevron sits near the rail's
    edge in a narrow column, the name right after it, and topics step in by that column alone. A phone keeps its
    finger-sized chevron. */
@@ -136,6 +145,20 @@
   .ol-row>.ol-waiting{margin-left:.4rem}
   .ol-topics{margin-left:1.15rem}
   .ol-outcome>.rail-line{margin-left:1.55rem}
+  /* The marks (shared, above): the room they keep at the end of a topic's title. */
+  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.unread-count),
+  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state.mine),.ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state[data-state=waiting]){padding-right:2.1rem}
+  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state:is(.mine,[data-state=waiting])):has(.unread-count){padding-right:3.6rem}
+  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state:not(.mine):not([data-state=waiting])){padding-right:6.6rem}
+  .ol-topics a.nav-item .topic-state:not(.mine):not([data-state=waiting]){border:0;color:var(--muted);font-weight:500}
+  /* Compact's ink: a topic in the rail's second ink, full ink when it has unread or is the page; a hairline down
+     the chevron's column. */
+  .ol-topics :is(.topic-list,#topics) a.nav-item{color:color-mix(in srgb,var(--rail-ink-2,var(--ink)) 88%,transparent);font-weight:400}
+  .ol-topics :is(.topic-list,#topics) a.nav-item:hover{color:var(--ink)}
+  .ol-topics :is(.topic-list,#topics) a.nav-item:has(.unread-count){color:var(--ink);font-weight:450}
+  .ol-topics :is(.topic-list,#topics) a.nav-item[aria-current=page]{color:var(--ink);font-weight:550}
+  .ol-topics{position:relative}
+  .ol-topics::before{content:"";position:absolute;left:-.6rem;top:.2rem;bottom:.6rem;width:1px;background:var(--rail-hair,var(--line))}
 }
 }
 /* "Roomy" at the foot (rail-density.mjs): only where the dense rail applies. */

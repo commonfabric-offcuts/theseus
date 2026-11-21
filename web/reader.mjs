@@ -573,7 +573,7 @@ export class Reader {
   // words its agent author changed after this person read them show struck through where they stood (item 614).
   drawSource(body) {
     const source = this.source, page = source?.source_ref?.kind === 'memory' && this.callbacks.pageImage;
-    drawPassages(this.sourceBody, body, document, { copyFences: true, struck: source?.source_ref?.kind === 'message' ? source.struck?.cuts : null,
+    drawPassages(this.sourceBody, body, document, { replyBasis: source?.source_ref?.kind === 'message' ? source.reply_basis : undefined, agentReply: source?.author_kind === 'agent' && Boolean(source?.reply_to), copyFences: true, struck: source?.source_ref?.kind === 'message' ? source.struck?.cuts : null,
       notebook: source?.source_ref?.kind === 'memory',
       displayRules: source?.source_ref?.kind === 'message' ? this.callbacks.displayRules?.() ?? [] : [],
       images: page ? pageImages(source, attachment => this.callbacks.pageImage(attachment, source.source_ref)) : null });
