@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { OutcomeReferences } from '../web/outcome-references.mjs';
 
-function fixture(t, { pageMax, create } = {}) {
+function fixture(t, { pageMax, create, painted } = {}) {
   const previous = globalThis.document;
   class Element {
     constructor() { this.children = []; this.dataset = {}; this.hidden = false; this.text = ''; }
@@ -23,7 +23,7 @@ function fixture(t, { pageMax, create } = {}) {
   const answer = (items, next_cursor = null) => ({ instance_id: 'instance', items, next_cursor });
   const references = new OutcomeReferences({ ...nodes, scope: 'w1', ...(pageMax ? { pageMax } : {}), ...(create ? { create } : {}),
     read: args => { calls.push(args); const next = queue.shift(); return typeof next === 'function' ? next() : Promise.resolve(next); },
-    open: (...args) => opened.push(args), denied: error => error.status === 403, seen: items => seen.push(items.map(x => x.id)) });
+    open: (...args) => opened.push(args), denied: error => error.status === 403, seen: items => seen.push(items.map(x => x.id)), ...(painted ? { painted } : {}) });
   const titles = () => nodes.list.children.map(row => row.textContent);
   return { ...nodes, queue, calls, opened, seen, item, answer, references, titles };
 }
@@ -226,4 +226,19 @@ test('the pencil shows only while Core says the reader may write the Notebook', 
   f.queue.push({ ...f.answer([]), reader_may_write: true });
   await f.references.load();
   assert.equal(f.host.hidden, false, 'an empty Notebook shows its heading with the pencil to someone who may write it');
+});
+
+// 997: the phone's Notebook tab counts what the Notebook lists, says when there is more to load, and goes when the
+// Notebook would not show.
+test('each paint tells its listener how many pages it lists, whether more remain, and whether it shows', async t => {
+  const told = [], f = fixture(t, { pageMax: 50, painted: value => told.push(value) });
+  f.queue.push(f.answer([f.item(1), f.item(2)], 2));
+  await f.references.load();
+  assert.deepEqual(told.at(-1), { count: 2, more: true, shown: true });
+  f.queue.push(f.answer([f.item(3)]));
+  await f.references.load(true);
+  assert.deepEqual(told.at(-1), { count: 3, more: false, shown: true });
+  f.queue.push(() => Promise.reject(Object.assign(Error('Denied'), { status: 403 })));
+  await f.references.load();
+  assert.deepEqual(told.at(-1), { count: 0, more: false, shown: false });
 });
