@@ -91,7 +91,7 @@ class HostedSeatCore(unittest.TestCase):
 
     def test_name_validation_and_role_byte_limit_are_recorded_without_partial_actor(self):
         for name, role, code in [('', 'Work', 'NAME_REQUIRED'), ('Seat', '', 'ROLE_REQUIRED'),
-                                 ('Seat', 'Δ' * 8193, 'ROLE_TOO_LONG')]:
+                                 ('Seat', 'Δ' * 8193, 'ROLE_TOO_LONG'), ('Seat', 'has\0null', 'ROLE_INVALID')]:
             with self.subTest(code=code):
                 denied = self.add(name=name, role=role)
                 self.assertEqual(denied.get('error', {}).get('code'), code, denied)
@@ -246,6 +246,57 @@ class HostedSeatCore(unittest.TestCase):
             if cursor is None:
                 break
         self.assertEqual(got, ids)
+
+    def test_managed_route_cursor_reads_new_routes_without_replaying_known_actor_lists(self):
+        self.added()
+        with self.store.runner_guard('host') as guard:
+            token = self.store.acquire_runner(guard)['runner_token']
+            ready = self.to_stage(guard, token, 'ready')
+            first = self.store.hosted_seat_route(guard, token, 0)
+            self.assertEqual(first['seat']['id'], ready['id'])
+            sequence = first['seat']['ready_seq']
+            self.assertGreater(sequence, 0)
+            self.assertIsNone(self.store.hosted_seat_route(guard, token, sequence)['seat'])
+        plan = self.sql('EXPLAIN QUERY PLAN SELECT * FROM hosted_seats WHERE ready_seq>? ORDER BY ready_seq LIMIT 1', (sequence,))
+        self.assertTrue(any('INDEX' in str(row) and 'ready_seq' in str(row) for row in plan), plan)
+
+    def retry_seat(self, seat, actor='owner', op=None):
+        return self.command('workspace.hosted_seat_retry', {}, {'workspace_id': 'w1', 'seat_request_id': seat['id']},
+                            {'seat_revision': seat['version']}, actor, op)
+
+    def test_definite_refusal_retries_the_same_safe_stage_without_inviting_again(self):
+        result = self.added()
+        with self.store.runner_guard('host') as guard:
+            token = self.store.acquire_runner(guard)['runner_token']
+            refused = self.step(guard, token, self.claim(guard, token), 'refused', {'reason': 'host_not_configured'})
+            self.store.stop_runner(guard, token)
+        receipt = self.retry_seat(refused, op='retry-safe')
+        self.assertEqual(receipt.get('status'), 'committed', receipt)
+        self.assertEqual(receipt['result']['seat_request_id'], result['seat_request_id'])
+        self.assertEqual((receipt['result']['seat']['state'], receipt['result']['seat']['stage']), ('pending', 'profile'))
+        self.assertEqual(self.sql('SELECT count(*) FROM hosted_seats'), [(1,)])
+        self.assertEqual(self.retry_seat(refused, op='retry-safe'), receipt)
+        self.assertEqual(self.sql('SELECT reason FROM hosted_seat_events WHERE state=?', ('refused',)), [('host_not_configured',)])
+
+    def test_uncertain_native_creation_cannot_be_retried_as_another_thread(self):
+        self.added()
+        with self.store.runner_guard('host') as guard:
+            token = self.store.acquire_runner(guard)['runner_token']
+            seat = self.to_stage(guard, token, 'starting')
+            refused = self.step(guard, token, seat, 'refused', {'reason': 'thread_start_uncertain'})
+        denied = self.retry_seat(refused)
+        self.assertEqual(denied.get('error', {}).get('code'), 'SEAT_REQUIRES_RECONCILIATION', denied)
+        self.assertEqual(self.sql('SELECT state,stage,thread_id FROM hosted_seats'), [('refused', 'starting', None)])
+
+    def test_only_current_organizer_can_retry_and_the_exact_seat_revision_is_required(self):
+        self.added()
+        with self.store.runner_guard('host') as guard:
+            token = self.store.acquire_runner(guard)['runner_token']
+            refused = self.step(guard, token, self.claim(guard, token), 'refused', {'reason': 'host_not_configured'})
+        denied = self.retry_seat(refused, actor='agent-b')
+        self.assertEqual(denied.get('error', {}).get('code'), 'FORBIDDEN', denied)
+        stale = self.retry_seat(dict(refused, version=refused['version'] - 1))
+        self.assertEqual(stale.get('error', {}).get('code'), 'REVISION_CONFLICT', stale)
 
 
 if __name__ == '__main__':

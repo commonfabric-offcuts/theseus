@@ -61,6 +61,7 @@ class SeatHost:
         self.operator_routes, self.template_actor = operator_routes, template_actor
         self.current = None
         self.deadline = None
+        self.route_cursor = 0
 
     def _core(self, method, *args):
         answer = self.loop._core(method, *args)
@@ -164,7 +165,7 @@ class SeatHost:
         _write_same(Path(config.config_path), (json.dumps(value, sort_keys=True, indent=1) + '\n').encode('utf-8'))
         return broker_routes.preflight_hosted(config.config_path, seat['agent_id'], self.loop.profile)
 
-    def _adopt(self, seat):
+    def _adopt(self, seat, *, install=True):
         config = self._published_config(seat)
         actor = seat['agent_id']
         if self.operator_routes is not None:
@@ -175,19 +176,24 @@ class SeatHost:
                 raise SeatRefusal('route_conflict')
         if actor in self.loop.routes and self.loop.routes[actor] != config.config_path:
             raise SeatRefusal('route_conflict')
-        self.loop.host.add_seat(config)
-        self.loop.routes[actor] = config.config_path
-        self.loop.hosted = self.loop.hosted | {actor}
-        self.loop.routed = sorted(self.loop.routes)
+        try:
+            self.loop.host.add_seat(config, install=install)
+        except codex_host.HostFault as error:
+            raise SeatRefusal('route_conflict') from error
+        if install:
+            self.loop.routes[actor] = config.config_path
+            self.loop.hosted = self.loop.hosted | {actor}
+            self.loop.routed = sorted(self.loop.routes)
 
     def read(self):
         """One bounded new route and one pending request, triggered by the normal Core write hint."""
         if self.current is not None or self.loop.watch.stopped:
             return
-        route = self._core('hosted_seat_route', self.loop.routed)['seat']
+        route = self._core('hosted_seat_route', self.route_cursor)['seat']
         if route is not None:
             # A corrupt confirmed route is a binding fault, not a reason to create another thread.
             self._adopt(route)
+            self.route_cursor = route['ready_seq']
             self.loop.read_needed = True
         seat = self._core('hosted_seat_claim')['seat']
         if seat is None:
@@ -224,11 +230,11 @@ class SeatHost:
                     if not self._step('route'):
                         return
                 elif stage == 'route':
-                    self._adopt(seat)
+                    self._adopt(seat, install=False)
                     if not self._step('delivery'):
                         return
                 elif stage == 'delivery':
-                    self._adopt(seat)
+                    self._adopt(seat, install=False)
                     self._step('ready')
                     self.loop.read_needed = True
                     return

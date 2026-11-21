@@ -12,6 +12,7 @@ export function outcomeInvalidation(workspace, actor) {
     else if (kind === 'memory') add('references');
     else if (kind === 'checks') add('targets', 'standing', 'counts');
     else if (kind === 'pipeline') add('pipeline', 'targets', 'topics', 'counts');
+    else if (kind === 'hosted_seat') add('team');
     else if (kind.startsWith('tool_')) add('tools');
     else for (const name of outcomeReads()) if (name !== 'outcomes') dirty.add(name); // Unknown keys reread local panels, not the global list.
   }
