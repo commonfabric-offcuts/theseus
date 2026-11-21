@@ -115,7 +115,7 @@ try {
       });
       await check('option-m-switches-inline-mid-typing', async ({ field, note }) => {
         await note.click(); await field.click(); const before = await snapshot(page);
-        await field.press('Alt+KeyM'); await selected('message', before); assert.equal((await snapshot(page)).sheet, false);
+        await field.press('Alt+KeyM'); await selected('message', before); assert.equal((await snapshot(page)).sheet, true, '1023 opens Message in the sheet too');
       });
       await check('option-n-keeps-chosen-notebook-page', async ({ field, note }) => {
         await note.click(); await page.waitForFunction(() => document.querySelectorAll('#inline-note-page option').length > 1);
