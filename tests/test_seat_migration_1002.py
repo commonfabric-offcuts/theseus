@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 import unittest
+from unittest import mock
 
 from aim_next import migrations
 from aim_next.hosted_seats import SEAT_DOWN
@@ -57,6 +58,21 @@ class SeatMigration(unittest.TestCase):
         self.assertEqual(self.sql("SELECT title FROM workspaces WHERE id='w1'"), [('Isolated test',)])
         migrations.migrate(self.path, 'test-instance', self.binding)
         self.assertEqual(self.sql("SELECT count(*) FROM sqlite_master WHERE name='hosted_seats'"), [(1,)])
+
+    def test_failed_seat_step_retains_all_original_database_bytes(self):
+        self.predecessor()
+        before = hashlib.sha256(self.path.read_bytes()).hexdigest()
+        steps = tuple((old, new, list(up) + ['SELECT missing_1002_column FROM metadata'], down, occupied)
+                      if (old, new) == ('62', '63') else (old, new, up, down, occupied)
+                      for old, new, up, down, occupied in migrations.STEPS)
+        self.assertEqual(sum(old == '62' and new == '63' and up[-1] == 'SELECT missing_1002_column FROM metadata'
+                             for old, new, up, down, occupied in steps), 1)
+        with mock.patch.object(migrations, 'STEPS', steps):
+            with self.assertRaises(migrations.MigrationError) as failed:
+                migrations.migrate(self.path, 'test-instance', self.binding)
+        self.assertEqual(failed.exception.code, 'MIGRATION_FAILED')
+        self.assertEqual(hashlib.sha256(self.path.read_bytes()).hexdigest(), before)
+        self.assertEqual(self.sql("SELECT count(*) FROM sqlite_master WHERE name='hosted_seats'"), [(0,)])
 
 
 if __name__ == '__main__':
