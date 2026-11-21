@@ -164,8 +164,8 @@ test('902 disclosure is a separate ordinary Tab button before the name with curr
   assert.equal(button.querySelector('svg').getAttribute('aria-hidden'), 'true');
 });
 
-test('902 topic and home arrival open their current outcome without folding other choices', async t => {
-  const f = await fixture(t);
+test('902 phone topic and home arrival open their current outcome without folding other choices', async t => {
+  const f = await fixture(t, { phone: true });
   f.outline.setOpen(f.outcome('w2'), true); await f.flush();
   await f.arrive('w3', 'topic');
   assert.deepEqual(['w1', 'w2', 'w3'].map(id => f.outcome(id).topics.hidden), [false, false, false]);
@@ -179,12 +179,14 @@ test('902 reconstruction restores explicit outcome choices for this reader and i
   const storage = memory(), f = await fixture(t, { storage });
   f.outline.setOpen(f.outcome('w2'), true); f.outline.setOpen(f.outcome('w3'), false); await f.flush();
   const restored = await fixture(t, { storage });
-  assert.deepEqual(['w1', 'w2', 'w3'].map(id => restored.outcome(id).topics.hidden), [false, false, true]);
+  assert.deepEqual(['w1', 'w2', 'w3'].map(id => restored.outcome(id).topics.hidden), [true, false, true]);
   const otherReader = await fixture(t, { storage, actor: 'other-reader' });
   assert.equal(otherReader.outcome('w2').topics.hidden, true);
   const otherInstance = await fixture(t, { storage, instance: 'other-instance' });
   assert.equal(otherInstance.outcome('w2').topics.hidden, true);
-  assert.equal(storage.values.size, 3, 'each reader/instance scope has an independent preference');
+  otherReader.outline.setOpen(otherReader.outcome('w3'), true);
+  otherInstance.outline.setOpen(otherInstance.outcome('w3'), true);
+  assert.equal(storage.values.size, 3, 'each reader/instance manual preference has its own record');
   restored.outline.setOpen(restored.outcome('w2'), false); await restored.flush();
   const foldedLast = await fixture(t, { storage });
   assert.equal(foldedLast.outcome('w2').topics.hidden, true, 'fold w2 last, then reconstruct: the fold was actually saved');
@@ -249,7 +251,7 @@ test('921 Shift-Command sets the default for later outcomes and keeps subsequent
   f.key(f.outcome('w2').name, 'ArrowLeft', { metaKey: true, shiftKey: true }); await f.flush();
   assert.equal([...f.outline.outcomes.values()].every(o => o.topics.hidden), true);
   await f.arrive('w3');
-  assert.deepEqual(['w1', 'w2', 'w3', 'w4'].map(id => f.outcome(id).topics.hidden), [true, true, false, true]);
+  assert.deepEqual(['w1', 'w2', 'w3', 'w4'].map(id => f.outcome(id).topics.hidden), [true, true, true, true]);
 });
 
 test('921 a fold in one tab survives another tab arriving in a different outcome', async t => {
@@ -262,7 +264,7 @@ test('921 a fold in one tab survives another tab arriving in a different outcome
   const reconstructed = await fixture(t, { storage });
   assert.equal(reconstructed.outcome('w3').topics.hidden, true, 'arrival must not write back the other tab’s stale open choice');
   assert.equal(b.outcome('w3').topics.hidden, true, 'the navigating tab paints the merged choices');
-  assert.equal(reconstructed.outcome('w2').topics.hidden, false);
+  assert.equal(reconstructed.outcome('w2').topics.hidden, true, 'desktop arrival does not replace a missing choice with an automatic open');
 });
 
 test('921 Shift-Command open-all includes the five outcomes beyond the first twenty', async t => {
@@ -350,4 +352,26 @@ test('902 a refused topic read keeps the disclosed outcome and exposes the exist
   assert.equal(second.topics.hidden, false); assert.equal(second.disclosure.getAttribute('aria-expanded'), 'true');
   assert.equal(second.parts.retry.hidden, false); assert.match(second.parts.message.textContent, /Topics unavailable.*Retry topics/);
   assert.deepEqual(f.moves, []);
+});
+
+
+test('944 desktop name navigation, topic arrival and reconstruction preserve manual disclosure without writing it', async t => {
+  const storage = memory(), f = await fixture(t, { storage });
+  assert.deepEqual(['w1','w2','w3'].map(id=>f.outcome(id).topics.hidden), [true,true,true], 'desktop outcomes without a choice start folded');
+  assert.equal(storage.writes.length, 0, 'initial arrival writes no disclosure');
+  f.click(f.outcome('w2').disclosure); await f.flush();
+  const before = storage.writes.length;
+  f.click(f.outcome('w3').name); await f.arrive('w3');
+  assert.deepEqual(f.moves.at(-1)[0], {kind:'workspace',id:'w3'});
+  assert.deepEqual(['w1','w2','w3'].map(id=>f.outcome(id).topics.hidden), [true,false,true]);
+  await f.arrive('w3','topic');
+  assert.equal(storage.writes.length, before, 'name/home/topic arrival never writes an open mark');
+  const restored = await fixture(t, {storage,here:'w3'});
+  assert.deepEqual(['w1','w2','w3'].map(id=>restored.outcome(id).topics.hidden), [true,false,true]);
+  restored.click(restored.outcome('w2').disclosure); await restored.flush();
+  const folded = storage.writes.length;
+  await restored.arrive('w2','topic');
+  assert.equal(restored.outcome('w2').topics.hidden, true, 'current outcome remains explicitly folded');
+  assert.equal(storage.writes.length, folded);
+  assert.equal((await fixture(t,{storage,here:'w2'})).outcome('w2').topics.hidden, true, 'reload does not reopen the current outcome');
 });
