@@ -100,7 +100,7 @@ export class WorkspaceLinks {
       const grid = node(this.doc, 'div', { className: 'things-thumbs links-grid' });
       for (const row of rows) {
         const tile = node(this.doc, 'div', { className: 'link-tile' });
-        const icon = node(this.doc, 'span', { className: 'link-browser' }, node(this.doc, 'img', { className: 'link-browser-fallback', alt: '', src: new URL('./browser-link.svg', import.meta.url).href }));
+        const icon = node(this.doc, 'span', { className: 'link-browser' }, node(this.doc, 'img', { className: 'link-browser-fallback', alt: '', src: '/browser-link.svg' }));
         const image = node(this.doc, 'img', { className: 'link-favicon', alt: '', loading: 'lazy', referrerPolicy: 'no-referrer', src: new URL('/favicon.ico', row.url).href });
         image.onerror = () => image.remove(); icon.append(image);
         const anchor = node(this.doc, 'a', { href: row.url, target: '_blank', rel: 'noopener noreferrer', className: 'outcome-link', title: `${row.title}\n${row.url}` },

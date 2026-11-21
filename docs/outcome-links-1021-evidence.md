@@ -48,11 +48,13 @@ The return attaches raw evidence and hashes. No hosted broad verdict is claimed.
 | --- | --- |
 | `tests/test_outcome_links_1021.py` and `tests/test_seat_end_migration_1015.py` |10/10 pass (`core-targeted-final.log`) |
 | Links/rails/788/996/1007/998 focused client cohort |84/84 pass (`ui-identity-focused-final.log`) |
-|17-file importer cohort in `node-cohort-files.json` |249 tests,243 pass,6 fail (`node-identity-final.log`) |
+|17-file importer cohort in `node-cohort-files.json` |249 tests,243 pass,6 fail (`review15350/node-importer-corrected.log`) |
+| Shared page-scope canary `tests/ui_inline_wiring.test.mjs` |495 tests,485 pass,10 fail on corrected source and306; complete output equal after durations only |
+| `tests/test_web_build.py` |6/6 pass (`review15350/web-build.log`) |
 | Existing16-file cohort on pristine306 and final candidate |239 tests,233 pass,6 fail; complete diagnostics equal after durations only |
 | Existing workspace/owner/migrations/SeatEnd/HTTP Core cohort |234 tests,46 pass,93 failures,95 errors on both306 and candidate; complete diagnostics equal after total duration only |
-| Final Chrome for Testing |8/8 (`chrome-identity-final2`) |
-| Final WebKit |8/8 (`webkit-identity-final`) |
+| Final Chrome for Testing |8/8 (`review15350/chrome-final`) |
+| Final WebKit |8/8 (`review15350/webkit-final`) |
 | Applied scope/revision/downgrade/late-route/grid mutations |Each caught; five exact byte restorations and restored controls pass (`mutations-identity-final`) |
 
 Core checks cover reopen/shared read/exact replay, team/coordinator/topic-only
@@ -89,7 +91,7 @@ the run, and the two final engines have identical measured producer hashes.
 Copy's menu gesture uses an instrumented clipboard port; it does not prove a
 native OS clipboard. Phone viewport/touch emulation does not prove physical
 phone, software keyboard, finger scrolling or performance. Chrome reports no
-active page errors. WebKit retains87 exact `/api/view` access-control read
+active page errors. WebKit retains105 exact `/api/view` access-control read
 cancellations observed only during leaving/reload; the engine/phase/origin/path/
 full-stack predicate is narrow, following the existing1002 harness. Other or
 active-page errors fail. No diagnostic is silently discarded.
@@ -110,8 +112,8 @@ focused checks and native scenario. The first identity matrix4/8 has phone
 checks waiting for an old menu accessible-name selector captured before renamed
 text painted; no tap had been dispatched. Final checks wait for the observed
 new title and use the current tile menu control. Neither failure is relabeled
-green. Earlier pre-identity source2f7cc547 remains retained and was never pushed
-or offered as the final source. Final source/test/harness evidence matches the
+green. Earlier pre-identity source2f7cc547 remains retained and was never offered as an independent
+final source. Final source/test/harness evidence matches the
 correction; native source.json checkout_head records the checkout commit at
 launch, while per-file hashes bind the resulting producer bytes.
 
@@ -134,3 +136,30 @@ Chrome uses `AIM_CHROME` pointing to Chrome for Testing; WebKit uses
 profile and scratch fixtures. `AIM_1021_PREFLIGHT=1` selects one diagnostic cell.
 The attached `run-mutations-identity.py` holds exact applied/restored controls and unique
 Python cache prefixes; its source paths intentionally bind this owned tree.
+
+## Warp15350 correction
+
+The rejected b4ca8c9d return used import.meta to resolve the fallback vector.
+The shared page-scope canary loads the transitive web modules into a VM script;
+its parse failed before behavior, producing495 tests/9pass/486fail. That actual
+red is retained. The product correction is one line in workspace-links.mjs:
+use the plain served string `/browser-link.svg`. The SVG bytes, Core/schema,
+client behavior and all test/inliner/tool assertions are unchanged. No new
+parser allowance or literal-path-only test replaces the real canary.
+
+Pristine306 reachable web sources and corrected source each produce495/485pass/
+10fail; the complete raw output is identical after durations only. The earlier
+17-file importer249/243pass/6fail is also identical to its prior result after
+durations. Both full8-cell browser matrices were rerun on the corrected module
+and verify actual fallback HTTP bytes/decoding plus all existing native acts.
+Their producer hashes match. The new route mutant is caught and restored; the
+other four earlier controls bind unchanged exact producer bytes. Web-build6/6
+passes. The additional ten canary failures join the188 Core and six client
+failures as explicitly retained, unwaived baseline failures/errors (204 total);
+no canary or broad cohort is described as green.
+
+Current correction evidence is under `review15350/`, with its own byte/hash
+archive. Prior15348 report/manifest/patch/full evidence remain rejected-return
+history and retain the original reds. The corrected manifest names the new
+commit/tree, exact remote, full17-file source and the one-line product delta
+from b4ca; schema65→66 and the judged route remain as ruled.
