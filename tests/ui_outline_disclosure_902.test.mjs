@@ -492,11 +492,11 @@ test('981 waiting composes with saved sets and0 without writing or replacing eit
   const saved=JSON.stringify(dim.choices.value),writes=f.storage.writes.length;
   assert.ok(topic981(f,'w1'),'quiet topic exists before the pill');
   f.click(f.outline.onlyWaiting);await tick981();
-  assert.equal(topic981(f,'w1').dataset.dimmed,'true');assert.equal(topic981(f,'w3').dataset.dimmed,'true','saved layer still dims a matching waiting row');
+  assert.equal(topic981(f,'w1').dataset.dimmed,'true');assert.equal(topic981(f,'w3').dataset.dimmed,'false','1003 reader wait overrides the saved layer');
   assert.equal(topic981(f,'w2').dataset.dimmed,'false');assert.equal(JSON.stringify(dim.choices.value),saved);assert.equal(f.storage.writes.length,writes);
   dim.choices.select(0);dim.paint();assert.equal(topic981(f,'w1').dataset.dimmed,'true','0 bypasses saved sets only');assert.equal(topic981(f,'w3').dataset.dimmed,'false');
   dim.choices.select(1);dim.paint();f.click(f.outline.onlyWaiting);await tick981();
-  assert.equal(topic981(f,'w1').dataset.dimmed,'false');assert.equal(topic981(f,'w3').dataset.dimmed,'true');assert.equal(JSON.stringify(dim.choices.value),saved);
+  assert.equal(topic981(f,'w1').dataset.dimmed,'false');assert.equal(topic981(f,'w3').dataset.dimmed,'false');assert.equal(JSON.stringify(dim.choices.value),saved);
 });
 
 test('981 existing row waiting markers repaint without changing saved-set contents',async t=>{
@@ -506,4 +506,13 @@ test('981 existing row waiting markers repaint without changing saved-set conten
   assert.equal(row.dataset.dimmed,'true');row.setAttribute('data-cover-waiting','');dim.paintRows();assert.equal(row.dataset.dimmed,'false');
   row.removeAttribute('data-cover-waiting');const state=f.doc.createElement('span');state.className='topic-state mine';row.append(state);dim.paintRows();assert.equal(row.dataset.dimmed,'false');
   state.remove();dim.paintRows();assert.equal(row.dataset.dimmed,'true');assert.equal(JSON.stringify(dim.choices.value),saved);
+});
+
+test('1005 topic pages and outcome homes consume one persistent rail; clearing current keeps rows until read',async t=>{
+ const f=await fixture(t),outcome=f.outcome('w1'),rail=outcome.rail,nodes=[...outcome.parts.host.children];
+ const bootstrap=f.outline.bootstrap,topic={id:'t-w1',workspace_id:'w1',title:'Topic w1',list_position:1,state:'active'};
+ assert.equal(f.outline.topicsFor(bootstrap,topic,20),rail);assert.equal(f.outline.topicsFor(bootstrap,{...topic,title:'New title'},20),rail);
+ assert.deepEqual(outcome.parts.host.children,nodes);rail.updateCurrent(null);
+ assert.deepEqual(outcome.parts.host.children,nodes);assert.equal(nodes[0].getAttribute('aria-current'),null);
+ await f.arrive('w2');assert.equal(f.outcome('w1').rail,rail);assert.deepEqual(outcome.parts.host.children,nodes);
 });
