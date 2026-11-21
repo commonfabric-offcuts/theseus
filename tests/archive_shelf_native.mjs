@@ -23,7 +23,7 @@ const drawn = page => page.evaluate(() => {
   const shelf = shelves.find(s => !s.hidden) ?? null;
   return { shelves: shelves.length, shelfShown: shown(shelf),
     replicas: shelf ? [...shelf.querySelectorAll('.shelf-dossier')].map(r => ({ id: r.dataset.id, title: r.querySelector('.shelf-title').textContent,
-      folder: r.dataset.folder, sheets: r.dataset.sheets, card: r.style.getPropertyValue('--replica-card') })) : [],
+      folder: r.dataset.folder, sheets: r.dataset.sheets, card: r.style.getPropertyValue('--replica-card'), popup: r.getAttribute('aria-haspopup') })) : [],
     feed: [...document.querySelectorAll('#messages .reply-stack')].filter(shown).map(s => s.dataset.stack),
     more: [...document.querySelectorAll('#messages .stack-more')].some(shown), ghosts: document.querySelectorAll('.shelf-ghost').length,
     focused: document.activeElement?.closest?.('.shelf-dossier')?.dataset.id ?? null,
@@ -48,10 +48,15 @@ try {
     const long = `shelf-${scheme}-long`, older = await seed(long, Array.from({ length: 34 }, (_, n) => said('m' + n, { join: true, read: n === 33, body: `Older check ${n}.` })));
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: scheme });
     // Each replica's card colour as it first reaches the page, before any later redraw can repair it.
-    await context.addInitScript(() => { window.firstCards = []; new MutationObserver(records => { for (const r of records) for (const n of r.addedNodes) {
-      const replica = n.querySelector?.('.shelf-dossier'); if (replica) window.firstCards.push(replica.style.getPropertyValue('--replica-card')); } })
+    // And every flight: how many copies flew, and the most in the air at once.
+    // And any ResizeObserver loop the page reports (the shelf turning on or off resizes the rail it watches).
+    await context.addInitScript(() => { window.roLoops = []; addEventListener('error', e => { if (/ResizeObserver loop/.test(e.message)) window.roLoops.push(e.message); }); });
+    await context.addInitScript(() => { window.firstCards = []; window.flights = 0; window.mostInAir = 0; new MutationObserver(records => { for (const r of records) for (const n of r.addedNodes) {
+      const replica = n.querySelector?.('.shelf-dossier'); if (replica) window.firstCards.push(replica.style.getPropertyValue('--replica-card'));
+      if (n.classList?.contains('shelf-ghost')) { window.flights += 1; window.mostInAir = Math.max(window.mostInAir, document.querySelectorAll('.shelf-ghost').length); } } })
       .observe(document, { childList: true, subtree: true }); });
-    const page = await context.newPage(), pageErrors = []; page.on('pageerror', e => pageErrors.push(e.message)); page.setDefaultTimeout(5000);
+    const page = await context.newPage(), pageErrors = []; page.on('pageerror', e => pageErrors.push(e.message));
+    page.on('console', m => { if (/ResizeObserver loop/.test(m.text())) pageErrors.push('console: ' + m.text()); }); page.setDefaultTimeout(5000);
     const seen = []; let error;
     const becomes = async (test, why) => { await page.waitForFunction(() => true); const end = Date.now() + 5000;
       for (let d; Date.now() < end;) { d = await drawn(page); if (test(d)) return d; await page.waitForTimeout(40); } throw Error(why + ': ' + JSON.stringify(await drawn(page))); };
@@ -67,6 +72,7 @@ try {
       await archive(ids.one);
       d = await becomes(d => d.replicas.length === 1 && !d.feed.includes(ids.one) && d.ghosts === 0, 'the dossier lands on the shelf');
       assert.deepEqual(d.replicas.map(r => [r.id, r.title, r.folder, r.sheets]), [[ids.one, one, 'false', '1']], 'its replica: its title, one sheet, no folder');
+      assert.ok(await page.evaluate(() => window.flights) >= 1, 'the first archive into an empty shelf flies');
       assert.equal(d.focused, ids.one, 'the focus goes with it to its replica: ' + await page.evaluate(() => { const a = document.activeElement; return a ? `${a.tagName}#${a.id}.${a.className}` : 'none'; }));
       assert.ok(d.feed.includes(ids.two) && d.feed.includes(ids.three), 'the other dossiers stay in the feed');
       assert.equal(d.more, false, 'the feed draws no Archived (N)'); seen.push('archived: replica, focus, feed');
@@ -76,6 +82,17 @@ try {
       await page.waitForFunction(() => !document.querySelector('.shelf-ghost'));
       await archive(ids.one);
       d = await becomes(d => d.replicas.length === 1 && !d.feed.includes(ids.one) && d.ghosts === 0, 'archived again'); seen.push('Cmd-Z at the replica undoes');
+      // Undone while it still flies: its flight goes with its replica, and only the flight back is in the air.
+      await page.keyboard.press('Meta+z'); d = await becomes(d => d.replicas.length === 0 && d.feed.includes(ids.one) && d.ghosts === 0, 'undone');
+      await page.evaluate(() => { window.mostInAir = 0; window.flights = 0; });
+      await page.evaluate(id => { document.querySelector(`#messages .reply-stack[data-stack="${id}"] [aria-label="Archive"]`).click();
+        document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true, cancelable: true })); }, ids.one);
+      d = await becomes(d => d.replicas.length === 0 && d.feed.includes(ids.one) && d.ghosts === 0, 'undone mid-flight');
+      assert.equal(await page.evaluate(() => window.mostInAir), 1, 'undone mid-flight: one copy in the air at a time');
+      // The shelf emptied: the next archive flies again.
+      await page.evaluate(() => { window.flights = 0; }); await archive(ids.one);
+      d = await becomes(d => d.replicas.length === 1 && !d.feed.includes(ids.one) && d.ghosts === 0, 'archived into the emptied shelf');
+      assert.ok(await page.evaluate(() => window.flights) >= 1, 'an archive into a shelf emptied again flies'); seen.push('undo mid-flight, first archive flies');
       await archive(ids.three);
       d = await becomes(d => d.replicas.length === 2 && !d.feed.includes(ids.three) && d.ghosts === 0, 'a second dossier lands');
       assert.deepEqual(d.replicas.filter(r => r.id === ids.three).map(r => [r.id, r.title, r.folder, r.sheets]), [[ids.three, three, 'true', '2']], 'a dossier of two messages: a folder, two sheets');
@@ -109,6 +126,19 @@ try {
       await page.evaluate(() => window.dispatchEvent(new Event('blur')));
       assert.equal(await menuOpen(), 0, 'the window losing focus closes the menu');
       d = await drawn(page); assert.equal(d.replicas.length, 2, 'closing the menu brings nothing back'); seen.push('menu closes on other actions');
+      // A replica is a button that brings its dossier back; its menu is the right-click's, so it announces no menu.
+      assert.deepEqual(d.replicas.map(r => r.popup), [null, null], 'a replica announces no menu');
+      // Brought back elsewhere while its menu is open here: the menu goes, and the keys go to the shelf, not the page's body.
+      await page.locator(`.shelf-dossier[data-id="${ids.one}"]`).click({ button: 'right' }); assert.equal(await menuOpen(), 1, 'the menu opens once more');
+      assert.equal(await page.evaluate(() => Boolean(document.activeElement?.closest('.message-menu-list'))), true, 'the menu holds the keys');
+      const tab = await context.newPage(); tab.on('pageerror', e => pageErrors.push('tab: ' + e.message)); tab.setDefaultTimeout(5000);
+      await tab.goto(`${facts.origin}/?topic=${here}`); await tab.locator('body[data-ready=true]').waitFor();
+      await tab.locator(`.shelf-dossier[data-id="${ids.one}"]`).click(); await tab.close();
+      d = await becomes(d => d.replicas.length === 1 && d.feed.includes(ids.one), 'brought back in another tab');
+      assert.equal(await menuOpen(), 0, 'its menu went with it');
+      assert.equal(await page.evaluate(() => document.activeElement?.closest('.shelf-dossier')?.dataset.id ?? document.activeElement?.tagName), ids.three, 'the keys went to the shelf');
+      await archive(ids.one); d = await becomes(d => d.replicas.length === 2 && d.ghosts === 0, 'archived again');
+      await page.locator(`.shelf-dossier[data-id="${ids.three}"]`).focus(); seen.push('menu removed under the keys');
       // A double-click brings back the one replica pressed, not the next one closing up under the second click.
       // The first on the shelf, so the next one closes up under the pointer.
       const [first, other] = d.replicas.map(r => r.id);
@@ -193,6 +223,29 @@ try {
       assert.ok(sheet.height <= sheet.window * 0.82 + 1, 'the phone\'s sheet keeps its 82% height: ' + JSON.stringify(sheet));
       await page.keyboard.press('Escape'); await page.setViewportSize({ width: 1280, height: 900 }); seen.push('phone sheet unchanged');
       for (const id of [ids.one, ids.two]) { await page.locator(`.shelf-dossier[data-id="${id}"]`).click(); await becomes(d => d.feed.includes(id) && d.ghosts === 0, 'brought back ' + id); }
+      // Archived (N) opened at 1000px and emptied there, then widened: the next archive goes to the shelf alone,
+      // never also into the feed below a hidden More.
+      await page.setViewportSize({ width: 1000, height: 900 }); await becomes(d => !d.shelfShown && d.more, 'at 1000px again');
+      await page.locator('#messages .stack-more').click(); await becomes(d => d.feed.includes(ids.three), 'Archived (N) opened');
+      await page.locator(`${section(ids.three)} [aria-label="Bring back"]`).first().click();
+      await becomes(d => d.feed.includes(ids.three) && !d.more, 'the last brought back in the feed');
+      await page.setViewportSize({ width: 1280, height: 900 }); await becomes(d => !d.shelfShown, 'widened, nothing archived');
+      const both = await page.evaluate(async id => {
+        document.querySelector(`#messages .reply-stack[data-stack="${id}"] [aria-label="Archive"]`).click();
+        // Looked at before Core's answer can arrive (its arrange would hide the dossier anyway): only the page's own work.
+        for (let i = 0; i < 3; i += 1) await Promise.resolve();
+        const s = document.querySelector(`#messages .reply-stack[data-stack="${id}"]`);
+        return { inFeed: Boolean(s && s.getClientRects().length && !s.hidden), onShelf: Boolean(document.querySelector(`.shelf-dossier[data-id="${id}"]`)?.getClientRects().length) };
+      }, ids.two);
+      assert.deepEqual(both, { inFeed: false, onShelf: true }, 'the first archive once widened: on the shelf, not in the feed');
+      await becomes(d => d.ghosts === 0, 'landed');
+      // The shelf took over Archived (N): narrowed again, it comes back closed, its dossier not in the feed.
+      await page.setViewportSize({ width: 1000, height: 900 });
+      d = await becomes(d => !d.shelfShown && d.more, 'narrowed again: Archived (N) is back');
+      assert.equal(d.feed.includes(ids.two), false, 'narrowed again: Archived (N) closed, its dossier not in the feed');
+      await page.setViewportSize({ width: 1280, height: 900 }); await becomes(d => d.shelfShown && d.replicas.length === 1, 'widened again');
+      await page.locator(`.shelf-dossier[data-id="${ids.two}"]`).click(); await becomes(d => d.feed.includes(ids.two) && d.ghosts === 0, 'two brought back');
+      await archive(ids.three); await becomes(d => d.replicas.length === 1 && d.replicas[0].id === ids.three && d.ghosts === 0, 'three on the shelf again'); seen.push('shelf taking over closes Archived (N)');
       for (const [to, wants] of [[there, 0], [here, 1], [there, 0], [here, 1]]) {
         await page.evaluate(id => document.querySelector(`#rail a[href$="topic=${id}"]`).click(), to);
         d = await becomes(d => d.replicas.length === wants && d.feed.includes(wants ? ids.two : away.elsewhere) && !d.feed.includes(wants ? away.elsewhere : ids.two), `moved in place to ${to}`);
@@ -206,6 +259,7 @@ try {
       d = await becomes(d => d.replicas.length === 1 && d.ghosts === 0, 'archived in the long topic');
       assert.equal(d.earlier, true, 'with the shelf drawn, Earlier messages is still there'); seen.push('earlier messages beside the shelf');
       await page.screenshot({ path: `${evidence}/${key}.png` });
+      assert.deepEqual(await page.evaluate(() => window.roLoops), [], 'no ResizeObserver loop as the shelf turns on and off');
       assert.deepEqual(pageErrors, []);
     } catch (e) { error = e; await page.screenshot({ path: `${evidence}/${key}-failed.png` }).catch(() => {}); }
     results.push({ key, seen, error: error ? String(error.stack ?? error) : null }); await context.close();

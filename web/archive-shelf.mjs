@@ -79,7 +79,7 @@ export class ArchiveShelf {
   // Conversation, nor display:none, as with the Notebook docked), visible, and in the page's flow, not the panel that
   // slides over it at middle widths or the phone's sheet (both fixed). Read from the drawing, not the window's width.
   beside() {
-    const things = this.root.parentElement, view = this.doc.defaultView;
+    const things = this.root.parentElement ?? this.doc.getElementById('things'), view = this.doc.defaultView;
     if (!things?.getClientRects?.().length || typeof view?.getComputedStyle !== 'function') return false;
     const look = view.getComputedStyle(things);
     return look.visibility === 'visible' && look.display !== 'none' && look.position !== 'fixed';
@@ -114,18 +114,27 @@ export class ArchiveShelf {
     const mine = this.here.filter(id => byId.has(id)).reverse().map(id => byId.get(id));
     const list = [...mine, ...given.filter(each => !mine.includes(each))];
     const live = new Set();
-    list.forEach(({ stack, section }, index) => {
+    // Every look read before any is written, so the page lays out once.
+    const looks = list.map(({ stack, section }) => this.look(stack, section));
+    list.forEach(({ stack }, index) => {
       live.add(stack.id); this.stacks.set(stack.id, stack);
       let replica = this.replicas.get(stack.id);
       if (!replica) { replica = this.make(stack.id); this.replicas.set(stack.id, replica); }
-      this.dress(replica, stack, section);
+      this.dress(replica, looks[index]);
       // Moved only when out of order: moving a replica would drop the focus it holds.
       const item = replica.parentElement, at = this.row.children[index] ?? null;
       if (at !== item) this.row.insertBefore(item, at);
     });
-    for (const [id, replica] of this.replicas) if (!live.has(id)) { replica.parentElement.remove(); this.replicas.delete(id); this.stacks.delete(id); }
+    // A replica leaving the shelf (brought back, or the archive undone) takes its flight, if still in the air, with it.
+    // Its copy goes at once, before a flight back can start from the same spot.
+    for (const [id, replica] of this.replicas) if (!live.has(id)) { this.land(id); replica.parentElement.remove(); this.replicas.delete(id); this.stacks.delete(id); }
     // Its replica gone from the shelf (brought back elsewhere), its menu goes too.
-    if (this.menuOn && !this.menuOn.isConnected) this.closeMenu?.(false);
+    if (this.menuOn && !this.menuOn.isConnected) {
+      const held = this.doc.activeElement?.closest?.('.message-menu-list');
+      this.closeMenu?.(false);
+      // The menu held the focus: it goes to the shelf's first replica, or wherever the page puts it next.
+      if (held && !held.isConnected && (!this.doc.activeElement || this.doc.activeElement === this.doc.body)) this.row.querySelector('.shelf-dossier')?.focus({ preventScroll: true });
+    }
     this.list = list; this.update(false);
     this.count.textContent = list.length ? String(list.length) : '';
     this.retarget();
@@ -133,7 +142,7 @@ export class ArchiveShelf {
   make(id) {
     const doc = this.doc, item = element(doc, 'div', 'shelf-item'), replica = element(doc, 'button', 'shelf-dossier'); replica.type = 'button';
     item.setAttribute('role', 'listitem'); item.append(replica);
-    replica.dataset.id = id; replica.setAttribute('aria-haspopup', 'menu');
+    replica.dataset.id = id;
     const folder = element(doc, 'span', 'shelf-folder'); folder.setAttribute('aria-hidden', 'true');
     for (let index = 0; index < SHEETS; index += 1) {
       const sheet = element(doc, 'span', 'shelf-sheet');
@@ -148,19 +157,20 @@ export class ArchiveShelf {
   }
   // A replica takes the look of its original: its folder's colour, its first
   // card's colour and edge, one sheet behind for each further message (to three).
-  dress(replica, stack, section) {
+  look(stack, section) {
     const title = section?.querySelector('.stack-name')?.textContent?.trim() || (stack.head.body ?? '').split('\n')[0].slice(0, 80) || 'Dossier';
-    const count = 1 + stack.replies.length;
+    const card = section?.querySelector('.message-card'), view = this.doc.defaultView;
+    const style = (node, name) => node && view ? view.getComputedStyle(node).getPropertyValue(name).trim() : '';
+    return { title, count: 1 + stack.replies.length,
+      colours: [['--replica-card', style(card, 'background-color')], ['--replica-edge', style(card, 'border-top-color')], ['--replica-folder', style(section, '--stack-folder')]] };
+  }
+  dress(replica, { title, count, colours }) {
     replica.querySelector('.shelf-title').textContent = title;
     replica.title = `${title}: ${count === 1 ? 'one message' : `${count} messages`}. Click to bring it back.`;
     replica.setAttribute('aria-label', `${title}, ${count === 1 ? 'one message' : `${count} messages`}`);
     replica.dataset.sheets = String(Math.min(count, SHEETS));
     replica.dataset.folder = String(count > 1);
-    const card = section?.querySelector('.message-card'), view = this.doc.defaultView;
-    for (const [property, node, name] of [['--replica-card', card, 'background-color'], ['--replica-edge', card, 'border-top-color'], ['--replica-folder', section, '--stack-folder']]) {
-      const value = node && view ? view.getComputedStyle(node).getPropertyValue(name).trim() : '';
-      if (value) replica.style.setProperty(property, value);
-    }
+    for (const [property, value] of colours) if (value && replica.style.getPropertyValue(property) !== value) replica.style.setProperty(property, value);
   }
   menu(replica, at) {
     const stack = this.stacks.get(replica.dataset.id); if (!stack) return;
@@ -179,16 +189,21 @@ export class ArchiveShelf {
     this.closeMenu = menu.close;
   }
   replicaRect(id) { return box(this.replicas.get(id)); }
+  // A flight ended early: its copy gone now, not when the cancelled animation settles.
+  land(id) { const flying = this.flights.get(id); if (!flying) return; this.flights.delete(id); flying.flight.cancel(); flying.ghost.remove(); }
   // A dossier archived while another still flies goes first, and the replicas move along: each flight still in the
-  // air turns toward where its replica stands now.
+  // air turns toward where its replica stands now (one bound for the window's corner keeps its course).
   retarget() {
-    for (const [id, { flight, rect }] of this.flights) {
+    for (const [id, { flight, rect, shown }] of this.flights) {
+      if (!shown) continue;
       const at = box(this.replicas.get(id));
       if (at && flight.effect?.setKeyframes) flight.effect.setKeyframes(path(rect, at));
     }
   }
   // The dossier as it sits in the feed, before it moves: where, and a copy to fly.
-  departing(section) { const rect = box(section); return this.drawn && rect && rect.height ? { rect, ghost: copyOf(section) } : null; }
+  // Taken before the arrange that draws the replica, so it asks whether the rail stands beside the page, not whether the
+  // shelf is drawn yet: the first archive into an empty shelf flies too (fly checks the replica after the arrange).
+  departing(section) { const rect = box(section); return this.beside() && rect && rect.height ? { rect, ghost: copyOf(section) } : null; }
   // The flight back, quicker than the one down: the dossier, in its place in
   // the feed again, grows out of where its replica sat.
   back(from, section) {
@@ -230,11 +245,11 @@ export class ArchiveShelf {
     ghost.classList.add('shelf-ghost'); ghost.setAttribute('aria-hidden', 'true'); ghost.inert = true;
     this.doc.body.append(ghost);
     const flight = ghost.animate(path(rect, end), { duration: 440, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' });
-    if (shown) this.flights.set(id, { flight, rect });
+    this.land(id); this.flights.set(id, { flight, rect, ghost, shown });
     flight.finished.catch(() => {}).finally(() => {
       if (this.flights.get(id)?.flight === flight) this.flights.delete(id);
       ghost.remove();
-      if (!replica) return;
+      if (!replica?.isConnected) return;
       replica.classList.remove('shelf-landing');
       replica.animate([{ transform: 'scale(.6)', opacity: .4 }, { transform: 'scale(1.08)', opacity: 1, offset: .6 }, { transform: 'scale(1)', opacity: 1 }],
         { duration: 220, easing: 'ease-out' });

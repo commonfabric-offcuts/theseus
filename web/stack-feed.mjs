@@ -309,11 +309,15 @@ export class StackFeed {
       },
       aside: (stack, below) => this.setAside(stack, below),
       // The shelf drawn or not decides whether the feed's Archived (N) and Earlier messages show (shownView's shelved).
+      // The shelf taking over Archived (N) closes it, so it comes back closed should the shelf go (this arrange then
+      // hides what sits below More, as shownView is read after this).
       archived: list => {
         if (!this.list.isConnected) return;
         const shelf = this.archiveShelf(), was = Boolean(this.state.shelved); shelf?.paint(list);
         this.state.shelved = Boolean(shelf?.drawn);
-        if (this.state.shelved !== was) this.moreChanged();
+        if (this.state.shelved === was) return;
+        if (this.state.shelved) this.state.moreOpen = false;
+        this.moreChanged();
       },
       menu: (stack, anchor, first) => { const item = this.messages().get(stack.id); if (item) this.menu(item, anchor, first); },
       landedBelow: (id, mark) => this.landedBelow(id, mark),
@@ -990,7 +994,7 @@ export class StackFeed {
     // Brought back from the shelf, the dossier keeps the keys, as the feed's own Bring back does.
     this.shelf ??= new ArchiveShelf({ doc: this.list.ownerDocument,
       restore: stack => this.setAside(stack, false), undo: () => this.undo(),
-      changed: drawn => { this.state.shelved = drawn; this.arrange(); this.moreChanged(); } });
+      changed: drawn => { this.state.shelved = drawn; if (drawn) this.state.moreOpen = false; this.arrange(); this.moreChanged(); } });
     return this.shelf;
   }
   setAside(stack, below, { undoable = true, restoreThrough, restoreKey, focus = true, at = null } = {}) {
