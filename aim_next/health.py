@@ -57,6 +57,7 @@ from .contract import Refusal
 from .route_pins import KEY_PREFIX as _PIN_PREFIX, _key as _pin_key
 from .whispers import READ_BY
 from .releases import RECORDS as _RELEASE_RECORDS
+from . import runner_faults
 
 
 # Attempts that got through: a notice in the agent's chat, an earlier one leading there, the agent
@@ -569,12 +570,14 @@ class Health:
                    "ON CONFLICT(recipient_id) DO UPDATE SET acted_ms=excluded.acted_ms", (actor, now, actor))
         self._turns_reached(db, actor, now)
 
-    def _runner_took_role(self, db, now):
+    def _runner_took_role(self, db, now, generation):
         """A runner takes the role: keep how the run it replaces ended, before the state row says running."""
-        prior = self._runner_prior(self._runner_state(db), now)
+        state = self._runner_state(db)
+        prior = self._runner_prior(state, now)
         if prior[0] is not None:
             db.execute("INSERT INTO runner_prior VALUES (1,?,?,?) ON CONFLICT(id) DO UPDATE SET state=excluded.state,"
                        "reason=excluded.reason,ended_ms=excluded.ended_ms", prior)
+            runner_faults.write(db, runner_faults.read(db, state['guard_generation']), generation, runner_faults.PRIOR)
 
     def _runner_prior(self, state, now):
         """How the run a new acquisition replaces ended: (state, reason, when), or Nones when none ran."""
@@ -846,6 +849,9 @@ class Health:
         routes = self._health_routes(db)
         reds = self._health_reds(db, now, routes)
         runner = dict(self._runner_light(db, now))
+        fault = runner_faults.read(db, state['guard_generation'])
+        if fault is not None:
+            runner['fault'] = fault
         why = runner_why(runner)
         if why is not None:
             runner["why"] = why
@@ -859,6 +865,9 @@ class Health:
         if prior is not None:
             runner["prior"] = {"state": prior["state"], "reason": prior["reason"], "ended_ms": prior["ended_ms"],
                                "why": runner_why({"state": prior["state"], "reason": prior["reason"]})}
+            prior_fault = runner_faults.read(db, state['guard_generation'], runner_faults.PRIOR)
+            if prior_fault is not None:
+                runner['prior']['fault'] = prior_fault
         agents = []
         rows = db.execute("SELECT a.id,a.name,s.recipient_id IS NOT NULL AS scheduled,s.next_due_ms,f.reached_ms,s.claim_until_ms "
                           "FROM actors a LEFT JOIN recipient_schedule s ON s.recipient_id=a.id LEFT JOIN wake_facts f ON f.recipient_id=a.id "

@@ -448,12 +448,12 @@ class Pipeline(PieceFreezes):
 
     # ---- writing --------------------------------------------------------------
 
-    def _bump(self, db, workspace_id, record):
+    def _bump(self, db, workspace_id, record, source_messages=None):
         db.execute("UPDATE pipelines SET version=version+1 WHERE workspace_id=?", (workspace_id,))
         version = db.execute("SELECT version FROM pipelines WHERE workspace_id=?", (workspace_id,)).fetchone()[0]
         self._change(db, "workspace", workspace_id, "pipeline", str(record), version)
         from .source_item_covers import notify
-        notify(self, db, workspace_id, record)
+        notify(self, db, workspace_id, record, source_messages=source_messages)
         return version
 
     def _event(self, db, workspace_id, number, kind, actor, payload, ms=None):
@@ -734,7 +734,9 @@ class Pipeline(PieceFreezes):
         self._add_sources(db, actor, workspace["id"], item["number"], rows, _now_ms())
         self._take_into_pipeline(db, actor, workspace["id"], [row[0] for row in rows if row[0]], item["number"], part, added=True)
         self._touch_item(db, workspace["id"], item["number"])
-        version = self._bump(db, workspace["id"], item["number"])
+        # Filing another source changes only dossiers containing those added
+        # messages. Earlier sources' title/state/relations did not change.
+        version = self._bump(db, workspace["id"], item["number"], source_messages=[row[0] for row in rows if row[0]])
         return {"workspace_id": workspace["id"], "number": item["number"], "pipeline_revision": version}, []
 
     def _command_pipeline_item_edit(self, db, actor, envelope):

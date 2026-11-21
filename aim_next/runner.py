@@ -11,6 +11,7 @@ from .contract import LIMITS, StoreError
 from . import work
 from .wake_health import ANSWERING
 from .health import REASON
+from . import runner_faults
 
 
 RUNNER_SCHEMA = [
@@ -149,6 +150,7 @@ class Runner:
             raise RunnerError("INVALID_GUARD", "Use the actual held guard for this authority")
         guard.verify()
         db = None
+        commit_started = False
         try:
             try:
                 db, _ = _connect(self.path)
@@ -168,11 +170,15 @@ class Runner:
                 # What is red may have changed with this act (health.py).
                 self._health_commit(db, now)
                 guard.verify()
+                commit_started = True
                 db.commit()
             return dict(result, instance_id=self.instance_id)
         except sqlite3.Error as error:
-            if (isinstance(error, sqlite3.OperationalError) and error.__cause__ is None
-                    and ("locked" in str(error).lower() or "busy" in str(error).lower())):
+            # A COMMIT which took effect before an error is not a rolled-back
+            # busy refusal. Never authorize a caller to replay that mutation.
+            if commit_started and db is not None and not db.in_transaction:
+                raise RunnerError("RUNNER_STORAGE_ERROR", "Runner state could not be confirmed") from error
+            if runner_faults.busy(error):
                 raise RunnerError("DATABASE_BUSY", "Runner state is busy; no change was confirmed", retryable=True) from error
             raise RunnerError("RUNNER_STORAGE_ERROR", "Runner state could not be confirmed") from error
         finally:
@@ -196,6 +202,9 @@ class Runner:
         result = {"state": state["state"], "version": state["version"]}
         if state["reason_code"] is not None:
             result["reason_code"] = state["reason_code"]
+        fault = runner_faults.read(db, state['guard_generation'])
+        if fault is not None:
+            result['fault'] = fault
         if state["lease_until_ms"] is not None:
             result["lease_until_ms"] = state["lease_until_ms"]
             result["lease_expired"] = state["lease_until_ms"] <= delivery._now_ms()
@@ -225,7 +234,8 @@ class Runner:
         token = "r-" + uuid.uuid4().hex
         until = now + lease_ms
         # How the run this one replaces ended, for the Health page (health.py).
-        self._runner_took_role(db, now)
+        self._runner_took_role(db, now, guard.generation)
+        runner_faults.write(db, None)
         db.execute("UPDATE runner_state SET state='running',version=version+1,runner_token=?,runner_id=?,guard_generation=?,lease_until_ms=?,reason_code=?,runner_pid=?,runner_started_ms=?,child_pid=NULL,child_started_at=NULL,child_claim_token=NULL,ended_ms=NULL WHERE id=1",
                    (token, guard.runner_id, guard.generation, until, reason, os.getpid(), now))
         return {"status": "acquired", "runner_token": token, "lease_until_ms": until}, True
@@ -676,8 +686,7 @@ class Runner:
                     finally:
                         db.close()
         except (sqlite3.Error, OSError) as error:
-            if (isinstance(error, sqlite3.OperationalError) and error.__cause__ is None
-                    and ("locked" in str(error).lower() or "busy" in str(error).lower())):
+            if runner_faults.busy(error):
                 raise RunnerError("DATABASE_BUSY", "Runner state is busy; the exit was not recorded", retryable=True) from error
             raise RunnerError("RUNNER_STORAGE_ERROR", "The runner's exit could not be confirmed") from error
 
@@ -718,16 +727,20 @@ class Runner:
                     finally:
                         db.close()
         except (sqlite3.Error, OSError) as error:
-            if (isinstance(error, sqlite3.OperationalError) and error.__cause__ is None
-                    and ("locked" in str(error).lower() or "busy" in str(error).lower())):
+            if runner_faults.busy(error):
                 raise RunnerError("DATABASE_BUSY", "Runner state is busy; what is red was not settled", retryable=True) from error
             raise RunnerError("RUNNER_STORAGE_ERROR", "What is red could not be settled") from error
 
-    def pause_runner(self, guard, runner_token, reason_code, child=None):
+    def pause_runner(self, guard, runner_token, reason_code, child=None, fault=None):
         """child, for cleanup_failed only: (pid, started_at) of the broker whose
         group cleanup was not confirmed, recorded with the pause itself."""
         if reason_code not in ("cleanup_failed", "route_binding_changed", "storage_failure", "operator_pause"):
             raise RunnerError("INVALID_ARGUMENT", "Use a bounded runner pause reason")
+        if fault is not None:
+            try:
+                fault = runner_faults.validate(fault)
+            except ValueError as error:
+                raise RunnerError('INVALID_ARGUMENT', 'Use a safe runner diagnostic') from error
         if child is not None:
             if reason_code != "cleanup_failed" or not isinstance(child, tuple) or len(child) != 2:
                 raise RunnerError("INVALID_ARGUMENT", "Only a cleanup pause names its child, as (pid, started_at)")
@@ -742,6 +755,7 @@ class Runner:
                 return {"status": "lost"}, False
             # ended_ms says since when wakes have been paused; the next acquisition clears it.
             db.execute("UPDATE runner_state SET state='paused',version=version+1,reason_code=?,ended_ms=? WHERE id=1", (reason_code, now))
+            runner_faults.write(db, fault, state['guard_generation'])
             if child is not None:
                 db.execute("UPDATE runner_state SET child_pid=?,child_started_at=? WHERE id=1", child)
             return {"status": "paused", "version": state["version"] + 1}, True
@@ -809,8 +823,7 @@ class Runner:
         except (sqlite3.Error, OSError) as error:
             # _connect chains a failed close from the setup error. Such a
             # failure is uncertain even if the close itself says 'busy'.
-            if (isinstance(error, sqlite3.OperationalError) and error.__cause__ is None
-                    and ("locked" in str(error).lower() or "busy" in str(error).lower())):
+            if runner_faults.busy(error):
                 raise RunnerError("DATABASE_BUSY", "Runner schedule is busy; retry the read", retryable=True) from error
             raise RunnerError("RUNNER_STORAGE_ERROR", "Runner schedule could not be confirmed") from error
 
