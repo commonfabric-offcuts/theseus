@@ -79,7 +79,10 @@ jobs:
     # Replay keeps 45. Unit limits are
     # ceil((measured file/step minutes + measured setup) * 1.5), from
     # .github/check-weights.json: file timings 44112970996, Node/setup
-    # 44112985174, deploy-refusals train 30 (44007172971). Python 19/18/18/18, Node 5, refusals 3.
+    # 44112985174, deploy-refusals train 30 (44007172971). Node 5, refusals 3.
+    # Item 1016: Python takes at least 30 minutes, rounding up 1.5 times the
+    # cancelled 1015 job's 19m24s interval (including finalizers); larger
+    # calculated limits still win. Exact runs and rationale are in the weights.
     timeout-minutes: ${{ startsWith(matrix.name, 'browser ') && 100 || matrix.timeout_minutes }}
     strategy:
       fail-fast: false

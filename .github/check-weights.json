@@ -687,6 +687,7 @@
  "units": {
   "about": "Python files measured by pool run 44112970996 at snapshot 4345c9b16d5283e29820273b2603c0553591d4ba: 3016 tests, wall 43.616m; the three regressions in that run were corrected before handoff. Historical maximum Python 43m39s (train 33 44045149108), control 42m00s (44044963750); train 30 44007172971 was 29.4m unittest / 31.2m step. Historical logs did not time files. LPT over these file measurements yields four bins below 12m. New files use the measured median.",
   "python_shards": 4,
+  "python_timeout_floor_minutes": 30,
   "setup_minutes": 0.902,
   "python_minutes": {
    "tests/test_actors_view.py": 0.014308,
@@ -857,7 +858,8 @@
    "node-units": "https://github.com/commonfabric-offcuts/theseus/actions/runs/44112985174; 2026-11-17T15:20:10.477288+00:00 to 15:22:15.364724+00:00 = 124.887s",
    "deploy-refusals": "train 30 https://github.com/commonfabric-offcuts/theseus/actions/runs/44007172971; 2026-11-17T03:35:34.654631+00:00 to 03:36:39.944916+00:00 = 65.290s (control was cancelled before completion)",
    "setup_minutes": "pool Node job 15:19:27 to step start 15:20:10.477288 + step finish 15:22:15.364724 to job end 15:22:26 = 54.113s; rounded up to 0.902 minutes",
-   "timeout": "ceil((sum of measured file minutes, or measured step minutes, + setup_minutes) * 1.5) for each unit job; browser/replay keep their existing limits"
+   "timeout": "ceil((sum of measured file minutes, or measured step minutes, + setup_minutes) * 1.5) for each unit job; Python also takes python_timeout_floor_minutes; browser/replay keep their existing limits",
+   "python_timeout_floor_minutes": "Item 1016: 30 minutes, rounding up a 50% margin over the observed 19m24s cancelled job interval (including finalizers), https://github.com/commonfabric-offcuts/theseus/actions/runs/44918716681/job/136889902421. Predecessor https://github.com/commonfabric-offcuts/theseus/actions/runs/44912268547/job/136870458446 took 18m53s. The cancelled interval is a lower bound, not a completed suite measurement; a later judged run establishes the actual result. Keep larger calculated caps and existing file partitions."
   }
  }
 }
