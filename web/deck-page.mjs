@@ -63,7 +63,7 @@ export class DeckPage {
     // held: a refusal stopped saving until Try again. notebook: the Notebook's version when the page was read.
     // room: where an ask goes. talks: each stack's {replies, unread}, by its first message. asking: the ask being written.
     Object.assign(this, { base: null, source: null, notebook: null, acts: [], undos: [], sending: null, owed: false, held: false,
-      readOnly: false, deck: parseDeck(''), picked: 0, editing: null, room: null, talks: new Map(), asking: null, drafts: new Map(),
+      readOnly: false, deck: parseDeck(''), picked: 0, editing: null, room: null, roomConfirmed: false, talks: new Map(), asking: null, drafts: new Map(),
       // keyed: a key is acting (show).
       keyed: false });
     // The cards selected together, by index, the picked card among them; and where a ⇧ selection began, with
@@ -197,6 +197,7 @@ export class DeckPage {
     this.roomReading = Promise.resolve().then(() => this.askIn?.(scope)).then(room => {
       if (this.listening.signal.aborted || this.source?.owner_scope.kind !== scope.kind || this.source?.owner_scope.id !== scope.id) return;
       this.room = room ?? null;
+      this.roomConfirmed = true;
       this.paint();
     }, () => {}).finally(() => { this.roomReading = null; });
     return this.roomReading;
@@ -839,6 +840,11 @@ export class DeckPage {
   cardMenuItems(ref,anchor) {
     const at=this.cardAt(ref);if(at<0)return [];
     const hasId=Boolean(cardDetails(this.deck.cards[at].words).id);
+    const chatWhy=this.readOnly?'You cannot write this Notebook page.':
+      this.drafted()?'Clear Draft to ask an agent about this card.':
+      this.asking?'Finish or cancel the current question first.':
+      !this.room?.agents.length?(!this.room&&!this.roomConfirmed?'Who can be asked is not confirmed yet.':this.source?.owner_scope?.kind==='workspace'
+        ?'No agent in this outcome’s Conversation yet':'No agent in this topic yet'):'';
     return [
       {label:'Copy text',glyph:'copy',act:()=>this.copyCard(ref)},
       {label:'Copy link',glyph:'link',disabled:!hasId&&!this.cardWritable(),act:()=>this.copyCard(ref,true)},
@@ -847,7 +853,7 @@ export class DeckPage {
         this.act({kind:'remove',text:cardText(this.deck.cards[at]),near:at});
       }},
       {label:'Set color',glyph:'palette',disabled:!this.cardWritable(),act:()=>this.cardColors(ref,anchor)},
-      {label:'Chat about this…',glyph:'topic',disabled:!this.room?.agents.length||this.readOnly||Boolean(this.asking)||this.drafted(),act:()=>{
+      {label:'Chat about this…',glyph:'topic',disabled:Boolean(chatWhy),description:chatWhy,act:()=>{
         const at=this.cardAt(ref);if(at>=0)this.ask(at);
       }}
     ];
