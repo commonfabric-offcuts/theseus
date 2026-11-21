@@ -230,3 +230,18 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
   :root[data-look=paper] .things-sec[data-key=notebook] .things-body{padding:.55rem;border-radius:.7rem;background:#f2eee5}
   :root[data-look=paper] .things-sec[data-key=notebook]{--things-tile:#fbf8f1;--things-hair:#ddd5c5;--things-quiet:#6f685c;--ink:#27241f;--accent:#3d7a62}
 }
+
+/* 973: words quieten without changing a row's layout or its rail line. */
+#outline .ol-outcome{--dim-ink:color-mix(in srgb,var(--ink) 15%,var(--paper))}
+#outline .ol-outcome[data-dimmed=true]>.ol-row:not(:hover):not(:has(>.ol-name[aria-current=page])) :is(.ol-name,.ol-title,.ol-disclosure){color:var(--dim-ink)}
+#outline .ol-outcome[data-dimmed=true]>.ol-row:not(:hover):not(:has(>.ol-name[aria-current=page])) .ol-title{font-weight:500}
+#outline .ol-outcome[data-dimmed=true]>.ol-row:not(:hover):not(:has(>.ol-name[aria-current=page])) :is(.outcome-light,.ol-new-topic){opacity:.15}
+#outline .ol-outcome[data-dimmed=true]>.ol-row:not(:hover):not(:has(>.ol-name[aria-current=page])) :is(.unread-count,.ol-waiting,.topic-state){visibility:hidden}
+#rail #outline a.nav-item[data-dimmed=true]:not(:hover):not([aria-current=page]){color:var(--dim-ink)}
+#rail #outline a.nav-item[data-dimmed=true]:not(:hover):not([aria-current=page]) :is(.unread-count,.topic-state,.topic-work){visibility:hidden}
+.rail-dim{display:inline-flex;align-items:center;gap:1px;padding:1px;border:1px solid var(--line);border-radius:.4rem;background:var(--panel)}
+.rail-dim>span{padding:0 .35rem;color:var(--muted);font-size:.68rem}
+.rail-foot .rail-dim button{min-height:2.75rem;min-width:2.75rem;padding:0 .45rem;border:0;border-radius:.3rem;background:transparent;color:var(--muted);font-size:.68rem}
+.rail-foot .rail-dim button:hover{color:var(--ink);background:transparent}
+.rail-foot .rail-dim button[aria-pressed=true]{background:var(--soft);color:var(--ink);font-weight:600}
+@media(pointer:fine) and (min-width:761px){.rail-foot .rail-dim button{min-height:0;min-width:0;height:1.25rem;padding:0 .45rem}}
