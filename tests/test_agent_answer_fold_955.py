@@ -98,6 +98,17 @@ class AgentAnswerFold955Case(StackCase):
                                     target={'topic_id': topic}, actor='agent-a'))
         self.assertEqual(self.acts(parent, topic=topic)['folded'], False)
 
+    def test_an_agent_whisper_to_someone_else_does_not_fold_the_public_message_for_its_author(self):
+        parent = self.post('My question.', actor='owner')
+        self.committed(self.command('message.post', {'body': 'Between us, agents.', 'reply_to': parent, 'whisper': True,
+                                                   'addressees': ['other-reader'], 'reply_without_quote': 'Whisper955 aside.'},
+                                    target={'topic_id': 't1'}, actor='agent-a'))
+        self.assertEqual(self.folded(parent), (False, 0), 'an answer the author cannot see folds nothing for them')
+        self.committed(self.command('message.post', {'body': 'For you.', 'reply_to': parent, 'whisper': True,
+                                                   'addressees': ['owner'], 'reply_without_quote': 'Whisper955 to the author.'},
+                                    target={'topic_id': 't1'}, actor='agent-a'))
+        self.assertEqual(self.folded(parent), (True, 1), 'a whisper the author can see answers them')
+
     def test_failed_fold_rolls_back_the_reply_and_retry_can_publish_both(self):
         parent = self.post('All or neither.', actor='owner')
         record = self.store._record_act

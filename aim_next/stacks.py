@@ -787,7 +787,7 @@ class Stacks:
         version = self._record_act(db, "fold", message, actor, actor, {"folded": True}, self._act_revision(db, message_id, "fold", actor) + 1)
         return [{"kind": "acts", "id": message["topic_id"], "version": version}]
 
-    def _fold_author_answered(self, db, actor, message_id):
+    def _fold_author_answered(self, db, actor, message_id, private=None):
         """An agent answer folds an eligible person's message for its author (955).
 
         The agent remains attributed; the personal act is announced only to
@@ -800,6 +800,9 @@ class Stacks:
         if not message or message['author_kind'] != 'human' or not message['enabled'] or message['private_to'] is not None:
             return []
         owner = message['author_id']
+        # A whisper the author is not party to is no answer to them.
+        if private is not None and private != owner:
+            return []
         try:
             topic = self._topic(db, owner, message['topic_id'])
         except Refusal:
