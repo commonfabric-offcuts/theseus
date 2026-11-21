@@ -164,7 +164,7 @@ export class FeedPassages {
     for (const [box, its] of boxes) {
       const layers = fieldLayers(box, its, height);
       Object.assign(box.style, {
-        backgroundImage: layers.map(() => 'linear-gradient(var(--lit-field),var(--lit-field))').join(','),
+        backgroundImage: layers.map(() => 'linear-gradient(var(--pointer-lit-field,var(--lit-field)),var(--pointer-lit-field,var(--lit-field)))').join(','),
         backgroundPosition: layers.map(layer => `${layer.x}px ${layer.y}px`).join(','),
         backgroundSize: layers.map(layer => `${layer.width}px ${layer.height}px`).join(','),
         backgroundRepeat: 'no-repeat', backgroundAttachment: 'local',

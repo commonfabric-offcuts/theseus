@@ -46,7 +46,16 @@ export class RailDimming {
     event.preventDefault(); event.stopPropagation();
     if (this.press?.row === target.row && this.press.done) return;
     if (this.press?.row === target.row) this.press.done = true;
-    this.choices.toggle(target.workspace,target.topic,event.shiftKey); this.paint();
+    this.toggle(target.row,event.shiftKey);
+  }
+  dimmed(row) {
+    const target = this.target(row);
+    return target && this.enabled() && this.choices.key ? this.choices.dimmed(target.workspace,target.topic) : null;
+  }
+  toggle(row, inverse = false) {
+    const target = this.target(row);
+    if (!target || !this.enabled() || !this.choices.key) return false;
+    const changed = this.choices.toggle(target.workspace,target.topic,inverse); this.paint(); return changed;
   }
   paintRows() {
     if (!this.enabled() || !this.choices.key) return;
