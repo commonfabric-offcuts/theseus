@@ -1,3 +1,125 @@
+# 1021 — fifth source correction for review15783
+
+The accompanying manifest names this return's exact commit/tree and full base306
+source. It supersedes fourth source1528065d, which remains preserved below and
+in its original packet. This is the fifth source, not a new invented stage:
+Fable15796 names canonical Build round2 after Review round1. Fable owns freeze
+and stages; Warp owns independent review/carry/landing. Same branch
+`page-lane6/1021-links-306-15256`, base
+`5ccd5432284200e823c123c5689383d13f1c8fb7`, schema65→66 and JUDGED classification.
+No approval, live deployment or broad-green claim is made here.1042 is next at
+this fifth freeze and awaits Fable's binding, ahead of1037 then1034;1037 retains
+its explicit1021-approval gate.
+
+## Fifth correction
+
+- Core emits each Link row identity/revision only in workspace scope. Add,
+  rename and remove leave both an outcome-team reader's and a topic-only
+  reader's topic changes empty. The actual workspace consumer still receives
+  row keys. Settings pins/list hints, schema and stored row shapes are unchanged.
+- Every menu act resolves the current connected tile by the exact Core URL and
+  takes that tile's current record. Open retains native activation; Rename and
+  Remove use fresh titles/revisions. A vanished tile cannot perform an old act;
+  route/readability guards remain. A newer Core write between resolution and
+  command can still refuse CAS, and that refusal stays visible.
+- Remove conflicts/limits and Copy failures use the same Links-owned persistent
+  status as Copy success. Successful rail reads cannot clear it; the next Link
+  menu or route reset clears it. Other rails' status/menu owners are unchanged.
+- edit() refuses while an Add is busy, retaining exact writing, request serial
+  and its eventual refusal. Separate scoped tests now exercise actual registered
+  hold-suppression clearing, capture Escape and Rename-over-Add draft retention.
+- Host validation errors identify a host problem and state that invisible
+  joiners are not supported yet. This deliberately retains the bounded stdlib
+  parser and contextual-joiner limitation; it does not add a full CONTEXTJ,
+  WHATWG or UTS46 implementation. Browser forms submit browser hrefs. Raw
+  Unicode API IDNA mapping limitations from the prior return remain named.
+
+Core owner/team access, closed-outcome refusal, authority/CAS/exact retry,
+500-row cap including removed overrides,4096-byte URLs,1024-byte titles,
+retained-byte/digest migration checks, no-referrer root favicon/local fallback,
+spatial keys and no Core metadata fetch are retained.
+
+## Red evidence and harness boundary
+
+`review15783/core-red.log` records17 real Core tests with3 failures before product
+edits: outcome activity scope/privacy and the misleading host explanation.
+`client-red-handlers.log` records11 scoped checks with3pass/8fail, reproducing
+stale acts, disappearing errors, busy-Add answer loss and removed-tile action.
+The three fourth-correction door/Escape/draft checks already passed that head.
+Initial mini-DOM runs lacked a borrowed-pencil fixture node and are retained
+as harness setup failures, separately from the corrected behavior red.
+
+`native-red-corrected` runs unchanged1528065d with the new producer: six actual
+review failures cover the strict306 freshness-module message stall, stale
+Rename/Remove, vanished Remove/Copy errors and busy-Add overwrite. Native Open
+happened to pass; its detached-tile unit control failed. The upgrade fixture
+serves the exact306 freshness.mjs into the otherwise current page, verifies
+that module's served SHA, writes a real Link and then a real message. This is
+a strict306 freshness-module consumer check, not a complete old-client test.
+
+The first native attempt aborted on a double-handled intercepted Add route and
+has no complete cleanup receipt or usable native observations. Its log/source
+and post-crash owned-profile absence snapshot remain. The corrected producer
+awaits the held route before removing it. The corrected red closes Browser,
+all8 observedPIDs, profile, fixtureEOF/exit0/absence/empty errors and both ports.
+No browser signal or live account action was used. `source-snapshots.json`
+binds measured red/candidate bytes to content-addressed exact SHA blobs; Git
+recovery is accepted only when it matches the original measured digest.
+
+## Final checks
+
+| Check | Result |
+|---|---|
+| `test_outcome_links_1021`, `test_seat_migration_1002`, `test_seat_end_migration_1015` |22/22 pass:17 Links cases and5 actual migration cases |
+| `ui_outcome_links_1021.test.mjs`, `ui_outcome_links_doors_1021.test.mjs` |25/25 pass:14 existing and11 new scoped checks |
+|38 existing Node consumers/importers/canaries in `cohort-files.json` |1001 tests,980 pass/21 fail on both source and pristine306; full normalized output identical |
+|9 existing Core/migration/inventory/web-build/change modules |307 tests,64 pass/148 fail/95 error on both; all243 failure/error names identical |
+| Core full diagnostics |242/243 identical after named noise normalization; sole already-red whisper inventory's truncated list diagnostic changes because workspace_links is classified in both actual and expected. Fresh fifth-source read independently verifies the same11 missing unrelated views. |
+| Applied scope, CAS revision, occupied downgrade, late-route, visual-grid, topic-scope leak, settings-fence, row-identity, busy-edit, current-menu-tile and menu-error-owner controls |11 faults caught,11 exact byte restorations green; fresh unique Python cache for every mutant and restored control |
+| Chrome laptop and phone preflights |1/1 each, strict cleanup |
+| `chrome-final`, `webkit-final` |8/8 each,1280/390 × Bookends/Paper × light/dark; same product/producer hashes and actual served owners |
+
+All21 Node failures and243 Core failures/errors remain unwaived. The same
+pristine306 raw logs are reused with byte hashes and an unchanged pristine tree;
+the head cohorts are freshly repeated. No test assertion was weakened. Full
+normalization names only owned paths, durations, source stack positions,
+generated IDs/timestamps and unordered-set display. Its initial helper missed
+an unordered diagnostic's last line without newline; both the initial diff and
+the corrected generic set-order normalization are retained. That correction
+changes no failure content or test result.
+
+Warp15811 independently reports225 Python modules on the fourth source with no
+new red (609 against610, one base-only signal-install timing failure). Warp says
+that result stands for this fifth head if aim_next changes only workspace_links.py;
+this correction meets that boundary and repeats its relevant scoped tests.
+This is Warp's stated result, not an own225-module rerun or broad-green claim.
+
+Both final native engines prove the strict306 freshness-module consumer keeps
+receiving messages after a Link write; stale-sheet actions use the current tile;
+a real Core CAS menu refusal and forced Copy error survive a real other-client
+Link write/Live repaint; and a held real INVALID_ARGUMENT Add answer retains its
+form through menu Rename. Prior exact-retry/lost-response, CAS writing retention,
+route/access revocation, kept URL identities, spatial keys/320resize, favicon and
+draft checks remain. The dark Paper390 icon-menu screenshot was visually
+inspected: browser icons stay visible and phone dots sit below titles.
+
+Final cleanup verifies Browser.close/disconnected, all22 Chrome and2 WebKit
+observedPIDs absent, profiles removed, fixturesEOF/exit0/absent/empty errors and
+both ports closed. WebKit82 exact leaving-page view cancellations are separately
+retained; active errors are empty. Product and producer bytes still match the
+final matrices after every applied control and cohort; no workload remains.
+
+The clipboard success and forced Copy error are explicitly instrumented; other
+input/menu/focus/navigation acts use browser gestures. Chrome drives actual
+trusted held touch in emulated phone viewports. WebKit drives taps and keyboard
+menus, without a held-touch claim. Viewport emulation does not establish a
+physical phone's keyboard/IME or timing. Exact leaving-page WebKit cancellations
+are kept separately from active errors, with full origin/phase/stack matching.
+The prior section preserves fourth-head failure and evidence history; its
+dual-scope emission rule is superseded by this workspace-only correction.
+
+## Superseded fourth-source record
+
 # 1021 Build3 — fourth source under review15569
 
 This is the current builder return. The accompanying manifest names the exact

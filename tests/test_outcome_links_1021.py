@@ -43,9 +43,10 @@ class OutcomeLinksCase(unittest.TestCase):
         self.assertEqual(edited['status'], 'committed', edited)
         self.assertEqual(edited['result']['version'], before['version'] + 1)
         seq = str(added['result']['link']['seq'])
-        for scope in ('workspace', 'outcome'):
+        for scope in ('workspace',):
             changes = self.sql("SELECT resource_kind,resource_id,version FROM changes WHERE seq>? AND scope_kind=? AND scope_id='w1' AND resource_kind!='workspace' ORDER BY seq", (start, scope))
             self.assertEqual(changes, [('workspace_link', seq, version) for version in (1, 2, 3)])
+        self.assertEqual(self.sql("SELECT resource_kind FROM changes WHERE seq>? AND scope_kind='outcome' AND scope_id='w1' AND resource_kind!='workspace'", (start,)), [])
         # Only the settings save can change its list hint; no Links write does.
         self.assertEqual(after_links, list_keys)
         mark = self.sql('SELECT max(seq) FROM changes')[0][0]
@@ -55,7 +56,7 @@ class OutcomeLinksCase(unittest.TestCase):
     def test_distinct_link_rows_share_no_change_identity_and_replay_emits_nothing(self):
         self.workspace()
         conversation = self.store.view('owner', 'conversation', {'workspace_id': 'w1'})['conversation']['topic_id']
-        scopes = [{'kind': 'workspace', 'id': 'w1'}, {'kind': 'topic', 'id': conversation}]
+        scopes = [{'kind': 'workspace', 'id': 'w1'}]
         checkpoints = [self.store.view('owner', 'changes', {'scope': scope})['checkpoint'] for scope in scopes]
         first = self.saved(op='first-link')
         second = self.saved(url='https://second.test/', op='second-link')
@@ -68,6 +69,29 @@ class OutcomeLinksCase(unittest.TestCase):
         end = self.sql('SELECT max(seq) FROM changes')[0][0]
         self.assertEqual(self.saved(op='first-link'), first)
         self.assertEqual(self.sql('SELECT max(seq) FROM changes')[0][0], end)
+
+    def test_link_activity_never_reaches_team_or_topic_only_topic_changes(self):
+        self.workspace()
+        self.sql("INSERT INTO topics(id,workspace_id,title,creator_id,version) VALUES ('topic-only','w1','Only topic','agent-b',1)")
+        self.sql("INSERT INTO topic_participants(topic_id,actor_id,active,epoch) VALUES ('topic-only','agent-b',1,1)")
+        self.sql("DELETE FROM workspace_members WHERE workspace_id='w1' AND actor_id='agent-b'")
+        scope = {'kind': 'topic', 'id': 'topic-only'}
+        cursors = {actor: self.store.view(actor, 'changes', {'scope': scope})['checkpoint'] for actor in ('owner', 'agent-b')}
+        self.assertEqual(self.read('agent-b')['error']['code'], 'FORBIDDEN')
+        self.saved(actor='agent-a')
+        self.saved(title='Team-only rename', revision=1, actor='agent-a')
+        self.saved(title='Team-only rename', revision=2, removed=True, actor='agent-a')
+        for actor, cursor in cursors.items():
+            page = self.store.view(actor, 'changes', {'scope': scope, 'cursor': cursor})
+            self.assertEqual(page['items'], [], 'strict old topic consumers and denied Link readers see no Link key')
+
+    def test_host_refusal_explains_contextual_joiner_limit_without_credentials_blame(self):
+        self.workspace()
+        href = json.loads(subprocess.check_output(['node', '-e', "console.log(JSON.stringify(new URL('http://نامه\\u200cای.com/').href))"], text=True))
+        refusal = self.saved(url=href)['error']
+        self.assertEqual(refusal['code'], 'INVALID_ARGUMENT')
+        self.assertRegex(refusal['message'], 'host|joiner')
+        self.assertNotRegex(refusal['message'], 'username|password')
 
     def test_browser_rtl_digit_alabel_supports_add_rename_and_remove(self):
         self.workspace()

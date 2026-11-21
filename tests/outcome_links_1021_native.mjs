@@ -59,7 +59,8 @@ try {
     const section=page.locator('#things .things-sec[data-key=previews]'),form=section.locator('.link-form');
     const anchor=url=>section.locator(`a[data-outcome-link][href="${url}"]`);
     const press=target=>width<761?target.tap():target.click();
-    const menu=async(url,name)=>{const a=anchor(url);if(width<761)await a.locator('..').locator('button[data-link-menu]').tap();else await a.click({button:'right'});await press(page.getByRole('menu',{name:'Link',exact:true}).getByRole('menuitem',{name,exact:true}));};
+    const door=async url=>{const a=anchor(url);if(width<761)await a.locator('..').locator('button[data-link-menu]').tap();else await a.click({button:'right'});const sheet=page.getByRole('menu',{name:'Link',exact:true});await sheet.waitFor();return sheet;};
+    const menu=async(url,name)=>{const sheet=await door(url);await press(sheet.getByRole('menuitem',{name,exact:true}));};
     try {
       result.pageHeaders=await (await page.goto(`${origin}/?topic=${topic}`)).allHeaders();await page.locator('body[data-ready=true]').waitFor();await openRail();
       await anchor(legacy).waitFor();assert.equal((await section.locator('.things-section-name').textContent()).trim(),'Links');
@@ -68,6 +69,61 @@ try {
       const pencil=section.locator('.link-create');
       result.reviewFailures=[];
       const reviewCheck=async(name,task)=>{try{await task();}catch(error){result.reviewFailures.push({name,error:error.stack});}};
+      if(width===1280&&look==='bookends'&&colorScheme==='light')await reviewCheck('strict306 freshness consumer keeps receiving messages after a Link write',async()=>{
+        const oldSource=execFileSync('git',['show','5ccd5432284200e823c123c5689383d13f1c8fb7:web/freshness.mjs']),oldPage=await context.newPage();let oldServed=null,leaving=false;
+        result.rolloutPageErrors=[];result.rolloutLeaving=[];
+        oldPage.on('pageerror',error=>{if(engine==='webkit'&&leaving&&error.stack?.split('\n')[0]===`Fetch API cannot load ${origin}/api/view due to access control checks.`)result.rolloutLeaving.push(error.stack);else result.rolloutPageErrors.push(error.stack);});
+        await oldPage.route('**/freshness.mjs',route=>route.fulfill({status:200,contentType:'text/javascript',body:oldSource}));
+        oldPage.on('response',response=>{if(new URL(response.url()).pathname.endsWith('/freshness.mjs'))jobs.push(response.body().then(bytes=>oldServed=digest(bytes)));});
+        try{
+          await oldPage.goto(`${origin}/?topic=${topic}`);await oldPage.locator('body[data-ready=true]').waitFor();
+          await Promise.all(jobs);result.rolloutConsumer={base:'306',sha256:digest(oldSource),served_sha256:oldServed};assert.equal(oldServed,digest(oldSource));
+          result.rolloutWrite=await set(workspace,`${origin}/rollout/${key}`,'Team Link after old consumer boot');
+          result.rolloutMessage=await control({method:'agent_message',operation_id:`rollout-message-${key}`,sender:'person',whole_topic:true,topic_id:topic,body:'Message after a Link write under the strict306 consumer'});
+          await oldPage.locator(`[data-id="${result.rolloutMessage.result.message_id}"]`).first().waitFor();
+          await Promise.all(jobs);assert.equal(oldServed,digest(oldSource));assert.deepEqual(result.rolloutPageErrors,[]);
+          result.rolloutConsumer={base:'306',sha256:digest(oldSource),served_sha256:oldServed,messageVisible:true};
+        }finally{leaving=true;await oldPage.close();}
+      });
+      for(const choice of ['Open','Rename','Remove'])await reviewCheck(`menu ${choice} resolves a tile repainted while its sheet is open`,async()=>{
+        const url=`${origin}/stale-menu/${key}/${choice.toLowerCase()}`;await set(workspace,url,'Before menu repaint');await anchor(url).waitFor();
+        const old=await anchor(url).elementHandle(),sheet=await door(url);await set(workspace,url,'After menu repaint',1);await anchor(url).filter({hasText:'After menu repaint'}).waitFor();assert.equal(await old.evaluate(el=>el.isConnected),false);
+        try{
+          if(choice==='Open'){
+            const waiting=page.waitForEvent('popup',{timeout:1800}).then(popup=>({popup}),error=>({error}));await press(sheet.getByRole('menuitem',{name:'Open',exact:true}));const opened=await waiting;
+            if(opened.popup){assert.equal(opened.popup.url(),url);await opened.popup.close();}assert.ok(opened.popup,opened.error?.message);
+          }else if(choice==='Rename'){
+            await press(sheet.getByRole('menuitem',{name:'Rename',exact:true}));await form.waitFor();assert.equal(await form.getByRole('textbox',{name:'Link title',exact:true}).inputValue(),'After menu repaint');
+          }else{
+            await press(sheet.getByRole('menuitem',{name:'Remove',exact:true}));await anchor(url).waitFor({state:'detached'});const kept=(await api.view('workspace_links',{workspace_id:workspace})).items.find(row=>row.url===url);assert.equal(kept.removed,true);assert.equal(kept.revision,3);
+          }
+        }finally{if(await form.isVisible())await press(form.getByRole('button',{name:'Cancel',exact:true}));await page.keyboard.press('Escape');await openRail();}
+      });
+      await reviewCheck('Remove refusal survives another actual write and Live repaint',async()=>{
+        const url=`${origin}/refusal/${key}`,next=`${origin}/after-refusal/${key}`;await set(workspace,url,'Refusal target');await anchor(url).waitFor();let conflicted=false;
+        const route=async request=>{const envelope=request.request().postDataJSON();if(envelope.kind==='workspace.link_set'&&envelope.args.url===url&&envelope.args.removed&&!conflicted){conflicted=true;await set(workspace,url,'Other client wins',1);}await request.continue();};
+        await page.route('**/api/command',route);
+        const waiting=page.waitForResponse(response=>response.url().endsWith('/api/command')&&response.request().postDataJSON().args?.url===url).then(response=>response.json()).then(value=>({value}),error=>({error}));
+        try{
+          await menu(url,'Remove');const response=await waiting;assert.ifError(response.error);result.menuRefusal=response.value;assert.equal(result.menuRefusal.error.code,'REVISION_CONFLICT');await set(workspace,next,'Live after refusal');await anchor(next).waitFor();
+          await section.locator('.notice').filter({hasText:'Writing changed'}).waitFor();result.refusalKeptAfterLive=true;
+        }finally{await page.unroute('**/api/command',route);}
+      });
+      await reviewCheck('Copy failure survives a subsequent actual Live repaint',async()=>{
+        await page.evaluate(()=>{window.savedCopy1021=navigator.clipboard.writeText;navigator.clipboard.writeText=async()=>{throw Error('isolated clipboard refusal');};});
+        try{await menu(site,'Copy link');const url=`${origin}/copy-refusal/${key}`;await set(workspace,url,'Live after Copy refusal');await anchor(url).waitFor();await section.locator('.notice').filter({hasText:'Could not copy this link.'}).waitFor();result.copyRefusalKept=true;}
+        finally{await page.evaluate(()=>{navigator.clipboard.writeText=window.savedCopy1021;});}
+      });
+      await reviewCheck('menu Rename cannot steal an in-flight Add refusal',async()=>{
+        const url=`${origin}/pending-add/${key}`;let release,received,routeDone,routeFailure;const held=new Promise(resolve=>release=resolve),captured=new Promise(resolve=>received=resolve);
+        const route=request=>{const envelope=request.request().postDataJSON();if(envelope.kind!=='workspace.link_set'||envelope.args.url!==url)return request.continue();routeDone=(async()=>{const response=await request.fetch();result.pendingAddReceipt=await response.json();received();await held;await request.fulfill({response});})().catch(error=>{routeFailure=error;received();});return routeDone;};
+        await page.route('**/api/command',route);await press(pencil);await form.getByRole('textbox',{name:'Link URL',exact:true}).fill(url);await form.getByRole('textbox',{name:'Link title',exact:true}).fill('Pending\tAdd refusal');
+        try{
+          await press(form.getByRole('button',{name:'Add link',exact:true}));await Promise.race([captured,page.waitForTimeout(6000).then(()=>{throw Error('Add request did not reach isolated Core');})]);assert.equal(result.pendingAddReceipt.error.code,'INVALID_ARGUMENT');
+          await menu(site,'Rename');assert.equal(await form.getByRole('textbox',{name:'Link URL',exact:true}).inputValue(),url);assert.equal(await form.getByRole('textbox',{name:'Link title',exact:true}).inputValue(),'Pending\tAdd refusal');
+          release();await form.locator('.link-notice').filter({hasText:'control or invisible'}).waitFor();result.pendingAddRefusalKept=true;
+        }finally{release();if(routeDone)await routeDone;await page.unroute('**/api/command',route);assert.ifError(routeFailure);if(await form.isVisible())await press(form.getByRole('button',{name:'Cancel',exact:true}));}
+      });
       if(width<761)await reviewCheck('phone dots leave the browser icon visible and tappable',async()=>{
         await anchor(site).scrollIntoViewIfNeeded();
         result.iconMenuGeometry=await anchor(site).evaluate(a=>{

@@ -163,3 +163,30 @@ within the existing bounded parser rather than claiming complete UTS46 parity.
 Keep actual pre-edit native/Core reds, small scoped client tests, final producer
 hashes, paired relevant cohorts, recovery controls and strict owned cleanup.
 1037 and1034 stay conditional on approval, not part of this correction.
+
+## Review15783 fifth-head correction contract
+
+This supersedes the fourth head's dual-scope Link emission. Publish Link row
+keys only in the workspace scope. Team and topic-only readers' topic change
+feeds receive no Link key, keeping the strict306 client running across an
+upgrade and revealing no Link activity to a reader denied the collection.
+Settings/list identity, row revision/replay and Live rail repaint remain.
+
+Every menu act resolves the current attached tile by its exact Core URL and
+uses that tile's current row/revision. A removed tile performs no stale act.
+Menu refusals and Copy failures use the Links-owned status, so another write
+and Live repaint cannot erase them. edit() refuses to repurpose the form while
+an Add is busy, preserving the pending response, exact writing and refusal.
+
+Host failures identify the host rather than credentials. Contextual ZWNJ/ZWJ
+joiners remain a named parser limit: browser-valid names containing them may
+be refused, with that cause stated in the form's error and this page. No full
+CONTEXTJ/UTS46 parser is added in this correction.
+
+Retain actual fourth-head reds before product edits. Add scoped client checks
+for suppression clearing, capture Escape/document keyboard observation,
+Rename-over-Add retention, busy editing, current-tile acts and own status.
+Native checks retain stale-menu repaint, actual busy Add refusal and refusal
+surviving another real write/Live repaint. Same branch/base306/schema65→66;
+one exact fifth frozen source follows green checks.1042 follows that freeze
+under15787 and needs Fable binding;1037's separate approval gate stays.

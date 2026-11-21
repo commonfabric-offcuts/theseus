@@ -97,7 +97,10 @@ def canonical_url(value):
         parsed = urlsplit(value)
         if parsed.scheme.lower() not in ("http", "https") or not parsed.hostname or parsed.username is not None or parsed.password is not None:
             raise ValueError()
-        host = _host(parsed.hostname)
+        try:
+            host = _host(parsed.hostname)
+        except (ValueError, UnicodeError):
+            raise Refusal("INVALID_ARGUMENT", "Use a valid host name. Names containing invisible joiners are not supported yet")
         port = parsed.port
         scheme = parsed.scheme.lower()
         netloc = host + (":" + str(port) if port is not None and (scheme, port) not in (("http", 80), ("https", 443)) else "")
@@ -157,7 +160,6 @@ class WorkspaceLinks:
                    "removed=excluded.removed,by_actor=excluded.by_actor,ms=excluded.ms",
                    (workspace["id"], url, title, revision + 1, int(args["removed"]), actor, _now_ms()))
         row = db.execute("SELECT * FROM workspace_links WHERE workspace_id=? AND url=?", (workspace["id"], url)).fetchone()
-        for scope in ("workspace", "outcome"):
-            self._change(db, scope, workspace["id"], "workspace_link", str(row["seq"]), row["revision"])
+        self._change(db, "workspace", workspace["id"], "workspace_link", str(row["seq"]), row["revision"])
         return {"workspace_id": workspace["id"], "link": link_item(row), "changed": True}, [
             {"kind": "workspace_link", "id": str(row["seq"]), "version": row["revision"]}]

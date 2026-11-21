@@ -156,13 +156,14 @@ export class WorkspaceLinks {
     (anchors.find(el => el.dataset.outcomeLink === target) ?? anchors[0] ?? this.pencil).focus({ preventScroll: true });
   }
   message(words) { this.notice.textContent = words; this.notice.hidden = !words; }
+  feedbackMessage(words) { this.feedback.textContent = words; this.feedback.hidden = !words; }
   close(focus) {
     if (!this.form.hidden && !this.record) this.newDraft = { url: this.url.value, title: this.title.value };
     ++this.serial; this.busy = false; this.form.hidden = true; this.pencil.setAttribute('aria-expanded', 'false');
     if (focus) (this.opener?.isConnected ? this.opener : this.pencil).focus();
   }
   edit(record, opener) {
-    if (!this.mayWrite || !this.rail.handles) return;
+    if (this.busy || !this.mayWrite || !this.rail.handles) return;
     if (!this.form.hidden && !this.record) this.newDraft = { url: this.url.value, title: this.title.value };
     ++this.serial; this.record = record; this.opener = opener; this.busy = false;
     this.url.readOnly = Boolean(record); this.title.readOnly = false; this.save.disabled = false;
@@ -197,18 +198,25 @@ export class WorkspaceLinks {
   }
   menu(anchor, at = null) {
     if (!anchor?.isConnected || !this.current(this.rail.handles)) return;
-    this.feedback.hidden = true;
+    this.feedbackMessage('');
     if (this.touchDown) this.holdOpened = true;
-    const handles = this.rail.handles, row = anchor.linkRecord;
-    const act = task => async () => { try { await task(); } catch (error) { if (this.current(handles)) { this.rail.message.textContent = error.message; this.rail.message.hidden = false; } } };
+    const handles = this.rail.handles, url = anchor.dataset.outcomeLink;
+    const act = task => async () => {
+      if (!this.current(handles)) return;
+      const attached = [...this.rail.sections.get('previews').body.querySelectorAll('a[data-outcome-link]')]
+        .find(el => el.isConnected && el.dataset.outcomeLink === url);
+      if (!attached) { this.feedbackMessage('This link is no longer here.'); return; }
+      try { await task(attached, attached.linkRecord); }
+      catch (error) { if (this.current(handles)) this.feedbackMessage(error.message); }
+    };
     this.openMenu = openMessageMenu({ anchor, at, doc: this.doc, win: this.rail.win, sheet: true, label: 'Link', items: [
-      { label: 'Open', glyph: 'openpage', act: () => anchor.click() },
-      { label: 'Copy link', glyph: 'copy', act: act(async () => {
+      { label: 'Open', glyph: 'openpage', act: act(attached => attached.click()) },
+      { label: 'Copy link', glyph: 'copy', act: act(async (_attached, row) => {
         if (!await copyText(row.url, this.rail.win.navigator)) throw Error('Could not copy this link.');
-        if (this.current(handles)) this.feedback.hidden = false;
+        if (this.current(handles)) this.feedbackMessage('Link copied.');
       }) },
-      { label: 'Rename', glyph: 'pencil', disabled: !this.mayWrite, act: () => this.edit(row, anchor) },
-      { label: 'Remove', glyph: 'drop', disabled: !this.mayWrite, act: act(async () => {
+      { label: 'Rename', glyph: 'pencil', disabled: !this.mayWrite, act: act((attached, row) => this.edit(row, attached)) },
+      { label: 'Remove', glyph: 'drop', disabled: !this.mayWrite, act: act(async (_attached, row) => {
         const urls = [...this.rail.sections.get('previews').body.querySelectorAll('a[data-outcome-link]')].map(el => el.dataset.outcomeLink), index = urls.indexOf(row.url);
         await this.write(handles, row, true);
         if (this.current(handles)) { this.removedFocus = { url: row.url, next: urls[index + 1] ?? urls[index - 1] ?? null }; this.rail.changed(); }
