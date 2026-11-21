@@ -61,6 +61,6 @@ test('1023 an unrelated dialog keeps its Alt key when the pencil does not own th
 });
 
 for (const extra of [{ isComposing: true }, { keyCode: 229 }, { defaultPrevented: true }]) test(`1023 composition/already-owned events remain untouched ${JSON.stringify(extra)}`, () => {
-  const f = fixture(); const { used } = f.press({ key: 'Dead', code: 'KeyN', altKey: true, ...extra });
+  const f = fixture(); const { used } = f.press({ key: 'Dead', code: extra.defaultPrevented ? 'KeyN' : 'KeyA', altKey: true, ...extra });
   assert.equal(used, false); assert.deepEqual(f.calls, []);
 });

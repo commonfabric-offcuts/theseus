@@ -1022,3 +1022,44 @@ test('962 a Notebook literal title retains its marks and link text while joining
   assert.equal(format.sourcePosition(label.childNodes[0], title.length, true), heading.length);
   assert.equal(format.drawnRevision(row), 4);
 });
+
+for(const historical of [false,true])test(`1025 ${historical?'historical':'new'} reason gets one reply mark, exact reason/prose and source offsets`,()=>{
+ const reason='The whole assignment. 🪴',own='These are **my words**.';
+ const body=(historical?'Reply without a quote:\n\n':'')+'> '+reason+'\n\n'+own;
+ for(const reader of [false,true]){
+  const host=new Element('span'),options={replyBasis:{reason},agentReply:true};
+  if(reader)format.drawPassages(host,body,doc,options);else format.formatWords(host,body,options);
+  const marks=byClass(host,'reply-basis-mark');assert.equal(marks.length,1);
+  assert.equal(marks[0].attributes.role,'img');assert.equal(marks[0].attributes['aria-label'],'Reply without a quote: '+reason);assert.equal(marks[0].title,'Reply without a quote: '+reason);
+  assert.equal(byClass(host,'md-quote')[0].textContent,reason);assert.doesNotMatch(host.textContent,/Reply without a quote:/);assert.equal(format.drawnText(host),body);
+  const text=walk(host).find(n=>n.nodeType===3&&n.data.includes('These are'));
+  const start=format.sourcePosition(text,0),end=format.sourcePosition(text,'These are '.length,true);assert.equal(body.slice(start,end),'These are ');
+ }
+});
+test('1025 ordinary prose, Notebook examples and quoted replies retain their words without a reason mark',()=>{
+ for(const [body,options] of [
+  ['Reply without a quote:\n\n> Example\n\nOwn words.',{}],
+  ['Reply without a quote: literal words.',{replyBasis:null,agentReply:false}],
+  ['Example:\n\nReply without a quote:\n\n> Example',{replyBasis:null,agentReply:true}],
+  ['> Quoted source.\n\nOwn answer.',{replyBasis:{excerpt:'Quoted source.'},agentReply:true}],
+ ]){const host=render(body,options);assert.equal(byClass(host,'reply-basis-mark').length,0);assert.equal(format.drawnText(host),body);assert.ok(host.textContent.includes(body.includes('Quoted source.')?'Quoted source.':'Reply without a quote:'));}
+});
+
+test('1025 historical fallback retains reason and full-source selection boundary without current basis metadata',()=>{
+ const body='Reply without a quote:\n\n> Historical reason.\n\nOwn words.';
+ for(const reader of [false,true]){const host=new Element('span');if(reader)format.drawPassages(host,body,doc,{replyBasis:null,agentReply:true});else format.formatWords(host,body,{replyBasis:null,agentReply:true});
+ const marker=byClass(host,'reply-basis-mark')[0];assert.ok(marker);assert.equal(marker.title,'Reply without a quote: Historical reason.');assert.equal(format.sourcePosition(host,0),0);assert.equal(format.sourcePosition(marker,0),0);assert.equal(format.drawnText(host),body);}
+});
+
+test('1025 reading on, showing full and preference redraw retain the source reason and exact raw words', async()=>{
+ const body='Reply without a quote:\n\n> Exact source reason.\n\nOwn answer.',basis={reason:'Exact source reason.'};
+ for(const mode of ['expand','showFull']){
+  const card=new Element('div'),preview=new Element('span'),cue=new Element('span');preview.className='message-preview';cue.className='message-preview-cue';card.append(preview,cue);
+  Object.assign(card,{scrollTop:0,scrollHeight:300,clientHeight:150,getBoundingClientRect:()=>({top:0,height:150}),querySelector:selector=>({':scope > .message-preview':preview,':scope > .message-preview-cue':cue})[selector]??null});preview.getBoundingClientRect=()=>({top:10,height:100});
+  const scroll=new CardScroll({read:async()=>({source_ref:{kind:'message',id:'m'},body,revision:2,reply_basis:basis})});
+  assert.equal(await scroll[mode](card,{id:'m',preview:true,body:'Cut excerpt',author_kind:'agent',reply_to:'parent',reply_basis:{reason:'Stale excerpt reason.'}}),true);
+  assert.equal(byClass(preview,'reply-basis-mark')[0].title,'Reply without a quote: Exact source reason.');assert.equal(format.drawnText(preview),body);
+  format.redrawMessageWords(preview,[]);assert.equal(byClass(preview,'reply-basis-mark').length,1);assert.doesNotMatch(preview.textContent,/Reply without a quote:/);assert.equal(format.drawnText(preview),body);
+  scroll.forget('m');assert.equal(scroll.bases.has('m'),false);
+ }
+});

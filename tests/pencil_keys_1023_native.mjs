@@ -10,6 +10,7 @@ const evidence = process.argv[2], baseline = process.argv.includes('--red');
 await mkdir(evidence, { recursive: true });
 const hashes = {};
 for (const file of ['inline-composer.mjs', 'pane-keys.mjs', 'interaction-guide.mjs', 'pencil-keys.mjs']) hashes[file] = createHash('sha256').update(await readFile('web/' + file)).digest('hex');
+const load=Number(execFileSync('/usr/bin/uptime',{encoding:'utf8'}).match(/load averages?:\s*([0-9.]+)/)?.[1]);assert.ok(load<12,'load below12/18: '+load);
 const fixture = spawn('/usr/bin/python3', ['-B', 'tests/fixtures/ui_http.py', '--freshness']);
 const { control, exit, errors } = fixtureControl(fixture);
 const ps = () => execFileSync('/bin/ps', ['-axo', 'pid=,ppid=,command='], { encoding: 'utf8' }).split('\n').flatMap(line => {
@@ -32,7 +33,7 @@ try {
   facts = await control({ method: 'ready' }); origin = facts.origin;
   profile = await mkdtemp(evidence + '/' + engine + '-profile-');
   const persistent = await playwright[engine].launchPersistentContext(profile, { headless: true,
-    ...(engine === 'chromium' ? { executablePath: process.env.AIM_CHROME } : {}) });
+    ...(engine === 'chromium' ? { executablePath: process.env.AIM_CHROME } : process.env.AIM_WEBKIT ? {executablePath:process.env.AIM_WEBKIT} : {}) });
   browser = persistent.browser(); assert.ok(browser); browserVersion = browser.version();
   for (const row of ps()) if (row.command.includes(profile)) owned.add(row.pid);
   children(); assert.ok(owned.size);
