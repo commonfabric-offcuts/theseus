@@ -355,18 +355,22 @@ test('921 failed local saves remain on the page and merge other-tab choices when
   assert.deepEqual(['w1', 'w2', 'w3', 'w4'].map(id => rebuilt.isOpen(id)), [false, true, false, true]);
 });
 
-test('902 plain name navigation keeps disclosure;973 modified name clicks dim without navigation or reads', async t => {
+test('902 plain name navigation keeps disclosure;1041 Option name clicks dim without navigation or reads', async t => {
   const f = await fixture(t), second = f.outcome('w2');
   f.outline.setOpen(second, true); await f.flush();
   f.click(second.name); assert.equal(second.topics.hidden, false);
   f.click(second.name, { detail: 0 });
   assert.deepEqual(f.moves, [[{ kind: 'workspace', id: 'w2' }, 'Outcome w2'], [{ kind: 'workspace', id: 'w2' }, 'Outcome w2']]);
   const reads = f.reads.length;
-  const modified = f.click(second.name, { metaKey: true });
+  const beforeCommand = JSON.stringify(f.outline.dimming.choices.value);
+  assert.equal(f.click(second.name, { metaKey: true }).defaultPrevented, false, 'Command belongs to the browser');
+  assert.equal(JSON.stringify(f.outline.dimming.choices.value), beforeCommand);
+  assert.equal(f.moves.length, 2);
+  const modified = f.click(second.name, { altKey: true });
   assert.equal(modified.defaultPrevented, true); assert.equal(f.moves.length, 2);
   assert.equal(second.li.dataset.dimmed, 'true'); assert.equal(second.topics.hidden, false);
-  f.click(second.name, { metaKey: true }); assert.equal(second.li.dataset.dimmed, 'false');
-  f.click(second.name, { metaKey: true, shiftKey: true });
+  f.click(second.name, { altKey: true }); assert.equal(second.li.dataset.dimmed, 'false');
+  f.click(second.name, { altKey: true, shiftKey: true });
   assert.equal(second.li.dataset.dimmed, 'false'); assert.equal(f.outcome('w3').li.dataset.dimmed, 'true');
   assert.equal(f.moves.length, 2); assert.equal(f.reads.length, reads);
 });

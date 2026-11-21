@@ -167,7 +167,7 @@ test('each key means one thing in the panes: arrows move, ⌘ arrows open, fold 
     ['z', { metaKey: true, shiftKey: true }], ['Home', command]]), [null, null, null, null, null, null, null, null]);
   assert.equal(keyAction(press('ArrowDown', { defaultPrevented: true })), null, 'a key something else took');
   assert.equal(keyAction(press('ArrowDown', { isComposing: true })), null, 'while composing a character');
-  assert.deepEqual(KEY_WORDS.map(([keys]) => keys), ['↑ ↓', 'Return', '⌘→ ⌘←', '⇧⌘→ ⇧⌘←', '→ ←', '⌘Return', 'Option-N · Option-M', '⌘↑ ⌘↓', '⌘Z'], 'the legend names every key');
+  assert.deepEqual(KEY_WORDS.map(([keys]) => keys), ['↑ ↓', 'Return', '⌘→ ⌘←', '⇧⌘→ ⇧⌘←', '→ ←', '⌘Return', 'Option-N · Option-M', '⌘↑ ⌘↓', '⌥-click · ⇧⌥-click', '⌘Z'], 'the legend names every key');
   assert.ok(KEY_WORDS.length >= 5 && KEY_WORDS.every(([keys, words]) => keys && /^[a-z]/.test(words) && !/\b[tw]-[0-9a-f]{6}/.test(words)), 'the legend is plain words');
   // Under "In the messages", the stack keys, each one the key map gives a message.
   assert.deepEqual(MESSAGE_KEY_WORDS.map(([keys]) => keys), ['↑ ↓', '⌘↑', '⌘↓', '→ ←', '⇧⌘↑ ⇧⌘↓', 'x', '⌘Z'], 'the messages\' legend names every stack key');
