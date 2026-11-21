@@ -81,7 +81,7 @@ def approved(config, run):
     raise Refused('The admission pipeline exceeded its bounded read; no judged work is authorized')
 
 
-def admit(config, candidate, run):
+def admit(config, candidate, run, *, started_landing=False):
     require(isinstance(candidate, str) and re.fullmatch(r'[0-9a-f]{40}', candidate), 'Admission names the full candidate commit')
     def git(*args):
         answer = run(['git', '-C', str(config.live)] + list(args))
@@ -103,6 +103,11 @@ def admit(config, candidate, run):
             except releases.Malformed as error:
                 raise Refused(str(error))
     require(len(items) <= 1, 'A judged item pays its own gauntlet; land it alone, without bundling other items')
+    # take_train authenticated a merge already on the release branch: finish
+    # that landing before later ordinary approvals, retaining the guards above.
+    if started_landing:
+        return {'judged': True, 'base_commit': base, 'head_commit': candidate, 'guarded_paths': guarded,
+                'items': sorted(items), 'blocked': []}
     pieces, waiting, version = approved(config, run)
     blocked = []
     for piece in pieces:

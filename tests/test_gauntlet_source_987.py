@@ -34,9 +34,9 @@ class Binder987(Freeze987):
         self.git('add','.');self.git('commit','-qm','Synthetic freeze source')
         return self.git('rev-parse','HEAD')
 
-    def cli(self,piece,base,head):
+    def cli(self,piece,base,head,profile=None):
         return subprocess.run(['/usr/bin/python3','-I','-B',str(ROOT/'bin/aim-next'),
-            '--profile',str(self.profile),'--json','freeze',piece,'--repo',str(self.repo),
+            '--profile',str(profile or self.profile),'--json','freeze',piece,'--repo',str(self.repo),
             '--base',base,'--head',head],capture_output=True,text=True)
 
     def test_987_binder_reads_renamed_guarded_old_path_and_publishes_same_record(self):
@@ -46,13 +46,36 @@ class Binder987(Freeze987):
         piece=self.piece([1])
         answer=self.cli(piece,self.base,head)
         self.assertEqual(answer.returncode,0,answer.stdout+answer.stderr)
-        result=json.JSONDecoder().raw_decode(answer.stdout)[0]
+        decoder=json.JSONDecoder()
+        observed,end=decoder.raw_decode(answer.stdout)
+        self.assertEqual(observed['piece_id'],piece)
+        self.assertIsNone(observed['freeze'])
+        result=decoder.raw_decode(answer.stdout[end:].lstrip())[0]
         self.assertTrue(result['result']['freeze']['judged'])
         freeze=self.shown(piece)['freeze']
         self.assertEqual((freeze['base_commit'],freeze['head_commit'],freeze['by']), (self.base,head,'agent-a'))
         self.assertEqual(freeze['files'], ['innocent.txt','tools/deploy.py'])
         page=self.store.view('agent-b','pipeline',{'workspace_id':'w1'})
         self.assertEqual(next(p for p in page['pieces'] if p['id']==piece)['freeze'],freeze)
+
+    def test_987_missing_piece_returns_coded_refusal_without_traceback_or_write(self):
+        before=self.sql('SELECT count(*) FROM pipeline_piece_freezes')
+        answer=self.cli('p-missing',self.base,self.base)
+        self.assertEqual(answer.returncode,2,answer.stdout+answer.stderr)
+        self.assertEqual(json.loads(answer.stdout)['error']['code'],'NOT_FOUND')
+        self.assertNotIn('Traceback',answer.stderr)
+        self.assertEqual(self.sql('SELECT count(*) FROM pipeline_piece_freezes'),before)
+
+    def test_987_forbidden_piece_returns_coded_refusal_without_traceback_or_write(self):
+        piece=self.piece([1]);version=self.version(piece)
+        outsider=Path(self.temp.name).resolve()/'outsider.json'
+        write_profile(outsider,str(self.path.resolve()),'test-instance','outsider',binding=self.binding)
+        answer=self.cli(piece,self.base,self.base,profile=outsider)
+        self.assertEqual(answer.returncode,2,answer.stdout+answer.stderr)
+        self.assertEqual(json.loads(answer.stdout)['error']['code'],'FORBIDDEN')
+        self.assertNotIn('Traceback',answer.stderr)
+        self.assertEqual(self.version(piece),version)
+        self.assertIsNone(self.shown(piece)['freeze'])
 
     def test_987_actual_deleted_path_and_classifier_dependency_are_guarded(self):
         (self.repo/'tools/deploy.py').unlink()
