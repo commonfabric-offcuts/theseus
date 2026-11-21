@@ -251,7 +251,12 @@ export class OutlineRail {
     this.watch?.disconnect(); this.watch = null; this.watched = null;
     // The list the run that went drew stays in view until the next run's own
     // has something to show; nothing in it acts meanwhile.
-    for (const outcome of this.outcomes.values()) if (outcome.adopted) outcome.adopted.inert = true;
+    for (const outcome of this.outcomes.values()) if (outcome.adopted) {
+      outcome.adopted.inert = true;
+      // Retired page parts keep their look, but their ids must not shadow
+      // the next run's fresh elements. The retired run kept its own id map.
+      for (const node of [outcome.adopted, ...outcome.adopted.querySelectorAll('[id]')]) node.removeAttribute('id');
+    }
     if (!feed) return;
     // Under the page's header on a phone: how much is new in the other
     // outcomes, which opens the outline (rail-drawer.mjs opens on data-opens-rail).
@@ -692,6 +697,16 @@ export class OutlineRail {
   // is up; a list not ready yet is watched, and the watch asks again.
   place() {
     const rail = this.doc.getElementById('rail'), fresh = rail?.querySelector(':scope > #topic-navigation');
+    // An outcome home mirrors this outline's own TopicRail. Its reused
+    // navigation node can still carry a topic page's data-listed marker;
+    // adopting that mirror would hide its owner and skip the topics read.
+    if (this.handles?.route?.kind === 'workspace') {
+      this.watch?.disconnect(); this.watch = null; this.watched = null;
+      for (const each of this.outcomes.values()) if (each.adopted) {
+        each.adopted.remove(); each.adopted = null; each.own.hidden = Boolean(each.held);
+      }
+      return;
+    }
     const outcome = this.here ? this.outcomes.get(this.here) : null;
     // The outline's first read of the outcomes has settled, so the rows above
     // the list are drawn and do not push it down as a topic is pressed.

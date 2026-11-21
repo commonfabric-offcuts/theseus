@@ -89,6 +89,40 @@ test('847 outline publishes only this outcome and clears its projection on fold,
   outline.handles.route={kind:'topic'};const n=seen.length;outline.publishTopics();assert.equal(seen.length,n);
 });
 
+test('945 outcome-home projection relinquishes stale topic-page adoption before the list loads', async t => {
+  const doc=dom(t),fresh=doc.createElement('div');fresh.dataset.listed='';
+  const outcome={id:'w',adopted:fresh,held:null,own:{hidden:true}},reads=[];
+  doc.getElementById=id=>id==='rail'?{querySelector:()=>fresh}:null;
+  const outline=Object.assign(Object.create(OutlineRail.prototype),{doc,listRead:true,
+    outcomes:new Map([['w',outcome]]),handles:{route:{kind:'workspace'},workspaceId:'w'},
+    adopt(){assert.fail('an outcome-home projection cannot become the list it mirrors');},
+    ownRail(){return{load:async()=>{reads.push('topics');return true;}};},
+    readConversation(){reads.push('conversation');return true;}});
+  outline.place();
+  assert.equal(outcome.adopted,null);assert.equal(outcome.own.hidden,false);
+  assert.equal(await outline.loadTopics(outcome),true);
+  assert.deepEqual(reads,['topics'],'the owner reads topics instead of skipping them for a conversation-only refresh');
+});
+
+test('945 absent projection is not an empty-list claim; loaded empty, loading and failure stay distinct', t => {
+  const f=railFixture(t);
+  f.cards.paint(null);assert.equal(f.cards.empty.hidden,true);
+  const values={reader:'reader',started:true,busy:false,message:'',retry:null,groups:[]};
+  f.cards.paint(values);assert.equal(f.cards.empty.hidden,false);assert.equal(f.cards.empty.textContent,'No topics in this list.');
+  f.cards.paint({...values,started:false});assert.equal(f.cards.empty.textContent,'Loading topics…');
+  f.cards.paint({...values,message:'Topics could not be read. Retry topics.',retry:()=>{}});
+  assert.equal(f.cards.empty.hidden,true);assert.equal(f.cards.notice.hidden,false);assert.equal(f.cards.retry.hidden,false);
+});
+
+test('945 retained page-part ids cannot shadow fresh ids while the retired list keeps its look', t => {
+  const f=railFixture(t),old=f.node(),child=f.node();old.setAttribute('id','topic-navigation');child.setAttribute('id','topics');old.append(child);
+  const outline=Object.assign(Object.create(OutlineRail.prototype),{menus:{reset(){}},host:{},run:0,
+    dossiers:{begin(){}},notebookStars:{begin(){}},outcomes:new Map([['w',{adopted:old}]])});
+  outline.begin(false);
+  assert.equal(old.inert,true);assert.ok(!old.getAttribute('id'));assert.ok(!child.getAttribute('id'));
+  assert.equal(old.children[0],child,'retirement keeps the visible old nodes, not their addressability');
+});
+
 test('847 a directly reached outcome uses its provisional outline row as the topic-list owner', async () => {
   const read=[], outline=Object.assign(Object.create(OutlineRail.prototype),{
     handles:{workspaceId:'outside',workspaceTitle:'Outside',view:async()=>({instance_id:'847-test',items:[],next_cursor:null})},run:1,

@@ -105,8 +105,8 @@ export class OutcomeTopicCards {
     this.notice.textContent = presentation?.message ?? '';
     this.retry ??= this.node('button', '', 'Retry topics'); this.retry.type = 'button';
     this.retry.hidden = !presentation?.retry; this.retry.onclick = presentation?.retry;
-    this.empty ??= this.node('p', 'empty'); this.empty.hidden = ids.size > 0 || !this.notice.hidden;
-    this.empty.textContent = presentation && !presentation.started ? 'Loading topics…' : 'No topics shown by the outline.';
+    this.empty ??= this.node('p', 'empty'); this.empty.hidden = !presentation || ids.size > 0 || !this.notice.hidden;
+    this.empty.textContent = presentation && !presentation.started ? 'Loading topics…' : 'No topics in this list.';
     arrange(this.host, [...sections, this.notice, this.retry, this.empty]);
   }
 }
