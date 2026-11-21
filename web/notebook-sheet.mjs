@@ -25,6 +25,7 @@ import { glyph } from './glyphs.mjs';
 import { timeNode } from './times.mjs';
 import { DeckPage } from './deck-page.mjs';
 import { NotebookDossiers } from './notebook-dossiers.mjs';
+import { panes } from './panes.mjs';
 
 const RETURN = 'notebook-return';
 // The card box a page had open when it was let go (another page, a move, a reload), opened again with it.
@@ -121,6 +122,14 @@ export class NotebookSheet {
       topicId: feed.topicId, choose: id => this.openInFeed(feed.topicId, id) });
     this.paintDock();
     this.dialog.append(this.root);
+    this.pane = { host: this.dialog, active: () => this.showing && this.docked,
+      focus: () => {
+        if (!this.showing || !this.docked || !this.current) return false;
+        this.focus(this.current, false);
+        if (!this.dialog.contains(this.doc.activeElement)) this.current.more.focus({ preventScroll: true });
+        return this.dialog.contains(this.doc.activeElement);
+      } };
+    panes.notebook = this.pane;
     this.dialog.addEventListener('cancel', event => { if (this.showing) { event.preventDefault(); this.close(); } });
     // The sheet is put away as it closes, not when the browser's close event comes: that comes with the browser's
     // next frame, later still on a slow machine, after a key may have moved the focus on from the opener or opened
@@ -223,6 +232,7 @@ export class NotebookSheet {
       page.surfaceChanged = () => this.paintHeader(page);
       page.presentStatus = (words, state, again) => this.presentStatus(page, words, state, again);
       page.keyScope = target => !this.docked || this.dialog.contains(target);
+      page.leavePane = way => this.showing && this.docked && panes.step('notebook', way, this.doc);
       page.sheetTitle = header.title;
       page.changes = this.node('div', 'notebook-sheet-changes'); page.changes.hidden = true;
       host.prepend(page.changes);
@@ -523,6 +533,7 @@ export class NotebookSheet {
   // The run ends without a pagehide (an in-place move): each page's card box is kept for its next opening, and its
   // writing closes as on pagehide.
   retire() {
+    if (panes.notebook === this.pane) panes.notebook = null;
     this.listening.abort(); this.showing = false;
     this.wide?.removeEventListener('change', this.resized); this.still?.abort(); this.dossiers?.close();
     this.docked = false; this.paintDock();
