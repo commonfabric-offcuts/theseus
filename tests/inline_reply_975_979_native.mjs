@@ -8,7 +8,7 @@ import { fixtureControl } from './fixture_control.mjs';
 const engines = await import(process.env.AIM_PLAYWRIGHT_CORE), engine = process.env.AIM_BROWSER ?? 'chromium';
 const evidence = process.argv[2]; await mkdir(evidence, { recursive: true });
 const filter = new RegExp(process.argv[3] ?? '');
-const sourceFiles = ['web/compose-bar.mjs', 'web/card-replies.mjs', 'web/inline-composer.mjs', 'web/aim.css', 'tests/inline_reply_975_979_native.mjs'];
+const sourceFiles = ['web/app.mjs', 'web/app-session.mjs', 'web/session.mjs', 'web/editor.mjs', 'web/writing-input.mjs', 'web/compose-bar.mjs', 'web/card-replies.mjs', 'web/inline-composer.mjs', 'web/upload-state.mjs', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/inline_reply_975_979_native.mjs'];
 const hashes = Object.fromEntries(await Promise.all(sourceFiles.map(async path => [path, createHash('sha256').update(await readFile(path)).digest('hex')])));
 await writeFile(`${evidence}/source.json`, JSON.stringify({ base: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), hashes }, null, 2));
 const child = spawn('/usr/bin/python3', ['-B', 'tests/fixtures/ui_http.py', '--freshness']);
@@ -29,17 +29,18 @@ try {
   const persistent = await engines[engine].launchPersistentContext(profile, { headless: true,
     ...(engine === 'chromium' ? { executablePath: process.env.AIM_CHROME } : {}) });
   browser = persistent.browser(); retainChildren(); assert.ok(owned.size);
-  for (const width of [1280,390]) for (const look of ['bookends','paper']) for (const scenario of ['height','no-quote','image-source','reader-no-quote','named-control','keyboard-send','quoted-inline','quoted-reader','refused-send','late-writing','live-arrival']) {
+  for (const width of [1280,390]) for (const look of ['bookends','paper']) for (const scenario of ['height','no-quote','image-source','reader-no-quote','named-control','keyboard-send','quote-only-keyboard','quote-only-lost-answer','quote-only-lost-writing','quote-only-lost-reopened','quoted-lost-answer','quoted-inline','quoted-reader','refused-send','late-writing','live-arrival']) {
     const key = `${width}-${look}-${scenario}`; if(!filter.test(key))continue;
+    const quoteOnly=scenario.startsWith('quote-only-'),lostAnswer=scenario.includes('-lost-');
     // Each case has its own dossier: recovery and later writing deliberately
     // retained by adverse cases must not fold another case's source card.
     const first=await control({method:'agent_message',operation_id:`975-root-${key}`,sender:facts.actor,whole_topic:true,post_args:{divergence_reason:'Independent native reply case'},body:`Writing surfaces ${key}`});
     assert.equal(first.status,'committed');const rootId=first.result.message_id;
-    if(['named-control','keyboard-send'].includes(scenario))assert.equal((await control({method:'stack_act',kind:'stack.name',sender:facts.agent,message_id:rootId,args:{name:'Writing surfaces'},operation_id:`975-name-${key}`})).status,'committed');
+    if((['named-control','keyboard-send'].includes(scenario)||quoteOnly))assert.equal((await control({method:'stack_act',kind:'stack.name',sender:facts.agent,message_id:rootId,args:{name:'Writing surfaces'},operation_id:`975-name-${key}`})).status,'committed');
     const sent = await control({method:'agent_message',operation_id:`975-parent-${key}`,sender:facts.agent,
-      reply_to:rootId,reply_without_quote:'An independent reply without a quote',body:scenario==='image-source'?'':['named-control','keyboard-send'].includes(scenario)?'Reply without a quote:\n\n> answering the question in the message it replies to\n\n'+'A paragraph about writing surfaces. '.repeat(50):`Exact parent words ${key}.`,...(['image-source','named-control','keyboard-send'].includes(scenario)?{attachments:[{name:'image.png',png:[80,60]}]}:{})});
+      reply_to:rootId,reply_without_quote:'An independent reply without a quote',body:(scenario==='image-source'||quoteOnly)?'':(['named-control','keyboard-send'].includes(scenario)||quoteOnly)?'Reply without a quote:\n\n> answering the question in the message it replies to\n\n'+'A paragraph about writing surfaces. '.repeat(50):`Exact parent words ${key}.`,...(['image-source','named-control','keyboard-send'].includes(scenario)?{attachments:[{name:'image.png',png:[80,60]}]}:{})});
     assert.equal(sent.status,'committed');const id=sent.result.message_id;
-    if(['named-control','keyboard-send'].includes(scenario)) for(let n=0;n<3;n++) {
+    if((['named-control','keyboard-send'].includes(scenario)||quoteOnly)) for(let n=0;n<3;n++) {
       const sibling=await control({method:'agent_message',operation_id:`975-sibling-${key}-${n}`,sender:facts.agent,reply_to:rootId,reply_without_quote:'Sibling without a quote',body:`Other reply ${n}`});
       assert.equal(sibling.status,'committed');
     }
@@ -47,12 +48,14 @@ try {
     await context.addInitScript(look=>localStorage.setItem('theseus-look',look),look);
     const page=await context.newPage();activePage=page;page.setDefaultTimeout(6000);
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
+    const served={},servedJobs=[];page.on('response',response=>{const path='web/'+new URL(response.url()).pathname.split('/').at(-1);if(Object.hasOwn(hashes,path))servedJobs.push(response.body().then(bytes=>{served[path]=createHash('sha256').update(bytes).digest('hex');}));});
     const result={key,errors};let releaseSend;
+    if(quoteOnly)result.parentSource=await control({method:'agent_view',actor:facts.actor,name:'source',args:{source_ref:{kind:'message',id}}});
     try {
       await page.goto(origin+'/?topic=t1');await page.locator('body[data-ready=true]').waitFor();
       assert.equal(await page.locator('html').getAttribute('data-look'),look==='paper'?'paper':null);
       const card=page.locator(`.message-card[data-id="${id}"]`),words=card.locator(':scope > .message-preview');
-      if(['named-control','keyboard-send'].includes(scenario)){await card.hover();await page.locator('.message-bar [data-act=reply]').click();}else await words.click();
+      if((['named-control','keyboard-send'].includes(scenario)||quoteOnly)){await card.hover();await page.locator('.message-bar [data-act=reply]').click();}else await words.click();
       const root=page.locator(`[id="reply-${id}-composer"]`),field=root.locator('textarea'),taller=page.locator(`[id="reply-${id}-taller-field"]`);
       await field.waitFor();await field.fill(scenario==='height'?'Short reply':`Sent exact reply ${key}`);
       if(scenario==='height') {
@@ -101,15 +104,16 @@ try {
           await page.locator('#writing-body').fill(`Sent exact reply ${key}`);
           if(!readerSend){await page.locator('#reader-close').click();await field.waitFor();}
         }
-        let sendSeen;const seen=new Promise(resolve=>{sendSeen=resolve;});
+        let lostReceipt;let sendSeen;const seen=new Promise(resolve=>{sendSeen=resolve;});
         const held=new Promise(resolve=>{releaseSend=resolve;});
-        if(['refused-send','late-writing','live-arrival'].includes(scenario))await page.route('**/api/command',async route=>{
+        if((['refused-send','late-writing','live-arrival'].includes(scenario)||lostAnswer))await page.route('**/api/command',async route=>{
           const envelope=route.request().postDataJSON();if(envelope?.kind!=='message.send')return route.continue();
           if(scenario==='refused-send')return route.fulfill({status:200,json:{v:1,instance_id:envelope.instance_id,operation_id:envelope.operation_id,kind:envelope.kind,recorded:true,status:'rejected',error:{code:'PUBLICATION_REFUSED',message:'Publication refused; writing kept.'}}});
-          const response=await route.fetch();assert.equal((await response.json()).status,'committed');sendSeen();await held;await route.fulfill({response});
+          const response=await route.fetch();const answer=await response.json();assert.equal(answer.status,'committed');if(lostAnswer){lostReceipt=answer;sendSeen();return route.abort('failed');}sendSeen();await held;await route.fulfill({response});
         });
+        if(quoteOnly||lostAnswer)await page.screenshot({path:`${evidence}/${key}-before.png`});
         const receipt=page.waitForResponse(r=>{try{return r.request().postDataJSON()?.kind==='message.send';}catch{return false;}});receipt.catch(()=>{});
-        if(scenario==='keyboard-send'){await field.focus();await page.keyboard.press('Meta+Enter');}else await page.locator(readerSend?'#send-reply':`[id="reply-${id}-send"]`).click();
+        if(scenario==='keyboard-send'||quoteOnly||lostAnswer){await field.focus();await page.keyboard.press('Meta+Enter');}else await page.locator(readerSend?'#send-reply':`[id="reply-${id}-send"]`).click();
         if(['late-writing','live-arrival'].includes(scenario)){
           await Promise.race([seen,new Promise((_,reject)=>setTimeout(()=>reject(new Error('held send was not reached')),6000))]);
           assert.equal(await field.isVisible(),true);
@@ -120,7 +124,7 @@ try {
           }
           releaseSend();
         }
-        result.receipt=await(await receipt).json();
+        if(lostAnswer){await seen;result.receipt=lostReceipt;result.responseLost=true;}else result.receipt=await(await receipt).json();
         if(scenario==='refused-send'){
           assert.equal(result.receipt.status,'rejected');assert.equal(await root.isVisible(),true);await page.locator(`#topic-pending [data-key*="${id}"] button`).click();await page.locator('#version-review[open]').waitFor();
           assert.ok((await page.locator('#review-content').innerText()).includes(`Sent exact reply ${key}`),'refused preparation retains exact writing');
@@ -131,10 +135,23 @@ try {
         await page.locator(`.message-card[data-id="${sentId}"]`).waitFor();
         result.source=await control({method:'agent_view',actor:facts.actor,name:'source',args:{source_ref:{kind:'message',id:sentId}}});
         assert.equal(result.source.body,`Sent exact reply ${key}`);assert.equal(result.source.reply_to,id);assert.equal(result.source.quotes.length>0,quoted);
-        if(scenario==='late-writing'){await page.waitForTimeout(500);assert.equal(await field.inputValue(),'Keep this newer writing');assert.equal(await field.isVisible(),true);assert.equal(await field.evaluate(n=>document.activeElement===n),true);result.newWritingKept=true;}
+        if(lostAnswer){
+          assert.equal(await field.isVisible(),true,'unknown response retains the card controls');
+          if(scenario==='quote-only-lost-writing')await field.fill('New writing after the lost answer');
+          if(scenario==='quote-only-lost-reopened'){await field.focus();await page.keyboard.press('Escape');await field.waitFor({state:'hidden'});await card.hover();await page.locator('.message-bar [data-act=reply]').click();await field.waitFor();}
+          await page.locator(`#topic-pending [data-key*="${id}"] button`).click();
+          await page.locator('#version-review[open]').waitFor();
+          await page.getByRole('button',{name:'Check confirmation',exact:true}).click();
+          await page.getByRole('heading',{name:'Sent to Theseus',exact:true}).waitFor();
+          result.clientConfirmed=true;result.operation=await control({method:'agent_view',actor:facts.actor,name:'operation',args:{operation_id:result.receipt.operation_id}});assert.equal(result.operation.status,'committed');assert.equal(result.operation.result.message_id,sentId);await page.screenshot({path:`${evidence}/${key}-confirmed.png`});await page.locator('#review-close').click();
+        }
+        if(['quote-only-lost-writing','quote-only-lost-reopened'].includes(scenario)){assert.equal(await field.isVisible(),true,'a later writing or opening keeps its field');assert.equal(await field.inputValue(),scenario==='quote-only-lost-writing'?'New writing after the lost answer':'');result.laterOwnerKept=true;}
+        else if(scenario==='late-writing'){await page.waitForTimeout(500);assert.equal(await field.inputValue(),'Keep this newer writing');assert.equal(await field.isVisible(),true);assert.equal(await field.evaluate(n=>document.activeElement===n),true);result.newWritingKept=true;}
         else{await root.waitFor({state:'hidden'});await page.waitForTimeout(500);assert.equal(await root.isVisible(),false,'field stays closed after feed refresh');result.closed=true;}
         }
       }
+      if(quoteOnly||lostAnswer)await page.screenshot({path:`${evidence}/${key}-after.png`});
+      await Promise.all(servedJobs);result.served=served;for(const [path,sha]of Object.entries(hashes))if(path.startsWith('web/'))assert.equal(served[path],sha,`${path} actually served exact measured bytes`);
       assert.deepEqual(errors,[]);
     } catch(error) { result.error=error.stack;await page.screenshot({path:`${evidence}/${key}-failure.png`,fullPage:true});await writeFile(`${evidence}/${key}-failure.html`,await page.content()); }
     releaseSend?.();results.push(result);await writeFile(`${evidence}/observations.json`,JSON.stringify(results,null,2));retainChildren();await context.close();

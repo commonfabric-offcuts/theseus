@@ -340,6 +340,18 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   outcome's row, its Conversation; anywhere else on a topic or a
   Conversation, the right rail included, the page's own place. In writing
   it stays Send, and it never opens a second box.
+- **Option-N and Option-M** select the topic's pencil composer, including
+  while typing: Option-N opens its sheet in Note mode; Option-M opens it in
+  Message mode. Either switches the open pencil to that mode. They keep the
+  writing, selection and chosen Notebook destination.
+  The keys use physical KeyN/KeyM with Alt, so the Mac's dead key and micro
+  sign do not go into the pencil's text even when a guard holds the mode
+  change. After clicking Note or Message, Return and Command-Return both
+  use the usual Send guards while focus stays on the pill. In the open pencil sheet, or with focus
+  inside its inline composer, Return sends when no text field holds the
+  caret, as after clicking Note. Return in text remains a newline and
+  Command-Return sends. A page picker or nested naming dialog keeps its
+  own Return; other reading and editing surfaces retain their keys.
 - **Where a move leaves the focus.** Return on a row keeps the keys on that
   row, drawn again for the page reached, and so does a click or a tap on a
   row of the outline: the page opens and the row wears the keys' ring, so ↑

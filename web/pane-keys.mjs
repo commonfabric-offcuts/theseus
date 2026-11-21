@@ -110,6 +110,7 @@ export const KEY_WORDS = [
   ['⇧⌘→ ⇧⌘←', 'open every outcome, or fold every one'],
   ['→ ←', 'open or fold, then move between the outline, the messages and the right rail'],
   ['⌘Return', 'starts a new message in the topic the keys are on, or in the outcome\'s Conversation'],
+  ['Option-N · Option-M', 'opens the pencil sheet in Note mode with Option-N or Message mode with Option-M; either switches mode while typing without inserting a character. After clicking Note or Message, Return or ⌘Return sends; in a text field Return makes a new line and ⌘Return sends'],
   ['⌘↑ ⌘↓', 'move an outcome, or a topic within its outcome, up or down; your order is kept wherever you sign in'],
   ['⌘Z', 'puts the last move back'],
 ];
