@@ -328,10 +328,17 @@ test('862 actual loaded topic menu invokes TopicStatePanel and existing settings
   assert.equal(act({...f.record.topic,id:'other'},'state'),false);
 });
 test('862 actual rail wiring provides shared Notebook owners and topic arrivals consume their address first', () => {
-  const f=fixture('page'), calls=[], shell={ready:handles=>calls.push(handles)}, menu={items:(source,choose)=>[source,choose],act:(...args)=>calls.push(args)};
-  const env={shell,api:{},bootstrap:{},live:{},$:()=>({textContent:'Outcome'}),pageMax:()=>20,checkedView(){},openDestination(){},notebookCreator(){},railDossierMenu(){},runDossierMenuChoice(){},runTopicMenuAction(){},notebookRailMenu:()=>menu,markFromRail(){},freshness:null};
+  const f=fixture('page'), calls=[], closing=[], shell={ready:handles=>calls.push(handles)}, menu={items:(source,choose)=>[source,choose],act:(...args)=>calls.push(args)};
+  // readyRails closes over this module-level service in the real app. Supply
+  // its owner explicitly, so this extracted-function check has no global/order dependency.
+  const topicClosing={start(){assert.equal(calls.length,1,'rails are ready before recovery starts');closing.push(['start']);},send(...args){closing.push(['send',...args]);return 'kept';}};
+  const env={shell,topicClosing,api:{},bootstrap:{},live:{},$:()=>({textContent:'Outcome'}),pageMax:()=>20,checkedView(){},openDestination(){},notebookCreator(){},railDossierMenu(){},runDossierMenuChoice(){},runTopicMenuAction(){},notebookRailMenu:()=>menu,markFromRail(){},freshness:null};
   appFunction('function readyRails(', '// A notification opens',env,'readyRails')('w');
   const ports=calls[0],choose=()=>{};assert.deepEqual(ports.notebookMenu(f.record,f.row,choose),[f.record,choose]);assert.equal(ports.topicMenuAction,env.runTopicMenuAction);
+  assert.deepEqual(closing,[['start']]);
+  const current={id:'t',workspace_id:'w'},envelope={operation_id:'kept-topic-close'};
+  assert.equal(ports.closeTopic(current,envelope),'kept');
+  assert.equal(closing[1][1],current,'the close owner receives the actual topic');assert.equal(closing[1][2],envelope,'the exact envelope reaches its owner');
   const start=app.indexOf("  if (['topic-rename', 'topic-settings'].includes(route.act)"),end=app.indexOf('\n',start),order=[];
   const invoke=route=>new Function('route','topic','consumeMenuRoute','run','runTopicMenuAction',app.slice(start,end))(route,f.record.topic,()=>{order.push('consume');return true;},fn=>fn(),(_topic,key)=>order.push(key));
   invoke({act:'topic-rename'});assert.deepEqual(order,['consume','rename']);order.length=0;invoke({act:'topic-state'});assert.deepEqual(order,[]);

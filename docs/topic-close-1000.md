@@ -250,3 +250,29 @@ topic/feed reload is absent after the act; the distinct Conversation topic is
 still read by the actual outcome. Raw per-request bodies/start/JSON-end,
 transaction start/completion/operation IDs, frames, screenshots, admissions and
 cleanup remain in the handoff packet. No overlapping read latencies are summed.
+
+## Review14912: extracted readyRails check
+
+Warp's independent read of ec03f32c against286 accepted the product, receipt/
+Undo/navigation/rail-handle design and previews, and returned one new cohort
+failure in tests/ui_topic_notebook_menus_862.test.mjs. That check extracts the
+actual readyRails function but omitted its new module-level topicClosing owner.
+The correction supplies that owner explicitly, asserts recovery starts after
+rails become ready, and checks that the actual topic and exact envelope reach
+its send port. Existing shared Notebook and arrival-address assertions remain.
+No product, native producer, fixture, Core or runtime bytes change.
+
+Actual correction checks on Node26.12.1: original head file43/44 (ReferenceError:
+topicClosing is not defined); corrected file44/44, isolated case1/1 and file
+with --test-isolation=none44/44. Applied wrong-topic forwarding mutation in the
+real app fails the intended assertion; exact byte restoration returns577/577
+in the seven affected owner files. Prior native matrix remains on unchanged
+product/producer bytes; no new browser or native run is claimed for this repair.
+
+Warp also reported an existing base isolated-file order dependency. It remains
+named rather than assumed fixed: untouched actual286 gives44/44 for the file
+and1/1 for the isolated case in this builder's Node26.12.1 runs. Raw commands,
+source identities and both observations are retained. The corrected check
+explicitly supplies its owner and does not rely on an ambient topicClosing.
+The rest of14912's review stands; Fable14915 Build2 owns stage history, and Warp
+owns the exact new-head final check and current-live carry/landing.
