@@ -10,13 +10,14 @@ const context = { viewer: 'owner', nameOf: id => id, topicId: 't1' };
 const rows = [{ workspace_id: 'w1', number: 1, title: 'Make the reader clearer', state: 'Build', sources: ['actual-source'], piece_id: 'actual-piece' },
   { workspace_id: 'w1', number: 2, title: 'Speed up the feed', state: 'Review', sources: ['actual-source'], piece_id: 'second-piece' }];
 const cover = { stands: 'Cabin is booked', payload: { text: 'Cabin decision', message_id: 'actual-source', seq: 7, done: null },
-  waiting: [{ text: 'Choose the cabin', default: 'Keep the current booking' }], owner: 'owner', items: rows };
+  waiting: [{ text: 'Choose the cabin', default: 'Keep the current booking' }], owner: 'owner', items: rows,
+  refresh: null, refresh_revision: 0 };
 const of = (node, cls) => [...node.descendants()].filter(node => node.classList.contains(cls));
 const href = node => node.href ?? node.getAttribute('href');
 
 test('757 sheet preserves manual lines before and after two independently linked item rows', () => {
   const sheet = coverSheet(miniDocument(), cover, context);
-  assert.deepEqual(sheet.children.map(n => n.className), ['cover-line cover-stands', 'cover-line cover-payload', 'cover-line cover-item', 'cover-line cover-item', 'cover-line cover-wait']);
+  assert.deepEqual(sheet.children.map(n => n.className), ['cover-line cover-heading', 'cover-line cover-payload', 'cover-line cover-item', 'cover-line cover-item', 'cover-line cover-wait']);
   assert.deepEqual(of(sheet, 'cover-item').map(n => n.text), ['Make the reader clearer · Build', 'Speed up the feed · Review']);
   assert.deepEqual(of(sheet, 'cover-item').map(n => href(n.querySelector('a'))), ['?pipeline=w1&item=1', '?pipeline=w1&item=2']);
   assert.ok(sheet.text.includes('Cabin is booked'));
@@ -46,7 +47,7 @@ test('757 newer projected positions draw rows even with no cover act and refuse 
   assert.equal(stackCover({ head, replies: [] }, { alone: true }), cover);
   assert.equal(laterPosition(position, stale), position, 'late position cannot erase newer generated rows');
   const acts = { cover, cover_revision: 0, cover_read_seq: 9 };
-  assert.equal(laterActs(acts, { cover: null, cover_revision: 0, cover_read_seq: 8 }).cover, cover);
+  assert.deepEqual(laterActs(acts, { cover: null, cover_revision: 0, cover_read_seq: 8 }).cover, cover);
   const views = new TopicViews({ instanceId: 'synthetic', topicId: 't1', reader: 'owner' });
   views.messages.set('root', { ...head, stack_position: stale });
   assert.equal(views.learnPositions([{ message_id: 'root', stack_position: position }]), true, 'generated-only change paints the cover');
@@ -74,9 +75,9 @@ test('757 admitted cover clock orders real split shapes and decimal boundaries w
   assert.equal(compareCoverReads(split.cover_read_seq,old.cover_read_seq),1,'later split wins with a smaller newest member sequence');
   assert.equal(laterPosition(old,split),split);
   assert.equal(laterPosition(split,old),split);
-  assert.equal(laterActs(split,old).cover,split.cover,'late joined rows cannot reappear after split');
+  assert.deepEqual(laterActs(split,old).cover,split.cover,'late joined rows cannot reappear after split');
   const lifecycle = {...split,cover:{...split.cover,items:[{...rows[0],state:'Review'}]},cover_read_seq:[10,100,2]};
   assert.equal(laterPosition(lifecycle,split),lifecycle,'numeric 100 follows 90, independent of string collation');
-  assert.equal(laterActs(lifecycle,split).cover,lifecycle.cover);
+  assert.deepEqual(laterActs(lifecycle,split).cover,lifecycle.cover);
   assert.equal(stackCover({head:{id:'source',acts:split,stack_position:lifecycle},replies:[{}]}),lifecycle.cover);
 });
