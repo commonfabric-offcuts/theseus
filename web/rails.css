@@ -126,6 +126,23 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 .things-thumbs a.thumb{display:block;aspect-ratio:1;overflow:hidden;border:1px solid var(--line);border-radius:.45rem;background:var(--soft);padding:0}
 .things-thumbs a.thumb img{width:100%;height:100%;object-fit:cover;display:block}
 
+/* Outcome Links keep the compact icon/title form of archived dossiers. */
+.things-sec[data-key=previews] .links-grid{grid-template-columns:repeat(auto-fill,minmax(4.5rem,1fr));gap:.55rem .35rem}
+.link-tile{position:relative;min-width:0}
+.outcome-link{display:flex;flex-direction:column;align-items:center;gap:.35rem;min-width:0;padding:.35rem .2rem;border-radius:.45rem;text-decoration:none;color:var(--ink);text-align:center}
+.outcome-link:hover,.outcome-link:focus-visible{background:var(--soft)}
+.link-browser{position:relative;display:grid;place-items:center;width:3.3rem;height:3.1rem;flex:none;color:var(--muted)}
+.link-browser>.link-browser-fallback{width:3.3rem;height:3.1rem}
+.link-browser>.link-favicon{position:absolute;width:1.2rem;height:1.2rem;object-fit:contain;left:50%;top:51%;transform:translate(-50%,-25%);border-radius:.15rem;background:var(--paper)}
+.link-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere;font-size:.76rem;line-height:1.3;min-height:2.6em;max-width:100%}
+.link-menu{position:absolute;top:0;right:0;width:1.6rem;min-height:1.6rem;padding:0;border:0;border-radius:.35rem;background:var(--paper);color:var(--muted);opacity:0}
+.link-tile:hover .link-menu,.link-tile:focus-within .link-menu{opacity:1}
+.link-form{display:grid;gap:.45rem;padding:.5rem;margin:.25rem 0 .7rem;border:1px solid var(--line);border-radius:.5rem}
+.link-form[hidden]{display:none}.link-form label{display:grid;gap:.2rem;min-width:0;font-size:.78rem;color:var(--muted)}
+.link-form input{box-sizing:border-box;width:100%;min-width:0}.link-form-actions{display:flex;gap:.4rem;flex-wrap:wrap}
+.link-notice{margin:0;font-size:.8rem;overflow-wrap:anywhere}
+@media(max-width:760px),(pointer:coarse){.link-menu{opacity:1;width:2rem;min-height:2rem}.outcome-link{padding-top:.6rem}.link-form :is(input,button){min-height:2.75rem}}
+
 /* Wide: three columns, each rail scrolling on its own. */
 @media(min-width:1181px){
   [data-rails] .workspace-layout{grid-template-columns:18rem minmax(0,1fr) 18rem}

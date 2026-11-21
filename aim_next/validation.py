@@ -14,6 +14,7 @@ COMMANDS = {
     "workspace.hosted_seat_end": "_command_workspace_hosted_seat_end",
     "workspace.owner_set": "_command_workspace_owner_set",
     "workspace.update": "_command_workspace_update",
+    "workspace.link_set": "_command_workspace_link_set",
     "draft.save": "_command_draft_save",
     "note.save": "_command_note_save",
     "submission.prepare": "_command_submission_prepare",
@@ -74,7 +75,7 @@ COMMANDS = {
     "stack.cover_refresh": "_command_stack_cover_refresh",
     "tool.use": "_command_tool_use", "tool.link": "_command_tool_link", "tool.record": "_command_tool_record",
 }
-EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish","renew","abandon")},"agent.execution": {"execution_revision"}, "workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
+EXPECTED = {"workspace.link_set": {"link_revision"},**{"assessment."+name:set() for name in ("request","attach","finish","renew","abandon")},"agent.execution": {"execution_revision"}, "workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"}, "submission.set_aside": set(),
             "participation.set": {"topic_revision"}, "topic.update": {"topic_revision", "topic_fields"}, "message.send": set(), "topic.create_and_send": set(), "delivery.ack": set(),
             "message.post": set(), "message.withdraw": set(), "message.unsend": set(), "message.retract": set(), "message.resolve": set(), "topic.read_through": set(), "message.edit": {"message_revision"}, "message.refresh": {"message_revision"},
@@ -121,7 +122,7 @@ EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish"
             "stack.cover": {"cover_revision"}, "stack.cover_refresh": {"cover_revision"},
             "stack.move": {"move_revision", "source_topic_id"},
             "tool.use": set(), "tool.link": set(), "tool.record": set()}
-REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "draft_revision", "note.save": "note_revision",
+REQUIRED_EXPECTED = {"workspace.link_set": "link_revision","agent.execution": "execution_revision", "draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision",
                      "memory.create": "item_revision", "memory.revise": "item_revision", "memory.star": "star_revision", "memory.delete": "item_revision",
                      "media.begin": "media_revision", "media.publish": "media_revision",
@@ -142,6 +143,7 @@ REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "dra
                      "stack.place": "place_revision", "stack.name": "name_revision", "stack.join": "join_revision",
                      "stack.move": "move_revision", "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
 VIEWS = {
+    "workspace_links": {"workspace_id", "cursor", "limit"},
     "rail_dimming": {"candidate"},
     "hosted_seat": {"workspace_id", "seat_request_id"},
     "hosted_seats": {"workspace_id", "cursor", "limit"},
