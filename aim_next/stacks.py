@@ -57,6 +57,7 @@ from .contract import READABLE, Refusal, _bounded_page, _identifier, _page_size
 from .delivery import _now_ms
 from .whispers import VISIBLE, visible
 from .message_edit import words, withheld
+from .topic_reading import message_key
 from . import cover_values, dossier_order
 
 
@@ -785,6 +786,34 @@ class Stacks:
             return []
         version = self._record_act(db, "fold", message, actor, actor, {"folded": True}, self._act_revision(db, message_id, "fold", actor) + 1)
         return [{"kind": "acts", "id": message["topic_id"], "version": version}]
+
+    def _fold_author_answered(self, db, actor, message_id):
+        """An agent answer folds an eligible person's message for its author (955).
+
+        The agent remains attributed; the personal act is announced only to
+        its owner. Any prior fold choice, including manual Unfold, wins.
+        """
+        if self._actor(db, actor)['kind'] != 'agent':
+            return []
+        message = db.execute("SELECT m.id,m.topic_id,m.seq,m.author_id,m.private_to,a.kind AS author_kind,a.enabled "
+                             "FROM messages m JOIN actors a ON a.id=m.author_id WHERE m.id=?", (message_id,)).fetchone()
+        if not message or message['author_kind'] != 'human' or not message['enabled'] or message['private_to'] is not None:
+            return []
+        owner = message['author_id']
+        try:
+            topic = self._topic(db, owner, message['topic_id'])
+        except Refusal:
+            return []
+        if topic['kind'] != 'topic' or self._act_value(db, message_id, 'fold', owner) is not None:
+            return []
+        if (self._act_value(db, message_id, 'star', owner) or NONE['star'])['starred']:
+            return []
+        note = db.execute("SELECT payload FROM notes WHERE actor_id=? AND source_key=?", (owner, message_key(message_id))).fetchone()
+        if note and json.loads(note['payload']).get('body', '').strip():
+            return []
+        version = self._record_act(db, 'fold', message, owner, actor, {'folded': True}, 1, tell=False)
+        self._change(db, 'actor', owner, 'acts', message['topic_id'], version)
+        return [{'kind': 'acts', 'id': message['topic_id'], 'version': version}]
 
     def _view_message_acts(self, db, actor, args):
         """The acts as they stand for the reader on one topic's messages, newest message first, paged by sequence:

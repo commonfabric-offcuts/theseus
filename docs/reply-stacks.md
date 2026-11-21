@@ -345,8 +345,9 @@ their acts.
   for them, as their Fold would: Core records their own `message.fold` in
   the same transaction as the reply or the thumb (`Stacks._fold_answered`),
   so every page, device and the CLI agree. Nobody else's view changes, and
-  an agent's reply or thumb folds nothing. A starred message never folds
-  this way, and one already folded stays as it is (no new row). Taking the
+  an agent's thumb folds nothing. Agent answers follow item 955 below. A
+  starred message never folds this way, and one already folded stays as it
+  is (no new row). Taking the
   thumb back unfolds nothing; a message unfolded later folds again on the
   person's next reply or thumbs-up. On the page the row shows where the
   message was, the feed keeps its place and the keys stay where they were;
@@ -356,6 +357,14 @@ their acts.
   Fold), and sending a reply or giving a 👍 is not one of them, so the fold
   goes with what caused it. A press on the row, x, or Unfold in ⋯ unfolds
   it.
+- **An agent's answer (item 955).** An agent replying publicly to a person's
+  message in a topic dossier folds that message for its human author, leaving
+  the answer open. A star, a private note with words, or an existing personal
+  fold choice prevents this automatic fold; a manual unfold survives further
+  agent answers and reloads. Core records and notifies the human's fold with
+  the reply, attributed to the real agent. Other readers, human replies,
+  agent thumbs, Conversations and whispers keep their existing behavior.
+  There is no backfill. See [agent-answer-fold-955.md](agent-answer-fold-955.md).
 - **Earlier messages (item 476).** Open, a dossier of more than seven
   messages shows its newest seven as cards and one row at the top of the
   folder for the rest: "8 earlier messages", with how many of them are new
