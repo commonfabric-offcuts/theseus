@@ -9,6 +9,7 @@ calls to add their arguments. Times are absolute local times.
 import json
 from pathlib import Path
 import time
+from .judgment import source_diff
 
 # What an excerpt or line of a held message shows in place of its words (docs/message-edit.md): its author has it open
 # in Edit. Every printer of an entry that carries `withheld` prints it through _words.
@@ -98,6 +99,11 @@ def register(verb):
     piece.add_argument("--size")
     piece.add_argument("--ask")
     piece.add_argument("--from-release", action="store_true")
+    freeze = verb("freeze")
+    freeze.add_argument("piece")
+    freeze.add_argument("--repo", required=True)
+    freeze.add_argument("--base", required=True)
+    freeze.add_argument("--head", required=True)
     move_piece = verb("move-piece")
     move_piece.add_argument("piece")
     move_piece.add_argument("--topic", required=True)
@@ -342,6 +348,19 @@ class PipelineVerbs:
             args["from_release"] = True
         result = self.command("pipeline.piece_start", {"workspace_id": options.outcome}, args)
         self.out.plain("started piece %s with %s in %s" % (result["piece_id"], ", ".join(map(str, result["numbers"])), result["stage_id"]))
+
+    def do_freeze(self):
+        options = self.options
+        observed = self.view('pipeline_freeze', {'piece_id': options.piece})
+        try:
+            files = source_diff(options.repo, options.base, options.head)
+        except ValueError as error:
+            self.refuse('INVALID_ARGUMENT', str(error))
+        result = self.command('pipeline.freeze', {'piece_id': options.piece},
+            {'base_commit': options.base, 'head_commit': options.head, 'files': files},
+            {'piece_revision': observed['piece_revision']})
+        self.out.plain('froze %s at %s · %s' % (options.piece, options.head,
+            'judged' if result['freeze']['judged'] else 'ordinary'))
 
     def do_enter_stage(self):
         options = self.options

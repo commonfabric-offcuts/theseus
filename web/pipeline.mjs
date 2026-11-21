@@ -257,6 +257,7 @@ export class PipelinePage {
 
   pieceCard(piece, byNumber, pipeline, now, first) {
     const card = el('article', { class: 'pl-item', 'data-key': `piece:${piece.id}`, 'aria-label': `Item${piece.items.length > 1 ? 's' : ''} ${listWords(piece.items)}` });
+    if (piece.freeze?.judged === true) card.append(el('p', { class: 'pl-meta pl-judged', role: 'note', text: 'Judged · this change pays its own gauntlet' }));
     piece.items.forEach((number, index) => {
       const known = byNumber.get(number);
       const item = known ?? { number, title: piece.titles?.[String(number)] ?? '', glyph: 'building', sources: null, raised_by: null, raised_note: '', size: null, asks: [] };

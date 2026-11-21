@@ -33,6 +33,7 @@ from .standing_conversation import partial
 from .whispers import actor_kind, private_source_refused
 from .message_edit import held_refusal, is_held, words as message_words, withheld
 from .removal import value as removal_value
+from .piece_freeze import PieceFreezes
 
 
 # A stage entry keeps its past: once left, nothing in it changes, but (version 30) the derived end _settle wrote on a
@@ -226,7 +227,7 @@ def _loads(text, default):
     return json.loads(text) if text else default
 
 
-class Pipeline:
+class Pipeline(PieceFreezes):
     """Store mixin: pipeline commands (4.1), the `pipeline`, `pipeline_item` and `pipeline_row` views (5.1)."""
 
     # ---- reading the records -------------------------------------------------
@@ -1214,6 +1215,13 @@ class Pipeline:
         piece_ids = args.get("piece_ids")
         if not isinstance(piece_ids, list) or not piece_ids:
             raise Refusal("INVALID_ARGUMENT", "Name the approved pieces to combine")
+        selected = [self._piece(db, actor, key)[0] for key in dict.fromkeys(piece_ids)]
+        for selected_piece in selected:
+            if selected_piece["workspace_id"] != workspace["id"] or selected_piece["kind"] != "piece":
+                raise Refusal("PIECE_CLOSED", "A release combines open item pieces of this outcome")
+        if (sum(len(self._members(db, p["id"])) for p in selected) > 1 and
+                any((self._piece_freeze(db, p["id"]) or {}).get("judged") for p in selected)):
+            raise Refusal("JUDGED_BUNDLE", "A judged item pays its own gauntlet; land it alone, without bundling another item")
         ms = _now_ms()
         release_id = "p-" + uuid.uuid4().hex[:24]
         # A topic's first piece makes it a Build topic (item 297).
@@ -1328,6 +1336,7 @@ class Pipeline:
         view = {"id": piece["id"], "kind": piece["kind"], "release_number": piece["release_number"],
                 "commit": self._release_commit(db, piece) if piece["kind"] == "release" else None,
                 "size": entries[0]["size"] if entries else None, "items": members,
+                "freeze": self._piece_freeze(db, piece["id"]) if piece["kind"] == "piece" else None,
                 "titles": {str(number): titles.get(number) for number in members},
                 "started": {"by": entries[0]["entered_by"], "ms": entries[0]["entered_ms"]} if entries else None,
                 "stages_so_far": [entry_view(entry) for entry in entries if entry["left_ms"] is not None],

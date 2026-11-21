@@ -685,3 +685,26 @@ tools/pipeline/build_pipeline.py --releases RECORDS [OUTPUT]
 ```
 
 writes the Release pipeline page from `tools/pipeline/items.json`, the edits each revision appends to the script, and the instance's release records (`--releases -` reads them from standard input). An item a release record names is shipped: it leaves its section, and SHIPPED lists each release, newest first, with its items and time; the "Changed" line names the newest. It fails when an item number is missing or listed twice, or when two release records name the same item. Item 84 replaces it with pipeline records in Theseus; until then, edit it here rather than in a temporary copy.
+
+### Judged admission (987)
+
+Before starting a hosted judged run, use `python3 tools/deploy.py admit SHA
+--config CONFIG`. Landing launchers call `tools.deploy.admit(config, SHA)`
+after runner policy and before their boundary, merge or combine; `deploy()`
+also checks after local evidence validation and again before its reporting/stopping effects. Admission
+is a fresh read, not a reservation. Ordinary candidates do not wait on it.
+
+The config names `pipeline_outcome`, `pipeline_instance`, and exactly one
+absolute `pipeline_broker` or `pipeline_profile`. Missing identity,
+unavailable/incomplete/foreign/changing pipeline reads and approved pieces
+without a freeze refuse judged work. A refusal names ordinary approved
+unshipped pieces: land them first, then carry and rerun the judged source on
+live. Missing legacy classification must be recorded or the work landed.
+The launcher owners install the guard and calls; this CLI cannot intercept
+an arbitrary external workflow dispatch.
+
+For an authenticated `--train` merge already on the release branch, deploy
+retains classification, ancestry and one-item enforcement but skips the
+waiting-piece read. Later ordinary approvals cannot strand a started landing.
+The launcher's pre-merge call, human-start CLI and direct-summary deployment
+retain the waiting check (review correction14637).

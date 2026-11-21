@@ -202,6 +202,7 @@ USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute
          "| pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off] "
          "| stages OUTCOME [--set FILE] | add OUTCOME --title T [--size S] [--section S] [--group G] [--from m-…] [--note TEXT] TEXT|- "
          "| add-source OUTCOME N (--from m-… | --page ID | --note TEXT) | move OUTCOME N (--above M | --below M | --to SECTION [--note TEXT] | --undo EVENT) "
+         "| freeze PIECE --repo ABSOLUTE_REPO --base FULL_SHA --head FULL_SHA "
          "| piece OUTCOME N,M --topic TOPIC --stage S | enter-stage PIECE STAGE [--round N] [--left approved|sent-back|passed|held] "
          "| move-piece PIECE --topic TOPIC --expected N | stage-note PIECE TEXT | combine OUTCOME --release N --pieces P,Q --topic TOPIC [--ask MSG] | finish PIECE "
          "| checks OUTCOME [--readings] [--live COMMIT] | target OUTCOME [--origin NOTE] [--ask m-… | --ask-in TOPIC --ask-wait JSON] TEXT|- | target-settle OUTCOME REVISION accepted|declined "
