@@ -29,7 +29,9 @@ import { stackChecks } from './stack_native.mjs';
 import { readingItem757Checks } from './reading_item_757_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
+import { visibleReturn784Checks } from './visible_return_784_native.mjs';
 import { whisperOutlineReading } from './whisper_outline_native.mjs';
+import { waitingQuestions372Checks } from './waiting_questions_372_native.mjs';
 
 import { betweenOthers } from '../web/fold.mjs';
 import { gather, ordered } from '../web/stack-order.mjs';
@@ -91,6 +93,7 @@ export const readingSeed = control => async (topic, said, before = null) => {
 // windows: the browser's own windows, as it opens them: list() gives each page's id and address, close(id) closes one.
 export async function readingChecks({ check, page, until, view, control, shot, facts, observations, grant = null, windows, engine = 'chrome' }) {
   await onboardingChecks790({check,page,until,control,shot,facts,observations,grant,engine});
+  await waitingQuestions372Checks({check,page,until,view,control,shot,facts,observations,engine});
   // A topic of the person's own, with aim-core and aim-ux in it, and messages
   // said in order: each [name, {sender, body, ...}] as the fixture's agent_message takes it.
   const seed = readingSeed(control);
@@ -2733,8 +2736,9 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // columns every one of those lines covers: above holds how far it reaches over the first line's words, below how far
   // under the last line's, gaps how many rows between its top and its bottom are left unlit, and lines each line's
   // field, its words' height with above and below (a passage of one line: its field's whole height, both edges in sight).
-  // The field's colour: black, and on the person's own black card its light words' colour (aim.css, --lit-field).
-  const FIELD = [0, 0, 0], OWN_FIELD = [0xe0, 0xe8, 0xe5];
+  // The field's colour: black in the light scheme, in the dark scheme a grey lift of the ink, and on the person's own
+  // black card that grey in both (aim.css, --lit-field).
+  const FIELD = [0, 0, 0], OWN_FIELD = [0x5e, 0x61, 0x60], DARK_FIELD = [0x5e, 0x61, 0x60];
   const litLines = (p, surface) => p.evaluate(`(()=>{let range=null;
     if(${JSON.stringify(surface)}==='reader'){const lit=[...document.querySelectorAll('#source-body .hover-quote')];if(lit.length){range=document.createRange();range.setStartBefore(lit[0]);range.setEndAfter(lit.at(-1))}}
     else{const h=CSS.highlights.get('lit-passage');range=h&&h.size?[...h][0]:null}
@@ -2812,7 +2816,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const tone = dark ? 'dark' : 'light';
       await scheme(p, dark);
       const fields = [];
-      for (const [id, where, color] of [[ids.alone, 'topic card', FIELD], [ids.reply, 'dossier card', FIELD], [ids.mine, 'own card', OWN_FIELD]]) {
+      for (const [id, where, color] of [[ids.alone, 'topic card', dark ? DARK_FIELD : FIELD], [ids.reply, 'dossier card', dark ? DARK_FIELD : FIELD], [ids.mine, 'own card', OWN_FIELD]]) {
         await centre(p, card(id)); await away(p);
         const before = await layoutOf(p, id);
         assert.ok(Math.abs(before.lineHeight - 1.5 * before.size) < 0.6, `${tone} ${where}: a line of its words is 1.5 times their size (${before.lineHeight}px at ${before.size}px), as before`);
@@ -3806,6 +3810,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     { seed, open, centre, tap, press, openReader, closeReader, card });
   await readingItem757Checks({ check, until, view, control, shot, facts, observations, engine },
     { open, centre, press, openReader, closeReader, card });
+  await visibleReturn784Checks({ check, page, until, control, shot, facts, observations, engine }, { seed });
+
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
   await editChecks({ check, until, view, control, facts, shot, engine },

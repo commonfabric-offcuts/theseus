@@ -44,8 +44,10 @@ function revealWriting(field, win) {
   const rect = box.getBoundingClientRect();
   const foot = Math.max(rect.bottom, ...['.compose-send', '.plus-button'].map(selector => composer.querySelector(':scope > ' + selector))
     .filter(node => node?.getClientRects().length).map(node => node.getBoundingClientRect().bottom));
-  const by = Math.ceil(foot - bottom);
-  if (by > 0 || rect.bottom < top) (scroller ?? win).scrollBy({ top: by, behavior: 'instant' });
+  // Safari may already have focused the writing far above the keyboard.
+  // Settle down as well as up, keeping a tall field's top within view.
+  const by = Math.min(Math.ceil(foot - bottom), Math.floor(rect.top - top));
+  if (by) (scroller ?? win).scrollBy({ top: by, behavior: 'instant' });
 }
 
 // The keyboard, read from the visual viewport (web/ has one reader of it):
