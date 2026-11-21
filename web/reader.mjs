@@ -25,7 +25,7 @@ import { paintWithdrawal } from './question-withdrawal.mjs';
 import { paintRemoval } from './message-removal.mjs';
 import { revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { overhang } from './lit-field.mjs';
-import { coverSheet, coverKey, payloadPill } from './dossier-cover.mjs';
+import { coverSheet, coverKey, coverSummary, payloadPill } from './dossier-cover.mjs';
 import { pointerLight, observePointerLight } from './pointer-light.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
@@ -1182,7 +1182,7 @@ export class Reader {
     const words = document.createElement('span'); words.className = 'reader-cover-words';
     const waitingOn = [...new Set(cover.waiting.map(wait => wait.actor_id ?? cover.owner))]
       .map(id => id === shown.viewer ? 'you' : shown.nameOf(id)).join(', ');
-    const authored = cover.stands || cover.payload?.text;
+    const authored = coverSummary(cover);
     // Read the inline marks without adding links or extra controls to the summary (989).
     words.textContent = authored ? inlineNodes(authored, { doc: document }).map(node => node.textContent).join('')
       : `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${waitingOn}`;

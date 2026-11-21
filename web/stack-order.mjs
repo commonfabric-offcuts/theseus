@@ -29,6 +29,16 @@ const REVISIONS = { aside: 'aside_revision', starred: 'star_revision', dealt: 'd
 // revision, so an answer read before a commit never puts back what that
 // commit changed, whenever it lands. Fields the page does not know are the
 // answer's.
+// Core's ordered cover clock: admitted acts, admitted item/access change,
+// then this dossier's visible messages. A split advances acts even when its
+// newest member leaves. Numeric snapshots remain readable for older responses.
+export function compareCoverReads(a, b) {
+  const clock = value => Array.isArray(value) ? value : [value ?? -1, 0, 0];
+  const left = clock(a), right = clock(b);
+  for (let i = 0; i < 3; i++) if (left[i] !== right[i]) return left[i] > right[i] ? 1 : -1;
+  return 0;
+}
+
 export function laterActs(known, answer) {
   if (!answer) return known ?? {};
   const acts = { ...(known ?? {}), ...answer };
@@ -36,6 +46,10 @@ export function laterActs(known, answer) {
     if (!known || !(revision in known)) continue;
     if (!(revision in answer) || answer[revision] < known[revision]) { acts[field] = known[field]; acts[revision] = known[revision]; }
   }
+  if (answer.cover_read_seq !== undefined && compareCoverReads(known?.cover_read_seq, answer.cover_read_seq) > 0) {
+    acts.cover = known.cover; acts.cover_read_seq = known.cover_read_seq;
+  }
+  if (answer.cover_read_seq === undefined) delete acts.cover_read_seq;
   if (acts.cover) acts.cover = { ...acts.cover, refresh: acts.cover_refresh ?? acts.cover.refresh,
     refresh_revision: acts.cover_refresh_revision ?? acts.cover.refresh_revision };
   return acts;
@@ -358,6 +372,8 @@ export function stackCover(stack, { alone = false } = {}) {
   if (stack.sourceStack) return stackCover(stack.sourceStack, { alone });
   const position = positionOf(stack);
   if (position && position.root_id !== stack.head.id) return currentQuestionCover(position.cover ?? null);
+  const acts = actsOf(stack.head);
+  if (position?.cover_read_seq !== undefined && compareCoverReads(position.cover_read_seq, acts.cover_read_seq) >= 0 && position.cover_revision >= (acts.cover_revision ?? 0)) return stack.replies.length || alone ? currentQuestionCover(position.cover ?? null) : null;
   return stack.replies.length || alone ? currentQuestionCover(actsOf(stack.head).cover ?? null) : null;
 }
 
@@ -556,7 +572,7 @@ export function foldStep({ level }, way, { replies: has = true } = {}) {
 // undo a newer join, personal move, split or arriving reply.
 export function laterPosition(known, answer) {
   if (!answer) return known;
-  if (known && (answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && answer.at.messages < known.at.messages)) return known;
+  if (known && (answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && (answer.at.messages < known.at.messages || compareCoverReads(answer.cover_read_seq, known.cover_read_seq) < 0))) return known;
   return answer;
 }
 // The stack's position, from the positions its messages carry. One is the

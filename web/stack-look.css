@@ -557,3 +557,7 @@
 .fold-line:has(>.message-visit-new){display:flex;align-items:baseline}
 .fold-line:has(>.message-visit-new)>.fold-author{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .fold-line:has(>.message-visit-new)>.fold-words{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+
+/* Source-item rows keep separate lines, including singleton cards. */
+.row-pills>.cover-item{flex-basis:100%;min-width:0;overflow-wrap:anywhere}
+.cover-item .cover-words{overflow-wrap:anywhere}

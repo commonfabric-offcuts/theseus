@@ -263,3 +263,13 @@ the linked wait in that transaction. Other readers receive no answer controls.
 Waiting counts now include a cover once when any wait names the reader; manual
 owner waits still follow the current outcome owner. Dossier moves relocate
 both the derived count index and the linked questions atomically.
+
+## Automatic source-item rows
+
+By default a cover also has one generated row per readable source-linked item,
+with its short name and plain state, linking the existing pipeline item record.
+Manual stands and payload precede the rows; waits and defaults follow them.
+These rows are read from actual source, item, stage and release relationships
+and filtered by Core for destination access. They write no cover acts and never
+change manual fields, authorship or acceptance. See [the contract](source-item-covers.md)
+for ordering, state precedence, indexes, read snapshots and preview limits.

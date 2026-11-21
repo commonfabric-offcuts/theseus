@@ -5827,7 +5827,7 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && answer.at.messages < known.at.messages",
+     "answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && (answer.at.messages < known.at.messages || compareCoverReads(answer.cover_read_seq, known.cover_read_seq) < 0)",
      "answer.at.acts < known.at.acts || answer.at.messages < known.at.messages"
     ]
    ],
@@ -6944,7 +6944,7 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && samePlaces(a, b) && starsOf(a) === starsOf(b) : !b);",
+     "const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && samePlaces(a, b) && starsOf(a) === starsOf(b) && JSON.stringify(a.cover) === JSON.stringify(b.cover) : !b);",
      "const samePlace = (a, b) => JSON.stringify(a) === JSON.stringify(b);"
     ]
    ],

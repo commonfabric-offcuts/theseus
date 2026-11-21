@@ -26,6 +26,7 @@ import { dossierSelectionQuoteChecks } from './dossier_selection_quote_native.mj
 import { coverRefreshChecks } from './cover_refresh_native.mjs';
 import { onboardingChecks790 } from './onboarding_790_native.mjs';
 import { stackChecks } from './stack_native.mjs';
+import { readingItem757Checks } from './reading_item_757_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
 import { visibleReturn784Checks } from './visible_return_784_native.mjs';
@@ -3807,6 +3808,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     { seed, open, becomes, centre, tap, card, words, openReader, closeReader, into });
   await coverRefreshChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, centre, tap, press, openReader, closeReader, card });
+  await readingItem757Checks({ check, until, view, control, shot, facts, observations, engine },
+    { open, centre, press, openReader, closeReader, card });
   await visibleReturn784Checks({ check, page, until, control, shot, facts, observations, engine }, { seed });
 
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },

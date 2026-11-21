@@ -939,7 +939,8 @@ export class StackFeed {
   dossierCover(id, { alone = false } = {}) {
     const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id))
       ?? this.state.stacks.find(each => positionOf(each)?.root_id === id);
-    const cover = stack ? stackCover(stack, { alone }) : null;
+    const candidate = stack ? stackCover(stack, { alone: true }) : null;
+    const cover = candidate?.items?.length ? candidate : stack ? stackCover(stack, { alone }) : null;
     return cover ? { cover, topicId: stack.head.topic_id, rootId: positionOf(stack)?.root_id ?? stack.head.id } : null;
   }
   // Whether the dossier stack is drawn from holds a message the reader
