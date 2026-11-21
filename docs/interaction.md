@@ -8,6 +8,12 @@ the page on a page with no rail (`web/interaction-guide.mjs`, the same words;
 docs/rails.md, "The rail's foot"). Each rule there names
 the pointer's way, the keys' and the phone's.
 
+## Dimming the left rail
+
+Option-click a topic or outcome name in the left rail to dim or undim it. Option-Shift-click keeps only that topic and its outcome, or the clicked outcome’s branch, bright. Command-click opens the link in a new tab.
+The current Dim choices and inverse keep their existing scope; editing with Dim0
+selects1. The rail menu uses the same choice writer.
+
 ## The topic page
 
 - **The light.** The message under the pointer lights, as a passage lights in
@@ -341,11 +347,13 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   Conversation, the right rail included, the page's own place. In writing
   it stays Send, and it never opens a second box.
 - **Option-N and Option-M** select the topic's pencil composer, including
-  while typing: Option-N opens its sheet in Note mode or switches it to Note;
-  Option-M switches the existing composer to Message, with the sheet open or
-  closed. They keep the writing, selection and chosen Notebook destination.
+  while typing: Option-N opens its sheet in Note mode; Option-M opens it in
+  Message mode. Either switches the open pencil to that mode. They keep the
+  writing, selection and chosen Notebook destination.
   The keys use physical KeyN/KeyM with Alt, so the Mac's dead key and micro
-  sign do not go into the text. In the open pencil sheet, or with focus
+  sign do not go into the pencil's text even when a guard holds the mode
+  change. After clicking Note or Message, Return and Command-Return both
+  use the usual Send guards while focus stays on the pill. In the open pencil sheet, or with focus
   inside its inline composer, Return sends when no text field holds the
   caret, as after clicking Note. Return in text remains a newline and
   Command-Return sends. A page picker or nested naming dialog keeps its

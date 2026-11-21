@@ -59,7 +59,7 @@ async function fixture(t, ask, {plain=false}={}) {
   const chat=()=>{
     const row=page.list.querySelector('.deck-card'),button=row.querySelector('.deck-menu');
     assert.ok(button,'actual card overflow');button.listeners.click({target:button,stopPropagation(){}});
-    const menu=doc.body.querySelector('[role="menu"]'),choice=menu.children.find(n=>n.textContent==='Chat about this…');
+    const menu=doc.body.querySelector('[role="menu"]'),choice=menu.children.find(n=>(n.querySelector('.menu-description')?.children[0]?.textContent??n.textContent)==='Chat about this…');
     assert.ok(choice,'existing Chat menu choice');const disabled=choice.disabled;
     menu.listeners.keydown({key:'Escape',preventDefault(){},stopPropagation(){}});
     assert.equal(page.list.querySelector('.deck-ask'),null,'927 standalone glyph stays absent');

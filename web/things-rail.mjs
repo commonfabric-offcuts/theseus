@@ -632,7 +632,7 @@ export class ThingsRail {
   notebookSection(items, found) {
     if (!items?.length) {
       // An empty Notebook keeps its heading, and with it the pencil that starts its first page.
-      return items && this.creators.get('topic')?.available ? { sum: '', key: 'note-none', node: () => element(this.doc, 'p', { className: 'things-quiet', textContent: 'No pages yet.' }) } : null;
+      return items && this.creators.get('topic')?.available ? { sum: '', key: 'note-none', node: () => this.doc.createTextNode('') } : null;
     }
     const doc = this.doc, scope = { kind: 'topic', id: found.topicId }, more = found.notebookNext !== null;
     return { sum: `${items.length}${more ? '+' : ''}`, key: JSON.stringify(['note', scope, more, items.map(item => [item.id, item.title, item.revision, item.read_revision, item.draft === true])]), node: () => {

@@ -160,7 +160,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
         const found = [], walk = host => { for (const child of host.children) if (child instanceof Element) { if (chains.some(chain => inChain(child, chain, this))) found.push(child); walk(child); } };
         walk(this); return found;
       }
-      return selector.includes('#topics') ? [] : [...elements.values()].filter(el => el.id.startsWith('inline-') && el.id !== 'inline-composer');
+      return selector.includes('#topics') ? [] : [...elements.values()].filter(el => el.id?.startsWith('inline-') && el.id !== 'inline-composer');
     }
     setAttribute(name, value) { this[name] = value; }
     removeAttribute(name) { delete this[name]; }
@@ -270,7 +270,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, paintReplyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} unobserve() {} disconnect() {} }, MutationObserver: class { observe() {} disconnect() {} takeRecords() { return []; } }, innerHeight: 600, innerWidth: 1000, Node: { DOCUMENT_POSITION_FOLLOWING: 4, TEXT_NODE: 3 }, requestAnimationFrame: callback => setImmediate(callback), cancelAnimationFrame: clearImmediate, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     // The window's own location and history are the page's, as in a browser (the shell reads them there).
     window: { innerHeight: 600, scrollY: 0,
-      getComputedStyle: el => ({ overflowY: 'visible', position: 'static', scrollPaddingTop: '0px', scrollPaddingBottom: '0px', ...el.style }),
+      getComputedStyle: el => ({ overflowY: 'visible', position: 'static', scrollPaddingTop: '0px', scrollPaddingBottom: '0px', ...el.style, getPropertyValue: () => '' }),
       scrollBy(options) { scope.window.scrollY += options.top; events.push(['scroll', 'window', options]); },
       addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }), get location() { return scope.location; }, get history() { return scope.history; } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     // A page that loads another asks Theseus nothing more until it stays (api.mjs depart, stay); here each fixture's page says
@@ -291,7 +291,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   loadPageScope(context, 'app.mjs');
   let source = webSource('app.mjs').replace(/^import [^;]*;\n/gm, '');
   assert.equal(source.match(/^begin\(\);$/gm)?.length, 1); source = source.replace(/^begin\(\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, present, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus, readerDossierName, enableFreshness,
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, present, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus, readerDossierName, enableFreshness, loadOlderMessages,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; if ('topicUnavailable' in value) topicUnavailable = value.topicUnavailable; if ('stackFeed' in value) stackFeed = value.stackFeed; if ('here' in value) here = value.here; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
@@ -803,24 +803,23 @@ test('a finished access check moves the focus only when nothing else holds it', 
   }
 });
 
-// After access to the topic comes back, the Reader stops saying its updates
-// are paused, and More messages returns.
-test('a topic painted again after access returns clears the paused note and brings More messages back', async () => {
+// After access returns the Reader clears its paused note.1045 retains the cursor
+// and removes the old button; actual native scrolling is checked separately.
+test('a topic painted again after access returns clears the paused note and retains its older cursor', async () => {
   const f = fixture();
   await f.initialize(); await drain();
   const p = { source: { source_ref: { kind: 'message', id: 'm1' } }, topicUpdatesPaused: true, editors: { reply: {}, note: {} } };
   f.registry.current = p;
   let painted = 0; f.reader.paintStatus = () => { painted++; };
   f.views.topic = { ...f.topic }; f.views.participants = []; f.views.olderCursor = 'older';
-  f.get('more-messages').hidden = true;
   f.paintViews('topic');
   assert.equal(p.topicUpdatesPaused, false);
   assert.equal(painted, 1, 'the Reader repaints what it says');
-  assert.equal(f.get('more-messages').hidden, false);
-  // Nothing older to read: More stays away.
-  f.views.olderCursor = null; f.get('more-messages').hidden = true; p.topicUpdatesPaused = false;
+  assert.equal(f.views.olderCursor, 'older');
+  // Nothing older to read remains an exhausted cursor.
+  f.views.olderCursor = null; p.topicUpdatesPaused = false;
   f.paintViews('topic');
-  assert.equal(f.get('more-messages').hidden, true);
+  assert.equal(f.views.olderCursor, null);
   assert.equal(painted, 1, 'a Reader that was not paused is left alone');
 });
 
@@ -1986,11 +1985,11 @@ test('a page that leaves a gap in the loaded messages never reads across it', as
   // loaded before, nothing shows the two runs meet: #31 and #32 side by side
   // on screen are two ranges. Once a page overlaps both, the screen from #30
   // to #43 (with #32..#41 loaded between them, they show too) is one range.
-  await f.get('more-messages').onclick(); await settle();
+  await f.loadOlderMessages(); await settle();
   assert.equal(views.messages.has('m35'), true);
   shown([31, 32]); await settle(); await settle();
   assert.deepEqual(ranges().slice(2), [[32, 32]], 'the runs have not met: #32 is reported apart from #31');
-  await f.get('more-messages').onclick(); await settle();
+  await f.loadOlderMessages(); await settle();
   shown(Array.from({ length: 14 }, (_, i) => 30 + i)); await settle(); await settle();
   assert.deepEqual(ranges().at(-1), [30, 43], 'once a page overlaps both, the cards on screen are one range');
 });
@@ -3423,11 +3422,10 @@ test('the New line for a message further back sits at the bottom, and pressing i
   const marker = listed(f).at(-1);
   const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
   assert.equal(text(marker), 'More new below', 'a line without a time says none');
-  // While the line says more new messages lie below, it is the one control
-  // that loads older messages: More messages, doing much the same, is hidden.
-  assert.equal(f.get('more-messages').hidden, true, 'More messages is hidden while the line shows');
+  //1045 removes the redundant control; the New line retains its own destination.
+  assert.equal(f.get('more-messages').onclick, undefined, 'the retired control has no handler');
   f.paintViews('memory');
-  assert.equal(f.get('more-messages').hidden, true, 'and painting the Notebook does not bring it back');
+  assert.equal(f.get('more-messages').onclick, undefined, 'painting the Notebook wires no retired control');
   const pages = [at(10, 19, 10), at(1, 9, null)], reads = [];
   const view = f.api.view;
   f.api.view = async (name, args) => {
@@ -3441,39 +3439,39 @@ test('the New line for a message further back sits at the bottom, and pressing i
   assert.equal(f.document.activeElement?.dataset.seq, 5, 'the message it was for has the focus');
 });
 
-test('once the line is in its place, More messages loads what is older again', async () => {
+test('once the New line is in its place, the older cursor remains available', async () => {
   const { f } = await readingPage();
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
   const at = (from, through, next) => ({ ...page(from, through, next), oldest_unread: { seq: 15, id: 'm15' }, commit_seq: 1 });
   views.messagesPage(at(20, 29, 20), { initial: true }); await settle();
-  assert.equal(f.get('more-messages').hidden, true, 'hidden while the line says more new below');
+  assert.equal(views.olderCursor, 20);
   const view = f.api.view;
   f.api.view = async (name, args) => name === 'topic_messages' ? at(10, 19, 10) : view(name, args);
   await listed(f).at(-1).onclick(); await settle();
   assert.equal(f.get('messages').children.find(child => child.dataset.line)?.dataset.line, 'new', 'the line is in its place');
-  assert.equal(f.get('more-messages').hidden, false, 'More messages is back, with older messages left to load');
+  assert.equal(views.olderCursor, 10, 'older pages remain available to1045 scroll admission');
 });
 
 // "More new below" promises unread messages further back. Once they are read
-// elsewhere it fades where it is, inert, and More messages comes back in its
-// place; marked unread again, the line holds once more and More is hidden.
-test('the older-below line fades once what it leads to is read elsewhere, and More messages comes back', async () => {
+// elsewhere it fades where it is, inert; marked unread again, the line holds
+// once more.1045 admission retains the older cursor in either state.
+test('the older-below line fades once read elsewhere and the older cursor remains', async () => {
   const { f } = await readingPage();
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
   views.messagesPage({ ...page(20, 29, 20), oldest_unread: { seq: 5, id: 'm5' }, commit_seq: 1 }, { initial: true }); await settle();
   const marker = listed(f).at(-1);
-  assert.deepEqual([marker.dataset.line, marker.inert, f.get('more-messages').hidden], ['older', false, true], 'the line waits at the bottom, and More is hidden');
+  assert.deepEqual([marker.dataset.line, marker.inert, views.olderCursor], ['older', false, 20], 'the line waits at the bottom with its older cursor');
   const unread = async (oldest, at) => { await views.readUnread(async () => ({ instance_id: 'fixture', topic_id: 't1', oldest_unread: oldest, commit_seq: at })); await settle(); };
   await unread(null, 2);
   assert.equal(listed(f).at(-1), marker, 'read elsewhere, the line stays in its place');
   assert.deepEqual([marker.className, marker.inert], ['new-line new-line-older new-line-read', true], 'faded and inert');
-  assert.equal(f.get('more-messages').hidden, false, 'More messages is back in its place');
+  assert.equal(views.olderCursor, 20, 'reading elsewhere preserves the older cursor');
   f.paintViews('memory');
-  assert.equal(f.get('more-messages').hidden, false, 'and painting the Notebook keeps it');
+  assert.equal(views.olderCursor, 20, 'painting the Notebook preserves the older cursor');
   await unread({ seq: 5, id: 'm5' }, 3);
-  assert.deepEqual([marker.className, marker.inert, f.get('more-messages').hidden], ['new-line new-line-older', false, true], 'marked unread again: the line holds it, and More is hidden');
+  assert.deepEqual([marker.className, marker.inert, views.olderCursor], ['new-line new-line-older', false, 20], 'marked unread again: the line holds with its older cursor');
 });
 
 test('with nothing older left to load, no line promises older messages below', async () => {
@@ -3690,7 +3688,7 @@ test('More messages shows the older messages of the dossier it fills where its b
   const drawn = () => entries(f.get('messages')).map(entry => [entry.dataset.id, entry.className, !entry.hidden]);
   const before = drawn();
   assert.deepEqual(before.map(([id]) => id), ['m40', 'm41', 'm42', 'm43', 'm44'], 'one stack, its head m40');
-  await f.get('more-messages').onclick(); await settle(); await settle();
+  await f.loadOlderMessages(); await settle(); await settle();
   assert.deepEqual(drawn(), [...before, ['m38', 'message-card agent-card agent-green', true], ['m37', 'message-card own-message', true], ['m36', 'message-card agent-card agent-green', true],
     ['m1', 'message-card agent-card agent-green', true]],
     'the stack keeps its head and what it showed, then the older messages, newest first, each shown, the reader\'s own its own');
@@ -3725,7 +3723,7 @@ test('More keeps older replies inside their existing dossier with its head retai
   const before = drawn();
   assert.deepEqual([before.at(-1), stackOf('m41'), ['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf)], [['m36', true], 'm37', Array(5).fill('m37')],
     'm36 is the last card above More, and the dossier\'s five replies are one stack higher up, headed by m37');
-  await f.get('more-messages').onclick(); await settle(); await settle();
+  await f.loadOlderMessages(); await settle(); await settle();
   assert.deepEqual(drawn(), [...before.slice(0, -1), ...run(6, 35, seq => ['m' + (41 - seq), true]), before.at(-1)],
     'existing cards keep their relative order and visibility; older replies stay in their dossier before m36');
   assert.deepEqual([['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf), run(6, 35, seq => stackOf('m' + seq)).filter(Boolean)], [Array(5).fill('m37'), Array(30).fill('m37')],
@@ -3736,7 +3734,7 @@ test('More keeps older replies inside their existing dossier with its head retai
   assert.deepEqual(shown.at(-1), ['m36', true], 'the separate m36 dossier stays last above More');
   f.api.view = async (name, args) => name === 'topic_messages' ? page(run(2, 5, seq => item(seq, 'm1', 'm1')), null, 1)
     : name === 'memory_items' ? { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } } : view(name, args);
-  await f.get('more-messages').onclick(); await settle(); await settle();
+  await f.loadOlderMessages(); await settle(); await settle();
   assert.deepEqual(drawn(), [...shown.slice(0, -1), ['m5', true], ['m4', true], ['m3', true], ['m2', true], shown.at(-1)],
     'pressed again: older replies remain together in their dossier before m36, newest first and shown');
   assert.deepEqual([['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf), run(2, 35, seq => stackOf('m' + seq)).filter(Boolean)], [Array(5).fill('m37'), Array(34).fill('m37')],
@@ -3778,7 +3776,7 @@ test('B3 More keeps one cover sheet per dossier with no duplicate pills through 
     for (const [items, next] of [[[item(2), item(3)], 2], [[item(1)], null]]) {
       f.api.view = async (name, args) => name === 'topic_messages' ? page(items, next)
         : name === 'memory_items' ? { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } } : view(name, args);
-      await f.get('more-messages').onclick(); await settle(); await settle();
+      await f.loadOlderMessages(); await settle(); await settle();
       assert.equal(pills().length, 0, `${folder}/${state}: More never duplicates the dossier cover as pills`);
       assert.equal(sheets().length, cover ? 1 : 0, 'the original sheet stays');
       checkOrder();
@@ -4913,17 +4911,30 @@ test('on the conversation page a reply folded in its stack is never reported rea
 });
 
 
+// This suite's old sheet double only toggled `open`. 1026 waits for the
+// browser's queued close event; preserve its installed handler and once waiter.
+function closeSheet673(sheet) {
+  const installed = sheet.handlers.close, add = sheet.addEventListener.bind(sheet), waiters = [];
+  sheet.addEventListener = (type, fn, options) => {
+    if (type === 'close' && options?.once) waiters.push(fn); else add(type, fn, options);
+  };
+  sheet.close = function () {
+    this.open = false;
+    queueMicrotask(() => { installed?.(); for (const fn of waiters.splice(0)) fn(); });
+  };
+}
+
 for (const ending of ['confirmed', 'refused', 'unknown', 'new writing', 'new opening', 'closed']) test(`item 673: inline send closes only its confirmed unchanged opening: ${ending}`, async () => {
   const f = fixture('https://fixture/?topic=t1', { window: { addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }),
     getComputedStyle: () => ({ getPropertyValue: () => 'none' }) } });
   const answer=defer(), sheet=f.get('new-message-sheet');
-  f.inline.popped=true;f.inline.opening=Symbol();sheet.open=true;sheet.close=function(){this.open=false;};
+  f.inline.popped=true;f.inline.opening=Symbol();sheet.open=true;closeSheet673(sheet);
   f.inline.callbacks.send=()=>answer.promise;
   f.editor.edit=patch=>Object.assign(f.editor.draft,patch);
   const sending=f.inline.send();
   if(ending==='new writing')f.editor.localVersion=(f.editor.localVersion??0)+1;
   if(ending==='new opening')f.inline.opening=Symbol();
-  if(ending==='closed'){f.inline.popped=false;sheet.open=false;}
+  if(ending==='closed')sheet.close();
   answer.resolve({status:['refused','unknown'].includes(ending)?ending:'confirmed'});
   await sending;
   assert.equal(sheet.open,!['confirmed','closed'].includes(ending),ending);
@@ -4936,7 +4947,7 @@ for (const newer of ['text', 'picker', 'capturing image', 'image needing a choic
   const editor=new Editor({...f.editor.context,instanceId:'fixture',actor:'fixture-person'}, {id:'draft',generation:'g',revision:1,body:'First message.'});
   f.p.editors.reply=editor;
   const answer=defer(), capture=defer(), sheet=f.get('new-message-sheet');
-  f.inline.popped=true; f.inline.opening=Symbol(); sheet.open=true; sheet.close=function(){this.open=false;};
+  f.inline.popped=true; f.inline.opening=Symbol(); sheet.open=true; closeSheet673(sheet);
   f.inline.callbacks.send=e=>{e.beginPrepare({prepareOperationId:'prepare',sendOperationId:'send',submissionId:'submission'});return answer.promise;};
   const sending=f.inline.send(), version=editor.localVersion;
   let choosing;
@@ -5115,7 +5126,7 @@ test('item 655 B3 a metadata failure from an abandoned opening cannot paint over
 for (const act of ['agent menu', 'image list', 'picker owner', 'new error', 'same error again']) test(`item 673: late confirmation preserves successor presentation ownership: ${act}`, async () => {
   const f=fixture('https://fixture/?topic=t1',{window:{addEventListener(){},matchMedia:()=>({matches:false,addEventListener(){}}),getComputedStyle:()=>({getPropertyValue:()=> 'none'})}});
   const answer=defer(),sheet=f.get('new-message-sheet');
-  f.inline.popped=true;f.inline.opening=Symbol();sheet.open=true;sheet.close=function(){this.open=false};
+  f.inline.popped=true;f.inline.opening=Symbol();sheet.open=true;closeSheet673(sheet);
   f.inline.callbacks.send=()=>answer.promise;
   f.editor.edit=patch=>Object.assign(f.editor.draft,patch);
   if(act==='same error again')f.inline.notice('The newer image could not be read.');
@@ -5152,7 +5163,7 @@ for (const outcome of ['confirmed', 'refused', 'recovery error']) test(`item 673
   owner.callbacks.send = () => answer.promise;
   f.editor.edit = patch => Object.assign(f.editor.draft, patch);
   owner.popped = true; owner.opening = Symbol(); const sheet = f.get('new-message-sheet');
-  sheet.open = true; sheet.close = function () { this.open = false; };
+  sheet.open = true; closeSheet673(sheet);
   const sending = owner.send();
   assert.equal(f.runObservation('window.pencilSendSettled'), false);
   assert.equal(sheet.open, true);

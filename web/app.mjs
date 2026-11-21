@@ -1,8 +1,11 @@
+import { OlderFeed } from './older-feed.mjs';
 import { topicCloseUI } from './topic-close-ui.mjs';
 import { QuestionStates, configureQuestionStates, questionOf, questionPill, Resolutions } from './question-state.mjs';
 import { reviewDifferences } from './review-differences.mjs';
 import { railDensity } from './rail-density.mjs';
 import { CardReplies } from './card-replies.mjs';
+import { MentionNotices } from './mention-notices.mjs';
+import { finishPageNotice } from './page-notices.mjs';
 import { panes } from './panes.mjs';
 import { stackMenuItems } from './stack-menu-items.mjs';
 import { outcomeMenuItems } from './outcome-menu-items.mjs';
@@ -117,10 +120,10 @@ import { showLine, lineText } from './lines.mjs';
 // Each page is one run of this module (in-place-navigation.mjs). A run that a
 // move in place has ended finds its own elements still, so work it had under
 // way lands there and never on the page that followed it.
-let retired = null, notebookSheet = null, outcomeColorPicker = null;
+let retired = null, notebookSheet = null, outcomeColorPicker = null, mentionNotices = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
-let outcomePageLayout = null, topicClosing = null;
-const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); },
+let outcomePageLayout = null, topicClosing = null, olderFeed = null;
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); },
   updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
 // The901 shell restores the foot and separator from copies for each run.
 railDensity();
@@ -171,7 +174,7 @@ const review = $('version-review');
 let comparison = null, reviewSerial = 0, reviewOpener = null;
 // Whether each agent's wakes are getting through, said on its name where it is not.
 const wakeLights = new WakeLights({ read: async () => checkedView(await api.view('wakes', {}, { readClass: 'background' }), bootstrap.instance_id),
-  painted: () => { const words = wakeLights.notice(); $('wakes-status').textContent = words ?? ''; $('wakes-status').hidden = !words; } });
+  painted: () => { const words = wakeLights.notice(); $('wakes-status').textContent = words ?? ''; $('wakes-status').hidden = !words; finishPageNotice($('wakes-status')); } });
 const wakeLight = person => person.kind === 'agent' || person.kind === undefined ? wakeLights.words(person.actor_id) : null;
 const sourceIdentity = ref => JSON.stringify(ref);
 const validate = answer => {
@@ -961,9 +964,9 @@ function captureListAnchor() {
   const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
   const acted = !writing && !field ? actedListCard(listActAnchor) : null;
   const first = writing || field || acted ? null : firstInView();
-  const loading = first?.id === 'more-messages' || first?.dataset.line === 'older';
+  const loading = first?.dataset.line === 'older';
   const anchor = writing ? inline.field : field ? at : acted ? acted.node : loading ? list : first;
-  const control = anchor === list && (first?.id === 'more-messages' || first?.dataset.line === 'older') ? first : null;
+  const control = anchor === list && (first?.dataset.line === 'older') ? first : null;
   const cards = entries(list).filter(entry => drawn(list, entry.dataset.id));
   const cardHold = !writing && !field && !acted && anchor !== list && list.contains(anchor);
   const held = acted ? cards.slice(cards.indexOf(acted.entry)) : cardHold ? [anchor, ...cards.filter(card => anchor.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING)] : [anchor];
@@ -1284,7 +1287,7 @@ function inView(node) { const box = node.getBoundingClientRect(); return box.bot
 // its stack moves it no more than one above the stack.
 const MESSAGE_ENTRIES = '#messages > [data-id], #messages > .reply-stack > [data-id], #messages > .reply-stack > .stack-replies > [data-id]';
 function firstInView() {
-  return [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages .dossier-cover, #messages .stack-earlier, #messages > [data-line=older], #more-messages`)].find(inView);
+  return [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages .dossier-cover, #messages .stack-earlier, #messages > [data-line=older]`)].find(inView);
 }
 // The first card drawn now, after last, that the list did not hold before:
 // one loaded, not one a fold or a join only draws again.
@@ -1298,17 +1301,6 @@ function placeLine() {
   placeNewLine($('messages'), lineSeq($('messages'), views.line?.seq ?? null), document,
     views.olderCursor === null ? null : () => run(loadToUnread), views.line?.sent_ms ?? null, views.held);
   paintFoldedNames($('messages'), views.messages);
-  paintMoreMessages();
-}
-// While the New line says more new messages lie below, it is the one way to
-// load older messages; More messages, doing much the same, is hidden. A faded
-// line promises nothing, so More comes back, and so does a line Only new does
-// not draw (it draws New items alone).
-function paintMoreMessages() {
-  const view = stackFeed ? shownView(stackFeed.state) : null, aside = stackFeed?.state.belowCount;
-  $('more-messages').textContent = aside ? 'Earlier messages' : 'More messages';
-  $('more-messages').hidden = Boolean(aside && !view.asideShown) || views.olderCursor === null || (!view?.only &&
-    [...$('messages').children].some(child => child.dataset?.line === 'older' && !child.classList.contains('new-line-read')));
 }
 function paintViews(kind) {
   if (questionStates) for (const item of feedMessages().values()) questionStates.of(item);
@@ -1350,7 +1342,6 @@ function paintViews(kind) {
     topicRail?.updateCurrent(topic);
     paintParticipants(topic, views.participants);
     drawFeed(true);
-    paintMoreMessages();
     if (registry?.current?.topicUpdatesPaused) { registry.current.topicUpdatesPaused = false; reader.paintStatus(); }
     paintMarks(); noteRead(); return;
   }
@@ -1411,7 +1402,7 @@ function paintViews(kind) {
       const author = node('span', undefined, 'message-author');
       card.append(author);
       paintCardAuthor(author, item);
-      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() }));
+      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, replyBasis: item.reply_basis, agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // Its images as thumbnails after its words, each read through the message (card-images.mjs, item 474).
       paintCardImages(card, item, cardImageBytes(item.id));
@@ -1447,7 +1438,6 @@ function paintViews(kind) {
   }
   if (kind === 'messages') { paintMessageContext(); syncCardReplies(); }
   });
-  paintMoreMessages();
   if (kind === 'messages') noteRead();
 }
 // Each message's entry by id, kept for the page's life.
@@ -1538,7 +1528,7 @@ function feedOf() {
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: newOnPage, unread: newOnPage, acted: clearVisitNew, nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     newest: (stack, mark) => run(() => openDossierNew(stack, mark)),
-    refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
+    refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), arranged: stacksRedrawn,
     hold: (paint, act) => keepListAnchor(paint, act), navigate: () => releaseTopArrivals(), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyInCard(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); paintMessageUpdates(); }, home: $('new-message-sheet'),
     // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
@@ -2715,7 +2705,7 @@ function repaintEdited(ids, edits) {
     const preview = card.querySelector(':scope > .message-preview');
     const keepingWhole = reader?.card === card && item.preview;
     if (preview && !keepingWhole) {
-      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() });
+      formatWords(preview, item.body, { partial: item.preview === true, replyBasis: item.reply_basis, agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() });
       preview.classList.remove('scroll-in-place');
       const cue = card.querySelector(':scope > .message-preview-cue');
       if (item.preview && !cue) preview.after(node('span', CUE, 'message-preview-cue'));
@@ -2780,6 +2770,15 @@ function listPage(kind, more = false) {
     else views.memoryPage(page, { initial: !more, cursor });
   }).finally(() => { foreground.release(); listLoads.delete(kind); });
   listLoads.set(kind, run); return run;
+}
+async function loadOlderMessages() {
+  const currentTopic = topic, currentViews = views, generation = registry.generation, accessEpoch = listAccessEpoch;
+  fillFrom($('messages'));
+  const outcome = await listPage('messages', true);
+  if (outcome?.applied && (outcome.rowsAdded > 0 || outcome.cursorAdvanced) &&
+      outcome.topic === currentTopic && outcome.views === currentViews && outcome.generation === generation && outcome.accessEpoch === accessEpoch &&
+      topic === currentTopic && views === currentViews && registry.generation === generation && listAccessEpoch === accessEpoch &&
+      !registry.disposed && !retired && !topicUnavailable && !authorityReviewPending()) releaseTopArrivals();
 }
 // Older pages, one after another, until the message wanted() names ({id},
 // or none) is loaded or no older page is left; its entry, or null. A read
@@ -2883,6 +2882,7 @@ function updateStatus(state) {
     : state.message + ' ';
   $('updates-retry').textContent = state.kind === 'reconnect' ? 'Reconnect' : state.kind === 'authority' ? 'Review saved writing' : 'Retry updates';
   $('updates-retry').hidden = state.kind === 'manual';
+  finishPageNotice($('updates-status'));
   // Updates that ran again may be retried after a later refusal.
   if (state.kind === 'current') reconnectRetried = null;
   if (state.kind === 'reconnect') run(reconnect);
@@ -2896,7 +2896,7 @@ async function checkAvailability(read, current, topicDenied = true) {
     drawFeed(false);
     // Nor the pictures of its messages (card-images.mjs).
     dropCardImages($('messages'));
-    $('more-messages').hidden = true; $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
+    $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
     // No settings for a topic the reader cannot see.
     $('settings-open').hidden = true; $('topic-menu').hidden = true; settings?.close();
     paintMarks();
@@ -3449,6 +3449,7 @@ async function initialize() {
     edit: (editor, p) => run(() => { if (registry.isCurrent(p, editor)) return registry.edited(editor); }),
     status: editor => registry.status(editor), sign: editor => registry.saveSign(editor).state, savedAt: editor => registry.savedTime(editor), needsReview, reviewState,
     send: (editor, p) => registry.send(editor, { presentation: p, stay: true }),
+    sent: (p, result, current) => landOnMessage(result.receipt.result.message_id, ++landingSerial, current),
     review: (editor, p, opener) => run(() => showVersions(editor, opener, p)),
     renderPending: () => paintReview(),
     retry: () => run(retryInline),
@@ -3532,9 +3533,11 @@ async function initialize() {
   // a window that crosses a phone's width shows or hides it again.
   reader.narrow.addEventListener('change', paintReaderMark);
   registry = new EditorRegistry({ api, bootstrap, journal, present, changed,
-    published: (editor, item) => cardReplies?.published(editor, item),
+    published: (editor, item) => { if (inline.editor === editor) inline.published(item); cardReplies?.published(editor, item); mentionNotices?.published(editor, item); },
     activity: () => { inline.paintStatus(); reader.paintStatus(); cardReplies?.paint(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } cardReplies?.readerClosed(presentation); cardReplies?.paint(); noteRead(); } });
+  mentionNotices = new MentionNotices({ host: $('page-notices'), api, instanceId: bootstrap.instance_id,
+    authority: () => registry.runtime.current, current: () => !retired && !registry.disposed && !authorityReviewPending() });
   cardReplies = new CardReplies({ template: $('inline-composer'), registry, topic: () => topic,
     callbacks: { ...inline.callbacks, notebook: null, recipientsPainted: null, retry: retryCard,
       sent: (result, current) => landOnMessage(result.receipt.result.message_id, ++landingSerial, current) }, offer: offerAuthor, discover, say: status });
@@ -3746,19 +3749,14 @@ async function initialize() {
     await freshness?.request({ refresh: true, retry: true });
   });
   wakeOnPress($('messages'));
-  $('more-messages').onclick = () => run(async () => {
-    const currentTopic = topic, currentViews = views, generation = registry.generation, accessEpoch = listAccessEpoch;
-    fillFrom($('messages'));
-    const outcome = await listPage('messages', true);
-    if (outcome?.applied && (outcome.rowsAdded > 0 || outcome.cursorAdvanced) &&
-        outcome.topic === currentTopic && outcome.views === currentViews && outcome.generation === generation && outcome.accessEpoch === accessEpoch &&
-        topic === currentTopic && views === currentViews && registry.generation === generation && listAccessEpoch === accessEpoch &&
-        !registry.disposed && !retired && !topicUnavailable && !authorityReviewPending()) releaseTopArrivals();
-  });
+  olderFeed = new OlderFeed({ feed: $('messages'), ready: () => !retired && laidOut && !topicUnavailable && !registry.disposed &&
+    document.visibilityState === 'visible' && !authorityReviewPending() && views.olderCursor !== null && !listLoads.has('messages') &&
+    !document.querySelector('dialog[open]:not(.notebook-docked)') && !document.querySelector('[role=menu]'),
+    load: loadOlderMessages, failed });
   window.addEventListener('beforeunload', () => marks.leave());
   shell.guard(() => registry.hasUnprotectedWriting);
   // An edit open in the Reader sends nothing at unload (its hold lapses), and lets its Web Lock go.
-  window.addEventListener('pagehide', () => { topicState?.dispose(); freshness?.dispose(); registry.dispose(); cardReplies?.dispose(); journal.close(); revokeMedia(); messageEdit?.writing.close(); });
+  window.addEventListener('pagehide', () => { olderFeed?.dispose(); topicState?.dispose(); freshness?.dispose(); registry.dispose(); cardReplies?.dispose(); mentionNotices?.dispose(); journal.close(); revokeMedia(); messageEdit?.writing.close(); });
   views.messagesPage(messageAnswer, { initial: true }); views.memoryPage(memoryAnswer, { initial: true });
   // What is drawn above the messages after they paint, in their column: the
   // marks line ("1 marked unread · Read it") and, on a conversation page, its

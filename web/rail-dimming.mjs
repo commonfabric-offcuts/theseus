@@ -6,20 +6,17 @@ export class RailDimming {
   constructor({ host, storage, enabled = () => true, doc = host.ownerDocument }) {
     Object.assign(this, { host, doc, enabled }); this.choices = new DimChoices(storage); this.press = null;
     this.sync = new DimmingSync({ choices:this.choices, storage, visible:()=>this.doc.visibilityState!=='hidden', changed:()=>this.paint() });
-    // Capture only modified name/topic presses. Every other control and
-    // ordinary link stays with its existing navigation/menu owner.
+    // Capture only Option name/topic presses. Command/Control and every
+    // other control keep the existing browser or navigation/menu owner.
     host.addEventListener('pointerdown', event => {
       const row = this.target(event.target);
-      this.press = row && event.button === 0 && !event.altKey && (event.metaKey || event.ctrlKey) ? { ...row, ctrl: event.ctrlKey, done: false } : null;
+      this.press = row && event.button === 0 && event.altKey && !event.metaKey && !event.ctrlKey ? { ...row, done: false } : null;
     }, true);
     host.addEventListener('pointercancel', () => { this.press = null; }, true);
     host.addEventListener('keydown', () => { this.press = null; }, true);
     host.addEventListener('click', event => {
-      if (event.button === 0 && event.detail > 0 && (event.metaKey || event.ctrlKey) && !event.altKey) this.act(event);
+      if (event.button === 0 && event.detail > 0 && event.altKey && !event.metaKey && !event.ctrlKey) this.act(event);
     }, true);
-    // macOS Control-click may be a contextmenu without a click. One native
-    // press is one toggle, even in an engine which emits both events.
-    host.addEventListener('contextmenu', event => { if (this.press?.ctrl) this.act(event); }, true);
     this.observer = new doc.defaultView.MutationObserver(() => {
       if (this.queued) return; this.queued = true;
       queueMicrotask(() => { this.queued = false; this.paintRows(); });
@@ -49,7 +46,16 @@ export class RailDimming {
     event.preventDefault(); event.stopPropagation();
     if (this.press?.row === target.row && this.press.done) return;
     if (this.press?.row === target.row) this.press.done = true;
-    this.choices.toggle(target.workspace,target.topic,event.shiftKey); this.paint();
+    this.toggle(target.row,event.shiftKey);
+  }
+  dimmed(row) {
+    const target = this.target(row);
+    return target && this.enabled() && this.choices.key ? this.choices.dimmed(target.workspace,target.topic) : null;
+  }
+  toggle(row, inverse = false) {
+    const target = this.target(row);
+    if (!target || !this.enabled() || !this.choices.key) return false;
+    const changed = this.choices.toggle(target.workspace,target.topic,inverse); this.paint(); return changed;
   }
   paintRows() {
     if (!this.enabled() || !this.choices.key) return;
