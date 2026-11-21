@@ -2,9 +2,11 @@ import { arrange } from './topic-navigation.mjs';
 import { waitsOn } from './topic-state.mjs';
 
 // Composition only: members and topics come from their existing owners. The
-// real Team picker moves with the viewport, so + Add keeps its native action.
+// bench applies at every width (985); without a media API the page keeps its
+// original narrow DOM. The real Team picker moves with it, so + Add keeps its
+// native action.
 export class OutcomePageLayout {
-  constructor({ host, team, cards, reader, color, doc = host.ownerDocument, media = globalThis.matchMedia?.('(min-width:1100px)') }) {
+  constructor({ host, team, cards, reader, color, doc = host.ownerDocument, media = globalThis.matchMedia?.('all') }) {
     Object.assign(this, { host, team, cards, reader, color, doc, media });
     this.teamParent = team.parentNode; this.teamNext = team.nextSibling;
     this.people = []; this.items = []; this.rows = new Map(); this.selected = null;
