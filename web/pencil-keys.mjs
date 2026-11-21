@@ -4,15 +4,20 @@ const textField = node => Boolean(node?.closest?.('input, textarea, select, [con
 
 export function pencilKey(event, composer) {
   const { root, sheet, field } = composer, doc = root.ownerDocument;
-  if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || composer.cardReply ||
-      composer.disposed || root.hidden || !root.isConnected) return false;
   const kind = event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey
     ? { KeyN: 'note-card', KeyM: 'message' }[event.code] : null;
+  const ownedText = node => root.contains(node) && textField(node);
+  const consumed = Boolean(kind && (ownedText(event.target) || ownedText(doc.activeElement)));
+  const ownsChord = Boolean(kind && (consumed || !(textField(event.target) || textField(doc.activeElement))));
+  // Mac Option-N starts as Dead/229; Option-M can arrive while that input
+  // method is composing. In pencil-owned text, prevent these physical chords
+  // before composition is admitted, including a pop from outside writing.
+  // Other text keeps its input-method owner.
+  if (event.defaultPrevented || !ownsChord && (event.isComposing || event.keyCode === 229) || composer.cardReply ||
+      composer.disposed || root.hidden || !root.isConnected) return false;
   const consume = () => { event.preventDefault(); event.stopPropagation(); };
   // A held mode change must not turn a recognized shortcut into typing in
   // this pencil's own fields (including its nested naming dialog).
-  const ownedText = node => root.contains(node) && textField(node);
-  const consumed = Boolean(kind && (ownedText(event.target) || ownedText(doc.activeElement)));
   if (consumed) consume();
   if (!composer.admits() ||
       sheet?.classList.contains('notebook-mode') ||

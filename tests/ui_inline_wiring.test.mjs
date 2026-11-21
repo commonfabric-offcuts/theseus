@@ -160,7 +160,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
         const found = [], walk = host => { for (const child of host.children) if (child instanceof Element) { if (chains.some(chain => inChain(child, chain, this))) found.push(child); walk(child); } };
         walk(this); return found;
       }
-      return selector.includes('#topics') ? [] : [...elements.values()].filter(el => el.id.startsWith('inline-') && el.id !== 'inline-composer');
+      return selector.includes('#topics') ? [] : [...elements.values()].filter(el => el.id?.startsWith('inline-') && el.id !== 'inline-composer');
     }
     setAttribute(name, value) { this[name] = value; }
     removeAttribute(name) { delete this[name]; }
@@ -270,7 +270,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, paintReplyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} unobserve() {} disconnect() {} }, MutationObserver: class { observe() {} disconnect() {} takeRecords() { return []; } }, innerHeight: 600, innerWidth: 1000, Node: { DOCUMENT_POSITION_FOLLOWING: 4, TEXT_NODE: 3 }, requestAnimationFrame: callback => setImmediate(callback), cancelAnimationFrame: clearImmediate, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     // The window's own location and history are the page's, as in a browser (the shell reads them there).
     window: { innerHeight: 600, scrollY: 0,
-      getComputedStyle: el => ({ overflowY: 'visible', position: 'static', scrollPaddingTop: '0px', scrollPaddingBottom: '0px', ...el.style }),
+      getComputedStyle: el => ({ overflowY: 'visible', position: 'static', scrollPaddingTop: '0px', scrollPaddingBottom: '0px', ...el.style, getPropertyValue: () => '' }),
       scrollBy(options) { scope.window.scrollY += options.top; events.push(['scroll', 'window', options]); },
       addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }), get location() { return scope.location; }, get history() { return scope.history; } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     // A page that loads another asks Theseus nothing more until it stays (api.mjs depart, stay); here each fixture's page says
