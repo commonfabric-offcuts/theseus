@@ -26,6 +26,7 @@ import { paintRemoval } from './message-removal.mjs';
 import { revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { overhang } from './lit-field.mjs';
 import { coverSheet, coverKey, coverSummary, payloadPill } from './dossier-cover.mjs';
+import { pointerLight, observePointerLight } from './pointer-light.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
@@ -96,6 +97,7 @@ export class Reader {
     this.narrow = window.matchMedia('(max-width: 760px)');
     this.narrow.addEventListener('change', () => { this.placeEnd(); if (this.dialog.open) this.applyLayout(); });
     this.bind();
+    this.lightSetting = observePointerLight(document, () => this.disarm());
     this.syncWidthPlacement = composerWidth(this.dialog, () => this.layout);
   }
   // Capture the source where the gesture began. A step, close or access change
@@ -603,6 +605,7 @@ export class Reader {
   }
 
   light(target, extend, pressed = false) {
+    if (!pointerLight(this.sourceBody?.ownerDocument ?? globalThis.document)) { this.disarm(); return; }
     const span = target.closest('[data-start]');
     if (!span || !this.sourceBody.contains(span)) return;
     if (extend) this.adoptSelection();
@@ -746,7 +749,7 @@ export class Reader {
         return {start:from,end:to};
       }
     }
-    return this.hover?{start:this.hover.start,end:this.hover.end}:null;
+    return pointerLight(this.sourceBody?.ownerDocument ?? globalThis.document) && this.hover ? {start:this.hover.start,end:this.hover.end} : null;
   }
   passageParts(excerpt, range=this.selectedRange()) {
     if(this.source?.source_ref.kind!=='memory')return [excerpt];

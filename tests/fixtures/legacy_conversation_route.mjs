@@ -6,7 +6,7 @@ import { runInNewContext } from 'node:vm';
 
 export async function resolveLegacyConversation(shell, view) {
   const app = readFileSync(new URL('../../web/app.mjs', import.meta.url), 'utf8');
-  const resolver = /  if \(route.kind === 'conversation'\) \{[\s\S]*?\n  \}\n(?=  \/\/ The reader's agent colors)/.exec(app)?.[0];
+  const resolver = /  if \(route.kind === 'conversation'\) \{[\s\S]*?\n  \}\n(?=  \/\/ The saved feed position precedes)/.exec(app)?.[0];
   assert.ok(resolver, 'the current app owns the legacy Conversation resolver');
   return runInNewContext(`(async () => { let route = shell.route(), topicId = route.id; ${resolver} return topicId; })()`,
     { shell, location: shell.win.location, api: { view }, validate: value => value });

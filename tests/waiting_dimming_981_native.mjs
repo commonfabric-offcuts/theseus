@@ -85,9 +85,9 @@ try{
     });
     await check('saved-set-composition',async()=>{
       await choose(1);await topic('a981').click({modifiers:['Meta'],position:{x:20,y:10}});await away();const stored=await saved();
-      await on();let s=await shot(page);assert.equal(topicIn(s,'q981').shown,true);assert.equal(topicIn(s,'q981').color,topicIn(s,'q981').dimInk);assert.equal(topicIn(s,'a981').color,topicIn(s,'a981').dimInk,'saved layer dims a waiting row');assert.equal(await saved(),stored);
+      await on();let s=await shot(page);assert.equal(topicIn(s,'q981').shown,true);assert.equal(topicIn(s,'q981').color,topicIn(s,'q981').dimInk);assert.notEqual(topicIn(s,'a981').color,topicIn(s,'a981').dimInk,'1003 reader wait overrides the saved layer');assert.equal(await saved(),stored);
       await choose(0);await away();s=await shot(page);assert.equal(topicIn(s,'q981').color,topicIn(s,'q981').dimInk,'0 leaves waiting layer');assert.notEqual(topicIn(s,'a981').color,topicIn(s,'a981').dimInk);
-      await choose(1);await off();s=await shot(page);assert.notEqual(topicIn(s,'q981').color,topicIn(s,'q981').dimInk);assert.equal(topicIn(s,'a981').color,topicIn(s,'a981').dimInk);assert.equal(await saved(),stored);
+      await choose(1);await off();s=await shot(page);assert.notEqual(topicIn(s,'q981').color,topicIn(s,'q981').dimInk);assert.notEqual(topicIn(s,'a981').color,topicIn(s,'a981').dimInk);assert.equal(await saved(),stored);
       await topic('a981').click({modifiers:['Meta'],position:{x:20,y:10}});await choose(0);
     });
     await check('unchanged-count-control',async before=>{await on();assert.equal((await shot(page)).count,'2');await off();assert.equal((await shot(page)).count,before.count);});

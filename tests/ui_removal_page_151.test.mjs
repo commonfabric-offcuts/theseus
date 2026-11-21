@@ -317,7 +317,13 @@ test('151 page freshness: source failures keep retry authority and real-topic-de
   busy.f.invalidate('withdrawal:ask', 1); await busy.f.request();
   assert.equal(busy.f.stopped, false, 'F3_RETRY: transient read remains retryable');
   assert.equal(busy.f.dirty.has('withdrawal:ask'), true, 'F3_RETRY: failed exact resource stays dirty');
-  assert.ok(busy.states.some(x => x.kind === 'retry')); assert.equal(busy.owner.isUnavailable(), false);
+  assert.equal(busy.states.some(x => x.kind === 'retry'), false, 'F3_RETRY: initial transient failure stays quiet');
+  await busy.f.request();
+  assert.equal(busy.states.some(x => x.kind === 'retry'), false, 'F3_RETRY: first automatic retry stays quiet');
+  await busy.f.request();
+  assert.ok(busy.states.some(x => x.kind === 'retry'), 'F3_RETRY: two failed retries expose the real delay');
+  assert.equal(busy.f.dirty.has('withdrawal:ask'), true, 'F3_RETRY: exhausted retry still retains exact dirty resource');
+  assert.equal(busy.owner.isUnavailable(), false);
   const denied = freshnessFixture(t, async () => { throw Error('Unexpected source'); }, { denyTopic: true });
   denied.f.invalidate('availability', 1); await denied.f.request();
   assert.equal(denied.f.stopped, true, 'F3_TOPIC: actual topic denial still stops freshness');

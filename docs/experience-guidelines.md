@@ -335,10 +335,15 @@ press cannot reach.
   dark; `tests/test_new_line.py` (`CountLeadsThereCase`): the count and the
   message it leads to are one rule ([attention.md](attention.md)).
 - `tests/topic_header_native.mjs` (`native-header`): "header a topic Ready for
-  review shows ✅ Done beside its state; a click marks it Done, into the Done
-  group, and the button goes; an active topic shows none", "header ✅ Done is
-  reached with Tab and pressed with Return or Space, and the focus lands on the
-  subtitle saying Done".
+  review shows ✅ Done beside its state; a click keeps Done and opens its outcome and Done
+  group; an active topic shows none", "header ✅ Done is
+  reached with Tab and pressed with Return or Space, and opens its outcome with the
+  heading focused".
+- `tests/topic_close_1000_native.mjs` (`flows` and `verify`, Chromium/WebKit):
+  Archive/Done keep the exact act before departure, close the current topic and
+  Reader, mark the parent outcome current, retain Undo, restore recorded refusal,
+  replay unknown results and preserve later navigation/writing. Phone/desktop,
+  Bookends/Paper, header/settings/rail/Reader and native keyboard paths.
 - `tests/topic_reading_native.mjs` (`native-reading`, `native-webkit-reading`):
   the `reading item 649` cases at 320, 375, 390 and laptop, light and dark:
   the message's own note corner opens the composer to that private note by
