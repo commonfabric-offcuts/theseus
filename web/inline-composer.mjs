@@ -12,6 +12,7 @@ import { holdPlace } from './sheet-holder.mjs';
 import { currentImages, imageBarrier } from './upload-state.mjs';
 import { composerWidth } from './composer-width.mjs';
 import { ReaderLayout } from './layout.mjs';
+import { reach } from './arrow-reach.mjs';
 
 
 // The inline DOM adapter shares the existing registry/session/upload owners.
@@ -33,12 +34,20 @@ export class InlineComposer {
       button?.addEventListener('click', () => this.chooseKind(kind));
       button?.addEventListener('keydown', event => {
         if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+          event.preventDefault(); event.stopPropagation();
+          if (!event.repeat) reach(button, event.key === 'ArrowUp' ? 'up' : 'down');
+          return;
+        }
+        if (event.key === 'Escape' && !this.sheet?.open) {
+          event.preventDefault(); event.stopPropagation(); this.field.focus(); return;
+        }
         const next = event.key === 'Home' ? 0 : event.key === 'End' ? this.kinds.length - 1
-          : ['ArrowRight', 'ArrowDown'].includes(event.key) ? (index + 1) % this.kinds.length
-          : ['ArrowLeft', 'ArrowUp'].includes(event.key) ? (index + this.kinds.length - 1) % this.kinds.length : null;
+          : event.key === 'ArrowRight' ? Math.min(index + 1, this.kinds.length - 1)
+          : event.key === 'ArrowLeft' ? Math.max(index - 1, 0) : null;
         if (next === null) return;
         event.preventDefault(); event.stopPropagation();
-        if (this.chooseKind(this.kinds[next])) this.$('kind-' + this.kinds[next]).focus();
+        if (!event.repeat && next !== index && this.chooseKind(this.kinds[next])) this.$('kind-' + this.kinds[next]).focus();
       });
     }
     // The Reader's composer, with no message above it (docs/reader.md).
