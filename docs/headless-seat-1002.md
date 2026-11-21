@@ -174,16 +174,15 @@ verify Browser.close, owned PIDs/profiles and fixture exit/port cleanup.
 Run only the relevant owner cohort, compare unexplained baseline failures
 honestly, and coordinate one substantial workload at a time in Landing.
 
-Warp14954 supersedes the tentative successor order: 987 supplies schema 61
-and corrected 757 supplies 62. Of 1004 and 1002, the first green freeze takes
-63 and lands first; the other takes 64 and rebases once onto that approved
-head. This source has moved onto corrected 757
-approved `e6049706c764285e89442b34e01dedb61687db2d`, preserving both predecessors.
-No temporary shipping schema, premature number claim or renumbering. Resolve
-the final composition before freezing. Build in parallel; each piece lands
-judged on its own run only after its predecessor is live, and never holds an
-ordinary head. If 1004 finishes first, its landing costs 1002 one rebase and
-does not hold a finished medium piece behind the large seat door.
+Warp15019 clarifies the successor order: 987 supplies schema61 and approved
+757 supplies62. This source builds directly on approved757
+`e6049706c764285e89442b34e01dedb61687db2d` with the actual62→63 seat step.
+1004 has no approved head as this step is registered; it does not block this
+build. If1002 freezes green first,1004 rebases once onto its approved head
+and takes64. Only an earlier1004 approval would move1002 onto that approved
+head with64. No predecessor renumbering or placeholder migration. Each lands
+judged on its own run after its predecessor is live, without holding an
+ordinary head. The actual first approved successor determines the later base.
 Freeze when the meaningful owned checks are green, push only this exact
 source branch, and send Warp one diff/test read with HEAD, test files,
 pass/fail evidence and material limitations. Fable/Warp retain stage and

@@ -70,7 +70,7 @@ from .piece_freeze import FREEZE_SCHEMA
 from .hosted_seats import HostedSeats, SEAT_SCHEMA
 
 
-SCHEMA_VERSION = "62"
+SCHEMA_VERSION = "63"
 
 
 def commit_identity_intact(metadata):

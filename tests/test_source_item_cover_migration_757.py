@@ -40,13 +40,13 @@ class SourceCoverMigrationCase(Fixture):
         self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='schema_version'"), [("61",)])
         refused = self.store.view("owner", "dossier_cover", {"message_id": source})
         self.assertEqual(refused["error"]["code"], "SCHEMA_MISMATCH", "reads do not migrate")
-        migrations.migrate(self.path, "test-instance", target="62", binding=self.binding)
-        self.assertEqual(self.layout(), fresh, "upgrade matches a fresh62 store")
+        migrations.migrate(self.path, "test-instance", binding=self.binding)
+        self.assertEqual(self.layout(), fresh, "upgrade matches a fresh current-schema store")
         self.assertEqual(self.sql("SELECT item,release FROM source_cover_releases"), [(number, 757)])
         for name, rows in facts.items():
             self.assertEqual(self.sql('SELECT * FROM "' + name + '"'), rows, name)
         self.assertEqual(self.shown(source)["cover"]["waiting"], WAIT)
-        self.assertFalse(migrations.migrate(self.path, "test-instance", target="62", binding=self.binding)["migrated"])
+        self.assertFalse(migrations.migrate(self.path, "test-instance", binding=self.binding)["migrated"])
 
     def test_failed_step_rolls_back_schema_backfill_metadata_and_records(self):
         migrations.migrate(self.path, "test-instance", target="61", binding=self.binding)
