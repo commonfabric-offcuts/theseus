@@ -482,7 +482,11 @@ export class DeckPage {
     if (!card) return;
     const children = groupEnd(cards, i) > i + 1, folded = this.folded.has(card.title);
     if (left && children && !folded) this.fold(i);
-    else if (left) { const parent = this.layout().parents[i]; if (parent >= 0) this.pick(parent); }
+    else if (left) {
+      const parent = this.layout().parents[i];
+      if (parent >= 0) this.pick(parent);
+      else if (!command) this.leavePane?.('left');
+    }
     else if (children && folded) this.fold(i);
     else if (!command) this.toBubble();
     else if (children) this.pick(i + 1);
