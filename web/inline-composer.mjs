@@ -79,10 +79,14 @@ export class InlineComposer {
     // focus back to what opened it as it closed, and this event, a frame
     // later, leaves it there, or wherever a key pressed since has moved it.
     this.sheet?.addEventListener('close', () => {
+      if (this.sheet.open) return; // A newer opening owns a delayed close event.
+      const sent = this.sentClosing; this.sentClosing = null;
+      const sending = sent && sent.opening === this.opening;
       const popped = this.popped; this.popped = false; this.opening = Symbol(); this.kind = this.defaultKind(); this.noteTarget = '';
+      if (sending) sent.closedOpening = this.opening;
       this.paintStatus();
       this.bar.fold();
-      if (popped) document.querySelector('#new-message')?.focus({ preventScroll: true });
+      if (popped && !sending) document.querySelector('#new-message')?.focus({ preventScroll: true });
     });
     // Only a press that starts and ends on the sheet's backdrop puts it back.
     let outside = false;
@@ -532,7 +536,7 @@ export class InlineComposer {
       const version = editor.localVersion, cycle = editor.clientCycleId, noticeVersion = this.noticeVersion;
       const completion = { p, editor, opening, version, cycle, noticeVersion,
         item: editor.submissions?.find(item => item.status === 'preparing' && !item.detached) };
-      if (this.cardReply) this.sendOpening = completion;
+      this.sendOpening = completion;
       const result = await sent;
       return await this.finishSend(completion, result);
     } catch (error) { this.notice(error, p, editor); }
@@ -548,18 +552,28 @@ export class InlineComposer {
     completion.finished = true;
     if (this.sendOpening === completion) this.sendOpening = null;
     const { p, editor, opening, version, cycle, noticeVersion } = completion;
-    // Only confirmed publication closes this opening. An interrupted or refused
-    // act keeps its recovery controls in front; a later opening or new writing
-    // is never dismissed by an older answer.
-    // Image selection/capture does not edit text. Only selections owned by
-    // the successor count here; the sent submission owns its frozen images.
-    if (result?.status === 'confirmed' && this.admits(p, editor) && (this.popped || this.cardReply) &&
-        this.opening === opening && editor.localVersion === version && editor.clientCycleId === cycle &&
-        !currentImages(editor).length && !imageBarrier(editor) &&
-        !this.imagePicker && !this.images?.open && !this.bar.panel && !this.naming.sheet.open &&
-        this.noticeVersion === noticeVersion) {
-      if (this.cardReply) await this.callbacks.sent?.(p, result);
-      else { this.bar.fold(); this.sheet.close(); }
+    // Confirmation may arrive through reconciliation. The empty successor and
+    // this opening must still belong to this send before folding or landing.
+    const current = () => this.admits(p, editor) &&
+      this.opening === (completion.closedOpening ?? opening) && this.kind === 'message' &&
+      editor.localVersion === version && editor.clientCycleId === cycle &&
+      !currentImages(editor).length && !imageBarrier(editor) &&
+      !this.imagePicker && !this.images?.open && !this.bar.panel && !this.naming.sheet.open &&
+      !editor.authorityRecovery && !result.detached && this.noticeVersion === noticeVersion;
+    if (!current()) return;
+    if (this.cardReply) return this.callbacks.sent?.(p, result);
+    const doc = this.root.ownerDocument, focused = this.root.contains(doc.activeElement), popped = this.popped;
+    this.bar.fold();
+    if (this.sheet?.open) {
+      // Native dialog restoration happens as it closes; its queued close event
+      // must finish before the confirmed card receives focus.
+      const closed = new Promise(resolve => this.sheet.addEventListener('close', resolve, { once: true }));
+      this.sentClosing = completion; this.sheet.close(); await closed;
+    }
+    const returned = doc.activeElement;
+    if (focused && current() && (this.root.contains(returned) || returned === doc.body ||
+        popped && returned === doc.querySelector('#new-message'))) {
+      return this.callbacks.sent?.(p, result, () => current() && doc.activeElement === returned);
     }
   }
 }
