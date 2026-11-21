@@ -363,6 +363,9 @@ export class Shell {
     if (this.handles) listener.ready?.(this.handles);
     return () => this.listeners.delete(listener);
   }
+  // A followed outline owns retained topic lists regardless of how the page
+  // mounted it. Standalone pages may have no outline at all.
+  get outline() { return [...this.listeners].find(owner => typeof owner.topicsFor === 'function') ?? null; }
   route() { try { return parseRoute(new URL(this.win.location.href)); } catch { return null; } }
   // Whether a feed's run is on its way: a move under way, or a run not up yet.
   get between() { return this.installed && this.feed && (this.moving || (!this.handles && Boolean(this.page))); }

@@ -82,7 +82,7 @@ owed; this intake is not a diagnosed cause or completed fix.
 One document-owned TopicRail per outcome now supplies both the left outline
 and the current topic's OutcomeScope. Outcome home cards already consume that
 same owner. Navigation no longer adopts/clones/discards a page-owned list.
-The topic page gets the rail through Shell.topicsFor; its existing writing,
+The topic page gets the rail through Shell.outline.topicsFor; its existing writing,
 navigation and runtime-review guards remain. A selected topic is separate
 from retained known topic facts. Clearing selection removes current-page marks
 immediately, retaining its row until a complete fresh list is available.
@@ -113,7 +113,7 @@ footer. No Core/schema change, migration, runner/tool/live-installation edit.
 
 ## Validation at freeze
 
-Owner red and native baseline retained. Final241 affected controls across14 files pass,
+Owner red and native baseline retained. Final242 affected controls across14 files pass,
 including actual old-run rejection, atomic all-list publication, late current
 metadata, retained stars,901 routing and982 More extent. The first expanded
 native matrix retained four harness failures: it released its malformed-HTTP200
@@ -142,3 +142,25 @@ The old844 prototype fixture failed on pristine intake too because it omitted
 the constructor's dimming binding. It now supplies that binding and verifies
 the same current rail identity; its no-duplicate-current-list assertion stays.
 Final wider controls have no unexplained failure or known-red waiver.
+
+## Review correction14866
+
+The original f1752641 depended on a factory installed only by rails.mjs.
+Hand-mounted outline pages and standalone pages could fail initialization.
+Shell now discovers its outline among the owners already registered through
+follow(); the app delegates to that retained owner. When no outline is mounted,
+the app retains its original standalone TopicRail, reads and authority guards.
+No module-installed shell factory and no duplicate list owner are required.
+Follow/unfollow/delegation has a dedicated owner check; the original wiring
+canary failure and its actual intake comparison are retained in the revision
+packet. No wiring stand-in bodies were modified.
+
+The151 source-failure check now verifies the accepted1005 policy explicitly:
+initial and first retry stay quiet, the second failed retry reports delay,
+and the exact dirty source remains retained. Topic-denial/authority/stale-source
+assertions remain. The788 real legacy-resolver helper had a stale following
+comment anchor on the actual intake source too; it now selects the current
+saved-feed-position boundary. It still executes the actual unchanged app
+resolver through the real Shell, including route/history/rail/creation checks.
+The revision packet distinguishes those two expectation/fixture corrections
+from the initialization fix and reports the exact shared base diagnostics.

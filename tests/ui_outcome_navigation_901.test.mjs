@@ -182,3 +182,13 @@ test('1005 a shared queued read retired by navigation is never dispatched; the n
   gate.resolve();await first;await rejected;assert.deepEqual(calls,['held']);
   assert.deepEqual(await shell.view('new',{},'foreground'),{name:'new'});assert.deepEqual(calls,['held','new']);
 });
+
+test('1005 retained topics come from the followed outline without the rails installer',()=>{
+ const {shell}=fixture();assert.equal(shell.outline,null);
+ const topic={id:'t1',workspace_id:'w1'},bootstrap={instance_id:'i1'},rail={},calls=[];
+ shell.follow({ready(){}});
+ const outline={topicsFor(...args){calls.push(args);return rail;}};
+ const unfollow=shell.follow(outline);assert.equal(shell.outline,outline);
+ assert.equal(shell.outline.topicsFor(bootstrap,topic,20),rail);assert.deepEqual(calls,[[bootstrap,topic,20]]);
+ unfollow();assert.equal(shell.outline,null,'no stale owner survives removal');
+});

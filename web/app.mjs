@@ -3686,7 +3686,20 @@ async function initialize() {
   syncCardReplies();
   // Every ordinary topic row, including the conversation; Build topics stay
   // in the right rail (item 297).
-  topicRail = shell.topicsFor(bootstrap, topic, pageMax());
+  // A followed outline is the shared owner; without one, this page owns its list.
+  topicRail = shell.outline?.topicsFor(bootstrap, topic, pageMax()) ?? new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic, 'active', true),
+    host: $('topics'), more: $('more-topics'), retry: $('retry-topics'), message: $('topics-status'), key: $('topics-key'), ...topicFolds(),
+    denied: error => readFailure(error).kind === 'forbidden',
+    read: async args => {
+      if (authorityReviewPending()) throw Error('The runtime changed. Review saved writing before reloading.');
+      const answer = checkedView(await registry.cleanup.list(options => readTopicList((name, query) => api.view(name, query, options), args)), bootstrap.instance_id);
+      if (registry.disposed || authorityReviewPending()) throw Error('The runtime changed. Reload after reviewing saved writing.');
+      return answer;
+    },
+    open: (id, title, message, at) => openDestination(topicTarget(id, message, at), title),
+    // The standalone list reports its initial read just as before.
+    updated: () => { $('topic-navigation').dataset.listed = ''; },
+  });
   // The rail shows only this topic's outcome. A message's Add to pipeline
   // follows the Pipeline row's read.
   const pipeline = pipelineSection(topic.workspace_id, false, paintReaderMark); pipelineRow = pipeline.row;
