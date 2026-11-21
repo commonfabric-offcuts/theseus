@@ -111,7 +111,7 @@ class RailDimmingCase(unittest.TestCase):
     def dim_step(self):
         step = next((step for step in STEPS if step[2] is DIM_SCHEMA), None)
         self.assertIsNotNone(step, "The shipping schema chain includes the Dim layout")
-        self.assertEqual(step[1], SCHEMA_VERSION)
+        self.assertEqual(step[:2], ("62", "63"), "The approved Dim step keeps its predecessor and number")
         return step
 
     def test_empty_migration_roundtrip_preserves_ordinary_records_and_does_not_auto_upgrade(self):
@@ -126,6 +126,10 @@ class RailDimmingCase(unittest.TestCase):
         self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='schema_version'"), [(before,)])
         self.assertTrue(migrate(self.path, "test-instance", self.binding, target=after)["migrated"])
         self.assertFalse(migrate(self.path, "test-instance", self.binding, target=after)["migrated"])
+        if after != SCHEMA_VERSION:
+            with self.assertRaises(StoreOpenError):
+                Store(self.path, "test-instance", expected_binding=self.binding)
+            self.assertTrue(migrate(self.path, "test-instance", self.binding, target=SCHEMA_VERSION)["migrated"])
         self.assertEqual(self.sql("SELECT id,title FROM workspaces ORDER BY id"), ordinary)
         self.assertGreater(int(self.sql("SELECT value FROM metadata WHERE key='commit_seq'")[0][0]), sequence)
         self.assertEqual(self.read()["dim_revision"], 0)
