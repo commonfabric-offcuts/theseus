@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 import {resolve} from 'node:path';
 import {fixtureControl} from './fixture_control.mjs';
 const playwright=await import(process.env.AIM_PLAYWRIGHT_CORE),engine=process.env.AIM_ENGINE??'chromium';
-const evidence=process.argv[2],baseline=process.env.AIM_991_BASELINE==='1';await mkdir(evidence,{recursive:true});
+const evidence=process.argv[2],baseline=process.env.AIM_991_BASELINE==='1',align993=process.env.AIM_993_ALIGN==='1';await mkdir(evidence,{recursive:true});
 const fixture=spawn('/usr/bin/python3',['-B','tests/fixtures/ui_http.py','--freshness'],{cwd:process.env.AIM_991_ROOT??process.cwd()});
 const source=await readFile(resolve(process.env.AIM_991_ROOT??process.cwd(),'web/compose-bar.mjs')),sourceHash=createHash('sha256').update(source).digest('hex');
 const {control,exit,errors}=fixtureControl(fixture),results=[],cleanup={},owned=new Set(),fixtureOwned=new Set([fixture.pid]);
@@ -31,7 +31,7 @@ try{
   const snap=()=>field.evaluate(f=>{const r=n=>{const b=n.getBoundingClientRect();return{top:b.top,bottom:b.bottom,height:b.height};},root=f.closest('.composer'),box=f.closest('.field-box'),send=root.querySelector(':scope>.compose-send'),plus=root.querySelector(':scope>.plus-button'),shown=n=>n&&n.getClientRects().length;
    return{field:r(f),box:r(box),send:shown(send)?r(send):null,plus:shown(plus)?r(plus):null,foot:Math.max(box.getBoundingClientRect().bottom,...[send,plus].filter(shown).map(n=>n.getBoundingClientRect().bottom)),vv:{height:visualViewport.height,top:visualViewport.offsetTop,width:visualViewport.width,scale:visualViewport.scale},layout:innerHeight,scrollY,composerScroll:root.scrollTop,focus:document.activeElement===f,value:f.value,start:f.selectionStart,end:f.selectionEnd,events:[...viewport991]};});
   const frame=()=>page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(done)))));
-  const inside=s=>{assert.ok(s.foot<=s.vv.top+s.vv.height-4,`footer ${s.foot} exceeds visible bottom ${s.vv.top+s.vv.height}`);assert.equal(s.focus,true);};
+  const inside=s=>{assert.ok(s.foot<=s.vv.top+s.vv.height-4,`footer ${s.foot} exceeds visible bottom ${s.vv.top+s.vv.height}`);assert.equal(s.focus,true);if(align993&&(kind==='card'||kind==='foot')){assert.ok(Math.abs(s.vv.top+s.vv.height-s.foot-8)<=2,'993 footer rests8px above reported keyboard');assert.ok(s.box.top>=s.vv.top-1,'993 field top stays visible');}};
   try{
    await page.goto(origin+'/?topic=t1');await page.waitForFunction(()=>document.body.dataset.ready==='true');
    const app=await page.evaluate(()=>[...document.scripts].find(s=>s.src.includes('/app.mjs')).src);assert.deepEqual(await(await page.request.get(new URL('./compose-bar.mjs',app).href)).body(),source,'served exact source');
@@ -40,7 +40,7 @@ try{
     if(kind==='reader'){await words.click();await page.locator('#reader[open]').waitFor();composer=page.locator('#reader-composer');field=page.locator('#writing-body');}
    }else{if(kind==='pencil'){await page.locator('#new-message').click();await page.locator('#new-message-sheet[open]').waitFor();}composer=page.locator('#inline-composer');field=page.locator('#inline-writing-body');}
    await field.click();await page.keyboard.type('Writing above the keyboard.');await frame();
-   if(kind==='card'||kind==='foot')await field.evaluate(f=>{const root=f.closest('.composer'),send=root.querySelector(':scope>.compose-send');window.scrollBy({top:Math.max(f.getBoundingClientRect().bottom,send.getBoundingClientRect().bottom)-(visualViewport.offsetTop+visualViewport.height-12),behavior:'instant'});});
+   if(kind==='card'||kind==='foot')await field.evaluate((f,align)=>{const root=f.closest('.composer'),send=root.querySelector(':scope>.compose-send');const bottom=align?260:visualViewport.offsetTop+visualViewport.height-12;window.scrollBy({top:Math.max(f.getBoundingClientRect().bottom,send.getBoundingClientRect().bottom)-bottom,behavior:'instant'});},align993&&width===390);
    await frame();before=await snap();assert.equal(before.focus,true);assert.equal(before.vv.width,width);
    if(width>760){
     await page.keyboard.type(' Still writing.');await frame();desktop=await snap();assert.equal(desktop.vv.height,before.vv.height);assert.equal(desktop.vv.top,before.vv.top);assert.equal(desktop.scrollY,before.scrollY);assert.equal(desktop.composerScroll,before.composerScroll);
@@ -61,7 +61,7 @@ finally{
  children(fixtureOwned);fixture.stdin.end();cleanup.fixtureExit=await exit;cleanup.fixtureErrors=errors();cleanup.fixturePid=fixture.pid;
  cleanup.fixtureAbsent=!ps().some(p=>p.pid===fixture.pid);cleanup.fixtureOwnedPids=[...fixtureOwned];cleanup.remainingFixtureOwned=ps().filter(p=>fixtureOwned.has(p.pid));
  if(origin)cleanup.portClosed=await new Promise(resolve=>{const u=new URL(origin),s=net.createConnection({host:u.hostname,port:+u.port});s.once('connect',()=>{s.destroy();resolve(false);});s.once('error',()=>resolve(true));});
- await writeFile(`${evidence}/results.json`,JSON.stringify({engine,baseline,sourceHash,results,cleanup,failure:failure?.stack??null},null,2));
+ await writeFile(`${evidence}/results.json`,JSON.stringify({engine,baseline,align993,sourceHash,results,cleanup,failure:failure?.stack??null},null,2));
 }
 const failed=results.filter(r=>r.error);process.stdout.write(JSON.stringify({engine,pass:results.length-failed.length,fail:failed.length,failed:failed.map(r=>({key:r.key,error:r.error})),cleanup,fatal:failure?.stack??null},null,2)+'\n');
 if(failure||failed.length||!cleanup.browserClosed||cleanup.remainingOwned?.length||cleanup.profileProcesses?.length||!cleanup.profileRemoved||cleanup.fixtureExit?.code!==0||!cleanup.fixtureAbsent||cleanup.remainingFixtureOwned?.length||!cleanup.portClosed)process.exitCode=1;

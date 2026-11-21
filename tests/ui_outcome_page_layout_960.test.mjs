@@ -49,3 +49,62 @@ test('960 a real media change restores Team and its purpose owner, then removes 
   assert.equal(f.host.getAttribute('data-outcome-wide'), null);
   page.dispose(); assert.equal(events.size, 0);
 });
+
+// 997: below 1100px the bench is three tabs. The layout names the chosen tab on its host (the style sheet shows that
+// part alone), counts each part, keeps the choice per outcome for the visit, and hides a part the reader cannot see.
+const tabsOf = page => Object.fromEntries([...page.tabButtons].map(([key, { button, count }]) => [key, { selected: button.getAttribute('aria-selected'), hidden: Boolean(button.hidden), count: count.textContent }]));
+const presentation = (active, more = null, done = 0) => ({ groups: [
+  { name: 'active', toggle: null, more, rows: Array.from({ length: active }, (_, n) => ({ item: { id: `t${n}` } })) },
+  { name: 'done', toggle: () => {}, more: null, rows: Array.from({ length: done }, (_, n) => ({ item: { id: `d${n}` } })) }] });
+
+test('997 the tabs open on Topics, count each part, and name the chosen part on the host', () => {
+  const f = fixture(), page = new OutcomePageLayout({ ...f, scope: 'w997-counts', media: { matches: true } });
+  assert.ok(f.host.children.includes(page.tabs), 'the tabs belong to the bench');
+  assert.equal(f.host.dataset.outcomeTab, 'topics');
+  page.topics(presentation(25, () => {}, 3)); page.members([{ actor_id: 'reader', kind: 'human' }, { actor_id: 'a1', kind: 'agent' }]);
+  page.notes({ count: 6, more: false, shown: true });
+  assert.deepEqual(tabsOf(page), { topics: { selected: 'true', hidden: false, count: '25+' }, agents: { selected: 'false', hidden: false, count: '2' }, notes: { selected: 'false', hidden: false, count: '6' } });
+  page.topics(presentation(4, null, 3));
+  assert.equal(tabsOf(page).topics.count, '4', 'done topics are not counted, and no + without more to load');
+  page.tabButtons.get('notes').button.onclick();
+  assert.equal(f.host.dataset.outcomeTab, 'notes');
+  assert.deepEqual(Object.values(tabsOf(page)).map(tab => tab.selected), ['false', 'false', 'true']);
+});
+
+test('997 the chosen tab is kept per outcome for the visit, and a new outcome opens on Topics', () => {
+  const f = fixture(), first = new OutcomePageLayout({ ...f, scope: 'w997-kept', media: { matches: true } });
+  first.members([{ actor_id: 'a1', kind: 'agent' }]); first.choose('agents'); first.dispose();
+  const again = fixture(), back = new OutcomePageLayout({ ...again, scope: 'w997-kept', media: { matches: true } });
+  assert.equal(again.host.dataset.outcomeTab, 'agents', 'before the team has loaded, the kept tab already shows');
+  back.members([{ actor_id: 'a1', kind: 'agent' }]);
+  assert.equal(again.host.dataset.outcomeTab, 'agents');
+  const other = fixture(); new OutcomePageLayout({ ...other, scope: 'w997-other', media: { matches: true } });
+  assert.equal(other.host.dataset.outcomeTab, 'topics');
+});
+
+test('997 a part the reader cannot see has no tab, and its chosen tab falls back to Topics', () => {
+  const f = fixture(), page = new OutcomePageLayout({ ...f, scope: 'w997-hidden', media: { matches: true } });
+  page.members([{ actor_id: 'a1', kind: 'agent' }]); page.notes({ count: 2, more: true, shown: true });
+  page.choose('notes'); assert.equal(tabsOf(page).notes.count, '2+');
+  page.notes({ count: 0, more: false, shown: false });
+  assert.equal(tabsOf(page).notes.hidden, true); assert.equal(f.host.dataset.outcomeTab, 'topics');
+  page.notes({ count: 1, more: false, shown: true });
+  assert.equal(f.host.dataset.outcomeTab, 'notes', 'the choice stands for when the part returns');
+  page.members([]); assert.equal(tabsOf(page).agents.hidden, true);
+});
+
+test('997 arrow keys move between the visible tabs; picking an agent shows its topics', () => {
+  const f = fixture(); let filtered = 'unset'; f.cards = { filter: actor => { filtered = actor; } };
+  const page = new OutcomePageLayout({ ...f, scope: 'w997-keys', media: { matches: true } });
+  page.members([{ actor_id: 'a1', kind: 'agent', name: 'auditor' }]); page.notes({ count: 1, more: false, shown: true });
+  const key = name => { let stopped = false; page.tabs.listeners.keydown({ key: name, preventDefault: () => { stopped = true; } }); return stopped; };
+  assert.equal(key('ArrowRight'), true); assert.equal(f.host.dataset.outcomeTab, 'agents');
+  key('ArrowRight'); assert.equal(f.host.dataset.outcomeTab, 'notes');
+  key('ArrowRight'); assert.equal(f.host.dataset.outcomeTab, 'topics', 'the arrows wrap');
+  key('ArrowLeft'); assert.equal(f.host.dataset.outcomeTab, 'notes');
+  assert.equal(key('Enter'), false, 'other keys are left alone'); assert.equal(f.host.dataset.outcomeTab, 'notes');
+  page.choose('agents'); page.rows.get('a1').button.onclick();
+  assert.equal(filtered, 'a1'); assert.equal(f.host.dataset.outcomeTab, 'topics');
+  page.choose('agents'); page.rows.get('a1').button.onclick();
+  assert.equal(filtered, null); assert.equal(f.host.dataset.outcomeTab, 'agents', 'clearing the filter stays where you are');
+});

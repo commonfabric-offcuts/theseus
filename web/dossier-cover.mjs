@@ -15,8 +15,9 @@ import { coverAnswers } from './cover-answers.mjs';
 import { glyph } from './glyphs.mjs';
 import { linkNode, writtenLink } from './links.mjs';
 import { timeNode } from './times.mjs';
-import { inlineNodes, parseBlocks, formatNodes } from './message-format.mjs';
+import { inlineNodes, parseBlocks } from './message-format.mjs';
 import { literalHTMLNodes } from './interactive-html.mjs';
+import { coverSectionNodes } from './cover-sections.mjs';
 
 const element = (doc, tag, className, text) => {
   const node = doc.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node;
@@ -113,7 +114,7 @@ export function coverSheet(doc, cover, context) {
       if (plain) words.textContent = cover.stands;
       else {
         words.classList.add('formatted');
-        words.append(...formatNodes(cover.stands, { doc }));
+        words.append(...coverSectionNodes(cover.stands, { doc, ...ctx, rootId: cover.root_id ?? ctx.rootId }));
       }
     }
     else words.append(...nodes);

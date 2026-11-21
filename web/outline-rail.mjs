@@ -45,6 +45,7 @@ import { OutlineMenus } from './outline-menus.mjs';
 import { readTopicList, TopicRail, TopicPages, WorkspacePages, reread, routeHref, topicTarget, paintUnread, arrange, PAGE } from './topic-navigation.mjs';
 import { paintRowLight } from './outcome-light.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton } from './quick-create.mjs';
+import { Superseded } from './in-place-navigation.mjs';
 import { readFailure } from './freshness.mjs';
 import { reloader } from './live.mjs';
 import { KeyTree } from './key-tree.mjs';
@@ -184,6 +185,8 @@ export class OutlineRail {
     const reload = reloader(async () => { const dirty = full ? null : pending; full = false; pending = new Set(); result = await this.load(dirty); });
     this.reload = (dirty = null) => { if (dirty) for (const key of dirty) pending.add(key); else full = true; return reload().then(() => result); };
     this.build();
+    this.phoneMedia = doc.defaultView.matchMedia('(max-width: 760px)');
+    this.phoneMedia.addEventListener?.('change', () => this.paint());
     this.dimming = new RailDimming({ host, storage, doc, enabled: () => Boolean(this.handles) });
     this.menus = new OutlineMenus(this);
     this.dossiers = new OutlineDossiers(this);
@@ -240,8 +243,7 @@ export class OutlineRail {
   }
   // A run of the page starts (in-place-navigation.mjs): the outline shows on
   // a topic and a Conversation, and stays put while the run reads. The place
-  // before is forgotten: until the run is up, the outline knows no outcome as
-  // the one being read, and nothing the run before read is drawn.
+  // before is no longer current; its loaded rows stay while the next run reads.
   begin(feed) {
     this.menus.reset();
     this.host.hidden = !feed;
@@ -250,18 +252,7 @@ export class OutlineRail {
     this.notebookStars.begin();
     this.unlisten?.(); this.unlisten = null;
     this.colorUnlisten?.(); this.colorUnlisten = null;
-    this.watch?.disconnect(); this.watch = null; this.watched = null;
-    // The list the run that went drew stays in view until the next run's own
-    // has something to show; nothing in it acts meanwhile.
-    for (const outcome of this.outcomes.values()) if (outcome.adopted) {
-      outcome.adopted.inert = true;
-      // Retired page parts keep their look, but their ids must not shadow
-      // the next run's fresh elements. The retired run kept its own id map.
-      for (const node of [outcome.adopted, ...outcome.adopted.querySelectorAll('[id]')]) {
-        if (node.id === 'topics') node.classList.add('topic-list');
-        node.removeAttribute('id');
-      }
-    }
+    for (const outcome of this.outcomes.values()) outcome.rail?.invalidate();
     if (!feed) return;
     // Under the page's header on a phone: how much is new in the other
     // outcomes, which opens the outline (rail-drawer.mjs opens on data-opens-rail).
@@ -287,13 +278,7 @@ export class OutlineRail {
     this.dimming.bind(bootstrap.instance_id, bootstrap.actor, handles);
     // What a move of the person's order is sent through, kept for the moments between runs.
     this.sender = { api: handles.api, bootstrap };
-    if (!this.started) {
-      this.started = true;
-      this.bootstrap = bootstrap; this.pageMax = handles.pageMax ?? PAGE;
-      this.opened = new Opened(this.storage, `aim-next.outline-open.${JSON.stringify([bootstrap.instance_id, bootstrap.actor])}`);
-      this.pages = new WorkspacePages(bootstrap.instance_id);
-      this.newOutcomeLine();
-    }
+    this.initialize(bootstrap, handles.pageMax ?? PAGE);
     // Desktop navigation reads other tabs' choices without changing one.
     // Phone arrival retains654's open-current behavior.
     if (this.here && this.phone) this.opened.set(this.here, true);
@@ -315,12 +300,31 @@ export class OutlineRail {
     this.paint();
     if (!handles.outcomeChanges) this.reload();
   }
+  initialize(bootstrap, pageMax = PAGE) {
+    if (this.started && this.bootstrap.instance_id === bootstrap.instance_id && this.bootstrap.actor === bootstrap.actor) return;
+    if (this.started) {
+      for (const outcome of this.outcomes.values()) outcome.li.remove();
+      this.outcomes.clear(); this.dossiers.reset(); this.notebookStars.reset();
+    }
+    this.started = true; this.bootstrap = bootstrap; this.pageMax = pageMax;
+    this.opened = new Opened(this.storage, `aim-next.outline-open.${JSON.stringify([bootstrap.instance_id, bootstrap.actor])}`);
+    this.pages = new WorkspacePages(bootstrap.instance_id); this.newOutcomeLine();
+  }
+  // The topic page consumes the same retained rail as its outcome home.
+  topicsFor(bootstrap, topic, pageMax) {
+    this.initialize(bootstrap, pageMax);
+    const outcome = this.outcome({ id: topic.workspace_id, title: 'This outcome', provisional: true });
+    const rail = this.ownRail(outcome); rail.updateCurrent(topic); return rail;
+  }
   // The person came back to the page: what changed meanwhile shows.
   shown() { if (this.handles && this.doc.visibilityState === 'visible') this.reload(); }
-  topicChanged() { this.paint(); }
+  topicChanged() {
+    for (const outcome of this.outcomes.values()) outcome.rail?.updateCurrent(this.currentTopicIn(outcome.id));
+    this.paint();
+  }
   get here() { return this.handles?.workspaceId ?? null; }
   get phone() { return this.doc.defaultView.matchMedia('(max-width: 760px)').matches; }
-  currentTopicIn(id) { const topic = this.handles?.route?.kind === 'topic' ? this.handles.topic : null; return topic && topic.workspace_id === id ? topic : null; }
+  currentTopicIn(id) { const topic = this.handles?.route?.kind === 'topic' ? (this.handles.currentTopic?.() ?? this.handles.topic) : null; return topic && topic.workspace_id === id ? topic : null; }
   // Whether an outcome shows its topics (Opened): the one being read, a peek, or every one a chip shows.
   isOpen(id) { return this.opened.isOpen(id, this.phone ? this.here : null, this.filter === 'new' ? 'new' : null); }
   // The outline is how a person moves, so it reads in the foreground lane, as
@@ -434,10 +438,9 @@ export class OutlineRail {
     name.dataset.workspaceId = id;
     const disclosure = element(doc, 'button', { type: 'button', className: 'ol-disclosure', tabIndex: 0 }, glyph('chevron', doc));
     // The name still navigates; disclosure is an independent in-place action.
-    const waiting = element(doc, 'button', { type: 'button', className: 'ol-waiting', hidden: true });
     // Beside the name, the pencil that starts a new topic here; a press on it opens and folds nothing.
     const newTopic = pencil(doc, { id: `ol-pencil-${id}`, className: 'ol-new-topic', label: `New topic in ${item.title}`, tip: 'New topic' });
-    const row = element(doc, 'div', { className: 'ol-row' }, disclosure, name, newTopic, waiting);
+    const row = element(doc, 'div', { className: 'ol-row' }, disclosure, name, newTopic);
     // The tree's rows are the names and the topics (key-tree.mjs); what holds them is no list of its own.
     row.setAttribute('role', 'none');
     const topics = element(doc, 'div', { className: 'ol-topics', id: `ol-topics-${id}` });
@@ -464,7 +467,7 @@ export class OutlineRail {
     const own = part('div', { className: 'ol-own' });
     own.append(message, host, more, retry, done.details, archived.details);
     topics.append(own);
-    outcome = { id, item, li, row, disclosure, name, title, standing, waiting, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null, held: null,
+    outcome = { id, item, li, row, disclosure, name, title, standing, waiting: null, topics, own, newTopic, conversation: null, conversationRead: false, rail: null,
       parts: { host, more, retry, message, done, archived } };
     disclosure.onclick = event => {
       if (!plainClick(event)) return;
@@ -495,12 +498,25 @@ export class OutlineRail {
       }
       this.open(this.nameTarget(outcome), outcome.item.title);
     };
-    waiting.onclick = () => this.openQuestion(outcome);
     this.topicLine(outcome);
     this.outcomes.set(id, outcome);
     return outcome;
   }
-  async openQuestion(outcome) {
+  // The phone drawer keeps its question cycle. Desktop uses the waiting pill
+  // and topic rows; it carries neither a hidden cycle button nor its handler.
+  phoneQuestionControl(outcome) {
+    if (this.phone && !outcome.waiting) {
+      const waiting = element(this.doc, 'button', { type: 'button', className: 'ol-waiting', hidden: true });
+      waiting.onclick = () => this.openPhoneQuestion(outcome);
+      outcome.row.append(waiting); outcome.waiting = waiting; outcome.said = null;
+    } else if (!this.phone && outcome.waiting) {
+      if (this.doc.activeElement === outcome.waiting) outcome.name.focus({ preventScroll: true });
+      outcome.name.append(outcome.standing);
+      outcome.waiting.remove(); outcome.waiting = null; outcome.said = null;
+    }
+  }
+  async openPhoneQuestion(outcome) {
+    if (!this.phone) return;
     // One read at a time. A busy flag, not disabled: disabling the button would
     // take the focus off it, and the Reader the question opens in gives the
     // focus back to what had it (item 462: the keys stay on the row pressed).
@@ -558,7 +574,7 @@ export class OutlineRail {
       rows.push({ el: outcome.name, level: 1, set: this.list, key: 'outcome:' + id, parent: null, expanded: open, outcome });
       const pen = outcome.newTopic;
       if (open || pen === this.doc.activeElement || pen.getAttribute('aria-expanded') === 'true') rows.push({ el: pen, level: 2, set: outcome.li, key: 'pencil:' + id, parent: outcome.name, outcome, byRight: true });
-      if (!outcome.waiting.hidden && outcome.waiting.getClientRects().length) rows.push({el:outcome.waiting, level:2, set:outcome.li, key:'waiting:'+id, parent:outcome.name, outcome});
+      if (outcome.waiting && !outcome.waiting.hidden && outcome.waiting.getClientRects().length) rows.push({el:outcome.waiting, level:2, set:outcome.li, key:'waiting:'+id, parent:outcome.name, outcome});
       if (!open) continue;
       for (const el of outcome.topics.querySelectorAll('a[href], button, summary')) {
         if (el.closest('.one-line')) continue;
@@ -616,7 +632,7 @@ export class OutlineRail {
     } else if (row.el.dataset.topicId) {
       scope = scopeOf(row.outcome.id);
       // The list the row is drawn in: the page's own under the outcome being read, else the outline's.
-      const box = row.outcome.adopted?.contains(row.el) ? row.outcome.adopted : row.outcome.own;
+      const box = row.outcome.own;
       const links = [...box.querySelectorAll('a[data-topic-id]')];
       shown = links.map(link => link.dataset.topicId);
       visible = new Set([...row.el.parentElement.children].filter(link => link.dataset.topicId && link.getClientRects().length).map(link => link.dataset.topicId));
@@ -682,12 +698,20 @@ export class OutlineRail {
       pages: new TopicPages(this.bootstrap.instance_id, outcome.id, this.currentTopicIn(outcome.id), 'active', true), ...outcome.parts,
       storage: this.storage, area: outcome.own, denied: error => readFailure(error).kind === 'forbidden',
       painted: () => this.publishTopics(),
-      read: args => {
-        const handles = this.handles;
-        return readTopicList(this.own(handles), args, conversation => {
-          if (handles !== this.handles) return;
-          outcome.conversation = conversation; outcome.conversationRead = true;
-        });
+      read: async args => {
+        const run = this.run;
+        let conversation;
+        const view = async (name, query) => {
+          if (run !== this.run) throw new Superseded();
+          if (this.handles?.topicRail === outcome.rail && this.handles.topicReadAllowed?.() === false) throw Error('The runtime changed. Review saved writing before reloading.');
+          const answer = await this.read(name, query, 'foreground', () => run === this.run);
+          if (run !== this.run) throw new Superseded();
+          return answer;
+        };
+        const answer = await readTopicList(view, args, value => { conversation = value; });
+        if (run !== this.run) throw new Superseded();
+        if (conversation !== undefined) { outcome.conversation = conversation; outcome.conversationRead = true; }
+        return answer;
       }, open: (topicId, topicTitle, message, at) => this.open(topicTarget(topicId, message, at), topicTitle) });
     return outcome.rail;
   }
@@ -699,48 +723,11 @@ export class OutlineRail {
     const visible = outcome && !outcome.li.hidden && !outcome.topics.hidden && this.handles.readable?.() !== false;
     this.handles.outcomeTopics?.(visible ? outcome.rail?.presentation() ?? null : null);
   }
-  // An outcome's topics, read again: the page's own list reads itself.
-  loadTopics(outcome) { return outcome.adopted || outcome.id === this.here && this.handles?.route?.kind !== 'workspace' ? this.readConversation(outcome) : this.ownRail(outcome).load(); }
-  // Under the outcome being read, the page's own topic list (its TopicRail,
-  // with its guard and its checks) stands in for the outline's, from when it
-  // has something to show, so the list never blinks empty on a move. Which
-  // outcome that is, and which list, are found each time from the run that
-  // is up; a list not ready yet is watched, and the watch asks again.
-  place() {
-    const rail = this.doc.getElementById('rail'), fresh = rail?.querySelector(':scope > #topic-navigation');
-    // An outcome home mirrors this outline's own TopicRail. Its reused
-    // navigation node can still carry a topic page's data-listed marker;
-    // adopting that mirror would hide its owner and skip the topics read.
-    if (this.handles?.route?.kind === 'workspace') {
-      this.watch?.disconnect(); this.watch = null; this.watched = null;
-      for (const each of this.outcomes.values()) if (each.adopted) {
-        each.adopted.remove(); each.adopted = null; each.own.hidden = Boolean(each.held);
-      }
-      return;
-    }
-    const outcome = this.here ? this.outcomes.get(this.here) : null;
-    // The outline's first read of the outcomes has settled, so the rows above
-    // the list are drawn and do not push it down as a topic is pressed.
-    if (!fresh || !outcome || !this.handles || !this.listRead) return;
-    // Its first read has settled (app.mjs marks it), so it shows all it will.
-    if (!('listed' in fresh.dataset)) {
-      if (this.watched === fresh) return;
-      this.watch?.disconnect(); this.watched = fresh;
-      this.watch = new MutationObserver(() => this.place());
-      this.watch.observe(fresh, { attributes: true, attributeFilter: ['data-listed'] });
-      return;
-    }
-    this.watch?.disconnect(); this.watch = null; this.watched = null;
-    this.adopt(fresh, outcome);
-  }
-  // The page's topic list goes under its outcome, and any list held for another goes back.
-  adopt(fresh, outcome) {
-    for (const other of this.outcomes.values()) if (other.adopted && other !== outcome) this.release(other);
-    outcome.adopted?.remove(); outcome.held?.remove(); outcome.held = null;
-    // Its heading and the page's own New topic stay out of sight (rails.css): the outcome's pencil starts a topic.
-    fresh.dataset.pagePart = ''; fresh.classList.add('ol-adopted');
-    outcome.own.hidden = true;
-    outcome.topics.prepend(fresh); outcome.adopted = fresh;
+  // A topic page already requested this exact rail through OutcomeScope.
+  // Other open outcomes (and outcome homes) refresh their own retained owner.
+  loadTopics(outcome) {
+    const rail = this.ownRail(outcome);
+    return this.handles?.topicRail === rail ? Promise.resolve(true) : rail.load();
   }
   // The outcomes in the outline: those listed, and the outcome being read
   // even before the list is read, or when it is not one the list holds (a
@@ -751,21 +738,6 @@ export class OutlineRail {
     if (!this.here || items.some(item => item.id === this.here)) return items;
     const here = { id: this.here, title: this.handles?.workspaceTitle || 'This outcome', title_truncated: false, unread: 0, addressed: 0, light: null, provisional: true };
     return [...items, here].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  }
-  // An outcome no longer read gets the outline's own lists back.
-  // Its rows stay drawn, as a still copy, until the outline's own list has
-  // read and painted them, so the list never blinks empty and nothing below
-  // it jumps (designer prototype).
-  release(outcome) {
-    const old = outcome.adopted; outcome.adopted = null;
-    if (!this.isOpen(outcome.id)) { old.remove(); outcome.own.hidden = false; return; }
-    const still = old.cloneNode(true);
-    // Ids go, so none is doubled; the list keeps its look through the class every topic list shares.
-    for (const node of [still, ...still.querySelectorAll('[id]')]) { if (node.id === 'topics') node.classList.add('topic-list'); node.removeAttribute('id'); }
-    still.inert = true; still.setAttribute('aria-hidden', 'true');
-    old.replaceWith(still); outcome.held = still;
-    const done = () => { if (outcome.held === still) { still.remove(); outcome.held = null; outcome.own.hidden = Boolean(outcome.adopted); } };
-    Promise.resolve(this.ownRail(outcome).load()).then(done, done);
   }
   // An outcome's name opens its home.
   nameTarget(outcome) {
@@ -808,6 +780,7 @@ export class OutlineRail {
     const focused = [...this.list.children].find(li => li.contains(this.doc.activeElement)) ?? null;
     items.forEach(item => {
       const outcome = this.outcome(item), open = this.isOpen(item.id), visible = shownUnder(this.filter, item);
+      this.phoneQuestionControl(outcome);
       const choice = outcomeColors.forDisplay(item);
       if (choice?.color) outcome.li.dataset.color = choice.color; else delete outcome.li.dataset.color;
       shown.add(item.id);
@@ -818,8 +791,8 @@ export class OutlineRail {
       outcome.topics.hidden = !open;
       outcome.disclosure.setAttribute('aria-expanded', String(open));
       outcome.disclosure.setAttribute('aria-label', `${open ? 'Fold' : 'Open'} topics in ${item.title}`);
-      // The outcome being read waits for the page's own list, unless the outline has shown its topics before.
-      outcome.own.hidden = Boolean(outcome.adopted || outcome.held) || (item.id === this.here && !outcome.rail);
+      // One retained owner supplies these rows on both topic and outcome pages.
+      outcome.own.hidden = false;
       outcome.topics.setAttribute('aria-label', `Topics in ${item.title}`);
       const target = this.nameTarget(outcome);
       outcome.name.href = routeHref(target);
@@ -843,10 +816,12 @@ export class OutlineRail {
         if (lamp) line.prepend(lamp);
         // A separate control reaches the question; the name keeps navigation.
         const waits = asksIn(item) > 0;
-        outcome.waiting.hidden = !waits;
-        outcome.waiting.setAttribute('aria-label', `Open a question waiting on you in ${item.title}`);
+        if (outcome.waiting) {
+          outcome.waiting.hidden = !waits;
+          outcome.waiting.setAttribute('aria-label', `Open a question waiting on you in ${item.title}`);
+        }
         outcome.newTopic.setAttribute('aria-label', `New topic in ${item.title}`);
-        (waits ? outcome.waiting : outcome.name).append(outcome.standing);
+        (waits && outcome.waiting ? outcome.waiting : outcome.name).append(outcome.standing);
       }
     });
     for (const [id, outcome] of this.outcomes) if (!shown.has(id)) { outcome.li.remove(); this.outcomes.delete(id); }
@@ -866,7 +841,6 @@ export class OutlineRail {
     if (failure) this.message.textContent = `${failure.message ?? 'The outcomes could not be read.'} Retry outcomes.`;
     this.more.hidden = !this.pages || this.pages.next === null;
     this.paintHeader();
-    this.place();
     if (!this.starting) { this.dossiers.sync(); this.notebookStars.sync(); }
     if (this.pages?.started || this.failed) this.handles.outcomeList?.(this.pages.items, this.failed || null, () => this.reload());
     this.publishTopics();
