@@ -13,6 +13,12 @@ a topic, the Notebook and reading back), start with
 
 `bin/aim-next` calls the same local Store as HTTP, using CPython 3.9 and an
 explicit absolute v2 profile path. It starts no server, browser or runner.
+Protected hosted routes use `--broker /absolute/core.sock` instead of a profile.
+The host's endpoint supplies the fixed actor/binding and performs Core calls;
+the CLI keeps attachment/outbox file I/O inside its sandbox. It supports the
+bounded verbs below; long `watch` refuses there because hosted delivery owns
+waking the agent. A missing or stale endpoint never falls back to a profile.
+See [662's contract](hosted-read-boundary-662.md).
 The launcher uses Python's isolated mode. The supported explicit interpreter
 form is `/usr/bin/python3 -I /absolute/bin/aim-next ...`, as in the example below.
 
