@@ -22,8 +22,12 @@ import signal
 import stat
 import subprocess
 import time
+from dataclasses import replace
 
 from . import broker_routes, hosted_notice
+from .hosted_cli import HostedCLI
+from .hosted_permissions import (permission_profile, validate_workspace, startup_overrides,
+                                 proxy_configuration, proxy_probe, proxy_result)
 from .codex_broker import handshake_refusal
 from .profile import load_profile
 from .route_pins import HOSTED_KIND
@@ -215,13 +219,13 @@ def _private_append(path):
 class Child:
     """One app-server process and its framing. Its PID is captured at spawn and never looked up again."""
 
-    def __init__(self, home, executable, stderr, writable=lambda child, on: None, *, inherited_fds=()):
+    def __init__(self, home, executable, stderr, writable=lambda child, on: None, *, inherited_fds=(), overrides=()):
         environment = {key: os.environ[key] for key in ("HOME", "LANG", "TMPDIR") if key in os.environ}
         environment.update(PATH=SPAWN_PATH, CODEX_HOME=home)
         self.home = home
         self.started_at = _now_iso()
         # No shell, the runner's own process group, no inherited descriptors.
-        self.popen = subprocess.Popen([executable, "app-server", "--listen", "stdio://", *SPAWN_OVERRIDES],
+        self.popen = subprocess.Popen([executable, "app-server", "--listen", "stdio://", *SPAWN_OVERRIDES, *overrides],
                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=stderr, shell=False,
                                       env=environment, close_fds=True, pass_fds=inherited_fds, bufsize=0, start_new_session=False)
         self.pid = self.popen.pid
@@ -408,7 +412,16 @@ def signed_in(result):
     return type(result) is dict and (result.get("requiresOpenaiAuth") is False or type(result.get("account")) is dict)
 
 
-def thread_settings(config):
+def _broker_endpoint(config, endpoint=None):
+    if endpoint is not None:
+        return endpoint
+    # Provisioning creates no model turn. The first runtime resume replaces
+    # this non-listening placeholder with its host-owned endpoint.
+    import hashlib
+    return '/private/tmp/theseus-provision-' + hashlib.sha256(config.profile_path.encode()).hexdigest()[:16] + '.sock'
+
+
+def thread_settings(config, endpoint=None):
     """Thread-level settings, identical on thread/start (provisioning) and thread/resume (design §3.3-3.4)."""
     roots = list(config.writable_roots)
     settings = {"cwd": config.cwd, "approvalPolicy": "never", "approvalsReviewer": "user", "sandbox": "workspace-write",
@@ -419,6 +432,13 @@ def thread_settings(config):
     if getattr(config, "permission_mode", "workspace") == "full":
         settings["sandbox"] = "danger-full-access"
         settings["config"] = {"agents": {"enabled": True}}
+    else:
+        endpoint = _broker_endpoint(config, endpoint)
+        name, policy = permission_profile(config, endpoint)
+        settings.pop('sandbox')
+        settings['permissions'] = name
+        settings['config'] = {'permissions': {name: policy}, 'features': {'network_proxy': True}, 'agents': {'enabled': False}}
+        settings['developerInstructions'] = hosted_notice.developer_instructions(config.profile.actor_id, config.cli, config.profile_path, endpoint)
     effort = getattr(config, "reasoning_effort", None)
     if effort is not None:
         settings["config"]["model_reasoning_effort"] = effort
@@ -430,11 +450,12 @@ def thread_settings(config):
     return settings
 
 
-def settings_applied(result, cwd, roots, permission_mode="workspace", model=None, effort=None):
+def settings_applied(result, cwd, roots, permission_mode="workspace", model=None, effort=None, permissions=None, proxy_verified=False):
     """Whether a thread/start or thread/resume answer echoes exactly the settings sent (design §3.3-3.4).
 
-    P2/P6 settle whether Codex adds writable roots of its own (such as cwd) to
-    the echo; until then the echo must name exactly the two roots that were sent.
+    Named profiles carry read carveouts that the legacy sandbox projection
+    cannot express. Require the host-authored profile identity, its workspace
+    parent and the exact outbox write-root projection observed on this version.
     """
     if type(result) is not dict:
         return False
@@ -446,17 +467,18 @@ def settings_applied(result, cwd, roots, permission_mode="workspace", model=None
     if permission_mode == "full":
         return result.get("approvalPolicy") == "never" and result.get("cwd") == cwd and sandbox.get("type") == "dangerFullAccess"
     echoed = sandbox.get("writableRoots")
+    selected = result.get('activePermissionProfile')
     return (result.get("approvalPolicy") == "never" and result.get("cwd") == cwd and sandbox.get("type") == "workspaceWrite"
-            and type(echoed) is list and all(isinstance(root, str) for root in echoed) and set(echoed) == set(roots)
-            and sandbox.get("networkAccess") is False and sandbox.get("excludeSlashTmp") is True
+            and proxy_verified is True and permissions is not None and selected == {'id': permissions, 'extends': ':workspace'}
+            and type(echoed) is list and all(isinstance(root, str) for root in echoed) and set(echoed) == {roots[-1]}
+            and sandbox.get("networkAccess") is True and sandbox.get("excludeSlashTmp") is True
             and sandbox.get("excludeTmpdirEnvVar") is True)
 
 
 def sandbox_policy(config):
-    if getattr(config, "permission_mode", "workspace") == "full":
-        return {"type": "dangerFullAccess"}
-    return {"type": "workspaceWrite", "writableRoots": list(config.writable_roots), "networkAccess": False,
-            "excludeSlashTmp": True, "excludeTmpdirEnvVar": True}
+    if getattr(config, "permission_mode", "workspace") != "full":
+        raise ValueError('workspace_routes_require_named_permissions')
+    return {"type": "dangerFullAccess"}
 
 
 class HostedThread:
@@ -466,6 +488,9 @@ class HostedThread:
         self.actor, self.config = actor, config
         self.id = config.destination["thread_id"]
         self.home = config.destination["codex_home"]
+        self.bridge = None
+        self.proxy_verified, self.applied_mode = False, None
+        self.applied_permissions = None
         self.attached = self.attaching = False
         self.waiters = []
         self.status = None
@@ -496,14 +521,16 @@ class Dispatch:
 class Host:
     """All hosted threads of one runner process; the effects loop drives it from its kqueue."""
 
-    def __init__(self, configs, *, core, settle, watch, log, monotonic):
+    def __init__(self, configs, *, core, settle, watch, log, monotonic, protected_homes=()):
         # settle(outcome, turn, reason, from_turn) records the current claim's
         # result at once, so the handed row exists before any later message of
         # the same read refers to it.
         self.core, self.settle, self.watch, self.log, self.monotonic = core, settle, watch, log, monotonic
         self.threads = {}
         self.executables = {}
+        self.protected_homes = tuple(sorted(set(protected_homes) | {config.destination['codex_home'] for config in configs.values()}))
         for actor, config in sorted(configs.items()):
+            config = replace(config, protected_homes=self.protected_homes)
             thread = HostedThread(actor, config)
             if self.executables.setdefault(thread.home, config.codex_executable) != config.codex_executable:
                 raise broker_routes.BrokerConfigError("conflicting_codex_executable")
@@ -530,7 +557,7 @@ class Host:
         thread = self.threads.get(config.destination["thread_id"])
         if thread is None or thread.actor != claim["recipient_id"]:
             raise HostFault("route_binding_changed")
-        thread.config = config
+        thread.config = replace(config, protected_homes=self.protected_homes)
         work = Dispatch(claim, thread, notice, self.monotonic())
         self.current = work
         self.ensure_thread(thread, lambda: self._prepare(work), lambda reason: self._settle(work, "unavailable", None, reason))
@@ -715,6 +742,16 @@ class Host:
         if work.thread.control_stopped:
             return self._settle(work, 'busy', None, 'operator_stopped')
         thread, config, notice = work.thread, work.thread.config, work.notice
+        if (config.permission_mode != thread.applied_mode or
+                config.permission_mode == 'workspace' and (thread.bridge is None or not thread.proxy_verified)):
+            return self._settle(work, 'unavailable', None, 'workspace_policy_not_attached')
+        if config.permission_mode == 'workspace':
+            try:
+                selected = permission_profile(config, thread.bridge.path)[0]
+            except ValueError:
+                return self._settle(work, 'unavailable', None, 'invalid_cwd')
+            if selected != thread.applied_permissions:
+                return self._settle(work, 'unavailable', None, 'workspace_policy_not_attached')
         params = {"threadId": thread.id, "input": notice["input"], "clientUserMessageId": work.client_id}
         if notice["additionalContext"] is not None:
             params["additionalContext"] = notice["additionalContext"]
@@ -724,7 +761,11 @@ class Host:
             self._request(work, "turn/steer", params, lambda result, error: self._steered(work, expected, result, error))
         else:
             # Sent on every start, so nothing depends on overrides persisting (P2).
-            params.update(approvalPolicy="never", sandboxPolicy=sandbox_policy(config))
+            params.update(approvalPolicy="never")
+            if config.permission_mode == 'full':
+                params['sandboxPolicy'] = sandbox_policy(config)
+            else:
+                params['permissions'] = permission_profile(config, thread.bridge.path)[0]
             if config.reasoning_effort is not None:
                 params["effort"] = config.reasoning_effort
             self._request(work, "turn/start", params, lambda result, error: self._started(work, result, error))
@@ -804,7 +845,22 @@ class Host:
 
     def _spawn(self, home):
         try:
-            child = Child(home, self.executables[home], self.log.stderr, self._input_space)
+            threads = [thread for thread in self.threads.values() if thread.home == home]
+            profiles = {}
+            # A shared full-access child keeps its original launch policy.
+            # A workspace route there refuses at its configuration check.
+            if all(thread.config.permission_mode == 'workspace' for thread in threads):
+                for thread in threads:
+                    try:
+                        validate_workspace(thread.config)
+                        if thread.bridge is None:
+                            thread.bridge = HostedCLI(thread.config)
+                        name, policy = permission_profile(thread.config, thread.bridge.path)
+                        profiles[name] = policy
+                    except ValueError:
+                        continue
+            child = Child(home, self.executables[home], self.log.stderr, self._input_space,
+                          overrides=startup_overrides(profiles))
         except (OSError, ValueError, subprocess.SubprocessError):
             self.log.write("spawn_failed")
             return None
@@ -887,14 +943,55 @@ class Host:
             failed(reason)
 
     def _resume(self, child, thread):
-        params = dict(thread_settings(thread.config), threadId=thread.id, excludeTurns=True)
+        config = thread.config
+        thread.proxy_verified = False
+        try:
+            if config.permission_mode != 'full' and thread.bridge is None:
+                validate_workspace(config)
+                thread.bridge = HostedCLI(config)
+            bridge = thread.bridge
+            params = dict(thread_settings(config, bridge.path if bridge else None), threadId=thread.id, excludeTurns=True)
+        except ValueError:
+            return self._attach_failed(thread, 'invalid_cwd')
+        except OSError:
+            return self._attach_failed(thread, 'broker_unavailable')
         if not RESEND_INSTRUCTIONS_ON_RESUME:
             params.pop("developerInstructions")
-        child.request("thread/resume", params, lambda result, error: self._resumed(child, thread, result, error))
+        name = params.get('permissions')
+        def resume(verified):
+            context = (config, bridge, name, verified)
+            child.request("thread/resume", params, lambda result, error: self._resumed(child, thread, result, error, context))
+        if config.permission_mode == 'full':
+            return resume(False)
+        policy = params['config']['permissions'][name]
+        def stale(error):
+            if error is GONE:
+                self._attach_failed(thread, 'child_exited')
+                return True
+            if thread.config != config or thread.bridge is not bridge:
+                self._attach_failed(thread, 'route_configuration_changed')
+                return True
+            return False
+        def checked(result, error):
+            if stale(error):
+                return
+            if error is not None or not proxy_configuration(result, name, policy):
+                return self._attach_failed(thread, 'proxy_unverified')
+            def proved(result, error):
+                if stale(error):
+                    return
+                if not proxy_result(result, error):
+                    return self._attach_failed(thread, 'proxy_unverified')
+                resume(True)
+            child.request('command/exec', proxy_probe(name, config.cwd), proved)
+        child.request('config/read', {'includeLayers': False, 'cwd': config.cwd}, checked)
 
-    def _resumed(self, child, thread, result, error):
+    def _resumed(self, child, thread, result, error, context):
         if error is GONE:
             return self._attach_failed(thread, "child_exited")
+        config, bridge, permissions, verified = context
+        if thread.config != config or thread.bridge is not bridge:
+            return self._attach_failed(thread, 'route_configuration_changed')
         if error is not None:
             if _refuses_pin(error):
                 self.log.write("resume_refused", thread=thread.id)
@@ -907,11 +1004,13 @@ class Host:
             # Never a replacement thread: the pin names exactly one.
             self.log.write("resume_refused", thread=thread.id)
             raise HostFault("route_binding_changed")
-        if not settings_applied(result, thread.config.cwd, thread.config.writable_roots, thread.config.permission_mode,
-                                thread.config.model, thread.config.reasoning_effort):
+        if not settings_applied(result, config.cwd, config.writable_roots, config.permission_mode,
+                                config.model, config.reasoning_effort, permissions, verified):
             # A thread whose sandbox or policy is not what was sent is never used.
             self.log.write("resume_settings_refused", thread=thread.id)
             return self._attach_failed(thread, "settings_not_applied")
+        thread.applied_mode, thread.applied_permissions = config.permission_mode, permissions
+        thread.proxy_verified = verified
         thread.status = _thread_status(result["thread"].get("status"))
         thread.active_turn = None
         child.request("thread/turns/list", dict(LAST_TURN, threadId=thread.id),
@@ -1186,6 +1285,20 @@ class Host:
 
     def close(self):
         """Close and reap owned children, escalating on deadlines without another delivery or signal."""
+        recorded = False
+        try:
+            recorded = self._close_children()
+        finally:
+            for thread in self.threads.values():
+                if thread.bridge is not None:
+                    try:
+                        thread.bridge.close()
+                    except OSError:
+                        self.log.write('broker_cleanup_failed', thread=thread.id)
+                        recorded = False
+        return recorded
+
+    def _close_children(self):
         if not self.children:
             return True
         queue = select.kqueue()
@@ -1362,8 +1475,13 @@ def provision(*, runner_profile, runner_id, actor_profile, codex_executable, cod
     if not target.is_absolute() or os.path.lexists(str(target)) or not target.parent.is_dir():
         raise broker_routes.BrokerConfigError("invalid_config_path")
     store = runner.store()
+    settings = _ProvisionSettings(actor, profile_path, cli, cwd, model, roots)
+    settings.destination = {'codex_home': home}
+    settings.permission_mode, settings.reasoning_effort, settings.instructions = permission_mode, reasoning_effort, instructions
+    params = dict(thread_settings(settings), ephemeral=False, serviceName="theseus")
+    profiles = params['config'].get('permissions', {})
     with store.runner_guard(runner_id) as guard:
-        child = Child(home, executable, subprocess.DEVNULL)
+        child = Child(home, executable, subprocess.DEVNULL, overrides=startup_overrides(profiles))
         sync = _Sync(child)
         thread_id = None
         try:
@@ -1381,14 +1499,22 @@ def provision(*, runner_profile, runner_id, actor_profile, codex_executable, cod
                     os.mkdir(outbox, 0o700)
                 except OSError as failure:
                     raise broker_routes.BrokerConfigError("invalid_writable_roots") from failure
-            settings = _ProvisionSettings(actor, profile_path, cli, cwd, model, roots)
-            settings.permission_mode, settings.reasoning_effort, settings.instructions = permission_mode, reasoning_effort, instructions
-            params = dict(thread_settings(settings), ephemeral=False, serviceName="theseus")
+            verified = False
+            if permission_mode != 'full':
+                name = params['permissions']
+                configured, problem = sync.call('config/read', {'includeLayers': False, 'cwd': cwd})
+                if problem is not None or not proxy_configuration(configured, name, profiles[name]):
+                    raise ProvisionError('proxy_unverified')
+                proved, problem = sync.call('command/exec', proxy_probe(name, cwd))
+                verified = proxy_result(proved, problem)
+                if not verified:
+                    raise ProvisionError('proxy_unverified')
             result, error = sync.call("thread/start", params)
             if error is not None or type(result) is not dict or type(result.get("thread")) is not dict:
                 raise ProvisionError("thread_start_failed")
             thread_id = result["thread"].get("id")
-            if not isinstance(thread_id, str) or not settings_applied(result, cwd, roots, permission_mode, model, reasoning_effort):
+            if not isinstance(thread_id, str) or not settings_applied(result, cwd, roots, permission_mode, model, reasoning_effort,
+                                                                     params.get('permissions'), verified):
                 raise ProvisionError("thread_settings_not_applied", thread_id if isinstance(thread_id, str) else None)
             # Native Codex keeps an empty thread in memory only. Persist an
             # explicit setup record before pinning its id, without a model
