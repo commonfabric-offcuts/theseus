@@ -208,7 +208,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const document = { body: get('body'), documentElement: get('html'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
     createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }),
     // The bars' glyphs (glyphs.mjs) are svg elements.
-    createElementNS: (ns, tag) => Object.assign(new Element(), { tagName: String(tag), namespaceURI: ns }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: s => s === '[data-unreached]' ? [...elements.values()].filter(el => 'unreached' in el.dataset) : [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
+    createElementNS: (ns, tag) => Object.assign(new Element(), { tagName: String(tag), namespaceURI: ns }), createTextNode: data => ({ nodeType: 3, data, textContent: data, children: [] }), querySelectorAll: s => s === '[data-unreached]' ? [...elements.values()].filter(el => 'unreached' in el.dataset) : [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
     addEventListener(name, fn, options) { events.push(['document-handler', name, fn, options]); },
     removeEventListener(name, fn) { const at = events.findIndex(([kind, n, f]) => kind === 'document-handler' && n === name && f === fn); if (at >= 0) events.splice(at, 1); },
     // The page's window, as a test may replace it, with the size watch the message bar keeps (message-menu.mjs).
