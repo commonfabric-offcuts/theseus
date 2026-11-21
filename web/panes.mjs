@@ -13,6 +13,8 @@ import { navigationStops, shownSelected, stopAt } from './reply-stacks.mjs';
 import { keyAction, writing, pageItself, readingMovement } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
 import { reach as reachOn } from './arrow-reach.mjs';
+import { messageWordsKey } from './message-controls.mjs';
+import { feedFence } from './feed-fence-copy.mjs';
 
 const shown = el => Boolean(el?.isConnected) && (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length > 0);
 // On screen: shown, inside the window, and not behind an open drawer.
@@ -117,7 +119,8 @@ export const inMessages = (at, doc) => Boolean(doc.getElementById('messages')?.c
 // past its end, on to the pane beside, as from the messages.
 export const onTitleBar = at => Boolean(at?.closest?.('.reply-stack > .stack-tools'));
 export const onStackControls = at => Boolean(at?.closest?.('.stack-controls'));
-export const messagesSideways = (at, doc) => inMessages(at, doc) && !onTitleBar(at) && !onStackControls(at);
+// A code fence's external Copy button belongs to the same horizontal route.
+export const messagesSideways = (at, doc) => (inMessages(at, doc) || Boolean(feedFence(at))) && !onTitleBar(at) && !onStackControls(at);
 
 // Whether the keys are in the feed: on a message, or on the page itself (pane-keys.mjs).
 export function inFeed(doc) {
@@ -169,6 +172,9 @@ export function feedKey(event, doc, navigate = () => {}) {
   // Focus can collapse a selection: retain the guard from before the move.
   const selecting = doc.getSelection?.()?.isCollapsed === false;
   const readingDestination = () => { if (!selecting) navigate(); };
+  if ((action === 'left' || action === 'right') && messageWordsKey(doc.activeElement, action)) {
+    event.preventDefault(); readingDestination(); return true;
+  }
   let moved = false;
   const center = panes.center?.();
   const cardKeys = center?.ownsKeys?.(doc.activeElement);
@@ -185,7 +191,7 @@ export function feedKey(event, doc, navigate = () => {}) {
     if (r >= 0) {
       panes.button.set(rows[r].host, doc.activeElement); moved = headerKey(action, rows, r, doc, readingDestination);
     }
-    else if (!inFeed(doc)) return false;
+    else if (!inFeed(doc) && !feedFence(doc.activeElement)) return false;
     // ← and → from the messages, or the page itself, go on to the pane beside; on a title bar's glyphs, along its row.
     else if ((action === 'left' || action === 'right') && onStackControls(doc.activeElement)) {
       const buttons = [...doc.activeElement.closest('.stack-controls').querySelectorAll('button')].filter(button => !button.disabled && shown(button));

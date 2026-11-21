@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { withPageCleanup } from './native-page-cleanup.mjs';
 
 import { item715Checks } from './outline_stars_native.mjs';
+import { arrowPartsChecks } from './arrow_parts_564_native.mjs';
 
 // The side rail inside an outcome and the page without a header bar (pipeline
 // items 101 and 107), in the real browser against the real server, at 1280
@@ -39,6 +40,7 @@ const SIZES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile
 const COMBOS = [['laptop', 'light'], ['laptop', 'dark'], ['phone', 'light'], ['phone', 'dark']];
 
 export async function railChecks({ check, page, until, control, view, facts, shot, observations, evidencePath }) {
+  await arrowPartsChecks({check, page, until, control, facts, shot, observations});
   await item715Checks({check, page, until, control, view, facts, shot, observations, evidencePath});
   const open = (name, url, size = 'laptop', theme = 'light') => page(name, null, true, { url: facts.origin + url, beforeNavigate: async q => {
     await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
