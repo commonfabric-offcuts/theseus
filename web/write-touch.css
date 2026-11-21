@@ -1,0 +1,35 @@
+/* The writing surfaces on a phone (985): the pencil sheet, the Reader's composer, the reply under a card and the
+   edit field now dress as on a laptop, black, on every screen. This sheet, loaded after them, sizes their controls
+   for a finger, keeps typed words at 16px (an iPhone zooms into anything smaller), keeps the Reader's one-line
+   bar while reading, and gives the words the full width on a narrow page. */
+@media (pointer:coarse){
+  :is(dialog.composer-home[open]:not(.notebook-mode), dialog#reader[open] #reader-composer, .card-reply-composer){--sheet-chip-h:2rem}
+  :is(dialog.composer-home[open]:not(.notebook-mode), dialog#reader[open] #reader-composer, .card-reply-composer, .message-edit-field) :is(textarea, input){font-size:1rem}
+  .message-edit-field{font-size:1rem}
+  :is(dialog#reader[open]:not([data-card-reply]) #reader-composer, .card-reply-composer)>:is(.plus-button, .reply-height, .card-reply-close){width:2.5rem;min-width:2.5rem;height:2.5rem}
+  :is(dialog#reader[open]:not([data-card-reply]) #reader-composer, .card-reply-composer)>.compose-send{height:2.5rem;padding:0 1rem;font-size:.9rem}
+  :is(dialog#reader[open]:not([data-card-reply]) #reader-composer, .card-reply-composer)>.compose-send>[aria-hidden=true]{display:none}
+  dialog.composer-home[open]:not(.notebook-mode) #inline-composer>:is(.plus-button, .sheet-close){width:2.5rem;min-width:2.5rem;height:2.5rem}
+  dialog.composer-home[open]:not(.notebook-mode) #inline-composer>.compose-send{height:2.5rem;padding:0 1.1rem;font-size:.9rem}
+  dialog.composer-home[open]:not(.notebook-mode) #inline-composer>.compose-send>[aria-hidden=true]{display:none}
+  /* The Reader's bar keeps the phone's reading line: the who words and Send wait until writing starts, 👍 stands
+     in for Send while nothing is written. */
+  dialog#reader[open]:not([data-card-reply]) #reader-composer[data-compose=line]{
+    &>.compose-send{display:none}
+    &>.compose-head{grid-area:review;margin:0}
+    &>.compose-head>:not(.review-chips){display:none}
+  }
+  dialog#reader[open]:not([data-card-reply]) #reader-composer[data-compose=writing]>.compose-head{grid-area:head}
+}
+@media (max-width:760px){
+  /* A reply under a card gets the card's whole width for its words; + and ⌃ sit under it with Send. */
+  .card-reply-composer{grid-template-columns:auto auto minmax(0,1fr) auto;
+    grid-template-areas:"title title title title" "notice notice notice notice" "head head head head" "panel panel panel panel" "images images images images" "field field field field" "plus height . send" "phone-panel phone-panel phone-panel phone-panel"}
+  .card-reply-composer>.field-box{grid-area:field}
+  .card-reply-composer>.plus-button{grid-area:plus}
+  .card-reply-composer>.reply-height{grid-area:height}
+  .card-reply-composer>.compose-send{grid-area:send}
+  /* The sheet's header may wrap: who it goes to is never cut off. */
+  dialog.composer-home[open]:not(.notebook-mode) #inline-composer{grid-template-columns:auto minmax(0,1fr) auto auto;
+    grid-template-areas:"kinds status status close" "who who to to" "notice notice notice notice" "panel panel panel panel" "strip strip strip strip" "field field field field" "plus review act act"}
+}

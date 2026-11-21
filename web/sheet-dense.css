@@ -1,10 +1,10 @@
 /* The pencil's sheet, refined (designer prototype; borrows the dense rail's grammar): one header line
    (what you are making, who sees it, where it stands, close), a writing area with no box of its own, and a
-   footer with the image control and the act. The card carries the focus, not the field. Fine pointer and
-   wider than a phone only; a phone keeps today's sheet. */
-@media (pointer:fine) and (min-width:761px){
+   footer with the image control and the act. The card carries the focus, not the field. Every screen;
+   write-touch.css sizes it for a finger. */
+@media all{
 /* The topic-foot field borrows this same grammar only while writing. :where
-   keeps the original sheet rule's specificity; folded and touch layouts keep theirs. */
+   keeps the original sheet rule's specificity; the folded layout keeps its own. */
 dialog.composer-home:not([open]):not(.notebook-mode):where(:has(>#inline-composer[data-compose=writing])),
 dialog.composer-home[open]:not(.notebook-mode){
   --sheet-hair:color-mix(in srgb,var(--line) 80%,var(--panel));

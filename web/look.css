@@ -5,9 +5,10 @@
      conversation is the one lit, raised surface between them.
    - Paper: the Notebook is warm paper set in a book face, on a quiet bench; the rail sinks into the bench.
    A surface that changes material redefines the tokens on itself, so what is inside it follows; the docked
-   Notebook's page sets its own tokens (aim.css), so a look sets them on that page too. Wider than a phone only. */
+   Notebook's page sets its own tokens (aim.css), so a look sets them on that page too. Every screen;
+   look-touch.css fits the switches and the Paper rails to a phone. */
 .look-switch{display:none}
-@media (min-width:761px){
+@media all{
   .rail-foot .look-switch{display:inline-flex;gap:1px;margin-top:.35rem;padding:1px;border:1px solid var(--line);border-radius:.4rem;background:var(--panel)}
   :root .rail-foot .look-switch.look-switch button{min-height:0;height:1.25rem;padding:0 .45rem;border:0;border-radius:.3rem;background:transparent;color:var(--muted);font-size:.68rem}
   :root .rail-foot .look-switch.look-switch button:hover{color:var(--ink);background:transparent}

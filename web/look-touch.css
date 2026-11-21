@@ -1,0 +1,9 @@
+/* The looks on a phone (985): Bookends | Paper, Quiet | Vivid and the Notebook's and right rail's dress apply on
+   every screen. This sheet, loaded after them, makes the switches at the rail's foot finger-sized, and gives Paper's
+   rails a floor on a phone: Paper sinks them into the bench beside the page, but on a phone both lie over the page. */
+@media (pointer:coarse){
+  :root .rail-foot .look-switch.look-switch button{height:2.25rem;padding:0 .8rem;font-size:.8rem}
+}
+@media (max-width:760px){
+  :root[data-look=paper] :is(.rail,#things):is(.rail,#things){background:var(--look-deep)}
+}
