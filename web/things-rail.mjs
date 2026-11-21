@@ -30,6 +30,7 @@ import { panes } from './panes.mjs';
 import { ImageRailMenu } from './image-rail-menu.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
+import { nearest } from './arrow-reach.mjs';
 import { glyph } from './glyphs.mjs';
 
 // A Notebook page's first words: its body's lines without Markdown marks, joined, after its own title when it opens with
@@ -173,6 +174,8 @@ export class ThingsRail {
     // section, Return opens a row, and plain ← goes back to the messages
     // without folding. The generic arrow owner reaches only controls
     // actually present; this rail has no scope controls or name row.
+    // Thumbnail grids answer their plain arrows before the tree's linear step (1007).
+    this.holder.addEventListener('keydown', event => this.gridKey(event), true);
     this.tree = new KeyTree({ root: this.holder, doc, label: 'The topic\'s things', column: this.host, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows) });
     // The sheet closes with Escape, its ✕ and a tap beside it; the shell keeps these across moves.
     listen(doc, 'keydown', event => { if (event.key === 'Escape' && this.isOpen()) { event.preventDefault(); this.close(true); } });
@@ -242,6 +245,43 @@ export class ThingsRail {
         .find(el => el !== disclosure && el.isConnected && (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length));
       if (control) { consume(); control.focus({ preventScroll: true }); revealSelection(control); }
     }
+  }
+  // Real positions define the row and column, including after a resize. Only
+  // this grid owns its arrows; menus, writing and the rest of the tree keep theirs.
+  gridKey(event) {
+    const action = keyAction(event);
+    if (!['left', 'right', 'up', 'down'].includes(action)) return;
+    const target = event.target.closest?.('a[href], button'), grid = target?.closest('.things-thumbs');
+    if (!grid || !this.holder.contains(grid)) return;
+    const rows = this.tree.list(), byElement = new Map(rows.map(row => [row.el, row]));
+    const cells = [...grid.querySelectorAll('a[href], button')].filter(el => byElement.has(el) && !el.disabled && !el.closest('[inert], [aria-hidden=true]'))
+      .map(el => ({ el, box: el.getBoundingClientRect() })).filter(({ box }) => box.width > 0 && box.height > 0);
+    const from = cells.find(cell => cell.el === target);
+    if (!from) return;
+    event.preventDefault(); event.stopPropagation();
+    const overlap = (a, b, lo, hi) => Math.min(a[hi], b[hi]) - Math.max(a[lo], b[lo]) > .5;
+    const horizontal = action === 'left' || action === 'right';
+    let candidates;
+    if (horizontal) candidates = cells.filter(cell => cell !== from && overlap(cell.box, from.box, 'top', 'bottom'));
+    else {
+      const down = action === 'down', gap = box => down ? box.top - from.box.bottom : from.box.top - box.bottom;
+      const beyond = cells.filter(cell => cell !== from && gap(cell.box) >= -.5);
+      const adjacent = beyond.reduce((best, cell) => !best || gap(cell.box) < gap(best.box) ? cell : best, null);
+      if (!adjacent) {
+        if (!down) this.tree.go(byElement.get(byElement.get(target)?.parent));
+        else this.tree.go(rows[Math.max(...cells.map(cell => rows.indexOf(byElement.get(cell.el)))) + 1]);
+        return;
+      }
+      candidates = beyond.filter(cell => overlap(cell.box, adjacent.box, 'top', 'bottom') && overlap(cell.box, from.box, 'left', 'right'));
+    }
+    const next = nearest(from.box, candidates, action);
+    if (next) {
+      this.tree.go(byElement.get(next));
+      // The picture keeps its existing Return/new-tab action, including after menu Escape.
+      const image = next.querySelector('img.image-thumb:not([hidden])');
+      if (image?.isConnected) { image.focus({ preventScroll: true }); revealSelection(image); }
+    }
+    else if (action === 'left') panes.step('things', 'left', this.doc);
   }
   // Each section shown, and under an open one what can be pressed in it.
   treeRows() {
