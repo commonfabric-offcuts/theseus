@@ -140,3 +140,12 @@ cells use identical Dim/Core preference product code and served client hashes;
 their fresh component Store had stamp62. Shipping63 additionally receives all
 Core/migration checks and an integrated native smoke after stamp/step registration.
 No predecessor step is renumbered; occupied downgrade refuses even saved Dim0.
+
+Warp14994's client-only correction removes the rail module's unused re-export
+list; consumers import state names from `dim-choices.mjs` directly. The unchanged
+page inliner can then parse the whole app. The corrected495-case wiring canary
+has the same10 full diagnostics/frames as approved757, versus486 before the fix.
+Focused clients repeat53/53 and both engines pass a fresh shipping63 native smoke.
+Prior32 native cells stay explicitly bound to8dad636e; Core/migration bytes carry
+unchanged under14994. Release298/15000 lifted the restart boundary; no installation
+or operator configuration was changed by this correction.

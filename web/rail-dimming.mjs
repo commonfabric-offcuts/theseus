@@ -1,7 +1,6 @@
 // The existing Dim painter/gestures, with Core synchronization in1004.
 import { DimChoices, valid } from './dim-choices.mjs';
 import { DimmingSync } from './dimming-sync.mjs';
-export { DimChoices, dimmingKey } from './dim-choices.mjs';
 
 export class RailDimming {
   constructor({ host, storage, enabled = () => true, doc = host.ownerDocument }) {

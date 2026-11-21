@@ -82,7 +82,7 @@ served bytes and browser cleanup. They make no physical-device/IME or latency
 claim. Some captures show the app's generic Updates delayed notice under the
 fixed two-read scratch fixture and intentional transport loss; clearing that
 separate page-wide freshness notice is not measured by these Dim checks.
-Final phone/laptop captures in both looks were inspected. Earlier real native
+Original8dad phone/laptop captures in both looks were inspected. Earlier real native
 failures exposed missing view instance metadata, fixture Live enablement and
 bounded read-admission recovery; all were corrected and retained as raw evidence.
 
@@ -102,3 +102,26 @@ may run their own isolated work concurrently; no exclusive browser slot exists.
 This source is not an installation, an independent approval or Tony acceptance.
 
 Actual browser versions: chromium 156.0.8078.47, webkit 26.6.
+
+## Wiring correction requested in14994
+
+The corrected head removes the unused re-export list from `web/rail-dimming.mjs`
+and changes the only `DimChoices`/`dimmingKey` consumer's import in
+`tests/ui_rail_dimming_973.test.mjs` to the existing owning module
+`web/dim-choices.mjs`. No inliner or assertion changed. Core, migration and every
+other product file are byte-identical to8dad636e; Warp's ongoing Core read carries
+over as14994 explicitly rules.
+
+Actual uncorrected wiring canary:495 tests,9 pass/486 fail, with the unexpected
+export syntax. Corrected and approved757e604 canaries:495 tests,485 pass/10 fail
+each; every full normalized diagnostic and traceback frame matches (source root
+and per-test duration normalization only). The exact comparison and all three
+raw runs are retained. Focused1004/973/902 clients repeat53/53 after correction.
+
+Fresh shipping63 Chromium and WebKit smoke runs each pass1/1 on the corrected
+head's five served client hashes, including real two-device state and committed-
+lost-answer/full-tab-close/reopen/exact retry. Both have full verified browser/
+profile/fixture/PID/port cleanup. Prior32-cell matrices and integrated shipping63
+smoke remain labeled8dad636e; they are carried behavioral evidence, not a claim
+that the old rail module hash equals the corrected module. The correction's
+input delta is only the removed export and direct test import, plus these docs.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DimChoices, dimmingKey } from '../web/rail-dimming.mjs';
+import { DimChoices, dimmingKey } from '../web/dim-choices.mjs';
 const storage = () => { const rows = new Map(); return { rows, getItem: key => rows.get(key) ?? null, setItem: (key,value) => rows.set(key,value) }; };
 function choices(kept=storage(), instance='fixture', actor='reader') { const c=new DimChoices(kept); c.bind(instance,actor); return c; }
 test('973 starts at0, a toggle edits1, and an outcome includes topics loaded later',()=>{
