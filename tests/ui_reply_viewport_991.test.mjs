@@ -36,8 +36,16 @@ test('991 page scrolling without a visual-viewport bounds change never pulls wri
  f.focus();f.emit('resize',{height:430});f.pump();f.moves.length=0;f.state.boxTop-=300;f.state.boxBottom-=300;f.state.sendBottom-=300;
  f.emit('scroll');f.pump();assert.deepEqual(f.moves,[]);
 }));
-test('991 the already visible footer needs no adjustment',()=>fixture({boxTop:100,boxBottom:200,sendBottom:244},f=>{
- f.focus();f.emit('resize',{height:430});f.pump();assert.deepEqual(f.moves,[]);
+test('993 the already visible footer moves down to rest8px above the keyboard',()=>fixture({boxTop:100,boxBottom:200,sendBottom:244},f=>{
+ f.focus();f.emit('resize',{height:430});f.pump();assert.deepEqual(f.moves,[{who:'window',by:-178}]);assert.equal(f.state.sendBottom,422);assert.equal(f.state.boxTop,278);
+}));
+
+test('993 a field taller than the visible space keeps its top visible',()=>fixture({boxTop:100,boxBottom:650,sendBottom:694},f=>{
+ f.focus();f.emit('resize',{height:430});f.pump();assert.deepEqual(f.moves,[{who:'window',by:100}]);assert.equal(f.state.boxTop,0);assert.equal(f.state.sendBottom,594);
+}));
+
+test('993 a fractional top bound never scrolls the field above a panned viewport',()=>fixture({boxTop:100.5,boxBottom:650,sendBottom:694},f=>{
+ f.focus();f.emit('resize',{height:430,offsetTop:30});f.pump();assert.deepEqual(f.moves,[{who:'window',by:70}]);assert.ok(f.state.boxTop>=30);
 }));
 
 test('991 restoring the full viewport cancels a pending keyboard adjustment',()=>fixture({},f=>{
