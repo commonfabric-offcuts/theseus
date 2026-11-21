@@ -118,10 +118,10 @@ html:has(#messages:not([hidden])){overflow-anchor:none}
   .reading-pane { background: #252b2e; }
 }
 .hover-quote {
-  background: #000;
-  color: #fff;
+  background: var(--light-field,#000);
+  color: var(--light-words,#fff);
   border-radius: 0;
-  box-shadow: 0 calc(-1 * var(--quote-overhang, 0px)) #000, 0 var(--quote-overhang, 0px) #000;
+  box-shadow: 0 calc(-1 * var(--quote-overhang, 0px)) var(--light-field,#000), 0 var(--quote-overhang, 0px) var(--light-field,#000);
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
@@ -132,18 +132,18 @@ html:has(#messages:not([hidden])){overflow-anchor:none}
    more on every card's ground, under white words (6:1). The person's own card is black in both schemes and lifts the
    same grey in both (1009). */
 @media (prefers-color-scheme: dark) { .message-card { --lit-field: #5e6160; } }
-.message-preview::highlight(lit-passage), .message-preview *::highlight(lit-passage) { background-color: var(--lit-field); color: #fff; }
-.own-message > .message-preview::highlight(lit-passage), .own-message > .message-preview *::highlight(lit-passage) { color: var(--ink); }
+.message-preview::highlight(lit-passage), .message-preview *::highlight(lit-passage) { background-color: var(--pointer-lit-field,var(--lit-field)); color: var(--light-words,#fff); }
+.own-message > .message-preview::highlight(lit-passage), .own-message > .message-preview *::highlight(lit-passage) { color: var(--light-words,var(--ink)); }
 /* Notebook display shares the passage paint, scoped away from messages. */
 .notebook-reading-words { --lit-field:var(--ink); --notebook-lit-ink:var(--panel); }
-.notebook-reading-words::highlight(notebook-lit-passage),.notebook-reading-words *::highlight(notebook-lit-passage){background-color:var(--lit-field);color:var(--notebook-lit-ink)}
+.notebook-reading-words::highlight(notebook-lit-passage),.notebook-reading-words *::highlight(notebook-lit-passage){background-color:var(--pointer-lit-field,var(--lit-field));color:var(--light-words,var(--notebook-lit-ink))}
 .notebook-reading-words::selection,.notebook-reading-words *::selection{background-color:var(--lit-field);color:var(--notebook-lit-ink)}
 .notebook-title-words>.md-block{display:inline;margin:0;font:inherit}
 /* On Bookends' black ends a passage lit under the pointer, and words selected, lift the ink into the black: #2d2f2e,
    the ink at 20% over it (Tony's pick, Colors #14759). The words keep their own ink. */
 :root:not([data-look=paper]) :is(.rail,#things,dialog.notebook-sheet-dialog) .notebook-reading-words{--lit-field:#2d2f2e;--notebook-lit-ink:var(--ink)}
 :root[data-look=paper] .notebook-reading-words{--lit-field:color-mix(in srgb,var(--accent) 22%,var(--paper));--notebook-lit-ink:var(--ink)}
-:root[data-look=paper] .notebook-reading-source .hover-quote{background:color-mix(in srgb,var(--accent) 22%,var(--paper));color:var(--ink);box-shadow:none}
+:root[data-look=paper] .notebook-reading-source .hover-quote{background:var(--light-field,color-mix(in srgb,var(--accent) 22%,var(--paper)));color:var(--light-words,var(--ink));box-shadow:none}
 /* A hidden copy of the Reader's text box: a card measures the Reader's line there, at this width, before the Reader first opens. */
 .reading-pane.passage-probe { position: fixed; top: 0; left: 0; width: 1px; height: 1px; padding: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
 .message-card.own-message {
@@ -314,6 +314,7 @@ main>#outcomes-home{margin-bottom:.4rem}
 /* One line gets something in (quick-create.mjs): a box about a sentence wide, then a quiet status, or the refusal in plain words. */
 .one-line{display:grid;gap:.3rem;margin:0 0 .75rem;min-width:0}
 .one-line input{width:100%;max-width:32rem;min-width:0;min-height:2.75rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel);color:var(--ink);padding:.45rem .7rem}
+.one-line input[id^="new-notebook-"]::placeholder{color:var(--muted);opacity:1}
 .one-line-state{margin:0;font-size:.85rem;color:var(--alert);overflow-wrap:anywhere}.one-line-state.quiet{color:var(--muted)}.one-line-state a{margin-left:.15rem}
 .source-actions .start-topic-line{flex-basis:100%;order:10;margin:.25rem 0 0}
 /* What an outcome is for, set in place by its owner: a box a few sentences wide. */
@@ -1401,7 +1402,8 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 }
 
 /* The page menu and inline title, shared by Text and Cards (792). */
-.notebook-rename{width:min(32rem,100%);min-width:0;font:inherit}
+.notebook-rename{width:min(32rem,100%);min-width:0;font:inherit;background:var(--panel);color:var(--ink);border-color:var(--line)}
+@media(max-width:760px){.notebook-sheet-heading:has(.notebook-rename:not([hidden])){flex-basis:100%}}
 .notebook-page-notice{flex-basis:100%;overflow-wrap:anywhere}
 .notebook-page-notice:empty{display:none}
 .notebook-tools>[aria-label="This page"]{margin-left:auto}
