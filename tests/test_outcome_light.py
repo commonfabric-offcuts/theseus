@@ -44,7 +44,7 @@ def pipeline(now, all_shipped=False, shipped=None, last_now_work=None):
 
 KEEP = {"reached": None, "kind": "keep", "target_word": None, "checks": None}
 ON_TARGET = {"reached": None, "kind": "keep", "target_word": "on_target", "checks": {"count": 7, "last_run_ms": NOW - 8 * HOUR}}
-ASK = {"topic_id": "t-notes", "title": "Speaker notes", "title_truncated": False, "by": "fable", "ms": NOW - 27 * MINUTE}
+ASK = {"topic_id": "t-notes", "message_id": "m-notes", "title": "Speaker notes", "title_truncated": False, "by": "fable", "ms": NOW - 27 * MINUTE}
 CREATED = {"by": "tony", "ms": None}
 LAST_NOW = {"item": 4, "title": "Phone sign-in survives a restart", "by": "warp", "how": "posted",
             "topic_title": "Phone sign-in", "ms": NOW - 40 * HOUR}
@@ -73,20 +73,20 @@ class LightRulesCase(unittest.TestCase):
 
     def test_a_question_that_holds_work_leads_the_facts_and_says_what_it_holds(self):
         # Item 259: the asks come newest first; the one that holds work goes first, so the card's "the first" is it.
-        newer = dict(ASK, topic_id="t-header", title="Header colour", ms=NOW - 2 * MINUTE)
-        holds = [{"topic_id": "t-notes", "blocks": {"kind": "piece", "piece_id": "p-1", "items": [69]}}]
+        newer = dict(ASK, topic_id="t-header", message_id="m-header", title="Header colour", ms=NOW - 2 * MINUTE)
+        holds = [{"topic_id": "t-notes", "message_id": "m-notes", "blocks": {"kind": "piece", "piece_id": "p-1", "items": [69]}}]
         answer = stands([newer, ASK], None, [], [], KEEP, True, None, CREATED, holds)
         self.assertEqual(light(answer), ("waiting", {"kind": "asks", "count": 2, "blocking": "piece"}))
         self.assertEqual(answer["lead"], {"kind": "asks", "count": 2, "blocking": "piece"})
         self.assertEqual(answer["facts"], [dict(ASK, kind="ask", blocking=holds[0]["blocks"]), dict(newer, kind="ask")])
         # A release held anywhere names the light, and its topic leads, though a piece's ask came first.
-        release = {"topic_id": "t-header", "blocks": {"kind": "release", "release": 44}}
+        release = {"topic_id": "t-header", "message_id": "m-header", "blocks": {"kind": "release", "release": 44}}
         answer = stands([newer, ASK], None, [], [], KEEP, True, None, CREATED, [release] + holds)
         self.assertEqual(light(answer)[1]["blocking"], "release")
         self.assertEqual([fact["topic_id"] for fact in answer["facts"]], ["t-header", "t-notes"])
         # The facts follow the blocking asks' order, not the asks': here the release is held by the older question.
-        on_notes = {"topic_id": "t-notes", "blocks": {"kind": "release", "release": 44}}
-        on_header = {"topic_id": "t-header", "blocks": {"kind": "piece", "piece_id": "p-1", "items": [69]}}
+        on_notes = {"topic_id": "t-notes", "message_id": "m-notes", "blocks": {"kind": "release", "release": 44}}
+        on_header = {"topic_id": "t-header", "message_id": "m-header", "blocks": {"kind": "piece", "piece_id": "p-1", "items": [69]}}
         answer = stands([newer, ASK], None, [], [], KEEP, True, None, CREATED, [on_notes, on_header])
         self.assertEqual(answer["lead"]["blocking"], "release")
         self.assertEqual([(fact["topic_id"], fact["blocking"]) for fact in answer["facts"]],

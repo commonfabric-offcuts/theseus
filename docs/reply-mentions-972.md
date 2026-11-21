@@ -1,12 +1,13 @@
 # Agent suggestions while replying (972)
 
 Typing `@` at a word boundary offers the topic's enabled agents and people,
-filtered by actor ID or display name as the person types. The same picker
+filtered by actor ID or display-name prefix as the person types, case-insensitively
+(999). With no matching name the list closes. The same picker
 serves a card's inline reply, the Reader, the topic composer and its pencil
 sheet. IDs are inserted so duplicate display names cannot name the wrong actor.
 An `@` inside a word, email address or URL does not open it.
 
-The writing keeps focus. Up/Down selects a row; Return or a click/tap inserts
+The writing keeps focus. Up/Down selects a row; Tab, Return or a click/tap inserts
 the ID, replacing only the current token and preserving the rest of the text.
 Escape dismisses the list without changing writing or closing its surface.
 Composition, read-only writing, private notes and inactive editors do not pick.

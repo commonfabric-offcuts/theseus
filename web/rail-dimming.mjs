@@ -119,7 +119,8 @@ export class RailDimming {
       li.dataset.dimmed = String(this.choices.dimmed(workspace) || waiting && !li.hasAttribute('data-waiting'));
       for (const row of li.querySelectorAll('a.nav-item[data-topic-id]')) {
         const matches = row.hasAttribute('data-cover-waiting') || Boolean(row.querySelector('.topic-state.mine'));
-        row.dataset.dimmed = String(this.choices.dimmed(workspace,row.dataset.topicId) || waiting && !matches);
+        // A reader wait temporarily wakes a saved dim choice; clearing it restores that choice (1003).
+        row.dataset.dimmed = String(!matches && (this.choices.dimmed(workspace,row.dataset.topicId) || waiting));
       }
     }
   }

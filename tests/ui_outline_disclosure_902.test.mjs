@@ -434,6 +434,28 @@ const waitingOutcomes981 = () => [item('w1'),item('w2',{light:{light:'waiting',s
 const tick981 = async()=>{for(let i=0;i<20;i++)await Promise.resolve();};
 const topic981 = (f,w)=>f.outcome(w).parts.host.querySelector('a');
 
+test('372 desktop uses the waiting pill and topic row, with no hidden cycle control',async t=>{
+  const asks=[{actor_id:'reader',message_id:'m-372-old',since_ms:1},{actor_id:'reader',message_id:'m-372-next',since_ms:2}];
+  const f=await fixture(t,{outcomes:[item('w2',{light:{light:'waiting',short:{kind:'asks',count:2}}})],
+    topicRows:{w2:[{id:'t372-pill',workspace_id:'w2',title:'Waiting topic',state:'active',unread:0,asks}]}});
+  f.outline.setOpen(f.outcome('w2'),true);await f.flush();
+  assert.equal(f.outcome('w2').waiting,null);assert.equal(f.outline.list.querySelector('.ol-waiting'),null);
+  assert.equal(f.outline.waitingCount.textContent,'2');f.click(f.outline.onlyWaiting);await tick981();
+  const row=topic981(f,'w2');assert.equal(row.dataset.dimmed,'false');
+  f.click(row);f.click(row);
+  assert.deepEqual(f.moves.map(([target])=>target.message),['m-372-old','m-372-next']);
+});
+
+test('372 phone drawer retains its visible cycle control and loses it on desktop resize',async t=>{
+  const f=await fixture(t,{phone:true,outcomes:[item('w2',{light:{light:'waiting',short:{kind:'asks',count:2}}})]});
+  const outcome=f.outcome('w2');assert.ok(outcome.waiting);assert.equal(outcome.waiting.hidden,false);
+  const button=outcome.waiting;button.focus();
+  f.doc.defaultView.matchMedia=()=>({matches:false});f.outline.paint();
+  assert.equal(outcome.waiting,null);assert.equal(f.doc.activeElement,outcome.name);
+  f.doc.defaultView.matchMedia=()=>({matches:true});f.outline.paint();
+  assert.ok(outcome.waiting);assert.notEqual(outcome.waiting,button);
+});
+
 test('981 waiting keeps every row and manual fold, paints said/cover waits and preserves its count without a read',async t=>{
   const f=await fixture(t,{outcomes:waitingOutcomes981(),topicRows:waitingRows981});
   for(const id of ['w1','w2','w3'])f.outline.setOpen(f.outcome(id),true);
@@ -470,11 +492,11 @@ test('981 waiting composes with saved sets and0 without writing or replacing eit
   const saved=JSON.stringify(dim.choices.value),writes=f.storage.writes.length;
   assert.ok(topic981(f,'w1'),'quiet topic exists before the pill');
   f.click(f.outline.onlyWaiting);await tick981();
-  assert.equal(topic981(f,'w1').dataset.dimmed,'true');assert.equal(topic981(f,'w3').dataset.dimmed,'true','saved layer still dims a matching waiting row');
+  assert.equal(topic981(f,'w1').dataset.dimmed,'true');assert.equal(topic981(f,'w3').dataset.dimmed,'false','1003 reader wait overrides the saved layer');
   assert.equal(topic981(f,'w2').dataset.dimmed,'false');assert.equal(JSON.stringify(dim.choices.value),saved);assert.equal(f.storage.writes.length,writes);
   dim.choices.select(0);dim.paint();assert.equal(topic981(f,'w1').dataset.dimmed,'true','0 bypasses saved sets only');assert.equal(topic981(f,'w3').dataset.dimmed,'false');
   dim.choices.select(1);dim.paint();f.click(f.outline.onlyWaiting);await tick981();
-  assert.equal(topic981(f,'w1').dataset.dimmed,'false');assert.equal(topic981(f,'w3').dataset.dimmed,'true');assert.equal(JSON.stringify(dim.choices.value),saved);
+  assert.equal(topic981(f,'w1').dataset.dimmed,'false');assert.equal(topic981(f,'w3').dataset.dimmed,'false');assert.equal(JSON.stringify(dim.choices.value),saved);
 });
 
 test('981 existing row waiting markers repaint without changing saved-set contents',async t=>{
@@ -484,4 +506,13 @@ test('981 existing row waiting markers repaint without changing saved-set conten
   assert.equal(row.dataset.dimmed,'true');row.setAttribute('data-cover-waiting','');dim.paintRows();assert.equal(row.dataset.dimmed,'false');
   row.removeAttribute('data-cover-waiting');const state=f.doc.createElement('span');state.className='topic-state mine';row.append(state);dim.paintRows();assert.equal(row.dataset.dimmed,'false');
   state.remove();dim.paintRows();assert.equal(row.dataset.dimmed,'true');assert.equal(JSON.stringify(dim.choices.value),saved);
+});
+
+test('1005 topic pages and outcome homes consume one persistent rail; clearing current keeps rows until read',async t=>{
+ const f=await fixture(t),outcome=f.outcome('w1'),rail=outcome.rail,nodes=[...outcome.parts.host.children];
+ const bootstrap=f.outline.bootstrap,topic={id:'t-w1',workspace_id:'w1',title:'Topic w1',list_position:1,state:'active'};
+ assert.equal(f.outline.topicsFor(bootstrap,topic,20),rail);assert.equal(f.outline.topicsFor(bootstrap,{...topic,title:'New title'},20),rail);
+ assert.deepEqual(outcome.parts.host.children,nodes);rail.updateCurrent(null);
+ assert.deepEqual(outcome.parts.host.children,nodes);assert.equal(nodes[0].getAttribute('aria-current'),null);
+ await f.arrive('w2');assert.equal(f.outcome('w1').rail,rail);assert.deepEqual(outcome.parts.host.children,nodes);
 });

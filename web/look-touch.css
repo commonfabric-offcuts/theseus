@@ -3,6 +3,12 @@
    rails a floor on a phone: Paper sinks them into the bench beside the page, but on a phone both lie over the page. */
 @media (pointer:coarse){
   :root .rail-foot .look-switch.look-switch button{height:2.25rem;padding:0 .8rem;font-size:.8rem}
+  /* 1010's new passage switch keeps a full finger target. */
+  :root .rail-foot .look-switch[data-switch=pointerLight] button{height:2.75rem;min-height:44px;min-width:44px}
+  /* The middle colour's swatches (1001): each a square as tall as the other switches, its dot a little larger. */
+  :root .rail-foot .look-switch.look-switch>button.look-swatch{width:2.25rem;padding:0}
+  .rail-foot .look-swatch::before{width:1.1rem;height:1.1rem}
+  .rail-foot .look-switch[data-switch=bench]>.look-switch-name{font-size:.8rem}
 }
 @media (max-width:760px){
   :root[data-look=paper] :is(.rail,#things):is(.rail,#things){background:var(--look-deep)}

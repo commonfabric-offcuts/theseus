@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TopicPages, TopicRail, topicPosition } from '../web/topic-navigation.mjs';
+import { TopicPages, TopicRail, WorkspacePages, reread, topicPosition } from '../web/topic-navigation.mjs';
 import { clock } from '../web/times.mjs';
 // Every time said out loud is read at noon on Friday 6 November 2026, whatever day the check runs.
 clock.now = () => new Date(2026, 10, 6, 12, 0).getTime();
@@ -44,6 +44,66 @@ function fixture(t, { folds = false, storage = null, current = null } = {}) {
   const rail = new TopicRail({ ...nodes, ...lines, storage, reader: 'tony', pages: new TopicPages('i1','w1',current ?? { ...item('z'), list_position: 4e8 }), read: args => { calls.push(args); const r = queue.shift(); return typeof r==='function'?r():Promise.resolve(r); }, open: (id, title) => opened.push(title === id ? id : [id, title]), denied: error => error.status===403 });
   return { ...nodes, ...lines, rail, calls, opened, queue, item, page, pos };
 }
+
+// Core's bounded ordered answer, including a separately injected current row.
+// The real TopicRail/TopicPages own all state, paging and painting below.
+function more982(t, total) {
+  const f=fixture(t,{folds:true}),rows=Array.from({length:total},(_,n)=>f.item(String.fromCharCode(97+n))),reads=[];
+  f.rail.updateCurrent(rows[0]);
+  f.rail.read=async args=>{
+    reads.push(structuredClone(args));
+    const start=args.cursor?rows.findIndex(row=>topicPosition(row)===args.cursor)+1:0;
+    const items=rows.slice(start,start+args.limit);
+    return{instance_id:'i1',items,next_cursor:start+items.length<rows.length?topicPosition(items.at(-1)):null,groups:{done:135,archived:0}};
+  };
+  const state=()=>({ids:f.host.children.map(x=>x.dataset.topicId),more:!f.more.hidden,done:f.done.label.textContent});
+  return{...f,rows,reads,state};
+}
+test('982 navigation sequence never offers More when the injected current row completes the list',async t=>{
+  const f=more982(t,21),trace=[];
+  for(const at of [0,20,1,20]){
+    f.rail.updateCurrent(f.rows[at]);await f.rail.load();
+    const shown=f.state();trace.push({current:f.rows[at].id,...shown,unshown:f.rows.filter(row=>!shown.ids.includes(row.id)).map(row=>row.id)});
+  }
+  for(const step of trace)assert.equal(step.more,step.unshown.length>0,JSON.stringify(trace));
+  assert.ok(trace.every(step=>step.done==='Done (135)'),JSON.stringify(trace));
+});
+test('982 More still brings genuinely unshown rows and preserves the Done count',async t=>{
+  const f=more982(t,25);await f.rail.load();assert.equal(f.state().more,true);assert.equal(f.state().ids.length,20);
+  await f.more.onclick();assert.equal(f.state().more,false);assert.equal(f.state().ids.length,25);assert.equal(f.state().done,'Done (135)');
+  assert.equal(f.reads[0].limit,20);assert.equal(f.reads[1].limit,20);assert.equal(f.reads[1].cursor,topicPosition(f.rows[19]));
+});
+test('982 an exhausted short list stays exhausted across current-topic changes',async t=>{
+  const f=more982(t,7);
+  for(const at of [0,6,2]){f.rail.updateCurrent(f.rows[at]);await f.rail.load();assert.equal(f.state().more,false);assert.equal(f.state().ids.length,7);assert.equal(f.state().done,'Done (135)');}
+});
+test('982 shared reread still publishes the outcome list through WorkspacePages',async()=>{
+  const pages=new WorkspacePages('i1');
+  await reread(pages,async()=>({instance_id:'i1',items:[{id:'a',title:'A',owner_id:'reader',title_truncated:false,version:1},{id:'b',title:'B',owner_id:'reader',title_truncated:false,version:1}],next_cursor:null}));
+  assert.deepEqual(pages.items.map(x=>x.id),['a','b']);assert.equal(pages.started,true);assert.equal(pages.next,null);
+});
+test('982 a new route in the same document retains the loaded extent and More truth',async t=>{
+  const f=more982(t,25);await f.rail.load();await f.more.onclick();assert.equal(f.state().more,false);
+  const fresh=new TopicRail({...f,reader:'tony',pages:new TopicPages('i1','w1',f.rows[1]),read:f.rail.read,open(){},denied:()=>false});
+  await fresh.load();assert.equal(f.state().ids.length,25);assert.equal(f.state().more,false);assert.equal(f.state().done,'Done (135)');
+});
+for(const scope of ['reader','instance'])test('982 loaded extent does not cross '+scope,async t=>{
+  const f=more982(t,25);await f.rail.load();await f.more.onclick();
+  const fresh=new TopicRail({...f,reader:scope==='reader'?'another-reader':'tony',pages:new TopicPages(scope==='instance'?'another-instance':'i1','w1',f.rows[1]),
+    read:async args=>({...await f.rail.read(args),instance_id:scope==='instance'?'another-instance':'i1'}),open(){},denied:()=>false});
+  await fresh.load();assert.equal(f.state().ids.length,20);assert.equal(f.state().more,true);assert.equal(f.state().done,'Done (135)');
+});
+test('982 More consumes a duplicate current-topic tail without an empty extra press',async t=>{
+  const f=more982(t,41);f.rail.updateCurrent(f.rows[40]);await f.rail.load();assert.equal(f.state().more,true);
+  await f.more.onclick();assert.equal(f.state().ids.length,41);assert.equal(f.state().more,false);assert.equal(f.state().done,'Done (135)');
+  assert.ok(f.reads.every(args=>args.limit===20||args.limit===1));
+});
+test('982 a refused tail probe publishes no partial More page and Retry keeps the original cursor',async t=>{
+  const f=more982(t,41);f.rail.updateCurrent(f.rows[40]);await f.rail.load();const before=f.state(),read=f.rail.read;let failed=false;
+  f.rail.read=async args=>{if(args.limit===1&&args.cursor===topicPosition(f.rows[39])&&!failed){failed=true;return{...await read(args),instance_id:'foreign'};}return read(args);};
+  assert.equal(await f.more.onclick(),false);assert.deepEqual(f.state(),before);assert.equal(f.rail.pages.loaded.size,20);
+  assert.equal(await f.retry.onclick(),true);assert.equal(f.state().ids.length,41);assert.equal(f.state().more,false);assert.equal(f.state().done,'Done (135)');
+});
 test('rail paging deduplicates current and hands final More focus to newly available links', async t => {
   const f=fixture(t);f.queue.push(f.page(['a','b'],'b'));await f.rail.load();
   const current=f.host.children[0];assert.equal(current.dataset.topicId,'z');assert.equal(current.attributes['aria-current'],'page');
@@ -497,4 +557,46 @@ test('a press on a topic row\'s unread count opens it at its oldest unread messa
   let prevented = 0; opened.length = 0;
   row('a').onclick({ button: 0, metaKey: true, target: count('a'), preventDefault() { prevented++; } });
   assert.deepEqual([opened, prevented, row('a').href], [[], 0, '?topic=a']);
+});
+
+test('1005 retired read cannot publish partial lists, erase rows or show a move notice', async t => {
+  const f=fixture(t,{folds:true}); f.queue.push(f.page(['a','b'])); await f.rail.load();
+  const nodes=[...f.host.children], before=structuredClone(f.rail.pages.items);
+  let release;const held=new Promise(done=>release=done);
+  f.rail.read=async()=>{await held;return f.page(['c']);};
+  const run=f.rail.load(); f.rail.invalidate(); release(); await run;
+  assert.deepEqual(f.rail.pages.items,before);assert.deepEqual(f.host.children,nodes);
+  assert.equal(f.message.hidden,true);assert.equal(f.retry.hidden,true);
+  f.rail.read=async()=>f.page(['c']);await f.rail.load();assert.ok(f.host.children.some(n=>n.dataset.topicId==='c'));
+});
+test('1005 only typed supersession is quiet; unreadable and access failures remain visible',async t=>{
+  const f=fixture(t);f.queue.push(f.page(['a']));await f.rail.load();const nodes=[...f.host.children];
+  f.rail.read=async()=>{throw Object.assign(Error('The page moved on before this was read.'),{code:'READ_SUPERSEDED'});};
+  await f.rail.load();assert.equal(f.message.hidden,true);assert.deepEqual(f.host.children,nodes);
+  f.rail.read=async()=>{throw Error('AIM returned an unreadable response. Confirmation is unknown.');};
+  await f.rail.load();assert.equal(f.message.hidden,false);assert.match(f.message.textContent,/unreadable/);assert.deepEqual(f.host.children,nodes);
+  f.rail.read=async()=>{throw Object.assign(Error('Gone'),{status:403});};await f.rail.load();assert.match(f.message.textContent,/unavailable/);assert.equal(f.host.hidden,true);
+});
+
+test('1005 all open lists publish together; a failed folded-list read keeps the prior active extent',async t=>{
+ const f=fixture(t,{folds:true});f.queue.push(f.page(['a','b']));await f.rail.load();f.done.details.open=true;
+ const before=structuredClone(f.rail.pages.items),nodes=[...f.host.children];
+ f.rail.read=async args=>{if(args.done)throw Error('Done read failed');return f.page(['c']);};
+ assert.equal(await f.rail.load(),false);assert.deepEqual(f.rail.pages.items,before);assert.deepEqual(f.host.children,nodes);
+ f.rail.read=async args=>args.done?{instance_id:'i1',items:[],next_cursor:null}:f.page(['c']);
+ assert.equal(await f.rail.load(),true);assert.ok(f.host.children.some(n=>n.dataset.topicId==='c'));
+});
+
+test('1005 a late list cannot overwrite newer current-topic facts',async t=>{
+ const f=fixture(t);f.queue.push(f.page(['a']));await f.rail.load();let release;
+ f.rail.read=async()=>new Promise(done=>release=done);const loading=f.rail.load();
+ const newer={...f.rail.pages.current,title:'Newer title while read was out'};f.rail.updateCurrent(newer);
+ release(f.page(['a']));await loading;assert.equal(f.rail.pages.current.title,newer.title);assert.equal(f.host.children.find(n=>n.dataset.topicId===newer.id).textContent,newer.title);
+});
+
+test('1005 leaving a current topic beyond the first page cannot drop its already drawn row',async t=>{
+ const f=more982(t,41);f.rail.updateCurrent(f.rows[40]);await f.rail.load();const before=[...f.host.children].map(n=>n.dataset.topicId);
+ f.rail.updateCurrent(null);assert.deepEqual(f.host.children.map(n=>n.dataset.topicId),before);
+ await f.rail.load();for(const id of before)assert.ok(f.host.children.some(n=>n.dataset.topicId===id),id);
+ assert.equal(f.rail.pages.current,null);assert.ok(f.reads.every(q=>q.limit<=20));
 });

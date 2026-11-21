@@ -3,6 +3,7 @@ import { currentImages } from './upload-state.mjs';
 import { paintState, paintWork, waitingQuestion } from './topic-state.mjs';
 import { book, scopeOf, arrangeItems, orderOf } from './outline-order.mjs';
 import { menuRouteHash, menuRouteRead, menuRouteValid } from './menu-route.mjs';
+import { oldestFirst, presses } from './waiting-questions.mjs';
 
 const validId = id => typeof id === 'string' && id.length > 0 && [...id].length <= 200 && !/[\x00-\x1f]/.test(id);
 const afterId = (id,previous) => {
@@ -19,7 +20,7 @@ const badRoute = () => { throw Error('This destination link is incomplete or amb
 const OPTIONAL = {cards:['write','view','card'],opening:['from'],topic:['message','land','at','page','revision','act','choice'],workspace:['page','revision','act']};
 const REVISION = /^[1-9][0-9]{0,17}$/;
 export function routeKey(route) {
-  const fields = {root:[],health:[],'phone-check':['id'],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],measurements:['id'],tool:['id','tool'],cards:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
+  const fields = {root:[],health:[],image:['id','message'],'phone-check':['id'],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],measurements:['id'],tool:['id','tool'],cards:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
   const optional = (OPTIONAL[route?.kind] ?? []).filter(key=>key in route);
   if (!fields || Object.keys(route).length !== fields.length + optional.length + 1 || ![...fields,...optional].every(key=>key === 'land' ? route[key] === true : validId(route[key]))) badRoute();
   // Landing-only links name a message, and never imply opening its Reader.
@@ -37,6 +38,7 @@ export function routeKey(route) {
 export function routeHref(route) {
   routeKey(route);
   const page = route.page ? {page:route.page,...(route.revision?{revision:route.revision}:{})} : {};
+  if (route.kind === 'image') return '?' + new URLSearchParams({ image: route.id, message: route.message });
   const params = route.kind === 'root' ? null : route.kind === 'health' ? {health:''} : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{}),...(route.land?{land:'only'}:{}),...(route.at?{at:route.at}:{}),...page} : route.kind === 'conversation' ? {conversation:route.id} :
     route.kind === 'workspace' ? {workspace:route.id,...page} : route.kind === 'pipeline' ? {pipeline:route.id} : route.kind === 'measurements' ? {measurements:route.id} : route.kind === 'tool' ? {workspace:route.id,tool:route.tool} : route.kind === 'cards' ? {cards:route.id,...(route.write?{write:route.write}:{}),...(route.view?{view:route.view}:{}),...(route.card?{card:route.card}:{})} :
     route.kind === 'item' ? {pipeline:route.id,item:route.item} : route.kind === 'phone-check' ? {'phone-check':route.id} : route.kind === 'create' ? {new:'outcome',intent:route.intent} :
@@ -53,6 +55,7 @@ export function parseRoute(url) {
   if (new Set(keys).size !== keys.length) badRoute();
   let route;
   if (!keys.length) route={kind:'root'};
+  else if (keys.length===2 && p.has('image') && p.has('message')) route={kind:'image',id:p.get('image'),message:p.get('message')};
   // The instance's Health page (docs/health.md).
   else if (keys.length===1 && p.get('health')==='') route={kind:'health'};
   else if (keys.length===1 && p.has('topic')) route={kind:'topic',id:p.get('topic')};
@@ -205,24 +208,48 @@ export class TopicPages {
     return true;
   }
   empty() { return new TopicPages(this.instanceId, this.workspaceId, this.current, this.list, this.apart); }
+  copy() { const fresh = this.empty(); takePages(fresh, this); fresh.loaded = new Map(this.loaded); return fresh; }
   last() { const item = [...this.loaded.values()].pop(); return item ? topicPosition(item) : null; }
   precedes(a, b) { return compare(position(a), position(b)) < 0; }
 }
 
 export const PAGE = 20;
+// WorkspacePages also uses reread; publication stays a shared adapter rather
+// than requiring a topic-only method on every paged owner.
+function takePages(pages, fresh) {
+  Object.assign(pages, { loaded: fresh.loaded, conversation: fresh.conversation, next: fresh.next,
+    groups: fresh.groups ?? pages.groups, order: fresh.order ?? pages.order, started: true });
+}
+// The current topic is already drawn even beyond the loaded page. A cursor
+// whose only remaining row is that topic promises nothing new. Probe only
+// that possible tail, validate it, and consume a confirmed duplicate/empty
+// answer; an actual unshown row remains behind the original cursor.
+async function currentTail(pages, read) {
+  const current = pages.current, cursor = pages.next;
+  if (!current || cursor === null || pages.loaded.has(current.id) ||
+      !pages.items.some(item => item.id === current.id) || !pages.precedes(cursor, topicPosition(current))) return;
+  const answer = await read({ limit: 1, cursor }), probe = pages.empty();
+  probe.started = true; probe.next = cursor; probe.accept(answer, cursor);
+  if ([...probe.loaded.keys()].every(id => id === current.id)) pages.accept(answer, cursor);
+}
+
+// A route keeps only how far its reader opened this list in this document.
+// Fresh Core reads still own the rows, counts and whether anything remains.
+const topicExtents = new WeakMap();
 // A reload reads again everything the reader has loaded, the pages More added
 // included: from the start, in pages as large as the view allows, until it
 // passes the last row they had. The list changes once, when all have arrived,
 // so a reload never folds the list back to its first page.
 export async function reread(pages, read, pageMax = PAGE) {
-  const fresh = pages.empty(), last = pages.last();
-  const limit = Math.min(pageMax, Math.max(PAGE, pages.loaded.size));
+  const fresh = pages.empty(), last = pages.last() ?? pages.extent?.last ?? null;
+  const limit = Math.min(pageMax, Math.max(PAGE, pages.loaded.size, pages.extent?.count ?? 0));
   let cursor = null;
   do {
     fresh.accept(await read({ limit, ...(cursor === null ? {} : { cursor }) }), cursor);
     cursor = fresh.next;
   } while (cursor !== null && last !== null && fresh.precedes(cursor, last));
-  Object.assign(pages, { loaded: fresh.loaded, conversation: fresh.conversation, next: fresh.next, groups: fresh.groups ?? pages.groups, order: fresh.order ?? pages.order, started: true });
+  await currentTail(fresh, read);
+  takePages(pages, fresh);
 }
 
 // The departure guard. A move waits for a send under way and for writing and
@@ -312,6 +339,7 @@ export class TopicRail {
   constructor({ pages, host, more, retry, message, read, open, denied, updated, painted = null, reader = null, pageMax = PAGE, done = null, archived = null, storage = null, area = host, key = null }) {
     Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, painted, reader, pageMax, storage, area, key });
     this.rowItems = new WeakMap();
+    this.epoch = 0; this.selected = pages.current;
     this.denied = false; this.loading = null; this.queued = null; this.queuedAsked = false; this.failedMore = false; this.serial = 0;
     this.lists = [{ name: 'active', pages, host, more }];
     const kept = this.kept();
@@ -329,6 +357,15 @@ export class TopicRail {
         this.paint(true);
         if (list.details.open && !list.reading) this.load(list.pages.started ? false : list, true);
       });
+    }
+    if (reader) {
+      let extents = topicExtents.get(document);
+      if (!extents) topicExtents.set(document, extents = new Map());
+      this.extents = extents;
+      for (const list of this.lists) {
+        list.extentKey = JSON.stringify([pages.instanceId, reader, pages.workspaceId, pages.apart, list.name]);
+        list.pages.extent = extents.get(list.extentKey) ?? null;
+      }
     }
     more.onclick = () => this.load(true); retry.onclick = () => this.load(this.failedMore, true);
     // The lists keep still under the pointer: a change found while it is over
@@ -373,14 +410,22 @@ export class TopicRail {
   }
   title(id) { for (const list of this.lists) { const item = list.pages.items.find(item => item.id === id); if (item) return item.title; } return id; }
   // The message of the question a topic waits on the reader for, as the lists last read it, or null.
-  question(id) {
+  question(id, advance = false) {
     for (const list of this.lists) {
       const item = list.pages.items.find(item => item.id === id);
-      if (item) return questionOf(item, this.reader);
+      if (item) return advance ? nextQuestionOf(item, this.reader) : questionOf(item, this.reader);
     }
     return null;
   }
-  updateCurrent(topic) { for (const list of this.lists) list.pages.current = structuredClone(topic); this.paint(); }
+  // Leaving changes selection at once, retaining the known row until a complete
+  // fresh list replaces it. Current-topic facts are separate from selection.
+  updateCurrent(topic) {
+    this.selected = structuredClone(topic);
+    if (topic) for (const list of this.lists) list.pages.current = structuredClone(topic);
+    this.paint();
+  }
+  invalidate() { ++this.epoch; }
+
   row(item) {
     let link = this.links.get(item.id);
     if (!link) {
@@ -404,7 +449,7 @@ export class TopicRail {
     if (Number.isSafeInteger(item.cover_waiting) && item.cover_waiting > 0) link.setAttribute('data-cover-waiting', '');
     else link.removeAttribute('data-cover-waiting');
     link.href = routeHref(topicTarget(item.id, this.question(item.id)));
-    if (item.id === this.pages.current?.id) link.setAttribute('aria-current', 'page');
+    if (item.id === this.selected?.id) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
     this.rowItems.set(link, item);
     return link;
@@ -413,7 +458,7 @@ export class TopicRail {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     if (landsOnUnread(event.target, event)) return this.open(id, this.title(id), null, 'unread');
-    return this.open(id, this.title(id), this.question(id));
+    return this.open(id, this.title(id), this.question(id, true));
   }
   // A second presentation reads the rows this rail actually drew, including
   // order held under the pointer. Visibility comes from the outline's own
@@ -512,14 +557,41 @@ export class TopicRail {
     const previousIds = new Set(this.lists.flatMap(list => list.pages.items.map(item => item.id)));
     // Keep busy controls focusable; repeated activation shares this read.
     for (const control of [this.retry, ...this.lists.map(list => list.more)]) control.setAttribute('aria-disabled', 'true');
+    const epoch = this.epoch;
+    const drafts = new Map();
     const reading = list => args => this.read({ workspace_id: this.pages.workspaceId, ...listArgs(list.name, this.pages.apart), ...args });
-    const read = list => (target && !first ? reading(list)({ limit: PAGE, cursor }).then(answer => { list.pages.accept(answer, cursor); })
-      : reread(list.pages, reading(list), this.pageMax)).then(() => { list.pages.readAt = ++this.serial; });
+    const read = async list => {
+      const fresh = list.pages.copy(); fresh.extent = list.pages.extent;
+      // The injected current row is already drawn even outside the cursor's
+      // extent. On departure, reread through that row before dropping its
+      // overlay; a first-page answer alone cannot disprove its membership.
+      const previous = list.pages.current, last = fresh.last();
+      if (this.selected === null && previous && !fresh.loaded.has(previous.id) &&
+          list.pages.items.some(item => item.id === previous.id) &&
+          (last === null || fresh.precedes(last, topicPosition(previous)))) fresh.loaded.set(previous.id, previous);
+      fresh.current = this.selected === null ? null : structuredClone(list.pages.current);
+      drafts.set(list, fresh);
+      if (target && !first) {
+        fresh.accept(await reading(list)({ limit: PAGE, cursor }), cursor);
+        await currentTail(fresh, reading(list));
+      } else await reread(fresh, reading(list), this.pageMax);
+    };
     const lists = target ? [target] : this.lists.filter(list => list === this.lists[0] || list.details.open);
     for (const list of lists) list.reading = true;
     this.loading = Promise.all(lists.map(read))
       .then(() => {
+        if (epoch !== this.epoch) return true;
+        // Publish all requested lists together, only for the run that read them.
+        for (const list of lists) {
+          const fresh = drafts.get(list); takePages(list.pages, fresh);
+          if (this.selected === null) list.pages.current = null;
+          list.pages.readAt = ++this.serial;
+        }
         for (const list of lists) book.learn(this.scope, list.pages.order);
+        for (const list of lists) if (this.extents) {
+          list.pages.extent = { last: list.pages.last(), count: list.pages.loaded.size };
+          this.extents.set(list.extentKey, list.pages.extent);
+        }
         const focused = document.activeElement;
         this.denied = false;
         this.message.hidden = true; this.retry.hidden = true; this.paint(asked);
@@ -530,6 +602,7 @@ export class TopicRail {
         }
         return true;
       }).catch(error => {
+        if (epoch !== this.epoch || error?.code === 'READ_SUPERSEDED') return true;
         const focused = document.activeElement;
         if (this.isDenied(error)) { this.denied = true; this.paint(asked); }
         this.failedMore = target && !first && !this.denied ? target : false;
@@ -571,7 +644,13 @@ const drawn = new WeakMap();
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 // The message of the question a topic waits on the reader for, or null: its
 // row opens the topic there, so the Reader shows the question (item 148).
-export const questionOf = waitingQuestion;
+const questionsOf = (item, reader) => (Array.isArray(item?.asks) ? item.asks : [])
+  .filter(ask => ask?.actor_id === reader && typeof ask.message_id === 'string')
+  .map(ask => ({ topic_id: item.id, message_id: ask.message_id, ms: ask.since_ms }));
+// Painting is passive; only an actual press advances the reader's questions.
+// Keep Conversation inspection's existing fallback when none waits on this reader.
+export const questionOf = (item, reader) => oldestFirst(questionsOf(item, reader))[0]?.message_id ?? waitingQuestion(item, reader);
+export const nextQuestionOf = (item, reader) => presses.next('topic:' + item.id, questionsOf(item, reader))?.message_id ?? waitingQuestion(item, reader);
 // What a topic's row carries after its title, in the outline and in the right
 // rail alike (item 297): its unread count (marked when part of it was sent to
 // the reader by name), where it stands (Waiting on you, Ready for review…) and
