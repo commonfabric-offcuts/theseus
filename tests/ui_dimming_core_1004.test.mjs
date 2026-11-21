@@ -18,16 +18,16 @@ function locksFor(storage){
 }
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
 const turn=()=>new Promise(r=>setImmediate(r));
-const bootstrap=actor=>({instance_id:'scratch-1004',actor,limits:{rail_dim_choices:2048},authority:{authority_id:'authority-1004',authority_epoch:'epoch-1004'}});
+const bootstrap=actor=>({instance_id:'scratch-1004',actor,limits:{rail_dim_choices:2048},authority:{authority_id:'authority-1004',authority_epoch:'epoch-1004',continuity:'initial'}});
 function server(binding=bootstrap) {
   const states=new Map(),ledger=new Map(),changes=[],calls=[];let seq=0;
   const api=actor=>({
     async view(name,args){
       calls.push({actor,name,args:clone(args)});const b=binding(actor),scope={kind:'actor',id:actor};
-      if(name==='rail_dimming')return canonical({instance_id:b.instance_id,...clone(states.get(actor)??{value:freshDimming(),dim_revision:0})});
+      if(name==='rail_dimming')return canonical({instance_id:b.instance_id,...clone(states.get(actor)??{value:freshDimming(),dim_revision:0}),...(args.candidate&&!states.has(actor)?{candidate:clone(args.candidate)}:{})});
       assert.equal(name,'changes');
       return {instance_id:b.instance_id,scope,baseline:!args.cursor,items:args.cursor?clone(changes.filter(x=>x.actor===actor&&x.seq>args.cursor.after_seq).map(({actor,...x})=>x)):[],has_more:false,continuation:null,covered_versions:{},
-        checkpoint:{v:1,kind:'checkpoint',instance_id:b.instance_id,actor_id:actor,...b.authority,scope,after_seq:seq}};
+        checkpoint:{v:1,kind:'checkpoint',instance_id:b.instance_id,actor_id:actor,authority_id:b.authority.authority_id,authority_epoch:b.authority.authority_epoch,scope,after_seq:seq}};
     },
     async command(e){
       calls.push({actor,envelope:clone(e)});const key=actor+':'+e.operation_id;
@@ -203,4 +203,50 @@ test('1004 a definite validation refusal without a ledger record rolls back only
   gate.resolve();await a.sync.idle();
   assert.equal(a.choices.dimmed('w','a'),false);assert.equal(a.choices.dimmed('w','b'),true);
   assert.equal(core.states.get('reader')?.dim_revision,1);assert.equal(a.sync.pending,null);
+});
+test('15008 legacy import drops revoked places once and retires its exact973 key when Core owns the choice',async()=>{
+  const core=server(),api=core.api('reader'),s=storage(),legacy=freshDimming();legacy.selected=2;
+  legacy.sets[1]={focus:['gone',null],outcomes:[['gone',true]],topics:[['w','allowed',true],['w','revoked',true]]};
+  const key=dimmingKey('scratch-1004','reader');s.setItem(key,JSON.stringify(legacy));
+  const pruned=freshDimming();pruned.selected=2;pruned.sets[1].topics=[['w','allowed',true]];
+  const filtered={async view(name,args){const r=await api.view(name,args);if(name==='rail_dimming'&&args.candidate)return {...r,candidate:clone(pruned)};return r;},async command(e){
+    if(JSON.stringify(e.args.value).includes('revoked')||JSON.stringify(e.args.value).includes('gone'))return {instance_id:e.instance_id,operation_id:e.operation_id,kind:e.kind,status:'rejected',recorded:true,error:{code:'FORBIDDEN',message:'One old place is unreadable'}};
+    return api.command(e);
+  }};
+  const a=device(core,'reader',s,filtered);await a.ready;
+  assert.deepEqual(core.states.get('reader')?.value,pruned);assert.equal(s.getItem(key),null);
+  assert.equal(core.calls.filter(x=>x.envelope).length,1);
+  const stale=storage();stale.setItem(key,JSON.stringify(legacy));const b=device(core,'reader',stale,filtered);await b.ready;
+  assert.deepEqual(b.choices.value,pruned);assert.equal(stale.getItem(key),null);assert.equal(core.calls.filter(x=>x.envelope).length,1);
+});
+test('15008 a click during the initial Core read keeps the legacy set and its newer explicit edit',async()=>{
+  const core=server(),api=core.api('reader'),s=storage(),legacy=new DimChoices(s),gate=deferred();legacy.bind('scratch-1004','reader');legacy.toggle('w','old');
+  let first=true;const slow={command:api.command,async view(name,args){const r=await api.view(name,args);if(name==='rail_dimming'&&first){first=false;await gate.promise;}return r;}};
+  const a=device(core,'reader',s,slow);await turn();a.choices.toggle('w','new');gate.resolve();await a.ready;await a.sync.idle();
+  assert.equal(a.choices.dimmed('w','old'),true);assert.equal(a.choices.dimmed('w','new'),true);
+  assert.deepEqual(core.states.get('reader').value.sets[0].topics,[['w','old',true],['w','new',true]]);
+});
+test('15008 malformed and foreign-version writer rows remain untouched and unlocked while good saves continue',async()=>{
+  const core=server(),s=storage(),b=bootstrap('reader'),scope=JSON.stringify([b.instance_id,b.actor,b.authority.authority_id,b.authority.authority_epoch]);
+  const prefix='aim-next.rail-dimming.pending.v1:'+scope+':';
+  const bad=[['bad-json','{'],['foreign-version',JSON.stringify({version:2,scope,writer:'foreign-version',saved_ms:1,snapshot:{}})],['bad-snapshot',JSON.stringify({version:1,scope,writer:'bad-snapshot',saved_ms:1,snapshot:{version:1,intents:'unreadable',prepared:[]}})]];
+  for(const [name,raw]of bad)s.setItem(prefix+name,raw);
+  const a=device(core,'reader',s);await a.ready;a.choices.select(2);await a.sync.idle();
+  assert.equal(core.states.get('reader')?.value.selected,2);
+  for(const [name,raw]of bad){assert.equal(s.getItem(prefix+name),raw);await locksFor(s).request('aim-next-dim-writer:'+prefix+name,{ifAvailable:true},lock=>assert.ok(lock,'bad row lock is released'));}
+});
+test('15008 a successful journal save clears the previous failure for later pending edits',async()=>{
+  const core=server(),s=storage(),api=core.api('reader'),set=s.setItem,gate=deferred();let fail=false,commands=0;
+  s.setItem=(key,raw)=>{if(fail&&key.startsWith('aim-next.rail-dimming.pending.v1:'))throw Error('quota-test');set(key,raw);};
+  const a=device(core,'reader',s,{view:api.view,async command(e){const r=await api.command(e);if(++commands===2)await gate.promise;return r;}});await a.ready;
+  fail=true;a.choices.select(1);await a.sync.idle();assert.match(a.sync.status,/quota-test/);
+  fail=false;await a.sync.retry();assert.equal(a.sync.journalError,null);
+  a.choices.toggle('w','a');await turn();assert.doesNotMatch(a.sync.status,/quota-test/);gate.resolve();await a.sync.idle();
+});
+test('15008 a known own Dim revision causes no preference reread or repaint; a newer device revision does',async()=>{
+  const core=server();let paints=0;const a=device(core,'reader',storage(),core.api('reader'),{changed:()=>paints++});await a.ready;
+  a.choices.select(2);await a.sync.idle();core.calls.length=0;const painted=paints;await a.sync.retry();
+  assert.deepEqual(core.calls.map(x=>x.name),['changes']);assert.equal(paints,painted);
+  const other=freshDimming();other.selected=1;await core.other('reader',other);core.calls.length=0;await a.sync.retry();
+  assert.deepEqual(core.calls.map(x=>x.name),['changes','rail_dimming']);assert.equal(a.choices.selected,1);
 });

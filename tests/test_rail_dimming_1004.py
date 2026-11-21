@@ -171,6 +171,21 @@ class RailDimmingCase(unittest.TestCase):
         self.assertEqual(self.read("agent-a"), {"instance_id": "test-instance", "value": value(1), "dim_revision": 1})
         self.assertEqual(self.sql("SELECT revision FROM rail_dimming WHERE actor_id='agent-a'"), [(1,)])
 
+    def test_import_candidate_is_read_only_bounded_and_filters_only_explicit_readable_places(self):
+        self.world()
+        candidate = value(2)
+        candidate["sets"][1] = {"focus": ["w2", "t2"], "outcomes": [["w1", True], ["w2", True]],
+                                "topics": [["w1", "t1", True], ["w2", "t2", True], ["w1", "missing", True]]}
+        answer = self.read("agent-a", candidate=candidate)
+        expected = value(2)
+        expected["sets"][1] = {"focus": None, "outcomes": [["w1", True]], "topics": [["w1", "t1", True]]}
+        self.assertEqual(answer, {"instance_id": "test-instance", "value": value(), "dim_revision": 0, "candidate": expected})
+        self.assertEqual(self.sql("SELECT count(*) FROM rail_dimming"), [(0,)])
+        self.committed(self.write(value(1), actor="agent-a"))
+        self.assertEqual(self.read("agent-a", candidate=candidate), self.read("agent-a"), "saved Core wins without a legacy candidate")
+        malformed = self.store.view("agent-a", "rail_dimming", {"candidate": {"version": 2}})
+        self.assertEqual(malformed["error"]["code"], "INVALID_ARGUMENT")
+
 
 if __name__ == "__main__":
     unittest.main()

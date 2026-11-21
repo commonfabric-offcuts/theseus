@@ -28,8 +28,8 @@ export class DimmingSync {
       this.choices.limit = Number.isSafeInteger(this.limit) && this.limit > 0 ? this.limit : 0;
       this.choices.bind(instance_id, actor);
       this.cacheKey = dimCacheKey(instance_id, actor, authority); this.confirmed = null; this.intents = []; this.prepared = [];
-      this.legacy = null; this.cursor = null; this.initialized = false; this.error = null; this.cacheKept = true;
-      try { const raw = this.storage?.getItem(dimmingKey(instance_id, actor)); if (raw) this.legacy = decodeDimming(raw); } catch { /* No valid legacy import. */ }
+      this.legacyKey = dimmingKey(instance_id, actor); this.legacy = null; this.cursor = null; this.initialized = false; this.error = null; this.cacheKept = true; this.presented = null;
+      try { const raw = this.storage?.getItem(this.legacyKey); if (raw) this.legacy = decodeDimming(raw); } catch { /* No valid legacy import. */ }
       this.restore(); this.task = null;
       this.choices.syncEdit = action => {
         this.intents.push({ id: this.id(), action: copy(action) }); this.error = null; this.transientError=false;
@@ -56,28 +56,34 @@ export class DimmingSync {
   }
   snapshot() { return copy({version:1,confirmed:this.confirmed,intents:this.intents,prepared:this.prepared}); }
   validValue(value) { return decodeDimming(JSON.stringify(value), this.limit); }
+  checkSnapshot(cache) {
+    if (cache?.version !== 1 || !Array.isArray(cache.intents) || !Array.isArray(cache.prepared)) throw diagnostic('Invalid Dim cache');
+    if (cache.confirmed !== null) {
+      if (!revision(cache.confirmed?.dim_revision)) throw diagnostic('Invalid Dim revision');
+      this.validValue(cache.confirmed.value);
+    }
+    for (const entry of cache.intents)
+      if (typeof entry?.id !== 'string' || !entry.id || !this.apply(freshDimming(), entry.action, 0)) throw diagnostic('Invalid cached Dim edit');
+    for (const pending of cache.prepared) {
+      const e = pending?.envelope;
+      if (!e || e.v !== 1 || e.instance_id !== this.bootstrap.instance_id || e.kind !== 'rail.dimming_set' ||
+          typeof e.operation_id !== 'string' || !e.operation_id || !equal(e.target,{}) || !revision(e.expected?.dim_revision) ||
+          !equal(e.expected?.authority,{authority_id:this.bootstrap.authority.authority_id,authority_epoch:this.bootstrap.authority.authority_epoch}) ||
+          !Array.isArray(pending.ids) || !pending.ids.length || new Set(pending.ids).size !== pending.ids.length ||
+          !pending.ids.every(id=>cache.intents.some(x=>x.id===id))) throw diagnostic('Invalid pending Dim save');
+      this.validValue(e.args?.value);
+    }
+  }
   mergeRecovered(snapshots) {
     const entries = new Map(), prepared = new Map();
     for (const cache of [...snapshots,this.snapshot()]) {
-      if (cache?.version !== 1 || !Array.isArray(cache.intents)) throw diagnostic('Invalid Dim cache');
-      if (cache.confirmed !== null) {
-        if (!revision(cache.confirmed?.dim_revision)) throw diagnostic('Invalid Dim revision');
-        this.validValue(cache.confirmed.value);
-      }
+      this.checkSnapshot(cache);
       for (const entry of cache.intents) {
-        if (typeof entry?.id !== 'string' || !entry.id || !this.apply(freshDimming(), entry.action, 0)) throw diagnostic('Invalid cached Dim edit');
         if (entries.has(entry.id) && !equal(entries.get(entry.id),entry)) throw diagnostic('A cached Dim edit identity disagrees.');
         entries.set(entry.id,copy(entry));
       }
-      if (!Array.isArray(cache.prepared)) throw diagnostic('Invalid prepared Dim saves');
       for (const pending of cache.prepared) {
         const e = pending?.envelope;
-        if (!e || e.v !== 1 || e.instance_id !== this.bootstrap.instance_id || e.kind !== 'rail.dimming_set' ||
-            typeof e.operation_id !== 'string' || !e.operation_id || !equal(e.target,{}) || !revision(e.expected?.dim_revision) ||
-            typeof e.expected?.authority?.authority_id !== 'string' || typeof e.expected.authority.authority_epoch !== 'string' ||
-            !Array.isArray(pending.ids) || !pending.ids.length || new Set(pending.ids).size !== pending.ids.length ||
-            !pending.ids.every(id=>cache.intents.some(x=>x.id===id))) throw diagnostic('Invalid pending Dim save');
-        this.validValue(e.args?.value);
         if (prepared.has(e.operation_id) && !equal(prepared.get(e.operation_id),pending)) throw diagnostic('A pending Dim operation identity disagrees.');
         prepared.set(e.operation_id,copy(pending));
       }
@@ -88,7 +94,7 @@ export class DimmingSync {
   async prepareJournal(epoch) {
     if (this.journal || this.journalReady) return this.journalReady;
     const task = Promise.resolve().then(()=>this.journalFactory({storage:this.storage,
-      scope:this.key,id:this.id})).then(journal=>{
+      scope:this.key,id:this.id,validate:cache=>this.checkSnapshot(cache)})).then(journal=>{
       if (epoch !== this.epoch) { journal.close(); return; }
       try {
         this.mergeRecovered(journal.recovered);
@@ -102,7 +108,7 @@ export class DimmingSync {
     let pendingKept = false;
     try {
       if (!this.journal) throw Error(this.journalError ?? 'Pending Dim changes are not yet kept.');
-      this.journal.save(this.snapshot()); pendingKept = true;
+      this.journal.save(this.snapshot()); pendingKept = true; this.journalError = null;
     } catch (error) { this.journalError = error.message; }
     this.cacheKept = pendingKept;
     try {
@@ -133,19 +139,28 @@ export class DimmingSync {
     this.choices.kept = Boolean(this.confirmed && !this.intents.length && !this.pending);
     this.status = this.error ?? (this.intents.length && this.journalError ? this.journalError : this.choices.kept ? 'Dim views are kept in Core on your devices' : 'Dim changes are not yet confirmed in Core');
     if (!this.cacheKept) this.status += '; this browser could not keep the offline copy';
-    this.changed();
+    const presented = JSON.stringify([this.choices.value,this.choices.kept,this.status,Boolean(this.pending)]);
+    if (presented !== this.presented) { this.presented = presented; this.changed(); }
   }
   accept(answer) {
     if (!revision(answer?.dim_revision)) throw diagnostic('The Dim revision could not be confirmed.');
     const value = this.validValue(answer.value);
     if (!this.confirmed || answer.dim_revision >= this.confirmed.dim_revision) this.confirmed = { value:copy(value), dim_revision:answer.dim_revision };
   }
-  async readCurrent(epoch) {
-    const answer = checkedView(await this.api.view('rail_dimming',{}, {readClass:'background'}),this.bootstrap.instance_id);
+  retireLegacy() {
+    this.legacy = null;
+    try { this.storage?.removeItem(this.legacyKey); } catch { /* Core already wins; a later read can retry retirement. */ }
+  }
+  async readCurrent(epoch, {candidate = null, notify = true} = {}) {
+    const answer = checkedView(await this.api.view('rail_dimming',candidate ? {candidate} : {}, {readClass:'background'}),this.bootstrap.instance_id);
     if (epoch !== this.epoch) return;
     this.accept(answer);
-    if (!this.pending && answer.dim_revision > 0) this.intents = this.intents.filter(x=>x.action.kind!=='import');
-    this.persist(); this.paint();
+    if (answer.dim_revision > 0) {
+      this.retireLegacy();
+      if (!this.pending) this.intents = this.intents.filter(x=>x.action.kind!=='import');
+    }
+    this.persist(); if (notify) this.paint();
+    return answer;
   }
   async changes(input, epoch) {
     const scope = {kind:'actor',id:this.bootstrap.actor};
@@ -181,16 +196,19 @@ export class DimmingSync {
       if (!this.initialized) {
         const baseline = await this.changes(null,epoch); if (epoch !== this.epoch) return;
         this.cursor = copy(baseline.checkpoint);
-        await this.readCurrent(epoch); if (epoch !== this.epoch) return;
-        if (!this.pending && !this.intents.length && this.confirmed.dim_revision === 0 && this.legacy) {
-          this.intents.push({id:this.id(),action:{kind:'import',value:copy(this.legacy)}}); this.legacy = null; this.persist();
+        const candidate = this.pending ? null : this.intents.find(x=>x.action.kind==='import')?.action.value ?? this.legacy;
+        const answer = await this.readCurrent(epoch,{candidate,notify:false}); if (epoch !== this.epoch) return;
+        if (!this.pending && answer.dim_revision === 0 && candidate) {
+          const filtered = this.validValue(answer.candidate);
+          this.intents = this.intents.filter(x=>x.action.kind!=='import');
+          this.intents.unshift({id:this.id(),action:{kind:'import',value:copy(filtered)}}); this.legacy = null; this.persist();
         }
         this.initialized = true;
       } else if(!this.pending&&!this.intents.length) {
         let input = this.cursor, changed = false, page;
         do {
           page = await this.changes(input,epoch); if (epoch !== this.epoch) return;
-          changed ||= page.items.some(x=>x.resource_kind==='rail_dimming' || ['workspace','participation'].includes(x.resource_kind));
+          changed ||= page.items.some(x=>x.resource_kind==='rail_dimming' && x.resource_id===this.bootstrap.actor && x.version>(this.confirmed?.dim_revision??0) || ['workspace','participation'].includes(x.resource_kind));
           input = page.continuation;
         } while (page.has_more);
         if (changed) await this.readCurrent(epoch);
@@ -217,6 +235,7 @@ export class DimmingSync {
         if (receipt.recorded !== true || typeof r?.changed !== 'boolean' || !equal(r.value,envelope.args.value) ||
             r.dim_revision !== envelope.expected.dim_revision + Number(r.changed)) throw diagnostic('The Dim save receipt disagrees. Retry keeps its exact request.');
         this.accept(r); const ids=new Set(pending.ids); this.intents=this.intents.filter(x=>!ids.has(x.id)); this.prepared.shift(); this.error = null;
+        if (r.dim_revision > 0) this.retireLegacy();
       } else if (receipt.recorded === true || receipt.recorded === false && receipt.error.code === 'INVALID_ARGUMENT') {
         this.prepared.shift();
         if (receipt.error?.code === 'REVISION_CONFLICT') {

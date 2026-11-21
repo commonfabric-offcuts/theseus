@@ -1,151 +1,109 @@
 # Dim follows the person (1004)
 
-Intake: Warp14928 and Fable14931; Tony14738 and Warp14740 read through
-the bound profile. Fable14940 binds medium1004 Build1 p-929fce584ab441a3a007bb11.1006 is independently verified shipped297.
-New own branch page-lane5/1004-core-dim-live297, base actual LIVE297
-924f6a6ccdfb36ae7c9010f8655a218d27979dad, tree
-3b9aa93e3ef4ab5a7f1275ac6ebc1676be4a4cc9. Contract only at intake.14954/14956 now settle the freeze order; active
-own tree page-lane5-1004-core-dim-757345, branch
-page-lane5/1004-core-dim-757345, now reconciled onto approved757
-e6049706c764285e89442b34e01dedb61687db2d (schema62, Warp14973/Fable14976).
-The original live297 intake tree is preserved.14954 assigns the next schema only at the first green freeze;
-14955's approved-predecessor requirement is met. Current-live
-ordinary changes, including1003/1005/1006, remain required on actual-live carry.
+Owner: page-lane5; existing topic t-ca4b7bd2bb8a47ca862f824dfdcf93b9,
+Build3 under Fable15012, returned findings Warp15008. Own branch
+`page-lane5/1004-core-dim-757345`, base approved757
+`e6049706c764285e89442b34e01dedb61687db2d` (schema62).
+The original actual-live297 intake tree and all other source trees are preserved.
 
 ## Product and defaults
 
-Keep973's Dim0/1/2 appearance, modifiers, independent editable sets and inverse
-focus semantics, including outcomes/topics arriving later, selected-row wake,
-the existing1003 waiting exceptions, phone/coarse input and retained navigation.
-Only the persistence owner changes: the authenticated person's selected level
-and both sets become Core records, shared across that person's devices. Other
-people never read or change them. The browser is an offline cache, not authority
-for a confirmed Core preference. No dossier, outline or1006 cover fold changes.
+Keep Dim0/1/2, both independent editable sets and inverse focus, existing
+appearance/modifiers/phone input, retained navigation and the exact1003 waiting
+override already shipped on live297. Only personal preference persistence changes.
+No saved Core row means Dim0/two empty sets/revision0. An explicit first empty
+save creates revision1 so a later stale device cannot import over it.
+A valid973 device copy imports only at revision0; existing Core wins.
 
-No saved Core record starts at Dim0 with two empty sets. Import valid existing
-973 device choices once only while Core revision is0; a confirmed existing Core
-record wins over a stale device copy. An import conflict rereads Core and never
-overwrites another device's saved settings. Existing malformed/absent cache is
-not imported. Preserve2048 outcome and2048 topic exceptions per set, inverse
-focus representation and all existing validated ID/boolean/shape limits.
-The existing Core command-envelope limit (2 MiB UTF-8) also applies; the2048
-counts are maxima within that byte bound. A definitive validation refusal rolls
-back only the refused batch, including when Core refused before a ledger record.
-Unknown transport/busy/unreadable answers retain the exact pending request.
+Each set holds at most2048 outcome and2048 topic exceptions, consumed from Core
+`limits.rail_dim_choices`. The existing2MiB UTF-8 command bound also applies.
+IDs, exact shapes, booleans, duplicates and current outcome/topic read bindings
+are checked. Malformed/missing capabilities block writes with an honest status.
 
-## Core/client contract
+## Core and import contract
 
-Proposed concrete names: actor-only `rail_dimming` view returns
-`{instance_id,value:{version:1,selected,sets},dim_revision}`; `rail.dimming_set` writes that
-bounded value with explicit `expected.dim_revision`. Actor comes from the
-authenticated binding, never from a caller-supplied owner. Default revision0;
-revision grows only on an actual change, with no row deletion resetting it.
-An explicit empty first save creates revision1 (absence differs from saved Dim0).
-The write is atomic, authority-fenced, uses the existing operation ledger and
-emits only an actor-scoped `rail_dimming` change. CLI/HTTP use the same library.
-Core owns `limits.rail_dim_choices` (2048), exposed through capabilities/bootstrap;
-the client consumes it for state decoding and editing, and refuses Core writes
-if that capability is missing or malformed. The retired973 import format alone
-retains its legacy2048 decoder default. Validate the entire bounded shape and readable outcome/topic target bindings;
-neither a refusal nor a read leaks another person's preferences or private rows.
+Actor-only `rail_dimming` returns
+`{instance_id,value:{version:1,selected,sets},dim_revision}`. The actor comes from
+authentication; no caller owner field exists. `rail.dimming_set` atomically writes
+with explicit `expected.dim_revision` and captured authority, using the shared
+operation ledger. Revision grows on actual change; only the actor receives its
+`rail_dimming` change. Reads project away newly unreadable places without resetting
+revision. SQL visits only this bounded value's explicitly named IDs.
 
-Keep the existing rail state/painter owner. Bind once per runtime instance/actor
-and authority, read current preferences through a bounded view and observe its
-actor change for targeted refresh; no unrelated topic/history reads, foreground
-navigation barrier, idle polling timer or full rail cascade. Typed transient read/
-transport failures get at most three failure-driven retries (100/200/400ms),
-coalescing Live wakes; explicit Retry/focus/online can resume later. Foreground
-preference writes skip background change reads once initialized. Apply a local choice
-immediately and retain its intended edit plus exact uncertain envelope until a
-recorded answer settles it. Serial writes must not let a late read/receipt undo
-a newer choice. After a revision conflict, reconcile against current Core and
-preserve the user's explicit intent; never silently publish the old whole-device
-snapshot over newer settings. Identity/authority changes fence late results.
+15008 correction: the same view accepts optional `candidate` for a legacy import.
+It is checked against the same Core limits. With no saved row, the answer also
+returns `candidate` projected through the same indexed permission filter; the
+actual Core value remains the default at revision0. With a saved row, the current
+Core value/revision wins and candidate is omitted. It is read-only: no preference,
+revision, command, ledger or schema write and no unrelated list/history traversal.
+This new read-adapter delta is explicit; the command/table/migration are unchanged.
 
-Offline/close/reopen preserves the confirmed browser cache and pending edits
-separately. Pending exact requests/semantic edits use durable, independently
-keyed localStorage writer records with Web Locks ownership (as in existing
-editor/creation journals), not a session-only default. A new document claims
-abandoned writers, deduplicates stable intent/operation IDs, writes their
-combined snapshot before removing their exact source keys, then publishes.
-Recovery adopts the largest locked abandoned row, avoiding a second full copy
-for a single pending writer when storage is near quota. Atomic replacement
-keeps that row safe; other source rows survive until the merged snapshot is kept.
-Live tabs keep separate locked records and never clobber one another. A crash
-during transfer leaves recoverable copies; no new Core write is published until
-the transfer is durably complete. Known receipts settle only their own IDs.
-If storage/ownership refuses, the current document still paints the choice and
-shows an honest unsaved state, but does not publish an unkept Core operation.
-The existing compact Retry control can retry after storage/connectivity recovers.
-Retry an unknown write with the same operation identity; a recorded refusal is
-different from an unknown transport result. Cache refusal/quota failure keeps
-this document usable with an honest unsaved/pending status; never claim the Core
-save happened. A reconnect refreshes Core and settles/reconciles pending choices.
-Confirmed caches and pending writers are scoped by instance, actor AND authority
-ID/epoch. A replacement authority may restore a lower Core revision: its current
-record wins, and old-authority uncertain journals remain intact in their original
-namespace, without being replayed or imported into the new authority.
-No new user workflow or permission gate; save feedback must stay compact in the
-existing Dim control's status/title and remain accessible.
+The client prepends the filtered import before retained absolute semantic clicks
+that arrived during the first read. It preserves newer edits and exact uncertain
+prepared envelopes across late answers, actor/authority changes and reload.
+Once Core answers a positive revision or confirms a save, only the exact973 key
+for that instance/actor is retired. A conflict rereads current Core, discards a
+superseded import and replays explicit edits without overwriting unrelated choices.
+A definitive validation refusal can precede a ledger row; it rolls back only its
+batch. Busy/transport/unreadable answers retain the exact original request.
 
-## Composition and ownership
+## Durable browser recovery
 
-Warp14954/Fable14956 settle the order by green freeze, superseding both
-1004-after1002 and14946's fixed numbering. After75762, the first of1004/1002
-to freeze green takes63 and lands first; the other takes64 and rebases once on
-the first's approved head. Nothing is stamped before freeze. Both build now;
-no unfinished successor holds the other or an ordinary head.
+Confirmed caches and independently keyed pending writers include instance,
+actor and authority ID/epoch. A replacement authority may restore a lower revision:
+its current Core value wins, while old-authority uncertain rows stay in their
+original namespace and are not republished into the replacement.
 
-Active base is approved757 e6049706c764285e89442b34e01dedb61687db2d
-(schema62). Its correction is reconciled;57f39a3 remains preparation ancestry. Until the freeze
-slot is allocated, fresh-Store module tests are explicitly unfrozen component
-evidence; there is no shipping migration/stamp or deployment claim. Final
-migration and downgrade checks use the actual allocated predecessor/successor.
+Web Locks protect active writer rows. A new document claims abandoned writers,
+validates snapshots, deduplicates stable IDs, keeps their merged state before
+removing exact source keys and publishes only after recovery is kept. Recovery
+adopts the largest claimed row so one writer does not need quota for a second full
+copy. Live writers never clobber one another. No prefix deletion occurs.
 
-Owned changes are a small Core preference module/schema/validation/read adapter,
-the Dim synchronization/cache owner and minimal OutlineRail ready/live wiring.
-Shared registration/migration surfaces are coordinated with1002/987/757 before
-editing. Retain1005's single rail owner and1000 handles. No seat provisioning,
-runtime/runner installation changes or live-data writes. Fable owns stages;
-Warp owns independent review, actual-live composition and deployment under14954/14956 first-green-freeze order.
+Malformed JSON/metadata/snapshots and foreign-version rows are left untouched,
+their individual locks are released and valid writers continue. Storage/lock
+failure leaves an honest unsaved document choice and blocks unkept publication.
+A later successful save clears the old journal error, including for subsequent
+pending edits. Retry can resume after storage/connectivity returns.
+Pending intents have no automatic expiry; inverse is an explicit retained intent
+and can replace the chosen set after another device changed it. Unknown-version
+rows are preserved rather than guessed at or silently deleted.
 
-## Verification and boundaries
+## Refresh and paint
 
-Core checks below the browser cover actor/instance isolation and authorization,
-validation and bounds, atomic no-op/revision behavior, expected-revision refusal,
-exact duplicate/unknown retry, restart and explicit migration preservation and
-downgrade refusal with owned preference data. Client tests cover immediate paint,
-first-device import versus existing Core, two independent device caches,
-cross-device change, rapid edits/late responses, offline/reload/reconnect,
-refusal/retry, cache failure and actor/authority switch. Preserve973/1003 state
-and gesture checks and1005/1000 navigation/ready ownership. Retain actual reds
-and applied/caught/exact-restored isolation/recovery/routing mutations.
+Use the existing rail owner and runtime handles. Live carries commit numbers,
+not preference versions; the bounded actor feed learns the relevant resource
+version. An equal/older Dim version causes no preference reread or repaint; a
+newer version or relevant permission change triggers the targeted preference view.
+Unrelated resource changes cause no preference/list/history refresh. Unchanged
+presentation suppresses painter callbacks. Foreground edits skip initialized
+background reads. There is no idle polling timer. Typed transient failures get
+at most three failure-driven100/200/400ms retries; explicit Retry/focus/online can
+resume later. A gesture paints immediately; a late receipt cannot erase newer work.
 
-An isolated real Core/HTTP fixture and two independent browser contexts/origins
-prove that Dim follows Core rather than shared localStorage, with native modifier
-clicks/keys/taps and unchanged appearance in both looks/themes at phone/desktop
-widths. No handler check called native input, physical-device/IME or fake-DOM
-timing claim. Coordinate one relevant workload at a time, actual load below12;
-announce browser-in-use and verify Browser.close, every observed owned PID/profile
-and fixture EOF/exit0/PID/port/scratch cleanup before browser-free. No broad suite
-to fill time. Freeze on meaningful green, push exact own branch and request one
-Warp diff/test read, naming actual defaults and material limits.
+## Composition and verification
 
-Warp14985 corrects the workload rule: seats run their isolated headless native
-work concurrently. Each seat keeps one own workload at a time; the only load
-brake is one-minute load above12 on this18-core Mac. No cross-seat browser slot.
+Warp15019/Fable15021 now control successor order:1002 proceeds independently on
+approved757 for63. If it freezes green before1004 approval,1004 rebases once onto
+its approved head and takes64. Only1004 approval first makes1002 take64 after its
+one rebase. The current tested source implements62→63; this is not a reserved
+slot, a Core freeze record or an approval. Fable owns stages/carry/deploy.
+15000 orders judged landing:757,994, then the successors under this rule.
+Actual-live1005/1006 and other ordinary changes remain required on carry.
 
-At first freeze8dad636e,1004 uses62→63 after approved757 e6049706. Its32 native
-cells use identical Dim/Core preference product code and its served client hashes;
-their fresh component Store had stamp62. Shipping63 additionally receives all
-Core/migration checks and an integrated native smoke after stamp/step registration.
-No predecessor step is renumbered; occupied downgrade refuses even saved Dim0.
+The757 fixture-owner boundary15011/15020 is preserved: the first migration test's
+post61 upgrade and repeat target the latest schema; its literal61 layout, refusal,
+records/backfill/manual-wait assertions remain. The second test deliberately
+injects a failed61→62 step and keeps its literal62 target.
 
-Warp14994's client-only correction removes the rail module's unused re-export
-list; consumers import state names from `dim-choices.mjs` directly. The unchanged
-page inliner can then parse the whole app. The corrected495-case wiring canary
-has the same10 full diagnostics/frames as approved757, versus486 before the fix.
-Focused clients repeat53/53 and both engines pass a fresh shipping63 native smoke.
-Prior32 native cells stay explicitly bound to8dad636e; Core/migration bytes carry
-unchanged under14994. Release298/15000 lifted the restart boundary; no installation
-or operator configuration was changed by this correction.
+Keep actual red failures, applied/caught/exact-restored mutations and raw native
+results. Current checks cover Core permission projection/privacy/revisions,
+legacy import/click races/key retirement, malformed writer isolation, exact
+recovery, status repair and known-revision suppression. Real Core/HTTP/Live native
+checks use independent device contexts and native input at1280/390/375/320 in both
+looks/themes. No handler called a native gesture, no fake-DOM timing, physical
+phone or IME claim. Warp14985 allows seats' isolated native work concurrently;
+each seat runs one own workload while one-minute load stays at most12/18cores.
+Browser.close/all observed PIDs/profile/fixture EOF-exit0/port cleanup is required.
+Freeze when meaningful checks are green, push only this exact branch, and return
+the exact diff/evidence under15008. No new review or human permission gate.

@@ -81,11 +81,8 @@ class RailDimming:
             {"ids": _json(sorted(topics)), "actor": actor})}
         return outcomes, topics, allowed_outcomes, allowed_topics
 
-    def _view_rail_dimming(self, db, actor, args):
-        row = self._dim_row(db, actor)
-        if row is None:
-            return {"instance_id": self.instance_id, "value": fresh(), "dim_revision": 0}
-        value = json.loads(row["value"])
+    def _dim_readable(self, db, actor, value):
+        value = json.loads(_json(value))
         _, _, outcomes, topics = self._dim_places(db, actor, value)
         for choice in value["sets"]:
             focus = choice["focus"]
@@ -93,7 +90,18 @@ class RailDimming:
                 choice["focus"] = None
             choice["outcomes"] = [r for r in choice["outcomes"] if r[0] in outcomes]
             choice["topics"] = [r for r in choice["topics"] if r[0] in outcomes and tuple(r[:2]) in topics]
-        return {"instance_id": self.instance_id, "value": value, "dim_revision": row["revision"]}
+        return value
+
+    def _view_rail_dimming(self, db, actor, args):
+        candidate = checked(args["candidate"]) if "candidate" in args else None
+        row = self._dim_row(db, actor)
+        if row is not None:
+            return {"instance_id": self.instance_id, "value": self._dim_readable(db, actor, json.loads(row["value"])),
+                    "dim_revision": row["revision"]}
+        answer = {"instance_id": self.instance_id, "value": fresh(), "dim_revision": 0}
+        if candidate is not None:
+            answer["candidate"] = self._dim_readable(db, actor, candidate)
+        return answer
 
     def _command_rail_dimming_set(self, db, actor, envelope):
         if envelope["target"] or set(envelope["args"]) != {"value"}:

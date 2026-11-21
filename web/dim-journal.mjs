@@ -1,13 +1,14 @@
 // Independently keyed durable writers. A live tab owns its row with the same
 // Web Locks primitive used by the editor/creation journals. Recovery copies
 // abandoned rows before removing their exact keys; Core publication follows.
-export async function openDimJournal({ storage, scope, id, locks = globalThis.navigator?.locks }) {
+export async function openDimJournal({ storage, scope, id, validate = () => {}, locks = globalThis.navigator?.locks }) {
   if (!storage || !locks?.request) throw Error('This browser could not keep pending Dim changes safely.');
   const prefix = `aim-next.rail-dimming.pending.v1:${scope}:`, held = new Map();
   let writer = id();
   const keyFor = writer => prefix + writer;
   let closed = false;
   const close = () => { closed = true; for (const release of held.values()) release(); held.clear(); };
+  const release = name => { held.get(name)?.(); held.delete(name); };
   const claim = name => new Promise((resolve,reject) => {
     locks.request('aim-next-dim-writer:'+keyFor(name),{mode:'exclusive',ifAvailable:true},lock=>{
       if (!lock || closed) { resolve(false); return; }
@@ -22,10 +23,14 @@ export async function openDimJournal({ storage, scope, id, locks = globalThis.na
       if (typeof key !== 'string' || !key.startsWith(prefix) || key === keyFor(writer)) continue;
       const prior = key.slice(prefix.length);
       if (!prior || !await claim(prior)) continue; // Another live tab keeps its own queue.
-      const raw = storage.getItem(key); if (raw === null) continue;
-      const row = JSON.parse(raw);
-      if (row?.version !== 1 || row.scope !== scope || row.writer !== prior || !Number.isFinite(row.saved_ms) || !row.snapshot)
-        throw Error('A pending Dim journal cannot be read safely; it has been preserved.');
+      const raw = storage.getItem(key); if (raw === null) { release(prior); continue; }
+      let row;
+      try {
+        row = JSON.parse(raw);
+        if (row?.version !== 1 || row.scope !== scope || row.writer !== prior || !Number.isFinite(row.saved_ms) || !row.snapshot)
+          throw Error('Unreadable or foreign Dim writer');
+        validate(row.snapshot);
+      } catch { release(prior); continue; } // Preserve this exact row; it cannot block other writers.
       rows.push(row); sources.push(key);
     }
     rows.sort((a,b)=>a.saved_ms-b.saved_ms || a.writer.localeCompare(b.writer));

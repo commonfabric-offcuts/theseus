@@ -42,7 +42,7 @@ try{
         const opened=`aim-next.outline-open.${JSON.stringify([instance,actor])}`;
         localStorage.setItem(opened,JSON.stringify({w1:true,w1004:true}));
         if(look==='paper')localStorage.setItem('theseus-look','paper');
-        if(legacy){const key=`aim-next.rail-dimming.v1:${JSON.stringify([instance,actor])}`;if(localStorage.getItem(key)===null)localStorage.setItem(key,JSON.stringify({version:1,selected:1,sets:[{focus:null,outcomes:[['w1004',true]],topics:[['w1','t1004a',true]]},{focus:null,outcomes:[],topics:[]}]}));}
+        if(legacy){const key=`aim-next.rail-dimming.v1:${JSON.stringify([instance,actor])}`;if(localStorage.getItem(key)===null)localStorage.setItem(key,JSON.stringify({version:1,selected:1,sets:[{focus:null,outcomes:[['w1004',true],['w1004-unreadable',true]],topics:[['w1','t1004a',true],['w1','t1004-unreadable',true]]},{focus:null,outcomes:[],topics:[]}]}));}
       },{instance:facts.instance_id,actor:facts.actor,look,legacy});
       return context;
     };
@@ -55,10 +55,20 @@ try{
     const dimmed=(page,id,on)=>page.waitForFunction(({id,on})=>document.querySelector(`#outline a[data-topic-id="${id}"]`)?.dataset.dimmed===String(on),{id,on});
     const choose=async(page,n,touch=false)=>{const button=page.locator(`.rail-dim [data-dim-set="${n}"]`);if(touch)await button.tap();else await button.click();await selected(page,n);await saved(page);};
     const edit=(page,id,mods=['Meta'])=>page.locator(`#outline a[data-topic-id="${id}"]`).click({modifiers:mods,position:{x:20,y:10}});
+    let releaseImport=()=>{},importHeld=null;
+    if(first){
+      let held,release;importHeld=new Promise(r=>held=r);const gate=new Promise(r=>release=r);releaseImport=release;
+      await aContext.route('**/api/view',async route=>{const request=route.request().postDataJSON();
+        if(request.name!=='rail_dimming'||!request.args?.candidate)return route.continue();
+        const response=await route.fetch();held();await gate;await route.fulfill({response});
+      });
+    }
     try{
-      a=await aContext.newPage();await visit(a,phone);await saved(a);
+      a=await aContext.newPage();await visit(a,phone);
+      if(importHeld){await importHeld;await edit(a,'t1004b');releaseImport();cell.initialReadClick=true;}
+      await saved(a);
       b=await bContext.newPage();await visit(b);await saved(b);
-      if(first){await selected(a,1);await selected(b,1);await dimmed(b,'t1004a',true);const core=await coreView();assert.equal(core.dim_revision,1);assert.equal(core.value.selected,1);cell.realLegacyImport=true;}
+      if(first){await selected(a,1);await selected(b,1);await dimmed(b,'t1004a',true);await dimmed(b,'t1004b',true);const core=await coreView();assert.equal(core.dim_revision,1);assert.equal(core.value.selected,1);assert.ok(!JSON.stringify(core.value).includes('unreadable'));assert.equal(await a.evaluate(({instance,actor})=>localStorage.getItem(`aim-next.rail-dimming.v1:${JSON.stringify([instance,actor])}`),{instance:facts.instance_id,actor:facts.actor}),null);await aContext.unroute('**/api/view');cell.realLegacyImport=true;cell.prunedUnreadableLegacy=true;cell.retiredLegacyKey=true;}
       first=false;
       assert.equal(await b.evaluate(({instance,actor})=>localStorage.getItem(`aim-next.rail-dimming.v1:${JSON.stringify([instance,actor])}`),{instance:facts.instance_id,actor:facts.actor}),null,'second device has no copied973 cache');
       await choose(b,0);await selected(a,0);const beforeURL=b.url();
@@ -86,7 +96,7 @@ try{
         await a.screenshot({path:`${out}/failure.png`,fullPage:true});
       }
       try{cell.failureCore=await coreView();}catch(coreError){cell.failureCoreError=String(coreError);}throw error;
-    }finally{for(const context of contexts)await context.close();remember();}
+    }finally{releaseImport();for(const context of contexts)await context.close();remember();}
   }
 }catch(error){result.failure=error.stack;process.exitCode=1;}
 finally{
