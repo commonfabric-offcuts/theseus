@@ -50,7 +50,8 @@ def _integer(value, nullable=False):
 class EffectsLoop:
     """Serial foreground scheduler using one caller-owned guard and watch.
 
-    The mapping is a validated startup snapshot. Selected route/config/pin
+    The operator mapping is a validated startup snapshot, with confirmed
+    managed-seat routes adopted by this same host. Selected route/config/pin
     checks are repeated for each captured claim. No operation here acknowledges
     a delivery, provisions a pin, creates a service or reloads that mapping.
     """
@@ -250,7 +251,7 @@ class EffectsLoop:
         if hint: self.last_hint_read = self.clock.monotonic()
         self.dirty_at = None
         if self.seats is not None and self.token is not None:
-            self.seats.read()
+            self.seats.read(value['hosted_seats'])
 
     def _finish(self, claim, outcome, turn=None, reason=None, from_turn=None):
         try:

@@ -132,7 +132,7 @@ export class SeatAddition {
   get unprotectedWriting() { return this.savedVersion < this.version || Boolean(this.storageError); }
 }
 
-const stages = { profile: 'sign-in file', thread: 'Codex connection', starting: 'seat creation', persist: 'saved context',
+const stages = { profile: 'seat setup', thread: 'Codex connection', starting: 'seat creation', persist: 'saved context',
   persisting: 'saved context', pin: 'execution controls', route: 'work route', delivery: 'first task' };
 const reasons = {
   auth_missing: 'The existing host is not signed in.', host_not_configured: 'No existing host template is configured.',
@@ -141,7 +141,7 @@ const reasons = {
   thread_persistence_uncertain: 'Saving the native context is unconfirmed. Its known thread is kept.',
   thread_settings_not_applied: 'Codex did not apply the requested runtime settings.',
   access_changed: 'The outcome’s owner, invitation authority or membership changed.',
-  profile_conflict: 'A different sign-in file is already in that place.', path_conflict: 'An existing file or directory cannot be replaced safely.',
+  profile_conflict: 'An existing seat file does not match.', path_conflict: 'An existing file or directory cannot be replaced safely.',
   pin_conflict: 'An existing native context or its owner does not match.', route_conflict: 'An existing work route does not match.',
 };
 export function seatWords(seat) {
@@ -200,7 +200,7 @@ export class HeadlessSeatControl {
       this.owner = new SeatAddition({ api: this.api, bootstrap: this.bootstrap, workspace: this.workspace,
         journal: this.journal, changed: () => this.paintForm(), added: value => { if (this.current()) this.added(value); } });
       await this.owner.load();
-    } catch (error) { this.localError = error.message; this.say(error.message); }
+    } catch (error) { this.owner = null; this.localError = error.message; this.say(error.message); }
     finally { this.loadFinished = true; this.paintForm(); }
   }
   async act(action) {
@@ -251,7 +251,7 @@ export class HeadlessSeatControl {
         seats.push(...page.items); cursor = page.next_cursor;
       } while (cursor);
       if (this.disposed || !this.current()) return false;
-      const signature = JSON.stringify(seats.map(seat => [seat.id, seat.version, names.get(seat.agent_id)]));
+      const signature = JSON.stringify([manage, seats.map(seat => [seat.id, seat.version, names.get(seat.agent_id)])]);
       if (signature !== this.signature) {
         this.signature = signature;
         const doc = this.host.ownerDocument;

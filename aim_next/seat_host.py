@@ -185,17 +185,23 @@ class SeatHost:
             self.loop.hosted = self.loop.hosted | {actor}
             self.loop.routed = sorted(self.loop.routes)
 
-    def read(self):
+    def read(self, schedule):
         """One bounded new route and one pending request, triggered by the normal Core write hint."""
         if self.current is not None or self.loop.watch.stopped:
             return
-        route = self._core('hosted_seat_route', self.route_cursor)['seat']
+        if (type(schedule) is not dict or set(schedule) != {'ready_seq', 'pending'} or type(schedule['pending']) is not bool
+                or type(schedule['ready_seq']) is not int or schedule['ready_seq'] < 0):
+            raise codex_host.HostFault('seat_schedule_invalid')
+        route = self._core('hosted_seat_route', self.route_cursor)['seat'] if schedule['ready_seq'] > self.route_cursor else None
         if route is not None:
-            # A corrupt confirmed route is a binding fault, not a reason to create another thread.
-            self._adopt(route)
+            try:
+                self._adopt(route)
+            except (SeatRefusal, OSError, ProfileError, broker_routes.BrokerConfigError):
+                refused = self._core('hosted_seat_route_refuse', route['id'], route['version'])['seat']
+                self.loop._event('seat_step', seat_id=route['id'], stage=refused['stage'], state='refused', reason=refused['reason'])
             self.route_cursor = route['ready_seq']
             self.loop.read_needed = True
-        seat = self._core('hosted_seat_claim')['seat']
+        seat = self._core('hosted_seat_claim')['seat'] if schedule['pending'] else None
         if seat is None:
             return
         if seat['state'] == 'refused':
@@ -220,11 +226,15 @@ class SeatHost:
                 elif stage == 'thread':
                     # Authentication/compatibility happens in the existing child, beside its current turns.
                     self.deadline = self.loop.clock.monotonic() + RPC_SECONDS
-                    self.loop.host.ensure_child(seat['plan']['codex_home'], self._start, self._child_failed)
+                    self._runtime(seat)
+                    self.loop.host.ensure_child(seat['plan']['codex_home'], lambda child: self._start(seat, child),
+                                               lambda reason: self._child_failed(seat, reason))
                     return
                 elif stage == 'persist':
                     self.deadline = self.loop.clock.monotonic() + RPC_SECONDS
-                    self.loop.host.ensure_child(seat['plan']['codex_home'], self._persist, self._child_failed)
+                    self._runtime(seat)
+                    self.loop.host.ensure_child(seat['plan']['codex_home'], lambda child: self._persist(seat, child),
+                                               lambda reason: self._child_failed(seat, reason))
                     return
                 elif stage == 'pin':
                     if not self._step('route'):
@@ -246,12 +256,22 @@ class SeatHost:
         except (OSError, ProfileError, broker_routes.BrokerConfigError):
             self._refuse('profile_write_failed' if self.current['stage'] == 'profile' else 'config_write_failed')
 
-    def _child_failed(self, reason):
-        if self.current is not None:
+    def _matches(self, sent):
+        return self.current is not None and self.current['id'] == sent['id'] and self.current['version'] == sent['version']
+
+    def _runtime(self, seat):
+        host, plan = self.loop.host, seat['plan']
+        if host is None:
+            raise SeatRefusal('host_not_configured')
+        if (plan['permission_mode'] != 'full' or host.executables.get(plan['codex_home']) != plan['codex_executable']):
+            raise SeatRefusal('route_conflict')
+
+    def _child_failed(self, sent, reason):
+        if self._matches(sent):
             self._refuse(reason)
 
-    def _start(self, child):
-        if self.current is None or not self._step('starting'):
+    def _start(self, sent, child):
+        if not self._matches(sent) or not self._step('starting'):
             return
         seat = self.current
         config = self._config(seat)
@@ -259,26 +279,33 @@ class SeatHost:
         child.request('thread/start', params, lambda result, error: self._started(seat, result, error))
 
     def _started(self, sent, result, error):
-        if self.current is None or self.current['id'] != sent['id'] or self.current['version'] != sent['version']:
-            return
-        if error is not None:
-            return self._refuse('thread_start_uncertain' if error is codex_host.GONE else 'thread_start_failed')
         thread = result.get('thread') if type(result) is dict else None
         identity = thread.get('id') if type(thread) is dict else None
         try:
             from .runner import _thread
             identity = _thread(identity)
         except Exception:
+            identity = None
+        if not self._matches(sent):
+            if identity is not None and error is None:
+                self._core('hosted_seat_late_thread', sent['id'], sent['version'], identity)
+                self.loop._event('seat_late_thread', seat_id=sent['id'], thread_id=identity)
+            return
+        if error is not None:
+            return self._refuse('thread_start_uncertain' if error is codex_host.GONE else 'thread_start_failed')
+        if identity is None:
             return self._refuse('thread_start_uncertain')
         if not self._step('persist', {'thread_id': identity}):
             return
+        if identity in self.loop.host.threads:
+            return self._refuse('route_conflict')
         config = self._config(self.current)
         if not codex_host.settings_applied(result, config.cwd, config.writable_roots, 'full', config.model, config.reasoning_effort):
             return self._refuse('thread_settings_not_applied')
         self._advance()
 
-    def _persist(self, child):
-        if self.current is None or not self._step('persisting'):
+    def _persist(self, sent, child):
+        if not self._matches(sent) or not self._step('persisting'):
             return
         seat = self.current
         child.request('thread/inject_items', {'threadId': seat['thread_id'], 'items': [{
@@ -287,7 +314,7 @@ class SeatHost:
             lambda result, error: self._persisted(seat, result, error))
 
     def _persisted(self, sent, result, error):
-        if self.current is None or self.current['id'] != sent['id'] or self.current['version'] != sent['version']:
+        if not self._matches(sent):
             return
         if error is not None or result != {}:
             return self._refuse('thread_persistence_uncertain' if error is codex_host.GONE else 'thread_persistence_failed')

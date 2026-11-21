@@ -4,6 +4,7 @@ import concurrent.futures
 import json
 import sqlite3
 import unittest
+from unittest import mock
 
 import test_store as fixture
 
@@ -17,6 +18,20 @@ class HostedSeatCore(unittest.TestCase):
     def setUp(self):
         self.setUp_store()
         self.workspace()
+
+    def test_empty_seat_schedule_is_read_only_and_pending_work_is_bounded(self):
+        from aim_next import store as storage
+        original, statements = storage._connect, []
+        def connect(path):
+            db, facts = original(path)
+            db.set_trace_callback(statements.append)
+            return db, facts
+        with mock.patch.object(storage, '_connect', connect):
+            before = self.store.runner_schedule([])
+        self.assertEqual(before['hosted_seats'], {'pending': False, 'ready_seq': 0})
+        self.assertNotIn('BEGIN IMMEDIATE', statements)
+        self.added()
+        self.assertEqual(self.store.runner_schedule([])['hosted_seats'], {'pending': True, 'ready_seq': 0})
 
     def add(self, name='Release scribe', role='Keep exact release evidence.\nAsk before changing scope.',
             actor='owner', op=None, revision=None):
@@ -39,6 +54,24 @@ class HostedSeatCore(unittest.TestCase):
         self.assertIn(('w1', 'release-scribe'), self.sql('SELECT * FROM workspace_members'))
         self.assertEqual(self.sql('SELECT count(*) FROM messages'), [(0,)], 'no invented hello or early first task')
         self.assertEqual(self.sql("SELECT count(*) FROM metadata WHERE key LIKE 'route_pin.v1:%'"), [(0,)])
+
+    def test_late_native_creation_retains_the_orphan_id_without_routing_or_delivery(self):
+        made = self.added()
+        with self.store.runner_guard('fixture-host') as guard:
+            token = self.store.acquire_runner(guard)['runner_token']
+            seat = self.store.hosted_seat_claim(guard, token)['seat']
+            plan = {'codex_home': '/scratch/seat-home'}
+            seat = self.store.hosted_seat_step(guard, token, seat['id'], seat['version'], 'profile', {'plan': plan})['seat']
+            seat = self.store.hosted_seat_step(guard, token, seat['id'], seat['version'], 'thread')['seat']
+            sent = self.store.hosted_seat_step(guard, token, seat['id'], seat['version'], 'starting')['seat']
+            refused = self.store.hosted_seat_step(guard, token, sent['id'], sent['version'], 'refused', {'reason': 'thread_start_uncertain'})['seat']
+            thread = '11111111-2222-4333-8444-555555555555'
+            late = self.store.hosted_seat_late_thread(guard, token, sent['id'], sent['version'], thread)['seat']
+            self.assertEqual((late['state'], late['stage'], late['thread_id'], late['reason']),
+                             ('refused', 'starting', thread, 'thread_start_uncertain'))
+            self.assertGreater(late['version'], refused['version'])
+            self.assertEqual(self.sql('SELECT count(*) FROM messages'), [(0,)])
+            self.assertEqual(self.sql("SELECT count(*) FROM metadata WHERE key LIKE 'route_pin.v1:%'"), [(0,)])
 
     def test_retry_same_operation_and_reload_same_name_keep_one_request(self):
         before = self.sql("SELECT version FROM workspaces WHERE id='w1'")[0][0]
@@ -160,6 +193,25 @@ class HostedSeatCore(unittest.TestCase):
         self.assertEqual(original['result']['seat_request_id'], result['seat_request_id'])
         self.assertEqual(self.sql('SELECT count(*) FROM messages'), [(1,)])
 
+    def test_unadoptable_ready_route_is_refused_per_seat_and_retry_reuses_its_first_task(self):
+        self.added()
+        with self.store.runner_guard('host') as guard:
+            token = self.store.acquire_runner(guard)['runner_token']
+            ready = self.to_stage(guard, token, 'ready')
+            cursor = ready['ready_seq']
+            refused = self.store.hosted_seat_route_refuse(guard, token, ready['id'], ready['version'])['seat']
+            self.assertEqual((refused['state'], refused['stage'], refused['retryable']), ('refused', 'route', True))
+            self.assertIsNone(self.store.hosted_seat_route(guard, token, 0)['seat'])
+            retried = self.retry_seat(refused)
+            self.assertEqual(retried['status'], 'committed', retried)
+            seat = self.claim(guard, token)
+            seat = self.step(guard, token, seat, 'delivery')
+            seat = self.step(guard, token, seat, 'ready')
+            self.assertGreater(seat['ready_seq'], cursor)
+            self.assertEqual(seat['first_message_id'], ready['first_message_id'])
+            self.assertEqual(self.sql('SELECT count(*) FROM messages'), [(1,)])
+            self.assertEqual(self.store.hosted_seat_route(guard, token, cursor)['seat']['id'], ready['id'])
+
     def test_starting_and_persisting_are_refused_after_restart_without_repeating_the_rpc(self):
         for stage, reason in [('starting', 'thread_start_uncertain'), ('persisting', 'thread_persistence_uncertain')]:
             with self.subTest(stage=stage):
@@ -257,7 +309,7 @@ class HostedSeatCore(unittest.TestCase):
             sequence = first['seat']['ready_seq']
             self.assertGreater(sequence, 0)
             self.assertIsNone(self.store.hosted_seat_route(guard, token, sequence)['seat'])
-        plan = self.sql('EXPLAIN QUERY PLAN SELECT * FROM hosted_seats WHERE ready_seq>? ORDER BY ready_seq LIMIT 1', (sequence,))
+        plan = self.sql("EXPLAIN QUERY PLAN SELECT * FROM hosted_seats WHERE state='ready' AND ready_seq>? ORDER BY ready_seq LIMIT 1", (sequence,))
         self.assertTrue(any('INDEX' in str(row) and 'ready_seq' in str(row) for row in plan), plan)
 
     def retry_seat(self, seat, actor='owner', op=None):

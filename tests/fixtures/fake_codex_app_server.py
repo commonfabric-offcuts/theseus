@@ -247,6 +247,8 @@ class Fake:
                                             "instructions": params.get("developerInstructions")}
         self.save()
         self.load(thread_id, params.get("developerInstructions"))
+        if self.once('silence_thread_start_once'):
+            return
         self.send({"id": request["id"], "result": self.settings(params, thread_id)})
 
     def on_thread_resume(self, request, params):

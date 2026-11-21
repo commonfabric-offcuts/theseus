@@ -184,7 +184,7 @@ HELD_WORDS = "(held: its author is editing it)"
 USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute/core.sock) [--json] [--outbox DIR] "
          "{binding | view FILE|- | command FILE|- | outcomes [--reached | --ended] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR | coordinator OUTCOME ACTOR|--none | participant TOPIC ACTOR "
-         "| seat-add OUTCOME NAME --role TEXT|- [--operation ID] | seat-status OUTCOME [SEAT_REQUEST] "
+         "| seat-add OUTCOME NAME --role TEXT|- [--operation ID] | seat-retry OUTCOME SEAT_REQUEST [--operation ID] | seat-status OUTCOME [SEAT_REQUEST] "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
          "| inbox | reply MESSAGE [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--part] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
          "| post TOPIC [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--reply-to MESSAGE] [--divergence-reason TEXT] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
@@ -281,6 +281,10 @@ def _parser():
     seat_add.add_argument("name")
     seat_add.add_argument("--role", required=True)
     seat_add.add_argument("--operation")
+    seat_retry = verb("seat-retry")
+    seat_retry.add_argument("outcome")
+    seat_retry.add_argument("seat_request")
+    seat_retry.add_argument("--operation")
     seat_status = verb("seat-status")
     seat_status.add_argument("outcome")
     seat_status.add_argument("seat_request", nargs="?")
@@ -844,6 +848,15 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         options = self.options
         role = self.bounded_text(self.stdin) if options.role == '-' else options.role
         args = {'name': options.name, 'role': role}
+        return self._seat_command(KIND, {'workspace_id': options.outcome}, args)
+
+    def do_seat_retry(self):
+        from .hosted_seats import RETRY_KIND
+        return self._seat_command(RETRY_KIND, {'workspace_id': self.options.outcome,
+                                  'seat_request_id': self.options.seat_request}, {})
+
+    def _seat_command(self, kind, target, args):
+        options = self.options
         operation = self.operation_of()
         saved = None
         if operation is not None:
@@ -854,18 +867,22 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
                 envelope = _request(saved, 'command')
                 if saved['binding'] != self.binding:
                     self.refuse('BINDING_MISMATCH', 'This saved Add belongs to another binding; nothing was sent')
-                if (envelope['operation_id'] != operation or envelope['kind'] != KIND
-                        or envelope['target'] != {'workspace_id': options.outcome} or envelope['args'] != args):
+                if (envelope['operation_id'] != operation or envelope['kind'] != kind
+                        or envelope['target'] != target or envelope['args'] != args):
                     self.refuse('OPERATION_PAYLOAD_MISMATCH', 'This operation already names different Add words or a different outcome; nothing was sent')
         if saved is not None:
             result = self.dispatch(directory, saved)
         else:
-            workspace = self.view('workspace', {'workspace_id': options.outcome})['workspace']
-            result = self.command(KIND, {'workspace_id': workspace['id']}, args,
-                                  {'workspace_revision': workspace['version']}, operation=operation)
+            if kind == 'workspace.hosted_seat_retry':
+                seat = self.view('hosted_seat', target)['seat']
+                expected = {'seat_revision': seat['version']}
+            else:
+                workspace = self.view('workspace', {'workspace_id': options.outcome})['workspace']
+                expected = {'workspace_revision': workspace['version']}
+            result = self.command(kind, target, args, expected, operation=operation)
         identity = result['seat_request_id']
         answer = self.read_back('hosted_seat', {'workspace_id': options.outcome, 'seat_request_id': identity},
-            {'what': 'The seat invitation was recorded', 'kind': KIND, 'it': identity},
+            {'what': 'The seat request was recorded', 'kind': kind, 'it': identity},
             'seat-status %s %s' % (options.outcome, identity))
         seat = answer.get('seat') or {}
         if seat.get('id') != identity or seat.get('workspace_id') != options.outcome or seat.get('agent_id') != result['agent']['id']:

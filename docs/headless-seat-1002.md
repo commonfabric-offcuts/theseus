@@ -107,6 +107,15 @@ owner, Tony for this instance, rather than whichever agent invited the seat.
 
 ## Defaults and limits
 
+The device journal bounds one saved form plus its outstanding exact request
+to256KiB, allowing two full16KiB roles including JSON escaping. A stale tab
+cannot overwrite another tab's confirmed draft: its write is refused visibly,
+publication stops and its unsaved writing remains in that page with a leaving
+guard. No cached request is sent automatically on reopening.
+An unreadable saved row is retained unchanged. Its device/outcome form names
+the refusal and blocks Add, while fresh typing stays visible under the leaving
+guard; it does not publish from an owner whose draft failed to load.
+
 Headless Codex uses one explicitly configured host template on the existing
 home. There is no fallback to a desktop home, another home, another account,
 an ambient model or a new sign-in. Missing host configuration, missing auth,
@@ -125,6 +134,19 @@ directory. This first door does
 not hot-add workspace-mode permission profiles to a running shared native
 child: a host with no full-mode template explicitly refuses that unsupported
 configuration. Existing workspace-mode routes keep their current behavior.
+The optional deploy configuration `seat_template` carries that same actor
+selection into the owned runner; its default remains the unique full-mode
+template. It does not select a new home or copy an account.
+
+Each asynchronous callback is bound to its original seat and step version.
+A late successful creation answer is retained as an orphan thread ID on the
+original refused request, with no pin, route or first task. A confirmed route
+that cannot be adopted is refused per seat while existing routes keep running;
+a safe retry keeps its existing first-task ID and gets a fresh route cursor.
+The existing read-only runner schedule carries an indexed pending-seat flag
+and latest ready-route sequence. Idle reconciliation uses these facts before
+any guarded seat act, so an empty host does not claim work or poll through
+write transactions.
 
 An invitation is durable before the host can finish. A failed host effect
 therefore leaves a visible incomplete seat, not a false rollback claim.
@@ -156,7 +178,7 @@ Warp14954 supersedes the tentative successor order: 987 supplies schema 61
 and corrected 757 supplies 62. Of 1004 and 1002, the first green freeze takes
 63 and lands first; the other takes 64 and rebases once onto that approved
 head. This source has moved onto corrected 757
-`57f39a3bcaca007d27439feb015a20edb945bfd2`, preserving both predecessors.
+approved `e6049706c764285e89442b34e01dedb61687db2d`, preserving both predecessors.
 No temporary shipping schema, premature number claim or renumbering. Resolve
 the final composition before freezing. Build in parallel; each piece lands
 judged on its own run only after its predecessor is live, and never holds an

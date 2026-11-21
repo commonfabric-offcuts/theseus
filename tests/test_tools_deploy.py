@@ -258,6 +258,17 @@ class DeployCase(unittest.TestCase):
 
 
 class Config(DeployCase):
+    def test_optional_seat_template_is_carried_to_the_same_owned_runner(self):
+        self.assertIsNone(self.config.seat_template)
+        self.raw['seat_template'] = 'existing-seat'
+        self.config_path.write_text(json.dumps(self.raw))
+        config = deploy.load_config(self.config_path)
+        self.assertEqual(deploy.runner_argv(config)[-2:], ['--seat-template', 'existing-seat'])
+        self.raw['seat_template'] = '../another-home'
+        self.config_path.write_text(json.dumps(self.raw))
+        with self.assertRaises(deploy.Refused):
+            deploy.load_config(self.config_path)
+
     def test_the_config_names_every_machine_path_and_the_argv_is_built_from_it(self):
         base = Path(self.raw["live"])
         self.assertEqual(deploy.server_argv(self.config), [
