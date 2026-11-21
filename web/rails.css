@@ -280,3 +280,8 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
   #page-notices>.notice>button.page-notice-close{width:1.75rem;height:1.75rem;min-height:1.75rem;padding:0}
   #page-notices>.notice>button.page-notice-close::before{inset:.2rem}
 }
+
+@media (pointer:fine){
+  html, #things{scrollbar-width:none}
+  html::-webkit-scrollbar, #things::-webkit-scrollbar{display:none}
+}
