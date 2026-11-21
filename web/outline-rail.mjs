@@ -259,7 +259,10 @@ export class OutlineRail {
       outcome.adopted.inert = true;
       // Retired page parts keep their look, but their ids must not shadow
       // the next run's fresh elements. The retired run kept its own id map.
-      for (const node of [outcome.adopted, ...outcome.adopted.querySelectorAll('[id]')]) node.removeAttribute('id');
+      for (const node of [outcome.adopted, ...outcome.adopted.querySelectorAll('[id]')]) {
+        if (node.id === 'topics') node.classList.add('topic-list');
+        node.removeAttribute('id');
+      }
     }
     if (!feed) return;
     // Under the page's header on a phone: how much is new in the other
