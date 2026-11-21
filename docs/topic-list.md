@@ -107,6 +107,22 @@ said, and for a reader outside a person's whisper that reopened the topic
 
 ## In the web app
 
+Each returned topic also carries `latest_message`: null without a public
+message, otherwise `{id, revision, author_id, author_kind, sent_ms, opening,
+truncated, withheld, removed}` (960). This is the public summary's latest
+message at its current revision; a newer whisper never replaces it. `opening`
+is at most 180 Unicode code points, without quote lines, reply prefaces,
+image Markdown or prose formatting. `truncated` says more prose remains.
+An image-only message keeps its identity and an empty opening. A retraction
+keeps identity/time with `removed: true` and no opening; an unsend falls back
+to the surviving public message. An agent's held preview has no words and
+`withheld: true`. Reading actual words uses the existing first-exposure and
+revision-exposure boundary, including the two-phase recheck before recording.
+The extra query batches only the returned topics' summary IDs and streams
+their current bodies, never topic history or one query per card. This changes
+no grouping, position, paging, unread or topic state. See
+[the page contract](outcome-page-960.md) for the subsequent client composition.
+
 The topic list in the sidebar, and on the outcome page, shows the topics that
 are neither done nor archived, in the server's order, with More for the next
 page. Below them a "Done (N)" line and an "Archived (N)" line, closed at first,

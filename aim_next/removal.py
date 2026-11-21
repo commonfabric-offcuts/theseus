@@ -72,11 +72,11 @@ def content_ids(answer, pairs, args=None):
                     or 'draft_generation' in item and 'send_operation_id' in item
                     or 'generation' in item and 'source_ref' in item and 'body' in item):
                 return
-            if not item.get('withheld') and any(item.get(key) for key in ('body', 'excerpt', 'attachments', 'attachment', 'media_id')):
+            if not item.get('withheld') and any(item.get(key) for key in ('body', 'opening', 'excerpt', 'attachments', 'attachment', 'media_id')):
                 ref = item.get('source_ref') or item.get('source')
                 if isinstance(ref, dict) and ref.get('kind') == 'message':
                     ids.add(ref.get('id'))
-                if 'author_id' in item and ('body' in item or 'attachments' in item):
+                if 'author_id' in item and ('body' in item or 'opening' in item or 'attachments' in item):
                     ids.add(item.get('id') or item.get('message_id'))
                 if 'message_id' in item and ('excerpt' in item or 'media_id' in item):
                     ids.add(item['message_id'])
