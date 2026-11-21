@@ -86,7 +86,10 @@ try {
     assert.equal(await ownReply.evaluate(el => document.activeElement === el), true, 'first body press focuses reply');
     assert.equal(await page.locator('#reader').evaluate(el => el.open), false);
     const ownRoot=page.locator(`[id="reply-${ownId}-composer"]`),height=page.locator(`[id="reply-${ownId}-taller-field"]`);
+    assert.equal(await height.isVisible(),false,'975: an empty reply has no height choice');
+    await ownReply.fill(Array.from({length:16},(_,n)=>`Height line ${n}`).join('\n'));
     await press(height);assert.equal(await ownRoot.getAttribute('data-tall'),'');
+    await ownReply.fill('');
     await page.keyboard.press('Escape');await ownReply.waitFor({state:'hidden'});
     await press(ownBody);await ownReply.waitFor({state:'visible'});
     assert.equal(await ownRoot.getAttribute('data-tall'),null,'a new opening starts at ordinary height');

@@ -87,6 +87,7 @@ export class InlineComposer {
     this.sheet?.addEventListener('pointerdown', event => { outside = event.target === this.sheet; });
     this.sheet?.addEventListener('click', event => { if (outside && event.target === this.sheet) putBack(); outside = false; });
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.admits(),readOnly:()=>this.state().readOnly,
+      members:()=>this.members(),mentions:()=>this.kind==='message',
       changed:editor=>{this.callbacks.edit(editor,this.presentation);this.paintStatus();this.paintChoice();this.images?.update();}});
     // #img lists the topic's recent images under the writing (image-pick.mjs).
     this.images = new ImagePick({ field: this.field, host: this.field,
@@ -155,7 +156,7 @@ export class InlineComposer {
   get editor() { return this.presentation?.editors.reply; }
   dispose() {
     this.disposed = true; window.removeEventListener('focus', this.windowFocus);
-    this.bar.dispose(); this.images.close();
+    this.bar.dispose(); this.images.close(); this.input?.mentions?.dispose();
   }
   admits(p = this.presentation, editor = this.editor) { return Boolean(!this.disposed && editor && this.callbacks.admits(p, editor)); }
   pageJobs(editor = this.editor) { return this.notebookJobs.get(editor) ?? []; }
@@ -173,7 +174,7 @@ export class InlineComposer {
   defaultKind() { return 'message'; }
   chooseKind(kind) {
     if (!this.callbacks.notebook || (kind !== 'message' && this.callbacks.notebook.mayWrite !== true) || !this.admits() || this.pageBusy() || !this.kinds.includes(kind)) return false;
-    this.kind = kind; this.bar.close(); this.images?.close();
+    this.kind = kind; this.bar.close(); this.images?.close(); this.input?.mentions?.close();
     if (kind === 'note-card') this.loadNotePages();
     this.paintStatus(); return true;
   }
@@ -338,6 +339,7 @@ export class InlineComposer {
     this.$('retry').textContent = 'Retry composer'; this.$('retry').hidden = false;
   }
   drawEditor() {
+    this.input?.mentions?.close();
     this.images?.close();
     this.field.value = this.editor.draft.body;
     const caret = this.editor.draft.caret; this.field.setSelectionRange(caret.start, caret.end);
@@ -426,6 +428,7 @@ export class InlineComposer {
     if (!this.editor) return;
     const state = this.state(), editor = this.editor, active = this.admits();
     this.root.inert = !active; this.field.readOnly = state.readOnly;
+    if(state.readOnly||!active)this.input?.mentions?.close();
     this.$('save-state').textContent = this.presentation.availabilityUnconfirmed ? 'Topic access unconfirmed — writing kept on this device' : state.message;
     this.$('save-state').dataset.save = this.presentation.availabilityUnconfirmed ? '' : state.sign;
     if (this.callbacks.savedAt) paintSaveTime(this.$('save-state'), this.presentation.availabilityUnconfirmed || !state.sign ? null : this.callbacks.savedAt(editor));

@@ -24,8 +24,9 @@ try {
     const parentCard = page.locator(`.message-card[data-id="${id}"]`);
     await parentCard.locator(':scope > .message-preview').click();
     const root = page.locator(`[id="reply-${id}-composer"]`), field = root.locator('textarea');
-    await field.fill(`937 plain inline send ${width}`);
+    await field.fill(Array.from({length:16},(_,n)=>`Height line ${n}`).join('\n'));
     await page.locator(`[id="reply-${id}-taller-field"]`).click();
+    await field.fill(`937 plain inline send ${width}`);
     const receipt = page.waitForResponse(response => {
       try { return response.request().postDataJSON()?.kind === 'message.send'; } catch { return false; }
     });

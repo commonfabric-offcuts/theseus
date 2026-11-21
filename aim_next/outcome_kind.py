@@ -43,7 +43,7 @@ KINDS_DOWN = ("DROP TABLE outcome_reached", "DROP TABLE outcome_kinds")
 # is refused (Store._refuse_closed, outcome_end.py).
 REACHED_EXEMPT = frozenset({
     "topic.read_through", "message.mark", "delivery.ack", "note.save", "draft.save", "submission.prepare", "submission.set_aside",
-    "media.begin", "media.publish", "color.set", "workspace.create", "memory.read",
+    "media.begin", "media.publish", "color.set", "outcome.color_set", "workspace.create", "memory.read",
 })
 
 

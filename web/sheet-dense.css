@@ -3,6 +3,9 @@
    footer with the image control and the act. The card carries the focus, not the field. Fine pointer and
    wider than a phone only; a phone keeps today's sheet. */
 @media (pointer:fine) and (min-width:761px){
+/* The topic-foot field borrows this same grammar only while writing. :where
+   keeps the original sheet rule's specificity; folded and touch layouts keep theirs. */
+dialog.composer-home:not([open]):not(.notebook-mode):where(:has(>#inline-composer[data-compose=writing])),
 dialog.composer-home[open]:not(.notebook-mode){
   --sheet-hair:color-mix(in srgb,var(--line) 80%,var(--panel));
   --sheet-quiet:color-mix(in srgb,var(--ink) 62%,var(--panel));
