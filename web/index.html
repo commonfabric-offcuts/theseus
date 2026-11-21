@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/rails.css">
   <link rel="stylesheet" href="/rail-dense.css">
   <link rel="stylesheet" href="/sheet-dense.css">
+  <link rel="stylesheet" href="/reader-dense.css">
   <link rel="stylesheet" href="/stack-look.css">
   <link rel="stylesheet" href="/look.css">
   <script type="module" src="/look.mjs"></script>
@@ -188,14 +189,14 @@
           <p id="writing-to" class="muted to-note" aria-live="polite" hidden></p>
         </div>
         <div id="who-panel" class="compose-panel who-panel" role="dialog" aria-label="Who sees this reply" hidden>
-          <button id="who-done" type="button" class="panel-done" data-done>Done</button>
+          <button id="who-done" type="button" class="panel-done" data-done aria-label="Close" title="Close">✕</button>
           <div id="who-sentence" class="who-sentence"></div>
           <div class="who-row"><span class="who-label" aria-hidden="true">How</span><div id="intent-row" class="intent-row"></div></div>
           <div class="who-row"><span class="who-label" id="address-words">To</span><div id="reply-audience" class="audience" role="group" aria-labelledby="address-words"><div id="recipient-named" class="named-chips"></div><button id="recipient-open" type="button" class="someone" aria-haspopup="dialog" aria-controls="recipient-sheet">+ Someone</button><dialog id="recipient-sheet" class="naming-sheet" aria-labelledby="recipient-title"><div class="naming-head"><button id="recipient-back" type="button" class="naming-back" aria-label="Back to your reply" title="Back to your reply"><span aria-hidden="true">←</span></button><h2 id="recipient-title">Name someone</h2><button id="recipient-done" type="button" class="naming-done">Done</button></div><div class="naming-people"><div id="recipient-chips" class="chips"></div></div><input id="recipient-input" class="name-filter" list="addressable-names" aria-label="Name someone else in the reply" placeholder="+ Someone" autocomplete="off" enterkeyhint="done"></dialog></div></div>
           <div id="destination-label" class="who-row destination-row"><span id="destination-words" class="who-label">In</span><span id="reply-destination" class="destination-chips" role="group" aria-labelledby="destination-words"></span></div>
         </div>
         <div id="plus-panel" class="compose-panel plus-panel" role="dialog" aria-label="Add to this reply" hidden>
-          <button id="plus-done" type="button" class="panel-done" data-done>Done</button>
+          <button id="plus-done" type="button" class="panel-done" data-done aria-label="Close" title="Close">✕</button>
           <div class="tiles">
             <button id="add-image" type="button" class="tile">Add image</button>
             <button id="choose-image" type="button" class="tile" hidden>Choose file</button>
