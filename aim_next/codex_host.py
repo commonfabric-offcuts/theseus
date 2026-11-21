@@ -861,7 +861,7 @@ class Host:
                         continue
             child = Child(home, self.executables[home], self.log.stderr, self._input_space,
                           overrides=startup_overrides(profiles))
-        except (OSError, ValueError, subprocess.SubprocessError):
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
             self.log.write("spawn_failed")
             return None
         self.children[home] = child
@@ -953,7 +953,7 @@ class Host:
             params = dict(thread_settings(config, bridge.path if bridge else None), threadId=thread.id, excludeTurns=True)
         except ValueError:
             return self._attach_failed(thread, 'invalid_cwd')
-        except OSError:
+        except (OSError, RuntimeError):
             return self._attach_failed(thread, 'broker_unavailable')
         if not RESEND_INSTRUCTIONS_ON_RESUME:
             params.pop("developerInstructions")
@@ -1293,7 +1293,7 @@ class Host:
                 if thread.bridge is not None:
                     try:
                         thread.bridge.close()
-                    except OSError:
+                    except (OSError, RuntimeError):
                         self.log.write('broker_cleanup_failed', thread=thread.id)
                         recorded = False
         return recorded

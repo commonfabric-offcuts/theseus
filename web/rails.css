@@ -245,3 +245,7 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 .rail-foot .rail-dim button:hover{color:var(--ink);background:transparent}
 .rail-foot .rail-dim button[aria-pressed=true]{background:var(--soft);color:var(--ink);font-weight:600}
 @media(pointer:fine) and (min-width:761px){.rail-foot .rail-dim button{min-height:0;min-width:0;height:1.25rem;padding:0 .45rem}}
+@media(pointer:fine) and (min-width:761px){
+  .rail-dim{display:grid;grid-template-columns:auto repeat(3,minmax(0,1fr));box-sizing:border-box;width:var(--rail-dim-width,auto)}
+  .rail-foot .rail-dim button{padding-inline:0}
+}
