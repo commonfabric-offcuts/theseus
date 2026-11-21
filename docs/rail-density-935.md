@@ -7,8 +7,9 @@ outcomes-key and933 count interfaces. No server change (936).
 
 On fine pointers above760px, Compact is the default: one26px outcome line,
 24px topic lines, aligned counts, whole titles on hover, quiet ink and the
-accepted lights/pencils. Roomy retains existing heights/status lines with the
-shallower indent. Phone/coarse layouts keep their current CSS. Density and
+accepted lights/pencils. Roomy retains existing heights with the shallower
+indent;950 hides its status words and question-only control without changing
+their layout space. Phone/coarse layouts keep their current CSS. Density and
 200–480px width are per-device localStorage choices; unavailable storage holds
 them for this page. The separator supports native drag,16px left/right steps,
 and double-click reset. Both controls must survive901 navigation, whose shell
