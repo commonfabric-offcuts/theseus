@@ -21,7 +21,7 @@ it is said, else the ask's.
 from .contract import LIMITS, READABLE, Refusal, organises, _body, _identifier, _prefix, _revision
 from .delivery import _now_ms
 from .outcome_asks import held_ask, record_ask
-from .whispers import redact_topic
+from .whispers import VISIBLE, redact_topic
 from .message_edit import mark, revision, words, withheld
 from .standing_conversation import excerpt
 
@@ -354,7 +354,23 @@ class TopicState:
             return None
         return ask
 
-    def _waits_by_topic(self, db, topic_ids):
+    def _waiting_asks(self, db, topic, actor, include_archived=False):
+        """Every eligible ask identity to this reader in one waiting place, without message bodies.
+
+        The addressee key bounds candidates to this topic and reader; _ask_waits
+        owns all answer/held-record rules, including conversation_waits. Explicit
+        archived topic reads retain metadata; outcome lights use the default.
+        """
+        rows = db.execute(
+            "SELECT m.id,m.seq,m.topic_id,m.author_id,m.sent_ms,m.intent,m.addressees,m.private_to "
+            "FROM message_addressees a CROSS JOIN messages m ON m.seq=a.seq "
+            "CROSS JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
+            "WHERE a.topic_id=:topic AND a.actor_id=:actor AND m.intent='ask' AND " + READABLE + " AND " + VISIBLE
+            + " ORDER BY a.seq", {"topic": topic["id"], "actor": actor})
+        return [{"actor_id": actor, "message_id": row["id"], "by": row["author_id"], "since_ms": row["sent_ms"]}
+                for row in rows if self._ask_waits(db, topic, row, actor, include_archived=include_archived)]
+
+    def _waits_by_topic(self, db, topic_ids, reader=None):
         """{topic_id: (waiting_on, asks)} for the given topics: who the topic was said to wait
         on, and each open ask, {actor_id, message_id, by, since_ms}, both in actor order."""
         waits = {topic_id: ([], []) for topic_id in topic_ids}
@@ -369,7 +385,17 @@ class TopicState:
                 said, asks = waits[row["topic_id"]]
                 if row["said"] and row["kind"] != "conversation":
                     said.append(row["actor_id"])
-                if row["ask_message_id"] is not None:
+                if row["ask_message_id"] is not None and row["actor_id"] == reader:
+                    topic = db.execute("SELECT id,kind,workspace_id FROM topics WHERE id=?", (row["topic_id"],)).fetchone()
+                    questions = self._waiting_asks(db, topic, reader, include_archived=True)
+                    for ask in questions:
+                        preview = db.execute("SELECT CASE WHEN m.private_to IS NULL THEN " + words("m", chars=1024, plain=True)
+                                             + " ELSE '' END AS body," + revision("m") + " AS revision FROM messages m WHERE m.id=?",
+                                             (ask["message_id"],)).fetchone()
+                        ask["excerpt"] = mark(ask["message_id"], preview["revision"], excerpt(preview["body"]))
+                        ask["withheld"] = withheld(ask["message_id"])
+                    asks.extend(questions)
+                elif row["ask_message_id"] is not None:
                     asks.append({"actor_id": row["actor_id"], "message_id": row["ask_message_id"],
                                  "by": row["author_id"], "since_ms": row["sent_ms"],
                                  "excerpt": mark(row["ask_message_id"], row["revision"], excerpt(row["body"])),

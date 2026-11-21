@@ -118,19 +118,24 @@ html:has(#messages:not([hidden])){overflow-anchor:none}
 /* A passage lit on a card under the pointer (web/feed-passages.mjs) is painted as the Reader's is; on the person's own black card, the other way round, so it shows. The highlight paints its words' own height; the rest of the field, as tall line by line as the Reader's, is painted in --lit-field behind them (web/lit-field.mjs). */
 .message-card { --lit-field: #000; }
 .message-preview::highlight(lit-passage), .message-preview *::highlight(lit-passage) { background-color: var(--lit-field); color: #fff; }
-.own-message > .message-preview::highlight(lit-passage), .own-message > .message-preview *::highlight(lit-passage) { color: #000; }
+.own-message > .message-preview::highlight(lit-passage), .own-message > .message-preview *::highlight(lit-passage) { color: var(--ink); }
 /* Notebook display shares the passage paint, scoped away from messages. */
 .notebook-reading-words { --lit-field:var(--ink); --notebook-lit-ink:var(--panel); }
 .notebook-reading-words::highlight(notebook-lit-passage),.notebook-reading-words *::highlight(notebook-lit-passage){background-color:var(--lit-field);color:var(--notebook-lit-ink)}
 .notebook-reading-words::selection,.notebook-reading-words *::selection{background-color:var(--lit-field);color:var(--notebook-lit-ink)}
 .notebook-title-words>.md-block{display:inline;margin:0;font:inherit}
+/* On Bookends' black ends a passage lit under the pointer, and words selected, lift the ink into the black: #2d2f2e,
+   the ink at 20% over it (Tony's pick, Colors #14759). The words keep their own ink. */
+:root:not([data-look=paper]) :is(.rail,#things,dialog.notebook-sheet-dialog) .notebook-reading-words{--lit-field:#2d2f2e;--notebook-lit-ink:var(--ink)}
 :root[data-look=paper] .notebook-reading-words{--lit-field:color-mix(in srgb,var(--accent) 22%,var(--paper));--notebook-lit-ink:var(--ink)}
 :root[data-look=paper] .notebook-reading-source .hover-quote{background:color-mix(in srgb,var(--accent) 22%,var(--paper));color:var(--ink);box-shadow:none}
 /* A hidden copy of the Reader's text box: a card measures the Reader's line there, at this width, before the Reader first opens. */
 .reading-pane.passage-probe { position: fixed; top: 0; left: 0; width: 1px; height: 1px; padding: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
 .message-card.own-message {
   --ink: #e0e8e5;
-  --lit-field: var(--ink);
+  /* Its passage lit under the pointer: the ink at 35% over the black (2.6:1 against it), under the card's own light
+     words (6.4:1). At 20% the field read as nothing on a dossier's own cards (Tony, 1009). */
+  --lit-field: #4e5150;
   --muted: #9aaba8;
   --accent: #79c7ab;
   background: #000;

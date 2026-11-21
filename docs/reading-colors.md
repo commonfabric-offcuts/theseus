@@ -66,6 +66,14 @@ those existing boxes; it adds no padding, children or input behavior. Own cards
 receive a class from the current actor comparison and use black with light body,
 time and excerpt text. Their border changes on hover; native focus stays visible.
 
+### On Bookends' black ends
+
+A Notebook page on Bookends' black (the sheet, and the rails) lights a passage
+under the pointer, and paints words selected, in `#2d2f2e`, the ink at 20% over
+the black; the words keep their ink. Both were white with black words, which
+read as a flash on black (Tony, Colors #14691; he chose grey for both over a
+green selection, #14759). Paper keeps its own accent field.
+
 ### The field on a card (item 527)
 
 A passage lit on a topic's or a dossier's card (`web/feed-passages.mjs`) has the
@@ -73,9 +81,11 @@ same field as in the Reader: per line, as tall as the Reader's field for the
 same words, within a pixel (Tony, Mez en place #5287). The card lights its words
 through the CSS highlight `lit-passage`, which paints only their own height, so
 the rest is painted behind them as a background layer per line, in
-`--lit-field` (black, and on the person's own black card the light words'
-colour), never as padding: the card's lines stay where they were, it is as tall,
-and they keep their own height, 1.5 times their words' size. Each line's layer
+`--lit-field` (black, and on the person's own black card a lift of its ink,
+`#4e5150`, the ink at 35%, under its own light words (20% read as nothing on
+a dossier's own cards, item 1009), softer than the white field it had: Tony,
+Colors #14691), never as padding: the card's lines stay where they were, it is
+as tall, and they keep their own height, 1.5 times their words' size. Each line's layer
 is on the background of the box its words show in (`clipBox`): the card, or the
 nearest box between the words and the card that clips what overflows it (a code
 block or a table that scrolls sideways, a phone's excerpt cut off at a height),
