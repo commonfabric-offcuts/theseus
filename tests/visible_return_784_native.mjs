@@ -294,7 +294,7 @@ export async function visibleReturn784Checks({ check, page, until, control, shot
         const clicks = await p.evaluate(`window.item784.clicks.filter(e=>e.id==='new-message').length`);
         await p.key('Enter'); await sheet(baseline);
         assert.equal(await p.evaluate(`window.item784.clicks.filter(e=>e.id==='new-message').length`), clicks + 1, 'ringed header button activates natively exactly once');
-        await closeSheet(); await press('#people-heading'); await keysTo(p, ids.b);
+        await closeSheet(); await press('#people-heading'); await tabTo(p, card784(ids.b));
         await tabTo(p, '.message-bar button[data-act="more"]');
         await paint('.message-bar button[data-act="more"]', 'control', 'ringed-message-control');
         const more = await p.evaluate(`window.item784.clicks.filter(e=>e.act==='more').length`);
@@ -338,16 +338,6 @@ export async function visibleReturn784Checks({ check, page, until, control, shot
         await p.send('Input.insertText', { text: 'Alpha' }); await p.key('Enter');
         assert.equal(await p.evaluate(`document.querySelector(${q(replyField)}).value`), 'Alpha\n', 'current Reply writing Return inserts newline');
         await closeReader();
-        await press('#people-heading'); await tabTo(p, card784(ids.a));
-        await tabTo(p, '.message-bar button[data-act="more"]'); await p.key('Enter');
-        await until(() => p.evaluate(`Boolean(document.activeElement?.closest('[role="menu"]'))`), 'message menu owns native focus');
-        await p.key('ArrowDown'); await record('menu-before');
-        assert.equal(await p.evaluate(`Boolean(document.activeElement?.closest('[role="menu"]'))`), true, 'menu arrow keeps ownership');
-        for (let n = 0; n < 20 && !await p.evaluate(`document.activeElement?.textContent.startsWith('Mark unread')`); n++) await p.key('ArrowDown');
-        assert.equal(await p.evaluate(`document.activeElement?.textContent.startsWith('Mark unread')`), true, 'native menu keys reach Mark unread');
-        await p.key('Enter');
-        await until(() => p.evaluate(`!document.querySelector('[role="menu"]')`), 'menu Return activates its own item');
-        assert.equal(await p.evaluate(`document.querySelector('#reader').open || document.querySelector('#new-message-sheet').open`), false, 'menu Return opens no reply or sheet');
         await compact();
         const pen = stack784(ids.head) + (phone ? ' .stack-name' : ' .stack-pen');
         if (phone && !await p.evaluate(`document.querySelector(${q(card784(ids.head))}).classList.contains('lit')`)) await press(card784(ids.head) + ' > .stack-head .stack-who');
@@ -358,6 +348,16 @@ export async function visibleReturn784Checks({ check, page, until, control, shot
         await until(() => p.evaluate(`!document.querySelector('.stack-rename-input')`), 'title field Return saves');
         await press(pen); await p.send('Input.insertText', { text: 'discard me' }); await p.key('Escape');
         assert.equal(await p.evaluate(`document.querySelector(${q(stack784(ids.head) + ' .stack-name')}).textContent`), '784 renamed', 'title Escape preserves saved name');
+        await press('#people-heading'); await tabTo(p, card784(ids.a));
+        await tabTo(p, '.message-bar button[data-act="more"]'); await p.key('Enter');
+        await until(() => p.evaluate(`Boolean(document.activeElement?.closest('[role="menu"]'))`), 'message menu owns native focus');
+        await p.key('ArrowDown'); await record('menu-before');
+        assert.equal(await p.evaluate(`Boolean(document.activeElement?.closest('[role="menu"]'))`), true, 'menu arrow keeps ownership');
+        for (let n = 0; n < 20 && !await p.evaluate(`document.activeElement?.textContent.startsWith('Mark unread')`); n++) await p.key('ArrowDown');
+        assert.equal(await p.evaluate(`document.activeElement?.textContent.startsWith('Mark unread')`), true, 'native menu keys reach Mark unread');
+        await p.key('Enter');
+        await until(() => p.evaluate(`!document.querySelector('[role="menu"]')`), 'menu Return activates its own item');
+        assert.equal(await p.evaluate(`document.querySelector('#reader').open || document.querySelector('#new-message-sheet').open`), false, 'menu Return opens no reply or sheet');
         await press('#people-heading'); await tabTo(p, card784(ids.a));
         for (const modifiers of [1, 2, 8]) { await p.key('Enter', modifiers); assert.equal(await p.evaluate(`document.querySelector('#reader').open || document.querySelector('#new-message-sheet').open`), false, 'modified Return does not take plain route'); }
         await p.key('Enter', 4); await sheet(baseline);
