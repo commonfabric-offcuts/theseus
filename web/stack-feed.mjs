@@ -308,7 +308,13 @@ export class StackFeed {
         const entry = this.entryFor(latest.id); if (entry) this.reply(latest.id, cardIn(entry));
       },
       aside: (stack, below) => this.setAside(stack, below),
-      archived: list => { if (this.list.isConnected) this.archiveShelf()?.paint(list); },
+      // The shelf drawn or not decides whether the feed's Archived (N) and Earlier messages show (shownView's shelved).
+      archived: list => {
+        if (!this.list.isConnected) return;
+        const shelf = this.archiveShelf(), was = Boolean(this.state.shelved); shelf?.paint(list);
+        this.state.shelved = Boolean(shelf?.drawn);
+        if (this.state.shelved !== was) this.moreChanged();
+      },
       menu: (stack, anchor, first) => { const item = this.messages().get(stack.id); if (item) this.menu(item, anchor, first); },
       landedBelow: (id, mark) => this.landedBelow(id, mark),
     } }));
@@ -981,8 +987,10 @@ export class StackFeed {
   // there the feed keeps its own Archived (N).
   archiveShelf() {
     if (!this.shelf && !this.list.ownerDocument.getElementById('things')) return null;
+    // Brought back from the shelf, the dossier keeps the keys, as the feed's own Bring back does.
     this.shelf ??= new ArchiveShelf({ doc: this.list.ownerDocument,
-      restore: stack => this.setAside(stack, false, { focus: false }) });
+      restore: stack => this.setAside(stack, false), undo: () => this.undo(),
+      changed: drawn => { this.state.shelved = drawn; this.arrange(); this.moreChanged(); } });
     return this.shelf;
   }
   setAside(stack, below, { undoable = true, restoreThrough, restoreKey, focus = true, at = null } = {}) {
@@ -1004,6 +1012,7 @@ export class StackFeed {
     const flight = below ? this.archiveShelf()?.departing(this.state.sections?.get(stack.id)) ?? null : null;
     // Brought back from the shelf: where its replica sits now, for the flight back up.
     const from = !below ? this.shelf?.replicaRect(stack.id) ?? null : null;
+    if (below) this.shelf?.putAway(stack.id); else this.shelf?.broughtBack(stack.id);
     this.act('stack.aside', item, { through, ...(typeof restoreKey === 'number' ? { key: restoreKey } : {}) });
     if (undoable) this.remember(at => this.setAside(stack, position.through !== null, { undoable: false, restoreThrough: position.through, restoreKey: position.order_key, at }));
     this.arrange();

@@ -212,8 +212,9 @@ export function setLevel(state, stack, level) {
 // stack-look.css).
 const coordinationRevealed = (state, stack) => [stack.head, ...stack.replies].some(item => state.coordinationHere.has(item.id) || item.yours?.note === true);
 export function shownView(state) {
-  const only = state.only ?? null, asideShown = Boolean(state.moreOpen || only);
-  return { below: stack => state.below.has(stack.id), only, asideShown,
+  // shelved: the archive shelf is drawn beside the page, holding what More would show, so More does not open the feed.
+  const only = state.only ?? null, shelved = Boolean(state.shelved), asideShown = Boolean(state.moreOpen && !shelved || only);
+  return { below: stack => state.below.has(stack.id), only, asideShown, shelved,
     hidden: stack => (state.below.has(stack.id) && !asideShown) || (!state.showCoordination && state.coordination.has(stack.id) && !coordinationRevealed(state, stack)) };
 }
 export const shownStacks = state => shownOrder(state.stacks, shownView(state));
@@ -992,13 +993,14 @@ export function arrangeStacks(list, messages, options = {}) {
     top.push(state.controls);
   } else state.controls?.remove();
   top.push(...aside);
-  // The archive shelf: the dossiers below More, in their order, for the right rail's foot.
-  state.on?.archived?.(stacks.filter(stack => state.below.has(stack.id) && (state.showCoordination || !state.coordination.has(stack.id))).map(stack => ({ stack, section: state.sections.get(stack.id) })));
   // Entries the page has that Core's messages do not name stay where they are,
   // and so does anything else that is not a dossier, More or the composer at
   // rest (a line, or what holds the composer's place while it is up).
   reconcile(list, top, moved, node => (node === home ? resting : node.dataset.id ? messages.has(node.dataset.id) : !node.dataset.line && (node === state.controls || node === state.more || node.classList.contains('reply-stack'))));
   for (const [id, section] of state.sections) if (!live.has(id)) { section.remove(); state.sections.delete(id); }
+  // The archive shelf: the dossiers below More, in their order, for the right rail's foot; after reconcile, so the
+  // sections it reads its replicas' look from are on the page.
+  state.on?.archived?.(stacks.filter(stack => state.below.has(stack.id) && (state.showCoordination || !state.coordination.has(stack.id))).map(stack => ({ stack, section: state.sections.get(stack.id) })));
   for (const entry of byId.values()) if (entry.parentElement === list) entry.hidden = false;
   // Only a stack's head carries its row: a message that headed one before a
   // join, or before its replies went, is a card again.

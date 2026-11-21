@@ -1,5 +1,9 @@
 /* The archive shelf: archived dossiers as small replicas at the foot of the right rail (archive-shelf.mjs). */
-[data-rails] .things{display:flex;flex-direction:column;min-height:100dvh}
+/* The rail is a column reaching the window's foot only while the shelf is drawn there (archive-shelf.mjs sets
+   body[data-archive-shelf=on] only where the rail stands beside the page): the panel at middle widths and the phone's
+   sheet are never changed. In the column, the rail's Try again keeps its own width. */
+[data-rails] body[data-archive-shelf=on] .things{display:flex;flex-direction:column;min-height:100dvh}
+[data-rails] body[data-archive-shelf=on] .things>button{align-self:flex-start}
 .archive-shelf{order:99;position:sticky;bottom:-1.3rem;margin:auto -1rem -1.3rem;padding:.7rem 1rem 1.1rem;background:var(--paper);border-top:1px solid var(--line);max-height:44dvh;overflow-y:auto;z-index:1}
 /* The rail never squeezes it below its heading and one row of replicas: the newest archived sits first, so the one
    just put away is always in view to land on (the rest scroll within the shelf). */
@@ -9,7 +13,8 @@
 .archive-shelf-head h2{margin:0;font-size:.72rem;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .archive-shelf-count{font-size:.72rem;color:var(--muted)}
 .archive-shelf-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(5.6rem,1fr));gap:.65rem .4rem}
-.shelf-dossier{display:flex;flex-direction:column;align-items:center;min-width:0;padding:.35rem .2rem .3rem;color:var(--ink);background:transparent;border:0;border-radius:.5rem;cursor:pointer;font:inherit}
+.shelf-item{display:flex;min-width:0}
+.shelf-dossier{flex:1;display:flex;flex-direction:column;align-items:center;min-width:0;padding:.35rem .2rem .3rem;color:var(--ink);background:transparent;border:0;border-radius:.5rem;cursor:pointer;font:inherit}
 .shelf-dossier:hover,.shelf-dossier:focus-visible{background:color-mix(in srgb,var(--ink) 9%,transparent)}
 /* While its dossier flies down: there, focusable, not yet seen. */
 .shelf-dossier.shelf-landing{opacity:0}
@@ -28,8 +33,8 @@
 .shelf-line:nth-child(3){width:70%}
 .shelf-title{display:-webkit-box;white-space:normal;max-width:100%;margin-top:.38rem;overflow:hidden;font-size:.7rem;line-height:1.2;text-align:center;overflow-wrap:anywhere;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 .shelf-ghost{box-shadow:0 12px 32px rgb(0 0 0 / .4)}
-/* The feed's own "Archived (N)" gives way to the shelf: archived dossiers are not shown in the feed. */
-/* Beside the feed only: on a phone the right rail is a tab, so archived dossiers stay behind the feed's Archived (N)
-   there, as before, and the shelf is not drawn (the focus after Archive then goes to More, stack-feed.mjs). */
-@media(min-width:761px){body[data-archive-shelf=on] .stack-more{display:none}}
-@media(max-width:760px){.archive-shelf{display:none}}
+/* The feed's own "Archived (N)" gives way to the shelf while the shelf is drawn; where the rail is not beside the
+   page (the middle widths' panel, a phone, the Notebook docked, an outcome's Conversation) the feed keeps it, and the
+   focus after Archive goes to More, as before the shelf. The rule above More goes with it when More was all it held. */
+body[data-archive-shelf=on] .stack-more{display:none}
+body[data-archive-shelf=on] .stack-controls:not(:has(>:not(.stack-more,[hidden]))){display:none}
