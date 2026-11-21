@@ -142,6 +142,63 @@ test('lost preparation reply reloads original receipt and keeps unsaved B withou
   assert.equal(restored.submissions[0].status, 'confirmed');
 });
 
+test('979 later publication is notified only after its exact receipt is kept, without public replay', async t => {
+  const f = await fixture(t), published = [];
+  f.session.published = (editor, item) => {
+    assert.equal(editor, f.editor); published.push(item);
+  };
+  f.transport.command = async envelope => {
+    f.calls.push(copy(envelope)); const receipt = await f.api.command(envelope);
+    if (envelope.kind === 'message.send') throw new Error('lost committed response');
+    return receipt;
+  };
+  f.editor.edit({ body: 'Exact reply whose answer is lost' });
+  const item = await f.session.send();
+  assert.equal(item.status, 'prepared'); assert.deepEqual(published, []);
+  const originalSave = f.storage.save.bind(f.storage), keeping = deferred(), release = deferred();
+  f.storage.save = async (...args) => { keeping.resolve(); await release.promise; return originalSave(...args); };
+  const checking = f.session.reconcile(); await keeping.promise;
+  assert.deepEqual(published, [], 'the publication notification waits for durable local keeping');
+  release.resolve(); await checking;
+  assert.deepEqual(published, [item]);
+  assert.equal((await f.storage.own(f.editor.key)).snapshot.submissions[0].status, 'confirmed');
+  assert.equal(f.calls.filter(call => call.kind === 'message.send').length, 1);
+  await f.session.reconcile(); assert.deepEqual(published, [item]);
+});
+
+test('979 failed local keeping cannot announce a reconciled publication', async t => {
+  const f = await fixture(t), published = [];
+  f.session.published = (_editor, item) => published.push(item);
+  f.transport.command = async envelope => {
+    const receipt = await f.api.command(envelope);
+    if (envelope.kind === 'message.send') throw new Error('lost committed response');
+    return receipt;
+  };
+  f.editor.edit({ body: 'Keep the recovery controls if this device cannot save' });
+  await f.session.send();
+  f.storage.save = async () => { throw new Error('device storage failed'); };
+  await assert.rejects(f.session.reconcile(), /device storage failed/);
+  assert.deepEqual(published, []);
+});
+
+test('979 confirmation from a retired runtime cannot finish the current surface', async t => {
+  const f = await fixture(t), published = [];
+  f.session.published = (_editor, item) => published.push(item);
+  f.transport.command = async envelope => {
+    const receipt = await f.api.command(envelope);
+    if (envelope.kind === 'message.send') throw new Error('lost committed response');
+    return receipt;
+  };
+  f.editor.edit({ body: 'A reply before the runtime changed' });
+  await f.session.send(); await f.advance({ epoch: 'e-979-next', complete: false });
+  await f.runtime.probe(f.session.authority, { retry: true });
+  assert.equal(f.runtime.current.authority_epoch, 'e-979-next');
+  assert.notEqual(f.runtime.current.authority_epoch, f.session.authority.authority_epoch, 'the fixture really moved authority');
+  await f.session.reconcile();
+  assert.equal(f.editor.submissions[0].status, 'confirmed', 'the old operation stays recorded');
+  assert.deepEqual(published, [], 'historical confirmation cannot dismiss current recovery');
+});
+
 test('lost send reply reconciles exactly one public message and cannot replace B', async t => {
   const f = await fixture(t);
   f.transport.command = async envelope => {
