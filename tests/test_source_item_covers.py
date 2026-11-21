@@ -450,11 +450,11 @@ class IntegrationCase(Fixture):
         from aim_next.migrations import migrate
         record = {"release": 1, "commit": "6" * 40, "deployed_at": "2026-11-06T05:28:35-08:00", "items": [777], "source": "backfill"}
         self.store.record_release(record)
-        self.assertTrue(migrate(self.path, "test-instance", target="60", binding=self.binding)["migrated"])
-        self.assertEqual(self.sql("SELECT name FROM sqlite_master WHERE name='source_cover_releases'"), [])
         self.assertTrue(migrate(self.path, "test-instance", target="61", binding=self.binding)["migrated"])
+        self.assertEqual(self.sql("SELECT name FROM sqlite_master WHERE name='source_cover_releases'"), [])
+        self.assertTrue(migrate(self.path, "test-instance", target="62", binding=self.binding)["migrated"])
         self.assertEqual(self.sql("SELECT item,release FROM source_cover_releases"), [(777, 1)])
-        self.assertFalse(migrate(self.path, "test-instance", target="61", binding=self.binding)["migrated"])
+        self.assertFalse(migrate(self.path, "test-instance", target="62", binding=self.binding)["migrated"])
 
     def test_private_source_membership_and_same_number_in_different_outcomes(self):
         source = self.post("Shared dossier")

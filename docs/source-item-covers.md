@@ -26,7 +26,7 @@ Core filters destination workspace access before projecting titles, states or ID
 Source access alone grants none. Projection follows reader-visible indexed reply
 and current join edges for requested roots and reverse source indexes; it does
 not reconstruct global pipeline facts or scan every pipeline for each card.
-Schema 61 (from release278 schema60) adds two source lookup indexes and a normalized, indexed release-item
+Schema 62 (after987 schema61) adds two source lookup indexes and a normalized, indexed release-item
 relation, backfilled from actual release records and populated by an INSERT
 trigger in the same transaction as each record. Step-down drops only these
 reconstructible derived indexes/relations; it loses no source or release facts.
@@ -52,7 +52,7 @@ a later redaction cannot be overwritten by an earlier response. Existing client
 late-response fences and loaded lifecycle refresh remain in effect.
 
 The old isolated schema48 history remains in the retained branch. The current
-step is60→61 from actual release278, with the preceding steps unchanged. Its
+step is61→62 after987, reconciled with actual release278, with the preceding steps unchanged. Its
 derived objects reconstruct from retained facts; focused upgrade, downgrade,
 rollback and fresh-layout checks cover the new step. It pays its own judged
 carry/deploy route under the current gauntlet rule.

@@ -18,8 +18,10 @@ Indexed reverse sources and release membership keep card reads bounded.
 Pipeline changes invalidate only affected source readers; stale client replies
 must not restore redacted rows. Projection writes no cover act or fake message.
 
-Release 278 has schema 60. Reconcile this item's derived indexes/release
-relation as the next migration from that actual predecessor; the old schema
+Release278 has schema60. Warp14616 assigns987 its frozen60→61 step,
+then757 the61→62 step. The757 tree includes exact987 head
+`45ecc17f505609d9e62984e312efb089dadd0634`; its derived indexes/release
+relation follow that actual predecessor; the old schema
 48 slot and fixture assumptions are historical. Fresh creation, upgrade,
 rollback and historical fixtures must preserve authority and manual data.
 

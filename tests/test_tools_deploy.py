@@ -131,6 +131,9 @@ class FakeHost:
                                                and self.line.index(older) < self.line.index(newer)) else 1
         elif argv[0] == "git" and "merge" in argv:
             code = self.merge
+        elif argv[0] == "git" and "--format=%(trailers:key=Pipeline,valueonly,separator=%x1d)" in argv:
+            # Admission's separate trailer-only read; these host cases own no pending pipeline items.
+            out = ""
         elif argv[0] == "git" and "log" in argv:
             out = self.logs.get(argv[-1], self.log)
             if isinstance(out, tuple):
@@ -158,6 +161,14 @@ class FakeHost:
             code = self.backup
         elif "migrate" in argv:
             code = self.migrate
+        elif "--broker" in argv and argv[-1] == "binding":
+            out = json.dumps({"binding": {"instance_id": "i-1"}})
+        elif "--broker" in argv and argv[-2:] == ["view", "-"]:
+            request = json.loads(kw["input"])
+            assert request["view"]["name"] == "pipeline"
+            out = json.dumps({"instance_id": "i-1", "workspace_id": "scratch-pipeline", "relevant_versions": {"pipeline": 1},
+                "pipeline": {"enabled": True, "ships_in_releases": True}, "pieces": [], "items": [],
+                "facts": {"approved_waiting": []}, "next_cursor": None})
         elif argv[-1] == "binding":
             if self.on_cli:
                 self.on_cli()
@@ -186,7 +197,9 @@ class DeployCase(unittest.TestCase):
         (self.instance / "tony.profile.json").write_text(json.dumps({"instance_id": "i-1"}))
         self.raw = {"live": str(base / "live"), "instance": str(self.instance), "server_profile": "tony.profile.json",
                     "port": 5192, "tailnet_origin": "https://host.example:5192", "runner_profile": "agent.profile.json",
-                    "runner_id": "runner-01", "routes": "routes.json"}
+                    "runner_id": "runner-01", "routes": "routes.json",
+                    "pipeline_outcome": "scratch-pipeline", "pipeline_instance": "i-1",
+                    "pipeline_broker": str(self.instance / "admission.sock")}
         self.config_path = base / "deploy.json"
         self.config_path.write_text(json.dumps(self.raw))
         self.config = deploy.load_config(self.config_path)
@@ -1120,7 +1133,10 @@ class DeployRefuses(DeployCase):
         written = json.loads((self.evidence / "00-release-check.json").read_text())
         self.assertEqual((written["passed"], written["reasons"]), (True, []))
         self.assertIn("skipped, not passed", written["skipped"])
-        [diff] = host.ran("diff")
+        admission = [argv for argv in host.ran("diff") if "--no-ext-diff" in argv]
+        self.assertTrue(admission, "admission independently reads the candidate diff")
+        self.assertTrue(all(argv[-2:] == [HEAD, SHA] for argv in admission))
+        [diff] = [argv for argv in host.ran("diff") if "--no-ext-diff" not in argv]
         self.assertEqual(diff[-3:], [HEAD, SHA, "--"], "the paths are read from the live HEAD to the commit, by the deploy itself")
 
     def test_a_summary_that_skipped_steps_is_refused_for_any_other_change_before_anything_stops(self):
@@ -1198,7 +1214,10 @@ class DeployRefusesScoped(DeployCase):
         written = json.loads((self.evidence / "00-release-check.json").read_text())
         self.assertEqual((written["passed"], written["reasons"]), (True, []))
         self.assertEqual(written["scoped"], "a small fix")
-        [diff] = [argv for argv in host.ran("diff") if "--name-only" in argv]
+        admission = [argv for argv in host.ran("diff") if "--no-ext-diff" in argv]
+        self.assertTrue(admission, "admission independently reads the candidate diff")
+        self.assertTrue(all(argv[-2:] == [self.live, commit] for argv in admission))
+        [diff] = [argv for argv in host.ran("diff") if "--name-only" in argv and "--no-ext-diff" not in argv]
         self.assertEqual(diff[-3:], [self.live, commit, "--"], "the paths are read from the live HEAD to the commit, by the deploy itself")
         self.assertTrue([argv for argv in host.ran("show") if argv[-1] == "%s:%s" % (commit, release_check.PERSISTENCE)],
                         "the steps are chosen from the harness at the commit, read by the deploy")
@@ -2089,7 +2108,8 @@ class DeployRefusesKnownReds(KnownRedsFiles, DeployCase):
 
     def test_a_live_head_that_moves_after_the_known_reds_were_read_stops_the_deploy_before_anything_stops(self):
         self.red_on_both()
-        heads = [HEAD, "e" * 40]
+        # Known-red basis, initial admission, then checkout boundary observes the move.
+        heads = [HEAD, HEAD, "e" * 40]
 
         class Moving(FakeHost):
             def __call__(self, argv, **kw):

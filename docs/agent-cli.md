@@ -674,3 +674,13 @@ no longer needs answering (item 366). This records `message.withdraw`, keeps the
 original words and answers, and ends only that question’s waits. Nobody else,
 including an owner or coordinator, can withdraw it. `read` shows “Question
 withdrawn”; retries use the existing outbox and the same operation.
+
+### Freezing an exact source (987)
+
+`aim-next freeze PIECE --repo ABSOLUTE_REPO --base FULL_SHA --head FULL_SHA`
+reads the actual Git diff (including deleted and renamed old paths), then
+records it with the piece's current revision. The builder, coordinator or
+owner may record it. Core derives the judged mark; no caller supplies one.
+Before this freeze there is no card mark. Return an approved piece to review
+before recording changed source. This is an attributed source attestation,
+not a remote Git authentication service.

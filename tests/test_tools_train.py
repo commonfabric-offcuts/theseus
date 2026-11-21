@@ -570,6 +570,8 @@ class GuardedPaths(unittest.TestCase):
                 found |= {"tools/%s.py" % alias.name for alias in node.names}
             elif isinstance(node, ast.ImportFrom) and (node.module or "").startswith("tools."):
                 found.add(node.module.replace(".", "/") + ".py")
+            elif isinstance(node, ast.ImportFrom) and node.module == "aim_next.judgment":
+                found.add("aim_next/judgment.py")
             elif isinstance(node, ast.Import):
                 found |= {alias.name.replace(".", "/") + ".py" for alias in node.names if alias.name.startswith("tools.")}
         return found
@@ -595,7 +597,7 @@ class GuardedPaths(unittest.TestCase):
         loaded, pinned = self.loaded("tools/deploy.py"), self.pinned()
         # What the reading itself must find, so an empty read cannot pass: the matcher the deploy loads through
         # known_reds, and the data file GitHub's classifier pins without importing it.
-        self.assertTrue({"tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/checks.py"} <= loaded, loaded)
+        self.assertTrue({"tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/checks.py", "tools/gauntlet_admission.py", "aim_next/judgment.py"} <= loaded, loaded)
         self.assertIn("tools/ci-input-reads.json", pinned)
         self.assertEqual(sorted(path for path in loaded | pinned if not deploy.train_check.guarded([path])), [])
 

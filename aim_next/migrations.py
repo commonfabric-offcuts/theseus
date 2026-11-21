@@ -58,6 +58,7 @@ from .dossier_order import ORDER_SCHEMA as DOSSIER_ORDER_SCHEMA, ORDER_DOWN as D
 from .outcome_end import ENDS_DOWN, ENDS_OCCUPIED, ENDS_SCHEMA
 from .stacks import REFRESH_UP, REFRESH_DOWN, MESSAGE_REFRESH_UP, MESSAGE_REFRESH_DOWN, MESSAGE_REFRESH_OCCUPIED
 from .cover_refresh import WRITER_SCHEMA, WRITER_BACKFILL
+from .piece_freeze import FREEZE_SCHEMA, FREEZE_DOWN, FREEZE_OCCUPIED
 from .source_item_covers import SOURCE_COVER_SCHEMA
 
 
@@ -231,8 +232,9 @@ STEPS = (
     ("57", "58", ANSWER_UP, ANSWER_DOWN, ANSWER_OCCUPIED),
     ("58", "59", REMOVAL_UP, REMOVAL_DOWN, REMOVAL_OCCUPIED),
     ("59", "60", OUTCOME_COLOR_SCHEMA, OUTCOME_COLOR_DOWN, OUTCOME_COLOR_OCCUPIED),
+    ("60", "61", FREEZE_SCHEMA, FREEZE_DOWN, FREEZE_OCCUPIED),
     # Item 757: indexed source covers and reconstructible release-item links.
-    ("60", "61", SOURCE_COVER_SCHEMA, ("DROP TRIGGER source_cover_release_insert", "DROP TABLE source_cover_releases",
+    ("61", "62", SOURCE_COVER_SCHEMA, ("DROP TRIGGER source_cover_release_insert", "DROP TABLE source_cover_releases",
                                       "DROP INDEX source_cover_items", "DROP INDEX source_cover_topics", "DROP INDEX source_cover_changes"), "SELECT 0"),
 )
 
