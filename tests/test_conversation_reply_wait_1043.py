@@ -114,16 +114,23 @@ class ConversationReplyWait1043Case(unittest.TestCase):
         c.posted('Earlier agent activity.', actor='agent-a')
         asked = self.ask()
         seq = c.sql('SELECT seq FROM messages WHERE id=?', (asked,))[0][0]
+        # The summary must name other-author activity after this ask so the
+        # named-message query runs. This unrelated post neither names the
+        # reader nor joins the ask's dossier, so it does not answer the ask.
+        c.posted('Later unrelated agent activity.', actor='agent-a')
 
         def measured():
-            original, steps = sqlite3.connect, [0]
+            original, steps, named = sqlite3.connect, [0], []
             def connect(*args, **kwargs):
                 db = original(*args, **kwargs)
                 db.set_progress_handler(lambda: steps.__setitem__(0, steps[0] + 1) or 0, 1)
+                db.set_trace_callback(lambda sql: named.append(sql) if sql.startswith(
+                    'SELECT max(n.seq) FROM message_addressees n ') else None)
                 return db
             with mock.patch.object(sqlite3, 'connect', connect):
                 answer = c.store.view('owner', 'topic_messages', {'topic_id': c.conversation, 'direction': 'before', 'cursor': seq + 1, 'limit': 1})
             self.assertEqual([(x['id'], x['awaiting_reply']) for x in answer['items']], [(asked, True)])
+            self.assertTrue(named, 'the fixture must execute the bounded named-message query')
             return steps[0]
 
         before = measured()
@@ -133,6 +140,7 @@ class ConversationReplyWait1043Case(unittest.TestCase):
                                  ('activity-later-%s' % i, c.conversation, 'activity-op-%s' % i)).lastrowid
                 db.execute('INSERT INTO message_addressees VALUES (?,?,?)', (c.conversation, 'owner', row))
         grown = measured()
+        print('1043 named-read VM steps: before=%d after3000=%d' % (before, grown))
         self.assertLess(grown, before + 300, (before, grown))
 
 

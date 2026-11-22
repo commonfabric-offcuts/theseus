@@ -47,3 +47,24 @@ profile absence/removal, fixture stdinEOFexit0/absence/emptyerrors and closed po
 must verify. No live data/browser/install/runtime action. Freeze one clean exact
 source/remote when meaningful checks pass, then Fable canonical freeze/stages and
 Warp one independent read/approval/carry/landing.
+
+## Second head: review16505 / Build2
+
+The first head fe163b38 and its source/evidence remain immutable; this new own
+branch parents that head on the same325 base. Fable16514 orders this quick
+correction before resuming preserved1038r3, after the completed16519/16523 runner
+boundary. Correct the two stale exclusions in topic-reading.md to the shared
+message rule. The query-cost fixture must post visible other-author activity
+after the ask, without addressing the reader, prove the named query actually
+runs, and catch an applied removal of its upper bound before exact restoration.
+The earlier claim about that removal was static reading, not an executed test.
+
+There is no new boundary key: eligible, agent-received, still-unanswered public
+Conversation messages posted before this lands gain the dots at landing, while
+the existing reply_wait_from_seq.597 boundary keeps pre-rule history quiet.
+
+Keep the existing bounded query and message/render behavior. The inherited
+whisper disagreement is separate1068, not a change in this head. Retain red
+documentation/path checks, actual applied bound-removal/restore evidence and
+small affected checks; first-head native/cohort evidence remains attributed to
+its exact bytes. No browser or runtime action is needed for this correction.

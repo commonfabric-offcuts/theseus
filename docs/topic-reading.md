@@ -122,8 +122,6 @@ a reload start unsilenced. A reply still arrives and ends the wait normally.
 - Never on a whisper.
 - Not at all when no agent receives the message: with nobody named and no
   agent taking part, or only people named in a topic no agent takes part in.
-- Not in an outcome's conversation, where each item already shows its own
-  dots until something settles it.
 
 Core says it (`awaiting_reply`, above), so a reload keeps it and nothing on
 the page starts none. A message or a thumbs-up arriving while the page is
@@ -438,7 +436,8 @@ agent and addressed no agent. The delivery record preserves the audience at
 send time. A static crossed-eye glyph occupies the reply-indicator position,
 with accessible words saying no agent was addressed or listening when sent.
 It makes no claim about read access. Existing addressed/listener reply waiting
-is unchanged. Private messages and the Conversation keep their existing rules.
+is unchanged. Private messages keep their existing rules; an outcome's
+Conversation uses this same public-message projection.
 
 ## New arrivals above the reading place (785)
 
