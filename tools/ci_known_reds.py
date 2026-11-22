@@ -32,6 +32,8 @@ WAKE_REPLAY = 'wake-replay'
 END_LINE = 'AssertionError [ERR_ASSERTION]: see native.json for exact failing assertions'
 PHASES = [phase + ':' + engine for phase in ('run', 'runAnswering', 'runSending') for engine in ('chromium', 'webkit')]
 FRAME = re.compile(r'^\s*at (?:async )?(?:[^\s(]+ \()?(?:file://)?(\S*?/tests/[^\s():]+):(\d+):\d+\)?\s*$')
+# A Python fixture's traceback frame, as the harness echoes it when the fixture's own exit check fails.
+FIXTURE_FRAME = re.compile(r'^\s*File "(\S*?/tests/[^"]+)", line (\d+), in \S+')
 GENERATED_ID = re.compile(r'(?<![0-9A-Za-z])([mtpd])-[0-9a-f]{32}(?![0-9A-Za-z])')
 SHA = re.compile(r'[0-9a-f]{40}')
 PROFILE_FIELDS = ('runner_os', 'runner_arch', 'image_os', 'image_version', 'scroll_bars', 'reduce_motion', 'cpus', 'python', 'node', 'chrome', 'playwright')
@@ -133,7 +135,75 @@ def compose_completed(report):
             and 'fixtureExitSignal' in report and report['fixtureExitSignal'] is None
             and report.get('plannedPhases') == PHASES and report.get('completedPhases') == PHASES)
 
-def cases(step, out):
+def _log_case_names(lines, prefix):
+    names = []
+    for line in lines:
+        if not line.startswith(prefix):
+            continue
+        try:
+            names.append(json.loads(line)['name' if prefix == '{"name":' else 'case'])
+        except (ValueError, KeyError, TypeError):
+            raise Refused('unreadable harness log line')
+    return names
+
+ERROR_HEADER = re.compile(r'^[A-Za-z]*Error( \[[A-Z_]+\])?: ')
+# What a run that reached the fixture's own assertion writes after its last result and nothing else: Node's uncaught
+# exception preamble, the harness's assertion header carrying the fixture's traceback, that traceback's frames and
+# source lines, the fixture's own AssertionError, the harness's diff, its frames and the error's property block.
+FIXTURE_TAIL = re.compile(r'^(\s*|node:internal/\S+|\s+triggerUncaughtException\(|\s+\^|\S.* !== \S.*|\s+at .*|[{}]|Node\.js v\d.*)$')
+# The assertion error's property block: opened by its frame line ending in a brace, closed by a brace, holding only
+# the fields Node prints for an AssertionError.
+FIXTURE_PROPERTY = re.compile(r'^\s+(generatedMessage|code|actual|expected|operator|diff|message|name): .*$')
+
+def fixture_exit_row(name, code, log, rows, harness, report, history):
+    """The fixture failed its own end-of-run check after the harness ran the cases it had.
+
+    The harness logs each case as it starts and again with its result, writes its report, and asserts the fixture's
+    exit in its teardown, so the fixture's traceback is the last thing a run that got that far writes. The exit is
+    then a failure the step carries: a row whose error is the fixture's own assertion, with its traceback frames as
+    verified source frames, and whose message names the harness source and how many cases ran before it. The controls
+    say whether that failure is known, and a control agrees only when the same harness ran the same number of cases
+    to the same assertion; a harness that aborted between cases, or a changed harness, matches no control. A started
+    case without its result, a log that disagrees with the report, or a traceback that is not terminal is refused.
+    """
+    lines = log.splitlines()
+    started, finished = _log_case_names(lines, '{"case":'), _log_case_names(lines, '{"name":')
+    require(started == finished and bool(finished), name + ': fixture died before the end')
+    require(finished == [row.get('name') for row in rows], name + ': result log disagrees with report')
+    # The harness attests that its body ran to its end; without that, balanced case lines prove only a prefix.
+    # The controls predate the attestation and are held to the harness source, count and assertion instead.
+    attested = [report[key] for key in ('bodyCompleted', 'harnessCompleted') if key in report]
+    # A report that carries the attestation must say true, control or candidate; only a report written before the
+    # attestation existed, with neither field, is read as a control by source, count and assertion.
+    require(all(value is True for value in attested) if attested else history,
+            name + ': harness did not finish its cases')
+    last = max(n for n, line in enumerate(lines) if line.startswith('{"name":'))
+    tail = lines[last + 1:]
+    frames = [match for match in map(FIXTURE_FRAME.match, tail) if match]
+    headers = [line.strip() for line in tail if ERROR_HEADER.match(line)]
+    message = headers[1] if len(headers) >= 2 and headers[1].startswith('AssertionError: ') else None
+    require(bool(frames) and message is not None and headers[0].startswith('AssertionError [ERR_ASSERTION]: Traceback'),
+            name + ': fixture exit without its assertion')
+    # A traceback frame's source line is admitted only right after its frame; every other line must be one of the
+    # forms a run that reached the fixture's assertion writes.
+    foreign, previous, in_block = [], None, False
+    for line in tail:
+        source = previous is not None and FIXTURE_FRAME.match(previous) and line.startswith('    ') and line.strip()
+        prop = in_block and FIXTURE_PROPERTY.match(line)
+        if not (source or prop or FIXTURE_FRAME.match(line) or FIXTURE_TAIL.match(line) or ERROR_HEADER.match(line)):
+            foreign.append(line)
+        if re.match(r'^\s+at .*\{$', line): in_block = True
+        elif line.strip() == '}': in_block = False
+        previous = line
+    foreign += headers[2:]
+    if foreign:
+        raise Refused(name + ': fixture exit is not the last failure: ' + foreign[0].strip()[:200])
+    require(isinstance(harness, str) and bool(harness), name + ': harness source unrecorded')
+    message += ' | after %d cases of %s %s' % (len(rows), NATIVE[name].harness, harness)
+    error = message + '\n' + '\n'.join('    at fixture (file://%s:%s:1)' % (match[1], match[2]) for match in frames)
+    return {'name': 'fixture exit %d' % code, 'passed': False, 'error': error}
+
+def cases(step, out, harness=None, history=False):
     name = step['name']
     native = NATIVE[name]
     report = read_json(out / 'native' / native.name / native.results)
@@ -153,10 +223,13 @@ def cases(step, out):
         require(isinstance(final, dict) and final.get('closed') is True and final.get('results') == rows,
                 name + ': missing final result log')
     else:
-        require(type(report.get('fixtureExitCode')) is int and report['fixtureExitCode'] == 0,
-                name + ': fixture cleanup failed')
+        code = report.get('fixtureExitCode')
+        require(type(code) is int, name + ': fixture exit unrecorded')
         require(report.get('fixtureExitSignal') is None, name + ': fixture was signalled')
-        if counts['fail']:
+        if code != 0:
+            # The harness exits non-zero on the fixture's exit however its cases went.
+            rows, good = rows + [fixture_exit_row(name, code, log, rows, harness, report, history)], False
+        elif counts['fail']:
             require(END_LINE in log.splitlines(), name + ': harness did not reach end')
     require(type(step.get('exit')) is int and step['exit'] == (0 if good else 1), name + ': abnormal harness exit')
     require(step.get('passed') is good, name + ': inconsistent raw verdict')
@@ -802,7 +875,8 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
                 require(step == by_name[step['name']], 'aggregate step differs from original shard')
                 ran.append(step['name'])
             if step['name'] in NATIVE:
-                observed.append((step['name'], cases(step, out), profile, raw['checkout']))
+                observed.append((step['name'], cases(step, out, (raw['tools'].get('harnesses') or {}).get(NATIVE[step['name']].harness), history),
+                                 profile, raw['checkout']))
             else:
                 if history and step.get('passed') is False:
                     nonbrowser_failure_evidence(step, out)
