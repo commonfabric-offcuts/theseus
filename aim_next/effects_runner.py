@@ -235,6 +235,8 @@ class EffectsLoop:
         self.renew_at = self.clock.monotonic()+9
         self.acquire_wall = None
         self._event('acquired')
+        if self.seats is not None:
+            self.seats.publish_templates()
         if self.host is not None:
             self.host.start()
         return None

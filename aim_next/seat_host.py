@@ -3,6 +3,7 @@ from __future__ import annotations
 """Provision one recorded seat through the already owned, asynchronous host."""
 
 from dataclasses import replace
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -93,12 +94,38 @@ class SeatHost:
             reason = 'incompatible'
         self._step('refused', {'reason': reason})
 
-    def _template(self):
+    @staticmethod
+    def _template_id(config):
+        settings = (config.destination['codex_home'], config.codex_executable, config.cli,
+                    config.model, config.reasoning_effort)
+        return 'template-' + hashlib.sha256(json.dumps(settings, separators=(',', ':')).encode('utf-8')).hexdigest()
+
+    def template_options(self):
+        if self.loop.host is None:
+            return []
+        choices = {}
+        for thread in sorted(self.loop.host.threads.values(), key=lambda t: t.config.profile.actor_id):
+            config = thread.config
+            if config.permission_mode != 'full' or config.model is None or config.reasoning_effort is None:
+                continue
+            identity = self._template_id(config)
+            choices.setdefault(identity, {'id': identity, 'actor_id': config.profile.actor_id,
+                'model': config.model, 'reasoning_effort': config.reasoning_effort})
+        return list(choices.values())
+
+    def publish_templates(self):
+        self._core('hosted_seat_publish_templates', self.template_options())
+
+    def _template(self, template_id=None):
         host = self.loop.host
         if host is None:
             raise SeatRefusal('host_not_configured')
         configs = [thread.config for thread in host.threads.values()]
-        if self.template_actor:
+        if template_id is not None:
+            configs = [config for config in configs if self._template_id(config) == template_id]
+            if not configs:
+                raise SeatRefusal('host_template_unavailable')
+        elif self.template_actor:
             configs = [config for config in configs if config.profile.actor_id == self.template_actor]
             if not configs:
                 raise SeatRefusal('host_not_configured')
@@ -115,7 +142,7 @@ class SeatHost:
         return selected
 
     def _plan(self, seat):
-        selected = self._template()
+        selected = self._template(seat.get('template_id'))
         folder = self.directory / 'seats' / seat['id']
         if os.path.lexists(str(folder)):
             raise SeatRefusal('path_conflict')

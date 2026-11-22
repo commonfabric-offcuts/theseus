@@ -3,6 +3,8 @@ import { validActorId } from './creation.mjs';
 const copy = structuredClone;
 const bytes = value => new TextEncoder().encode(JSON.stringify(value)).length;
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const template = value => typeof value === 'string' && /^template-[0-9a-f]{64}$/.test(value);
+const choice = args => !Object.hasOwn(args, 'template_id') || template(args.template_id);
 
 // One private draft/request per actor, authority and outcome. No prefix clearing,
 // background sending, account adoption or scan of another form's records.
@@ -22,7 +24,7 @@ export async function openSeatJournal(bootstrap, workspace, indexed = globalThis
   database.onversionchange = () => { closed = true; database.close(); };
   function valid(row) {
     if (!row || row.v !== 1 || row.key !== key || !Number.isSafeInteger(row.revision) || row.revision < 1 ||
-        typeof row.form?.name !== 'string' || typeof row.form?.role !== 'string' || bytes(row) > 262144 ||
+        typeof row.form?.name !== 'string' || typeof row.form?.role !== 'string' || !choice(row.form) || bytes(row) > 262144 ||
         !(row.lastSeatId === null || validActorId(row.lastSeatId))) return false;
     const request = row.request;
     if (request === null) return true;
@@ -30,9 +32,12 @@ export async function openSeatJournal(bootstrap, workspace, indexed = globalThis
         !same(request.expected?.authority, authority) || request.target?.workspace_id !== workspace) return false;
     if (request.kind === 'workspace.hosted_seat_add') return same(request.target, { workspace_id: workspace }) &&
       Number.isSafeInteger(request.expected.workspace_revision) && request.expected.workspace_revision >= 0 &&
-      Object.keys(request.args ?? {}).length === 2 && typeof request.args.name === 'string' && typeof request.args.role === 'string';
+      [2, 3].includes(Object.keys(request.args ?? {}).length) && choice(request.args) &&
+      Object.keys(request.args).every(key => ['name', 'role', 'template_id'].includes(key)) &&
+      typeof request.args.name === 'string' && typeof request.args.role === 'string';
     return ['workspace.hosted_seat_retry', 'workspace.hosted_seat_end'].includes(request.kind) && Object.keys(request.target).length === 2 &&
-      validActorId(request.target.seat_request_id) && Object.keys(request.args ?? {}).length === 0 &&
+      validActorId(request.target.seat_request_id) && (Object.keys(request.args ?? {}).length === 0 ||
+        request.kind === 'workspace.hosted_seat_retry' && Object.keys(request.args).length === 1 && template(request.args.template_id)) &&
       Number.isSafeInteger(request.expected.seat_revision) && request.expected.seat_revision >= 0;
   }
   const publicRow = row => { if (!row) return null; const { key: unusedKey, v: unusedV, ...value } = row; return copy(value); };

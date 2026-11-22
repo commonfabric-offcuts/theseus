@@ -30,6 +30,17 @@ def main():
     proof = {}
     try:
         case.setUp()
+        if '--multiple-templates' in sys.argv[2:]:
+            profile, unused = case.second_agent('template-two')
+            config = case.root / 'template-two.route.json'
+            case.provision(config=config, profile=profile)
+            value = json.loads(config.read_text())
+            value['model'] = 'fixture-second-template'
+            config.write_text(json.dumps(value))
+            routes = json.loads(case.map.read_text())
+            routes['routes']['template-two'] = str(config)
+            case.map.write_text(json.dumps(routes))
+            case.route_bytes = case.map.read_bytes()
         (case.home / 'fake-script.json').write_text(json.dumps({'turns': [
             {'reply': 'Hello from this isolated fixture seat.', 'reply_to_delivery': True}
             for _ in range(120)]}))
@@ -72,7 +83,11 @@ def main():
                     seats = case.sql('SELECT id,agent_id,state,stage,reason,role,thread_id,first_message_id,version FROM hosted_seats WHERE workspace_id=?', (workspace,))
                     messages = case.sql('SELECT author_id,body,reply_to FROM messages WHERE topic_id IN (SELECT id FROM topics WHERE workspace_id=?) ORDER BY seq', (workspace,))
                     answer = {'seats': seats, 'messages': messages,
+                        'templates': case.sql('SELECT template_id,plan FROM hosted_seats WHERE workspace_id=?', (workspace,)),
+                        'starts': [row['in']['params'] for row in case.wire() if row.get('in', {}).get('method') == 'thread/start'],
                         'routes_unchanged': case.map.read_bytes() == case.route_bytes, 'events': events[-10:]}
+                elif method == 'templates':
+                    answer = case.store.view('lead', 'hosted_seat_templates', {'workspace_id': 'w1'})
                 else:
                     raise ValueError('Unknown fixture control')
                 print(json.dumps({'id': request['id'], 'answer': answer}), flush=True)
