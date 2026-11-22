@@ -56,7 +56,7 @@ for (const filename of ['web/app.mjs', 'web/opening.mjs', 'web/opening-view.mjs'
 }
 const results = [], observations = [], tapSpacing = [];
 // Set as the body's last statement, so a body that threw between cases leaves it false in native.json.
-let bodyCompleted = false;
+let bodyCompleted = false, bodyError = null;
 const profile = await mkdtemp(path.join(os.tmpdir(), 'aim-reader-openings-'));
 let chrome, chromeExit, socket, cdp, facts, chromeVersion, fixtureExitCode, finalHealth;
 const pages = new Set();
@@ -531,6 +531,9 @@ try {
     } finally { await names.done(); }
   });
   bodyCompleted = true;
+} catch (error) {
+  // The teardown's own assertion may replace this exception; the report keeps it.
+  bodyError = String(error?.stack ?? error); throw error;
 } finally {
   if (cdp && socket?.readyState === WebSocket.OPEN) { await cdp('Browser.close'); await chromeExit; socket.close(); }
   // Only when DevTools never came up is there no Browser.close to send: stop the
@@ -541,7 +544,7 @@ try {
   fixtureExitCode = await fixtureExit;
   // This profile directory is unique to this run; nothing of a person's browser is touched.
   if (!chrome || chrome.exitCode !== null) await rm(profile, { recursive: true, force: true });
-  await writeFile(path.join(evidencePath, 'native.json'), JSON.stringify({ chromeVersion, hashes, results, bodyCompleted, observations, tapSpacing, finalHealth, fixtureExitCode, fixtureErrors, browserClosed: chrome?.exitCode !== null }, null, 2));
+  await writeFile(path.join(evidencePath, 'native.json'), JSON.stringify({ chromeVersion, hashes, results, bodyCompleted, bodyError, observations, tapSpacing, finalHealth, fixtureExitCode, fixtureErrors, browserClosed: chrome?.exitCode !== null }, null, 2));
   assert.equal(fixtureExitCode, 0, fixtureErrors);
   assert.equal(fixtureErrors, '', 'owned fixture stderr is clean');
 }
