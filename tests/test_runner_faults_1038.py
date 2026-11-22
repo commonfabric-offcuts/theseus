@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import sqlite3
 import threading
@@ -7,7 +8,7 @@ import time
 import unittest
 from unittest import mock
 
-from aim_next import effects_runner
+from aim_next import cli, effects_runner
 from aim_next.runner import RunnerError
 from aim_next.contract import StoreError
 from aim_next.authority import RunnerGuard
@@ -197,6 +198,63 @@ class FaultCase(effects.EffectsRunnerCase):
                 self.assertEqual(self.sql('SELECT state,version FROM runner_state'), before)
         self.storage(check)
 
+    def hosted_configs(self):
+        # Startup map/preflight seams supply validated inputs; HostLog and Host
+        # themselves execute the real refusal paths inside run_foreground.
+        from aim_next.broker_routes import HostedConfig
+        return {actor: HostedConfig('/scratch/config', str(self.profile_path), self.profile,
+            '/scratch/cli', '/scratch/codex-' + actor,
+            {'codex_home': str(self.root), 'thread_id': actor}, str(self.root), None, ())
+            for actor in self.routes}
+
+    def test_1038_foreground_retains_real_invalid_host_directory_reason(self):
+        with mock.patch.object(effects_runner.broker_routes, 'load_route_table',
+                return_value=(self.routes, frozenset(self.routes))), \
+                mock.patch.object(effects_runner, 'NativeWatch', side_effect=AssertionError('too late')):
+            result = self.foreground(host_dir='relative-private-host')
+        self.assertEqual(result['status'], 'startup_failed')
+        self.assertEqual(result['reason'], 'invalid_host_dir')
+        self.assertFalse(result['pause_saved'])
+        self.assertEqual(self.sql('SELECT state FROM runner_state'), [('idle',)])
+
+    def test_1038_foreground_retains_real_conflicting_host_executable_reason(self):
+        directory = self.root / 'private-host'; directory.mkdir(mode=0o700)
+        configs = self.hosted_configs()
+        with mock.patch.object(effects_runner.broker_routes, 'load_route_table',
+                return_value=(self.routes, frozenset(self.routes))), \
+                mock.patch.object(effects_runner.broker_routes, 'preflight_hosted',
+                side_effect=lambda route, actor, profile: configs[actor]) as preflight:
+            result = self.foreground(host_dir=str(directory))
+        self.assertEqual(preflight.call_count, 2)
+        self.assertEqual(result['status'], 'startup_failed')
+        self.assertEqual(result['reason'], 'conflicting_codex_executable')
+        self.assertFalse(result['pause_saved'])
+        self.assertTrue(result['cleanup_confirmed'])
+        self.assertEqual(self.sql('SELECT state FROM runner_state'), [('idle',)])
+
+    def fault_cli(self):
+        out, err = io.StringIO(), io.StringIO()
+        status = cli.main(['--profile', str(self.profile_path), 'health'], stdout=out, stderr=err)
+        self.assertEqual(status, 0, err.getvalue())
+        self.assertNotIn('PRIVATE', out.getvalue())
+        return out.getvalue()
+
+    def test_1038_cli_health_says_current_safe_pause_fault(self):
+        with mock.patch.object(self.store, 'runner_schedule', side_effect=ValueError('PRIVATE body')):
+            self.loop()
+        self.assertIn('ValueError: Invalid value; exception text withheld.', self.fault_cli())
+
+    def test_1038_cli_health_says_prior_safe_pause_fault_after_actual_resume(self):
+        with mock.patch.object(self.store, 'runner_schedule', side_effect=KeyError('PRIVATE body')):
+            self.loop()
+        paused = self.store.runner_status()
+        with self.store.runner_guard('cli-resumed1038') as guard:
+            self.assertEqual(self.store.resume_runner(guard, paused['version'])['status'], 'acquired')
+        health = self.store.view('owner', 'health', {})
+        self.assertNotIn('fault', health['runner'])
+        self.assertEqual(health['runner']['prior']['fault']['exception_class'], 'KeyError')
+        self.assertIn('KeyError: Required value missing; exception text withheld.', self.fault_cli())
+
     def test_1038_startup_fault_retains_safe_class_without_exposing_profile_input(self):
         with mock.patch.object(effects_runner, 'load_profile', side_effect=ValueError('/PRIVATE/token body')):
             result = effects_runner.run_foreground('/unused', 'unused', '/unused')
@@ -349,6 +407,36 @@ class FanoutCase(covers.SourceCoverCostCase):
         self.assertEqual(len(self.shown(new)['cover']['items']), 1)
         self.assertEqual(self.sql('SELECT count(*) FROM pipeline_item_sources WHERE number=?', (number,)), [(102,)])
         self.assertEqual(receipt['number'], number)
+
+    def source_key_boundary(self, count):
+        from aim_next import source_item_covers
+        root = self.post('Boundary source'); number = self.file('Work', root)
+        ids = self.thread(root, count=count, readers=3)
+        before = self.sql('SELECT coalesce(max(seq),0) FROM changes')[0][0]
+        self.committed(self.command('pipeline.source_add', {'sources': [{'message_id': mid} for mid in ids]},
+                                   {'workspace_id': 'w1', 'number': number}))
+        rows = self.sql("SELECT resource_kind,scope_id,resource_id,seq FROM changes WHERE seq>? AND resource_kind LIKE 'source_cover%'", (before,))
+        owned = [row for row in rows if row[1] == 'owner']
+        topic = self.sql('SELECT topic_id FROM messages WHERE id=?', (root,))[0][0]
+        topic_rows = [row for row in owned if row[0] == 'source_cover']
+        self.assertEqual([(row[1], row[2]) for row in topic_rows], [('owner', topic)])
+        bulk = self.sql('SELECT value FROM metadata WHERE key=?', (source_item_covers._bulk_key('owner', topic),))
+        if count == 32:
+            self.assertEqual(len(owned), 33)
+            self.assertEqual({row[2] for row in owned if row[0] == 'source_cover_read'}, set(ids))
+            self.assertEqual(bulk, [])
+        else:
+            self.assertEqual(count, 33)
+            self.assertEqual(len(owned), 1)
+            self.assertEqual(bulk, [(str(topic_rows[0][3]),)])
+        self.assertEqual(self.sql('SELECT count(*) FROM pipeline_item_sources WHERE number=?', (number,)), [(count + 1,)])
+        self.assertEqual(len(self.shown(ids[-1])['cover']['items']), 1)
+
+    def test_1038_32_added_sources_keep_individual_keys(self):
+        self.source_key_boundary(32)
+
+    def test_1038_33_added_sources_use_topic_and_bulk_clock(self):
+        self.source_key_boundary(33)
 
     def test_1038_large_added_source_group_uses_existing_bulk_clock(self):
         root = self.post('Original source'); number = self.file('Work', root)

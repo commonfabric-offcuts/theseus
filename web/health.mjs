@@ -35,7 +35,7 @@ export function runnerPhrase(runner, now) {
   if (runner.live) return Number.isInteger(runner.started_ms) ? `has been running since ${at(runner.started_ms, now)}` : 'is running';
   if (runner.state === 'paused') return `has been paused${since ? ` since ${since}` : ''} because ${runner.why ?? 'of a reason it did not record'}${faultWords(runner.fault)}`;
   if (runner.state === 'stopped') return `was stopped${since ? ` at ${since}` : ''} and has not come back`;
-  if (runner.state === 'exited') return `${runner.why ?? 'ended'}${since ? ` at ${since}` : ''} and has not come back${faultWords(runner.fault)}`;
+  if (runner.state === 'exited') return `${runner.why ?? 'ended'}${since ? ` at ${since}` : ''} and has not come back`;
   if (runner.state === 'unrenewed') return `stopped answering${since ? ` at ${since}` : ''}`;
   return 'has never run here';
 }

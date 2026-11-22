@@ -912,12 +912,14 @@ def report_lines(answer, at):
     """The health view as an agent reads it on the command line (`aim-next health`): what
     needs attention, then one line each, in the page's words, with at(ms) for each time."""
     when = lambda ms, word="since": " %s %s" % (word, at(ms)) if isinstance(ms, int) else ""
+    def fault_words(fault):
+        return " (%s: %s)" % (fault["exception_class"], fault["message"]) if fault else ""
     red = set(answer.get("red") or ())
     runner = answer["runner"]
     if runner["live"]:
         runner_words = "running" + when(runner.get("started_ms"))
     elif runner["state"] == "paused":
-        runner_words = "paused%s because %s" % (when(runner.get("since_ms")), runner.get("why") or "of a reason it did not record")
+        runner_words = "paused%s because %s" % (when(runner.get("since_ms")), runner.get("why") or "of a reason it did not record") + fault_words(runner.get("fault"))
     elif runner["state"] == "stopped":
         runner_words = "stopped%s" % when(runner.get("since_ms"), "at")
     elif runner["state"] == "exited":
@@ -952,6 +954,21 @@ def report_lines(answer, at):
     lines = ["Needs attention:"] + ["  - " + line for line in problems] if problems else [
         "Everything is working: the agent runner is sending wakes and they are getting through."]
     lines.append("Agent runner: " + runner_words)
+    prior = runner.get("prior")
+    if prior:
+        ended = when(prior.get("ended_ms"), "at")
+        if prior["state"] == "paused":
+            prior_words = "paused%s because %s%s" % (ended, prior.get("why") or "of a recorded reason", fault_words(prior.get("fault")))
+        elif prior["state"] == "stopped":
+            prior_words = "stopped" + ended
+        elif prior["state"] == "exited":
+            prior_words = (prior.get("why") or "ended") + ended
+        elif prior["state"] == "unrenewed":
+            prior_words = "stopped answering" + ended
+        else:
+            prior_words = ""
+        if prior_words:
+            lines.append("Previous run: " + prior_words)
     server = answer.get("server")
     if server:
         lines.append("Server: answering%s, %s" % (when(server.get("started_ms")), "live updates on" if server.get("live_feed") else "no live updates"))

@@ -34,7 +34,8 @@ _STARTUP_CODES = frozenset((
     'invalid_executable', 'invalid_guard', 'invalid_route', 'missing_route', 'profile_unavailable',
     'duplicate_config', 'duplicate_destination', 'duplicate_route', 'invalid_actor',
     'invalid_broker_config', 'invalid_cli', 'invalid_codex_home', 'invalid_cwd',
-    'invalid_destination', 'invalid_instructions', 'invalid_model',
+    'invalid_destination', 'invalid_host_dir', 'conflicting_codex_executable',
+    'invalid_instructions', 'invalid_model',
     'invalid_permission_mode', 'invalid_reasoning_effort', 'invalid_writable_roots',
 ))
 

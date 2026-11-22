@@ -9,6 +9,7 @@ there is no whole-pipeline fact replay on a card read.
 
 import json
 
+# Bounded-write default:32 source keys + one topic key, then the existing bulk clock.
 SOURCE_KEYS_PER_READER_TOPIC = 32
 
 from .outcome_rules import stage_name
@@ -158,10 +159,10 @@ def notify(store, db, workspace, record, access_reader=None, source_messages=Non
             key = (reader, message['topic_id'])
             groups.setdefault(key, set()).add(message['id'])
     heard = set(groups)
-    for (reader, topic), messages in groups.items():
-        grouped = bulk or (source_messages is not None and len(messages) > SOURCE_KEYS_PER_READER_TOPIC)
+    for (reader, topic), group_messages in groups.items():
+        grouped = bulk or (source_messages is not None and len(group_messages) > SOURCE_KEYS_PER_READER_TOPIC)
         if not grouped:
-            for message in sorted(messages):
+            for message in sorted(group_messages):
                 store._change(db, 'actor', reader, 'source_cover_read', message, 1)
         # The same existing opaque topic clock covers a large added group;
         # no destination title, ID or state reaches a source-only reader.

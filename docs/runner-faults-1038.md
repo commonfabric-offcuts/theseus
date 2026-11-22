@@ -70,3 +70,30 @@ source-add facts/notification coverage. Below-browser owners and paired affected
 cohorts precede isolated native Health presentation if needed. Applied routing/
 recovery removals must fail, then restore exact bytes with fresh Python caches.
 One own workload/load<=12 on18cores; strict cleanup for owned fixtures/browsers.
+
+## Second head: review16184 / Build2
+
+Fable16197 orders this second head before the next preserved1043 step. The
+first head d690a696 and its published packet stay immutable. This new own
+branch parents that head on the same314 intake; Warp carries and lands it.
+
+Startup must preserve the existing fixed BrokerConfigError reasons
+invalid_host_dir and conflicting_codex_executable through run_foreground,
+including failures before ownership. No arbitrary code/text becomes trusted.
+CLI Health prints the optional safe class/fixed phrase on current paused
+runners and the previous paused run, using the same state rule as the page;
+old no-fault answers remain readable. Exited runners have no attached fault.
+
+The source-key threshold is an explicit bounded-write default, not measured
+from the outage:32 added sources per reader/topic use32 source keys and one
+topic key;33 use only the topic key plus the existing bulk clock. Tests cover
+both sides. Rename the shadowed message collection and scope the native
+fixture directory override to its own imported HTTP module, leaving the
+process-global tempfile module intact.
+
+Retain pre-fix assertion failures for the two startup paths and actual
+current/prior CLI commands, then run the affected owner checks and the
+existing Health/native controls with exact source identities and cleanup.
+The retained first-head74-file results remain attributed to that head; new
+verification states its own scope. DELETE and the stand-alone restart rule
+from Warp16141 remain. No approval/carry/live installation act here.

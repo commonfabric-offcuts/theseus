@@ -87,7 +87,8 @@ class OwnedDirectory(directory):
         finally:
             super().__exit__(*args)
 try:
-    with mock.patch.object(http.tempfile, 'TemporaryDirectory', OwnedDirectory):
+    # Override only this fixture module's binding; stdlib tempfile stays untouched.
+    with mock.patch.object(http, 'tempfile', SimpleNamespace(TemporaryDirectory=OwnedDirectory)):
         http.main()
 finally:
     stop()

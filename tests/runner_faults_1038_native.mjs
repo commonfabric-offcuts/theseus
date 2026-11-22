@@ -32,20 +32,31 @@ try {
   page.on('pageerror',e=>{const detail={message:e.message,stack:e.stack,phase:leaving?'leaving':'active'};
    if(engine==='webkit'&&leaving&&/^Fetch API cannot load \S+ due to access control checks\.$/.test(e.stack?.split('\n')[0]??''))leavingReadCancellations.push(detail);else pageErrors.push(detail);});
   const press=async locator=>width===390?locator.tap():locator.click();
+  const executedLoads=[];let modulePhase='initial';
+  const verifyLoads=(executed,phase)=>{
+   for(const [name,hash]of Object.entries(hashes).filter(([name])=>name.startsWith('web/'))){
+    const loads=executed.filter(row=>row.name===name&&row.phase===phase);assert.ok(loads.length,phase+' executed response '+name);
+    for(const row of loads){assert.equal(row.error,undefined);assert.equal(row.status,200);assert.equal(row.sha256,hash,phase+' executed '+name);}
+   }
+  };
+  page.on('response',response=>{
+   const file=new URL(response.url()).pathname.split('/').pop(), name='web/'+file;
+   if(!(name in hashes))return;
+   const index=executedLoads.length,phase=modulePhase;
+   executedLoads.push((async()=>{
+    const bytes=await response.body(), actual=createHash('sha256').update(bytes).digest('hex');
+    const saved=`served/${key}-${index}-${file}`;await writeFile(`${out}/${saved}`,bytes);
+    return {name,phase,url:response.url(),status:response.status(),sha256:actual,saved};
+   })().catch(e=>({name,phase,error:e.stack})));
+  });
   try {
    const paused=await control({method:'item_757',action:'runner_fault_1038',step:'pause',kind});observations.push({phase:'actual catch-all and kept Core pause',paused});
    assert.equal(paused.result.status,'paused');
    assert.deepEqual(paused.source_hashes,Object.fromEntries(Object.entries(hashes).filter(([name])=>name.startsWith('aim_next/'))));
    await page.goto(origin+'/?health');await page.locator('body[data-ready=true]').waitFor();
-   const app=await page.evaluate(()=>[...document.scripts].find(s=>s.src.includes('/app.mjs')).src);
-   const servedHashes={};
-   for(const [name,hash]of Object.entries(hashes).filter(([name])=>name.startsWith('web/'))){
-    const bytes=await(await page.request.get(new URL('./'+name.slice(4),app).href)).body();
-    const actual=createHash('sha256').update(bytes).digest('hex');servedHashes[name]=actual;
-    await writeFile(`${out}/served/${name.slice(4)}`,bytes);
-    assert.equal(actual,hash,'served '+name);
-   }
-   observations.push({phase:'actual served bytes retained',servedHashes});
+   const executed=await Promise.all(executedLoads);
+   verifyLoads(executed,'initial');
+   observations.push({phase:'original executed module response bodies retained',executed});
    const summary=page.locator('details[data-key=runner] summary');await summary.waitFor();
    await page.waitForFunction(()=>document.querySelector('details[data-key=runner] summary')?.textContent.includes('storage fault'));
    const text=await summary.innerText();observations.push({phase:'actual rendered pause',text});
@@ -56,7 +67,8 @@ try {
    assert.ok(geometry.scroll<=geometry.width+1);assert.ok(geometry.right<=geometry.width+1);observations.push({phase:'rendered containment',geometry});
    assert.doesNotMatch(await page.locator('body').innerText(),/PRIVATE_TOKEN|PRIVATE_MESSAGE|\/Users\/private/);
    await page.screenshot({path:`${out}/${key}-paused.png`});
-   leaving=true;await page.reload();await page.locator('body[data-ready=true]').waitFor();leaving=false;
+   modulePhase='reload';leaving=true;await page.reload();await page.locator('body[data-ready=true]').waitFor();leaving=false;
+   verifyLoads(await Promise.all(executedLoads),'reload');
    await page.waitForFunction(name=>document.querySelector('details[data-key=runner] summary')?.textContent.includes(name),paused.result.fault.exception_class);
    const resumed=await control({method:'item_757',action:'runner_fault_1038',step:'resume'});observations.push({phase:'actual version-fenced Core resume',resumed});
    assert.equal(resumed.status,'acquired');assert.deepEqual(resumed.health.runner.prior.fault,paused.result.fault);assert.equal(resumed.health.runner.fault,undefined);
@@ -66,6 +78,8 @@ try {
    assert.doesNotMatch(await page.locator('body').innerText(),/PRIVATE_TOKEN|PRIVATE_MESSAGE|\/Users\/private/);
    await page.screenshot({path:`${out}/${key}-resumed.png`});assert.deepEqual(pageErrors,[]);
   } catch(e) {error=e.stack;await page.screenshot({path:`${out}/${key}-failure.png`}).catch(()=>{});}
+  const executed=await Promise.all(executedLoads);observations.push({phase:'all original module loads including reload',executed});
+  if(executed.some(row=>row.error)&&!error)error='Original response capture failed: '+JSON.stringify(executed);
   results.push({key,error:error??null,observations,pageErrors,leavingReadCancellations});
   await writeFile(`${out}/observations.json`,JSON.stringify(results,null,2));children(owned);
   await writeFile(`${out}/owned-latest.json`,JSON.stringify({profile,ownedPids:[...owned],fixturePid:fixture.pid,origin}));
