@@ -52,6 +52,23 @@ def receipt(number=1, seconds=None, complete=True):
 
 
 class TimingSelection(unittest.TestCase):
+    def test_completed_producer_with_an_empty_planned_part_still_supplies_times(self):
+        run,artifact,data,jobs=receipt()
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            summary=json.loads(archive.read('summary.json'));provenance=json.loads(archive.read('provenance.json'))
+        first=provenance['plan'][0];first.update(name='python units 1 of 2',python_shard='1/2')
+        provenance['plan'].append(dict(first,name='python units 2 of 2',python_shard='2/2',files=[]))
+        summary['steps'][0]['shards'][0]['partition']['total']=2
+        summary['steps'][0]['shards'].append({'partition':{'index':2,'total':2,'files':[]},'timing':{'files':{}}})
+        jobs['jobs']=[dict(jobs['jobs'][0],name=job['name']) for job in provenance['plan']]
+        out=io.BytesIO()
+        with zipfile.ZipFile(out,'w') as archive:
+            archive.writestr('summary.json',json.dumps(summary));archive.writestr('provenance.json',json.dumps(provenance))
+        data=out.getvalue();artifact.update(size_in_bytes=len(data),digest='sha256:'+hashlib.sha256(data).hexdigest())
+        result=sh.timing_receipt(run,artifact,data,jobs,'owner/repo')
+        self.assertEqual(result['minutes'],{'tests/test_a.py':2,'tests/test_b.py':1})
+        self.assertEqual(result['planned_files'],['tests/test_a.py','tests/test_b.py'])
+
     def test_unsafe_or_duplicate_archive_entries_and_nonobject_json_are_rejected(self):
         for entries in ((('summary.json','{}'),('../provenance.json','{}')),
                         (('summary.json','{}'),('summary.json','{}'),('provenance.json','{}')),
@@ -174,10 +191,23 @@ class PlanningWeights(unittest.TestCase):
         fresh = self.fresh();fresh['minutes']['tests/test_a.py'] = float('nan')
         result = sh.select_python_weights(self.root, self.weights, lookup=lambda: fresh)
         self.assertEqual(result['units']['weight_source']['kind'], 'checked_in')
-        for count in (None, 0, True, 4):
+        for count in (None, 0, -1, True, 1.5):
             weights = copy.deepcopy(self.weights);weights['units']['python_shards'] = count
             with self.subTest(count=count), self.assertRaises(ValueError):
                 sh.select_python_weights(self.root, weights, lookup=self.fresh)
+        weights=copy.deepcopy(self.weights);weights['units']['python_shards']=4
+        jobs=[j for j in sh.jobs(self.root,sh.select_python_weights(self.root,weights,lookup=self.fresh)) if j.get('python_shard')]
+        self.assertEqual(len(jobs),4)
+        empty=[j for j in jobs if not j['files']];self.assertEqual(len(empty),1)
+        self.assertEqual(empty[0]['timeout'],math.ceil(.5*1.5))
+        for path in (self.root/'tests').iterdir():path.unlink()
+        selected=sh.select_python_weights(self.root,weights)
+        self.assertEqual(selected['units']['weight_source']['lookup_skip_reason'],'empty_python_inventory')
+        jobs=[j for j in sh.jobs(self.root,selected) if j.get('python_shard')]
+        self.assertEqual(len(jobs),4);self.assertTrue(all(j['files']==[] for j in jobs))
+        self.assertTrue(all(j['timeout']==math.ceil(.5*1.5) for j in jobs))
+        with redirect_stdout(io.StringIO()),redirect_stderr(io.StringIO()):
+            self.assertEqual(sh.run(self.root,'1/4',weights,assignment=[]),0)
 
     def test_caps_follow_selected_deal_and_preserve_exact_once_assignment(self):
         selected = sh.select_python_weights(self.root, self.weights, lookup=self.fresh)
@@ -199,10 +229,34 @@ class PlanningWeights(unittest.TestCase):
     def test_invalid_assignment_refuses_before_importing_any_test(self):
         marker = self.root/'imported'
         (self.root/'tests/test_a.py').write_text('from pathlib import Path\nPath(%r).touch()\n' % str(marker))
-        for files in ([], ['tests/test_a.py']*2, ['../outside.py'], ['tests/not_here.py']):
+        for files in (['tests/test_a.py']*2, ['../outside.py'], ['tests/not_here.py']):
             with self.subTest(files=files), self.assertRaises(ValueError):
                 sh.run(self.root, '1/2', self.weights, assignment=files)
         self.assertFalse(marker.exists())
+
+    def test_empty_shared_part_runs_zero_and_combines_only_with_a_positive_union(self):
+        for name in ('b','new'):(self.root/'tests'/('test_'+name+'.py')).unlink()
+        (self.root/'tests/test_a.py').write_text('import unittest\nclass C(unittest.TestCase):\n def test_ok(self):pass\n')
+        weights=copy.deepcopy(self.weights);weights['units']['python_shards']=4
+        jobs=[j for j in sh.jobs(self.root,weights) if j.get('python_shard')];docs=[];receipts=[]
+        for job in jobs:
+            with redirect_stdout(io.StringIO()) as out,redirect_stderr(io.StringIO()):
+                code=sh.run(self.root,job['python_shard'],weights,assignment=job['files'])
+            evidence=json.loads(out.getvalue().splitlines()[-1]);self.assertEqual(code,0)
+            self.assertEqual(evidence['tests'],int(bool(job['files'])))
+            docs.append({'steps':[{'name':'python-units','passed':True,'exit':0,'counts':{'tests':evidence['tests'],'status':'OK'}}],
+                         'python_shard':evidence['python_shard']})
+            receipts.append({'shard':{'name':job['name']}})
+        steps,_,_,missing_jobs,missing=sh.check.combine_unit_results(docs,jobs,receipts)
+        self.assertEqual((missing_jobs,missing),([],[]));self.assertTrue(steps[0]['passed'])
+        docs[0]['steps'][0]['counts']['tests']=0
+        self.assertFalse(sh.check.combine_unit_results(docs,jobs,receipts)[0][0]['passed'])
+        env=dict(os.environ,AIM_PYTHON_SHARD_FILES='[]')
+        answer=subprocess.run([sys.executable,'-I','-X','pycache_prefix='+str(self.root/'empty-cli-cache'),
+            str(ROOT/'tools/unit_shards.py'),'--root',str(self.root),'--shard','2/4'],env=env,text=True,capture_output=True)
+        self.assertEqual(answer.returncode,0,answer.stderr)
+        evidence=json.loads(answer.stdout.splitlines()[-1]);self.assertEqual(evidence['tests'],0)
+        self.assertEqual(evidence['python_shard'],{'index':2,'total':4,'files':[]})
 
     def test_runner_uses_shared_assignment_instead_of_redealing_stale_table(self):
         for name in ('a','b','new'):
@@ -231,10 +285,11 @@ class PlanningWeights(unittest.TestCase):
         self.assertIn('toJSON(matrix.files)',step)
 
     def test_plan_cli_uses_default_fresh_selection_and_records_source_in_each_python_job(self):
-        with mock.patch.object(sh,'bounded_timings',return_value=self.fresh()), \
+        with mock.patch.object(sh,'bounded_timings',return_value=self.fresh()) as lookup, \
                 redirect_stdout(io.StringIO()) as out:
             code=sh.plan_main(['--event-name','push','--head','a'*40])
         self.assertEqual(code,0)
+        lookup.assert_called_once()
         plan=json.loads(out.getvalue())
         jobs=[job for job in plan['shards'] if job.get('python_shard')]
         self.assertEqual(len(jobs),4)

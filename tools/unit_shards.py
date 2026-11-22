@@ -100,7 +100,7 @@ def timing_receipt(run, artifact, data, api_jobs, repository):
     seconds = {}
     for job in selected:
         index, count = partition(job['python_shard']);files = job['files']
-        _require(isinstance(files, list) and files and len(files) == len(set(files))
+        _require(isinstance(files, list) and len(files) == len(set(files))
                  and all(isinstance(p, str) and p.startswith('tests/') and not Path(p).is_absolute()
                          and '..' not in Path(p).parts for p in files), 'invalid_planned_files')
         planned.extend(files)
@@ -188,6 +188,8 @@ def select_python_weights(root, weights, lookup=None):
     files = test_files(root);config = weights.get('units') or {}
     reason = None
     try:
+        if not files and lookup is None:
+            raise ValueError('empty_python_inventory')
         repository = os.environ.get('GITHUB_REPOSITORY') or (config.get('python_source') or {}).get('repository')
         raw = lookup() if lookup is not None else bounded_timings(repository or '')
         measured = _minutes(raw['minutes']);source = dict(raw['source']);planned = set(raw.get('planned_files') or measured)
@@ -265,12 +267,11 @@ def jobs(root, weights):
     config = weights['units']
     files = test_files(root)
     count = config.get('python_shards')
-    _require(type(count) is int and 1 <= count <= len(files), 'no_complete_python_deal')
+    _require(type(count) is int and count > 0, 'no_complete_python_deal')
     minutes = _minutes(config['python_minutes'])
     _require(type(config.get('setup_minutes')) in (int, float) and math.isfinite(config['setup_minutes'])
              and config['setup_minutes'] >= 0, 'invalid_setup_minutes')
     bins = deal(files, minutes, count)
-    _require(all(bucket['files'] for bucket in bins), 'no_complete_python_deal')
     source = config.get('weight_source') or {'kind':'checked_in','commit':table_commit(root),
                                             'lookup_skip_reason':'explicit_table_input'}
     result = []
@@ -347,7 +348,7 @@ def run(root, shard=None, weights=None, assignment=None):
     chosen = partition(shard) if shard else None
     files = test_files(root)
     if assignment is not None:
-        _require(chosen is not None and isinstance(assignment,list) and assignment
+        _require(chosen is not None and isinstance(assignment,list)
                  and all(isinstance(p,str) for p in assignment), 'invalid_python_assignment')
         _require(len(assignment) == len(set(assignment)) and set(assignment) <= set(files), 'invalid_python_assignment')
         selected = set(assignment)
@@ -454,7 +455,7 @@ def plan(root, event_name, event, head, browser_shards=4, measured=None, weights
                'timeout_source': 'ceil(longest dealt %.1f minutes * 1.5); .github/check-weights.json sources' % longest}
               for i, (load, names) in enumerate(loads) if names]
     if weights is None:
-        weights = json.loads((Path(__file__).resolve().parents[1] / '.github/check-weights.json').read_text())
+        weights = select_python_weights(root, json.loads((root / '.github/check-weights.json').read_text()))
     for job in jobs(root, weights):
         job['timeout_minutes'] = job.pop('timeout')
         shards.append(job)

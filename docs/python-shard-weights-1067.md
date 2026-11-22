@@ -63,7 +63,9 @@ retained evidence falls back to the checked-in table, refreshed in this head
 from the selected evidence. Record table commit and why lookup was passed over;
 this is visible fallback, never a silent claim of new measurements. Prior runs
 cannot block a release's own checks. Refuse only if neither input yields a
-complete deal, including invalid/missing shard count or an empty Python bin.
+complete deal, including invalid/missing shard count. Empty bins and a wholly empty inventory
+remain valid planned partitions with the setup-only cap, per Warp16729/16741,
+which withdraw both emptiness refusals.
 Individual new/renamed/untimed-file median fallback stays explicit with either
 source. Preserve finite/nonnegative validation for both sources.
 
@@ -107,3 +109,43 @@ protected judgment remain separate requirements;1067 alone does not satisfy them
 Warp owns producer/landing/judgment/runtime decisions. Fable owns canonical
 freeze/stages. Deliver one exact clean pushed source, retained packet and one
 Warp technical read, with published-byte re-download verification.
+
+## Second head — Warp16729
+
+Preserve first head aa488c651e9596e3bad774fc9b948e59439f2f48 and its packet.
+Head2 stays on original330/base9c50aa8c in a NEW own worktree/branch from
+aa488. Refuse only nonpositive/noninteger (including bool) python_shards.
+A positive count greater than inventory, including zero files, is valid.
+Warp16741 withdraws16729's no-test-file refusal clause.
+An empty bin retains its index/total, files[] and ceil(setup*1.5) cap.
+The shared-assignment runner must accept [] for such a planned part, report
+Ran0/OK and files[], while the combiner still requires every planned part
+and a positive union. Empty-part receipt/timing completeness remains valid.
+No selector/admission/history or cap/deal arithmetic changes.
+
+Retain actual first-head red and330 green for all seven
+test_tools_check_plan.py methods, corrected head2 green, all18 feature cases
+and a wider named planning/receipt owner cohort. Add explicit empty assignment
+execution/combination and invalid-count/empty-inventory checks. Apply/restore the
+empty-bin refusal as an actual negative control with separate new caches.
+The first review's271-of271 measured description is qualified:268 measured
+and3 explicit median fallbacks;271 effective weights, not271 measurements.
+No browser, runtime/profile/shared Tool or hosted dispatch work. Freeze the
+corrected source when meaningful tests are green; inherited failures stay
+explicit. Fable owns canonical stages; one fresh Warp technical read follows
+a pushed exact source and independently verified published packet.
+
+Warp16741 further corrects the empty-root rule: planning never refuses for
+emptiness. The seven Plan fixtures remain byte-for-byte identical to330.
+Whether a union of empty parts passes belongs to the judge/combiner; planning
+retains all empty parts and setup caps. The intermediate seeded fixture,
+its27-pass result and earlier still-red phases are retained as superseded
+experiments and are not the final source.
+
+Both default planning entry points use the same weight selection; the CLI
+passes selected weights into plan(), so there is still at most one lookup
+per plan. Explicit supplied weights remain a pure no-lookup planning input.
+An empty inventory needs no timings, so it skips the optional remote lookup
+with explicit empty_python_inventory reason and table commit/digest; this
+also makes the original empty-root fixtures deterministic and offline.
+The real nonempty hosted walk still uses the bounded newest-complete default.
