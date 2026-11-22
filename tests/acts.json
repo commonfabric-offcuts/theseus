@@ -7571,17 +7571,17 @@
   },
   {
    "item": 396,
-   "act": "← at the very start of a card being written folds away its children",
+   "act": "← at the very start of a card being written displays the same card with its children untouched",
    "break": [
     [
      "web/deck-page.mjs",
-     "if (!this.foldWriting()) return;",
-     "return;"
+     "      else if (plain && collapsed && (event.key === 'ArrowLeft' && field.selectionStart === 0 || event.key === 'ArrowRight' && end)) this.finish();",
+     "      else if (plain && collapsed && (event.key === 'ArrowLeft' && field.selectionStart === 0 || event.key === 'ArrowRight' && end)) return;"
     ]
    ],
    "check": {
     "native": "notebook",
-    "case": "← at its very start folds"
+    "case": "← at its very start displays"
    }
   },
   {
@@ -7596,7 +7596,7 @@
    ],
    "check": {
     "native": "notebook",
-    "case": "← at its very start folds"
+    "case": "← at its very start displays"
    }
   },
   {
