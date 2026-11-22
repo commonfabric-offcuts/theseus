@@ -33,7 +33,7 @@ test('975 width notifications coalesce outside resize delivery and disposal canc
   const previous=globalThis.ResizeObserver,frames=new Map(),observed=[];let notify,serial=0,fits=0,disconnected=false;
   globalThis.ResizeObserver=class{constructor(fn){notify=fn;}observe(node){observed.push(node);}disconnect(){disconnected=true;}};
   try{
-    const root={ownerDocument:{},dataset:{},addEventListener(){}},field={addEventListener(){}};
+    const root={ownerDocument:{},dataset:{},querySelector:()=>null,addEventListener(){}},field={addEventListener(){}};
     const win={matchMedia:()=>({addEventListener(){},removeEventListener(){}}),addEventListener(){},removeEventListener(){},
       requestAnimationFrame:fn=>{frames.set(++serial,fn);return serial;},cancelAnimationFrame:id=>frames.delete(id)};
     const bar=new ComposeBar({root,field,panels:{},openers:{},win});bar.fit=()=>{fits++;};

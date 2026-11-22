@@ -7,6 +7,8 @@ import sys
 from types import SimpleNamespace
 import unittest
 import uuid
+from unittest.mock import patch
+from aim_next import reply_passages
 
 from aim_next.assessment_dispatch import Core, DispatchError, Session, drive, request_lock, read_tool
 from aim_next.codex_host import ProvisionError
@@ -19,6 +21,7 @@ class Native:
     def __init__(self, source, passage):
         self.threads, self.calls, self.fail, self.active, self.source = {}, [], None, False, source
         self.passage = passage
+        self.reason = None
 
     def call(self, method, params):
         self.calls.append((method,params))
@@ -41,7 +44,7 @@ class Native:
                 'text':json.dumps({'body':'Continue: the named artifact is present; the queue is external.',
                     'recommendation':'continue','evidence_message_ids':[self.source],
                     'next_checkpoint':'Verify the deployed artifact',
-                    'reply_passage':self.passage})}}], 'nextCursor':None}
+                    **({'reply_without_quote':self.reason} if self.reason is not None else {'reply_passage':self.passage})})}}], 'nextCursor':None}
         else:
             raise AssertionError(method)
         if self.fail == method:
@@ -103,6 +106,30 @@ class DispatchCase(unittest.TestCase):
                 self.assertEqual(params['sandbox'],'read-only')
                 self.assertEqual(params['approvalPolicy'],'never')
                 self.assertEqual(params['cwd'],self.config.cwd)
+
+    def test_1025_new_reason_report_readback_preserves_exact_fingerprint(self):
+        self.native.reason = 'The whole requested artifact.'
+        result = self.run_assessment()
+        source = self.core.view('source', {'kind':'message','id':result['message_id']})
+        self.assertEqual(source['reply_basis']['reason_format'], 2)
+        self.assertTrue(source['body'].startswith('> The whole requested artifact.\n\n'))
+        calls = list(self.native.calls)
+        self.assertEqual(self.run_assessment(), result)
+        self.assertEqual(self.native.calls, calls)
+
+    def test_1025_historical_reason_report_readback_uses_its_immutable_old_basis(self):
+        self.native.reason = 'The whole requested artifact.'
+        select = reply_passages.select
+        def legacy_select(source, snapshot):
+            return {key:value for key,value in select(source,snapshot).items() if key != 'reason_format'}
+        with patch('aim_next.reply_passages.select', side_effect=legacy_select):
+            result = self.run_assessment()
+        source = self.core.view('source', {'kind':'message','id':result['message_id']})
+        self.assertNotIn('reason_format', source['reply_basis'])
+        self.assertTrue(source['body'].startswith('Reply without a quote:\n\n> The whole requested artifact.\n\n'))
+        calls = list(self.native.calls)
+        self.assertEqual(self.run_assessment(), result)
+        self.assertEqual(self.native.calls, calls)
 
     def test_crash_before_attach_leaves_only_unused_empty_thread(self):
         self.native.fail = 'thread/inject_items'

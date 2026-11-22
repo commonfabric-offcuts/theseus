@@ -16,6 +16,7 @@
 // gets the build the server serves as it answers, so another one comes only
 // from a deploy after it, never in a loop. Otherwise (its own build, or the
 // server unread) the page says so in plain words, with Reload.
+let bootNoticeClosed = false;
 addEventListener('error', event => {
   const script = event.target;
   const own = script instanceof HTMLScriptElement && script.type === 'module' && script.src
@@ -23,10 +24,19 @@ addEventListener('error', event => {
   if (!own) return;
   const say = () => {
     const status = document.getElementById('app-status');
+    if (bootNoticeClosed) { status.hidden = true; return; }
     const again = document.createElement('button');
     again.type = 'button'; again.className = 'updated-reload'; again.title = 'Reload Theseus'; again.textContent = 'Reload';
     again.onclick = () => location.reload();
-    status.replaceChildren('Theseus could not open this page.', again);
+    // No module ran, so this fallback cannot import the page's notice helper.
+    const close = document.createElement('button');
+    close.type = 'button'; close.className = 'page-notice-close'; close.textContent = '×';
+    close.title = 'Close notice'; close.setAttribute('aria-label', 'Close notice');
+    close.onclick = () => {
+      bootNoticeClosed = true; status.hidden = true;
+      if (document.activeElement === close) document.getElementById('main')?.focus({ preventScroll: true });
+    };
+    status.replaceChildren('Theseus could not open this page.', again, close);
     status.hidden = false;
   };
   fetch('/api/build', { cache: 'no-store', credentials: 'same-origin' })

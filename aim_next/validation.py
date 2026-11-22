@@ -144,6 +144,7 @@ REQUIRED_EXPECTED = {"workspace.link_set": "link_revision","agent.execution": "e
                      "stack.move": "move_revision", "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
 VIEWS = {
     "workspace_links": {"workspace_id", "cursor", "limit"},
+    "submission_mention_reach": {"submission_id", "cursor", "limit"},
     "rail_dimming": {"candidate"},
     "hosted_seat": {"workspace_id", "seat_request_id"},
     "hosted_seats": {"workspace_id", "cursor", "limit"},

@@ -6,7 +6,7 @@ import { keyAction, holdsWriting, written } from './editor.mjs';
 import { showLine } from './lines.mjs';
 import { ReaderLayout } from './layout.mjs';
 import { composerWidth } from './composer-width.mjs';
-import { imageBarrier, recoveryReadOnly, currentImages } from './upload-state.mjs';
+import { imageBarrier, currentImages } from './upload-state.mjs';
 import { paintAddress } from './people.mjs';
 import { timeNode } from './times.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, sourceChange, paintSaveTime } from './writing-helpers.mjs';
@@ -573,7 +573,7 @@ export class Reader {
   // words its agent author changed after this person read them show struck through where they stood (item 614).
   drawSource(body) {
     const source = this.source, page = source?.source_ref?.kind === 'memory' && this.callbacks.pageImage;
-    drawPassages(this.sourceBody, body, document, { copyFences: true, struck: source?.source_ref?.kind === 'message' ? source.struck?.cuts : null,
+    drawPassages(this.sourceBody, body, document, { replyBasis: source?.source_ref?.kind === 'message' ? source.reply_basis : undefined, agentReply: source?.author_kind === 'agent' && Boolean(source?.reply_to), copyFences: true, struck: source?.source_ref?.kind === 'message' ? source.struck?.cuts : null,
       notebook: source?.source_ref?.kind === 'memory',
       displayRules: source?.source_ref?.kind === 'message' ? this.callbacks.displayRules?.() ?? [] : [],
       images: page ? pageImages(source, attachment => this.callbacks.pageImage(attachment, source.source_ref)) : null });
@@ -779,7 +779,7 @@ export class Reader {
     if (this.mode === 'note') this.switchMode('reply');
     const editor = this.sessions.reply;
     if (!this.writes(editor)) return;
-    if (editor.adopting || recoveryReadOnly(editor)) { this.notice('Review saved image copies before changing this reply.'); return; }
+    if (editor.adopting) { this.notice('Review saved image copies before changing this reply.'); return; }
     // Quoting on a laptop opens room to reply; a phone has only its stacked layout.
     if (!this.card && !this.narrow.matches && this.layout.mode !== 'wide' && !this.temporaryWide) {
       this.temporaryWide = true; this.applyLayout();
@@ -878,7 +878,7 @@ export class Reader {
   switchMode(next = this.mode === 'reply' ? 'note' : 'reply') {
     if (!this.sessions) return;
     this.cancelImagePicker();
-    if (this.editor && !recoveryReadOnly(this.editor) && !this.editor.adopting) { this.editor.draft.caret = this.caret(); this.callbacks.edit(this.editor); }
+    if (this.editor && !this.editor.adopting) { this.editor.draft.caret = this.caret(); this.callbacks.edit(this.editor); }
     this.mode = next;
     ++this.viewToken;
     this.callbacks.mode?.(next);
@@ -973,7 +973,7 @@ export class Reader {
   // takeName, or tapped once); false when the reply cannot change now.
   addName(name) {
     const editor = this.sessions?.reply;
-    if (!editor || !this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return false;
+    if (!editor || !this.writes(editor) || editor.adopting) return false;
     if (!editor.draft.addressees.includes(name) && !(editor.offeredAddressees ?? []).includes(name)) {
       editor.edit({ addressees: [...editor.draft.addressees, name], ...naming(editor.draft, this.own(editor), this.kindOf, this.answering()) });
       this.callbacks.edit(editor); this.paintRecipients(); this.paintChoice();
@@ -984,7 +984,7 @@ export class Reader {
   // Takes someone off the reply. Removing someone declines any offer of them,
   // and writes only when the writing already names them.
   removeName(name, editor = this.sessions?.reply, presentation = this.presentation) {
-    if (!editor || !this.writes(editor, presentation) || editor.adopting || recoveryReadOnly(editor)) return;
+    if (!editor || !this.writes(editor, presentation) || editor.adopting) return;
     editor.declineAddressee(name);
     if (editor.draft.addressees.includes(name)) {
       const rest = editor.draft.addressees.filter(item => item !== name);
@@ -1029,7 +1029,7 @@ export class Reader {
 
   choose(choice) {
     const editor = this.sessions?.reply;
-    if (!editor || !this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) { this.paintChoice(); return; }
+    if (!editor || !this.writes(editor) || editor.adopting) { this.paintChoice(); return; }
     editor.edit(chosen(choice));
     this.callbacks.edit(editor); this.paintChoice();
   }
@@ -1105,7 +1105,7 @@ export class Reader {
     if(state.readOnly)this.input?.mentions?.close();
     this.$('recipient-input').disabled = this.field.readOnly;
     this.paintChoice();
-    this.$('quote-selection').disabled = Boolean(this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed || this.sessions.reply.adopting || recoveryReadOnly(this.sessions.reply));
+    this.$('quote-selection').disabled = Boolean(this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed || this.sessions.reply.adopting);
     this.paintQuote();
     this.paintImages();
     this.paintOffer();
