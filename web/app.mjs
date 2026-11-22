@@ -22,7 +22,7 @@ import { EditorRegistry } from './app-session.mjs';
 import { Reader } from './reader.mjs';
 import { InlineComposer } from './inline-composer.mjs';
 import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
-import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
+import { readableUploads, uploadWork, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 import { typingField } from './writing-input.mjs';
 import { Freshness, initialViews, actorBaseline, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { OutcomeChanges, outcomeReads } from './outcome-refresh.mjs';
@@ -190,8 +190,8 @@ const differences = editor => reviewDifferences(editor, candidates.get(editor.ke
 const needsReview = editor => differences(editor).length > 0;
 const reviewState = editor => {
   const first = differences(editor)[0];
-  if (first) return { hidden: false, text: 'Review versions', title: first.label };
-  // Recovery still owns its write gates. Unknown contents are not a version
+  if (first) return { hidden: false, text: 'Check recovery', title: first.label };
+  // Current writing keeps its own admission guards. Unknown contents are not a version
   // difference, and an empty upload-state object is not a recovery action.
   const unsettled = candidates.get(editor.key)?.items.some(row => row.active !== 0 && !row.superseded_by && (row.availability !== 'available' || row.snapshot?.authorityRecovery ||
     row.snapshot?.attempts?.some(attempt => !attempt.detached && !attempt.receipt) ||
@@ -200,7 +200,7 @@ const reviewState = editor => {
     Array.isArray(entry.attempts) && entry.attempts.some(attempt => !attempt.detached && !attempt.receipt && attempt.publish_response?.recorded !== true &&
       !(attempt.begin_response?.recorded === true && attempt.begin_response.status === 'rejected'))));
   const recovery = editor.authorityRecovery || editor.conflict || editor.uploadOpaque || editor.imageStorageError || editor.recoveryDiscovery || editor.cleanupError || unsettled || retained;
-  return { hidden: !recovery, text: 'Check recovery', title: recovery ? 'Check the saved writing or connection before sending' : '' };
+  return { hidden: !recovery, text: 'Check recovery', title: recovery ? 'Check saved writing and connection recovery' : '' };
 };
 const paintVersionButton = (button, editor) => {
   const state = reviewState(editor); button.hidden = state.hidden; button.textContent = state.text; button.title = state.title;

@@ -8,6 +8,7 @@ import sqlite3
 import uuid
 
 from .contract import Refusal, StoreError, _identifier, _json
+from .runner_faults import busy
 
 
 MAX_PIN_BYTES = 8192
@@ -188,7 +189,6 @@ class RoutePins:
                     except (sqlite3.Error, OSError, KeyboardInterrupt) as error:
                         raise RoutePinError("ROUTE_PIN_STORAGE_ERROR", "Route pin connection cleanup could not be confirmed") from error
         except (sqlite3.Error, OSError) as error:
-            if (isinstance(error, sqlite3.OperationalError) and error.__cause__ is None
-                    and ("locked" in str(error).lower() or "busy" in str(error).lower())):
+            if busy(error):
                 raise RoutePinError("DATABASE_BUSY", "Route pin is busy; retry the read", retryable=True) from error
             raise RoutePinError("ROUTE_PIN_STORAGE_ERROR", "Route pin read could not be confirmed") from error

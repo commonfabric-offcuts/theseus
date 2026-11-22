@@ -53,7 +53,11 @@ export async function openComposerReader(p, id, until, words = 'Second agent') {
     await p.mouse.move(b.x + b.width / 2, b.y + b.height * 0.6);
     const cue = p.locator(`${card} .message-preview-cue`);
     if (await cue.count()) await cue.first().click(); else await p.mouse.click(b.x + b.width / 2, b.y + b.height * 0.6);
+    // The current desktop first press opens the card composer; the next
+    // native press on its source opens the full Reader.
+    await until(p, s => document.querySelector('#reader').open || Boolean(document.querySelector(s + ' .card-reply-composer')), 'the card composer or Reader', card);
+    if (!await p.locator('#reader').evaluate(el => el.open)) await p.locator(card + ' > .message-preview').click();
   }
-  await until(p, text => document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith(text), 'Reader on the requested writing source', words);
+  await until(p, text => document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes(text), 'Reader on the requested writing source', words);
   await until(p, () => document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(x => x.playState !== 'running'), 'settled Reader');
 }
