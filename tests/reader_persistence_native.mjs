@@ -1803,7 +1803,10 @@ try {
   bodyCompleted = true;
 } catch (error) {
   // The teardown's own assertion may replace this exception; the report keeps it.
-  bodyError = String(error?.stack ?? error); throw error;
+  bodyError = String(error?.stack ?? error);
+  // Kept on its own before the teardown, which may throw before the report is written.
+  await writeFile(path.join(evidencePath, 'body-error.txt'), bodyError).catch(() => {});
+  throw error;
 } finally {
   // Each step of the teardown has its bound, and one that fails is recorded
   // and the rest still run, so native.json is always written (closeAll in

@@ -626,7 +626,10 @@ try {
   bodyCompleted = true;
 } catch (error) {
   // The teardown's own assertion may replace this exception; the report keeps it.
-  bodyError = String(error?.stack ?? error); throw error;
+  bodyError = String(error?.stack ?? error);
+  // Kept on its own before the teardown, which may throw before the report is written.
+  await writeFile(path.join(evidencePath, 'body-error.txt'), bodyError).catch(() => {});
+  throw error;
 } finally {
   if (browser) { await browser.close(); browserClosed = true; }
   fixture.stdin.end();
