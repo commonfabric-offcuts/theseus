@@ -1,0 +1,106 @@
+# Send current writing (1044)
+
+Small ordinary Build1 p-4fbe8e9c7c8849d5b6dd8be7, topic t-383e7a68ac19aab28c1bb6cf05813cfa, Fable16116, Tony15874/15895/15896 and Warp15906/15954/16114. Fresh actual-live325 cce9aeea87050f08097b6577b3de74be937e5926/tree8807e6f6cce2efa5bd16f75e579d19e58d7ff11a, verified against bound Health and installed read-only Git. New own core-lane7/1044-current-writing-325 worktree. Frozen1049 e38ba781 and its packet remain unchanged.
+
+Send sends the current visible writing through the existing registry/session/guarded preparation and kept-writing owners. A different unsent saved version is retained and reachable from a quiet Check recovery control, never a replacement for Send or a reason by itself to block Send. The earlier two-choice/Keep current writing menu proposal is superseded. Do not discard a version, mark it sent, invent confirmation or change an already captured send identity.
+
+Trace actual registry/keepCurrentWriting/composer/recovery/send owners before editing. Red first on actual325 with a conflicting saved version and real isolated IndexedDB; record which state actually blocks sending and why Keep current writing does or does not clear it. Tony's exact317 device rows are not supplied: only claim a reproduced cause when the scratch state establishes it; otherwise report a mechanism and the remaining historical-state limit. Never inspect or mutate Tony's browser/storage/live writing.
+
+Separate a saved alternative's ownership/recovery from the current editor's own image selection/upload/authority/uncertainty work. Preserve current images and upload admission, durable capture, runtime authority, actual source/destination availability, typed-recipient and composition guards, and operation retry identity. Keep old unsent versions and pending histories reachable after sending, navigation and reload through the existing recovery journal. Do not autosend an alternative or auto-adopt its writing. Source-owner changes stay at the existing shared decisions and recovery UI; no unrelated startup, Notebook deletion or composer-close changes.
+
+Verify below browser with meaningful state/routing tests before native matrix. Native actual-app scratch proof covers keyboard and phone-sized controls, both looks and engines, visible current-writing Send with actual Core receipts/source readback, exact retained alternative recovery/readback after reload, and current image/authority protections. Explicit synthetic journal seeding is labelled as setup, not a native refusal/OS gesture. Apply an actual routing/state fault, observe failure, restore byte-identically and rerun its control. Compare an unchanged scoped base/head owner cohort and retain every full failure block. Record product/test/producer hashes at start/end of paired runs; retain original executed HTTP response bodies and all test phases.
+
+One sequential own workload; load<12/18. Own isolated headless CFT/installed-WebKit/profile/scratch CoreHTTP only; Browser.close/disconnected/all observed PIDs absent/physical profile removed/fixture stdin EOF exit0/absence/empty errors/closed ports verified before browser-free. No visible browser, OS keyboard, installation/runtime/live-store/profile or identity changes. Fable canonical freeze/stages; Warp independent read/approval/carry/runs/landing/runtime/Tony publication.1046 follows this freeze with fresh post1026 reproduction, never concurrent.
+
+## Pre-edit observations and narrowed guard boundary
+
+Tony15874's downloaded screenshot (SHA256924e06499f699408c2547675bd8c0f27ce7cc806808b89aa2e4e9abe25328cb8) actually shows Check recovery beside a dim Send and a currently selected image with the message Finish or remove the image before sending. Keep current writing changes an exact refused saved-copy choice; it cannot finish/remove a current selection. A fresh325 unit state reproduces that distinction, including a committed saved-copy choice leaving the current-image barrier. This explains the shown protection class, not the unprovided exact317 browser state. Preserve that current-image guard.
+
+The change separates alternate-copy discovery/pagination/selected old images from current editor admission. Old image copies, held/unreadable rows and refused snapshots remain reachable and unchanged; they do not disable current typing, Add image or Send. Current selected/unready images, storage errors, malformed own upload state, runtime authority, current draft conflicts, source availability and preparing operations still block through their existing owners. The recovery control always says Check recovery and uses quiet link styling with its existing keyboard/touch target, never the warning pill. Actual alternative adoption still uses the existing guarded explicit recovery path.
+
+## Evidence boundaries at delivery
+
+The retained source comparison finds the same upload-state and keepCurrentWriting bodies in releases314,317 and325. Tony15874's recorded send time is21:52:53.373Z (13:52:53PT); the recorded317 deployment is14:01:15.467PT. The screenshot therefore does not establish that317 was installed when that original message was sent. A current-image barrier surviving a saved-copy Keep current choice is reproduced; Tony's exact device/action history and an actual historical failed choice write remain unproved.
+
+The owner cohort has54files. After an interrupted first unchanged candidate replay exposed obsolete recovery-gate expectations, five directly related unit files deliberately follow the new advisory-copy contract;49files remain byte-identical to the baseline, and one positive direct-input case was added. The old931native producer receives only the recovery-control label change. Full first-run diagnostics, interruption and final comparison are retained; no all54-unchanged-tests claim is made. Existing unrelated baseline failures remain explicit.
+
+Native main-flow checks use actual keyboard Send or phone-sized tap, Core receipts/source reads, original loaded HTTP bodies, strict IndexedDB alternate rows and reload/explicit Recover. Journal seeding is setup. The separate current-image guard uses native pointer/filechooser at desktop width and native Space activation on the focused Add image button at phone width in both engines. Earlier pointer runs retain the phone Close-button interception (baseline/candidateWebKit and candidateChromium); Enter was unsuitable because the existing pencil key owner consumes it as Send. Earlier explicit file-input setup failed too. The focused Space path opens the real filechooser and reaches the current-image guard; it is keyboard activation, not proof that the phone pointer picker works. Main phone Send remains an actual tap. This is not OS input, a physical phone, an actual public refusal, or proof of Tony's historical state. The upload is deliberately transport-aborted and has unknown confirmation, not a recorded refusal.
+
+Every phase and cleanup result is retained, including the early unhandled chooser exit without a normal cleanup receipt and its separately verified owned-process/profile cleanup. Later normal browser phases require Browser.close, owned PID absence, physical scratch-profile removal and scratch fixture EOF exit0/absence/empty errors/closed ports.
+
+The native producer keeps per-document request/response/finish traces. A main-frame navigation request followed by its commit retires pending reads from the old document explicitly; same-document history changes do not. This fixes the retained bootstrap wait across reload without increasing its10s current-document deadline or suppressing page errors. The synthetic seed route is removed after seeding. Original failed producers and the diagnostic with pending bootstrap85 are retained; final runs identify their own producer hash and source head.
+
+
+## Second source contract — Warp16606 / Fable16615
+
+Build2 uses a fresh own branch core-lane7/1044-r2-current-writing-325 from
+immutable first head90b36a289c57dbffe8ff7c6436966b87f1f20306, with the same
+original325 basecce9aeea87050f08097b6577b3de74be937e5926. Current live331 is
+c50f22a0b498e3a6b73665533585d67bfa948b10; this is not a rebase. Release16652
+lifted the workload hold after the completed1069 handoff. First source/packet
+and every failure remain immutable;1046 stays unbound.
+
+Red first against90b's product with the stale recovery-discovery assertions in
+composer_width_native, reader_compose_native and reader_images_native; adapt
+those owners to advisory discovery and execute the affected cells. Existing
+unrelated image/authority/access/geometry assertions are not weakened. The650
+producer is not registered by the current compose entry. CORRECTION: its width
+module is present at90b (blob74a9fe764045fd2d6467cb9033d29fae6ad819a8);
+the earlier absent-module intake statement was wrong. A labelled admission-only
+execution seam exercises its actual shared state assertions, with normal
+served-width-module and edge-Tab setup checks. Drag geometry is outside this
+focused run; default geometry cases retain every assertion. Preserve raw
+producer/served bodies, all failures, exact input brackets and strict native
+cleanup. Execute one isolated browser workload at a time at load<12, with the
+Landing use/free notices; no live user/browser/profile/runtime action.
+
+Name uploadOpaque reserve/admit refusal as a NEW own-state Add-image guard:
+325 allowed Add image through this state even though Send was blocked. Give
+its errors a current-editor state cause, not saved-alternative wording.
+A saved copy stays readable/copyable in Check recovery at all times, but Recover
+is enabled only for an untouched current field; typing or quoting makes
+localVersion>0 and disables adoption. Add a real dialog unit case for that
+state. Preserve the existing adoption guard rather than changing that ruling.
+
+Disclose that register/createEditor awaits validateRetained before first paint
+when an image copy exists: serial media views, one per retained attachment,
+through the existing plain Api.view path. This call site supplies no explicit
+request signal/deadline and has no aggregate first-paint budget; a request that
+never settles can hold registration. The separate RuntimeAuthority deadline
+is not applied here. Keep that ordering in this source (no
+startup speed claim or unrelated read-scheduling change). Fix the quiet link's
+stale before-sending tooltip and inline the adopting-only recoveryReadOnly
+alias at its actual callers.
+
+Evidence correction under Fable16656: the old15 final test-at SUMMARY blocks
+match after normalization; that does not prove all underlying raw diagnostics
+match. ui_721_composition aborts before test bodies on its unchanged historical
+uploads-source comparison, and its assertion preambles differ as uploads.mjs
+changed. Preserve both preambles; do not claim721 behavior tested or add a721
+repair to this return. The first packet's broader statement is superseded by
+this explicit limit, not rewritten. Final focused/native checks and the
+readable-versus-adoptable rule must be attributed to their actual producers.
+
+Warp16714 resolves the irrecoverable interrupted red-650-ready-seeds inventory:
+retain the phase as abnormal with no normal-close/EOF/ports receipt, and leave
+the two timestamp-correlated temp directories to the temp cleaner, never reuse
+them. No contents are read or guessed deletion performed. The next observer
+checkpoints child/profile/PIDs immediately, and each new phase uses a dedicated
+TMPDIR. This ruling permits resumption without rewriting the historical gap.
+The runner-stop chronology in the ruling is attributed, not normal-close proof
+for this phase. Fresh native source selection now accepts Core's inserted
+no-quote reason before the expected source words; seeded agent replies name
+that reason and independent fixture topics name their divergence explicitly.
+
+Images source-opening setup uses native Space on the focused card to avoid
+rapid body presses entering the actor's own message-edit gesture. Programmatic
+focus is setup, not Tab reach or pointer-opening proof. The preserved failure
+shows the actual message-edit textarea interception; no forced click is used.
+
+The required repeated-adoption native cell reached its ownership/send checks
+but exposed an old editor's still-scheduled save firing after adoption replaced
+its registration. Retain that page error. After successful journal adoption,
+cancel the old editor's scheduled saves immediately before removing its
+registration; a refused adoption must leave its save schedule intact. Add a
+real registry/fake-clock regression, red first, and rerun the actual native cell.
+No page error is filtered or assertion relaxed.

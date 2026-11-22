@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import time
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -143,7 +144,8 @@ class HostReview(unittest.TestCase):
     def test_preflight_pin_and_authority_failures_keep_known_cleanup_and_refuse_per_seat(self):
         for error in (RoutePinError('ROUTE_PIN_MISSING', 'missing'), AuthorityError('AUTHORITY_CHANGED', 'moved')):
             with self.subTest(code=error.code), tempfile.TemporaryDirectory() as folder:
-                loop = SimpleNamespace(cleanup_uncertain=False, _cleanup_known=EffectsLoop._cleanup_known)
+                loop = SimpleNamespace(cleanup_uncertain=False, _cleanup_known=EffectsLoop._cleanup_known,
+                                       storage_clock=time.monotonic, storage_sleep=time.sleep)
                 loop._storage = lambda action: EffectsLoop._storage(loop, action)
                 loop.profile = SimpleNamespace()
                 seats = SeatHost(loop, directory=folder)
@@ -164,8 +166,9 @@ class HostReview(unittest.TestCase):
                 loop.profile = SimpleNamespace(instance_id='fixture')
                 loop.cleanup_uncertain = False
                 loop._wait = Mock(side_effect=codex_host.HostFault(reason))
-                def pause(code):
+                def pause(code, *, fault):
                     self.assertEqual(code, 'storage_failure')
+                    self.assertEqual(fault, {'exception_class': 'HostFault', 'message': 'Exception text withheld.'})
                     return loop._result('paused', pause_saved=True)
                 loop._fault = Mock(side_effect=pause)
                 result = loop.run()

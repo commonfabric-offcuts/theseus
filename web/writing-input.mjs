@@ -1,4 +1,3 @@
-import { recoveryReadOnly } from './upload-state.mjs';
 import { lineMove } from './line-move.mjs';
 import { MentionPick } from './mention-pick.mjs';
 
@@ -56,7 +55,7 @@ export class WritingInput {
   readOnly() {
     const editor=this.currentEditor();
     if(this.editorless)return Boolean(!this.admits()||this.field.readOnly||this.surfaceReadOnly());
-    return Boolean(!editor||!this.admits()||this.field.readOnly||editor.adopting||recoveryReadOnly(editor)||this.surfaceReadOnly());
+    return Boolean(!editor||!this.admits()||this.field.readOnly||editor.adopting||this.surfaceReadOnly());
   }
   insertText(text) {
     if(this.readOnly())return;

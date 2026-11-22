@@ -2,25 +2,30 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 from pathlib import Path
+import re
 import sys
 import time
 
 from . import broker_routes, codex_host, hosted_notice, wake_adapter
-from .contract import StoreError
-from .authority import AuthorityError
+from .contract import Refusal, StoreError
+from .authority import AuthorityError, GuardBusy
 from .route_pins import RoutePinError
 from .runner import RunnerError
 from .store import StoreOpenError
 from .effects_watch import NativeWatch
 from .profile import ProfileError, load_profile
 from .seat_host import SeatHost
+from .runner_faults import describe as safe_fault
 
 
 _UNCONFIRMED_WATCHES = []
 # A hosted notice reads at most this many pages of the recipient's pending deliveries.
 NOTICE_PAGES = 5
+# Six250ms busy waits plus2.5s backoff:4s configured contention budget.
+STORAGE_BACKOFF = (.1, .2, .4, .8, 1.0)
+STORAGE_BUDGET = 4.0
+_STARTUP_CODE = re.compile(r'[A-Za-z_]{1,64}')
 
 
 class Clock:
@@ -29,6 +34,9 @@ class Clock:
 
     def monotonic(self):
         return time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)/1000000000
+
+    def sleep(self, seconds):
+        time.sleep(seconds)
 
 
 class LoopFault(Exception):
@@ -87,6 +95,7 @@ class EffectsLoop:
         # uncertain storage exception the process must retain the watch until
         # exit instead of pretending it can establish connection-close order.
         self.cleanup_uncertain = False
+        self.storage_clock, self.storage_sleep = self.clock.monotonic, self.clock.sleep
         # Hosted routes share this process: their children's output and exits
         # arrive through the same watch, and their claims settle from responses.
         self.hosted = frozenset(hosted)
@@ -142,12 +151,24 @@ class EffectsLoop:
         return False
 
     def _storage(self, operation):
-        try:
-            return operation()
-        except BaseException as error:
-            if not self._cleanup_known(error):
-                self.cleanup_uncertain = True
-            raise
+        deadline = self.storage_clock() + STORAGE_BUDGET
+        for attempt in range(len(STORAGE_BACKOFF) + 1):
+            try:
+                return operation()
+            except BaseException as error:
+                known = self._cleanup_known(error)
+                if not known:
+                    self.cleanup_uncertain = True
+                # The exact recognized Core refusal establishes rollback AND
+                # close. Strings on unknown errors or uncertain commits do not.
+                retry = (known and getattr(error, 'code', None) == 'DATABASE_BUSY'
+                         and getattr(error, 'retryable', False) is True)
+                remaining = deadline - self.storage_clock()
+                if not retry or attempt == len(STORAGE_BACKOFF) or remaining <= 0:
+                    raise
+                self.storage_sleep(min(STORAGE_BACKOFF[attempt], remaining))
+                if self.storage_clock() >= deadline:
+                    raise
 
     def _core(self, name, *args):
         """One Core runner act for the host, under this process's guard and token."""
@@ -431,22 +452,24 @@ class EffectsLoop:
             self.read_floor = self.clock.monotonic()+1
         return None
 
-    def _fault(self, reason, child=None, detail=None):
+    def _fault(self, reason, child=None, detail=None, fault=None):
+        diagnosed = {} if fault is None else dict(fault=fault)
         if self.token is None:
-            return self._result('startup_failed',reason=reason,pause_saved=False)
+            return self._result('startup_failed',reason=reason,pause_saved=False,**diagnosed)
         # The pause names the child it waits on, so whoever resumes it (a person,
         # or the supervisor once that group is gone) checks the right group.
-        named = {} if child is None else dict(child=child)
+        named = dict(diagnosed, **({} if child is None else dict(child=child)))
         said = dict(reason=reason,**({} if detail is None else dict(detail=detail)),
-                    **({} if child is None else dict(child_pid=child[0])))
+                    **({} if child is None else dict(child_pid=child[0])), **diagnosed)
         try:
             self._response(self._storage(lambda:self.store.pause_runner(
                 self.guard,self.token,reason,**named)),'paused')
-        except BaseException:
-            self._event('pause_unsaved',**said)
-            return self._result('fatal_unsaved',reason=reason,pause_saved=False)
+        except BaseException as error:
+            unsaved = dict(pause_fault=safe_fault(error))
+            self._event('pause_unsaved',**said,**unsaved)
+            return self._result('fatal_unsaved',reason=reason,pause_saved=False,**diagnosed,**unsaved)
         self._event('paused',**said)
-        return self._result('paused',reason=reason,pause_saved=True)
+        return self._result('paused',reason=reason,pause_saved=True,**diagnosed)
 
     def _stopped(self):
         """A graceful stop says so in Core, so a page can tell it from a runner that died, and frees the lease."""
@@ -555,21 +578,48 @@ class EffectsLoop:
                 timeout = max(0,min(60,min(deadlines)-now))
                 self._wait(timeout)
         except LoopFault as error:
-            return self._fault(error.reason,error.child,error.detail)
+            return self._fault(error.reason,error.child,error.detail,safe_fault(error))
         except codex_host.HostFault as error:
             if error.reason in ('runner_lease_lost', 'seat_runner_paused'):
                 return self._result('paused', pause_saved=True) if error.reason == 'seat_runner_paused' else self._result('ownership_lost', pause_saved=False)
-            return self._fault('storage_failure' if error.reason == 'seat_schedule_invalid' else error.reason)
-        except (Exception,KeyboardInterrupt):
+            return self._fault('storage_failure' if error.reason == 'seat_schedule_invalid' else error.reason, fault=safe_fault(error))
+        except (Exception,KeyboardInterrupt) as error:
             self.cleanup_uncertain = True
-            return self._fault('storage_failure')
+            return self._fault('storage_failure',fault=safe_fault(error))
 
 
 def _fault_code(cause):
     """The fixed code of the step that failed, never exception text."""
-    if isinstance(cause,wake_adapter.AdapterFault) and re.fullmatch('[a-z_]{1,64}',str(cause)):
-        return str(cause)
-    return None if cause is None else type(cause).__name__
+    steps = {'process_observation_failed', 'leader_identity_unconfirmed', 'exit_observation_failed',
+             'cleanup_unconfirmed', 'invocation_interrupted', 'child_registration_failed',
+             'stdin_write_failed', 'invocation_fault'}
+    if (type(cause) is wake_adapter.AdapterFault and cause.args
+            and isinstance(cause.args[0], str) and cause.args[0] in steps):
+        return cause.args[0]
+    return None if cause is None else safe_fault(cause)['exception_class']
+
+
+def _cleanup_result(result, reason, error):
+    # A later close failure cannot erase a previously kept cause or turn an
+    # actually saved pause into an unsaved one. It has its own safe cause.
+    answer = dict(result or {}, status='fatal_unsaved', reason=reason,
+                  cleanup_confirmed=False, cleanup_fault=safe_fault(error))
+    answer.setdefault('pause_saved', False)
+    answer.setdefault('fault', answer['cleanup_fault'])
+    return answer
+
+
+def _startup_reason(error):
+    trusted = (Refusal, StoreError, StoreOpenError, RunnerError, RoutePinError, AuthorityError,
+               GuardBusy, ProfileError, broker_routes.BrokerConfigError,
+               broker_routes.BrokerBindingError, wake_adapter.RouteUnavailable)
+    if not any(type(error) is kind for kind in trusted):
+        return None
+    try:
+        code = getattr(error, 'code', None)
+    except BaseException:
+        return None
+    return code if type(code) is str and _STARTUP_CODE.fullmatch(code) else None
 
 
 def run_foreground(profile_path, runner_id, routes_path, *, resume_version=None, resume_reason=None,
@@ -607,11 +657,11 @@ def run_foreground(profile_path, runner_id, routes_path, *, resume_version=None,
         # Startup messages are fixed and contain no route/profile or exception
         # text; a typed error's own fixed code is the reason. Preserve typed
         # busy without adding an implicit pin-read retry.
-        reason = getattr(error,'code',None)
-        reason = reason if isinstance(reason,str) and re.fullmatch('[A-Za-z_]{1,64}',reason) else None
+        reason = _startup_reason(error)
         busy = reason=='DATABASE_BUSY'
         result = dict(status='startup_failed',code='DATABASE_BUSY' if busy else 'STARTUP_REFUSED',reason=reason,
                       retryable=busy and getattr(error,'retryable',False) is True,pause_saved=False,
+                      fault=safe_fault(error),
                       cleanup_confirmed=not (loop is not None and loop.cleanup_uncertain))
     finally:
         if loop is not None and loop.host is not None:
@@ -619,26 +669,26 @@ def run_foreground(profile_path, runner_id, routes_path, *, resume_version=None,
             try:
                 if not loop.host.close():
                     result = dict(result,cleanup_confirmed=False)
-            except BaseException:
-                result = dict(status='fatal_unsaved',reason='children_unconfirmed',pause_saved=False,
-                              cleanup_confirmed=False)
+            except BaseException as error:
+                result = _cleanup_result(result, 'children_unconfirmed', error)
         if host_log is not None:
-            host_log.close()
+            try:
+                host_log.close()
+            except BaseException as error:
+                result = _cleanup_result(result, 'host_log_close_unconfirmed', error)
         if guard is not None:
             try:
                 guard.close()
-            except BaseException:
-                result = dict(status='fatal_unsaved',reason='guard_close_unconfirmed',pause_saved=False,
-                              cleanup_confirmed=False)
+            except BaseException as error:
+                result = _cleanup_result(result, 'guard_close_unconfirmed', error)
         if watch is not None:
             if loop is not None and loop.cleanup_uncertain:
                 _UNCONFIRMED_WATCHES.append(watch)
             else:
                 try:
                     watch.close()
-                except BaseException:
-                    result = dict(status='fatal_unsaved',reason='watch_close_unconfirmed',pause_saved=False,
-                                  cleanup_confirmed=False)
+                except BaseException as error:
+                    result = _cleanup_result(result, 'watch_close_unconfirmed', error)
     return result
 
 
