@@ -225,14 +225,15 @@ test('unreadable image waiver is bound to exact row stamp and writing cycle', as
   const f = await fixture(t), row = { id: 'opaque', editorKey: f.editor.key, stamp: 'v1', availability: 'unreadable', uploadPresent: true };
   f.rows.set(row.id, copy(row));
   f.editor.imageCopies = new Map([[row.id, row]]); f.registry.updateImageBarrier(f.editor);
-  assert.throws(() => prepare(f.editor), /saved image/);
+  assert.equal(f.u.pending(), false, 'an alternate stays advisory');
   await f.registry.waiveUnreadable(f.editor, row); assert.equal(f.editor.recoveryDiscovery, false);
   f.editor.imageCopies.set(row.id, { ...row, stamp: 'v2' }); f.registry.updateImageBarrier(f.editor);
-  assert.throws(() => prepare(f.editor), /saved image/);
+  assert.equal(f.u.pending(), false, 'an alternate stays advisory');
   f.rows.set(row.id, { ...row, stamp: 'v2' });
   await f.registry.waiveUnreadable(f.editor, { ...row, stamp: 'v2' });
   prepare(f.editor);
-  assert.equal(f.u.pending(), true, 'new B must review that copy again');
+  f.registry.updateImageBarrier(f.editor); assert.equal(f.editor.recoveryDiscovery, true, 'new cycle offers the copy again');
+  assert.equal(f.u.pending(), false, 'the saved copy never gates the new writing');
 });
 test('recorded pending refusal reason is bound to its editor, submission and original operation', async t => {
   const f = await fixture(t);
@@ -417,20 +418,20 @@ test('a recheck replaces only its rows among saved image copies and keeps what o
   assert.deepEqual([...f.editor.imageCopies.keys()], ['u2']);
   await f.registry.applyRecheck(f.editor, [kept.id], { items: [kept] });
   assert.deepEqual([...f.editor.imageCopies.keys()], ['u2'], 'a rechecked row that is still retained stays');
-  assert.throws(() => prepare(f.editor), /saved image/i);
+  assert.equal(f.u.pending(), false, 'the alternative does not gate current writing');
   await f.registry.waiveUnreadable(f.editor, kept);
   prepare(f.editor);
   f.registry.dispose();
   assert.equal(f.registry.applyRecheck(f.editor, [kept.id], { items: [] }), null);
   assert.deepEqual([...f.editor.imageCopies.keys()], ['u2'], 'a disposed registry changes nothing');
 });
-test('continuation and locked saved-image copies are barriers even without visible file refs', async t => {
+test('continuation and locked saved-image copies stay recoverable without gating current writing', async t => {
   const f = await fixture(t); f.editor.edit({ body: 'Otherwise sendable' });
   f.editor.imageCopiesNext = 'page-eleven';
-  assert.throws(() => prepare(f.editor), /saved image/i);
+  assert.equal(f.u.pending(), false, 'the alternative does not gate current writing');
   f.editor.imageCopiesNext = null;
   f.editor.imageCopies = new Map([['locked', { id: 'locked', stamp: '1', availability: 'open-in-another-tab', uploadPresent: true }]]);
-  assert.throws(() => prepare(f.editor), /saved image/i);
+  assert.equal(f.u.pending(), false, 'the alternative does not gate current writing');
   await assert.rejects(f.registry.waiveUnreadable(f.editor, f.editor.imageCopies.get('locked')), /recover|resolve/i);
 });
 
@@ -474,7 +475,7 @@ test('X1 canonical refs without a manifest cannot prepare', () => {
   const e = new Editor(context, { ...draft(), attachments: [{ id: 'unreviewed' }] });
   assert.throws(() => prepare(e), /attachment|image/i);
 });
-test('X1 discovery removal exposes and validates canonical refs without a passive journal write', async t => {
+test('X1 current canonical refs validate while an alternate copy stays retained', async t => {
   const f = await fixture(t); await f.u.add(f.image); await f.registry.flush(f.editor);
   const remote = (await f.api.view('editor_state', { source_ref: f.editor.sourceRef, topic_id: f.editor.context.topicId })).draft;
   const old = new Editor(f.editor.context, remote); old.uploadState = { format: 2, revision: 1, client_cycle_id: old.clientCycleId, entries: [entry(old)], submission_links: {} };
@@ -482,16 +483,18 @@ test('X1 discovery removal exposes and validates canonical refs without a passiv
   f.backend.forEditor = async () => ({ items: [copy(row)], nextCursor: null });
   f.backend.changeCandidateImages = async () => { row.snapshot.uploadState.entries[0].selected = false; row.stamp = 'copy-two'; return copy(row); };
   f.rows.delete(f.journal.id(f.editor.key)); f.registry.cancelSave(f.editor); f.registry.sessions.delete(f.editor.key);
-  const e = await f.registry.register(f.editor.context, remote), u = f.registry.sessionFor(e).uploads;
-  assert.equal(e.recoveryDiscovery, true);
-  assert.equal(u.current().length, 1, 'canonical image is visible even behind the saved-copy barrier');
-  assert.equal(u.current()[0].retained_ref.id, remote.attachments[0].id);
   const original = f.api.view.bind(f.api), entered = deferred(), release = deferred(); t.after(() => release.resolve());
   f.api.view = async (name, args) => { if (name === 'media') { entered.resolve(); await release.promise; } return original(name, args); };
-  const removing = f.registry.changeCandidateImages(e, row, { kind: 'remove' }); await entered.promise;
-  assert.throws(() => prepare(e), /image|attachment/i, 'the clear discovery flag cannot bypass validation');
-  release.resolve(); await removing;
-  assert.equal(u.pending(), false); assert.equal(await f.journal.own(e.key), undefined, 'validation is not user writing');
+  const registering = f.registry.register(f.editor.context, remote); registering.catch(() => {}); await entered.promise;
+  const e = f.registry.sessions.get(f.editor.key).editor, u = f.registry.sessionFor(e).uploads;
+  assert.equal(e.recoveryDiscovery, true); assert.equal(u.current().length, 1);
+  assert.equal(u.current()[0].retained_ref.id, remote.attachments[0].id);
+  assert.throws(() => prepare(e), /image|attachment/i, 'current canonical refs cannot send before validation');
+  release.resolve(); await registering;
+  assert.equal(u.pending(), false, 'a validated current image is independent of the retained alternative');
+  assert.equal(e.recoveryDiscovery, true); assert.equal(row.snapshot.uploadState.entries[0].selected, true);
+  await f.registry.changeCandidateImages(e, row, { kind: 'remove' });
+  assert.equal(await f.journal.own(e.key), undefined, 'passive validation is not user writing');
   await u.remove(u.current()[0].selection_id); assert.deepEqual(e.draft.attachments, []);
 });
 test('X1 passive retained validation permits untouched ordinary-copy adoption', async t => {
@@ -524,15 +527,16 @@ test('X2 Keep current writing preserves refused history and is scoped to stamp c
   const f = await fixture(t); f.editor.recoveryServerDraft = copy(f.editor.draft); f.editor.edit({ body: 'Current B only' });
   let row = refusedCopy(f.editor, f.editor.recoveryServerDraft); f.rows.set(row.id, copy(row));
   f.editor.imageCopies = new Map([[row.id, row]]); f.registry.updateImageBarrier(f.editor);
-  assert.equal(f.u.pending(), true);
+  assert.equal(f.u.pending(), false);
   const original = copy(row.snapshot); row = await f.registry.keepCurrentWriting(f.editor, row);
   assert.equal(f.u.pending(), false); assert.deepEqual(f.rows.get(row.id).snapshot, original); assert.equal(f.editor.draft.body, 'Current B only');
   row.stamp = 'refused-v2'; f.rows.set(row.id, copy(row)); f.registry.updateImageBarrier(f.editor);
-  assert.equal(f.u.pending(), true); await assert.rejects(f.registry.keepCurrentWriting(f.editor, { ...row, stamp: 'refused-v1' }), /changed|review/i);
+  assert.equal(f.u.pending(), false); await assert.rejects(f.registry.keepCurrentWriting(f.editor, { ...row, stamp: 'refused-v1' }), /changed|review/i);
   row = await f.registry.keepCurrentWriting(f.editor, row); f.editor.clientCycleId = 'next-cycle'; f.registry.updateImageBarrier(f.editor);
-  assert.equal(f.u.pending(), true);
+  assert.equal(f.u.pending(), false);
   row.snapshot.uploadState.entries.push(entry(f.editor)); f.rows.set(row.id, copy(row));
-  await f.registry.keepCurrentWriting(f.editor, row); assert.equal(f.u.pending(), true, 'refusal choice cannot waive selected image work');
+  await f.registry.keepCurrentWriting(f.editor, row); assert.equal(f.u.pending(), false, 'selected images in an alternative stay advisory');
+  f.u.initialize().entries.push(entry(f.editor)); assert.equal(f.u.pending(), true, 'a current selected image still owns its guard');
 });
 test('X2 B saved in a later revision does not restore a false refused-A conflict', () => {
   const e = withImage({ ready: true }); e.draft.attachments = [{ id: 'media' }]; prepare(e);
@@ -597,12 +601,13 @@ for (const failure of ['transport', 'typed-error', 'wrong-scope', 'success', 'co
   assert.equal(f.editor.saveTicket('blocked-save'), null);
   assert.equal(f.calls.filter(c => c.body && JSON.parse(c.body).kind === 'message.send').length, 0);
 });
-test('X2 a failed current-slot read keeps newly discovered refused history blocking', async t => {
+test('X2 a failed current-slot read keeps refused history reachable without gating other writing', async t => {
   const f = await fixture(t); const row = refusedCopy(f.editor); row.snapshot.submissions[0].snapshot.revision++;
   f.backend.forEditor = async () => ({ items: [copy(row)], nextCursor: null });
   f.api.view = async () => { throw Error('Current slot unavailable'); };
   await assert.rejects(f.registry.recoveryCandidates(f.editor), /unavailable/);
-  assert.equal(f.u.pending(), true, 'a stale cached slot cannot clear a newly discovered refusal');
+  assert.equal(f.u.pending(), false); assert.equal(f.editor.recoveryDiscovery, true, 'unknown history stays reachable');
+  assert.equal(f.editor.recoveryServerDraft, undefined); assert.equal(f.editor.imageCopies.get(row.id).snapshot.submissions[0].status, 'refused');
 });
 
 test('931 a kept refusal survives a new writer only for the same canonical writing and authority', async t => {
@@ -618,11 +623,26 @@ test('931 a kept refusal survives a new writer only for the same canonical writi
   restored.draft.body = 'Chosen B'; restored.reviewAuthority.authority_epoch = 'other-runtime'; assert.equal(keptCopy(restored, kept), false);
   assert.deepEqual(f.rows.get(row.id).snapshot, row.snapshot, 'choice changes no frozen writing or send history');
 });
-test('931 a failed choice write leaves the refusal blocking and the source intact', async t => {
+test('931 a failed choice write leaves the refusal reachable and the source intact', async t => {
   const f = await fixture(t); f.editor.recoveryServerDraft = copy(f.editor.draft);
   const row = refusedCopy(f.editor); f.rows.set(row.id, copy(row)); f.editor.imageCopies = new Map([[row.id, row]]);
   f.registry.updateImageBarrier(f.editor); f.backend.failChoice = true;
   await assert.rejects(f.registry.keepCurrentWriting(f.editor, row), /not saved/);
-  assert.equal(f.u.pending(), true); assert.deepEqual(f.rows.get(row.id), row);
+  assert.equal(f.u.pending(), false); assert.equal(f.editor.recoveryDiscovery, true); assert.deepEqual(f.rows.get(row.id), row);
   assert.equal(f.editor.refusedCopyChoices?.size ?? 0, 0);
+});
+
+ test('1044 successful adoption retires scheduled callbacks of the replaced editor', async t => {
+  const f = await fixture(t), old = f.editor, callbacks = new Map(); let serial = 0;
+  f.registry.timers = { now: () => 0, setTimeout: fn => { callbacks.set(++serial, fn); return serial; }, clearTimeout: id => callbacks.delete(id) };
+  f.registry.schedule(old);
+  assert.equal(callbacks.size, 2, 'real idle and maximum save callbacks are queued');
+  const saved = new Editor(old.context, old.draft); saved.edit({ body: 'Explicitly adopted writing' });
+  const row = { ...f.journal.row(saved.snapshot()), id: 'adopt-timer1044', stamp: 'timer1044' };
+  f.backend.adopt = async (key, candidate, guard) => { assert.ok(guard()); f.rows.set(f.journal.id(key), { ...row, id: f.journal.id(key) }); };
+  const adopted = await f.registry.adoptCandidate(old, row, f.registry.current);
+  assert.notEqual(adopted, old);
+  assert.doesNotThrow(() => { for (const [id, run] of [...callbacks]) { callbacks.delete(id); run(); } }, 'advancing past both save deadlines cannot flush an unregistered editor');
+  assert.equal(f.registry.sessionFor(adopted).editor, adopted);
+  assert.equal(adopted.draft.body, 'Explicitly adopted writing');
 });

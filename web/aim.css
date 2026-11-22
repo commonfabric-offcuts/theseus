@@ -832,6 +832,7 @@ body:has(.rail.open){overflow:hidden}
 .review-chips .pending-submissions{display:contents}
 .review-chips button{position:relative;min-height:2.25rem;padding:.1rem .7rem;border-radius:1.2rem;font-size:.78rem;color:var(--warn);background:var(--warn-bg);border-color:color-mix(in srgb,var(--warn) 35%,transparent);white-space:nowrap}
 .compose-head>.review-chips:not(:has(button:not([hidden]))){display:none}
+.review-chips button.recovery-link{color:var(--muted);background:transparent;border-color:transparent;border-radius:0;text-decoration:underline;text-underline-offset:.2em}
 /* Small chips keep a finger-sized press around them on a laptop. */
 .who-chip::after,.note-chip::after,.review-chips button::after{content:'';position:absolute;inset:-.25rem -.1rem}
 /* + and 👍 are quiet: no ring or fill until pointed at or open. */

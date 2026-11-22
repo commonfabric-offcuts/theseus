@@ -1,4 +1,4 @@
-import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
+import { imageBarrier } from './upload-state.mjs';
 import { holdsWriting, written } from './editor.mjs';
 import { timeNode } from './times.mjs';
 
@@ -11,7 +11,7 @@ export const recipientChoices = names => names.map(name => ({ name, removeLabel:
 // sign's state for the save status; other words in its place carry none.
 export function writingState(editor, { active = true, writable = active, note = false, status, sign } = {}) {
   const barrier = note ? null : imageBarrier(editor);
-  const readOnly = Boolean(!writable || editor.adopting || recoveryReadOnly(editor) || editor.conflict?.error?.code === 'INVALID_TOPIC_COMPOSITION');
+  const readOnly = Boolean(!writable || editor.adopting || editor.conflict?.error?.code === 'INVALID_TOPIC_COMPOSITION');
   const preparing = editor.submissions.some(item => item.status === 'preparing' && !item.detached);
   return {
     readOnly,
@@ -20,7 +20,7 @@ export function writingState(editor, { active = true, writable = active, note = 
     sign: barrier || !status ? '' : sign?.(editor) ?? '',
     sendDisabled: Boolean(!active || barrier || editor.adopting || editor.unavailable || editor.authorityRecovery || editor.conflict ||
       (!note && (preparing || !editor.context.topicId || !written(editor.draft)))),
-    addDisabled: Boolean(!active || readOnly || editor.recoveryDiscovery || editor.unavailable || editor.authorityRecovery ||
+    addDisabled: Boolean(!active || readOnly || editor.uploadOpaque || editor.unavailable || editor.authorityRecovery ||
       editor.uploadState?.entries.some(e => e.selected && e.owner.id === editor.clientCycleId && e.origin === 'retained-ref' && !e.ready_descriptor)),
   };
 }

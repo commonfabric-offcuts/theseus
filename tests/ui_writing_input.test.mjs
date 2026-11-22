@@ -33,14 +33,14 @@ test('IME, competing modifiers and non-editing keys retain native routing',()=>{
   }
 });
 test('the read-only union protects direct input and command insertion and restores the field',()=>{
-  for(const block of [f=>f.deny(),f=>f.field.readOnly=true,f=>f.editor.adopting=true,
-    f=>f.editor.recoveryDiscovery=true]) {
+  for(const block of [f=>f.deny(),f=>f.field.readOnly=true,f=>f.editor.adopting=true]) {
     const f=fixture(),before=f.editor.draft.body;block(f);
     assert.equal(f.input.readOnly(),true);assert.equal(f.key('w').result,false);
     f.input.insertText('bad');f.field.value='bad';f.handlers.input();
     assert.equal(f.field.value,before);assert.equal(f.editor.draft.body,before);assert.deepEqual(f.events,[]);
   }
 });
+test('1044 alternate-copy discovery keeps direct writing and command insertion admitted',()=>{const f=fixture('kept');f.editor.recoveryDiscovery=true;assert.equal(f.input.readOnly(),false);f.field.value='current';f.field.setSelectionRange(7,7);f.handlers.input();f.input.insertText(' writing');assert.equal(f.editor.draft.body,'current writing');});
 test('ordinary input and insertion fallback share the same update path',()=>{
   const f=fixture('kept');f.field.value='typed';f.field.setSelectionRange(5,5);f.handlers.input();
   assert.equal(f.editor.draft.body,'typed');assert.deepEqual(f.editor.draft.caret,{start:5,end:5});
