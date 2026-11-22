@@ -1,0 +1,232 @@
+test_changed_replay_refusal_words_are_new (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp7s2udswh/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp7s2udswh/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_duplicate_passing_node_names_do_not_admit_an_ambiguous_failure (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... ok
+test_forged_unit_counts_and_skipped_outcomes_refuse (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... ok
+test_forty_first_new_failure_is_named (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpbjsrgxmu/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpbjsrgxmu/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_green_candidate_with_red_controls_passes (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpky201w26/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpky201w26/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_green_replay_control_prevents_inheritance (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp55ju2lyw/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp55ju2lyw/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_matching_terminal_replay_refusal_is_inherited (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpio18f2f_/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpio18f2f_/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_missing_replay_report_without_a_terminal_refusal_refuses (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... ok
+test_missing_unit_outcome_is_refused_on_candidate_and_control (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... ok
+test_no_eligible_controls_does_not_clear_unit_failure (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... ok
+test_one_control_disagreeing_prevents_inheritance (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpuakcor1l/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpuakcor1l/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_python_assertion_failure_and_error_have_recorded_identities (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... ok
+test_refusal_cannot_hide_a_present_but_unreadable_replay_report (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... ok
+test_replay_summary_and_exit_still_bind_the_terminal_record (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... ok
+test_same_forty_failures_are_inherited_and_raw_failure_is_preserved (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp4rlfa6tk/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp4rlfa6tk/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_source_and_digest_refusal_still_precede_comparison (tests.test_nonbrowser_verdict_1084.NonbrowserVerdictCase) ... ok
+test_a_forged_aggregate_count_refuses_after_part_logs (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_a_forged_aggregate_part_body_refuses (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_boolean_index_is_not_integer_partition_evidence (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_cancellation_cannot_be_hidden_behind_complete_green_summaries (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_cancelled_partition_and_missing_artifact_refuse (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_changed_summary_digest_refuses (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_complete_indices_cannot_hide_an_omitted_source_file (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_complete_part_plan_coexists_with_fresh_compose_groups (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_complete_partition_failure_keeps_raw_failure_and_identity_for_comparison (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_complete_unicode_source_plan_admits_current_and_history (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_duplicate_or_unknown_source_files_refuse (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_duplicate_test_identity_across_parts_refuses (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_duplicated_whole_step_still_refuses (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_empty_legacy_whole_step_still_refuses (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_empty_part_missing_its_ran_line_refuses (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_empty_validated_partition_keeps_positive_whole_coverage (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_four_parts_admit_and_preserve_the_combined_receipt (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_green_claim_cannot_hide_a_failed_part_log (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_history_selector_recognizes_a_complete_partition_plan (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_inventory_keeps_package_rules_and_nul_path_boundaries (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_missing_final_failure_union_refuses_history (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_no_tests_ran_is_not_a_supported_passing_empty_part (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_omitting_a_valid_unicode_source_refuses_current_and_history (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_part_artifact_order_does_not_reorder_the_original_aggregate (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_three_of_four_plan_refuses_current_and_history (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_unknown_and_duplicate_parts_refuse (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_uppercase_suffix_is_excluded_by_the_producer_glob (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_whole_python_and_partition_cannot_mix (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_wrong_job_assignment_refuses (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_wrong_part_metadata_refuses_even_with_a_fresh_digest (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_zero_test_part_union_is_not_a_completed_python_step (tests.test_verdict_partitions_1062.PartitionEvidenceCase) ... ok
+test_cancelled_newest_shard_uses_three_whole_controls_per_step (tests.test_step_controls_1070.StepControlsCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpzarltq7_/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpzarltq7_/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_cancelled_run_without_combined_receipt_is_named_and_older_controls_fill_it (tests.test_step_controls_1070.StepControlsCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp8shy63r3/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp8shy63r3/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_candidate_with_the_same_cancelled_bundle_still_refuses (tests.test_step_controls_1070.StepControlsCase) ... ok
+test_manifest_cannot_select_a_cancelled_step_by_relabeling_its_control_ids (tests.test_step_controls_1070.StepControlsCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpf5u0gf6o/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpf5u0gf6o/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_partial_history_still_refuses_inconsistent_combined_failure_union (tests.test_step_controls_1070.StepControlsCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpvjobvb87/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpvjobvb87/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_selected_partial_history_still_verifies_original_raw_summary_digest (tests.test_step_controls_1070.StepControlsCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp4in2w9qm/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp4in2w9qm/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_shortfall_is_disclosed_for_only_the_step_lacking_three_controls (tests.test_step_controls_1070.StepControlsCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpc57n7rli/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpc57n7rli/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_a_candidate_whose_body_did_not_finish_is_refused_whatever_the_controls_show (tests.test_fixture_exit_1079.FixtureExitCase) ... ok
+test_a_changed_harness_matches_no_control (tests.test_fixture_exit_1079.FixtureExitCase) ... ok
+test_a_control_recorded_before_the_attestation_is_read_by_its_source_count_and_assertion (tests.test_fixture_exit_1079.FixtureExitCase) ... ok
+test_a_fatal_tail_after_the_fixture_traceback_is_refused_and_named (tests.test_fixture_exit_1079.FixtureExitCase) ... ok
+test_a_harness_that_stopped_between_cases_matches_no_control (tests.test_fixture_exit_1079.FixtureExitCase) ... ok
+test_a_log_that_disagrees_with_the_report_is_refused (tests.test_fixture_exit_1079.FixtureExitCase) ... ok
+test_a_traceback_before_the_last_case_is_not_the_fixture_exit (tests.test_fixture_exit_1079.FixtureExitCase) ... ok
+test_all_green_cases_with_a_fixture_exit_are_judged_not_refused (tests.test_fixture_exit_1079.FixtureExitCase) ... ok
+test_clean_fixture_exit_reads_as_before (tests.test_fixture_exit_1079.FixtureExitCase) ... ok
+test_fixture_exit_after_every_case_is_a_failure_the_step_carries (tests.test_fixture_exit_1079.FixtureExitCase) ... ok
+test_fixture_exit_the_controls_share_is_known_and_one_they_do_not_is_new (tests.test_fixture_exit_1079.FixtureExitCase) ... ok
+test_fixture_exit_without_its_assertion_is_refused (tests.test_fixture_exit_1079.FixtureExitCase) ... ok
+test_fixture_exit_without_the_harness_source_is_refused (tests.test_fixture_exit_1079.FixtureExitCase) ... ok
+test_fixture_that_died_before_a_case_finished_is_refused (tests.test_fixture_exit_1079.FixtureExitCase) ... ok
+test_signalled_fixture_is_still_refused (tests.test_fixture_exit_1079.FixtureExitCase) ... ok
+test_candidate_with_the_same_omission_still_refuses (tests.test_verdict_history.VerdictHistoryCase) ... ok
+test_controller_readiness_is_required_before_loading_code (tests.test_verdict_history.VerdictHistoryCase) ... ok
+test_current_and_history_accept_explicit_null_push_format (tests.test_verdict_history.VerdictHistoryCase) ... ok
+test_current_and_history_keep_genuine_legacy_push_eligible (tests.test_verdict_history.VerdictHistoryCase) ... ok
+test_current_and_history_refuse_combined_null_with_legacy_shard (tests.test_verdict_history.VerdictHistoryCase) ... ok
+test_current_and_history_refuse_legacy_combined_with_null_shard (tests.test_verdict_history.VerdictHistoryCase) ... ok
+test_current_and_history_refuse_nonnull_push_observation (tests.test_verdict_history.VerdictHistoryCase) ... ok
+test_digest_failure_is_not_an_incomplete_history_drop (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp183av_69/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:148: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp183av_69/refusals' mode='a' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_dirty_history_is_not_dropped (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp7ziw3s3_/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:148: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp7ziw3s3_/refusals' mode='a' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_dirty_history_provenance_is_not_dropped (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmps2g3_lwy/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:148: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmps2g3_lwy/refusals' mode='a' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_duplicate_history_steps_are_not_a_missing_step_drop (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpr53d32mk/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:148: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpr53d32mk/refusals' mode='a' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_expiry_still_drops_without_downloading (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpn17hmxhp/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpn17hmxhp/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_focused_history_is_not_dropped (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp1a9_pjux/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:148: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp1a9_pjux/refusals' mode='a' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_history_cannot_shrink_its_declared_plan (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpkkz08iuo/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:148: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpkkz08iuo/refusals' mode='a' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_incomplete_history_format_is_checked_before_drop (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpq15o67x_/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:148: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpq15o67x_/refusals' mode='a' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_incomplete_history_is_named_and_older_run_fills_only_missing_step (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpl0xxsonz/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpl0xxsonz/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_incomplete_new_push_history_retains_other_step_controls (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpbwql0i4w/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpbwql0i4w/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_malformed_receipt_is_not_an_incomplete_history_drop (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp7t2caeip/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:148: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp7t2caeip/refusals' mode='a' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_misbound_history_head_is_not_dropped (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpy1ucys1z/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:148: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpy1ucys1z/refusals' mode='a' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_misbound_history_run_is_not_dropped (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpk1u5cfnd/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:148: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpk1u5cfnd/refusals' mode='a' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_missing_digest_refuses_before_download (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp5hxa4bh9/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:148: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp5hxa4bh9/refusals' mode='a' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_object_steps_are_malformed_not_history_loss (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp77pnn5y4/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:148: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmp77pnn5y4/refusals' mode='a' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_short_sha256_digest_refuses_before_download (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpb86kwffl/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:148: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpb86kwffl/refusals' mode='a' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_three_complete_runs_remain (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpf6magtrn/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:157: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpf6magtrn/history/known-runs.json' mode='w' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_unsupported_digest_refuses_before_download (tests.test_verdict_history.VerdictHistoryCase) ... <protected history selector>:42: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpimgqppxq/producer.json' mode='r' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+<protected history selector>:148: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/commonfabric/aim-worktrees/core-lane7-1084-evidence/exact-restored-owner/tmp/tmpimgqppxq/refusals' mode='a' encoding='UTF-8'>
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_base_advanced_further_accepts_ancestor (tests.test_verdict_git_base.VerdictGitBaseCase) ... ok
+test_first_parent_outside_base_branch_refuses (tests.test_verdict_git_base.VerdictGitBaseCase) ... ok
+test_mixed_receipt_formats_refuse (tests.test_verdict_git_base.VerdictGitBaseCase) ... ok
+test_new_git_base_declaration_is_accepted (tests.test_verdict_git_base.VerdictGitBaseCase) ... ok
+test_stale_event_base_uses_git_parent_and_keeps_event_metadata (tests.test_verdict_git_base.VerdictGitBaseCase) ... ok
+test_validator_keeps_event_base_binding_and_checks_tested_ancestry (tests.test_verdict_git_base.VerdictGitBaseCase) ... ok
+test_wrong_git_base_declaration_refuses (tests.test_verdict_git_base.VerdictGitBaseCase) ... ok
+test_wrong_second_parent_refuses (tests.test_verdict_git_base.VerdictGitBaseCase) ... ok
+
+----------------------------------------------------------------------
+Ran 102 tests in 30.759s
+
+OK
+{"step_runs": {"python-units": [2, 3, 4], "node-units": [1, 2, 3], "native-reader": [1, 2, 3]}, "native_failure_controls": [1, 2, 3]}

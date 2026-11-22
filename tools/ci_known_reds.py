@@ -64,6 +64,13 @@ def read_json(path):
     except (OSError, ValueError, RecursionError) as error:
         raise Refused('unreadable JSON %s: %s' % (path, error))
 
+
+def evidence_log(path):
+    try:
+        return Path(path).read_text()
+    except (OSError, UnicodeError) as error:
+        raise Refused('unreadable evidence log %s: %s' % (path, error))
+
 def git(root, *args):
     answer = subprocess.run(['git', '-C', str(root)] + list(args), capture_output=True)
     require(answer.returncode == 0, 'cannot read verified source: git %s' % ' '.join(args))
@@ -103,6 +110,13 @@ def normalize(values, checkout):
     values = values.replace(checkout.rstrip('/') + '/', 'WT/')
     labels = {}
     return GENERATED_ID.sub(lambda m: '%s-ID%d' % (m[1], labels.setdefault(m[0], len(labels) + 1)), values)
+
+
+def replay_refusal_text(value):
+    """Only generated message IDs vary; keep other IDs, paths and words."""
+    labels = {}
+    return re.sub(r'(?<![0-9A-Za-z])m-[0-9a-f]{32}(?![0-9A-Za-z])',
+                  lambda match: 'm-ID%d' % labels.setdefault(match[0], len(labels) + 1), value)
 
 def fingerprint(error, checkout, root, commit):
     require(isinstance(error, str) and error.strip(), 'missing assertion evidence')
@@ -308,20 +322,60 @@ def unit_records(text, node=False):
     require(pending is None, 'python-units: final check outcome missing')
     return rows
 
-def unit_evidence(step, out, allow_empty=False):
+def unit_results(step, out, allow_empty=False):
+    """Complete individual outcomes, including failures; never a truncated prefix."""
     name = step['name']
-    text = (out / (name + '.log')).read_text()
-    counts, good = node_counts(text) if name == 'node-units' else python_counts(text, allow_empty=allow_empty)
-    require(good and step.get('counts') == counts, 'non-browser log/count mismatch')
+    text = evidence_log(out / (name + '.log'))
+    counts, _ = node_counts(text) if name == 'node-units' else python_counts(text, allow_empty=allow_empty)
+    require(step.get('counts') == counts, 'non-browser log/count mismatch')
+    if name != 'node-units':
+        ran = re.findall(r'^Ran (\d+) tests? in ', text, re.M)
+        require(len(ran) == 1 and int(ran[0]) == counts['tests'], 'non-browser log/count mismatch')
     require(not any(counts.get(k, 0) for k in ('skipped', 'todo', 'cancelled', 'expected failures', 'unexpected successes')),
             name + ': unapproved skipped, todo or incomplete checks')
-    if name == 'node-units':
-        require(counts.get('pass', 0) == counts['tests'] > 0, name + ': not every planned check passed')
     rows = unit_records(text, node=name == 'node-units')
-    require(len(rows) == counts['tests'] and all(status == 'ok' for _, status in rows),
+    require(type(counts.get('tests')) is int and (counts['tests'] > 0 or allow_empty and counts['tests'] == 0)
+            and len(rows) == counts['tests'], name + ': incomplete unit log')
+    outcomes = Counter(status for _, status in rows)
+    allowed = {'ok', 'not ok'} if name == 'node-units' else {'ok', 'FAIL', 'ERROR'}
+    require(set(outcomes) <= allowed,
             name + ': unapproved skipped/todo or missing individual check outcomes')
     actual = Counter(key(row) for row, _ in rows)
-    require(all(n == 1 for n in actual.values()), name + ': duplicate executed identity')
+    # Node permits distinct passing tests to use the same display name. They
+    # supply no failure admission. Any failing occurrence must be unambiguous;
+    # Python identities already include their module/class and stay unique.
+    require(all(actual[key(row)] == 1 for row, status in rows if name != 'node-units' or status != 'ok'),
+            name + ': duplicate executed identity')
+    if name == 'node-units':
+        require(counts.get('pass') == outcomes['ok'] and counts.get('fail') == outcomes['not ok']
+                and counts['pass'] + counts['fail'] == counts['tests'], name + ': unit outcomes disagree with totals')
+        terminal = list(re.finditer(r'^# tests \d+$', text, re.M))
+        require(len(terminal) == 1 and all(re.fullmatch(r'# (?:tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) [0-9.]+', line)
+                for line in text[terminal[0].start():].splitlines() if line.strip()),
+                name + ': incomplete or abnormal unit ending')
+    else:
+        require(counts.get('failures', 0) == outcomes['FAIL'] and counts.get('errors', 0) == outcomes['ERROR']
+                and counts.get('status') == ('FAILED' if outcomes['FAIL'] or outcomes['ERROR'] else 'OK'),
+                name + ': unit outcomes disagree with totals')
+        endings = list(re.finditer(r'^(?:OK|FAILED)(?: \([^\n]*\))?$', text, re.M))
+        require(len(endings) == 1, name + ': incomplete or abnormal unit ending')
+        # unittest's stderr summary can precede buffered test stdout. Require
+        # explicit completion and complete JSON diagnostics, not an exception,
+        # fatal tail or a truncated record.
+        tail = text[endings[0].end():].strip()
+        while tail:
+            try:
+                record, end = json.JSONDecoder().raw_decode(tail)
+            except (ValueError, RecursionError):
+                raise Refused(name + ': incomplete or abnormal unit ending')
+            require(isinstance(record, (dict, list)), name + ': unsupported buffered unit output')
+            tail = tail[end:].strip()
+    return [dict(row, passed=status == 'ok', unit_status=status, comparison='unit-identity') for row, status in rows]
+
+
+def unit_evidence(step, out, allow_empty=False):
+    rows = unit_results(step, out, allow_empty)
+    require(all(row['passed'] for row in rows), step['name'] + ': not every planned check passed')
 
 def producer_binding(path, environ):
     """Bind original PR or release-branch push evidence to the protected event."""
@@ -878,8 +932,9 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
                 observed.append((step['name'], cases(step, out, (raw['tools'].get('harnesses') or {}).get(NATIVE[step['name']].harness), history),
                                  profile, raw['checkout']))
             else:
-                if history and step.get('passed') is False:
-                    nonbrowser_failure_evidence(step, out)
+                if step.get('passed') is False:
+                    rows = nonbrowser_failure_evidence(step, out, traffic)
+                    observed.append((step['name'], rows, profile, raw['checkout']))
                 else:
                     require(step.get('passed') is True and type(step.get('exit')) is int and step['exit'] == 0,
                             step['name'] + ': non-browser failure cannot be excepted')
@@ -918,32 +973,60 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
     observed = [item for item in observed if item[0] in selected]
     return observed, summary
 
-def nonbrowser_failure_evidence(step, out):
-    """A base run's unrelated unit/replay red never becomes a train exemption.
-
-    Still verify that it is a complete raw failure, not a crashed/missing run.
-    Candidate non-browser checks continue to require a pass.
-    """
+def nonbrowser_failure_evidence(step, out, traffic=None):
+    """Read failures for comparison, while retaining the original failed summary."""
     name = step['name']
-    require(type(step.get('exit')) is int and step['exit'] == 1, name + ': abnormal base failure exit')
+    require(step.get('passed') is False, name + ': inconsistent failure verdict')
     if name in ('python-units', 'node-units', 'deploy-refusals'):
-        text = (out / (name+'.log')).read_text()
-        counts, good = node_counts(text) if name == 'node-units' else python_counts(text)
-        require(not good and counts == step.get('counts') and counts.get('tests',0) > 0, name + ': invalid base failure counts')
-        rows = unit_records(text, node=name == 'node-units')
-        require(len(rows) == counts['tests'], name + ': incomplete base unit log')
-        return
+        require(type(step.get('exit')) is int and step['exit'] == 1, name + ': abnormal unit failure exit')
+        rows = unit_results(step, out)
+        require(any(not row['passed'] for row in rows), name + ': failing exit without failed check')
+        return rows
     require(name == 'wake-replay', 'unknown non-browser base failure')
     runs = step.get('runs')
-    require(isinstance(runs,list) and bool(runs), 'wake-replay: missing base runs')
-    replay_runs = []
+    require(isinstance(runs,list) and bool(runs), 'wake-replay: missing runs')
+    routed = unique((traffic or {}).get('routed'), 'head routed actors')
+    require(bool(routed), 'wake-replay: empty head routed actor inventory')
+    replay_runs, rows = [], []
     for number, run in enumerate(runs, 1):
-        counts, good = replay_counts(out/'replay'/('candidate-%d'%number))
-        require(good and type(run.get('exit')) is int and run['exit'] in (0,1), 'wake-replay: incomplete base report')
-        require((out/('wake-replay-candidate-%d.log'%number)).is_file(), 'wake-replay: missing base log')
+        folder = out/'replay'/('candidate-%d'%number)
+        counts, good = replay_counts(folder)
+        text = evidence_log(out/('wake-replay-candidate-%d.log'%number))
+        code = run.get('exit')
+        require(type(code) is int and code in (0, 2) and type(run.get('passed')) is bool,
+                'wake-replay: abnormal run exit')
+        if code == 0:
+            require(good and run['passed'] is True and set(counts) == routed,
+                    'wake-replay: incomplete successful report')
+            for agent in counts.values():
+                require(isinstance(agent, dict) and agent.get('lost') == []
+                        and type(agent.get('wakes')) is int and agent['wakes'] > 0
+                        and len(agent.get('delays') or []) == agent['wakes'], 'wake-replay: lost or missing wakes')
+            require(bool(text.strip()), 'wake-replay: missing log')
+        else:
+            require(run['passed'] is False and not (folder/'replay.json').exists(),
+                    'wake-replay: refusal contradicts report')
+            # A typed CLI refusal is a terminal result, not a missing-report
+            # exemption. Parse only literal data, never eval or candidate code.
+            match = re.fullmatch(r'refused: the copy refused [^\n]+: ReplayError: (\S+) was not committed: (\{[^\n]+\})', text.strip())
+            require(match is not None, 'wake-replay: missing complete terminal refusal')
+            try:
+                error = ast.literal_eval(match[2])
+            except (ValueError, SyntaxError, RecursionError):
+                raise Refused('wake-replay: malformed terminal refusal')
+            require(isinstance(error, dict) and isinstance(error.get('code'), str)
+                    and re.fullmatch(r'[A-Z][A-Z0-9_]*', error['code']) is not None
+                    and isinstance(error.get('message'), str) and bool(error['message'])
+                    and error.get('retryable') is False and isinstance(error.get('details'), dict),
+                    'wake-replay: incomplete terminal refusal')
+            rows.append({'name': match[1] + ' refusal ' + error['code'], 'passed': False,
+                         'comparison': 'replay-refusal', 'refusal': {'code': error['code'], 'message': error['message']}})
         replay_runs.append(dict(run,counts=counts))
     recalculated = replay_step(replay_runs,step.get('started_at'))
-    require(step.get('counts') == recalculated['counts'] and step.get('series') == recalculated['series'], 'wake-replay: base counts differ')
+    require(bool(rows) and step.get('exit') == recalculated['exit'] and type(step.get('exit')) is int
+            and step.get('counts') == recalculated['counts'] and step.get('series') == recalculated['series'],
+            'wake-replay: counts, series or exit differ from evidence')
+    return rows
 
 
 def producer_workflow(receipt, record, root, commit):
@@ -986,6 +1069,14 @@ def failure_records(observed, root, commit, run_id):
                 continue
             if row['passed']:
                 continue
+            if row.get('comparison') in ('unit-identity', 'replay-refusal'):
+                item['comparison'] = row['comparison']
+                if row['comparison'] == 'unit-identity':
+                    item['unit_status'] = row['unit_status']
+                else:
+                    item['refusal'] = dict(row['refusal'], message=replay_refusal_text(row['refusal']['message']))
+                failures.append(item)
+                continue
             try:
                 fp = fingerprint(row.get('error'), checkout, root, commit)
                 item.update(fingerprint=fp, profile=profile_identity(profile))
@@ -995,16 +1086,29 @@ def failure_records(observed, root, commit, run_id):
     return failures, mutations
 
 
-def compare_failures(failures, known):
+def compare_failures(failures, known, control_runs=None):
     expected, unexpected = [], []
     for item in failures:
-        matches = [old for old in known if 'fingerprint' in item and 'fingerprint' in old
-                   and (old['step'], key(old['case']), old['fingerprint'], old['profile']) ==
-                       (item['step'], key(item['case']), item['fingerprint'], item['profile'])]
-        if matches:
+        if item.get('comparison') in ('unit-identity', 'replay-refusal'):
+            eligible = {r['id'] for r in (control_runs or [])
+                        if item['step'] in r.get('verified_steps', [])}
+            matches = [old for old in known if old.get('comparison') == item['comparison']
+                       and old['run_id'] in eligible
+                       and (old['step'], key(old['case'])) == (item['step'], key(item['case']))
+                       and old.get('unit_status') == item.get('unit_status')
+                       and (item['comparison'] != 'replay-refusal' or old['refusal'] == item['refusal'])]
+            cleared = bool(eligible) and {r['run_id'] for r in matches} == eligible
+            reason = 'not failed by every eligible control'
+        else:
+            matches = [old for old in known if 'fingerprint' in item and 'fingerprint' in old
+                       and (old['step'], key(old['case']), old['fingerprint'], old['profile']) ==
+                           (item['step'], key(item['case']), item['fingerprint'], item['profile'])]
+            cleared = bool(matches)
+            reason = item.get('fingerprint_problem') or 'not shown by recent base runs'
+        if cleared:
             expected.append(dict(item, base_shown=True, cleared=True, matched_base_runs=sorted({r['run_id'] for r in matches})))
         else:
-            unexpected.append(dict(item, base_shown=False, cleared=False, reason=item.get('fingerprint_problem') or 'not shown by recent base runs'))
+            unexpected.append(dict(item, base_shown=False, cleared=False, reason=reason))
     return {'passed': not unexpected, 'expected': expected, 'unexpected': unexpected, 'healed': []}
 
 
@@ -1090,7 +1194,11 @@ def known_base_failures(manifest_path, root, base, producer, required=None):
             require(data.get('workflow_sha') == sha and data.get('workflow_ref') == '%s/%s@refs/heads/%s' % (producer['head_repository'],PRODUCER_WORKFLOW,base['ref']), 'known shard workflow source differs from API')
         failures, mutations = failure_records(observed,root,sha,run_id)
         known.extend(failures)
-        records.append({'id':run_id,'head_sha':sha,'created_at':api['created_at'],'native_failures':len(failures),'raw_passed':summary['passed'],'artifacts':artifacts,'mutation_advisories':mutations,
+        records.append({'id':run_id,'head_sha':sha,'created_at':api['created_at'],
+                        'native_failures':sum('comparison' not in f for f in failures),
+                        'nonbrowser_failures':sum('comparison' in f for f in failures),
+                        'verified_steps':sorted(selected if selected is not None else summary['required']),
+                        'raw_passed':summary['passed'],'artifacts':artifacts,'mutation_advisories':mutations,
                         **({'steps':sorted(selected)} if selected is not None else {})})
     return known, records
 
@@ -1133,7 +1241,7 @@ def validate(summary_path, provenance_path, shards, base_root, candidate_root, p
     observed, summary = read_evidence(summary_path,provenance_path,shards,candidate_root,commit,run,raw_base,expected_merge,binding)
     known, base_runs = known_base_failures(known_runs,candidate_root,base,binding['producer'],summary['required'])
     failures, mutations = failure_records(observed,candidate_root,commit,run['id'])
-    result = compare_failures(failures,known)
+    result = compare_failures(failures,known,base_runs)
     require(not summary['passed'] or binding['producer']['conclusion'] == 'success', 'producer failed outside reported checks')
     result.update(run=run,base=base,merge=expected_merge,raw_passed=summary['passed'],producer=binding['producer'],controller=binding['controller'],status_head_sha=binding['producer']['head_sha'],known_base_runs=base_runs,mutation_advisories=mutations,test_definition_changes=test_definition_changes(candidate_root,base['sha'],commit),runtime_code_paths=[str(Path(__file__).resolve())],known_policy='last-three-whole-base-push-runs-per-step',train=train_identity(candidate_root,commit,binding))
     return result
