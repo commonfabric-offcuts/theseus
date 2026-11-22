@@ -55,8 +55,8 @@ A fourth, from `aim_next/stacks.py` (`awaiting_fields`), once each message
 is placed in its dossier:
 
 - `awaiting_reply`: true on a message of the reader's own, on the record (not
-  a whisper), posted from where the rule begins (below), in a topic that is
-  not an outcome's conversation, that an agent received, until the first
+  a whisper), posted from where the rule begins (below), in either topic
+  kind, including an outcome's Conversation, that an agent received, until the first
   reply from anyone else ("Waiting for a reply", below). An agent received it when Core delivered its first
   revision to an agent: one it was addressed to, or one taking part and
   switched on when it was sent (the deliveries `message.send` and
@@ -122,8 +122,6 @@ a reload start unsilenced. A reply still arrives and ends the wait normally.
 - Never on a whisper.
 - Not at all when no agent receives the message: with nobody named and no
   agent taking part, or only people named in a topic no agent takes part in.
-- Not in an outcome's conversation, where each item already shows its own
-  dots until something settles it.
 
 Core says it (`awaiting_reply`, above), so a reload keeps it and nothing on
 the page starts none. A message or a thumbs-up arriving while the page is
@@ -432,13 +430,14 @@ hostile message costs work in proportion to its length, not to its square. What 
 than were written, plus one a short row, never its rows times its columns.
 
 ## A message no agent received (676)
-On the reader's own public messages in an ordinary topic, where reply waiting
+On the reader's own public messages in either topic kind, where reply waiting
 already applies, `no_agent_notified` is true when publication delivered to no
 agent and addressed no agent. The delivery record preserves the audience at
 send time. A static crossed-eye glyph occupies the reply-indicator position,
 with accessible words saying no agent was addressed or listening when sent.
 It makes no claim about read access. Existing addressed/listener reply waiting
-is unchanged. Private messages and the Conversation keep their existing rules.
+is unchanged. Private messages keep their existing rules; an outcome's
+Conversation uses this same public-message projection.
 
 ## New arrivals above the reading place (785)
 

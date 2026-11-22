@@ -44,19 +44,8 @@ try {
       await page.locator('body[data-ready=true]').waitFor();
       const beforeTopic = await view('topic', { topic_id: topic });
       const beforeMessage = (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 50 })).items.find(item => item.id === id);
-      if (place === 'conversation') {
-        // Current Core deliberately excludes Conversations from awaiting_reply
-        // (stacks.py); do not manufacture a new pulse or control there.
-        assert.equal(beforeMessage.awaiting_reply, false);
-        await page.locator(card(id)).waitFor({ state: 'visible' });
-        assert.equal(await page.locator(`${card(id)} .item-waiting`).count(), 0);
-        assert.equal(await page.locator(`${card(id)} .waiting-silence`).count(), 0);
-        assert.deepEqual(errors, []);
-        results.push({ key, conversationGuard: true, awaitingReply: false, errors });
-        await page.screenshot({ path: `${evidence}/${key}-unchanged.png` });
-        await context.close();
-        continue;
-      }
+      // 1043: both kinds now exercise the same real Core wait, pulse, native
+      // Silence, reload and actual answer path below.
       const mark = page.locator(`${card(id)} .reply-wait .item-waiting`);
       await mark.waitFor({ state: 'visible' });
       const before = await state(mark);
