@@ -1,0 +1,13 @@
+{
+  "id": "precise-audio-clips",
+  "kind": "skill",
+  "name": "Precise audio clips",
+  "summary": "Retrieve a selected recording, cut exact timestamps, verify WAV and MP3 output, and deliver files the user can find.",
+  "home": "oldwell-personal",
+  "files": [
+    "skills/precise-audio-clips/SKILL.md",
+    "skills/precise-audio-clips/scripts/audio_clip.py",
+    "tests/test_precise_audio_clips.py"
+  ],
+  "check": {"python": "tests/test_precise_audio_clips.py"}
+}

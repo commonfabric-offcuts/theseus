@@ -35,8 +35,8 @@ test('1010 device switch defaults on, names both choices and stays beside Quiet/
   const f=switches();assert.ok(f.group(),'pointer-light group mounted');
   assert.equal(f.button('Light on').getAttribute('aria-pressed'),'true');
   assert.equal(f.button('Light off').getAttribute('aria-pressed'),'false');
-  const groups=f.group().parentElement.children;
-  assert.equal(groups[groups.indexOf(f.group())-1].dataset.switch,'agentColors');
+  const row=f.group().parentElement,groups=row.parentElement.children;
+  assert.equal(groups[groups.indexOf(row)-1].dataset.switch,'agentColors');
 });
 test('1010 off survives reload and footer remount without changing another device preference',()=>{
   const saved=new Map([['theseus-look','paper'],['theseus-agent-colors','vivid'],['theseus-bench','umber']]);

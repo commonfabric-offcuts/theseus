@@ -22,7 +22,7 @@ for (const [key, code, kind] of [['Dead', 'KeyN', 'note-card'], ['µ', 'KeyM', '
   const f = fixture({ text: true }); const result = f.press({ key, code, altKey: true });
   assert.equal(result.used, true); assert.equal(result.event.defaultPrevented, true); assert.equal(f.composer.kind, kind);
   assert.deepEqual([f.field.selectionStart, f.field.selectionEnd, f.field.selectionDirection], [2, 6, 'forward']);
-  assert.equal(f.calls.includes('pop'), code === 'KeyN');
+  assert.equal(f.calls.includes('pop'), true, '1023 opens the sheet for either mode');
 });
 test('1018 plain Return on Note uses Send once; held Return does not send twice', () => {
   const f = fixture(); assert.equal(f.press({}).used, true); assert.deepEqual(f.calls, ['send']);
@@ -37,7 +37,7 @@ test('1018 opening an inline Note keeps the selected Notebook destination', () =
   assert.equal(f.press({ key: 'Dead', code: 'KeyN', altKey: true }).used, true); assert.equal(f.composer.noteTarget, 'chosen-page');
 });
 for (const extra of [{ isComposing: true }, { keyCode: 229 }, { defaultPrevented: true }, { metaKey: true }, { ctrlKey: true }, { shiftKey: true }]) test('1018 composition and other key chords retain their owner ' + JSON.stringify(extra), () => {
-  const f = fixture({ text: true }); assert.equal(f.press({ key: 'Dead', code: 'KeyN', altKey: true, ...extra }).used, false); assert.deepEqual(f.calls, []);
+  const f = fixture({ text: true }); assert.equal(f.press({ key: 'Dead', code: extra.isComposing || extra.keyCode === 229 ? 'KeyA' : 'KeyN', altKey: true, ...extra }).used, false); assert.deepEqual(f.calls, []);
 });
 for (const modal of [false, true]) test(`1018 text Return stays a newline, Command-Return stays with the field, modal=${modal}`, () => {
   const f = fixture({ modal, text: true }); assert.equal(f.press({}).used, false); assert.equal(f.press({ metaKey: true }).used, false); assert.deepEqual(f.calls, []);

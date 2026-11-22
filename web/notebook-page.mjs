@@ -5,11 +5,13 @@ import { openMessageMenu, copyText } from './message-menu.mjs';
 import { DeckPage, UNDO_LIMIT } from './deck-page.mjs';
 import { applyAct, deckBody, parseDeck, cardText, cardImages, imageLine, textCard, findCard } from './deck.mjs';
 import { WritingInput } from './writing-input.mjs';
+import { NotebookEditHistory } from './notebook-edit-history.mjs';
 import { NotebookWriting, notebookStore, mergeCardContent } from './notebook-writing.mjs';
 import { NotebookImages } from './notebook-images.mjs';
 import { ImagePick, paintThumb, readInTurn } from './image-pick.mjs';
 import { DRAFT_TIP } from './topic-navigation.mjs';
 import { NotebookViews } from './notebook-view.mjs';
+import { watchNotebookCaret } from './notebook-caret.mjs';
 import { drawnText, drawnRevision, formatWords, literalWords, composeFormattedWords } from './message-format.mjs';
 
 // The draft mark's words (docs/notebook-pages.md, "A draft page").
@@ -39,9 +41,7 @@ export function notebookMenuItems(page) {
       ...(page.menuExtras?.('afterImage')??[]),
       {key:'star',label:state.starred?'Unstar':'Star',glyph:state.starred?'starred':'star',act:()=>page.pageAction('memory.star',{starred:!state.starred})}];
     if(!page.readOnly)items.push({key:'rename',label:'Rename',glyph:'pencil',act:()=>page.rename()});
-    if(state.reader_may_delete)items.push({key:'delete',label:'Delete',glyph:'drop',act:()=>{
-      if(page.doc.defaultView.confirm('Delete this Notebook page? Its history is kept and you can undo it.'))page.pageAction('memory.delete',{deleted:true});
-    }});
+    if(state.reader_may_delete)items.push({key:'delete',label:'Delete',glyph:'drop',act:()=>page.pageAction('memory.delete',{deleted:true})});
     items.push({key:'copy',label:'Copy Link',glyph:'link',act:()=>page.copyLink()});
     return items;
   }
@@ -52,6 +52,7 @@ export class NotebookPage extends DeckPage {
   constructor(options) {
     super({ ...options, interactiveHTML: true });
     this.passages = options.passages;
+    this.deleteUI=options.deleteUI;this.closeDeleted=options.closeDeleted;
     this.viewPreference = options.viewPreference ?? new NotebookViews(options.bootstrap ?? {});
     Object.assign(this, { api: options.api, bootstrap: options.bootstrap, mode: options.mode ?? this.viewPreference.get(options.item) });
     this.viewPreference.set(options.item, this.mode);
@@ -166,6 +167,7 @@ export class NotebookPage extends DeckPage {
     if (!this.started) {
       this.started=true;
       try {
+        await this.deleteUI?.beforeOpen(this.item);
         this.store=await notebookStore({instance_id:this.bootstrap.instance_id,actor_id:this.bootstrap.actor,item_id:this.item});
       } catch(error) {
         // Another tab owns writing, or storage is unavailable: still let this
@@ -173,10 +175,10 @@ export class NotebookPage extends DeckPage {
         this.unavailable=error.message;
         this.store={get:async()=>null,put:async()=>{},close:()=>{}};
       }
-      this.writing=new NotebookWriting({item:this.item,bootstrap:this.bootstrap,api:this.api,store:this.store,changed:()=>this.writingChanged(),
+      this.writing=new NotebookWriting({item:this.item,bootstrap:this.bootstrap,api:this.api,store:this.store,changed:()=>{if(!this.detached)this.writingChanged();this.deleteUI?.changed(this.writing);},
         reconcile:(base,mine,theirs)=>this.mergeIncoming(base,mine,theirs),localActive:()=>Boolean(this.editing&&this.boxChanged(this.editing))});
       if(this.unavailable)this.writing.readOnly=true;
-      await this.writing.open();
+      await this.writing.open();await this.deleteUI?.register(this);
       globalThis.addEventListener('pagehide',()=>{this.writing.close();this.writing.serial.finally(()=>this.store.close());},{signal:this.listening.signal});
       globalThis.addEventListener('pageshow',event=>{if(event.persisted)globalThis.location.reload();},{signal:this.listening.signal});
     } else {
@@ -205,9 +207,11 @@ export class NotebookPage extends DeckPage {
   // Let go without a pagehide (an in-place move, another page in the composer, notebook-sheet.mjs): writing closes
   // as on pagehide, and the page's keys and listeners go with it.
   close() {
-    this.listening.abort();
+    this.stopCaret?.(); this.stopCaret = null;
+    this.detached=true;this.listening.abort();this.deleteUI?.release(this);
+    this.editing?.history?.close();
     this.textProjection?.close();
-    if(this.writing&&!this.writing.closed){this.writing.close();this.writing.serial.finally(()=>this.store.close());}
+    if(this.writing&&!this.writing.closed&&!this.deleteUI?.retains(this.writing)){this.writing.close();this.writing.serial.finally(()=>this.store.close());}
   }
   readingPassages() {
     const source = this.source, revision = source?.source_ref?.revision;
@@ -352,16 +356,22 @@ export class NotebookPage extends DeckPage {
       this.images.restore(id).catch(error=>{this.imageError=error.message;this.writingChanged();});
   }
   open(editing) {
+    this.stopCaret?.(); this.stopCaret = null;
     this.cardImages?.close();this.cardImages?.list?.remove();
     // A refusal said for the card before goes as another opens.
     if(this.imageError){this.imageError=null;this.writingChanged();}
     super.open(editing);
     if(!this.editing)return;
     this.writing.active=true;
+    this.editing.history=new NotebookEditHistory({field:this.editing.field,
+      readOnly:()=>this.readOnly||this.editing?.input.readOnly()||this.writing?.closed});
     this.editing.field.addEventListener('input',()=>this.save());
+    this.stopCaret = watchNotebookCaret(this.editing.field, this.host);
     this.cardImages=this.imagePicker(this.editing.field,this.editing.input,this.list);
   }
   finish({discard=false,target=null} = {}) {
+    this.stopCaret?.(); this.stopCaret = null;
+    this.editing?.history?.close();
     this.cardImages?.close();this.cardImages?.list?.remove();this.cardImages=null;
     if(this.imageError&&this.editing){this.imageError=null;this.writingChanged();}
     let at=-1;
@@ -464,6 +474,11 @@ export class NotebookPage extends DeckPage {
       }
       if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='s'){event.preventDefault();this.writing?.flush();}
       return;
+    }
+    if (!this.host.hidden && event.target === this.editing?.field && this.editing.history) {
+      const history=this.editing.history;
+      if(history.key(event))return;
+      return history.aroundKey(event,()=>super.key(event));
     }
     super.key(event);
   }
@@ -572,6 +587,7 @@ export class NotebookPage extends DeckPage {
     if(!kind&&!this.writing?.actionPending)return;
     // Capture the actual visible writing before settling the same writer stream.
     if(this.editing)this.save();this.textEdited();
+    if(kind==='memory.delete'&&args.deleted&&this.deleteUI)return this.deleteUI.remove(this,()=>this.closeDeleted?.(this));
     if(this.writing?.actionPending)await this.writing.retryAction();
     else await this.writing?.action(kind,args);
     if(!this.writing?.actionPending)await this.load();

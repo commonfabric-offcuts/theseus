@@ -8,6 +8,14 @@ saw it, and because every wake to the three Codex-queue agents failed for 18
 hours after the ChatGPT app was closed, with 129 to 162 messages waiting for
 each, and nobody noticed.
 
+Runner catch-all pauses include the safe originating exception class and a
+bounded diagnostic beside the reason (1038). Core keeps the diagnostic with the
+pause and transfers it to the previous run on acquisition. Its existing guard
+generation fences the record, so an older-code reacquisition cannot reuse stale
+detail. Arbitrary exception text, paths, bodies and tokens never appear; unknown
+text is withheld. If a pause cannot be written, the process result says so with
+both safe causes, rather than claiming Health kept an unwritten fact.
+
 ## Where it is
 
 `?health`, from one quiet "Health" link, the last line of the rail's foot on

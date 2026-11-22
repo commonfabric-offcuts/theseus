@@ -37,9 +37,13 @@ Core prepends an exact Markdown blockquote (each LF-delimited source line gets
 `> `) and a blank line to the caller's unchanged body. It also appends the exact
 excerpt, source revision and start/end to the message's immutable `quotes`.
 Whitespace, CR, Unicode and Markdown in the excerpt are never normalized.
-The exception instead prepends `Reply without a quote:` and a blockquote of
-the exact reason. That line is readable in the existing card, Reader and CLI;
-the quote is ordinary message Markdown, using the existing renderer/mapping.
+The exception prepends a blockquote of the exact reason. New reason bases carry
+`reason_format: 2` and omit the former `Reply without a quote:` heading (1025).
+The page shows the existing reply glyph with label/reason on hover and for
+assistive technology; the reason quote remains readable. Historical receipts
+without that format retain their original heading prefix for edit/readback,
+while the page folds only the exact generated heading into the same mark.
+The quote is ordinary message Markdown with its original source offsets.
 The aggregate body limit is checked after insertion, without truncation.
 
 The committed receipt's `result.reply_basis` holds the source identity,

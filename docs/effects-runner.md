@@ -23,8 +23,9 @@ gets a fresh comparison of the selected route, config and Core pin. The first
 entry selects only this checkout's `bin/aim-next-codex-broker`. Missing config
 at startup refuses the start; ordinary disappearance after startup settles
 unavailable. Post-claim binding or pin failures instead pause the runner and
-leave that claim unsettled. Post-claim storage busy is a storage fault, not a
-new retry policy or evidence that nothing happened.
+leave that claim unsettled. Recognized, rollback/close-confirmed storage busy
+retries before faulting (1038); uncertain cleanup or a possible committed mutation
+is never replayed.
 
 One actual guard acquisition owns the entire process. The singleton lease is
 30 seconds, renewed every nine elapsed seconds or before a 20-second claim
@@ -50,7 +51,11 @@ deadline. Idle operation has no periodic claim/write polling. Database
 replacement, deletion, revocation or watcher failure refuses further work.
 There is no generic-open or polling fallback.
 
-Known, clean pre-claim DATABASE_BUSY in acquire, renew, claim or schedule uses
+Each known clean DATABASE_BUSY call gets at most six attempts at the existing
+250ms SQLite timeout, with100/200/400/800/1000ms backoffs:4s configured contention
+waiting and a4s monotonic retry deadline. Core work/cleanup and OS scheduling are
+additional; an in-flight call may finish after that deadline. Non-busy faults
+are not retried. After those attempts, clean pre-claim busy in acquire, renew, claim or schedule uses
 independent 1, 2, 4, 8, 16, 32, 60 second pacing. A successful action resets only
 its own gate. Returned acquire-busy instead waits for the returned lease end.
 Lost idle ownership exits and requires a fresh process with bounded supervisor
@@ -77,8 +82,22 @@ cleanup_failed pause, even after lease expiry; the pause records the child it
 could not confirm (`child_pid`, `child_started_at`) and its `paused` event
 names the step that did not confirm it (`detail`, a fixed code such as
 `process_observation_failed`) and the `child_pid`. Other fatal faults attempt
-their fixed pause once; a failed pause reports fatal_unsaved without claiming
-it was saved.
+their fixed pause through the same bounded busy policy; a failed pause reports
+fatal_unsaved without claiming it was saved. Catch-alls include a safe structured
+fault: a code-owned exception class and an allowlisted phrase, never arbitrary
+exception text. Unknown class names become Exception; unknown messages are
+withheld. Core keeps it atomically with the pause in runner_fault.v1:current
+metadata, transferring it to runner_fault.v1:prior on the next acquisition.
+The existing guard generation fences both records; the metadata keeps only its
+hash and the diagnostic. Health shows the safe cause beside the reason. A failed
+pause emits the original fault and pause_fault in pause_unsaved/fatal_unsaved;
+an unwritable database is never described as having kept that record. See
+[runner-faults-1038.md](runner-faults-1038.md) for the contract and limits.
+Startup failures before acquisition return a safe fault without a Core pause.
+A later close exception returns cleanup_fault, preserving the original fault
+and whether its pause actually committed; uncertain cleanup cannot promise a
+new Core write. Startup route/profile validation stays a one-shot typed refusal,
+and no external adapter effect is replayed by this storage policy.
 
 No non-SQLite descriptor on the database may close while a SQLite connection
 is open. On normal/known-refusal paths the watch closes last, after serial Core

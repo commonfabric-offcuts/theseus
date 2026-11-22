@@ -1,0 +1,335 @@
+{
+  "version": 1,
+  "item": 1023,
+  "branch": "core-lane7/1023-pencil-keys-306",
+  "base": "5ccd5432284200e823c123c5689383d13f1c8fb7",
+  "raw_evidence": "/Users/commonfabric/aim-worktrees/core-lane7-1023-evidence",
+  "producer_files": {
+    "docs/interaction.md": "04d17839c7bffd4c9658368fe57c5cf021590418c653d548b6c5578977e471d8",
+    "docs/pencil-keys-1023-report.md": "a7a5f941939432f297857f21288721acee1cf7c38a64ab15fdeda7b5ecaa89ce",
+    "docs/pencil-keys-1023.md": "817f4c74e70b7ca319b414c69d506f034dbc9418a510086929d53c39c2aca80b",
+    "tests/pencil_keys_1018_native.mjs": "4b0dad629d4f3ac4f9a2182c92f4563235e314f9336e8d52df80a521637f4116",
+    "tests/pencil_keys_1023_native.mjs": "f5a6d11f4f4eba8a567b998698658e8756ff767026c3c09b942eac616f414640",
+    "tests/ui_pencil_keys_1018.test.mjs": "b4dfa6cc3b8daaed1a75f3cafd3db281dcc550599e716a4355bbd227a87b93ff",
+    "tests/ui_pencil_keys_1023.test.mjs": "2f5f72f884a4fb12063a2e42a0698a850c580bc6030ba717b97e05f1f9a99225",
+    "web/interaction-guide.mjs": "04756a297aa212235ed2bc9c898fc44f0295dd9875f065dc68651e4e29925f94",
+    "web/pane-keys.mjs": "ece54607df5d65cffbb492dcb9ffc776eac64e41e1c4c395c638c3e46b8cf110",
+    "web/pencil-keys.mjs": "96b3e2503220bd0ec9c58a6384e6cfe7de69e8eb4f7f889b34aa5a84b48dcb99"
+  },
+  "artifact_files": [
+    {
+      "path": "chrome-final/harness.mjs",
+      "bytes": 13094,
+      "sha256": "f5a6d11f4f4eba8a567b998698658e8756ff767026c3c09b942eac616f414640"
+    },
+    {
+      "path": "chrome-final/launch.json",
+      "bytes": 239,
+      "sha256": "70ee7104b73dfe45cd6dfa7888101298fea35a2a0a4e7770707341d4b1323c45"
+    },
+    {
+      "path": "chrome-final/observations.json",
+      "bytes": 123386,
+      "sha256": "f23f3b00321d506359646203bf7593b2ed58a95b3306628e929b5fa5e34c521d"
+    },
+    {
+      "path": "chrome-final/results.json",
+      "bytes": 133531,
+      "sha256": "7be2e0f6bc757849f2a3fc0af9d386208ae4a1e49d5a80323d6be3955cc9fd37"
+    },
+    {
+      "path": "chrome-final/run.log",
+      "bytes": 3768,
+      "sha256": "8d0fc16d7dbbb60e5b8bdea1a2568c42c6461f46af7a5cba9f7af87934d59419"
+    },
+    {
+      "path": "cohort/base306.log",
+      "bytes": 219149,
+      "sha256": "b42174f1808f5ba950b2d0dbebb928e0850c4158cdb580e35423004b8b87cb7c"
+    },
+    {
+      "path": "cohort/candidate.log",
+      "bytes": 219743,
+      "sha256": "75cef6d42913502c5d6eebf2ef688ecac8cd51f9f584557841886db705af0964"
+    },
+    {
+      "path": "cohort/comparison.json",
+      "bytes": 848,
+      "sha256": "edc27c068c9418012c2137af50e3741b2d740beb88d91f164f2448bc1b87d2a4"
+    },
+    {
+      "path": "cohort/files.json",
+      "bytes": 680,
+      "sha256": "13be94d15549bec91c8a626caf201a48fe0fcfa2ff3f716b2b0ced9b51a7e668"
+    },
+    {
+      "path": "cohort/normalized.diff",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "green/focused-node.log",
+      "bytes": 2903,
+      "sha256": "2d448c97fca02c43b8d297c83e38d5413fe99eb0bdf618f2bf777d57ae4fcd20"
+    },
+    {
+      "path": "mutations/held-shortcut/pencil-keys.mjs",
+      "bytes": 2507,
+      "sha256": "3937ef1f4ee36d718b9d6cd77edcd3b128177af0613d4963d9959e7cbe8a979b"
+    },
+    {
+      "path": "mutations/held-shortcut/red.log",
+      "bytes": 6208,
+      "sha256": "cfd3f50d979b0ec57b068fab40f2909f500ffb1858e3744225e5ff77a6ec805a"
+    },
+    {
+      "path": "mutations/held-shortcut/restored.log",
+      "bytes": 2726,
+      "sha256": "5e92607e263f0d74a156724f5a53d8f9ce907e7b3fdf04e1b9625f92f59cacf1"
+    },
+    {
+      "path": "mutations/message-opening/pencil-keys.mjs",
+      "bytes": 2522,
+      "sha256": "874d3922a5422cb9441d8292fbc80d4c499b83c2173f1bbc8f08c91a9ad85ef0"
+    },
+    {
+      "path": "mutations/message-opening/red.log",
+      "bytes": 3466,
+      "sha256": "43a318053e1203cd6db0326da9dba63a23a494ed1f24d9e2ddb00427b8c7355a"
+    },
+    {
+      "path": "mutations/message-opening/restored.log",
+      "bytes": 2728,
+      "sha256": "28fa8d44fc699981f432ca1b0761ca378f653f542d96924031fa2cbbe4dbdf27"
+    },
+    {
+      "path": "mutations/pill-command-return/pencil-keys.mjs",
+      "bytes": 2439,
+      "sha256": "9ae5d3dbb84c3bdcc848f9229f6bb271fba3642d53dceceec0b862a4fa3f664c"
+    },
+    {
+      "path": "mutations/pill-command-return/red.log",
+      "bytes": 4472,
+      "sha256": "9f2339f70ba1f8daff3b45dcc3c918bdd3e0b807389f67d416ad850900169586"
+    },
+    {
+      "path": "mutations/pill-command-return/restored.log",
+      "bytes": 2728,
+      "sha256": "7188c3438bcbc157d909b2ef28393e249d6c034b1840ea37f4a3f1a04623b696"
+    },
+    {
+      "path": "mutations/results.json",
+      "bytes": 532,
+      "sha256": "f1c5bb0b178233aa5576f23ea4ca936bde186abdc90dbfc9d2459a954d5b76fd"
+    },
+    {
+      "path": "red306/chrome/chromium-bookends-light-option-m-opens-message-from-page.png",
+      "bytes": 183101,
+      "sha256": "cbbf77e5d1d99a1e6564c1e92b72653d948339017c33787331006ec06d3a7637"
+    },
+    {
+      "path": "red306/chrome/chromium-bookends-light-owned-naming-dialog-consumes-KeyM.png",
+      "bytes": 9461,
+      "sha256": "c850564efabcb9c8e3372f5e3d7ca73cddb46c0b3cecf9bc28d780b052a9b010"
+    },
+    {
+      "path": "red306/chrome/chromium-bookends-light-owned-naming-dialog-consumes-KeyN.png",
+      "bytes": 10487,
+      "sha256": "8ea4cdcb81c7425b1a9606f2377452b365f9bda3995cedca860895955cb11a5c"
+    },
+    {
+      "path": "red306/chrome/chromium-bookends-light-pill-message-Meta+Enter.png",
+      "bytes": 170677,
+      "sha256": "9a8e8488d4e8c10ea3a67e1389aef4a4910d8a2a117215bf03b29cac14d28736"
+    },
+    {
+      "path": "red306/chrome/chromium-bookends-light-pill-note-card-Meta+Enter.png",
+      "bytes": 177059,
+      "sha256": "9cf31e0281dcc0f37980c50a668d8980ee848e14bf2deb25a0f73ceb519a8128"
+    },
+    {
+      "path": "red306/chrome/chromium-bookends-light-typing-KeyM-opens-and-preserves-writing.png",
+      "bytes": 183012,
+      "sha256": "a703a2149bbb9cd548681ac1c92694ba997f2a553b32c7d7e3ac9def7af05fd0"
+    },
+    {
+      "path": "red306/chrome/launch.json",
+      "bytes": 430,
+      "sha256": "d517ba9ec59e20d14665a6318830cf7d16a6e1fa7c33525e4a427bfa18de255b"
+    },
+    {
+      "path": "red306/chrome/observations.json",
+      "bytes": 26793,
+      "sha256": "abc170402f89df10e0b8a9795f10caa64b8758ddfb492cb8527863d4268d54c3"
+    },
+    {
+      "path": "red306/chrome/results.json",
+      "bytes": 29451,
+      "sha256": "db6bd256da3682363fa2a8ab41de40aa4d64f330091a39a4609780f35175f363"
+    },
+    {
+      "path": "red306/chrome/run.log",
+      "bytes": 1820,
+      "sha256": "f0d44d91be0eb355d27a813c384247900e7656eafcd80e0856fc554e61fb6c3b"
+    },
+    {
+      "path": "red306/harness.mjs",
+      "bytes": 12188,
+      "sha256": "4bb9d159a389aa242644a3f06529643546413ae313d32abc5458019e84813a15"
+    },
+    {
+      "path": "red306/node.log",
+      "bytes": 7572,
+      "sha256": "b125b1941dd58056ef529e36bf65ceb5b231cf8c4edb5f565872f665725b66b5"
+    },
+    {
+      "path": "red306/product-before.json",
+      "bytes": 366,
+      "sha256": "b291e30b5977c0fc5bbb6978078d8be28248694619c90113636493fd0cd8671c"
+    },
+    {
+      "path": "webkit-final/harness.mjs",
+      "bytes": 13094,
+      "sha256": "f5a6d11f4f4eba8a567b998698658e8756ff767026c3c09b942eac616f414640"
+    },
+    {
+      "path": "webkit-final/launch.json",
+      "bytes": 239,
+      "sha256": "cc23932f07562673e70fa23666119434014d07c4051865357c63a2bbb6ab0b4e"
+    },
+    {
+      "path": "webkit-final/observations.json",
+      "bytes": 123091,
+      "sha256": "89a93b69742a486d67ce243b9bb10b7f1e822ea5e2bc4163b7a14e3c1fb2b32e"
+    },
+    {
+      "path": "webkit-final/results.json",
+      "bytes": 133157,
+      "sha256": "50ecc46b907f724b9883db2051c52083375869c212015787184b53973ce14ff0"
+    },
+    {
+      "path": "webkit-final/run.log",
+      "bytes": 3672,
+      "sha256": "131a2a9d18c725be881aff873310e9df1e5ca7df9fea3a0ccf393f4796a6ceea"
+    }
+  ],
+  "native": {
+    "chrome-final": {
+      "version": "148.0.7778.96",
+      "cases": 48,
+      "pass": 48,
+      "fail": 0,
+      "publications": 20,
+      "product_hashes": {
+        "inline-composer.mjs": "19b04d5996d24eecef08e3ae73ca57903f1a8ced5d5745456229dad4cdc0e417",
+        "pane-keys.mjs": "ece54607df5d65cffbb492dcb9ffc776eac64e41e1c4c395c638c3e46b8cf110",
+        "interaction-guide.mjs": "04756a297aa212235ed2bc9c898fc44f0295dd9875f065dc68651e4e29925f94",
+        "pencil-keys.mjs": "96b3e2503220bd0ec9c58a6384e6cfe7de69e8eb4f7f889b34aa5a84b48dcb99"
+      },
+      "harness_sha256": "f5a6d11f4f4eba8a567b998698658e8756ff767026c3c09b942eac616f414640",
+      "cleanup": {
+        "browserClosed": true,
+        "ownedPids": [
+          99282,
+          99298,
+          99299,
+          99301,
+          99313,
+          99314,
+          99706
+        ],
+        "remainingOwned": [],
+        "profileProcesses": [],
+        "profileRemoved": true,
+        "fixtureExit": {
+          "code": 0,
+          "signal": null
+        },
+        "fixtureErrors": "",
+        "fixturePid": 99281,
+        "fixtureAbsent": true,
+        "portClosed": true
+      }
+    },
+    "webkit-final": {
+      "version": "26.6",
+      "cases": 48,
+      "pass": 48,
+      "fail": 0,
+      "publications": 20,
+      "product_hashes": {
+        "inline-composer.mjs": "19b04d5996d24eecef08e3ae73ca57903f1a8ced5d5745456229dad4cdc0e417",
+        "pane-keys.mjs": "ece54607df5d65cffbb492dcb9ffc776eac64e41e1c4c395c638c3e46b8cf110",
+        "interaction-guide.mjs": "04756a297aa212235ed2bc9c898fc44f0295dd9875f065dc68651e4e29925f94",
+        "pencil-keys.mjs": "96b3e2503220bd0ec9c58a6384e6cfe7de69e8eb4f7f889b34aa5a84b48dcb99"
+      },
+      "harness_sha256": "f5a6d11f4f4eba8a567b998698658e8756ff767026c3c09b942eac616f414640",
+      "cleanup": {
+        "browserClosed": true,
+        "ownedPids": [
+          2266,
+          2272
+        ],
+        "remainingOwned": [],
+        "profileProcesses": [],
+        "profileRemoved": true,
+        "fixtureExit": {
+          "code": 0,
+          "signal": null
+        },
+        "fixtureErrors": "",
+        "fixturePid": 2263,
+        "fixtureAbsent": true,
+        "portClosed": true
+      }
+    }
+  },
+  "focused": {
+    "tests": 35,
+    "pass": 35,
+    "fail": 0
+  },
+  "existing_cohort": {
+    "tests": 730,
+    "pass": 717,
+    "fail": 13,
+    "entire_tap_equal_after_exact_roots_and_durations": true
+  },
+  "red": {
+    "focused": {
+      "tests": 12,
+      "pass": 5,
+      "fail": 7
+    },
+    "native": {
+      "tests": 11,
+      "pass": 5,
+      "fail": 6
+    }
+  },
+  "mutations": [
+    {
+      "name": "message-opening",
+      "mutant_exit": 1,
+      "restored_exit": 0,
+      "restored_sha256": "96b3e2503220bd0ec9c58a6384e6cfe7de69e8eb4f7f889b34aa5a84b48dcb99"
+    },
+    {
+      "name": "held-shortcut",
+      "mutant_exit": 1,
+      "restored_exit": 0,
+      "restored_sha256": "96b3e2503220bd0ec9c58a6384e6cfe7de69e8eb4f7f889b34aa5a84b48dcb99"
+    },
+    {
+      "name": "pill-command-return",
+      "mutant_exit": 1,
+      "restored_exit": 0,
+      "restored_sha256": "96b3e2503220bd0ec9c58a6384e6cfe7de69e8eb4f7f889b34aa5a84b48dcb99"
+    }
+  ],
+  "limits": [
+    "native key spelling n/m; Dead/micro only focused controls",
+    "physical Mac field/IME trigger not established",
+    "no physical phone/software keyboard/timing/live repair/acceptance/hosted result"
+  ]
+}
