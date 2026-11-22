@@ -150,8 +150,10 @@ ERROR_HEADER = re.compile(r'^[A-Za-z]*Error( \[[A-Z_]+\])?: ')
 # What a run that reached the fixture's own assertion writes after its last result and nothing else: Node's uncaught
 # exception preamble, the harness's assertion header carrying the fixture's traceback, that traceback's frames and
 # source lines, the fixture's own AssertionError, the harness's diff, its frames and the error's property block.
-FIXTURE_TAIL = re.compile(r'^(\s*|node:internal/\S+|\s+triggerUncaughtException\(|\s+\^|'
-                          r'\S.* !== \S.*|\s+at .*|\s+[A-Za-z]+: .*|[{}]|Node\.js v\d.*)$')
+FIXTURE_TAIL = re.compile(r'^(\s*|node:internal/\S+|\s+triggerUncaughtException\(|\s+\^|\S.* !== \S.*|\s+at .*|[{}]|Node\.js v\d.*)$')
+# The assertion error's property block: opened by its frame line ending in a brace, closed by a brace, holding only
+# the fields Node prints for an AssertionError.
+FIXTURE_PROPERTY = re.compile(r'^\s+(generatedMessage|code|actual|expected|operator|diff|message|name): .*$')
 
 def fixture_exit_row(name, code, log, rows, harness, report, history):
     """The fixture failed its own end-of-run check after the harness ran the cases it had.
@@ -184,11 +186,14 @@ def fixture_exit_row(name, code, log, rows, harness, report, history):
             name + ': fixture exit without its assertion')
     # A traceback frame's source line is admitted only right after its frame; every other line must be one of the
     # forms a run that reached the fixture's assertion writes.
-    foreign, previous = [], None
+    foreign, previous, in_block = [], None, False
     for line in tail:
         source = previous is not None and FIXTURE_FRAME.match(previous) and line.startswith('    ') and line.strip()
-        if not (source or FIXTURE_FRAME.match(line) or FIXTURE_TAIL.match(line) or ERROR_HEADER.match(line)):
+        prop = in_block and FIXTURE_PROPERTY.match(line)
+        if not (source or prop or FIXTURE_FRAME.match(line) or FIXTURE_TAIL.match(line) or ERROR_HEADER.match(line)):
             foreign.append(line)
+        if re.match(r'^\s+at .*\{$', line): in_block = True
+        elif line.strip() == '}': in_block = False
         previous = line
     foreign += headers[2:]
     if foreign:

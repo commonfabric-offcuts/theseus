@@ -203,9 +203,16 @@ class FixtureExitCase(unittest.TestCase):
                       'Error [ERR_UNHANDLED_REJECTION]: unrelated fatal tail\n',
                       'Segmentation fault: 11\n',
                       '    an indented fatal line after the property block\n',
+                      '    Error: unrelated fatal tail\n',
+                      '  code: \'ERR_SOMETHING_ELSE\',\n',
+                      '  foo: bar inside no block\n',
                       'the harness printed something else\n'):
             refusal = self.refused(self.evidence(1, FIXTURE_TRACEBACK + extra))
             self.assertTrue(refusal.startswith('native-reading: fixture exit is not the last failure: ' + extra.split('\n')[0].strip()), refusal)
+
+    def test_an_unknown_property_inside_the_error_block_is_refused(self):
+        tail = FIXTURE_TRACEBACK.replace("  code: 'ERR_ASSERTION'\n", "  code: 'ERR_ASSERTION',\n  payload: 'smuggled'\n")
+        self.assertTrue(self.refused(self.evidence(1, tail)).startswith('native-reading: fixture exit is not the last failure: payload:'))
 
     def test_fixture_exit_without_its_assertion_is_refused(self):
         self.assertEqual(self.refused(self.evidence(1, 'Killed\n')), 'native-reading: fixture exit without its assertion')
