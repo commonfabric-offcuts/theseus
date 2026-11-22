@@ -44,7 +44,7 @@ class RestartFixture(unittest.TestCase):
         _, errors = child.communicate(timeout=15)
         self.assertEqual(child.returncode, 0, errors)
 
-    def test_restart_cannot_hide_an_unrestored_comparison(self):
+    def test_restart_refusal_is_kept_while_eof_restoration_succeeds(self):
         child = self.fixture()
         self.control(child, "ready")
         changed = self.control(child, "item_783_runtime", phase="wrong-background")["answer"]
@@ -52,8 +52,8 @@ class RestartFixture(unittest.TestCase):
         refused = self.control(child, "server_stop")
         self.assertIn("Restore Item 783 comparison runtime", refused["failure"])
         _, errors = child.communicate(timeout=15)
-        self.assertNotEqual(child.returncode, 0, "Unrestored comparison must still fail cleanup")
-        self.assertIn("Item 783 comparison runtime was not restored", errors)
+        self.assertEqual(child.returncode, 0, errors)
+        self.assertEqual(errors, "", "Needing a successful EOF restoration is not a cleanup error")
 
 
 if __name__ == "__main__":

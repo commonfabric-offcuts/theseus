@@ -227,6 +227,7 @@ export class TopicViews {
     for (const item of this.memory.values()) this.revisions.observe(item.id, item.revision);
   }
   keys(item) {
+    if (item.resource_kind === 'workspace_link') return []; // The rail owns these; no Notebook or topic read.
     if (item.resource_kind === 'topic') return [{ key: 'topic', version: item.version }];
     // Its outcome's record changed (its team, owner or coordinator) and the topic's
     // version did not: the topic is read again for who may organise it now.

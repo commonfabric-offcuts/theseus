@@ -71,7 +71,7 @@ export function scopedChangesPage(answer, bootstrap, scope, input = null) {
   for (const item of answer.items) {
     if (!integer(item.seq) || item.seq <= previous || item.seq > upper || !integer(item.version) || item.version < 1 ||
         typeof item.resource_id !== 'string' || !item.resource_id || typeof item.resource_kind !== 'string' || !item.resource_kind ||
-        scope.kind === 'topic' && (!['topic', 'memory', 'workspace'].includes(item.resource_kind) || item.resource_kind === 'topic' && item.resource_id !== scope.id) ||
+        scope.kind === 'topic' && (!['topic', 'memory', 'workspace', 'workspace_link'].includes(item.resource_kind) || item.resource_kind === 'topic' && item.resource_id !== scope.id) ||
         scope.kind === 'workspace' && item.resource_kind === 'workspace' && item.resource_id !== scope.id) throw diagnostic('The change key is malformed or outside this topic.');
     previous = item.seq;
   }
