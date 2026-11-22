@@ -249,3 +249,26 @@ incidentally. Earlier setup, polling/auth fixture errors and product failures
 remain retained. Cleanup observes descendants at phase boundaries; it does
 not claim complete instantaneous process history. No physical ten-minute
 elapsed-time or device-clock-change result is claimed.
+
+## Review17743 correction
+
+Rejected head1d583983 is retained with its original source/test packet. The
+unchanged seat migration suites exposed an already-present transfer layout
+beside a lower schema marker: those fixtures initialize the latest schema,
+remove their own older slice and then migrate up. The transfer downgrade
+already drops its table. The additive table/index/immutable-trigger install
+now tolerates its existing layout without replacing witnesses; the revision
+rebuild still preserves all values. A new occupied reinstall control checks
+two installs, exact page/revision/witness/schema equality, FK/integrity checks,
+immutable guards, lossy-down refusal and the subsequent exact paired inverse.
+The five existing seat cases are unchanged.
+
+A known internal current-topic page target keeps the shared sheet's direct id read and
+its opener. The sheet itself asks Core for the page and access; the label does
+not grant access or override current ownership. Authored URL queries, other
+destinations and links to a particular revision keep their existence/access
+confirmation and current-scope resolution. The existing788
+real-app wiring case is unchanged. Rejected whole owners are actually applied
+and restored with their raw exits/maps. The prior64 native checks remain
+attributed to1d583983; this correction uses bounded Core/real-app adapter checks
+and launches no browser while Page5 owns1059.

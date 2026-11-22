@@ -40,14 +40,17 @@ TRANSFER_IDENTITY = (
     "BEGIN SELECT RAISE(ABORT, 'immutable Notebook identity'); END"
 )
 MEMORY_TRANSFER_SCHEMA = _revision_layout(True) + [
-    "CREATE TABLE memory_transfer_acts (actor_id TEXT NOT NULL REFERENCES actors(id), id TEXT NOT NULL, "
+    # Earlier slice migration checks retain later empty layouts while lowering
+    # their schema marker. Reinstall this additive layout without replacing
+    # any existing witnesses; the revision rebuild still preserves every row.
+    "CREATE TABLE IF NOT EXISTS memory_transfer_acts (actor_id TEXT NOT NULL REFERENCES actors(id), id TEXT NOT NULL, "
     "kind TEXT NOT NULL CHECK(kind IN ('move','copy','undo_move','undo_copy')), item_id TEXT NOT NULL REFERENCES memory_items(id), "
     "copy_id TEXT REFERENCES memory_items(id), from_kind TEXT NOT NULL, from_id TEXT NOT NULL, to_kind TEXT NOT NULL, to_id TEXT NOT NULL, "
     "before_revision INTEGER NOT NULL, after_revision INTEGER NOT NULL, copy_before_revision INTEGER, copy_after_revision INTEGER, "
     "undo_of TEXT, PRIMARY KEY(actor_id,id), UNIQUE(actor_id,undo_of), FOREIGN KEY(actor_id,undo_of) REFERENCES memory_transfer_acts(actor_id,id))",
-    "CREATE INDEX memory_scope_transfers ON memory_transfer_acts(item_id,after_revision)",
-    "CREATE TRIGGER immutable_memory_transfer_update BEFORE UPDATE ON memory_transfer_acts BEGIN SELECT RAISE(ABORT, 'immutable Notebook transfer'); END",
-    "CREATE TRIGGER immutable_memory_transfer_delete BEFORE DELETE ON memory_transfer_acts BEGIN SELECT RAISE(ABORT, 'immutable Notebook transfer'); END",
+    "CREATE INDEX IF NOT EXISTS memory_scope_transfers ON memory_transfer_acts(item_id,after_revision)",
+    "CREATE TRIGGER IF NOT EXISTS immutable_memory_transfer_update BEFORE UPDATE ON memory_transfer_acts BEGIN SELECT RAISE(ABORT, 'immutable Notebook transfer'); END",
+    "CREATE TRIGGER IF NOT EXISTS immutable_memory_transfer_delete BEFORE DELETE ON memory_transfer_acts BEGIN SELECT RAISE(ABORT, 'immutable Notebook transfer'); END",
     "DROP TRIGGER immutable_memory_identity",
     TRANSFER_IDENTITY,
 ]

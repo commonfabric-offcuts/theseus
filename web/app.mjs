@@ -4087,7 +4087,13 @@ nameTopicsWith(topicName);
 // from: the link pressed, which takes the focus back when the Reader closes.
 async function openDestination(target, title, from = null, writtenQuery = false) {
   const landing = ++landingSerial;
-  if ((writtenQuery || target.page) && (target.kind === 'topic' || target.page || target.kind === 'cards')) {
+  // Here the shared sheet reads the page by id through Core itself. Resolving
+  // its label first must not replace this local opening or lose its opener.
+  // Authored URL queries still confirm existence/access before opening.
+  const localPage = !writtenQuery && target.page && !target.revision && ((topic && views &&
+    (target.kind === 'topic' ? target.id === topic.id : target.kind === 'workspace' && target.id === topic.workspace_id)) ||
+    (!topic && pageHere && target.kind === 'workspace' && target.id === pageHereOutcome));
+  if (!localPage && (writtenQuery || target.page) && (target.kind === 'topic' || target.page || target.kind === 'cards')) {
     const original = target;
     topicNavigation?.cancelPending();
     try {

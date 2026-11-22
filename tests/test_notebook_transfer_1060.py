@@ -326,6 +326,35 @@ class TransferCase(ReaderCase):
         self.assertEqual(self.sql("PRAGMA foreign_key_check"), [])
         self.assertEqual(self.sql("PRAGMA integrity_check"), [("ok",)])
 
+    def test_reinstall_keeps_existing_paired_revisions_witnesses_and_lossy_down_refusal(self):
+        self.committed(self.memory(body=WORDS))
+        self.committed(self.transfer("copy", op="before-reinstall"))
+        before = self.effects()
+        witnesses = self.sql("SELECT * FROM memory_transfer_acts ORDER BY rowid")
+        schema = self.sql("SELECT name,sql FROM sqlite_master WHERE name LIKE '%memory%' ORDER BY name")
+        for _ in range(2):
+            # Model the same retained later layout that the existing seat
+            # migration fixtures leave beside their lower schema marker.
+            with sqlite3.connect(str(self.path)) as db:
+                db.execute("UPDATE metadata SET value='65' WHERE key='schema_version'")
+            migrate(self.path, "test-instance", self.binding)
+            self.assertEqual(self.effects(), before)
+            self.assertEqual(self.sql("SELECT * FROM memory_transfer_acts ORDER BY rowid"), witnesses)
+            self.assertEqual(self.sql("SELECT name,sql FROM sqlite_master WHERE name LIKE '%memory%' ORDER BY name"), schema)
+            self.assertEqual(self.sql("PRAGMA foreign_key_check"), [])
+            self.assertEqual(self.sql("PRAGMA integrity_check"), [("ok",)])
+        with self.assertRaises(MigrationError) as refused:
+            migrate(self.path, "test-instance", self.binding, "65")
+        self.assertEqual(refused.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.effects(), before)
+        with sqlite3.connect(str(self.path)) as db:
+            with self.assertRaises(sqlite3.IntegrityError):
+                db.execute("UPDATE memory_transfer_acts SET id='changed'")
+            with self.assertRaises(sqlite3.IntegrityError):
+                db.execute("UPDATE memory_revisions SET body='changed'")
+        self.committed(self.inverse("before-reinstall", copy_revision=1, op="after-reinstall"))
+        self.assertEqual(self.page()["body"], WORDS)
+
     def test_inverse_second_revision_storage_failure_keeps_both_links_and_exact_retry(self):
         self.committed(self.memory(body=WORDS))
         self.committed(self.transfer('copy', op='paired-forward'))
