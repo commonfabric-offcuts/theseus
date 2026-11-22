@@ -192,6 +192,7 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        db.execute("DROP TABLE IF EXISTS workspace_links")  # Empty 1021 collection is absent from historical layouts.
         # 1002's tables are empty here and absent from every frozen historical
         # layout. Its real upgrade and occupied downgrade have separate checks.
         db.execute("DROP TABLE hosted_seat_events")

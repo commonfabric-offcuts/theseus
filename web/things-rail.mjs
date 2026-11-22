@@ -28,6 +28,7 @@ import { listen } from './in-place-navigation.mjs';
 import { KeyTree } from './key-tree.mjs';
 import { panes } from './panes.mjs';
 import { ImageRailMenu } from './image-rail-menu.mjs';
+import { WorkspaceLinks } from './workspace-links.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
 import { nearest } from './arrow-reach.mjs';
@@ -45,7 +46,7 @@ import { book, orderOf, placeIn, scopeOf } from './outline-order.mjs';
 
 export const SECTIONS = [
   ['notebook', 'Notebook'], ['prs', 'Pull requests'], ['images', 'Images'],
-  ['waiting', 'Waiting for…'], ['previews', 'Previews'], ['tools', 'Skills and tools'], ['pipeline', 'Pipeline'],
+  ['waiting', 'Waiting for…'], ['previews', 'Links'], ['tools', 'Skills and tools'], ['pipeline', 'Pipeline'],
 ];
 // How far back the rail looks for links in the current topic.
 export const MESSAGES = 50;
@@ -169,6 +170,7 @@ export class ThingsRail {
     this.reload = reloader(() => this.load());
     this.build();
     this.imageMenus = new ImageRailMenu(this);
+    this.links = new WorkspaceLinks(this);
     // The keys move through the sections and their rows as one tree
     // (key-tree.mjs): ↑ ↓ between them, → and ⌘→ ⌘← open and fold a
     // section, Return opens a row, and plain ← goes back to the messages
@@ -254,7 +256,7 @@ export class ThingsRail {
     const action = keyAction(event);
     if (!['left', 'right', 'up', 'down'].includes(action)) return;
     const target = event.target.closest?.('a[href], button'), grid = target?.closest('.things-thumbs, .archive-shelf-row');
-    if (!grid || !this.host.contains(grid)) return;
+    if (!grid || !this.host.contains(grid) || Object.hasOwn(target?.dataset ?? {}, 'linkMenu')) return;
     const rows = this.tree.list(), byElement = new Map(rows.map(row => [row.el, row]));
     const cells = [...grid.querySelectorAll('a[href], button')].filter(el => byElement.has(el) && !el.disabled && !el.closest('[inert], [aria-hidden=true]'))
       .map(el => ({ el, box: el.getBoundingClientRect() })).filter(({ box }) => box.width > 0 && box.height > 0);
@@ -342,6 +344,7 @@ export class ThingsRail {
       rows.push({ el: summary, level: 1, set: this.holder, key: 'section:' + key, parent: null, expanded: part.details.open });
       if (!part.details.open) continue;
       for (const el of part.body.querySelectorAll('a[href], button')) {
+        if (Object.hasOwn(el.dataset, 'linkMenu')) continue;
         // Several images can share their message's link; the attachment
         // identity keeps each picture its own cursor place across refresh.
         const identity = el.dataset.railImage ? 'image:' + el.dataset.railImage : el.getAttribute('href') ?? el.textContent.trim();
@@ -454,7 +457,7 @@ export class ThingsRail {
   // Nothing of the topic before stays on screen: every section goes,
   // with its words, until this one's read lands.
   clear() {
-    this.imageMenus?.reset(); this.imageReturn = null;
+    this.imageMenus?.reset(); this.imageReturn = null; this.links?.reset();
     for (const part of this.sections.values()) { part.drawn = null; part.details.hidden = true; part.body.replaceChildren(); part.sum.textContent = ''; }
     for (const creator of this.creators.values()) creator.setAvailable(false);
     this.nothing.hidden = true; this.message.hidden = true; this.retry.hidden = true;
@@ -477,16 +480,18 @@ export class ThingsRail {
     const tools = !readable(topicId) ? settle(Promise.resolve(null))
       : settle(view('topic_tools', { topic_id: topicId }).then(answer => answer.linked.map(tool => ({ ...tool, home: tool.home_workspace_id }))));
     const notebook = !readable(topicId) ? settle(Promise.resolve(null)) : settle(this.readNotebook(view, { kind: 'topic', id: topicId }));
+    const links = this.links ? settle(readable(topicId) ? this.links.read(handles) : Promise.resolve(null)) : settle(Promise.resolve(undefined));
     const places = [this.topicPlace(handles)].filter(place => readable(place.id));
     if (serial !== this.serial || handles !== this.handles) return true;
     const reads = places.map(place => settle(this.readPlace(view, place, 24)));
-    const [pipe, notes, toolsRead, ...found] = await Promise.all([pipeline, notebook, tools, ...reads]);
+    const [pipe, notes, toolsRead, linksRead, ...found] = await Promise.all([pipeline, notebook, tools, links, ...reads]);
     if (serial !== this.serial || handles !== this.handles) return true;
-    const failed = [pipe, notes, toolsRead, ...found].filter(read => read.error && !denied(read.error));
+    const failed = [pipe, notes, toolsRead, linksRead, ...found].filter(read => read.error && !denied(read.error));
     const messages = found.flatMap(read => read.value ? read.value.messages.map(message => ({ ...message, place: read.value.place })) : []);
     const images = new Map();
     for (const read of found) for (const image of read.value?.images ?? []) if (!images.has(image.attachment.id)) images.set(image.attachment.id, { ...image, place: read.value.place });
     this.paint({ topicId, pipeline: pipe.value ?? (pipe.error ? undefined : null), notebook: notes.value === null ? null : notes.value?.items ?? (notes.error ? undefined : []),
+      links: linksRead.value ?? (linksRead.error && denied(linksRead.error) ? null : undefined),
       notebookMayWrite: notes.value?.reader_may_write === true, notebookNext: notes.value?.next ?? null,
       messages, images: [...images.values()].sort((a, b) => (b.sent_ms ?? 0) - (a.sent_ms ?? 0)),
       tools: toolsRead.value === null ? [] : toolsRead.value ?? (toolsRead.error ? undefined : []) });
@@ -577,11 +582,12 @@ export class ThingsRail {
       pipeline: found.pipeline === undefined ? undefined : this.pipelineSection(items, found, nowMs),
       waiting: items ? this.waitingSection(waitingFor({ reader, now: items.now, next: items.next, topic: found.topicId }), nowMs) : null,
       notebook: found.notebook === undefined ? undefined : this.notebookSection(found.notebook, found),
-      previews: this.linkSection(previews, nowMs, reader, preview => preview.url),
+      previews: this.links ? this.links.section(previews, found.links) : this.linkSection(previews, nowMs, reader, preview => preview.url),
       prs: this.linkSection(prs, nowMs, reader, pr => pr.href, 'Whether each is open or merged is not recorded here.'),
       images: this.imageSection(found.images, reader),
       tools: found.tools === undefined ? undefined : this.toolSection(found.tools),
     };
+    const linkFocus = this.links?.focusKey();
     let any = false;
     for (const [key] of SECTIONS) {
       const part = this.sections.get(key), section = shown[key];
@@ -609,6 +615,7 @@ export class ThingsRail {
       this.buildFrom = null;
       if (!this.doc.activeElement || this.doc.activeElement === this.doc.body) builtFrom.focus();
     }
+    this.links?.restoreFocus(linkFocus);
     this.nothing.hidden = any;
     this.nothing.textContent = 'This topic refers to nothing yet.';
   }

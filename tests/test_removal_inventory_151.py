@@ -16,7 +16,7 @@ CONTENT_VIEWS = {'attention', 'check_readings', 'conversation', 'deliveries', 'd
     'topic_images', 'topic_messages'}
 REFERENCE_OR_PRIVATE_VIEWS = {'assessment', 'assessments', 'dossier_cover', 'dossier_move_targets', 'dossier_moves',
     'editor_state', 'memory_current', 'memory_items', 'memory_stars', 'memory_status', 'message_acts',
-    'opening', 'openings', 'source_topics', 'stack_namer', 'stack_positions', 'submission', 'submissions', 'topic_membership'}
+    'opening', 'openings', 'workspace_links', 'source_topics', 'stack_namer', 'stack_positions', 'submission', 'submissions', 'topic_membership'}
 METADATA_VIEWS = {'actors', 'changes', 'colors', 'health', 'health_light', 'marks', 'onboarding_prompt',
     'outcome_live', 'pipeline_row', 'reactions', 'releases', 'tool', 'tools', 'topic_tools', 'topic_unread',
     'wakes', 'workspace_counts', 'workspace', 'workspace_members', 'workspace_topics', 'workspaces', 'topic', 'outcome_light'}
