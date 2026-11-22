@@ -1,6 +1,7 @@
 // Private saves are serialized. Public send confirmation never holds that queue.
 import { meaningfulSnapshot, same as sameSnapshot } from './cleanup.mjs';
 import { holdsWriting } from './editor.mjs';
+import { uploadWork, currentImages } from './upload-state.mjs';
 import { sessionRefused, Deadline } from './api.mjs';
 const copy = value => structuredClone(value);
 // What an attempt that got no recorded answer holds. A session's refusal says
@@ -86,6 +87,57 @@ export class EditorSession {
 
   get recovery() { return this.editor.authorityRecovery; }
   set recovery(value) { this.editor.authorityRecovery = value; }
+
+  // A shared Core draft may have been sent in another running document. Only
+  // acknowledged writing with no local work can be retired by that receipt.
+  sharedReplyFence() {
+    const e = this.editor, images = currentImages(e);
+    if (e.context.kind !== 'reply' || !e.draft.generation || !(e.draft.revision > 0) || e.dirty || e.conflict ||
+        e.unavailable || this.recovery || uploadWork(e) || this.registered?.() === false ||
+        images.some(image => !e.passiveImages || image.origin !== 'retained-ref' || image.bytes_ref || image.attempts.length) ||
+        e.submissions.some(item => item.status !== 'confirmed' || item.detached) ||
+        this.attempts.some(entry => entry.receipt?.status !== 'committed' || entry.detached) ||
+        !['initial', 'complete'].includes(this.authority.continuity) || !['initial', 'complete'].includes(this.runtime.current.continuity) ||
+        !same(authorityPair(this.authority), authorityPair(this.runtime.current))) return null;
+    return { snapshot: meaningfulSnapshot(this.snapshot()), cycle: e.clientCycleId, authority: authorityPair(this.authority) };
+  }
+
+  acceptSharedSend(remote, submission, fence, current = () => true) {
+    return this.enqueue(async () => {
+      const e = this.editor, old = fence?.snapshot?.draft, receipt = submission?.send_receipt;
+      if (!current() || !fence || !same(this.sharedReplyFence(), fence) || !remote || remote.id !== old.id ||
+          remote.generation === old.generation || !(remote.revision > old.revision) ||
+          !same(remote.source_ref, e.context.sourceRef) || submission?.instance_id !== e.context.instanceId ||
+          !same(submission.source_ref, e.context.sourceRef) || submission.topic_id !== e.context.topicId ||
+          submission.draft_id !== old.id || submission.draft_generation !== old.generation ||
+          !(submission.draft_revision >= old.revision) || !same(submission.authority, fence.authority) ||
+          receipt?.instance_id !== e.context.instanceId || receipt.kind !== 'message.send' || receipt.status !== 'committed' ||
+          receipt.operation_id !== submission.send_operation_id || receipt.result?.submission_id !== submission.id ||
+          typeof receipt.result?.message_id !== 'string') return false;
+      const prior = this.snapshot(), cycle = crypto.randomUUID(), version = e.localVersion + 1;
+      e.draft = { body: '', attachments: [], quotes: [], addressees: [], caret: { start: 0, end: 0 }, ...copy(remote) };
+      if (e.uploadState) {
+        const ids = new Set(currentImages({ ...e, clientCycleId: fence.cycle }).map(image => image.selection_id));
+        e.uploadState.entries = e.uploadState.entries.filter(image => !ids.has(image.selection_id));
+        e.uploadState.client_cycle_id = cycle; e.uploadState.revision++;
+      }
+      e.clientCycleId = cycle; e.localVersion = version; e.ackVersion = version;
+      this.uploads?.importRetained();
+      const replacement = meaningfulSnapshot(this.snapshot());
+      try { await this.persist(); }
+      catch (error) {
+        // Restore the old visible writing on a failed keep, but never replace
+        // input that arrived while storage was answering.
+        if (same(meaningfulSnapshot(this.snapshot()), replacement)) {
+          for (const field of ['draft', 'localVersion', 'ackVersion', 'clientCycleId', 'uploadState']) {
+            if (Object.hasOwn(prior, field)) e[field] = copy(prior[field]); else if (field === 'clientCycleId') e[field] = fence.cycle; else delete e[field];
+          }
+        }
+        this.changed(e); throw error;
+      }
+      return current() && e.clientCycleId === cycle && e.localVersion === version && !e.dirty;
+    });
+  }
 
   enqueue(task) {
     const next = this.queue.catch(() => {}).then(task);
