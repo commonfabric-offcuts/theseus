@@ -67,6 +67,7 @@ export class Element {
   removeAttribute(name) { delete this.attributes[name]; }
   toggleAttribute(name, force) { const on = force ?? !Object.hasOwn(this.attributes, name); if (on) this.attributes[name] = ''; else delete this.attributes[name]; return on; }
   addEventListener(type, listener) { this.listeners[type] = listener; }
+  removeEventListener(type, listener) { if (this.listeners[type] === listener) delete this.listeners[type]; }
   focus() { if (this.document) this.document.activeElement = this; else if (globalThis.document) globalThis.document.activeElement = this; }
   setSelectionRange() {}
   *descendants() { for (const node of this.children) if (typeof node === 'object') { yield node; yield* node.descendants(); } }
