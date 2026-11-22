@@ -387,6 +387,19 @@ class RoutePinCase(effects.EffectCleanupCase):
             writer.close()
         self.assertEqual(self.snapshot(), baseline)
 
+    def test_1038_pin_read_does_not_label_busy_named_missing_table_as_contention(self):
+        self.ready()
+        # Execute actual invalid SQL after BEGIN, then observe the real typed
+        # read result and cleanup; the table name is not a busy condition.
+        def missing(db, statement):
+            if statement == 'BEGIN':
+                db.execute('SELECT * FROM busy_private_missing_table')
+        with effects.effect_connections(before=missing) as seen:
+            error = self.rejected(self.read, 'ROUTE_PIN_STORAGE_ERROR')
+            self.assertIsInstance(error.__cause__, sqlite3.OperationalError)
+            self.closed(seen)
+            self.fence_released()
+
     def test_read_setup_body_and_close_faults_release_fence(self):
         self.ready()
         baseline = self.snapshot()

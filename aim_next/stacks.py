@@ -323,7 +323,7 @@ def record_wait_start(db, seq):
 def awaiting_fields(db, actor, topic, items):
     """Add `awaiting_reply` to every item of one page, after act_fields has placed each in its dossier (item 475,
     docs/topic-reading.md, "Waiting for a reply"). True on a message of the reader's own, on the record (not a
-    whisper), posted from where the rule begins (WAIT_FROM_KEY), in a topic that is not an outcome's conversation,
+    whisper), posted from where the rule begins (WAIT_FROM_KEY), in either topic kind,
     that an agent received (a delivery of its first revision to an agent: one it was addressed to, or one taking part
     and switched on when it was sent), until the first reply from anyone else. A reply is what Theseus already reads
     as answering a message: a message by someone else the reader can see after it in its dossier, one whose reply_to
@@ -335,7 +335,7 @@ def awaiting_fields(db, actor, topic, items):
     own = [item for item in items if item["author_id"] == actor and not item.get("whisper") and not item.get('removal')
            and start is not None and item["seq"] >= int(start[0])]
     received, answered, named = set(), set(), None
-    if own and topic["kind"] != "conversation":
+    if own:
         ids = [item["id"] for item in own]
         marks = ",".join("?" * len(ids))
         received = {row[0] for row in db.execute(
@@ -360,11 +360,11 @@ def awaiting_fields(db, actor, topic, items):
                                "WHERE n.topic_id=? AND n.actor_id=? AND n.seq>? AND n.seq<=? AND m.author_id<>? AND m.private_to IS NULL",
                                (topic["id"], actor, lowest, newest[0], actor)).fetchone()[0]
     named_agents = set()
-    if own and topic["kind"] != "conversation":
+    if own:
         named_agents = {row[0] for row in db.execute(
             "SELECT m.id FROM messages m JOIN json_each(m.addressees) n JOIN actors a ON a.id=n.value "
             "WHERE m.id IN (%s) AND a.kind='agent'" % marks, ids)}
-    unattended = {item["id"] for item in own} - received - named_agents if topic["kind"] != "conversation" else set()
+    unattended = {item["id"] for item in own} - received - named_agents
     others = {}
     for item in items:
         item["no_agent_notified"] = item["id"] in unattended

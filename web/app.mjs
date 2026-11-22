@@ -5,6 +5,7 @@ import { reviewDifferences } from './review-differences.mjs';
 import { railDensity } from './rail-density.mjs';
 import { CardReplies } from './card-replies.mjs';
 import { MentionNotices } from './mention-notices.mjs';
+import { notebookDeleteUI } from './notebook-delete-ui.mjs';
 import { finishPageNotice } from './page-notices.mjs';
 import { panes } from './panes.mjs';
 import { stackMenuItems } from './stack-menu-items.mjs';
@@ -122,7 +123,7 @@ import { showLine, lineText } from './lines.mjs';
 // way lands there and never on the page that followed it.
 let retired = null, notebookSheet = null, outcomeColorPicker = null, mentionNotices = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
-let outcomePageLayout = null, topicClosing = null, olderFeed = null;
+let outcomePageLayout = null, topicClosing = null, notebookDeleting=null, olderFeed = null;
 const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); },
   updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
 // The901 shell restores the foot and separator from copies for each run.
@@ -3237,7 +3238,7 @@ function textDisplayMenuItems() {
 
 let startup = null;
 function start() {
-  if (!startup) startup = initialize().finally(() => { startup = null; });
+  if (!startup) startup = initialize().then(()=>{notebookDeleting?.start();}).finally(() => { startup = null; });
   return startup;
 }
 async function initialize() {
@@ -3246,6 +3247,8 @@ async function initialize() {
   api = new Api(token); api.refused = () => run(reconnect);
   bootstrap = await api.bootstrap();
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
+  notebookDeleting=await notebookDeleteUI({doc:document,shell,api,bootstrap,current:()=>!retired&&shell.page===thisRun,
+    open:async(id,mode,scope)=>{if(!retired)await openNotebook(id,{mode});}});
   topicClosing = await topicCloseUI({ doc: document, shell, api, bootstrap,
     open: openDestination, current: () => !retired && shell.page === thisRun });
   let displayStorage;
@@ -4442,7 +4445,7 @@ async function initializeDeckPage(route) {
   // need the shared controller, and a retired run must not create one.
   const passages={bind(entry,state){if(!retired)notebookPassagesOf().bind(entry,state);}};
   const page=new NotebookPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
-    item:route.id,read:pipelineView,send:pipelineSend,place,askIn:notebookAskIn,api,bootstrap,mode:route.card?'cards':route.view,viewPreference:notebookViewsOf(),passages});
+    item:route.id,read:pipelineView,send:pipelineSend,place,deleteUI:notebookDeleting,closeDeleted:async page=>{page.close();page.writing.close();await page.writing.serial;await page.store.close();return openDestination({kind:page.source.owner_scope.kind,id:page.source.owner_scope.id},'the Notebook page’s topic or outcome');},askIn:notebookAskIn,api,bootstrap,mode:route.card?'cards':route.view,viewPreference:notebookViewsOf(),passages});
   linkOwnerScope = () => page.source?.owner_scope;
   linkNotice = words => page.say(words, 'attention');
   shell.guard(()=>Boolean(page.writing?.journalPending||page.writing?.journalError));
@@ -4569,7 +4572,7 @@ function notebookSheetOf() {
   if (notebookSheet) return notebookSheet;
   notebookSheet = new NotebookSheet({
     make: (id, host, header, idSuffix, revisionShown) => {
-      const page = new NotebookPage({ host, header, item: id, read: pipelineView, send: pipelineSend, askIn: notebookAskIn, api, bootstrap, viewPreference: notebookViewsOf(), idSuffix, shortKeys: true, revisionShown, passages: notebookPassagesOf(),
+      const page = new NotebookPage({ host, header, item: id, read: pipelineView, send: pipelineSend, askIn: notebookAskIn, api, bootstrap, viewPreference: notebookViewsOf(), deleteUI:notebookDeleting,closeDeleted:page=>{if(notebookSheet.current===page){notebookSheet.close();notebookSheet.current=null;}const target={...shell.route()};if(target.page===page.item){delete target.page;history.replaceState(history.state,'',routeHref(target));}page.more.remove();page.host.remove();page.close();}, idSuffix, shortKeys: true, revisionShown, passages: notebookPassagesOf(),
         place: async scope => ({ href: routeHref({ kind: scope.kind, id: scope.id, page: id }), title: '' }) });
       followCommits(() => notebookSheet.followed(page));
       return page;

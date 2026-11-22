@@ -11,8 +11,8 @@ test('867 the actual full-page route loads before picking the card and forces Ca
  const calls=[],nodes=new Map(),$=id=>{if(!nodes.has(id))nodes.set(id,{prepend(){},dataset:{}});return nodes.get(id);};
  const document={querySelector:()=>$('rail'),body:$('body')};let options;
  class NotebookPage{constructor(opts){options=opts;this.base=null;}async load(){calls.push('load');this.base={body:'words'};}pickCardId(id){assert.ok(this.base);calls.push(['pick',id]);}}
- const fn=new Function('NotebookPage','$','document','status','drawFeed','placeBrand','pipelineView','pipelineSend','notebookAskIn','api','bootstrap','notebookViewsOf','shell','followCommits',body+'; return initializeDeckPage;');
- const open=fn(NotebookPage,$,document,()=>{},()=>{},()=>{},()=>{},()=>{},()=>{},{},{},()=>({get:()=> 'text'}),{guard(){}},fn=>fn);
+ const fn=new Function('NotebookPage','$','document','status','drawFeed','placeBrand','pipelineView','pipelineSend','notebookAskIn','api','bootstrap','notebookViewsOf','notebookDeleting','shell','followCommits',body+'; return initializeDeckPage;');
+ const open=fn(NotebookPage,$,document,()=>{},()=>{},()=>{},()=>{},()=>{},()=>{},{},{},()=>({get:()=> 'text'}),{},{guard(){}},fn=>fn);
  await open({kind:'cards',id:'page',card:'c-11111111111111111111111111111111'});
  assert.equal(options.mode,'cards');assert.deepEqual(calls,['load',['pick','c-11111111111111111111111111111111']]);assert.equal(document.body.dataset.ready,'true');
  calls.length=0;await open({kind:'cards',id:'page',view:'text'});assert.equal(options.mode,'text');assert.deepEqual(calls,['load']);
