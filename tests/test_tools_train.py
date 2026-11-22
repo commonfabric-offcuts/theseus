@@ -332,7 +332,7 @@ class DeployRefusesTrain(TrainCase):
     def test_an_ordinary_train_that_changes_the_deploy_the_controller_or_a_migration_is_refused(self):
         for number, path in enumerate(("tools/deploy.py", ".github/workflows/checks.yml", "aim_next/migrations.py",
                                        "tools/known_reds.py", "tools/train.py", "tools/ci_input_reads.py",
-                                       "tools/ci-input-reads.json", "tools/checks.py")):
+                                       "tools/checks.py")):
             with self.subTest(path):
                 self.again()
                 # The live checkout is at the branch's tip, so the train changes that one path from it.
@@ -348,7 +348,10 @@ class DeployRefusesTrain(TrainCase):
         tip = self.git(self.live, "rev-parse", "origin/" + BRANCH)
         self.git(self.live, "merge", "-q", "--ff-only", tip)
         head = self.branch("ordinary", tip, [("aim_next/releases.py", "# changed\n"), ("tests/test_tools_deploy.py", "# t\n"),
-                                              ("docs/tools.md", "# d\n"), ("tools/native.py", "# n\n")])
+                                              ("docs/tools.md", "# d\n"), ("tools/native.py", "# n\n"),
+                                              ("tools/unit_shards.py", "# planner\n"),
+                                              (".github/check-weights.json", "{}\n"),
+                                              ("tools/ci-input-reads.json", "{}\n")])
         merged = self.merge(head)
         self.trained(self.host(releases=(deploys.page(deploys.release(19, tip)), 0)), self.train(merged, [head]), merged, self.hub())
         self.assertEqual(self.evidence_of("00-train")["guarded_changes"], [])
@@ -558,7 +561,7 @@ class TrainRecordsStepsBeyondPolicy(TrainCase):
 class GuardedPaths(unittest.TestCase):
     """What an ordinary train may not change holds every tools/ module the deploy loads, however deeply (GitHub's
     classifier, which the known-reds matcher reuses, among them), and every file that classifier requires to equal the
-    event base. Both are read from the code itself, so a module the deploy starts loading is guarded or this fails."""
+    event base, except1071's explicit planning paths. A new dependency still fails this check."""
 
     ROOT = Path(__file__).resolve().parents[1]
 
@@ -599,7 +602,8 @@ class GuardedPaths(unittest.TestCase):
         # known_reds, and the data file GitHub's classifier pins without importing it.
         self.assertTrue({"tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/checks.py", "tools/gauntlet_admission.py", "aim_next/judgment.py"} <= loaded, loaded)
         self.assertIn("tools/ci-input-reads.json", pinned)
-        self.assertEqual(sorted(path for path in loaded | pinned if not deploy.train_check.guarded([path])), [])
+        self.assertEqual(sorted(path for path in loaded | pinned if not deploy.train_check.guarded([path])),
+                         ["tools/ci-input-reads.json", "tools/unit_shards.py"])
 
     def test_the_service_its_tests_and_docs_are_not_guarded(self):
         # The negative: an ordinary train changes these.

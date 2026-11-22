@@ -7,10 +7,12 @@ from pathlib import Path
 
 # What an ordinary train may not change: the deploy tool and the modules it
 # loads, the files GitHub's classifier pins to its event base, the controller,
-# and every schema step. tests/test_tools_train.py derives the dependencies and
-# pinned files from their real owners, so a newly loaded module must be guarded.
-DEPLOY_TOOL = ("tools/deploy.py", "tools/release_check.py", "tools/unit_shards.py", "tools/known_reds.py", "tools/releases.py", "tools/train.py",
-               "tools/checks.py", "tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/ci-input-reads.json",
+# and every schema step. Item1071 makes only three planning paths ordinary.
+# tests/test_tools_train.py derives all other dependencies/pinned files from
+# their real owners, so a newly loaded module must still be guarded.
+PLANNING_PATHS = ("tools/unit_shards.py", ".github/check-weights.json", "tools/ci-input-reads.json")
+DEPLOY_TOOL = ("tools/deploy.py", "tools/release_check.py", "tools/known_reds.py", "tools/releases.py", "tools/train.py",
+               "tools/checks.py", "tools/ci_known_reds.py", "tools/ci_input_reads.py",
                "tools/quarantine.py", "tools/steps_for.py", "tools/base_move.py", "tools/own_case_receipt.py", "tools/continuation_envelope.py",
                "tools/runner_runtime.py", "tools/gauntlet_admission.py", "aim_next/judgment.py")
 CONTROLLER = ".github/"
@@ -19,7 +21,8 @@ SHA = re.compile(r"[0-9a-f]{40}")
 
 
 def guarded(paths):
-    return [path for path in paths if path in DEPLOY_TOOL or path in MIGRATIONS or path.startswith(CONTROLLER)]
+    return [path for path in paths if path not in PLANNING_PATHS
+            and (path in DEPLOY_TOOL or path in MIGRATIONS or path.startswith(CONTROLLER))]
 
 
 def source_diff(repo, base, head, *, run=None, check_ancestry=True):
