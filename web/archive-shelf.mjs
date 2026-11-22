@@ -36,8 +36,8 @@ const path = (rect, end) => {
 export class ArchiveShelf {
   // restore brings a dossier back; undo is the feed's one-key undo; changed says the shelf began or stopped being
   // drawn (the rail moved beside the page or away), outside any redraw of the feed.
-  constructor({ doc, restore, undo = () => {}, changed = () => {} }) {
-    this.doc = doc; this.restore = restore; this.undo = undo; this.changed = changed;
+  constructor({ doc, restore, undo = () => {}, changed = () => {}, unread = () => false }) {
+    this.doc = doc; this.restore = restore; this.undo = undo; this.changed = changed; this.unread = unread;
     this.replicas = new Map(); this.stacks = new Map(); this.flights = new Map();
     // The dossiers archived on this page, the latest last: they go first on the shelf. Any other keeps Core's order.
     this.here = []; this.drawn = false; this.list = [];
@@ -142,7 +142,8 @@ export class ArchiveShelf {
       if (held && !held.isConnected && (!this.doc.activeElement || this.doc.activeElement === this.doc.body)) this.row.querySelector('.shelf-dossier')?.focus({ preventScroll: true });
     }
     this.list = list; this.update(false);
-    this.count.textContent = list.length ? String(list.length) : '';
+    const fresh = looks.reduce((sum, look) => sum + look.fresh, 0);
+    this.count.textContent = list.length ? `${list.length}${fresh ? ` · ${fresh} new` : ''}` : '';
     this.showView();
     this.retarget();
   }
@@ -183,7 +184,7 @@ export class ArchiveShelf {
       if (index === SHEETS - 1) for (let line = 0; line < 3; line += 1) sheet.append(element(doc, 'span', 'shelf-line'));
       folder.append(sheet);
     }
-    replica.append(folder, element(doc, 'span', 'shelf-title'), element(doc, 'span', 'shelf-size'));
+    replica.append(folder, element(doc, 'span', 'shelf-title'), element(doc, 'span', 'shelf-new'), element(doc, 'span', 'shelf-size'));
     // One dossier per press: the second click of a double-click lands where the next replica has closed up, and
     // brings nothing back.
     replica.onclick = event => { if (event.detail > 1) return; const stack = this.stacks.get(id); if (stack) this.restore(stack); };
@@ -195,14 +196,16 @@ export class ArchiveShelf {
     const title = section?.querySelector('.stack-name')?.textContent?.trim() || (stack.head.body ?? '').split('\n')[0].slice(0, 80) || 'Dossier';
     const card = section?.querySelector('.message-card'), view = this.doc.defaultView;
     const style = (node, name) => node && view ? view.getComputedStyle(node).getPropertyValue(name).trim() : '';
-    return { title, count: 1 + stack.replies.length,
+    return { title, count: 1 + stack.replies.length, fresh: [stack.head, ...stack.replies].filter(this.unread).length,
       colours: [['--replica-card', style(card, 'background-color')], ['--replica-edge', style(card, 'border-top-color')], ['--replica-folder', style(section, '--stack-folder')]] };
   }
-  dress(replica, { title, count, colours }) {
+  dress(replica, { title, count, fresh, colours }) {
     replica.querySelector('.shelf-title').textContent = title;
     const size = replica.querySelector('.shelf-size'); if (size) size.textContent = count > 1 ? String(count) : '';
-    replica.title = `${title}: ${count === 1 ? 'one message' : `${count} messages`}. Click to bring it back.`;
-    replica.setAttribute('aria-label', `${title}, ${count === 1 ? 'one message' : `${count} messages`}`);
+    const mark = replica.querySelector('.shelf-new'); mark.hidden = !fresh; mark.textContent = fresh ? `${fresh} new` : '';
+    const words = `${count === 1 ? 'one message' : `${count} messages`}${fresh ? `, ${fresh} new` : ''}`;
+    replica.title = `${title}: ${words}. Click to bring it back.`;
+    replica.setAttribute('aria-label', `${title}, ${words}`);
     replica.dataset.sheets = String(Math.min(count, SHEETS));
     replica.dataset.folder = String(count > 1);
     for (const [property, value] of colours) if (value && replica.style.getPropertyValue(property) !== value) replica.style.setProperty(property, value);

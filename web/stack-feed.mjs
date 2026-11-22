@@ -992,8 +992,14 @@ export class StackFeed {
   archiveShelf() {
     if (!this.shelf && !this.list.ownerDocument.getElementById('things')) return null;
     // Brought back from the shelf, the dossier keeps the keys, as the feed's own Bring back does.
-    this.shelf ??= new ArchiveShelf({ doc: this.list.ownerDocument,
-      restore: stack => this.setAside(stack, false), undo: () => this.undo(),
+    this.shelf ??= new ArchiveShelf({ doc: this.list.ownerDocument, unread: this.unread,
+      restore: stack => {
+        if (!this.setAside(stack, false)) return;
+        // A new mark on the replica promises the feed's same exact-message
+        // read, not just a restored dossier whose unread reply is still folded.
+        const mark = this.state.sections?.get(stack.id)?.querySelector('.stack-new-action');
+        if (mark) this.newest(stack, mark);
+      }, undo: () => this.undo(),
       changed: drawn => { this.state.shelved = drawn; if (drawn) this.state.moreOpen = false; this.arrange(); this.moreChanged(); } });
     return this.shelf;
   }
