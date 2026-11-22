@@ -9,8 +9,14 @@ export async function notebookDeleteUI({doc,shell,api,bootstrap,open,current}) {
   if(!ui||ui.key!==key) {
     ui?.dispose();
     ui={key,rows:new Map(),pages:new Map(),flights:new Map(),writers:new Map(),undoWanted:new Set(),retained:new Set(),departures:new Map(),listeners:[],error:null};documents.set(doc,ui);
-    const on=(target,type,fn)=>{nativeAdd.call(target,type,fn);ui.listeners.push([target,type,fn]);};
-    ui.dispose=()=>{clearTimeout(ui.timer);for(const [t,k,f]of ui.listeners)t.removeEventListener(k,f);};
+    const on=(target,type,fn)=>{
+      if(!target?.addEventListener)return;
+      // This document owner survives the shell's page-run listener retirement.
+      // Use the pre-wrap native method in browsers; adapters own their listeners.
+      if(nativeAdd)nativeAdd.call(target,type,fn);else target.addEventListener(type,fn);
+      ui.listeners.push([target,type,fn]);
+    };
+    ui.dispose=()=>{if(ui.timer!==undefined)clearTimeout(ui.timer);for(const [t,k,f]of ui.listeners)t.removeEventListener?.(k,f);};
     ui.observe=w=>{if(w.journalPending||w.journalError)return;if(w.deleteUndo)ui.rows.set(w.item,{binding:w.binding,undo:structuredClone(w.deleteUndo),error:w.actionError});else ui.rows.delete(w.item);ui.render();};
     ui.available=row=>!row.undo.undoRequested&&['pending','committed'].includes(row.undo.phase)&&
       (row.undo.phase!=='committed'||Date.now()<row.undo.expires)&&same(row.undo.authority,{authority_id:ui.owner.bootstrap.authority.authority_id,authority_epoch:ui.owner.bootstrap.authority.authority_epoch});
@@ -18,7 +24,7 @@ export async function notebookDeleteUI({doc,shell,api,bootstrap,open,current}) {
       if(documents.get(doc)!==ui)return;
       let host=doc.getElementById('notebook-delete-notice');
       const rows=[...ui.rows.values()].filter(r=>(r.undo.phase!=='committed'||r.undo.undoRequested||Date.now()<r.undo.expires)).sort((a,b)=>b.undo.at-a.undo.at);
-      clearTimeout(ui.timer);
+      if(ui.timer!==undefined){clearTimeout(ui.timer);ui.timer=undefined;}
       const next=rows.filter(r=>r.undo.phase==='committed'&&!r.undo.undoRequested).map(r=>r.undo.expires-Date.now());
       if(next.length)ui.timer=setTimeout(ui.render,Math.max(1,Math.min(...next)));
       if(!rows.length&&!ui.error&&!ui.cursor){host?.remove();return;}

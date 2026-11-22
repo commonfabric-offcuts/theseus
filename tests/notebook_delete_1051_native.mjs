@@ -9,7 +9,7 @@ import {fixtureControl} from './fixture_control.mjs';
 const engines=await import(process.env.AIM_PLAYWRIGHT_CORE),engine=process.env.AIM_ENGINE??'chromium';
 const selected=new RegExp(process.argv[3]??'');
 const evidence=process.argv[2];await mkdir(evidence,{recursive:true});
-const sourceFiles=['web/app.mjs','web/notebook-page.mjs','web/notebook-writing.mjs','web/notebook-sheet.mjs','web/notebook-delete-ui.mjs','web/look.css','tests/fixtures/ui_http.py','tests/notebook_delete_1051_native.mjs'];
+const sourceFiles=['web/app.mjs','web/notebook-page.mjs','web/notebook-writing.mjs','web/notebook-sheet.mjs','web/notebook-delete-ui.mjs','web/in-place-navigation.mjs','web/rails.mjs','web/look.css','tests/fixtures/ui_http.py','tests/notebook_delete_1051_native.mjs'];
 const hashes=Object.fromEntries(await Promise.all(sourceFiles.map(async path=>[path,createHash('sha256').update(await readFile(path)).digest('hex')])));
 await writeFile(`${evidence}/source.json`,JSON.stringify({head:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),hashes},null,2));
 for(const path of sourceFiles){const saved=`${evidence}/source/${path}`;await mkdir(saved.slice(0,saved.lastIndexOf('/')),{recursive:true});await writeFile(saved,await readFile(path));}
@@ -58,7 +58,11 @@ try {
    assert.equal((await state()).deleted,true);
    await page.waitForFunction(()=>!document.querySelector('.paper-ghost'));result.undoBounds=await notice.getByRole('button',{name:'Undo',exact:true}).evaluate(b=>{const r=b.getBoundingClientRect();return {width:r.width,height:r.height,x:r.x,right:r.right,visible:getComputedStyle(b).visibility,occluded:!b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))};});assert.ok(result.undoBounds.width>0&&result.undoBounds.height>0);assert.ok(result.undoBounds.x>=0&&result.undoBounds.right<=width);assert.equal(result.undoBounds.visible,'visible');assert.equal(result.undoBounds.occluded,false);
    await page.screenshot({path:`${evidence}/${key}-deleted.png`,fullPage:true});
-   await page.keyboard.press('Meta+z');await sheet.waitFor();await page.waitForFunction(()=>!document.querySelector('#notebook-delete-notice'));
+   const documentToken=await page.evaluate(()=>window.notebookDeleteDocument=crypto.randomUUID());
+   const home=page.getByRole('link',{name:'Theseus Outcomes',exact:true});if(!await home.isVisible())await press(page.locator('#rail-open'));
+   await press(home);await page.waitForFunction(()=>!new URL(location.href).searchParams.has('workspace')&&document.body.dataset.ready==='true');
+   result.inPlace={before:documentToken,after:await page.evaluate(()=>window.notebookDeleteDocument),href:page.url()};assert.equal(result.inPlace.after,documentToken,'Undo owner survives an actual in-place move to Outcomes');
+   await notice.waitFor();await page.keyboard.press('Meta+z');await sheet.waitFor();await page.waitForFunction(()=>!document.querySelector('#notebook-delete-notice'));
    assert.equal((await state()).deleted,false);await page.waitForFunction(title=>document.querySelector('#notebook-sheet-title')?.textContent===title,title);assert.equal(await sheet.locator('.notebook-sheet-title').textContent(),title);
    await press(sheet.getByRole('button',{name:'This page',exact:true}));await press(page.getByRole('menuitem',{name:'Delete',exact:true}));await sheet.waitFor({state:'hidden'});
    await page.waitForFunction(()=>document.querySelector('#notebook-delete-notice')?.textContent.startsWith('Deleted'));await drainViews();await page.reload();await page.locator('body[data-ready=true]').waitFor();await notice.waitFor();
@@ -102,6 +106,10 @@ try {
     try{await press(page.locator('#deck-page').getByRole('button',{name:'This page',exact:true}));await press(page.getByRole('menuitem',{name:'Delete',exact:true}));await page.waitForURL('**/?workspace=w1');await fullReached;await page.locator('body[data-ready=true]').waitFor();await page.keyboard.press('Meta+z');await page.waitForFunction(()=>document.querySelector('#notebook-delete-notice')?.textContent.startsWith('Restoring'));assert.equal((await state()).deleted,false);result.fullpageUndoBeforeReceipt=true;}finally{releaseFull();}
     await page.locator('#notebook-sheet-dialog[open]').waitFor();await page.waitForFunction(title=>document.querySelector('#notebook-sheet-title')?.textContent===title,title);assert.equal((await state()).deleted,false);await page.unroute('**/api/command');
    }
+   const restoredSheet=page.locator('#notebook-sheet-dialog[open]');await restoredSheet.waitFor();
+   await restoredSheet.evaluate(async el=>{for(const a of el.getAnimations({subtree:true}))if(Number.isFinite(a.effect?.getComputedTiming().endTime))await a.finished.catch(()=>{});});
+   result.restoredPaint=await restoredSheet.evaluate(el=>{const s=getComputedStyle(el),b=el.querySelector('.notebook-sheet-body');return {opacity:s.opacity,visibility:s.visibility,body:b?.innerText??el.innerText,animations:el.getAnimations({subtree:true}).filter(a=>a.playState==='running'&&Number.isFinite(a.effect?.getComputedTiming().endTime)).length};});
+   assert.equal(result.restoredPaint.opacity,'1');assert.equal(result.restoredPaint.visibility,'visible');assert.equal(result.restoredPaint.animations,0);assert.match(result.restoredPaint.body,/Every word stays in history/);
    await page.screenshot({path:`${evidence}/${key}-restored.png`,fullPage:true});
    await drainViews();await Promise.all(jobs);result.served=served;for(const [path,h]of Object.entries(served))assert.equal(h,hashes[path],path+' served');assert.deepEqual(result.errors,[]);result.passed=true;
   }catch(error){result.error=error.stack;await page.screenshot({path:`${evidence}/${key}-failure.png`,fullPage:true});await writeFile(`${evidence}/${key}-failure.html`,await page.content());}
@@ -116,6 +124,8 @@ finally {
   cleanup.profileAbsent=profile?await access(profile).then(()=>false,()=>true):null;
   cleanup.portClosed=origin?await new Promise(resolve=>{const u=new URL(origin),s=net.createConnection({host:u.hostname,port:+u.port});s.once('connect',()=>{s.destroy();resolve(false);});s.once('error',()=>resolve(true));}):null;
   await writeFile(`${evidence}/results.json`,JSON.stringify({engine,results,cleanup,failure},null,2));
+  const endHashes=Object.fromEntries(await Promise.all(sourceFiles.map(async path=>[path,createHash('sha256').update(await readFile(path)).digest('hex')])));
+  await writeFile(`${evidence}/end-source.json`,JSON.stringify({hashes:endHashes,same:JSON.stringify(endHashes)===JSON.stringify(hashes)},null,2));
 }
 assert.equal(cleanup.disconnected,true);assert.equal(cleanup.fixtureExit.code,0);assert.equal(cleanup.fixtureErrors,'');assert.equal(cleanup.fixtureAbsent,true);assert.equal(cleanup.portClosed,true);assert.equal(cleanup.profileAbsent,true);assert.deepEqual(cleanup.remainingOwned,[]);assert.deepEqual(cleanup.profileProcesses,[]);
 for(const path of sourceFiles)assert.equal(createHash('sha256').update(await readFile(path)).digest('hex'),hashes[path]);
