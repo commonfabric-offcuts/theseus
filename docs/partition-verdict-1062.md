@@ -87,3 +87,55 @@ Deliver the exact new commit/tree, whole diff, contract, raw evidence and remote
 branch as a PR against `codex/aim-next`. Auditor reviews; Warp merges and operates
 it. This assignment does not deploy or prove a later 1021 Verdict passes.
 1038 Build2 then1043 Build1 remain preserved behind1062.
+
+## Second head: source inventory correction (auditor16418 / Warp16420)
+
+The first head and published packet remain immutable. Git path output is a
+byte-delimited protocol: request `ls-tree -r -z --name-only` and split on NUL,
+using the filesystem decoder so valid Unicode paths are retained and unrelated
+non-module byte names do not break discovery. Never parse C-quoted display names.
+The filename gate is the producer's case-sensitive `Path.match('test_*.py')`
+followed by unittest's valid-module-name pattern; `.PY` and non-test prefixes
+remain excluded. Retain the same package traversal and initializer ownership.
+
+Before product edits, reproduce a correct complete Unicode plan being refused,
+its omitted-file plan being admitted, and the uppercase `.PY` false positive.
+Add direct package/discovery checks including Unicode and a newline in a package
+name, so the NUL boundary and package rule are tested independently of a display
+configuration. Keep all25 existing checks and their assertions intact. Recheck
+the five existing controller owners and retained325 inventory; apply the actual
+C-quoted-name and suffix-rule regressions and verify exact restores.
+
+The protected base remains a932e98ddcb535f8dde78875f8024fe064109b1f. The new own
+branch/worktree starts at first head82b13e6c. Warp16427/Fable16436 resolve the
+initial wait-for-lens hold into the concrete corrections below; freeze only once
+they are incorporated and evidenced. Auditor clean head2 review precedes merge.
+
+## Producer format and isolated refusals (16427 / 16437 / 16439 / 16446)
+
+The exact325 producer is cce9aeea87050f08097b6577b3de74be937e5926.
+Its unit_shards.py writes both plan and observed partition file lists sorted;
+its release_check.py combiner553-606 copies each original step with `partition`
+metadata and builds exactly the aggregate fields used here. Sorted file equality,
+exact aggregate equality (including original shards), and import-free discovery
+matching are that producer's contract. A producer format change breaking any of
+these equalities remains a refusal requiring a reviewed controller change.
+The retained325 probe checks these exact current shapes; it is not raw shard-log
+verification or a passing Verdict.
+
+A supported empty partition has selected files but no cases (for example package
+initializers or a discovery hook suppressing cases), a completed `Ran 0` line,
+literal `OK`, exit0 and a passed producer verdict. unit_shards.py explicitly allows
+a chosen partition with no cases; release_check.py judges `code == 0 and judged`
+and enables its allow_empty parser only for python_shard. The full union must
+still have positive tests. A missing Ran line or `NO TESTS RAN` is not a passing
+empty-part receipt under this producer/parser and must refuse. This reading does
+not claim any retained325 partition was empty or admit every unittest format.
+
+The missing-fourth-part and whole-Python-plus-parts tests now construct independent
+plans with complete matching receipts/artifacts from their factory inputs. The
+missing-part fixture assigns all source files across its three present parts, so
+only the fourth part is absent. Both full readers and historical selection must
+name the exact intended partition/plan refusal. No shared post-write plan mutation
+or generic exception can stand in for this evidence. The newest-three selector
+and dirty-history policy remain unchanged and outside this correction.

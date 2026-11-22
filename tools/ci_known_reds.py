@@ -356,7 +356,8 @@ def plan_steps(plan):
 
 def python_source_files(root, commit):
     """Unittest's file/package discovery from Git names, without candidate imports."""
-    paths = set(git(root, 'ls-tree', '-r', '--name-only', commit, '--', 'tests').decode().splitlines())
+    # Display-form Git names C-quote Unicode/control bytes; only NUL is a path boundary.
+    paths = set(os.fsdecode(git(root, 'ls-tree', '-r', '-z', '--name-only', commit, '--', 'tests')).split('\0')[:-1])
     result = set()
     for name in paths:
         path = Path(name)
@@ -364,7 +365,7 @@ def python_source_files(root, commit):
                    if str(parent) not in ('.', 'tests')):
             continue
         if (path.name == '__init__.py' and str(path.parent) != 'tests' or
-                re.match(r'test_.*', path.name) and re.match(r'[_a-z]\w*\.py$', path.name, re.I)):
+                path.match('test_*.py') and re.match(r'[_a-z]\w*\.py$', path.name, re.I)):
             result.add(name)
     return result
 

@@ -24,12 +24,15 @@ class PartitionEvidenceCase(unittest.TestCase):
         self.git('-c', 'user.name=fixture', '-c', 'user.email=fixture@invalid', 'commit', '-qm', 'four source files')
         self.sha = self.git('rev-parse', 'HEAD').strip()
 
-    def bundle(self, failed=None, empty=None):
+    def bundle(self, failed=None, empty=None, python_jobs=None, whole_python=False):
         folder = self.root / ('bundle-%d' % len(list(self.root.glob('bundle-*'))))
         shards = folder / 'shards'
-        self.plan = [{'name': 'ordinary', 'steps': 'node-units,native-reader'}] + [
+        jobs = python_jobs if python_jobs is not None else [
             {'name': 'python units %d of 4' % i, 'steps': 'python-units',
              'python_shard': '%d/4' % i, 'files': ['tests/test_part%d.py' % i]} for i in range(1, 5)]
+        self.plan = [{'name': 'ordinary', 'steps': 'node-units,native-reader'}] + copy.deepcopy(jobs)
+        if whole_python:
+            self.plan.append({'name': 'whole Python', 'steps': 'python-units'})
         self.run = {'id': 7, 'attempt': 1, 'workflow': 'Checks', 'event': 'push', 'repository': 'org/repo'}
         self.base = {'ref': None, 'sha': None}
         self.merge = {'sha': self.sha, 'tree': self.git('rev-parse', 'HEAD^{tree}').strip(),
@@ -40,12 +43,12 @@ class PartitionEvidenceCase(unittest.TestCase):
                  **{name: profile[name] for name in ('python', 'node', 'chrome')}}
         self.summary = {'tool': C.TOOL, 'commit': self.sha, 'required': self.required, 'tree_unchanged': True,
                         'tree_after': {'head': self.sha, 'changes': ''}, 'tools': tools, 'checkout': '/fixture',
-                        'combined_from': ['check-%d/summary.json' % i for i in range(5)]}
+                        'combined_from': ['check-%d/summary.json' % i for i in range(len(self.plan))]}
         self.provenance = {'run': dict(self.run, workflow_sha=self.sha,
                            workflow_ref='org/repo/.github/workflows/checks.yml@refs/heads/release/live73'),
                            'base': self.base, 'head': {'ref': 'refs/heads/release/live73', 'sha': self.sha},
                            'merge': self.merge, 'checked': {'commit': self.sha, 'tree_unchanged': True},
-                           'required': self.required, 'plan': self.plan, 'shards': []}
+                           'required': self.required, 'plan': copy.deepcopy(self.plan), 'shards': []}
         self.raw = []
         parts = []
         ordinary = None
@@ -66,24 +69,31 @@ class PartitionEvidenceCase(unittest.TestCase):
                 steps = ordinary
             else:
                 status = 'FAIL' if index == failed else 'ok'
-                log = ('' if index == empty else 'test_part%d (part%d.Part) ... %s\n' % (index, index, status))
+                partitioned = 'python_shard' in job
+                case_numbers = [i for i in range(1, 5) if not partitioned or
+                                'tests/test_part%d.py' % i in job['files']]
+                log = '' if index == empty else ''.join(
+                    'test_part%d (part%d.Part) ... %s\n' % (i, i, status) for i in case_numbers)
                 log += '\nRan %d tests in 0.01s\n\n%s\n' % (
-                    0 if index == empty else 1, 'FAILED (failures=1)' if index == failed else 'OK')
+                    0 if index == empty else len(case_numbers), 'FAILED (failures=1)' if index == failed else 'OK')
                 (out / 'python-units.log').write_text(log)
-                metadata = {'index': index, 'total': 4, 'files': job['files']}
                 step = {'name': 'python-units', 'tool': 'unittest', 'exit': 1 if index == failed else 0,
-                        'passed': index != failed, 'counts': C.python_counts(log)[0], 'python_shard': metadata}
+                        'passed': index != failed, 'counts': C.python_counts(log)[0]}
+                if partitioned:
+                    number, total = map(int, job['python_shard'].split('/'))
+                    metadata = {'index': number, 'total': total, 'files': job['files']}
+                    step['python_shard'] = metadata
+                    parts.append(dict(step, partition=metadata))
                 steps = [step]
-                parts.append(dict(step, partition=metadata))
             raw = dict(self.summary, steps=steps, only=job['steps'].split(','), passed=all(s['passed'] for s in steps))
-            if index:
+            if index and partitioned:
                 raw['python_shard'] = metadata
             self.raw.append(raw)
             self.provenance['shards'].append({'artifact': 'check-%d' % index, 'commit': self.sha,
                 'tree_unchanged': True, 'tools': tools, 'steps': raw['only'],
                 'receipt': {'run': self.provenance['run'], 'base': self.base, 'head': self.provenance['head'],
                     'merge': self.merge, 'profile': profile, 'shard': {'steps': raw['only'], 'name': job['name']}}})
-        counts = {'tests': 3 if empty else 4, 'status': 'FAILED' if failed else 'OK'}
+        counts = {'tests': sum(p['counts']['tests'] for p in parts), 'status': 'FAILED' if failed else 'OK'}
         if failed:
             counts['failures'] = 1
         self.summary.update(steps=ordinary + [{'name': 'python-units', 'tool': 'unittest', 'counts': counts,
@@ -94,6 +104,7 @@ class PartitionEvidenceCase(unittest.TestCase):
         return folder
 
     def save(self):
+        self.provenance['plan'] = copy.deepcopy(self.plan)
         for index, raw in enumerate(self.raw):
             out = self.folder / 'shards' / ('check-%d' % index)
             (out / 'summary.json').write_text(json.dumps(raw))
@@ -128,11 +139,18 @@ class PartitionEvidenceCase(unittest.TestCase):
         self.assertEqual(self.select(), [])
 
     def test_three_of_four_plan_refuses_current_and_history(self):
-        self.bundle()
-        self.plan.pop()
-        self.save()
-        with self.assertRaises(C.Refused): self.read()
-        with self.assertRaises(C.Refused): self.select()
+        jobs = [{'name': 'python units %d of 4' % i, 'steps': 'python-units',
+                 'python_shard': '%d/4' % i, 'files': ['tests/test_part%d.py' % i]} for i in range(1, 4)]
+        # All source files are assigned; only the fourth partition is absent.
+        jobs[-1]['files'].append('tests/test_part4.py')
+        self.bundle(python_jobs=jobs)
+        self.assertIsNot(self.plan, self.provenance['plan'])
+        self.assertEqual(len(self.plan), len(self.provenance['shards']))
+        self.assertEqual(len(self.plan), len(list((self.folder/'shards').iterdir())))
+        for history in (False, True):
+            with self.subTest(history=history), self.assertRaisesRegex(C.Refused, '^missing or duplicate Python partition$'):
+                self.read(history)
+        with self.assertRaisesRegex(C.Refused, '^missing or duplicate Python partition$'): self.select()
 
     def test_duplicated_whole_step_still_refuses(self):
         self.bundle()
@@ -151,10 +169,14 @@ class PartitionEvidenceCase(unittest.TestCase):
                 with self.assertRaises(C.Refused): self.select()
 
     def test_whole_python_and_partition_cannot_mix(self):
-        self.bundle()
-        self.plan.append({'steps': 'python-units'})
-        self.save()
-        with self.assertRaises(C.Refused): self.read()
+        self.bundle(whole_python=True)
+        self.assertIsNot(self.plan, self.provenance['plan'])
+        self.assertEqual(len(self.plan), len(self.provenance['shards']))
+        self.assertEqual(len(self.plan), len(list((self.folder/'shards').iterdir())))
+        for history in (False, True):
+            with self.subTest(history=history), self.assertRaisesRegex(C.Refused, '^incomplete or duplicated shard plan$'):
+                self.read(history)
+        with self.assertRaisesRegex(C.Refused, '^incomplete or duplicated shard plan$'): self.select()
 
     def test_complete_indices_cannot_hide_an_omitted_source_file(self):
         self.bundle()
@@ -265,8 +287,25 @@ class PartitionEvidenceCase(unittest.TestCase):
 
     def test_empty_validated_partition_keeps_positive_whole_coverage(self):
         self.bundle(empty=2)
-        _, summary = self.read()
-        self.assertEqual(summary['steps'][-1]['counts']['tests'], 3)
+        for history in (False, True):
+            with self.subTest(history=history):
+                _, summary = self.read(history)
+                self.assertEqual(summary['steps'][-1]['counts']['tests'], 3)
+
+    def test_no_tests_ran_is_not_a_supported_passing_empty_part(self):
+        self.bundle(empty=2)
+        path = self.folder/'shards/check-2/python-units.log'
+        path.write_text('\nRan 0 tests in 0.01s\n\nNO TESTS RAN\n')
+        for history in (False, True):
+            with self.subTest(history=history), self.assertRaisesRegex(C.Refused, '^non-browser log/count mismatch$'):
+                self.read(history)
+
+    def test_empty_part_missing_its_ran_line_refuses(self):
+        self.bundle(empty=2)
+        (self.folder/'shards/check-2/python-units.log').write_text('OK\n')
+        for history in (False, True):
+            with self.subTest(history=history), self.assertRaisesRegex(C.Refused, '^non-browser log/count mismatch$'):
+                self.read(history)
 
     def test_wrong_job_assignment_refuses(self):
         self.bundle()
@@ -287,6 +326,54 @@ class PartitionEvidenceCase(unittest.TestCase):
         plan[0]['steps'] = 'node-units,native-reader'
         plan.append({'name': 'compose-unique', 'steps': 'native-compose', 'compose_group': groups[0]})
         C.f779_plan(plan, self.required+['native-compose'], groups)
+
+    def add_inventory_names(self, names):
+        self.git('config', 'core.quotePath', 'true')
+        for name in names:
+            path = self.repo/name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('from __future__ import annotations\n')
+        self.git('add', '.')
+        self.git('-c', 'user.name=fixture', '-c', 'user.email=fixture@invalid', 'commit', '-qm', 'source-name inventory')
+        self.sha = self.git('rev-parse', 'HEAD').strip()
+
+    def test_complete_unicode_source_plan_admits_current_and_history(self):
+        name = 'tests/test_é.py'
+        self.add_inventory_names([name])
+        self.bundle()
+        self.plan[1]['files'].append(name)
+        self.save()
+        for history in (False, True):
+            with self.subTest(history=history):
+                _, summary = self.read(history)
+                self.assertEqual(summary['steps'][-1]['counts']['tests'], 4)
+        self.assertEqual(self.select(), [])
+
+    def test_omitting_a_valid_unicode_source_refuses_current_and_history(self):
+        self.add_inventory_names(['tests/test_é.py'])
+        self.bundle()
+        for history in (False, True):
+            with self.subTest(history=history), self.assertRaises(C.Refused):
+                self.read(history)
+        with self.assertRaises(C.Refused): self.select()
+
+    def test_uppercase_suffix_is_excluded_by_the_producer_glob(self):
+        self.add_inventory_names(['tests/test_ignored.PY'])
+        self.bundle()
+        self.read()
+        self.assertNotIn('tests/test_ignored.PY', C.python_source_files(self.repo, self.sha))
+        self.assertEqual(self.select(), [])
+
+    def test_inventory_keeps_package_rules_and_nul_path_boundaries(self):
+        self.add_inventory_names([
+            'tests/café/__init__.py', 'tests/café/test_é.py', 'tests/café/test_Upper.py',
+            'tests/no_package/test_ignored.py', 'tests/test_not-module.py',
+            'tests/test_upper.PY', 'tests/Test_prefixed.py',
+            'tests/line\npackage/__init__.py', 'tests/line\npackage/test_child.py'])
+        expected = {'tests/test_part%d.py' % i for i in range(1, 5)} | {
+            'tests/café/__init__.py', 'tests/café/test_é.py', 'tests/café/test_Upper.py',
+            'tests/line\npackage/__init__.py', 'tests/line\npackage/test_child.py'}
+        self.assertEqual(C.python_source_files(self.repo, self.sha), expected)
 
 
 if __name__ == '__main__':
