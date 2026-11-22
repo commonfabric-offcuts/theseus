@@ -595,9 +595,9 @@ def base_at_run_format(provenance, receipts, expected):
 def history_missing_steps(summary_path, provenance_path, root, api, base_ref, repository):
     """Only a well-formed, source-bound combined receipt can disclose omitted steps.
 
-    Used by the selector after archive digest verification. This does not judge
-    passing evidence; admitted histories still undergo full read_evidence checks.
-    Candidate evidence never takes this drop path.
+    Used after archive digest verification. Each selected step still undergoes
+    raw read_evidence checks; this header cannot make a partial step whole.
+    Candidate evidence never takes this history-only path.
     """
     commit = api['head_sha']
     require(isinstance(commit, str) and SHA.fullmatch(commit), 'invalid history source')
@@ -615,11 +615,15 @@ def history_missing_steps(summary_path, provenance_path, root, api, base_ref, re
              'first_parent':parents[0] if parents else None, 'second_parent':parents[1] if len(parents)>1 else None}
     require(provenance.get('base') == base and provenance.get('head') == head and provenance.get('merge') == merge,
             'history provenance source differs from API')
-    require(provenance.get('checked') == {'commit':commit, 'tree_unchanged':True}, 'dirty history provenance')
+    cancelled = provenance.get('cancelled_shards') or []
+    require(isinstance(cancelled, list) and cancelled == (summary.get('cancelled_shards') or []),
+            'history cancellation receipts differ')
+    unchanged = not bool(cancelled)
+    require(provenance.get('checked') == {'commit':commit, 'tree_unchanged':unchanged}, 'dirty history provenance')
     require(unique(provenance['required'], 'history provenance steps') == required, 'incomplete history provenance plan')
     require(summary.get('tool') == TOOL and summary.get('commit') == commit,
             'wrong history combined source')
-    require(summary.get('tree_unchanged') is True and summary.get('tree_after') == {'head':commit, 'changes':''},
+    require(summary.get('tree_unchanged') is unchanged and summary.get('tree_after') == {'head':commit, 'changes':''},
             'dirty history combined source')
     require('only' not in summary and not summary.get('skipped'), 'focused or skipped history aggregate')
     require(type(summary.get('passed')) is bool, 'history aggregate lacks raw verdict')
@@ -632,6 +636,13 @@ def history_missing_steps(summary_path, provenance_path, root, api, base_ref, re
     plan = plan_steps(provenance['plan'])
     fresh = any(job.get('compose_group') for job in provenance['plan'])
     partition_plan(provenance['plan'], required, root, commit, fresh=fresh)
+    cancelled_names = unique([row.get('shard') for row in cancelled if isinstance(row, dict)],
+                             'history cancelled shards')
+    require(len(cancelled_names) == len(cancelled) and all(isinstance(name, str) and name for name in cancelled_names),
+            'invalid history cancelled shard')
+    jobs = [job.get('name') for job in provenance['plan']]
+    require(all(jobs.count(name) == 1 for name in cancelled_names), 'unknown history cancelled shard')
+    cancelled_steps = {step for index, name in enumerate(jobs) if name in cancelled_names for step in plan[index]}
     entries = provenance.get('shards')
     require(isinstance(entries, list) and all(isinstance(entry, dict) for entry in entries), 'invalid history shard provenance')
     artifacts = [entry['artifact'] for entry in entries]
@@ -646,7 +657,9 @@ def history_missing_steps(summary_path, provenance_path, root, api, base_ref, re
         same_run(receipt.get('run'), run)
         require(receipt.get('base') == base and receipt.get('head') == head and receipt.get('merge') == merge,
                 'history shard source differs from API')
-    return sorted(required - names)
+    # Recovered stdout from a cancelled job is not a whole step, even if the
+    # combined summary includes it. All parts/groups of that step must survive.
+    return sorted((required - names) | cancelled_steps)
 
 
 @contextmanager
@@ -660,44 +673,61 @@ def catalog_context(root,commit):
         globals().update(previous)
 
 
-def read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False):
+def read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False, history_steps=None):
     with catalog_context(root,commit):
-        return _read_evidence(summary_path,provenance_path,shards,root,commit,run,base,expected_merge,binding,history)
+        return _read_evidence(summary_path,provenance_path,shards,root,commit,run,base,expected_merge,binding,history,history_steps)
 
 
-def _read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False):
+def _read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False, history_steps=None):
     candidate_root = root
     traffic = json.loads(source(root,commit,REPLAY_FILE)) if 'wake-replay' in REQUIRED else None
     provenance, summary = read_json(provenance_path), read_json(summary_path)
-    require(not provenance.get('cancelled_shards') and not summary.get('cancelled_shards'),
-            'cancelled shard evidence cannot cover the run')
+    partial = history_steps is not None
+    require(not partial or history, 'step selection is only for history')
+    selected = unique(list(history_steps), 'selected history steps') if partial else set(REQUIRED)
+    if partial:
+        head = provenance.get('head') or {}
+        ref = head.get('ref') or ''
+        require(ref.startswith('refs/heads/'), 'history lacks push branch')
+        missing = history_missing_steps(summary_path, provenance_path, root,
+                                        {'id':run['id'], 'head_sha':commit}, ref[len('refs/heads/'):], run['repository'])
+        require(bool(selected) and selected <= set(REQUIRED) - set(missing), 'selected history step is incomplete')
+    else:
+        require(not provenance.get('cancelled_shards') and not summary.get('cancelled_shards'),
+                'cancelled shard evidence cannot cover the run')
     same_run(provenance.get('run'), run)
     require(provenance.get('base') == base, 'wrong API event base')
     require(provenance.get('merge') == expected_merge, 'wrong tested merge or tree')
     if binding is not None:
         require(provenance.get('head') == receipt_head(binding),
                 'combined head differs from authenticated producer')
-    require(provenance.get('checked') == {'commit': commit, 'tree_unchanged': True}, 'dirty combined source')
+    if not partial:
+        require(provenance.get('checked') == {'commit': commit, 'tree_unchanged': True}, 'dirty combined source')
     require(unique(provenance['required'], 'provenance steps') == set(REQUIRED), 'incomplete provenance')
     require(summary.get('tool') == TOOL and summary.get('commit') == commit, 'wrong combined source')
-    require(summary.get('tree_unchanged') is True and summary.get('tree_after') == {'head': commit, 'changes': ''}, 'dirty combined source')
+    if not partial:
+        require(summary.get('tree_unchanged') is True and summary.get('tree_after') == {'head': commit, 'changes': ''}, 'dirty combined source')
     require('only' not in summary and not summary.get('skipped'), 'focused or skipped aggregate')
     require(unique(summary['required'], 'summary required steps') == set(REQUIRED), 'incomplete summary plan')
     combined = summary['steps']
-    require(unique([s['name'] for s in combined], 'combined steps') == set(REQUIRED), 'missing required step')
+    names = unique([s['name'] for s in combined], 'combined steps')
+    require(selected <= names <= set(REQUIRED) if partial else names == set(REQUIRED), 'missing required step')
     by_name = {s['name']: s for s in combined}
     fresh = any(j.get('compose_group') for j in provenance['plan'])
     parts = partition_plan(provenance['plan'], REQUIRED, root, commit, fresh=fresh)
     forward_receipts = {}
-    if fresh:
+    if fresh and 'native-compose' in selected:
         try:
             forward_receipts, forward_step = f779_validate(candidate_root,commit,provenance,shards,run,REQUIRED,F779_PRODUCER)
         except ForwardRefused as error:
             raise Refused(str(error))
         require(by_name.get('native-compose')==forward_step, 'fresh compose aggregate differs')
     plan = plan_steps(provenance['plan'])
+    active = {i for i, steps in enumerate(plan) if set(steps) & selected}
+    expected_steps = {step for i in active for step in plan[i]}
     entries = provenance['shards']
-    require(len(entries) == len(plan), 'missing shard provenance')
+    if not partial:
+        require(len(entries) == len(plan), 'missing shard provenance')
     observed_base = ({'ref':base['ref'], 'sha':expected_merge['first_parent']} if run['event'] == 'pull_request' else None)
     if binding is not None and 'base_at_run' in binding:
         observed_base = binding['base_at_run']
@@ -705,13 +735,18 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
     if binding is not None and run['event'] == 'pull_request':
         require(('base_at_run' in provenance) == ('base_at_run' in binding), 'original base observation format differs from protected record')
     artifacts = [s['artifact'] for s in entries]
-    require(unique(artifacts, 'shard artifacts') == {'check-%d' % i for i in range(len(plan))}, 'unexpected artifact set')
+    found = unique(artifacts, 'shard artifacts')
+    planned = {'check-%d' % i for i in range(len(plan))}
+    needed = {'check-%d' % i for i in active}
+    require(needed <= found <= planned if partial else found == planned, 'unexpected artifact set')
     require(unique(summary.get('combined_from'), 'combined artifact summaries') ==
             {name + '/summary.json' for name in artifacts}, 'combined artifact inventory differs')
     require({p.name for p in Path(shards).iterdir()} == set(artifacts), 'missing or extra downloaded shard')
     observed, ran, verified_parts, part_identities = [], [], {}, []
     for entry in entries:
         artifact = entry['artifact']
+        if partial and artifact not in needed:
+            continue
         out = Path(shards) / artifact
         receipt, raw = read_json(out / 'run.json'), read_json(out / 'summary.json')
         require(not entry.get('refused') and entry.get('receipt') == receipt, 'missing or inconsistent producer receipt')
@@ -782,17 +817,31 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
                 if partition is not None:
                     part_identities.extend(key(row) for row, _ in unit_records((out/'python-units.log').read_text()))
         require(raw['required'] == summary['required'], 'shard required plan differs')
-    if parts:
+    if parts and 'python-units' in selected:
         require(set(verified_parts) == set(parts), 'incomplete Python partition coverage')
         require(len(part_identities) == len(set(part_identities)), 'duplicate executed identity across Python partitions')
         aggregate = partition_aggregate([verified_parts[i] for i in sorted(parts)])
         require(aggregate['counts']['tests'] > 0, 'empty Python aggregate')
         require(by_name['python-units'] == aggregate, 'Python aggregate differs from verified parts')
         ran.append('python-units')
-    require(Counter(s for s in ran if not (fresh and s=='native-compose')) == Counter(s for s in REQUIRED if not (fresh and s=='native-compose')) and (not fresh or ran.count('native-compose')==len(forward_receipts)), 'incomplete whole-run coverage')
-    require(unique(summary.get('failed'), 'combined failures') ==
-            {s['name'] for s in combined if s['passed'] is not True}, 'combined failure union differs')
-    require(summary.get('passed') is all(s.get('passed') is True for s in combined), 'inconsistent raw aggregate verdict')
+    require(Counter(s for s in ran if not (fresh and s=='native-compose')) == Counter(s for s in expected_steps if not (fresh and s=='native-compose')) and (not fresh or ran.count('native-compose')==len(forward_receipts)), 'incomplete whole-run coverage')
+    if not partial:
+        require(unique(summary.get('failed'), 'combined failures') ==
+                {s['name'] for s in combined if s['passed'] is not True}, 'combined failure union differs')
+        require(summary.get('passed') is all(s.get('passed') is True for s in combined), 'inconsistent raw aggregate verdict')
+    else:
+        missing = unique(summary.get('missing') or [], 'history missing steps')
+        require(missing <= set(REQUIRED) and all(type(s.get('passed')) is bool for s in combined),
+                'invalid partial history verdict')
+        require(unique(summary.get('failed'), 'combined failures') ==
+                {s['name'] for s in combined if s['passed'] is not True} | missing,
+                'combined failure union differs')
+        whole_pass = (all(s['passed'] for s in combined) and not missing
+                      and not summary.get('missing_jobs') and not summary.get('cancelled_shards'))
+        require(summary.get('passed') is whole_pass, 'inconsistent raw aggregate verdict')
+    # The original failed aggregate is retained, never projected into a green
+    # whole run. Only fully verified selected steps contribute known failures.
+    observed = [item for item in observed if item[0] in selected]
     return observed, summary
 
 def nonbrowser_failure_evidence(step, out):
@@ -898,7 +947,7 @@ def test_definition_changes(root, base, commit):
     return result
 
 
-def known_base_failures(manifest_path, root, base, producer):
+def known_base_failures(manifest_path, root, base, producer, required=None):
     manifest_path = Path(manifest_path).resolve()
     doc = read_json(manifest_path)
     require(doc.get('base_ref') == base['ref'], 'known runs belong to another base branch')
@@ -908,8 +957,27 @@ def known_base_failures(manifest_path, root, base, producer):
             'known-run branch head does not contain authenticated base')
     require(isinstance(doc.get('query'), str) and bool(doc['query']), 'known runs lack API query provenance')
     runs = doc.get('runs')
-    require(isinstance(runs, list) and len(runs) <= 3, 'known runs must be the last three or fewer')
-    require(doc.get('fewer_than_three') is (len(runs) < 3), 'known-run count disclosure disagrees')
+    step_runs = doc.get('step_runs')
+    if step_runs is None:
+        # Previously retained whole-run manifests retain their original checks.
+        require(isinstance(runs, list) and len(runs) <= 3, 'known runs must be the last three or fewer')
+        require(doc.get('fewer_than_three') is (len(runs) < 3), 'known-run count disclosure disagrees')
+    else:
+        target = unique(list(required if required is not None else source_catalog(root, base['sha'])['REQUIRED']),
+                        'control required steps')
+        require(isinstance(step_runs, dict) and set(step_runs) == target, 'known step controls differ from required plan')
+        require(isinstance(runs, list) and len(runs) <= 3 * len(target), 'too many known step controls')
+        for name, ids in step_runs.items():
+            require(isinstance(ids, list) and len(ids) <= 3 and all(type(i) is int and i > 0 for i in ids)
+                    and len(ids) == len(set(ids)), 'invalid known step control ids')
+        for api in runs:
+            steps = unique(api.get('steps'), 'known run selected steps')
+            require(bool(steps) and steps <= target, 'unknown selected control step')
+        require(step_runs == {name:[api['id'] for api in runs if name in api['steps']] for name in target},
+                'known step controls disagree with selected runs')
+        short = sorted(name for name in target if len(step_runs[name]) < 3)
+        require(doc.get('fewer_than_three_steps') == short and doc.get('fewer_than_three') is bool(short),
+                'known-step count disclosure disagrees')
     require(len({r['id'] for r in runs}) == len(runs), 'duplicate known run')
     require(runs == sorted(runs, key=lambda r:(r['created_at'],int(r['id'])), reverse=True), 'known runs not newest first')
     known, records = [], []
@@ -917,7 +985,10 @@ def known_base_failures(manifest_path, root, base, producer):
         run_id, sha = api['id'], api['head_sha']
         require(type(run_id) is int and run_id > 0 and api.get('run_attempt') == 1, 'known run is not a first attempt')
         require(api.get('event') == 'push' and api.get('head_branch') == base['ref'], 'known run is not a base push')
-        require(api.get('conclusion') in ('success','failure'), 'known run is cancelled or incomplete')
+        require(api.get('conclusion') in (('success','failure') if step_runs is None else
+                                         ('success','failure','cancelled','timed_out')), 'known run is cancelled or incomplete')
+        if step_runs is not None:
+            require(api.get('status') == 'completed', 'known step control is not completed')
         require(isinstance(api.get('created_at'), str) and api['created_at'] < producer['created_at'], 'known run is newer than judged producer')
         require(isinstance(sha,str) and SHA.fullmatch(sha), 'invalid known-run source')
         require(subprocess.run(['git','-C',str(root),'merge-base','--is-ancestor',sha,base['sha']], capture_output=True).returncode == 0,
@@ -936,7 +1007,8 @@ def known_base_failures(manifest_path, root, base, producer):
         require(required_artifacts <= names, 'known-run artifacts incomplete')
         require(all(type(a.get('id')) is int and a['id'] > 0 and type(a.get('size_in_bytes')) is int and a['size_in_bytes'] > 0 for a in artifacts), 'invalid known-run artifact identity')
         run = {'id':run_id,'attempt':1,'workflow':'Checks','event':'push','repository':producer['head_repository']}
-        observed, summary = read_evidence(folder/'release-check/summary.json', folder/'release-check/provenance.json', folder/'shards', root, sha, run, {'ref':None,'sha':None}, merge, history=True)
+        selected = api['steps'] if step_runs is not None else None
+        observed, summary = read_evidence(folder/'release-check/summary.json', folder/'release-check/provenance.json', folder/'shards', root, sha, run, {'ref':None,'sha':None}, merge, history=True, history_steps=selected)
         for shard in provenance['shards']:
             receipt = shard['receipt']
             require(receipt.get('head') == provenance['head'], 'known shard head differs from API')
@@ -944,7 +1016,8 @@ def known_base_failures(manifest_path, root, base, producer):
             require(data.get('workflow_sha') == sha and data.get('workflow_ref') == '%s/%s@refs/heads/%s' % (producer['head_repository'],PRODUCER_WORKFLOW,base['ref']), 'known shard workflow source differs from API')
         failures, mutations = failure_records(observed,root,sha,run_id)
         known.extend(failures)
-        records.append({'id':run_id,'head_sha':sha,'created_at':api['created_at'],'native_failures':len(failures),'raw_passed':summary['passed'],'artifacts':artifacts,'mutation_advisories':mutations})
+        records.append({'id':run_id,'head_sha':sha,'created_at':api['created_at'],'native_failures':len(failures),'raw_passed':summary['passed'],'artifacts':artifacts,'mutation_advisories':mutations,
+                        **({'steps':sorted(selected)} if selected is not None else {})})
     return known, records
 
 
@@ -984,11 +1057,11 @@ def validate(summary_path, provenance_path, shards, base_root, candidate_root, p
     if 'receipt_base' in binding:
         raw_base = binding['receipt_base']
     observed, summary = read_evidence(summary_path,provenance_path,shards,candidate_root,commit,run,raw_base,expected_merge,binding)
-    known, base_runs = known_base_failures(known_runs,candidate_root,base,binding['producer'])
+    known, base_runs = known_base_failures(known_runs,candidate_root,base,binding['producer'],summary['required'])
     failures, mutations = failure_records(observed,candidate_root,commit,run['id'])
     result = compare_failures(failures,known)
     require(not summary['passed'] or binding['producer']['conclusion'] == 'success', 'producer failed outside reported checks')
-    result.update(run=run,base=base,merge=expected_merge,raw_passed=summary['passed'],producer=binding['producer'],controller=binding['controller'],status_head_sha=binding['producer']['head_sha'],known_base_runs=base_runs,mutation_advisories=mutations,test_definition_changes=test_definition_changes(candidate_root,base['sha'],commit),runtime_code_paths=[str(Path(__file__).resolve())],known_policy='last-three-base-push-runs',train=train_identity(candidate_root,commit,binding))
+    result.update(run=run,base=base,merge=expected_merge,raw_passed=summary['passed'],producer=binding['producer'],controller=binding['controller'],status_head_sha=binding['producer']['head_sha'],known_base_runs=base_runs,mutation_advisories=mutations,test_definition_changes=test_definition_changes(candidate_root,base['sha'],commit),runtime_code_paths=[str(Path(__file__).resolve())],known_policy='last-three-whole-base-push-runs-per-step',train=train_identity(candidate_root,commit,binding))
     return result
 
 
