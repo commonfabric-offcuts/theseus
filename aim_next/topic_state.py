@@ -259,10 +259,10 @@ class TopicState:
             "UNION ALL SELECT 1 FROM reply_horizons WHERE topic_id=?1 AND actor_id=?2", (topic["id"], actor)).fetchone())
 
     def _message_activity(self, db, topic, author, message_id, sent_ms):
-        """A message was sent in the topic: it is the topic's latest activity, and a done
-        topic is active again, said by the message's author when it was sent, with the
-        message as why. The caller's transaction is the send's own."""
-        if topic["state"] == "done":
+        """A message advances activity and reopens a manual Done, naming its author and source.
+        A pipeline-owned shipped Build Done stays closed through the announcement (1081).
+        The caller's transaction is the send's own."""
+        if topic["state"] == "done" and not self._pipeline_holds_done_topic(db, topic):
             db.execute("UPDATE topics SET state='active',state_note=?,state_by=?,state_ms=?,state_message_id=? WHERE id=?",
                        (REOPENED_NOTE, author, sent_ms, message_id, topic["id"]))
         db.execute("UPDATE topics SET activity_ms=max(activity_ms,?) WHERE id=?", (sent_ms, topic["id"]))
