@@ -1059,8 +1059,27 @@ def contained_evidence(folder):
             raise Refused('artifact symlink escapes evidence directory')
 
 
-def failure_records(observed, root, commit, run_id):
+def browser_case_records(observed, root, commit, run_id):
+    """Explicit complete browser outcomes, including passes; never infer one."""
+    catalog = source_catalog(root, commit)['NATIVE']
+    result = []
+    for step, rows, profile, checkout in observed:
+        if step not in catalog:
+            continue
+        path = catalog[step].harness
+        harness = {'path': path, 'blob': blob(source(root, commit, path))}
+        for row in rows:
+            if row.get('expectedFailure') or re.fullmatch(r'fixture exit -?\d+', row['name']):
+                continue
+            result.append({'step': step, 'case': identity(row), 'passed': row['passed'],
+                           'run_id': run_id, 'profile': profile_identity(profile), 'harness': harness})
+    return result
+
+
+def failure_records(observed, root, commit, run_id, window=False):
     failures, mutations = [], []
+    browser = {(item['step'], key(item['case'])): item
+               for item in browser_case_records(observed, root, commit, run_id)} if window else {}
     for step, rows, profile, checkout in observed:
         for row in rows:
             item = {'step': step, 'case': identity(row), 'raw_passed': row['passed'], 'run_id': run_id}
@@ -1080,6 +1099,8 @@ def failure_records(observed, root, commit, run_id):
             try:
                 fp = fingerprint(row.get('error'), checkout, root, commit)
                 item.update(fingerprint=fp, profile=profile_identity(profile))
+                if (step, key(row)) in browser:
+                    item['harness'] = browser[(step, key(row))]['harness']
             except Refused as error:
                 item['fingerprint_problem'] = str(error)
             failures.append(item)
@@ -1087,11 +1108,12 @@ def failure_records(observed, root, commit, run_id):
 
 
 def compare_failures(failures, known, control_runs=None):
-    expected, unexpected = [], []
+    expected, unexpected, noise = [], [], []
+    control_runs = control_runs or []
     for item in failures:
         if item.get('comparison') in ('unit-identity', 'replay-refusal'):
-            eligible = {r['id'] for r in (control_runs or [])
-                        if item['step'] in r.get('verified_steps', [])}
+            eligible = {r['id'] for r in control_runs
+                        if item['step'] in r.get('control_steps', r.get('verified_steps', []))}
             matches = [old for old in known if old.get('comparison') == item['comparison']
                        and old['run_id'] in eligible
                        and (old['step'], key(old['case'])) == (item['step'], key(item['case']))
@@ -1103,13 +1125,41 @@ def compare_failures(failures, known, control_runs=None):
             matches = [old for old in known if 'fingerprint' in item and 'fingerprint' in old
                        and (old['step'], key(old['case']), old['fingerprint'], old['profile']) ==
                            (item['step'], key(item['case']), item['fingerprint'], item['profile'])]
-            cleared = bool(matches)
-            reason = item.get('fingerprint_problem') or 'not shown by recent base runs'
+            window = [r for r in control_runs if item['step'] in r.get('browser_window_steps', [])]
+            # Synthetic fixture exits have no passing case observation. Keep
+            # their existing 1079 fallback, even with a full browser window.
+            synthetic = re.fullmatch(r'fixture exit -?\d+', item['case']['name']) is not None
+            if len(window) >= 5 and not synthetic:
+                observations = [[row for row in r['browser_cases']
+                                 if (row['step'], key(row['case'])) == (item['step'], key(item['case']))]
+                                for r in window]
+                coherent = all(len(rows) == 1 and rows[0]['profile'] == item.get('profile')
+                               and rows[0]['harness'] == item.get('harness') for rows in observations)
+                eligible = {r['id'] for r in window}
+                matches = [old for old in matches if old['run_id'] in eligible]
+                passing = [rows[0]['run_id'] for rows in observations if len(rows) == 1 and rows[0]['passed']]
+                failing = [rows[0]['run_id'] for rows in observations if len(rows) == 1 and not rows[0]['passed']]
+                if coherent and passing and failing and matches:
+                    noise.append(dict(item, base_shown=True, cleared=True,
+                                      window_base_runs=[r['id'] for r in window],
+                                      passing_base_runs=passing, failing_base_runs=failing,
+                                      matched_base_runs=sorted({r['run_id'] for r in matches})))
+                    continue
+                cleared = coherent and bool(failing) and not passing and bool(matches)
+                reason = ('case missing or profile/harness differs in browser window' if not coherent else
+                          'browser window observations all passed' if not failing else
+                          item.get('fingerprint_problem') or 'fingerprint not shown by browser window')
+            else:
+                if any('control_steps' in r for r in control_runs):
+                    eligible = {r['id'] for r in control_runs if item['step'] in r.get('control_steps', [])}
+                    matches = [old for old in matches if old['run_id'] in eligible]
+                cleared = bool(matches)
+                reason = item.get('fingerprint_problem') or 'not shown by recent base runs'
         if cleared:
             expected.append(dict(item, base_shown=True, cleared=True, matched_base_runs=sorted({r['run_id'] for r in matches})))
         else:
             unexpected.append(dict(item, base_shown=False, cleared=False, reason=reason))
-    return {'passed': not unexpected, 'expected': expected, 'unexpected': unexpected, 'healed': []}
+    return {'passed': not unexpected, 'expected': expected, 'unexpected': unexpected, 'noise': noise, 'healed': []}
 
 
 def test_definition_changes(root, base, commit):
@@ -1136,6 +1186,7 @@ def known_base_failures(manifest_path, root, base, producer, required=None):
     require(isinstance(doc.get('query'), str) and bool(doc['query']), 'known runs lack API query provenance')
     runs = doc.get('runs')
     step_runs = doc.get('step_runs')
+    windows = doc.get('browser_window_runs')
     if step_runs is None:
         # Previously retained whole-run manifests retain their original checks.
         require(isinstance(runs, list) and len(runs) <= 3, 'known runs must be the last three or fewer')
@@ -1144,18 +1195,37 @@ def known_base_failures(manifest_path, root, base, producer, required=None):
         target = unique(list(required if required is not None else source_catalog(root, base['sha'])['REQUIRED']),
                         'control required steps')
         require(isinstance(step_runs, dict) and set(step_runs) == target, 'known step controls differ from required plan')
-        require(isinstance(runs, list) and len(runs) <= 3 * len(target), 'too many known step controls')
+        browser = {name for name in target if name.startswith('native-')}
+        require(windows is None or isinstance(windows, dict) and set(windows) == browser,
+                'browser window steps differ from required plan')
+        require(isinstance(runs, list) and len(runs) <= 3 * len(target) + (10 * len(browser) if windows is not None else 0),
+                'too many known step controls')
         for name, ids in step_runs.items():
             require(isinstance(ids, list) and len(ids) <= 3 and all(type(i) is int and i > 0 for i in ids)
                     and len(ids) == len(set(ids)), 'invalid known step control ids')
         for api in runs:
             steps = unique(api.get('steps'), 'known run selected steps')
             require(bool(steps) and steps <= target, 'unknown selected control step')
-        require(step_runs == {name:[api['id'] for api in runs if name in api['steps']] for name in target},
+            if windows is not None:
+                controls = unique(api.get('control_steps'), 'known run control steps')
+                selected_windows = unique(api.get('browser_window_steps'), 'known run browser window steps')
+                require(controls <= target and selected_windows <= browser and steps == controls | selected_windows,
+                        'selected control/window steps disagree')
+        require(step_runs == {name:[api['id'] for api in runs if name in api.get('control_steps', api['steps'])] for name in target},
                 'known step controls disagree with selected runs')
         short = sorted(name for name in target if len(step_runs[name]) < 3)
         require(doc.get('fewer_than_three_steps') == short and doc.get('fewer_than_three') is bool(short),
                 'known-step count disclosure disagrees')
+        if windows is not None:
+            for name, ids in windows.items():
+                require(isinstance(ids, list) and len(ids) <= 10 and all(type(i) is int and i > 0 for i in ids)
+                        and len(ids) == len(set(ids)), 'invalid browser window run ids')
+            require(windows == {name:[api['id'] for api in runs if name in api['browser_window_steps']] for name in browser},
+                    'browser window ids disagree with selected runs')
+            require(all(step_runs[name] == windows[name][:3] for name in browser), 'browser window does not extend original controls')
+            require(doc.get('fewer_than_five_browser_steps') == sorted(name for name in browser if len(windows[name]) < 5)
+                    and doc.get('fewer_than_ten_browser_steps') == sorted(name for name in browser if len(windows[name]) < 10),
+                    'browser window shortfall disclosure disagrees')
     require(len({r['id'] for r in runs}) == len(runs), 'duplicate known run')
     require(runs == sorted(runs, key=lambda r:(r['created_at'],int(r['id'])), reverse=True), 'known runs not newest first')
     known, records = [], []
@@ -1192,7 +1262,7 @@ def known_base_failures(manifest_path, root, base, producer, required=None):
             require(receipt.get('head') == provenance['head'], 'known shard head differs from API')
             data = receipt['run']
             require(data.get('workflow_sha') == sha and data.get('workflow_ref') == '%s/%s@refs/heads/%s' % (producer['head_repository'],PRODUCER_WORKFLOW,base['ref']), 'known shard workflow source differs from API')
-        failures, mutations = failure_records(observed,root,sha,run_id)
+        failures, mutations = failure_records(observed,root,sha,run_id,window=windows is not None)
         known.extend(failures)
         records.append({'id':run_id,'head_sha':sha,'created_at':api['created_at'],
                         'native_failures':sum('comparison' not in f for f in failures),
@@ -1200,6 +1270,9 @@ def known_base_failures(manifest_path, root, base, producer, required=None):
                         'verified_steps':sorted(selected if selected is not None else summary['required']),
                         'raw_passed':summary['passed'],'artifacts':artifacts,'mutation_advisories':mutations,
                         **({'steps':sorted(selected)} if selected is not None else {})})
+        if windows is not None:
+            records[-1].update(control_steps=api['control_steps'], browser_window_steps=api['browser_window_steps'],
+                               browser_cases=browser_case_records(observed,root,sha,run_id))
     return known, records
 
 
@@ -1240,10 +1313,17 @@ def validate(summary_path, provenance_path, shards, base_root, candidate_root, p
         raw_base = binding['receipt_base']
     observed, summary = read_evidence(summary_path,provenance_path,shards,candidate_root,commit,run,raw_base,expected_merge,binding)
     known, base_runs = known_base_failures(known_runs,candidate_root,base,binding['producer'],summary['required'])
-    failures, mutations = failure_records(observed,candidate_root,commit,run['id'])
+    failures, mutations = failure_records(observed,candidate_root,commit,run['id'],window=True)
     result = compare_failures(failures,known,base_runs)
     require(not summary['passed'] or binding['producer']['conclusion'] == 'success', 'producer failed outside reported checks')
-    result.update(run=run,base=base,merge=expected_merge,raw_passed=summary['passed'],producer=binding['producer'],controller=binding['controller'],status_head_sha=binding['producer']['head_sha'],known_base_runs=base_runs,mutation_advisories=mutations,test_definition_changes=test_definition_changes(candidate_root,base['sha'],commit),runtime_code_paths=[str(Path(__file__).resolve())],known_policy='last-three-whole-base-push-runs-per-step',train=train_identity(candidate_root,commit,binding))
+    manifest = read_json(known_runs)
+    result['browser_windows'] = {name: {'run_ids': ids, 'complete_runs': len(ids),
+                                      'mode': 'window' if len(ids) >= 5 else 'three-control-fallback'}
+                                 for name, ids in (manifest.get('browser_window_runs') or {}).items()}
+    # Original artifacts retain all observations. The public result needs run
+    # provenance and the named comparison, not ten copies of every passing case.
+    shown_runs = [{k:v for k,v in row.items() if k != 'browser_cases'} for row in base_runs]
+    result.update(run=run,base=base,merge=expected_merge,raw_passed=summary['passed'],producer=binding['producer'],controller=binding['controller'],status_head_sha=binding['producer']['head_sha'],known_base_runs=shown_runs,mutation_advisories=mutations,test_definition_changes=test_definition_changes(candidate_root,base['sha'],commit),runtime_code_paths=[str(Path(__file__).resolve())],known_policy='browser-ten-complete-min-five;fallback-original-three;nonbrowser-all-original-controls',train=train_identity(candidate_root,commit,binding))
     return result
 
 

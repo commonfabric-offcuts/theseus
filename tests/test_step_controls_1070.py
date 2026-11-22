@@ -182,9 +182,12 @@ class StepControlsCase(unittest.TestCase):
         known, records = CONTROLLER.known_base_failures(
             manifest_path, self.repo, {'ref': 'release/live73', 'sha': self.sha},
             {'created_at': '2026-11-22T06:00:00Z', 'head_repository': 'org/repo'})
-        self.assertEqual([row['run_id'] for row in known], [1, 2, 3])
+        self.assertEqual([row['run_id'] for row in known], [1, 2, 3, 4])
+        self.assertEqual(manifest['browser_window_runs'], {'native-reader': [1, 2, 3, 4]})
         self.assertEqual(records[0]['steps'], ['native-reader', 'node-units'])
-        self.assertEqual(records[-1]['steps'], ['python-units'])
+        self.assertEqual(records[-1]['control_steps'], ['python-units'])
+        self.assertEqual(records[-1]['browser_window_steps'], ['native-reader'])
+        self.assertEqual(records[-1]['steps'], ['native-reader', 'python-units'])
         self.assertTrue(CONTROLLER.compare_failures([known[0]], known)['passed'])
         print(json.dumps({'step_runs': manifest['step_runs'], 'native_failure_controls': [r['run_id'] for r in known]}))
 
@@ -225,6 +228,8 @@ class StepControlsCase(unittest.TestCase):
         manifest['step_runs']['python-units'] = [1, 2, 3]
         manifest['runs'] = manifest['runs'][:3]
         manifest['runs'][0]['steps'] = sorted(self.required)
+        manifest['runs'][0]['control_steps'] = sorted(self.required)
+        manifest['browser_window_runs']['native-reader'] = [1, 2, 3]
         path.write_text(json.dumps(manifest))
         with self.assertRaisesRegex(CONTROLLER.Refused, 'selected history step is incomplete'):
             self.known(path)

@@ -541,7 +541,8 @@ jobs:
         run: |
           set -euo pipefail
           # What already fails on the base is read from the base's own runs, not from a list anyone curates: the newest
-          # three whole controls PER REQUIRED STEP, first attempts only, begun before this producer.
+          # three whole controls PER REQUIRED STEP plus ten complete browser runs per step,
+          # first attempts only, begun before this producer. Under five browser runs keeps the old rule.
           # A cancelled shard costs its steps on that run, not the other complete steps. Older pushes
           # supply those steps' controls. Expired artifacts and omitted steps are named; shortfalls
           # are disclosed per step. A read that fails, or an archive
@@ -596,6 +597,7 @@ jobs:
               except (controller["Refused"], KeyError, TypeError, ValueError) as error:
                   raise CouldNotRead("the candidate's required catalog could not be read: %s" % error)
               step_runs = {name: [] for name in required}
+              browser_window_runs = {name: [] for name in required if name.startswith("native-")}
               before, judged_id = judged["created_at"], judged["run_id"]
               cutoff = when(before)
               ref = api("repos/%s/git/ref/heads/%s" % (repo, urllib.parse.quote(base_ref, safe="/")))
@@ -633,7 +635,8 @@ jobs:
               chosen = sorted(chosen, key=lambda run: (when(run["created_at"]), run["id"]), reverse=True)
               runs, dropped = [], []
               for run in chosen:
-                  if all(len(ids) == wanted for ids in step_runs.values()):
+                  if (all(len(ids) == wanted for ids in step_runs.values())
+                          and all(len(ids) == 10 for ids in browser_window_runs.values())):
                       break
                   record = {key: run.get(key) for key in ("id", "run_attempt", "head_sha", "head_branch", "event", "status", "conclusion", "created_at", "html_url")}
                   record["dir"] = "known/%d/" % run["id"]
@@ -688,19 +691,25 @@ jobs:
                                       "why": "incomplete combined receipt; missing required steps: " + ", ".join(missing),
                                       "missing_steps": missing})
                   available = set(controller["source_catalog"](candidate_root, run["head_sha"])["REQUIRED"]) - set(missing)
-                  record["steps"] = sorted(name for name in required if name in available and len(step_runs[name]) < wanted)
+                  record["control_steps"] = sorted(name for name in required if name in available and len(step_runs[name]) < wanted)
+                  record["browser_window_steps"] = sorted(name for name in browser_window_runs if name in available and len(browser_window_runs[name]) < 10)
+                  record["steps"] = sorted(set(record["control_steps"]) | set(record["browser_window_steps"]))
                   if not record["steps"]:
                       continue
                   runs.append(record)
-                  for name in record["steps"]:
+                  for name in record["control_steps"]:
                       step_runs[name].append(run["id"])
+                  for name in record["browser_window_steps"]:
+                      browser_window_runs[name].append(run["id"])
           except CouldNotRead as error:
               open(refusals_path, "a").write("the base's own runs could not be read, so what already fails there is unknown: %s\n" % error)
               print("ready=false")
               raise SystemExit(0)
           # Every dir is relative to this manifest's own folder.
           manifest = {"base_ref": base_ref, "base_head": base_head, "query": query, "runs": runs, "dropped": dropped,
-                      "step_runs": step_runs,
+                      "step_runs": step_runs, "browser_window_runs": browser_window_runs,
+                      "fewer_than_five_browser_steps": sorted(name for name, ids in browser_window_runs.items() if len(ids) < 5),
+                      "fewer_than_ten_browser_steps": sorted(name for name, ids in browser_window_runs.items() if len(ids) < 10),
                       "fewer_than_three_steps": sorted(name for name, ids in step_runs.items() if len(ids) < wanted),
                       "fewer_than_three": any(len(ids) < wanted for ids in step_runs.values())}
           os.makedirs(history, exist_ok=True)
@@ -907,7 +916,7 @@ jobs:
               lines.append("Refused:")
               lines.extend("- " + r for r in refusals)
           if isinstance(validation, dict):
-              lines.append("Validation: " + json.dumps({k: validation.get(k) for k in ("passed", "refused", "unexpected", "expected", "healed", "missing") if k in validation}))
+              lines.append("Validation: " + json.dumps({k: validation.get(k) for k in ("passed", "refused", "unexpected", "expected", "noise", "browser_windows", "healed", "missing") if k in validation}))
           p, c = producer["producer"], producer["controller"]
           lines.append("Producer: run %s attempt %s, %s, workflow %s (%s)" % (p["run_id"], p["run_attempt"], p["url"], p["workflow_path"], p["workflow_id"]))
           push = p.get("event") == "push"
@@ -936,6 +945,10 @@ jobs:
               lines.append("Known reds from the base's own runs on %s (head %s when listed)%s: %s" % (
                   known.get("base_ref"), known.get("base_head"), ", fewer than three" if known.get("fewer_than_three") else "",
                   ", ".join("run %s at %s (%s)" % (r.get("id"), r.get("head_sha"), r.get("conclusion")) for r in known.get("runs") or []) or "none"))
+              for step, ids in (known.get("browser_window_runs") or {}).items():
+                  lines.append("Browser window %s: %d/10 complete runs %s; %s" % (
+                      step, len(ids), ", ".join(str(i) for i in ids) or "none",
+                      "window policy" if len(ids) >= 5 else "DEFAULT: original three-control fallback"))
               for d in known.get("dropped") or []:
                   lines.append("Dropped from the known runs: run %s, %s (%s)" % (d.get("id"), d.get("why"), ", ".join(d.get("artifacts") or [])))
           # The train as the validator read it: its pull request, what it reverts (the named revert items, then each
