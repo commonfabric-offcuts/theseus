@@ -6,7 +6,7 @@ export async function dossierCommandDown705Checks(
 ) {
   const init = `(()=>{window.commands705=[];const f=fetch;window.fetch=function(input,options){let b;try{b=JSON.parse(options?.body)}catch{};if(b?.kind)commands705.push(b);return f.call(this,input,options)}})()`;
   for (const surface of ['topic', 'conversation']) for (const device of ['laptop', 'phone']) for (const theme of ['light', 'dark']) {
-    const name = `reading item 705 ${surface} ${device} ${theme}: Command Down archives Return selection`;
+    const name = `reading item 705 ${surface} ${device} ${theme}: Command Right archives Return selection (1037)`;
     await check(name, async () => {
       const prefix = `command705-${surface}-${device}-${theme}`, phases = [];
       let topic = prefix, ids = {}, p;
@@ -33,7 +33,7 @@ export async function dossierCommandDown705Checks(
         return answer.items[0].stack_position;
       };
       const changes = () => p.evaluate("window.commands705.filter(c=>['stack.aside','stack.place','stack.join'].includes(c.kind))");
-      const key = () => p.key('ArrowDown', 4);
+      const key = () => p.key('ArrowRight', 4);
       const hover = async selector => {
         // A stationary pointer after Undo deliberately does not change selection.
         await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 2 });
@@ -57,7 +57,7 @@ export async function dossierCommandDown705Checks(
         await key();
         await until(async () => (await changes()).length > before, 'native shortcut sends an existing dossier command');
         const sent = (await changes()).slice(before);
-        assert.equal(sent[0]?.kind, 'stack.aside', 'Command Down archives; it does not reorder');
+        assert.equal(sent[0]?.kind, 'stack.aside', '1037 Command Right archives; it does not reorder');
         assert.equal(sent[0].target.message_id, ids.root, 'message selection resolves its containing dossier');
         assert.equal(sent.length, 1, 'one key act sends exactly one command');
         await until(async () => (await position(ids.root)).below === true, 'Core confirms the dossier below More');
@@ -105,7 +105,7 @@ export async function dossierCommandDown705Checks(
         await until(() => p.evaluate("Boolean(document.querySelector('#inline-writing-body')?.getClientRects().length)"), 'new-message writing is present');
         await into(p, device, '#inline-writing-body'); await p.key('a', 4); await p.send('Input.insertText', { text: writing });
         const beforeWriting = (await changes()).length; await key();
-        assert.equal((await changes()).length, beforeWriting, 'writing keeps Command Down');
+        assert.equal((await changes()).length, beforeWriting, 'writing keeps Command Right');
         assert.equal(await p.evaluate("document.querySelector('#inline-writing-body').value"), writing);
         await until(async () => (await view('editor_state', { source_ref: { kind: 'topic', id: topic }, topic_id: topic })).draft?.body === writing, 'exact unsent writing reaches Core');
         phases.push('writing negative with exact Core draft');
