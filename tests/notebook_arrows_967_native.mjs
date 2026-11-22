@@ -83,12 +83,13 @@ try {
       await page.keyboard.press('ArrowDown');await index(1);
       assert.equal(await dialog.evaluate(n=>n.matches(':modal')),true,'narrow Notebook remains modal');
     }
-    // The card's text and caret keep ordinary arrows, including empty writing.
+    // Interior carets and nonempty selections keep ordinary writing arrows;
+    // collapsed editing boundaries are the1058 display commands.
     await host.locator('.deck-card').first().click({position:{x:35,y:18}});
     const field=host.locator('.deck-writing textarea');await field.waitFor();
     await page.keyboard.press('Meta+Home');await page.keyboard.press('ArrowRight');
     assert.equal(await field.evaluate(n=>n===document.activeElement),true);
-    for(const k of ['ArrowDown','ArrowUp','ArrowLeft','ArrowRight']){await page.keyboard.press(k);assert.equal(await field.evaluate(n=>n===document.activeElement),true,'writing retains '+k);}
+    for(const k of ['ArrowDown','ArrowUp','ArrowLeft','ArrowRight']){await page.keyboard.press('Meta+a');await page.keyboard.press('ArrowRight');await page.keyboard.press('ArrowLeft');await page.keyboard.press(k);assert.equal(await field.evaluate(n=>n===document.activeElement),true,'interior writing retains '+k);}
     const writing=await field.inputValue();
     if(docked) {
       const caret=await field.evaluate(n=>[n.selectionStart,n.selectionEnd]);
@@ -96,9 +97,8 @@ try {
       assert.equal(await field.evaluate(n=>n===document.activeElement),true,'entering resumes an unfinished card');
       assert.deepEqual(await field.evaluate(n=>[n.selectionStart,n.selectionEnd]),caret);assert.equal(await field.inputValue(),writing);
     }
-    await field.fill('');
-    for(const k of ['ArrowLeft','ArrowRight']){await page.keyboard.press(k);assert.equal(await field.evaluate(n=>n===document.activeElement),true,'empty writing retains '+k);}
-    await field.fill(writing);await page.keyboard.press('Escape');await inSheet();
+    for(const k of ['ArrowLeft','ArrowRight']){await page.keyboard.press('Meta+a');await page.keyboard.press(k);assert.equal(await field.evaluate(n=>n===document.activeElement),true,'a nonempty selection retains '+k);}
+    assert.equal(await field.inputValue(),writing);await page.keyboard.press('Escape');await inSheet();
     await page.screenshot({path:`${evidence}/${key}-cards.png`});
     if(docked) {
       // Text view is an editor; entering resumes it and arrows do not leave it.

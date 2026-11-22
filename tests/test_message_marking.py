@@ -60,7 +60,7 @@ class SweepCase(test_message_exposure.HeldOutcomeCase):
         messages = [row[0] for row in self.sql("SELECT id FROM messages ORDER BY seq")]
         topics = ["t1", "t2", self.conversation, "tTight"]
         deliveries = [row[0] for row in self.sql("SELECT id FROM deliveries WHERE recipient_id=? ORDER BY seq", (actor,))]
-        calls = [("assessment", {"assessment_id": "a-none"}), ("changes", {}), ("workspace", {"workspace_id": "w1"}), ("workspaces", {}),
+        calls = [("workspace_links", {"workspace_id": "w1"}), ("assessment", {"assessment_id": "a-none"}), ("changes", {}), ("workspace", {"workspace_id": "w1"}), ("workspaces", {}),
                  ("outcome_light", {"workspace_id": "w1"}), ("workspace_topics", {"workspace_id": "w1"}), ("topic_images", {"topic_id": "t1"}),
                  ("memory_items", {"owner_scope": {"kind": "topic", "id": "t1"}}), ("memory_current", {"item_id": "memory-none"}),
                  ("media", {"media_id": "media-none"}), ("editor_state", {"topic_id": "t1"}), ("submission", {"submission_id": "s-none"}),

@@ -75,7 +75,7 @@ try{
    await page.keyboard.press('Meta+z');await waitSaved(item,b=>b===body);
   });
   await check('nonzero-line-indentation-control',async()=>{
-   const body='## First\n\n- one\n- two\n',item=await fresh(body),before=await snapshot();
+   const body='## First\n\n- one\n- two\n',item=await fresh(body);await page.keyboard.press('ArrowLeft');const before=await snapshot();
    assert.ok(before.start>0);await page.keyboard.press('Tab');
    assert.deepEqual(await snapshot(),{...before,value:'First\n- one\n  - two',start:before.start+2,end:before.end+2});
    await page.keyboard.press('Shift+Tab');assert.deepEqual(await snapshot(),before);await page.keyboard.press('Escape');await waitSaved(item,b=>b===body);
@@ -84,7 +84,7 @@ try{
    const body='## First\n\n- one\n- two\n',item=await fresh(body);await page.keyboard.press('Meta+a');await page.keyboard.press('ArrowLeft');
    const before=await snapshot();await page.keyboard.press('Tab');assert.deepEqual(await snapshot(),before);
    await page.keyboard.press('Shift+Tab');assert.deepEqual(await snapshot(),before);
-   await page.keyboard.press('Meta+a');await page.keyboard.press('ArrowRight');const line=await snapshot();await page.keyboard.press('Tab');
+   await page.keyboard.press('Meta+a');await page.keyboard.press('ArrowRight');await page.keyboard.press('ArrowLeft');const line=await snapshot();await page.keyboard.press('Tab');
    assert.deepEqual(await snapshot(),{...line,value:'First\n- one\n  - two',start:line.start+2,end:line.end+2});
    await page.keyboard.press('Shift+Tab');assert.deepEqual(await snapshot(),line);await page.keyboard.press('Escape');await waitSaved(item,b=>b===body);
   });

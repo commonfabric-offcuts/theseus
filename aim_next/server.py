@@ -1079,7 +1079,7 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     # The page's files, read once: the server serves this build until it stops (aim_next/web_build.py).
     server.build = web_build.load(web_root)
     script_src = " ".join(["'self'"] + ["'%s'" % digest for digest in server.build.script_hashes])
-    server.csp = ("default-src 'self'; script-src %s; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+    server.csp = ("default-src 'self'; script-src %s; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http: https:; "
                   "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'" % script_src)
     # Where an invited agent's sign-in file is written: beside the server's own profile (serve.py), or None to invite no one.
     server.sign_in_folder = None if sign_in_folder is None else Path(sign_in_folder)

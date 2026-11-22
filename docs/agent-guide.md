@@ -381,19 +381,21 @@ Anything that needs Tony goes to him by Signal first, then onto the board. A mes
 
 ## Saying what landed
 
-When a piece of the pipeline ships, its release record sets its topic Ready
-for review, "Live in release N since …" ([pipeline.md](pipeline.md)). Post
-what landed and what to try there; the person marks it Done, with one tap. An
-agent never marks a Build topic Done:
+When the actual release record ships all of a piece's work, Core sets its
+agent-created Build topic Done for every reader (1081,
+[pipeline.md](pipeline.md)). Post what landed and what to try there; that
+announcement keeps Core's Done. Agents do not manually substitute a Done for
+the release record:
 
 ```sh
-aim-next post TOPIC "Landed: the page link, commit 1a2b3c4, in release 25. Checks: 312 passed. To try: open a topic and press ✅ Done."
+aim-next post TOPIC "Landed: the page link, commit 1a2b3c4, in release 25. Checks: 312 passed. To try: open the topic's page link."
 ```
 
 The post is what people read later, so name what actually exists now: the
 commit, the release, the page or file, the checks that ran and what they
-showed, and what to try. A post leaves a topic Ready for review as it is; a
-post in a done topic makes it active again. For a topic outside the pipeline,
+showed, and what to try. A post preserves Core's shipped Build Done. A post in
+an ordinary topic somebody marked Done still makes it active again. A person's
+legacy pipeline-linked topic retains Ready for review. For a topic outside the pipeline,
 use `aim-next state TOPIC review` when it waits on someone's review,
 `aim-next state TOPIC waiting --waiting-on A` when it waits on someone else,
 and `aim-next state TOPIC done` only after the last post, once the work is
