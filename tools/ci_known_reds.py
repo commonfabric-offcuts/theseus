@@ -32,6 +32,8 @@ WAKE_REPLAY = 'wake-replay'
 END_LINE = 'AssertionError [ERR_ASSERTION]: see native.json for exact failing assertions'
 PHASES = [phase + ':' + engine for phase in ('run', 'runAnswering', 'runSending') for engine in ('chromium', 'webkit')]
 FRAME = re.compile(r'^\s*at (?:async )?(?:[^\s(]+ \()?(?:file://)?(\S*?/tests/[^\s():]+):(\d+):\d+\)?\s*$')
+# A Python fixture's traceback frame, as the harness echoes it when the fixture's own exit check fails.
+FIXTURE_FRAME = re.compile(r'^\s*File "(\S*?/tests/[^"]+)", line (\d+), in \S+')
 GENERATED_ID = re.compile(r'(?<![0-9A-Za-z])([mtpd])-[0-9a-f]{32}(?![0-9A-Za-z])')
 SHA = re.compile(r'[0-9a-f]{40}')
 PROFILE_FIELDS = ('runner_os', 'runner_arch', 'image_os', 'image_version', 'scroll_bars', 'reduce_motion', 'cpus', 'python', 'node', 'chrome', 'playwright')
@@ -133,6 +135,24 @@ def compose_completed(report):
             and 'fixtureExitSignal' in report and report['fixtureExitSignal'] is None
             and report.get('plannedPhases') == PHASES and report.get('completedPhases') == PHASES)
 
+def fixture_exit_row(name, code, log):
+    """The fixture failed its own end-of-run check after the harness ran every case.
+
+    The harness logs each case as it starts and again with its result, and asserts the fixture's exit last, so a
+    whole run shows one result for every case started and ends in the fixture's traceback. That exit is then a
+    failure the step carries, with the fixture's own assertion as its verified source frame, and the controls say
+    whether it is known. A fixture that died mid-run leaves a started case without its result and is refused.
+    """
+    lines = log.splitlines()
+    started = sum(1 for line in lines if line.startswith('{"case":'))
+    finished = sum(1 for line in lines if line.startswith('{"name":'))
+    require(started == finished > 0, name + ': fixture died before the end')
+    frames = [match for match in map(FIXTURE_FRAME.match, lines) if match]
+    message = next((line.strip() for line in reversed(lines) if line.startswith('AssertionError: ')), None)
+    require(bool(frames) and message is not None, name + ': fixture exit without its assertion')
+    error = message + '\n' + '\n'.join('    at fixture (file://%s:%s:1)' % (match[1], match[2]) for match in frames)
+    return {'name': 'fixture exit %d' % code, 'passed': False, 'error': error}
+
 def cases(step, out):
     name = step['name']
     native = NATIVE[name]
@@ -153,10 +173,12 @@ def cases(step, out):
         require(isinstance(final, dict) and final.get('closed') is True and final.get('results') == rows,
                 name + ': missing final result log')
     else:
-        require(type(report.get('fixtureExitCode')) is int and report['fixtureExitCode'] == 0,
-                name + ': fixture cleanup failed')
+        code = report.get('fixtureExitCode')
+        require(type(code) is int, name + ': fixture exit unrecorded')
         require(report.get('fixtureExitSignal') is None, name + ': fixture was signalled')
-        if counts['fail']:
+        if code != 0:
+            rows = rows + [fixture_exit_row(name, code, log)]
+        elif counts['fail']:
             require(END_LINE in log.splitlines(), name + ': harness did not reach end')
     require(type(step.get('exit')) is int and step['exit'] == (0 if good else 1), name + ': abnormal harness exit')
     require(step.get('passed') is good, name + ': inconsistent raw verdict')
