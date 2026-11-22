@@ -18,7 +18,10 @@ import test_broker_routes as routes_setup
 
 INSTRUCTION = ('Read current durable work through the bound Theseus CLI profile. '
                'Use paged delivery reads; do not filter by this historical wake generation. '
-               'Reply and acknowledge separately. Stop on a binding mismatch; never rebind.')
+               'Reply and acknowledge separately. On a binding mismatch, retain the request and refusal; never rebind. '
+               'Correct only a demonstrable raw-read wrapper mistake with the original actor and binding values unchanged; '
+               'this does not authorize replaying a write. Otherwise stop the affected operation and ask your coordinator '
+               'through a working bound channel. Do not silently ignore later deliveries or bypass refused access.')
 VERSION = '0.167.0-alpha.3.2'
 # The version reviewed before this one (pipeline item 328): an app still on it is now refused by name.
 PREVIOUS = '0.163.0-alpha.10.2'

@@ -1,0 +1,21 @@
+# Repeated pencil mode shortcuts (1049)
+
+Small ordinary Build1 p-e56a37431e104a35b1cba7c0, topic t-14162cd716d04f31b8795bb36a0edf43, Fable16023 revision4 /16052 and Warp16050. Fresh actual320 d12c3c1f1654ab50e3dacdbf0f8bbfc18c1c427f/tree fd2637ea0bfcbe314fae8624d9e171744474b46f; own core-lane7/1049-repeat-pencil-320 branch.1045 remains immutable2a3df0d5 elsewhere.
+
+Every Option-N and Option-M in pencil writing switches Note/Message without character residue, including two and50 presses and after ordinary letters. Preserve exact writing, caret/direction and note destination; retain1032's physical-chord/global-pop/other-text boundary, busy/admission/repeat/dialog guards, normal composition/writing, Return/Send and recovery owners.
+
+Warp16050/Fable16052 explicitly supersede the earlier physical-Mac-red prerequisite: build the prescribed mechanism, label synthetic reds honestly, freeze for independent read, then Tony verifies on live; continuing residue leaves the item open. The untouched320 headless diagnostic remains separate:56 protocol chords per engine produced no Dead/229/composition events, despite correct modes/words/selection. It is not native Mac input-method proof. No visible browser or additional Tony ask is needed for this authorized route.
+
+## Narrow owner and default
+
+Add lifecycle-owned input cancellation to the pencil's main writing textarea, installed before its normal WritingInput/save listeners and disposed with the composer. No card reply or other text field gets this owner. After a consumed physical chord with the main field focused, arm its current editor/presentation/value/selection, blur/refocus in the same turn with selection/direction restored. Global non-text opening arms once focus reaches that field; no existing naming/other dialog focus is stolen. Suppress only redundant clipboard checking during this internal focus cycle; other normal focus owners remain.
+
+Safety window default:500ms after an owned chord, measured monotonically, without a timer. A composition that starts within that window belongs to this chord through compositionend and its final input; its end allows the same500ms tail. Ordinary keydown, pointer interaction, external blur, a different editor/presentation, disposal or a nonmatching input ends ownership. An unrelated field, hidden/disconnected/read-only/retired composer has none.
+
+Only insertCompositionText or insertText input whose data is exactly one of U+02DC/U+007E/U+0303/U+00B5 may be corrected. The input must match the saved writing byte for byte plus that one inserted character at the collapsed caret, or exactly that character replacing the saved selection. Restore only that proven insertion/replacement and the saved caret/direction before the ordinary writer sees input. Changed surrounding writing, different data/type, later typing/paste/ordinary composition and stale context stay untouched. Normal typed tilde/micro after a new key is retained. Keep an owned composition across provisional corrections, so its final commit is also corrected; end a noncomposing corrected tail. No blanket composition suppression or global character removal.
+
+## Evidence
+
+Red first synthetically on unchanged320: composing229 owned keydown, compositionstart/update/end and input with each named residue for N/M, asserting actual mode and exact field/selection; keep first-press/normal-writing/other-owner/held/stale/delayed/disposal controls. Synthetic DOM application and driver keys remain separately labelled; neither establishes OS input-method success. Use the existing writer to prove no transient residue is saved. Apply an actual cancellation/cleanup routing fault, catch it, restore exact bytes and rerun its control. Compare scoped existing-owner full base/head diagnostics; retain actual source/producer/served bodies and failures.
+
+Only own isolated headless CFT/installed-WebKit profiles and scratch CoreHTTP, one workload/load<12/18; Browser.close/all observedPIDs/profile removal/fixtureEOFexit0/absence/empty errors/closed ports. No live/runtime/install/profile/identity change. Fable canonical stages/freeze; Warp independent read/approval/carry/landing/runtime.1044 then1046 are later bindings;1054 is designer-owned.
