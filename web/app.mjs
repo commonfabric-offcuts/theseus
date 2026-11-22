@@ -3127,6 +3127,11 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
       if (key.startsWith('edit_session:')) { if (messageEdit?.id === key.slice(13)) messageEdit.writing.sessionChanged(version); return true; }
       if (key !== 'neighbors') {
         const done = await views.refresh(key, version, read, current);
+        if (key.startsWith('yours:') && done !== false && current()) {
+          const result = await registry.refreshSharedReply(key.slice(6), read, current);
+          if (result === false) return false;
+          if (result?.retired && current()) cardReplies?.sharedSent(result.presentation);
+        }
         if (key === 'dossier_move' && done !== false && current() && registry.current?.source?.source_ref?.kind === 'message') {
           const p = registry.current, source = checkedView(await read('source', p.source.source_ref), bootstrap.instance_id);
           if (current() && registry.current === p) { Object.assign(p.source, source); paintReaderTitle(); }

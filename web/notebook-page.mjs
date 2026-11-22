@@ -5,6 +5,7 @@ import { openMessageMenu, copyText } from './message-menu.mjs';
 import { DeckPage, UNDO_LIMIT } from './deck-page.mjs';
 import { applyAct, deckBody, parseDeck, cardText, cardImages, imageLine, textCard, findCard } from './deck.mjs';
 import { WritingInput } from './writing-input.mjs';
+import { NotebookEditHistory } from './notebook-edit-history.mjs';
 import { NotebookWriting, notebookStore, mergeCardContent } from './notebook-writing.mjs';
 import { NotebookImages } from './notebook-images.mjs';
 import { ImagePick, paintThumb, readInTurn } from './image-pick.mjs';
@@ -208,6 +209,7 @@ export class NotebookPage extends DeckPage {
   close() {
     this.stopCaret?.(); this.stopCaret = null;
     this.detached=true;this.listening.abort();this.deleteUI?.release(this);
+    this.editing?.history?.close();
     this.textProjection?.close();
     if(this.writing&&!this.writing.closed&&!this.deleteUI?.retains(this.writing)){this.writing.close();this.writing.serial.finally(()=>this.store.close());}
   }
@@ -361,12 +363,15 @@ export class NotebookPage extends DeckPage {
     super.open(editing);
     if(!this.editing)return;
     this.writing.active=true;
+    this.editing.history=new NotebookEditHistory({field:this.editing.field,
+      readOnly:()=>this.readOnly||this.editing?.input.readOnly()||this.writing?.closed});
     this.editing.field.addEventListener('input',()=>this.save());
     this.stopCaret = watchNotebookCaret(this.editing.field, this.host);
     this.cardImages=this.imagePicker(this.editing.field,this.editing.input,this.list);
   }
   finish({discard=false,target=null} = {}) {
     this.stopCaret?.(); this.stopCaret = null;
+    this.editing?.history?.close();
     this.cardImages?.close();this.cardImages?.list?.remove();this.cardImages=null;
     if(this.imageError&&this.editing){this.imageError=null;this.writingChanged();}
     let at=-1;
@@ -469,6 +474,11 @@ export class NotebookPage extends DeckPage {
       }
       if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='s'){event.preventDefault();this.writing?.flush();}
       return;
+    }
+    if (!this.host.hidden && event.target === this.editing?.field && this.editing.history) {
+      const history=this.editing.history;
+      if(history.key(event))return;
+      return history.aroundKey(event,()=>super.key(event));
     }
     super.key(event);
   }
