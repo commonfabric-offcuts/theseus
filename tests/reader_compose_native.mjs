@@ -2868,7 +2868,7 @@ async function pencilBranch(p,state,words,tolerance) {
     if(state==='device-only')assert.equal(m.sign.state,'device');
     if(['journal attention','authority recovery','version conflict'].includes(state))assert.equal(m.sign.state,'attention');
     if(['adopting','inactive'].includes(state))assert.equal(m.readOnly,true);
-    if(state==='recovery discovery'){assert.equal(m.readOnly,false);assert.equal(await p.locator('#inline-send').getAttribute('aria-disabled'),'false','advisory discovery admits current Send');assert.equal(await p.locator('#inline-add-image').isDisabled(),false);}
+    if(state==='recovery discovery'){assert.equal(m.readOnly,false);assert.equal(await p.locator('#inline-send').isEnabled(),true,'advisory discovery admits current Send');assert.equal(await p.locator('#inline-add-image').isDisabled(),false);}
     if(state.startsWith('loaded access')){assert.equal(m.retry,true);assert.equal(m.unavailable,true);controls.push('#inline-retry');}
     if(state==='plus open')controls.push('#inline-add-image');
     if(state==='picker reserved')controls.push('#inline-cancel-image');
@@ -3283,7 +3283,7 @@ try {
   fixture.stdin.end(); shortFixture.stdin.end();
   const [{ code: fixtureExitCode, signal: fixtureExitSignal }, { code: shortExitCode, signal: shortExitSignal }] = await Promise.all([fixtureExit, shortExit]);
   await mkdir(evidence, { recursive: true });
-  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ hashes, results, browserClosed, harnessCompleted, plannedPhases, completedPhases,
+  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ hashes, results, fixtureOrigins:[facts?.origin,shortFacts?.origin].filter(Boolean), browserClosed, harnessCompleted, plannedPhases, completedPhases,
     partition, filter, pencilInputHashes, pencilAcceptancePlan, missingOwnedCases:(pencilAcceptancePlan?.cases??[]).filter(c=>!results.some(r=>r.name===c.name)), registeredNormals:[...pencilCases.keys()], executedCases:results.map(r=>r.name), missingNormals:(pencilAcceptancePlan?.cases??[]).filter(c=>c.phase==='normal'&&!results.some(r=>r.name===c.name)),
     pencilMutations, pencilMutationSkips, pencilCleanupEvidence, phaseCleanupEvidence, harnessError, fixtureExitCode, fixtureExitSignal, fixtureErrors: fixtureErrors(), shortFixture: { exitCode: shortExitCode, exitSignal: shortExitSignal, errors: shortErrors() }, measured, shots }, null, 2));
   const failed = results.filter(r => r.expectedFailure ? !r.mutationCaught : !r.passed);
