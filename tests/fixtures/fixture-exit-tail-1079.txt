@@ -1,0 +1,24 @@
+node:internal/modules/run_main:111
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Traceback (most recent call last):
+  File "/Users/runner/work/theseus/theseus/tests/fixtures/ui_http.py", line 7, in <module>
+    main()
+  File "/Users/runner/work/theseus/theseus/tests/fixtures/ui_http.py", line 3, in main
+    assert not item645_unrestored, "Item 645 comparison runtime was not restored"
+AssertionError: Item 645 comparison runtime was not restored
+
+
+1 !== 0
+
+    at file:///Users/runner/work/theseus/theseus/tests/reader_persistence_native.mjs:1823:10 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 1,
+  expected: 0,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v26.13.1

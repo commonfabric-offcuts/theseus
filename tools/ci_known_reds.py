@@ -146,7 +146,12 @@ def _log_case_names(lines, prefix):
             raise Refused('unreadable harness log line')
     return names
 
-ERROR_HEADER = re.compile(r'^[A-Za-z]+Error( \[[A-Z_]+\])?: ')
+ERROR_HEADER = re.compile(r'^[A-Za-z]*Error( \[[A-Z_]+\])?: ')
+# What a run that reached the fixture's own assertion writes after its last result and nothing else: Node's uncaught
+# exception preamble, the harness's assertion header carrying the fixture's traceback, that traceback's frames and
+# source lines, the fixture's own AssertionError, the harness's diff, its frames and the error's property block.
+FIXTURE_TAIL = re.compile(r'^(\s*|node:internal/\S+|\s+triggerUncaughtException\(|\s+\^|  File ".*", line \d+, in \S+|    \S.*|'
+                          r'\S.* !== \S.*|\s+at .*|\s+[A-Za-z]+: .*|[{}]|Node\.js v\d.*)$')
 
 def fixture_exit_row(name, code, log, rows, harness, report, history):
     """The fixture failed its own end-of-run check after the harness ran the cases it had.
@@ -165,7 +170,10 @@ def fixture_exit_row(name, code, log, rows, harness, report, history):
     require(finished == [row.get('name') for row in rows], name + ': result log disagrees with report')
     # The harness attests that its body ran to its end; without that, balanced case lines prove only a prefix.
     # The controls predate the attestation and are held to the harness source, count and assertion instead.
-    require(history or report.get('bodyCompleted') is True or report.get('harnessCompleted') is True,
+    attested = [report[key] for key in ('bodyCompleted', 'harnessCompleted') if key in report]
+    # A report that carries the attestation must say true, control or candidate; only a report written before the
+    # attestation existed, with neither field, is read as a control by source, count and assertion.
+    require(any(value is True for value in attested) if attested or not history else True,
             name + ': harness did not finish its cases')
     last = max(n for n, line in enumerate(lines) if line.startswith('{"name":'))
     tail = lines[last + 1:]
@@ -174,8 +182,9 @@ def fixture_exit_row(name, code, log, rows, harness, report, history):
     message = headers[1] if len(headers) >= 2 and headers[1].startswith('AssertionError: ') else None
     require(bool(frames) and message is not None and headers[0].startswith('AssertionError [ERR_ASSERTION]: Traceback'),
             name + ': fixture exit without its assertion')
-    if len(headers) != 2:
-        raise Refused(name + ': fixture exit is not the last failure: ' + headers[2][:200])
+    foreign = [line for line in tail if not (FIXTURE_TAIL.match(line) or ERROR_HEADER.match(line))] + headers[2:]
+    if foreign:
+        raise Refused(name + ': fixture exit is not the last failure: ' + foreign[0].strip()[:200])
     require(isinstance(harness, str) and bool(harness), name + ': harness source unrecorded')
     message += ' | after %d cases of %s %s' % (len(rows), NATIVE[name].harness, harness)
     error = message + '\n' + '\n'.join('    at fixture (file://%s:%s:1)' % (match[1], match[2]) for match in frames)

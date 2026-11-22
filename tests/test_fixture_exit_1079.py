@@ -8,6 +8,10 @@ import tempfile
 import unittest
 
 
+REAL_TAIL = (Path(__file__).resolve().parent / 'fixtures/fixture-exit-tail-1079.txt').read_text().replace(
+    '/Users/runner/work/theseus/theseus', '/fixture')
+
+
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location('fixture_exit_controller', ROOT / 'tools/ci_known_reds.py')
 CONTROLLER = importlib.util.module_from_spec(SPEC)
@@ -143,6 +147,20 @@ class FixtureExitCase(unittest.TestCase):
         candidate = self.records(self.cases(self.evidence(1, FIXTURE_TRACEBACK)), 2)
         self.assertTrue(CONTROLLER.compare_failures(candidate, self.records(control_rows, 1))['passed'])
 
+    def test_a_control_that_says_its_body_did_not_finish_is_refused_too(self):
+        # Only a report with neither attestation field is read as a pre-attestation control; an explicit false,
+        # or anything but true, on a control is an aborted body and never a comparable fixture exit.
+        for completed in (False, 'yes', 0):
+            self.assertEqual(self.refused(self.evidence(1, FIXTURE_TRACEBACK, completed=completed), history=True),
+                             'native-reading: harness did not finish its cases')
+
+    def test_the_real_tail_of_links_run_is_the_fixture_exit(self):
+        rows = self.cases(self.evidence(1, REAL_TAIL))
+        self.assertEqual(rows[-1]['name'], 'fixture exit 1')
+        self.assertTrue(rows[-1]['error'].startswith(MESSAGE + ' | after 2 cases of'), rows[-1]['error'])
+        self.assertEqual([frame['text'] for frame in CONTROLLER.fingerprint(rows[-1]['error'], CHECKOUT, self.repo, self.sha)['chain']],
+                         ['main()', 'assert not item645_unrestored, "Item 645 comparison runtime was not restored"'])
+
     def test_a_harness_that_stopped_between_cases_matches_no_control(self):
         control = self.records(self.cases(self.evidence(1, FIXTURE_TRACEBACK, rows=(RED, GREEN, THIRD))), 1)
         candidate = self.records(self.cases(self.evidence(1, FIXTURE_TRACEBACK)), 2)
@@ -171,9 +189,13 @@ class FixtureExitCase(unittest.TestCase):
                          'native-reading: fixture exit without its assertion')
 
     def test_a_fatal_tail_after_the_fixture_traceback_is_refused_and_named(self):
-        tail = FIXTURE_TRACEBACK + 'TypeError: cannot read properties of null\n    at file:///fixture/tests/reader_persistence_native.mjs:1830:3\n'
-        self.assertEqual(self.refused(self.evidence(1, tail)),
-                         'native-reading: fixture exit is not the last failure: TypeError: cannot read properties of null')
+        for extra in ('TypeError: cannot read properties of null\n    at file:///fixture/tests/reader_persistence_native.mjs:1830:3\n',
+                      'Error: unrelated fatal tail\n    at file:///fixture/tests/reader_persistence_native.mjs:1830:3\n',
+                      'Error [ERR_UNHANDLED_REJECTION]: unrelated fatal tail\n',
+                      'Segmentation fault: 11\n',
+                      'the harness printed something else\n'):
+            refusal = self.refused(self.evidence(1, FIXTURE_TRACEBACK + extra))
+            self.assertTrue(refusal.startswith('native-reading: fixture exit is not the last failure: ' + extra.split('\n')[0]), refusal)
 
     def test_fixture_exit_without_its_assertion_is_refused(self):
         self.assertEqual(self.refused(self.evidence(1, 'Killed\n')), 'native-reading: fixture exit without its assertion')
