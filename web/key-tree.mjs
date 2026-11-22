@@ -39,11 +39,14 @@ export class KeyTree {
   // tree speaks through a polite status of its own (say). also: rows drawn
   // outside root (the outline's heading pencil), which the tree owns
   // (aria-owns) and hears as its own.
+  // fallback(key, previousRows, rows): optional replacement for a removed
+  // selected row. Its replacement becomes the kept key; other trees keep the
+  // default place fallback.
   // column: where ↑ above the first row and ↓ below the last go on to, in the
   // page's column the tree stands in (the side rail's logo block, its Keys;
   // arrow-reach.mjs), else the tree's own root, where nothing lies beyond.
-  constructor({ root, rows, act = () => false, label = null, also = [], column = root, doc = root.ownerDocument, selectOnPress = false }) {
-    Object.assign(this, { root, rows, act, column, doc, also });
+  constructor({ root, rows, act = () => false, label = null, also = [], column = root, doc = root.ownerDocument, selectOnPress = false, fallback = null }) {
+    Object.assign(this, { root, rows, act, column, doc, also, fallback });
     this.current = null; this.currentKey = null; this.wanted = false; this.queued = false; this.chosen = false; this.placing = false; this.marked = new Set();
     // ringed: whether the focus in the pane wears a ring. standing: whether
     // the row chosen is still the person's last choice (away, show).
@@ -122,9 +125,11 @@ export class KeyTree {
     const focused = this.doc.activeElement, before = this.current;
     const reading = rows.find(row => row.el.getAttribute('aria-current') === 'page');
     const kept = rows.find(row => row.key === this.currentKey);
-    const place = (!this.chosen && reading) || kept || rows.find(row => row.el === this.current) || reading || rows.find(row => !row.aside) || rows[0] || null;
+    const replacement = !kept && this.fallback?.(this.currentKey, this.previousRows ?? [], rows);
+    this.previousRows = rows;
+    const place = (!this.chosen && reading) || kept || replacement || rows.find(row => row.el === this.current) || reading || rows.find(row => !row.aside) || rows[0] || null;
     if (!place) return;
-    this.visit(place, this.chosen && !kept);
+    this.visit(place, this.chosen && !kept && !replacement);
     // The focus was on the row that went, or on the one standing in for it: it
     // goes to the row in its place, wearing the ring the row that went wore. A
     // browser rings no focus a script gives after a press unless asked to (the
@@ -132,7 +137,10 @@ export class KeyTree {
     // rail) leaves the browser's own way, which rings nothing then.
     if (place.el !== before && this.wanted && (!focused || focused === this.doc.body || focused === before || !focused.isConnected || !shown(focused) || focused.closest('[inert]'))) {
       this.placing = true;
-      try { place.el.focus(this.ringed ? { preventScroll: true, focusVisible: true } : { preventScroll: true }); } finally { this.placing = false; }
+      try {
+        place.el.focus(this.ringed ? { preventScroll: true, focusVisible: true } : { preventScroll: true });
+        if (replacement && this.doc.activeElement === place.el) revealSelection(place.el);
+      } finally { this.placing = false; }
     }
   }
   // Puts the keys on the pane: on the first row prefer(row) chooses, when

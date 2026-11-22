@@ -39,11 +39,11 @@ test('item 785 source geometry: repaint height changes hold real identity and su
  holdControl(source);const m=model(),saved=m.api.captureListAnchor(),before=m.nodes[1].getBoundingClientRect().top;const successor=m.nodes[1];m.nodes[0].hidden=true;m.record(saved,70);m.api.restoreListAnchor(saved);assert.equal(successor.getBoundingClientRect().top,before,'hidden first card hands hold to exact successor');
 });
 function moreControl(s) {
- const m=model(s),more=m.node('more-messages',350,40);more.dataset={};m.document.querySelectorAll=()=>[more,...m.nodes];
+ const m=model(s),more=m.node('older-new',350,40);more.dataset={line:'older'};m.document.querySelectorAll=()=>[more,...m.nodes];
  const saved=m.api.captureListAnchor();assert.equal(saved.control,more);const edge=more.getBoundingClientRect().top;
- const loaded=m.node('older-loaded',1000);m.nodes.push(loaded);m.api.restoreListAnchor(saved);assert.equal(loaded.getBoundingClientRect().top,edge,'More has its own actual loading destination');
+ const loaded=m.node('older-loaded',1000);m.nodes.push(loaded);m.api.restoreListAnchor(saved);assert.equal(loaded.getBoundingClientRect().top,edge,'New keeps its actual older loading destination after1045 retires More');
 }
-test('item 785 More retains requested landing and focused writing stays in its actual field',()=>{
+test('item 785 New retains requested older landing and focused writing stays in its actual field',()=>{
  moreControl(source);const m=model(),field=m.node('writing',400);m.document.activeElement=field;m.context.inline={root:{contains:e=>e===field},field};m.context.registry={inline:{},isCurrent:()=>true};
  const saved=m.api.captureListAnchor(),top=field.getBoundingClientRect().top;assert.equal(saved.anchor,field);m.record(saved,70);field.y+=70;m.api.restoreListAnchor(saved);assert.equal(field.getBoundingClientRect().top,top);
 });

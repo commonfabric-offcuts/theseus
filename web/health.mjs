@@ -11,6 +11,7 @@ const count = n => Number(n).toLocaleString('en-US');
 const plural = (n, one, many = `${one}s`) => `${count(n)} ${n === 1 ? one : many}`;
 const list = names => names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 const at = (ms, now) => shownTime(ms, now);
+const faultWords = fault => fault ? ` (${fault.exception_class}: ${fault.message})` : '';
 // Agents whose failures began this close together began failing for one reason.
 const TOGETHER_MS = 2 * 60 * 1000;
 
@@ -32,7 +33,7 @@ export function readable(answer) {
 export function runnerPhrase(runner, now) {
   const since = Number.isInteger(runner.since_ms) ? at(runner.since_ms, now) : null;
   if (runner.live) return Number.isInteger(runner.started_ms) ? `has been running since ${at(runner.started_ms, now)}` : 'is running';
-  if (runner.state === 'paused') return `has been paused${since ? ` since ${since}` : ''} because ${runner.why ?? 'of a reason it did not record'}`;
+  if (runner.state === 'paused') return `has been paused${since ? ` since ${since}` : ''} because ${runner.why ?? 'of a reason it did not record'}${faultWords(runner.fault)}`;
   if (runner.state === 'stopped') return `was stopped${since ? ` at ${since}` : ''} and has not come back`;
   if (runner.state === 'exited') return `${runner.why ?? 'ended'}${since ? ` at ${since}` : ''} and has not come back`;
   if (runner.state === 'unrenewed') return `stopped answering${since ? ` at ${since}` : ''}`;
@@ -42,7 +43,7 @@ export function runnerPhrase(runner, now) {
 // How the run before this one ended, as "after it was stopped at 2:30 PM".
 function priorPhrase(prior, now) {
   const when = Number.isInteger(prior.ended_ms) ? ` at ${at(prior.ended_ms, now)}` : '';
-  if (prior.state === 'paused') return `after a pause${when} because ${prior.why ?? 'of a recorded reason'}`;
+  if (prior.state === 'paused') return `after a pause${when} because ${prior.why ?? 'of a recorded reason'}${faultWords(prior.fault)}`;
   if (prior.state === 'stopped') return `after it was stopped${when}`;
   if (prior.state === 'exited') return `after it ${prior.why ?? 'ended'}${when}`;
   if (prior.state === 'unrenewed') return `after it stopped answering${when}`;

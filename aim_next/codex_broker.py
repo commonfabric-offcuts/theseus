@@ -22,7 +22,10 @@ CLIENT = 'theseus_wake_broker'
 _VERSION_TEXT = re.compile(r'[0-9A-Za-z][0-9A-Za-z.+-]{0,39}')
 INSTRUCTION = ('Read current durable work through the bound Theseus CLI profile. '
                'Use paged delivery reads; do not filter by this historical wake generation. '
-               'Reply and acknowledge separately. Stop on a binding mismatch; never rebind.')
+               'Reply and acknowledge separately. On a binding mismatch, retain the request and refusal; never rebind. '
+               'Correct only a demonstrable raw-read wrapper mistake with the original actor and binding values unchanged; '
+               'this does not authorize replaying a write. Otherwise stop the affected operation and ask your coordinator '
+               'through a working bound channel. Do not silently ignore later deliveries or bypass refused access.')
 TOTAL_SECONDS = 4.0
 CLEANUP_SECONDS = 0.5
 ADD_SECONDS = 1.0

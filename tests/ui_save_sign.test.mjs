@@ -67,8 +67,7 @@ test('the Reader marks its save status with the saving sign', () => {
 
 test('words that are not the save status carry no saving sign', () => {
   const held = editor();
-  held.imageCopiesNext = 'more';
-  held.recoveryDiscovery = true;
+  held.imageReservation = { id: 'current-picker' };
   const state = writingState(held, { status: () => 'Saved to Theseus', sign: () => 'saved' });
   assert.notEqual(state.message, 'Saved to Theseus', 'an image barrier speaks instead');
   assert.equal(state.sign, '');
@@ -168,7 +167,7 @@ test('the Reader shows when the writing it speaks of was saved, and no time when
   // being copied speaks instead): the time goes with them.
   const status = reader(editor(), 'saved', () => ms);
   const held = editor();
-  held.imageCopiesNext = 'more'; held.recoveryDiscovery = true;
+  held.imageReservation = { id: 'current-picker' };
   reader(held, 'saved', () => ms, status);
   assert.notEqual(status.textContent, 'Saved to Theseus');
   assert.deepEqual(shownBeside(status), [], 'no time beside words that are not the save status');

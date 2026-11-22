@@ -41,7 +41,7 @@ export function sourceProbes785(source) {
   ['restore after scroll', '  if (saved.newest && hold?.isConnected) for (const entry of entries(list)) {', `({saved:window.__trace785.saved(saved),hold:window.__trace785.node(hold)})`],
   ['remember', '  paintNewAbove();', `({saved:window.__trace785.saved(listAnchor)})`],
   ['paint', 'function paintViews(kind) {', `({kind})`],
-  ['frontier', "  const view = stackFeed ? shownView(stackFeed.state) : null, aside = stackFeed?.state.belowCount;", `({olderCursor:views.olderCursor,loaded:[...views.messages.keys()],line:views.line?{id:views.line.id,seq:views.line.seq}:null,oldestUnread:views.oldestUnread?{id:views.oldestUnread.id,seq:views.oldestUnread.seq}:null})`],
+  ['frontier', 'function placeLine() {', `({olderCursor:views.olderCursor,loaded:[...views.messages.keys()],line:views.line?{id:views.line.id,seq:views.line.seq}:null,oldestUnread:views.oldestUnread?{id:views.oldestUnread.id,seq:views.oldestUnread.seq}:null})`],
  ];
  return specs.map(([event,target,data])=>{
   assert.equal(source.split(target).length,2,`unique unchanged source probe ${event}`);

@@ -12,6 +12,7 @@ const SOURCE = readFileSync(new URL('../web/boot.js', import.meta.url), 'utf8');
 
 class Element {
   constructor(tag) { this.tagName = tag.toUpperCase(); this.children = []; this.hidden = true; this.onclick = null; }
+  setAttribute(name,value) { (this.attributes ??= {})[name] = value; }
   replaceChildren(...nodes) { this.children = nodes; }
   get textContent() { return this.children.map(n => typeof n === 'string' ? n : n.textContent).join(''); }
   set textContent(text) { this.children = [text]; }
@@ -57,7 +58,7 @@ test('an entry the server could not give on its own build says so with Reload, a
   await p.fail(entry('A'));
   assert.deepEqual(p.reloads, [], 'the same build would fail the same way');
   assert.equal(p.status.hidden, false);
-  assert.equal(p.status.textContent, 'Theseus could not open this page.Reload');
+  assert.equal(p.status.textContent, 'Theseus could not open this page.Reload×');
   const again = p.status.children[1];
   assert.deepEqual([again.tagName, again.type, again.className], ['BUTTON', 'button', 'updated-reload']);
   again.onclick();
@@ -69,7 +70,7 @@ test('with the build unread (no server, a refusal, an answer naming none) the pa
     ['no build', () => ({ ok: true, json: async () => ({}) })], ['an empty build', serves('')], ['not JSON', () => ({ ok: true, json: async () => { throw new SyntaxError('bad'); } })]]) {
     const p = page(answer);
     await p.fail(entry('A'));
-    assert.deepEqual([p.reloads, p.status.hidden, p.status.textContent], [[], false, 'Theseus could not open this page.Reload'], what);
+    assert.deepEqual([p.reloads, p.status.hidden, p.status.textContent], [[], false, 'Theseus could not open this page.Reload×'], what);
   }
 });
 
@@ -80,4 +81,10 @@ test('only the failure of a module under a build reads the build: an image, a cl
     await p.fail(target);
     assert.deepEqual([p.asked.length, p.reloads, p.status.hidden], [0, [], true], String(target?.tagName) + ' ' + (target?.src ?? ''));
   }
+});
+
+
+test('1036 a pre-module boot failure closes and stays closed across repeated graph failures on that page',async()=>{
+ const p=page(serves('A'));await p.fail(entry('A'));const close=p.status.children.find(n=>n.className==='page-notice-close');assert.ok(close,'the module-free fallback needs its own corner close');assert.equal(close.attributes['aria-label'],'Close notice');assert.equal(close.type,'button');close.onclick();assert.equal(p.status.hidden,true);await p.fail(entry('A'));assert.equal(p.status.hidden,true);assert.deepEqual(p.reloads,[]);
+ const fresh=page(serves('A'));await fresh.fail(entry('A'));assert.equal(fresh.status.hidden,false);
 });

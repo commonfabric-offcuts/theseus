@@ -385,26 +385,24 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     observations.push({name:'X4 interruption', setup:'real recorded refusal; close owning tab mid read after durable block; typed HTTP200 error injected only for explicit Review', proof:'native recovery and Retry preserve B; Send stays blocked; no publication'});
     await b.close();
   });
-  await check('images X3 readonly recovery rejects native terminal edits and synthetic fallback input', async () => {
-    const a = await page('readonly-writer'); await model(a, true);
+  await check('images X3 advisory recovery keeps current typing and saved writing readable', async () => {
+    const a = await page('editable-writer'); await model(a, true);
     await a.evaluate("(async()=>{e.edit({body:'Saved writing stays intact'});await r.flush(e);await u.add(file,{start:false});r.cancelSave(e)})()");
     const released = await closeWriter(a);
-    const b = await page('readonly-reader', null, true); await b.open(1);
-    assert.equal(await b.evaluate('document.querySelector("#writing-body").readOnly'), true);
+    const b = await page('editable-reader', null, true); await b.open(1); await released(b);
+    assert.equal(await b.evaluate('document.querySelector("#writing-body").readOnly'), false);
     const original = await field(b);
-    await b.point('#writing-body'); await b.key('ArrowRight', 4); await b.key('u', 2);
-    assert.equal(await field(b), original, 'native Ctrl-U must not alter a read-only recovery draft');
-    await b.key('w', 2); await b.key('k', 2); assert.equal(await field(b), original);
-    await b.evaluate('(()=>{const f=document.querySelector("#writing-body");f.setRangeText("injected",0,f.value.length,"end");f.dispatchEvent(new Event("input",{bubbles:true}))})()');
-    assert.equal(await field(b), original, 'injected fallback input also cannot change read-only writing');
-    await b.key('Tab'); assert.notEqual(await b.evaluate('document.activeElement.id'), 'writing-body');
-    await b.point('#toggle-note'); await replace(b, 'Private note remains editable');
-    await b.point('#toggle-note'); assert.equal(await field(b), original);
-    await released(b); await b.point('#review-versions');
-    await until(() => b.evaluate('[...document.querySelectorAll("#review-content button")].some(b=>b.textContent==="Recover this version")'), 'recovery choice');
-    assert.equal(await b.evaluate('[...document.querySelectorAll("#review-content button")].find(b=>b.textContent==="Recover this version").disabled'), false);
-    observations.push({name:'X3 input boundary', native:'Ctrl-U/W/K, Tab, private-note typing', injected:'setRangeText + input exercises fallback boundary, not a native gesture'});
-    await shot(b, 'readonly-recovery'); await b.close();
+    await replace(b, 'Current native typing stays editable');
+    assert.equal(await field(b), 'Current native typing stays editable');
+    await b.evaluate('(()=>{const f=document.querySelector("#writing-body");f.setRangeText("Current fallback typing",0,f.value.length,"end");f.dispatchEvent(new Event("input",{bubbles:true}))})()');
+    assert.equal(await field(b), 'Current fallback typing', 'the actual fallback input admits current writing');
+    await b.point('#review-versions');
+    await until(() => b.evaluate('[...document.querySelectorAll("#review-content button")].some(b=>b.textContent==="Recover this version")'), 'readable recovery choice after typing');
+    assert.ok(await b.evaluate(`document.querySelector('#review-content').textContent.includes(${JSON.stringify(original)})`), 'the saved copy stays readable for manual copying');
+    assert.equal(await b.evaluate('[...document.querySelectorAll("#review-content button")].find(b=>b.textContent==="Recover this version").disabled'), true, 'typing prevents replacing the current writing');
+    assert.ok((await b.evaluate('imageRows()')).some(row=>row.snapshot?.draft.body===original), 'the alternate text remains retained');
+    observations.push({name:'X3 advisory input boundary', native:'actual keyboard replacement', injected:'setRangeText plus input tests fallback admission; no native gesture claim for injection'});
+    await shot(b, 'editable-recovery'); await b.close();
   });
   await check('images keyboard chooser file assignment and exact send retain the Reader', async () => {
     const p = await page('images-main', null, true); await p.open(1);
@@ -534,10 +532,9 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     let previous;
     for (const suffix of ['b','c']) {
       const p = await page('images-reload-' + suffix, null, true); await p.open(0);
-      assert.equal(await p.evaluate('document.querySelector("#writing-body").readOnly'), true);
-      const before = p.calls.length; await p.point('#writing-body'); await p.key('Enter', 12);
-      assert.equal(await field(p), 'Saved text with an image still being confirmed', 'the central send gate must not freeze acknowledged text while recovery is unresolved');
-      assert.equal(p.calls.slice(before).filter(c => ['submission.prepare','message.send'].includes(c.payload?.kind)).length, 0);
+      assert.equal(await p.evaluate('document.querySelector("#writing-body").readOnly'), false);
+      assert.equal(await p.evaluate('(b=>b.disabled||b.getAttribute("aria-disabled")==='+'"true")(document.querySelector("#send-reply"))'), false, 'unadopted saved images do not block current Send');
+      assert.equal(await field(p), 'Saved text with an image still being confirmed');
       await p.point('#toggle-note'); await p.point('#toggle-note');
       await p.point('#review-versions');
       await until(() => p.evaluate('[...document.querySelectorAll("#review-content button")].some(b=>b.textContent==="Recover this version"&&!b.disabled)'), 'recover remains reachable after note toggle');
@@ -582,7 +579,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     }
   });
 
-  await check('images abandoned canonical copy retires on explicit review without adoption', async () => {
+  await check('images canonical copy validates before paint and retires on explicit review without adoption', async () => {
     const a = await page('image-abandoned-ready-a'); await a.evaluate(imageInstrumentation); await model(a, true);
     await a.evaluate(`(()=>{r.cleanup.own=async()=>false;r.cleanup.request=()=>{};})()`);
     await a.evaluate(`(async()=>{e.edit({body:'Canonical image copy'});await u.add(file);await r.flush(e)})()`);
@@ -590,11 +587,11 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     assert.ok(bytesId); assert.ok(await a.evaluate(`readRow(${JSON.stringify(bytesId)})`));
     const released = await closeWriter(a);
     const b = await page('image-abandoned-ready-b'); await b.evaluate(imageInstrumentation); await model(b, true);
-    // Initial open gives foreground source reads priority. The existing
-    // Review versions refresh performs the deferred canonical proof.
+    // Initial registration validates each retained media ref before paint;
+    // explicit review still owns retirement of the abandoned journal row.
     assert.equal(await b.evaluate('e.recoveryDiscovery'), true);
     assert.equal(await b.evaluate('u.current().length'), 1, 'canonical ref is represented before retirement clears discovery');
-    assert.equal(await b.evaluate('u.pending()'), true);
+    assert.equal(await b.evaluate('u.pending()'), false, 'initial retained-media validation has completed');
     await released(b); await b.evaluate('r.recoveryCandidates(e)');
     assert.equal(await b.evaluate(`readRow(${JSON.stringify(row.id)})`), null);
     assert.equal(await b.evaluate(`readRow(${JSON.stringify(bytesId)})`), null);

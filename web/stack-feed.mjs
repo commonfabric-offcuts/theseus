@@ -27,7 +27,8 @@ import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
 import { contact, heard, notTaken, NOT_TAKEN } from './api.mjs';
 import { CoordinationChoice } from './coordination-choice.mjs';
 import { firstCoverMenuItem } from './cover-refresh.mjs';
-import { foldInMotion } from './fold-motion.mjs';
+import { foldInMotion, closeUp } from './fold-motion.mjs';
+import { ArchiveShelf } from './archive-shelf.mjs';
 
 // Why Archive does nothing for a dossier holding a message the reader
 // starred (item 635), as Core says it (aim_next/stacks.py, HELD_BY_STAR): the
@@ -46,7 +47,7 @@ export function stackActEnvelope({ instanceId, authority, kind, item, args, oper
   return { v: 1, instance_id: instanceId, operation_id: operationId, kind, target: { message_id: item.id },
     expected: { [`${field}_revision`]: item.acts?.[`${field}_revision`] ?? 0, authority: { authority_id, authority_epoch } }, args };
 }
-const FEED_ACTIONS = ['move-up', 'move-down', 'right', 'left', 'join-up', 'join-down', 'undo', 'fold-message'];
+const FEED_ACTIONS = ['move-up', 'move-down', 'open', 'right', 'left', 'join-up', 'join-down', 'undo', 'fold-message'];
 
 // Whether a touch began on something between it and the list that scrolls
 // sideways (a wide table, a block of code): a sideways drag there scrolls it.
@@ -307,6 +308,17 @@ export class StackFeed {
         const entry = this.entryFor(latest.id); if (entry) this.reply(latest.id, cardIn(entry));
       },
       aside: (stack, below) => this.setAside(stack, below),
+      // The shelf drawn or not decides whether the feed's Archived (N) and Earlier messages show (shownView's shelved).
+      // The shelf taking over Archived (N) closes it, so it comes back closed should the shelf go (this arrange then
+      // hides what sits below More, as shownView is read after this).
+      archived: list => {
+        if (!this.list.isConnected) return;
+        const shelf = this.archiveShelf(), was = Boolean(this.state.shelved); shelf?.paint(list);
+        this.state.shelved = Boolean(shelf?.drawn);
+        if (this.state.shelved === was) return;
+        if (this.state.shelved) this.state.moreOpen = false;
+        this.moreChanged();
+      },
       menu: (stack, anchor, first) => { const item = this.messages().get(stack.id); if (item) this.menu(item, anchor, first); },
       landedBelow: (id, mark) => this.landedBelow(id, mark),
     } }));
@@ -975,6 +987,22 @@ export class StackFeed {
   // focus: false leaves the focus where it is, as on the Reader's archive
   // button, whose dialog keeps it while the page behind it changes. at: the
   // control pressed, where a refusal is said.
+  // The archive shelf, at the foot of the right rail: none where the page has no right rail, and
+  // there the feed keeps its own Archived (N).
+  archiveShelf() {
+    if (!this.shelf && !this.list.ownerDocument.getElementById('things')) return null;
+    // Brought back from the shelf, the dossier keeps the keys, as the feed's own Bring back does.
+    this.shelf ??= new ArchiveShelf({ doc: this.list.ownerDocument, unread: this.unread,
+      restore: stack => {
+        if (!this.setAside(stack, false)) return;
+        // A new mark on the replica promises the feed's same exact-message
+        // read, not just a restored dossier whose unread reply is still folded.
+        const mark = this.state.sections?.get(stack.id)?.querySelector('.stack-new-action');
+        if (mark) this.newest(stack, mark);
+      }, undo: () => this.undo(),
+      changed: drawn => { this.state.shelved = drawn; if (drawn) this.state.moreOpen = false; this.arrange(); this.moreChanged(); } });
+    return this.shelf;
+  }
   setAside(stack, below, { undoable = true, restoreThrough, restoreKey, focus = true, at = null } = {}) {
     const found = this.rootOf(stack);
     if (!found) return false;
@@ -990,16 +1018,26 @@ export class StackFeed {
     for (const each of this.messages().values()) if (each.stack_position?.root_id === root) { this.state.peeked.delete(each.id); this.state.here.delete(each.id); }
     // Core refuses it too, for a star the page has not read yet (made on another device): its reason is
     // said on the status line as any refusal is (failed), and the dossier shows where Core holds it.
+    // The archive shelf's flight: a copy of the dossier as it sits now, before it moves.
+    const flight = below ? this.archiveShelf()?.departing(this.state.sections?.get(stack.id)) ?? null : null;
+    // Brought back from the shelf: where its replica sits now, for the flight back up.
+    const from = !below ? this.shelf?.replicaRect(stack.id) ?? null : null;
+    if (below) this.shelf?.putAway(stack.id); else this.shelf?.broughtBack(stack.id);
     this.act('stack.aside', item, { through, ...(typeof restoreKey === 'number' ? { key: restoreKey } : {}) });
     if (undoable) this.remember(at => this.setAside(stack, position.through !== null, { undoable: false, restoreThrough: position.through, restoreKey: position.order_key, at }));
-    this.arrange();
+    closeUp(this.list, () => this.arrange());
     // Focus goes to More where the page's one view draws it (Only new does
     // not); there the dossier keeps it, on the first message the view draws.
     if (focus) {
-      if (below && this.state.more?.isConnected && !shownView(this.state).only) this.state.more.focus({ preventScroll: true });
+      // Archived, it is on the shelf: the focus goes with it to its replica.
+      const shelved = below ? this.shelf?.replicas.get(stack.id) : null;
+      if (shelved?.isConnected && shelved.getClientRects().length) shelved.focus({ preventScroll: true });
+      else if (below && this.state.more?.isConnected && !shownView(this.state).only) this.state.more.focus({ preventScroll: true });
       else this.focusOn(stack.id);
     }
     this.say(below ? 'Archived, for you only' : 'Brought back');
+    if (flight) this.shelf.fly(flight, stack.id);
+    if (from && this.state.sections?.get(stack.id)) this.shelf.back(from, this.state.sections.get(stack.id));
     return true;
   }
   // What a swipe over target acts on: the dossier as a whole on its title bar
@@ -1082,11 +1120,13 @@ export class StackFeed {
     if (action === 'fold-message') return this.foldKey(event, entry, toggle);
     event.preventDefault();
     if (action === 'undo') return this.undo();
-    if (action === 'move-down') {
+    // The shared map's Command-Right opens other panes; in the feed it
+    // archives this dossier, including when its child message has the keys.
+    if (action === 'open') {
       const found = stackOf(this.list, entry);
       return found ? this.setAside(found.stack, true) : false;
     }
-    if (action === 'move-up') return this.move(entry, 'up');
+    if (action === 'move-up' || action === 'move-down') return this.move(entry, action.slice(5));
     if (action === 'join-up' || action === 'join-down') return this.join(entry, action.slice(5));
   }
   // x on a message (item 388): folds it to its row, as Fold in ⋯ does

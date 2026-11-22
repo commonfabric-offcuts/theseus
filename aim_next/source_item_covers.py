@@ -9,6 +9,9 @@ there is no whole-pipeline fact replay on a card read.
 
 import json
 
+# Bounded-write default:32 source keys + one topic key, then the existing bulk clock.
+SOURCE_KEYS_PER_READER_TOPIC = 32
+
 from .outcome_rules import stage_name
 from .pipeline import SECTION_WORDS
 
@@ -111,7 +114,7 @@ def read_sequence(db, actor, root):
                       "FROM members p", {"actor": actor, "root": root}).fetchone()[0]
 
 
-def notify(store, db, workspace, record, access_reader=None):
+def notify(store, db, workspace, record, access_reader=None, source_messages=None):
     """Opaque source-topic invalidation, in the record's own transaction.
 
     Item/piece changes seek their sources; configuration seeks that outcome's
@@ -125,10 +128,22 @@ def notify(store, db, workspace, record, access_reader=None):
     elif isinstance(record, str) and record.startswith('p-'):
         clause = ' AND s.number IN (SELECT number FROM pipeline_piece_members WHERE piece_id=?)'
         values.append(record)
+    if source_messages is not None:
+        messages = list(dict.fromkeys(source_messages))
+        if not messages:
+            return
     bulk = record in ('configured', 'stages', 'access') or access_reader is not None
     columns = 'min(m.id) AS id,m.topic_id,m.author_id,m.private_to' if bulk else 'DISTINCT m.id,m.topic_id,m.author_id,m.private_to'
-    query = ("SELECT " + columns + " FROM pipeline_item_sources s JOIN messages m ON m.id=s.message_id "
-             "WHERE s.workspace_id=? AND s.message_id IS NOT NULL" + clause)
+    if source_messages is not None:
+        # Drive from the bounded incoming IDs. EXISTS stops at the first link,
+        # even when historical duplicate source relations are numerous.
+        query = ("SELECT " + columns + " FROM messages m WHERE m.id IN (" + ','.join('?' for _ in messages) + ") "
+                 "AND EXISTS(SELECT 1 FROM pipeline_item_sources s INDEXED BY source_cover_items "
+                 "WHERE s.message_id=m.id AND s.workspace_id=? AND s.message_id IS NOT NULL" + clause + ")")
+        values = messages + values
+    else:
+        query = ("SELECT " + columns + " FROM pipeline_item_sources s JOIN messages m ON m.id=s.message_id "
+                 "WHERE s.workspace_id=? AND s.message_id IS NOT NULL" + clause)
     if bulk:
         query += " GROUP BY m.topic_id,m.author_id,m.private_to"
     rows = db.execute(query, values).fetchall()
@@ -136,25 +151,26 @@ def notify(store, db, workspace, record, access_reader=None):
     # explicitly refresh the affected reader once, including on revocation.
     admitted = {row[0] for row in db.execute("SELECT owner_id FROM workspaces WHERE id=? UNION "
                                            "SELECT actor_id FROM workspace_members WHERE workspace_id=?", (workspace, workspace))}
-    heard = set()
+    groups = {}
     for message in rows:
         for reader in store._message_readers(db, message, message['author_id']):
             if reader != access_reader and (access_reader is not None or reader not in admitted):
                 continue
-            # Retained per-source keys fence only dossiers that contain this
-            # readable member. Topic invalidations stay coalesced for refresh.
-            if not bulk:
-                store._change(db, 'actor', reader, 'source_cover_read', message['id'], 1)
             key = (reader, message['topic_id'])
-            if key in heard:
-                continue
-            heard.add(key)
-            # No destination title, ID or state in a source-only reader's key.
-            store._change(db, 'actor', reader, 'source_cover', message['topic_id'], 1)
-            if bulk:
-                sequence = db.execute('SELECT last_insert_rowid()').fetchone()[0]
-                db.execute("INSERT INTO metadata(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                           (_bulk_key(reader, message['topic_id']), str(sequence)))
+            groups.setdefault(key, set()).add(message['id'])
+    heard = set(groups)
+    for (reader, topic), group_messages in groups.items():
+        grouped = bulk or (source_messages is not None and len(group_messages) > SOURCE_KEYS_PER_READER_TOPIC)
+        if not grouped:
+            for message in sorted(group_messages):
+                store._change(db, 'actor', reader, 'source_cover_read', message, 1)
+        # The same existing opaque topic clock covers a large added group;
+        # no destination title, ID or state reaches a source-only reader.
+        store._change(db, 'actor', reader, 'source_cover', topic, 1)
+        if grouped:
+            sequence = db.execute('SELECT last_insert_rowid()').fetchone()[0]
+            db.execute("INSERT INTO metadata(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                       (_bulk_key(reader, topic), str(sequence)))
     if bulk:
         # Public source messages can have different addressed-only readers.
         # Keep all of those recipients while sharing the topic/member lookup.

@@ -39,6 +39,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cardEditor652 } from './card_editor_652.mjs';
+import { composerWidthCases } from './composer_width_native.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const [chrome, evidence, filter = ''] = process.argv.slice(2);
@@ -70,7 +71,7 @@ const { control: shortControl, exit: shortExit, errors: shortErrors } = fixtureC
 let facts, shortFacts, agent, first, second, log, wrap, short;
 // Two long messages from an agent, newest last, so a reply to either is
 // offered to that agent; and the outcome's pipeline on, so the ⋯ offers it.
-const agentMessage = async (n, body) => (await control({ method: 'agent_message', operation_id: `compose-agent-${n}`, body })).result.message_id;
+const agentMessage = async (n, body) => (await control({ method: 'agent_message', operation_id: `compose-agent-${n}`, reply_without_quote: 'Synthetic native composer source fixture.', body })).result.message_id;
 // A real team in the topic: the agent, the person and six more.
 const TEAM = ['aim-core', 'aim-lead', 'aim-spec', 'aim-ux', 'fable', 'warp'];
 // A log as agents send them, in a topic of its own: one code block, one
@@ -91,14 +92,14 @@ async function seed() {
   await control({ method: 'pipeline', kind: 'pipeline.configure', operation_id: 'compose-pipeline', target: { workspace_id: 'w1' }, args: { enabled: true } });
   await control({ method: 'topic_state', operation_id: 'compose-team', topic_id: 't1', participants: TEAM, args: { state: 'active', note: '' } });
   await control({ method: 'navigation_topics', topics: [{ id: 'compose-log', title: 'Build log' }] });
-  log = (await control({ method: 'agent_message', operation_id: 'compose-log', topic_id: 'compose-log', join: true, source: 'topic', body: LOG })).result.message_id;
+  log = (await control({ method: 'agent_message', operation_id: 'compose-log', topic_id: 'compose-log', join: true, source: 'topic', divergence_reason: 'Independent native build-log source.', body: LOG })).result.message_id;
   await control({ method: 'navigation_topics', topics: [{ id: 'compose-wrap', title: 'Long item' }] });
-  wrap = (await control({ method: 'agent_message', operation_id: 'compose-wrap', topic_id: 'compose-wrap', join: true, source: 'topic', body: WRAP })).result.message_id;
+  wrap = (await control({ method: 'agent_message', operation_id: 'compose-wrap', topic_id: 'compose-wrap', join: true, source: 'topic', divergence_reason: 'Independent native long-item source.', body: WRAP })).result.message_id;
   // A dossier with a short name, in a topic of its own in its own fixture: an agent's question, its reply, and the name it was given.
   shortFacts = await shortControl({ method: 'ready' });
   await shortControl({ method: 'navigation_topics', topics: [{ id: 'compose-short', title: 'Short name' }] });
-  const asked = (await shortControl({ method: 'agent_message', operation_id: 'compose-short', topic_id: 'compose-short', join: true, source: 'topic', body: 'Where shall we stay for the cabin week?' })).result.message_id;
-  short = (await shortControl({ method: 'agent_message', operation_id: 'compose-short-reply', topic_id: 'compose-short', reply_to: asked, body: SHORT_REPLY })).result.message_id;
+  const asked = (await shortControl({ method: 'agent_message', operation_id: 'compose-short', topic_id: 'compose-short', join: true, source: 'topic', divergence_reason: 'Independent native named-stack source.', body: 'Where shall we stay for the cabin week?' })).result.message_id;
+  short = (await shortControl({ method: 'agent_message', operation_id: 'compose-short-reply', topic_id: 'compose-short', reply_to: asked, reply_without_quote: 'Synthetic named-stack fixture reply.', body: SHORT_REPLY })).result.message_id;
   await shortControl({ method: 'stack_act', sender: shortFacts.agent, kind: 'stack.name', message_id: asked, operation_id: 'compose-short-name', args: { name: SHORT_NAME } });
 }
 
@@ -171,7 +172,7 @@ async function open(p, id, words = id === first ? 'First agent' : 'Second agent'
     const cue = p.locator(`${card} .message-preview-cue`);
     if (await cue.count()) await cue.first().click(); else await p.mouse.click(x, y);
   }
-  await until(p, s => document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith(s), 'the Reader on the message', words)
+  await until(p, s => document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes(s), 'the Reader on the message', words)
     .catch(async error => { await picture(p, 'open-failed'); throw Error(`${error.message}: ${await p.evaluate(s => JSON.stringify({ open: document.querySelector('#reader').open, lit: document.querySelector(s)?.className, at: document.activeElement?.id, body: document.querySelector('#source-body').textContent.slice(0, 40) }), card)}`); });
   await until(p, () => document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a => a.playState !== 'running'), 'a settled Reader');
 }
@@ -2850,7 +2851,7 @@ async function pencilBranch(p,state,words,tolerance) {
       if(state==='device-only'){e.ackVersion=Math.min(e.ackVersion,e.localVersion-1);}
       if(state==='authority recovery')e.authorityRecovery={phase:'error',message:'Runtime changed — review saved version'};
       if(state==='version conflict')e.conflict={error:{code:'REVISION_CONFLICT',message:'Review the other saved version'},attempted:structuredClone(e.draft)};
-      if(state==='recovery discovery'){e.recoveryDiscovery=true;e.localVersion=0;e.draft.body='';i.drawEditor();}
+      if(state==='recovery discovery'){e.recoveryDiscovery=true;e.localVersion=0;i.drawEditor();}
       if(state==='adopting')e.adopting=true;
       if(state==='inactive')i.callbacks.admits=()=>false;
       if(state==='cleanup attention')e.cleanupError='Device cleanup needs attention';
@@ -2859,7 +2860,6 @@ async function pencilBranch(p,state,words,tolerance) {
       if(state.startsWith('loaded access')){e.unavailable=true;i.presentation.availabilityUnconfirmed=state==='loaded access visible';}
       i.notice('The writing and recovery choices are kept here.');i.paintStatus();
     },state);
-    if(state==='recovery discovery')words='';
   }
     const m=await pencilModel(p),controls=[];
     if(state==='local saving'){assert.equal(m.sign.state,'saving');assert.equal(m.sign.text,'Saving on this device…');}
@@ -2867,7 +2867,8 @@ async function pencilBranch(p,state,words,tolerance) {
     if(state==='saved')assert.equal(m.sign.state,'saved');
     if(state==='device-only')assert.equal(m.sign.state,'device');
     if(['journal attention','authority recovery','version conflict'].includes(state))assert.equal(m.sign.state,'attention');
-    if(['recovery discovery','adopting','inactive'].includes(state))assert.equal(m.readOnly,true);
+    if(['adopting','inactive'].includes(state))assert.equal(m.readOnly,true);
+    if(state==='recovery discovery'){assert.equal(m.readOnly,false);assert.equal(await p.locator('#inline-send').isEnabled(),true,'advisory discovery admits current Send');assert.equal(await p.locator('#inline-add-image').isDisabled(),false);}
     if(state.startsWith('loaded access')){assert.equal(m.retry,true);assert.equal(m.unavailable,true);controls.push('#inline-retry');}
     if(state==='plus open')controls.push('#inline-add-image');
     if(state==='picker reserved')controls.push('#inline-cancel-image');
@@ -3200,8 +3201,8 @@ async function runPencilMutants() {
     {name:'overlapping-image-remove',file:'web/aim.css',from:'#inline-composer .image-choice>button[data-method=remove]{position:static;',to:'#inline-composer .image-choice>button[data-method=remove]{position:absolute;top:-1rem;right:-1rem;',case:'late confirmation keeps newer memory-only image',expected:'image opener center is not covered by Remove'},
     {name:'close-newer-images',file:'web/inline-composer.mjs',from:'!currentImages(editor).length && !imageBarrier(editor)',to:'true',case:'late confirmation keeps newer capturing image',expected:'older confirmation keeps newer image writing open'},
     {name:'close-newer-presentation',file:'web/inline-composer.mjs',from:'!this.imagePicker && !this.images?.open && !this.bar.panel && !this.naming.sheet.open &&',to:'true &&',case:'late confirmation keeps newer agent menu presentation',expected:'older confirmation keeps newer presentation open'},
-    {name:'ignore-publication-status',file:'web/inline-composer.mjs',from:"result?.status === 'confirmed' && this.admits(p, editor)",to:'true && this.admits(p, editor)',case:'publication rejected',expected:'sheet stays open'},
-    {name:'stay-after-send',file:'web/inline-composer.mjs',from:"result?.status === 'confirmed' && this.admits(p, editor)",to:'false && this.admits(p, editor)',case:'sends once and closes',expected:'successful send closes the pencil sheet'},
+    {name:'ignore-publication-status',file:'web/inline-composer.mjs',from:"result?.status !== 'confirmed'",to:'false',case:'publication rejected',expected:'sheet stays open'},
+    {name:'stay-after-send',file:'web/inline-composer.mjs',from:'if (!current()) return;',to:'return;',case:'sends once and closes',expected:'successful send closes the pencil sheet'},
   ];
   for (const rule of rules) {
     const file=path.join(root,rule.file),original=await readFile(file,'utf8');
@@ -3250,7 +3251,10 @@ async function runPencilMutants() {
 // and signal, held from its launch, with the short dossier's fixture's beside them (shortFixture). Cleanup runs after an
 // interruption too and writes native.json, but leaves harnessCompleted false and the run's own error in place.
 const ENGINES = partition ? [partition.engine] : ['chromium', 'webkit'];
-const PHASES = partition ? [[runPencil, async () => { pencilConversation=await control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING }); }], [runPencilMutants]] : [[run], [runAnswering, async () => { pencilConversation=await control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING }); }], [runPencil], [runPencilMutants], [runSending]];
+async function runWidthAdmission() {
+  await composerWidthCases({ check, page, press, until, picture, close, control, root, evidence, engine, second, HEIC, admissionOnly: true });
+}
+const PHASES = filter.startsWith('item 650 admission') ? [[runWidthAdmission]] : partition ? [[runPencil, async () => { pencilConversation=await control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING }); }], [runPencilMutants]] : [[run], [runAnswering, async () => { pencilConversation=await control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING }); }], [runPencil], [runPencilMutants], [runSending]];
 const plannedPhases = PHASES.flatMap(([phase]) => ENGINES.map(name => `${phase.name}:${name}`)), completedPhases = [];
 let pencilAcceptancePlan=null,pencilInputHashes={};
 const pencilInputFiles = ['tests/pencil-inventory.mjs','tests/reader_compose_native.mjs','tests/pencil-states.mjs','tests/pencil-selection.mjs','tests/pencil-layout.mjs','web/app.mjs','web/inline-composer.mjs','web/aim.css','web/session.mjs','web/app-session.mjs','tests/fixtures/ui_http.py'];
@@ -3279,7 +3283,7 @@ try {
   fixture.stdin.end(); shortFixture.stdin.end();
   const [{ code: fixtureExitCode, signal: fixtureExitSignal }, { code: shortExitCode, signal: shortExitSignal }] = await Promise.all([fixtureExit, shortExit]);
   await mkdir(evidence, { recursive: true });
-  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ hashes, results, browserClosed, harnessCompleted, plannedPhases, completedPhases,
+  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ hashes, results, fixtureOrigins:[facts?.origin,shortFacts?.origin].filter(Boolean), browserClosed, harnessCompleted, plannedPhases, completedPhases,
     partition, filter, pencilInputHashes, pencilAcceptancePlan, missingOwnedCases:(pencilAcceptancePlan?.cases??[]).filter(c=>!results.some(r=>r.name===c.name)), registeredNormals:[...pencilCases.keys()], executedCases:results.map(r=>r.name), missingNormals:(pencilAcceptancePlan?.cases??[]).filter(c=>c.phase==='normal'&&!results.some(r=>r.name===c.name)),
     pencilMutations, pencilMutationSkips, pencilCleanupEvidence, phaseCleanupEvidence, harnessError, fixtureExitCode, fixtureExitSignal, fixtureErrors: fixtureErrors(), shortFixture: { exitCode: shortExitCode, exitSignal: shortExitSignal, errors: shortErrors() }, measured, shots }, null, 2));
   const failed = results.filter(r => r.expectedFailure ? !r.mutationCaught : !r.passed);

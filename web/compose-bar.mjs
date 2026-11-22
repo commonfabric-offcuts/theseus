@@ -103,6 +103,24 @@ const waits = name => `${name} is typed in To but not named yet. Return names th
 const FOCUSABLE = 'button:not([disabled]):not([hidden]), input:not([disabled]):not([hidden]), [tabindex="0"]';
 const shown = el => el.getClientRects().length > 0;
 
+// A touch's compatibility mousedown must not blur the writing before click.
+// Blur closes in-flow completion lists, moving Send out from under the finger.
+// Keep touch/pointerdown native (WebKit needs it to produce click); publish only
+// through the existing click handler. Mouse and keyboard behavior stays native.
+export function retainTouchSendFocus(send, field) {
+  if (!send) return;
+  const ownsFocus = () => !send.disabled && !field.disabled && !field.readOnly && field.ownerDocument.activeElement === field;
+  let touch = false;
+  send.addEventListener('pointerdown', event => {
+    touch = event.pointerType === 'touch' && event.isPrimary && event.button === 0 && ownsFocus();
+  });
+  send.addEventListener('pointercancel', () => { touch = false; });
+  send.addEventListener('mousedown', event => {
+    const held = touch; touch = false;
+    if (held && event.button === 0 && ownsFocus()) event.preventDefault();
+  });
+}
+
 export class ComposeBar {
   // root: the composer; field: its textarea; panels: { who, plus } with the
   // control that opens each (openers) and the Done inside each; taller: the
@@ -115,6 +133,7 @@ export class ComposeBar {
   constructor({ root, field, panels, openers, taller = null, naming = null, notice = null, win = globalThis.window, changed = () => {}, holds = () => () => {} }) {
     Object.assign(this, { root, field, panels, openers, taller, naming, notice, win, changed, holds });
     this.doc = root.ownerDocument;
+    retainTouchSendFocus(root.querySelector(':scope > .compose-send'), field);
     this.phone = win.matchMedia(PHONE);
     this.state = 'line'; this.panel = null;
     // What is typed in To for each writing not shown now (writes).

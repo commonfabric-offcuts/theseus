@@ -1,0 +1,72 @@
+/* The archive shelf: archived dossiers as small replicas at the foot of the right rail (archive-shelf.mjs). */
+/* The rail is a column reaching the window's foot only while the shelf is drawn there (archive-shelf.mjs sets
+   body[data-archive-shelf=on] only where the rail stands beside the page): the panel at middle widths and the phone's
+   sheet are never changed. In the column, the rail's Try again keeps its own width. */
+[data-rails] body[data-archive-shelf=on] .things{display:flex;flex-direction:column;min-height:100dvh}
+[data-rails] body[data-archive-shelf=on] .things>button{align-self:flex-start}
+.archive-shelf{order:99;position:sticky;bottom:-1.3rem;margin:auto -1rem -1.3rem;padding:.7rem 1rem 1.1rem;background:var(--paper);border-top:1px solid var(--line);max-height:44dvh;overflow-y:auto;z-index:1}
+/* The rail never squeezes it below its heading and one row of replicas: the newest archived sits first, so the one
+   just put away is always in view to land on (the rest scroll within the shelf). */
+.archive-shelf{flex:none;min-height:min(9.4rem,44dvh)}
+.archive-shelf[hidden]{display:none}
+.archive-shelf-head{display:flex;align-items:baseline;gap:.45rem;margin-bottom:.55rem}
+.archive-shelf-head h2{margin:0;font-size:.72rem;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.archive-shelf-count{font-size:.72rem;color:var(--muted)}
+.archive-shelf-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(5.6rem,1fr));gap:.65rem .4rem}
+.shelf-item{display:flex;min-width:0}
+.shelf-dossier{flex:1;display:flex;flex-direction:column;align-items:center;min-width:0;padding:.35rem .2rem .3rem;color:var(--ink);background:transparent;border:0;border-radius:.5rem;cursor:pointer;font:inherit}
+.shelf-dossier:hover,.shelf-dossier:focus-visible{background:color-mix(in srgb,var(--ink) 9%,transparent)}
+/* While its dossier flies down: there, focusable, not yet seen. */
+.shelf-dossier.shelf-landing{opacity:0}
+.shelf-folder{position:relative;display:block;width:5rem;height:3.5rem;margin-top:.35rem;border-radius:.3rem}
+.shelf-dossier[data-folder=true] .shelf-folder{background:var(--replica-folder,color-mix(in srgb,var(--ink) 16%,transparent))}
+.shelf-dossier[data-folder=true] .shelf-folder::before{content:"";position:absolute;left:0;top:-.3rem;width:42%;height:.36rem;border-radius:.25rem .25rem 0 0;background:inherit}
+.shelf-sheet{position:absolute;left:.32rem;right:.32rem;top:.38rem;bottom:.28rem;border-radius:.22rem;background:var(--replica-card,#000);border:1px solid var(--replica-edge,var(--line));box-shadow:0 0 0 1px color-mix(in srgb,var(--ink) 22%,transparent),0 2px 6px rgb(0 0 0 / .3)}
+.shelf-sheet:nth-child(1){transform:translate(.36rem,-.3rem);filter:brightness(1.35);opacity:.55}
+.shelf-sheet:nth-child(2){transform:translate(.18rem,-.15rem);filter:brightness(1.18);opacity:.8}
+.shelf-sheet:nth-child(3){display:flex;flex-direction:column;gap:.2rem;padding:.4rem .38rem}
+.shelf-dossier[data-sheets="1"] .shelf-sheet:nth-child(-n+2),.shelf-dossier[data-sheets="2"] .shelf-sheet:nth-child(1){display:none}
+.shelf-dossier[data-folder=false] .shelf-sheet{left:0;right:0;top:0;bottom:0}
+.shelf-line{display:block;height:.16rem;border-radius:1px;background:color-mix(in srgb,var(--ink) 38%,transparent)}
+.shelf-line:nth-child(1){width:55%;background:color-mix(in srgb,var(--ink) 60%,transparent)}
+.shelf-line:nth-child(2){width:92%}
+.shelf-line:nth-child(3){width:70%}
+.shelf-title{display:-webkit-box;white-space:normal;max-width:100%;margin-top:.38rem;overflow:hidden;font-size:.7rem;line-height:1.2;text-align:center;overflow-wrap:anywhere;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.shelf-ghost{box-shadow:0 12px 32px rgb(0 0 0 / .4)}
+/* The feed's own "Archived (N)" gives way to the shelf while the shelf is drawn; where the rail is not beside the
+   page (the middle widths' panel, a phone, the Notebook docked, an outcome's Conversation) the feed keeps it, and the
+   focus after Archive goes to More, as before the shelf. The rule above More goes with it when More was all it held. */
+body[data-archive-shelf=on] .stack-more{display:none}
+body[data-archive-shelf=on] .stack-controls:not(:has(>:not(.stack-more,[hidden]))){display:none}
+
+/* The shelf's views (1055): the switch, in the look picker's shape, at the heading's right. */
+.shelf-views{display:inline-flex;gap:1px;margin-left:auto;padding:1px;border:1px solid var(--line);border-radius:.4rem;background:var(--panel);align-self:center}
+:root .shelf-views .shelf-view{display:inline-grid;place-items:center;min-width:0;min-height:0;height:1.25rem;padding:0 .45rem;border:0;border-radius:.3rem;background:transparent;color:var(--muted);font-size:.68rem;line-height:1;cursor:pointer}
+:root .shelf-views .shelf-view:hover{color:var(--ink);background:transparent}
+:root .shelf-views .shelf-view[aria-pressed=true]{background:var(--soft);color:var(--ink);font-weight:600}
+:root .shelf-views .shelf-view[data-current=true]{color:var(--ink)}
+.shelf-view svg{display:block}
+.shelf-size{display:none}
+/* List: one row each, as the left rail's topics: the folder small at the left, the title on one line, the count
+   flush right. */
+.archive-shelf[data-view=list] .archive-shelf-row{display:flex;flex-direction:column;gap:1px}
+:root .archive-shelf[data-view=list] .shelf-dossier{flex-direction:row;align-items:center;gap:.55rem;min-height:0;height:1.5rem;padding:0 .4rem 0 .35rem;border-radius:.35rem;
+  color:color-mix(in srgb,var(--rail-ink-2,var(--ink)) 88%,transparent)}
+.archive-shelf[data-view=list] .shelf-dossier:hover,.archive-shelf[data-view=list] .shelf-dossier:focus-visible{color:var(--ink)}
+.archive-shelf[data-view=list] .shelf-folder{flex:none;width:.95rem;height:.7rem;margin:.12rem 0 0;border-radius:.16rem}
+.archive-shelf[data-view=list] .shelf-dossier[data-folder=true] .shelf-folder::before{top:-.16rem;height:.2rem;border-radius:.12rem .12rem 0 0}
+.archive-shelf[data-view=list] .shelf-sheet:nth-child(-n+2){display:none}
+.archive-shelf[data-view=list] .shelf-sheet:nth-child(3){left:.14rem;right:.14rem;top:.16rem;bottom:.12rem;padding:0;border-radius:.1rem;box-shadow:none}
+.archive-shelf[data-view=list] .shelf-dossier[data-folder=false] .shelf-sheet{left:0;right:0;top:0;bottom:0}
+.archive-shelf[data-view=list] .shelf-line{display:none}
+.archive-shelf[data-view=list] .shelf-title{display:block;flex:1;min-width:0;margin:0;font-size:.77rem;line-height:1.5rem;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;-webkit-line-clamp:unset}
+.archive-shelf[data-view=list] .shelf-size{display:block;flex:none;color:var(--muted);font-size:.66rem;font-variant-numeric:tabular-nums}
+/* On a coarse pointer the switch and the list's rows are finger-sized (1055, as look-touch.css does for the look switches). */
+@media (pointer:coarse){
+  :root .shelf-views .shelf-view{height:2.75rem;min-height:44px;min-width:44px;padding:0 .8rem;font-size:.8rem}
+  :root .archive-shelf[data-view=list] .shelf-dossier{height:2.75rem;min-height:44px}
+  .archive-shelf[data-view=list] .shelf-title{line-height:2.75rem}
+}
+
+/*1053: the feed’s New/count mark, quiet on the replica in either view. */
+.shelf-new{flex:none;color:var(--accent);font-size:.7rem;font-weight:700;white-space:nowrap}

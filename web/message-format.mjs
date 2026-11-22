@@ -1,6 +1,7 @@
 import { pairFeedFence } from './feed-fence-copy.mjs';
 import { detailRanges, stripDetails } from './card-details.mjs';
 import { applyTextDisplayRules } from './text-display-rules.mjs';
+import { replyBasisPresentation, replyBasisMark } from './reply-basis.mjs';
 // A message's words as they were written to be read: headings, lists and task
 // lists, tables (with a dash row, as an agent types them without one, or drawn
 // in box lines), quotes holding blocks, code and rules, with bold, italics,
@@ -142,6 +143,7 @@ const endOf = node => (node.nodeType === 3 ? sourcePosition(node, node.data.leng
 // to its end.
 export function sourcePosition(node, offset, end = false) {
   const span = SOURCE.get(node);
+  if (span?.decoration) return 0;
   if (node.nodeType === 3) {
     if (!span) {
       // Words drawn inside a link (a [named](link)'s marks among them) are the link's.
@@ -839,10 +841,19 @@ function tableNode(block, doc, meter) {
 }
 
 // text as nodes for a card or any other place that shows a message's words.
-export function formatNodes(text, { doc = globalThis.document, partial = false, meter, copyFences = false, displayRules = [], interactiveHTML: html = false } = {}) {
-  const blocks = displayBlocks(parseBlocks(text, { partial, meter }), displayRules, { partial, meter });
+function basisMark(presentation, doc) {
+  const mark = replyBasisMark(presentation, doc);
+  const decorate = node => { placed(node, { start: 0, end: 0, decoration: true }); for (const child of node.childNodes ?? []) decorate(child); };
+  decorate(mark); return mark;
+}
+
+export function formatNodes(text, { doc = globalThis.document, partial = false, meter, copyFences = false, displayRules = [], interactiveHTML: html = false, replyBasis, agentReply = false } = {}) {
+  const basis = replyBasisPresentation(text, { replyBasis, agentReply });
+  const parsed = basis?.headingEnd ? blocksOf(Mapped.of(String(text)).slice(basis.headingEnd), partial, 0, meter) : parseBlocks(text, { partial, meter });
+  const blocks = displayBlocks(parsed, displayRules, { partial, meter });
   if (!blocks.length) return wordNodes(String(text ?? ''), { doc, partial });
-  return blocks.map((block, n) => blockNode(block, doc, partial && n === blocks.length - 1, meter, copyFences, html ? { source: String(text ?? '') } : false));
+  const nodes = blocks.map((block, n) => blockNode(block, doc, partial && n === blocks.length - 1, meter, copyFences, html ? { source: String(text ?? '') } : false));
+  return basis ? [basisMark(basis, doc), ...nodes] : nodes;
 }
 
 // A Notebook revision opened in place shows its source verbatim, with links.
@@ -956,11 +967,15 @@ export function composeFormattedWords(host, text, revision, parts) {
 // one passage, shown as a block. A passage never cuts a link, code or a
 // mark: the sentences one spans join, as the line's own reading says. images, for a Notebook page: images.of(line)
 // names the image a line puts there, and that line is a passage of its own holding images.node(image, doc).
-export function drawPassages(host, body, doc = globalThis.document, { meter, copyFences = false, images = null, struck = null, displayRules = [], notebook = false } = {}) {
-  if (deferFencePaint(host, () => drawPassages(host, body, doc, { meter, copyFences, images, struck, displayRules, notebook }))) return;
+export function drawPassages(host, body, doc = globalThis.document, { meter, copyFences = false, images = null, struck = null, displayRules = [], notebook = false, replyBasis, agentReply = false } = {}) {
+  if (deferFencePaint(host, () => drawPassages(host, body, doc, { meter, copyFences, images, struck, displayRules, notebook, replyBasis, agentReply }))) return;
   body = String(body ?? '');
   host.replaceChildren();
-  const blocks = displayBlocks(blocksOf(Mapped.of(body, notebook), false, 0, meter, images), displayRules, { meter }), drawn = [];
+  const basis = notebook ? null : replyBasisPresentation(body, { replyBasis, agentReply });
+  let mapped = Mapped.of(body, notebook);
+  if (basis?.headingEnd) mapped = mapped.slice(basis.headingEnd);
+  if (basis) host.append(basisMark(basis, doc));
+  const blocks = displayBlocks(blocksOf(mapped, false, 0, meter, images), displayRules, { meter }), drawn = [];
   blocks.forEach((block, n) => {
     const next = blocks[n + 1];
     if (block.kind === 'paragraph') {

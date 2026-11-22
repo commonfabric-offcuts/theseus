@@ -58,6 +58,9 @@ jobs:
   plan:
     name: plan the shards
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
       scoped: ${{ steps.plan.outputs.scoped }}
@@ -66,6 +69,8 @@ jobs:
         with:
           fetch-depth: 0
       - id: plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -119,6 +124,8 @@ jobs:
           echo "AIM_PLAYWRIGHT_CORE=$browsers/playwright/node_modules/playwright-core" >> "$GITHUB_ENV"
       - name: Release check, ${{ matrix.steps }}
         shell: bash
+        env:
+          AIM_PYTHON_SHARD_FILES: ${{ matrix.python_shard && toJSON(matrix.files) || '' }}
         run: |
           set -euo pipefail
           # The quarantine is read at the event's base: a pull request's base, or the commit a push moved the branch from.

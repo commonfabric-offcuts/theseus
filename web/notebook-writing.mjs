@@ -25,10 +25,11 @@ export function notebookActionEnvelope(bootstrap, item, state, kind, args) {
   return { v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind, target: { item_id: item }, args: copy(args),
     expected: { authority: authority(bootstrap), ...(kind === 'memory.star' ? { star_revision: state.star_revision ?? 0 } : { item_revision: state.source_ref.revision }) } };
 }
+export const NOTEBOOK_UNDO_MS = 10 * 60 * 1000;
 const readOnly = new Set(['FORBIDDEN', 'OUTCOME_REACHED', 'AUTHORITY_CHANGED', 'PAGE_DELETED']);
 
 // The one revision stream behind Text and Cards. The journal owns only local,
-// unconfirmed writing. Core still owns the page and every confirmed revision.
+// writing and temporary Undo targets. Core owns the page and every confirmed revision.
 export class NotebookWriting {
   constructor({ item, bootstrap, api, store, changed = () => {}, reconcile = () => null, localActive = () => false, delay = 600 }) {
     Object.assign(this, { item, bootstrap, api, store, changed, reconcile, localActive, delay });
@@ -41,6 +42,7 @@ export class NotebookWriting {
     this.journalPending = 0; this.journalError = null;
     // reading: Core does not let this person write the page (its reader_may_write), so nothing new is written
     // here; writing already kept on this device still goes, and Core answers it.
+    this.deleteUndo = null; this.actionKept = null;
     this.reading = false; this.actionPending = null; this.actionRunning = null; this.pageState = null; this.deleted = false;
   }
   get dirty() { return Boolean(this.value && !sameContent(this.value, this.base?.content)); }
@@ -48,12 +50,12 @@ export class NotebookWriting {
   get busy() { return Boolean(this.running || this.pending || this.actionRunning || this.actionPending); }
   get binding() { return { instance_id: this.bootstrap.instance_id, actor_id: this.bootstrap.actor, item_id: this.item }; }
   snapshot() {
-    if (!this.dirty && !this.pending && !this.actionPending && !this.conflict && !this.images.some(image => !image.removed && !image.associated)) return null;
+    if (!this.deleteUndo && !this.dirty && !this.pending && !this.actionPending && !this.conflict && !this.images.some(image => !image.removed && !image.associated)) return null;
     // Bytes are immutable and held separately by the store. Do not clone a
     // pending photograph every time a single character changes.
     const images = this.images.map(({bytes, ...image}) => ({...copy(image), bytes}));
     return { ...copy({ v: 1, binding: this.binding, base: this.base, value: this.value, pending: this.pending,
-      conflict: this.conflict, actionPending: this.actionPending, pageState:this.pageState, localVersion: this.localVersion }), images };
+      conflict: this.conflict, actionPending: this.actionPending, deleteUndo: this.deleteUndo, actionError:this.actionError, pageState:this.pageState, localVersion: this.localVersion }), images };
   }
   persist() {
     const snapshot = this.snapshot();
@@ -81,17 +83,19 @@ export class NotebookWriting {
         !Number.isSafeInteger(state.source_ref.revision))throw Error('The page status could not be confirmed.');
     this.observe(state);this.notify();
   }
-  async open() {
+  async open(beforeRetry = async () => {}) {
     const held = await this.store.get();
     if (held) {
       if (held.v !== 1 || !same(held.binding, this.binding)) throw Error('The saved writing belongs to a different Notebook page.');
       Object.assign(this, copy({ base: held.base, value: held.value, pending: held.pending,
-        conflict: held.conflict, actionPending: held.actionPending ?? null, localVersion: held.localVersion, images: held.images ?? [] }));
+        conflict: held.conflict, actionPending: held.actionPending ?? null, deleteUndo: held.deleteUndo ?? null, actionError:held.actionError??null, localVersion: held.localVersion, images: held.images ?? [] }));
       if(held.pageState??held.base?.source)this.observe(held.pageState??held.base.source);
       // Refusals are scoped to this opening. A fresh bootstrap and a new
       // revision-fenced request decide access again, including old v1 journals.
     }
+    await beforeRetry(this);
     if (this.actionPending) await this.retryAction();
+    if (this.deleteUndo?.undoRequested) await this.finishDeleteUndo();
     if (this.pending) await this.flush();
     await this.refresh();
     if (this.dirty && !this.pending && !this.actionPending && !this.conflict && !this.readOnly) this.schedule();
@@ -201,7 +205,7 @@ export class NotebookWriting {
       await this.persist(); this.notify(); return receipt;
     } catch (error) { this.error = `Not saved yet: ${error.message}`; this.notify(); return null; }
   }
-  async action(kind, args) {
+  async action(kind, args, undo = null) {
     if (this.closed || this.actionRunning || this.actionPending || !this.pageState) return null;
     if (kind === 'memory.delete' && args.deleted) {
       await this.flush();
@@ -212,6 +216,9 @@ export class NotebookWriting {
     }
     const state=this.pageState;
     this.actionPending=notebookActionEnvelope(this.bootstrap,this.item,state,kind,args);
+    if(undo && kind==='memory.delete' && args.deleted) this.deleteUndo={
+      ...copy(undo),at:Date.now(),phase:'pending',operation:this.actionPending.operation_id,
+      authority:authority(this.bootstrap),undoRequested:false};
     return this.retryAction();
   }
   retryAction() {
@@ -223,7 +230,11 @@ export class NotebookWriting {
   async sendAction() {
     try {
       await this.persist();
-      const sent=copy(this.actionPending),r=await this.api.command(sent);
+      const sent=copy(this.actionPending);
+      if(this.deleteUndo && sent.kind==='memory.delete' && sent.args.deleted) await this.actionKept?.();
+      // A full-page departure hands this durable request to the destination's writer.
+      if(this.closed)return null;
+      const r=await this.api.command(sent);
       if(r?.instance_id!==sent.instance_id||r.operation_id!==sent.operation_id||r.kind!==sent.kind||
           !['committed','rejected','retryable'].includes(r.status)) throw Error('The confirmation does not match this page action.');
       if(r.status==='retryable')throw Error(r.error?.message??'Theseus is busy.');
@@ -241,14 +252,41 @@ export class NotebookWriting {
             reader_may_write:!r.result.deleted&&this.pageState.reader_may_write});
           if(this.base&&r.result.deleted)this.base={...this.base,revision:r.result.revision,source:copy(this.pageState)};
         }
-        this.actionPending=null;this.actionError=null;await this.persist();
+        if(this.deleteUndo && sent.kind==='memory.delete') {
+          this.deleteUndo={...this.deleteUndo,phase:sent.args.deleted?'committed':'undone',
+            revision:r.result.revision,...(sent.args.deleted?{expires:Date.now()+NOTEBOOK_UNDO_MS}:{})};
+        }
+        this.actionPending=null;this.actionError=null;
+        try {await this.persist();} catch(error) {this.actionPending=sent;throw error;}
         // Refresh the same operation's confirmed state; an older read cannot reverse it.
         this.notify();return r;
       }
+      if(this.deleteUndo && sent.kind==='memory.delete')this.deleteUndo={...this.deleteUndo,phase:sent.args.deleted?'rejected':'restore_rejected'};
       this.actionPending=null;this.actionError=r.error?.message??'The page was not changed.';
-      await this.persist();this.notify();return r;
+      try {await this.persist();} catch(error) {this.actionPending=sent;throw error;}this.notify();return r;
     } catch(error) {this.actionError='Not confirmed yet: '+error.message;this.notify();return null;}
   }
+  async undoDelete() {
+    if(!this.deleteUndo || this.deleteUndo.phase==='undone' || this.deleteUndo.phase==='rejected' ||
+        this.deleteUndo.phase==='restore_rejected')return null;
+    if(!same(this.deleteUndo.authority,authority(this.bootstrap)))throw Error('This deletion belongs to an earlier runtime.');
+    if(!this.deleteUndo.undoRequested && this.deleteUndo.phase==='committed' && Date.now()>=this.deleteUndo.expires)return null;
+    this.deleteUndo.undoRequested=true;await this.persist();this.notify();
+    if(this.actionRunning)await this.actionRunning;
+    return this.finishDeleteUndo();
+  }
+  async finishDeleteUndo() {
+    if(this.actionRunning&&this.actionPending?.kind==='memory.delete'&&!this.actionPending.args.deleted)return this.actionRunning;
+    if(this.actionPending || this.actionRunning || !this.deleteUndo?.undoRequested || this.deleteUndo.phase!=='committed')return null;
+    if(!same(this.deleteUndo.authority,authority(this.bootstrap)))return null;
+    // The deletion's confirmed revision, never a newer observation, fences its Undo.
+    if(this.pageState.source_ref.revision!==this.deleteUndo.revision) {
+      this.deleteUndo.phase='restore_rejected';this.actionError='This page changed after deletion. Open it to read the current page.';
+      await this.persist();this.notify();return null;
+    }
+    return this.action('memory.delete',{deleted:false});
+  }
+  async forgetDeleteUndo() {this.deleteUndo=null;await this.persist();this.notify();}
   async resolve(useMine) {
     if (!this.conflict || this.pending || this.running || this.readOnly) return;
     const keep = useMine && this.hasLocal;
@@ -283,9 +321,9 @@ export class NotebookWriting {
 export async function notebookStore(binding, win = globalThis) {
   if (!win.navigator?.locks || !win.indexedDB) throw Error('Safe Notebook writing needs device storage and tab ownership.');
   const key = JSON.stringify(binding);
-  let release;
+  let release,ownership;
   const acquired = new Promise((resolve, reject) => {
-    win.navigator.locks.request('theseus-notebook-writing:' + key, { ifAvailable: true }, async lock => {
+    ownership=win.navigator.locks.request('theseus-notebook-writing:' + key, { ifAvailable: true }, async lock => {
       if (!lock) { resolve(false); return; }
       const lifetime = new Promise(done => { release = done; });
       resolve(true); await lifetime;
@@ -294,27 +332,19 @@ export async function notebookStore(binding, win = globalThis) {
   if (!await acquired) throw Error('This Notebook page is being written in another tab. Close the page in the other tab, then reload this one, or keep reading here.');
   let db;
   try {
-    db = await new Promise((resolve, reject) => {
-      const request = win.indexedDB.open('theseus-notebook-writing-v1', 2);
-      request.onupgradeneeded = () => {
-        const db=request.result;
-        if(!db.objectStoreNames.contains('writing'))db.createObjectStore('writing');
-        if(!db.objectStoreNames.contains('images'))db.createObjectStore('images').createIndex('scope','scope');
-      };
-      request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
-    });
+    db = await openNotebookDB(win);
   } catch (error) { release(); throw error; }
   const bytesKept = new Set();
   const transaction = (mode, act) => new Promise((resolve, reject) => {
-    const tx=db.transaction(['writing','images'],mode);
+    const tx=db.transaction(['writing','images','deletions'],mode);
     let result;
-    try { result=act(tx.objectStore('writing'),tx.objectStore('images')); }
+    try { result=act(tx.objectStore('writing'),tx.objectStore('images'),tx.objectStore('deletions')); }
     catch(error){tx.abort();reject(error);return;}
     tx.oncomplete=()=>resolve(typeof result==='function'?result():result);
     tx.onerror=tx.onabort=()=>reject(tx.error??Error('Device storage failed.'));
   });
-  const clear = () => transaction('readwrite',(writing,images)=>{
-    writing.delete(key);
+  const clear = () => transaction('readwrite',(writing,images,deletions)=>{
+    writing.delete(key);deletions.delete(key);
     const cursor=images.index('scope').openKeyCursor(win.IDBKeyRange.only(key));
     cursor.onsuccess=()=>{if(cursor.result){images.delete(cursor.result.primaryKey);cursor.result.continue();}};
   }).then(()=>bytesKept.clear());
@@ -337,18 +367,21 @@ export async function notebookStore(binding, win = globalThis) {
     put: async value => {
       if(value===null)return clear();
       const written=[];
-      await transaction('readwrite',(writing,images)=>{
+      await transaction('readwrite',(writing,images,deletions)=>{
         const metadata={...value,images:value.images.map(({bytes,...image})=>image)};
         for(const image of value.images) {
           if(image.bytes&&!bytesKept.has(image.id)) { images.put({scope:key,bytes:image.bytes},[key,image.id]);written.push(image.id); }
           if(image.removed||image.ready)images.delete([key,image.id]);
         }
         writing.put(metadata,key);
+        if(value.deleteUndo)deletions.put({scope:JSON.stringify([binding.instance_id,binding.actor_id]),at:value.deleteUndo.at,key,
+          binding,undo:copy(value.deleteUndo),error:value.actionError??null},key);
+        else deletions.delete(key);
       });
       for(const id of written)bytesKept.add(id);
     },
     delete: clear,
-    close: () => { db.close(); release(); }
+    close: () => { db.close(); release(); return ownership; }
   };
 }
 
@@ -472,4 +505,29 @@ export function mergeCardContent(base, mine, theirs) {
   // At the same boundary apply a replacement first, then the insertion.
   for(const edit of all.sort((a,b)=>b.start-a.start||b.end-a.end))original.splice(edit.start,edit.end-edit.start,...edit.put);
   return {...merged,body:original.join('')};
+}
+
+export async function notebookDeleted(bootstrap, win=globalThis, after=null) {
+  const db=await openNotebookDB(win);
+  try {return await new Promise((resolve,reject)=>{
+    const tx=db.transaction('deletions','readonly'),rows=[];let cursor=null,lastKey=null;
+    const scope=JSON.stringify([bootstrap.instance_id,bootstrap.actor]);
+    const r=tx.objectStore('deletions').index('scope').openCursor(win.IDBKeyRange.bound([scope],after??[scope,Number.MAX_SAFE_INTEGER,'\uffff'],false,Boolean(after)),'prev');
+    r.onsuccess=()=>{const c=r.result;if(!c)return;if(rows.length===20){cursor=lastKey;return;}rows.push({...c.value,key:c.primaryKey});lastKey=c.key;c.continue();};
+    tx.oncomplete=()=>resolve({rows,cursor});tx.onerror=tx.onabort=()=>reject(tx.error??Error('Saved deletions could not be read.'));
+  });} finally {db.close();}
+}
+
+function openNotebookDB(win) {
+  return new Promise((resolve,reject)=>{
+    let blocked=false;const r=win.indexedDB.open('theseus-notebook-writing-v1',3);
+    r.onupgradeneeded=()=>{
+      if(!r.result.objectStoreNames.contains('writing'))r.result.createObjectStore('writing');
+      if(!r.result.objectStoreNames.contains('images'))r.result.createObjectStore('images').createIndex('scope','scope');
+      if(!r.result.objectStoreNames.contains('deletions'))r.result.createObjectStore('deletions').createIndex('scope',['scope','at','key']);
+    };
+    r.onblocked=()=>{blocked=true;reject(Error('Close older Notebook tabs, then reload to update safe device storage.'));};
+    r.onsuccess=()=>{if(blocked){r.result.close();return;}r.result.onversionchange=()=>r.result.close();resolve(r.result);};
+    r.onerror=()=>reject(r.error);
+  });
 }
