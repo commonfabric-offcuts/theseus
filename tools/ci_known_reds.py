@@ -235,10 +235,10 @@ def unit_records(text, node=False):
     require(pending is None, 'python-units: final check outcome missing')
     return rows
 
-def unit_evidence(step, out):
+def unit_evidence(step, out, allow_empty=False):
     name = step['name']
     text = (out / (name + '.log')).read_text()
-    counts, good = node_counts(text) if name == 'node-units' else python_counts(text)
+    counts, good = node_counts(text) if name == 'node-units' else python_counts(text, allow_empty=allow_empty)
     require(good and step.get('counts') == counts, 'non-browser log/count mismatch')
     require(not any(counts.get(k, 0) for k in ('skipped', 'todo', 'cancelled', 'expected failures', 'unexpected successes')),
             name + ': unapproved skipped, todo or incomplete checks')
@@ -345,18 +345,91 @@ def plan_steps(plan):
     require(isinstance(plan, list) and bool(plan), 'missing shard plan')
     result = []
     for shard in plan:
-        steps = shard['steps']
-        result.append(steps.split(',') if isinstance(steps, str) else steps)
+        require(isinstance(shard, dict), 'invalid shard plan job')
+        steps = shard.get('steps')
+        steps = steps.split(',') if isinstance(steps, str) else steps
+        require(isinstance(steps, list) and bool(steps) and
+                all(isinstance(s, str) and s for s in steps), 'invalid shard plan steps')
+        result.append(steps)
     return result
 
-def python_counts(text):
+
+def python_source_files(root, commit):
+    """Unittest's file/package discovery from Git names, without candidate imports."""
+    paths = set(git(root, 'ls-tree', '-r', '--name-only', commit, '--', 'tests').decode().splitlines())
+    result = set()
+    for name in paths:
+        path = Path(name)
+        if not all(str(parent / '__init__.py') in paths for parent in path.parents
+                   if str(parent) not in ('.', 'tests')):
+            continue
+        if (path.name == '__init__.py' and str(path.parent) != 'tests' or
+                re.match(r'test_.*', path.name) and re.match(r'[_a-z]\w*\.py$', path.name, re.I)):
+            result.add(name)
+    return result
+
+
+def partition_plan(plan, required, root=None, commit=None, fresh=False):
+    """One obligation per whole step, or the complete source-bound Python union."""
+    assigned = plan_steps(plan)
+    ordinary, parts, totals = [], {}, set()
+    for index, (job, steps) in enumerate(zip(plan, assigned)):
+        if job.get('compose_group'):
+            require(fresh and steps == ['native-compose'] and 'python_shard' not in job,
+                    'invalid compose/partition assignment')
+            continue
+        if 'python_shard' not in job:
+            ordinary.extend(steps)
+            continue
+        value = job['python_shard']
+        require(steps == ['python-units'] and isinstance(value, str) and
+                re.fullmatch(r'[1-9][0-9]*/[1-9][0-9]*', value), 'invalid Python partition')
+        number, total = map(int, value.split('/'))
+        require(1 <= number <= total <= len(plan), 'unknown Python partition')
+        files = job.get('files')
+        require(isinstance(files, list) and all(isinstance(f, str) and f.startswith('tests/') and
+                str(Path(f)) == f and '..' not in Path(f).parts for f in files), 'invalid partition files')
+        unique(files, 'partition files')
+        require(isinstance(job.get('name'), str) and bool(job['name']), 'unnamed Python partition')
+        parts[index] = {'index': number, 'total': total, 'files': sorted(files)}
+        totals.add(total)
+    expected = set(required) - ({'native-compose'} if fresh else set())
+    if parts:
+        require(len(totals) == 1, 'inconsistent Python partition totals')
+        total = next(iter(totals))
+        require(len(parts) == total and {p['index'] for p in parts.values()} == set(range(1, total+1)),
+                'missing or duplicate Python partition')
+        require('python-units' in expected, 'unknown partitioned step')
+        unique([plan[i]['name'] for i in parts], 'partition job names')
+        files = [f for p in parts.values() for f in p['files']]
+        unique(files, 'partition source files')
+        if root is not None:
+            require(set(files) == python_source_files(root, commit), 'incomplete or unknown Python source coverage')
+        expected.remove('python-units')
+    require(Counter(ordinary) == Counter(expected), 'incomplete or duplicated shard plan')
+    return parts
+
+
+def partition_aggregate(parts):
+    """Recompute the producer's one Python receipt; keep each original part."""
+    counts = {'tests': sum(p['counts']['tests'] for p in parts),
+              'status': 'OK' if all(p['counts'].get('status') == 'OK' for p in parts) else 'FAILED'}
+    for field in ('skipped', 'failures', 'errors', 'expected failures', 'unexpected successes'):
+        if any(field in p['counts'] for p in parts):
+            counts[field] = sum(p['counts'].get(field, 0) for p in parts)
+    return {'name': 'python-units', 'tool': 'unittest', 'counts': counts,
+            'exit': max(p['exit'] for p in parts),
+            'passed': counts['tests'] > 0 and all(p['passed'] is True for p in parts), 'shards': parts}
+
+
+def python_counts(text, allow_empty=False):
     ran = re.findall(r"^Ran (\d+) tests? in ", text, re.M)
     status = re.findall(r"^(OK|FAILED)(?: \((.*)\))?$", text, re.M)
     counts = {"tests": int(ran[-1]) if ran else 0, "status": status[-1][0] if status else None}
     for part in (status[-1][1].split(", ") if status and status[-1][1] else []):
         key, _, value = part.partition("=")
         counts[key] = int(value)
-    passed = counts["tests"] > 0 and counts["status"] == "OK"
+    passed = (counts["tests"] > 0 or allow_empty and bool(ran)) and counts["status"] == "OK"
     return counts, passed
 
 def node_counts(text):
@@ -556,7 +629,8 @@ def history_missing_steps(summary_path, provenance_path, root, api, base_ref, re
     names = unique([step['name'] for step in summary['steps']], 'history combined steps')
     require(names <= required, 'history summary has unknown steps')
     plan = plan_steps(provenance['plan'])
-    require(Counter(name for shard in plan for name in shard) == Counter(required), 'incomplete history shard plan')
+    fresh = any(job.get('compose_group') for job in provenance['plan'])
+    partition_plan(provenance['plan'], required, root, commit, fresh=fresh)
     entries = provenance.get('shards')
     require(isinstance(entries, list) and all(isinstance(entry, dict) for entry in entries), 'invalid history shard provenance')
     artifacts = [entry['artifact'] for entry in entries]
@@ -594,6 +668,8 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
     candidate_root = root
     traffic = json.loads(source(root,commit,REPLAY_FILE)) if 'wake-replay' in REQUIRED else None
     provenance, summary = read_json(provenance_path), read_json(summary_path)
+    require(not provenance.get('cancelled_shards') and not summary.get('cancelled_shards'),
+            'cancelled shard evidence cannot cover the run')
     same_run(provenance.get('run'), run)
     require(provenance.get('base') == base, 'wrong API event base')
     require(provenance.get('merge') == expected_merge, 'wrong tested merge or tree')
@@ -610,6 +686,7 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
     require(unique([s['name'] for s in combined], 'combined steps') == set(REQUIRED), 'missing required step')
     by_name = {s['name']: s for s in combined}
     fresh = any(j.get('compose_group') for j in provenance['plan'])
+    parts = partition_plan(provenance['plan'], REQUIRED, root, commit, fresh=fresh)
     forward_receipts = {}
     if fresh:
         try:
@@ -618,7 +695,6 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
             raise Refused(str(error))
         require(by_name.get('native-compose')==forward_step, 'fresh compose aggregate differs')
     plan = plan_steps(provenance['plan'])
-    require(Counter(s for shard in plan for s in shard if not (fresh and s=='native-compose')) == Counter(s for s in REQUIRED if not (fresh and s=='native-compose')), 'incomplete or duplicated shard plan')
     entries = provenance['shards']
     require(len(entries) == len(plan), 'missing shard provenance')
     observed_base = ({'ref':base['ref'], 'sha':expected_merge['first_parent']} if run['event'] == 'pull_request' else None)
@@ -632,7 +708,7 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
     require(unique(summary.get('combined_from'), 'combined artifact summaries') ==
             {name + '/summary.json' for name in artifacts}, 'combined artifact inventory differs')
     require({p.name for p in Path(shards).iterdir()} == set(artifacts), 'missing or extra downloaded shard')
-    observed, ran = [], []
+    observed, ran, verified_parts, part_identities = [], [], {}, []
     for entry in entries:
         artifact = entry['artifact']
         out = Path(shards) / artifact
@@ -654,6 +730,16 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
         require(raw.get('only') == names and not raw.get('skipped'), 'invalid shard focus receipt')
         receipt_steps = receipt['shard']['steps']
         require((receipt_steps.split(',') if isinstance(receipt_steps, str) else receipt_steps) == plan[index], 'wrong producer shard assignment')
+        partition = parts.get(index)
+        if partition is not None:
+            require(receipt['shard'].get('name') == provenance['plan'][index]['name'], 'wrong Python partition job')
+            metadata = [raw.get('python_shard'), steps[0].get('python_shard')]
+            require(all(isinstance(p, dict) and type(p.get('index')) is int and type(p.get('total')) is int
+                        and p == partition for p in metadata),
+                    'Python partition evidence differs from plan')
+        else:
+            require('python_shard' not in raw and all('python_shard' not in s for s in steps),
+                    'unplanned Python partition evidence')
         require(entry.get('commit') == commit and entry.get('tree_unchanged') is True
                 and entry.get('tools') == raw.get('tools') and entry.get('steps') == names, 'combined shard provenance differs')
         tools = raw['tools']
@@ -674,23 +760,34 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
                 observed.append(('native-compose',verified['results'],profile,raw['checkout']))
                 ran.append('native-compose')
                 continue
-            require(step == by_name[step['name']], 'aggregate step differs from original shard')
-            ran.append(step['name'])
+            if partition is not None:
+                verified_parts[index] = dict(step, partition=raw['python_shard'])
+            else:
+                require(step == by_name[step['name']], 'aggregate step differs from original shard')
+                ran.append(step['name'])
             if step['name'] in NATIVE:
                 observed.append((step['name'], cases(step, out), profile, raw['checkout']))
             else:
                 if history and step.get('passed') is False:
                     nonbrowser_failure_evidence(step, out)
-                    continue
-                require(step.get('passed') is True and type(step.get('exit')) is int and step['exit'] == 0,
-                        step['name'] + ': non-browser failure cannot be excepted')
-                # Recompute unit/deploy verdicts from raw logs; a claimed green
-                # summary alone does not establish that any checks ran.
-                if step['name'] in ('python-units', 'deploy-refusals', 'node-units'):
-                    unit_evidence(step, out)
-                elif step['name'] == 'wake-replay':
-                    replay_evidence(step, out, traffic)
+                else:
+                    require(step.get('passed') is True and type(step.get('exit')) is int and step['exit'] == 0,
+                            step['name'] + ': non-browser failure cannot be excepted')
+                    # Recompute verdicts from raw logs, including each part.
+                    if step['name'] in ('python-units', 'deploy-refusals', 'node-units'):
+                        unit_evidence(step, out, allow_empty=partition is not None)
+                    elif step['name'] == 'wake-replay':
+                        replay_evidence(step, out, traffic)
+                if partition is not None:
+                    part_identities.extend(key(row) for row, _ in unit_records((out/'python-units.log').read_text()))
         require(raw['required'] == summary['required'], 'shard required plan differs')
+    if parts:
+        require(set(verified_parts) == set(parts), 'incomplete Python partition coverage')
+        require(len(part_identities) == len(set(part_identities)), 'duplicate executed identity across Python partitions')
+        aggregate = partition_aggregate([verified_parts[i] for i in sorted(parts)])
+        require(aggregate['counts']['tests'] > 0, 'empty Python aggregate')
+        require(by_name['python-units'] == aggregate, 'Python aggregate differs from verified parts')
+        ran.append('python-units')
     require(Counter(s for s in ran if not (fresh and s=='native-compose')) == Counter(s for s in REQUIRED if not (fresh and s=='native-compose')) and (not fresh or ran.count('native-compose')==len(forward_receipts)), 'incomplete whole-run coverage')
     require(unique(summary.get('failed'), 'combined failures') ==
             {s['name'] for s in combined if s['passed'] is not True}, 'combined failure union differs')
@@ -1073,12 +1170,14 @@ def f779_groups(inventory, source):
     return groups
 
 
-def f779_plan(plan, required, groups):
+def f779_plan(plan, required, groups, root=None, commit=None):
     offered = [j['compose_group'] for j in plan if j.get('compose_group')]
     f779_require(offered == [{'id':g['id'],'source':g['source']} for g in groups], 'deterministic complete group plan differs')
     f779_require(all(j['steps']=='native-compose' and j['name']==j['compose_group']['id'] for j in plan if j.get('compose_group')), 'group assignment differs')
-    ordinary = [s for j in plan if not j.get('compose_group') for s in j['steps'].split(',')]
-    f779_require(collections.Counter(ordinary) == collections.Counter(s for s in required if s!='native-compose'), 'ordinary steps must run once')
+    try:
+        partition_plan(plan, required, root, commit, fresh=True)
+    except Refused as error:
+        raise ForwardRefused('fresh compose: ' + str(error))
 
 
 def f779_job(group, receipt, report, binding, worker, log, source, hashes, original, patched, producer, run, source_bytes=None):
@@ -1194,7 +1293,7 @@ def f779_validate(root, commit, provenance, shards, run, required, producer):
     source=f779_source(root,commit)
     inventory=f779_inventory(root,commit)
     groups=f779_groups(inventory,source)
-    f779_plan(provenance['plan'],required,groups)
+    f779_plan(provenance['plan'],required,groups,root,commit)
     for name, expected in producer.items():
         f779_require(f779_hash(f779_git(root,'show',commit+':tools/'+name))==expected, 'unreviewed producer input: '+name)
     original=f779_git(root,'show',commit+':tests/reader_compose_native.mjs')
