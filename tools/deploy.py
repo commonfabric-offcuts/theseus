@@ -785,10 +785,18 @@ def take_train(config, sha, evidence, train, known_reds, github):
     return trained
 
 
-def admit(config, candidate, *, started_landing=False):
+def admit(config, candidate, *, started_landing=False, trained=None, producer=None, github=None):
     """987: callable before a launcher boundary/merge or a human hosted dispatch."""
     try:
-        return gauntlet_admission.admit(config, candidate, run, started_landing=started_landing)
+        if trained is not None and trained.get('kind') == 'judged-first':
+            judgment = trained.get('judgment')
+            require(isinstance(judgment, dict) and len(judgment.get('producer_runs', [])) == 1 and
+                    len(judgment.get('verdict_checks', [])) == 1,
+                    'Judged admission needs the exact authenticated producer and Verdict')
+            producer = {'run': judgment['producer_runs'][0]['id'],
+                        'check': judgment['verdict_checks'][0]['id'], 'pr': trained['pr']}
+        return gauntlet_admission.admit(config, candidate, run, started_landing=started_landing,
+                                       producer=producer, github=github)
     except (gauntlet_admission.Refused, OSError, ValueError, TypeError, KeyError) as error:
         raise Refused(str(error))
 
@@ -841,7 +849,11 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     for line in known_reds_check.said(known or {}):
         print(line)
     if not unpassed or accepted:
-        admit(config, sha, started_landing=trained is not None)
+        admission = admit(config, sha, started_landing=trained is not None, trained=trained, github=github)
+        if admission.get('judged'):
+            record(evidence, '00-admission', admission)
+            if trained is not None:
+                trained['admission'] = admission
     host_policy = runner_policy(config, sha)
     keep_host = host_policy['kind'] == 'keep'
     server_args, runner_args, supervisor_args = server_argv(config), runner_argv(config), supervisor_argv(config)
@@ -884,7 +896,11 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     # Re-read an eligible head before its candidate/report/stop effects; an
     # earlier empty pipeline snapshot is not an authorization to proceed now.
     if not unpassed or accepted:
-        admit(config, sha, started_landing=trained is not None)
+        admission = admit(config, sha, started_landing=trained is not None, trained=trained, github=github)
+        if admission.get('judged'):
+            record(evidence, '02-admission', admission)
+            if trained is not None:
+                trained['admission'] = admission
     # 02-checks (12, 104): the candidate's readings beside the live release's, read as the reporter.
     view, found = None, []
     if config.outcome:
@@ -929,6 +945,8 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     require(not unpassed or accepted, unchecked)
     measured = (releases.train_measurements(trained) if trained is not None
                 else releases.measurements(json.loads(Path(summary).read_text()), accepted, judged))
+    if trained is not None and 'admission' in trained:
+        measured['train']['admission'] = trained['admission']
     measured = dict(measured, **steps_beyond_policy(config, head))
     planned, before, commits, latest = release_plan(config, head, sha, measured, number, no_items, live_since, revert,
                                                    evidence=evidence.resolve())
@@ -1132,9 +1150,14 @@ def main(argv=None):
         parser = argparse.ArgumentParser(description="Read judged admission before a hosted run or landing; no effects.")
         parser.add_argument("candidate")
         parser.add_argument("--config", required=True)
+        parser.add_argument("--producer-run", type=int)
+        parser.add_argument("--verdict-check", type=int)
+        parser.add_argument("--pr", type=int)
         options = parser.parse_args(argv[1:])
         try:
-            answer = admit(load_config(options.config), options.candidate)
+            selectors = {'run': options.producer_run, 'check': options.verdict_check, 'pr': options.pr}
+            answer = admit(load_config(options.config), options.candidate,
+                           producer=selectors if any(v is not None for v in selectors.values()) else None)
         except Refused as error:
             print("refused: %s" % error, file=sys.stderr)
             return 1
