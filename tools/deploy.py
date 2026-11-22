@@ -790,14 +790,18 @@ def admit(config, candidate, *, started_landing=False, trained=None, producer=No
     try:
         if trained is not None and trained.get('kind') == 'judged-first':
             judgment = trained.get('judgment')
-            require(isinstance(judgment, dict) and len(judgment.get('producer_runs', [])) == 1 and
-                    len(judgment.get('verdict_checks', [])) == 1,
-                    'Judged admission needs the exact authenticated producer and Verdict')
-            producer = {'run': judgment['producer_runs'][0]['id'],
-                        'check': judgment['verdict_checks'][0]['id'], 'pr': trained['pr']}
+            require(isinstance(judgment, dict), 'Judged admission needs its judgment')
+            producer = {'pr': trained['pr']}
+            for field, selector in (('producer_runs', 'run'), ('verdict_checks', 'check')):
+                values = judgment.get(field)
+                require(isinstance(values, list), 'Judged admission needs ' + field)
+                # Train files keep IDs; judge() expands them to listed records.
+                # A controller rerun adds a check without removing its predecessor.
+                numbers = [value.get('id') if isinstance(value, dict) else value for value in values]
+                producer[selector] = max(train_check.ids(numbers, field))
         return gauntlet_admission.admit(config, candidate, run, started_landing=started_landing,
                                        producer=producer, github=github)
-    except (gauntlet_admission.Refused, OSError, ValueError, TypeError, KeyError) as error:
+    except (gauntlet_admission.Refused, train_check.Refused, OSError, ValueError, TypeError, KeyError) as error:
         raise Refused(str(error))
 
 

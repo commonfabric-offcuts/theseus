@@ -381,6 +381,37 @@ class DeployEntry1087(train_fixture.TrainCase):
         kept = self.evidence_of('02-release')['record']['measurements']['train']['admission']
         self.assertEqual(kept['passed_waiters'][0]['approved_at_ms'], START + 1)
 
+    def repeated_verdict(self):
+        prefix = 'repos/' + train_fixture.REPOSITORY + '/check-runs/'
+        newer = copy.deepcopy(self.github.answers[prefix + '201'])
+        newer['id'] = 202
+        self.github.answers[prefix + '202'] = newer
+        self.github.answers[prefix + '201']['conclusion'] = 'failure'
+        record = json.loads(self.manifest.read_text())
+        # The train keeps every conclusion; ordering is not a freshness claim.
+        record['judgment']['verdict_checks'] = [202, 201]
+        self.manifest.write_text(json.dumps(record))
+        return record
+
+    def test_1087_actual_deploy_repeated_verdict_keeps_ids_and_newest_check(self):
+        record = self.repeated_verdict()
+        self.trained(self.host_run, self.manifest, self.merged, self.github)
+        self.assertEqual(json.loads(self.manifest.read_text()), record)
+        self.assertEqual(self.reads, 2)
+        for step in ('00-admission', '02-admission'):
+            self.assertEqual(self.evidence_of(step)['producer']['check'], 202)
+        judgment = self.evidence_of('02-release')['record']['measurements']['train']['judgment']
+        self.assertEqual([(check['id'], check['conclusion']) for check in judgment['verdict_checks']],
+                         [(202, 'success'), (201, 'failure')])
+
+    def test_1087_raw_train_ids_select_newest_check_through_admission(self):
+        record = self.repeated_verdict()
+        with mock.patch.object(deploy, 'run', self.host_run):
+            answer = deploy.admit(self.config, self.merged, trained=record, github=self.github)
+        self.assertEqual((answer['producer']['run'], answer['producer']['check']), (101, 202))
+        self.assertEqual(answer['passed_waiters'][0]['piece_id'], 'p-42')
+        self.assertEqual(json.loads(self.manifest.read_text()), record)
+
     def test_1087_new_earlier_waiter_at_second_floor_stops_before_effects(self):
         original = deploy.runner_policy
         def policy(*args, **kwargs):

@@ -304,7 +304,9 @@ def admit(config, candidate, run, *, started_landing=False, producer=None, githu
             continue
         blocked.append({'piece_id': piece['id'], 'items': pending, 'unclassified': freeze is None, 'piece': piece})
     context, sources, passed = None, [], []
-    if producer is not None:
+    # Authenticate the new bundle/waiter exception when it is actually needed.
+    # A single judged source with no blocker keeps the existing train contract.
+    if producer is not None and (len(items) > 1 or blocked):
         try:
             context = _producer(config, candidate, base, git, producer, github)
         except (AttributeError, KeyError, IndexError, TypeError) as error:

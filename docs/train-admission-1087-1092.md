@@ -86,3 +86,22 @@ judged-run rule. Tests here grant neither a shipment nor active guard adoption.
 
 At this pre-edit publication only this contract differs; no production code or
 tests have been changed or run.
+
+## Review correction 17581
+
+Keep the existing train-file judgment contract unchanged: producer_runs and
+verdict_checks are nonempty lists of distinct positive IDs, not records. The
+verified result from train.judge expands these IDs to listed GitHub records;
+the admission adapter accepts that result as well as the raw ID lists. Select
+the newest named producer and Verdict check by ID, independent of list order,
+then authenticate their exact pairing through the existing admission reads.
+That additional authentication is required when admitting multiple items or
+passing a waiting ordinary piece. A single judged item with no blocker keeps
+the existing train.judge validation and conclusion-recording behavior without
+requiring the new exception's workflow/attempt fields.
+Keep every listed run/check and its actual conclusion in release evidence,
+including an older failed check followed by a successful controller rerun.
+No train.py, installed guard or landing-driver format change is authorized.
+The unchanged test_tools_train cohort and actual two-floor deploy with multiple
+checks must pass, with red evidence on the reviewed e73c69ca deploy owner and
+an exact restored control after applying that entire old owner.
