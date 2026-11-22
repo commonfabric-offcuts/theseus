@@ -67,8 +67,9 @@ function reveal(field, host) {
 // One editor opening owns these listeners and its pending frame. Read the
 // final selection after WritingInput's line gestures and existing Undo finish.
 export function watchNotebookCaret(field, host) {
-  const view = field.ownerDocument.defaultView;
-  if (!view?.requestAnimationFrame) return () => {};
+  // A field with no owner document (a test's fake) has no frames to reveal in; watching it is a no-op.
+  const view = field.ownerDocument?.defaultView;
+  if (!view?.requestAnimationFrame || !view.AbortController) return () => {};
   const listening = new view.AbortController(), options = { signal: listening.signal };
   let before = null, frame = null;
   const cancel = () => { if (frame !== null) view.cancelAnimationFrame(frame); frame = null; before = null; };
