@@ -68,22 +68,24 @@ class FixtureExitCase(unittest.TestCase):
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.repo), *args], text=True)
 
-    def evidence(self, exit_code, tail, rows=(RED, GREEN), signal=None, log=None):
+    def evidence(self, exit_code, tail, rows=(RED, GREEN), signal=None, log=None, completed=True):
         """The step as the producer records it: the harness exits non-zero on any failing case or fixture exit."""
         rows = list(rows)
         report = {'results': rows, 'browserClosed': True, 'fixtureExitCode': exit_code, 'fixtureExitSignal': signal}
+        if completed is not None:
+            report['bodyCompleted'] = completed
         (self.out / 'native' / STEP.name / STEP.results).write_text(json.dumps(report))
         (self.out / 'native-reading.log').write_text((log_lines(rows) if log is None else log) + tail)
         counts, good = CONTROLLER.native_counts(STEP, self.out / 'native' / STEP.name)
         good = good and exit_code == 0 and signal is None
         return {'name': 'native-reading', 'passed': good, 'exit': 0 if good else 1, 'counts': counts}
 
-    def cases(self, step, harness=HARNESS):
-        return CONTROLLER.cases(step, self.out, harness)
+    def cases(self, step, harness=HARNESS, history=False):
+        return CONTROLLER.cases(step, self.out, harness, history)
 
-    def refused(self, step, harness=HARNESS):
+    def refused(self, step, harness=HARNESS, history=False):
         with self.assertRaises(CONTROLLER.Refused) as refused:
-            self.cases(step, harness)
+            self.cases(step, harness, history)
         return str(refused.exception)
 
     def records(self, rows, run_id):
@@ -126,9 +128,22 @@ class FixtureExitCase(unittest.TestCase):
         self.assertEqual([(f['case']['name'], f['reason']) for f in new['unexpected']],
                          [('fixture exit 1', 'not shown by recent base runs')])
 
+    def test_a_candidate_whose_body_did_not_finish_is_refused_whatever_the_controls_show(self):
+        # Balanced case lines and the fixture's traceback are what a body that threw between cases also leaves;
+        # the harness's own attestation is what tells the two apart, and a control that shares the prefix does not help.
+        for completed in (False, None):
+            self.assertEqual(self.refused(self.evidence(1, FIXTURE_TRACEBACK, completed=completed)),
+                             'native-reading: harness did not finish its cases')
+        self.assertEqual(self.refused(self.evidence(1, FIXTURE_TRACEBACK, completed='yes')),
+                         'native-reading: harness did not finish its cases')
+
+    def test_a_control_recorded_before_the_attestation_is_read_by_its_source_count_and_assertion(self):
+        control_rows = self.cases(self.evidence(1, FIXTURE_TRACEBACK, completed=None), history=True)
+        self.assertEqual(control_rows[-1]['name'], 'fixture exit 1')
+        candidate = self.records(self.cases(self.evidence(1, FIXTURE_TRACEBACK)), 2)
+        self.assertTrue(CONTROLLER.compare_failures(candidate, self.records(control_rows, 1))['passed'])
+
     def test_a_harness_that_stopped_between_cases_matches_no_control(self):
-        # The control ran three cases to the fixture's assertion; the candidate's log and report agree on two,
-        # a balanced prefix of the same harness. The count in the message keeps the two apart.
         control = self.records(self.cases(self.evidence(1, FIXTURE_TRACEBACK, rows=(RED, GREEN, THIRD))), 1)
         candidate = self.records(self.cases(self.evidence(1, FIXTURE_TRACEBACK)), 2)
         verdict = CONTROLLER.compare_failures(candidate, control)
@@ -155,8 +170,15 @@ class FixtureExitCase(unittest.TestCase):
         self.assertEqual(self.refused(self.evidence(1, 'Killed\n', log=log)),
                          'native-reading: fixture exit without its assertion')
 
+    def test_a_fatal_tail_after_the_fixture_traceback_is_refused_and_named(self):
+        tail = FIXTURE_TRACEBACK + 'TypeError: cannot read properties of null\n    at file:///fixture/tests/reader_persistence_native.mjs:1830:3\n'
+        self.assertEqual(self.refused(self.evidence(1, tail)),
+                         'native-reading: fixture exit is not the last failure: TypeError: cannot read properties of null')
+
     def test_fixture_exit_without_its_assertion_is_refused(self):
         self.assertEqual(self.refused(self.evidence(1, 'Killed\n')), 'native-reading: fixture exit without its assertion')
+        headless = FIXTURE_TRACEBACK.replace('AssertionError [ERR_ASSERTION]: Traceback', 'Traceback')
+        self.assertEqual(self.refused(self.evidence(1, headless)), 'native-reading: fixture exit without its assertion')
 
     def test_fixture_exit_without_the_harness_source_is_refused(self):
         self.assertEqual(self.refused(self.evidence(1, FIXTURE_TRACEBACK), harness=None),
@@ -168,7 +190,7 @@ class FixtureExitCase(unittest.TestCase):
 
     def test_clean_fixture_exit_reads_as_before(self):
         self.assertEqual(self.cases(self.evidence(0, CONTROLLER.END_LINE + '\n')), [RED, GREEN])
-        self.assertEqual(self.cases(self.evidence(0, CONTROLLER.END_LINE + '\n'), harness=None), [RED, GREEN])
+        self.assertEqual(self.cases(self.evidence(0, CONTROLLER.END_LINE + '\n', completed=None), harness=None), [RED, GREEN])
         self.assertEqual(self.refused(self.evidence(0, 'no end line\n')), 'native-reading: harness did not reach end')
 
 

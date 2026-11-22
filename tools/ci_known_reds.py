@@ -146,7 +146,9 @@ def _log_case_names(lines, prefix):
             raise Refused('unreadable harness log line')
     return names
 
-def fixture_exit_row(name, code, log, rows, harness):
+ERROR_HEADER = re.compile(r'^[A-Za-z]+Error( \[[A-Z_]+\])?: ')
+
+def fixture_exit_row(name, code, log, rows, harness, report, history):
     """The fixture failed its own end-of-run check after the harness ran the cases it had.
 
     The harness logs each case as it starts and again with its result, writes its report, and asserts the fixture's
@@ -161,17 +163,25 @@ def fixture_exit_row(name, code, log, rows, harness):
     started, finished = _log_case_names(lines, '{"case":'), _log_case_names(lines, '{"name":')
     require(started == finished and bool(finished), name + ': fixture died before the end')
     require(finished == [row.get('name') for row in rows], name + ': result log disagrees with report')
+    # The harness attests that its body ran to its end; without that, balanced case lines prove only a prefix.
+    # The controls predate the attestation and are held to the harness source, count and assertion instead.
+    require(history or report.get('bodyCompleted') is True or report.get('harnessCompleted') is True,
+            name + ': harness did not finish its cases')
     last = max(n for n, line in enumerate(lines) if line.startswith('{"name":'))
     tail = lines[last + 1:]
     frames = [match for match in map(FIXTURE_FRAME.match, tail) if match]
-    message = next((line.strip() for line in reversed(tail) if line.startswith('AssertionError: ')), None)
-    require(bool(frames) and message is not None, name + ': fixture exit without its assertion')
+    headers = [line.strip() for line in tail if ERROR_HEADER.match(line)]
+    message = headers[1] if len(headers) >= 2 and headers[1].startswith('AssertionError: ') else None
+    require(bool(frames) and message is not None and headers[0].startswith('AssertionError [ERR_ASSERTION]: Traceback'),
+            name + ': fixture exit without its assertion')
+    if len(headers) != 2:
+        raise Refused(name + ': fixture exit is not the last failure: ' + headers[2][:200])
     require(isinstance(harness, str) and bool(harness), name + ': harness source unrecorded')
     message += ' | after %d cases of %s %s' % (len(rows), NATIVE[name].harness, harness)
     error = message + '\n' + '\n'.join('    at fixture (file://%s:%s:1)' % (match[1], match[2]) for match in frames)
     return {'name': 'fixture exit %d' % code, 'passed': False, 'error': error}
 
-def cases(step, out, harness=None):
+def cases(step, out, harness=None, history=False):
     name = step['name']
     native = NATIVE[name]
     report = read_json(out / 'native' / native.name / native.results)
@@ -196,7 +206,7 @@ def cases(step, out, harness=None):
         require(report.get('fixtureExitSignal') is None, name + ': fixture was signalled')
         if code != 0:
             # The harness exits non-zero on the fixture's exit however its cases went.
-            rows, good = rows + [fixture_exit_row(name, code, log, rows, harness)], False
+            rows, good = rows + [fixture_exit_row(name, code, log, rows, harness, report, history)], False
         elif counts['fail']:
             require(END_LINE in log.splitlines(), name + ': harness did not reach end')
     require(type(step.get('exit')) is int and step['exit'] == (0 if good else 1), name + ': abnormal harness exit')
@@ -843,7 +853,7 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
                 require(step == by_name[step['name']], 'aggregate step differs from original shard')
                 ran.append(step['name'])
             if step['name'] in NATIVE:
-                observed.append((step['name'], cases(step, out, (raw['tools'].get('harnesses') or {}).get(NATIVE[step['name']].harness)),
+                observed.append((step['name'], cases(step, out, (raw['tools'].get('harnesses') or {}).get(NATIVE[step['name']].harness), history),
                                  profile, raw['checkout']))
             else:
                 if history and step.get('passed') is False:
