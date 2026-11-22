@@ -72,3 +72,54 @@ own acts; section fold/open keys cannot manufacture a disclosure on a replica.
 Archive paint may arrive before the first section read. Only after the existing
 drawnOnce section lifecycle has completed does Archive join the tree, so an
 early shelf cannot seize the first section’s initial roving stop. No new timer.
+
+## Build 2 contract — Warp16242
+
+First head98e3e704 and its evidence remain immutable. New own branch
+page-lane6/1048-1034-head2-16242 descends from it on the same325 base.
+The first native fixture omitted intervening sections and folded Images;
+its green cells did not establish those routing cases.
+
+Images Down follows the next drawn tree row. It reaches the first actual
+Archive dossier only when Archive immediately follows Images. Archive Up
+uses Images geometry only when the previous drawn tree row is an Images
+cell; otherwise it bubbles to the tree's linear step. A grid arrow consumes
+the event only when it moves focus (including an actual pane crossing).
+Unused Up/Down/Right continue to KeyTree/arrow-reach. Return/menu/Undo, IME
+and modified keys retain their owners. A direct Images→Archive→Images
+round trip remembers the departed Images cell until another grid arrow;
+otherwise the existing nearest drawn column rule applies.
+
+The shared KeyTree accepts an optional missing-row resolver. Only ThingsRail
+opts in, and only for an archive key. When that selected dossier disappears,
+choose its next surviving old neighbour, then the previous surviving one;
+keep the replacement's key. All other trees retain their existing fallback.
+No independent focus observer, timer or duplicate ring is added.
+
+Before editing product, add targeted red cases for intervening Pipeline,
+folded/absent Images, unused boundary arrows, direct column round trips and
+external replica removal. Native scratch records draw real Pipeline and
+fold/unfold Images through actual keys; prove positive geometry and trusted
+input in both installed engines. Retain the same first-head matrix plus
+these missing cases, full scoped unchanged-owner diagnostics, actual applied
+routing fault/restoration and strict cleanup. Page5 currently owns browser
+use; prepare below-browser checks now, native runs after its free receipt.
+Links1021 is not live328 and is not invented here. The >18 Auto/List check
+remains separate after both1055 and1048 live, not a landing condition.
+
+Warp16397 resolves the one exception: inside Images, Down at an unmatched
+column above a partial final row stays on that cell and consumes the key,
+as unchanged1007 requires. Actual Images exits and all unused shelf arrows
+fall through or move as specified above. No existing assertion is relaxed.
+
+The first candidate grammar run reached the correct neighbour on external
+removal, but its bottom hit probe remained clipped. The added exposure
+assertion fails before the correction. KeyTree now invokes the existing
+revealSelection only when its opted-in missing-row replacement actually
+takes focus. A reader elsewhere keeps their focus and scroll position.
+
+The new native multi-attachment round trip exposed another real identity
+collision: images in one message share their href. Images tree keys now use
+their existing unique data-rail-image attachment identity, preserving each
+cell across refresh and direct round trips. Other section keys are unchanged.
+The added same-message unit case fails before this correction.

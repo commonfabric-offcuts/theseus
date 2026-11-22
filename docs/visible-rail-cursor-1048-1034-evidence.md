@@ -1,120 +1,130 @@
-# Visible Images and Archive cursor: 1048 with 1034
+# 1048 with 1034: Build 2 evidence
 
-The selected image stays exposed above Archive. Down beyond the last Images
-row selects and reveals Archive's first actual dossier, regardless of its old
-scroll position. Up from Archive's first row selects and reveals the final
-Images row using the drawn column. One existing KeyTree owns the whole rail;
-Archive keeps its Return, menu and Undo acts. The existing drawnOnce lifecycle
-prevents an early Archive response from stealing initial Notebook focus.
+Source branch: `page-lane6/1048-1034-head2-16242`. Actual intake base remains
+325 `cce9aeea87050f08097b6577b3de74be937e5926` / tree
+`8807e6f6cce2efa5bd16f75e579d19e58d7ff11a`, schema65, as allowed by Warp16242.
+The parent is first head `98e3e704637a09975f0ab465d0c33bae96eae900`; that source
+and publication16220 revision3 remain immutable. The exact new HEAD/tree,
+eight-file digest map and base-to-head patch are published in the manifest.
+Fable owns the combined piece p-7a37d0b99d6147b2b1acb00f and its canonical
+second freeze/stages; Warp owns independent review and carry. This is the
+Build2 handoff, not an approval or deployment.
 
-Intake was actual release 325, cce9aeea87050f08097b6577b3de74be937e5926,
-tree 8807e6f6cce2efa5bd16f75e579d19e58d7ff11a, schema 65, read from bound
-Health and clean live Git. This is one small ordinary Build 1 for 1048/1034,
-p-7a37d0b99d6147b2b1acb00f, assigned in Fable 16128/16129. The accompanying
-manifest identifies the final commit, tree, exact seven files and patch. Native
-phase source.json records the then-current base HEAD and measured working-tree
-hashes; it does not pretend those phases ran at the subsequently created commit.
+## What changed
 
-Only three product modules change: ArchiveShelf declares its bottom occlusion;
-shared revealSelection respects an intersecting, positive-size cover; ThingsRail
-includes the shelf in its existing cursor owner and geometry route. No CSS,
-Core, layout, Archive order or second selection outline is introduced. The
-contract preceded product edits and was amended before the lifecycle correction.
+Images and Archive retain the shared rail KeyTree and reveal owner. Images
+Down follows the next drawn tree row, so Pipeline or another intervening
+section is reached before Archive. Archive Up uses the bottom Images row's
+geometry only when an Images cell immediately precedes the shelf; otherwise
+the tree takes its normal previous step. Unused shelf arrows fall through.
+Warp16397 explicitly preserves1007's partial Images row exception: no aligned
+tile below an interior column keeps the cell and consumes Down. All other
+grid consumption follows an actual focus move or pane crossing.
 
-## Results and retained failures
+A direct Images→Archive→Images round trip remembers the departed picture.
+Images in one message share a link, so their existing attachment identity
+now supplies their distinct tree keys. Other section keys are unchanged.
+An optional missing-row resolver in KeyTree is used only by ThingsRail for
+Archive keys. Removal elsewhere chooses the next surviving old neighbour,
+then the previous one, keeping that replacement's key. When it actually takes
+focus, the same revealSelection exposes it. Other trees keep their existing
+fallback and a reader focused elsewhere is not scrolled or refocused.
 
-- The new bounded decision checks first gave 4 pass / 5 fail on unchanged
-  product (`focused-red.tap`). A tenth arrival-order regression then gave
-  9 pass / 1 fail before its correction (`initial-arrival-red.tap`). The final
-  new ten plus existing grid, right-rail and reveal checks pass 47/47
-  (`focused-candidate-v2.tap`). These geometry ports are not native layout proof.
-- Both complete 21-file inherited owner cohorts run 778 tests, 762 pass and
-  16 fail. The entire normalized TAP is byte-identical, replacing only the own
-  checkout root and TAP duration_ms. Each run retains START/END hashes and raw
-  bodies for 32 selected test/product/dependency files. All 16 failures remain
-  unwaived; full diagnostics and commands are included. This is a selected-source
-  boundary, not attestation of the entire transitive runtime/import graph.
-- Unchanged 325 Chrome and installed WebKit each complete eight native cells.
-  All four desktop cells have the same nine visibility/handoff failures; all
-  four phone cells pass. No separate engine-specific difference reproduced in
-  this declared path. Tony's historical release-310 Safari sighting supplies
-  no speculative cause and is not claimed independently fixed.
-- Final Chrome 156.0.8078.47 and installed WebKit 26.6 each pass 8/8 cells:
-  1280 and 390, Bookends and Paper, light and dark. Raw final files are
-  `chrome-final-v2/results.json` and `webkit-final/results.json`. Both have no
-  driver, page or original-response capture errors.
-- Actual applied occlusion-marker and first-Archive routing faults each produce
-  five intended native failures. Applied and restored SHA-256 identities are
-  retained; candidate bytes were restored exactly before the final matrices.
+The first head's actual shelf-occlusion marker/reveal change remains. Return,
+image menus, Bring back and Undo retain their owners. No Core/CSS/layout change.
+The contract amendment predates Build2 product edits.
 
-The packet preserves all 15 native attempts. The first three stop at real
-fixture setup refusals (topic participation, reply passage on a new subject,
-attachment cap); no browser launched in those attempts. The initial candidate
-preflight exposes an actual arrival-order focus regression, corrected with the
-existing drawnOnce lifecycle. The first Chrome final matrix has four failed
-Undo checks because Core was sampled before its committed response. The final
-producer observes the actual stack.aside response and waits for that committed
-receipt before the same Core readback; no product assertion was weakened. These
-failed attempts remain separate from the final green matrices.
+## Below-browser checks
 
-## Native evidence boundary
+`tests/ui_rail_cursor_1048_1034.test.mjs` has18 cases. The first Build2 decision
+run was10pass/7fail; the added same-message identity case later failed17/18
+before its correction. An initial new Pipeline second-column expectation was
+corrected to the tree's actual linear predecessor; its intermediate16/17 log
+remains. Every pre-existing test assertion is unchanged. Final focused owner
+checks are55/55 (`focused-frozen.tap`), including1007,996 and reveal.
 
-Each scratch fixture has one real Notebook page, 21 PNG attachments in three
-messages and 20 real dossiers archived through Core. Actual browser keys,
-wheel and clicks are recorded as trusted input. Desktop navigation starts from
-feed focus, reaches the Notebook tree and Images through native arrows and
-disclosure Return, traverses the overflowing grid, then enters a natively
-scrolled Archive. Positive rectangles must fit their actual scroller and clear
-the shelf; three hit-test points must lie inside the selected target. The
-separate Up boundary probe labels its DOM focus setup. There is no native Tab
-or physical input claim.
+The final21-file inherited owner pair has778 cases /762pass /16fail on both
+325 and the candidate, with complete normalized TAP byte-identical after ONLY
+the exact checkout root and elapsed duration replacement. All32 selected
+product/test/dependency START/END paths agree within each run;64 raw source
+bodies match the relevant Git base/head. All21 inherited test files are Git
+identical. The16 failures remain unwaived. The two earlier staged pairs and
+all192 cohort source bodies are also retained; only the last pair claims the
+final candidate bytes. This is a selected owner cohort, not the full suite or
+a transitive dependency closure. Warp's earlier distinct692→702 read is not
+conflated with this778-case pair.
 
-Archive column arrows, Shift-F10/Escape, Return's committed Bring back receipt,
-Core below=false readback, Meta-Z's committed Undo receipt and Core below=true
-readback pass. Image menu/Escape returns to its tile and Return opens a blob
-popup; popup payload bytes are not independently digested. At 390 the shelf is
-actually absent, the closed pane is not an arrow destination, and More reaches
-a real archived dossier in the feed. Viewport/protocol checks are not physical
-phone, OS Safari, hardware IME or OS preference proof.
+## Native routing and exposed selection
 
-All 15 attempts retain strict cleanup receipts: Browser.close/disconnection
-when launched, observed browser PIDs absent, no profile processes, profile
-removed, fixture EOF and exit 0, fixture/observed descendants absent, empty
-fixture errors and closed port. Final Chrome observes 31 owned browser PIDs;
-WebKit observes two. This reports phase receipts, not a later fresh inventory.
+Final Chrome156.0.8078.47 and installedWebKit26.6 each pass8 ordinary matrix
+cells:1280/390 ×Bookends/Paper ×light/dark. Each also passes2 new1280 grammar
+cells (Bookends/light, Paper/dark):20 final cells in total, no page or response
+capture errors. The real scratch Core fixture has21 PNGs in3 messages and20
+archived dossiers, plus an actual agent-created Build topic and piece that
+draw Pipeline, and a separate real topic with no images. No hidden test-only
+Pipeline or Image nodes are inserted into the product.
 
-Every phase retains 17 measured source bodies, including CSS, HTML, fixture and
-producer. In total the packet has 255 such bodies, 611 selected HTTP refetch
-observations, and 351 original page-response observations. Refetches use
-page.request.get after observing loaded URLs and are explicitly separate from
-original response.body captures. Both final matrices have all 13 selected
-original module/CSS responses and separate refetches matching their local
-hashes. index.html is a local snapshot only. These are selected owners, not
-the full browser import graph or browser binary. The packet checker rehashes
-all payload members, measured local and HTTP bodies, cohort boundaries and
-frozen Git blobs, with no extension filter.
+The grammar cases check Images→Pipeline, Archive→the preceding Pipeline row,
+Images folded using native wheel/Enter, and Archive Up with no Images. A real
+external Core Bring back removes the selected replica, the live redraw keeps
+its neighbour, positive bounds and three hit probes expose that neighbour,
+and a committed scratch restoration is retained. The ordinary matrix checks
+all final-row image columns on a direct round trip, existing arrows, image
+Return/menu, Archive Return/menu and native Command-Z with actual committed
+receipts and Core below=false/true reads. At390 the shelf's actual absence
+and real feed Archive access are checked.
 
-Viewed final frames: Chrome 1280 Bookends light Up-from-Archive, WebKit 1280
-Paper dark Up-from-Archive and WebKit 390 Paper dark feed Archive. The desktop
-frames paint the selected last image fully above the shelf; the phone frame
-paints retained archived dossiers. Other captures are retained without claiming
-visual audit.
+`chrome-head1-control-v4` actually applies the first head's two routing owner
+bodies to the own tree, observes at least5 intended native failures, then
+restores the exact final candidate hashes. The applied source bodies and
+identity/restoration records are retained. The new external-removal exposure
+assertion has a separate actual pre-fix native red (`chrome-removal-red`).
 
-## Carry and limits
+All 22 attempts are retained. Early failures include a PERSON_TOPIC
+seed refusal before browser launch, a page-navigation input-counter error,
+offscreen disclosure Enter reaching the page composer, WebKit Fetch access
+control page errors during full document navigation, and a hidden outline
+link click. The corrected fixture exposes the disclosure by native wheel and
+opens the actual outcome before clicking its visible link for in-place
+navigation. The final path has zero page errors; it does not establish that
+the earlier full-document navigation errors were fixed in the application.
+The initial Chrome grammar pass was bounded to its then-existing checks;
+its saved bottom hit probe exposed the later asserted clipping defect. The
+first ordinary Chrome matrix's8 column-return assertion failures are also
+retained and led to the attachment-key correction. None is labelled waived.
 
-1021 Links was not LIVE in this actual 325 intake, so this source does not
-invent Links rows or claim future integration. The current step remains intact;
-later actual-live Links evidence is coordinated with Warp. Keep the separate
-1050 scrollbar block and 1052 empty-body selector independent at carry.
+## Source and cleanup evidence
 
-1055 subsequently freezes Archive Auto/Grid/List on its own 325 branch. Our
-one-line constructor marker must survive the two carries. This native fixture
-uses 325's grid for 20 dossiers; 1055 Auto chooses List above 18 and adds view
-buttons. List/picker composition is not covered by these frozen matrices.
-Warp 16212 assigns Page6 a separate check once both are actually live: one
-more-than-18 Auto/List cell per engine, Images into List and back, with any
-finding filed as its own item. This is not a condition on either landing.
+Each phase retains17 selected local source/producer/CSS/HTML bodies and its
+START identity. Final phases also have explicit matching END maps. The packet
+contains 374 local measured bodies,
+637 HTTP refetch observations and
+637 separately captured original page-response
+observations, with every named body present and rehashable. The13 selected
+original URLs per final cell match the measured/frozen Git bytes. Local HTML
+is not original executed-HTML capture; these paths do not cover the full
+import graph or browser binaries.
 
-Fable owns canonical freeze/stages and successor binding. Warp owns independent
-review, approval, carry, runs, landing, runtime and Tony announcements. No
-deployment, live-data mutation or successor workload is included here.
+Every retained phase has strict Browser.close/disconnection, all observed
+owned PID/profile absence, fixture EOF/exit0/absence/empty-errors and closed
+port receipts. The prelaunch refusal has no browser to close. Final cleanup
+and a fresh owned-process absence check are retained. Screenshots and geometry
+are saved; the report's viewed examples are listed in visual-review.json.
+Initial focus and boundary placements are explicitly DOM setup. Native
+keys/wheel/click receipts do not prove physical phone/keyboard/OS Safari/IME or
+native Tab arrival. Image Return checks a blob popup URL, not its byte digest.
+No timings are inferred from the bounded geometry ports.
+
+The standalone checker validates safe regular archive membership, all payload
+digests and every named measured/refetched/original-response/cohort/Git body,
+without an extension filter. It checks final20 cells, applied routing control,
+exact restoration, all inherited diagnostics, Git ancestry, all8 frozen blobs
+and the exact patch. Publication downloads are verified independently after
+posting; those receipts sit alongside the immutable packet.
+
+Links1021 is absent from the325 source and no later integration is inferred.
+The1055 Auto/List picker is likewise not in this source's grid matrix. Under
+Warp16212, Page6 still owns a separate Chrome/WebKit >18 AUTO List Images↔Archive
+composition check only after BOTH1055 and1048 are actually live. Findings get
+their own item; this is not a condition on either landing. Preserve1050/1052
+selectors and the1055 constructor change during later carry.

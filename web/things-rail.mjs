@@ -178,7 +178,7 @@ export class ThingsRail {
     // The shelf is a sibling of the sections: the whole rail is one cursor
     // owner, including replicas that its own scroller currently hides.
     this.host.addEventListener('keydown', event => this.gridKey(event), true);
-    this.tree = new KeyTree({ root: this.host, doc, label: 'The topic\'s things', column: this.host, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows) });
+    this.tree = new KeyTree({ root: this.host, doc, label: 'The topic\'s things', column: this.host, rows: () => this.treeRows(), fallback: (...args) => this.missingRow(...args), act: (action, row, rows) => this.act(action, row, rows) });
     // The sheet closes with Escape, its ✕ and a tap beside it; the shell keeps these across moves.
     listen(doc, 'keydown', event => { if (event.key === 'Escape' && this.isOpen()) { event.preventDefault(); this.close(true); } });
     listen(backdrop, 'click', () => this.close(true));
@@ -260,13 +260,17 @@ export class ThingsRail {
       .map(el => ({ el, box: el.getBoundingClientRect() })).filter(({ box }) => box.width > 0 && box.height > 0);
     const from = cells.find(cell => cell.el === target);
     if (!from) return;
+    const returning = this.imageReturn; this.imageReturn = null;
+    const consume = () => { event.preventDefault(); event.stopPropagation(); };
     const go = el => {
-      this.tree.go(byElement.get(el));
+      const row = byElement.get(el); if (!row) return;
+      const before = this.doc.activeElement;
+      this.tree.go(row);
       // The picture keeps its existing Return/new-tab action, including after menu Escape.
       const image = el?.querySelector('img.image-thumb:not([hidden])');
       if (image?.isConnected) { image.focus({ preventScroll: true }); revealSelection(image); }
+      if (this.doc.activeElement !== before) consume();
     };
-    event.preventDefault(); event.stopPropagation();
     const overlap = (a, b, lo, hi) => Math.min(a[hi], b[hi]) - Math.max(a[lo], b[lo]) > .5;
     const horizontal = action === 'left' || action === 'right';
     let candidates;
@@ -276,19 +280,28 @@ export class ThingsRail {
       const beyond = cells.filter(cell => cell !== from && gap(cell.box) >= -.5);
       const adjacent = beyond.reduce((best, cell) => !best || gap(cell.box) < gap(best.box) ? cell : best, null);
       if (!adjacent) {
+        const first = Math.min(...cells.map(cell => rows.indexOf(byElement.get(cell.el))));
+        const last = Math.max(...cells.map(cell => rows.indexOf(byElement.get(cell.el))));
         if (!down && grid.classList.contains('archive-shelf-row')) {
+          // Geometry crosses to Images only when it is the immediately
+          // preceding section; intervening rows keep their tree order.
+          if (!rows[first - 1]?.el.closest('.things-thumbs')) return;
           const images = rows.filter(row => row.el.closest('.things-thumbs')).map(row => ({ el: row.el, box: row.el.getBoundingClientRect() }))
             .filter(cell => cell.box.width > 0 && cell.box.height > 0);
           const bottom = Math.max(...images.map(cell => cell.box.top));
-          const last = images.filter(cell => Math.abs(cell.box.top - bottom) < 1);
-          const aligned = last.filter(cell => overlap(cell.box, from.box, 'left', 'right'));
+          const lastImages = images.filter(cell => Math.abs(cell.box.top - bottom) < 1);
+          const remembered = returning?.archive === byElement.get(target)?.key &&
+            lastImages.find(cell => byElement.get(cell.el)?.key === returning.image);
+          const aligned = lastImages.filter(cell => overlap(cell.box, from.box, 'left', 'right'));
           const middle = box => (box.left + box.right) / 2;
-          const next = (aligned.length ? aligned : last).sort((a, b) => Math.abs(middle(a.box) - middle(from.box)) - Math.abs(middle(b.box) - middle(from.box)))[0];
+          const next = remembered || (aligned.length ? aligned : lastImages).sort((a, b) => Math.abs(middle(a.box) - middle(from.box)) - Math.abs(middle(b.box) - middle(from.box)))[0];
           if (next) go(next.el);
-        } else if (!down) this.tree.go(byElement.get(byElement.get(target)?.parent));
+        } else if (!down) go(byElement.get(target)?.parent);
         else {
-          const firstArchive = grid.classList.contains('things-thumbs') && rows.find(row => row.el.classList.contains('shelf-dossier'));
-          this.tree.go(firstArchive || rows[Math.max(...cells.map(cell => rows.indexOf(byElement.get(cell.el)))) + 1]);
+          const next = rows[last + 1];
+          if (next && grid.classList.contains('things-thumbs') && next.el.classList.contains('shelf-dossier'))
+            this.imageReturn = { archive: next.key, image: byElement.get(target).key };
+          go(next?.el);
         }
         return;
       }
@@ -296,7 +309,20 @@ export class ThingsRail {
     }
     const next = nearest(from.box, candidates, action);
     if (next) go(next);
-    else if (action === 'left') panes.step('things', 'left', this.doc);
+    // 1007's explicit partial Images row exception (Warp16397): an
+    // unmatched column stays put; actual grid exits still reach the tree.
+    else if (!horizontal && grid.classList.contains('things-thumbs')) consume();
+    else if (action === 'left' && panes.step('things', 'left', this.doc)) consume();
+  }
+  // The shared tree chooses a neighbour only for an Archive dossier that
+  // vanished. Other missing rows retain KeyTree's normal place fallback.
+  missingRow(key, previous, rows) {
+    if (!key?.startsWith('archive:')) return null;
+    const at = previous.findIndex(row => row.key === key);
+    if (at < 0) return null;
+    const present = new Map(rows.map(row => [row.key, row]));
+    return [...previous.slice(at + 1), ...previous.slice(0, at).reverse()]
+      .map(row => present.get(row.key)).find(Boolean) ?? null;
   }
   // Each section shown, and under an open one what can be pressed in it.
   treeRows() {
@@ -307,7 +333,10 @@ export class ThingsRail {
       rows.push({ el: summary, level: 1, set: this.holder, key: 'section:' + key, parent: null, expanded: part.details.open });
       if (!part.details.open) continue;
       for (const el of part.body.querySelectorAll('a[href], button')) {
-        rows.push({ el, level: 2, set: part.details, key: `section:${key}|${el.getAttribute('href') ?? el.textContent.trim()}`, parent: summary });
+        // Several images can share their message's link; the attachment
+        // identity keeps each picture its own cursor place across refresh.
+        const identity = el.dataset.railImage ? 'image:' + el.dataset.railImage : el.getAttribute('href') ?? el.textContent.trim();
+        rows.push({ el, level: 2, set: part.details, key: `section:${key}|${identity}`, parent: summary });
       }
     }
     const shelf = this.host.querySelector('.archive-shelf');
@@ -416,7 +445,7 @@ export class ThingsRail {
   // Nothing of the topic before stays on screen: every section goes,
   // with its words, until this one's read lands.
   clear() {
-    this.imageMenus?.reset();
+    this.imageMenus?.reset(); this.imageReturn = null;
     for (const part of this.sections.values()) { part.drawn = null; part.details.hidden = true; part.body.replaceChildren(); part.sum.textContent = ''; }
     for (const creator of this.creators.values()) creator.setAvailable(false);
     this.nothing.hidden = true; this.message.hidden = true; this.retry.hidden = true;
