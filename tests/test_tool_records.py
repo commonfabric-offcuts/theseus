@@ -96,7 +96,7 @@ class RecordsCase(unittest.TestCase):
 
 class SeedsCase(unittest.TestCase):
     """The repository's records are the product: the five seeds and the start line (item 603), all homed in Building
-    Theseus, five tools with a check and one written skill."""
+    Theseus, five tools with a check, one written skill, and the first skill an outcome's agent made (1097)."""
 
     def test_the_five_seeds_and_the_start_line(self):
         records = tool_records.Records(ROOT)
@@ -107,7 +107,8 @@ class SeedsCase(unittest.TestCase):
             "native-step-runner": ("tool", "building-theseus", "tests/test_tools_native.py"),
             "pipeline-page-builder": ("tool", "building-theseus", "tests/test_tools_pipeline.py"),
             "start-line": ("tool", "building-theseus", "tests/test_tools_start_line.py"),
-            "theseus-team-assessment": ("skill", "building-theseus", None)})
+            "theseus-team-assessment": ("skill", "building-theseus", None),
+            "precise-audio-clips": ("skill", "oldwell-personal", "tests/test_precise_audio_clips.py")})
 
 
 
