@@ -2,12 +2,19 @@ import { topicFieldFences, topicUpdateEnvelope } from './topic-state.mjs';
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 export const closesTopic = envelope => envelope?.kind === 'topic.update' && (envelope.args?.archived === true || envelope.args?.state === 'done');
 const pending = row => ['pending', 'uncertain', 'undo_pending'].includes(row.phase);
+export const TOPIC_CLOSE_UNDO_MS = 10 * 60 * 1000;
 export class TopicCloseActions {
   constructor({ journal, binding, send, changed = () => {}, kept = () => {} }) {
     Object.assign(this, { journal, binding, send, changed, kept });
     this.rows = new Map(); this.flights = new Map(); this.changes = new Map();
   }
   current(row) { return row.instanceId === this.binding.instanceId && row.actor === this.binding.actor && same(row.authority, this.binding.authority); }
+  canUndo(row, now = Date.now()) {
+    if (!row || !this.current(row) || row.undo || !['pending', 'uncertain', 'committed'].includes(row.phase)) return false;
+    // Legacy receipts never gain a fresh window just by being read again.
+    const at = row.committedAt ?? row.at;
+    return row.phase !== 'committed' || Number.isFinite(at) && now < at + TOPIC_CLOSE_UNDO_MS;
+  }
   async load() {
     for (const row of [...await this.journal.list(), ...await this.journal.list(true)]) {
       this.rows.set(row.id, row); if (this.current(row)) this.changed(row);
@@ -40,6 +47,7 @@ export class TopicCloseActions {
   async undo(id) {
     const row = this.rows.get(id);
     if (!row || !this.current(row) || ['rejected', 'undone'].includes(row.phase)) return;
+    if (!row.undo && !this.canUndo(row)) return;
     await this.change(id, next => { next.undo ??= { id: crypto.randomUUID(), envelope: null, receipt: null }; });
     // A prior flight learns the kept Undo when its answer is processed.
     return this.drive(id);
@@ -55,7 +63,11 @@ export class TopicCloseActions {
     if (['pending', 'uncertain'].includes(row.phase)) {
       const receipt = await this.attempt(row, row.envelope);
       if (!receipt) return null;
-      await this.change(id, next => { next.receipt = receipt; next.phase = receipt.status === 'committed' ? 'committed' : 'rejected'; next.error = receipt.error?.message ?? null; });
+      await this.change(id, next => {
+        next.receipt = receipt; next.phase = receipt.status === 'committed' ? 'committed' : 'rejected';
+        if (receipt.status === 'committed') next.committedAt ??= Date.now();
+        next.error = receipt.error?.message ?? null;
+      });
     }
     row = this.rows.get(id);
     if (row.phase === 'committed' && row.undo && !row.undo.envelope) {
