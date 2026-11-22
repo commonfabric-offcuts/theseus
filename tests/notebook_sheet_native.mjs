@@ -859,7 +859,7 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     await p.close();
   });
 
-  await check('notebook while a card is written, ← at its very start folds away its children, and stays the box\'s on a card with none or mid-text; ⌘Return goes on to a new card below, and over the feed sends no message', async () => {
+  await check('notebook while a card is written, ← at its very start displays the same card with children untouched, on a parent or leaf, and mid-text stays in the box; ⌘Return goes on to a new card below, and over the feed sends no message', async () => {
     // On the cards page.
     const id = await outcomePage('sheet-left-return', 'Cards keys', cardsBody);
     let p = await page('notebook-left-return', null, true, { url: `${facts.origin}/?cards=${id}` });
@@ -870,18 +870,32 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     await until(() => p.evaluate(`document.querySelectorAll('${FULL} .deck-card').length === 3`), 'the cards show');
     await p.key('Enter', 4);
     await until(async () => (await box())?.words === 'Plan\nShip it.', '⌘Return opens Plan to write');
-    // ← moves the cursor through the words, then from the very start finishes the card and folds its children away.
+    const writingHint = await p.evaluate(`document.querySelector('${FULL} .deck-keys').children[1].textContent`);
+    assert.match(writingHint, /← at the very start or → at the very end done/, 'the full-page writing hint describes display at both boundaries');
+    assert.match(writingHint, /no selection/, 'the writing hint names the collapsed-caret default');
+    assert.match(writingHint, /⇧Tab at start or end outdent/, 'the writing hint includes end Shift-Tab');
+    assert.doesNotMatch(writingHint, /folds children|unfolds them/, 'the writing hint no longer promises editing-arrow folds');
+    // ← moves the cursor through the words, then from the very start displays this card with its children untouched.
     for (let step = 0; step < 'Plan\nShip it.'.length; step++) await p.key('ArrowLeft');
     assert.deepEqual(await box(), { words: 'Plan\nShip it.', at: [0, 0], focused: true, above: null }, '← mid-text moves the cursor and leaves the box open');
     await p.key('ArrowLeft');
-    await until(async () => !(await box()), '← at the very start finishes the card');
-    assert.deepEqual(await shows(), { cards: ['Plan', 'Notes'], count: '1 of 2 · 1 folded', focus: 'Plan' }, 'its children are folded away, the card picked and focused');
-    assert.equal((await view('memory_current', { item_id: id })).body, cardsBody, 'folding writes nothing');
-    // On a card with no children, ← at the very start stays the box's.
-    await p.key('ArrowDown'); await p.key('Enter', 4);
+    await until(async () => !(await box()), '← at the very start finishes the card')
+      .catch(async error => { assert.equal(await box(), null, 'boundary Left must finish the card editor'); throw error; });
+    assert.deepEqual(await shows(), { cards: ['Plan', 'Steps', 'Notes'], count: '1 of 3', focus: 'Plan' }, 'its children stay visible, the same card picked and focused');
+    assert.equal((await view('memory_current', { item_id: id })).body, cardsBody, 'finishing unchanged words writes nothing');
+    // The visible child keeps its place; on a leaf the same boundary also finishes.
+    await p.key('ArrowDown'); await p.key('ArrowDown'); await p.key('Enter', 4);
     await until(async () => (await box())?.words === 'Notes\nDan reviews.', '⌘Return opens Notes to write');
-    for (let step = 0; step <= 'Notes\nDan reviews.'.length; step++) await p.key('ArrowLeft');
-    assert.deepEqual(await box(), { words: 'Notes\nDan reviews.', at: [0, 0], focused: true, above: 'Plan' }, '← at the very start of a card with no children leaves the box open');
+    for (let step = 0; step < 'Notes\nDan reviews.'.length; step++) await p.key('ArrowLeft');
+    assert.deepEqual(await box(), { words: 'Notes\nDan reviews.', at: [0, 0], focused: true, above: 'Steps' }, '← mid-text on the leaf moves the cursor and leaves the box open');
+    await p.key('ArrowLeft');
+    await until(async () => !(await box()), '← at the very start finishes the leaf')
+      .catch(async error => { assert.equal(await box(), null, 'boundary Left must finish the leaf editor'); throw error; });
+    assert.deepEqual(await shows(), { cards: ['Plan', 'Steps', 'Notes'], count: '3 of 3', focus: 'Notes' }, 'the same leaf is displayed and focused with every child untouched');
+    assert.equal((await view('memory_current', { item_id: id })).body, cardsBody, 'finishing the leaf writes nothing');
+    // Reopen the leaf, then retain the independent Command-Return protection below.
+    await p.key('Enter', 4);
+    await until(async () => (await box())?.words === 'Notes\nDan reviews.', '⌘Return reopens Notes to write');
     // ⌘Return finishes the card and opens a new one below it.
     await p.key('Enter', 4);
     await until(async () => JSON.stringify(await box()) === JSON.stringify({ words: '', at: [0, 0], focused: true, above: 'Notes' }), '⌘Return opens a new card below to write')
@@ -894,29 +908,41 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     // From an empty box ⌘Return only finishes: it never makes an empty card.
     await p.key('Enter', 4);
     await until(async () => !(await box()), '⌘Return in an empty box only finishes');
-    assert.deepEqual((await shows()).cards, ['Plan', 'Notes', 'Next'], 'no empty card is made');
+    assert.deepEqual((await shows()).cards, ['Plan', 'Steps', 'Notes', 'Next'], 'no empty card is made');
     assert.deepEqual(p.errors, []);
     await p.close();
     // Over the feed, in the composer: ⌘Return goes on to a new card and sends nothing.
     const topicId = await topicPage('Sheet return', '## Only\n\nOne card.\n');
     const messages = async () => (await view('topic_messages', { topic_id: 't1', direction: 'before', limit: 100 })).items.length;
     const sent = await messages();
-    p = await page('notebook-sheet-return', null, true);
-    await listed(p, card(topicId), 'the topic\'s Notebook lists its page');
-    await press(p, card(topicId));
-    await opened(p, 'Sheet return', ['Only']);
+    // The old memory-card entry and composer-owned dialog were retired before347.
+    // Enter the same over-feed page by its public route; keep every Command-Return
+    // and no-message assertion, observed in the current separate Notebook dialog.
+    const SHEET = '#notebook-sheet-dialog', PAGE = `${SHEET} .notebook-sheet-page:not([hidden])`;
+    const sheetState = () => p.evaluate(`(()=>{const d=document.querySelector('${SHEET}'),pg=d?.querySelector('.notebook-sheet-page:not([hidden])'),f=pg?.querySelector('.deck-writing textarea');
+      const t=d?.querySelector('.notebook-sheet-title')?.getBoundingClientRect(),at=t&&t.width&&t.height?document.elementFromPoint(t.left+Math.min(t.width/2,40),t.top+t.height/2):null;
+      return {open:Boolean(d?.open&&d.classList.contains('notebook-mode')),seen:Boolean(d?.getClientRects().length&&at&&d.contains(at)),title:d?.querySelector('.notebook-sheet-title')?.textContent??null,reader:document.querySelector('#reader').open,
+        cards:[...(pg?.querySelectorAll('.deck-card:not([hidden]) .deck-title')??[])].map(e=>e.textContent),box:f?{words:f.value,at:[f.selectionStart,f.selectionEnd],focused:document.activeElement===f}:null}})()`);
+    const sheetWaitFor = (probe, want, words) => until(async () => probe(await sheetState()), words)
+      .catch(async error => { assert.deepEqual(await sheetState(), want, words); throw error; });
+    p = await page('notebook-sheet-return', null, true, {url:`${facts.origin}/?topic=t1&page=${topicId}`});
+    await sheetWaitFor(s => s.open && s.seen && s.title === 'Sheet return' && !s.reader && JSON.stringify(s.cards) === JSON.stringify(['Only']),
+      {open:true,seen:true,title:'Sheet return',reader:false,cards:['Only'],box:null}, 'the page Sheet return opens over the feed, on screen, not in the Reader');
     await until(() => p.evaluate(`document.activeElement?.matches?.(${JSON.stringify(PAGE + ' .deck-card')})`), 'the picked card has the focus');
     await p.key('Enter', 4);
-    await waitFor(p, s => s.box?.words === 'Only\nOne card.', { box: { words: 'Only\nOne card.' } }, '⌘Return opens the card to write');
+    await sheetWaitFor(s => s.box?.words === 'Only\nOne card.', { box: { words: 'Only\nOne card.' } }, '⌘Return opens the card to write');
+    const shortHint = await p.evaluate(`({short:document.querySelector('${PAGE} .deck-keys').children[1].textContent, title:document.querySelector('${PAGE} .deck-keys').children[1].title})`);
+    assert.equal(shortHint.short, 'Escape done · ⌘Return next card', 'the sheet keeps its compact writing line');
+    assert.equal(shortHint.title, writingHint, 'the sheet tooltip carries the same current writing help');
     await p.key('Enter', 4);
-    await waitFor(p, s => s.box?.focused && s.box.words === '', { box: { words: '', focused: true } }, '⌘Return opens a new card below');
+    await sheetWaitFor(s => s.box?.focused && s.box.words === '', { box: { words: '', focused: true } }, '⌘Return opens a new card below');
     await p.send('Input.insertText', { text: 'Over the feed\nNo message.' });
     await p.key('Enter', 4); await p.key('Enter', 4);
-    await waitFor(p, s => s.open && !s.box && JSON.stringify(s.cards) === JSON.stringify(['Only', 'Over the feed']), { open: true, box: null, cards: ['Only', 'Over the feed'] }, 'the cards are written and the sheet stays open');
+    await sheetWaitFor(s => s.open && !s.box && JSON.stringify(s.cards) === JSON.stringify(['Only', 'Over the feed']), { open: true, box: null, cards: ['Only', 'Over the feed'] }, 'the cards are written and the sheet stays open');
     await saved(topicId, '## Over the feed\n\nNo message.', 'the card is saved');
     assert.equal(await messages(), sent, '⌘Return sends no message in the topic');
     await p.key('Escape');
-    await closed(p);
+    await sheetWaitFor(s => !s.open, {open:false}, 'the sheet closes');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
