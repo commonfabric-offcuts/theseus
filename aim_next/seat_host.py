@@ -113,9 +113,6 @@ class SeatHost:
                 'model': config.model, 'reasoning_effort': config.reasoning_effort})
         return list(choices.values())
 
-    def publish_templates(self):
-        self._core('hosted_seat_publish_templates', self.template_options())
-
     def _template(self, template_id=None):
         host = self.loop.host
         if host is None:

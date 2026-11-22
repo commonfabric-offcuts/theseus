@@ -230,7 +230,7 @@ class Runner:
             return "lost"
         return "running"
 
-    def _acquire(self, db, guard, now, lease_ms, reason=None):
+    def _acquire(self, db, guard, now, lease_ms, reason=None, seat_templates=None):
         token = "r-" + uuid.uuid4().hex
         until = now + lease_ms
         # How the run this one replaces ended, for the Health page (health.py).
@@ -238,9 +238,11 @@ class Runner:
         runner_faults.write(db, None)
         db.execute("UPDATE runner_state SET state='running',version=version+1,runner_token=?,runner_id=?,guard_generation=?,lease_until_ms=?,reason_code=?,runner_pid=?,runner_started_ms=?,child_pid=NULL,child_started_at=NULL,child_claim_token=NULL,ended_ms=NULL WHERE id=1",
                    (token, guard.runner_id, guard.generation, until, reason, os.getpid(), now))
+        if seat_templates is not None:
+            self._seat_publish_templates(db, token, seat_templates)
         return {"status": "acquired", "runner_token": token, "lease_until_ms": until}, True
 
-    def acquire_runner(self, guard, lease_ms=30000):
+    def acquire_runner(self, guard, lease_ms=30000, *, seat_templates=None):
         _bounded(lease_ms, 1000, 120000, "lease_ms")
         def action(db, now):
             state = self._runner_state(db)
@@ -248,7 +250,7 @@ class Runner:
                 return {"status": "paused", "version": state["version"], "reason_code": state["reason_code"]}, False
             if state["lease_until_ms"] is not None and state["lease_until_ms"] > now:
                 return {"status": "busy", "lease_until_ms": state["lease_until_ms"]}, False
-            return self._acquire(db, guard, now, lease_ms)
+            return self._acquire(db, guard, now, lease_ms, seat_templates=seat_templates)
         return self._effect(guard, action)
 
     def renew_runner(self, guard, runner_token, lease_ms=30000):
@@ -761,7 +763,7 @@ class Runner:
             return {"status": "paused", "version": state["version"] + 1}, True
         return self._effect(guard, action)
 
-    def resume_runner(self, guard, expected_pause_version, lease_ms=30000, reason=None):
+    def resume_runner(self, guard, expected_pause_version, lease_ms=30000, reason=None, *, seat_templates=None):
         """reason "cleanup_confirmed": the supervisor resumed a cleanup pause once
         it saw the named child's group gone; kept on the running row until the
         next acquisition or pause, so status shows why it is running."""
@@ -777,7 +779,7 @@ class Runner:
                 raise RunnerError("GUARD_NOT_DRAINED", "Close the old guard and acquire a new one after owned cleanup")
             if reason is not None and state["reason_code"] != "cleanup_failed":
                 raise RunnerError("REVISION_CONFLICT", "Only a cleanup pause is resumed for its child's group being gone")
-            return self._acquire(db, guard, now, lease_ms, reason)
+            return self._acquire(db, guard, now, lease_ms, reason, seat_templates=seat_templates)
         return self._effect(guard, action)
 
     def record_runner_child(self, guard, runner_token, claim_token, pid, started_at):

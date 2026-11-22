@@ -114,26 +114,34 @@ def _record(row, *, private=False, role=True):
 
 
 class HostedSeats:
-    def hosted_seat_publish_templates(self, guard, token, options):
-        """The lease owner publishes safe names/settings, never host paths."""
+    def _seat_publish_templates(self, db, token, options):
+        """Publish safe settings inside the caller's owned transaction."""
         try:
             clean = _template_options(options)
+            for item in clean:
+                self._actor(db, item['actor_id'])
         except Refusal as error:
             raise RunnerError(error.code, error.message) from error
+        old = db.execute('SELECT value FROM metadata WHERE key=?', (TEMPLATE_KEY,)).fetchone()
+        if not clean:
+            if old is not None:
+                db.execute('DELETE FROM metadata WHERE key=?', (TEMPLATE_KEY,))
+            return old is not None
         payload = json.dumps({'runner_token': token, 'items': clean}, sort_keys=True, separators=(',', ':'))
         if len(payload.encode('utf-8')) > TEMPLATE_BYTES:
             raise RunnerError('INVALID_ARGUMENT', 'Host template catalogue exceeds its byte limit')
+        if old is not None and old[0] == payload:
+            return False
+        db.execute('INSERT OR REPLACE INTO metadata(key,value) VALUES (?,?)', (TEMPLATE_KEY, payload))
+        return True
+
+    def hosted_seat_publish_templates(self, guard, token, options):
+        """Explicit lease-owner update; acquisition uses the transaction helper."""
         def action(db, now):
             ownership = self._seat_owned(db, guard, token, now)
             if ownership != 'running':
                 return {'status': ownership}, False
-            for item in clean:
-                self._actor(db, item['actor_id'])
-            old = db.execute('SELECT value FROM metadata WHERE key=?', (TEMPLATE_KEY,)).fetchone()
-            if old is not None and old[0] == payload:
-                return {'status': 'ok'}, False
-            db.execute('INSERT OR REPLACE INTO metadata(key,value) VALUES (?,?)', (TEMPLATE_KEY, payload))
-            return {'status': 'ok'}, True
+            return {'status': 'ok'}, self._seat_publish_templates(db, token, options)
         return self._effect(guard, action)
 
     def _seat_templates(self, db):

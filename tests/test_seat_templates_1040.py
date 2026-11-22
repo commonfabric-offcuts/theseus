@@ -231,5 +231,87 @@ class TemplateCLI(unittest.TestCase):
             self.assertEqual(self.sql('SELECT id,agent_id,template_id FROM hosted_seats'), [(seat['id'], 'legacy', option['id'])])
 
 
+class TemplateAcquisition(unittest.TestCase):
+    from test_effects_runner import EffectsRunnerCase as _helpers
+    setUp, api, loop, sql, save = (_helpers.setUp, _helpers.api, _helpers.loop, _helpers.sql, _helpers.save)
+
+    def options(self):
+        return [{'id': 'template-'+'1'*64, 'actor_id': 'agent-a', 'model': 'fixture', 'reasoning_effort': 'high'}]
+
+    def traced(self, action):
+        from unittest import mock
+        from aim_next import store as storage
+        statements = []
+        original = storage._connect
+        def connect(path):
+            db, facts = original(path)
+            db.set_trace_callback(lambda sql: statements.append((self.clock.elapsed, sql)))
+            return db, facts
+        with mock.patch.object(storage, '_connect', connect):
+            result = action()
+        return result, statements
+
+    def test_empty_host_keeps_the_original_five_idle_writes_and_no_catalogue_row(self):
+        self.wait.stop_at = 28
+        result, statements = self.traced(lambda: self.loop(seat_directory=self.root/'seats'))
+        self.assertEqual(result['status'], 'stopped')
+        self.assertEqual([t for t, sql in statements if sql == 'BEGIN IMMEDIATE'], [0, 9, 18, 27, 28])
+        self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='hosted_seat_templates.v1'"), [])
+
+    def test_host_options_publish_once_in_acquire_without_an_extra_idle_write(self):
+        from unittest import mock
+        self.wait.stop_at = 28
+        observed = []
+        def observe():
+            observed.extend(self.sql("SELECT value FROM metadata WHERE key='hosted_seat_templates.v1'"))
+            return False
+        self.wait.events = [(0.5, observe)]
+        with mock.patch('aim_next.seat_host.SeatHost.template_options', return_value=self.options()):
+            result, statements = self.traced(lambda: self.loop(seat_directory=self.root/'seats'))
+        self.assertEqual(result['status'], 'stopped')
+        self.assertEqual([t for t, sql in statements if sql == 'BEGIN IMMEDIATE'], [0, 9, 18, 27, 28])
+        writes = [sql for _, sql in statements if sql.startswith('INSERT OR REPLACE INTO metadata') and 'hosted_seat_templates.v1' in sql]
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(json.loads(observed[0][0])['items'], self.options())
+
+    def test_acquire_binds_options_to_its_new_token_in_one_transaction(self):
+        with self.store.runner_guard('catalogue') as guard:
+            result, statements = self.traced(lambda: self.store.acquire_runner(guard, seat_templates=self.options()))
+            self.assertEqual(sum(sql == 'BEGIN IMMEDIATE' for _, sql in statements), 1)
+            value = json.loads(self.sql("SELECT value FROM metadata WHERE key='hosted_seat_templates.v1'")[0][0])
+            self.assertEqual(value, {'runner_token': result['runner_token'], 'items': self.options()})
+            before = self.sql('SELECT state,version,runner_token FROM runner_state')
+            busy = self.store.acquire_runner(guard, seat_templates=[])
+            self.assertEqual(busy['status'], 'busy')
+            self.assertEqual(self.sql('SELECT state,version,runner_token FROM runner_state'), before)
+            self.assertEqual(json.loads(self.sql("SELECT value FROM metadata WHERE key='hosted_seat_templates.v1'")[0][0]), value)
+
+    def test_empty_successor_clears_the_old_catalogue_in_its_acquisition(self):
+        with self.store.runner_guard('catalogue') as guard:
+            self.store.acquire_runner(guard, seat_templates=self.options())
+            self.clock.advance(31)
+            result, statements = self.traced(lambda: self.store.acquire_runner(guard, seat_templates=[]))
+            self.assertEqual(result['status'], 'acquired')
+            self.assertEqual(sum(sql == 'BEGIN IMMEDIATE' for _, sql in statements), 1)
+            self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='hosted_seat_templates.v1'"), [])
+
+    def test_resume_publishes_with_the_new_lease_and_invalid_options_roll_back_acquire(self):
+        from aim_next.runner import RunnerError
+        with self.store.runner_guard('previous') as guard:
+            before = self.sql('SELECT state,version,runner_token FROM runner_state')
+            with self.assertRaises(RunnerError):
+                self.store.acquire_runner(guard, seat_templates=[dict(self.options()[0], model='x'*201)])
+            self.assertEqual(self.sql('SELECT state,version,runner_token FROM runner_state'), before)
+            self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='hosted_seat_templates.v1'"), [])
+            owned = self.store.acquire_runner(guard, seat_templates=self.options())
+            paused = self.store.pause_runner(guard, owned['runner_token'], 'operator_pause')
+        with self.store.runner_guard('resumed') as guard:
+            resumed, statements = self.traced(lambda: self.store.resume_runner(guard, paused['version'], seat_templates=self.options()))
+            self.assertEqual(sum(sql == 'BEGIN IMMEDIATE' for _, sql in statements), 1)
+            value = json.loads(self.sql("SELECT value FROM metadata WHERE key='hosted_seat_templates.v1'")[0][0])
+            self.assertEqual(value['runner_token'], resumed['runner_token'])
+            self.assertNotEqual(value['runner_token'], owned['runner_token'])
+
+
 if __name__ == '__main__':
     unittest.main()

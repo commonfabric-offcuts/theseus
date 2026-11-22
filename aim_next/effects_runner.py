@@ -213,11 +213,12 @@ class EffectsLoop:
         return None
 
     def _acquire(self):
+        templates = self.seats.template_options() if self.seats is not None else []
         def operation():
             if self.resume_version is not None:
                 return self.store.resume_runner(self.guard,self.resume_version,lease_ms=30000,
-                                                reason=self.resume_reason)
-            return self.store.acquire_runner(self.guard,lease_ms=30000)
+                                                reason=self.resume_reason,seat_templates=templates)
+            return self.store.acquire_runner(self.guard,lease_ms=30000,seat_templates=templates)
         value = self._preclaim('acquire',operation)
         if value is None: return None
         if value.get('status')=='paused':
@@ -235,8 +236,6 @@ class EffectsLoop:
         self.renew_at = self.clock.monotonic()+9
         self.acquire_wall = None
         self._event('acquired')
-        if self.seats is not None:
-            self.seats.publish_templates()
         if self.host is not None:
             self.host.start()
         return None

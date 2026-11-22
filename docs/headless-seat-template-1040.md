@@ -80,3 +80,20 @@ adds the recorded nullable `template_id`; private plan/thread semantics stay
 unchanged. CLI: `seat-templates OUTCOME`, `seat-add OUTCOME NAME --role -
 --template ID`, and `seat-retry OUTCOME SEAT_REQUEST --template ID` use the same
 view/commands. Saved outbox requests retain the exact optional choice.
+
+Second head, Warp16991/16992 and Fable16994: publication belongs in the
+successful lease acquire/resume transaction. It must not add another write
+after acquisition. An empty catalogue with no stored catalogue creates no
+metadata row; an empty current host clears an older stored catalogue inside
+acquisition. A nonempty catalogue is validated and recorded atomically with
+the new token, once per acquire/resume. Busy/paused or failed acquisition
+cannot publish another host's options. Keep the existing idle five-write
+expectation unchanged and run test_effects_runner in the final cohort.
+Retain the first head's source/proof;1072 stays bound and waits until this
+correction freezes. Page6/1037 holds the shared native/workload slot meanwhile.
+The owner-only catalogue is classified in both explicit whisper/removal view
+inventories. Warp16999 limits this correction to the new member: preserve the
+complete-registry assertions and name the inherited335 missing sets (12/5)
+separately. The first native producer reset its input ledger on reload; its
+choice gesture is producer-directed click/tap plus state evidence, while only
+post-reload events have retained isTrusted values.
