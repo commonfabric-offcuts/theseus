@@ -123,3 +123,48 @@ collision: images in one message share their href. Images tree keys now use
 their existing unique data-rail-image attachment identity, preserving each
 cell across refresh and direct round trips. Other section keys are unchanged.
 The added same-message unit case fails before this correction.
+
+## Build 3 contract — Warp16455
+
+First98e3e704 and second8422c521 plus both published packets remain immutable.
+New own branch page-lane6/1048-1034-head3-16455 starts at8422c521, retaining
+the actual325 base and combined piece. Read current items and Landing; Fable
+16457 records Build3. This amendment precedes product edits.
+
+A vertical grid boundary belongs to gridKey: move from the whole grid's
+first/last row to rows[first-1]/rows[last+1], not from the pressed cell's DOM
+index. Up from Archive reaches the final Images row by drawn column only
+when Images immediately precedes the shelf. Intervening Pipeline rows remain
+reachable from every cell in the first Archive visual row. With no next row,
+focus stays. Fable16458 has asked Warp to resolve the conflicting wording on
+preventDefault for that no-exit stay; retain its focus red now and wait for
+the ruling before choosing that event assertion. Ordinary moving exits can
+proceed. The1007 partial-row rule remains explicit.
+
+Missing-row fallback applies to removal of a dossier while old Archive rows
+survive. If none of the previous Archive keys survives, return null: whole
+shelf hide/show preserves the kept key through the generic tree's existing
+place holding. No new cursor owner or resize listener.
+
+The decision fixture chains real KeyTree.key after gridKey, retaining a
+separate after-grid observation for modifier/owner tests. Add red cases on
+8422c521 for a non-last final Images cell with no exit, both Archive visual
+row boundaries across a Pipeline row, and whole shelf hide/show keeping
+dossier2. Bounded refresh ports explicitly do not simulate browser focusout;
+the real native constructor/observer/Core-removal cell proves that path.
+Add actual viewport hide/show and boundary cells to the existing isolated
+Chrome/WebKit producer. Preserve raw reds, source bodies and strict cleanup.
+Warp's distinct713/697pass/16fail read stays its baseline; the separately
+named21-file778/762pass/16fail owner pair will compare8422c521 to head3 with
+full diagnostics and selected START/END bodies. No inherited assertion is
+weakened. Actual1021LIVE approval and later Auto/List composition rules stay.
+
+Warp16715 resolves16458 and supersedes the contradictory Build2/16455
+no-prevention-on-stay wording: every vertical grid boundary consumes the key
+with preventDefault and stopPropagation. With an exit row it moves there;
+without one it stays. Only nonboundary cells hand the key to the tree. Both
+last-row no-exit checks assert defaultPrevented=true through the chained
+handler and native event path. No page scroll or sideways tree step is allowed.
+The formal1021LIVE approval hold is lifted for1048 under16680/Fable16708;
+this is not technical approval. The separate Auto/List check still requires
+both1048 and1055 actually live;1055 shipped328,1048 remains unshipped.

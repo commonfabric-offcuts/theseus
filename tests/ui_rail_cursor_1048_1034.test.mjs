@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { revealSelection } from '../web/reveal.mjs';
 import { KeyTree } from '../web/key-tree.mjs';
 import { ThingsRail } from '../web/things-rail.mjs';
-import { miniDocument } from './fixtures/mini_dom.mjs';
+import { miniDocument, matches } from './fixtures/mini_dom.mjs';
 
 // Bounded geometry ports exercise real scroll/routing decisions, not native layout.
 function revealFixture({ hidden = false, overlap = true, inside = false } = {}) {
@@ -44,12 +44,19 @@ function cursorFixture({ hidden = false, reverse = false, pipeline = false, fold
     const el = make(tag);
     Object.defineProperties(el, { parentElement: { get: () => el.parent }, ownerDocument: { get: () => doc } });
     el.contains = node => el === node || [...el.descendants()].includes(node);
-    el.checkVisibility = () => !el.hidden;
+    el.matches = selector => selector === '#main h1' ? false : matches(el, selector);
+    el.checkVisibility = () => {
+      for (let at = el; at; at = at.parentElement) if (at.hidden) return false;
+      const details = el.closest('details'), summary = details?.querySelector(':scope > summary');
+      return !details || details.open || summary === el || summary?.contains(el);
+    };
+    el.hasAttribute = name => el.getAttribute(name) !== null;
     el.getBoundingClientRect = () => el.box ?? { top: 0, bottom: 800, left: 0, right: 300, width: 300, height: 800 };
     return el;
   };
   doc.body = doc.createElement('body'); doc.body.root = true;
-  doc.defaultView = { innerHeight: 800, innerWidth: 1280, getComputedStyle: () => ({ overflowY: 'visible' }), scrollBy() {} };
+  doc.querySelectorAll = selector => doc.body.querySelectorAll(selector);
+  doc.defaultView = { innerHeight: 800, innerWidth: 1280, getComputedStyle: () => ({ overflowY: 'visible', overflowX: 'visible', position: 'static' }), scrollBy() {} };
   const host = doc.createElement('aside'), holder = doc.createElement('div'), details = doc.createElement('details');
   const summary = doc.createElement('summary'), body = doc.createElement('div'), images = doc.createElement('div');
   images.className = 'things-thumbs'; details.dataset.key = 'images'; details.open = !folded; details.hidden = noImages;
@@ -71,10 +78,14 @@ function cursorFixture({ hidden = false, reverse = false, pipeline = false, fold
   }); grid.append(...archived);
   const rail = Object.assign(Object.create(ThingsRail.prototype), { doc, host, holder, drawnOnce: true,
     sections: new Map([['images', { details, summary, body }], ['pipeline', { details: pipeDetails, summary: pipeSummary, body: pipeBody }]]) });
-  rail.tree = { list: () => rail.treeRows(), go: row => row?.el.focus() };
+  rail.tree = { root: host, column: host, doc, list: () => rail.treeRows(), go: row => row?.el.focus(),
+    rowOf: KeyTree.prototype.rowOf, ownKey: KeyTree.prototype.ownKey, stepIn: KeyTree.prototype.stepIn,
+    act: (...args) => rail.act(...args) };
   const press = (at, key, extra = {}) => {
     at.focus(); const event = { target: at, key, ...extra, preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; } };
-    rail.gridKey(event); return event;
+    rail.gridKey(event);
+    event.afterGrid = { prevented: Boolean(event.defaultPrevented), stopped: Boolean(event.stopped) };
+    KeyTree.prototype.key.call(rail.tree, event); return event;
   };
   return { doc, rail, tiles, archived, shelf, summary, pipeSummary, pipeRow, press };
 }
@@ -112,7 +123,7 @@ test('1048 Archive keeps Return, menu keys, modifiers and IME with their owners'
   const f = cursorFixture();
   for (const [key, extra] of [['Enter', {}], ['F10', { shiftKey: true }], ['ContextMenu', {}],
     ['ArrowUp', { isComposing: true }], ['ArrowRight', { metaKey: true }]]) {
-    assert.equal(f.press(f.archived[0], key, extra).defaultPrevented, undefined);
+    assert.equal(f.press(f.archived[0], key, extra).afterGrid.prevented, false);
   }
 });
 
@@ -122,26 +133,39 @@ test('1048 Images Down reaches an intervening Pipeline heading before Archive', 
   const f = cursorFixture({ pipeline: true });
   for (const tile of f.tiles.slice(3)) { f.press(tile, 'ArrowDown'); assert.equal(f.doc.activeElement, f.pipeSummary); }
 });
-test('1048 Archive Up leaves an intervening Pipeline row to the linear tree', () => {
+test('1048 every first visual Archive row cell exits Up to the preceding Pipeline row', () => {
   const f = cursorFixture({ pipeline: true });
   for (const el of f.archived.slice(0, 2)) {
-    const event = f.press(el, 'ArrowUp'); assert.equal(event.defaultPrevented, undefined); assert.equal(event.stopped, undefined);
-    KeyTree.prototype.key.call({ list: () => f.rail.treeRows(), rowOf: KeyTree.prototype.rowOf, go: f.rail.tree.go }, event);
-    assert.equal(f.doc.activeElement, el === f.archived[0] ? f.pipeRow : f.archived[0]);
+    const event = f.press(el, 'ArrowUp');
+    assert.equal(f.doc.activeElement, f.pipeRow); assert.equal(event.defaultPrevented, true);
   }
 });
-test('1048 folded or absent Images leaves Archive Up to the tree', () => {
+test('1048 folded or absent Images exits Archive Up to the previous tree row', () => {
   for (const options of [{ folded: true }, { noImages: true }]) {
-    const f = cursorFixture(options), event = f.press(f.archived[0], 'ArrowUp');
-    assert.equal(event.defaultPrevented, undefined); assert.equal(event.stopped, undefined);
+    const f = cursorFixture(options), before = f.rail.treeRows(), expected = before[before.findIndex(r => r.el === f.archived[0]) - 1]?.el;
+    const event = f.press(f.archived[0], 'ArrowUp');
+    assert.equal(f.doc.activeElement, expected ?? f.archived[0]);
+    assert.equal(event.defaultPrevented, true);
   }
 });
-test('1048 unused final Archive Down and Right bubble without a grid move', () => {
+test('1048 every last visual Archive row cell stays Down when no exit exists', () => {
   const f = cursorFixture();
-  for (const key of ['ArrowDown', 'ArrowRight']) {
-    const event = f.press(f.archived.at(-1), key);
-    assert.equal(event.defaultPrevented, undefined); assert.equal(event.stopped, undefined);
+  for (const el of f.archived.slice(2)) {
+    const event = f.press(el, 'ArrowDown'); assert.equal(f.doc.activeElement, el);
+    assert.equal(event.defaultPrevented, true); assert.equal(event.stopped, true);
   }
+});
+test('1048 every final Images row cell stays Down when no section or shelf follows', () => {
+  const f = cursorFixture({ hidden: true });
+  for (const el of f.tiles.slice(3)) {
+    const event = f.press(el, 'ArrowDown'); assert.equal(f.doc.activeElement, el);
+    assert.equal(event.defaultPrevented, true); assert.equal(event.stopped, true);
+  }
+});
+test('1048 unused final Archive Right remains with the existing tree owner', () => {
+  const f = cursorFixture(), el = f.archived.at(-1), event = f.press(el, 'ArrowRight');
+  assert.equal(event.afterGrid.prevented, false); assert.equal(event.afterGrid.stopped, false);
+  assert.equal(f.doc.activeElement, el);
 });
 test('1048 an immediate Images Archive round trip preserves each image column', () => {
   const f = cursorFixture();
@@ -150,6 +174,8 @@ test('1048 an immediate Images Archive round trip preserves each image column', 
     f.press(f.archived[0], 'ArrowUp'); assert.equal(f.doc.activeElement, tile);
   }
 });
+// This is a bounded refresh-decision port, not a focusout simulation. The
+// native constructor/observer and real external Core removal cover that path.
 test('1048 a removed selected replica takes its surviving neighbour through KeyTree', () => {
   for (const at of [0, 2, 3]) {
     const f = cursorFixture(), before = f.rail.treeRows(), selected = before.find(r => r.el === f.archived[at]);
@@ -170,4 +196,13 @@ test('1048 images sharing a message keep distinct cursor keys and return columns
   const keys = f.rail.treeRows().filter(row => row.el.closest('.things-thumbs')).map(row => row.key);
   assert.equal(new Set(keys).size, f.tiles.length);
   for (const tile of f.tiles.slice(3)) { f.press(tile, 'ArrowDown'); f.press(f.archived[0], 'ArrowUp'); assert.equal(f.doc.activeElement, tile); }
+});
+
+test('1048 hiding the whole shelf and showing it again retains dossier2 as the kept place', () => {
+  const f = cursorFixture({ pipeline: true }), before = f.rail.treeRows(), selected = before.find(r => r.el === f.archived[1]);
+  const tree = Object.assign(Object.create(KeyTree.prototype), { doc: f.doc, list: () => f.rail.treeRows(),
+    fallback: (...args) => f.rail.missingRow(...args), previousRows: before, current: selected.el, currentKey: selected.key,
+    chosen: true, wanted: false, marked: new Set(before.map(r => r.el)) });
+  f.shelf.hidden = true; tree.refresh(); assert.equal(tree.currentKey, selected.key);
+  f.shelf.hidden = false; tree.refresh(); assert.equal(tree.currentKey, selected.key); assert.equal(tree.current, selected.el);
 });

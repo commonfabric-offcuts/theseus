@@ -280,12 +280,18 @@ export class ThingsRail {
       const beyond = cells.filter(cell => cell !== from && gap(cell.box) >= -.5);
       const adjacent = beyond.reduce((best, cell) => !best || gap(cell.box) < gap(best.box) ? cell : best, null);
       if (!adjacent) {
+        // The whole-grid boundary owns the key even when no exit exists.
+        // Otherwise KeyTree would step sideways from the pressed cell.
+        consume();
         const first = Math.min(...cells.map(cell => rows.indexOf(byElement.get(cell.el))));
         const last = Math.max(...cells.map(cell => rows.indexOf(byElement.get(cell.el))));
         if (!down && grid.classList.contains('archive-shelf-row')) {
           // Geometry crosses to Images only when it is the immediately
           // preceding section; intervening rows keep their tree order.
-          if (!rows[first - 1]?.el.closest('.things-thumbs')) return;
+          if (!rows[first - 1]?.el.closest('.things-thumbs')) {
+            go(rows[first - 1]?.el);
+            return;
+          }
           const images = rows.filter(row => row.el.closest('.things-thumbs')).map(row => ({ el: row.el, box: row.el.getBoundingClientRect() }))
             .filter(cell => cell.box.width > 0 && cell.box.height > 0);
           const bottom = Math.max(...images.map(cell => cell.box.top));
@@ -321,6 +327,9 @@ export class ThingsRail {
     const at = previous.findIndex(row => row.key === key);
     if (at < 0) return null;
     const present = new Map(rows.map(row => [row.key, row]));
+    // A whole shelf hidden by layout keeps its place for when it returns.
+    // Only an individual removal among surviving old dossiers reanchors.
+    if (!previous.some(row => row.key.startsWith('archive:') && present.has(row.key))) return null;
     return [...previous.slice(at + 1), ...previous.slice(0, at).reverse()]
       .map(row => present.get(row.key)).find(Boolean) ?? null;
   }

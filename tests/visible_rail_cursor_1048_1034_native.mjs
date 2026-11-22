@@ -35,6 +35,9 @@ const rows = [], cleanup = {}, owned = new Set(), fixtureOwned = new Set([fixtur
 const ps = () => execFileSync('/bin/ps', ['-axo', 'pid=,ppid=,command='], { encoding: 'utf8' })
   .split('\n').flatMap(line => { const m = line.match(/^\s*(\d+)\s+(\d+)\s+(.*)$/); return m ? [{ pid: +m[1], ppid: +m[2], command: m[3] }] : []; });
 let browser, profile, origin, version, failure;
+const resources = async phase => writeFile(out + '/resource-checkpoint.json', JSON.stringify({
+  phase, fixturePid: fixture.pid, fixtureOwned: [...fixtureOwned], owned: [...owned], profile, origin,
+}, null, 2));
 function retain() {
   const list = ps();
   for (const set of [owned, fixtureOwned]) for (let changed = true; changed;) {
@@ -49,7 +52,9 @@ const portClosed = address => new Promise(resolve => {
   socket.once('connect', () => { socket.destroy(); resolve(false); }); socket.once('error', () => resolve(true));
 });
 try {
+  await resources('fixture spawned');
   const facts = await control({ method: 'ready' }); origin = facts.origin;
+  await resources('fixture ready');
   const topic = 'cursor1048';
   const noImagesTopic = 'cursor1048-noimages';
   await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Images and Archive cursor1048' }] });
@@ -110,9 +115,11 @@ try {
     await writeFile(out + '/noimages-originals.json', JSON.stringify(originals, null, 2));
   }
   profile = await mkdtemp(out + '/' + engine + '-profile-');
+  await resources('profile created before browser launch');
   const persistent = await playwright[engine].launchPersistentContext(profile, { headless: true,
     ...(engine === 'chromium' ? { executablePath: process.env.AIM_CHROME, ignoreDefaultArgs: ['--hide-scrollbars'] } : {}) });
   browser = persistent.browser(); version = browser.version(); retain(); assert.ok(owned.size);
+  await resources('browser launched');
   await writeFile(out + '/launch-processes.json', JSON.stringify(ps().filter(p => owned.has(p.pid)), null, 2));
   const cells = preflight ? [[1280, 'bookends', 'light']] : grammar ? [[1280, 'bookends', 'light'], [1280, 'paper', 'dark']] : [1280, 390].flatMap(width =>
     ['bookends', 'paper'].flatMap(look => ['light', 'dark'].map(theme => [width, look, theme])));
@@ -121,7 +128,8 @@ try {
     const row = { key, width, look, theme, checks: [], observations: [], errors: [], served: {}, executed: {}, captureErrors: [] }; rows.push(row);
     const context = await browser.newContext({ viewport: { width, height: 800 }, colorScheme: theme, hasTouch: width === 390, isMobile: false });
     await context.addInitScript(look => {
-      localStorage.setItem('theseus-look', look); window.cursorInputs = []; window.cursorWrites = [];
+      localStorage.setItem('theseus-look', look); window.cursorInputs = []; window.cursorWrites = []; window.cursorKeyEvents = [];
+      addEventListener('keydown', e => cursorKeyEvents.push(e), true);
       for (const type of ['keydown', 'wheel', 'click']) addEventListener(type, e => cursorInputs.push({ type,
         key: e.key, trusted: e.isTrusted, target: e.target.tagName, inRail: !!e.target.closest?.('#things') }), true);
       const originalFetch = window.fetch;
@@ -169,6 +177,8 @@ try {
         shelfTop: shelf?.scrollTop ?? null, shelfMax: shelf ? shelf.scrollHeight - shelf.clientHeight : null,
         visible: !!box && box.width > 0 && box.height > 0 && box.top >= upper - 1 && box.bottom <= lower + 1 &&
           box.left >= Math.max(0, railBox?.left ?? 0) - 1 && box.right <= Math.min(innerWidth, railBox?.right ?? innerWidth) + 1 && probes.every(p => p.inside),
+        viewport: { width: innerWidth, height: innerHeight }, lastKeyDefaultPrevented: window.cursorKeyEvents.at(-1)?.defaultPrevented ?? null,
+        rovingRows: [...document.querySelectorAll('#things [role=treeitem][tabindex=\"0\"]')].map(el => ({ shelf: el.dataset.id, image: el.dataset.railImage, section: el.closest('.things-sec')?.dataset.key })),
         upper, lower, probes, roving: [...document.querySelectorAll('#things [role=treeitem][tabindex="0"]')].map(el => el.className),
         pageY: scrollY };
     });
@@ -216,10 +226,43 @@ try {
         await press('ArrowDown'); s = await record('Images Down to intervening Pipeline');
         check('Images Down preserves intervening Pipeline heading', () => assert.equal(s.active.section, 'pipeline'));
         check('Pipeline heading is exposed above actual shelf', () => assert.equal(s.visible, true));
-        await page.locator('#archive-shelf .shelf-dossier').first().focus(); await record('Pipeline boundary Archive focus setup');
-        await press('ArrowUp'); s = await record('Archive Up to preceding Pipeline row');
-        check('Archive Up follows preceding Pipeline row', () => assert.equal(s.active.href, pipeLastHref));
-        check('Pipeline row exposed from Archive Up', () => assert.equal(s.visible, true));
+        const firstArchiveIds = s.shelfItems.slice(0, 2).map(el => el.id);
+        for (const id of firstArchiveIds) {
+          await page.locator(`#archive-shelf .shelf-dossier[data-id="${id}"]`).focus(); await record('Pipeline boundary Archive focus setup ' + id);
+          await press('ArrowUp'); s = await record('Archive Up to preceding Pipeline row ' + id);
+          check('every first-row Archive column exits to Pipeline ' + id, () => assert.equal(s.active.href, pipeLastHref));
+          check('moving Archive boundary consumes key ' + id, () => assert.equal(s.lastKeyDefaultPrevented, true));
+          check('Pipeline row exposed from Archive Up ' + id, () => assert.equal(s.visible, true));
+        }
+        // Put the actual final visual row on screen with a trusted wheel.
+        let b = s.shelfBox; await page.mouse.move(b.left + b.width / 2, b.top + b.height / 2); await page.mouse.wheel(0, 100000);
+        await page.waitForFunction(() => { const el = document.querySelector('#archive-shelf'); return el.scrollTop >= el.scrollHeight - el.clientHeight - 1; });
+        s = await snap(); const lastShelfTop = s.shelfItems.at(-1).rect.top;
+        for (const item of s.shelfItems.filter(el => Math.abs(el.rect.top - lastShelfTop) < 1)) {
+          await page.locator(`#archive-shelf .shelf-dossier[data-id="${item.id}"]`).focus(); const before = await record('last Archive row focus setup ' + item.id);
+          await press('ArrowDown'); const after = await record('last Archive row no exit Down ' + item.id);
+          check('each final Archive column stays with no exit ' + item.id, () => assert.equal(after.active.shelf, item.id));
+          check('no-exit Archive stay prevents the native default ' + item.id, () => assert.equal(after.lastKeyDefaultPrevented, true));
+          check('no-exit Archive stay keeps its exposed scroll position ' + item.id, () => {
+            assert.equal(after.visible, true);
+            assert.deepEqual([after.pageY, after.railTop, after.shelfTop], [before.pageY, before.railTop, before.shelfTop]);
+          });
+        }
+        b = (await snap()).shelfBox; await page.mouse.move(b.left + b.width / 2, b.top + b.height / 2); await page.mouse.wheel(0, -100000);
+        await page.waitForFunction(() => document.querySelector('#archive-shelf').scrollTop === 0);
+        await page.locator('#archive-shelf .shelf-dossier').first().focus(); await press('ArrowRight');
+        const kept = await record('dossier2 before whole shelf hide'); row.resizeKept = kept.active.shelf;
+        check('resize probe starts on the second actual dossier', () => assert.equal(row.resizeKept, kept.shelfItems[1].id));
+        await page.setViewportSize({ width: 1000, height: 800 });
+        await page.waitForFunction(() => document.querySelector('#archive-shelf').hidden); const hidden = await record('whole shelf hidden at1000');
+        check('resize actually hides the whole shelf', () => assert.equal(hidden.shelfShown, false));
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await page.waitForFunction(() => !document.querySelector('#archive-shelf').hidden);
+        await page.evaluate(() => new Promise(r => requestAnimationFrame(r))); const shown = await record('whole shelf shown at1280');
+        check('whole shelf return keeps dossier2 roving identity', () => assert.ok(shown.rovingRows.some(el => el.shelf === row.resizeKept)));
+        await page.locator('#messages .message-card').first().focus(); await press('ArrowRight');
+        s = await record('feed Right after shelf returns');
+        check('real pane entry restores kept dossier2 after resize', () => assert.equal(s.active.shelf, row.resizeKept));
         // Fold through the actual disclosure key owner, not a DOM open write.
         await toggleImages();
         assert.equal(await page.locator('#things [data-key=images]').evaluate(el => el.open), false);
@@ -338,6 +381,19 @@ try {
         await page.locator(`.shelf-dossier[data-id="${restored}"]`).waitFor();
         row.undo = await readBack(); check('native Undo returns the retained dossier to Archive', () => assert.equal(row.undo.stack_position.below, true));
       }
+      if (width === 390) {
+        const before = await snap(), finalTop = before.grid.at(-1).rect.top;
+        for (const tile of before.grid.filter(el => Math.abs(el.rect.top - finalTop) < 1)) {
+          await focusImage(tile.id); const from = await record('no shelf final Images focus setup ' + tile.id);
+          await press('ArrowDown'); const after = await record('no shelf final Images Down ' + tile.id);
+          check('each final Images column stays with no shelf or exit ' + tile.id, () => assert.equal(after.active.image, tile.id));
+          check('no-exit Images stay prevents the native default ' + tile.id, () => assert.equal(after.lastKeyDefaultPrevented, true));
+          check('no-exit Images stay keeps its exposed scroll position ' + tile.id, () => {
+            assert.equal(after.visible, true);
+            assert.deepEqual([after.pageY, after.railTop], [from.pageY, from.railTop]);
+          });
+        }
+      }
       await focusImage(first.id); await press('ArrowRight'); s = await record('image Right actual neighbor');
       check('horizontal image route', () => assert.equal(s.active.image, s.grid[1]?.id));
       await press('Shift+F10'); await page.getByRole('menuitem', { name: 'Copy link', exact: true }).waitFor();
@@ -359,7 +415,8 @@ try {
       row.passed = row.checks.every(c => c.passed);
     } catch (e) { row.error = e.stack; row.passed = false; await record('driver failure').catch(() => {});
       row.inputs = await page.evaluate(() => cursorInputs).catch(() => []); await page.screenshot({ path: out + '/' + key + '-error.png' }).catch(() => {}); }
-    retain(); await context.close(); await writeFile(out + '/observations.json', JSON.stringify(rows, null, 2));
+    retain(); await resources('cell ' + key + ' before context close');
+    await context.close(); await writeFile(out + '/observations.json', JSON.stringify(rows, null, 2));
     console.log(JSON.stringify({ key, passed: row.passed, failed: row.checks.filter(c => !c.passed).map(c => c.name), error: row.error?.split('\n')[0] }));
     if (row.error) break;
   }
@@ -373,6 +430,7 @@ finally {
   if (profile && cleanup.browserClosed && !cleanup.remainingOwned.length && !cleanup.profileProcesses.length) await rm(profile, { recursive: true });
   cleanup.profileAbsent = profile ? await access(profile).then(() => false, () => true) : true;
   cleanup.portClosed = origin ? await portClosed(origin) : null;
+  await resources('cleanup observed');
   await writeFile(out + '/results.json', JSON.stringify({ engine, version, hashes, rows, cleanup, failure }, null, 2));
 }
 assert.ok(cleanup.browserClosed && cleanup.fixtureAbsent && cleanup.profileAbsent && cleanup.portClosed);
