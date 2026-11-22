@@ -11,6 +11,7 @@ import { NotebookImages } from './notebook-images.mjs';
 import { ImagePick, paintThumb, readInTurn } from './image-pick.mjs';
 import { DRAFT_TIP } from './topic-navigation.mjs';
 import { NotebookViews } from './notebook-view.mjs';
+import { watchNotebookCaret } from './notebook-caret.mjs';
 import { drawnText, drawnRevision, formatWords, literalWords, composeFormattedWords } from './message-format.mjs';
 
 // The draft mark's words (docs/notebook-pages.md, "A draft page").
@@ -206,6 +207,7 @@ export class NotebookPage extends DeckPage {
   // Let go without a pagehide (an in-place move, another page in the composer, notebook-sheet.mjs): writing closes
   // as on pagehide, and the page's keys and listeners go with it.
   close() {
+    this.stopCaret?.(); this.stopCaret = null;
     this.detached=true;this.listening.abort();this.deleteUI?.release(this);
     this.editing?.history?.close();
     this.textProjection?.close();
@@ -354,6 +356,7 @@ export class NotebookPage extends DeckPage {
       this.images.restore(id).catch(error=>{this.imageError=error.message;this.writingChanged();});
   }
   open(editing) {
+    this.stopCaret?.(); this.stopCaret = null;
     this.cardImages?.close();this.cardImages?.list?.remove();
     // A refusal said for the card before goes as another opens.
     if(this.imageError){this.imageError=null;this.writingChanged();}
@@ -363,9 +366,11 @@ export class NotebookPage extends DeckPage {
     this.editing.history=new NotebookEditHistory({field:this.editing.field,
       readOnly:()=>this.readOnly||this.editing?.input.readOnly()||this.writing?.closed});
     this.editing.field.addEventListener('input',()=>this.save());
+    this.stopCaret = watchNotebookCaret(this.editing.field, this.host);
     this.cardImages=this.imagePicker(this.editing.field,this.editing.input,this.list);
   }
   finish({discard=false,target=null} = {}) {
+    this.stopCaret?.(); this.stopCaret = null;
     this.editing?.history?.close();
     this.cardImages?.close();this.cardImages?.list?.remove();this.cardImages=null;
     if(this.imageError&&this.editing){this.imageError=null;this.writingChanged();}
