@@ -11,7 +11,7 @@ function key(p,target,key,extra={}) {
   const event={target,key,preventDefault(){this.defaultPrevented=true;},...extra};
   p.key(event);return event;
 }
-const chat=menu=>menu.children.find(n=>n.textContent==='Chat about this…');
+const chat=menu=>menu.children.find(n=>(n.querySelector('.menu-description')?.children[0]?.textContent??n.textContent)==='Chat about this…');
 
 test('927 the real painted menu contains Chat and the card has no standalone ask glyph',t=>{
   const p=page(t);

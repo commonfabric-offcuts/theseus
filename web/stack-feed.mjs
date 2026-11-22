@@ -27,7 +27,7 @@ import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
 import { contact, heard, notTaken, NOT_TAKEN } from './api.mjs';
 import { CoordinationChoice } from './coordination-choice.mjs';
 import { firstCoverMenuItem } from './cover-refresh.mjs';
-import { foldInMotion } from './fold-motion.mjs';
+import { foldInMotion, closeUp } from './fold-motion.mjs';
 import { ArchiveShelf } from './archive-shelf.mjs';
 
 // Why Archive does nothing for a dossier holding a message the reader
@@ -1019,7 +1019,7 @@ export class StackFeed {
     if (below) this.shelf?.putAway(stack.id); else this.shelf?.broughtBack(stack.id);
     this.act('stack.aside', item, { through, ...(typeof restoreKey === 'number' ? { key: restoreKey } : {}) });
     if (undoable) this.remember(at => this.setAside(stack, position.through !== null, { undoable: false, restoreThrough: position.through, restoreKey: position.order_key, at }));
-    this.arrange();
+    closeUp(this.list, () => this.arrange());
     // Focus goes to More where the page's one view draws it (Only new does
     // not); there the dossier keeps it, on the first message the view draws.
     if (focus) {
