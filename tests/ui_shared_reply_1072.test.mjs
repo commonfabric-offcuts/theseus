@@ -80,6 +80,22 @@ test('1072 newer local B words survive a committed send in A', async t => {
   assert.deepEqual(f.b.editor.snapshot(), before); assert.equal(f.b.editor.dirty, true);
 });
 
+test('1072 older B version with different words stays because those words were never sent', async t => {
+  const f = await fixture(t), before = f.b.editor.snapshot();
+  f.a.editor.edit({ body: 'Different A words sent instead' }); await f.a.registry.flush(f.a.editor); await f.send();
+  assert.notEqual((await f.refresh())?.retired, true); assert.deepEqual(f.b.editor.snapshot(), before);
+});
+
+test('1072 actual Core quotes and implicit Tell retire with the exact sent writing', async t => {
+  const f = await fixture(t);
+  f.a.editor.edit({ body: 'Quoted reply to the agent', quotes: [{ source: f.source, excerpt: 'Source 0 exact passage.' }], addressees: [f.facts.agent], whisper: false, intent: null });
+  await f.a.registry.flush(f.a.editor); const b = await f.tab('B-quoted');
+  const sent = await f.send(), frozen = await f.api.view('submission', { submission_id: sent.id });
+  assert.equal(frozen.intent, 'tell'); assert.equal(frozen.quotes.length, 1);
+  assert.equal((await b.registry.refreshSharedReply(f.source.id, f.reader, () => true)).retired, true);
+  assert.equal(b.editor.draft.body, ''); assert.deepEqual(b.editor.draft.quotes, []);
+});
+
 test('1072 newer B input during the exact submission read fences out retirement', async t => {
   const f = await fixture(t); await f.send();
   const result = await f.refresh(async (name, args) => {

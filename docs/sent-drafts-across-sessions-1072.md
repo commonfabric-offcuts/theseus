@@ -52,8 +52,13 @@ pass, and the exact matching submission. A continuation remains a pending
 freshness read; no whole-actor send history is loaded. Committed sends are
 checked against the same source/topic/draft/generation and an equal or later
 prepared revision, bracketed by unchanged runtime authority. A clean older
-acknowledged revision of that same generation can retire; a dirty or newer
-local revision cannot. No new Core view, command, schema or migration is needed.
+acknowledged revision of that same generation retires only when its complete
+writing matches the committed snapshot, allowing the implicit Tell choice to
+become explicit. If A changed the words before sending, B's older words were
+never sent and stay. The final safety audit's real-Core control reproduces that
+false retirement on the preliminary source and passes with the writing check.
+A dirty or newer local revision cannot retire. No new Core view, command,
+schema or migration is needed.
 
 The existing session queue owns replacing the proven stale writing with Core's
 current draft and keeping that transition in the journal. Recheck the complete

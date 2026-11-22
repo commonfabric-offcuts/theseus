@@ -2,6 +2,7 @@
 import { meaningfulSnapshot, same as sameSnapshot } from './cleanup.mjs';
 import { holdsWriting } from './editor.mjs';
 import { uploadWork, currentImages } from './upload-state.mjs';
+import { writingValue } from './writing-comparison.mjs';
 import { sessionRefused, Deadline } from './api.mjs';
 const copy = value => structuredClone(value);
 // What an attempt that got no recorded answer holds. A session's refusal says
@@ -18,6 +19,12 @@ const authorityPair = value => value && typeof value.authority_id === 'string' &
   ? { authority_id: value.authority_id, authority_epoch: value.authority_epoch } : null;
 const validAuthority = value => authorityPair(value) && Object.keys(value).length === 3 &&
   ['initial', 'complete', 'incomplete', 'unknown'].includes(value.continuity);
+const sharedWriting = draft => {
+  const value = writingValue(draft);
+  // An implicit ordinary Tell becomes explicit when Send freezes it.
+  if (value?.addressees.length && value.whisper !== true) { value.intent ??= 'tell'; value.whisper = false; }
+  return value;
+};
 const same = (a, b) => {
   if (a === b) return true;
   if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
@@ -110,6 +117,7 @@ export class EditorSession {
           !same(remote.source_ref, e.context.sourceRef) || submission?.instance_id !== e.context.instanceId ||
           !same(submission.source_ref, e.context.sourceRef) || submission.topic_id !== e.context.topicId ||
           submission.draft_id !== old.id || submission.draft_generation !== old.generation ||
+          !same(sharedWriting(submission), sharedWriting(old)) ||
           !(submission.draft_revision >= old.revision) || !same(submission.authority, fence.authority) ||
           receipt?.instance_id !== e.context.instanceId || receipt.kind !== 'message.send' || receipt.status !== 'committed' ||
           receipt.operation_id !== submission.send_operation_id || receipt.result?.submission_id !== submission.id ||
