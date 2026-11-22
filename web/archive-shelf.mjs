@@ -8,6 +8,11 @@
 import { openMessageMenu } from './message-menu.mjs';
 import { keyAction } from './pane-keys.mjs';
 
+const VIEW_KEY = 'theseus-archive-view', AUTO_LIST = 18;
+// Grid: four replicas; List: three rows, each a dot and a line, as the rail's topics.
+const GRID = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="9" y="2" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="2" y="9" width="5" height="5" rx="1.2" fill="currentColor"/><rect x="9" y="9" width="5" height="5" rx="1.2" fill="currentColor"/></svg>';
+const LIST = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="2.6" width="2.6" height="2.6" rx=".7" fill="currentColor"/><rect x="6" y="3.1" width="8" height="1.6" rx=".8" fill="currentColor"/><rect x="2" y="6.7" width="2.6" height="2.6" rx=".7" fill="currentColor"/><rect x="6" y="7.2" width="8" height="1.6" rx=".8" fill="currentColor"/><rect x="2" y="10.8" width="2.6" height="2.6" rx=".7" fill="currentColor"/><rect x="6" y="11.3" width="8" height="1.6" rx=".8" fill="currentColor"/></svg>';
+const VIEWS = [['auto', 'Auto', ''], ['grid', 'Grid', GRID], ['list', 'List', LIST]];
 const element = (doc, tag, className, text) => {
   const node = doc.createElement(tag); if (className) node.className = className;
   if (text !== undefined) node.textContent = text; return node;
@@ -41,7 +46,7 @@ export class ArchiveShelf {
     const head = element(doc, 'div', 'archive-shelf-head');
     this.heading = element(doc, 'h2', '', 'Archived'); this.heading.id = 'archive-shelf-heading';
     this.count = element(doc, 'span', 'archive-shelf-count');
-    head.append(this.heading, this.count);
+    head.append(this.heading, this.count, this.views());
     this.row = element(doc, 'div', 'archive-shelf-row'); this.row.setAttribute('role', 'list');
     this.root.append(head, this.row);
     const replicaOf = event => event.target.closest?.('.shelf-dossier') ?? null;
@@ -137,7 +142,35 @@ export class ArchiveShelf {
     }
     this.list = list; this.update(false);
     this.count.textContent = list.length ? String(list.length) : '';
+    this.showView();
     this.retarget();
+  }
+  // The shelf's two views (1055, Tony): Grid, the replicas as now, and List, one row each like the left rail's topics.
+  // Auto, the default, is Grid until the shelf holds more than 18, then List. The choice is the viewer's own.
+  views() {
+    const doc = this.doc, group = element(doc, 'span', 'shelf-views');
+    group.setAttribute('role', 'group'); group.setAttribute('aria-label', 'Archived view');
+    let stored = null; try { stored = doc.defaultView?.localStorage.getItem(VIEW_KEY); } catch { /* a convenience */ }
+    this.mode = VIEWS.some(([value]) => value === stored) ? stored : 'auto';
+    for (const [value, words, glyph] of VIEWS) {
+      const button = element(doc, 'button', 'shelf-view'); button.type = 'button'; button.dataset.value = value;
+      if (glyph) { button.innerHTML = glyph; button.setAttribute('aria-label', words); } else button.textContent = words;
+      button.onclick = () => { this.mode = value; try { doc.defaultView?.localStorage.setItem(VIEW_KEY, value); } catch { /* a convenience */ } this.showView(); };
+      group.append(button);
+    }
+    this.viewButtons = [...group.children];
+    return group;
+  }
+  showView() {
+    const count = this.list?.length ?? 0, view = this.mode === 'auto' ? (count > AUTO_LIST ? 'list' : 'grid') : this.mode;
+    if (this.root.dataset.view !== view) this.root.dataset.view = view;
+    for (const button of this.viewButtons ?? []) {
+      button.setAttribute('aria-pressed', String(button.dataset.value === this.mode));
+      // Under Auto, the view it chose is marked, quietly.
+      button.dataset.current = String(this.mode === 'auto' && button.dataset.value === view);
+      button.title = button.dataset.value === 'auto' ? `Auto: Grid up to ${AUTO_LIST}, List after (now ${view === 'list' ? 'List' : 'Grid'})`
+        : button.getAttribute('aria-label');
+    }
   }
   make(id) {
     const doc = this.doc, item = element(doc, 'div', 'shelf-item'), replica = element(doc, 'button', 'shelf-dossier'); replica.type = 'button';
@@ -149,7 +182,7 @@ export class ArchiveShelf {
       if (index === SHEETS - 1) for (let line = 0; line < 3; line += 1) sheet.append(element(doc, 'span', 'shelf-line'));
       folder.append(sheet);
     }
-    replica.append(folder, element(doc, 'span', 'shelf-title'));
+    replica.append(folder, element(doc, 'span', 'shelf-title'), element(doc, 'span', 'shelf-size'));
     // One dossier per press: the second click of a double-click lands where the next replica has closed up, and
     // brings nothing back.
     replica.onclick = event => { if (event.detail > 1) return; const stack = this.stacks.get(id); if (stack) this.restore(stack); };
@@ -166,6 +199,7 @@ export class ArchiveShelf {
   }
   dress(replica, { title, count, colours }) {
     replica.querySelector('.shelf-title').textContent = title;
+    const size = replica.querySelector('.shelf-size'); if (size) size.textContent = count > 1 ? String(count) : '';
     replica.title = `${title}: ${count === 1 ? 'one message' : `${count} messages`}. Click to bring it back.`;
     replica.setAttribute('aria-label', `${title}, ${count === 1 ? 'one message' : `${count} messages`}`);
     replica.dataset.sheets = String(Math.min(count, SHEETS));

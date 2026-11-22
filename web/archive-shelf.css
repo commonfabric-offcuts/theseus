@@ -38,3 +38,32 @@
    focus after Archive goes to More, as before the shelf. The rule above More goes with it when More was all it held. */
 body[data-archive-shelf=on] .stack-more{display:none}
 body[data-archive-shelf=on] .stack-controls:not(:has(>:not(.stack-more,[hidden]))){display:none}
+
+/* The shelf's views (1055): the switch, in the look picker's shape, at the heading's right. */
+.shelf-views{display:inline-flex;gap:1px;margin-left:auto;padding:1px;border:1px solid var(--line);border-radius:.4rem;background:var(--panel);align-self:center}
+:root .shelf-views .shelf-view{display:inline-grid;place-items:center;min-width:0;min-height:0;height:1.25rem;padding:0 .45rem;border:0;border-radius:.3rem;background:transparent;color:var(--muted);font-size:.68rem;line-height:1;cursor:pointer}
+:root .shelf-views .shelf-view:hover{color:var(--ink);background:transparent}
+:root .shelf-views .shelf-view[aria-pressed=true]{background:var(--soft);color:var(--ink);font-weight:600}
+:root .shelf-views .shelf-view[data-current=true]{color:var(--ink)}
+.shelf-view svg{display:block}
+.shelf-size{display:none}
+/* List: one row each, as the left rail's topics: the folder small at the left, the title on one line, the count
+   flush right. */
+.archive-shelf[data-view=list] .archive-shelf-row{display:flex;flex-direction:column;gap:1px}
+:root .archive-shelf[data-view=list] .shelf-dossier{flex-direction:row;align-items:center;gap:.55rem;min-height:0;height:1.5rem;padding:0 .4rem 0 .35rem;border-radius:.35rem;
+  color:color-mix(in srgb,var(--rail-ink-2,var(--ink)) 88%,transparent)}
+.archive-shelf[data-view=list] .shelf-dossier:hover,.archive-shelf[data-view=list] .shelf-dossier:focus-visible{color:var(--ink)}
+.archive-shelf[data-view=list] .shelf-folder{flex:none;width:.95rem;height:.7rem;margin:.12rem 0 0;border-radius:.16rem}
+.archive-shelf[data-view=list] .shelf-dossier[data-folder=true] .shelf-folder::before{top:-.16rem;height:.2rem;border-radius:.12rem .12rem 0 0}
+.archive-shelf[data-view=list] .shelf-sheet:nth-child(-n+2){display:none}
+.archive-shelf[data-view=list] .shelf-sheet:nth-child(3){left:.14rem;right:.14rem;top:.16rem;bottom:.12rem;padding:0;border-radius:.1rem;box-shadow:none}
+.archive-shelf[data-view=list] .shelf-dossier[data-folder=false] .shelf-sheet{left:0;right:0;top:0;bottom:0}
+.archive-shelf[data-view=list] .shelf-line{display:none}
+.archive-shelf[data-view=list] .shelf-title{display:block;flex:1;min-width:0;margin:0;font-size:.77rem;line-height:1.5rem;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;-webkit-line-clamp:unset}
+.archive-shelf[data-view=list] .shelf-size{display:block;flex:none;color:var(--muted);font-size:.66rem;font-variant-numeric:tabular-nums}
+/* On a coarse pointer the switch and the list's rows are finger-sized (1055, as look-touch.css does for the look switches). */
+@media (pointer:coarse){
+  :root .shelf-views .shelf-view{height:2.75rem;min-height:44px;min-width:44px;padding:0 .8rem;font-size:.8rem}
+  :root .archive-shelf[data-view=list] .shelf-dossier{height:2.75rem;min-height:44px}
+  .archive-shelf[data-view=list] .shelf-title{line-height:2.75rem}
+}
