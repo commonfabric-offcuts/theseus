@@ -171,6 +171,14 @@ export class CardReplies {
       !this.registry.current && !this.registry.pendingOpen && !holdsWriting(p.editors.reply.draft) &&
       (!doc.activeElement || doc.activeElement === doc.body || doc.activeElement === returnedFocus || row.ui.root.contains(doc.activeElement)));
   }
+  sharedSent(p) {
+    const id = p?.source?.source_ref?.id, row = this.rows.get(id), editor = p?.editors.reply;
+    if (!row || row.p !== p || p.hidden || editor.dirty || this.registry.current || this.registry.pendingOpen) return;
+    // The exact sent generation has been replaced and kept by its session.
+    // Draw even a focused old field before hiding; later input was fenced out.
+    row.ui.drawEditor();
+    if (!holdsWriting(editor.draft) && !uploadWork(editor) && !this.registry.doubt(editor).label) this.hide(id, row, { focus: false });
+  }
   from(id) {
     const row = this.rows.get(id);
     return row && this.shown(id) ? { wide: replyNeedsWide(row.ui.field, row.p.editors.reply.draft) } : false;
