@@ -1051,7 +1051,7 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
   .reading-pane.agent-pane .reader-end .end-step { color: #56616a; }
 }
 /* Item 652: the laptop card editor is the default on phones for now (docs/decks.md). One vertical list and one in-place writing box at every width; touch controls keep their targets. */
-.deck-page{max-width:46rem;display:grid;gap:.6rem}.deck-status{min-height:1.5rem;flex-wrap:wrap;margin:0}.deck-status .deck-again{min-height:2rem;font-size:.78rem;padding:.1rem .6rem}
+.deck-page{max-width:46rem;display:grid;grid-template-columns:minmax(0,1fr);gap:.6rem}.deck-status{min-height:1.5rem;flex-wrap:wrap;margin:0}.deck-status .deck-again{min-height:2rem;font-size:.78rem;padding:.1rem .6rem}
 .deck-opening{color:var(--muted);line-height:1.6;overflow-wrap:anywhere}
 .deck-cards{list-style:none;margin:0;padding:0;display:grid;gap:.45rem}
 .deck-card{min-width:0;padding:.75rem .95rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);overflow-wrap:anywhere}:where(.deck-pointing) .deck-card:hover{border-color:color-mix(in srgb,var(--line),var(--ink) 20%)}
@@ -1535,3 +1535,11 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 /* 1025: a reason reply's basis is a quiet mark; its words remain in title/ARIA. */
 .reply-basis-mark{display:block;width:14px;height:14px;margin:0 0 .35rem;color:var(--muted);user-select:none;-webkit-user-select:none}
 .reply-basis-mark>svg{display:block}
+/* Phone reading keeps code and every table cell in the page's column (1065).
+   The original words remain intact; wrapping adds height, never hidden content. */
+@media(max-width:760px){
+  .md-pre{white-space:pre-wrap;overflow-wrap:anywhere}
+  .md-table-wrap{width:100%}
+  .md-table{width:100%;table-layout:fixed}
+  .md-cell{width:auto;max-width:100%;overflow-wrap:anywhere}
+}

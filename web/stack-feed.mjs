@@ -47,7 +47,7 @@ export function stackActEnvelope({ instanceId, authority, kind, item, args, oper
   return { v: 1, instance_id: instanceId, operation_id: operationId, kind, target: { message_id: item.id },
     expected: { [`${field}_revision`]: item.acts?.[`${field}_revision`] ?? 0, authority: { authority_id, authority_epoch } }, args };
 }
-const FEED_ACTIONS = ['move-up', 'move-down', 'right', 'left', 'join-up', 'join-down', 'undo', 'fold-message'];
+const FEED_ACTIONS = ['move-up', 'move-down', 'open', 'right', 'left', 'join-up', 'join-down', 'undo', 'fold-message'];
 
 // Whether a touch began on something between it and the list that scrolls
 // sideways (a wide table, a block of code): a sideways drag there scrolls it.
@@ -1120,11 +1120,13 @@ export class StackFeed {
     if (action === 'fold-message') return this.foldKey(event, entry, toggle);
     event.preventDefault();
     if (action === 'undo') return this.undo();
-    if (action === 'move-down') {
+    // The shared map's Command-Right opens other panes; in the feed it
+    // archives this dossier, including when its child message has the keys.
+    if (action === 'open') {
       const found = stackOf(this.list, entry);
       return found ? this.setAside(found.stack, true) : false;
     }
-    if (action === 'move-up') return this.move(entry, 'up');
+    if (action === 'move-up' || action === 'move-down') return this.move(entry, action.slice(5));
     if (action === 'join-up' || action === 'join-down') return this.join(entry, action.slice(5));
   }
   // x on a message (item 388): folds it to its row, as Fold in ⋯ does
