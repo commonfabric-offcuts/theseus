@@ -788,6 +788,7 @@ def take_train(config, sha, evidence, train, known_reds, github):
 def admit(config, candidate, *, started_landing=False, trained=None, producer=None, github=None):
     """987: callable before a launcher boundary/merge or a human hosted dispatch."""
     try:
+        producer = gauntlet_admission.producer_selectors(producer)
         if trained is not None and trained.get('kind') == 'judged-first':
             judgment = trained.get('judgment')
             require(isinstance(judgment, dict), 'Judged admission needs its judgment')

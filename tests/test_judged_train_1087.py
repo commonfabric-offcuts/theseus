@@ -223,6 +223,63 @@ class Admission1087(Admission987):
                 'command': argv, 'exit': answer.returncode, 'stdout': answer.stdout,
                 'stderr': answer.stderr, 'remote_get_records': remote}, indent=2))
 
+    def test_1087_actual_cli_single_no_blocker_validates_optional_selectors(self):
+        self.publish(self.sources[:1])
+        executable = self.root / 'selector-executable'; executable.mkdir()
+        marker = self.root / 'unexpected-remote-read'
+        gh = executable / 'gh'
+        gh.write_text('#!/usr/bin/python3\nfrom pathlib import Path\n'
+                      'Path(' + repr(str(marker)) + ').write_text("unexpected remote")\nraise SystemExit(9)\n')
+        gh.chmod(0o700)
+        config = self.root / 'selector-deploy.json'
+        config.write_text(json.dumps(dict(live=str(self.repo), instance=str(self.root),
+            server_profile='server.json', runner_profile='runner.json', routes='routes.json',
+            runner_id='scratch-runner', port=12345, repository=REPOSITORY, release_branch=BRANCH,
+            pipeline_outcome='work987', pipeline_instance='scratch987',
+            pipeline_broker=str(self.root / 'core.sock'))))
+        base = ['/usr/bin/python3', '-I', str(Path(deploy.__file__).resolve()), 'admit', self.first,
+                '--config', str(config)]
+        environment = dict(os.environ, PATH=str(executable) + os.pathsep + os.environ['PATH'])
+        for name, flags, expected in [
+                ('omitted', [], 0),
+                ('complete', ['--producer-run', '101', '--verdict-check', '201', '--pr', '7'], 0),
+                ('run-only', ['--producer-run', '101'], 1),
+                ('check-only', ['--verdict-check', '201'], 1),
+                ('pr-only', ['--pr', '7'], 1),
+                ('missing-pr', ['--producer-run', '101', '--verdict-check', '201'], 1),
+                ('zero', ['--producer-run', '0', '--verdict-check', '201', '--pr', '7'], 1),
+                ('negative', ['--producer-run', '101', '--verdict-check', '-1', '--pr', '7'], 1)]:
+            with self.subTest(name=name):
+                answer = subprocess.run(base + flags, env=environment, capture_output=True, text=True)
+                self.retain('selector-' + name, base + flags, answer, {})
+                self.assertEqual(answer.returncode, expected, answer.stdout + answer.stderr)
+                if expected:
+                    self.assertIn('selectors', answer.stderr)
+                else:
+                    self.assertEqual(json.loads(answer.stdout)['items'], [987])
+                self.assertFalse(marker.exists(), 'shape/legacy admission must not read remote metadata')
+
+    def test_1087_invalid_selector_shape_refuses_before_any_record_read(self):
+        trained = {'kind': 'judged-first', 'pr': 7, 'judgment': {
+            'producer_runs': [101], 'verdict_checks': [201], 'audit': 'm-scratch1087'}}
+        for producer in [{'run': 101}, {'run': 0, 'check': 201, 'pr': 7},
+                         {'run': True, 'check': 201, 'pr': 7},
+                         {'run': '101', 'check': 201, 'pr': 7},
+                         {'run': 101, 'check': 201, 'pr': None},
+                         {'run': 101, 'check': 201, 'pr': 7, 'extra': 1}, []]:
+            for candidate in (self.first, self.ordinary):
+                for entry in ('admission', 'deploy', 'trained'):
+                    with self.subTest(producer=producer, candidate=candidate, entry=entry):
+                        read = mock.Mock(side_effect=AssertionError('invalid selectors reached record reads'))
+                        with self.assertRaisesRegex((admission.Refused, deploy.Refused), 'selectors'):
+                            if entry == 'admission':
+                                admission.admit(self.config, candidate, read, producer=producer)
+                            else:
+                                with mock.patch.object(deploy, 'run', read):
+                                    deploy.admit(self.config, candidate, producer=producer,
+                                                 trained=trained if entry == 'trained' else None)
+                        self.assertFalse(read.called)
+
 
 class CoreTrain1087(Freeze987):
     def test_1087_homogeneous_judged_combine_keeps_every_source_snapshot(self):

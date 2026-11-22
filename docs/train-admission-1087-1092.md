@@ -105,3 +105,18 @@ No train.py, installed guard or landing-driver format change is authorized.
 The unchanged test_tools_train cohort and actual two-floor deploy with multiple
 checks must pass, with red evidence on the reviewed e73c69ca deploy owner and
 an exact restored control after applying that entire old owner.
+
+## Selector correction 17612/17614
+
+Omitting all producer selectors is the distinct legacy case. Any explicit
+tuple must contain run, check and pr together as positive integers, including
+on single-item/no-blocker and ordinary candidates. Validate that local shape
+before Git, pipeline or remote reads, independently of whether the new
+bundle/later-waiter exception needs remote authentication. Validate an explicit
+argument before a verified train could replace it. Actual CLI omission and
+complete context pass without extra remote metadata when no exception is
+needed; partial, zero and negative tuples refuse. Direct admission also
+rejects missing/null/boolean/wrong-type/extra fields without reading records.
+Keep the prior approved ca7e345c packet and both exact old production owners;
+publish the corrected head with named red/corrected/applied-old/restored
+controls and the same eight-module independent-review cohort.

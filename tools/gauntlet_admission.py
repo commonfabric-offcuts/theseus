@@ -146,10 +146,15 @@ def _approval(piece):
     return value
 
 
+def producer_selectors(value):
+    """Omission is legacy; any explicit context has a complete positive tuple."""
+    require(value is None or isinstance(value, dict) and set(value) == {'run', 'check', 'pr'} and
+            all(type(n) is int and n > 0 for n in value.values()),
+            'Producer selectors must give run, check and pr together as positive integers')
+    return value
+
+
 def _producer(config, candidate, base, git, selectors, github):
-    require(isinstance(selectors, dict) and set(selectors) == {'run', 'check', 'pr'} and
-            all(type(n) is int and n > 0 for n in selectors.values()),
-            'A judged bundle or later-waiter exception needs exact producer, Verdict check and PR selectors')
     repository, branch = getattr(config, 'repository', None), getattr(config, 'release_branch', None)
     require(isinstance(repository, str) and re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository)
             and isinstance(branch, str) and bool(branch), 'Authenticated admission needs the repository and release branch')
@@ -266,6 +271,7 @@ def _sources(config, pieces, waiting, items, candidate, run, git, judged_head):
 
 
 def admit(config, candidate, run, *, started_landing=False, producer=None, github=None):
+    producer = producer_selectors(producer)
     require(isinstance(candidate, str) and SHA.fullmatch(candidate), 'Admission names the full candidate commit')
     def git(*args):
         answer = run(['git', '-C', str(config.live)] + list(args))
