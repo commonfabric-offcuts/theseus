@@ -179,6 +179,41 @@ export class EditorRegistry {
     }
   }
 
+  async refreshSharedReply(id, read, current = () => true) {
+    const p = this.cards.get(id), editor = p?.editors.reply;
+    if (!p || p.hidden || this.current || this.pendingOpen || p.closing || this.disposed) return true;
+    const session = this.sessionFor(editor), fence = session.sharedReplyFence();
+    if (!fence) return true;
+    const held = () => current() && !this.disposed && this.cards.get(id) === p && !p.hidden && !p.closing &&
+      !this.current && !this.pendingOpen && this.sessions.get(editor.key) === session;
+    const bound = b => b?.instance_id === this.bootstrap.instance_id && b.actor === this.bootstrap.actor &&
+      same({ authority_id: b.authority?.authority_id, authority_epoch: b.authority?.authority_epoch }, fence.authority);
+    if (!bound(await read('bootstrap', {})) || !held()) return true;
+    const args = { source_ref: editor.context.sourceRef, topic_id: editor.context.topicId };
+    const state = await read('editor_state', { ...args, limit: 20, unsent: true });
+    this.validateState(state, args.source_ref, args.topic_id);
+    if (!held() || !same(session.sharedReplyFence(), fence) || !state.source_available || !state.destination_available ||
+        !state.draft || state.draft.id !== editor.draft.id || state.draft.generation === editor.draft.generation) return true;
+    this.setPending(editor.key, copy(state.submissions));
+    const own = editor.submissions.reduce((seq, item) => Math.max(seq, item.prepareReceipt?.result?.seq ?? 0), 0);
+    const cursor = Math.max(session.sharedThrough, own);
+    const page = this.validatePage(await read('submissions', { ...args, cursor, limit: 20 }));
+    if (!held() || !same(session.sharedReplyFence(), fence)) return true;
+    const item = page.items.find(item => item.draft_id === editor.draft.id && item.draft_generation === editor.draft.generation &&
+      item.draft_revision >= editor.draft.revision && item.topic_id === args.topic_id && same(item.source_ref, args.source_ref));
+    if (!item) {
+      if (page.next_cursor !== null) { session.sharedThrough = page.next_cursor; return false; }
+      return true;
+    }
+    if (item.send_status !== 'committed') return true;
+    const submission = await read('submission', { submission_id: item.id });
+    if (!held() || !bound(await read('bootstrap', {})) || !held() || submission?.id !== item.id ||
+        submission.draft_revision !== item.draft_revision || submission.send_operation_id !== item.send_operation_id) return true;
+    if (!await session.acceptSharedSend(state.draft, submission, fence, held)) return true;
+    session.sharedThrough = page.through;
+    return { retired: true, presentation: p };
+  }
+
   validateState(state, sourceRef, topicId) {
     if (state?.error || state?.instance_id !== this.bootstrap.instance_id || !same(state.source_ref, sourceRef) ||
         !same(state.destination, { topic_id: topicId ?? null })) throw Error('The source or destination identity could not be confirmed.');
@@ -236,6 +271,7 @@ export class EditorRegistry {
         }
       } });
     this.sessions.set(key, session);
+    session.sharedThrough = this.pages.get(key)?.through ?? 0;
     Object.defineProperties(editor, { reviewWriterId: { value: this.journal.writerId }, reviewAuthority: { get: () => session.authority } });
     session.registered = () => this.sessions.get(key) === session && !this.disposed;
     // From here this writing can be in doubt, so the page is told now, as
