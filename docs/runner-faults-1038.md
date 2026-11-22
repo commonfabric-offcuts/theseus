@@ -132,3 +132,23 @@ contract changes get retained red/green evidence. DELETE/EXTRA/fullfsync/FKs,
 six-attempt/four-second configured budget,32-source key default and uncertain
 mutation no-replay remain. Formal approval still needs actual1021LIVE; Warp
 owns standalone landing after1050 and runner restart/Health/rollback observation.
+
+## Fourth head: normal collection and pending fixture hints / review16601
+
+The frozen744b9219 third source and all prior packets stay immutable. This new
+own branch parents744b9219 on original314; production modules do not change.
+The module's load_tests must include StartupRulesCase as well as the two
+existing classes, so ordinary unittest loading/discovery collects all36 actual
+1038 methods, including the four startup/type/class-contract checks. Record
+the actual32-to36 collection change and run the normally collected suite.
+
+The controlled Clock.sleep keeps any truthy scheduled event pending, coalesced
+until the next Wait.wait consumes it as dirty. It must not discard an event
+received during inner storage backoff. A direct fixture check and the existing
+pacing case hold that contract: retain exact19 claim times and successful
+schedule-read windows inside the1/2/4s outer gates. Observe the actual result;
+no native/OS-watch timing claim comes from the controlled clock. Retain red,
+applied exclusion/hint-loss controls, exact restores and command-bound cache
+receipts. The third packet's narrower clock-pair cache evidence remains
+producer-attributed under16589/16598; do not reconstruct a launching receipt
+or rerun history. DELETE and actual1021LIVE/standalone-after1050 conditions stay.

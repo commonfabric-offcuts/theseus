@@ -30,6 +30,7 @@ class Clock:
         self.wall = int(time.time()*1000)
         self.elapsed = 0.0
         self.events = []
+        self.pending_dirty = False
 
     def wall_ms(self):
         return self.wall
@@ -49,7 +50,7 @@ class Clock:
         while self.events and self.events[0][0] <= target:
             when, action = self.events.pop(0)
             self.advance(max(self.elapsed, when) - self.elapsed)
-            action()
+            self.pending_dirty = bool(action()) or self.pending_dirty
         self.advance(target - self.elapsed)
 
 
@@ -75,6 +76,10 @@ class Wait:
         if self.calls > 2000:
             raise AssertionError('scheduler hot loop')
         self.waits.append((self.clock.elapsed, timeout))
+        if self.clock.pending_dirty:
+            self.clock.pending_dirty = False
+            self.stopped = self.stopped or self.clock.elapsed >= self.stop_at
+            return dict(dirty=True, stop=self.stopped)
         target = max(self.clock.elapsed, min(self.stop_at, self.clock.elapsed+timeout))
         dirty = False
         if self.events and self.events[0][0] <= target:
@@ -95,6 +100,24 @@ class EffectsRunnerCase(unittest.TestCase):
     prepare = core_fixture.StoreCase.prepare
     create_topic = core_fixture.StoreCase.create_topic
     send_next = delivery_fixture.DeliveryCase.send_next
+
+    def test_controlled_backoff_keeps_truthy_hints_pending_until_watch_wait(self):
+        clock = Clock()
+        wait = Wait(clock)
+        seen = []
+        def event(name, dirty):
+            seen.append(name)
+            return dirty
+        wait.events = [(0.02, lambda: event('first hint', True)),
+                       (0.04, lambda: event('lock released', False)),
+                       (0.06, lambda: event('second hint', True))]
+        clock.sleep(0.1)
+        self.assertEqual(seen, ['first hint', 'lock released', 'second hint'])
+        self.assertEqual(clock.elapsed, 0.1)
+        self.assertEqual(wait.wait(1), {'dirty': True, 'stop': False})
+        self.assertEqual(clock.elapsed, 0.1, 'a pending hint wakes without another timeout')
+        self.assertEqual(wait.wait(0), {'dirty': False, 'stop': False},
+                         'coalesced hints are cleared exactly once by the wait')
 
     def sql(self, statement, params=()):
         db = sqlite3.connect(str(self.path))

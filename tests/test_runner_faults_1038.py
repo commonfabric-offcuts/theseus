@@ -634,5 +634,5 @@ class FanoutCase(covers.SourceCoverCostCase):
 
 def load_tests(loader, tests, pattern):
     # Reuse real scratch fixture setup without rerunning inherited test methods.
-    return unittest.TestSuite(cls(name) for cls in (FaultCase, FanoutCase)
+    return unittest.TestSuite(cls(name) for cls in (StartupRulesCase, FaultCase, FanoutCase)
         for name in cls.__dict__ if name.startswith('test_1038_'))
