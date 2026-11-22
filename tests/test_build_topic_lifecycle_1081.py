@@ -187,6 +187,48 @@ class Lifecycle1081Case(PipelineCase):
         self.ship(23, [self.one])
         person = self.read_topic("legacy-human")
         self.assertEqual((person["state"], person["creator_id"], person["build"]), ("review", "owner", False))
+        self.assertTrue(person["state_note"].startswith("Live in release 23 since "))
+        self.post("The legacy piece shipped; here is what to try.", topic="legacy-human")
+        self.assertEqual(self.read_topic("legacy-human")["state"], "review")
+
+    def test_an_earlier_manual_done_keeps_its_author_and_note_when_the_piece_ships(self):
+        for legacy in [False, True]:
+            with self.subTest(legacy_person=legacy):
+                topic = "manual-" + str(legacy)
+                self.topic(topic)
+                number = self.add("An explicitly completed piece", section="now", size="small")
+                piece = self.start([number], topic)
+                if legacy:
+                    person_topic = "person-" + topic
+                    self.topic(person_topic, actor="owner")
+                    with sqlite3.connect(str(self.path)) as db:
+                        db.execute("UPDATE pipeline_pieces SET topic_id=? WHERE id=?", (person_topic, piece))
+                    topic = person_topic
+                self.say(topic, state="done", note="Wrapped up early")
+                before = self.sql("SELECT state,state_note,state_by,state_ms FROM topics WHERE id=?", (topic,))
+                self.ship(24 if legacy else 23, [number])
+                self.assertEqual(self.sql("SELECT state,state_note,state_by,state_ms FROM topics WHERE id=?", (topic,)), before)
+
+    def test_ending_a_retained_human_hold_reopens_only_the_pipelines_own_review(self):
+        for manual in [False, True]:
+            with self.subTest(manual_review=manual):
+                source, person, destination = [prefix + str(manual) for prefix in ["source-", "person-", "destination-"]]
+                self.topic(source)
+                self.topic(person, actor="owner")
+                self.topic(destination)
+                number = self.add("Retained historical binding", section="now", size="small")
+                piece = self.start([number], source)
+                with sqlite3.connect(str(self.path)) as db:
+                    db.execute("UPDATE pipeline_pieces SET topic_id=? WHERE id=?", (person, piece))
+                self.ship(24 if manual else 23, [number])
+                if manual:
+                    self.say(person, state="review", note="Mine to look at")
+                version = self.sql("SELECT version FROM pipeline_pieces WHERE id=?", (piece,))[0][0]
+                self.committed(self.command("pipeline.piece_move", {"topic_id": destination},
+                    {"piece_id": piece}, {"piece_revision": version}))
+                held = self.read_topic(person)
+                self.assertEqual((held["state"], held["state_note"], held["state_by"]),
+                    ("review", "Mine to look at", "owner") if manual else ("active", "", None))
 
     def test_a_retained_conversation_link_is_neither_archived_nor_closed(self):
         piece = self.start([self.one])
