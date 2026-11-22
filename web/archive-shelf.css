@@ -67,3 +67,6 @@ body[data-archive-shelf=on] .stack-controls:not(:has(>:not(.stack-more,[hidden])
   :root .archive-shelf[data-view=list] .shelf-dossier{height:2.75rem;min-height:44px}
   .archive-shelf[data-view=list] .shelf-title{line-height:2.75rem}
 }
+
+/*1053: the feed’s New/count mark, quiet on the replica in either view. */
+.shelf-new{flex:none;color:var(--accent);font-size:.7rem;font-weight:700;white-space:nowrap}
