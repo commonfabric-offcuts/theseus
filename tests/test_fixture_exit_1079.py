@@ -204,6 +204,7 @@ class FixtureExitCase(unittest.TestCase):
                       'Segmentation fault: 11\n',
                       '    an indented fatal line after the property block\n',
                       '    Error: unrelated fatal tail\n',
+                      '    TypeError: unrelated fatal tail\n',
                       '  code: \'ERR_SOMETHING_ELSE\',\n',
                       '  foo: bar inside no block\n',
                       'the harness printed something else\n'):
