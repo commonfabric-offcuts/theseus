@@ -164,6 +164,47 @@ class PlanningWeights(unittest.TestCase):
                 'planned_files': ['tests/test_a.py', 'tests/test_b.py', 'tests/deleted.py'],
                 'source': {'kind': 'checks_push', 'run_id': 9, 'artifact_sha256': 'd'*64}}
 
+    def test_outer_assignment_is_consumed_before_nested_whole_and_partitioned_runners(self):
+        outer=self.root/'outer';nested=self.root/'nested'
+        (outer/'tests').mkdir(parents=True);(nested/'tests').mkdir(parents=True)
+        for name in ('a','b'):
+            (nested/'tests'/('test_'+name+'.py')).write_text(
+                'from __future__ import annotations\nimport unittest\nclass Case(unittest.TestCase):\n'
+                ' def test_one(self):pass\n def test_two(self):pass\n')
+        script=str(ROOT/'tools/unit_shards.py')
+        (outer/'tests/test_outer.py').write_text(f'''from __future__ import annotations
+import json,subprocess,sys,unittest
+from pathlib import Path
+class NestedRunners(unittest.TestCase):
+ def test_nested(self):
+  docs=[]
+  for index,extra in enumerate(([],['--shard','1/2'],['--shard','2/2'])):
+   answer=subprocess.run([sys.executable,'-I','-X','pycache_prefix='+str(Path({str(self.root/'nested-caches')!r})/str(index)),
+                          {script!r},'--root',{str(nested)!r}]+extra,capture_output=True,text=True)
+   self.assertEqual(answer.returncode,0,answer.stderr)
+   docs.append(json.loads(answer.stdout.splitlines()[-1]))
+  self.assertEqual([d['tests'] for d in docs],[4,2,2])
+  self.assertNotIn('python_shard',docs[0])
+  self.assertEqual([d['python_shard']['index'] for d in docs[1:]],[1,2])
+  self.assertTrue(all(d['python_shard']['total']==2 for d in docs[1:]))
+  files=[p for d in docs[1:] for p in d['python_shard']['files']]
+  self.assertEqual(sorted(files),['tests/test_a.py','tests/test_b.py'])
+  self.assertEqual(len(files),len(set(files)))
+  print(json.dumps({{'nested_run_evidence':docs}}),flush=True)
+''')
+        assignment=['tests/test_outer.py']
+        env=dict(os.environ,AIM_PYTHON_SHARD_FILES=json.dumps(assignment))
+        answer=subprocess.run([sys.executable,'-I','-X','pycache_prefix='+str(self.root/'outer-cache'),
+                               script,'--root',str(outer),'--shard','1/4'],env=env,text=True,capture_output=True)
+        self.assertEqual(answer.returncode,0,answer.stderr)
+        rows=[json.loads(line) for line in answer.stdout.splitlines() if line.startswith('{')]
+        nested_evidence=next(row['nested_run_evidence'] for row in rows if 'nested_run_evidence' in row)
+        self.assertEqual([row['tests'] for row in nested_evidence],[4,2,2])
+        evidence=rows[-1];self.assertEqual(evidence['tests'],1)
+        self.assertEqual(evidence['python_shard'],{'index':1,'total':4,'files':assignment})
+        print(json.dumps({'outer_assignment':evidence['python_shard'],'nested_counts':[row['tests'] for row in nested_evidence],
+                          'nested_union':[p for row in nested_evidence[1:] for p in row['python_shard']['files']]}))
+
     def test_fresh_weights_cover_current_walk_and_report_unknown_and_deleted(self):
         result = sh.select_python_weights(self.root, self.weights, lookup=self.fresh)
         config = result['units'];self.assertEqual(set(config['python_minutes']), set(sh.test_files(self.root)))

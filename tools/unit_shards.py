@@ -393,7 +393,7 @@ def unit_main(argv=None):
             partition(args.shard)
         weight_path = args.root / '.github/check-weights.json'
         weights = json.loads(weight_path.read_text()) if weight_path.exists() else {}
-        raw_assignment = os.environ.get('AIM_PYTHON_SHARD_FILES')
+        raw_assignment = os.environ.pop('AIM_PYTHON_SHARD_FILES', None)
         assignment = _json(raw_assignment) if raw_assignment else None
         return run(args.root, args.shard, weights, assignment)
     except ValueError as error:

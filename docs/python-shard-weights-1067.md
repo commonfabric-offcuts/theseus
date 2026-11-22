@@ -149,3 +149,7 @@ An empty inventory needs no timings, so it skips the optional remote lookup
 with explicit empty_python_inventory reason and table commit/digest; this
 also makes the original empty-root fixtures deterministic and offline.
 The real nonempty hosted walk still uses the bounded newest-complete default.
+
+One-run transport (Warp16803): unit_main consumes AIM_PYTHON_SHARD_FILES with
+os.environ.pop at entry, retains its parsed assignment for that runner, and
+none of its test descendants inherits the transport.
