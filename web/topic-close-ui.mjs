@@ -23,9 +23,11 @@ export async function topicCloseUI({ doc, shell, api, bootstrap, open, current }
     ui.render = () => {
       if (documents.get(doc) !== ui) return;
       let host = doc.getElementById('topic-close-notice');
-      if (!ui.error && ![...(ui.actions?.rows.values() ?? [])].some(row => !ui.dismissed.has(row.id))) { host?.remove(); return; }
+      const ordered = [...(ui.actions?.rows.values() ?? [])].filter(row => !ui.dismissed.has(row.id) &&
+        (!['committed', 'undone'].includes(row.phase) || row.error || row.undo?.receipt?.status === 'rejected'))
+        .sort((a, b) => Number(['pending','uncertain','undo_pending'].includes(b.phase)) - Number(['pending','uncertain','undo_pending'].includes(a.phase)) || b.at - a.at);
+      if (!ui.error && !ordered.length) { host?.remove(); return; }
       if (!host) { host = doc.createElement('section'); host.id = 'topic-close-notice'; host.className = 'notice'; host.setAttribute('aria-label', 'Recent topic changes'); host.setAttribute('role', 'status'); doc.getElementById('main')?.prepend(host); }
-      const ordered = [...(ui.actions?.rows.values() ?? [])].sort((a, b) => Number(['pending','uncertain','undo_pending'].includes(b.phase)) - Number(['pending','uncertain','undo_pending'].includes(a.phase)) || b.at - a.at);
       const nodes = [], button = (text, act) => {
         const node = doc.createElement('button'); node.type = 'button'; node.textContent = text;
         node.onclick = () => Promise.resolve().then(act).catch(error => { ui.error = error.message; ui.render(); }); return node;
@@ -37,12 +39,12 @@ export async function topicCloseUI({ doc, shell, api, bootstrap, open, current }
         const action = archive ? 'Archive' : 'Done', currentRuntime = ui.actions.current(row);
         line.dataset.topicCloseId = row.id;
         const state = !currentRuntime ? `${action} for “${title}” belongs to an earlier runtime; its result remains unconfirmed.` :
-          row.phase === 'undone' ? `Restored “${title}”.` : row.phase === 'rejected' ? `Could not ${archive ? 'archive' : 'mark done'} “${title}”.` :
+          row.undo?.receipt?.status === 'rejected' ? `Could not restore “${title}”.` : row.phase === 'undone' ? `Restored “${title}”.` : row.phase === 'rejected' ? `Could not ${archive ? 'archive' : 'mark done'} “${title}”.` :
           row.phase === 'undo_pending' ? `Restoring “${title}”…` : row.phase === 'committed' ? `${archive ? 'Archived' : 'Marked done'} “${title}”.` :
           row.phase === 'uncertain' ? `${action} for “${title}” is kept; confirmation is unknown.` : `${archive ? 'Archiving' : 'Marking done'} “${title}”…`;
         line.append(state, row.error ? ` ${row.error}` : '');
         if (currentRuntime && ['pending', 'uncertain', 'undo_pending'].includes(row.phase)) line.append(' ', button('Retry', () => ui.actions.drive(row.id)));
-        if (currentRuntime && !row.undo && !['rejected', 'undone'].includes(row.phase)) line.append(' ', button('Undo', () => ui.actions.undo(row.id)));
+        if (ui.actions.canUndo(row)) line.append(' ', button('Undo', () => ui.actions.undo(row.id)));
         line.append(' ', button('Open topic', () => ui.owner?.open({ kind: 'topic', id: row.topic.id }, row.topic.title)));
         if (['committed', 'rejected', 'undone'].includes(row.phase)) line.append(' ', button('Dismiss', () => { ui.dismissed.add(row.id); ui.render(); }));
         nodes.push(line);
@@ -71,7 +73,7 @@ export async function topicCloseUI({ doc, shell, api, bootstrap, open, current }
           !(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || event.target.closest?.('input, textarea, [contenteditable]')) return;
       const route = shell.route();
       if (route?.kind !== 'workspace') return;
-      const row = [...(ui.actions?.rows.values() ?? [])].filter(row => ui.actions.current(row) && row.workspaceId === route.id && !row.undo && !['rejected', 'undone'].includes(row.phase)).sort((a, b) => b.at - a.at)[0];
+      const row = [...(ui.actions?.rows.values() ?? [])].filter(row => row.workspaceId === route.id && ui.actions.canUndo(row)).sort((a, b) => b.at - a.at)[0];
       if (row) { event.preventDefault(); ui.actions.undo(row.id).catch(error => { ui.error = error.message; ui.render(); }); }
     });
   }
