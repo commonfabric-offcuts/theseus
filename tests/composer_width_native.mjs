@@ -11,7 +11,7 @@ import { staticResponseCache } from './static_response_cache.mjs';
 import { tabRemovalMutation, tabToComposerEdge, openComposerReader } from './composer_width_focus.mjs';
 
 export async function composerWidthCases(h) {
-  const { check, page, press, until, picture, close, control, root, evidence, engine, second, HEIC } = h;
+  const { check, page, press, until, picture, close, control, root, evidence, engine, second, HEIC, admissionOnly = false } = h;
   const inputs = ['web/reader.mjs', 'web/inline-composer.mjs', 'web/composer-width.mjs', 'web/aim.css', 'web/writing-helpers.mjs', 'web/compose-bar.mjs', 'web/app.mjs', 'web/app-session.mjs', 'web/session.mjs', 'web/index.html', 'tests/reader_compose_native.mjs', 'tests/composer_width_native.mjs', 'tests/static_response_cache.mjs', 'tests/ui_static_response_cache.test.mjs', 'tests/ui_composer_width.test.mjs', 'tests/fixtures/ui_http.py', 'tests/fixtures/item_650_runtime.py', 'tests/test_item_650_runtime.py', 'tests/ui_composer_harness.test.mjs', 'tests/composer_width_focus.mjs', 'tests/ui_composer_hit_zone.test.mjs'];
   const hashes = {};
   for (const name of inputs) {
@@ -116,7 +116,7 @@ export async function composerWidthCases(h) {
           return route.continue();
         });
       }
-      if (!baseline) await p.route(/\/composer-width\.mjs(?:\?.*)?$/, async route => {
+      if (!baseline && !admissionOnly) await p.route(/\/composer-width\.mjs(?:\?.*)?$/, async route => {
         const response = await route.fetch(), original = await response.text();
         servedHash = createHash('sha256').update(original).digest('hex');
         assert.equal(servedHash, hashes['web/composer-width.mjs'], 'actual served original source matches the declared snapshot');
@@ -130,13 +130,13 @@ export async function composerWidthCases(h) {
       });
     };
     const a = at(surface), p = await page(surface === 'Wide Reader' ? 'wide' : shape, scheme, '/?topic=t1', undefined, prepare);
-    if (!baseline) assert.equal(servedHash, hashes['web/composer-width.mjs'], 'the fresh page loaded the exact original source before any mutation');
+    if (!baseline && !admissionOnly) assert.equal(servedHash, hashes['web/composer-width.mjs'], 'the fresh page loaded the exact original source before any mutation');
     if (surface === 'New message') {
       await until(p, () => !document.querySelector('#inline-composer').hidden, 'the new-message composer');
       await press(p, '#new-message');
       await until(p, () => document.querySelector('#new-message-sheet').open, 'the new-message sheet');
     } else await openComposerReader(p, second, until);
-    if (!baseline) {
+    if (!baseline && !admissionOnly) {
       const tabState = await p.locator(`${a.dialog} > .composer-edge`).evaluateAll(edges => edges.map(edge => edge.tabIndex));
       assert.deepEqual(tabState, mutation?.name === 'tab-unreachable' ? [-1, -1] : [0, 0], 'served effective Tab state survives placement');
     }
@@ -245,8 +245,8 @@ export async function composerWidthCases(h) {
   }
   async function stateProof(p, a, state) {
     const value = await kept(p, a);
-    if (['read-only', 'composition refused', 'recovery discovery'].includes(state)) assert.equal(value.readOnly, true, `${state} really makes writing read-only`);
-    if (state === 'conflict review' || state.startsWith('authority recovery')) assert.equal(value.readOnly, false, `${state} keeps local typing available`);
+    if (['read-only', 'composition refused'].includes(state)) assert.equal(value.readOnly, true, `${state} really makes writing read-only`);
+    if (state === 'recovery discovery' || state === 'conflict review' || state.startsWith('authority recovery')) assert.equal(value.readOnly, false, `${state} keeps local typing available`);
     if (['permission unavailable', 'access unconfirmed', 'access checking'].includes(state)) {
       const [text, hidden, disabled] = value.controls[0];
       assert.equal(text, 'Retry access');
@@ -255,8 +255,9 @@ export async function composerWidthCases(h) {
       assert.equal(value.sendDisabled || value.sendDim === 'true', true, 'unavailable access cannot send');
     }
     if (['conflict review', 'composition refused', 'recovery discovery'].includes(state) || state.startsWith('authority recovery')) {
-      assert.equal(value.controls[1][1], false, `${state} offers Review versions`);
-      assert.equal(value.sendDisabled || value.sendDim === 'true', true, `${state} blocks sending`);
+      assert.equal(value.controls[1][1], false, `${state} offers Check recovery`);
+      assert.equal(value.sendDisabled || value.sendDim === 'true', state !== 'recovery discovery', `${state} uses its own Send admission`);
+      if (state === 'recovery discovery') assert.equal(await p.locator(a.add).isDisabled(), false, 'advisory discovery admits current Add image');
       // Exercise the recovery control, read its actual dialog, and return by
       // its native close control before testing the composer's own edges.
       await press(p, a.review);
@@ -270,6 +271,20 @@ export async function composerWidthCases(h) {
       await press(p, '#review-close');
       await until(p, () => !document.querySelector('#version-review').open, 'review closes back to its composer');
     }
+  }
+  // This source has no width implementation. Run the shared admission proof
+  // explicitly without registering or weakening any default geometry case.
+  if (admissionOnly) {
+    for (const surface of surfaces) for (const shape of surface === 'Wide Reader' ? ['stacked'] : ['phone-390', 'stacked']) for (const scheme of ['light', 'dark']) {
+      await check(`item 650 admission ${surface} recovery discovery ${shape} ${scheme}`, async () => {
+        const { p, a, release, held } = await setup(surface, 'recovery discovery', shape, scheme);
+        try { await stateProof(p, a, 'recovery discovery'); await picture(p, 'item-650-admission'); }
+        finally { release(); if (held) await held; }
+        await close(p);
+      });
+    }
+    await cacheReceipt();
+    return;
   }
   const focusReceipts = [];
   async function tabToEdge(p, a, side) {

@@ -342,6 +342,10 @@ try {
             await unfold(`#messages [data-id="${facts.sources[index].id}"]`);
           }
           await point(heads ? `#messages .message-card[data-id="${facts.sources[index].id}"] > .message-preview` : `#messages [data-id="${facts.sources[index].id}"]`);
+          if (mode === '--images' && !await evaluate("document.querySelector('#reader').open")) {
+            await until(() => evaluate(`document.querySelector('#reader').open || Boolean(document.querySelector('${card} .card-reply-composer'))`), 'image source card composer or Reader');
+            if (!await evaluate("document.querySelector('#reader').open")) await point(`${card} > .message-preview`);
+          }
           await until(() => evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith('Source ${index} ')`), 'selected full source');
           await until(() => evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation=>animation.playState!=='running')"), 'settled reader');
         },

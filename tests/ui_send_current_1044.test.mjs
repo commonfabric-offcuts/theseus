@@ -46,8 +46,8 @@ function uploadsFixture(){const{e,r}=fixture(),session={editor:e,authority:pin};
 test('1044 alternate-copy discovery does not block a new current image choice',()=>{
  const{e,u}=uploadsFixture();e.recoveryDiscovery=true;const token=u.reserve({});assert.equal(e.imageReservation,token);u.cancel(token);assert.equal(e.imageReservation,null);assert.doesNotThrow(()=>u.admit(new File(['image'],'current.png',{type:'image/png'})));
 });
-test('1044 malformed current upload state still prevents choosing another image',()=>{
- const{e,u}=uploadsFixture();e.uploadOpaque=true;assert.throws(()=>u.reserve({}),/image/i);assert.throws(()=>u.admit(new File(['image'],'current.png',{type:'image/png'})),/image/i);
+test('1044 new malformed-current-image guard refuses Add image reservation and admission',()=>{
+ const{e,u}=uploadsFixture();e.uploadOpaque=true;assert.throws(()=>u.reserve({}),/The current image state could not be read\. Check recovery/);assert.throws(()=>u.admit(new File(['image'],'current.png',{type:'image/png'})),/The current image state could not be read\. Check recovery/);
 });
 test('1044 identical available saved writing alone draws no recovery control',()=>{
  const{e,r}=fixture();r.snapshot.draft=copy(e.draft);const candidates=new Map([[e.key,{items:[r]}]]),source=readFileSync(new URL('../web/app.mjs',import.meta.url),'utf8');const code=source.slice(source.indexOf('const reviewState = editor =>'),source.indexOf('const paintVersionButton ='));const scope={candidates,differences:editor=>reviewDifferences(editor,[r]),editor:e};vm.runInNewContext(code+';globalThis.state=reviewState(editor);',scope);assert.equal(scope.state.hidden,true);

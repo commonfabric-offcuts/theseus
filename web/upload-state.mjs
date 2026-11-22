@@ -5,8 +5,6 @@ export const pair = a => ({ authority_id: a?.authority_id, authority_epoch: a?.a
 export const samePin = (a, b) => Boolean(a?.authority_id && a?.authority_epoch && a.authority_id === b?.authority_id && a.authority_epoch === b?.authority_epoch);
 export const ownsBytes = snapshot => snapshot?.uploadState?.entries?.some(e => e.bytes_ref) === true;
 export const uploadWork = editor => Boolean(editor.uploadOpaque || editor.uploadState && !editor.passiveImages || editor.imageReservation || editor.imageBusy);
-// Alternative copies stay advisory; only an active adoption replaces this writing.
-export const recoveryReadOnly = editor => Boolean(editor?.adopting);
 export const copyChoiceKey = (editor, row) => JSON.stringify([editor.key, editor.clientCycleId, row.id, row.stamp]);
 export const refusedAtDraft = (item, draft) => !item.detached && !item.correctedBy && item.status === 'refused' &&
   item.receipt?.kind === 'submission.prepare' && (draft === undefined || Boolean(draft &&

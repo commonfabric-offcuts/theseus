@@ -8286,6 +8286,28 @@ function review931() {
   const list = items => f.owners().candidates.set(f.editor.key, { items, nextCursor: null });
   return { f, row, list, needs: () => f.runObservation('needsReview(registry.inline.editors.reply)') };
 }
+test('1044 Check recovery keeps saved text readable after typing or quoting disables adoption', async () => {
+  const f = fixture('https://fixture/?topic=t1', { readableUploads: uploadState931.readableUploads, uploadWork: uploadState931.uploadWork });
+  const saved = { id: 'alternate1044', stamp: 'saved1044', availability: 'available', snapshot: { format: 1, draft: { ...structuredClone(f.editor.draft), body: 'An alternate saved version to copy by hand' }, submissions: [] } };
+  f.editor.localVersion = 0;
+  f.registry.sessionFor = () => ({ attempts: [], uploads: { current: () => [] } });
+  f.registry.recoveryCandidates = async (_editor, _options, shown) => {
+    const page = { items: [saved], nextCursor: null }; shown(page, false); return page;
+  };
+  f.get('version-review').showModal = function() { this.open = true; };
+  const descendants = node => [node, ...node.children.flatMap(descendants)];
+  const recover = () => descendants(f.get('review-content')).find(node => node.textContent === 'Recover this version');
+  await f.showVersions(f.editor, f.get('opener'), f.p);
+  assert.equal(recover().disabled, false, 'untouched writing offers explicit adoption');
+  for (const change of ['typed character', 'quoted passage']) {
+    f.editor.localVersion++;
+    f.editor.draft.body += ` ${change}`;
+    await f.showVersions(f.editor, f.get('opener'), f.p);
+    assert.equal(recover().disabled, true, 'changed current writing cannot be replaced');
+    assert.ok(descendants(f.get('review-content')).some(node => node.tagName === 'PRE' && node.textContent === saved.snapshot.draft.body), 'the actual dialog renders selectable saved text for manual copying');
+    assert.equal(f.editor.draft.body.endsWith(change), true, 'review preserves current writing');
+  }
+});
 test('931 an empty upload state and ordinary newer typing ask for no version decision', () => {
   const { f, needs } = review931(); assert.equal(needs(), false);
   f.editor.draft.body += ' and more'; f.editor.localVersion++; assert.equal(needs(), false);

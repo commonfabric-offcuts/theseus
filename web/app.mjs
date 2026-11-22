@@ -21,7 +21,7 @@ import { EditorRegistry } from './app-session.mjs';
 import { Reader } from './reader.mjs';
 import { InlineComposer } from './inline-composer.mjs';
 import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
-import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
+import { readableUploads, uploadWork, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 import { typingField } from './writing-input.mjs';
 import { Freshness, initialViews, actorBaseline, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { OutcomeChanges, outcomeReads } from './outcome-refresh.mjs';
@@ -199,7 +199,7 @@ const reviewState = editor => {
     Array.isArray(entry.attempts) && entry.attempts.some(attempt => !attempt.detached && !attempt.receipt && attempt.publish_response?.recorded !== true &&
       !(attempt.begin_response?.recorded === true && attempt.begin_response.status === 'rejected'))));
   const recovery = editor.authorityRecovery || editor.conflict || editor.uploadOpaque || editor.imageStorageError || editor.recoveryDiscovery || editor.cleanupError || unsettled || retained;
-  return { hidden: !recovery, text: 'Check recovery', title: recovery ? 'Check the saved writing or connection before sending' : '' };
+  return { hidden: !recovery, text: 'Check recovery', title: recovery ? 'Check saved writing and connection recovery' : '' };
 };
 const paintVersionButton = (button, editor) => {
   const state = reviewState(editor); button.hidden = state.hidden; button.textContent = state.text; button.title = state.title;

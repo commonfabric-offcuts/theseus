@@ -29,3 +29,63 @@ Native main-flow checks use actual keyboard Send or phone-sized tap, Core receip
 Every phase and cleanup result is retained, including the early unhandled chooser exit without a normal cleanup receipt and its separately verified owned-process/profile cleanup. Later normal browser phases require Browser.close, owned PID absence, physical scratch-profile removal and scratch fixture EOF exit0/absence/empty errors/closed ports.
 
 The native producer keeps per-document request/response/finish traces. A main-frame navigation request followed by its commit retires pending reads from the old document explicitly; same-document history changes do not. This fixes the retained bootstrap wait across reload without increasing its10s current-document deadline or suppressing page errors. The synthetic seed route is removed after seeding. Original failed producers and the diagnostic with pending bootstrap85 are retained; final runs identify their own producer hash and source head.
+
+
+## Second source contract — Warp16606 / Fable16615
+
+Build2 uses a fresh own branch core-lane7/1044-r2-current-writing-325 from
+immutable first head90b36a289c57dbffe8ff7c6436966b87f1f20306, with the same
+original325 basecce9aeea87050f08097b6577b3de74be937e5926. Current live331 is
+c50f22a0b498e3a6b73665533585d67bfa948b10; this is not a rebase. Release16652
+lifted the workload hold after the completed1069 handoff. First source/packet
+and every failure remain immutable;1046 stays unbound.
+
+Red first against90b's product with the stale recovery-discovery assertions in
+composer_width_native, reader_compose_native and reader_images_native; adapt
+those owners to advisory discovery and execute the affected cells. Existing
+unrelated image/authority/access/geometry assertions are not weakened. The650
+producer is not registered by the current compose entry and the product width
+module is absent here. A clearly labelled admission-only execution seam may
+exercise its actual shared state assertions without pretending missing width
+geometry passes; default geometry cases retain their assertions. Preserve raw
+producer/served bodies, all failures, exact input brackets and strict native
+cleanup. Execute one isolated browser workload at a time at load<12, with the
+Landing use/free notices; no live user/browser/profile/runtime action.
+
+Name uploadOpaque reserve/admit refusal as a NEW own-state Add-image guard:
+325 allowed Add image through this state even though Send was blocked. Give
+its errors a current-editor state cause, not saved-alternative wording.
+A saved copy stays readable/copyable in Check recovery at all times, but Recover
+is enabled only for an untouched current field; typing or quoting makes
+localVersion>0 and disables adoption. Add a real dialog unit case for that
+state. Preserve the existing adoption guard rather than changing that ruling.
+
+Disclose that register/createEditor awaits validateRetained before first paint
+when an image copy exists: serial media views, one per retained attachment,
+through the existing plain Api.view path. This call site supplies no explicit
+request signal/deadline and has no aggregate first-paint budget; a request that
+never settles can hold registration. The separate RuntimeAuthority deadline
+is not applied here. Keep that ordering in this source (no
+startup speed claim or unrelated read-scheduling change). Fix the quiet link's
+stale before-sending tooltip and inline the adopting-only recoveryReadOnly
+alias at its actual callers.
+
+Evidence correction under Fable16656: the old15 final test-at SUMMARY blocks
+match after normalization; that does not prove all underlying raw diagnostics
+match. ui_721_composition aborts before test bodies on its unchanged historical
+uploads-source comparison, and its assertion preambles differ as uploads.mjs
+changed. Preserve both preambles; do not claim721 behavior tested or add a721
+repair to this return. The first packet's broader statement is superseded by
+this explicit limit, not rewritten. Final focused/native checks and the
+readable-versus-adoptable rule must be attributed to their actual producers.
+
+Warp16714 resolves the irrecoverable interrupted red-650-ready-seeds inventory:
+retain the phase as abnormal with no normal-close/EOF/ports receipt, and leave
+the two timestamp-correlated temp directories to the temp cleaner, never reuse
+them. No contents are read or guessed deletion performed. The next observer
+checkpoints child/profile/PIDs immediately, and each new phase uses a dedicated
+TMPDIR. This ruling permits resumption without rewriting the historical gap.
+The runner-stop chronology in the ruling is attributed, not normal-close proof
+for this phase. Fresh native source selection now accepts Core's inserted
+no-quote reason before the expected source words; seeded agent replies name
+that reason and independent fixture topics name their divergence explicitly.
