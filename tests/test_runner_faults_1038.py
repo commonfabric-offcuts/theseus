@@ -1,19 +1,99 @@
 from __future__ import annotations
 
+import ast
+import builtins
+import importlib
+import inspect
 import io
 import json
+import re
 import sqlite3
+import textwrap
 import threading
 import time
 import unittest
 from unittest import mock
 
-from aim_next import cli, effects_runner
+from aim_next import cli, effects_runner, runner_faults
 from aim_next.runner import RunnerError
-from aim_next.contract import StoreError
+from aim_next.contract import Refusal, StoreError
 from aim_next.authority import RunnerGuard
 import test_effects_runner as effects
 import test_source_cover_cost_757 as covers
+
+
+class StartupRulesCase(unittest.TestCase):
+    def test_1038_actual_startup_raise_sites_preserve_314_fixed_codes(self):
+        from aim_next import broker_routes, contract, store
+        # Read the actual raises, not another hand-maintained list of codes.
+        # BrokerBindingError is constructed at each of these startup/preflight
+        # sites; StoreOpenError and ProfileError preserve the Core Refusal code.
+        owners = [broker_routes._load_config, broker_routes.load_hosted_config,
+                  broker_routes.preflight_route, broker_routes.preflight_hosted,
+                  broker_routes.load_route_table, store.Store._check_instance,
+                  contract._identifier]
+        sites = []
+        for owner in owners:
+            found = []
+            for node in ast.walk(ast.parse(textwrap.dedent(inspect.getsource(owner)))):
+                if not isinstance(node, ast.Raise) or not isinstance(node.exc, ast.Call):
+                    continue
+                call = node.exc
+                if isinstance(call.func, ast.Name) and call.func.id == 'BrokerBindingError':
+                    error = broker_routes.BrokerBindingError()
+                    found.append((node.lineno, error.code, [error]))
+                if isinstance(call.func, ast.Name) and call.func.id == 'Refusal':
+                    self.assertIsInstance(call.args[0], ast.Constant)
+                    code = call.args[0].value
+                    errors = [Refusal(code, 'text withheld')]
+                    if owner is store.Store._check_instance:
+                        errors += [effects_runner.StoreOpenError(code, 'text withheld'),
+                                   effects_runner.ProfileError('text withheld', code=code)]
+                    found.append((node.lineno, code, errors))
+            self.assertTrue(found, owner.__qualname__)
+            for line, code, errors in found:
+                for error in errors:
+                    with self.subTest(owner=owner.__qualname__, line=line, kind=type(error).__name__, code=code):
+                        self.assertIsNotNone(re.fullmatch('[A-Za-z_]{1,64}', code), '314 startup grammar')
+                        self.assertEqual(effects_runner._startup_reason(error), code)
+                sites.append((owner.__qualname__, line, code))
+        print(json.dumps({'actual_startup_raise_sites': sites}))
+
+    def test_1038_startup_exact_type_and_fixed_code_boundaries(self):
+        from aim_next.broker_routes import BrokerConfigError
+        for code in ('future_owned_code', 'FUTURE_OWNED_CODE', 'a', '_' * 64):
+            with self.subTest(code=code):
+                self.assertEqual(effects_runner._startup_reason(BrokerConfigError(code)), code)
+        for code in ('', '_' * 65, 'CODE_314', 'code space', 'code\n', 'é', None, 12):
+            with self.subTest(code=code):
+                self.assertIsNone(effects_runner._startup_reason(BrokerConfigError(code)))
+        class Untrusted(BrokerConfigError):
+            pass
+        self.assertIsNone(effects_runner._startup_reason(Untrusted('DATABASE_BUSY')))
+
+    def test_1038_kept_class_contract_does_not_expand_with_runtime_classes(self):
+        before = runner_faults._CLASSES
+        private = type('PRIVATE_DYNAMIC_SECRET', (Exception,), {})
+        try:
+            with mock.patch.object(builtins, 'PRIVATE_DYNAMIC_SECRET', private, create=True):
+                importlib.reload(runner_faults)
+                self.assertEqual(runner_faults._CLASSES, before)
+                self.assertEqual(runner_faults.describe(private('PRIVATE'))['exception_class'], 'Exception')
+        finally:
+            importlib.reload(runner_faults)
+
+    def test_1038_kept_class_contract_does_not_shrink_on_another_reader_runtime(self):
+        kept = {'exception_class': 'DataError', 'message': 'Exception text withheld.'}
+        try:
+            with mock.patch.object(sqlite3, 'DataError', None):
+                importlib.reload(runner_faults)
+                try:
+                    read = runner_faults.validate(kept)
+                except ValueError:
+                    self.fail('another runtime must still read the kept DataError record')
+                self.assertEqual(read, kept)
+        finally:
+            importlib.reload(runner_faults)
 
 
 class FaultCase(effects.EffectsRunnerCase):
@@ -26,6 +106,67 @@ class FaultCase(effects.EffectsRunnerCase):
                 setattr(runner, key, value)
             token = self.store.acquire_runner(guard)['runner_token']
             return operation(runner, guard, token)
+
+    def test_1038_startup_real_missing_route_root_keeps_binding_reason(self):
+        # The captured pin is valid, then its scratch home disappears before
+        # load_route_table's physical-identity check (the actual raise site).
+        original = effects_runner.broker_routes.preflight_route
+        def preflight(*args, **kwargs):
+            config = original(*args, **kwargs)
+            from pathlib import Path
+            Path(config.destination['codex_home']).rmdir()
+            return config
+        with mock.patch.object(effects_runner.broker_routes, 'preflight_route', side_effect=preflight):
+            result = self.foreground()
+        self.assertEqual(result['status'], 'startup_failed')
+        self.assertEqual(result['reason'], 'route_binding_changed')
+        self.assertFalse(result['pause_saved'])
+        self.assertEqual(self.sql('SELECT state FROM runner_state'), [('idle',)])
+
+    def test_1038_startup_real_schema_refusal_survives_store_and_profile_wrappers(self):
+        self.startup_metadata_refusal('schema_version', '-1', 'SCHEMA_MISMATCH')
+
+    def test_1038_startup_real_instance_refusal_survives_store_and_profile_wrappers(self):
+        self.startup_metadata_refusal('instance_id', 'other-scratch-instance', 'INSTANCE_MISMATCH')
+
+    def startup_metadata_refusal(self, key, value, code):
+        original = self.sql('SELECT value FROM metadata WHERE key=?', (key,))[0][0]
+        try:
+            with sqlite3.connect(str(self.path)) as db:
+                db.execute('UPDATE metadata SET value=? WHERE key=?', (value, key))
+            result = self.foreground()
+            self.assertEqual(result['status'], 'startup_failed')
+            self.assertEqual(result['reason'], code)
+            self.assertFalse(result['pause_saved'])
+            self.assertEqual(self.sql('SELECT state FROM runner_state'), [('idle',)])
+        finally:
+            with sqlite3.connect(str(self.path)) as db:
+                db.execute('UPDATE metadata SET value=? WHERE key=?', (original, key))
+
+    def test_1038_startup_real_runner_identifier_refusal_keeps_reason(self):
+        result = effects_runner.run_foreground(self.profile_path, '', self.map_path,
+                                               selected_executable=str(self.broker))
+        self.assertEqual(result['status'], 'startup_failed')
+        self.assertEqual(result['reason'], 'INVALID_ARGUMENT')
+        self.assertFalse(result['pause_saved'])
+        self.assertTrue(result['cleanup_confirmed'])
+        self.assertEqual(self.sql('SELECT state FROM runner_state'), [('idle',)])
+
+    def test_1038_storage_wait_uses_injected_clock_without_real_sleep(self):
+        def check(runner, guard, token):
+            calls = []
+            def busy():
+                calls.append(self.clock.monotonic())
+                raise RunnerError('DATABASE_BUSY', 'Known clean retry', retryable=True)
+            with self.assertRaises(RunnerError):
+                runner._storage(busy)
+            expected, now = [], 0.0
+            for delay in (0.0, .1, .2, .4, .8, 1.0):
+                now += delay; expected.append(now)
+            self.assertEqual(calls, expected)
+            self.assertEqual(self.clock.monotonic(), 2.5)
+        with mock.patch.object(time, 'sleep', side_effect=AssertionError('real sleep bypasses injected clock')):
+            self.storage(check)
 
     def test_1038_nonbusy_cause_is_kept_in_pause_and_health(self):
         secret = 'Bearer SECRET_TOKEN /Users/private/report.txt Message body PRIVATE'
@@ -315,6 +456,9 @@ class FaultCase(effects.EffectsRunnerCase):
 
     def test_1038_actual_continuing_writer_exhausts_without_partial_mutation(self):
         def check(runner, guard, token):
+            # This observation measures actual SQLite waits and elapsed time;
+            # it deliberately selects the production clock rather than virtual time.
+            runner.storage_clock = time.monotonic
             writer = sqlite3.connect(str(self.path), isolation_level=None)
             before = self.sql('SELECT version,runner_token,lease_until_ms FROM runner_state')
             calls, delays = [], []
@@ -391,8 +535,9 @@ class FanoutCase(covers.SourceCoverCostCase):
             db.executemany("INSERT INTO pipeline_item_sources VALUES ('w1',?,?,?,NULL,NULL,'owner',1)",
                            [(number, 1000+n, root) for n in range(4000)])
         second = measured('Second added source')
-        self.assertLessEqual(second, first * 2 + 1000, 'one bounded added source must not walk4000 old duplicates')
         print(json.dumps({'source_add_vm_steps_before': first, 'after_4000_old_duplicates': second}))
+        self.assertLessEqual(second - first, 100,
+            'one added source must not walk4000 old duplicates: before=%d after=%d' % (first, second))
 
     def test_1038_source_add_does_not_reinvalidate_item_source_history(self):
         old = self.post('Old source'); number = self.file('Work', old)

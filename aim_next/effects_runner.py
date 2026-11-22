@@ -3,11 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 import sys
 import time
 
 from . import broker_routes, codex_host, hosted_notice, wake_adapter
-from .contract import StoreError
+from .contract import Refusal, StoreError
 from .authority import AuthorityError, GuardBusy
 from .route_pins import RoutePinError
 from .runner import RunnerError
@@ -24,20 +25,7 @@ NOTICE_PAGES = 5
 # Six250ms busy waits plus2.5s backoff:4s configured contention budget.
 STORAGE_BACKOFF = (.1, .2, .4, .8, 1.0)
 STORAGE_BUDGET = 4.0
-_STARTUP_CODES = frozenset((
-    'DATABASE_BUSY', 'AUTHORITY_BUSY', 'AUTHORITY_CHANGED', 'INVALID_BINDING',
-    'INVALID_ARGUMENT', 'INVALID_ACTOR', 'INVALID_GUARD', 'INVALID_ROUTE_DESTINATION',
-    'GUARD_NOT_DRAINED', 'LEASE_TOO_SHORT', 'REVISION_CONFLICT', 'RUNNER_STATE_INVALID',
-    'RUNNER_STORAGE_ERROR', 'ROUTE_PIN_INVALID', 'ROUTE_PIN_MISMATCH', 'ROUTE_PIN_MISSING',
-    'ROUTE_PIN_STORAGE_ERROR', 'STORE_OPEN_UNCONFIRMED', 'SEAT_ENDED',
-    'blocked_by_guard', 'binding_mismatch', 'guard_mismatch', 'invalid_claim',
-    'invalid_executable', 'invalid_guard', 'invalid_route', 'missing_route', 'profile_unavailable',
-    'duplicate_config', 'duplicate_destination', 'duplicate_route', 'invalid_actor',
-    'invalid_broker_config', 'invalid_cli', 'invalid_codex_home', 'invalid_cwd',
-    'invalid_destination', 'invalid_host_dir', 'conflicting_codex_executable',
-    'invalid_instructions', 'invalid_model',
-    'invalid_permission_mode', 'invalid_reasoning_effort', 'invalid_writable_roots',
-))
+_STARTUP_CODE = re.compile(r'[A-Za-z_]{1,64}')
 
 
 class Clock:
@@ -46,6 +34,9 @@ class Clock:
 
     def monotonic(self):
         return time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)/1000000000
+
+    def sleep(self, seconds):
+        time.sleep(seconds)
 
 
 class LoopFault(Exception):
@@ -104,7 +95,7 @@ class EffectsLoop:
         # uncertain storage exception the process must retain the watch until
         # exit instead of pretending it can establish connection-close order.
         self.cleanup_uncertain = False
-        self.storage_clock, self.storage_sleep = time.monotonic, time.sleep
+        self.storage_clock, self.storage_sleep = self.clock.monotonic, self.clock.sleep
         # Hosted routes share this process: their children's output and exits
         # arrive through the same watch, and their claims settle from responses.
         self.hosted = frozenset(hosted)
@@ -619,7 +610,7 @@ def _cleanup_result(result, reason, error):
 
 
 def _startup_reason(error):
-    trusted = (StoreError, StoreOpenError, RunnerError, RoutePinError, AuthorityError,
+    trusted = (Refusal, StoreError, StoreOpenError, RunnerError, RoutePinError, AuthorityError,
                GuardBusy, ProfileError, broker_routes.BrokerConfigError,
                broker_routes.BrokerBindingError, wake_adapter.RouteUnavailable)
     if not any(type(error) is kind for kind in trusted):
@@ -628,7 +619,7 @@ def _startup_reason(error):
         code = getattr(error, 'code', None)
     except BaseException:
         return None
-    return code if isinstance(code, str) and code in _STARTUP_CODES else None
+    return code if type(code) is str and _STARTUP_CODE.fullmatch(code) else None
 
 
 def run_foreground(profile_path, runner_id, routes_path, *, resume_version=None, resume_reason=None,

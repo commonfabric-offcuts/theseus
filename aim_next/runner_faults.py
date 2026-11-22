@@ -5,17 +5,38 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-import builtins
 import hashlib
 
 CURRENT = 'runner_fault.v1:current'
 PRIOR = 'runner_fault.v1:prior'
 _CLASS = re.compile(r'[A-Za-z_][A-Za-z0-9_]{0,63}')
-_CLASSES = frozenset(name for module in (builtins, sqlite3) for name, value in vars(module).items()
-                    if isinstance(value, type) and issubclass(value, BaseException)) | frozenset((
+# runner_fault.v1 is a persisted contract shared by writers and readers. These
+# names stay readable even when a different Python runtime lacks their classes;
+# ambient/new runtime classes cannot silently widen what diagnostics may keep.
+_CLASS_NAMES = (
+    'ArithmeticError', 'AssertionError', 'AttributeError', 'BaseException',
+    'BlockingIOError', 'BrokenPipeError', 'BufferError', 'BytesWarning',
+    'ChildProcessError', 'ConnectionAbortedError', 'ConnectionError',
+    'ConnectionRefusedError', 'ConnectionResetError', 'DataError', 'DatabaseError',
+    'DeprecationWarning', 'EOFError', 'EnvironmentError', 'Error', 'Exception',
+    'FileExistsError', 'FileNotFoundError', 'FloatingPointError', 'FutureWarning',
+    'GeneratorExit', 'IOError', 'ImportError', 'ImportWarning', 'IndentationError',
+    'IndexError', 'IntegrityError', 'InterfaceError', 'InternalError',
+    'InterruptedError', 'IsADirectoryError', 'KeyError', 'KeyboardInterrupt',
+    'LookupError', 'MemoryError', 'ModuleNotFoundError', 'NameError',
+    'NotADirectoryError', 'NotImplementedError', 'NotSupportedError', 'OSError',
+    'OperationalError', 'OverflowError', 'PendingDeprecationWarning',
+    'PermissionError', 'ProcessLookupError', 'ProgrammingError', 'RecursionError',
+    'ReferenceError', 'ResourceWarning', 'RuntimeError', 'RuntimeWarning',
+    'StopAsyncIteration', 'StopIteration', 'SyntaxError', 'SyntaxWarning',
+    'SystemError', 'SystemExit', 'TabError', 'TimeoutError', 'TypeError',
+    'UnboundLocalError', 'UnicodeDecodeError', 'UnicodeEncodeError', 'UnicodeError',
+    'UnicodeTranslateError', 'UnicodeWarning', 'UserWarning', 'ValueError',
+    'Warning', 'ZeroDivisionError',
     'StoreError', 'StoreOpenError', 'RunnerError', 'RoutePinError', 'AuthorityError',
     'ProfileError', 'LoopFault', 'HostFault', 'AdapterFault', 'BrokerConfigError', 'BrokerBindingError',
-    'RouteUnavailable', 'Refusal', 'GuardBusy'))
+    'RouteUnavailable', 'Refusal', 'GuardBusy')
+_CLASSES = frozenset(_CLASS_NAMES)
 _SQLITE = {
     'database is locked': 'database is locked',
     'database table is locked': 'database table is locked',

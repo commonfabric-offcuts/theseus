@@ -29,6 +29,7 @@ class Clock:
     def __init__(self):
         self.wall = int(time.time()*1000)
         self.elapsed = 0.0
+        self.events = []
 
     def wall_ms(self):
         return self.wall
@@ -37,8 +38,19 @@ class Clock:
         return self.elapsed
 
     def advance(self, seconds):
+        assert seconds >= 0, 'the controlled clock never rewinds'
         self.elapsed += seconds
         self.wall += round(seconds*1000)
+
+    def sleep(self, seconds):
+        # time.sleep completes its whole delay while external actors (such as
+        # the separate SQLite lock fixture) can act during that interval.
+        target = self.elapsed + seconds
+        while self.events and self.events[0][0] <= target:
+            when, action = self.events.pop(0)
+            self.advance(max(self.elapsed, when) - self.elapsed)
+            action()
+        self.advance(target - self.elapsed)
 
 
 class Wait:
@@ -50,12 +62,20 @@ class Wait:
         self.events = []
         self.calls = 0
 
+    @property
+    def events(self):
+        return self.clock.events
+
+    @events.setter
+    def events(self, value):
+        self.clock.events = value
+
     def wait(self, timeout):
         self.calls += 1
         if self.calls > 2000:
             raise AssertionError('scheduler hot loop')
         self.waits.append((self.clock.elapsed, timeout))
-        target = min(self.stop_at, self.clock.elapsed+timeout)
+        target = max(self.clock.elapsed, min(self.stop_at, self.clock.elapsed+timeout))
         dirty = False
         if self.events and self.events[0][0] <= target:
             when, action = self.events.pop(0)
@@ -145,12 +165,13 @@ class EffectsRunnerCase(unittest.TestCase):
         self.assertEqual(self.sql('SELECT state,reason_code FROM runner_state'),[('paused',reason)])
         self.assertEqual(self.sql('SELECT count(*) FROM wake_results'),[(settled,)])
 
-    def assert_busy_attempts(self, times, initial, recovered):
-        # Real SQLite/cleanup overhead may exhaust the monotonic budget before
-        # all six attempts; one inner retry must precede the unchanged outer gate.
-        self.assertGreaterEqual(len(times), 3)
-        self.assertLessEqual(len(times), 7)
-        self.assertEqual(times, [initial] * (len(times) - 1) + [recovered])
+    def assert_busy_attempts(self, times, initial):
+        # The actual lock releases halfway through the third backoff. The
+        # injected clock makes the four attempts and their times deterministic.
+        expected, now = [], initial
+        for delay in (0.0, .1, .2, .4):
+            now += delay; expected.append(now)
+        self.assertEqual(times, expected)
 
     def test_actual_broker_registers_settles_once_and_never_acknowledges(self):
         self.api(); self.create_topic()
@@ -232,19 +253,32 @@ class EffectsRunnerCase(unittest.TestCase):
         self.assertEqual(self.sql('SELECT count(*) FROM wake_attempts'),[(0,)])
 
     def test_preclaim_busy_pacing_survives_hints_and_successful_reads(self):
-        self.api(); self.create_topic(); self.wait.stop_at=8
-        calls=[];original=self.store.claim_wakes
+        self.api(); self.create_topic(); self.wait.stop_at=16
+        calls=[];reads=[];original=self.store.claim_wakes;schedule=self.store.runner_schedule
         def claim(*args,**kwargs):
             calls.append(self.clock.elapsed)
             #1038 first exhausts six clean per-call attempts. Keep exercising
-            # the original1/2/4s outer gates, including all intervening hints.
+            # the original1/2/4s outer gates after the2.5s inner backoffs.
             if len(calls)<19: raise RunnerError('DATABASE_BUSY','fixture',retryable=True)
             return original(*args,**kwargs)
-        self.wait.events=[(t,lambda: True) for t in (0.2,0.5,1.1,2,3.1,4,6)]
-        with mock.patch.object(self.store,'claim_wakes',claim): self.loop()
-        self.assertEqual(calls,[0]*6+[1]*6+[3]*6+[7])
+        def read(*args,**kwargs):
+            result=schedule(*args,**kwargs);reads.append(self.clock.elapsed);return result
+        # Include a hint in each outer gate; its successful schedule read must
+        # not shorten that gate or reset the claim's exponential backoff.
+        self.wait.events=[(t,lambda: True) for t in (0.2,0.5,1.1,2,3.1,4,6,6.5,11)]
+        with mock.patch.object(self.store,'claim_wakes',claim),mock.patch.object(self.store,'runner_schedule',read): self.loop()
+        expected=[]
+        for start in (0.0,3.5,8.0):
+            now=start
+            for delay in (0.0,.1,.2,.4,.8,1.0):
+                now+=delay;expected.append(now)
+        expected.append(14.5)
+        self.assertEqual(calls,expected)
+        for lower,upper in ((2.5,3.5),(6,8),(10.5,14.5)):
+            self.assertTrue(any(lower<t<upper for t in reads),(lower,upper,reads))
         self.assertEqual(self.sql('SELECT outcome FROM wake_results'),[('accepted',)])
         self.assertEqual(self.sql('SELECT state FROM runner_state'),[('stopped',)])
+        print(json.dumps({'1038_pacing_attempts':calls,'successful_schedule_reads':reads}))
 
     def test_parent_pin_busy_after_claim_pauses_without_settlement_or_spawn(self):
         api=self.api();self.create_topic()
@@ -697,7 +731,7 @@ db.rollback();db.close()
         def acquire(*args,**kwargs):
             calls.append(self.clock.elapsed);return original(*args,**kwargs)
         with mock.patch.object(self.store,'acquire_runner',acquire):result=self.loop()
-        self.assert_busy_attempts(calls,0,1)
+        self.assert_busy_attempts(calls,0)
         self.assertEqual(result['status'],'stopped')
         self.assertEqual(self.sql('SELECT state FROM runner_state'),[('stopped',)])
 
@@ -716,7 +750,7 @@ db.rollback();db.close()
         self.wait.events=[(0.5,release)]
         with mock.patch.object(self.store,'claim_wakes',claim): result=self.loop()
         self.assertEqual(checked,[[(0,)]],'failed COMMIT must leave no durable attempt')
-        self.assert_busy_attempts(calls,0,1)
+        self.assert_busy_attempts(calls,0)
         self.assertEqual(self.sql('SELECT outcome FROM wake_results'),[('accepted',)])
         self.assertEqual(result['status'],'stopped')
 
@@ -728,7 +762,7 @@ db.rollback();db.close()
         def renew(guard,token,**kwargs):
             calls.append((self.clock.elapsed,token));return original(guard,token,**kwargs)
         with mock.patch.object(self.store,'renew_runner',renew):result=self.loop()
-        self.assert_busy_attempts([t for t,_ in calls],9,10)
+        self.assert_busy_attempts([t for t,_ in calls],9)
         self.assertEqual(len({token for _,token in calls}),1)
         self.assertEqual(result['status'],'stopped')
         self.assertEqual(self.sql('SELECT state FROM runner_state'),[('stopped',)])
@@ -1090,7 +1124,7 @@ finally:db.close()
             releases[0]();checks.append(self.sql('SELECT count(*) FROM wake_attempts'));return False
         self.wait.events=[(0.5,release)]
         with mock.patch.object(self.store,'claim_wakes',claim):result=self.loop()
-        self.assertEqual(result['status'],'stopped');self.assert_busy_attempts(calls,0,1)
+        self.assertEqual(result['status'],'stopped');self.assert_busy_attempts(calls,0)
         self.assertEqual(checks,[[(0,)]]);self.assertEqual(self.sql('SELECT outcome FROM wake_results'),[('accepted',)])
 
     def test_lost_acceptance_result_can_retry_same_work_without_ack(self):

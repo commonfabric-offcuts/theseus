@@ -31,7 +31,7 @@ the pause reason, and the previous run retains its cause on resume/acquisition.
 Pause versions, ownership, guard/child cleanup and operator resume rules stay.
 Startup failures before ownership return the safe fault without inventing a
 Core pause. Their reason admits only fixed codes from exact known exception
-types; unknown codes default to no reason and an unknown busy-shaped exception
+types; codes outside the fixed grammar default to no reason and an unknown busy-shaped exception
 does not authorize retry. A later cleanup exception returns a separate cleanup_fault and
 preserves the original cause and actual pause_saved value; it cannot promise a
 new Core write after ownership/cleanup is uncertain. Startup profile/route
@@ -97,3 +97,38 @@ existing Health/native controls with exact source identities and cleanup.
 The retained first-head74-file results remain attributed to that head; new
 verification states its own scope. DELETE and the stand-alone restart rule
 from Warp16141 remain. No approval/carry/live installation act here.
+
+## Third head: review16493 / Build3
+
+The second head054ced31 and first headd690a696, their freezes and evidence,
+stay immutable. This new own branch parents054ced31 on original314. Fable16500
+clears the completed1043 handoff boundary; this contract precedes product edits.
+
+Startup reasons use exact trusted exception types, including Core Refusal,
+and314's fixed-code grammar `[A-Za-z_]{1,64}`. There is no hand-copied code
+list. Actual broker binding changes, Store instance/schema refusals propagated
+through ProfileError, and runner-ID Refusal retain their reason before ownership.
+Unknown types/subclasses and codes outside that grammar yield no reason. This
+trust is scoped to the startup call chain, not input-derived Refusal constructors
+in hosted_cli.exchange or pipeline._entry_write, which startup does not call.
+Startup remains one-shot; no new retry or arbitrary exception text is admitted.
+
+Storage deadlines and sleeps use the same injected clock as the scheduler.
+Production sleep remains time.sleep; controlled fixture sleep advances that clock
+and runs scheduled external events without rewinding it. Real SQLite timeout and
+OS execution time remain distinct from virtual-time evidence. Existing real
+contention tests will assert their exact deterministic inner attempt sequence.
+Route pin read contention uses the shared SQLite busy classifier, retaining
+failed-close uncertainty. The persisted runner_fault.v1 exception class names
+are a fixed tuple, independent of the writer's or reader's Python exception set;
+new runtime or dynamic names default to Exception until the contract changes.
+
+The source-add VM assertion compares the absolute increase after4000 duplicate
+history rows: at most100 additional instructions. The former relative bound's
+behavior on314 is still unobserved at intake; retain that actual measurement
+and the tightened test's red before claiming sensitivity. Read-site enumeration,
+real startup refusals, clock injection, route pin non-busy lookalikes and record
+contract changes get retained red/green evidence. DELETE/EXTRA/fullfsync/FKs,
+six-attempt/four-second configured budget,32-source key default and uncertain
+mutation no-replay remain. Formal approval still needs actual1021LIVE; Warp
+owns standalone landing after1050 and runner restart/Health/rollback observation.
