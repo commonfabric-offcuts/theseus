@@ -631,3 +631,18 @@ test('931 a failed choice write leaves the refusal reachable and the source inta
   assert.equal(f.u.pending(), false); assert.equal(f.editor.recoveryDiscovery, true); assert.deepEqual(f.rows.get(row.id), row);
   assert.equal(f.editor.refusedCopyChoices?.size ?? 0, 0);
 });
+
+ test('1044 successful adoption retires scheduled callbacks of the replaced editor', async t => {
+  const f = await fixture(t), old = f.editor, callbacks = new Map(); let serial = 0;
+  f.registry.timers = { now: () => 0, setTimeout: fn => { callbacks.set(++serial, fn); return serial; }, clearTimeout: id => callbacks.delete(id) };
+  f.registry.schedule(old);
+  assert.equal(callbacks.size, 2, 'real idle and maximum save callbacks are queued');
+  const saved = new Editor(old.context, old.draft); saved.edit({ body: 'Explicitly adopted writing' });
+  const row = { ...f.journal.row(saved.snapshot()), id: 'adopt-timer1044', stamp: 'timer1044' };
+  f.backend.adopt = async (key, candidate, guard) => { assert.ok(guard()); f.rows.set(f.journal.id(key), { ...row, id: f.journal.id(key) }); };
+  const adopted = await f.registry.adoptCandidate(old, row, f.registry.current);
+  assert.notEqual(adopted, old);
+  assert.doesNotThrow(() => { for (const [id, run] of [...callbacks]) { callbacks.delete(id); run(); } }, 'advancing past both save deadlines cannot flush an unregistered editor');
+  assert.equal(f.registry.sessionFor(adopted).editor, adopted);
+  assert.equal(adopted.draft.body, 'Explicitly adopted writing');
+});

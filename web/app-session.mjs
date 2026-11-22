@@ -772,6 +772,7 @@ export class EditorRegistry {
       this.validateState(state, editor.context.sourceRef, editor.context.topicId);
       if (!current()) throw Error('The current writing changed. Review both versions again.');
       await this.journal.adopt(editor.key, { id: candidate.id, stamp: candidate.stamp }, current);
+      this.cancelSave(editor);
       this.sessions.delete(editor.key);
       const restored = await this.register(editor.context, editor.context.kind === 'note' ? state.note : state.draft);
       for (const shown of new Set([presentation, this.current, this.inline, ...this.cards.values()])) {

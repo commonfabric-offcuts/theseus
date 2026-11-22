@@ -96,3 +96,11 @@ Images source-opening setup uses native Space on the focused card to avoid
 rapid body presses entering the actor's own message-edit gesture. Programmatic
 focus is setup, not Tab reach or pointer-opening proof. The preserved failure
 shows the actual message-edit textarea interception; no forced click is used.
+
+The required repeated-adoption native cell reached its ownership/send checks
+but exposed an old editor's still-scheduled save firing after adoption replaced
+its registration. Retain that page error. After successful journal adoption,
+cancel the old editor's scheduled saves immediately before removing its
+registration; a refused adoption must leave its save schedule intact. Add a
+real registry/fake-clock regression, red first, and rerun the actual native cell.
+No page error is filtered or assertion relaxed.
