@@ -37,6 +37,7 @@ export class ArchiveShelf {
     // The dossiers archived on this page, the latest last: they go first on the shelf. Any other keeps Core's order.
     this.here = []; this.drawn = false; this.list = [];
     this.root = element(doc, 'section', 'archive-shelf'); this.root.id = 'archive-shelf';
+    this.root.dataset.selectionOccluder = 'bottom';
     this.root.setAttribute('aria-labelledby', 'archive-shelf-heading'); this.root.hidden = true;
     const head = element(doc, 'div', 'archive-shelf-head');
     this.heading = element(doc, 'h2', '', 'Archived'); this.heading.id = 'archive-shelf-heading';

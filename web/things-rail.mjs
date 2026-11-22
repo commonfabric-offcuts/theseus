@@ -175,8 +175,10 @@ export class ThingsRail {
     // without folding. The generic arrow owner reaches only controls
     // actually present; this rail has no scope controls or name row.
     // Thumbnail grids answer their plain arrows before the tree's linear step (1007).
-    this.holder.addEventListener('keydown', event => this.gridKey(event), true);
-    this.tree = new KeyTree({ root: this.holder, doc, label: 'The topic\'s things', column: this.host, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows) });
+    // The shelf is a sibling of the sections: the whole rail is one cursor
+    // owner, including replicas that its own scroller currently hides.
+    this.host.addEventListener('keydown', event => this.gridKey(event), true);
+    this.tree = new KeyTree({ root: this.host, doc, label: 'The topic\'s things', column: this.host, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows) });
     // The sheet closes with Escape, its ✕ and a tap beside it; the shell keeps these across moves.
     listen(doc, 'keydown', event => { if (event.key === 'Escape' && this.isOpen()) { event.preventDefault(); this.close(true); } });
     listen(backdrop, 'click', () => this.close(true));
@@ -251,13 +253,19 @@ export class ThingsRail {
   gridKey(event) {
     const action = keyAction(event);
     if (!['left', 'right', 'up', 'down'].includes(action)) return;
-    const target = event.target.closest?.('a[href], button'), grid = target?.closest('.things-thumbs');
-    if (!grid || !this.holder.contains(grid)) return;
+    const target = event.target.closest?.('a[href], button'), grid = target?.closest('.things-thumbs, .archive-shelf-row');
+    if (!grid || !this.host.contains(grid)) return;
     const rows = this.tree.list(), byElement = new Map(rows.map(row => [row.el, row]));
     const cells = [...grid.querySelectorAll('a[href], button')].filter(el => byElement.has(el) && !el.disabled && !el.closest('[inert], [aria-hidden=true]'))
       .map(el => ({ el, box: el.getBoundingClientRect() })).filter(({ box }) => box.width > 0 && box.height > 0);
     const from = cells.find(cell => cell.el === target);
     if (!from) return;
+    const go = el => {
+      this.tree.go(byElement.get(el));
+      // The picture keeps its existing Return/new-tab action, including after menu Escape.
+      const image = el?.querySelector('img.image-thumb:not([hidden])');
+      if (image?.isConnected) { image.focus({ preventScroll: true }); revealSelection(image); }
+    };
     event.preventDefault(); event.stopPropagation();
     const overlap = (a, b, lo, hi) => Math.min(a[hi], b[hi]) - Math.max(a[lo], b[lo]) > .5;
     const horizontal = action === 'left' || action === 'right';
@@ -268,19 +276,26 @@ export class ThingsRail {
       const beyond = cells.filter(cell => cell !== from && gap(cell.box) >= -.5);
       const adjacent = beyond.reduce((best, cell) => !best || gap(cell.box) < gap(best.box) ? cell : best, null);
       if (!adjacent) {
-        if (!down) this.tree.go(byElement.get(byElement.get(target)?.parent));
-        else this.tree.go(rows[Math.max(...cells.map(cell => rows.indexOf(byElement.get(cell.el)))) + 1]);
+        if (!down && grid.classList.contains('archive-shelf-row')) {
+          const images = rows.filter(row => row.el.closest('.things-thumbs')).map(row => ({ el: row.el, box: row.el.getBoundingClientRect() }))
+            .filter(cell => cell.box.width > 0 && cell.box.height > 0);
+          const bottom = Math.max(...images.map(cell => cell.box.top));
+          const last = images.filter(cell => Math.abs(cell.box.top - bottom) < 1);
+          const aligned = last.filter(cell => overlap(cell.box, from.box, 'left', 'right'));
+          const middle = box => (box.left + box.right) / 2;
+          const next = (aligned.length ? aligned : last).sort((a, b) => Math.abs(middle(a.box) - middle(from.box)) - Math.abs(middle(b.box) - middle(from.box)))[0];
+          if (next) go(next.el);
+        } else if (!down) this.tree.go(byElement.get(byElement.get(target)?.parent));
+        else {
+          const firstArchive = grid.classList.contains('things-thumbs') && rows.find(row => row.el.classList.contains('shelf-dossier'));
+          this.tree.go(firstArchive || rows[Math.max(...cells.map(cell => rows.indexOf(byElement.get(cell.el)))) + 1]);
+        }
         return;
       }
       candidates = beyond.filter(cell => overlap(cell.box, adjacent.box, 'top', 'bottom') && overlap(cell.box, from.box, 'left', 'right'));
     }
     const next = nearest(from.box, candidates, action);
-    if (next) {
-      this.tree.go(byElement.get(next));
-      // The picture keeps its existing Return/new-tab action, including after menu Escape.
-      const image = next.querySelector('img.image-thumb:not([hidden])');
-      if (image?.isConnected) { image.focus({ preventScroll: true }); revealSelection(image); }
-    }
+    if (next) go(next);
     else if (action === 'left') panes.step('things', 'left', this.doc);
   }
   // Each section shown, and under an open one what can be pressed in it.
@@ -295,6 +310,10 @@ export class ThingsRail {
         rows.push({ el, level: 2, set: part.details, key: `section:${key}|${el.getAttribute('href') ?? el.textContent.trim()}`, parent: summary });
       }
     }
+    const shelf = this.host.querySelector('.archive-shelf');
+    if (this.drawnOnce && shelf && !shelf.hidden) for (const el of shelf.querySelectorAll('.shelf-dossier')) {
+      rows.push({ el, level: 1, set: shelf, key: 'archive:' + el.dataset.id, parent: null });
+    }
     return rows;
   }
   act(action, row, rows) {
@@ -304,8 +323,8 @@ export class ThingsRail {
     if (action === 'right') { this.tree.stepIn(row, rows, each => { each.el.parentElement.open = true; }); return; }
     // ⌘Return: a new message in the page's place, the panel over the page put away first.
     if (action === 'write') { this.leave(); panes.write?.(null); return; }
-    if (action === 'open') { section.open = true; return; }
-    if (action === 'fold') { section.open = false; this.tree.go(this.tree.list().find(each => each.el === section.querySelector(':scope > summary'))); }
+    if (action === 'open' && section?.matches('details')) { section.open = true; return; }
+    if (action === 'fold' && section?.matches('details')) { section.open = false; this.tree.go(this.tree.list().find(each => each.el === section.querySelector(':scope > summary'))); }
   }
   // The keys come to the rail, on the row they were last on.
   focus() { return this.tree.focus(); }
