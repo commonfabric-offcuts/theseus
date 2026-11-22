@@ -239,8 +239,16 @@ class Copy:
         return {"agent": event["agent"], "upto": upto, "ms": event["ms"]}
 
     def post(self, item):
-        return self.ask({"op": "post", "from": item["from"], "topic": item["topic"], "kind": item.get("kind", "post"),
-                         "to": item.get("to", []), "index": item["index"]})["deliveries"]
+        wake_id = item.get("wake_id")
+        if wake_id is None:
+            wake_id = item.get("id")
+        if wake_id is None:
+            wake_id = "replay-message-%d" % (item["index"] + 1)
+        request = {"op": "post", "from": item["from"], "topic": item["topic"], "kind": item.get("kind", "post"),
+                   "to": item.get("to", []), "index": item["index"], "wake_id": wake_id}
+        if "divergence_reason" in item:
+            request["divergence_reason"] = item["divergence_reason"]
+        return self.ask(request)["deliveries"]
 
     def read(self, agent, upto):
         self.ask({"op": "read", "agent": agent, "upto": upto})
@@ -348,7 +356,13 @@ def serve(code, plan_path):
             if request["op"] == "ready":
                 answer({"runner_profile": str(profiles / (owner + ".json")), "routes": str(routes_path)})
             elif request["op"] == "post":
-                args = {"body": "Replayed message %d" % (request["index"] + 1)}
+                reason = request.get("divergence_reason")
+                if reason is None:
+                    wake_id = request.get("wake_id")
+                    if wake_id is None:
+                        wake_id = "replay-message-%d" % (request["index"] + 1)
+                    reason = "wake replay %s" % wake_id
+                args = {"body": "Replayed message %d" % (request["index"] + 1), "divergence_reason": reason}
                 to = [actor for actor in request["to"] if actor in agents]
                 if request["kind"] in ("tell", "ask") and to:
                     args.update(addressees=to, intent=request["kind"])
