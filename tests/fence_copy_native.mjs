@@ -28,6 +28,8 @@ const control = data => new Promise((resolve, reject) => {
   const id = ++serial; pending.set(id, { resolve, reject }); fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
 const results = [], observations = [];
+// Set as the body's last statement, so a body that threw between cases leaves it false in native.json.
+let bodyCompleted = false;
 let browser, facts, contexts = [], engine;
 const payload = '\t  α <tag> & `literal`  \n\nlast line';
 const body = 'Before the fence.\n\n~~~~ text\n' + payload + '\n~~~~\n\nAfter the fence.';
@@ -841,11 +843,12 @@ try {
     });
     await browser.close(); browser = null;
   }
+  bodyCompleted = true;
 } finally {
   for (const ctx of contexts.splice(0)) await ctx.close();
   if (browser) await browser.close();
   fixture.stdin.end();
   const code = await exited;
-  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, observations, fixtureExitCode: code, browserClosed: !browser || !browser.isConnected() }, null, 2));
+  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, bodyCompleted, observations, fixtureExitCode: code, browserClosed: !browser || !browser.isConnected() }, null, 2));
 }
 assert.ok(results.length && results.every(r => r.passed), 'see native.json for exact failing assertions');
