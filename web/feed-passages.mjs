@@ -32,16 +32,21 @@ export class FeedPassages {
     Object.assign(this, { host, lights, entryOf, doc, wordsOf, highlight, fieldOf });
     this.win = doc.defaultView;
     this.lit = null; this.pointer = null; this.shifted = false; this.fielded = [];
-    // A card drawn again under its light with other words (the whole of a
-    // cut-off message arriving in place of its excerpt, an edit) puts the
-    // light out, as an edit drawn into the Reader puts out the passage lit
-    // there: the place lit would hold other words, which Return and ⌘C would
-    // then act on, and which passage of the new words stands for the one lit
-    // is no one's to guess. The pointer moving on lights one of them. Words
-    // drawn again as they were (a topic's name arriving for a link in them)
-    // keep the light on the same words.
+    // An edit puts the light out: its old offsets cannot stand for other
+    // words. Loading the rest of the same revision can keep a complete
+    // passage already in its unchanged excerpt, rebuilding the highlight on
+    // the new word nodes. A passage cut at the excerpt's end needs a fresh
+    // pointer choice from the whole sentence. No refresh takes Return from
+    // writing or turns Light back on.
     this.redrawn = new this.win.MutationObserver(() => {
-      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();
+      const lit = this.lit, text = lit && drawnText(lit.words);
+      if (lit && text !== lit.text) {
+        if (typeof text !== 'string' || !Number.isSafeInteger(lit.revision) || lit.revision < 1 || drawnRevision(lit.words) !== lit.revision ||
+            text.length <= lit.text.length || !text.startsWith(lit.text) || lit.end >= lit.text.length ||
+            !pointerLight(this.doc) || !this.lights()) { this.clear(); return; }
+        lit.text = text;
+      }
+      this.paint();
     });
     // The words wrapping anew (the window or the card resized, the card
     // growing to its whole message) move the lines the field lies behind.
@@ -116,7 +121,7 @@ export class FeedPassages {
     if (!pointerLight(this.doc)) { this.clear(); return; }
     if (extend) this.adopt(entry, words);
     const anchor = extend && this.lit?.words === words ? this.lit.anchor : span;
-    this.lit = { entry, words, text: drawnText(words), anchor, start: Math.min(anchor.start, span.start), end: Math.max(anchor.end, span.end) };
+    this.lit = { entry, words, text: drawnText(words), revision: drawnRevision(words), anchor, start: Math.min(anchor.start, span.start), end: Math.max(anchor.end, span.end) };
     this.paint();
   }
   // Words dragged over in the entry become the light's anchor, the passages
