@@ -56,6 +56,7 @@ from .invite import INVITATIONS_BACKFILL, INVITATIONS_DOWN, INVITATIONS_OCCUPIED
 from .tools_core import TOOLS_DOWN, TOOLS_OCCUPIED, TOOLS_SCHEMA
 from .dossier_order import ORDER_SCHEMA as DOSSIER_ORDER_SCHEMA, ORDER_DOWN as DOSSIER_ORDER_DOWN, ORDER_OCCUPIED as DOSSIER_ORDER_OCCUPIED, freeze as freeze_dossier_order
 from .outcome_end import ENDS_DOWN, ENDS_OCCUPIED, ENDS_SCHEMA
+from .stacks import LEVEL_UP, LEVEL_DOWN, LEVEL_OCCUPIED
 from .stacks import REFRESH_UP, REFRESH_DOWN, MESSAGE_REFRESH_UP, MESSAGE_REFRESH_DOWN, MESSAGE_REFRESH_OCCUPIED
 from .cover_refresh import WRITER_SCHEMA, WRITER_BACKFILL
 from .piece_freeze import FREEZE_SCHEMA, FREEZE_DOWN, FREEZE_OCCUPIED
@@ -241,6 +242,8 @@ STEPS = (
     ("62", "63", DIM_SCHEMA, DIM_DOWN, DIM_OCCUPIED),
     ("63", "64", SEAT_SCHEMA, SEAT_DOWN, SEAT_OCCUPIED),
     ("64", "65", END_SCHEMA, END_DOWN, END_OCCUPIED),
+    # 858: isolated-base number; renumber on the actual production predecessor at carry.
+    ("65", "66", LEVEL_UP, LEVEL_DOWN, LEVEL_OCCUPIED),
 )
 
 

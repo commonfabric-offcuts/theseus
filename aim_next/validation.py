@@ -69,7 +69,7 @@ COMMANDS = {
     "rail.dimming_set": "_command_rail_dimming_set",
     "message.star": "_command_message_star", "message.deal": "_command_message_deal", "message.fold": "_command_message_fold",
     "message.fold_through": "_command_message_fold_through",
-    "stack.aside": "_command_stack_aside", "stack.place": "_command_stack_place", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
+    "stack.aside": "_command_stack_aside", "stack.place": "_command_stack_place", "stack.level": "_command_stack_level", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
     "stack.cover": "_command_stack_cover", "stack.move": "_command_stack_move",
     "stack.cover_refresh": "_command_stack_cover_refresh",
     "tool.use": "_command_tool_use", "tool.link": "_command_tool_link", "tool.record": "_command_tool_record",
@@ -117,7 +117,7 @@ EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish"
             "outline.order_set": {"order_revision"},
             "rail.dimming_set": {"dim_revision"},
             "message.star": {"star_revision"}, "message.deal": {"deal_revision"}, "message.fold": {"fold_revision"}, "message.fold_through": {"fold_revision"}, "stack.aside": {"aside_revision"},
-            "stack.place": {"place_revision"}, "stack.name": {"name_revision"}, "stack.join": {"join_revision"},
+            "stack.place": {"place_revision"}, "stack.level": {"level_revision"}, "stack.name": {"name_revision"}, "stack.join": {"join_revision"},
             "stack.cover": {"cover_revision"}, "stack.cover_refresh": {"cover_revision"},
             "stack.move": {"move_revision", "source_topic_id"},
             "tool.use": set(), "tool.link": set(), "tool.record": set()}
@@ -139,7 +139,7 @@ REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "dra
                      "outline.order_set": "order_revision",
                      "rail.dimming_set": "dim_revision",
                      "message.star": "star_revision", "message.deal": "deal_revision", "message.fold": "fold_revision", "message.fold_through": "fold_revision", "stack.aside": "aside_revision",
-                     "stack.place": "place_revision", "stack.name": "name_revision", "stack.join": "join_revision",
+                     "stack.place": "place_revision", "stack.level": "level_revision", "stack.name": "name_revision", "stack.join": "join_revision",
                      "stack.move": "move_revision", "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
 VIEWS = {
     "submission_mention_reach": {"submission_id", "cursor", "limit"},
