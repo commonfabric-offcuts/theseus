@@ -7,6 +7,7 @@ export function outcomeInvalidation(workspace, actor) {
   const dirty = new Set(), add = (...names) => names.forEach(name => dirty.add(name));
   for (const item of workspace) {
     const kind = item.resource_kind;
+    if (kind === 'workspace_link') continue; // Links repaint through their rail's Live listener.
     if (kind === 'workspace') return outcomeReads();
     if (kind === 'topic') add('topics', 'standing', 'targets', 'pipeline', 'counts');
     else if (kind === 'memory') add('references');

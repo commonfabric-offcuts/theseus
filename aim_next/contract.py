@@ -11,6 +11,7 @@ LIMITS = {
     "attachment_count": 8, "attachment_bytes": 67108864,
     "memory_references": 32,
     "rail_dim_choices": 2048,
+    "workspace_links": 500, "link_url_utf8_bytes": 4096, "link_title_utf8_bytes": 1024,
     "media_file_bytes": 67108864, "media_name_utf8_bytes": 1024,
     # The most places one outline order holds, and its most bytes, so every
     # outcome list and topic list that carries it keeps room for its items (outline_order.py).
