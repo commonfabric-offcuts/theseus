@@ -136,7 +136,7 @@ test('867 opening the real shared menu and Copy text never allocates or saves a 
  const copied=clipboard(t),raw=card('Literal *title*','**Words**',null)+'### Child\n\nChild words\n',p=menuPage(raw);
  const menu=p.openCardMenu(0,p.anchor);t.after(()=>menu?.close(false));
  assert.equal(menu.root.getAttribute('aria-label'),'This card');
- assert.deepEqual(menu.root.children.map(n=>n.textContent),['Copy text','Copy link','Delete','Set color','Chat about this…']);
+ assert.deepEqual(menu.root.children.map(n=>n.querySelector('.menu-description')?.children[0]?.textContent??n.textContent),['Copy text','Copy link','Delete','Set color','Chat about this…']);
  assert.deepEqual(menu.root.children.map(n=>n.querySelector('svg').getAttribute('data-glyph')),['copy','link','drop','palette','topic']);
  await p.cardMenuItems(p.cardRef(0),p.anchor)[0].act();assert.deepEqual(copied,['Literal *title*\n\nWords']);
  assert.equal(deckBody(p.deck),raw);assert.deepEqual(p.acts,[]);
