@@ -8,6 +8,10 @@ export function mergeTopicCloseRecord(old, next) {
   if (immutable.some(key => JSON.stringify(old[key]) !== JSON.stringify(next[key]))) throw Error('The saved topic action identity changed.');
   const row = structuredClone(next);
   row.receipt = old.receipt ?? row.receipt;
+  // First persisted observation wins, including over stale writers and replay.
+  // A legacy committed row uses its original keep time, never a new deadline.
+  const committedAt = old.committedAt ?? (old.receipt?.status === 'committed' ? old.at : row.committedAt);
+  if (committedAt !== undefined) row.committedAt = committedAt;
   if (old.receipt && next.receipt && JSON.stringify(old.receipt) !== JSON.stringify(next.receipt)) throw Error('The recorded operation answer changed.');
   if (old.undo) {
     const proposed = row.undo?.id === old.undo.id ? row.undo : null;

@@ -23,10 +23,10 @@ export async function notebookDeleteUI({doc,shell,api,bootstrap,open,current}) {
     ui.render=()=>{
       if(documents.get(doc)!==ui)return;
       let host=doc.getElementById('notebook-delete-notice');
-      const rows=[...ui.rows.values()].filter(r=>(r.undo.phase!=='committed'||r.undo.undoRequested||Date.now()<r.undo.expires)).sort((a,b)=>b.undo.at-a.undo.at);
-      if(ui.timer!==undefined){clearTimeout(ui.timer);ui.timer=undefined;}
-      const next=rows.filter(r=>r.undo.phase==='committed'&&!r.undo.undoRequested).map(r=>r.undo.expires-Date.now());
-      if(next.length)ui.timer=setTimeout(ui.render,Math.max(1,Math.min(...next)));
+      // The journal still owns keyboard Undo and its deadline. Only unresolved
+      // work needs a notice; successful receipts never become feed furniture.
+      const rows=[...ui.rows.values()].filter(r=>!['committed','undone'].includes(r.undo.phase)||
+        r.undo.phase==='committed'&&r.undo.undoRequested||r.error).sort((a,b)=>b.undo.at-a.undo.at);
       if(!rows.length&&!ui.error&&!ui.cursor){host?.remove();return;}
       if(!host){host=doc.createElement('section');host.id='notebook-delete-notice';host.className='notice';host.setAttribute('aria-label','Notebook changes');host.setAttribute('role','status');const header=doc.querySelector('.topic-header');if(header)header.after(host);else doc.getElementById('main')?.prepend(host);}
       const nodes=[],button=(label,act)=>{const b=doc.createElement('button');b.type='button';b.textContent=label;b.onclick=()=>Promise.resolve().then(act).catch(e=>{ui.error=e.message;ui.render();});return b;};
