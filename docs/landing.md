@@ -35,8 +35,15 @@ data or its meaning, including rewrites of existing records, semantic backward
 compatibility or values the previous code cannot read or safely use after a
 revert; migrations or `SCHEMA_VERSION`; server permission policy or admission
 rules; release, check or landing tools and their dependencies; guarded input
-declarations such as `tools/ci-input-reads.json`; or `.github/`. A filename-only
+declarations and classifier code; or `.github/`. A filename-only
 guard is a minimum, not proof that other changes are ordinary.
+
+Item1071 makes three exact planning paths ordinary: `tools/unit_shards.py`,
+`.github/check-weights.json` and `tools/ci-input-reads.json`. This exception
+does not include neighbouring files or directories. Judge/deploy code,
+validators, controller workflows and migrations remain guarded; the shared
+Core/train policy is `aim_next/judgment.py`. Changing that policy itself is
+judged first. Complete-diff semantic review still applies.
 
 A client control that reflects permission Core already enforces, without
 changing who may do what and with Core's refusal intact after revert, is
