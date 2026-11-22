@@ -342,7 +342,11 @@ class GatedStore:
 # Isolated wiring fixture. Actual Store and HTTP; stdin is a private fixture
 # control channel, never a product endpoint. EOF shuts down this server only.
 def main():
-    with tempfile.TemporaryDirectory(prefix="aim-ux-http-") as directory:
+    from fixture_teardown import FixtureCleanup
+    observation_path = (sys.argv[sys.argv.index("--teardown-observations") + 1]
+                        if "--teardown-observations" in sys.argv else None)
+    cleanup = FixtureCleanup(observation_path)
+    with cleanup, tempfile.TemporaryDirectory(prefix="aim-ux-http-") as directory:
         root = Path(directory).resolve()
         path = root / "instance.sqlite3"
         instance, actor = "ux-http-fixture", "fixture-person"
@@ -542,6 +546,8 @@ def main():
         item645_candidate = server.build
         item645_candidate_csp = server.csp
         item645_original = None
+        runtime_owners = [(server, server.build, server.csp)]
+        runtime_selections = []
 
         def item645_runtime(phase):
             nonlocal item645_original
@@ -953,6 +959,7 @@ def main():
                         # server; server_stop refuses an unrestored comparison.
                         item783_builds.server = server
                         item783_builds.candidate, item783_builds.csp = server.build, server.csp
+                        runtime_owners.append((server, server.build, server.csp))
                         thread = threading.Thread(target=server.serve_forever, daemon=True)
                         thread.start()
                         answer = {"origin": server.origin, "token": server.session_token}
@@ -1628,41 +1635,38 @@ def main():
                         continue
                     else:
                         raise ValueError("Unknown private fixture control")
+                    if request["method"] in ("item_645_runtime", "item650_runtime", "item_674_runtime",
+                                             "item_721_runtime", "item_731_runtime", "item_738_runtime",
+                                             "item_783_runtime", "reading_785_runtime"):
+                        runtime_selections.append({"method": request["method"], "phase": request["phase"]})
                     print(json.dumps({"id": request["id"], "answer": answer}), flush=True)
                 except Exception as error:
                     print(json.dumps({"id": request["id"], "failure": str(error)}), flush=True)
         finally:
-            item650_unrestored = item650_runtime.active is not None
-            if item650_unrestored:
-                item650_runtime.select(server, "restored")
-            item783_unrestored = server.build is not item783_builds.candidate
-            if item783_unrestored:
-                item783_builds.select("restored")
-            item645_unrestored = item645_original is not None and server is not None and server.build is not item645_candidate
-            if item645_unrestored:
-                server.build = item645_candidate
-                server.csp = item645_candidate_csp
-            reading785_cleanup_error = None
-            try:
-                if reading785_runtime is not None:
-                    reading785_runtime.close()
-            except AssertionError as error:
-                reading785_cleanup_error = error
+            cleanup.attempt("650-runtime", lambda: cleanup.restore_650(item650_runtime))
+            # Each server retains its own candidate, including a stopped or
+            # replaced server. All controls share these immutable Build owners.
+            for number, (owner, candidate, csp) in enumerate(runtime_owners):
+                cleanup.attempt("public-runtime-%d" % number,
+                                lambda: cleanup.restore_runtime(owner, candidate, csp, number, runtime_selections))
+            # Clear comparison phase bookkeeping before legacy close methods
+            # check it. Needing restoration is already recorded above.
+            cleanup.attempt("721-runtime", lambda: item721_runtime.select("restored"))
+            cleanup.attempt("721-close", item721_runtime.close)
+            if reading785_runtime is not None:
+                cleanup.attempt("785-runtime", lambda: reading785_runtime.select("restored"))
+                cleanup.attempt("785-close", reading785_runtime.close)
             if controls is not None:
-                controls.close()
+                cleanup.attempt("controls-close", controls.close)
             if server is not None and not core_only:
-                server.shutdown()
-                server.server_close()
-                thread.join(2)
-                assert not thread.is_alive(), "Owned HTTP fixture did not close"
+                cleanup.attempt("http-shutdown", server.shutdown)
+                cleanup.attempt("http-close", server.server_close)
+                cleanup.attempt("http-join", lambda: thread.join(2))
+                def thread_closed():
+                    assert not thread.is_alive(), "Owned HTTP fixture did not close"
+                cleanup.attempt("http-thread", thread_closed)
             if controls is not None:
-                controls.assert_healthy()
-            item721_runtime.close()
-            assert not item650_unrestored, "Item 650 baseline was not restored"
-            assert not item783_unrestored, "Item 783 comparison runtime was not restored"
-            assert not item645_unrestored, "Item 645 comparison runtime was not restored"
-            if reading785_cleanup_error is not None:
-                raise reading785_cleanup_error
+                cleanup.attempt("controls-health", controls.assert_healthy)
 
 
 if __name__ == "__main__":
