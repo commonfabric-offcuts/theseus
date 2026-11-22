@@ -112,6 +112,7 @@ export const KEY_WORDS = [
   ['⌘Return', 'starts a new message in the topic the keys are on, or in the outcome\'s Conversation'],
   ['Option-N · Option-M', 'opens the pencil sheet in Note mode with Option-N or Message mode with Option-M; either switches mode while typing without inserting a character. After clicking Note or Message, Return or ⌘Return sends; in a text field Return makes a new line and ⌘Return sends'],
   ['⌘↑ ⌘↓', 'move an outcome, or a topic within its outcome, up or down; your order is kept wherever you sign in'],
+  ['⌥-click · ⇧⌥-click', 'dim or undim a topic or outcome name in the left rail with Option-click. Option-Shift-click keeps only that topic and its outcome, or the clicked outcome’s branch, bright. Command-click opens the link in a new tab.'],
   ['⌘Z', 'puts the last move back'],
 ];
 // The same keys on a message, as the outline's legend lists them under "In the messages" (docs/reply-stacks.md).

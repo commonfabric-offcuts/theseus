@@ -39,9 +39,7 @@ export function notebookMenuItems(page) {
       ...(page.menuExtras?.('afterImage')??[]),
       {key:'star',label:state.starred?'Unstar':'Star',glyph:state.starred?'starred':'star',act:()=>page.pageAction('memory.star',{starred:!state.starred})}];
     if(!page.readOnly)items.push({key:'rename',label:'Rename',glyph:'pencil',act:()=>page.rename()});
-    if(state.reader_may_delete)items.push({key:'delete',label:'Delete',glyph:'drop',act:()=>{
-      if(page.doc.defaultView.confirm('Delete this Notebook page? Its history is kept and you can undo it.'))page.pageAction('memory.delete',{deleted:true});
-    }});
+    if(state.reader_may_delete)items.push({key:'delete',label:'Delete',glyph:'drop',act:()=>page.pageAction('memory.delete',{deleted:true})});
     items.push({key:'copy',label:'Copy Link',glyph:'link',act:()=>page.copyLink()});
     return items;
   }
@@ -52,6 +50,7 @@ export class NotebookPage extends DeckPage {
   constructor(options) {
     super({ ...options, interactiveHTML: true });
     this.passages = options.passages;
+    this.deleteUI=options.deleteUI;this.closeDeleted=options.closeDeleted;
     this.viewPreference = options.viewPreference ?? new NotebookViews(options.bootstrap ?? {});
     Object.assign(this, { api: options.api, bootstrap: options.bootstrap, mode: options.mode ?? this.viewPreference.get(options.item) });
     this.viewPreference.set(options.item, this.mode);
@@ -166,6 +165,7 @@ export class NotebookPage extends DeckPage {
     if (!this.started) {
       this.started=true;
       try {
+        await this.deleteUI?.beforeOpen(this.item);
         this.store=await notebookStore({instance_id:this.bootstrap.instance_id,actor_id:this.bootstrap.actor,item_id:this.item});
       } catch(error) {
         // Another tab owns writing, or storage is unavailable: still let this
@@ -173,10 +173,10 @@ export class NotebookPage extends DeckPage {
         this.unavailable=error.message;
         this.store={get:async()=>null,put:async()=>{},close:()=>{}};
       }
-      this.writing=new NotebookWriting({item:this.item,bootstrap:this.bootstrap,api:this.api,store:this.store,changed:()=>this.writingChanged(),
+      this.writing=new NotebookWriting({item:this.item,bootstrap:this.bootstrap,api:this.api,store:this.store,changed:()=>{if(!this.detached)this.writingChanged();this.deleteUI?.changed(this.writing);},
         reconcile:(base,mine,theirs)=>this.mergeIncoming(base,mine,theirs),localActive:()=>Boolean(this.editing&&this.boxChanged(this.editing))});
       if(this.unavailable)this.writing.readOnly=true;
-      await this.writing.open();
+      await this.writing.open();await this.deleteUI?.register(this);
       globalThis.addEventListener('pagehide',()=>{this.writing.close();this.writing.serial.finally(()=>this.store.close());},{signal:this.listening.signal});
       globalThis.addEventListener('pageshow',event=>{if(event.persisted)globalThis.location.reload();},{signal:this.listening.signal});
     } else {
@@ -205,9 +205,9 @@ export class NotebookPage extends DeckPage {
   // Let go without a pagehide (an in-place move, another page in the composer, notebook-sheet.mjs): writing closes
   // as on pagehide, and the page's keys and listeners go with it.
   close() {
-    this.listening.abort();
+    this.detached=true;this.listening.abort();this.deleteUI?.release(this);
     this.textProjection?.close();
-    if(this.writing&&!this.writing.closed){this.writing.close();this.writing.serial.finally(()=>this.store.close());}
+    if(this.writing&&!this.writing.closed&&!this.deleteUI?.retains(this.writing)){this.writing.close();this.writing.serial.finally(()=>this.store.close());}
   }
   readingPassages() {
     const source = this.source, revision = source?.source_ref?.revision;
@@ -572,6 +572,7 @@ export class NotebookPage extends DeckPage {
     if(!kind&&!this.writing?.actionPending)return;
     // Capture the actual visible writing before settling the same writer stream.
     if(this.editing)this.save();this.textEdited();
+    if(kind==='memory.delete'&&args.deleted&&this.deleteUI)return this.deleteUI.remove(this,()=>this.closeDeleted?.(this));
     if(this.writing?.actionPending)await this.writing.retryAction();
     else await this.writing?.action(kind,args);
     if(!this.writing?.actionPending)await this.load();

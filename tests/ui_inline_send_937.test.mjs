@@ -44,9 +44,12 @@ for (const [name, change] of Object.entries({
   const f = sending(), done = f.ui.send(); change(f); f.resolve({ status: 'confirmed' }); await done;
   assert.equal(f.finished.length, 0);
 });
-test('937 composer at rest remains open after confirmed sending', async () => {
-  const f = sending(); f.ui.cardReply = false;
-  const done = f.ui.send(); f.resolve({ status: 'confirmed' }); await done; assert.equal(f.finished.length, 0);
+test('1026 confirmed resting pencil folds and hands off to its sent card', async () => {
+  const f = sending(), doc = miniDocument(), root = doc.createElement('div'), field = doc.createElement('textarea');
+  root.ownerDocument=doc;root.contains=el=>el===root||[...root.descendants()].includes(el);root.append(field); field.focus(); Object.assign(f.ui, { cardReply: false, root, field });
+  let folded = 0; f.ui.bar.fold = () => ++folded;
+  const done = f.ui.send(); f.resolve({ status: 'confirmed' }); await done;
+  assert.equal(folded, 1); assert.equal(f.finished.length, 1);
 });
 
 async function reconciled() {

@@ -235,8 +235,10 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 }
 /* Paper: the Notebook's pages are paper on the rail's dark floor, as in the outcome page's Notebook column. */
 @media all{
-  :root[data-look=paper] .things-sec[data-key=notebook] .things-body{padding:.55rem;border-radius:.7rem;background:#f2eee5}
+  :root[data-look=paper] .things-sec[data-key=notebook] .things-body:not(:empty){padding:.55rem;border-radius:.7rem;background:#f2eee5}
   :root[data-look=paper] .things-sec[data-key=notebook]{--things-tile:#fbf8f1;--things-hair:#ddd5c5;--things-quiet:#6f685c;--ink:#27241f;--accent:#3d7a62}
+  /* The title field uses this Notebook section's paper as well as its ink. */
+  :root[data-look=paper] .things-sec[data-key=notebook] .rail-line input{background:var(--things-tile);border-color:var(--things-hair);--muted:var(--things-quiet)}
 }
 
 /* 973: words quieten without changing a row's layout or its rail line. */
@@ -264,3 +266,22 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 .mention-notice ul { margin: 0; padding-left: 1.2rem; }
 .mention-notice li > span { display: block; }
 .mention-notice button { min-height: 44px; max-width: 100%; white-space: normal; margin: .2rem .3rem .2rem 0; }
+
+/* 1036: the same notice group keeps rail-sized words when moved into main. */
+:root{--rail-notice-size:.85rem}
+#page-notices>.notice{position:relative;min-height:3.15rem;font-size:var(--rail-notice-size);line-height:1.45;padding:.55rem 3.3rem .55rem .65rem}
+#page-notices>.notice button{font-size:inherit;line-height:1.35;max-width:100%;white-space:normal}
+#page-notices>.notice>button.page-notice-close{position:absolute;top:.2rem;right:.2rem;display:grid;place-items:center;width:2.75rem;height:2.75rem;min-height:2.75rem;margin:0;padding:0;border:0;border-radius:.25rem;background:transparent;color:inherit;font-size:1rem;line-height:1}
+#page-notices>.notice>button.page-notice-close::before{content:'';position:absolute;inset:.6rem;border:1px solid currentColor;border-radius:.15rem;pointer-events:none}
+@media(pointer:fine) and (min-width:761px){
+  :root:not([data-rail-roomy]){--rail-notice-size:.77rem}
+  #page-notices>.notice{min-height:2.15rem;padding-right:2.4rem}
+  #page-notices>.notice button{min-height:1.6rem;padding:.15rem .4rem}
+  #page-notices>.notice>button.page-notice-close{width:1.75rem;height:1.75rem;min-height:1.75rem;padding:0}
+  #page-notices>.notice>button.page-notice-close::before{inset:.2rem}
+}
+
+@media (pointer:fine){
+  html, #things{scrollbar-width:none}
+  html::-webkit-scrollbar, #things::-webkit-scrollbar{display:none}
+}

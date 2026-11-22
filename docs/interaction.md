@@ -8,6 +8,12 @@ the page on a page with no rail (`web/interaction-guide.mjs`, the same words;
 docs/rails.md, "The rail's foot"). Each rule there names
 the pointer's way, the keys' and the phone's.
 
+## Dimming the left rail
+
+Option-click a topic or outcome name in the left rail to dim or undim it. Option-Shift-click keeps only that topic and its outcome, or the clicked outcome’s branch, bright. Command-click opens the link in a new tab.
+The current Dim choices and inverse keep their existing scope; editing with Dim0
+selects1. The rail menu uses the same choice writer.
+
 ## The topic page
 
 - **The light.** The message under the pointer lights, as a passage lights in

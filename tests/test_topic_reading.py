@@ -276,7 +276,7 @@ class TopicReadingCase(fixtures.ReaderCase):
         self.assertEqual((waits[first], waits[between], waits[again], waits[new], waits[later]), (False, False, False, True, True),
                          "the rule holds from this release's first post")
 
-    def test_no_wait_on_a_whisper_in_a_conversation_or_where_no_agent_received_it(self):
+    def test_no_wait_on_a_whisper_or_without_agent_receipt_and_conversation_uses_the_same_rule(self):
         whisper = self.committed(self.command("message.post", {"body": "Just you", "whisper": True, "addressees": ["agent-a"]},
                                               target={"topic_id": "t1"}))["message_id"]
         self.assertIs(self.awaiting()[whisper], False, "never on a whisper")
@@ -289,10 +289,12 @@ class TopicReadingCase(fixtures.ReaderCase):
         page = self.awaiting()
         self.assertEqual((page[alone], page[to_person], page[to_agent]), (False, False, True),
                          "no agent received the first two; agent-b, addressed, received the third")
-        # In an outcome's conversation an item already shows its own dots: no second wait there.
+        # 1043: a Conversation message uses the same first-revision agent receipt,
+        # independently of the outcome item's own card. Its coordinator receives it.
         conversation = self.sql("SELECT id FROM topics WHERE workspace_id='w1' AND kind='conversation'")[0][0]
         item = self.committed(self.command("message.post", {"body": "Where are we?"}, target={"topic_id": conversation}))["message_id"]
-        self.assertIs(self.awaiting(topic=conversation)[item], False, "a conversation's item has its own dots")
+        self.assertTrue(self.sql("SELECT 1 FROM deliveries d JOIN actors a ON a.id=d.recipient_id WHERE d.message_id=? AND d.revision=1 AND a.kind='agent'", (item,)))
+        self.assertIs(self.awaiting(topic=conversation)[item], True, "the coordinator received the message")
 
     def test_a_correction_of_an_edit_is_no_receipt_only_the_first_revision_delivered_counts(self):
         # Item 475, B1: an edit queues a revision-2 correction to every agent that read the old words

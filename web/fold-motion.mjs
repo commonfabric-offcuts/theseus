@@ -64,3 +64,25 @@ export function foldInMotion(doc, entryOf, change, folding) {
   }
   return result;
 }
+
+// The feed closing up where a dossier left it, or opening where one comes back (1054, Tony: "no sense of a void").
+// Archived, its place stays empty for a beat after it lifts away, then the dossiers under it slide up together into
+// it; brought back, they slide down at once to make its room. change() redraws the feed.
+export const CLOSE_HOLD = 140, CLOSE_SLIDE = 260, CLOSE_EASE = 'cubic-bezier(.3,.7,.2,1)';
+export function closeUp(list, change) {
+  const view = list?.ownerDocument?.defaultView;
+  if (!view || typeof list?.animate !== 'function' || view.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return change();
+  const foot = view.innerHeight + 40;
+  const was = [...list.children].map(node => [node, box(node)?.top]).filter(([, top]) => top !== undefined && top < foot);
+  const result = change();
+  for (const [node, top] of was) {
+    const now = box(node); if (!now) continue;
+    const dy = top - now.top;
+    if (Math.abs(dy) <= 0.5) continue;
+    // Up into a void: held, then slid. Down to make room: slid at once.
+    const up = dy > 0, hold = up ? CLOSE_HOLD / (CLOSE_HOLD + CLOSE_SLIDE) : 0;
+    node.animate([{ transform: `translateY(${dy}px)` }, ...(up ? [{ transform: `translateY(${dy}px)`, offset: hold }] : []), { transform: 'translateY(0)' }],
+      { duration: up ? CLOSE_HOLD + CLOSE_SLIDE : CLOSE_SLIDE, easing: CLOSE_EASE });
+  }
+  return result;
+}
