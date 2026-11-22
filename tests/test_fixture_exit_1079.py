@@ -38,8 +38,15 @@ FIXTURE_TRACEBACK = ('AssertionError [ERR_ASSERTION]: Traceback (most recent cal
 RED = {'name': 'reading one', 'passed': False,
        'error': 'AssertionError: red\n    at file:///fixture/tests/reader_persistence_native.mjs:10:5'}
 GREEN = {'name': 'reading two', 'passed': True}
+THIRD = {'name': 'reading three', 'passed': True}
 STEP = CONTROLLER.NATIVE['native-reading']
+HARNESS = 'a1b2c3d4e5'
 PROFILE = {name: 'fixture' for name in CONTROLLER.PROFILE_FIELDS}
+
+
+def log_lines(rows):
+    return ''.join('{"case":"%s","started":"t"}\n{"name":"%s","passed":%s,"started":"t","finished":"t"}\n'
+                   % (r['name'], r['name'], 'true' if r['passed'] else 'false') for r in rows)
 
 
 class FixtureExitCase(unittest.TestCase):
@@ -61,35 +68,51 @@ class FixtureExitCase(unittest.TestCase):
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.repo), *args], text=True)
 
-    def evidence(self, exit_code, tail, rows=(RED, GREEN), signal=None, log_rows=None):
+    def evidence(self, exit_code, tail, rows=(RED, GREEN), signal=None, log=None):
+        """The step as the producer records it: the harness exits non-zero on any failing case or fixture exit."""
         rows = list(rows)
         report = {'results': rows, 'browserClosed': True, 'fixtureExitCode': exit_code, 'fixtureExitSignal': signal}
         (self.out / 'native' / STEP.name / STEP.results).write_text(json.dumps(report))
-        log = ''.join('{"case":"%s","started":"t"}\n{"name":"%s","passed":%s}\n'
-                      % (r['name'], r['name'], 'true' if r['passed'] else 'false') for r in rows)
-        (self.out / 'native-reading.log').write_text((log if log_rows is None else log_rows) + tail)
+        (self.out / 'native-reading.log').write_text((log_lines(rows) if log is None else log) + tail)
         counts, good = CONTROLLER.native_counts(STEP, self.out / 'native' / STEP.name)
+        good = good and exit_code == 0 and signal is None
         return {'name': 'native-reading', 'passed': good, 'exit': 0 if good else 1, 'counts': counts}
+
+    def cases(self, step, harness=HARNESS):
+        return CONTROLLER.cases(step, self.out, harness)
+
+    def refused(self, step, harness=HARNESS):
+        with self.assertRaises(CONTROLLER.Refused) as refused:
+            self.cases(step, harness)
+        return str(refused.exception)
 
     def records(self, rows, run_id):
         failures, _ = CONTROLLER.failure_records([('native-reading', rows, PROFILE, CHECKOUT)], self.repo, self.sha, run_id)
         return failures
 
     def test_fixture_exit_after_every_case_is_a_failure_the_step_carries(self):
-        rows = CONTROLLER.cases(self.evidence(1, FIXTURE_TRACEBACK), self.out)
+        rows = self.cases(self.evidence(1, FIXTURE_TRACEBACK))
         self.assertEqual(rows[:2], [RED, GREEN])
         self.assertEqual(len(rows), 3)
         exit_row = rows[2]
         self.assertEqual((exit_row['name'], exit_row['passed']), ('fixture exit 1', False))
-        self.assertTrue(exit_row['error'].startswith(MESSAGE + '\n'), exit_row['error'])
+        message = MESSAGE + ' | after 2 cases of tests/reader_persistence_native.mjs ' + HARNESS
+        self.assertTrue(exit_row['error'].startswith(message + '\n'), exit_row['error'])
         fingerprint = CONTROLLER.fingerprint(exit_row['error'], CHECKOUT, self.repo, self.sha)
         self.assertEqual([frame['path'] for frame in fingerprint['chain']], [FIXTURE, FIXTURE])
         self.assertEqual([frame['text'] for frame in fingerprint['chain']],
                          ['main()', 'assert not item645_unrestored, "Item 645 comparison runtime was not restored"'])
-        self.assertEqual(fingerprint['values'], MESSAGE)
+        self.assertEqual(fingerprint['values'], message)
+
+    def test_all_green_cases_with_a_fixture_exit_are_judged_not_refused(self):
+        step = self.evidence(1, FIXTURE_TRACEBACK, rows=(GREEN, THIRD))
+        self.assertEqual((step['passed'], step['exit']), (False, 1))
+        rows = self.cases(step)
+        self.assertEqual([row['name'] for row in rows], ['reading two', 'reading three', 'fixture exit 1'])
+        self.assertEqual([f['case']['name'] for f in self.records(rows, 3)], ['fixture exit 1'])
 
     def test_fixture_exit_the_controls_share_is_known_and_one_they_do_not_is_new(self):
-        rows = CONTROLLER.cases(self.evidence(1, FIXTURE_TRACEBACK), self.out)
+        rows = self.cases(self.evidence(1, FIXTURE_TRACEBACK))
         candidate = self.records(rows, 2)
         self.assertEqual([f['case']['name'] for f in candidate], ['reading one', 'fixture exit 1'])
         self.assertTrue(all('fingerprint' in f for f in candidate), candidate)
@@ -97,38 +120,56 @@ class FixtureExitCase(unittest.TestCase):
         self.assertTrue(shared['passed'], shared)
         self.assertEqual([(f['case']['name'], f['matched_base_runs']) for f in shared['expected']],
                          [('reading one', [1]), ('fixture exit 1', [1])])
-        clean_control = self.records(CONTROLLER.cases(self.evidence(0, CONTROLLER.END_LINE + '\n'), self.out), 1)
+        clean_control = self.records(self.cases(self.evidence(0, CONTROLLER.END_LINE + '\n')), 1)
         new = CONTROLLER.compare_failures(candidate, clean_control)
         self.assertFalse(new['passed'])
         self.assertEqual([(f['case']['name'], f['reason']) for f in new['unexpected']],
                          [('fixture exit 1', 'not shown by recent base runs')])
 
+    def test_a_harness_that_stopped_between_cases_matches_no_control(self):
+        # The control ran three cases to the fixture's assertion; the candidate's log and report agree on two,
+        # a balanced prefix of the same harness. The count in the message keeps the two apart.
+        control = self.records(self.cases(self.evidence(1, FIXTURE_TRACEBACK, rows=(RED, GREEN, THIRD))), 1)
+        candidate = self.records(self.cases(self.evidence(1, FIXTURE_TRACEBACK)), 2)
+        verdict = CONTROLLER.compare_failures(candidate, control)
+        self.assertFalse(verdict['passed'])
+        self.assertEqual([f['case']['name'] for f in verdict['unexpected']], ['fixture exit 1'])
+
+    def test_a_changed_harness_matches_no_control(self):
+        control = self.records(self.cases(self.evidence(1, FIXTURE_TRACEBACK), harness='0000000000'), 1)
+        candidate = self.records(self.cases(self.evidence(1, FIXTURE_TRACEBACK)), 2)
+        self.assertEqual([f['case']['name'] for f in CONTROLLER.compare_failures(candidate, control)['unexpected']],
+                         ['fixture exit 1'])
+
     def test_fixture_that_died_before_a_case_finished_is_refused(self):
-        step = self.evidence(1, FIXTURE_TRACEBACK)
-        with (self.out / 'native-reading.log').open('a') as log:
-            log.write('{"case":"reading three","started":"t"}\n')
-        with self.assertRaises(CONTROLLER.Refused) as refused:
-            CONTROLLER.cases(step, self.out)
-        self.assertEqual(str(refused.exception), 'native-reading: fixture died before the end')
+        log = log_lines([RED, GREEN]) + '{"case":"reading three","started":"t"}\n'
+        self.assertEqual(self.refused(self.evidence(1, FIXTURE_TRACEBACK, log=log)),
+                         'native-reading: fixture died before the end')
+
+    def test_a_log_that_disagrees_with_the_report_is_refused(self):
+        self.assertEqual(self.refused(self.evidence(1, FIXTURE_TRACEBACK, log=log_lines([RED, THIRD]))),
+                         'native-reading: result log disagrees with report')
+
+    def test_a_traceback_before_the_last_case_is_not_the_fixture_exit(self):
+        log = log_lines([RED]) + FIXTURE_TRACEBACK + log_lines([GREEN])
+        self.assertEqual(self.refused(self.evidence(1, 'Killed\n', log=log)),
+                         'native-reading: fixture exit without its assertion')
 
     def test_fixture_exit_without_its_assertion_is_refused(self):
-        step = self.evidence(1, 'Killed\n')
-        with self.assertRaises(CONTROLLER.Refused) as refused:
-            CONTROLLER.cases(step, self.out)
-        self.assertEqual(str(refused.exception), 'native-reading: fixture exit without its assertion')
+        self.assertEqual(self.refused(self.evidence(1, 'Killed\n')), 'native-reading: fixture exit without its assertion')
+
+    def test_fixture_exit_without_the_harness_source_is_refused(self):
+        self.assertEqual(self.refused(self.evidence(1, FIXTURE_TRACEBACK), harness=None),
+                         'native-reading: harness source unrecorded')
 
     def test_signalled_fixture_is_still_refused(self):
-        step = self.evidence(1, FIXTURE_TRACEBACK, signal='SIGKILL')
-        with self.assertRaises(CONTROLLER.Refused) as refused:
-            CONTROLLER.cases(step, self.out)
-        self.assertEqual(str(refused.exception), 'native-reading: fixture was signalled')
+        self.assertEqual(self.refused(self.evidence(1, FIXTURE_TRACEBACK, signal='SIGKILL')),
+                         'native-reading: fixture was signalled')
 
     def test_clean_fixture_exit_reads_as_before(self):
-        self.assertEqual(CONTROLLER.cases(self.evidence(0, CONTROLLER.END_LINE + '\n'), self.out), [RED, GREEN])
-        step = self.evidence(0, 'no end line\n')
-        with self.assertRaises(CONTROLLER.Refused) as refused:
-            CONTROLLER.cases(step, self.out)
-        self.assertEqual(str(refused.exception), 'native-reading: harness did not reach end')
+        self.assertEqual(self.cases(self.evidence(0, CONTROLLER.END_LINE + '\n')), [RED, GREEN])
+        self.assertEqual(self.cases(self.evidence(0, CONTROLLER.END_LINE + '\n'), harness=None), [RED, GREEN])
+        self.assertEqual(self.refused(self.evidence(0, 'no end line\n')), 'native-reading: harness did not reach end')
 
 
 if __name__ == '__main__':

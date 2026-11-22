@@ -135,25 +135,43 @@ def compose_completed(report):
             and 'fixtureExitSignal' in report and report['fixtureExitSignal'] is None
             and report.get('plannedPhases') == PHASES and report.get('completedPhases') == PHASES)
 
-def fixture_exit_row(name, code, log):
-    """The fixture failed its own end-of-run check after the harness ran every case.
+def _log_case_names(lines, prefix):
+    names = []
+    for line in lines:
+        if not line.startswith(prefix):
+            continue
+        try:
+            names.append(json.loads(line)['name' if prefix == '{"name":' else 'case'])
+        except (ValueError, KeyError, TypeError):
+            raise Refused('unreadable harness log line')
+    return names
 
-    The harness logs each case as it starts and again with its result, and asserts the fixture's exit last, so a
-    whole run shows one result for every case started and ends in the fixture's traceback. That exit is then a
-    failure the step carries, with the fixture's own assertion as its verified source frame, and the controls say
-    whether it is known. A fixture that died mid-run leaves a started case without its result and is refused.
+def fixture_exit_row(name, code, log, rows, harness):
+    """The fixture failed its own end-of-run check after the harness ran the cases it had.
+
+    The harness logs each case as it starts and again with its result, writes its report, and asserts the fixture's
+    exit in its teardown, so the fixture's traceback is the last thing a run that got that far writes. The exit is
+    then a failure the step carries: a row whose error is the fixture's own assertion, with its traceback frames as
+    verified source frames, and whose message names the harness source and how many cases ran before it. The controls
+    say whether that failure is known, and a control agrees only when the same harness ran the same number of cases
+    to the same assertion; a harness that aborted between cases, or a changed harness, matches no control. A started
+    case without its result, a log that disagrees with the report, or a traceback that is not terminal is refused.
     """
     lines = log.splitlines()
-    started = sum(1 for line in lines if line.startswith('{"case":'))
-    finished = sum(1 for line in lines if line.startswith('{"name":'))
-    require(started == finished > 0, name + ': fixture died before the end')
-    frames = [match for match in map(FIXTURE_FRAME.match, lines) if match]
-    message = next((line.strip() for line in reversed(lines) if line.startswith('AssertionError: ')), None)
+    started, finished = _log_case_names(lines, '{"case":'), _log_case_names(lines, '{"name":')
+    require(started == finished and bool(finished), name + ': fixture died before the end')
+    require(finished == [row.get('name') for row in rows], name + ': result log disagrees with report')
+    last = max(n for n, line in enumerate(lines) if line.startswith('{"name":'))
+    tail = lines[last + 1:]
+    frames = [match for match in map(FIXTURE_FRAME.match, tail) if match]
+    message = next((line.strip() for line in reversed(tail) if line.startswith('AssertionError: ')), None)
     require(bool(frames) and message is not None, name + ': fixture exit without its assertion')
+    require(isinstance(harness, str) and bool(harness), name + ': harness source unrecorded')
+    message += ' | after %d cases of %s %s' % (len(rows), NATIVE[name].harness, harness)
     error = message + '\n' + '\n'.join('    at fixture (file://%s:%s:1)' % (match[1], match[2]) for match in frames)
     return {'name': 'fixture exit %d' % code, 'passed': False, 'error': error}
 
-def cases(step, out):
+def cases(step, out, harness=None):
     name = step['name']
     native = NATIVE[name]
     report = read_json(out / 'native' / native.name / native.results)
@@ -177,7 +195,8 @@ def cases(step, out):
         require(type(code) is int, name + ': fixture exit unrecorded')
         require(report.get('fixtureExitSignal') is None, name + ': fixture was signalled')
         if code != 0:
-            rows = rows + [fixture_exit_row(name, code, log)]
+            # The harness exits non-zero on the fixture's exit however its cases went.
+            rows, good = rows + [fixture_exit_row(name, code, log, rows, harness)], False
         elif counts['fail']:
             require(END_LINE in log.splitlines(), name + ': harness did not reach end')
     require(type(step.get('exit')) is int and step['exit'] == (0 if good else 1), name + ': abnormal harness exit')
@@ -824,7 +843,8 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
                 require(step == by_name[step['name']], 'aggregate step differs from original shard')
                 ran.append(step['name'])
             if step['name'] in NATIVE:
-                observed.append((step['name'], cases(step, out), profile, raw['checkout']))
+                observed.append((step['name'], cases(step, out, (raw['tools'].get('harnesses') or {}).get(NATIVE[step['name']].harness)),
+                                 profile, raw['checkout']))
             else:
                 if history and step.get('passed') is False:
                     nonbrowser_failure_evidence(step, out)
