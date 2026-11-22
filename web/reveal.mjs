@@ -59,7 +59,16 @@ export function revealSelection(el, { margin = MARGIN } = {}) {
   const shown = box ? box.getBoundingClientRect() : { top: 0, bottom: view.innerHeight };
   const style = view.getComputedStyle(box ?? doc.documentElement);
   const area = { top: Math.max(shown.top, 0) + padding(style, 'Top'), bottom: Math.min(shown.bottom, view.innerHeight) - padding(style, 'Bottom') };
-  const by = Math.round(revealBy(el.getBoundingClientRect(), area, margin));
+  const selection = el.getBoundingClientRect();
+  // A bottom shelf declares what it covers. Rows behind it use the exposed
+  // area; its own rows still reveal inside the shelf's separate scroller.
+  for (const cover of box?.querySelectorAll?.('[data-selection-occluder="bottom"]') ?? []) {
+    if (cover.contains(el)) continue;
+    const rect = cover.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0 && rect.right > selection.left && rect.left < selection.right &&
+        rect.bottom > area.top && rect.top < area.bottom) area.bottom = Math.max(area.top, rect.top);
+  }
+  const by = Math.round(revealBy(selection, area, margin));
   if (!by) return;
   if (box) box.scrollBy({ top: by, behavior: 'instant' });
   else view.scrollBy({ top: by, behavior: 'instant' });
