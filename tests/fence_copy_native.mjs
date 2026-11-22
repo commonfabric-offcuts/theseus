@@ -29,7 +29,7 @@ const control = data => new Promise((resolve, reject) => {
 });
 const results = [], observations = [];
 // Set as the body's last statement, so a body that threw between cases leaves it false in native.json.
-let bodyCompleted = false, bodyError = null;
+let bodyCompleted = false, bodyError = null, teardownError = null;
 let browser, facts, contexts = [], engine;
 const payload = '\t  α <tag> & `literal`  \n\nlast line';
 const body = 'Before the fence.\n\n~~~~ text\n' + payload + '\n~~~~\n\nAfter the fence.';
@@ -851,10 +851,15 @@ try {
   await writeFile(path.join(evidence, 'body-error.txt'), bodyError).catch(() => {});
   throw error;
 } finally {
-  for (const ctx of contexts.splice(0)) await ctx.close();
-  if (browser) await browser.close();
-  fixture.stdin.end();
-  const code = await exited;
-  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, bodyCompleted, bodyError, observations, fixtureExitCode: code, browserClosed: !browser || !browser.isConnected() }, null, 2));
+  // A cleanup step that throws here must not take the report with it: it is kept and rethrown after the write.
+  let code = null;
+  try {
+    for (const ctx of contexts.splice(0)) await ctx.close();
+    if (browser) await browser.close();
+    fixture.stdin.end();
+    code = await exited;
+  } catch (error) { teardownError = String(error?.stack ?? error); }
+  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, bodyCompleted, bodyError, teardownError, observations, fixtureExitCode: code, browserClosed: !browser || !browser.isConnected() }, null, 2));
+  assert.equal(teardownError, null, teardownError);
 }
 assert.ok(results.length && results.every(r => r.passed), 'see native.json for exact failing assertions');
