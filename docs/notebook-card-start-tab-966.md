@@ -6,7 +6,9 @@ This includes the empty new card opened by Command-Return. A first card
 cannot indent and a top-level card cannot outdent; those keys keep the box's
 focus and words. A selection starting at zero is not a collapsed caret.
 
-Elsewhere in the text, WritingInput keeps its existing line indentation.
+1058 also gives Shift-Tab at the collapsed very last text position the same
+card outdent, retaining the editor and exact words/caret. Elsewhere in the
+text, including nonempty selections, WritingInput keeps its line indentation.
 Command, Control and Option modifiers, composition (including keyCode 229),
 handled events and other fields retain their current routes. Read-only page,
 field and writing owners cannot move a card. No pane or arrow routing changes.
