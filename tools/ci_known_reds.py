@@ -686,7 +686,7 @@ def _validate_attempt(summary_path, provenance_path, shards, baseline, base_root
                     unit_evidence(step, out, policy['inventory'][step['name']])
                 elif step['name'] == 'wake-replay':
                     replay_evidence(step, out, traffic)
-        require(raw['required'] == summary['required'], 'shard required plan differs')
+        require(unique(raw['required'], 'shard required steps') == set(summary['required']), 'shard required plan differs')
     require(Counter(ran) == Counter(expected), 'incomplete whole-run coverage')
     require(unique(summary.get('failed'), 'combined failures') ==
             {s['name'] for s in combined if s['passed'] is not True}, 'combined failure union differs')

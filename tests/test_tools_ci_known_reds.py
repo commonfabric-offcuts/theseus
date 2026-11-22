@@ -274,6 +274,79 @@ class Evidence(unittest.TestCase):
         self.assertFalse(result['expected'][0]['raw_passed'])
         self.assertEqual(ci.read_json(self.out / 'summary.json'), self.raw)
 
+    def links_required_inventories(self):
+        retained = ci.read_json(Path(__file__).parent / 'fixtures/item1099_required_inventories.json')
+        self.assertEqual(retained['producer_run'], 45072395285)
+        self.assertEqual(retained['first_shard'], 'check-0')
+        self.assertNotEqual(retained['aggregate_required'], retained['shard_required'])
+        self.assertCountEqual(retained['aggregate_required'], release_check.REQUIRED)
+        self.assertCountEqual(retained['shard_required'], release_check.REQUIRED)
+        self.summary['required'] = retained['aggregate_required']
+        self.raw['required'] = retained['shard_required']
+
+    def complete_inventory_result(self):
+        try:
+            return self.validate()
+        except ci.Refused as refusal:
+            self.fail('Complete reviewed same-run inventory was refused: ' + str(refusal))
+
+    def test_item1099_links_complete_inventory_can_arrive_in_another_order(self):
+        self.links_required_inventories()
+        result = self.complete_inventory_result()
+        self.assertTrue(result['passed'])
+        self.assertFalse(result['raw_passed'], 'inventory order does not erase the actual failed summary')
+        self.assertEqual(ci.read_json(self.out / 'summary.json')['required'], self.raw['required'],
+                         'the original shard inventory is not rewritten')
+
+    def test_item1099_a_shard_cannot_omit_a_required_step(self):
+        self.links_required_inventories()
+        self.raw['required'].remove('python-units')
+        self.refused('shard required plan differs')
+
+    def test_item1099_a_shard_cannot_add_an_unknown_required_step(self):
+        self.links_required_inventories()
+        self.raw['required'].append('unassigned-job')
+        self.refused('shard required plan differs')
+
+    def test_item1099_a_shard_cannot_duplicate_a_required_step(self):
+        self.links_required_inventories()
+        self.raw['required'].append(self.raw['required'][0])
+        self.refused('duplicate shard required steps|shard required plan differs')
+
+    def test_item1099_required_inventory_must_still_be_a_list(self):
+        self.links_required_inventories()
+        self.raw['required'] = ','.join(self.raw['required'])
+        self.refused('shard required steps is not a list|shard required plan differs')
+
+    def test_item1099_reviewed_added_test_file_keeps_complete_execution_coverage(self):
+        self.links_required_inventories()
+        path = self.repo / 'tests/test_added_1099.py'
+        path.write_text('import unittest\nclass Added(unittest.TestCase):\n    def test_new(self):\n        self.assertTrue(True)\n')
+        self.advance_candidate('independently reviewed added module')
+        plan = self.candidate_plan()
+        name = 'test_new (test_added_1099.Added)'
+        plan['inventory']['python-units'].append(ci.identity({'name': name}))
+        self.install_trusted_policy(dict(self.policy, transitions=[{'review': '1099-complete-addition', 'plan': plan}]))
+        self.refused('reviewed check inventory omitted|shard required plan differs')
+        self.replace_unit_log('python-units', 'test_one (example.Example) ... ok\ntest_two (example.Example) ... ok\n' + name + ' ... ok\nRan 3 tests in 0.1s\n\nOK\n')
+        result = self.complete_inventory_result()
+        self.assertTrue(result['passed'])
+        self.assertEqual(result['transition_review'], '1099-complete-addition')
+
+    def test_item1099_reviewed_removed_test_file_still_requires_the_declared_checks(self):
+        self.links_required_inventories()
+        (self.repo / 'tests/test_example.py').unlink()
+        self.advance_candidate('independently reviewed removed module')
+        plan = self.candidate_plan()
+        transition = {'review': '1099-complete-removal', 'plan': plan}
+        self.install_trusted_policy(dict(self.policy, transitions=[transition]))
+        self.refused('no complete matching plan')
+        transition['retired_sources'] = ['tests/test_example.py']
+        self.install_trusted_policy(dict(self.policy, transitions=[transition]))
+        result = self.complete_inventory_result()
+        self.assertTrue(result['passed'])
+        self.assertEqual(result['transition_review'], '1099-complete-removal')
+
     def test_previous_attempt_at_same_commit_stays_red(self):
         self.earlier_attempt()
         self.receipt['run'] = dict(self.run, attempt=1)
