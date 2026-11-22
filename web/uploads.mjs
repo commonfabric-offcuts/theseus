@@ -47,7 +47,7 @@ export class Uploads {
     finally { this.editor.imageBusy--; this.notify(); }
   }
   reserve(presentation) {
-    if (!this.valid() || this.editor.adopting || this.editor.recoveryDiscovery || this.editor.imageReservation || !this.registry.isCurrent(presentation, this.editor)) throw Error('Review saved images before selecting another file.');
+    if (!this.valid() || this.editor.adopting || this.editor.uploadOpaque || this.editor.imageReservation || !this.registry.isCurrent(presentation, this.editor)) throw Error('Review saved images before selecting another file.');
     const token = { id: crypto.randomUUID(), cycle: this.editor.clientCycleId, presentation };
     this.editor.imageReservation = token; this.notify(); return token;
   }
@@ -60,7 +60,7 @@ export class Uploads {
   }
   admit(file) {
     if (this.editor.unavailable) throw Error('The source or destination is unavailable. Your writing is kept; the image was not added.');
-    if (!this.valid() || this.editor.adopting || this.editor.recoveryDiscovery) throw Error('Review the current image copies first.');
+    if (!this.valid() || this.editor.adopting || this.editor.uploadOpaque) throw Error('Review the current image copies first.');
     if (!(file instanceof Blob) || !Number.isInteger(file.size) || file.size < 1) throw Error('An empty image cannot be attached.');
     const l = this.registry.bootstrap.limits;
     if (!file.name || new TextEncoder().encode(file.name).length > l.media_name_utf8_bytes) throw Error('The image name is too long or empty.');
@@ -288,7 +288,7 @@ export class Uploads {
     }
   }
   async validateRetained() {
-    if (this.editor.recoveryDiscovery || this.editor.uploadOpaque) return;
+    if (this.editor.uploadOpaque) return;
     this.importRetained();
     for (const e of this.current().filter(e => e.origin === 'retained-ref' && !e.ready_descriptor && !e.local_error)) await this.checkRetained(e, { passive: true });
   }

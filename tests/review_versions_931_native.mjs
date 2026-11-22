@@ -113,8 +113,8 @@ try {
   await seed(false); await page.goto(app); await field.waitFor();
   await page.waitForFunction(() => !document.querySelector('#inline-send').disabled);
   assert.equal(await field.inputValue(), currentWords); assert.equal(await pill.isVisible(), false, 'identical stored copy is quiet after reload');
-  const refusal = await seed(true); await page.goto(app); await field.waitFor(); await page.waitForFunction(() => document.querySelector('#inline-review-versions').textContent === 'Review versions' && !document.querySelector('#inline-review-versions').hidden);
-  assert.equal(await pill.textContent(), 'Review versions'); assert.match(await pill.getAttribute('title'), /earlier reply.*differs/);
+  const refusal = await seed(true); await page.goto(app); await field.waitFor(); await page.waitForFunction(() => document.querySelector('#inline-review-versions').textContent === 'Check recovery' && !document.querySelector('#inline-review-versions').hidden);
+  assert.equal(await pill.textContent(), 'Check recovery'); assert.match(await pill.getAttribute('title'), /earlier reply.*differs/);
   await pill.click(); const review = page.locator('#version-review'); await review.waitFor();
   assert.equal(await page.locator('#review-content > section').first().locator('pre').textContent(), 'Different frozen refused words');
   await page.screenshot({ path: `${evidence}/difference.png` });
@@ -179,7 +179,7 @@ try {
   const imageBytes = [...Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSuoAAAAASUVORK5CYII=', 'base64')];
   const image = await seed(false, imageBytes);
   await page.goto(app); await field.waitFor();
-  await page.waitForFunction(() => document.querySelector('#inline-review-versions').textContent === 'Review versions' && !document.querySelector('#inline-review-versions').hidden);
+  await page.waitForFunction(() => document.querySelector('#inline-review-versions').textContent === 'Check recovery' && !document.querySelector('#inline-review-versions').hidden);
   await pill.click(); await review.waitFor();
   assert.equal(await page.locator('#review-content > section').first().locator('pre').textContent(), currentWords, 'image-only difference opens first');
   await page.screenshot({ path: `${evidence}/image-difference.png` });

@@ -8315,7 +8315,7 @@ test('931 the pill names the actual refused difference and opens with it first',
   const { f, row, list } = review931(); const saved = row(); saved.snapshot.localVersion++;
   saved.snapshot.draft.body = 'The different saved words'; list([saved]);
   const state = f.runObservation('reviewState(registry.inline.editors.reply)');
-  assert.equal(state.text, 'Review versions'); assert.match(state.title, /copy.*differs from this field/);
+  assert.equal(state.text, 'Check recovery'); assert.match(state.title, /copy.*differs from this field/);
   f.registry.recoveryCandidates = async (_editor, _options, shown) => { const page = { items: [], nextCursor: null }; shown(page, false); return page; };
   f.get('version-review').showModal = function() { this.open = true; };
   await f.showVersions(f.editor, f.get('opener'), f.p);

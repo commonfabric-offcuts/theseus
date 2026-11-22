@@ -20,7 +20,7 @@ export function writingState(editor, { active = true, writable = active, note = 
     sign: barrier || !status ? '' : sign?.(editor) ?? '',
     sendDisabled: Boolean(!active || barrier || editor.adopting || editor.unavailable || editor.authorityRecovery || editor.conflict ||
       (!note && (preparing || !editor.context.topicId || !written(editor.draft)))),
-    addDisabled: Boolean(!active || readOnly || editor.recoveryDiscovery || editor.unavailable || editor.authorityRecovery ||
+    addDisabled: Boolean(!active || readOnly || editor.uploadOpaque || editor.unavailable || editor.authorityRecovery ||
       editor.uploadState?.entries.some(e => e.selected && e.owner.id === editor.clientCycleId && e.origin === 'retained-ref' && !e.ready_descriptor)),
   };
 }
