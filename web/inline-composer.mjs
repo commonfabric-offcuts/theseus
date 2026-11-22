@@ -14,7 +14,7 @@ import { composerWidth } from './composer-width.mjs';
 import { ReaderLayout } from './layout.mjs';
 import { reach } from './arrow-reach.mjs';
 import { departing, landingIn, land, rowAppears, settle } from './paper-flight.mjs';
-import { pencilKey } from './pencil-keys.mjs';
+import { pencilKey, PencilInput } from './pencil-keys.mjs';
 
 
 // The inline DOM adapter shares the existing registry/session/upload owners.
@@ -92,6 +92,7 @@ export class InlineComposer {
     let outside = false;
     this.sheet?.addEventListener('pointerdown', event => { outside = event.target === this.sheet; });
     this.sheet?.addEventListener('click', event => { if (outside && event.target === this.sheet) putBack(); outside = false; });
+    if (!cardReply) this.pencilInput = new PencilInput(this);
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.admits(),readOnly:()=>this.state().readOnly,
       members:()=>this.members(),mentions:()=>this.kind==='message',
       changed:editor=>{this.callbacks.edit(editor,this.presentation);this.paintStatus();this.paintChoice();this.images?.update();}});
@@ -100,7 +101,7 @@ export class InlineComposer {
       admits: () => this.admits() && !this.state().readOnly && Boolean(this.callbacks.images),
       load: () => this.callbacks.images(this.editor), thumb: item => this.callbacks.imageBytes(item),
       choose: item => this.pickImage(item) });
-    this.field.addEventListener('focus', () => this.checkClipboard());
+    this.field.addEventListener('focus', () => { if (!this.pencilInput?.resetting) this.checkClipboard(); });
     this.windowFocus = () => { if (!this.root.hidden && this.root.isConnected) this.checkClipboard(); };
     window.addEventListener('focus', this.windowFocus);
     this.field.addEventListener('keydown', event => {
@@ -167,6 +168,7 @@ export class InlineComposer {
   dispose() {
     this.disposed = true; this.sendOpening = null; window.removeEventListener('focus', this.windowFocus);
     if (this.pencilKey) this.root.ownerDocument.removeEventListener('keydown', this.pencilKey, true);
+    this.pencilInput?.dispose();
     this.bar.dispose(); this.images.close(); this.input?.mentions?.dispose();
   }
   admits(p = this.presentation, editor = this.editor) { return Boolean(!this.disposed && editor && this.callbacks.admits(p, editor)); }
