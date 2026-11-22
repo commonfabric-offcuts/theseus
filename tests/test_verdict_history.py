@@ -54,7 +54,8 @@ class VerdictHistoryCase(unittest.TestCase):
     def select(self, summaries, corrupt=False, expired=False, digest_override='valid', provenance_change=None):
         history = self.root / 'history'
         producer = self.root / 'producer.json'
-        producer.write_text(json.dumps({'producer': {'created_at': '2026-11-15T06:00:00Z', 'run_id': '99'}}))
+        producer.write_text(json.dumps({'producer': {'created_at': '2026-11-15T06:00:00Z', 'run_id': '99'},
+                                       'merge': {'sha': self.sha}}))
         refusals = self.root / 'refusals'
         refusals.write_text('')
         runs, archives = [], {}
@@ -116,14 +117,16 @@ class VerdictHistoryCase(unittest.TestCase):
         manifest = history / 'known-runs.json'
         return json.loads(manifest.read_text()) if manifest.exists() else None, refusals.read_text(), calls
 
-    def test_incomplete_selected_history_is_named_and_not_replaced(self):
+    def test_incomplete_history_is_named_and_older_run_fills_only_missing_step(self):
         manifest, refusal, calls = self.select([self.summary(['native-reader']), self.summary(), self.summary(), self.summary()])
-        self.assertEqual([r['id'] for r in manifest['runs']], [2, 3])
-        self.assertTrue(manifest['fewer_than_three'])
+        self.assertEqual([r['id'] for r in manifest['runs']], [1, 2, 3, 4])
+        self.assertEqual(manifest['step_runs'], {'python-units': [1, 2, 3], 'node-units': [1, 2, 3],
+                                               'native-reader': [2, 3, 4]})
+        self.assertFalse(manifest['fewer_than_three'])
         self.assertEqual(manifest['dropped'][0]['id'], 1)
         self.assertEqual(manifest['dropped'][0]['missing_steps'], ['native-reader'])
         self.assertIn('native-reader', manifest['dropped'][0]['why'])
-        self.assertNotIn('/runs/4/artifacts', '\n'.join(calls))
+        self.assertIn('/runs/4/artifacts', '\n'.join(calls))
         self.assertEqual(refusal, '')
 
     def test_three_complete_runs_remain(self):
@@ -326,7 +329,7 @@ class VerdictHistoryCase(unittest.TestCase):
         self.assertIsNone(manifest)
         self.assertIn('inconsistent git-read base receipt format', refusal)
 
-    def test_incomplete_new_push_history_can_still_be_dropped(self):
+    def test_incomplete_new_push_history_retains_other_step_controls(self):
         summary = self.summary(['native-reader'])
         summary['combined_from'] = ['check-0/summary.json']
         def explicit_null(provenance):
@@ -335,7 +338,9 @@ class VerdictHistoryCase(unittest.TestCase):
             receipt['base_at_run'] = None
             provenance['shards'] = [{'artifact': 'check-0', 'receipt': receipt}]
         manifest, refusal, _ = self.select([summary], provenance_change=explicit_null)
-        self.assertEqual(manifest['runs'], [])
+        self.assertEqual([r['id'] for r in manifest['runs']], [1])
+        self.assertEqual(manifest['runs'][0]['steps'], ['node-units', 'python-units'])
+        self.assertEqual(manifest['step_runs'], {'python-units': [1], 'node-units': [1], 'native-reader': []})
         self.assertEqual(manifest['dropped'][0]['missing_steps'], ['native-reader'])
         self.assertEqual(refusal, '')
 
