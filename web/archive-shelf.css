@@ -61,3 +61,9 @@ body[data-archive-shelf=on] .stack-controls:not(:has(>:not(.stack-more,[hidden])
 .archive-shelf[data-view=list] .shelf-line{display:none}
 .archive-shelf[data-view=list] .shelf-title{display:block;flex:1;min-width:0;margin:0;font-size:.77rem;line-height:1.5rem;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;-webkit-line-clamp:unset}
 .archive-shelf[data-view=list] .shelf-size{display:block;flex:none;color:var(--muted);font-size:.66rem;font-variant-numeric:tabular-nums}
+/* On a coarse pointer the switch and the list's rows are finger-sized (1055, as look-touch.css does for the look switches). */
+@media (pointer:coarse){
+  :root .shelf-views .shelf-view{height:2.75rem;min-height:44px;min-width:44px;padding:0 .8rem;font-size:.8rem}
+  :root .archive-shelf[data-view=list] .shelf-dossier{height:2.75rem;min-height:44px}
+  .archive-shelf[data-view=list] .shelf-title{line-height:2.75rem}
+}
