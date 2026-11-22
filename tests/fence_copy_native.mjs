@@ -28,6 +28,8 @@ const control = data => new Promise((resolve, reject) => {
   const id = ++serial; pending.set(id, { resolve, reject }); fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
 const results = [], observations = [];
+// Set as the body's last statement, so a body that threw between cases leaves it false in native.json.
+let bodyCompleted = false, bodyError = null, teardownError = null;
 let browser, facts, contexts = [], engine;
 const payload = '\t  α <tag> & `literal`  \n\nlast line';
 const body = 'Before the fence.\n\n~~~~ text\n' + payload + '\n~~~~\n\nAfter the fence.';
@@ -841,11 +843,23 @@ try {
     });
     await browser.close(); browser = null;
   }
+  bodyCompleted = true;
+} catch (error) {
+  // The teardown's own assertion may replace this exception; the report keeps it.
+  bodyError = String(error?.stack ?? error);
+  // Kept on its own before the teardown, which may throw before the report is written.
+  await writeFile(path.join(evidence, 'body-error.txt'), bodyError).catch(() => {});
+  throw error;
 } finally {
-  for (const ctx of contexts.splice(0)) await ctx.close();
-  if (browser) await browser.close();
-  fixture.stdin.end();
-  const code = await exited;
-  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, observations, fixtureExitCode: code, browserClosed: !browser || !browser.isConnected() }, null, 2));
+  // A cleanup step that throws here must not take the report with it: it is kept and rethrown after the write.
+  let code = null;
+  try {
+    for (const ctx of contexts.splice(0)) await ctx.close();
+    if (browser) await browser.close();
+    fixture.stdin.end();
+    code = await exited;
+  } catch (error) { teardownError = String(error?.stack ?? error); }
+  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, bodyCompleted, bodyError, teardownError, observations, fixtureExitCode: code, browserClosed: !browser || !browser.isConnected() }, null, 2));
+  assert.equal(teardownError, null, teardownError);
 }
 assert.ok(results.length && results.every(r => r.passed), 'see native.json for exact failing assertions');
