@@ -5725,5 +5725,45 @@
       "scope": "generated/system/product",
       "inputs": []
     }
+  },
+  "tests/test_python_weights_1067.py": {
+    "b4f22f44a594032312f67eb244ff74d6814e2ff375b060d5db9b45ae86b58e24": {
+      "scope": "repository",
+      "inputs": [
+        ".github/workflows/checks.yml"
+      ]
+    },
+    "c61ac545f1178d64417a706c828c36f9ffe75aa255a368c2565517a2893b6da0": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "5030f51493a4e67b2149608a32b4a32960654946823e09f9161dce24d7a950eb": {
+      "scope": "repository",
+      "inputs": [
+        "tests/fixtures/python-times-1067.json"
+      ]
+    },
+    "5030f51493a4e67b2149608a32b4a32960654946823e09f9161dce24d7a950eb:1": {
+      "scope": "repository",
+      "inputs": [
+        "tests/fixtures/python-times-1067.json"
+      ]
+    },
+    "6874a2b4702b8caf7debddfe1c51231283daf14285e25905e292a0cf0be797a6": {
+      "scope": "repository",
+      "inputs": [
+        ".github/check-weights.json"
+      ]
+    },
+    "0cad4ad9f954aadd14a8bfa2717b24c4902a797c2bc6326492c0f6c9d65318f0": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "6874a2b4702b8caf7debddfe1c51231283daf14285e25905e292a0cf0be797a6:1": {
+      "scope": "repository",
+      "inputs": [
+        ".github/check-weights.json"
+      ]
+    }
   }
 }
