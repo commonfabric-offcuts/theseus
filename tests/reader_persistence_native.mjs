@@ -341,11 +341,16 @@ try {
             await until(() => evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded !== 'true'`), 'the folded message unfolds');
             await unfold(`#messages [data-id="${facts.sources[index].id}"]`);
           }
-          await point(heads ? `#messages .message-card[data-id="${facts.sources[index].id}"] > .message-preview` : `#messages [data-id="${facts.sources[index].id}"]`);
-          if (mode === '--images' && !await evaluate("document.querySelector('#reader').open")) {
-            await until(() => evaluate(`document.querySelector('#reader').open || Boolean(document.querySelector('${card} .card-reply-composer'))`), 'image source card composer or Reader');
-            if (!await evaluate("document.querySelector('#reader').open")) await point(`${card} > .message-preview`);
-          }
+          if (mode === '--images') {
+            // Space opens the source without a rapid second body click
+            // entering the actor's own message-edit gesture. Focus is setup;
+            // no Tab-reach or pointer-opening claim is made here.
+            await evaluate(`document.querySelector(${JSON.stringify(card)}).focus()`); await key(' ');
+            await until(() => evaluate(`document.querySelector('#reader').open || Boolean(document.querySelector('${card} .card-reply-composer textarea:not([disabled])'))`), 'image source card composer or Reader');
+            if (!await evaluate("document.querySelector('#reader').open")) {
+              await evaluate(`document.querySelector(${JSON.stringify(card)}).focus()`); await key(' ');
+            }
+          } else await point(heads ? `#messages .message-card[data-id="${facts.sources[index].id}"] > .message-preview` : `#messages [data-id="${facts.sources[index].id}"]`);
           await until(() => evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith('Source ${index} ')`), 'selected full source');
           await until(() => evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation=>animation.playState!=='running')"), 'settled reader');
         },

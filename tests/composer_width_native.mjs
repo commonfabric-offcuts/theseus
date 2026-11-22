@@ -116,7 +116,7 @@ export async function composerWidthCases(h) {
           return route.continue();
         });
       }
-      if (!baseline && !admissionOnly) await p.route(/\/composer-width\.mjs(?:\?.*)?$/, async route => {
+      if (!baseline) await p.route(/\/composer-width\.mjs(?:\?.*)?$/, async route => {
         const response = await route.fetch(), original = await response.text();
         servedHash = createHash('sha256').update(original).digest('hex');
         assert.equal(servedHash, hashes['web/composer-width.mjs'], 'actual served original source matches the declared snapshot');
@@ -130,13 +130,13 @@ export async function composerWidthCases(h) {
       });
     };
     const a = at(surface), p = await page(surface === 'Wide Reader' ? 'wide' : shape, scheme, '/?topic=t1', undefined, prepare);
-    if (!baseline && !admissionOnly) assert.equal(servedHash, hashes['web/composer-width.mjs'], 'the fresh page loaded the exact original source before any mutation');
+    if (!baseline) assert.equal(servedHash, hashes['web/composer-width.mjs'], 'the fresh page loaded the exact original source before any mutation');
     if (surface === 'New message') {
       await until(p, () => !document.querySelector('#inline-composer').hidden, 'the new-message composer');
       await press(p, '#new-message');
       await until(p, () => document.querySelector('#new-message-sheet').open, 'the new-message sheet');
     } else await openComposerReader(p, second, until);
-    if (!baseline && !admissionOnly) {
+    if (!baseline) {
       const tabState = await p.locator(`${a.dialog} > .composer-edge`).evaluateAll(edges => edges.map(edge => edge.tabIndex));
       assert.deepEqual(tabState, mutation?.name === 'tab-unreachable' ? [-1, -1] : [0, 0], 'served effective Tab state survives placement');
     }
@@ -272,8 +272,8 @@ export async function composerWidthCases(h) {
       await until(p, () => !document.querySelector('#version-review').open, 'review closes back to its composer');
     }
   }
-  // This source has no width implementation. Run the shared admission proof
-  // explicitly without registering or weakening any default geometry case.
+  // Execute the shared admission proof separately from drag geometry.
+  // Keep normal width-module/edge setup and all default geometry assertions.
   if (admissionOnly) {
     for (const surface of surfaces) for (const shape of surface === 'Wide Reader' ? ['stacked'] : ['phone-390', 'stacked']) for (const scheme of ['light', 'dark']) {
       await check(`item 650 admission ${surface} recovery discovery ${shape} ${scheme}`, async () => {

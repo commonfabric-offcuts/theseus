@@ -44,10 +44,12 @@ Red first against90b's product with the stale recovery-discovery assertions in
 composer_width_native, reader_compose_native and reader_images_native; adapt
 those owners to advisory discovery and execute the affected cells. Existing
 unrelated image/authority/access/geometry assertions are not weakened. The650
-producer is not registered by the current compose entry and the product width
-module is absent here. A clearly labelled admission-only execution seam may
-exercise its actual shared state assertions without pretending missing width
-geometry passes; default geometry cases retain their assertions. Preserve raw
+producer is not registered by the current compose entry. CORRECTION: its width
+module is present at90b (blob74a9fe764045fd2d6467cb9033d29fae6ad819a8);
+the earlier absent-module intake statement was wrong. A labelled admission-only
+execution seam exercises its actual shared state assertions, with normal
+served-width-module and edge-Tab setup checks. Drag geometry is outside this
+focused run; default geometry cases retain every assertion. Preserve raw
 producer/served bodies, all failures, exact input brackets and strict native
 cleanup. Execute one isolated browser workload at a time at load<12, with the
 Landing use/free notices; no live user/browser/profile/runtime action.
@@ -89,3 +91,8 @@ The runner-stop chronology in the ruling is attributed, not normal-close proof
 for this phase. Fresh native source selection now accepts Core's inserted
 no-quote reason before the expected source words; seeded agent replies name
 that reason and independent fixture topics name their divergence explicitly.
+
+Images source-opening setup uses native Space on the focused card to avoid
+rapid body presses entering the actor's own message-edit gesture. Programmatic
+focus is setup, not Tab reach or pointer-opening proof. The preserved failure
+shows the actual message-edit textarea interception; no forced click is used.
