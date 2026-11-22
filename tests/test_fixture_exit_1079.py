@@ -140,6 +140,15 @@ class FixtureExitCase(unittest.TestCase):
                              'native-reading: harness did not finish its cases')
         self.assertEqual(self.refused(self.evidence(1, FIXTURE_TRACEBACK, completed='yes')),
                          'native-reading: harness did not finish its cases')
+        # Both fields present and one of them false: not an attestation either, candidate or control.
+        report = {'results': [RED, GREEN], 'browserClosed': True, 'fixtureExitCode': 1, 'fixtureExitSignal': None,
+                  'bodyCompleted': True, 'harnessCompleted': False}
+        (self.out / 'native' / STEP.name / STEP.results).write_text(json.dumps(report))
+        (self.out / 'native-reading.log').write_text(log_lines([RED, GREEN]) + FIXTURE_TRACEBACK)
+        counts, _ = CONTROLLER.native_counts(STEP, self.out / 'native' / STEP.name)
+        step = {'name': 'native-reading', 'passed': False, 'exit': 1, 'counts': counts}
+        for history in (False, True):
+            self.assertEqual(self.refused(step, history=history), 'native-reading: harness did not finish its cases')
 
     def test_a_control_recorded_before_the_attestation_is_read_by_its_source_count_and_assertion(self):
         control_rows = self.cases(self.evidence(1, FIXTURE_TRACEBACK, completed=None), history=True)
@@ -193,9 +202,10 @@ class FixtureExitCase(unittest.TestCase):
                       'Error: unrelated fatal tail\n    at file:///fixture/tests/reader_persistence_native.mjs:1830:3\n',
                       'Error [ERR_UNHANDLED_REJECTION]: unrelated fatal tail\n',
                       'Segmentation fault: 11\n',
+                      '    an indented fatal line after the property block\n',
                       'the harness printed something else\n'):
             refusal = self.refused(self.evidence(1, FIXTURE_TRACEBACK + extra))
-            self.assertTrue(refusal.startswith('native-reading: fixture exit is not the last failure: ' + extra.split('\n')[0]), refusal)
+            self.assertTrue(refusal.startswith('native-reading: fixture exit is not the last failure: ' + extra.split('\n')[0].strip()), refusal)
 
     def test_fixture_exit_without_its_assertion_is_refused(self):
         self.assertEqual(self.refused(self.evidence(1, 'Killed\n')), 'native-reading: fixture exit without its assertion')
