@@ -277,13 +277,17 @@ class PartitionEvidenceCase(unittest.TestCase):
         self.save()
         with self.assertRaisesRegex(C.Refused, 'combined failure union differs'): self.read(history=True)
 
-    def test_candidate_failure_refuses_but_complete_history_keeps_raw_failure(self):
+    def test_complete_partition_failure_keeps_raw_failure_and_identity_for_comparison(self):
         self.bundle(failed=2)
-        with self.assertRaisesRegex(C.Refused, 'non-browser failure cannot be excepted'): self.read()
-        _, summary = self.read(history=True)
-        self.assertFalse(summary['passed'])
-        self.assertEqual(summary['failed'], ['python-units'])
-        self.assertEqual(summary['steps'][-1]['counts'], {'tests': 4, 'status': 'FAILED', 'failures': 1})
+        for history in (False, True):
+            with self.subTest(history=history):
+                observed, summary = self.read(history=history)
+                self.assertFalse(summary['passed'])
+                self.assertEqual(summary['failed'], ['python-units'])
+                self.assertEqual(summary['steps'][-1]['counts'], {'tests': 4, 'status': 'FAILED', 'failures': 1})
+                failures, _ = C.failure_records(observed, self.repo, self.sha, 7)
+                self.assertEqual([f['case']['name'] for f in failures], ['test_part2 (part2.Part)'])
+                self.assertFalse(C.compare_failures(failures, [], [])['passed'])
 
     def test_empty_validated_partition_keeps_positive_whole_coverage(self):
         self.bundle(empty=2)
