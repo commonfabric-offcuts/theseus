@@ -86,6 +86,7 @@ import { firstLine } from './pipeline-words.mjs';
 import { HealthPage } from './health.mjs';
 import { NotebookPage } from './notebook-page.mjs';
 import { NotebookRailMenu } from './notebook-rail-menu.mjs';
+import { notebookTransferDrag } from './notebook-transfer-drag.mjs';
 import { NotebookSheet, notebookDockWanted, returning as notebookReturning } from './notebook-sheet.mjs';
 import { HealthLight } from './health-light.mjs';
 import { phoneCheck } from './phone-check.mjs';
@@ -3254,6 +3255,9 @@ async function initialize() {
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
   notebookDeleting=await notebookDeleteUI({doc:document,shell,api,bootstrap,current:()=>!retired&&shell.page===thisRun,
     open:async(id,mode,scope)=>{if(!retired)await openNotebook(id,{mode});}});
+  notebookTransferDrag({doc:document,bootstrap,rail:()=>panes.outline?.list,current:()=>!retired&&shell.page===thisRun,
+    perform:async(id,kind,scope)=>{if(!await openNotebook(id)||retired)return;const page=notebookSheet?.current;if(page?.item===id)await page.transferPage(kind,scope);},
+    refused:words=>panes.outline?.menus.notice(words)});
   topicClosing = await topicCloseUI({ doc: document, shell, api, bootstrap,
     open: openDestination, current: () => !retired && shell.page === thisRun });
   let displayStorage;
@@ -3310,6 +3314,13 @@ async function initialize() {
     if (list === 'addressable-names') refreshMembers();
   });
   let route = parseRoute(new URL(location.href));
+  if(route.page) {
+    try {
+      const resolved=await resolveTopicLink(route,{read:(name,args)=>api.view(name,args,{readClass:'foreground'}),instanceId:bootstrap.instance_id,current:()=>!retired});
+      if(retired)return;
+      if(resolved&&(resolved.kind!==route.kind||resolved.id!==route.id)){route=resolved;history.replaceState(history.state,'',routeHref(route));}
+    } catch { /* Core did not confirm new ownership; ordinary reads keep their refusal. */ }
+  }
   if (!['topic', 'conversation'].includes(route.kind)) {
     await initializeOutcomePage(route);
     if(['root','workspace'].includes(route.kind))run(()=>initializeUnfinished(route));
@@ -4076,7 +4087,7 @@ nameTopicsWith(topicName);
 // from: the link pressed, which takes the focus back when the Reader closes.
 async function openDestination(target, title, from = null, writtenQuery = false) {
   const landing = ++landingSerial;
-  if (writtenQuery && (target.kind === 'topic' || target.page || target.kind === 'cards')) {
+  if ((writtenQuery || target.page) && (target.kind === 'topic' || target.page || target.kind === 'cards')) {
     const original = target;
     topicNavigation?.cancelPending();
     try {

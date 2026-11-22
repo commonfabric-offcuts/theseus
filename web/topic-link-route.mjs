@@ -10,7 +10,7 @@ const missing = error => ['FORBIDDEN', 'NOT_FOUND', 'TOPIC_NOT_FOUND'].includes(
 export async function resolveTopicLink(route, { read, instanceId, workspaceId = null, ownerScope = null, limit = 20, current = () => true, confirm = false, currentTopicId = null }) {
   routeKey(route);
   const pageId = route.page ?? (route.kind === 'cards' ? route.id : null);
-  if (!confirm && (route.kind !== 'topic' || topicId(route.id)) || confirm && route.kind !== 'topic' && !pageId) return route;
+  if (!pageId && (!confirm && (route.kind !== 'topic' || topicId(route.id)) || confirm && route.kind !== 'topic')) return route;
   const view = async (name, args) => {
     if (!current()) throw superseded();
     const answer = await read(name, args);

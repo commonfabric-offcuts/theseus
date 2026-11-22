@@ -23,8 +23,10 @@ const content = source => ({ title: source.title, body: source.body ?? '',
 const authority = bootstrap => ({ authority_id: bootstrap.authority.authority_id, authority_epoch: bootstrap.authority.authority_epoch });
 export function notebookActionEnvelope(bootstrap, item, state, kind, args) {
   return { v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind, target: { item_id: item }, args: copy(args),
-    expected: { authority: authority(bootstrap), ...(kind === 'memory.star' ? { star_revision: state.star_revision ?? 0 } : { item_revision: state.source_ref.revision }) } };
+    expected: { authority: authority(bootstrap), ...(kind === 'memory.star' ? { star_revision: state.star_revision ?? 0 } : { item_revision: state.source_ref.revision }),
+      ...(kind==='memory.copy'?{copy_revision:0}:{}) } };
 }
+const transferring=kind=>['memory.move','memory.copy','memory.transfer.undo'].includes(kind);
 export const NOTEBOOK_UNDO_MS = 10 * 60 * 1000;
 const readOnly = new Set(['FORBIDDEN', 'OUTCOME_REACHED', 'AUTHORITY_CHANGED', 'PAGE_DELETED']);
 
@@ -207,17 +209,19 @@ export class NotebookWriting {
   }
   async action(kind, args, undo = null) {
     if (this.closed || this.actionRunning || this.actionPending || !this.pageState) return null;
-    if (kind === 'memory.delete' && args.deleted) {
+    if (kind === 'memory.delete' && args.deleted || transferring(kind)) {
       await this.flush();
       if (this.dirty || this.pending || this.running || this.conflict || this.error || this.journalError ||
           this.images.some(i=>!i.removed&&!i.associated)) {
-        this.actionError='Your writing is kept. Finish saving it before deleting this page.'; this.notify(); return null;
+        this.actionError='Your writing is kept. Finish saving it before changing this page.'; this.notify(); return null;
       }
     }
     const state=this.pageState;
+    if(['memory.move','memory.copy'].includes(kind))undo??={title:this.value.title,scope:state.owner_scope,mode:'text'};
     this.actionPending=notebookActionEnvelope(this.bootstrap,this.item,state,kind,args);
-    if(undo && kind==='memory.delete' && args.deleted) this.deleteUndo={
+    if(undo && (kind==='memory.delete' && args.deleted || transferring(kind))) this.deleteUndo={
       ...copy(undo),at:Date.now(),phase:'pending',operation:this.actionPending.operation_id,
+      kind,...(transferring(kind)?{destination:copy(args.owner_scope),copy_id:args.copy_id}:{}),
       authority:authority(this.bootstrap),undoRequested:false};
     return this.retryAction();
   }
@@ -231,7 +235,7 @@ export class NotebookWriting {
     try {
       await this.persist();
       const sent=copy(this.actionPending);
-      if(this.deleteUndo && sent.kind==='memory.delete' && sent.args.deleted) await this.actionKept?.();
+      if(this.deleteUndo && (sent.kind==='memory.delete' && sent.args.deleted || ['memory.move','memory.copy'].includes(sent.kind))) await this.actionKept?.();
       // A full-page departure hands this durable request to the destination's writer.
       if(this.closed)return null;
       const r=await this.api.command(sent);
@@ -244,6 +248,8 @@ export class NotebookWriting {
           if(r.result.starred!==sent.args.starred||!Number.isSafeInteger(r.result.star_revision)||r.result.star_revision<=sent.expected.star_revision)
             throw Error('The star confirmation is uncertain.');
           this.pageState={...this.pageState,starred:r.result.starred,star_revision:r.result.star_revision};
+        } else if(transferring(sent.kind)) {
+          this.acceptTransfer(sent,r.result);
         } else {
           if(r.result.deleted!==sent.args.deleted||r.result.revision!==sent.expected.item_revision+1||
             r.result.source_ref?.id!==this.item||r.result.source_ref?.kind!=='memory'||r.result.source_ref?.revision!==r.result.revision)
@@ -258,31 +264,64 @@ export class NotebookWriting {
         }
         this.actionPending=null;this.actionError=null;
         try {await this.persist();} catch(error) {this.actionPending=sent;throw error;}
+        if(transferring(sent.kind)&&!this.closed) {
+          // Core owns reciprocal link words. Read them through the same writer;
+          // do not reconstruct a product body or edit an unobserved revision.
+          try {const latest=await this.read();this.takeLatest(latest);await this.persist();}
+          catch(error){this.readOnly=true;this.error='The change is kept; the current page could not be read. Retry before writing: '+error.message;}
+        }
         // Refresh the same operation's confirmed state; an older read cannot reverse it.
         this.notify();return r;
       }
-      if(this.deleteUndo && sent.kind==='memory.delete')this.deleteUndo={...this.deleteUndo,phase:sent.args.deleted?'rejected':'restore_rejected'};
+      if(this.deleteUndo && (sent.kind==='memory.delete'||transferring(sent.kind)))this.deleteUndo={...this.deleteUndo,
+        phase:sent.kind==='memory.transfer.undo'||sent.kind==='memory.delete'&&!sent.args.deleted?'restore_rejected':'rejected'};
       this.actionPending=null;this.actionError=r.error?.message??'The page was not changed.';
       try {await this.persist();} catch(error) {this.actionPending=sent;throw error;}this.notify();return r;
     } catch(error) {this.actionError='Not confirmed yet: '+error.message;this.notify();return null;}
   }
+  acceptTransfer(sent,result) {
+    const u=this.deleteUndo,inverse=sent.kind==='memory.transfer.undo',copying=inverse?u?.kind==='memory.copy':sent.kind==='memory.copy';
+    const original=u?.scope??this.pageState.owner_scope,destination=inverse?original:sent.args.owner_scope;
+    const owns=copying?original:destination,from=inverse?(copying?original:u?.destination):original;
+    if(!u||result.transfer_id!==sent.operation_id||result.revision!==sent.expected.item_revision+1||
+       result.source_ref?.kind!=='memory'||result.source_ref.id!==this.item||result.source_ref.revision!==result.revision||
+       !same(result.owner_scope,owns)||!same(result.from_scope,from)||!same(result.to_scope,destination)||
+       !Number.isSafeInteger(result.committed_ms)||result.committed_ms<=0||inverse&&result.undo_of!==u.operation)
+      throw Error('The Notebook transfer confirmation is uncertain.');
+    if(copying) {
+      const c=result.copy,id=inverse?u.copy_id:sent.args.copy_id,revision=inverse?sent.expected.copy_revision+1:1;
+      if(c?.item_id!==id||c.revision!==revision||c.source_ref?.kind!=='memory'||c.source_ref.id!==id||c.source_ref.revision!==revision||
+         !same(c.owner_scope,u.destination)||inverse&&c.deleted!==true)throw Error('The copy confirmation is uncertain.');
+    }
+    this.deleteUndo={...u,phase:inverse?'undone':'committed',revision:result.revision,
+      ...(copying?{copy_revision:result.copy.revision}:{}),
+      ...(!inverse?{firstReceiptAt:result.committed_ms,expires:result.committed_ms+NOTEBOOK_UNDO_MS}:{})};
+    this.observe({...this.pageState,owner_scope:copy(result.owner_scope),source_ref:copy(result.source_ref)});
+  }
   async undoDelete() {
     if(!this.deleteUndo || this.deleteUndo.phase==='undone' || this.deleteUndo.phase==='rejected' ||
         this.deleteUndo.phase==='restore_rejected')return null;
-    if(!same(this.deleteUndo.authority,authority(this.bootstrap)))throw Error('This deletion belongs to an earlier runtime.');
+    if(!same(this.deleteUndo.authority,authority(this.bootstrap)))throw Error('This page change belongs to an earlier runtime.');
     if(!this.deleteUndo.undoRequested && this.deleteUndo.phase==='committed' && Date.now()>=this.deleteUndo.expires)return null;
     this.deleteUndo.undoRequested=true;await this.persist();this.notify();
     if(this.actionRunning)await this.actionRunning;
     return this.finishDeleteUndo();
   }
   async finishDeleteUndo() {
-    if(this.actionRunning&&this.actionPending?.kind==='memory.delete'&&!this.actionPending.args.deleted)return this.actionRunning;
+    if(this.actionRunning&&(this.actionPending?.kind==='memory.transfer.undo'||this.actionPending?.kind==='memory.delete'&&!this.actionPending.args.deleted))return this.actionRunning;
     if(this.actionPending || this.actionRunning || !this.deleteUndo?.undoRequested || this.deleteUndo.phase!=='committed')return null;
     if(!same(this.deleteUndo.authority,authority(this.bootstrap)))return null;
     // The deletion's confirmed revision, never a newer observation, fences its Undo.
     if(this.pageState.source_ref.revision!==this.deleteUndo.revision) {
-      this.deleteUndo.phase='restore_rejected';this.actionError='This page changed after deletion. Open it to read the current page.';
+      this.deleteUndo.phase='restore_rejected';this.actionError='This page changed after '+(['memory.move','memory.copy'].includes(this.deleteUndo.kind)?'the transfer':'deletion')+'. Open it to read the current page.';
       await this.persist();this.notify();return null;
+    }
+    if(['memory.move','memory.copy'].includes(this.deleteUndo.kind)) {
+      const u=this.deleteUndo;
+      this.actionPending={v:1,instance_id:this.bootstrap.instance_id,operation_id:crypto.randomUUID(),kind:'memory.transfer.undo',
+        target:{transfer_id:u.operation},args:{},expected:{authority:copy(u.authority),item_revision:u.revision,
+          ...(u.kind==='memory.copy'?{copy_revision:u.copy_revision}:{})}};
+      return this.retryAction();
     }
     return this.action('memory.delete',{deleted:false});
   }
