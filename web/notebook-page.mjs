@@ -3,8 +3,9 @@ import { stripDetails } from './card-details.mjs';
 import { pageLink } from './links.mjs';
 import { openMessageMenu, copyText } from './message-menu.mjs';
 import { DeckPage, UNDO_LIMIT } from './deck-page.mjs';
-import { applyAct, deckBody, parseDeck, cardText, cardImages, imageLine, textCard, findCard } from './deck.mjs';
-import { WritingInput } from './writing-input.mjs';
+import { applyAct, deckBody, parseDeck, cardText, cardImages, cardRegionShape, imageLine, textCard, findCard } from './deck.mjs';
+import { WritingInput, commandLetter } from './writing-input.mjs';
+import { selectionCardSplit } from './notebook-card-split.mjs';
 import { NotebookEditHistory } from './notebook-edit-history.mjs';
 import { NotebookWriting, notebookStore, mergeCardContent } from './notebook-writing.mjs';
 import { NotebookImages } from './notebook-images.mjs';
@@ -343,9 +344,40 @@ export class NotebookPage extends DeckPage {
     if(!this.writing || !this.cardsSeen)return;
     const acts=this.acts;this.acts=[];
     const body=this.previewBody(),seen=this.cardsSeen;
+    this.updateSelectionUndo(body);
     const edited=this.writing.edit({body},seen,'cards',acts);
     this.cardsSeen={revision:seen.revision,content:{...seen.content,body}};
     if(edited)this.keepNamed(body);
+  }
+  updateSelectionUndo(body = this.previewBody()) {
+    const split = this.editing?.selectionSplit;
+    if (!split || deckBody(this.deck) !== split.display || !body.startsWith(split.prefix) || !body.endsWith(split.suffix)) return;
+    split.undo.from = body.slice(split.prefix.length, body.length - split.suffix.length);
+    split.undo.shape = cardRegionShape(parseDeck(body));
+  }
+  writeNext() {
+    const e = this.editing, field = e?.field;
+    if (!field || !/\S/.test(field.value.slice(field.selectionStart, field.selectionEnd))) return super.writeNext();
+    if (!this.cardWritable() || e.input.readOnly() || refuseUnavailableWriting(this)) return;
+    this.save();
+    const split = selectionCardSplit(this.deck, { ...e, value: field.value, start: field.selectionStart, end: field.selectionEnd });
+    if (!split || split.before !== this.previewBody()) {
+      this.say('That card changed while you wrote. Your writing and selection are kept.', 'attention'); return;
+    }
+    // Check the ordinary fresh-editor preview before retiring the source field.
+    const drawn = parseDeck(split.display), added = applyAct(drawn, { kind: 'add', ...split.fresh, text: split.fresh.shown });
+    if (!added || deckBody(added.deck) !== split.after) {
+      this.say('Finish this card before moving that selection. Your writing is kept.', 'attention'); return;
+    }
+    this.finish({ discard: true });
+    this.deck = parseDeck(split.before);
+    this.open(split.fresh);
+    this.act(split.act, false, done => {
+      // The new card stays the existing fresh editor until Done. Its preview
+      // supplies the insertion in the same single NotebookWriting edit.
+      done.deck = drawn;
+      this.editing.selectionSplit = { ...split, undo: done.undo };
+    });
   }
   // A card line naming an image × took off the page this visit, back in the page's words (Undo, or the line written
   // again), puts the image back on the page (NotebookImages.restore), so no card names an image the page lost. Only
@@ -370,13 +402,19 @@ export class NotebookPage extends DeckPage {
     this.cardImages=this.imagePicker(this.editing.field,this.editing.input,this.list);
   }
   finish({discard=false,target=null} = {}) {
+    const selection = this.editing?.selectionSplit;
+    if (selection && !discard) this.updateSelectionUndo();
     this.stopCaret?.(); this.stopCaret = null;
     this.editing?.history?.close();
     this.cardImages?.close();this.cardImages?.list?.remove();this.cardImages=null;
     if(this.imageError&&this.editing){this.imageError=null;this.writingChanged();}
     let at=-1;
     if(discard){this.editing=null;this.paint();this.show(true);}
-    else at=super.finish({target});
+    else {
+      this.finishingSelection = selection;
+      try { at=super.finish({target}); }
+      finally { this.finishingSelection = null; }
+    }
     if(this.writing)this.writing.active=false;
     return at;
   }
@@ -395,7 +433,10 @@ export class NotebookPage extends DeckPage {
   }
   // Keys and clicks share these card editing entry points. A page held in another
   // tab stays readable, but an attempted edit repeats the opening's explanation.
-  act(...args) { if (refuseUnavailableWriting(this)) return false; return super.act(...args); }
+  act(act, undoing = false, applied = null) {
+    if (refuseUnavailableWriting(this)) return false;
+    return super.act(act, undoing || Boolean(this.finishingSelection && act.kind === 'add'), applied);
+  }
   edit(...args) { if (!refuseUnavailableWriting(this)) return super.edit(...args); }
   start(...args) { if (!refuseUnavailableWriting(this)) return super.start(...args); }
   // The composer's Note uses the Cards + act and the same revision/journal
@@ -423,6 +464,8 @@ export class NotebookPage extends DeckPage {
   }
   undo() {
     if (refuseUnavailableWriting(this)) return;
+    if (this.editing?.selectionSplit && !this.editing.history?.position && this.cardWritable() && !this.editing.input.readOnly() &&
+        this.undos.at(-1) === this.editing.selectionSplit.undo) this.finish();
     const last=this.undos.at(-1);
     if(last?.kind!=='draft'||this.editing||this.asking||this.readOnly)return super.undo();
     this.undos=this.undos.slice(0,-1);
@@ -477,6 +520,12 @@ export class NotebookPage extends DeckPage {
     }
     if (!this.host.hidden && event.target === this.editing?.field && this.editing.history) {
       const history=this.editing.history;
+      if (this.editing.selectionSplit && !history.position && !history.composing && !history.composition && !history.closed &&
+          this.cardWritable() && !this.editing.input.readOnly() && !event.shiftKey &&
+          !event.defaultPrevented && !event.isComposing && event.keyCode !== 229 && commandLetter(event, 'z', history.mac) &&
+          this.undos.at(-1) === this.editing.selectionSplit.undo) {
+        event.preventDefault(); this.undo(); return;
+      }
       if(history.key(event))return;
       return history.aroundKey(event,()=>super.key(event));
     }
