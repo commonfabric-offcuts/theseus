@@ -38,7 +38,8 @@ function forget(host) { if (waiting.delete(host)) near.unobserve(host); }
 const INLINE = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
 // The attachments a card shows as thumbnails: the verified inline images, in
-// the order sent. Anything else, a file or an SVG, the Reader offers alone.
+// the order sent. Other files keep the Reader's Open/Download affordance on
+// the card (app.mjs,1117).
 export const cardImages = item => (item?.attachments ?? []).filter(attachment => attachment?.inline === true && INLINE.includes(attachment.content_type));
 
 // Puts card's thumbnails in place after its words (and the excerpt's cue): one
