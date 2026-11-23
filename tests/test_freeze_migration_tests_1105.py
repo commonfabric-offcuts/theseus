@@ -81,6 +81,24 @@ class MigrationFreeze1105(Binder987):
         ]:
             with self.subTest(body=body): self.rejected_head(body)
 
+    def test_1105_cli_mapping_update_refuses_literal_and_accepts_token(self):
+        self.rejected_head('metadata.update({"schema_version": "66"})\n')
+        piece = self._probe_piece
+        good = self.head('metadata.update({"schema_version": step[0], "note": "66"})\n')
+        answer = self.cli(piece, self.base, good)
+        self.assertEqual(answer.returncode, 0, answer.stdout + answer.stderr)
+        self.assertEqual(self.shown(piece)['freeze']['head_commit'], good)
+
+    def test_1105_core_mapping_update_refuses_literal_before_mutation(self):
+        piece = self.piece([1]); before = self.records(piece)
+        body = 'metadata.update({"schema_version": "66"})\n'
+        refused = self.raw(piece, {self.test_path: body})
+        self.rejected(refused, 'MIGRATION_TEST_LITERAL')
+        self.assertEqual(self.records(piece), before)
+        self.assertIn(self.test_path + ':1', refused['error']['message'])
+        good = 'metadata.update({"schema_version": step[0], "note": "66"})\n'
+        self.committed(self.raw(piece, {self.test_path: good}))
+
     def test_1105_token_latest_defaults_and_unrelated_literals_remain_valid(self):
         body = '''# migrate(p, i, b, "66") is a comment, not a call.
 """metadata["schema_version"] = "66" is a docstring."""

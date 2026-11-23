@@ -120,6 +120,10 @@ def _numbered_migration(tree):
                 bad = bad or (_step_reference(a) and _step_pair(b)) or (_step_reference(b) and _step_pair(a))
             if isinstance(node.func, ast.Attribute) and node.func.attr == 'update' and _metadata(node.func.value):
                 bad = bad or any(k.arg == 'schema_version' and _version_literal(k.value) for k in node.keywords)
+                for mapping in node.args:
+                    if isinstance(mapping, ast.Dict):
+                        bad = bad or any(isinstance(key, ast.Constant) and key.value == 'schema_version'
+                                         and _version_literal(value) for key, value in zip(mapping.keys, mapping.values))
             # SQL text remains data. SELECTs, unrelated tables and ordinary numbers are not migration writes.
             if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
                 sql = node.args[0].value
