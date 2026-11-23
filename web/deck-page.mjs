@@ -4,6 +4,7 @@ import { openColorPicker } from './color-picker.mjs';
 import { AGENT_PALETTE } from './author-colors.mjs';
 import { plainCardText } from './card-menu.mjs';
 import { cardDetails } from './card-details.mjs';
+import { CardDisclosure } from './card-disclosure.mjs';
 import { applyAct, boxText, cardImages, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, imageStandIns, parseDeck, placeNew, stackLine, textCard, writtenAt } from './deck.mjs';
 import { messageLink, messageOf, placeLink } from './links.mjs';
 import { deferFencePaint } from './fence-copy.mjs';
@@ -57,6 +58,7 @@ export class DeckPage {
     // The listeners on the document go with the page when it closes (close()).
     this.listening = new AbortController();
     const signal = this.listening.signal;
+    this.disclosure = new CardDisclosure({doc,signal});
     // base: the page as Core last confirmed it. acts: the person's acts since, in order. undos: what takes back
     // each of their acts, newest last. sending: the save on its way, sent again as it is until Core answers it
     // (failed while its last send went unanswered).
@@ -251,6 +253,7 @@ export class DeckPage {
     if (!done) return false;
     applied?.(done);
     const before = this.deck.cards;
+    this.disclosure?.reconcile(done.deck.cards, act.kind==='edit'?{from:before[findCard(this.deck,act.text,act.near)],to:done.deck.cards[done.at]}:null);
     this.deck = parseDeck(deckBody(done.deck)); this.acts.push(act);
     this.reselect(before);
     if (!undoing) this.undos = [...this.undos, done.undo].slice(-UNDO_LIMIT);
@@ -414,7 +417,9 @@ export class DeckPage {
       return;
     }
     // A speech bubble with the focus presses as a link or a button does, and ← gives the focus back to its card.
+    if (event.target.closest?.('.deck-disclosure') && ['Enter',' ','Tab'].includes(event.key)) return;
     const bubble = event.target.closest?.('.deck-bubble');
+    if (bubble && event.key === 'Tab' && bubble.closest('.deck-card')?.querySelector('.deck-disclosure:not([hidden])')) return;
     if (bubble && (event.key === 'Enter' || event.key === ' ')) return;
     if (bubble && event.key === 'ArrowLeft') { event.preventDefault(); this.show(true); return; }
     // A link in the card's words owns Return, including the browser's modifiers.
@@ -1073,6 +1078,8 @@ export class DeckPage {
     if (deferFencePaint(this.host, () => this.paint())) return;
     const putBack = !this.keyed ? this.holdPage() : () => {};
     const { cards, opening } = this.deck, editing = this.editing, asking = this.asking;
+    const disclosureFocus=this.disclosure?.focused();
+    this.disclosure?.begin(cards);
     this.opening.hidden = !/\S/.test(opening);
     if (!this.opening.hidden) formatWords(this.opening, opening.trim(), { copyFences: true, interactiveHTML: this.interactiveHTML });
     // A card under a folded one is drawn hidden, so the rows stand where their cards do.
@@ -1089,6 +1096,7 @@ export class DeckPage {
       if (parents[index] >= 0) row.append(this.node('p', 'deck-under muted', cards[parents[index]].title || 'Untitled'));
       const shownWords = formatWords(this.node('div', 'deck-words'), words, { copyFences: true, interactiveHTML: this.interactiveHTML });
       row.append(title, shownWords, ...(images.length ? [this.pictures(images)] : []), this.bubbles(index, stacks));
+      this.disclosure?.attach(row,shownWords,index);
       // A click opens the card in its box with the cursor where it fell. ⌘-click and ⇧-click select, never selecting
       // the page's text, and finish a card being written first, so a click and then a ⌘-click select both cards. A
       // link or a button keeps its own click, and words a drag selected stay selected.
@@ -1164,5 +1172,6 @@ export class DeckPage {
       this.fit(asking.field);
     } else if (!asking) this.show(this.list.contains(this.doc.activeElement) || this.doc.activeElement === this.doc.body);
     putBack();
+    this.disclosure?.mount(disclosureFocus);
   }
 }
