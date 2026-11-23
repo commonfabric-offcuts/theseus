@@ -34,6 +34,7 @@ from .whispers import actor_kind, private_source_refused
 from .message_edit import held_refusal, is_held, words as message_words, withheld
 from .removal import value as removal_value
 from .piece_freeze import PieceFreezes
+from .judgment import SHA
 
 
 # A stage entry keeps its past: once left, nothing in it changes, but (version 30) the derived end _settle wrote on a
@@ -1302,8 +1303,23 @@ class Pipeline(PieceFreezes):
         missing = [piece["id"] for piece, _, _, freeze in selected if freeze is None]
         if multiple and missing:
             raise Refusal("FREEZE_REQUIRED", "Freeze every selected piece before combining several items: %s" % ", ".join(missing))
-        if multiple and any(freeze and freeze["judged"] for _, _, _, freeze in selected):
-            raise Refusal("JUDGED_BUNDLE", "A judged item pays its own gauntlet; land it alone, without bundling another item")
+        judged = [bool(freeze and freeze["judged"]) for _, _, _, freeze in selected]
+        train_sources = None
+        if multiple and any(judged):
+            if not all(judged):
+                raise Refusal("JUDGED_BUNDLE", "A judged train contains only frozen judged pieces, not an ordinary/judged mixture")
+            if not isinstance(args.get("commit_sha"), str) or SHA.fullmatch(args["commit_sha"]) is None:
+                raise Refusal("INVALID_ARGUMENT", "A judged train names its one full candidate commit")
+        if all(judged):
+            train_sources = [{"id": piece["id"], "items": members, "version": piece["version"],
+                              "freeze": freeze, "approval": self._piece_approval(db, piece["id"], freeze)}
+                             for piece, _, members, freeze in selected]
+            if multiple:
+                if any(source["approval"] is None for source in train_sources):
+                    raise Refusal("PIECE_NOT_APPROVED", "A judged train keeps each frozen source's canonical approval")
+                ordered = sorted(train_sources, key=lambda source: (source["approval"]["at_ms"], source["approval"]["seq"]))
+                if train_sources != ordered:
+                    raise Refusal("JUDGED_ORDER", "Carry judged pieces in canonical approval order")
         ms = _now_ms()
         release_id = "p-" + uuid.uuid4().hex[:24]
         # A topic's first piece makes it a Build topic (item 297).
@@ -1317,7 +1333,12 @@ class Pipeline(PieceFreezes):
             self._leave(db, actor, entry, "combined", ms)
             numbers += members
         self._enter(db, actor, {"id": release_id, "workspace_id": workspace["id"]}, first, 1, None, ms, args.get("ask_message_id"))
-        self._fact(db, workspace["id"], "combine", ms, actor, {"release": release_id, "pieces": list(dict.fromkeys(piece_ids)), "numbers": numbers})
+        payload = {"release": release_id, "pieces": list(dict.fromkeys(piece_ids)), "numbers": numbers}
+        if train_sources is not None:
+            # A combine is a durable candidate plan. Git membership and the
+            # authenticated run are checked by admission outside this transaction.
+            payload["judged_train"] = {"candidate_commit": args.get("commit_sha"), "sources": train_sources}
+        self._fact(db, workspace["id"], "combine", ms, actor, payload)
         self._settle(db, workspace["id"])
         version = self._bump(db, workspace["id"], release_id)
         return {"piece_id": release_id, "release_number": release, "numbers": numbers, "pipeline_revision": version}, []
@@ -1392,6 +1413,21 @@ class Pipeline(PieceFreezes):
             cache[key] = outcome_rules.typical(durations, basis)
         return cache[key]
 
+    def _piece_approval(self, db, piece_id, freeze):
+        if freeze is None:
+            return None
+        # Administrative Review/Wait moves cannot erase the first approval of
+        # these frozen bytes. A genuinely new freeze starts a new source epoch.
+        row = db.execute("SELECT approval.seq,approval.left_ms FROM pipeline_stage_entries approval "
+                         "JOIN pipeline_stage_entries following ON following.piece_id=approval.piece_id AND following.seq="
+                         "(SELECT min(next.seq) FROM pipeline_stage_entries next WHERE next.piece_id=approval.piece_id "
+                         "AND next.seq>approval.seq) WHERE approval.piece_id=? AND approval.left_outcome='approved' "
+                         "AND approval.left_ms>=? AND following.entered_ms=approval.left_ms AND following.stage_id="
+                         "(SELECT stage_id FROM pipeline_stages WHERE workspace_id=approval.workspace_id AND scope='piece' "
+                         "AND position IS NOT NULL ORDER BY position DESC LIMIT 1) ORDER BY approval.left_ms,approval.seq LIMIT 1",
+                         (piece_id, freeze["at_ms"])).fetchone()
+        return {"at_ms": row["left_ms"], "seq": row["seq"]} if row else None
+
     def _piece_view(self, db, actor, workspace, piece, stages, work, cache, titles):
         entries = db.execute("SELECT * FROM pipeline_stage_entries WHERE piece_id=? ORDER BY seq", (piece["id"],)).fetchall()
         by_id = {stage["stage_id"]: stage for stage in self._stages(db, workspace["id"], current=False)}
@@ -1417,6 +1453,14 @@ class Pipeline(PieceFreezes):
                 "stages_so_far": [entry_view(entry) for entry in entries if entry["left_ms"] is not None],
                 "stage": None, "ahead": [], "ahead_ids": [], "version": piece["version"],
                 "you_set_aside": current is not None and self._set_aside_refusal(db, actor, workspace, piece, current) is None}
+        view["approval"] = self._piece_approval(db, piece["id"], view["freeze"]) if piece["kind"] == "piece" else None
+        if piece["kind"] == "release":
+            fact = db.execute("SELECT payload FROM pipeline_facts WHERE workspace_id=? AND kind='combine' "
+                              "AND json_extract(payload,'$.release')=? ORDER BY seq DESC LIMIT 1",
+                              (workspace["id"], piece["id"])).fetchone()
+            planned = _loads(fact["payload"], {}).get("judged_train") if fact else None
+            view["train_sources"] = planned["sources"] if isinstance(planned, dict) else None
+            view["train_candidate"] = planned.get("candidate_commit") if isinstance(planned, dict) else None
         topic = db.execute("SELECT id,substr(CAST(title AS BLOB),1,257) AS title_prefix,state FROM topics WHERE id=?", (piece["topic_id"],)).fetchone()
         if topic is not None:
             title, _ = _prefix(topic["title_prefix"], 256)

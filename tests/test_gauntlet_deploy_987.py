@@ -75,7 +75,7 @@ class MergedTrain987(trains.TrainCase):
             checks=[trains.listed(201,self.head,conclusion='failure',name='Verdict')])
         return self.train(self.merged,heads or [self.head],kind='judged-first',judgment=self.judgment)
 
-    def test_987_authenticated_merged_train_does_not_wait_on_later_ordinary_approval(self):
+    def test_987_merge_alone_without_complete_producer_cannot_skip_waiting_approval(self):
         host=self.waiting_host()
         with mock.patch.object(deploy,'run',host):
             self.assertTrue(deploy.admit(self.config,self.head)['judged'])
@@ -85,34 +85,30 @@ class MergedTrain987(trains.TrainCase):
             with self.assertRaisesRegex(deploy.Refused,'p-later-ordinary'):
                 deploy.admit(self.config,self.merged)  # Pre-merge/default callers still enforce waiting.
         reads=self.pipeline_reads
-        observed=[];original=deploy.admit
-        def capture(*args,**kwargs):
-            answer=original(*args,**kwargs);observed.append((kwargs,answer));return answer
-        with mock.patch.object(deploy,'admit',side_effect=capture):
-            self.trained(host,train,self.merged,self.github)
-        self.assertEqual(self.pipeline_reads,reads,'already-started landing does not recheck later approvals')
-        self.assertEqual(len(observed),2,'both deploy floors still classify the authenticated merge')
-        for kwargs,answer in observed:
-            self.assertTrue(kwargs['started_landing'])
-            self.assertTrue(answer['judged'])
-            self.assertEqual(answer['items'],[481])
-            self.assertIn('tools/deploy.py',answer['guarded_paths'])
-        recorded=self.evidence_of('02-release')['record']['measurements']['train']['judgment']
-        self.assertEqual(recorded['verdict_checks'][0]['conclusion'],'failure')
+        # 1087 replaces the old blanket after-merge bypass. These intentionally
+        # incomplete API fixtures have no authenticated producer start/App/PR
+        # binding, so a merge alone cannot establish the later-waiter exception.
+        # The complete successful path at both real floors is exercised by
+        # DeployEntry1087 with the actual Git merge and full remote records.
+        with self.assertRaisesRegex(deploy.Refused, 'producer'):
+            self.deployed(host,train,self.merged,self.github)
+        self.assertEqual(self.pipeline_reads,reads+1)
+        self.assertFalse((self.evidence/'00-plan.json').exists())
+        self.assertEqual(self.kills,[])
         self.assertTrue(any('/compare/' in path for path in self.github.asked))
         self.assertTrue(any('/pulls/' in path for path in self.github.asked))
         self.assertEqual(self.git(self.live,'rev-parse','HEAD'),self.L,'dry-run leaves live unchanged')
 
-    def test_987_authenticated_merged_train_still_refuses_multiple_items(self):
+    def test_987_multiple_items_without_complete_producer_still_refuse(self):
         self.write('extra','synthetic second item')
         self.head=self.commit('Mixed\n\nPipeline: 481, 482')
         train=self.merged_train(heads=[self.head,self.head])
         host=self.waiting_host();self.waiting=True
-        with self.assertRaisesRegex(deploy.Refused,'alone|bundl'):
+        with self.assertRaisesRegex(deploy.Refused,'producer|bundle'):
             self.deployed(host,train,self.merged,self.github)
         self.assertTrue(self.evidence_of('00-train')['judgment'],'train authentication completed before bundle refusal')
         self.assertFalse((self.evidence/'00-plan.json').exists())
-        self.assertEqual(self.pipeline_reads,0,'bundle refusal precedes any waiting read')
+        self.assertEqual(self.pipeline_reads,1,'canonical read does not turn missing producer evidence into authorization')
 
 
 def load_tests(loader,tests,pattern):

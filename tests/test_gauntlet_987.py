@@ -101,11 +101,14 @@ class Freeze987(fixture.PipelineCase):
         self.assertEqual(self.sql('SELECT count(*) FROM pipeline_facts'), before)
         self.assertEqual(self.sql('SELECT count(*) FROM pipeline_pieces WHERE kind=\'release\''), [(0,)])
 
-    def test_987_judged_piece_with_two_items_refuses(self):
+    def test_987_judged_piece_with_two_items_keeps_one_source_snapshot(self):
         piece = self.piece([1, 2])
         self.committed(self.freeze(piece))
         self.wait(piece)
-        self.rejected(self.combine([piece]), 'JUDGED_BUNDLE')
+        result = self.committed(self.combine([piece]))
+        release = self.store.view('owner', 'pipeline', {'workspace_id': 'w1'})['release_piece']
+        self.assertEqual(release['id'], result['piece_id'])
+        self.assertEqual(release['train_sources'][0]['items'], [1, 2])
 
     def test_987_lone_judged_item_combines(self):
         piece = self.piece([1])
@@ -121,15 +124,17 @@ class Freeze987(fixture.PipelineCase):
             self.wait(piece)
         self.committed(self.combine([a, b]))
 
-    def test_987_judged_order_and_two_judged_pieces_both_refuse_atomically(self):
+    def test_987_judged_reverse_order_refuses_atomically_and_approved_order_combines(self):
         a = self.piece([1]); b = self.piece([2], 'second')
         for piece in (a, b):
             self.committed(self.freeze(piece)); self.wait(piece)
         before = self.sql('SELECT * FROM pipeline_facts')
-        for pieces in ([a,b], [b,a]):
-            self.rejected(self.combine(pieces), 'JUDGED_BUNDLE')
-            self.assertEqual(self.sql('SELECT * FROM pipeline_facts'), before)
+        self.rejected(self.combine([b,a]), 'JUDGED_ORDER')
+        self.assertEqual(self.sql('SELECT * FROM pipeline_facts'), before)
         self.assertEqual(self.sql("SELECT count(*) FROM pipeline_pieces WHERE kind='release'"), [(0,)])
+        self.committed(self.combine([a,b]))
+        release = self.store.view('owner', 'pipeline', {'workspace_id': 'w1'})['release_piece']
+        self.assertEqual([source['id'] for source in release['train_sources']], [a,b])
 
     def test_987_retry_refreeze_history_and_foreign_authority(self):
         piece = self.piece([1])
