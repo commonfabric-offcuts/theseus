@@ -8614,3 +8614,36 @@ test('1117 actual pagehide owner releases document URLs and fences a late read',
   gate.resolve({ blob: new Blob(['late']), inline: false }); await pending;
   assert.equal(x.strip(), undefined); assert.deepEqual(x.revoked, ['blob:1117-1']); assert.equal(x.created.length, 1);
 });
+
+//1135 uses the real app shared health read and the real toast/link owner.
+test('1135 actual app background health read shows the phases and upgrades its link without changing newer writing or focus', async () => {
+  const f = fixture(), base = f.api.view, reads = [];
+  let release = { phase: 'starting', number: 364, commit: 'b'.repeat(40), started_ms: 1000 }, seq = 10;
+  f.api.view = (name, args, options) => {
+    if (name === 'health_light') { reads.push({ name, args, options }); return Promise.resolve({ instance_id: 'fixture', red: [], commit_seq: seq, release }); }
+    return base(name, args, options);
+  };
+  await f.initialize(); await drain();
+  const notices = () => walk(f.get('body')).filter(n => n.className === 'release-toast');
+  assert.equal(notices().length, 1); assert.equal(notices()[0].children[0].textContent, 'Release 364 is starting');
+  const writing = f.get('inline-body'); writing.value = 'newer unsent writing'; writing.focus();
+  release = { ...release, phase: 'live', live_ms: 2000 }; seq++;
+  await f.runObservation('healthLight.load()'); await drain();
+  const toast = notices()[0], link = toast.children[0];
+  assert.equal(link.textContent, 'Release 364 is live'); assert.equal(new URL(link.href, 'https://fixture').searchParams.has('message'), false);
+  release = { ...release, dossier: 'm-' + 'c'.repeat(32) }; seq++;
+  await f.runObservation('healthLight.load()'); await drain();
+  assert.equal(notices()[0], toast); assert.equal(toast.children[0], link);
+  assert.equal(new URL(link.href, 'https://fixture').searchParams.get('message'), release.dossier);
+  assert.equal(writing.value, 'newer unsent writing'); assert.equal(f.document.activeElement, writing);
+  assert.ok(reads.every(r => r.options.readClass === 'background')); assert.equal(reads.length, 3);
+});
+
+test('1135 an actual app health read that finishes after navigation cannot paint a release on the new page', async () => {
+  const f = fixture(), base = f.api.view, gate = defer(); let delayed = false;
+  f.api.view = (name, args, options) => name === 'health_light' ? delayed ? gate.promise : Promise.resolve({ instance_id: 'fixture', red: [], commit_seq: 10 }) : base(name, args, options);
+  await f.initialize(); await drain(); delayed = true;
+  const task = f.runObservation('healthLight.load()'); f.runObservation('retired = new Map()');
+  gate.resolve({ instance_id: 'fixture', red: [], commit_seq: 11, release: { phase: 'starting', number: 364, commit: 'b'.repeat(40), started_ms: 1000 } });
+  await task; await drain(); assert.equal(walk(f.get('body')).filter(n => n.className === 'release-toast').length, 0);
+});
