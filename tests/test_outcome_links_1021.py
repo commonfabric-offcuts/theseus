@@ -247,7 +247,8 @@ console.log(JSON.stringify([...new Set(inputs.map(raw=>new URL(raw).href))]));
         with self.assertRaises(StoreOpenError):
             Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='schema_version'"), [("65",)])
-        self.assertTrue(migrate(self.path, "test-instance", self.binding, target="66")["migrated"])
+        # Up again to the latest step, not to Links' own: later steps follow it, and a store below the latest refuses writes.
+        self.assertTrue(migrate(self.path, "test-instance", self.binding, target=STEPS[-1][1])["migrated"])
         self.assertEqual(self.saved(removed=True)["status"], "committed")
         before = self.sql("SELECT * FROM workspace_links"), self.sql("SELECT * FROM metadata ORDER BY key")
         with self.assertRaises(MigrationError) as refused:
