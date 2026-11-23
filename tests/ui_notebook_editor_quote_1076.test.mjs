@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { NotebookPage } from '../web/notebook-page.mjs';
 import { NotebookPassages, notebookSourceParts } from '../web/notebook-passages.mjs';
 import { NotebookWriting } from '../web/notebook-writing.mjs';
 import { NotebookEditHistory } from '../web/notebook-edit-history.mjs';
 import { WritingInput } from '../web/writing-input.mjs';
+import { NotebookQuoteTransfer } from '../web/notebook-quote-transfer.mjs';
 import { cardText, deckBody, imageLine, parseDeck } from '../web/deck.mjs';
 
 // Real page/key/history/writing/projection owners, with field, journal, server
@@ -93,6 +95,64 @@ async function press(f, extra = {}) {
   await result; await f.writer.serial;
   return event;
 }
+
+// Execute the actual full-page initializer and quote-routing function. Page
+// construction, route navigation and device storage are explicit semantic
+// ports; the native cell separately proves the resulting Reader actually opens.
+async function fullPageFixture(t) {
+  const f = fixture(t), shared = f.page.passages, destinations = [], data = new Map();
+  const storage = { setItem: (k, v) => data.set(k, v), getItem: k => data.get(k) ?? null,
+    removeItem: k => data.delete(k) };
+  const bootstrap = { instance_id: f.source.instance_id, actor: 'isolated-writer' };
+  class DeviceTransfer extends NotebookQuoteTransfer { constructor(binding) { super(binding, storage); } }
+  const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
+  const start = app.indexOf('async function initializeDeckPage(route) {');
+  const initializer = app.slice(start, app.indexOf("\n// An outcome's Measurements", start));
+  const quoteStart = app.indexOf('async function quoteNotebookPassage(choice, opener) {');
+  const routing = app.slice(quoteStart, app.indexOf('\nfunction receiveNotebookQuote(', quoteStart));
+  assert.ok(start >= 0 && quoteStart >= 0 && initializer.trimEnd().endsWith('}') && routing.trimEnd().endsWith('}'));
+  const nodes = new Map(), $ = id => {
+    if (!nodes.has(id)) nodes.set(id, { dataset: {}, prepend() {} }); return nodes.get(id);
+  };
+  const doc = { body: $('body'), querySelector: () => $('rail') }; let controllers = 0;
+  f.page.load = async () => true;
+  const env = { NotebookPage: function RoutePage(options) {
+    f.page.passages = options.passages; f.page.host = options.host; return f.page;
+  }, $, document: doc, status() {}, drawFeed() {}, placeBrand() {}, pipelineView() {}, pipelineSend() {},
+    notebookAskIn: async scope => { assert.deepEqual(scope, f.source.owner_scope); return { topicId: 'topic-1076' }; },
+    api: {}, bootstrap, notebookViewsOf: () => ({}), notebookDeleting: {}, shell: { guard() {} },
+    followCommits: run => run, retired: false, topic: null, views: null,
+    notebookPassagesOf: () => { controllers++; return shared; }, NotebookQuoteTransfer: DeviceTransfer,
+    notebookQuoteNotice: error => f.notices.push(error.message),
+    openDestination: async (route, label, opener) => destinations.push({ route, label, opener }) };
+  const route = new Function(...Object.keys(env), 'let linkOwnerScope, linkNotice;\n' + routing + '\n' + initializer +
+    '\nreturn { open: initializeDeckPage, quote: quoteNotebookPassage, retire() { retired = true; } };')(...Object.values(env));
+  shared.quote = route.quote;
+  await route.open({ kind: 'cards', id: f.source.source_ref.id, view: 'cards' });
+  return { ...f, destinations, retire: route.retire, controllers: () => controllers,
+    transfer: new DeviceTransfer(bootstrap) };
+}
+
+test('1076 full-page selected Return opens the existing Reader destination through its actual lazy route adapter', async t => {
+  const f = await fullPageFixture(t), before = state(f.field);
+  assert.equal(f.controllers(), 0, 'route construction stays lazy');
+  await press(f);
+  assert.deepEqual(f.notices, []); assert.deepEqual(state(f.field), before);
+  assert.equal(f.controllers(), 1); assert.equal(f.destinations.length, 1);
+  assert.deepEqual(f.destinations[0], { route: { kind: 'topic', id: 'topic-1076', page: f.source.source_ref.id,
+    revision: '1' }, label: 'the page quote', opener: f.field });
+  const pending = f.transfer.forSource('topic-1076', f.source);
+  assert.equal(pending.choice.text, 'kept'); assert.deepEqual(pending.choice.source, f.source.source_ref);
+  assert.equal(f.source.body.slice(pending.choice.start, pending.choice.end), 'kept');
+  assert.equal(f.requests.length, 0); assert.equal(f.writer.base.source.body, body);
+});
+test('1076 a retired full-page adapter cannot create the shared controller or open the Reader', async t => {
+  const f = await fullPageFixture(t), before = state(f.field); f.retire();
+  await press(f); f.page.passages.bind({}, {});
+  assert.equal(f.controllers(), 0); assert.deepEqual(f.destinations, []);
+  assert.equal(f.transfer.forSource('topic-1076', f.source), null);
+  assert.deepEqual(state(f.field), before); assert.equal(f.requests.length, 0);
+});
 
 test('1076 selected Return quotes exact confirmed source and leaves card/editor/history intact', async t => {
   const f = fixture(t), before = state(f.field), deck = deckBody(f.page.deck), editing = f.page.editing;
