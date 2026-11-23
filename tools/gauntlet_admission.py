@@ -12,6 +12,39 @@ class Refused(Exception):
     pass
 
 
+class _FrozenPaths(list):
+    """Bind a pending freeze lazily when its existing validator classifies it.
+
+    The raw list shape stays intact, including for 1087's extracted _frozen
+    validator. Unapproved/unrelated rows cause no Git read or new wait.
+    """
+    def __init__(self, config, freeze, run):
+        super().__init__(freeze['files'])
+        self.config, self.freeze, self.run, self.loaded, self.witness = config, freeze, run, False, None
+
+    @property
+    def migration_sources(self):
+        if self.loaded:
+            return self.witness
+        static = bool(train.guarded(list(self)))
+        if self.freeze.get('judged') is True and static or not any(p.startswith('aim_next/') and p.endswith('.py') for p in self):
+            self.loaded = True
+            return None
+        try:
+            actual = source_diff(self.config.live, self.freeze['base_commit'], self.freeze['head_commit'], run=self.run)
+        except ValueError as error:
+            raise Refused('An ordinary migration freeze cannot be verified from Git: ' + str(error))
+        require(sorted(actual) == sorted(self), 'An ordinary migration freeze differs from its actual source')
+        self.witness, self.loaded = actual.migration_sources, True
+        return self.witness
+
+
+def _bound_freeze(config, freeze, run):
+    if isinstance(freeze, dict) and isinstance(freeze.get('files'), list):
+        return dict(freeze, files=_FrozenPaths(config, freeze, run))
+    return freeze
+
+
 def require(holds, words):
     if not holds:
         raise Refused(words)
@@ -81,7 +114,7 @@ def approved(config, run):
         for piece in page['pieces']:
             require(isinstance(piece, dict) and isinstance(piece.get('id'), str) and isinstance(piece.get('items'), list) and
                     all(type(n) is int and n > 0 for n in piece['items']), 'The admission pipeline has a malformed piece')
-            value = {'id': piece['id'], 'items': piece['items'], 'freeze': piece.get('freeze'),
+            value = {'id': piece['id'], 'items': piece['items'], 'freeze': _bound_freeze(config, piece.get('freeze'), run),
                      'version': piece.get('version'), 'stage': (piece.get('stage') or {}).get('stage_id')}
             require(piece['id'] not in pieces or pieces[piece['id']] == value,
                     'The admission pipeline changed a piece while paging')
@@ -93,7 +126,7 @@ def approved(config, run):
                     release.get('release_number') == open_release['release'] and
                     release.get('stage') == open_release['stage'] and type(release.get('version')) is int,
                     'The admission pipeline omitted or changed its open-release owner')
-            value = {'id': release['id'], 'items': release['items'], 'freeze': release.get('freeze'),
+            value = {'id': release['id'], 'items': release['items'], 'freeze': _bound_freeze(config, release.get('freeze'), run),
                      'version': release['version'], 'stage': release['stage']['stage_id'], 'release': open_release['release']}
             require(value['id'] not in pieces or pieces[value['id']] == value,
                     'The admission pipeline changed a release while paging')

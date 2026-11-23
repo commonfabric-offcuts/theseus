@@ -356,8 +356,10 @@ class PipelineVerbs:
             files = source_diff(options.repo, options.base, options.head)
         except ValueError as error:
             self.refuse('INVALID_ARGUMENT', str(error))
-        result = self.command('pipeline.freeze', {'piece_id': options.piece},
-            {'base_commit': options.base, 'head_commit': options.head, 'files': files},
+        args = {'base_commit': options.base, 'head_commit': options.head, 'files': files}
+        if files.migration_sources is not None:
+            args['migration_sources'] = files.migration_sources
+        result = self.command('pipeline.freeze', {'piece_id': options.piece}, args,
             {'piece_revision': observed['piece_revision']})
         self.out.plain('froze %s at %s · %s' % (options.piece, options.head,
             'judged' if result['freeze']['judged'] else 'ordinary'))

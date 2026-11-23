@@ -6,7 +6,7 @@ from pathlib import PurePosixPath
 
 from .contract import Refusal, _json
 from .delivery import _now_ms
-from .judgment import SHA, guarded
+from .judgment import SHA, classify_files
 
 FREEZE_SCHEMA = [
     "CREATE TABLE pipeline_piece_freezes (seq INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -56,7 +56,8 @@ class PieceFreezes:
 
     def _command_pipeline_freeze(self, db, actor, envelope):
         target, args = envelope["target"], envelope["args"]
-        if set(target) != {"piece_id"} or set(args) != {"base_commit", "head_commit", "files"} or "piece_revision" not in envelope["expected"]:
+        if set(target) != {"piece_id"} or set(args) not in ({"base_commit", "head_commit", "files"},
+                {"base_commit", "head_commit", "files", "migration_sources"}) or "piece_revision" not in envelope["expected"]:
             raise Refusal("INVALID_ARGUMENT", "A freeze names its piece, version, exact base/head and changed files")
         piece, workspace = self._piece(db, actor, target["piece_id"])
         self._pipeline_on(db, workspace["id"])
@@ -77,11 +78,16 @@ class PieceFreezes:
         if len(set(files)) != len(files):
             raise Refusal("INVALID_ARGUMENT", "A changed file is named once")
         files = sorted(files)
-        judged = bool(guarded(files))
+        try:
+            witness = args.get('migration_sources')
+            kept, migration = classify_files(files, migration_sources=witness, base=args['base_commit'], head=args['head_commit'])
+            judged = bool(kept)
+        except ValueError as error:
+            raise Refusal('INVALID_ARGUMENT', str(error))
         old = self._piece_freeze(db, piece["id"])
         same_source = old is not None and all(old[k] == args[k] for k in ("base_commit", "head_commit")) and old["files"] == files
         if same_source and old["judged"] == judged:
-            return {"changed": False, "freeze": old, "piece_revision": piece["version"]}, []
+            return {"changed": False, "freeze": old, "piece_revision": piece["version"], "migration": migration}, []
         stages = [s for s in self._stages(db, workspace["id"]) if s["scope"] == "piece"]
         if old is not None and not same_source and stages and entry["stage_id"] == stages[-1]["stage_id"]:
             raise Refusal("PIECE_APPROVED", "Return this approved piece to review before changing its frozen source")
@@ -92,4 +98,4 @@ class PieceFreezes:
                     int(judged), actor, _now_ms()))
         pipeline_version = self._bump(db, workspace["id"], piece["id"])
         return {"changed": True, "freeze": self._piece_freeze(db, piece["id"]), "piece_revision": version,
-                "pipeline_revision": pipeline_version}, []
+                "pipeline_revision": pipeline_version, "migration": migration}, []

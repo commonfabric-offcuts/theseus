@@ -31,7 +31,7 @@ import subprocess
 from typing import Protocol
 
 from tools import base_move, ci_known_reds as ci, release_check, ci_input_reads
-from aim_next.judgment import DEPLOY_TOOL, CONTROLLER, MIGRATIONS, SHA, guarded
+from aim_next.judgment import DEPLOY_TOOL, CONTROLLER, MIGRATIONS, SHA, guarded, classify_paths, git_source
 
 KEYS = ("pr", "merge_commit", "items", "merged_tree", "kind", "hosted_run", "judgment")
 ITEM_FIELDS = ("item", "approved_head", "review")
@@ -282,9 +282,14 @@ def judge(path, sha, live, release_branch, repository, git, github):
         if hosted["head_sha"] != merge:
             raise Refused("the hosted run %d names %s as its head, not the merge commit %s"
                           % (hosted["id"], hosted["head_sha"], merge))
-    changed = [name for name in _ask(git, "the paths changed from the live commit %s" % live[:12], "diff", "--name-only",
+    changed = [name for name in _ask(git, "the paths changed from the live commit %s" % live[:12], "diff", "--no-ext-diff", "--no-renames", "--name-only",
                                      "-z", live, merge).split("\0") if name]
-    kept = guarded(changed)
+    def source_git(*args):
+        result = git(*args)
+        if result.returncode:
+            raise ValueError('Migration source could not be read from Git')
+        return result.stdout
+    kept = guarded(classify_paths(changed, live, merge, lambda revision, path: git_source(source_git, revision, path)))
     if train["kind"] == "ordinary":
         if kept:
             raise Refused("an ordinary train cannot change %s: the deploy tool, the controller and the data migrations keep "

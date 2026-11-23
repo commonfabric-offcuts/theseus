@@ -5773,5 +5773,151 @@
         ".github/check-weights.json"
       ]
     }
+  },
+  "tests/test_additive_schema_1100.py": {
+    "bfcbf6776d8f64368bce1a9f14a14846ef743b3a8697b76736e749a5c33fec3e": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "bfcbf6776d8f64368bce1a9f14a14846ef743b3a8697b76736e749a5c33fec3e:1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "bfcbf6776d8f64368bce1a9f14a14846ef743b3a8697b76736e749a5c33fec3e:2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "bfcbf6776d8f64368bce1a9f14a14846ef743b3a8697b76736e749a5c33fec3e:3": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "bfcbf6776d8f64368bce1a9f14a14846ef743b3a8697b76736e749a5c33fec3e:4": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "bfcbf6776d8f64368bce1a9f14a14846ef743b3a8697b76736e749a5c33fec3e:5": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "bfcbf6776d8f64368bce1a9f14a14846ef743b3a8697b76736e749a5c33fec3e:6": {
+      "scope": "generated/system/product",
+      "inputs": [
+        "aim_next/__init__.py",
+        "aim_next/addressing.py",
+        "aim_next/admin.py",
+        "aim_next/answer_delivery.py",
+        "aim_next/ask_cover.py",
+        "aim_next/assessment_dispatch.py",
+        "aim_next/assessments.py",
+        "aim_next/authority.py",
+        "aim_next/backup.py",
+        "aim_next/blocking.py",
+        "aim_next/broker_routes.py",
+        "aim_next/changes.py",
+        "aim_next/check_reading.py",
+        "aim_next/checks.py",
+        "aim_next/cli.py",
+        "aim_next/cli_covers.py",
+        "aim_next/cli_outcome.py",
+        "aim_next/cli_targets.py",
+        "aim_next/cli_tools.py",
+        "aim_next/codex_broker.py",
+        "aim_next/codex_host.py",
+        "aim_next/colors.py",
+        "aim_next/contract.py",
+        "aim_next/conversation.py",
+        "aim_next/cover_refresh.py",
+        "aim_next/cover_values.py",
+        "aim_next/covers.py",
+        "aim_next/delivery.py",
+        "aim_next/dossier_move.py",
+        "aim_next/dossier_order.py",
+        "aim_next/drafts.py",
+        "aim_next/effects_runner.py",
+        "aim_next/effects_watch.py",
+        "aim_next/health.py",
+        "aim_next/hosted_cli.py",
+        "aim_next/hosted_control.py",
+        "aim_next/hosted_notice.py",
+        "aim_next/hosted_permissions.py",
+        "aim_next/hosted_seats.py",
+        "aim_next/initialization.py",
+        "aim_next/invite.py",
+        "aim_next/judgment.py",
+        "aim_next/live.py",
+        "aim_next/marks.py",
+        "aim_next/media.py",
+        "aim_next/memory.py",
+        "aim_next/mention_reach.py",
+        "aim_next/message_edit.py",
+        "aim_next/migrations.py",
+        "aim_next/onboarding.py",
+        "aim_next/openings.py",
+        "aim_next/outcome_asks.py",
+        "aim_next/outcome_colors.py",
+        "aim_next/outcome_end.py",
+        "aim_next/outcome_kind.py",
+        "aim_next/outcome_light.py",
+        "aim_next/outcome_rules.py",
+        "aim_next/outline_order.py",
+        "aim_next/piece_freeze.py",
+        "aim_next/pipeline.py",
+        "aim_next/pipeline_state.py",
+        "aim_next/profile.py",
+        "aim_next/questions.py",
+        "aim_next/rail_dimming.py",
+        "aim_next/reactions.py",
+        "aim_next/recovery.py",
+        "aim_next/recovery_io.py",
+        "aim_next/refresh_delivery.py",
+        "aim_next/releases.py",
+        "aim_next/removal.py",
+        "aim_next/reply_passages.py",
+        "aim_next/responsibility.py",
+        "aim_next/root_posts.py",
+        "aim_next/route_pins.py",
+        "aim_next/runner.py",
+        "aim_next/runner_faults.py",
+        "aim_next/seat_host.py",
+        "aim_next/serve.py",
+        "aim_next/server.py",
+        "aim_next/source_item_covers.py",
+        "aim_next/sources.py",
+        "aim_next/stacks.py",
+        "aim_next/standing_conversation.py",
+        "aim_next/store.py",
+        "aim_next/supervisor.py",
+        "aim_next/tool_records.py",
+        "aim_next/tool_words.py",
+        "aim_next/tools_core.py",
+        "aim_next/topic_preview.py",
+        "aim_next/topic_reading.py",
+        "aim_next/topic_state.py",
+        "aim_next/validation.py",
+        "aim_next/wake_adapter.py",
+        "aim_next/wake_health.py",
+        "aim_next/web_build.py",
+        "aim_next/whispers.py",
+        "aim_next/withdrawal.py",
+        "aim_next/work.py",
+        "aim_next/workspace_links.py"
+      ]
+    },
+    "bfcbf6776d8f64368bce1a9f14a14846ef743b3a8697b76736e749a5c33fec3e:7": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "d42e67fc7ff1079df6871c12c2d68b015e332f037e097e1518b0699e9b12ceb6": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "bfcbf6776d8f64368bce1a9f14a14846ef743b3a8697b76736e749a5c33fec3e:8": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "bfcbf6776d8f64368bce1a9f14a14846ef743b3a8697b76736e749a5c33fec3e:9": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
   }
 }

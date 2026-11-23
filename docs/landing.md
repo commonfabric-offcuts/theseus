@@ -33,10 +33,18 @@ semantics or guarded inputs follows this sequence:
 **Judged first:** complete judgment before deployment for changes to stored
 data or its meaning, including rewrites of existing records, semantic backward
 compatibility or values the previous code cannot read or safely use after a
-revert; migrations or `SCHEMA_VERSION`; server permission policy or admission
+revert; unqualified migrations or `SCHEMA_VERSION`; server permission policy or admission
 rules; release, check or landing tools and their dependencies; guarded input
 declarations such as `tools/ci-input-reads.json`; or `.github/`. A filename-only
 guard is a minimum, not proof that other changes are ordinary.
+
+A source-bound additive table, nullable/constant-defaulted column or index
+with an inverse down step and migration-suite up/down/occupied coverage is
+ordinary under1100's shared source classifier. Drops, renames, rewrites and
+changed existing checks remain judged. Unsupported or unverifiable source
+does not receive the exception. A qualifying version change still uses the
+full existing backup/migrate/runner-restart/verify/release recipe. See
+[the classification contract](additive-schema-1100.md) for its exact bounds.
 
 A client control that reflects permission Core already enforces, without
 changing who may do what and with Core's refusal intact after revert, is
