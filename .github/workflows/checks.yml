@@ -81,10 +81,11 @@ jobs:
     needs: plan
     runs-on: macos-26
     # Item 813: browser jobs have a named 100-minute cap while measured weights await refresh.
-    # Replay keeps 45. Unit limits are
-    # ceil((measured file/step minutes + measured setup) * 1.5), from
-    # .github/check-weights.json: file timings 44112970996, Node/setup
-    # 44112985174, deploy-refusals train 30 (44007172971). Python 19/18/18/18, Node 5, refusals 3.
+    # Replay keeps 45. Item1071: Python's generated matrix cap is
+    # max(30, ceil((dealt file minutes + setup minutes) * 2)).
+    # Node and deploy-refusals retain ceil((step minutes + setup) * 1.5).
+    # The planner owns these limits, using refreshed or checked-in weights;
+    # consume each nonbrowser job's timeout_minutes without another override.
     timeout-minutes: ${{ startsWith(matrix.name, 'browser ') && 100 || matrix.timeout_minutes }}
     strategy:
       fail-fast: false

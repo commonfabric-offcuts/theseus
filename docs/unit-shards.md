@@ -8,6 +8,16 @@ plan and avoids one alphabetical directory accumulating the expensive tests.
 Node units and deploy-refusals each have their own job. Browser and replay
 selection retain their existing rules.
 
+Item1071 changes Python's job cap to
+`max(30, ceil((dealt file minutes + setup minutes) * 2))`, including empty
+partitions. Setup is counted once. The generated `timeout_minutes` reaches
+Checks unchanged. Node/deploy-refusals keep their1.5 factor, browser jobs
+keep the workflow's100-minute override and replay keeps45 minutes. These are
+budget defaults, not completion guarantees. The older measurements and caps
+below are historical. The planner and its two exact planning data paths are
+now ordinary under the shared train/Core policy; judge/deploy stay guarded
+([1071 contract](shard-cap-guard-1071.md)).
+
 The planner and runner share an import-free inventory matching unittest's
 filesystem rules: valid `test_*.py` modules under `tests/`, descending only
 through packages with `__init__.py`. Package initializers are also planned
@@ -48,7 +58,7 @@ both corrected before handoff. Four longest-first bins now measure 11.58,
 10.67, 10.67 and 10.67 minutes. The slowest file, `test_tools_start_line.py`,
 runs alone; `test_codex_host.py` is the next largest at 7.36 minutes.
 
-The timeout is `ceil((measured minutes + 0.902 setup minutes) * 1.5)` for each
+The original timeout was `ceil((measured minutes + 0.902 setup minutes) * 1.5)` for each
 unit job: Python 19/18/18/18 minutes, Node 5, deploy-refusals 3. Node's 124.887s
 and the 54.113s setup/upload overhead come from pool run
 [44112985174](https://github.com/commonfabric-offcuts/theseus/actions/runs/44112985174).
@@ -61,7 +71,7 @@ A subsequent train checks that every shard finishes inside about 20 minutes
 and that their counts total the same suite as one process (3,005 tests at
 release 90, plus this piece's new checks). Adding files uses the measured
 median and deals them with the existing files; refresh the weights from the
-next run's `timing.files` rather than adjusting a cap. The runner is guarded
+next run's `timing.files` rather than adjusting a cap. The runner was guarded
 with the other producer tools: an ordinary train cannot alter it without
 producer review, and the tool-record parser excludes it from ordinary tool
 ownership through its matching closed list. Python retains `run_step`'s per-process bytecode cache, also
