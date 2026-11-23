@@ -145,3 +145,22 @@ by a later creation callback, and a different second id is refused. This
 journal survives the latest-streak record moving to another intent. Ordinary
 unhosted CLI callers keep a read transaction; only hosted activity takes a
 writer. SQLite contention returns the existing typed busy outcome.
+
+# 1104 Health display addendum before UI edits
+
+The existing Health renderer ignores execution.replacement and recovery_state.
+Core and CLI records already expose them; a receipt hidden from the app is not
+the promised person-visible result. This addendum completes that same1104 scope.
+
+For a committed receipt younger than24hours, the agent summary says context
+replaced and its details show the time/reason, old/new context ids and exact
+triggering turn ids. At24hours, a future timestamp, or absent receipt, that
+marker is absent. Incomplete recovery is named separately and never claims a
+replacement. Core still owns every fact and its red rule; no control, work,
+profile or routing decision moves into the renderer. Existing Stop/Continue
+and work links remain. This adds no browser/native/HTTP fixture or timing claim.
+
+The three existing owners attached here exactly match actual354 as well as
+353. Core7 owns this Health-only display; Page5 Reader quotes, Core8 feed/shelf
+and Page6 Notebook colours have no overlapping edited surface. Direct Node
+health renderer checks provide actual-old red/corrected/restored evidence.
