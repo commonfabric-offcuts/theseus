@@ -31,6 +31,13 @@ owner, deletion, unreadable blob or symlink stays judged even if the diff does
 not include `migrations.py`. A version change without a qualifying appended
 step also stays judged.
 
+Imported SQL owners must be declarative in their entirety, including unused
+bindings and imports. Expressions, conditionals, mutations, executable/defaulted
+definitions, rebinding, external imports and unsupported assignments cannot
+qualify by presenting a safe selected constant. Unchanged historical executable
+owners retain both their selected transitive values and a whole-owner hash;
+changing either stays judged. The classifier never imports candidate code.
+
 Migration source coverage requires executable test changes calling the real
 migration entry for the new/prior versions, assertions, and occupied-loss
 refusal checks for record-bearing additions. It does not infer coverage from

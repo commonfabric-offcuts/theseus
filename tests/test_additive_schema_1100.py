@@ -170,6 +170,65 @@ class Source1100(unittest.TestCase):
         self.assertNotIn('aim_next/migrations.py', paths)
         self.assertEqual(guarded(paths), ['aim_next/extra.py'])
 
+    def test_executed_import_mutation_is_judged_and_drops_prior_table(self):
+        self.candidate()
+        file = self.repo/'aim_next/extra.py'
+        file.write_text(file.read_text() + "UP.append('DROP TABLE old')\n")
+        head = self.commit()
+        # Execute only this known synthetic fixture on in-memory SQLite. The
+        # classifier must never import it. Its literal declarations look safe,
+        # but the actual module body changes the SQL that migrate executes.
+        namespace = {}
+        exec(self.git('show', head+':aim_next/extra.py'), namespace)
+        exec(self.git('show', head+':aim_next/migrations.py').replace('from .extra import UP, DOWN, OCCUPIED', ''), namespace)
+        with sqlite3.connect(':memory:') as db:
+            db.execute('CREATE TABLE old (id INTEGER)')
+            db.execute('INSERT INTO old VALUES (42)')
+            self.assertEqual(db.execute('SELECT * FROM old').fetchall(), [(42,)])
+            self.assertIn('DROP TABLE old', namespace['UP'])
+            namespace['migrate'](db, '3')
+            self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='old'").fetchone())
+        self.assertIn('aim_next/migrations.py', guarded(source_diff(self.repo,self.base,head)))
+
+    def test_imported_owner_only_executable_mutations_stay_judged(self):
+        self.base = self.candidate()
+        original = self.git('show', self.base+':aim_next/extra.py') + '\n'
+        for executable in [
+            "UP.append('DROP TABLE old')\n",
+            "if True:\n    UP.append('DROP TABLE old')\n",
+            "UP += ['DROP TABLE old']\n",
+            "SIDE_EFFECT = UP.append('DROP TABLE old')\n",
+            "UP[0] = 'DROP TABLE old'\n",
+            "class Executed:\n    UP.append('DROP TABLE old')\n",
+        ]:
+            with self.subTest(executable=executable):
+                self.write('aim_next/extra.py', original+executable)
+                head = self.commit(); paths = source_diff(self.repo,self.base,head)
+                self.assertNotIn('aim_next/migrations.py', paths)
+                self.assertEqual(guarded(paths), ['aim_next/extra.py'])
+
+    def test_unused_import_with_executable_owner_stays_judged(self):
+        self.candidate()
+        file = self.repo/'aim_next/extra.py'
+        file.write_text(file.read_text()+'from .side import UNUSED\n')
+        self.write('aim_next/side.py', "from .extra import UP\nUP.append('DROP TABLE old')\nUNUSED = 0\n")
+        head = self.commit()
+        self.assertIn('aim_next/migrations.py', guarded(source_diff(self.repo,self.base,head)))
+
+    def test_whole_declarative_imported_owner_still_qualifies(self):
+        self.candidate()
+        self.write('aim_next/sql_values.py', "UP_DATA = ['CREATE TABLE extra (id INTEGER)']\nUNUSED = ('safe',)\n")
+        self.write('aim_next/extra.py', '''"""A declarative SQL module."""
+from __future__ import annotations
+from .sql_values import UP_DATA, UNUSED
+UP = UP_DATA
+DOWN = ['DROP TABLE extra']
+OCCUPIED = 'SELECT EXISTS (SELECT 1 FROM extra)'
+MARKER = tuple(['safe'])
+''')
+        head = self.commit()
+        self.assertEqual(guarded(source_diff(self.repo,self.base,head)), [])
+
     def test_imported_sql_deletion_symlink_and_missing_literal_proof_are_judged(self):
         head = self.candidate(); self.base = head
         file = self.repo/'aim_next/extra.py'; original = file.read_text()
@@ -288,6 +347,16 @@ class Core1100(Binder987):
         piece = self.piece([1]); answer = self.cli(piece,self.base,head)
         self.assertEqual(answer.returncode,0,answer.stdout+answer.stderr)
         self.assertFalse(self.shown(piece)['freeze']['judged'], answer.stdout)
+
+    def test_1100_real_cli_keeps_executable_imported_owner_judged(self):
+        self.candidate()
+        self.write('aim_next/extra.py', "UP = ['CREATE TABLE extra (id INTEGER)']\n"
+                   "DOWN = ['DROP TABLE extra']\nOCCUPIED = 'SELECT EXISTS (SELECT 1 FROM extra)'\n"
+                   "UP.append('DROP TABLE old')\n")
+        head = self.commit(); piece = self.piece([1])
+        answer = self.cli(piece,self.base,head)
+        self.assertEqual(answer.returncode,0,answer.stdout+answer.stderr)
+        self.assertTrue(self.shown(piece)['freeze']['judged'], answer.stdout)
 
     def test_1100_core_derives_mark_refuses_foreign_witness_and_never_reads_git(self):
         from unittest import mock

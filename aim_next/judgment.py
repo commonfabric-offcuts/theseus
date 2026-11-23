@@ -115,6 +115,7 @@ class _Declarations:
     """Read a bounded declarative slice, never import/eval candidate Python."""
     def __init__(self, read):
         self.read, self.modules, self.cache, self.active, self.entries, self.weights = read, {}, {}, set(), {}, {}
+        self.declarative, self.checking_owners = {}, set()
 
     def measure(self, value, depth=0):
         _require(depth < 80)
@@ -158,6 +159,61 @@ class _Declarations:
         self.entries[path] = values
         return values
 
+    def declarative_owner(self, path):
+        """Every import-time statement must be inert, including unused inputs.
+
+        Existing executable owners can be pinned, but a selected literal does
+        not prove that importing the rest of its module leaves it unchanged.
+        """
+        if path in self.declarative:
+            return self.declarative[path]
+        if path in self.checking_owners:
+            return False
+        self.checking_owners.add(path)
+        try:
+            names = set()
+            imports = []
+            expressions = []
+            for node in self.module(path).body:
+                bound = []
+                if isinstance(node, ast.Assign) and all(isinstance(t, ast.Name) for t in node.targets):
+                    bound = [t.id for t in node.targets]
+                    expressions.append(node.value)
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module == '__future__' and node.level == 0 and all(a.name == 'annotations' and a.asname is None for a in node.names):
+                        continue
+                    _require(node.module and (node.level == 1 or node.level == 0 and node.module.startswith('aim_next.')))
+                    imports.append((node.module if node.level == 0 else 'aim_next.' + node.module).replace('.', '/') + '.py')
+                    bound = [a.asname or a.name for a in node.names]
+                elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                    continue  # A module docstring has no executable expression.
+                else:
+                    self.declarative[path] = False
+                    return False
+                _require(len(set(bound)) == len(bound) and not names.intersection(bound) and
+                         all(name != '*' and not name.startswith('__') for name in bound))
+                names.update(bound)
+            def inert(node):
+                if isinstance(node, ast.Constant):
+                    return type(node.value) in (str, int, bool, type(None))
+                if isinstance(node, ast.Name):
+                    return True
+                if isinstance(node, (ast.List, ast.Tuple)):
+                    return all(inert(n) for n in node.elts)
+                if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Mod)):
+                    return inert(node.left) and inert(node.right)
+                return (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and
+                        node.func.id in ('list', 'tuple', 'str', 'int') and node.func.id not in names and
+                        len(node.args) == 1 and not node.keywords and inert(node.args[0]))
+            value = all(inert(node) for node in expressions) and all(self.declarative_owner(p) for p in imports)
+            self.declarative[path] = value
+            return value
+        except _Unsupported:
+            self.declarative[path] = False
+            return False
+        finally:
+            self.checking_owners.remove(path)
+
     def symbol(self, path, name):
         key = (path, name)
         if key in self.cache:
@@ -168,6 +224,10 @@ class _Declarations:
             value = self.declarations(path)[name]
             if isinstance(value, tuple):
                 result = self.symbol(value[1], value[2])
+                if not self.declarative_owner(value[1]):
+                    # Keep selected transitive values as well as the full owner
+                    # hash: either changing makes old imported steps judged.
+                    result = ('opaque-owner', result, hashlib.sha256(self.read(value[1]).encode('utf-8')).hexdigest())
             elif isinstance(value, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 # Historical callable backfills may remain, but never enter a new
                 # ordinary step. Retaining the whole owner is conservative.
