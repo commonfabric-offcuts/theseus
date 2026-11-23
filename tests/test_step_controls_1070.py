@@ -750,5 +750,91 @@ class SharedIncomplete1125Case(unittest.TestCase):
             path.write_text(original)
 
 
+class SharedZeroCaseFixtureDeath1126Case(unittest.TestCase):
+    """Authenticated artifact units; no fixture, browser or production judge."""
+    setUp = StepControlsCase.setUp
+    git = StepControlsCase.git
+    known = StepControlsCase.known
+    save_step = BaseBlindMode1124Case.save_step
+    manifest = BaseBlindMode1124Case.manifest
+    judge = BaseBlindMode1124Case.judge
+
+    def bundle(self, run_id):
+        folder, run = BaseBlindMode1124Case.bundle(self, run_id)
+        out = folder / 'shards/check-2'
+        path = out / 'native/reader/native.json'
+        report = json.loads(path.read_text())
+        stderr = "ModuleNotFoundError: missing fixture helper m-%032x\n" % run_id
+        error = 'Error: Fixture exited 1: ' + stderr + '\n    at /fixture/tests/reader.mjs:1:1'
+        report.update(fixtureExitCode=1, fixtureErrors=stderr, bodyError=error)
+        path.write_text(json.dumps(report))
+        (path.parent / 'body-error.txt').write_text(error)
+        (out / 'native-reader.log').write_text(error + '\n')
+        # Counts and the direct failed exit remain zero/one, respectively.
+        return folder, run
+
+    def test_shared_death_is_disclosed_but_never_a_case_or_cleanup_pass(self):
+        controls = [self.bundle(i) for i in range(1, 4)]
+        candidate = self.bundle(99)
+        result, raw = self.judge(candidate, controls)
+        self.assertTrue(result['passed'], result)
+        self.assertFalse(raw['passed'])
+        window = result['browser_windows']['native-reader']
+        self.assertEqual(window['mode'], 'excluded')
+        self.assertTrue(window['shared_fixture_death'])
+        self.assertEqual(window['run_ids'], [1, 2, 3])
+        observation = window['candidate'][0]
+        self.assertEqual(observation['results'], [])
+        self.assertEqual(observation['exit'], 1)
+        self.assertEqual(observation['end_state']['fixture_death']['exit'], 1)
+        self.assertFalse(observation['end_state']['completed'])
+        self.assertEqual([r['observations'][0]['end_state'] for r in window['base_runs']],
+                         [observation['end_state']] * 3)
+        self.assertIn('m-%032x' % 99, observation['bodyError'])  # Raw error retained.
+        self.assertEqual(result['expected'], [])
+        self.assertEqual(result['unexpected'], [])
+        for pair in (controls[0], candidate):
+            out = pair[0] / 'shards/check-2'
+            path = out / 'native/reader/native.json'
+            original = path.read_text()
+            for field, value in [('fixtureExitCode', 2), ('browserClosed', False),
+                                 ('fixtureExitSignal', 'SIGTERM'), ('teardownError', 'failed'),
+                                 ('fixtureErrors', 'unrelated fixture error'),
+                                 ('finalHealth', {'fatal': ['owned process survived']})]:
+                with self.subTest(side=pair[1]['id'], field=field):
+                    report = json.loads(original)
+                    report[field] = value
+                    path.write_text(json.dumps(report))
+                    with self.assertRaises(CONTROLLER.Refused):
+                        self.judge(candidate, controls)
+                    path.write_text(original)
+            # A different, internally consistent body/fixture error also refuses.
+            report = json.loads(original)
+            report['bodyError'] = report['bodyError'].replace('missing fixture helper', 'different failure')
+            report['fixtureErrors'] = report['fixtureErrors'].replace('missing fixture helper', 'different failure')
+            path.write_text(json.dumps(report))
+            (path.parent / 'body-error.txt').write_text(report['bodyError'])
+            (out / 'native-reader.log').write_text(report['bodyError'] + '\n')
+            with self.assertRaisesRegex(CONTROLLER.Refused, 'differs from selected base history'):
+                self.judge(candidate, controls)
+            path.write_text(original)
+            error = json.loads(original)['bodyError']
+            (path.parent / 'body-error.txt').write_text(error)
+            (out / 'native-reader.log').write_text(error + '\n')
+
+    def test_candidate_only_death_cannot_borrow_zero_case_preparation_history(self):
+        controls = [BaseBlindMode1124Case.bundle(self, i) for i in range(1, 4)]
+        candidate = self.bundle(99)
+        with self.assertRaisesRegex(CONTROLLER.Refused, 'differs from selected base history'):
+            self.judge(candidate, controls)
+        with self.assertRaisesRegex(CONTROLLER.Refused, 'missing case results'):
+            self.judge(candidate, [])
+
+    def test_one_selected_base_reaching_cases_keeps_the_existing_refusal(self):
+        controls = [BaseBlindMode1124Case.bundle(self, 1, zero=False), self.bundle(2), self.bundle(3)]
+        with self.assertRaisesRegex(CONTROLLER.Refused, 'mixed base history'):
+            self.judge(self.bundle(99), controls)
+
+
 if __name__ == '__main__':
     unittest.main()
