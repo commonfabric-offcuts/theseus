@@ -215,6 +215,18 @@ class Source1100(unittest.TestCase):
         head = self.commit()
         self.assertIn('aim_next/migrations.py', guarded(source_diff(self.repo,self.base,head)))
 
+    def test_rebound_literal_constructors_are_not_declarative(self):
+        for name in ('list', 'tuple', 'str', 'int'):
+            with self.subTest(constructor=name):
+                self.candidate()
+                self.write('aim_next/extra.py', "UP = ['CREATE TABLE extra (id INTEGER)']\n"
+                           "DOWN = ['DROP TABLE extra']\nOCCUPIED = 'SELECT EXISTS (SELECT 1 FROM extra)'\n"
+                           + name + " = eval\nSIDE_EFFECT = " + name + "(\"UP.append('DROP TABLE old')\")\n")
+                head = self.commit(); namespace = {}
+                exec(self.git('show', head+':aim_next/extra.py'), namespace)
+                self.assertIn('DROP TABLE old', namespace['UP'])
+                self.assertIn('aim_next/migrations.py', guarded(source_diff(self.repo,self.base,head)))
+
     def test_whole_declarative_imported_owner_still_qualifies(self):
         self.candidate()
         self.write('aim_next/sql_values.py', "UP_DATA = ['CREATE TABLE extra (id INTEGER)']\nUNUSED = ('safe',)\n")
