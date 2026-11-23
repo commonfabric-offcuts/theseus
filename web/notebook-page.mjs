@@ -316,14 +316,18 @@ export class NotebookPage extends DeckPage {
   }
   // Include the unfinished card without altering its textarea or native undo
   // history. Done later applies this same edit to the visible deck once.
-  previewBody() {
+  previewCard() {
     const e=this.editing;
-    if(!e)return deckBody(this.deck);
+    // An unchanged box omits hidden image/stack lines. Keep its raw card;
+    // rebuilding it with boxText would move those lines without an edit.
+    const unchanged={deck:this.deck,at:e&&!e.fresh?findCard(this.deck,e.text,e.near):-1};
+    if(!e || (!e.fresh && !this.boxChanged(e)))return unchanged;
     const to=this.boxText(e);
     const act=e.fresh?{kind:'add',after:e.after,text:to,depth:e.depth,near:e.near}:{kind:'edit',text:e.text,to,near:e.near};
     const done=applyAct(this.deck,act);
-    return done?deckBody(done.deck):deckBody(this.deck);
+    return done??unchanged;
   }
+  previewBody() { return deckBody(this.previewCard().deck); }
   textEdited() {
     if(!this.writing || !this.textSeen)return;
     const seen=this.textSeen;
@@ -374,7 +378,8 @@ export class NotebookPage extends DeckPage {
     }
     if (!this.cardWritable() || e.input.readOnly() || refuseUnavailableWriting(this)) return;
     this.save();
-    const split = selectionCardSplit(this.deck, { ...e, value: field.value, start: field.selectionStart, end: field.selectionEnd });
+    const preview = this.previewCard();
+    const split = selectionCardSplit(preview.deck, { ...e, value: field.value, start: field.selectionStart, end: field.selectionEnd }, preview.at);
     if (!split || split.before !== this.previewBody()) {
       this.say('That card changed while you wrote. Your writing and selection are kept.', 'attention'); return;
     }
@@ -503,6 +508,58 @@ export class NotebookPage extends DeckPage {
     if (this.presentStatus) this.presentStatus(words, state, again);
     else super.say(words, state, again);
   }
+  quoteEditorSelection() {
+    const editing=this.editing, field=editing.field, writing=this.writing;
+    const value=field.value, start=field.selectionStart, end=field.selectionEnd,
+      direction=field.selectionDirection;
+    const previous=this.editorQuote;
+    if(previous?.editing===editing && previous.value===value && previous.start===start &&
+        previous.end===end && previous.direction===direction)return previous.promise;
+    const job={editing,value,start,end,direction};this.editorQuote=job;
+    const active=()=>this.editorQuote===job && this.editing===editing && this.writing===writing &&
+      this.mode==='cards' && !this.detached && !this.host.hidden && field.isConnected &&
+      !field.closest?.('[hidden],[inert]') && this.doc.activeElement===field;
+    const current=()=>active() && field.value===value && field.selectionStart===start && field.selectionEnd===end &&
+      field.selectionDirection===direction;
+    const refuse=words=>{if(current())this.say(words,'attention');};
+    job.promise=(async()=>{
+      try {
+        if(!current())return;
+        if(!writing || !this.passages?.openEditor || this.unavailable) {
+          refuse(this.unavailable || 'The page is not available to quote. Your writing is kept.');return;
+        }
+        if(writing.closed || writing.deleted || writing.conflict || writing.journalError || writing.actionPending || writing.actionRunning) {
+          refuse('The page is not ready to confirm this selection. Your writing and selection are kept.');return;
+        }
+        // Use the same preview as save(), retaining its position so a duplicate
+        // phrase on another card can never supply the quoted source.
+        const preview=this.previewCard(), index=preview.at, body=deckBody(preview.deck);
+        const saved=parseDeck(body), card=saved.cards[index];
+        if(!card) {refuse('The selected writing could not be matched to its card. Your writing is kept.');return;}
+        const from=saved.opening.length+saved.cards.slice(0,index).reduce((n,c)=>n+c.raw.length,0);
+        const bounds={start:from,end:from+card.raw.length};
+        this.save();await this.saveCardChange();
+        if(!current()) {
+          if(active())this.say('The writing or selection changed while saving. Select the passage again to quote it.','attention');
+          return;
+        }
+        const source=writing.base?.source, ref=source?.source_ref;
+        if(writing.closed || writing.deleted || writing.conflict || writing.pending || writing.dirty ||
+            writing.error || writing.journalError || writing.actionPending || writing.actionRunning ||
+            ref?.kind!=='memory' || ref.id!==this.item || ref.revision!==writing.base?.revision ||
+            source.body!==body || writing.base.content.body!==body) {
+          refuse('The selected writing is not confirmed in the saved page yet. Your writing and selection are kept.');return;
+        }
+        const shown=cardText({title:card.title,words:this.written(card).words});
+        const opened=await this.passages.openEditor(field,{source,text:value,shown,
+          excerpt:{start,end,text:value.slice(start,end)},bounds});
+        if(!opened)refuse('The exact selection could not be matched to the saved page. Your writing and selection are kept.');
+      } catch(error) {
+        refuse(`The selected writing could not be quoted: ${error.message ?? error}. Your writing and selection are kept.`);
+      }
+    })().finally(()=>{if(this.editorQuote===job)this.editorQuote=null;});
+    return job.promise;
+  }
   key(event) {
     if (this.keyScope && !this.keyScope(event.target)) return;
     // Even an empty Notebook editor owns its caret arrows. Keep an unused
@@ -531,6 +588,13 @@ export class NotebookPage extends DeckPage {
       }
       if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='s'){event.preventDefault();this.writing?.flush();}
       return;
+    }
+    if(!this.host.hidden && !event.defaultPrevented && !event.isComposing && event.keyCode!==229 &&
+        !this.editing?.history?.composing && !this.editing?.history?.composition && !this.editing?.history?.closed &&
+        event.target===this.editing?.field && event.key==='Enter' &&
+        !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey &&
+        event.target.value.slice(event.target.selectionStart,event.target.selectionEnd).trim()) {
+      event.preventDefault();this.editing.history?.breakTyping();return this.quoteEditorSelection();
     }
     if (!this.host.hidden && event.target === this.editing?.field && this.editing.history) {
       const history=this.editing.history;
