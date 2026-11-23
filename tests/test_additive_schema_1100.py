@@ -293,7 +293,7 @@ class Core1100(Binder987):
         from unittest import mock
         import copy
         head = self.candidate(); paths = source_diff(self.repo, self.base, head); piece = self.piece([1])
-        args = {'base_commit':self.base, 'head_commit':head, 'files':list(paths), 'migration_sources':paths.migration_sources}
+        args = {'base_commit':self.base, 'head_commit':head, 'files':list(paths), 'migration_sources':getattr(paths,'migration_sources',None)}
         with mock.patch('subprocess.run', side_effect=AssertionError('Core must not launch Git or migration workloads')):
             answer = self.command('pipeline.freeze', args, {'piece_id':piece}, {'piece_revision':self.version(piece)}, actor='owner')
         self.assertFalse(self.committed(answer)['freeze']['judged'])
