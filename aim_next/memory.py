@@ -5,6 +5,7 @@ import json
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision, _bounded_page
 from .conversation import _preview
 from .whispers import actor_kind, private_source_refused
+from .memory_transfer import MemoryTransfers
 
 
 MEMORY_SCHEMA = [
@@ -74,7 +75,7 @@ class _Carried:
             (self.item_id, media_id)).fetchone() is not None
 
 
-class Memory:
+class Memory(MemoryTransfers):
     def _memory_scope(self, db, actor, scope, write=False):
         if not isinstance(scope, dict) or set(scope) != {"kind", "id"} or scope["kind"] not in ("topic", "workspace"):
             raise Refusal("INVALID_ARGUMENT", "A topic or workspace Notebook scope is required")
@@ -196,7 +197,7 @@ class Memory:
         rows = sorted([row for kind, scope in scopes for row in db.execute(
             "SELECT a.id AS star,a.item_id,i.scope_kind,i.scope_id,i.current_revision,r.title FROM memory_star_acts a "
             "JOIN memory_items i ON i.id=a.item_id JOIN memory_revisions r ON r.item_id=i.id AND r.revision=i.current_revision "
-            "WHERE a.actor_id=? AND a.scope_kind=? AND a.scope_id=? AND a.id<? AND a.starred=1 AND r.deleted=0 "
+            "WHERE a.actor_id=? AND i.scope_kind=? AND i.scope_id=? AND a.id<? AND a.starred=1 AND r.deleted=0 "
             "AND NOT EXISTS (SELECT 1 FROM memory_star_acts n WHERE n.actor_id=a.actor_id AND n.item_id=a.item_id AND n.id>a.id) "
             "ORDER BY a.id DESC LIMIT ?", (actor, kind, scope, args.get("cursor", 9223372036854775807), limit+1)).fetchall()],
             key=lambda row: -row["star"])[:limit+1]
