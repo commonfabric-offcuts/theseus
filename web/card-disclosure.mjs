@@ -25,23 +25,48 @@ export function disclosureRecords(previous, cards, continuity = null) {
 
 let serial=0;
 export class CardDisclosure {
-  constructor({doc,signal,ResizeObserver=doc.defaultView?.ResizeObserver??globalThis.ResizeObserver}) {
-    Object.assign(this,{doc,records:[],entries:[],closed:false});
+  constructor({doc,signal,ResizeObserver=doc.defaultView?.ResizeObserver??globalThis.ResizeObserver,
+    IntersectionObserver=doc.defaultView?.IntersectionObserver??globalThis.IntersectionObserver}) {
+    Object.assign(this,{doc,records:[],entries:[],closed:false,dirty:new Set(),byWords:new Map(),frame:null,listening:new AbortController()});
     this.resize=ResizeObserver?new ResizeObserver(changed=>{
-      if(!this.closed)for(const {target}of changed){const entry=this.entries.find(entry=>entry.words===target);if(entry)this.measure(entry);}
+      if(this.view())for(const {target}of changed){const entry=this.byWords.get(target);if(entry)this.measure(entry);}
     }):null;
-    doc.fonts?.addEventListener?.('loadingdone',()=>this.refresh(),{signal});
-    doc.defaultView?.addEventListener?.('resize',()=>this.refresh(),{signal});
-    signal?.addEventListener('abort',()=>this.close(),{once:true});
+    this.intersection=IntersectionObserver?new IntersectionObserver(changed=>{
+      if(!this.view())return;
+      for(const {target,isIntersecting}of changed){
+        const entry=this.byWords.get(target);if(!entry)continue;
+        entry.visible=isIntersecting;
+        if(isIntersecting){this.resize?.observe(target);this.measure(entry);}
+        else {this.resize?.unobserve?.(target);this.dirty.delete(entry);}
+      }
+    }):null;
+    const ownSignal=this.listening.signal;
+    doc.fonts?.addEventListener?.('loadingdone',()=>this.refresh(),{signal:ownSignal});
+    doc.defaultView?.addEventListener?.('resize',()=>this.refresh(),{signal:ownSignal});
+    // The fallback only serves browsers without IntersectionObserver.
+    if(!this.intersection)doc.addEventListener?.('scroll',()=>this.refresh(),{signal:ownSignal,capture:true,passive:true});
+    signal?.addEventListener('abort',()=>this.close(),{once:true,signal:ownSignal});
+    if(signal?.aborted)this.close();
+  }
+  view() {
+    if(this.closed)return null;
+    const view=this.doc.defaultView;
+    if(!view)this.close();
+    return view??null;
   }
   reconcile(cards,continuity) {this.records=disclosureRecords(this.records,cards,continuity);}
   focused() {
     const active=this.doc.activeElement,entry=this.entries.find(entry=>entry.button===active||entry.row===active);
     return entry?{record:entry.record,button:entry.button===active}:null;
   }
+  cancel() {
+    if(this.frame?.id!==undefined)this.frame.view.cancelAnimationFrame?.(this.frame.id);
+    this.frame=null;this.dirty.clear();this.pendingFocus=null;
+  }
   begin(cards) {
     if(this.closed)return;
-    this.resize?.disconnect();this.entries=[];this.reconcile(cards);
+    this.cancel();this.resize?.disconnect();this.intersection?.disconnect();
+    this.entries=[];this.byWords.clear();this.reconcile(cards);
   }
   attach(row,words,index) {
     if(this.closed)return;
@@ -49,34 +74,79 @@ export class CardDisclosure {
     button.className='deck-disclosure';button.type='button';button.hidden=true;
     words.id||=`deck-disclosure-words-${globalThis.crypto?.randomUUID?.()??++serial}`;
     button.setAttribute('aria-controls',words.id);
-    const entry={row,words,button,record};this.entries.push(entry);row.append(button);
+    // An off-screen expanded card retains its height while awaiting visibility.
+    words.classList.toggle('deck-expanded',record.expanded);
+    const entry={row,words,button,record,visible:!this.intersection};
+    this.entries.push(entry);this.byWords.set(words,entry);row.append(button);
     button.addEventListener('click',event=>{
-      event.stopPropagation();if(this.closed||button.hidden||!button.isConnected)return;
-      record.expanded=!record.expanded;this.measure(entry);
+      event.stopPropagation();if(!this.view()||button.hidden||!button.isConnected)return;
+      // Its visible pill already establishes overflow. Respond to the press
+      // immediately; any resulting reflow is measured in the next batch.
+      record.expanded=!record.expanded;this.present(entry,true);
     });
   }
   measure(entry) {
-    if(this.closed)return;
-    const {words,button,row,record}=entry,focused=this.doc.activeElement===button;
-    // Measure the real clamped box, even when this reader chose the whole card.
-    // Detached or folded rows have no layout and never offer a control.
-    words.classList.remove('deck-expanded');
-    const truncated=Boolean(words.isConnected&&words.clientWidth>0&&words.getClientRects().length&&words.scrollHeight>words.clientHeight+1);
+    if(!this.view()||!entry.visible||this.byWords.get(entry.words)!==entry)return;
+    this.dirty.add(entry);this.schedule();
+  }
+  schedule() {
+    const view=this.view();if(!view||this.frame)return;
+    const frame={view};this.frame=frame;
+    const run=()=>{if(this.frame!==frame||!this.view())return;this.frame=null;this.flush();};
+    if(view?.requestAnimationFrame)frame.id=view.requestAnimationFrame(run);
+    else queueMicrotask(run);
+  }
+  flush() {
+    const view=this.view();if(!view)return;
+    let entries=[...this.dirty].filter(entry=>entry.visible&&entry.words.isConnected&&this.byWords.get(entry.words)===entry);
+    this.dirty.clear();
+    if(!this.intersection){
+      // All viewport reads precede clamp writes, including this legacy fallback.
+      entries=entries.filter(({words})=>{
+        if(!words.getBoundingClientRect)return true;
+        const r=words.getBoundingClientRect();
+        return r.bottom>0&&r.right>0&&r.top<view.innerHeight&&r.left<view.innerWidth;
+      });
+    }
+    // Never interleave a card's clamp write with the next card's geometry read.
+    for(const {words}of entries)words.classList.remove('deck-expanded');
+    const measured=entries.map(entry=>({entry,focused:this.doc.activeElement===entry.button,
+      truncated:Boolean(entry.words.clientWidth>0&&entry.words.getClientRects().length&&entry.words.scrollHeight>entry.words.clientHeight+1)}));
+    for(const {entry,focused,truncated}of measured){
+      const {button,row}=entry;this.present(entry,truncated);
+      if(focused&&!truncated&&row.isConnected&&!row.hidden)row.focus({preventScroll:true});
+    }
+    const pending=this.pendingFocus;
+    if(pending){
+      const entry=this.entries.find(entry=>entry.record===pending.focused.record);
+      if(entry&&measured.some(result=>result.entry===entry)){
+        this.pendingFocus=null;
+        if(this.doc.activeElement===pending.active){
+          if(pending.focused.button&&!entry.button.hidden)entry.button.focus({preventScroll:true});
+          else if(entry.row.isConnected&&!entry.row.hidden)entry.row.focus({preventScroll:true});
+        }
+      }
+    }
+  }
+  present({words,button,record},truncated) {
     words.classList.toggle('deck-expanded',truncated&&record.expanded);
     button.hidden=!truncated;
     const label=record.expanded?'Show less':'Show all';
     button.textContent=label;button.setAttribute('aria-expanded',String(truncated&&record.expanded));
     button.setAttribute('aria-label',`${label}: ${record.title||'Untitled'}`);
-    if(focused&&!truncated&&row.isConnected&&!row.hidden)row.focus({preventScroll:true});
   }
-  refresh() {if(!this.closed)for(const entry of this.entries)this.measure(entry);}
+  refresh() {if(this.view())for(const entry of this.entries)this.measure(entry);}
   mount(focused=null) {
-    if(this.closed)return;
+    if(!this.view())return;
+    this.pendingFocus=focused?{focused,active:this.doc.activeElement}:null;
+    for(const entry of this.entries)if(entry.words.isConnected){
+      if(this.intersection)this.intersection.observe(entry.words);
+      else this.resize?.observe(entry.words);
+    }
     this.refresh();
-    for(const entry of this.entries)if(entry.words.isConnected)this.resize?.observe(entry.words);
-    const entry=this.entries.find(entry=>entry.record===focused?.record&&entry.button.isConnected);
-    if(entry&&focused.button&&!entry.button.hidden)entry.button.focus({preventScroll:true});
-    else if(entry?.row.isConnected&&!entry.row.hidden)entry.row.focus({preventScroll:true});
   }
-  close() {this.closed=true;this.resize?.disconnect();this.entries=[];this.records=[];}
+  close() {
+    this.closed=true;this.listening.abort();this.cancel();this.resize?.disconnect();this.intersection?.disconnect();
+    this.entries=[];this.records=[];this.byWords.clear();
+  }
 }
