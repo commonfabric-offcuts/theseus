@@ -215,6 +215,11 @@ export function findCard(deck, text, near = 0) {
   return found;
 }
 
+// Ephemeral structural context for a region act, never a stored card identity.
+// Body-only edits outside the region can coexist; a structural change requires
+// a fresh gesture rather than guessing which identical occurrence survived.
+export const cardRegionShape = deck => deck.cards.map(card => [card.depth, card.title, cardDetails(card.words).ids]);
+
 // applyAct(deck, act) gives {deck, at, undo}: the deck after the act, the card
 // it leaves picked and the act that takes it back; or null when there is
 // nothing to do, because a card it names is gone, it would go past the end of
@@ -236,6 +241,22 @@ export function findCard(deck, text, near = 0) {
 //   {kind: 'many', acts, text, near}       the acts one after another, each on the deck the last left,
 //                                          leaving the card `text` picked; nothing if one can't be made
 export function applyAct(deck, act) {
+  // A card split replaces one exact source/children region as a single act.
+  // Its inverse names the exact replacement: changed writing is never consumed
+  // by an Undo, while unrelated cards outside the region remain untouched.
+  if (act.kind === 'card-region') {
+    const body = deckBody(deck);
+    if (typeof act.from !== 'string' || !act.from || typeof act.to !== 'string' || act.from === act.to) return null;
+    if (!Number.isInteger(act.index) || act.index < 0 || act.index >= deck.cards.length ||
+        JSON.stringify(cardRegionShape(deck)) !== JSON.stringify(act.shape)) return null;
+    const at = deck.opening.length + deck.cards.slice(0, act.index).reduce((sum, card) => sum + card.raw.length, 0);
+    if (body.slice(at, at + act.from.length) !== act.from) return null;
+    const next = parseDeck(body.slice(0, at) + act.to + body.slice(at + act.from.length));
+    let offset = next.opening.length, picked = 0;
+    next.cards.forEach((card, i) => { if (offset <= at + (act.focus ?? 0)) picked = i; offset += card.raw.length; });
+    return { deck: next, at: picked, undo: { kind: 'card-region', from: act.to, to: act.from,
+      near: at, focus: 0, index: act.index, shape: cardRegionShape(next) } };
+  }
   if (act.kind === 'many') {
     let now = deck;
     const undos = [];
