@@ -1,0 +1,27 @@
+/* 1091: the existing message panel and rows, with marks and actionable keys. */
+.message-menu-list.menu-palette{min-width:16rem}
+.menu-palette .palette-marks{display:flex;gap:2px}
+.message-menu-list.menu-palette button.palette-icon{justify-content:center;width:2.6rem;min-height:2.4rem;padding:0;color:var(--muted)}
+.menu-palette .palette-icon .glyph{margin:0;opacity:1}
+.message-menu-list.menu-palette button.palette-icon:hover{color:var(--ink)}
+.message-menu-list.menu-palette button.palette-icon[aria-pressed=true]{color:var(--ink);background:color-mix(in srgb,var(--accent) 22%,transparent)}
+.message-menu-list.menu-palette button.palette-link{margin-left:auto}
+.menu-palette .palette-sep{height:1px;margin:.25rem .4rem;background:color-mix(in srgb,var(--line) 75%,transparent)}
+.menu-palette .palette-rows{display:flex;flex-direction:column}
+.menu-palette .palette-pair{display:flex;align-items:center;gap:.6rem;min-height:2.5rem;padding:.2rem .85rem;font-size:.9rem}
+.menu-palette .palette-pair-words{display:flex;align-items:center;white-space:nowrap}
+.menu-palette .palette-pair-words .glyph{order:-1;width:18px;height:18px;margin-right:10px;opacity:.85}
+.menu-palette .palette-seg{display:inline-flex;gap:.3rem}
+.message-menu-list.menu-palette .palette-seg button{min-height:1.75rem;padding:.1rem .65rem;border:1px solid var(--line);border-radius:.4rem;font-size:.82rem}
+.message-menu-list.menu-palette .palette-seg button:hover,.message-menu-list.menu-palette .palette-seg button:focus-visible{background:var(--soft)}
+.message-menu-list.menu-palette button.palette-danger{color:var(--alert,#e0806f)}
+.menu-palette .palette-keys{display:flex;flex-wrap:wrap;align-items:center;gap:.15rem .9rem;padding:.15rem .6rem .2rem .85rem;font-size:.72rem;color:var(--muted)}
+.menu-palette .palette-key-group{display:inline-flex;align-items:center;gap:.1rem}
+.menu-palette .palette-key-word{margin-right:.15rem}
+.message-menu-list.menu-palette .palette-keys button{min-height:1.5rem;padding:.05rem .3rem;border-radius:.3rem;font-size:.72rem;color:var(--muted)}
+.message-menu-list.menu-palette .palette-keys button:hover{color:var(--ink)}
+.menu-palette .palette-keys kbd{font:500 .7rem/1 ui-monospace,Menlo,monospace;color:var(--ink)}
+@media(pointer:coarse){
+  .message-menu-list.menu-palette button.palette-icon{min-height:2.75rem;width:3rem}
+  .message-menu-list.menu-palette .palette-pair button,.message-menu-list.menu-palette .palette-keys button{min-height:2.75rem}
+}

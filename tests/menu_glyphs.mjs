@@ -18,10 +18,12 @@ export const GLYPH_OF = Object.freeze({
   'Star for me': 'star', Unstar: 'starred', Rename: 'pencil', 'Show all messages': 'all', 'Show latest and unread replies': 'latest',
   Fold: 'fold', Unfold: 'unfold', 'Fold message': 'fold', 'Unfold message': 'unfold', 'Split back out': 'split',
   // A dossier's title bar ⋯ on a phone (item 473): Reply to the first message takes the title bar's own Reply.
-  'Reply to the first message': 'reply',
+  'Reply to the first message': 'reply', 'Reply to the latest message':'reply',
   'Ask for a cover': 'coverplus',
   'Open the cover request': 'link',
   'Copy Link': 'link', 'Show full message': 'full', Edit: 'pencil', 'Edit page': 'pencil', 'Mark unread': 'unread', 'Mark read': 'read',
+  'Ask for update':'refresh','Start new':'topic','Start a new dossier':'pencil','Withdraw question':'undo',Unsend:'undo',Retract:'undo',
+  'Mark topic done':'kept','Archive topic':'archive','Move to topic…':'topic',Reply:'reply',
   // Item 601: an archive act shows the Reader's archive tray, in every menu.
   'Archive': 'archive', 'Bring back': 'back',
   'Move its stack up': 'up', 'Move its stack down': 'down', 'Fold its stack': 'chevron', 'Open its stack': 'chevdown',
@@ -46,6 +48,8 @@ export const APPROVED = Object.freeze({
   palette: { d: 'M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-3.7 1.5 1.5 0 0 1 1-2.8h2a4 4 0 0 0 4-4A9 9 0 0 0 12 3 M7 8h.01 M12 6h.01 M17 9h.01 M6 13h.01' },
   // Notebook menu: text lines, a draft sheet, an image and a dossier folder (873).
   text: { d: 'M4 5h16 M4 10h16 M4 15h16 M4 20h10' },
+  //1096: Private draft is a lock; the old draft-sheet glyph remains used elsewhere.
+  lock: { d: 'M6 10h12v11H6Z M8 10V7a4 4 0 0 1 8 0v3' },
   draft: { d: 'M14 3H5v18h14V8Z M14 3v5h5 M8 12h8 M8 16h5' },
   image: { d: 'M3 4h18v16H3Z M3 17l5-5 4 4 4-6 5 7 M8 8h.01' },
   dossier: { d: 'M3 7V4h7l3 3h8v13H3Z M3 7h18' },
@@ -132,28 +136,35 @@ export const ROWS = `(()=>{const signature=${signature.toString()};const FROM=${
     const pen=document.createElement('canvas').getContext('2d');pen.font=[before.fontStyle,before.fontWeight,before.fontSize,before.fontFamily].join(' ');
     const m=pen.measureText(text);return m.width>0&&m.actualBoundingBoxAscent+m.actualBoundingBoxDescent>0};
   const sources=Object.fromEntries(Object.entries(FROM).map(([name,at])=>[name,drawing(document.querySelector(at+' svg'))]));
-  return [...document.querySelectorAll('[role=menu] [role=menuitem]')].filter(b=>b.getClientRects().length).map(b=>{
+  return [...document.querySelectorAll('[role=menu] [role=menuitem], [role=menu].menu-palette [role=menuitemcheckbox], .menu-palette .palette-pair-words')].filter(b=>b.getClientRects().length).map(b=>{
+  const palette=b.closest('.menu-palette'),kind=palette?(b.closest('.palette-keys')?'key':b.closest('.palette-seg')?'start':b.closest('.palette-marks')?'mark':'row'):'row';
   const glyphs=[...b.querySelectorAll('[data-glyph]')],keys=b.querySelector('.menu-keys, kbd');
   const words=[...b.childNodes].filter(n=>!(n.nodeType===1&&n.matches('.menu-keys, kbd, [data-glyph]')));
   const range=document.createRange();if(words.length){range.setStartBefore(words[0]);range.setEndAfter(words.at(-1))}
   const box=r=>r?{left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height}:null;
   const g=glyphs[0],seen=g&&g.getClientRects().length>0&&getComputedStyle(g).visibility!=='hidden'&&Number(getComputedStyle(g).opacity)>0;
-  return {menu:b.closest('[role=menu]').getAttribute('aria-label'),label:words.map(n=>n.textContent).join(''),keys:keys?.textContent??null,text:b.textContent,
+  return {menu:b.closest('[role=menu]').getAttribute('aria-label'),label:b.dataset.menuLabel??words.map(n=>n.textContent).join(''),keys:keys?.textContent??b.dataset.menuKeys??null,text:b.textContent,
+    kind,key:b.dataset.menuKey??null,ariaLabel:b.getAttribute('aria-label'),title:b.title,pressed:b.getAttribute('aria-pressed'),checked:b.getAttribute('aria-checked'),coarse:matchMedia('(pointer:coarse)').matches,
     glyphs:glyphs.map(e=>e.dataset.glyph),seen:Boolean(seen),hidden:g?g.getAttribute('aria-hidden'):null,
     glyph:box(g?.getBoundingClientRect()),words:words.length?box(range.getBoundingClientRect()):null,row:box(b.getBoundingClientRect()),
     colour:g?getComputedStyle(g,g.localName==='svg'?null:'::before').color:null,ink:getComputedStyle(b).color,
     drawing:drawing(g),draws:draws(g),sources}})})()`;
 
 // Each row that does not carry exactly its glyph, as "words: has [..], wants name"; none when every row does.
-export const misglyphed = rows => rows.filter(row => row.glyphs.length !== 1 || row.glyphs[0] !== glyphOf(row.label))
-  .map(row => `${row.menu} / ${row.label}: has [${row.glyphs.join(', ')}], wants ${glyphOf(row.label)}`);
+const paletteKeys=new Set(['fold','fold-stack','open-stack','level','move-up','move-down','join-up','join-down','undo','reset','moves']);
+const paletteStarts=new Set(['Start a topic from this','Start a new dossier']);
+const glyphless=row=>row.menu==='This message'&&(row.kind==='key'&&paletteKeys.has(row.key)||row.kind==='start'&&paletteStarts.has(row.key));
+const expectedGlyph=row=>row.menu==='This message'&&row.label==='Withdraw question'?'waits':glyphOf(row.label);
+export const misglyphed = rows => rows.filter(row => glyphless(row)?row.glyphs.length!==0:row.glyphs.length!==1||row.glyphs[0]!==expectedGlyph(row))
+  .map(row => `${row.menu} / ${row.label}: has [${row.glyphs.join(', ')}], wants ${glyphless(row)?'an action caption':expectedGlyph(row)}`);
 
 // Each row whose glyph does not draw what its meaning draws, as "words: what is wrong"; none when every row does. The
 // glyph of the item's words (glyphOf) must draw the approved drawing, leave ink, and, where a control of the page
 // draws it (FROM), be that control's own drawing as the page shows it then, and the control must still draw it. A
 // name carried right with a drawing wrong is caught here, not by misglyphed.
 export const misdrawn = rows => rows.flatMap(row => {
-  const name = glyphOf(row.label), want = approved(name), wrong = [];
+  if(glyphless(row))return [];
+  const name = expectedGlyph(row), want = approved(name), wrong = [];
   if (!want) return [`${row.menu} / ${row.label}: no approved glyph for these words`];
   if (row.drawing !== want) wrong.push(`draws ${row.drawing}, not the approved ${name} ${want}`);
   if (!row.draws) wrong.push('leaves no ink');
@@ -169,6 +180,29 @@ export const misdrawn = rows => rows.flatMap(row => {
 // the item's words with a 6 to 14px gap, its middle on the words' middle, inside its row, and in the row's own colour.
 export const misplaced = rows => rows.flatMap(row => {
   const { glyph: g, words: w, row: r } = row, wrong = [];
+  if(glyphless(row)){
+    if(!row.label||row.ariaLabel!==row.label||row.title!==row.label)wrong.push('missing or wrong full action name');
+    if(!row.text.trim())wrong.push('empty action caption');
+    if(row.kind==='start'&&row.key!==row.label)wrong.push('wrong start action');
+    if(!r||r.width<=0||r.height<(row.coarse?44:1))wrong.push('missing or undersized action target');
+    return wrong.map(problem=>`${row.menu} / ${row.label}: ${problem}`);
+  }
+  if(row.menu==='This message'&&row.kind==='mark'){
+    if(!g||!r)return [`${row.menu} / ${row.label}: missing icon target`];
+    if(!row.seen||row.hidden!=='true')wrong.push('icon is hidden or spoken');
+    if(Math.abs(g.width-18)>.5||Math.abs(g.height-18)>.5)wrong.push('icon is not18px square');
+    if(Math.abs((g.left+g.right-r.left-r.right)/2)>2||Math.abs((g.top+g.bottom-r.top-r.bottom)/2)>2)wrong.push('icon not centred');
+    const name=row.key==='Copy Link'?'Copy link':row.label+(row.keys?' '+row.keys:'');
+    if(row.ariaLabel!==name||row.title!==name)wrong.push('missing mark name or key');
+    if(row.key!=='Copy Link'){
+      const on=String(['Unstar','Mark read','Bring back'].includes(row.label));
+      if(row.pressed!==on||row.checked!==on)wrong.push('incorrect offered mark state');
+    }
+    if(row.coarse&&r.height<44)wrong.push('undersized coarse mark');
+    if(g.left<r.left||g.right>r.right||g.top<r.top-.5||g.bottom>r.bottom+.5)wrong.push('outside its target');
+    if(row.colour!==row.ink)wrong.push('wrong icon colour');
+    return wrong.map(problem=>`${row.menu} / ${row.label}: ${problem}`);
+  }
   if (!g || !w) return [`${row.menu} / ${row.label}: no glyph or no words to measure`];
   if (!row.seen) wrong.push('not shown');
   if (row.hidden !== 'true') wrong.push('heard by a screen reader');

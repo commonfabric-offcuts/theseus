@@ -44,15 +44,16 @@ test('a page shown after one with changes shows none of them', () => {
   assert.equal($('source-changes').hidden, true, 'the next page carries none of the first page’s changes');
 });
 
-test('a page\'s changes show open, even after the person closed the panel on the page before', () => {
+test('1116 each page\'s changes start closed, even after the person opened the previous panel', () => {
   const { r, $ } = reader();
   r.show(page('p1', 3, 'Ship on Monday.'), sessions);
   r.showChanges(1, 'Ship on Friday.', 'Ship on Monday.');
-  assert.equal($('source-changes').open, true, 'shown open');
-  $('source-changes').open = false;
+  assert.equal($('source-changes').open, false, 'starts closed');
+  $('source-changes').open = true;
+  assert.equal($('source-changes').hidden, false, 'summary is available');
   r.show(page('p2', 4, 'Ship on Tuesday.'), sessions);
   r.showChanges(2, 'Ship on Monday.', 'Ship on Tuesday.');
-  assert.equal($('source-changes').open, true, 'the next page\'s changes are open again');
+  assert.equal($('source-changes').open, false, 'the next page starts closed again');
 });
 
 // The Reader tells its composer whose writing it shows (compose-bar.mjs

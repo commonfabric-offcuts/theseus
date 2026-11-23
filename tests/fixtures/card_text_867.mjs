@@ -19,6 +19,11 @@ function documentPort(){
   // Store the requested range for the real beforeinput/input handlers. This
   // memory port does not claim browser selection, focus or keyboard behavior.
   setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}
+  // Preserve independent shared-menu and Notebook key listeners. This port
+  // dispatches handlers; it does not model browser event propagation.
+  addEventListener(type,listener){const groups=this.handlerGroups??=new Map(),list=groups.get(type)??[];if(!list.includes(listener))list.push(listener);groups.set(type,list);this.listeners[type]=event=>{for(const fn of [...list])fn.call(this,event);};}
+  removeEventListener(type,listener){const list=this.handlerGroups?.get(type);if(!list)return;const at=list.indexOf(listener);if(at>=0)list.splice(at,1);if(!list.length){this.handlerGroups.delete(type);delete this.listeners[type];}}
+  cloneNode(deep=false){const n=doc.createElement(this.tag);for(const [key,value]of Object.entries(this.attributes))n.setAttribute(key,value);n.className=this.className;if(deep)n.append(...this.children.map(c=>c.nodeType===3?c.textContent:c.cloneNode(true)));return n;}
   get childNodes(){return this.children;}
   get textContent(){return this.children.map(c=>c.textContent).join('');}
   set textContent(text){this.children=[];if(text)this.append(String(text));}
@@ -30,6 +35,7 @@ function documentPort(){
  }
  doc.createElement=tag=>new Node(tag);doc.createElementNS=(_,tag)=>doc.createElement(tag);
  doc.createTextNode=text=>({nodeType:3,textContent:String(text)});doc.body=doc.createElement('body');doc.body.root=true;
+ doc.getElementById=id=>doc.body.querySelector('#'+id);const pencil=doc.createElement('button');pencil.id='new-message';const svg=doc.createElement('svg'),path=doc.createElement('path');svg.setAttribute('viewBox','0 0 24 24');path.setAttribute('d','M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16z M13.5 6.5l4 4');svg.append(path);pencil.append(svg);doc.body.append(pencil);
  return doc;
 }
 function menuPage(raw=card(),doc=documentPort()){
@@ -54,7 +60,8 @@ async function writingPort(t,raw=card('First','words',null)){
 async function text867(t,raw){
  const f=await writingPort(t,raw),doc=documentPort(),make=doc.createElement;
  doc.createElement=tag=>{const n=make(tag);n.before=x=>n.parent?.insertBefore(x,n);n.after=(...xs)=>{const next=n.parent?.children[n.parent.children.indexOf(n)+1];for(const x of xs)n.parent?.insertBefore(x,next);};return n;};
- const p=new NotebookPage({doc,host:doc.body,item:'page',mode:'text',bootstrap:{},viewPreference:{get:()=> 'text',set(){}},header:{title:doc.createElement('h1')}});
+ const host=doc.createElement('section');doc.body.append(host);
+ const p=new NotebookPage({doc,host,item:'page',mode:'text',bootstrap:{},viewPreference:{get:()=> 'text',set(){}},header:{title:doc.createElement('h1')}});
  Object.assign(p,{writing:f.w,deck:parseDeck(raw),base:{revision:1,body:raw},paint(){},keepNamed(){}});p.sync(true);
  const input=(start,end,insert,inputType='insertText')=>{
   p.text.setSelectionRange(start,end);

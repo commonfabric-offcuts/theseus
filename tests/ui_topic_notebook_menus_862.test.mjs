@@ -290,8 +290,8 @@ test('862 loaded Notebook actions preserve actual writer guards and current unsa
   const page={writing:{pageState:f.source,value:{draft:false}},readOnly:false,mode:'cards',drafted:NotebookPage.prototype.drafted,
     markDraft:value=>edits.push(value),menuItems:NotebookPage.prototype.menuItems,pageAction:()=>f.calls.push('writer-star')};
   f.setLoaded(page);const items=f.rail.items(f.source,()=>{});assert.equal(items.find(x=>x.key==='draft').checked,false);
-  await f.rail.act(f.source,'draft','Private Draft',{},null,f.handles);assert.deepEqual(edits,[true]);
-  page.writing.readOnly=true;await assert.rejects(f.rail.act(f.source,'draft','Private Draft',{},null,f.handles),/page changed/);
+  await f.rail.act(f.source,'draft','Private draft',{},null,f.handles);assert.deepEqual(edits,[true]);
+  page.writing.readOnly=true;await assert.rejects(f.rail.act(f.source,'draft','Private draft',{},null,f.handles),/page changed/);
   await f.rail.act(f.source,'star','Unstar',{},null,f.handles);assert.deepEqual(f.calls,['writer-star']);
 });
 
@@ -360,5 +360,5 @@ test('862 actual Notebook rail adapter only reads layout and view preferences wh
     globalThis:{matchMedia:()=>({matches:true})},retired:false,shell,panes:{},openNotebook:()=>{constructed++;assert.fail('drawing opened Notebook');}};
   const make=appFunction('function notebookRailMenu()', 'function openNotebook(',env,'notebookRailMenu');
   const owner=make(),items=owner.items(source,()=>{});
-  assert.equal(items.find(x=>x.key==='text').checked,true);assert.equal(items.find(x=>x.key==='layout').checked,true);assert.equal(items.find(x=>x.key==='draft').checked,true);assert.equal(constructed,0);
+  assert.equal(items.find(x=>x.key==='text').checked,true);assert.ok(!items.some(x=>x.key==='layout'),'1096 leaves layout in the sheet header');assert.equal(items.find(x=>x.key==='draft').checked,true);assert.equal(constructed,0);
 });

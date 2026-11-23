@@ -1,5 +1,5 @@
 // Addresses may open UI, never execute a record-changing menu command.
-export const UI_MENU_KEYS = new Set(['Move to topic…', 'Edit', 'Start a topic from this', 'Add to pipeline', 'Start a new dossier', 'Text display']);
+export const UI_MENU_KEYS = new Set(['Move to topic…', 'Edit', 'Start a topic from this', 'Add to pipeline', 'Start a new dossier']);
 export const dossierMenuRoute = key => key === 'rename' ? { act: 'rename' } : { act: UI_MENU_KEYS.has(key) ? 'ui' : 'menu', choice: key };
 export function menuRouteValid(route) {
   if (!route.act) return !route.choice;

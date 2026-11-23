@@ -69,15 +69,12 @@ for (const [selected, body] of [
   assert.equal(p.changes[0].acts[0].kind, 'card-region');
 });
 
-test('1075 no-selection control retains finish and empty editor after the source child group', () => {
+test('1075 no-selection control follows 1114 toggle without creating a new editor', () => {
   const body = '## Source\n\nwords\n\n### Child\n\nchild\n\n## Neighbor\n\nkept\n';
   const p = page(body);
   assert.equal(commandReturn(p).defaultPrevented, true);
   assert.equal(deckBody(p.deck), body);
-  assert.equal(p.editing.fresh, true);
-  assert.equal(p.editing.after, 'Child\nchild');
-  assert.equal(p.editing.depth, 0);
-  assert.equal(p.editing.field.value, '');
+  assert.equal(p.editing, null);
   assert.deepEqual(p.acts, []);
 });
 
@@ -97,10 +94,10 @@ function select(p, text) {
   f.setSelectionRange(start, start + text.length); return f;
 }
 
-test('1075 whitespace-only selection retains no-selection meaning and makes no saved card', () => {
+test('1075 whitespace-only selection follows 1114 toggle and makes no saved card', () => {
   const p = page('## Source\n\nleft \n right\n\n## Neighbor\n\nkept\n'), original = p.writing.value.body;
   select(p, ' \n '); commandReturn(p);
-  assert.equal(p.editing.field.value, ''); assert.equal(p.editing.fresh, true);
+  assert.equal(p.editing, null);
   assert.equal(p.writing.value.body, original); assert.equal(p.changes.length, 0);
 });
 

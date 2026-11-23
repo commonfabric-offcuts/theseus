@@ -9,13 +9,13 @@ import { notebookFixture as fixture } from './fixtures/notebook_sheet_dom.mjs';
 
 const event=(target,key)=>({target,key,button:0,preventDefault(){this.defaultPrevented=true;},stopPropagation(){}});
 
-test('854/871 head and menu switch the same writing; close and Escape dismiss either layout',async t=>{
+test('854/871 header switches the same writing after1096 removes its menu duplicate; close and Escape dismiss either layout',async t=>{
   const f=fixture(t);await f.sheet.open('p');
   const editor=f.doc.createElement('textarea');editor.value='Exact unsaved card';f.page.host.append(editor);f.page.editing={field:editor};editor.focus();
   assert.equal(f.sheet.docked,true);assert.equal(f.sheet.dockButton.hidden,false);
   f.sheet.dockButton.onclick();assert.equal(f.sheet.docked,false);assert.equal(f.calls.at(-1),'modal');
   assert.ok(f.sheet.current===f.page);assert.equal(editor.value,'Exact unsaved card');assert.ok(f.doc.activeElement===editor);
-  const dock=f.page.menuExtras('afterImage').find(x=>x.label==='Side by side');assert.ok(dock);dock.act();assert.equal(f.sheet.docked,true);
+  assert.ok(!f.page.menuExtras('afterImage').some(x=>x.key==='layout'));f.sheet.dockButton.onclick();assert.equal(f.sheet.docked,true);
   f.sheet.closer.onclick();assert.equal(f.sheet.showing,false);assert.equal(f.sheet.dialog.open,false);
   await f.sheet.open('p');f.emit('keydown',event(editor,'Escape'));assert.equal(f.sheet.showing,false);assert.equal(f.sheet.dialog.open,false);
   assert.equal(editor.value,'Exact unsaved card');
@@ -81,7 +81,7 @@ test('854 dossier discovery is bounded, canonical, named and paged without scann
 
 test('854 picker drops late answers, retries errors, deduplicates More and opens only the selected root',async t=>{
   const f=fixture(t);await f.sheet.open('p');
-  const picker=f.sheet.dossiers, selected=[];picker.choose=id=>selected.push(id);
+  const selected=[],picker=new NotebookDossiers({doc:f.doc,host:f.sheet.root,anchor:f.sheet.dockButton,read:f.feedOptions.read,topicId:'t',choose:id=>selected.push(id)});t.after(()=>picker.close());assert.equal(f.sheet.dossiers,undefined,'1096 removes the sheet caller; this remains an isolated component check');
   const row={id:'root',topic_id:'t',body:'Named',stack_position:{root_id:'root',name:{text:'Dossier'}}};
   let resolve;picker.read=()=>new Promise(yes=>resolve=yes);
   const pending=picker.toggle();picker.close();resolve({items:[row],next_cursor:null});await pending;

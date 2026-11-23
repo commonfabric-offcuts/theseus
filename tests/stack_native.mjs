@@ -7419,9 +7419,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await centre(g, grow); await light(g, device, ids.long);
       await until(() => g.evaluate(`document.querySelector(${JSON.stringify(grow)}).classList.contains('scroll-in-place')`), `${device}: lit, the long reply is read in place`);
       await press(g, device, '.message-bar [data-act="more"]');
-      const index = await g.evaluate(`[...document.querySelectorAll('.message-menu-list > button')].findIndex(b=>b.textContent==='Show full message')`);
+      const index = await g.evaluate(`[...document.querySelectorAll('.message-menu-list button')].findIndex(b=>b.dataset.menuLabel==='Show full message')`);
       assert.ok(index >= 0, `${device}: the lit message offers Show full message`);
-      await press(g, device, `.message-menu-list > button:nth-child(${index + 1})`);
+      await press(g, device, `.message-menu-list [data-menu-key="Show full message"]`);
       await until(() => g.evaluate(`document.querySelector(${JSON.stringify(grow)}).dataset.full==='shown'`), `${device}: the card shows its whole message`);
       for (const theme of ['light', 'dark']) {
         await dossierTheme(g, theme);

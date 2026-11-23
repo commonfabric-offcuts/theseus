@@ -29,7 +29,10 @@ member's `message.star` through its existing revision owner. Reply menus
 retain their individual toggle. Star for me on an unstarred head stars its
 first message. Archive still refuses a dossier held by a star.
 
-Rename and other UI-only choices travel through the ordinary guarded route
+Item1091 removes visible Rename and Paragraphs rows from message palettes.
+The dossier pencil still renames; Joined | Broken out at the rail foot uses
+the existing device preference. Other-label rail menus retain their layout.
+Legacy Rename and other UI-only choices travel through the ordinary guarded route
 with an address act; Onboarding does the same on an outcome. Arrival clears
 the act with `history.replaceState` before opening UI and rechecks current
 eligibility. Reload cannot replay it. An address never runs a record-changing

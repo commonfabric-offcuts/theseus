@@ -5,8 +5,11 @@ live. The final base is release123, bc3011956c10802c8488e5ff8d87884ffab13fae.
 The older preview/preparation documents and native receipts remain historical.
 No preview, browser suite, native call or CI was run for this rebuild.
 
-**Default: OFF.** The existing card and Reader message menus offer one
-Break out paragraphs toggle. Its choice is per instance, reader and device.
+**Default: OFF (Joined).** Item1091 moves the existing preference from the
+message menus into Joined | Broken out at the rail foot. Its exact key and
+choice remain per instance, reader and device; replacing the rail foot
+remounts one live switch. Reader Wide/Stacked remains in its menu. The
+historical123 evidence below describes the original placement.
 The pure display rule partitions sentences and inline enumerators, preserves
 protected spans and mapped authored characters, and leaves Notebook writing
 and reading alone. Selected Copy with the rule on uses the existing quote

@@ -39,7 +39,7 @@ function fixture({ phone = false, below = false, starred = false, folded = false
     quote: () => calls.push(['quote']), toggleLayout: () => calls.push(['layout']), names: () => ['fixture-agent'], notice: error => calls.push(['notice', error.message]) };
   let menu;
   const env = { window: { matchMedia: () => ({ matches: phone }) }, document: doc, stackFeed: feed, stackMenuItems, topicUnavailable: false, outcomeReached: false,
-    topic: { id: 't-fixture' }, retired: false, registry, reader, messageEdit: null, pipelineRow: { on: true }, pipelineAddFor: null,
+    topic: { id: 't-fixture' }, topicState:null, retired: false, registry, reader, messageEdit: null, pipelineRow: { on: true }, pipelineAddFor: null,
     bootstrap: { actor: 'fixture-human' }, messageEntries: new Map(), cardScroll: { clipped: () => true, showFull: () => calls.push(['full']) },
     cardIn: () => ({}), cardMenuActs: (_item, items) => items, run: fn => fn(),
     marks: { state: () => ({ marked: false }) }, mayEdit: () => true, editRights: () => ({}), editOpener: () => anchor,
@@ -65,12 +65,23 @@ test('feed and Reader consume the same actions; arrangement, full message, quote
     const f = fixture({ phone }), feed = f.methods.messageMenuItems(f.item, f.anchor);
     f.methods.openReaderMenu(); const reader = f.menu().items;
     const common = ['Star for me', 'Rename', 'Archive', 'Fold', 'Move to topic…', 'Copy Link', 'Edit', 'Ask for update', 'Mark unread',
-      'Start a topic from this', 'Add to pipeline', 'Start a new dossier', 'Text display'];
+      'Start a topic from this', 'Add to pipeline', 'Start a new dossier'];
     for (const label of common) { assert.ok(labels(feed).includes(label), 'feed: ' + label); assert.ok(labels(reader).includes(label), 'Reader: ' + label); }
+    assert.equal(labels(feed).includes('Text display'),false,'1091 Paragraphs moved atomically to the rail foot');
+    assert.equal(labels(reader).includes('Text display'),false);
     assert.equal(labels(reader).some(label => /stack|latest|Show all|Show full|Move or join/.test(label)), false);
     assert.ok(labels(feed).includes('Show full message')); assert.ok(labels(reader).includes('Quote selection')); assert.ok(labels(reader).includes('Wide'));
     assert.equal(labels(feed).includes('Quote selection'), false); assert.equal(labels(feed).includes('Wide'), false);
   }
+});
+
+test('1091 Reader retains exact topic completion/archive owners, Quote and Wide layout after message actions',()=>{
+  const f=fixture(),current={id:'t-fixture',state:'active',archived:false},calls=[];
+  const methods=f.make({topicState:{topic:current,says:true,controls:{managed:true}},runTopicMenuAction:(topic,key)=>calls.push([topic,key])});
+  methods.openReaderMenu();const items=f.menu().items;
+  assert.deepEqual(items.slice(-4).map(i=>i.label),['Mark topic done','Archive topic','Quote selection','Wide']);
+  items.find(i=>i.label==='Mark topic done').act();items.find(i=>i.label==='Archive topic').act();
+  assert.deepEqual(calls,[[current,'state'],[current,'archive']]);
 });
 
 test('863 rail uses the actual page descriptor list; an unloaded topic constructs choices without calling owners', t => {
