@@ -103,11 +103,11 @@ test('a revision that changed only its title or attachments says so', () => {
   assert.match(host.children[0].textContent, /No change in the words/);
 });
 
-test('the Reader holds what changed above the page, open, and its colors come from the theme', () => {
+test('1116 the Reader holds what changed above the page, closed, with theme colors', () => {
   const html = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
   const pane = /<section class="reading-pane"[^>]*>([\s\S]*?)<\/section>/.exec(html)?.[1] ?? '';
   assert.ok(pane.indexOf('id="source-changes"') >= 0 && pane.indexOf('id="source-changes"') < pane.indexOf('id="source-body"'), 'above the page');
-  assert.match(pane, /<details id="source-changes" class="source-changes" open hidden>/);
+  assert.match(pane, /<details id="source-changes" class="source-changes" hidden>/);
   const css = readFileSync(new URL('../web/aim.css', import.meta.url), 'utf8');
   const rules = css.match(/\.(source-changes|changes-[a-z]+)[^{]*\{[^}]*\}/g) ?? [];
   assert.ok(rules.length >= 5);

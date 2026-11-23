@@ -212,7 +212,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     addEventListener(name, fn, options) { events.push(['document-handler', name, fn, options]); },
     removeEventListener(name, fn) { const at = events.findIndex(([kind, n, f]) => kind === 'document-handler' && n === name && f === fn); if (at >= 0) events.splice(at, 1); },
     // The page's window, as a test may replace it, with the size watch the message bar keeps (message-menu.mjs).
-    get defaultView() { return { ResizeObserver: class { observe() {} }, MutationObserver: class { observe() {} }, ...context.window }; } };
+    get defaultView() { return { ResizeObserver: class { observe() {} }, MutationObserver: class { observe() {} disconnect() {} takeRecords() { return []; } }, ...context.window }; } };
   get('reader-aside').append(readerArchive(document));
   const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', actor_kind: 'human', authority: { id: 'a', epoch: 'e' } };
   const topic = { id: 't1', title: 'Fixture', workspace_id: 'w1' };
@@ -8461,4 +8461,156 @@ test('864 an unconfirmed authored query uses the existing departure guard and ke
   f.registry.flush = async () => { f.editor.ackVersion = 1; return { recorded: true, status: 'committed' }; };
   clicked(a); await drain();
   assert.deepEqual(assigned, ['?topic=t2']);
+});
+
+//1117 exercises the actual app paint, Reader control, Api.media and teardown
+// owners. These DOM ports prove wiring/races, never native gestures/layout.
+const file1117 = (id, name, content_type = 'application/pdf', inline = false) => ({ id, name, content_type, inline, size_bytes: 3, sha256: id + '-digest' });
+async function documents1117(attachments = [file1117('a1', 'report.pdf')]) {
+  const created = [], revoked = [], reads = [];
+  class OwnedURL extends URL {
+    static createObjectURL(blob) { const url = 'blob:1117-' + (created.length + 1); created.push({ url, blob }); return url; }
+    static revokeObjectURL(url) { revoked.push(url); }
+  }
+  const f = fixture('https://fixture/?topic=t1', { URL: OwnedURL });
+  f.api.media = async (instance, attachment, source) => { reads.push({ instance, attachment, source: structuredClone(source) }); return { blob: new Blob(['pdf']), inline: false }; };
+  f.views.messages.set('m1117', { id: 'm1117', seq: 1117, revision: 1, author_id: 'fixture-person', author_kind: 'human', body: 'The attached documents.', topic_id: 't1', attachments });
+  f.paintViews('messages'); await drain();
+  const card = walk(f.get('messages')).find(node => node.dataset?.id === 'm1117' && node.classList?.contains('message-card'));
+  assert.ok(card, 'the real app painted the message card');
+  const strip = () => card.children.find(node => node.classList?.contains('card-documents'));
+  const rows = () => { assert.ok(strip(), 'the dossier exposes its message documents'); return strip().children; };
+  const control = index => rows()[index].children[0].children[0];
+  return { f, card, strip, rows, control, reads, created, revoked };
+}
+
+test('1117 mixed dossier files retain sent order and safe labels beside existing lazy image thumbnails', async () => {
+  const files = [file1117('pdf', '<b>report</b>.pdf'), file1117('image', 'photo.png', 'image/png', true), file1117('text', 'notes.txt', 'text/plain'), file1117('svg', 'drawing.svg', 'image/svg+xml', true)];
+  const x = await documents1117(files);
+  assert.deepEqual(x.rows().map((row, i) => x.control(i).textContent), ['Open <b>report</b>.pdf', 'Open notes.txt', 'Open drawing.svg']);
+  assert.equal(walk(x.card).filter(n => n.classList?.contains('card-image')).length, 1);
+  assert.ok(x.card.children.indexOf(x.strip()) > x.card.children.findIndex(n => n.classList?.contains('card-images')));
+  assert.equal(walk(x.strip()).filter(n => n.tagName === 'B' || n.tagName === 'IFRAME').length, 0);
+  assert.equal(x.reads.length, 0, 'document and distant image bytes were not read speculatively');
+  assert.equal(x.f.calls.filter(c => c.kind).length, 0);
+});
+
+test('1117 document Open uses real Api.media descriptor/digest verification and the original download name', async () => {
+  const bytes = new TextEncoder().encode('pdf');
+  const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(n => n.toString(16).padStart(2, '0')).join('');
+  const attachment = { ...file1117('verified', 'Original report.pdf'), sha256: digest };
+  const x = await documents1117([attachment]), requests = [];
+  const api = new RealApi('fixture-session', async (url, options) => { requests.push({ url, body: JSON.parse(options.body) }); return new Response(bytes, { headers: { 'X-AIM-Media': JSON.stringify({ ...attachment, instance_id: 'fixture', media_id: attachment.id }) } }); });
+  x.f.api.media = (...args) => api.media(...args);
+  await x.control(0).onclick();
+  assert.deepEqual(requests, [{ url: '/api/media/read', body: { media_id: 'verified', source_ref: { kind: 'message', id: 'm1117' } } }]);
+  assert.equal(x.control(0).tagName, 'A'); assert.equal(x.control(0).textContent, 'Download Original report.pdf');
+  assert.equal(x.control(0).download, attachment.name); assert.equal(x.control(0).href, x.created[0].url);
+  assert.deepEqual(new Uint8Array(await x.created[0].blob.arrayBuffer()), bytes);
+  assert.equal(x.created[0].blob.type, 'application/octet-stream');
+});
+
+test('1117 refused bytes stay closed and each file owns its own error and successful retry', async () => {
+  const x = await documents1117([file1117('one', 'one.pdf'), file1117('two', 'two.txt', 'text/plain')]);
+  const gates = [false, false];
+  x.f.reader.notice('Existing Reader notice');
+  x.f.api.media = async (_, attachment) => { if (!gates[attachment.id === 'one' ? 0 : 1]) throw Error('Access refused for ' + attachment.id); return { blob: new Blob(['pdf']), inline: false }; };
+  await x.control(0).onclick(); await x.control(1).onclick();
+  assert.match(x.rows()[0].children[1].textContent, /^one.pdf: Access refused for one$/);
+  assert.match(x.rows()[1].children[1].textContent, /^two.txt: Access refused for two$/);
+  assert.equal(x.created.length, 0); assert.equal(x.control(0).disabled, false);
+  gates[0] = true; await x.control(0).onclick();
+  assert.equal(x.rows()[0].children[1].hidden, true);
+  assert.equal(x.rows()[1].children[1].hidden, false, 'one retry clears none of the other file’s refusal');
+  assert.equal(x.f.get('reader-notice').textContent, 'Existing Reader notice');
+});
+
+test('1117 mismatched real media bytes create no dossier download and can be retried', async () => {
+  const attachment = { ...file1117('wrong', 'wrong.pdf'), sha256: '0'.repeat(64) }, x = await documents1117([attachment]);
+  const api = new RealApi('fixture-session', async () => new Response('pdf', { headers: { 'X-AIM-Media': JSON.stringify({ ...attachment, instance_id: 'fixture', media_id: attachment.id }) } }));
+  x.f.api.media = (...args) => api.media(...args); await x.control(0).onclick();
+  assert.equal(x.created.length, 0); assert.equal(x.control(0).tagName, 'BUTTON'); assert.equal(x.control(0).disabled, false);
+  assert.match(x.rows()[0].children[1].textContent, /wrong.pdf: Attachment bytes do not match the verified digest/);
+});
+
+test('1117 stable repaint keeps its completed download while Reader cleanup releases only Reader URLs', async () => {
+  const x = await documents1117(); await x.control(0).onclick();
+  const strip = x.strip(), link = x.control(0); x.f.paintViews('messages'); await drain();
+  assert.equal(x.strip(), strip); assert.equal(x.control(0), link); assert.equal(x.reads.length, 1);
+  const shown = { source: { source_ref: { kind: 'message', id: 'reader1117' }, attachments: [file1117('reader', 'reader.txt', 'text/plain')] }, editors: {} };
+  x.f.registry.current = shown; x.f.get('source-attachments').replaceChildren(); x.f.sourceAttachments(shown);
+  await x.f.get('source-attachments').children[0].children[0].onclick();
+  x.f.runObservation('revokeMedia()');
+  assert.deepEqual(x.revoked, ['blob:1117-2']); assert.equal(x.control(0).href, 'blob:1117-1');
+});
+
+test('1117 document handlers contain click and control keys without cancelling their native default', async () => {
+  const x = await documents1117(); let stopped = 0;
+  const event = key => ({ key, target: x.control(0), stopPropagation() { stopped++; }, preventDefault() { assert.fail('native control default cancelled'); } });
+  x.strip().handlers.click(event());
+  x.strip().handlers.keydown(event('Enter')); x.strip().handlers.keydown(event(' '));
+  assert.equal(stopped, 3); x.strip().handlers.keydown(event('ArrowDown')); assert.equal(stopped, 3);
+  assert.equal(x.f.calls.filter(c => c.kind).length, 0); assert.equal(x.f.registry.current, null);
+});
+
+for (const changed of ['revision', 'descriptor']) test(`1117 late Open cannot paint or refocus a changed ${changed} before the edit repaint`, async () => {
+  const x = await documents1117(), gate = defer(), old = x.control(0); x.f.api.media = () => gate.promise;
+  old.focus(); const opening = old.onclick(); x.f.document.activeElement = x.f.document.body;
+  const message = x.f.views.messages.get('m1117');
+  x.f.views.messages.set('m1117', changed === 'revision' ? { ...message, revision: 2 } : { ...message, attachments: [file1117('a1', 'replacement.pdf')] });
+  gate.resolve({ blob: new Blob(['old']), inline: false }); await opening;
+  assert.equal(x.created.length, 0); assert.equal(x.f.document.activeElement, x.f.document.body, 'late completion cannot reclaim focus');
+  x.f.runObservation("repaintEdited(['m1117'], new Map())"); await drain();
+  assert.notEqual(x.control(0), old); assert.equal(x.control(0).tagName, 'BUTTON');
+});
+
+test('1117 revised and emptied message attachments revoke old URLs through actual edit painting', async () => {
+  const x = await documents1117(); await x.control(0).onclick();
+  let message = x.f.views.messages.get('m1117'); x.f.views.messages.set('m1117', { ...message, revision: 2, attachments: [file1117('new', 'new.txt', 'text/plain')] });
+  x.f.runObservation("repaintEdited(['m1117'], new Map())"); await drain();
+  assert.deepEqual(x.revoked, ['blob:1117-1']); assert.equal(x.control(0).textContent, 'Open new.txt');
+  await x.control(0).onclick(); message = x.f.views.messages.get('m1117'); x.f.views.messages.set('m1117', { ...message, revision: 3, attachments: [] });
+  x.f.runObservation("repaintEdited(['m1117'], new Map())"); await drain();
+  assert.equal(x.strip(), undefined); assert.deepEqual(x.revoked, ['blob:1117-1', 'blob:1117-2']);
+});
+
+for (const kind of ['unsent', 'retracted', 'pruned', 'access', 'retired']) test(`1117 ${kind} cleanup revokes opened documents and rejects pending source bytes`, async () => {
+  const x = await documents1117([file1117('open', 'open.pdf'), file1117('pending', 'pending.pdf')]); await x.control(0).onclick();
+  const gate = defer(); x.f.api.media = () => gate.promise; const old = x.control(1); old.focus(); const pending = old.onclick(); x.f.document.activeElement = x.f.document.body;
+  if (kind === 'pruned') { x.f.views.messages.delete('m1117'); x.f.paintViews('messages'); }
+  else if (kind === 'access') {
+    // The unrelated saved-writing checks have their own suites. Keep the
+    // actual checkAvailability entry and document cleanup owner under test.
+    x.f.runObservation('checkInlineAvailability=async()=>{};checkSourceAvailability=async()=>{};checkCardAvailability=async()=>{}');
+    await x.f.checkAvailability(async () => ({}), () => true);
+  } else if (kind === 'retired') x.f.runObservation('thisRun.retire(new Map())');
+  else {
+    x.f.views.learnRemoval = (id, removal) => { if (kind === 'unsent') x.f.views.messages.delete(id); else x.f.views.messages.set(id, { ...x.f.views.messages.get(id), removal }); };
+    x.f.runObservation(`learnMessageRemoval({message_id:'m1117',removal:{kind:'${kind}',at_ms:1795439000000}})`);
+  }
+  gate.resolve({ blob: new Blob(['old']), inline: false }); await pending; await drain();
+  assert.deepEqual(x.revoked, ['blob:1117-1']); assert.equal(x.created.length, 1);
+  assert.equal(x.strip(), undefined); assert.equal(x.f.document.activeElement, x.f.document.body);
+});
+
+test('1117 image-only and attachment-free cards add no document control or byte read', async () => {
+  for (const attachments of [[], [file1117('inline', 'image.png', 'image/png', true)]]) {
+    const x = await documents1117(attachments); assert.equal(x.strip(), undefined); assert.equal(x.reads.length, 0); assert.equal(x.created.length, 0);
+  }
+});
+
+
+test('1117 actual pagehide owner releases document URLs and fences a late read', async () => {
+  const x = await documents1117([file1117('open', 'open.pdf'), file1117('late', 'late.pdf')]);
+  x.f.runObservation('window.removeEventListener=()=>{};freshness.dispose=()=>{}');
+  await x.f.initialize(); await drain();
+  await x.control(0).onclick();
+  const gate = defer(); x.f.api.media = () => gate.promise; const pending = x.control(1).onclick();
+  // The generic fixture gives the app a nonpersistent journal/registry.
+  // Their independent close/dispose implementations are outside this check.
+  x.f.runObservation('journal.close=()=>{};registry.dispose=()=>{registry.disposed=true;}');
+  const leaving = x.f.events.findLast(([kind, event]) => kind === 'window-handler' && event === 'pagehide');
+  assert.ok(leaving, 'the actual initializer registered its pagehide cleanup'); leaving[2]();
+  gate.resolve({ blob: new Blob(['late']), inline: false }); await pending;
+  assert.equal(x.strip(), undefined); assert.deepEqual(x.revoked, ['blob:1117-1']); assert.equal(x.created.length, 1);
 });

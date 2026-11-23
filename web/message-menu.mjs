@@ -36,6 +36,7 @@ import { hasTextDisplayRules } from './message-format.mjs';
 import { noteAt } from './press-note.mjs';
 import { reach } from './arrow-reach.mjs';
 import { glyph } from './glyphs.mjs';
+import {renderMessagePalette} from './message-palette.mjs';
 import { listen, shell } from './in-place-navigation.mjs';
 import { panes } from './panes.mjs';
 
@@ -612,13 +613,14 @@ const element = (doc, tag, props = {}) => Object.assign(doc.createElement(tag), 
 // bottom of the window, its items full width, rather than under its button.
 export function openMessageMenu({ anchor, at = null, items, label = 'Message', sheet = false, focusKey = null, doc = globalThis.document, win = globalThis }) {
   if (open?.anchor === anchor && !at) { open.close(true); return null; }
+  if(label==='This message')items=items.map(item=>item.label==='Withdraw question'?{...item,glyph:'waits'}:item);
   // Every item's glyph is drawn before anything changes on the page: an item that names none, or one nobody draws, opens nothing.
   const glyphs = items.map(item => glyph(item.glyph, doc));
   open?.close(false);
   if (!items.length) return null;
   const root = element(doc, 'div', { className: 'message-menu-list' });
   root.setAttribute('role', 'menu'); root.setAttribute('aria-label', label);
-  const buttons = items.map((item, index) => {
+  const makeButton = (item, index) => {
     const button = element(doc, 'button', { type: 'button', textContent: item.label });
     button.disabled = Boolean(item.disabled);
     button.setAttribute('role', item.checked === undefined ? 'menuitem' : 'menuitemcheckbox');
@@ -633,15 +635,17 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
     if (item.keys) { button.append(element(doc, 'span', { className: 'menu-keys', textContent: item.keys })); }
     button.onclick = event => { event.stopPropagation(); if (button.disabled) return; menu.close(true); item.act(); };
     return button;
-  });
-  root.append(...buttons);
+  };
+  const palette=label==='This message'?renderMessagePalette({doc,root,items,makeButton,glyphFor:item=>glyphs[items.indexOf(item)]}):null;
+  const buttons=palette?.buttons??items.map(makeButton);
+  if(!palette)root.append(...buttons);
   const enabled = buttons.filter(button => !button.disabled);
-  const requested = focusKey === null ? null : buttons[items.findIndex(item => item.key === focusKey)];
-  const first = requested && !requested.disabled ? requested : enabled[0];
+  const requested = focusKey === null ? null : palette?buttons.find(button=>button.dataset.menuKey===focusKey):buttons[items.findIndex(item => item.key === focusKey)];
+  const first = requested && !requested.disabled ? requested : palette?.first??enabled[0];
   const keys = event => {
     event.stopPropagation();
     if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); menu.close(true); return; }
-    const step = { ArrowDown: 1, ArrowUp: -1, Home: -Infinity, End: Infinity }[event.key];
+    const step = { ArrowDown: 1, ArrowUp: -1, Home: -Infinity, End: Infinity, ...(palette?{ArrowRight:1,ArrowLeft:-1}:{}) }[event.key];
     if (step === undefined) return;
     event.preventDefault();
     if (!enabled.length) return;

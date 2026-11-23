@@ -93,6 +93,8 @@ import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mj
 import { ToolPage, OutcomeTools, ToolsRail, TopicTools } from './skills.mjs';
 import { openDossierMove } from './dossier-move.mjs';
 import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
+import { openNotebookMenu, notebookReaderMenuItems } from './notebook-menu.mjs';
+import { NotebookStarts } from './notebook-start.mjs';
 import { DossierSelectionQuote } from './dossier-selection-quote.mjs';
 import { NotebookPassages } from './notebook-passages.mjs';
 import { NotebookQuoteTransfer } from './notebook-quote-transfer.mjs';
@@ -102,7 +104,7 @@ import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
 import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries, paintFolderColors, fillFrom, paintFoldedNames, checkDossierNew } from './reply-stacks.mjs';
-import { paintCardImages, dropCardImages } from './card-images.mjs';
+import { cardImages, paintCardImages, dropCardImages } from './card-images.mjs';
 import { paintThumb } from './image-pick.mjs';
 import { newestNew } from './stack-order.mjs';
 import { StackFeed } from './stack-feed.mjs';
@@ -113,7 +115,8 @@ import { headerClick } from './reply-stacks.mjs';
 import { revealSelection } from './reveal.mjs';
 import { deferFencePaint } from './fence-copy.mjs';
 import { formatWords, redrawMessageWords } from './message-format.mjs';
-import { TextDisplayPreferences, textDisplayRules } from './text-display-rules.mjs';
+import { TextDisplayPreferences } from './text-display-rules.mjs';
+import {ParagraphSwitch} from './paragraph-switch.mjs';
 import { shell } from './rails.mjs';
 import { SessionRenewal } from './session-renewal.mjs';
 import { showLine, lineText } from './lines.mjs';
@@ -123,8 +126,8 @@ import { showLine, lineText } from './lines.mjs';
 // way lands there and never on the page that followed it.
 let retired = null, notebookSheet = null, outcomeColorPicker = null, mentionNotices = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
-let outcomePageLayout = null, topicClosing = null, notebookDeleting=null, olderFeed = null;
-const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); },
+let outcomePageLayout = null, topicClosing = null, notebookDeleting=null, olderFeed = null, paragraphSwitch=null;
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; dropCardDocuments(); olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); paragraphSwitch?.dispose(); },
   updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
 // The901 shell restores the foot and separator from copies for each run.
 railDensity();
@@ -795,7 +798,7 @@ function rechecked(session, ids, page) {
 // that succeeds sends notice('') to say an earlier refusal no longer holds.
 // Focus pressed onto Open moves to Download, or back to Open on a refusal,
 // unless the person has put it somewhere else meanwhile.
-function attachmentControl(attachment, sourceRef, current, notice) {
+function attachmentControl(attachment, sourceRef, current, notice, keepURL = url => mediaURLs.add(url)) {
   const host = node('span', undefined, 'attachment-label');
   const available = () => host.isConnected && current();
   const unplaced = () => !document.activeElement || document.activeElement === document.body;
@@ -807,13 +810,13 @@ function attachmentControl(attachment, sourceRef, current, notice) {
       const media = await api.media(bootstrap.instance_id, attachment, sourceRef);
       if (!available()) return;
       const url = URL.createObjectURL(media.blob);
-      mediaURLs.add(url); host.replaceChildren(); host.classList.remove('attachment-control');
+      keepURL(url); host.replaceChildren(); host.classList.remove('attachment-control');
       if (media.inline) { const image = node('img'); image.alt = attachment.name; image.src = url; host.append(image); }
       const download = node('a', `Download ${attachment.name}`); download.href = url; download.download = attachment.name; host.append(download);
       notice('');
       if (held && unplaced()) download.focus();
     } catch (error) { if (available()) notice(error); }
-    finally { if (show.isConnected) { show.disabled = false; if (held && unplaced()) show.focus(); } }
+    finally { if (available() && show.isConnected) { show.disabled = false; if (held && unplaced()) show.focus(); } }
   }); host.append(show);
   // Unknown/non-inline files keep Open alone. Never discover an image by
   // speculatively reading a file; use the same verified descriptors as cards.
@@ -1350,7 +1353,7 @@ function paintViews(kind) {
   // Newest first, so where each new card goes is at or after where the one before it went.
   const renderedMessages = kind === 'messages' ? feedMessages() : null;
   if (kind === 'messages') for (const [id, entry] of messageEntries) if (!renderedMessages.has(id)) {
-    dropCardImages(entry); cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); entry.remove(); messageEntries.delete(id);
+    dropCardDocuments(entry); dropCardImages(entry); cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); entry.remove(); messageEntries.delete(id);
   }
   let following = $('messages').firstElementChild;
   const messages = kind === 'messages' ? feedMessages() : null;
@@ -1417,6 +1420,7 @@ function paintViews(kind) {
       messageEntries.set(item.id, entry);
       cardObserver?.observe(entry); middleObserver?.observe(entry);
     }
+    paintCardDocuments(cardIn(messageEntries.get(item.id)), item);
     paintReplyContext(cardIn(messageEntries.get(item.id)), item, messages);
     // A whispered answer arrived: the whisper it answers no longer waits for one.
     const asked = item.whisper && item.reply_to ? views.messages.get(item.reply_to) : null;
@@ -1443,6 +1447,46 @@ function paintViews(kind) {
 }
 // Each message's entry by id, kept for the page's life.
 const messageEntries = new Map();
+// Documents use the Reader's actual Open/Download control (1117), but their
+// URLs belong to the card. An unrelated Reader releases none of these files.
+const cardDocumentStates = new Map();
+const cardDocumentKey = item => JSON.stringify([item.id, revisionOf(item), item.attachments ?? []]);
+function dropCardDocuments(root = null) {
+  for (const [card, state] of cardDocumentStates) if (!root || root === card || root.contains(card)) {
+    state.active = false;
+    for (const url of state.urls) URL.revokeObjectURL(url);
+    state.urls.clear(); state.strip.remove(); cardDocumentStates.delete(card);
+  }
+}
+function paintCardDocuments(card, item) {
+  const images = new Set(cardImages(item));
+  const files = (item.attachments ?? []).filter(file => file && !images.has(file));
+  if (!files.length || item.removal || retired || topicUnavailable || registry?.disposed || authorityReviewPending()) { dropCardDocuments(card); return; }
+  const key = cardDocumentKey(item), epoch = listAccessEpoch;
+  const previous = cardDocumentStates.get(card);
+  if (previous?.key === key && previous.epoch === epoch) return;
+  dropCardDocuments(card);
+  const strip = node('span', undefined, 'attachments card-documents');
+  // Preserve the native button/link act without also replying or folding.
+  strip.addEventListener('click', event => event.stopPropagation());
+  strip.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation(); });
+  const state = { key, epoch, strip, urls: new Set(), active: true };
+  cardDocumentStates.set(card, state);
+  const current = () => {
+    const latest = feedMessages().get(item.id);
+    return state.active && cardDocumentStates.get(card) === state && card.isConnected &&
+      cardIn(messageEntries.get(item.id)) === card && !retired && !topicUnavailable && !registry.disposed &&
+      !authorityReviewPending() && listAccessEpoch === epoch && latest && !latest.removal && cardDocumentKey(latest) === key;
+  };
+  for (const file of files) {
+    const row = node('span', undefined, 'card-document');
+    const notice = node('span', undefined, 'card-document-notice'); notice.setAttribute('role', 'status'); showLine(notice, '');
+    row.append(attachmentControl(file, { kind: 'message', id: item.id }, current,
+      failure => showLine(notice, failure ? [`${file.name ?? 'attachment'}:`, failure] : ''), url => state.urls.add(url)), notice);
+    strip.append(row);
+  }
+  card.append(strip);
+}
 // A card's image, read through its message, so only a reader of the message gets it (item 474).
 const cardImageBytes = id => async attachment => (await api.media(bootstrap.instance_id, attachment, { kind: 'message', id })).blob;
 // The color the reader sees an agent in: their choice, or the agent's own.
@@ -1479,7 +1523,7 @@ function syncDossierHeads() {
   dossierHeads.sync(views.messages, views.removals);
   const messages = feedMessages();
   for (const [id, entry] of messageEntries) if (!messages.has(id)) {
-    cardObserver?.unobserve(entry); middleObserver?.unobserve(entry);
+    dropCardDocuments(entry); dropCardImages(entry); cardObserver?.unobserve(entry); middleObserver?.unobserve(entry);
     entry.remove(); messageEntries.delete(id);
   }
 }
@@ -2314,7 +2358,6 @@ function sharedMessageMenuItems(item, { say, anchor = say, presentation = null, 
     if (remote || !messageEdit && item.topic_id === topic.id) items.push({ label: 'Start a new dossier', glyph: 'pencil',
       act: () => fromSource(p => startNewDossier(p, inReader)) });
   }
-  if (remote || !messageEdit) items.push(...textDisplayMenuItems());
   return [...items, ...stack.last].map(choice => ({ ...choice, key: choice.key ?? choice.label,
     ...(remote ? { act: () => remote.choose(choice.key ?? choice.label, choice.label) } : {}) }));
 }
@@ -2501,18 +2544,23 @@ function readerTextEdit(event) {
 function openReaderMenu() {
   const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = readerMessageMenuItems(p);
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
-    const act=action=>run(async()=>{const opener=p.opener;$('reader-close').click();if(await openNotebook(ref.id,{opener})){const page=notebookSheetOf().current;if(action==='rename')page.rename();else page.menuItems().find(item=>item.label===action)?.act();}});
-    items.push({label:p.source.starred?'Unstar':'Star',glyph:p.source.starred?'starred':'star',act:()=>act(p.source.starred?'Unstar':'Star')});
-    if(p.source.reader_may_write)items.push({label:'Rename',glyph:'pencil',act:()=>act('rename')});
-    if(p.source.reader_may_delete)items.push({label:'Delete',glyph:'drop',act:()=>act('Delete')});
-    items.push({ label: 'Copy Link', glyph: 'link', act: () => run(() => copyPageLink(p.source, null, button)) },
-      { label: `Copy Link to Revision ${ref.revision}`, glyph: 'link', act: () => run(() => copyPageLink(p.source, ref.revision, button)) });
-    // Edit page only for someone Core lets write the page (its reader_may_write, docs/notebook-pages.md).
-    if (p.source.reader_may_write === true) items.push({ label: 'Edit page', glyph: 'pencil', act: () => { const opener = p.opener; $('reader-close').click(); run(() => openNotebook(ref.id, { opener })); } });
+    const source=p.source;
+    const act=key=>run(async()=>{
+      if(registry.current!==p||p.sourceUnavailable||reader.source!==source)return;
+      if(key==='copy'||key==='revision')return copyPageLink(source,key==='revision'?ref.revision:null,button);
+      if(key.startsWith('start-'))return notebookStartsOf().show({kind:key.slice(6),source,link:pageLink(source.owner_scope,ref.id),host:$('source-body').parentElement,anchor:button,current:()=>registry.current===p&&!p.sourceUnavailable});
+      const opener=p.opener;$('reader-close').click();
+      if(await openNotebook(ref.id,{opener})){
+        const page=notebookSheetOf().current;
+        if(key==='edit')return;
+        page.menuItems({rail:true}).find(item=>item.key===key&&!item.disabled)?.act();
+      }
+    });
+    items.push(...notebookReaderMenuItems(source,act));
   }
   if (reader.quotable) items.push({ label: 'Quote selection', glyph: 'quote', act: () => reader.quote() });
   if (reader.layoutChoice) items.push({ label: reader.layoutChoice, glyph: 'layout', act: () => reader.toggleLayout() });
-  openMessageMenu({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message', sheet: true });
+  (ref?.kind==='memory'?openNotebookMenu:openMessageMenu)({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message', sheet: true });
 }
 // Terminal state belongs to its exact message, even when a receipt arrives after a Reader step.
 function learnQuestionState({ message_id, question }) {
@@ -2553,7 +2601,8 @@ function learnMessageRemoval({ message_id, removal }) {
   dossierHeads?.sync(views.messages, views.removals);
   views?.learnRemoval(message_id, removal);
   const item = feedMessages().get(message_id), entry = messageEntries.get(message_id), card = cardIn(entry);
-  if (removal.kind === 'unsent') { entry?.remove(); messageEntries.delete(message_id); clearVisitNew(message_id); }
+  if (entry) dropCardDocuments(entry);
+  if (removal.kind === 'unsent') { if (entry) dropCardImages(entry); entry?.remove(); messageEntries.delete(message_id); clearVisitNew(message_id); }
   else if (card && item) { paintCardAuthor(card.querySelector('.message-author'), item); paintFoldWords(entry, item); paintAwaiting(card, item); paintReactions(card, item, bootstrap.actor, bootstrap.actor_kind, document); }
   const presentation = registry.current, source = presentation?.source;
   if (source?.source_ref?.kind === 'message' && source.source_ref.id === message_id) {
@@ -2714,6 +2763,7 @@ function repaintEdited(ids, edits) {
       else if (cue) { cue.textContent = CUE; cue.hidden = false; }
     }
     paintCardImages(card, item, cardImageBytes(id));
+    paintCardDocuments(card, item);
     paintFoldWords(entry, item);
     if (keepingWhole) {
       // Keep the old whole source while its revision is read, rather than
@@ -2896,7 +2946,7 @@ async function checkAvailability(read, current, topicDenied = true) {
     dossierHeads?.invalidate();
     drawFeed(false);
     // Nor the pictures of its messages (card-images.mjs).
-    dropCardImages($('messages'));
+    dropCardDocuments(); dropCardImages($('messages'));
     $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
     // No settings for a topic the reader cannot see.
     $('settings-open').hidden = true; $('topic-menu').hidden = true; settings?.close();
@@ -3224,21 +3274,14 @@ async function reconnect() {
 let textDisplayPreferences = null;
 const displayRules = () => textDisplayPreferences?.enabled ?? [];
 
-function textDisplayMenuItems() {
-  return textDisplayRules.map(rule => ({
-    label: `${rule.name} · ${displayRules().includes(rule.id) ? 'On' : 'Off'}`,
-    checked: displayRules().includes(rule.id), glyph: 'layout',
-    act: () => {
-      textDisplayPreferences.toggle(rule.id);
-      keepListAnchor(() => {
-        for (const host of document.querySelectorAll('.message-preview')) redrawMessageWords(host, displayRules());
-      });
-      // Source-only repaint: no writing, session, read mark or delivery action.
-      if (reader?.dialog.open && reader.source?.source_ref?.kind === 'message' && !reader.presentation?.sourceUnavailable) {
-        reader.redrawSource();
-      }
-    },
-  }));
+function redrawTextDisplay() {
+  keepListAnchor(() => {
+    for (const host of document.querySelectorAll('.message-preview')) redrawMessageWords(host, displayRules());
+  });
+  // Source-only repaint: no writing, session, read mark or delivery action.
+  if (reader?.dialog.open && reader.source?.source_ref?.kind === 'message' && !reader.presentation?.sourceUnavailable) {
+    reader.redrawSource();
+  }
 }
 
 let startup = null;
@@ -3259,6 +3302,8 @@ async function initialize() {
   let displayStorage;
   try { displayStorage = window.localStorage; } catch { /* device preferences stay in memory */ }
   textDisplayPreferences = new TextDisplayPreferences(bootstrap.instance_id, bootstrap.actor, displayStorage);
+  paragraphSwitch?.dispose();
+  paragraphSwitch=new ParagraphSwitch({doc:document,preferences:textDisplayPreferences,changed:redrawTextDisplay,current:()=>!retired&&shell.page===thisRun});
   // Every page, the phone check among them, takes the restarted server's session in place.
   renewal ??= new SessionRenewal({ api, bootstrap, live: () => live, makeApi: fresh => new Api(fresh),
     adopted: fresh => { document.querySelector('meta[name="aim-next-session"]').content = fresh; } });
@@ -3764,7 +3809,7 @@ async function initialize() {
   window.addEventListener('beforeunload', () => marks.leave());
   shell.guard(() => registry.hasUnprotectedWriting);
   // An edit open in the Reader sends nothing at unload (its hold lapses), and lets its Web Lock go.
-  window.addEventListener('pagehide', () => { olderFeed?.dispose(); topicState?.dispose(); freshness?.dispose(); registry.dispose(); cardReplies?.dispose(); mentionNotices?.dispose(); journal.close(); revokeMedia(); messageEdit?.writing.close(); });
+  window.addEventListener('pagehide', () => { dropCardDocuments(); olderFeed?.dispose(); topicState?.dispose(); freshness?.dispose(); registry.dispose(); cardReplies?.dispose(); mentionNotices?.dispose(); journal.close(); revokeMedia(); messageEdit?.writing.close(); });
   views.messagesPage(messageAnswer, { initial: true }); views.memoryPage(memoryAnswer, { initial: true });
   // What is drawn above the messages after they paint, in their column: the
   // marks line ("1 marked unread · Read it") and, on a conversation page, its
@@ -4453,7 +4498,7 @@ async function initializeDeckPage(route) {
     openEditor(entry,state){return !retired&&notebookPassagesOf().openEditor(entry,state);}
   };
   const page=new NotebookPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
-    item:route.id,read:pipelineView,send:pipelineSend,place,deleteUI:notebookDeleting,closeDeleted:async page=>{page.close();page.writing.close();await page.writing.serial;await page.store.close();return openDestination({kind:page.source.owner_scope.kind,id:page.source.owner_scope.id},'the Notebook page’s topic or outcome');},askIn:notebookAskIn,api,bootstrap,mode:route.card?'cards':route.view,viewPreference:notebookViewsOf(),passages});
+    item:route.id,read:pipelineView,send:pipelineSend,place,deleteUI:notebookDeleting,closeDeleted:async page=>{page.close();page.writing.close();await page.writing.serial;await page.store.close();return openDestination({kind:page.source.owner_scope.kind,id:page.source.owner_scope.id},'the Notebook page’s topic or outcome');},askIn:notebookAskIn,api,bootstrap,startNotebook:options=>notebookStartsOf().show(options),mode:route.card?'cards':route.view,viewPreference:notebookViewsOf(),passages});
   linkOwnerScope = () => page.source?.owner_scope;
   linkNotice = words => page.say(words, 'attention');
   shell.guard(()=>Boolean(page.writing?.journalPending||page.writing?.journalError));
@@ -4515,6 +4560,8 @@ function notebookCreator(host, scope) {
   return new NotebookCreate({ host, scope, api, bootstrap, open: (route, opener) => openNotebook(route.id, { write: route.write, opener }) });
 }
 // A card's ask goes to the page's topic, or to its outcome's conversation, and to an agent there (docs/decks.md).
+let notebookStarts=null;
+function notebookStartsOf(){return notebookStarts??=new NotebookStarts({api,bootstrap,read:pipelineView,open:openDestination});}
 async function notebookAskIn(scope) {
   const topicId=scope.kind==='topic'?scope.id:(await pipelineView('conversation',{workspace_id:scope.id})).conversation?.topic_id;
   if(!topicId)return null;
@@ -4580,7 +4627,7 @@ function notebookSheetOf() {
   if (notebookSheet) return notebookSheet;
   notebookSheet = new NotebookSheet({
     make: (id, host, header, idSuffix, revisionShown) => {
-      const page = new NotebookPage({ host, header, item: id, read: pipelineView, send: pipelineSend, askIn: notebookAskIn, api, bootstrap, viewPreference: notebookViewsOf(), deleteUI:notebookDeleting,closeDeleted:page=>{if(notebookSheet.current===page){notebookSheet.close();notebookSheet.current=null;}const target={...shell.route()};if(target.page===page.item){delete target.page;history.replaceState(history.state,'',routeHref(target));}page.more.remove();page.host.remove();page.close();}, idSuffix, shortKeys: true, revisionShown, passages: notebookPassagesOf(),
+      const page = new NotebookPage({ host, header, item: id, read: pipelineView, send: pipelineSend, askIn: notebookAskIn, api, bootstrap, startNotebook:options=>notebookStartsOf().show(options), viewPreference: notebookViewsOf(), deleteUI:notebookDeleting,closeDeleted:page=>{if(notebookSheet.current===page){notebookSheet.close();notebookSheet.current=null;}const target={...shell.route()};if(target.page===page.item){delete target.page;history.replaceState(history.state,'',routeHref(target));}page.more.remove();page.host.remove();page.close();}, idSuffix, shortKeys: true, revisionShown, passages: notebookPassagesOf(),
         place: async scope => ({ href: routeHref({ kind: scope.kind, id: scope.id, page: id }), title: '' }) });
       followCommits(() => notebookSheet.followed(page));
       return page;

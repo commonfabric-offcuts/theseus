@@ -111,13 +111,14 @@ its own room after its end, under ↑ Previous · ↓ Next. A laptop's header, a
 a phone's of one row, keep their room as before.
 
 The message's own acts in the Reader's ⋯ come from the feed's shared list
-(861): Star/Unstar, Rename on a loaded dossier's first message, Archive/Bring
-back, Move to topic, Copy Link, Edit, Update, Mark read/unread, Fold/Unfold,
-Start a topic from this, Add to pipeline, Start a new dossier and text display.
+(861), with the1091 palette: mark icons, ordinary rows, separate Topic and
+Dossier starts, the offered destructive action, and grouped actionable keys.
 Each keeps its existing eligibility. A starred message offers no Fold.
-Rename keeps the reply and closes the Reader before opening the existing
-dossier title field. The Reader alone adds Quote selection (only while words
-are selected or a passage is lit) and Wide/Stacked where the window can choose.
+Rename uses the dossier's pencil. Joined | Broken out lives at the rail foot
+and keeps the same device preference and Reader redraw; close a modal Reader
+to reach the rail, then reopen the source with its reply kept. The Reader
+alone adds Quote selection (only while words are selected or a passage is
+lit) and Wide/Stacked where the window can choose.
 Start a new dossier quotes the full message and its link in New message,
 then moves any reply text and its effective audience; an occupied destination,
 image or unsettled writing refuses the move. See shared-message-menus-861.md.

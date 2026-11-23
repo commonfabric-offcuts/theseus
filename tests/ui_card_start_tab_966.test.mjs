@@ -32,8 +32,9 @@ test('966 collapsed zero caret moves the saved card with children and exact undo
   key(p,{shiftKey:true});assert.equal(deckBody(p.deck),original);assert.equal(p.acts.at(-1).kind,'outdent');
   key(p);p.editing=null;p.undo();assert.equal(deckBody(p.deck),original);
 });
-test('966 Command-Return then Tab places the empty new box under the preceding card and saves words there',()=>{
-  const p=page();p.write();key(p,{key:'Enter',metaKey:true});const e=p.editing,f=e.field;
+test('966 Command-Return finishes, then display Return and Tab place the empty new box under the preceding card',()=>{
+  const p=page();p.write();key(p,{key:'Enter',metaKey:true});assert.equal(p.editing,null);
+  key(p,{key:'Enter',target:p.list});const e=p.editing,f=e.field;
   assert.equal(e.fresh,true);assert.equal(f.value,'');assert.equal(e.depth,0);
   key(p);assert.equal(e.depth,1);assert.equal(f.value,'');assert.equal(p.editing,e);
   f.value='New card';key(p,{key:'Escape'});

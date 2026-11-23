@@ -8,7 +8,10 @@ import assert from 'node:assert/strict';
 // the next Return; one an agent starts meanwhile is shown the same way.
 export async function sourcesChecks({ check, page, until, control, view, facts, shot }) {
   const body = 'Which name do we ship for the release? Two are left.';
-  const asked = await control({ method: 'agent_message', operation_id: 'sources-question', body });
+  // The question is the check's own root beside the topic's opening, so the Reader opens it as its own
+  // dossier; an agent's root beside existing dossiers names why it starts a new stack.
+  const asked = await control({ method: 'agent_message', operation_id: 'sources-question', body, source: 'topic',
+    divergence_reason: 'The sources check asks a question of its own to start topics from.' });
   const message = asked.result.message_id;
   const card = `#messages [data-id="${message}"]`;
   const quiet = async (p, expression) => { try { return await p.evaluate(expression); } catch { return false; } };

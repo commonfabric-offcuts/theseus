@@ -80,7 +80,7 @@ export class PageHere {
     try { earlier = await this.read({ ...source.source_ref, revision: since }); }
     catch (error) { say(`What changed since revision ${since} could not be read. ${error.message}`); return; }
     if (!current()) return;
-    const changes = this.node('details', undefined, 'source-changes'); changes.open = true;
+    const changes = this.node('details', undefined, 'source-changes'); changes.open = false;
     const shown = this.node('div');
     changes.append(this.node('summary', `What changed since you read revision ${since}`), shown);
     paintChanges(shown, earlier.body ?? '', source.body ?? '', this.doc);

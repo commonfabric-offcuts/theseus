@@ -1,5 +1,8 @@
 # Notebook secondary-click menu (961)
 
+Current1096 menu contract: The same secondary-click door now opens the1096 Notebook palette. Copy text/Chat/Add image/Start new and red Delete card follow the inline swatches/link marks; selected text, fields and touch-origin contextmenu retain the exclusion rules below. Existing native result history does not establish1096 native proof. See [Notebook menus](notebook-menus-1096.md).
+
+
 On a Notebook card, secondary click (including macOS Control-click) opens that
 card’s existing ⋯ menu at the pointer, clamped to the viewport. On the page
 background or title it opens the page’s existing ⋯ menu. Full page and the

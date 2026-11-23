@@ -33,10 +33,10 @@ function page() {
 // The glyphs a row carries, by name, wherever in it they are.
 const named = node => (typeof node === 'object' ? [node.getAttribute?.('data-glyph') ?? node['data-glyph'], ...(node.children ?? []).flatMap(named)] : []).filter(Boolean);
 
-test('a message\'s menu draws each item\'s glyph by name, silent, after its words, so the row still reads as its words and keys', () => {
+test('1091 other-label flat menus retain each silent glyph after their words and keys', () => {
   const { doc, win, anchor } = page();
   const items = [{ label: 'Copy Link', glyph: 'link', act() {} }, { label: 'Move its stack up', keys: '⌘↑', glyph: 'up', act() {} }, { label: 'Mark unread', glyph: 'unread', act() {} }];
-  const { root } = openMessageMenu({ anchor, items, label: 'This message', doc, win });
+  const { root } = openMessageMenu({ anchor, items, label: 'This card', doc, win });
   assert.deepEqual(root.children.map(named), [['link'], ['up'], ['unread']], 'each row carries its own glyph, once');
   for (const row of root.children) {
     const glyph = row.children.find(node => named(node).length);

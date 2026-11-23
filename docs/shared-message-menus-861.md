@@ -5,15 +5,17 @@ above the reply box. A dossier menu is the menu of its first message.
 
 ## One list, existing owners
 
-The feed and Reader consume one list of message actions. Star/Unstar, Rename
-on a loaded dossier's first message, Archive/Bring back, Fold/Unfold, Move to
-topic, Copy Link, Edit, Update, Mark read/unread, Start a topic from this, Add to
-pipeline, Start a new dossier and text display keep their existing owners and
-eligibility. The label is Fold/Unfold in both places. Reader folding does not
-move focus into the feed. Rename keeps the reply and closes the Reader before
-opening the feed's existing title field. Fable840's cover request item stays in
-cover-refresh. Archive is a shared first-level action on phones too; a title
-bar's injected actions are deduplicated against the shared list.
+The feed and Reader consume one list of message actions, with their existing
+eligibility and exact owners. Item1091 presents each “This message” menu as
+marks (Star, Read/Unread, Archive, Copy link), ordinary action rows, two
+independent Topic/Dossier starts when both are offered, a final destructive
+row, and grouped actionable keys. The dossier pencil owns Rename; it is no
+longer a message-menu row. Paragraphs is Joined | Broken out at the rail foot,
+using the same device preference and source redraw. Reader Wide/Stacked stays
+in its own menu. Cover requests stay in cover-refresh. Reader folding does
+not move focus into the feed. A title bar's injected actions are deduplicated
+against the shared list. See message-menu-palette-1091.md for the presentation
+contract and its current evidence limits.
 
 Feed arrangement (Show latest/all, Split back out, moves, joins, stack levels,
 Reset, Undo and Show full message) stays in the feed menu. Wide/Stacked and
