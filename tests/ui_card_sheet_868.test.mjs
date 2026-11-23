@@ -54,9 +54,11 @@ function deck(t) {
 const key=(page,name,extra={})=>{const event={key:name,target:page.editing?.field??page.list,preventDefault(){this.defaultPrevented=true;},...extra};page.key(event);return event;};
 const ringed=page=>page.list.querySelectorAll('.deck-card').filter(row=>row.getAttribute('aria-current')==='true'||row.classList.contains('deck-writing'));
 
-test('868 Command-Return leaves exactly the new writing card ringed, including after repaint',t=>{
+test('868 Command-Return finishes, then display Return leaves exactly the new writing card ringed after repaint',t=>{
   const {page}=deck(t);page.open({text:'First',shown:'First',depth:0,near:0,fresh:false});
   assert.equal(key(page,'Enter',{metaKey:true}).defaultPrevented,true);
+  assert.equal(page.editing,null,'1114 toggles to display');
+  assert.equal(key(page,'Enter').defaultPrevented,true,'1115 opens the new card');
   assert.equal(page.editing.fresh,true);assert.equal(page.editing.field.value,'');
   assert.equal(ringed(page).length,1,'the previous card must lose its current ring');
   assert.equal(ringed(page)[0],page.editing.field.closest('li'));
@@ -65,7 +67,9 @@ test('868 Command-Return leaves exactly the new writing card ringed, including a
 });
 test('868 finishing an empty next card restores the original current card without adding an empty card',t=>{
   const {page}=deck(t);page.open({text:'First',shown:'First',depth:0,near:0,fresh:false});
-  key(page,'Enter',{metaKey:true});key(page,'Enter',{metaKey:true});
+  key(page,'Enter',{metaKey:true});assert.equal(page.editing,null);
+  key(page,'Enter');assert.equal(page.editing.fresh,true);assert.equal(page.editing.field.value,'');
+  key(page,'Enter',{metaKey:true});
   assert.equal(page.editing,null);assert.equal(page.deck.cards.length,2);assert.equal(ringed(page).length,1);
   assert.equal(ringed(page)[0].dataset.index,'0');
 });
@@ -78,6 +82,7 @@ test('868 card keys still finish, add and undo while the toolbar has scrolled aw
   const {page}=deck(t);page.host.scrollTop=500;
   assert.equal(page.status.getAttribute('role'),'status');
   page.open({text:'First',shown:'First',depth:0,near:0,fresh:false});key(page,'Enter',{metaKey:true});
+  assert.equal(page.editing,null);key(page,'Enter');
   page.editing.field.value='Third';key(page,'Escape');
   assert.equal(page.deck.cards.length,3);assert.equal(page.deck.cards[1].title,'Third');
   key(page,'z',{metaKey:true});assert.equal(page.deck.cards.length,2);

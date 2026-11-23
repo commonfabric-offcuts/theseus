@@ -19,10 +19,10 @@ import { reach } from './arrow-reach.mjs';
 export const UNDO_LIMIT = 50;
 const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · Context Menu or ⇧F10 card menu · → card controls';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
-const WRITING_KEYS = 'Escape or ⇧⌘Return done · ⌘Return new card below, ⌥Return above · ← at the very start or → at the very end done (no selection) · ⌘↑ ⌘↓ move the card · Tab at start indent card, ⇧Tab at start or end outdent (no selection); elsewhere indent lines · ⌥↑ ⌥↓ move a line · ↑ at the very start or ↓ at the very end goes on to the card beside';
+const WRITING_KEYS = 'Escape or ⌘Return done · selected text + ⌘Return new card below · ⌥Return above · ← at the very start or → at the very end done (no selection) · ⌘↑ ⌘↓ move the card · Tab at start indent card, ⇧Tab at start or end outdent (no selection); elsewhere indent lines · ⌥↑ ⌥↓ move a line · ↑ at the very start or ↓ at the very end goes on to the card beside';
 // The same lines, short, where the cards stand in the composer over the feed (notebook-sheet.mjs); each keeps its
 // long form as its tooltip.
-const SHORT_KEYS = ['↑ ↓ pick · Return new card · ⌘Return edit · ⇧F10 menu', 'Escape done · ⌘Return next card', '⌘Return ask · Escape back'];
+const SHORT_KEYS = ['↑ ↓ pick · Return new card · ⌘Return edit · ⇧F10 menu', '⌘Return done · selection: new card', '⌘Return ask · Escape back'];
 // Refusals that say this person can read the page but not change it.
 const READ_ONLY = new Set(['FORBIDDEN', 'OUTCOME_REACHED']);
 
@@ -367,7 +367,8 @@ export class DeckPage {
     if (this.host.hidden || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
     if (event.target.closest?.('.fence-copy')) return;
     const command = event.metaKey || event.ctrlKey, up = event.key === 'ArrowUp', down = event.key === 'ArrowDown';
-    // The box's line keys come first. Escape and ⇧⌘Return finish; ⌘Return adds below and ⌥Return above.
+    // The box's line keys come first. Escape and ⌘Return finish; Notebook's
+    // nonblank selection keeps its split command. ⌥Return adds above.
     // ⌘↑/↓ move the card. At the text boundaries, ↑/↓ continue writing beside it; ←/→ finish in display mode.
     // Tab at the collapsed text start moves the card; ⇧Tab also outdents at the end. Elsewhere it indents lines.
     // Even a blocked card move, unchanged ⇧Tab or Safari's ⌥Tab keeps the box's focus.
@@ -702,15 +703,11 @@ export class DeckPage {
     this.editAt(cardText(this.deck.cards[to]), to, step < 0 ? null : 0);
     return true;
   }
-  // ⌘Return while a card is written: the card is finished, and a new card opens for writing beside it, below it and
-  // its children, at its depth. A box with nothing written in it is only finished (a new card with nothing written is
-  // not made, a card cleared goes with its children), so ⌘Return on an empty new card never makes another.
+  // ⌘Return toggles back to display. NotebookPage specializes a nonblank
+  // selection as the existing selection-to-card command (1075).
   writeNext() {
-    const editing = this.editing;
-    if (!/\S/.test(this.boxText(editing))) { this.finish(); return; }
-    if (!editing.fresh) { const at = findCard(this.deck, editing.text, editing.near); if (at >= 0) this.picked = at; }
+    if (!this.editing || !this.cardWritable() || this.editing.input.readOnly()) return;
     this.finish();
-    if (!this.editing) this.start();
   }
   // Escape, ⌘Return or Done: what was written becomes the card; a new card with nothing written is not made.
   finish({target=null} = {}) {
