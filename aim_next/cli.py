@@ -39,6 +39,7 @@ from .cli_outcome import PipelineVerbs, _words as held_words, register as regist
 from .cli_targets import WORDS as TARGET_WORDS, TargetVerbs, register as register_targets
 from .cli_tools import ToolVerbs, register as register_tools
 from .cli_covers import CoverVerbs, register as register_covers
+from .cli_links import LinkVerbs, register as register_links
 
 
 class Parser(argparse.ArgumentParser):
@@ -184,7 +185,8 @@ HELD_WORDS = "(held: its author is editing it)"
 USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute/core.sock) [--json] [--outbox DIR] "
          "{binding | view FILE|- | command FILE|- | outcomes [--reached | --ended] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR | coordinator OUTCOME ACTOR|--none | participant TOPIC ACTOR "
-         "| seat-add OUTCOME NAME --role TEXT|- [--operation ID] | seat-retry OUTCOME SEAT_REQUEST [--operation ID] | seat-end OUTCOME SEAT_REQUEST [--operation ID] | seat-status OUTCOME [SEAT_REQUEST] "
+         "| seat-add OUTCOME NAME --role TEXT|- [--template ID] [--operation ID] | seat-retry OUTCOME SEAT_REQUEST [--template ID] [--operation ID] | seat-templates OUTCOME | seat-end OUTCOME SEAT_REQUEST [--operation ID] | seat-status OUTCOME [SEAT_REQUEST] "
+         "| link-add OUTCOME URL [--title TITLE] | link-rename OUTCOME URL TITLE | link-remove OUTCOME URL "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
          "| inbox | reply MESSAGE [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--part] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
          "| post TOPIC [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--reply-to MESSAGE] [--divergence-reason TEXT] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
@@ -280,11 +282,15 @@ def _parser():
     seat_add.add_argument("outcome")
     seat_add.add_argument("name")
     seat_add.add_argument("--role", required=True)
+    seat_add.add_argument("--template", help="template id from seat-templates")
     seat_add.add_argument("--operation")
     seat_retry = verb("seat-retry")
     seat_retry.add_argument("outcome")
     seat_retry.add_argument("seat_request")
     seat_retry.add_argument("--operation")
+    seat_retry.add_argument("--template", help="named template for a refused, unplanned seat")
+    seat_templates = verb("seat-templates")
+    seat_templates.add_argument("outcome")
     seat_end = verb("seat-end")
     seat_end.add_argument("outcome")
     seat_end.add_argument("seat_request")
@@ -443,6 +449,7 @@ def _parser():
     register_targets(verb)
     register_tools(verb)
     register_covers(verb)
+    register_links(verb)
     return parser
 
 
@@ -571,7 +578,7 @@ class Failed(Exception):
         self.code, self.recorded = code, recorded
 
 
-class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
+class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
     """The everyday verbs: each builds its envelopes, saves each request before dispatch."""
 
     def __init__(self, profile, options, stdin, lines):
@@ -852,12 +859,22 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         options = self.options
         role = self.bounded_text(self.stdin) if options.role == '-' else options.role
         args = {'name': options.name, 'role': role}
+        if options.template is not None:
+            args['template_id'] = options.template
         return self._seat_command(KIND, {'workspace_id': options.outcome}, args)
 
     def do_seat_retry(self):
         from .hosted_seats import RETRY_KIND
+        args = {'template_id': self.options.template} if self.options.template is not None else {}
         return self._seat_command(RETRY_KIND, {'workspace_id': self.options.outcome,
-                                  'seat_request_id': self.options.seat_request}, {})
+                                  'seat_request_id': self.options.seat_request}, args)
+
+    def do_seat_templates(self):
+        answer = self.view('hosted_seat_templates', {'workspace_id': self.options.outcome})
+        if not answer['available']:
+            self.out.plain('host templates unavailable')
+        for item in answer['items']:
+            self.out.plain('%s  %s · %s · %s' % (item['id'], item['name'], item['model'], item['reasoning_effort']))
 
     def do_seat_end(self):
         from .hosted_seats import END_KIND

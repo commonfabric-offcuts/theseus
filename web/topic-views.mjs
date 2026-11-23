@@ -13,7 +13,7 @@ const integer = n => Number.isSafeInteger(n) && n >= 0;
 // Revisions of the dossier's name, cover and personal place, its historical
 // places (550) and the reader's starred messages (635) each affect its drawing.
 // A position snapshot alone is not a change.
-const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];
+const PLACING = ['level', 'level_revision', 'root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];
 const starsOf = position => (position.starred ?? []).join(' ');
 const samePlaces = (a, b) => JSON.stringify(a?.places ?? []) === JSON.stringify(b?.places ?? []);
 const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && samePlaces(a, b) && starsOf(a) === starsOf(b) && JSON.stringify(a.cover) === JSON.stringify(b.cover) : !b);
@@ -706,12 +706,30 @@ export class TopicViews {
       if (!current()) return false;
       const item = answer.items[0];
       if(item?.id!==id) {
-        const latest=checkedView(await read('memory_current',{item_id:id}),this.instanceId);
+        const remove=revision=>{this.deletedMemory.set(id,{seq:old.seq,revision});this.memory.delete(id);
+          this.revisions.observe(id,revision);this.paint('memory');this.paint('offer');return true;};
+        let latest;
+        try {latest=checkedView(await read('memory_current',{item_id:id}),this.instanceId);}
+        catch(error){
+          if(!current())return false;
+          // The old scoped list confirms absence. If the page has become
+          // unreadable, retain no stale title or body and disclose no new scope.
+          if(readFailure(error).kind!=='forbidden')throw error;
+          return remove(Math.max(version,old.revision));
+        }
         if(!current())return false;
-        if(latest.source_ref?.id!==id||latest.source_ref.revision<Math.max(version,old.revision)||latest.deleted!==true)
+        const moved=['topic','workspace'].includes(latest.owner_scope?.kind)&&typeof latest.owner_scope.id==='string'&&
+          (latest.owner_scope.kind!==this.scope.kind||latest.owner_scope.id!==this.scope.id);
+        if(latest.source_ref?.kind!=='memory'||latest.source_ref.id!==id||!integer(latest.source_ref.revision)||
+            latest.source_ref.revision<Math.max(version,old.revision))
           throw invalid('The requested Notebook item was not returned.');
-        this.deletedMemory.set(id,{seq:old.seq,revision:latest.source_ref.revision});this.memory.delete(id);
-        this.revisions.observe(id,latest.source_ref.revision);this.paint('memory');this.paint('offer');return true;
+        if(!moved&&latest.deleted!==true){
+          // The page can leave before the scoped read and return before this
+          // separate read. Retry that newer revision through the scoped list.
+          if(latest.source_ref.revision>Math.max(version,old.revision))throw behind();
+          throw invalid('The requested Notebook item was not returned.');
+        }
+        return remove(latest.source_ref.revision);
       }
       if (answer.items.length !== 1 || item.seq !== old.seq) throw invalid('The requested Notebook item was not returned.');
       this.validMemory(item);
