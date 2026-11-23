@@ -127,7 +127,7 @@ export class OutlineDossiers {
     const doc = this.outline.doc, nodes = [], alive = new Set();
     for (const star of this.pageStars?state.stars:dossierRows(state.stars)) {
       const item = star.dossier, id = this.pageStars?star.item_id:item.id, title = this.pageStars?(star.title||'Notebook page'):dossierTitle(item);
-      const target=this.pageStars?{kind:'topic',id:state.id,page:id}:{kind:'topic',id:state.id,message:id,land:true};
+      const target=this.pageStars?{kind:star.owner_scope?.kind??'topic',id:star.owner_scope?.id??state.id,page:id}:{kind:'topic',id:state.id,message:id,land:true};
       let link = state.links.get(id);
       if (!link) {
         link = doc.createElement('a'); link.className = 'ol-dossier'; if(this.pageStars){link.classList.add('ol-page');link.dataset.pageId=id;}else link.dataset.dossierId = id; link.tabIndex = -1;
@@ -139,6 +139,7 @@ export class OutlineDossiers {
         state.links.set(id, link);
       }
       link.pageTarget=target;
+      if(this.pageStars)link.notebookScope=star.owner_scope??{kind:'topic',id:state.id};
       let words = link.querySelector('.ol-dossier-words');
       if (!words) {
         words = doc.createElement('span'); words.className = 'ol-dossier-words';

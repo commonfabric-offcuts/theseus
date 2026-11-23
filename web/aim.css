@@ -710,6 +710,8 @@ dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;
 /* The keys that do what an item does, at its end. */
 .message-menu-list button{display:flex;align-items:center}.menu-keys{margin-left:auto;padding-left:1.5rem;color:var(--muted);font-size:.8rem}
 .message-menu-list button:hover,.message-menu-list button:focus-visible{background:var(--soft)}
+.notebook-drop-target{outline:2px solid var(--ink);outline-offset:2px;background:var(--soft)}
+.notebook-drop-preview{padding:.5rem;font-size:.85rem;color:var(--muted)}
 /* A menu item's glyph (glyphs.mjs, items 602 and 601): it follows the item's words in the document, so the row reads as
    its words, and is drawn before them, 18px, in the words' own colour. The quote glyph is a character drawn here. */
 .message-menu-list .glyph,.pl-menu .glyph{order:-1;flex:none;align-self:center;width:18px;height:18px;margin-right:10px;opacity:.85}

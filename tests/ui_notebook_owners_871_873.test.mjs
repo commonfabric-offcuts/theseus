@@ -102,7 +102,7 @@ test('873 common menu orders checked views, Private Draft, sheet choices and exi
   p.switchView=mode=>{acts.push(['view',mode]);p.mode=mode;};p.markDraft=value=>{acts.push(['draft',value]);p.writing.value.draft=value;};
   p.addImage.onclick=()=>acts.push(['image']);p.rename=()=>acts.push(['rename']);p.pageAction=(...args)=>acts.push(args);f.doc.defaultView.confirm=()=>true;
   let menu=NotebookPage.prototype.menuItems.call(p);
-  assert.deepEqual(menu.map(x=>x.label),['Star','Private draft','Copy link','Text','Cards','Topic','Dossier','Add image…','Open as a full page','Delete page','Edit','Undo','New card']);
+  assert.deepEqual(menu.map(x=>x.label),['Star','Private draft','Copy link','Text','Cards','Topic','Dossier','Add image…','Open as a full page','Move to…','Copy to…','Delete page','Edit','Undo','New card']);
   assert.deepEqual(['text','cards','draft'].map(key=>menu.find(x=>x.key===key).checked),[false,true,true]);assert.equal(item(p,'Private draft').description,undefined);
   item(p,'Text').act();assert.equal(item(p,'Text').checked,true);item(p,'Private draft').act();item(p,'Add image…').act();
   item(p,'Star').act();assert.ok(!menu.some(x=>x.key==='rename'));f.sheet.renameButton.onclick();item(p,'Delete page').act();

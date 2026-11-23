@@ -14,6 +14,7 @@ import { ImagePick, paintThumb, readInTurn } from './image-pick.mjs';
 import { DRAFT_TIP } from './topic-navigation.mjs';
 import { NotebookViews } from './notebook-view.mjs';
 import { watchNotebookCaret } from './notebook-caret.mjs';
+import { chooseNotebookDestination } from './notebook-transfer.mjs';
 import { drawnText, drawnRevision, formatWords, literalWords, composeFormattedWords } from './message-format.mjs';
 
 // The draft mark's words (docs/notebook-pages.md, "A draft page").
@@ -47,6 +48,8 @@ export function notebookMenuItems(page,{rail=false}={}) {
     ];
     // The sheet's pencil owns Rename; an unopened rail row still offers it.
     if(!page.readOnly&&(!page.inNotebookSheet||rail))items.push({key:'rename',label:'Rename',glyph:'pencil',disabled:!canWrite(),act:()=>{if(canWrite())page.rename();}});
+    items.push({key:'move-page',label:'Move to…',glyph:'move',disabled:!canWrite(),act:()=>{if(canWrite())page.chooseTransfer('memory.move');}},
+      {key:'copy-page',label:'Copy to…',glyph:'copy',disabled:!canWrite(),act:()=>{if(canWrite())page.chooseTransfer('memory.copy');}});
     if(state.reader_may_delete)items.push({key:'delete',place:'danger',label:'Delete page',glyph:'drop',act:()=>page.pageAction('memory.delete',{deleted:true})});
     if(page.mode==='cards')items.push(
       {key:'edit',place:'key',label:page.editing?'Done':'Edit',glyph:'pencil',keys:'⌘↩',disabled:!canWriteCards(),act:()=>{if(canWriteCards()){if(page.editing)page.finish();else page.edit();}}},
@@ -117,6 +120,7 @@ export class NotebookPage extends DeckPage {
     this.draftNote=this.node('span','notebook-draft-note','Draft');this.draftNote.title=DRAFT.note;this.draftNote.hidden=true;
     this.draft.append(this.draftButton,this.draftNote);
     this.more=this.node('button','notebook-menu quiet','⋯');this.more.type='button';
+    this.more.dataset.notebookPageId=this.item;this.more.draggable=true;
     this.more.setAttribute('aria-label','This page');this.more.title='This page';this.more.setAttribute('aria-haspopup','menu');
     this.more.onclick=()=>this.openPageMenu();
     // The sheet moves the title and ⋯ out of the host; their listeners travel
@@ -719,6 +723,17 @@ export class NotebookPage extends DeckPage {
     else await this.writing?.action(kind,args);
     if(!this.writing?.actionPending)await this.load();
     this.writingChanged();
+  }
+  chooseTransfer(kind) {return chooseNotebookDestination(this,kind);}
+  async transferPage(kind,scope) {
+    if(!['memory.move','memory.copy'].includes(kind)||!this.deleteUI||!this.writing||this.writing.closed)return;
+    if(this.editing)this.save();this.textEdited();
+    const args={owner_scope:structuredClone(scope),...(kind==='memory.copy'?{copy_id:'n-'+crypto.randomUUID()}:{})};
+    await this.deleteUI.transfer(this,kind,args,()=>this.closeDeleted?.(this));
+    // The writer already reads Core's exact linked body after its receipt and
+    // keeps read failures in its recovery state. A second unowned read could
+    // reject as the person reloads, after the transfer was already confirmed.
+    if(!this.detached&&!this.writing.closed){this.sync();this.writingChanged();}
   }
   paintPageState() {
     const w=this.writing;if(!w)return;

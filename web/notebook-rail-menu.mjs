@@ -43,7 +43,7 @@ export class NotebookRailMenu {
     if (!await this.open(id, { opener: row }) || !this.current(handles)) return false;
     const page = this.loaded(id), choice = choiceOf(page);
     if (!choice) throw Error('The page changed. Open its menu again.');
-    if (['text', 'cards', 'rename', 'start-topic', 'start-dossier'].includes(key)) return choice.act();
+    if (['text', 'cards', 'rename', 'start-topic', 'start-dossier', 'move-page', 'copy-page'].includes(key)) return choice.act();
     this.show({ anchor: page.more, items: page.menuItems(), label: 'This page', sheet: true, focusKey: key, doc: page.doc });
   }
 }
