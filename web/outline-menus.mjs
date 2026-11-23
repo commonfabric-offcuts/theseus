@@ -80,10 +80,11 @@ export class OutlineMenus {
         items = topicMenuItems(answer.topic, { actor: handles.bootstrap.actor,
           act: key => current() && this.perform(handles, () => this.topicAction(answer.topic, key, handles)) });
       } else if (pageId) {
+        const scope=row.notebookScope??{kind:'topic',id:target?.id};
         const answer = await handles.view('memory_current', { item_id: pageId }, 'foreground');
         if (!current()) return;
         if (answer.instance_id !== handles.bootstrap.instance_id || answer.source_ref?.kind !== 'memory' || answer.source_ref.id !== pageId ||
-            answer.owner_scope?.kind !== 'topic' || answer.owner_scope.id !== target?.id) throw Error('The Notebook page could not be confirmed.');
+            !['topic','workspace'].includes(scope.kind) || answer.owner_scope?.kind !== scope.kind || answer.owner_scope.id !== scope.id) throw Error('The Notebook page could not be confirmed.');
         items = handles.notebookMenu(answer, row, (key, label) => current() && this.perform(handles, () => handles.notebookMenuAction(answer, key, label, row, this.commands)));
       } else {
         if (target?.kind !== 'topic' || target.message !== row.dataset.dossierId) return;

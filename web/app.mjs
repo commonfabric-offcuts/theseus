@@ -86,6 +86,7 @@ import { firstLine } from './pipeline-words.mjs';
 import { HealthPage } from './health.mjs';
 import { NotebookPage } from './notebook-page.mjs';
 import { NotebookRailMenu } from './notebook-rail-menu.mjs';
+import { notebookTransferDrag } from './notebook-transfer-drag.mjs';
 import { NotebookSheet, notebookDockWanted, returning as notebookReturning } from './notebook-sheet.mjs';
 import { HealthLight } from './health-light.mjs';
 import { releaseToastsFor } from './release-toasts.mjs';
@@ -3298,6 +3299,9 @@ async function initialize() {
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
   notebookDeleting=await notebookDeleteUI({doc:document,shell,api,bootstrap,current:()=>!retired&&shell.page===thisRun,
     open:async(id,mode,scope)=>{if(!retired)await openNotebook(id,{mode});}});
+  notebookTransferDrag({doc:document,bootstrap,rail:()=>panes.outline?.list,current:()=>!retired&&shell.page===thisRun,
+    perform:async(id,kind,scope)=>{if(!await openNotebook(id)||retired)return;const page=notebookSheet?.current;if(page?.item===id)await page.transferPage(kind,scope);},
+    refused:words=>panes.outline?.menus.notice(words)});
   topicClosing = await topicCloseUI({ doc: document, shell, api, bootstrap,
     open: openDestination, current: () => !retired && shell.page === thisRun });
   let displayStorage;
@@ -3359,6 +3363,13 @@ async function initialize() {
     if (list === 'addressable-names') refreshMembers();
   });
   let route = parseRoute(new URL(location.href));
+  if(route.page) {
+    try {
+      const resolved=await resolveTopicLink(route,{read:(name,args)=>api.view(name,args,{readClass:'foreground'}),instanceId:bootstrap.instance_id,current:()=>!retired});
+      if(retired)return;
+      if(resolved&&(resolved.kind!==route.kind||resolved.id!==route.id)){route=resolved;history.replaceState(history.state,'',routeHref(route));}
+    } catch { /* Core did not confirm new ownership; ordinary reads keep their refusal. */ }
+  }
   if (!['topic', 'conversation'].includes(route.kind)) {
     await initializeOutcomePage(route);
     if(['root','workspace'].includes(route.kind))run(()=>initializeUnfinished(route));
@@ -4125,7 +4136,13 @@ nameTopicsWith(topicName);
 // from: the link pressed, which takes the focus back when the Reader closes.
 async function openDestination(target, title, from = null, writtenQuery = false) {
   const landing = ++landingSerial;
-  if (writtenQuery && (target.kind === 'topic' || target.page || target.kind === 'cards')) {
+  // Here the shared sheet reads the page by id through Core itself. Resolving
+  // its label first must not replace this local opening or lose its opener.
+  // Authored URL queries still confirm existence/access before opening.
+  const localPage = !writtenQuery && target.page && !target.revision && ((topic && views &&
+    (target.kind === 'topic' ? target.id === topic.id : target.kind === 'workspace' && target.id === topic.workspace_id)) ||
+    (!topic && pageHere && target.kind === 'workspace' && target.id === pageHereOutcome));
+  if (!localPage && (writtenQuery || target.page) && (target.kind === 'topic' || target.page || target.kind === 'cards')) {
     const original = target;
     topicNavigation?.cancelPending();
     try {
