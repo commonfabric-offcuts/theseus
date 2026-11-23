@@ -148,6 +148,7 @@ VIEWS = {
     "rail_dimming": {"candidate"},
     "hosted_seat": {"workspace_id", "seat_request_id"},
     "hosted_seats": {"workspace_id", "cursor", "limit"},
+    "hosted_seat_templates": {"workspace_id"},
     "onboarding_prompt": {"workspace_id", "variant"},
     "assessment": {"assessment_id"}, "assessments": {"topic_id","cursor","limit"},
     "changes": {"scope", "cursor", "limit"},
