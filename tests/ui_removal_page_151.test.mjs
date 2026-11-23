@@ -10,6 +10,7 @@ import { arrangeStacks, stackState } from '../web/reply-stacks.mjs';
 import { cardIn, paintFoldWords } from '../web/fold.mjs';
 import { paintAuthor, carriesOf } from '../web/marks.mjs';
 import { wasEdited } from '../web/message-edit-writing.mjs';
+import { dropCardImages } from '../web/card-images.mjs';
 import { paintWithdrawal, withdrawalItem, Withdrawals } from '../web/question-withdrawal.mjs';
 import { removalItem, paintRemoval, readRemoval, Removals } from '../web/message-removal.mjs';
 import { questionOf, questionPill, Resolutions } from '../web/question-state.mjs';
@@ -44,8 +45,12 @@ const sharedCode = section('function sharedMessageMenuItems(', '// A feed action
 const freshnessCode = section('function enableFreshness(', '// What could not be done for want of Theseus');
 const availabilityCode = section('async function checkAvailability(', 'async function checkInlineAvailability(');
 const removalConstruction = section('  const withdrawalPage = shell.page;', "  mountFeedFences($('messages'));");
+const documentCleanupCode = section('function dropCardDocuments(', 'function paintCardDocuments(');
 function evaluate(env, code, returned) {
-  return new Function(...Object.keys(env), code + '\nreturn ' + returned + ';')(...Object.values(env));
+  // Execute the real cleanup dependency used by the extracted removal/head
+  // owners. This fixture has no attachment strip unless a case supplies one.
+  const ports = { cardDocumentStates: new Map(), URL, dropCardImages, ...env };
+  return new Function(...Object.keys(ports), documentCleanupCode + code + '\nreturn ' + returned + ';')(...Object.values(ports));
 }
 
 test('924 app card creation and loaded-reply repaint use the shared parent removal painter', () => {
