@@ -39,6 +39,7 @@ from .cli_outcome import PipelineVerbs, _words as held_words, register as regist
 from .cli_targets import WORDS as TARGET_WORDS, TargetVerbs, register as register_targets
 from .cli_tools import ToolVerbs, register as register_tools
 from .cli_covers import CoverVerbs, register as register_covers
+from .cli_links import LinkVerbs, register as register_links
 
 
 class Parser(argparse.ArgumentParser):
@@ -184,6 +185,7 @@ HELD_WORDS = "(held: its author is editing it)"
 USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute/core.sock) [--json] [--outbox DIR] "
          "{binding | view FILE|- | command FILE|- | outcomes [--reached | --ended] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR | coordinator OUTCOME ACTOR|--none | participant TOPIC ACTOR "
+         "| link-add OUTCOME URL [--title TITLE] | link-rename OUTCOME URL TITLE | link-remove OUTCOME URL "
          "| seat-add OUTCOME NAME --role TEXT|- [--operation ID] | seat-retry OUTCOME SEAT_REQUEST [--operation ID] | seat-end OUTCOME SEAT_REQUEST [--operation ID] | seat-status OUTCOME [SEAT_REQUEST] "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
          "| inbox | reply MESSAGE [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--part] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
@@ -443,6 +445,7 @@ def _parser():
     register_targets(verb)
     register_tools(verb)
     register_covers(verb)
+    register_links(verb)
     return parser
 
 
@@ -571,7 +574,7 @@ class Failed(Exception):
         self.code, self.recorded = code, recorded
 
 
-class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
+class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
     """The everyday verbs: each builds its envelopes, saves each request before dispatch."""
 
     def __init__(self, profile, options, stdin, lines):

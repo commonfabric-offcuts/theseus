@@ -5773,5 +5773,15 @@
         ".github/check-weights.json"
       ]
     }
+  },
+  "tests/test_cli_links_1102.py": {
+    "679fa0de809200eada21e023a4a8cf4935a64d68e82a014d01d581d123606af5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "8daa60d0abb53c4fa6430d99c920ad15e462c326d10bab7a5c545dee06afc85c": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
   }
 }
