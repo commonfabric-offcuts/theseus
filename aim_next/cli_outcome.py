@@ -9,7 +9,7 @@ calls to add their arguments. Times are absolute local times.
 import json
 from pathlib import Path
 import time
-from .judgment import source_diff
+from .judgment import source_diff, source_test_bodies
 
 # What an excerpt or line of a held message shows in place of its words (docs/message-edit.md): its author has it open
 # in Edit. Every printer of an entry that carries `withheld` prints it through _words.
@@ -354,10 +354,11 @@ class PipelineVerbs:
         observed = self.view('pipeline_freeze', {'piece_id': options.piece})
         try:
             files = source_diff(options.repo, options.base, options.head)
+            test_sources = source_test_bodies(options.repo, options.head, files)
         except ValueError as error:
             self.refuse('INVALID_ARGUMENT', str(error))
         result = self.command('pipeline.freeze', {'piece_id': options.piece},
-            {'base_commit': options.base, 'head_commit': options.head, 'files': files},
+            {'base_commit': options.base, 'head_commit': options.head, 'files': files, 'test_sources': test_sources},
             {'piece_revision': observed['piece_revision']})
         self.out.plain('froze %s at %s · %s' % (options.piece, options.head,
             'judged' if result['freeze']['judged'] else 'ordinary'))

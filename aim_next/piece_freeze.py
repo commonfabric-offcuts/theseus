@@ -6,7 +6,7 @@ from pathlib import PurePosixPath
 
 from .contract import Refusal, _json
 from .delivery import _now_ms
-from .judgment import SHA, guarded
+from .judgment import SHA, guarded, validate_test_sources
 
 FREEZE_SCHEMA = [
     "CREATE TABLE pipeline_piece_freezes (seq INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -56,7 +56,8 @@ class PieceFreezes:
 
     def _command_pipeline_freeze(self, db, actor, envelope):
         target, args = envelope["target"], envelope["args"]
-        if set(target) != {"piece_id"} or set(args) != {"base_commit", "head_commit", "files"} or "piece_revision" not in envelope["expected"]:
+        if (set(target) != {"piece_id"} or set(args) - {"test_sources"} != {"base_commit", "head_commit", "files"}
+                or "piece_revision" not in envelope["expected"]):
             raise Refusal("INVALID_ARGUMENT", "A freeze names its piece, version, exact base/head and changed files")
         piece, workspace = self._piece(db, actor, target["piece_id"])
         self._pipeline_on(db, workspace["id"])
@@ -77,6 +78,7 @@ class PieceFreezes:
         if len(set(files)) != len(files):
             raise Refusal("INVALID_ARGUMENT", "A changed file is named once")
         files = sorted(files)
+        validate_test_sources(files, args.get('test_sources', {}))
         judged = bool(guarded(files))
         old = self._piece_freeze(db, piece["id"])
         same_source = old is not None and all(old[k] == args[k] for k in ("base_commit", "head_commit")) and old["files"] == files
