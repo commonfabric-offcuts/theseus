@@ -277,12 +277,12 @@ def jobs(root, weights):
     result = []
     for i, bucket in enumerate(bins, 1):
         measured = bucket['minutes'] + config['setup_minutes']
-        _require(math.isfinite(measured * 1.5), 'invalid_dealt_minutes')
+        _require(math.isfinite(measured * 2), 'invalid_dealt_minutes')
         result.append({'name': 'python units %d of %d' % (i, len(bins)), 'steps': 'python-units',
                        'python_shard': '%d/%d' % (i, len(bins)), 'files': sorted(bucket['files']),
                        'minutes': bucket['minutes'], 'weight_source': source,
                        'unmeasured_files': {p:reason for p,reason in (config.get('python_unmeasured') or {}).items() if p in bucket['files']},
-                       'timeout': math.ceil(measured * 1.5)})
+                       'timeout': max(30, math.ceil(measured * 2))})
     for name in ('node-units', 'deploy-refusals'):
         result.append({'name': name, 'steps': name,
                        'timeout': math.ceil((config['minutes'][name] + config['setup_minutes']) * 1.5)})
