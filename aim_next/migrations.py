@@ -56,6 +56,7 @@ from .invite import INVITATIONS_BACKFILL, INVITATIONS_DOWN, INVITATIONS_OCCUPIED
 from .tools_core import TOOLS_DOWN, TOOLS_OCCUPIED, TOOLS_SCHEMA
 from .dossier_order import ORDER_SCHEMA as DOSSIER_ORDER_SCHEMA, ORDER_DOWN as DOSSIER_ORDER_DOWN, ORDER_OCCUPIED as DOSSIER_ORDER_OCCUPIED, freeze as freeze_dossier_order
 from .outcome_end import ENDS_DOWN, ENDS_OCCUPIED, ENDS_SCHEMA
+from .stacks import LEVEL_UP, LEVEL_DOWN, LEVEL_OCCUPIED
 from .stacks import REFRESH_UP, REFRESH_DOWN, MESSAGE_REFRESH_UP, MESSAGE_REFRESH_DOWN, MESSAGE_REFRESH_OCCUPIED
 from .cover_refresh import WRITER_SCHEMA, WRITER_BACKFILL
 from .piece_freeze import FREEZE_SCHEMA, FREEZE_DOWN, FREEZE_OCCUPIED
@@ -243,6 +244,8 @@ STEPS = (
     ("63", "64", SEAT_SCHEMA, SEAT_DOWN, SEAT_OCCUPIED),
     ("64", "65", END_SCHEMA, END_DOWN, END_OCCUPIED),
     ("65", "66", LINK_SCHEMA, LINK_DOWN, LINK_OCCUPIED),
+    # 858: isolated-base number; renumber on the actual production predecessor at carry.
+    ("66", "67", LEVEL_UP, LEVEL_DOWN, LEVEL_OCCUPIED),
 )
 
 
@@ -319,6 +322,10 @@ def migrate(db_path, instance_id, binding, target=None):
     try:
         db, _ = _connect(authority.db_path)
         db.execute("BEGIN IMMEDIATE")
+        # A step may rebuild a table that others reference (message_acts, under refresh_requests): references are
+        # checked once, when the whole move commits, not while a table is between its two layouts. SQLite turns
+        # this off again at the commit or the rollback.
+        db.execute("PRAGMA defer_foreign_keys=ON")
         guard.verify()
         metadata = dict(db.execute("SELECT key,value FROM metadata WHERE key IN "
                                    "('instance_id','schema_version','commit_seq','commit_id','authority_id','authority_path','authority_epoch')"))
@@ -336,6 +343,7 @@ def migrate(db_path, instance_id, binding, target=None):
         if any(metadata.get(key) != value for key, value in authority.binding.items()):
             raise MigrationError("AUTHORITY_CHANGED", "Binding changed: activate a recovery copy at a new path")
         result = {"instance_id": instance_id, "from_version": stored, "schema_version": target}
+        broken_before = set(db.execute("PRAGMA foreign_key_check").fetchall())
         finish = unfinished(db, stored)
         if stored == target and not finish:
             return dict(result, migrated=False)
@@ -351,6 +359,10 @@ def migrate(db_path, instance_id, binding, target=None):
         if db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (target,)).rowcount != 1:
             raise MigrationError("SCHEMA_UNSUPPORTED", "The stored schema version could not be replaced")
         Store._advance_commit_seq(db)
+        # A reference the move broke refuses here, before the commit, so the answer stays "nothing was changed";
+        # references already broken before the move are not this move's to judge.
+        if set(db.execute("PRAGMA foreign_key_check").fetchall()) - broken_before:
+            raise MigrationError("MIGRATION_FAILED", "The upgrade would break a stored reference; nothing was changed")
         # SQLite can report a failure after its commit point, so from here a
         # non-busy error leaves the outcome unconfirmed, never "nothing changed".
         committing = True

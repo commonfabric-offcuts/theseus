@@ -17,6 +17,7 @@
 // (121), in the topic's composer and in the Reader; and what the keys select
 // coming fully into view, and a click or a tap scrolling nothing (379).
 import assert from 'node:assert/strict';
+import { dossierLevel858Checks } from './dossier_level_858_native.mjs';
 import { savedInlineReply851Checks } from './saved_inline_reply_851_native.mjs';
 import { dossierCommandDown705Checks } from './dossier_command_down_705_native.mjs';
 import { coverChecks783 } from './cover_783_native.mjs';
@@ -92,8 +93,6 @@ export const readingSeed = control => async (topic, said, before = null) => {
 // origin, as a person's earlier "Allow" leaves it; Safari's engine has none. engine: 'chrome' or 'webkit'.
 // windows: the browser's own windows, as it opens them: list() gives each page's id and address, close(id) closes one.
 export async function readingChecks({ check, page, until, view, control, shot, facts, observations, grant = null, windows, engine = 'chrome' }) {
-  await onboardingChecks790({check,page,until,control,shot,facts,observations,grant,engine});
-  await waitingQuestions372Checks({check,page,until,view,control,shot,facts,observations,engine});
   // A topic of the person's own, with aim-core and aim-ux in it, and messages
   // said in order: each [name, {sender, body, ...}] as the fixture's agent_message takes it.
   const seed = readingSeed(control);
@@ -175,6 +174,16 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   };
   // A click on a laptop, a tap on a phone.
   const press = (p, device, selector) => (device === 'phone' ? tap(p, selector) : p.point(selector));
+  // A dedicated858 phase uses the real shared page/input adapters while
+  // avoiding unrelated producers' setup and runtime swaps. The normal
+  // reading plan and its existing case order are unchanged.
+  if (process.env.AIM_DOSSIER_LEVEL_858_ONLY === '1') {
+    await dossierLevel858Checks({ check, until, view, control, shot, facts, observations, engine },
+      { seed, open, centre, press, card });
+    return;
+  }
+  await onboardingChecks790({check,page,until,control,shot,facts,observations,grant,engine});
+  await waitingQuestions372Checks({check,page,until,view,control,shot,facts,observations,engine});
   const lit = p => p.evaluate(`[...document.querySelectorAll('#messages .lit[data-id]')].map(e=>e.dataset.id)`);
   const bar = p => p.evaluate(`(()=>{const b=document.querySelector('${BAR}');return b&&!b.hidden?Object.fromEntries([...b.querySelectorAll('button')].filter(x=>!x.hidden).map(x=>[x.dataset.act,x.getAttribute('aria-pressed')])):null})()`);
   const readerOn = p => p.evaluate(`document.querySelector('#reader').open ? document.querySelector('#source-body').textContent : null`);
@@ -3812,6 +3821,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     { open, centre, press, openReader, closeReader, card });
   await visibleReturn784Checks({ check, page, until, control, shot, facts, observations, engine }, { seed });
 
+  await dossierLevel858Checks({ check, until, view, control, shot, facts, observations, engine },
+    { seed, open, centre, press, card });
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
   await editChecks({ check, until, view, control, facts, shot, engine },

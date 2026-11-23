@@ -13,9 +13,8 @@ import { unstarDossier } from './dossier-unstar.mjs';
 // once and sends the acts one after another, so a quick run of presses each
 // sends the revision the one before it made. What Core holds stays the message's acts (topic-views.mjs);
 // an act not yet answered is drawn over them until its answer lands, and the
-// stacks are drawn again whenever an answer changes what they show. How far a
-// stack is folded is the page's own; a message folded to its row is the
-// reader's, on every device, until they unfold it.
+// stacks are drawn again whenever an answer changes what they show. Explicit
+// dossier levels and individual message folds are separate personal Core acts.
 import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
 import { moveOf, keyOf, joinShown, joinOf, foldStep, laterActs, positionOf, placeOf, sideOf, headOf, stackCover, dossierOf } from './stack-order.mjs';
@@ -38,7 +37,7 @@ export const HELD_BY_STAR = 'This dossier has a message you starred: unstar it t
 // first message, else who wrote it, else its folded or earlier row.
 const LINES = [':scope > .stack-head', ':scope > .message-author', ':scope > .message-folded', ':scope > .message-earlier'];
 const lineOf = card => LINES.map(selector => card?.querySelector(selector)).find(line => line?.getClientRects().length) ?? card;
-const FIELD = { 'stack.aside': 'aside', 'message.star': 'star', 'message.deal': 'deal', 'message.fold': 'fold', 'message.fold_through': 'fold', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
+const FIELD = { 'stack.level': 'level', 'stack.aside': 'aside', 'message.star': 'star', 'message.deal': 'deal', 'message.fold': 'fold', 'message.fold_through': 'fold', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
 // Feed and rail commands share the same revision fence and envelope.
 export function stackActEnvelope({ instanceId, authority, kind, item, args, operationId = crypto.randomUUID() }) {
   const field = FIELD[kind];
@@ -80,6 +79,7 @@ function learned(kind, result, viewer, now) {
   if (kind === 'message.star') return { starred: result.starred, ...revision };
   if (kind === 'message.deal') return { dealt: result.dealt, ...revision };
   if (kind === 'message.fold' || kind === 'message.fold_through') return { folded: result.folded, ...revision };
+  if (kind === 'stack.level') return { level: result.level, ...revision };
   if (kind === 'stack.place') return { placed: result.key, ...revision };
   if (kind === 'stack.name') return { name: result.name ? { text: result.name, by: viewer, at_ms: now } : null, ...revision };
   return { joined: result.into ? { into: result.into, by: viewer, at_ms: now } : null, ...revision };
@@ -89,6 +89,7 @@ function learned(kind, result, viewer, now) {
 // the rail.
 const CARD_WORDS = 40;
 const DOING = {
+  'stack.level': args => args.level === null ? 'restoring the default view of' : args.level === 'open' ? 'opening' : 'collapsing',
   'stack.aside': args => args.through === null ? 'bringing back' : 'archiving',
   'message.star': args => args.starred ? 'starring' : 'unstarring',
   'message.deal': () => 'marking as dealt with',
@@ -151,6 +152,7 @@ function notSaved(what, { kind, why }, again = '') {
 const AGAIN = { 'message.thumb': 'Press again: Core keeps one of each.', 'message.answer': 'Press again: Core keeps one of each.', 'message.mark': 'Choose it again to send the same request.' };
 // What an act shows at once, before Core answers.
 function shownAct(kind, args, viewer, now) {
+  if (kind === 'stack.level') return { level: args.level };
   if (kind === 'stack.aside') return { aside: args.through, ...(typeof args.key === 'number' ? { order_key: args.key } : {}) };
   if (kind === 'message.star') return { starred: args.starred };
   if (kind === 'message.deal') return { dealt: args.dealt };
@@ -249,7 +251,14 @@ export class StackFeed {
       // Where a join of its dossier is not yet answered, the message shows where that act puts it (join).
       let stack_position = item.stack_position;
       for (const mark of this.pending.get(id) ?? []) if ('stack_position' in mark) stack_position = mark.stack_position;
-      for (const pending of this.pending.get(stack_position?.root_id) ?? []) {
+      // A committed root act can precede its positions read. Keep its newer
+      // revision, including when the first message is outside the loaded page.
+      const root = stack_position?.root_id, known = messages.get(root) ?? this.standIns.get(root);
+      if (known && (known.acts?.level_revision ?? -1) > (stack_position?.level_revision ?? -1)) {
+        stack_position = { ...stack_position, level: known.acts.level, level_revision: known.acts.level_revision };
+      }
+      for (const pending of this.pending.get(root) ?? []) {
+        if ('level' in pending) stack_position = { ...stack_position, level: pending.level };
         if ('aside' in pending) stack_position = { ...stack_position, through: pending.aside, below: pending.aside !== null,
           ...('order_key' in stack_position && pending.aside === null ? { order_key: pending.order_key ?? Math.min(0, ...this.state.stacks.map(keyOf)) - 1 } : {}) };
         if ('name' in pending) stack_position = { ...stack_position, name: pending.name };
@@ -292,13 +301,13 @@ export class StackFeed {
       coordinationCount: (count, news) => this.paintCoordination(count, news),
       star: stack => this.starDossier(stack), firstStarred: stack => this.firstStarred(stack),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id), fold: id => this.foldId(id),
+      level: (stack, level) => this.setDossierLevel(stack, level),
       folded: (stack, was) => {
         // Explicitly collapsing this dossier handles its loaded arrivals.
         // Expanding or restoring its view must not clear unrelated marks.
-        if (was === 'open' || levelOf(this.state, stack.id) === 'head') {
+        if (was === 'open') {
           for (const item of [stack.head, ...stack.replies]) this.acted(item.id);
         }
-        this.remember(() => { setLevel(this.state, stack, was); this.arrange(); });
       },
       earlier: (stack, count) => this.say(`${count === 1 ? 'The earlier message is' : `${count} earlier messages are`} shown, for this visit`),
       arranged: () => this.arranged(), acted: id => this.acted(id), newest: (stack, mark) => this.newest(stack, mark),
@@ -554,7 +563,7 @@ export class StackFeed {
     // What places a dossier and names it is read again after an act that changes them: a join or a split moves
     // messages to another dossier, whose positions they carry from then on (item 470). A place on a first message
     // the page has not loaded, or on any other message of a dossier, is shown by those positions (item 550).
-    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place') await this.refreshPositions();
+    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place' || kind === 'stack.level') await this.refreshPositions();
     return receipt.result;
   }
   // The message's entry, its stack and its card.
@@ -786,12 +795,11 @@ export class StackFeed {
     const next = foldStep(now, way);
     if (!next) return false;
     const apply = to => {
-      setLevel(state, stack, to.level);
+      setLevel(state, stack, to.level, { save: true });
       this.arrange(); this.focusOn(entry.dataset.id);
     };
     if (way === 'fold') this.acted(entry.dataset.id);
     apply(next);
-    this.remember(() => apply(now));
     this.say({ open: 'Original message and every reply shown', folded: 'Latest and unread replies shown' }[next.level]);
     return true;
   }
@@ -882,6 +890,25 @@ export class StackFeed {
     this.arrange();
     return true;
   }
+  // The explicit gesture is saved through the same queue/retry/refusal path
+  // as other personal acts. Undo restores the prior stored preference (null
+  // means the applicable default), never a temporary link reveal or quiet head.
+  setDossierLevel(stack, level, { undoable = true } = {}) {
+    const root = this.rootOf(stack);
+    this.state.levels.delete(stack.id);
+    if (!root || !('level_revision' in root.position)) {
+      this.say('Read this dossier again before changing its saved view');
+      this.reread(); return false;
+    }
+    const before = this.actsOf(root.item.id, root.item).level ?? null;
+    this.act('stack.level', root.item, { level }, [], { quiet: true });
+    if (undoable) this.remember(() => {
+      const current = this.state.stacks.find(each => positionOf(each)?.root_id === root.item.id);
+      if (!current) { this.say('Read this dossier again before restoring its saved view'); this.reread(); return false; }
+      this.setDossierLevel(current, before, { undoable: false }); this.arrange();
+    });
+    return true;
+  }
   // A dossier's first message, as Core last said where it is, and the
   // dossier's position: the loaded message, else one standing in for it that
   // holds what the position says of its aside and its name. Null where Core
@@ -896,6 +923,7 @@ export class StackFeed {
     // A stand-in also holds the revisions its join and place are fenced on (item 550): a dossier's first message is
     // joined and placed by it.
     item.acts = laterActs(item.acts, { aside: position.through, aside_revision: position.aside_revision,
+      ...('level_revision' in position ? { level: position.level, level_revision: position.level_revision } : {}),
       ...('name_revision' in position ? { name: position.name, name_revision: position.name_revision } : {}),
       ...(!this.messages().has(root) && 'join_revision' in position ? { join_revision: position.join_revision } : {}),
       ...(!this.messages().has(root) && 'place_revision' in position ? { placed: position.placed, place_revision: position.place_revision } : {}) });
@@ -1162,7 +1190,7 @@ export class StackFeed {
       if (key === 'rename') return rename(() => this.startRename(stack));
       if (key === 'aside') return this.setAside(stack, value, { at: line(), focus: !reader });
       if (key === 'fold') return this.setFold(item, value, { focus: !reader });
-      if (key === 'level') { setLevel(this.state, stack, value); this.arrange(); this.focusOn(stack.id); return; }
+      if (key === 'level') { setLevel(this.state, stack, value, { save: true }); this.arrange(); this.focusOn(stack.id); return; }
       if (key === 'split') return this.split(item);
       if (key === 'move-up' || key === 'move-down') return this.move(entry, value);
       if (key === 'fold-stack' || key === 'open-stack') return this.fold(entry, value);

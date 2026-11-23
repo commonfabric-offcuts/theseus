@@ -13,7 +13,7 @@ const integer = n => Number.isSafeInteger(n) && n >= 0;
 // Revisions of the dossier's name, cover and personal place, its historical
 // places (550) and the reader's starred messages (635) each affect its drawing.
 // A position snapshot alone is not a change.
-const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];
+const PLACING = ['level', 'level_revision', 'root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];
 const starsOf = position => (position.starred ?? []).join(' ');
 const samePlaces = (a, b) => JSON.stringify(a?.places ?? []) === JSON.stringify(b?.places ?? []);
 const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && samePlaces(a, b) && starsOf(a) === starsOf(b) && JSON.stringify(a.cover) === JSON.stringify(b.cover) : !b);
