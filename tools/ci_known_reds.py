@@ -224,12 +224,13 @@ def fixture_exit_row(name, code, log, rows, harness, report, history):
     error = message + '\n' + '\n'.join('    at fixture (file://%s:%s:1)' % (match[1], match[2]) for match in frames)
     return {'name': 'fixture exit %d' % code, 'passed': False, 'error': error}
 
-def cases(step, out, harness=None, history=False):
+def cases(step, out, harness=None, history=False, allow_empty=False):
     name = step['name']
     native = NATIVE[name]
     report = read_json(out / 'native' / native.name / native.results)
+    require(isinstance(report, dict), name + ': invalid case report')
     rows = report.get('results')
-    require(isinstance(rows, list) and bool(rows), name + ': missing case results')
+    require(isinstance(rows, list) and (bool(rows) or allow_empty), name + ': missing case results')
     require(all(isinstance(r, dict) and type(r.get('passed')) is bool for r in rows), name + ': invalid result')
     actual = [key(r) for r in rows]
     require(len(actual) == len(set(actual)), name + ': duplicate case identity')
@@ -255,6 +256,47 @@ def cases(step, out, harness=None, history=False):
     require(type(step.get('exit')) is int and step['exit'] == (0 if good else 1), name + ': abnormal harness exit')
     require(step.get('passed') is good, name + ': inconsistent raw verdict')
     return rows
+
+
+def mode_observation(step, out, rows, root, commit, checkout, strict=False):
+    """Retain raw observations; an excluded mode still owes complete evidence."""
+    name, native = step['name'], NATIVE[step['name']]
+    report = read_json(out / 'native' / native.name / native.results)
+    if strict:
+        log = evidence_log(out / (name + '.log'))
+        if native.harness == COMPOSE:
+            require(compose_completed(report), name + ': incomplete excluded compose mode')
+        elif native.results != 'results.json':
+            require(report.get('fixtureExitCode') == 0 and report.get('fixtureExitSignal') is None
+                    and 'teardownError' in report and report['teardownError'] is None,
+                    name + ': excluded mode cleanup failed or unattested')
+            require(report.get('fixtureErrors', '') == '', name + ': excluded mode fixture errors')
+            health = report.get('finalHealth')
+            require(health is None or isinstance(health, dict) and health.get('fatal') == [],
+                    name + ': excluded mode health failure')
+            require(type(report.get('bodyCompleted')) is bool and 'bodyError' in report,
+                    name + ': excluded mode body end unattested')
+            if report['bodyCompleted']:
+                require(report['bodyError'] is None, name + ': inconsistent completed body')
+                if not rows:
+                    require(END_LINE in log.splitlines(), name + ': zero-case body end unrecorded')
+            else:
+                error = report['bodyError']
+                require(not rows and isinstance(error, str) and bool(error.strip()),
+                        name + ': partial excluded mode')
+                require(evidence_log(out / 'native' / native.name / 'body-error.txt') == error
+                        and error in log, name + ': body error differs from retained evidence')
+                require(not _log_case_names(log.splitlines(), '{"case":')
+                        and not _log_case_names(log.splitlines(), '{"name":'),
+                        name + ': zero-case report lost started cases')
+                fingerprint(error, checkout, root, commit)
+        for row in rows:
+            if row['passed'] is False:
+                fingerprint(row.get('error'), checkout, root, commit)
+    return dict(counts=step['counts'], exit=step['exit'], raw_passed=step['passed'],
+                results=rows, **{k: report[k] for k in
+                ('bodyCompleted', 'bodyError', 'teardownError', 'fixtureExitCode',
+                 'fixtureExitSignal', 'fixtureErrors', 'browserClosed', 'closed') if k in report})
 
 def profile_identity(profile):
     require(isinstance(profile, dict) and bool(profile), 'missing execution profile')
@@ -807,12 +849,12 @@ def catalog_context(root,commit):
         globals().update(previous)
 
 
-def read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False, history_steps=None):
+def read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False, history_steps=None, allow_empty_modes=(), mode_records=None, strict_modes=()):
     with catalog_context(root,commit):
-        return _read_evidence(summary_path,provenance_path,shards,root,commit,run,base,expected_merge,binding,history,history_steps)
+        return _read_evidence(summary_path,provenance_path,shards,root,commit,run,base,expected_merge,binding,history,history_steps,allow_empty_modes,mode_records,strict_modes)
 
 
-def _read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False, history_steps=None):
+def _read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False, history_steps=None, allow_empty_modes=(), mode_records=None, strict_modes=()):
     candidate_root = root
     traffic = json.loads(source(root,commit,REPLAY_FILE)) if 'wake-replay' in REQUIRED else None
     provenance, summary = read_json(provenance_path), read_json(summary_path)
@@ -928,6 +970,9 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
                 require(step.get('compose_receipt')==verified and step.get('passed') is verified['passed']
                         and step.get('exit')==verified['exit'] and step.get('counts')=={'tests':len(verified['results']),'failed':sum(r['passed'] is False for r in verified['results'])}, 'fresh compose shard differs')
                 observed.append(('native-compose',verified['results'],profile,raw['checkout']))
+                if mode_records is not None and 'native-compose' in selected:
+                    mode_records.setdefault('native-compose', []).append(dict(
+                        counts=step['counts'], exit=step['exit'], raw_passed=step['passed'], results=verified['results']))
                 ran.append('native-compose')
                 continue
             if partition is not None:
@@ -936,8 +981,14 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
                 require(step == by_name[step['name']], 'aggregate step differs from original shard')
                 ran.append(step['name'])
             if step['name'] in NATIVE:
-                observed.append((step['name'], cases(step, out, (raw['tools'].get('harnesses') or {}).get(NATIVE[step['name']].harness), history),
-                                 profile, raw['checkout']))
+                name = step['name']
+                rows = cases(step, out, (raw['tools'].get('harnesses') or {}).get(NATIVE[name].harness),
+                             history, allow_empty=name in allow_empty_modes)
+                observation = mode_observation(step, out, rows, root, commit, raw['checkout'],
+                                               strict=not rows or name in strict_modes)
+                if mode_records is not None and name in selected:
+                    mode_records.setdefault(name, []).append(observation)
+                observed.append((name, rows, profile, raw['checkout']))
             else:
                 if step.get('passed') is False:
                     rows = nonbrowser_failure_evidence(step, out, traffic)
@@ -1263,7 +1314,9 @@ def known_base_failures(manifest_path, root, base, producer, required=None):
         require(all(type(a.get('id')) is int and a['id'] > 0 and type(a.get('size_in_bytes')) is int and a['size_in_bytes'] > 0 for a in artifacts), 'invalid known-run artifact identity')
         run = {'id':run_id,'attempt':1,'workflow':'Checks','event':'push','repository':producer['head_repository']}
         selected = api['steps'] if step_runs is not None else None
-        observed, summary = read_evidence(folder/'release-check/summary.json', folder/'release-check/provenance.json', folder/'shards', root, sha, run, {'ref':None,'sha':None}, merge, history=True, history_steps=selected)
+        modes = {}
+        observed, summary = read_evidence(folder/'release-check/summary.json', folder/'release-check/provenance.json', folder/'shards', root, sha, run, {'ref':None,'sha':None}, merge, history=True, history_steps=selected,
+                                         allow_empty_modes=source_catalog(root, sha)['NATIVE'], mode_records=modes)
         for shard in provenance['shards']:
             receipt = shard['receipt']
             require(receipt.get('head') == provenance['head'], 'known shard head differs from API')
@@ -1276,11 +1329,47 @@ def known_base_failures(manifest_path, root, base, producer, required=None):
                         'nonbrowser_failures':sum('comparison' in f for f in failures),
                         'verified_steps':sorted(selected if selected is not None else summary['required']),
                         'raw_passed':summary['passed'],'artifacts':artifacts,'mutation_advisories':mutations,
+                        'browser_modes':modes,
                         **({'steps':sorted(selected)} if selected is not None else {})})
         if windows is not None:
             records[-1].update(control_steps=api['control_steps'], browser_window_steps=api['browser_window_steps'],
                                browser_cases=browser_case_records(observed,root,sha,run_id))
     return known, records
+
+
+def base_blind_modes(records, required):
+    """Only a nonempty, entirely zero-case authenticated selection is excluded.
+
+    Mixed history retains the previous missing-results refusal. Never silently
+    discard its empty observations to manufacture a shorter comparison window.
+    """
+    excluded = {}
+    for name in required:
+        if not name.startswith('native-'):
+            continue
+        selected = [r for r in records if name in r['verified_steps']]
+        counts = []
+        for record in selected:
+            observations = record['browser_modes'].get(name)
+            require(isinstance(observations, list) and bool(observations), name + ': missing selected base mode')
+            counts.append(sum(len(o['results']) for o in observations))
+        if counts and all(n == 0 for n in counts):
+            excluded[name] = [{k:r[k] for k in ('id', 'head_sha', 'created_at')} for r in selected]
+        else:
+            require(all(n > 0 for n in counts), name + ': missing case results in mixed base history')
+    return excluded
+
+
+def compare_with_exclusions(failures, known, base_runs, excluded, modes):
+    # Evidence is validated before this comparison; no bad fingerprint is hidden.
+    require(not any(f.get('fingerprint_problem') for f in failures if f['step'] in excluded),
+            'excluded candidate contains invalid assertion evidence')
+    result = compare_failures([f for f in failures if f['step'] not in excluded], known, base_runs)
+    result['browser_windows'] = {name: dict(mode='excluded', run_ids=[r['id'] for r in identities],
+        complete_runs=len(identities), base_runs=identities,
+        reason='Every selected authenticated base record has zero cases; this mode is not judged.',
+        candidate=modes[name]) for name, identities in excluded.items()}
+    return result
 
 
 def tested_base_reached(root, base, binding):
@@ -1318,19 +1407,23 @@ def validate(summary_path, provenance_path, shards, base_root, candidate_root, p
                 {'ref':binding['producer']['pull_request']['base_ref'], 'sha':binding['producer']['pull_request']['base_sha']})
     if 'receipt_base' in binding:
         raw_base = binding['receipt_base']
-    observed, summary = read_evidence(summary_path,provenance_path,shards,candidate_root,commit,run,raw_base,expected_merge,binding)
-    known, base_runs = known_base_failures(known_runs,candidate_root,base,binding['producer'],summary['required'])
+    required = source_catalog(candidate_root, commit)['REQUIRED']
+    known, base_runs = known_base_failures(known_runs,candidate_root,base,binding['producer'],required)
+    excluded = base_blind_modes(base_runs, required)
+    modes = {}
+    observed, summary = read_evidence(summary_path,provenance_path,shards,candidate_root,commit,run,raw_base,expected_merge,binding,
+                                      allow_empty_modes=excluded, mode_records=modes, strict_modes=excluded)
     failures, mutations = failure_records(observed,candidate_root,commit,run['id'],window=True)
-    result = compare_failures(failures,known,base_runs)
+    result = compare_with_exclusions(failures, known, base_runs, excluded, modes)
     require(not summary['passed'] or binding['producer']['conclusion'] == 'success', 'producer failed outside reported checks')
     manifest = read_json(known_runs)
-    result['browser_windows'] = {name: {'run_ids': ids, 'complete_runs': len(ids),
+    result['browser_windows'].update({name: {'run_ids': ids, 'complete_runs': len(ids),
                                       'mode': 'window' if len(ids) >= 5 else 'three-control-fallback'}
-                                 for name, ids in (manifest.get('browser_window_runs') or {}).items()}
+                                 for name, ids in (manifest.get('browser_window_runs') or {}).items() if name not in excluded})
     # Original artifacts retain all observations. The public result needs run
     # provenance and the named comparison, not ten copies of every passing case.
-    shown_runs = [{k:v for k,v in row.items() if k != 'browser_cases'} for row in base_runs]
-    result.update(run=run,base=base,merge=expected_merge,raw_passed=summary['passed'],producer=binding['producer'],controller=binding['controller'],status_head_sha=binding['producer']['head_sha'],known_base_runs=shown_runs,mutation_advisories=mutations,test_definition_changes=test_definition_changes(candidate_root,base['sha'],commit),runtime_code_paths=[str(Path(__file__).resolve())],known_policy='browser-ten-complete-min-five;fallback-original-three;nonbrowser-all-original-controls',train=train_identity(candidate_root,commit,binding))
+    shown_runs = [{k:v for k,v in row.items() if k not in ('browser_cases', 'browser_modes')} for row in base_runs]
+    result.update(run=run,base=base,merge=expected_merge,raw_passed=summary['passed'],producer=binding['producer'],controller=binding['controller'],status_head_sha=binding['producer']['head_sha'],known_base_runs=shown_runs,mutation_advisories=mutations,test_definition_changes=test_definition_changes(candidate_root,base['sha'],commit),runtime_code_paths=[str(Path(__file__).resolve())],known_policy='authenticated-all-zero-browser-exclusion-1124;browser-ten-complete-min-five;fallback-original-three;nonbrowser-all-original-controls',train=train_identity(candidate_root,commit,binding))
     return result
 
 
