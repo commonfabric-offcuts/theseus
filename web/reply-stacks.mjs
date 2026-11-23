@@ -758,8 +758,8 @@ function paintStack(section, stack, byId, context) {
   // Fully open, the first message shows as any message does: whole, or its
   // folded row (item 471). Open, with more than seven messages, the earlier
   // ones wait behind one row until it is opened (item 476): a first message
-  // among them is its tab alone till then, and after that a row under the tab
-  // (its folded row, if the reader folded it), until a press shows it whole.
+  // among them is its tab alone till then. Once shown, its personal fold
+  // alone chooses its row or whole message, as its Fold menu does (1101).
   // The seven are counted when it is first drawn open, and the first of them is
   // held, so a message arriving joins them below and hides nothing; any other
   // level lets go of it, so the next opening counts again.
@@ -768,13 +768,12 @@ function paintStack(section, stack, byId, context) {
   const before = drawnOpen ? earlierOf(stack, level, { held: state.held.get(stack.id) ?? null }) : [], earlierOpen = state.earlier.has(stack.id), headBefore = before.includes(stack.head);
   if (drawnOpen) state.held.set(stack.id, [stack.head, ...stack.replies][before.length].id);
   const held = state.held.get(stack.id) ?? null;
-  const starred = Boolean(stack.head.acts?.starred), open = !single && level === 'open' && (!headBefore || earlierOpen || state.whole.has(stack.id));
+  const open = !single && level === 'open' && (!headBefore || earlierOpen || state.whole.has(stack.id));
   // Item 550: a stack gathered under a first message the page has not loaded
   // (stack-order.mjs, gather) is headed by one of its replies, a card of its
   // own before 550: folded, it shows whole, as each reply kept in view does,
   // never as its tab alone.
   const whole = single || open || stack.dossier !== stack.id || stack.head.yours?.note === true;
-  if (open && headBefore && stack.head.yours?.note !== true && !starred && !state.folded.has(stack.id) && !state.whole.has(stack.id)) state.earlierRows.add(stack.id);
   const kept = item => {
     if (state.kept.has(item.id)) return true;
     if (!unread(item)) return false;
@@ -811,7 +810,7 @@ function paintStack(section, stack, byId, context) {
       // message, and a tap lights nothing but the message it lands on.
       const button = line(section, 'earlier', () => { const node = element(doc, 'button', 'stack-earlier'); node.type = 'button'; return node; });
       button.replaceChildren(element(doc, 'span', 'stack-earlier-words', row.words), ...(row.fresh ? [element(doc, 'span', 'stack-fresh', ` · ${row.fresh} new`)] : []));
-      button.title = `Show ${row.items.length === 1 ? 'it' : `all ${row.items.length}`} as rows, for this visit`;
+      button.title = `Show ${row.items.length === 1 ? 'it' : `all ${row.items.length}`}, for this visit`;
       button.onclick = event => {
         const focused = doc.activeElement === button && event?.pointerType !== 'touch';
         state.earlier.add(stack.id); state.again(); state.on?.earlier?.(stack, row.items.length);

@@ -63,7 +63,7 @@ test('875 full first-message landing keeps the earlier row closed and shows the 
   assert.deepEqual(f.visible(), newest);
   assert.equal(f.earlier().querySelector('.stack-earlier-words').textContent, '6 earlier replies');
   assert.equal(f.earlier().querySelector('.stack-fresh').textContent, ' · 1 new', 'the visible first message is not counted as hidden new');
-  assert.equal(f.earlier().title, 'Show all 6 as rows, for this visit');
+  assert.equal(f.earlier().title, 'Show all 6, for this visit');
   f.draw(); f.land(); assert.deepEqual(f.visible(), newest, 'a repeated landing and redraw do not expand the row');
 });
 
@@ -123,7 +123,7 @@ test('875 pressing the remaining earlier row opens it and targets the first hidd
 test('875 one hidden reply uses singular words and an eight-message dossier keeps no empty row', () => {
   const nine = fixture(9); nine.land();
   assert.equal(nine.earlier()?.querySelector('.stack-earlier-words').textContent, '1 earlier reply');
-  assert.equal(nine.earlier().title, 'Show it as rows, for this visit');
+  assert.equal(nine.earlier().title, 'Show it, for this visit');
   for (const count of [7, 8]) {
     const f = fixture(count); f.land(); assert.equal(f.earlier(), null);
     assert.equal(f.section().dataset.headOpen, 'true');

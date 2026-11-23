@@ -380,7 +380,8 @@ their acts.
   tooltip saying what it does. A press (a tap, Return or Space) shows every
   earlier message as one row in its place, oldest first, who wrote it and its
   line, as a folded message reads but saying nothing of a fold, since none is
-  made; the first message's row sits under the tab. The keys go on to the
+  made. The first message instead shows whole under its tab, or as its saved
+  personal folded row (1101), so its drawn fold and Fold menu agree. The keys go on to the
   first of them when they were on the row; a tap lights nothing, so on a phone
   the dossier's tab still lights at its first tap and acts at the next, as on
   any open dossier. A message the reader folded keeps
@@ -414,7 +415,7 @@ their acts.
   unread the head shows only that title row, and x there does nothing, as on
   the chevron. Among an open dossier's earlier messages (Earlier messages,
   above), it is that title row alone until their row is opened, then its
-  folded row if the reader folded it, else an earlier message's row. A link, search or the rail's Starred that lands on a folded
+  folded row if the reader folded it, else its whole message (1101). A link, search or the rail's Starred that lands on a folded
   message opens it whole for that view without unfolding it; changing its
   stack's state folds it to its row again.
 - **Expand and collapse.** One chevron beside the title switches between

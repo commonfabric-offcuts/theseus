@@ -7626,11 +7626,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // sent, nothing moves below More, and a reload finds the row closed again and the stacks' order, the dossier's
   // name and the reader's folds as Core held them. At a laptop's width and at 390, 375 and 320 on a phone, light
   // and dark. A dossier of seven or fewer shows no such row.
+  const earlierReplyReason = 'Synthetic reply count for an isolated fold scenario; no source passage is under test.';
   const earlierSeed = topic => seed(topic, [
-    ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Cabin week: the plan.\nEverything we settled.' }],
+    ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Cabin week: the plan.\nEverything we settled.',
+      divergence_reason: 'Isolated earlier-message folding scenario, separate from the fixture primer.' }],
     ...Array.from({ length: 14 }, (_, n) => [`r${n + 1}`, { sender: n % 2 ? 'aim-ux' : other, join: n === 1, reply_to: 'root', addressees: [facts.actor],
+      reply_without_quote: earlierReplyReason,
       body: `Reply ${n + 1} about the cabin.`, ...(n === 2 ? { attachments: [{ name: 'screen.png', image: 'screen.png' }] } : {}), read: n === 13 }]),
-    ['lone', { sender: other, addressees: [facts.actor], body: 'Another message on its own.', read: true }],
+    ['lone', { sender: other, addressees: [facts.actor], body: 'Another message on its own.', read: true,
+      divergence_reason: 'Independent singleton control for the earlier-message scenario.' }],
   ]);
   // The dossier as drawn: its state, the earlier-messages row's words while it shows, and each message shown, top to
   // bottom, by how it shows: its tab alone, a row of the earlier ones, a row the reader folded, or a card.
@@ -7639,7 +7643,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     return p.evaluate(`(()=>{const names=${JSON.stringify(names)},s=document.querySelector('#messages .reply-stack[data-stack="${ids.root}"]');if(!s)return null;
       const shown=e=>e.getClientRects().length>0,b=s.querySelector(':scope > .stack-replies > .stack-earlier'),cardOf=e=>e.classList.contains('message-card')?e:e.querySelector('.message-card');
       const face=c=>c.dataset.earlier==='true'?'row':c.dataset.folded==='true'?'folded':shown(c.querySelector(':scope > .message-preview'))?'card':'tab';
-      return {fold:s.dataset.fold,button:b&&shown(b)?b.textContent:null,messages:[s.firstElementChild,...[...s.querySelector(':scope > .stack-replies').children].filter(e=>e.dataset.id&&shown(e))]
+      return {fold:s.dataset.fold,button:b&&shown(b)?b.textContent:null,messages:[s.querySelector(':scope > [data-id]'),...[...s.querySelector(':scope > .stack-replies').children].filter(e=>e.dataset.id&&shown(e))]
         .map(e=>names[cardOf(e).dataset.id]+':'+face(cardOf(e)))}})()`);
   };
   const earlierButton = root => `#messages .reply-stack[data-stack="${root}"] > .stack-replies > .stack-earlier`;
@@ -7647,7 +7651,73 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   const actsSent = (p, from) => p.evaluate(`window.sent.slice(${from}).filter(kind=>${JSON.stringify(STACK_ACTS)}.includes(kind))`);
   const storedActRows = async topic => (await view('message_acts', { topic_id: topic })).items.map(item => JSON.stringify(item)).sort();
   const closedLook = ['root:tab', ...Array.from({ length: 7 }, (_, n) => `r${n + 8}:card`)];
-  const openedLook = ['root:row', ...Array.from({ length: 7 }, (_, n) => `r${n + 1}:${n === 4 ? 'folded' : 'row'}`), ...closedLook.slice(1)];
+  const openedLook = ['root:card', ...Array.from({ length: 7 }, (_, n) => `r${n + 1}:${n === 4 ? 'folded' : 'row'}`), ...closedLook.slice(1)];
+
+  // Register names without browser helpers: selection-only callers omit them.
+  for (const device of ['laptop', 'phone']) for (const theme of ['light', 'dark']) {
+    await check(`reading item 1101 first-message drawing and Fold menu agree through native acts and reload ${device} ${theme}`, async () => {
+      const topic = `head-fold-1101-${device}-${theme}`, ids = await earlierSeed(topic);
+      const p = await open(topic, device, topic, ids.root);
+      await dossierTheme(p, theme);
+      const capture = async name => {
+        await until(() => p.evaluate(`!document.querySelector('.fold-ghost')&&document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')`), '1101 capture is at the actual animation endpoint');
+        await shot(p, name);
+      };
+      const shape = () => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.root))}),s=c.closest('.reply-stack'),b=document.querySelector('.message-bar'),f=b?.querySelector('[data-act=fold]');
+        const visible=e=>Boolean(e&&e.getClientRects().length&&getComputedStyle(e).display!=='none');
+        return {level:s.dataset.fold,head:s.dataset.headOpen,folded:c.dataset.folded==='true',earlier:c.dataset.earlier==='true',whole:visible(c.querySelector(':scope > .message-preview')),
+          row:visible(c.querySelector(':scope > .message-folded')),label:b&&!b.hidden&&f&&!f.hidden?f.getAttribute('aria-label'):null,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      const showHead = async () => {
+        const toggle = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
+        if (await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state!=='open'`)) await press(p, device, toggle);
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(earlierButton(ids.root))})?.getClientRects().length)`), '1101 earlier control is shown');
+        await centre(p, earlierButton(ids.root)); await press(p, device, earlierButton(ids.root));
+      };
+      await showHead();
+      await until(async () => (await shape()).head === 'true', '1101 the first message has been revealed');
+      await centre(p, card(ids.root));
+      if (device === 'laptop') {
+        const face = await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root) + ' > .message-earlier')})?.getClientRects().length ? ' > .message-earlier > .folded-words' : ' > .message-preview'`);
+        await p.point(card(ids.root) + face, 'move');
+      }
+      const initialActs = await actsOf(topic, ids.root);
+      assert.equal(initialActs?.folded ?? false, false, '1101 initial Core fold agrees with Fold');
+      observations.push({name:'item1101 initially revealed head',engine,device,theme,acts:initialActs,shape:await shape()});
+      await capture(`item-1101-${device}-${theme}-revealed`);
+      await until(async () => (await shape()).whole, '1101 first message shows whole after earlier messages open');
+      await light(p, device, ids.root);
+      const expected = on => ({ level:'open',head:'true',folded:on,earlier:false,whole:!on,row:on,label:on?'Unfold':'Fold',sideways:false });
+      await becomes(shape, expected(false), '1101 drawn whole head and Fold glyph agree');
+      const before = (await actsOf(topic, ids.root))?.fold_revision ?? 0;
+      await capture(`item-1101-${device}-${theme}-whole`);
+      await press(p, device, '.message-bar [data-act=fold]');
+      await until(async () => (await actsOf(topic, ids.root))?.folded === true, '1101 native Fold is kept in Core');
+      await becomes(shape, expected(true), '1101 saved folded row and Unfold glyph agree');
+      await capture(`item-1101-${device}-${theme}-folded`);
+      await press(p, device, '.message-bar [data-act=fold]');
+      await until(async () => (await actsOf(topic, ids.root))?.folded === false, '1101 native Unfold is kept in Core');
+      await becomes(shape, expected(false), '1101 Unfold shows the whole head rather than another temporary row');
+      assert.equal((await actsOf(topic, ids.root)).fold_revision, before + 2);
+      assert.equal((await actsOf(topic, ids.root, other))?.folded ?? false, false, 'another reader stays unchanged');
+      if (device === 'laptop') {
+        await keyTo(p, ids.root); await typeX(p);
+        await until(async () => (await actsOf(topic, ids.root))?.folded === true, '1101 native x folds the shown head');
+        await typeX(p);
+        await until(async () => (await actsOf(topic, ids.root))?.folded === false, '1101 native x unfolds the shown head');
+        await until(async () => (await shape()).whole && !(await shape()).earlier, '1101 keys also restore the whole head');
+      }
+      const kept = await actsOf(topic, ids.root), origin = await p.evaluate('performance.timeOrigin');
+      await p.send('Page.reload');
+      await until(() => p.evaluate(`performance.timeOrigin!==${origin}&&document.body?.dataset.ready==='true'&&Boolean(document.querySelector(${JSON.stringify(card(ids.root))}))`).catch(() => false), '1101 reload is a new ready document');
+      await showHead(); await light(p, device, ids.root);
+      await becomes(shape, expected(false), '1101 fresh document reads the saved unfold without a temporary head row');
+      assert.equal((await actsOf(topic, ids.root)).fold_revision, kept.fold_revision, 'reload/open/read adds no personal fold');
+      assert.equal(await readerOn(p), null, 'no fold action opens the Reader');
+      await capture(`item-1101-${device}-${theme}-reloaded`);
+      observations.push({name:'item1101 kept fold',engine,device,theme,before,kept,shape:await shape()});
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+  }
 
   await check('reading stacks an open dossier of more than seven shows its newest seven and one row for the earlier ones; opened, each is a row reachable in place with its image, nothing is sent, and a reload closes the row with the order, name and folds Core holds unchanged', async () => {
     for (const device of Object.keys(DEVICES)) {
@@ -7659,20 +7729,20 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         const p = await open(`${topic}-${width}`, device, topic, ids.root);
         if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
         const at = `${device} ${width}px`, order = await stacks(p, ids);
-        await dossierOpen(p, device, ids.root);
+        if (await p.evaluate(`document.querySelector(${JSON.stringify(`#messages .reply-stack[data-stack="${ids.root}"]`)}).dataset.fold!=='open'`)) await dossierOpen(p, device, ids.root);
         await becomes(() => earlierLook(p, ids), { fold: 'open', button: '8 earlier messages', messages: closedLook }, `${at}: open, the newest seven are cards and one row stands for the eight before them`);
         // The row: one short line, as wide as its words, 44px to touch, saying what a press does, nothing sideways.
         const row = await p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(earlierButton(ids.root))}),r=b.getBoundingClientRect(),s=b.closest('.reply-stack').getBoundingClientRect();
           return {height:r.height,narrow:r.width<s.width*.75,inside:r.left>=s.left&&r.right<=s.right,title:b.title,tag:b.tagName,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
         assert.ok(row.height >= 44 && row.narrow && row.inside && row.tag === 'BUTTON', `${at}: the row is one short line, 44px to touch: ${JSON.stringify(row)}`);
-        assert.equal(row.title, 'Show all 8 as rows, for this visit', `${at}: its tooltip says what a press does`);
+        assert.equal(row.title, 'Show all 8, for this visit', `${at}: its tooltip says what a press does`);
         assert.equal(row.sideways, false, `${at}: nothing scrolls sideways`);
         for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-earlier-closed-${device}-${width}-${theme}`); }
         await dossierTheme(p, 'light');
         const sent = await p.evaluate('window.sent.length');
         await centre(p, earlierButton(ids.root)); await press(p, device, earlierButton(ids.root));
         await becomes(() => earlierLook(p, ids), { fold: 'open', button: null, messages: openedLook }, `${at}: pressed, every earlier message is a row in its place, the reader's fold its own row, the seven as they were`);
-        assert.equal(await said(p), '8 earlier messages show as rows, for this visit', `${at}: a screen reader hears it`);
+        assert.equal(await said(p), '8 earlier messages are shown, for this visit', `${at}: a screen reader hears it`);
         const rows = await p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},h=k=>document.querySelector('#messages .message-card[data-id="'+ids[k]+'"]').getBoundingClientRect().height;
           return {row:h('r3'),folded:h('r5'),words:document.querySelector('#messages .message-card[data-id="'+ids.r3+'"] > .message-earlier > .folded-words').textContent,
             author:document.querySelector('#messages .message-card[data-id="'+ids.r3+'"] > .message-earlier > .folded-author').textContent,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
@@ -7684,13 +7754,28 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await centre(p, card(ids.r3)); await press(p, device, card(ids.r3));
         await becomes(async () => (await earlierLook(p, ids)).messages, openedLook.map(m => (m === 'r3:row' ? 'r3:card' : m)), `${at}: a press on a row shows that message whole, in its place`);
         await until(() => p.evaluate(`(()=>{const h=document.querySelector(${JSON.stringify(card(ids.r3) + ' > .card-images > .card-image')}),i=h?.querySelector('img');return Boolean(h&&h.getAttribute('aria-label')==='Image: screen.png'&&i&&!i.hidden&&i.naturalWidth>0)})()`), `${at}: its image shows in the card`);
-        await openReader(p, device, ids.r3, 'Reply 3 about the cabin.');
+        // The current card door opens its reply first (907); a second body
+        // press opens the Reader with that same writing. Keep the Reader and
+        // image assertions, using that native door instead of the retired
+        // Return-to-Reader shortcut.
+        await centre(p, words(ids.r3)); await press(p, device, words(ids.r3));
+        await until(() => p.evaluate(`Boolean(document.getElementById(${JSON.stringify(`reply-${ids.r3}-writing-body`)})?.getClientRects().length)`), `${at}: the card reply opens first`);
+        await press(p, device, words(ids.r3));
+        // Agent replies now keep their required basis prefix in Core. Check
+        // that exact source and its body passage, rather than assuming the
+        // rendered source starts with the reply instead of that prefix.
+        const prefix = `> ${earlierReplyReason}\n\n`, reply = 'Reply 3 about the cabin.';
+        const source = await view('source', { source_ref: { kind: 'message', id: ids.r3 } });
+        assert.equal(source.body, prefix + reply, `${at}: Core keeps the exact reason and reply`);
+        const readerPassage = () => p.evaluate(`(()=>{if(!document.querySelector('#reader').open)return null;const p=[...document.querySelector('#source-body').children].filter(e=>e.dataset.start!==undefined).at(-1);
+          return p?{start:Number(p.dataset.start),end:Number(p.dataset.end),words:p.textContent}:null})()`);
+        await becomes(readerPassage, { start: prefix.length, end: prefix.length + reply.length, words: reply }, `${at}: the second body press opens the exact reply passage in Reader`);
         await until(() => p.evaluate(`[...document.querySelectorAll('#source-attachments button')].some(b=>b.textContent==='Open screen.png')`), `${at}: the Reader opens on it and offers its image's Open`);
-        assert.equal(await readerOn(p), 'Reply 3 about the cabin.', `${at}: the Reader shows that message`);
+        assert.equal(await p.evaluate(`document.querySelector('#source-body > .reply-basis-mark').getAttribute('aria-label')`), `Reply without a quote: ${earlierReplyReason}`, `${at}: Reader retains the exact basis beside that message`);
         await closeReader(p, device);
-        // The first message too: a press on its row under the tab shows it whole.
-        await centre(p, `${card(ids.root)} > .message-earlier`); await press(p, device, `${card(ids.root)} > .message-earlier`);
-        await becomes(async () => (await earlierLook(p, ids)).messages[0], 'root:card', `${at}: a press on the first message's row shows it whole under its tab`);
+        // 1101: the first message is already whole under its tab. Only its
+        // saved personal fold can replace those words with a folded row.
+        await becomes(async () => (await earlierLook(p, ids)).messages[0], 'root:card', `${at}: the first message stays whole under its tab`);
         assert.deepEqual(await actsSent(p, sent), [], `${at}: opening the row, and showing messages whole, sends nothing`);
         assert.equal(await p.evaluate(`document.querySelector('#messages .stack-more')?.isConnected ?? false`), false, `${at}: nothing went below More`);
         // A reload: the row is closed again, and the order, the name and the fold are as Core holds them.
@@ -7699,7 +7784,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await p.send('Page.reload');
         await until(() => p.evaluate(`(window.documentOrigin??=performance.timeOrigin) !== ${origin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(card(ids.r14))}))`).catch(() => false), `${at}: the page loads again, a new document`);
         await becomes(() => stacks(p, ids), order, `${at}: after a reload the stacks keep their order`);
-        await dossierOpen(p, device, ids.root);
+        if (await p.evaluate(`document.querySelector(${JSON.stringify(`#messages .reply-stack[data-stack="${ids.root}"]`)}).dataset.fold!=='open'`)) await dossierOpen(p, device, ids.root);
         await becomes(() => earlierLook(p, ids), { fold: 'open', button: '8 earlier messages', messages: closedLook }, `${at}: after a reload, open, the row is closed again`);
         assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root) + ' .stack-name')}).textContent`), 'Cabin week', `${at}: the dossier keeps its name`);
         await press(p, device, earlierButton(ids.root));

@@ -300,7 +300,7 @@ export class StackFeed {
         }
         this.remember(() => { setLevel(this.state, stack, was); this.arrange(); });
       },
-      earlier: (stack, count) => this.say(`${count === 1 ? 'The earlier message shows' : `${count} earlier messages show`} as rows, for this visit`),
+      earlier: (stack, count) => this.say(`${count === 1 ? 'The earlier message is' : `${count} earlier messages are`} shown, for this visit`),
       arranged: () => this.arranged(), acted: id => this.acted(id), newest: (stack, mark) => this.newest(stack, mark),
       // Reply targets the newest loaded message; the menu remains the dossier's.
       reply: stack => {
