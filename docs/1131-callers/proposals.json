@@ -1,0 +1,26 @@
+[
+  {
+    "source": "warp-template987.py",
+    "source_sha256": "ea5277d4a150cc35e916c097a5d608b25c3f998364f6da0f068c920be5b0c131",
+    "proposed_sha256": "d7f6f406e63e30df0e48e2e0be32e30332630c29af6c1540078fa483f53799aa",
+    "patch_sha256": "4e40cdc686c2c82f946b7a341c5606e6dd65fa867dde62f0ba106b3346b13f07"
+  },
+  {
+    "source": "warp-last-live356-land.py",
+    "source_sha256": "e5434d5421dde88491451d503e17b03088ac0d1d899629ad76a71f6cc6576b52",
+    "proposed_sha256": "9a3009dafc28d14966675b8a82532df8f5a06ca3b4201640441423a04d2c7b6b",
+    "patch_sha256": "86167f5302deae7afe616457b9170f58783a31c2c9fc4f454d3ec1ab1bcf55ed"
+  },
+  {
+    "source": "warp-current357-land.py",
+    "source_sha256": "e5434d5421dde88491451d503e17b03088ac0d1d899629ad76a71f6cc6576b52",
+    "proposed_sha256": "9a3009dafc28d14966675b8a82532df8f5a06ca3b4201640441423a04d2c7b6b",
+    "patch_sha256": "95e5429c7135edc26c5be347215cdfb35fceb782bdf0321f4fd50497869b0731"
+  },
+  {
+    "source": "fable-land-with938.py",
+    "source_sha256": "1306ad3846fd9ea8ee0553c82eb420c45aeb8c092b4f3d2873d31476e008ad1a",
+    "proposed_sha256": "5043f07389ab0a99f8326a230dbb0669374b67855e139e00382ac360751902de",
+    "patch_sha256": "f825a806a7324c91a695bbbd7a6628a7d219983de182267e8db476fb81ed33cd"
+  }
+]

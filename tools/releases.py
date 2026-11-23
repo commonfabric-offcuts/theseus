@@ -363,6 +363,8 @@ def train_measurements(train):
         result["train"]["base_move"] = train["base_move"]
     if "scoped" in train:
         result["scoped"] = train["scoped"]
+    if "deterministic" in train:
+        result["train"]["deterministic"] = train["deterministic"]
     return result
 
 

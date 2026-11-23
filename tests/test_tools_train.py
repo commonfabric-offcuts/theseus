@@ -481,15 +481,20 @@ class DeployRefusesJudgedFirst(TrainCase):
         self.github = self.hub(runs=[listed(101, self.head)],
                                  checks=[listed(201, self.head, conclusion="failure", name="App"), listed(202, self.head, name="Verdict")])
 
-    def test_a_judged_first_train_with_its_completed_judgment_is_planned_with_each_conclusion_as_it_is(self):
-        out = self.trained(self.host(), self.train(self.merged, [self.head], kind="judged-first", judgment=self.judgment),
-                           self.merged, self.github)
-        judgment = self.evidence_of("02-release")["record"]["measurements"]["train"]["judgment"]
+    def test_legacy_judgment_remains_readable_but_does_not_authorize_1131_admission(self):
+        path = self.train(self.merged, [self.head], kind="judged-first", judgment=self.judgment)
+        record = deploy.train_check.judge(path, self.merged, self.L, BRANCH, REPOSITORY,
+            lambda *args: subprocess.run(['git', '-C', str(self.live)] + list(args), capture_output=True, text=True), self.github)
+        judgment = record['judgment']
         self.assertEqual(judgment["head"], self.head)
         self.assertEqual([(found["kind"], found["id"], found["conclusion"]) for found in judgment["producer_runs"] + judgment["verdict_checks"]],
                          [("run", 101, "success"), ("check", 201, "failure"), ("check", 202, "success")])
         self.assertEqual(judgment["audit"], "m-audit")
-        self.assertIn("judged at %s: run 101 success, check 201 failure, check 202 success (audit m-audit)" % self.head[:12], out)
+        self.assertIn("judged at %s: run 101 success, check 201 failure, check 202 success (audit m-audit)" % self.head[:12],
+                      deploy.train_check.said(record))
+        with self.assertRaisesRegex(deploy.Refused, 'version1131'):
+            self.deployed(self.host(), path, self.merged, self.github)
+        self.assertFalse((self.evidence/'00-plan.json').exists())
 
     def test_a_judged_first_train_without_its_judgment_is_refused(self):
         self.refused_train(self.train(self.merged, [self.head], kind="judged-first"), self.merged, self.github,

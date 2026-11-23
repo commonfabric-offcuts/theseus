@@ -785,23 +785,15 @@ def take_train(config, sha, evidence, train, known_reds, github):
     return trained
 
 
-def admit(config, candidate, *, started_landing=False, trained=None, producer=None, github=None):
+def admit(config, candidate, *, started_landing=False, trained=None, producer=None, github=None, judgment=None):
     """987: callable before a launcher boundary/merge or a human hosted dispatch."""
     try:
         producer = gauntlet_admission.producer_selectors(producer)
         if trained is not None and trained.get('kind') == 'judged-first':
             judgment = trained.get('judgment')
             require(isinstance(judgment, dict), 'Judged admission needs its judgment')
-            producer = {'pr': trained['pr']}
-            for field, selector in (('producer_runs', 'run'), ('verdict_checks', 'check')):
-                values = judgment.get(field)
-                require(isinstance(values, list), 'Judged admission needs ' + field)
-                # Train files keep IDs; judge() expands them to listed records.
-                # A controller rerun adds a check without removing its predecessor.
-                numbers = [value.get('id') if isinstance(value, dict) else value for value in values]
-                producer[selector] = max(train_check.ids(numbers, field))
         return gauntlet_admission.admit(config, candidate, run, started_landing=started_landing,
-                                       producer=producer, github=github)
+                                       producer=producer, github=github, judgment=judgment)
     except (gauntlet_admission.Refused, train_check.Refused, OSError, ValueError, TypeError, KeyError) as error:
         raise Refused(str(error))
 
@@ -1158,11 +1150,20 @@ def main(argv=None):
         parser.add_argument("--producer-run", type=int)
         parser.add_argument("--verdict-check", type=int)
         parser.add_argument("--pr", type=int)
+        parser.add_argument("--judgment", type=Path, help="absolute version1131 judgment JSON")
         options = parser.parse_args(argv[1:])
         try:
             selectors = {'run': options.producer_run, 'check': options.verdict_check, 'pr': options.pr}
+            judgment = None
+            if options.judgment is not None:
+                require(options.judgment.is_absolute(), 'The judgment path must be absolute')
+                try:
+                    judgment = train_check.base_move.loads(options.judgment.read_text())
+                except (OSError, ValueError, train_check.base_move.Refused) as error:
+                    raise Refused('The judgment could not be read: ' + str(error))
             answer = admit(load_config(options.config), options.candidate,
-                           producer=selectors if any(v is not None for v in selectors.values()) else None)
+                           producer=selectors if any(v is not None for v in selectors.values()) else None,
+                           judgment=judgment)
         except Refused as error:
             print("refused: %s" % error, file=sys.stderr)
             return 1

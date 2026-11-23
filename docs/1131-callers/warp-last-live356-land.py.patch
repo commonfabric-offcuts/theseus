@@ -1,0 +1,36 @@
+--- warp-last-live356-land.py
++++ warp-last-live356-land.py
+@@ -82,7 +82,9 @@
+     kept=train.guarded(changed); additions=[]
+     assert len(changed)==FILES, len(changed)
+     if KIND == 'ordinary': assert not kept, kept
+-    else: assert KIND == 'judged-first' and JUDGMENT and set(JUDGMENT) == {'producer_runs', 'verdict_checks', 'audit'}, ('judged-first needs its judgment', kept)
++    else:
++        assert KIND == 'judged-first', ('judged-first needs its deterministic evidence', kept)
++        train.deterministic_admission.shape(JUDGMENT)
+     spec=importlib.util.spec_from_file_location('ship_warp',SHIP)
+     ship=importlib.util.module_from_spec(spec);spec.loader.exec_module(ship)
+     current=item('ITEM-PRELAND.json');assert (current.get('piece') or {}).get('id')==PIECE, current.get('piece')
+@@ -95,7 +97,7 @@
+          'fetch','--no-tags',str(WT),SOURCE])
+     host_policy=deployment.runner_policy(config,SOURCE)
+     # 987: the admission read before any boundary, merge or allocation; refuses a judged candidate while an ordinary approved head is unshipped.
+-    deployment.admit(config, SOURCE)
++    deployment.admit(config, SOURCE, judgment=JUDGMENT)
+     save('RUNNER-POLICY-PREMERGE.json',host_policy)
+     print('RUNNER POLICY',host_policy['kind'],host_policy['reason'],flush=True)
+     if PREFLIGHT:
+@@ -119,12 +121,7 @@
+                '--subject',TITLE,'--body-file',str(OUT/'MERGE-BODY.txt')]),flush=True)
+     pr=json.loads(run(['gh','pr','view',str(PR),'--repo','commonfabric-offcuts/theseus','--json','number,state,headRefOid,baseRefName,mergeCommit']))
+     save('MERGED.json',pr);assert pr['state']=='MERGED' and pr['headRefOid']==SOURCE
+-    # The merge's own push run is the next judged head's control; the carry PR's pull_request run is nobody's and
+-    # starves the shared runners, so cancel the carry PR's own checks run once the PR is merged (event pull_request, head SOURCE).
+-    try:
+-        for rid in run(['gh','run','list','--repo','commonfabric-offcuts/theseus','--commit',SOURCE,'--json','databaseId,status,event','--jq','.[]|select(.event=="pull_request" and .status!="completed")|.databaseId']).split():
+-            subprocess.run(['gh','run','cancel',rid,'--repo','commonfabric-offcuts/theseus'],capture_output=True)
+-    except Exception as error: print('carry PR run not cancelled:', str(error)[:200], flush=True)
++    # Every push and release keeps its producer; it reports independently of admission.
+     merge=pr['mergeCommit']['oid'];git('-c','core.hooksPath=/dev/null','fetch','--no-tags','https://github.com/commonfabric-offcuts/theseus.git',merge)
+     run(['git','-C',str(LIVE),'-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false','fetch','--no-tags','https://github.com/commonfabric-offcuts/theseus.git',merge])
+     assert git('show','-s','--format=%P',merge).split()==[BASE,SOURCE]

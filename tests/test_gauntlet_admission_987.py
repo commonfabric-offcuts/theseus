@@ -81,9 +81,10 @@ else:
         self.assertFalse(deploy.admit(self.config,self.ordinary)['judged'])
         self.assertFalse((self.root/'reads').exists())
 
-    def test_987_judged_only_and_unapproved_rows_are_not_ordinary_blockers(self):
+    def test_987_judged_only_and_unapproved_rows_still_need_explicit_1131_evidence(self):
         self.pages({0:self.page([self.piece(44,True),self.piece(45)], [44])})
-        self.assertTrue(deploy.admit(self.config,self.head)['judged'])
+        with self.assertRaisesRegex(deploy.Refused, 'version1131'):
+            deploy.admit(self.config,self.head)
 
     def test_987_unclassified_approved_row_refuses_explicitly(self):
         piece=self.piece(42);piece['freeze']=None
@@ -151,7 +152,10 @@ else:
         self.assertEqual(effect.read_text(),'dispatch,merge,combine,stop')
 
     def test_987_second_admission_reads_new_blocker_at_effect_boundary(self):
-        deploy.admit(self.config,self.head)
+        # Bare legacy admission no longer authorizes a judged head. A later
+        # approved ordinary source must still be read and named independently.
+        with self.assertRaisesRegex(deploy.Refused, 'version1131'):
+            deploy.admit(self.config,self.head)
         self.pages({0:self.page([self.piece(42)],[42])})
         effects=[]
         with self.assertRaises(deploy.Refused):

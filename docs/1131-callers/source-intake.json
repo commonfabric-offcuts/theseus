@@ -1,0 +1,39 @@
+{
+  "at": "2026-11-23T14:54:01.162472+00:00",
+  "guard_source": "e3aaf7bc619c81ce18bf2f8228485ac19875456c",
+  "guard_tree": "520f3a8f98de995c1f05cda55d0ebeab317d8171",
+  "source_git_object_readable_in": "/Users/commonfabric/aim-next",
+  "guard_file_pins_verified": 18,
+  "last_actual_selection": {
+    "spec": "/Users/commonfabric/.local/share/theseus/warp/land/1075-land/SPEC.json",
+    "guard_receipt": "deploy-tool-e3aaf7bc619c81ce18bf2f8228485ac19875456c-installed.json",
+    "deploy_end": "release356 at bc8f125646fb7450b1a1242f851562feb3887751, exit0"
+  },
+  "current357_spec_guard": "absent at this read; uncompleted SPEC, not selection proof",
+  "callers": [
+    {
+      "path": "/Users/commonfabric/.local/share/theseus/warp/land/land-template-987.py",
+      "copy": "/Users/commonfabric/.local/share/theseus/fable-tools/coordinator-20261117/records15245/1131-source-intake18871/warp-template987.py",
+      "bytes": 10568,
+      "sha256": "ea5277d4a150cc35e916c097a5d608b25c3f998364f6da0f068c920be5b0c131"
+    },
+    {
+      "path": "/Users/commonfabric/.local/share/theseus/warp/land/1075-land/land.py",
+      "copy": "/Users/commonfabric/.local/share/theseus/fable-tools/coordinator-20261117/records15245/1131-source-intake18871/warp-last-live356-land.py",
+      "bytes": 11802,
+      "sha256": "e5434d5421dde88491451d503e17b03088ac0d1d899629ad76a71f6cc6576b52"
+    },
+    {
+      "path": "/Users/commonfabric/.local/share/theseus/warp/land/train-357-land/land.py",
+      "copy": "/Users/commonfabric/.local/share/theseus/fable-tools/coordinator-20261117/records15245/1131-source-intake18871/warp-current357-land.py",
+      "bytes": 11802,
+      "sha256": "e5434d5421dde88491451d503e17b03088ac0d1d899629ad76a71f6cc6576b52"
+    },
+    {
+      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/coordinator-20261117/host-guard14228/land-with-938.py",
+      "copy": "/Users/commonfabric/.local/share/theseus/fable-tools/coordinator-20261117/records15245/1131-source-intake18871/fable-land-with938.py",
+      "bytes": 9627,
+      "sha256": "1306ad3846fd9ea8ee0553c82eb420c45aeb8c092b4f3d2873d31476e008ad1a"
+    }
+  ]
+}

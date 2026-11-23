@@ -30,7 +30,7 @@ import re
 import subprocess
 from typing import Protocol
 
-from tools import base_move, ci_known_reds as ci, release_check, ci_input_reads
+from tools import base_move, ci_known_reds as ci, release_check, ci_input_reads, deterministic_admission
 from aim_next.judgment import DEPLOY_TOOL, CONTROLLER, MIGRATIONS, SHA, guarded
 
 KEYS = ("pr", "merge_commit", "items", "merged_tree", "kind", "hosted_run", "judgment")
@@ -119,7 +119,14 @@ def load(path):
     if train["hosted_run"] is not None and not _number(train["hosted_run"]):
         raise Refused("hosted_run is the merged head's run id, or null until GitHub lists it, not %r" % (train["hosted_run"],))
     judgment = train["judgment"]
-    if judgment is not None:
+    if deterministic_admission.selected(judgment):
+        try:
+            deterministic_admission.shape(judgment)
+        except deterministic_admission.Refused as error:
+            raise Refused(str(error))
+        if train['kind'] != 'judged-first' or 'base_move' in train or 'scoped' in train:
+            raise Refused('version1131 evidence is a judged-first carry, without legacy exceptions')
+    elif judgment is not None:
         if not isinstance(judgment, dict) or set(judgment) != set(JUDGMENT_FIELDS):
             raise Refused("the judgment is null or a JSON object with exactly %s" % ", ".join(JUDGMENT_FIELDS))
         ids(judgment["producer_runs"], "producer_runs")
@@ -291,6 +298,12 @@ def judge(path, sha, live, release_branch, repository, git, github):
                           "their judged run before the merge; make the train judged-first" % ", ".join(kept[:5]))
         judgment = "pending" if train["judgment"] is None else on_commit(
             github, repository, train["judgment"], merge, "the merge commit")
+    elif deterministic_admission.selected(train['judgment']):
+        try:
+            deterministic = deterministic_admission.validate(train['judgment'], git, live, merge)
+        except deterministic_admission.Refused as error:
+            raise Refused(str(error))
+        judgment = train['judgment']
     else:
         if train["judgment"] is None:
             raise Refused("a judged-first train comes with its judgment: the runs and checks of its judged run, and the audit")
@@ -319,6 +332,8 @@ def judge(path, sha, live, release_branch, repository, git, github):
     result = {"file": str(path), "pr": train["pr"], "kind": train["kind"], "merge_commit": merge, "merged_tree": tree,
             "release_branch": release_branch, "live": live, "items": train["items"], "hosted_run": hosted,
             "guarded_changes": kept, "judgment": judgment}
+    if deterministic_admission.selected(train['judgment']):
+        result['deterministic'] = deterministic
     if "base_move" in train:
         result["base_move"] = moved
     if "scoped" in train:
@@ -349,6 +364,11 @@ def said(train):
     judgment = train["judgment"]
     if judgment == "pending":
         words = "the hosted judgment is pending (PR #%d); attach it with tools/releases.py attach-judgment" % train["pr"]
+    elif deterministic_admission.selected(judgment):
+        evidence = train['deterministic']
+        words = ('deterministic carry %s, node %s, Core/migrations PASS, browser cells %s (audit %s)' %
+                 (evidence['head'][:12], evidence['node_comparison']['carry']['run'],
+                  ', '.join(evidence['browser_cells']) or 'none: no web change', judgment['audit']['message']))
     else:
         conclusions = ", ".join("%s %d %s" % (found["kind"], found["id"], found["conclusion"])
                                 for found in judgment["producer_runs"] + judgment["verdict_checks"])

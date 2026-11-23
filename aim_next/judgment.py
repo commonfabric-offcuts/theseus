@@ -12,7 +12,7 @@ from pathlib import Path
 DEPLOY_TOOL = ("tools/deploy.py", "tools/release_check.py", "tools/unit_shards.py", "tools/known_reds.py", "tools/releases.py", "tools/train.py",
                "tools/checks.py", "tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/ci-input-reads.json",
                "tools/quarantine.py", "tools/steps_for.py", "tools/base_move.py", "tools/own_case_receipt.py", "tools/continuation_envelope.py",
-               "tools/runner_runtime.py", "tools/gauntlet_admission.py", "aim_next/judgment.py")
+               "tools/runner_runtime.py", "tools/gauntlet_admission.py", "tools/deterministic_admission.py", "aim_next/judgment.py")
 CONTROLLER = ".github/"
 MIGRATIONS = ("aim_next/migrations.py",)
 SHA = re.compile(r"[0-9a-f]{40}")
