@@ -63,6 +63,8 @@ from .source_item_covers import SOURCE_COVER_SCHEMA
 from .rail_dimming import DIM_SCHEMA, DIM_DOWN, DIM_OCCUPIED
 from .hosted_seats import SEAT_SCHEMA, SEAT_DOWN, SEAT_OCCUPIED, END_SCHEMA, END_DOWN, END_OCCUPIED
 from .workspace_links import LINK_SCHEMA, LINK_DOWN, LINK_OCCUPIED
+from .hosted_seats import (SEAT_SCHEMA, SEAT_DOWN, SEAT_OCCUPIED, END_SCHEMA, END_DOWN, END_OCCUPIED,
+                           TEMPLATE_SCHEMA, TEMPLATE_DOWN, TEMPLATE_OCCUPIED)
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -243,6 +245,7 @@ STEPS = (
     ("63", "64", SEAT_SCHEMA, SEAT_DOWN, SEAT_OCCUPIED),
     ("64", "65", END_SCHEMA, END_DOWN, END_OCCUPIED),
     ("65", "66", LINK_SCHEMA, LINK_DOWN, LINK_OCCUPIED),
+    ("66", "67", TEMPLATE_SCHEMA, TEMPLATE_DOWN, TEMPLATE_OCCUPIED),
 )
 
 
