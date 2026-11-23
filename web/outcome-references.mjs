@@ -31,7 +31,7 @@ export class OutcomeReferences {
     this.items.forEach((item, index) => {
       let row = [...this.list.children].find(child => child.dataset.id === item.id);
       if (!row) {
-        row = document.createElement('button'); row.type = 'button'; row.className = 'nav-item reference'; row.dataset.id = item.id;
+        row = document.createElement('button'); row.type = 'button'; row.className = 'nav-item reference'; row.dataset.id = item.id;row.draggable=true;
         this.list.append(row);
       }
       row.textContent = item.title || 'Notebook item';
