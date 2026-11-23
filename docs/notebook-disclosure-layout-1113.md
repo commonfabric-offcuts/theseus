@@ -115,3 +115,32 @@ It is attached to Landing18394; auditor18401 verified every manifest entry,
 raw/public report correspondence, served sources and retained cleanup.
 Private fixture content and capability tokens are excluded from the commit
 and public packet. Warp owns carry/landing/runtime; Fable reviews/approves.
+
+
+Review repair18414: b7fc1c1d is unapproved. Warp's whole-Node comparison
+adds two files that pass on actual356: ui_card_menu_867.test.mjs and
+ui_card_review_r4_attack_867.test.mjs. Their adapters have no defaultView;
+the new deferred fallback reads its viewport without checking the window.
+This is a new uncaught asynchronous error, not a known baseline red.
+The repair must stop measurement for a missing/detached window, cancel a
+frame through the window that scheduled it, disconnect both observers,
+and release document/font/window listeners on explicit close as well as
+parent abort. Late queued/observer/listener work must not read geometry.
+Add focused lifecycle controls; retain the two real integration failures,
+then the whole Node comparison must add no failing file versus exact356.
+No browser window or native/performance remeasurement is requested.
+
+The review reproduction on unchanged b7fc1c1d gave148 passed/2 failed/direct1,
+with both867 files emitting the reported innerHeight asynchronous exception.
+Four new lifecycle checks against that source gave7 passed/4 failed/direct1:
+queued fallback and intersection measurement after detachment, cancellation
+through the original window, and real event subscriptions after explicit
+close. The correction gives178 passed/0 failed/direct0 across these11 new
+scheduling/lifecycle checks, all19 existing1059 checks, and the two unchanged
+867 integration files. Existing867 test bodies and1059 assertions are intact.
+Whole-Node comparison against cached exact356 is the remaining refreeze check.
+Its raw output and direct exit belong to the immutable head's review packet.
+
+The earlier readiness/typing observations describe the7955-byte controller
+at b7fc1c1d, before this lifecycle-only repair; they are not remeasurements of
+the repaired source. No further1113 native window is reserved under18416.

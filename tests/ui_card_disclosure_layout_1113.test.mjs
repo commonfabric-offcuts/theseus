@@ -7,6 +7,9 @@ import {miniDocument} from './fixtures/mini_dom.mjs';
 function fixture({intersection=true,count=3}={}) {
   const doc=miniDocument(),frames=new Map(),events=[];let serial=0;
   doc.body=doc.byId('body');doc.fonts=new EventTarget();doc.defaultView=new EventTarget();
+  const documentEvents=new EventTarget();
+  doc.addEventListener=(...args)=>documentEvents.addEventListener(...args);
+  doc.dispatchEvent=(...args)=>documentEvents.dispatchEvent(...args);
   Object.assign(doc.defaultView,{innerWidth:1000,innerHeight:800,
     requestAnimationFrame(callback){frames.set(++serial,callback);return serial;},
     cancelAnimationFrame(id){frames.delete(id);}});
@@ -105,4 +108,30 @@ test('1113 fallback batches viewport reads and keeps an off-screen expansion cho
   assert.ok(f.events.filter(([,index,detail])=>index===2).every(([, ,detail])=>detail==='viewport'));
   const firstWrite=f.events.findIndex(([kind])=>kind==='write');
   assert.equal(f.events.slice(0,firstWrite).filter(([, ,detail])=>detail==='viewport').length,3);f.abort.abort();
+});
+
+for(const intersection of [false,true])test(`1113 a queued measurement stops when its document loses its window, intersection=${intersection}`,()=>{
+  const f=fixture({intersection});f.controller.mount();if(intersection)f.visible(0);
+  const stale=[...f.frames.values()][0];assert.ok(stale);
+  f.doc.defaultView=null;
+  assert.doesNotThrow(()=>f.flush());assert.deepEqual(f.events,[],'detached document has no geometry work');
+  f.controller.resize.callback([{target:f.entries[0].words}]);
+  f.controller.intersection?.callback([{target:f.entries[0].words,isIntersecting:true}]);stale();
+  assert.deepEqual(f.events,[]);assert.equal(f.frames.size,0);assert.equal(f.controller.closed,true);
+  assert.equal(f.controller.resize.targets.size,0);assert.equal(f.controller.intersection?.targets.size??0,0);
+  f.abort.abort();
+});
+test('1113 close cancels a detached document frame through the window that scheduled it',()=>{
+  const f=fixture({intersection:false});f.controller.mount();assert.equal(f.frames.size,1);
+  const stale=[...f.frames.values()][0];f.doc.defaultView=null;f.controller.close();
+  assert.equal(f.frames.size,0,'the original window must actually cancel its queued frame');
+  stale();assert.deepEqual(f.events,[]);assert.equal(f.abort.signal.aborted,false);f.abort.abort();
+});
+test('1113 explicit close releases document scroll, window resize and font listeners before parent abort',()=>{
+  const f=fixture({intersection:false}),view=f.doc.defaultView;let calls=0;
+  f.controller.refresh=()=>calls++;
+  const dispatch=()=>{f.doc.dispatchEvent(new Event('scroll'));view.dispatchEvent(new Event('resize'));f.doc.fonts.dispatchEvent(new Event('loadingdone'));};
+  dispatch();assert.equal(calls,3,'all three actual EventTarget subscriptions were installed');
+  f.controller.close();assert.equal(f.abort.signal.aborted,false);calls=0;dispatch();
+  assert.equal(calls,0,'explicit close must remove listeners without waiting on the parent');f.abort.abort();
 });
