@@ -43,3 +43,15 @@ owns the private slot at intake (17742); no browser or HTTP fixture starts
 until actual cleanup/FREE, fresh resources and Page6's own INUSE notice.
 Retain screenshots, exact source maps, failures and Browser.close/fixture/PID/
 profile/TCP cleanup. No prior native evidence transfers to this change.
+
+Native construction uses the current fixture's required divergence and reply
+basis metadata. The earlier-message scenario ensures the dossier is open
+instead of toggling an already-open one closed, selects its real head past
+the cover sheet, and uses the current card-reply/second-body-press Reader
+door. Its exact kept reason/body, displayed reply passage, image, order,
+no-fold-write and reload assertions stay separate. These setup corrections
+are retained with their failed attempts; they change no product policy.
+Screenshots wait for the actual finite animations to finish and fold ghosts
+to leave. The 1101 cases cover 1280/390 and both themes; the existing earlier
+scenario also covers 375/320. Runtime results, old-owner controls and cleanup
+receipts belong to the evidence packet, not to this declaration of coverage.
