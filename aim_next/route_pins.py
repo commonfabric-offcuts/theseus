@@ -156,7 +156,13 @@ class RoutePins:
 
         return self._effect(guard, action)
 
+    def resolve_hosted_route(self, actor_id, destination):
+        return self._read_route_pin(actor_id, destination, recovery=True)
+
     def read_route_pin(self, actor_id, destination):
+        return self._read_route_pin(actor_id, destination)
+
+    def _read_route_pin(self, actor_id, destination, recovery=False):
         """Compare one pin and close before returning; grants no dispatch lease.
 
         Use the returned stored codex_home string for the eventual child.
@@ -179,7 +185,9 @@ class RoutePins:
                     fence.verify()
                     self._check_instance(db)
                     self._pin_actor(db, actor_id)
-                    pin = _stored(db, key, expected)
+                    pin = _stored(db, key, None if recovery else expected)
+                    if recovery and pin != expected:
+                        pin = self._resolve_recovered_pin(db, actor_id, expected, pin)
                     if pin is None:
                         raise RoutePinError("ROUTE_PIN_MISSING", "Explicit provisioning is required for this recipient binding")
                     return pin

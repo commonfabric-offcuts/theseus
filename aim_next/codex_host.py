@@ -13,6 +13,7 @@ from the response or notification it waits for.
 import argparse
 from datetime import datetime, timezone
 import errno
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -421,6 +422,16 @@ def _broker_endpoint(config, endpoint=None):
     return '/private/tmp/theseus-provision-' + hashlib.sha256(config.profile_path.encode()).hexdigest()[:16] + '.sock'
 
 
+def recovery_fingerprint(config):
+    # Ephemeral bridge sockets are intentionally excluded; policy/settings,
+    # selected paths and authority must remain the same across the streak.
+    values = {name:getattr(config, name) for name in (
+        'profile_path', 'cli', 'codex_executable', 'cwd', 'model', 'writable_roots',
+        'permission_mode', 'reasoning_effort', 'instructions', 'protected_homes')}
+    values['binding'] = broker_routes.profile_binding(config.profile)
+    return hashlib.sha256(json.dumps(values, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
 def thread_settings(config, endpoint=None):
     """Thread-level settings, identical on thread/start (provisioning) and thread/resume (design §3.3-3.4)."""
     roots = list(config.writable_roots)
@@ -747,6 +758,9 @@ class Host:
 
     def _prepare(self, work):
         thread = work.thread
+        recovery = self.core('hosted_recovery', thread.actor, thread.config.destination, 'read', {}, recovery_fingerprint(thread.config)).get('intent')
+        if recovery is not None:
+            return self._recover_thread(work, recovery)
         if thread.status in ("systemError", "notLoaded") and not work.resumed:
             # One resume may recover the thread; a second failure is unavailable.
             work.resumed = True
@@ -819,6 +833,19 @@ class Host:
             params["expectedTurnId"] = expected
             self._request(work, "turn/steer", params, lambda result, error: self._steered(work, expected, result, error))
         else:
+            # Observe before turn/start: a CLI may finish before its answer.
+            # A legacy executable cannot establish a fully observed zero.
+            capable = False
+            try:
+                probe = subprocess.run([config.cli, '--hosted-activity-version'],
+                                       stdin=subprocess.DEVNULL, capture_output=True, timeout=2)
+                capable = probe.returncode == 0 and probe.stdout == b'1\n'
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            observation = self.core('begin_hosted_observation', thread.actor, config.destination,
+                                    work.claim['claim_token'], capable, recovery_fingerprint(config))
+            if observation.get('status') != 'observed':
+                return self._settle(work, 'unavailable', None, 'observation_stale')
             # Sent on every start, so nothing depends on overrides persisting (P2).
             params.update(approvalPolicy="never")
             if config.permission_mode == 'full':
@@ -828,6 +855,102 @@ class Host:
             if config.reasoning_effort is not None:
                 params["effort"] = config.reasoning_effort
             self._request(work, "turn/start", params, lambda result, error: self._started(work, result, error))
+
+    def _recover_thread(self, work, intent):
+        thread, config = work.thread, work.thread.config
+        identity = {'intent_id':intent['id']}
+        def record(action, extra=None):
+            return self.core('hosted_recovery', thread.actor, config.destination, action,
+                             dict(identity, **(extra or {})), recovery_fingerprint(config)).get('intent')
+        def unavailable(reason):
+            self.log.write('recovery_waits', actor=thread.actor, intent=intent['id'], reason=reason)
+            return self._settle(work, 'unavailable', None, reason)
+        def activate():
+            if work.abandoned:
+                return unavailable('abandoned')
+            if config.permission_mode != 'full' and any(
+                    other is not thread and other.home == thread.home and self._control_busy(other)
+                    for other in self.threads.values()):
+                return unavailable('recovery_home_busy')
+            committed = record('activate')
+            if committed is None or committed['phase'] != 'committed':
+                return unavailable('recovery_cancelled')
+            return adopt(committed)
+        def adopt(committed):
+            new_config = replace(config, destination=committed['new'])
+            new_thread = HostedThread(thread.actor, new_config)
+            # Keep native history; only retire the old context from dispatch.
+            if thread.bridge is not None:
+                thread.bridge.close()
+                thread.bridge = None
+            self.threads.pop(thread.id)
+            self.threads[new_thread.id] = new_thread
+            work.thread = new_thread
+            self.log.write('thread_replaced', actor=thread.actor, old_thread=thread.id,
+                           new_thread=new_thread.id, intent=intent['id'], turns=committed['turns'])
+            # Named workspace permissions include the private socket. Rotate
+            # that socket and its child launch policy only with this home idle;
+            # another seat's in-flight turn is never interrupted for recovery.
+            if config.permission_mode != 'full' and thread.home in self.children:
+                self._end_child(self.children[thread.home])
+            self.ensure_thread(new_thread, lambda: self._prepare(work),
+                               lambda reason: self._settle(work, 'unavailable', None, reason))
+        def persist():
+            def persisted(result, error):
+                if error is not None or result != {}:
+                    return unavailable('recovery_persistence_unconfirmed')
+                record('persisted')
+                activate()
+            self._request(work, 'thread/inject_items', {'threadId':intent['new']['thread_id'], 'items':[{
+                'type':'message', 'role':'developer', 'content':[{'type':'input_text', 'text':reason}]}]}, persisted)
+        reason = ('Theseus replaced the prior thread after three completed turns left deliveries pending without a CLI call. '
+                  'The actor and instructions are unchanged; the prior thread is retained. Recovery ' + intent['id'] + '.')
+        if intent['phase'] == 'committed':
+            return adopt(intent)
+        if intent['phase'] == 'cancelled':
+            return unavailable('recovery_cancelled')
+        if intent['phase'] == 'prepared':
+            return activate()
+        if intent['phase'] == 'created':
+            params = dict(thread_settings(config, thread.bridge.path if thread.bridge else None),
+                          threadId=intent['new']['thread_id'], excludeTurns=True)
+            def rechecked(result, error):
+                if (error is not None or type(result) is not dict or result.get('thread', {}).get('id') != intent['new']['thread_id']
+                        or not settings_applied(result, config.cwd, config.writable_roots,
+                        config.permission_mode, config.model, config.reasoning_effort, params.get('permissions'), thread.proxy_verified)):
+                    return unavailable('recovery_settings_unconfirmed')
+                persist()
+            return self._request(work, 'thread/resume', params, rechecked)
+        if intent['phase'] != 'ready':
+            # A lost creation answer is not permission to create another id.
+            return unavailable('recovery_creation_unconfirmed')
+        authorized = self.core('hosted_recovery', thread.actor, config.destination, 'creating', identity, recovery_fingerprint(config))
+        if not authorized.get('create'):
+            return unavailable('recovery_creation_unconfirmed')
+        params = thread_settings(config, thread.bridge.path if thread.bridge else None)
+        params['developerInstructions'] += '\n\n' + reason
+        def created(result, error):
+            if error is not None or type(result) is not dict or type(result.get('thread')) is not dict:
+                record('failed')
+                return unavailable('recovery_creation_unconfirmed')
+            new_id = result['thread'].get('id')
+            try:
+                from .route_pins import _destination
+                _destination(dict(config.destination, thread_id=new_id), resolve_root=False)
+            except (ValueError, TypeError, AttributeError):
+                record('failed')
+                return unavailable('recovery_creation_unconfirmed')
+            # Save the id before checking settings or persisting the setup item.
+            # A later callback/restart can never request another thread/start.
+            saved = record('created', {'thread_id':new_id})
+            if saved is None or saved['phase'] != 'created':
+                return unavailable('recovery_ownership_lost')
+            if not settings_applied(result, config.cwd, config.writable_roots, config.permission_mode,
+                                    config.model, config.reasoning_effort, params.get('permissions'), thread.proxy_verified):
+                return unavailable('recovery_settings_not_applied')
+            intent.update(saved)
+            persist()
+        self._request(work, 'thread/start', params, created)
 
     def _handed(self, work, turn_id, mode):
         return {"thread_id": work.thread.id, "turn_id": turn_id, "mode": mode, "client_id": work.client_id,
@@ -1096,7 +1219,7 @@ class Host:
         for row in self.core("open_hosted_turns", [thread.id]).get("turns", []):
             turn_id = row["turn_id"]
             if last is not None and last["id"] == turn_id and last["status"] in TURN_END:
-                self._end_turn(thread, turn_id, last["status"], error_code(last.get("error")) if last["status"] != "completed" else None)
+                self._end_turn(thread, turn_id, last["status"], error_code(last.get("error")) if last["status"] != "completed" else None, observed=False)
             elif not (live and last["id"] == turn_id):
                 self._end_turn(thread, turn_id, ORPHANED_IN_PROGRESS, None)
         thread.attached, thread.attaching, thread.uncertain = True, False, False
@@ -1124,14 +1247,14 @@ class Host:
                        rearmed=result.get("rearmed"))
         return True
 
-    def _end_turn(self, thread, turn_id, status, code):
+    def _end_turn(self, thread, turn_id, status, code, observed=True):
         self._lifecycle_changed()
         usage = thread.usage.pop(turn_id, {})
         calls = thread.cli_calls.pop(turn_id, None)
         if calls is not None:
             usage = dict(usage, cli_calls=calls)
         thread.interrupted.discard(turn_id)
-        result = self.core("end_hosted_turn", thread.id, turn_id, status, code, usage or None)
+        result = self.core("end_hosted_turn", thread.id, turn_id, status, code, usage or None, observed)
         if result.get("status") == "unknown":
             thread.early_ends[turn_id] = (status, code, usage or None)
         self.log.write("turn_end", thread=thread.id, turn=turn_id, status=status, error_code=code,
