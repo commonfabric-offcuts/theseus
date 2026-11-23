@@ -7,6 +7,10 @@ function fixture(t, { pageMax, create, painted } = {}) {
   const previous = globalThis.document;
   class Element {
     constructor() { this.children = []; this.dataset = {}; this.hidden = false; this.text = ''; }
+    get classList() { return { toggle: (name,on) => {
+      const names=new Set((this.className??'').split(' ').filter(Boolean));
+      if(on)names.add(name);else names.delete(name);this.className=[...names].join(' ');return Boolean(on);
+    }}; }
     // As the DOM's: setting the text replaces whatever the element held.
     get textContent() { return this.text; } set textContent(value) { this.text = value; this.children = []; }
     append(...nodes) { for (const child of nodes) { child.remove(); child.parent = this; this.children.push(child); } }

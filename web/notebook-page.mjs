@@ -12,6 +12,9 @@ import { ImagePick, paintThumb, readInTurn } from './image-pick.mjs';
 import { DRAFT_TIP } from './topic-navigation.mjs';
 import { NotebookViews } from './notebook-view.mjs';
 import { watchNotebookCaret } from './notebook-caret.mjs';
+import { AGENT_PALETTE } from './author-colors.mjs';
+import { openColorPicker } from './color-picker.mjs';
+import { paintNotebookColor } from './notebook-colors.mjs';
 import { drawnText, drawnRevision, formatWords, literalWords, composeFormattedWords } from './message-format.mjs';
 
 // The draft mark's words (docs/notebook-pages.md, "A draft page").
@@ -35,6 +38,7 @@ export function notebookMenuItems(page) {
       ...(page.menuExtras?.('first')??[]),
       {key:'text',label:'Show as text',glyph:'text',checked:page.mode==='text',act:()=>page.switchView('text')},
       {key:'cards',label:'Show as cards',glyph:'stack',checked:page.mode==='cards',act:()=>page.switchView('cards')},
+      {key:'color',label:'Set color',glyph:'palette',disabled:!canWrite(),act:()=>{if(canWrite())return page.pageColors();}},
       {key:'draft',label:'Private Draft',glyph:'draft',checked:page.drafted(),disabled:!canWrite(),act:()=>{if(canWrite())page.markDraft(!page.drafted());}},
       ...(page.menuExtras?.('beforeImage')??[]),
       {key:'image',label:'Add image…',glyph:'image',disabled:!canWrite(),act:()=>{if(canWrite())page.addImage.onclick();}},
@@ -393,6 +397,17 @@ export class NotebookPage extends DeckPage {
     if(!undoing)this.undos=[...this.undos,{kind:'draft',draft:!on}].slice(-UNDO_LIMIT);
     return true;
   }
+  setPageColor(color, undoing=false) {
+    const w=this.writing;
+    if(!w?.value||this.readOnly||w.readOnly||w.reading||w.deleted||w.closed||w.actionPending||w.actionRunning||
+        !(color===null||AGENT_PALETTE.includes(color)))return false;
+    const before=w.value.color??null;
+    if(before===color)return true;
+    if(!w.edit({color},w.capture(),this.mode))return false;
+    for(const shown of [this.textSeen,this.cardsSeen])if(shown)shown.content={...shown.content,color};
+    if(!undoing)this.undos=[...this.undos,{kind:'page-color',color:before,applied:color}].slice(-UNDO_LIMIT);
+    return true;
+  }
   // Keys and clicks share these card editing entry points. A page held in another
   // tab stays readable, but an attempted edit repeats the opening's explanation.
   act(...args) { if (refuseUnavailableWriting(this)) return false; return super.act(...args); }
@@ -424,6 +439,12 @@ export class NotebookPage extends DeckPage {
   undo() {
     if (refuseUnavailableWriting(this)) return;
     const last=this.undos.at(-1);
+    if(last?.kind==='page-color'&&!this.asking&&!this.readOnly&&(!this.editing||this.doc.activeElement!==this.editing.field)) {
+      this.undos=this.undos.slice(0,-1);
+      if((this.writing?.value?.color??null)!==last.applied||!this.setPageColor(last.color,true))
+        this.say('Nothing taken back: the page color changed since.','attention');
+      return;
+    }
     if(last?.kind!=='draft'||this.editing||this.asking||this.readOnly)return super.undo();
     this.undos=this.undos.slice(0,-1);
     if(!this.markDraft(last.draft,true))this.say('Nothing taken back: the draft mark changed since.','attention');
@@ -448,6 +469,13 @@ export class NotebookPage extends DeckPage {
   }
   key(event) {
     if (this.keyScope && !this.keyScope(event.target)) return;
+    // A completed colour choice returns focus to This page. Its own inverse
+    // remains reachable there; the Text/card editors keep their local history.
+    if(!event.defaultPrevented&&!event.isComposing&&event.keyCode!==229&&!event.shiftKey&&!event.altKey&&
+        (event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='z'&&this.undos.at(-1)?.kind==='page-color'&&
+        !event.target.closest?.('input, textarea, select, [contenteditable]')) {
+      event.preventDefault();this.undo();return;
+    }
     // Even an empty Notebook editor owns its caret arrows. Keep an unused
     // key from reaching the window's spatial fallback; leave its native
     // text action and the editor's own key handling intact.
@@ -559,6 +587,30 @@ export class NotebookPage extends DeckPage {
   }
   menuItems() { return notebookMenuItems(this); }
 
+  pageColors() {
+    const w=this.writing;
+    const writable=()=>this.writing===w&&w?.value&&!this.readOnly&&!w.readOnly&&!w.reading&&!w.deleted&&!w.closed&&!w.actionPending&&!w.actionRunning;
+    if(!writable())return;
+    if(this.editing)this.save();this.textEdited();
+    const picker=openColorPicker({anchor:this.more,agent:w.value.title||'Notebook page',palette:AGENT_PALETTE,
+      chosen:w.value.color??null,own:null,resetLabel:'No color',doc:this.doc,
+      choose:async color=>{
+        if(!writable()||!(color===null||AGENT_PALETTE.includes(color)))return {error:{message:'This page cannot be changed.'}};
+        // The same writer journals this choice with its words before transport.
+        // An uncertain earlier envelope is retried intact, then later intent is saved.
+        if(!this.setPageColor(color))return {error:{message:'This page cannot be changed.'}};
+        await w.flush();
+        if(!w.error&&!w.pending&&!w.conflict&&!w.readOnly&&w.dirty)await w.flush();
+        if(!writable()||w.value.color!==color||w.base?.content.color!==color||w.dirty||w.busy||w.conflict||w.error||w.journalError)
+          return {error:{message:w.error??'The color is kept here but not confirmed saved. Try again after saving.'}};
+        return {status:'committed'};
+      }});
+    picker?.root.classList.add('notebook-color-picker');
+    picker?.root.toggleAttribute('data-notebook-bench',Boolean(this.host.closest?.('#deck-page')));
+    this.listening.signal.addEventListener('abort',()=>picker?.close(false),{once:true});
+    return picker;
+  }
+
   async copyLink() {
     const w=this.writing,source=w?.base?.source;
     if(!source||w.closed)return;
@@ -595,6 +647,7 @@ export class NotebookPage extends DeckPage {
   }
   paintPageState() {
     const w=this.writing;if(!w)return;
+    paintNotebookColor(this.host,w.value?.color===undefined?w.base?.content.color??w.base?.source.color:w.value.color);
     this.more.disabled=Boolean(w.actionRunning||w.actionPending);this.more.hidden=!w.pageState;
     this.pageNotice.replaceChildren();
     if(w.deleted) {

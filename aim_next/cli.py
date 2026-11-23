@@ -25,6 +25,7 @@ from .topic_state import STATES
 from .profile import ProfileError, load_profile
 from .store import StoreOpenError
 from .health import report_lines
+from .colors import AGENT_COLORS
 
 
 class InvalidRequest(ValueError):
@@ -196,8 +197,8 @@ USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute
          "| archive TOPIC | unarchive TOPIC "
          "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch [--once] | retry OPERATION | releases [--limit N] | health "
          "| attachment ATTACHMENT (--message MESSAGE | --page PAGE) --out FILE "
-         "| notes SCOPE [--topic] | note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE|- "
-         "| note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE|- "
+         "| notes SCOPE [--topic] | note new SCOPE [--topic] --title TITLE [--color NAME|none] [--attach FILE]... FILE|- "
+         "| note revise ITEM --expected N [--title TITLE] [--color NAME|none] [--attach FILE]... FILE|- "
          "| note read ITEM [--revision N] | note link ITEM [--revision N] [--origin URL] "
          "| pipeline OUTCOME [--section S] | item OUTCOME N | item-edit OUTCOME N [--title T] [--size S] [--group G] [--words FILE|-] "
          "| pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off] "
@@ -424,12 +425,14 @@ def _parser():
     new.add_argument("scope")
     new.add_argument("--topic", action="store_true")
     new.add_argument("--title", required=True)
+    new.add_argument("--color", choices=AGENT_COLORS + ("none",))
     new.add_argument("--attach", action="append", default=[])
     new.add_argument("file")
     revise = page_verb("revise")
     revise.add_argument("item")
     revise.add_argument("--expected", type=int, required=True)
     revise.add_argument("--title")
+    revise.add_argument("--color", choices=AGENT_COLORS + ("none",))
     revise.add_argument("--attach", action="append", default=[])
     revise.add_argument("file")
     page_read = page_verb("read")
@@ -1290,6 +1293,7 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
             "what": "revision %d of %s was recorded" % (result["revision"], result["item_id"]), "kind": kind, "it": "it"}, check)
         differs = [name for name, same in (
             ("title", source["title"] == args["title"]), ("body", source["body"] == args["body"]),
+            ("color", "color" not in args or source.get("color") == args["color"]),
             ("attachments", [item["id"] for item in source["attachments"]] == [item["id"] for item in args["attachments"]]),
             ("evidence", source["references"] == args["references"]),
             ("revision", source["source_ref"] == result["source_ref"]), ("author", source["author"] == self.actor)) if not same]
@@ -1306,6 +1310,8 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         options = self.options
         scope = self.notebook_scope()
         args = {"title": options.title, "body": self.page_words(), "attachments": [], "references": []}
+        if options.color is not None:
+            args["color"] = None if options.color == "none" else options.color
         args["attachments"] = self.attach()
         item = "n-" + uuid.uuid4().hex
         result = self.write_page("memory.create", {"item_id": item, "owner_scope": scope}, 0, args)
@@ -1314,7 +1320,7 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
 
     def note_revise(self):
         """A new revision: the words given, keeping the title (unless --title),
-        attachments and evidence of the page as it stands. Core refuses it unless
+        attachments, evidence and colour (unless --color) as it stands. Core refuses it unless
         --expected is the revision it stands at."""
         options = self.options
         body = self.page_words()
@@ -1322,6 +1328,8 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         args = {"title": current["title"] if options.title is None else options.title, "body": body,
                 "attachments": [{"id": item["id"]} for item in current["attachments"]] + self.attach(kept=current["attachments"]),
                 "references": current["references"]}
+        if options.color is not None:
+            args["color"] = None if options.color == "none" else options.color
         result = self.write_page("memory.revise", {"item_id": options.item}, options.expected, args)
         self.out.plain('revised %s "%s" to revision %d; read back matches' % (result["item_id"], _one_line(args["title"], 60), result["revision"]))
 
@@ -1336,6 +1344,7 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         self.out.plain('%s  "%s"  revision %s of %s by %s  (%s)' % (
             source["source_ref"]["id"], _one_line(source["title"]), source["version"], source["current_revision"],
             source["author"], self.scope_words(source["owner_scope"])))
+        self.out.plain("Color: %s" % _one_line(source.get("color") or "No color"))
         self.out.plain("")
         if source.get("withheld"):
             # A draft page gives an agent its title alone (docs/notebook-pages.md, "A draft page").

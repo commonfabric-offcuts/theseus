@@ -1,0 +1,61 @@
+/* Designer1028: exact Soft Bookends/Faint Paper values, defined once per hue.
+   Public CSS SHA2563995a06ac0b8a2d44e788a164b6013068c0015c59e22d7e01083a2c5af480fcf.
+   The look owns sheet/rail/outcome material; the full page and its picker sit
+   on the bench and follow its appearance. Agent Quiet/Vivid is unchanged. */
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker) .agent-green,
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker).agent-green{--notebook-dark-fill:#0d2319;--notebook-dark-edge:#1b3a2b;--notebook-dark-hover:#12281e;--notebook-light-fill:#ecf3e2;--notebook-light-edge:#cedfc7;--notebook-light-hover:#e7eedd}
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker) .agent-blue,
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker).agent-blue{--notebook-dark-fill:#0d202e;--notebook-dark-edge:#1a364a;--notebook-dark-hover:#122533;--notebook-light-fill:#ecf1f1;--notebook-light-edge:#cddce3;--notebook-light-hover:#e7ecec}
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker) .agent-indigo,
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker).agent-indigo{--notebook-dark-fill:#181d2f;--notebook-dark-edge:#2b314b;--notebook-dark-hover:#1c2234;--notebook-light-fill:#f1eff2;--notebook-light-edge:#d8d8e5;--notebook-light-hover:#eceaed}
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker) .agent-violet,
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker).agent-violet{--notebook-dark-fill:#211a2b;--notebook-dark-edge:#382d46;--notebook-dark-hover:#251f30;--notebook-light-fill:#f7edef;--notebook-light-edge:#e3d4e0;--notebook-light-hover:#f2e8ea}
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker) .agent-rose,
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker).agent-rose{--notebook-dark-fill:#29181f;--notebook-dark-edge:#442a34;--notebook-dark-hover:#2e1d24;--notebook-light-fill:#feece6;--notebook-light-edge:#efd1cf;--notebook-light-hover:#f9e7e1}
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker) .agent-peach,
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker).agent-peach{--notebook-dark-fill:#281b11;--notebook-dark-edge:#432e1e;--notebook-dark-hover:#2d2016;--notebook-light-fill:#fdeddd;--notebook-light-edge:#edd4bd;--notebook-light-hover:#f8e8d8}
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker) .agent-cyan,
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker).agent-cyan{--notebook-dark-fill:#032327;--notebook-dark-edge:#093a40;--notebook-dark-hover:#08282c;--notebook-light-fill:#e8f3ec;--notebook-light-edge:#c7dfda;--notebook-light-hover:#e4eee7}
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker) .agent-olive,
+:root :is(dialog.notebook-sheet-dialog,#things,#deck-page,#outcome-references,.notebook-color-picker).agent-olive{--notebook-dark-fill:#1c200f;--notebook-dark-edge:#31361c;--notebook-dark-hover:#202514;--notebook-light-fill:#f4f1dc;--notebook-light-edge:#dddbbc;--notebook-light-hover:#efecd7}
+:root:not([data-look=paper]) :is(dialog.notebook-sheet-dialog,#things,#outcome-references,.notebook-color-picker:not([data-notebook-bench])) :is(.notebook-tinted,.deck-tinted,.swatch-tag),
+:root:not([data-look=paper]) :is(dialog.notebook-sheet-dialog,#things,#outcome-references,.notebook-color-picker:not([data-notebook-bench])).notebook-tinted{--card-tint:var(--notebook-dark-fill);--card-edge:var(--notebook-dark-edge);--card-tint-hover:var(--notebook-dark-hover)}
+:root:not([data-look=paper]) :is(dialog.notebook-sheet-dialog,#things,#outcome-references,.notebook-color-picker:not([data-notebook-bench])){--notebook-color-ink:#e3eae7;--notebook-color-muted:#97a6a3;--notebook-color-accent:#5fae96}
+:root[data-look=paper] :is(dialog.notebook-sheet-dialog,#things,#outcome-references,.notebook-color-picker:not([data-notebook-bench])) :is(.notebook-tinted,.deck-tinted,.swatch-tag),
+:root[data-look=paper] :is(dialog.notebook-sheet-dialog,#things,#outcome-references,.notebook-color-picker:not([data-notebook-bench])).notebook-tinted{--card-tint:var(--notebook-light-fill);--card-edge:var(--notebook-light-edge);--card-tint-hover:var(--notebook-light-hover)}
+:root[data-look=paper] :is(dialog.notebook-sheet-dialog,#things,#outcome-references,.notebook-color-picker:not([data-notebook-bench])){--notebook-color-ink:#27241f;--notebook-color-muted:#7a7468;--notebook-color-accent:#3d7a62}
+@media (prefers-color-scheme:light){
+:root #deck-page:is(.notebook-tinted,.deck-tinted,.swatch-tag),:root #deck-page :is(.notebook-tinted,.deck-tinted,.swatch-tag),:root .notebook-color-picker[data-notebook-bench] .swatch-tag{--card-tint:var(--notebook-light-fill);--card-edge:var(--notebook-light-edge);--card-tint-hover:var(--notebook-light-hover)}
+:root :is(#deck-page,.notebook-color-picker[data-notebook-bench]){--notebook-color-ink:#27241f;--notebook-color-muted:#7a7468;--notebook-color-accent:#3d7a62}
+}
+@media (prefers-color-scheme:dark){
+:root #deck-page:is(.notebook-tinted,.deck-tinted,.swatch-tag),:root #deck-page :is(.notebook-tinted,.deck-tinted,.swatch-tag),:root .notebook-color-picker[data-notebook-bench] .swatch-tag{--card-tint:var(--notebook-dark-fill);--card-edge:var(--notebook-dark-edge);--card-tint-hover:var(--notebook-dark-hover)}
+:root :is(#deck-page,.notebook-color-picker[data-notebook-bench]){--notebook-color-ink:#e3eae7;--notebook-color-muted:#97a6a3;--notebook-color-accent:#5fae96}
+}
+/* A page's colour reaches only its writing and cards, never an outer wash. */
+:root :is(dialog.notebook-sheet-dialog,#deck-page) :is(.deck-card.deck-tinted,.notebook-tinted .deck-card,.notebook-tinted .notebook-text){--ink:var(--notebook-color-ink);--muted:var(--notebook-color-muted);--accent:var(--notebook-color-accent);color:var(--ink)}
+:root :is(dialog.notebook-sheet-dialog,#deck-page) .deck-card.deck-tinted:not(.deck-selected),
+:root :is(dialog.notebook-sheet-dialog,#deck-page) .notebook-tinted .deck-card:not(.deck-tinted):not(.deck-selected),
+:root :is(dialog.notebook-sheet-dialog,#deck-page).notebook-tinted .deck-card:not(.deck-tinted):not(.deck-selected),
+:root :is(dialog.notebook-sheet-dialog,#deck-page) .notebook-tinted .notebook-text,
+:root #deck-page.notebook-tinted .notebook-text{background:var(--card-tint);border-color:var(--card-edge);color:var(--notebook-color-ink)}
+:root #deck-page.notebook-tinted .deck-card{--ink:var(--notebook-color-ink);--muted:var(--notebook-color-muted);--accent:var(--notebook-color-accent);color:var(--ink)}
+:root :is(dialog.notebook-sheet-dialog,#deck-page) .deck-card:is(.deck-tinted,.notebook-tinted .deck-card)[aria-current=true]:not(.deck-selected),
+:root #deck-page.notebook-tinted .deck-card[aria-current=true]:not(.deck-selected),
+:root :is(dialog.notebook-sheet-dialog,#deck-page) .notebook-tinted .notebook-text:focus,
+:root #deck-page.notebook-tinted .notebook-text:focus{background:var(--card-tint-hover);border-color:var(--card-edge)}
+:root :is(dialog.notebook-sheet-dialog,#deck-page) :where(.deck-pointing) .deck-card:is(.deck-tinted,.notebook-tinted .deck-card):hover:not(.deck-selected),
+:root #deck-page.notebook-tinted:where(.deck-pointing) .deck-card:hover:not(.deck-selected){background:var(--card-tint-hover);border-color:var(--card-edge)}
+:root[data-look=paper] :is(dialog.notebook-sheet-dialog,#deck-page) :is(.deck-card.deck-tinted,.notebook-tinted .deck-card,.notebook-tinted .notebook-text),
+:root[data-look=paper] #deck-page.notebook-tinted :is(.deck-card,.notebook-text){border-radius:.4rem;margin-block:.2rem}
+/* Keep the existing selection owner visible in either material. */
+:root :is(dialog.notebook-sheet-dialog,#deck-page) :is(.deck-card.deck-tinted,.notebook-tinted .deck-card),
+:root #deck-page.notebook-tinted .deck-card{--panel:var(--card-tint);--line:var(--card-edge);--focus:var(--notebook-color-accent)}
+:root :is(dialog.notebook-sheet-dialog,#deck-page) .deck-card.deck-selected{background:color-mix(in srgb,var(--accent) 12%,var(--panel));border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}
+:root .notebook-color-picker .swatch-tag{background:var(--card-tint);box-shadow:inset 0 0 0 1px var(--card-edge)}
+:root #outcome-references .nav-item.reference.notebook-tinted,
+:root #outcome-page[data-outcome-wide] #outcome-references-list .nav-item.reference.notebook-tinted{background:var(--card-tint);border:1px solid var(--card-edge);color:var(--notebook-color-ink);--ink:var(--notebook-color-ink)}
+:root #things a.notebook-tinted{--ink:var(--notebook-color-ink);--muted:var(--notebook-color-muted);background:var(--card-tint);border:1px solid var(--card-edge);color:var(--ink);border-radius:.4rem}
+:root #things a.notebook-tinted:is(:hover,:focus-visible,[aria-current=true]),
+:root #outcome-references .nav-item.reference.notebook-tinted:is(:hover,:focus-visible),
+:root #outcome-page[data-outcome-wide] #outcome-references-list .nav-item.reference.notebook-tinted:is(:hover,:focus-visible){background:var(--card-tint-hover);border-color:var(--card-edge)}

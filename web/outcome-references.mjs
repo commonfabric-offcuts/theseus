@@ -1,5 +1,11 @@
 import { PAGE, paintChanged, changedSince } from './topic-navigation.mjs';
 import { notebookDocument } from './notebook-view.mjs';
+import { paintNotebookColor } from './notebook-colors.mjs';
+import { menuDoor } from './outline-menus.mjs';
+
+// The list survives outcome navigation. Keep one delegated door, and move its
+// owner instead of accumulating old callbacks on that same element.
+const referenceDoors = new WeakMap();
 
 export function pageOpening(body, title) {
   let text = String(body ?? '').split(/\n+/).map(line => line.replace(/^#+\s*|[*_`>]/g, '').trim()).filter(Boolean).join(' ');
@@ -18,12 +24,25 @@ export function pageOpening(body, title) {
 // The topic's changes do not cover the outcome's Notebook, so each read tells
 // the Reader the revisions it saw.
 export class OutcomeReferences {
-  constructor({ scope, host, list, more, message, read, open, denied, seen = () => {}, painted = () => {}, create = null, pageMax = PAGE, viewPreference = null }) {
-    Object.assign(this, { scope, host, list, more, message, read, open, isDenied: denied, seen, painted, pageMax, viewPreference });
+  constructor({ scope, host, list, more, message, read, open, menu = null, denied, seen = () => {}, painted = () => {}, create = null, pageMax = PAGE, viewPreference = null }) {
+    Object.assign(this, { scope, host, list, more, message, read, open, menu, isDenied: denied, seen, painted, pageMax, viewPreference });
     this.creation = create?.(); this.creation?.setAvailable(false);
     this.items = []; this.next = null; this.loading = null; this.queued = null;
     more.onclick = () => this.load(true);
     viewPreference?.listen(() => this.paint());
+    let door = referenceDoors.get(list);
+    if (!door && menu) {
+      door = { owner: this };
+      door.reset = menuDoor(this.list, target => {
+        const owner = door.owner, row = target.closest?.('.nav-item.reference');
+        return owner.menu && row && [...owner.list.children].includes(row) && owner.items.some(item => item.id === row.dataset.id) ? row : null;
+      }, (row, at) => {
+        const owner = door.owner, item = owner.items.find(item => item.id === row.dataset.id);
+        if (item) owner.menu(item, row, at);
+      });
+      referenceDoors.set(list, door);
+    }
+    if (door) { door.reset(); door.owner = this; }
   }
   paint() {
     const ids = new Set(this.items.map(item => item.id));
@@ -35,6 +54,7 @@ export class OutcomeReferences {
         this.list.append(row);
       }
       row.textContent = item.title || 'Notebook item';
+      paintNotebookColor(row,item.color);
       if (this.viewPreference) {
         const mode = this.viewPreference.get(item.id), label = document.createElement('span'), line = document.createElement('span');
         label.className = 'notebook-document-title'; label.textContent = item.title || 'Notebook item'; label.title = label.textContent;
@@ -49,7 +69,7 @@ export class OutcomeReferences {
         row.dataset.mode = mode;
       }
       else paintChanged(row, item);
-      row.onclick = () => this.open(item.source_ref, row);
+      row.onclick = event => { if (!event?.defaultPrevented) return this.open(item.source_ref, row); };
       if (this.list.children[index] !== row) this.list.insertBefore(row, this.list.children[index] ?? null);
     });
     this.more.hidden = this.next === null;

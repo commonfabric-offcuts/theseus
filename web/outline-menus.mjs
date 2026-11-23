@@ -9,21 +9,25 @@ import { topicFieldFences, topicUpdateEnvelope } from './topic-state.mjs';
 // Shared doors for rail menus. A hold owns only its subsequent synthetic click;
 // moving, scrolling or lifting before the threshold leaves navigation alone.
 export function menuDoor(root, locate, open, { doc = root.ownerDocument, clock = globalThis, context = true } = {}) {
-  let hold = null, timer = null, suppress = null;
+  let hold = null, timer = null, suppress = null, keyboard = null;
   const cancel = () => { if (timer !== null) clock.clearTimeout(timer); timer = null; hold = null; };
   const show = (event, row, at) => { event.preventDefault(); event.stopPropagation(); cancel(); open(row, at); };
   if (context) root.addEventListener('contextmenu', event => {
     const row = locate(event.target);
     if (!row || doc.getSelection?.()?.isCollapsed === false) return;
-    if (suppress === row) { event.preventDefault(); event.stopPropagation(); return; }
+    if (suppress === row || keyboard === row && !event.clientX && !event.clientY) {
+      event.preventDefault(); event.stopPropagation(); keyboard = null; return;
+    }
+    keyboard = null;
     show(event, row, event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : null);
   });
   root.addEventListener('keydown', event => {
     if (!(event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey) || event.ctrlKey || event.altKey || event.metaKey) return;
-    const row = locate(event.target); if (row) show(event, row, null);
+    const row = locate(event.target);
+    if (row && doc.getSelection?.()?.isCollapsed !== false) { show(event, row, null); keyboard = row; }
   });
   root.addEventListener('pointerdown', event => {
-    cancel(); suppress = null;
+    cancel(); suppress = null; keyboard = null;
     if (event.pointerType !== 'touch' || event.isPrimary === false) return;
     const row = locate(event.target); if (!row) return;
     hold = { row, x: event.clientX, y: event.clientY };
@@ -38,7 +42,7 @@ export function menuDoor(root, locate, open, { doc = root.ownerDocument, clock =
   root.addEventListener('click', event => {
     if (suppress && suppress.contains(event.target)) { event.preventDefault(); event.stopPropagation(); suppress = null; }
   }, true);
-  return () => { cancel(); suppress = null; };
+  return () => { cancel(); suppress = null; keyboard = null; };
 }
 
 export class OutlineMenus {

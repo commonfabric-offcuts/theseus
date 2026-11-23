@@ -6,11 +6,14 @@ const same = (a, b) => a === b || Boolean(a && b && typeof a === 'object' && typ
 // A page's content: its words and what they carry, and its draft mark (docs/notebook-pages.md, "A draft page"),
 // which the writing keeps, merges and saves as it does the words. Writing kept on a device before the mark
 // existed holds no mark: it reads as unmarked.
-const FIELDS = ['title','body','attachments','references','draft'];
-const field = (content,key) => key === 'draft' ? content[key] === true : content[key];
+const FIELDS = ['title','body','attachments','references','draft','color'];
+const field = (content,key) => key === 'draft' ? content[key] === true : key === 'color' ? content[key] ?? null : content[key];
 export const sameContent = (a,b) => Boolean(a && b && FIELDS.every(key=>same(field(a,key),field(b,key))));
 function mergeFields(fields,base,mine,theirs,result) {
   for(const key of fields) {
+    // Old journals/clients omitted colour to preserve Core's choice. Do not
+    // turn three omitted values into an explicit clear while merging them.
+    if(key==='color'&&![base,mine,theirs].some(value=>Object.hasOwn(value,key)))continue;
     if(same(field(mine,key),field(base,key)))result[key]=copy(field(theirs,key));
     else if(same(field(theirs,key),field(base,key))||same(field(theirs,key),field(mine,key)))result[key]=copy(field(mine,key));
     else return null;
@@ -19,7 +22,7 @@ function mergeFields(fields,base,mine,theirs,result) {
 }
 const mergeTextContent = (base,mine,theirs) => mergeFields(FIELDS,base,mine,theirs,{});
 const content = source => ({ title: source.title, body: source.body ?? '',
-  attachments: source.attachments.map(({ id }) => ({ id })), references: copy(source.references), draft: source.draft === true });
+  attachments: source.attachments.map(({ id }) => ({ id })), references: copy(source.references), draft: source.draft === true, color: source.color ?? null });
 const authority = bootstrap => ({ authority_id: bootstrap.authority.authority_id, authority_epoch: bootstrap.authority.authority_epoch });
 export function notebookActionEnvelope(bootstrap, item, state, kind, args) {
   return { v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind, target: { item_id: item }, args: copy(args),
@@ -183,14 +186,19 @@ export class NotebookWriting {
             receipt.result.source_ref?.kind !== 'memory' || receipt.result.source_ref.id !== this.item ||
             receipt.result.source_ref.revision !== receipt.result.revision) throw Error('The saved revision does not match this page.');
         for (const described of this.base.source.attachments) if (described.name) this.described.set(described.id, described);
-        const source = { ...this.base.source, ...copy(sent.args), source_ref: copy(receipt.result.source_ref),
+        // A pre-colour client omitted it to preserve Core's choice. Keep the
+        // old envelope exact, but carry the known choice into its settlement;
+        // a later explicit local clear still wins over this normalization.
+        const settled={...copy(sent.args),color:Object.hasOwn(sent.args,'color')?sent.args.color:this.base.source.color??null};
+        const source = { ...this.base.source, ...settled, source_ref: copy(receipt.result.source_ref),
           attachments: sent.args.attachments.map(ref => this.described.get(ref.id) ?? ref) };
         // own: the person's own revision, which Core counts as read by them (notebook-sheet.mjs reads the others).
         if (this.pageState?.source_ref.revision > receipt.result.revision) {
           this.pending=null; await this.persist(); this.notify(); return receipt;
         }
         this.observe(source);
-        this.base = { revision: receipt.result.revision, content: copy(sent.args), source, own: true };
+        if(!Object.hasOwn(this.value,'color'))this.value={...this.value,color:settled.color};
+        this.base = { revision: receipt.result.revision, content: settled, source, own: true };
         this.pending = null; this.error = null; this.dirtySince=null;
         await this.persist(); this.notify();
         return receipt;

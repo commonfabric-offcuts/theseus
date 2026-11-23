@@ -55,6 +55,31 @@ page look changed again.
   `0 < read_revision < revision`. A page never read is not marked: the light
   is for what changed under someone, not for everything they have not read.
 
+## A page's colour
+
+A page or card stack may keep one of the offered palette names as `color`, or
+null for No color (1028). It belongs to each immutable Notebook revision,
+alongside the words and optional `draft` mark. `memory.create` and
+`memory.revise` accept the optional field: omission creates none or preserves
+the preceding choice; explicit null clears it. Core validates new choices
+against the current palette. A retired name reads as none without rewriting
+its historical row. The colour follows the existing writer, authority,
+expected revision, receipt, conflict and recovery rules.
+
+Set color is in This page and the thumbnail's secondary-click, keyboard and
+touch-hold menu. The page hue paints its Text block and otherwise uncoloured
+cards; an individual card's colour wins. No color restores the material while
+retaining individual-card choices. The outcome's visible Notebook reference
+row and the right-rail row use the same fill and hairline. The named defaults
+are Soft Bookends and Faint Paper. A full page follows its bench's light/dark
+appearance; the sheet, rail and outcome column follow their look's material.
+Undo takes back the page-colour choice through that same writer, preserving
+earlier card acts; a later different colour prevents that stale inverse.
+
+The CLI accepts `note new ... --color NAME` and `note revise ... --color NAME`.
+`--color none` explicitly clears it; leaving the flag out preserves it on a
+revision. `note read` prints the kept colour with the page's words.
+
 ## On the right rail
 
 The side rail lists no Notebook (item 464): its outline holds the outcomes and

@@ -864,6 +864,8 @@ export class DeckPage {
         }
         return {status:'committed'};
       }});
+    picker?.root.classList.add('notebook-color-picker');
+    picker?.root.toggleAttribute('data-notebook-bench',Boolean(this.host.closest?.('#deck-page')));
     this.listening?.signal.addEventListener('abort',()=>picker?.close(false),{once:true});
     return picker;
   }

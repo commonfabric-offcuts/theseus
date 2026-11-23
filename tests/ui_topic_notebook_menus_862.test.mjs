@@ -358,7 +358,9 @@ test('862 actual Notebook rail adapter only reads layout and view preferences wh
   let constructed=0;const shell={handles:{}},source=notebookSource();
   const env={railNotebook:null,NotebookRailMenu,notebookSheet:null,topic:{id:'t'},views:{},notebookViewsOf:()=>({get:()=> 'text'}),notebookDockWanted:()=>true,
     globalThis:{matchMedia:()=>({matches:true})},retired:false,shell,panes:{},openNotebook:()=>{constructed++;assert.fail('drawing opened Notebook');}};
-  const make=appFunction('function notebookRailMenu()', 'function openNotebook(',env,'notebookRailMenu');
+  // 1028 shares the loaded-page helper with the thumbnail owner. Include that
+  // actual lexical owner when extracting the adapter; keep the drawing checks.
+  const make=appFunction('function loadedNotebook(', 'function openNotebook(',env,'notebookRailMenu');
   const owner=make(),items=owner.items(source,()=>{});
   assert.equal(items.find(x=>x.key==='text').checked,true);assert.equal(items.find(x=>x.key==='layout').checked,true);assert.equal(items.find(x=>x.key==='draft').checked,true);assert.equal(constructed,0);
 });
