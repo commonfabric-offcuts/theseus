@@ -212,7 +212,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     addEventListener(name, fn, options) { events.push(['document-handler', name, fn, options]); },
     removeEventListener(name, fn) { const at = events.findIndex(([kind, n, f]) => kind === 'document-handler' && n === name && f === fn); if (at >= 0) events.splice(at, 1); },
     // The page's window, as a test may replace it, with the size watch the message bar keeps (message-menu.mjs).
-    get defaultView() { return { ResizeObserver: class { observe() {} }, MutationObserver: class { observe() {} }, ...context.window }; } };
+    get defaultView() { return { ResizeObserver: class { observe() {} }, MutationObserver: class { observe() {} disconnect() {} takeRecords() { return []; } }, ...context.window }; } };
   get('reader-aside').append(readerArchive(document));
   const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', actor_kind: 'human', authority: { id: 'a', epoch: 'e' } };
   const topic = { id: 't1', title: 'Fixture', workspace_id: 'w1' };

@@ -1,7 +1,8 @@
 import { CardTextProjection, cardTextValue } from './notebook-card-text.mjs';
 import { stripDetails } from './card-details.mjs';
 import { pageLink } from './links.mjs';
-import { openMessageMenu, copyText } from './message-menu.mjs';
+import { copyText } from './message-menu.mjs';
+import { openNotebookMenu } from './notebook-menu.mjs';
 import { DeckPage, UNDO_LIMIT } from './deck-page.mjs';
 import { applyAct, deckBody, parseDeck, cardText, cardImages, cardRegionShape, imageLine, textCard, findCard } from './deck.mjs';
 import { WritingInput, commandLetter } from './writing-input.mjs';
@@ -25,25 +26,33 @@ function refuseUnavailableWriting(page) {
   return true;
 }
 
-export function notebookMenuItems(page) {
+export function notebookMenuItems(page,{rail=false}={}) {
     const w=page.writing,state=w?.pageState;
     if(!state)return [];
     if(w.deleted)return state.reader_may_delete?[{key:'restore',label:'Undo delete',glyph:'undo',act:()=>page.pageAction('memory.delete',{deleted:false})}]:[];
     // Read the current writer again when a menu action runs: permission or recovery
     // may have changed since this list opened. The ordinary buttons use the same owners.
     const canWrite=()=>page.writing===w&&!page.readOnly&&!w.readOnly&&!w.reading&&!w.deleted&&!w.closed&&!w.actionPending&&!w.actionRunning;
+    const canWriteCards=()=>canWrite()&&page.mode==='cards'&&page.menuCurrent?.()!==false;
+    const extras=position=>page.menuExtras?.(position)??[];
     const items=[
-      ...(page.menuExtras?.('first')??[]),
-      {key:'text',label:'Show as text',glyph:'text',checked:page.mode==='text',act:()=>page.switchView('text')},
-      {key:'cards',label:'Show as cards',glyph:'stack',checked:page.mode==='cards',act:()=>page.switchView('cards')},
-      {key:'draft',label:'Private Draft',glyph:'draft',checked:page.drafted(),disabled:!canWrite(),act:()=>{if(canWrite())page.markDraft(!page.drafted());}},
-      ...(page.menuExtras?.('beforeImage')??[]),
+      {key:'star',place:'mark',label:state.starred?'Unstar':'Star',glyph:state.starred?'starred':'star',checked:Boolean(state.starred),act:()=>page.pageAction('memory.star',{starred:!state.starred})},
+      {key:'draft',place:'mark',label:'Private draft',glyph:'lock',checked:page.drafted(),disabled:!canWrite(),act:()=>{if(canWrite())page.markDraft(!page.drafted());}},
+      {key:'copy',place:'mark',label:'Copy link',glyph:'link',act:()=>page.copyLink()},
+      {key:'text',place:'view',label:'Text',glyph:'text',checked:page.mode==='text',act:()=>page.switchView('text')},
+      {key:'cards',place:'view',label:'Cards',glyph:'stack',checked:page.mode==='cards',act:()=>page.switchView('cards')},
+      ...['topic','dossier'].map(kind=>({key:'start-'+kind,place:'start',label:kind==='topic'?'Topic':'Dossier',ariaLabel:kind==='topic'?'Start a topic from this page':'Start a new dossier from this page',glyph:kind==='topic'?'topic':'pencil',act:()=>page.startNew(kind)})),
       {key:'image',label:'Add image…',glyph:'image',disabled:!canWrite(),act:()=>{if(canWrite())page.addImage.onclick();}},
-      ...(page.menuExtras?.('afterImage')??[]),
-      {key:'star',label:state.starred?'Unstar':'Star',glyph:state.starred?'starred':'star',act:()=>page.pageAction('memory.star',{starred:!state.starred})}];
-    if(!page.readOnly)items.push({key:'rename',label:'Rename',glyph:'pencil',act:()=>page.rename()});
-    if(state.reader_may_delete)items.push({key:'delete',label:'Delete',glyph:'drop',act:()=>page.pageAction('memory.delete',{deleted:true})});
-    items.push({key:'copy',label:'Copy Link',glyph:'link',act:()=>page.copyLink()});
+      ...extras('afterImage').filter(item=>item.key==='fullpage'),
+    ];
+    // The sheet's pencil owns Rename; an unopened rail row still offers it.
+    if(!page.readOnly&&(!page.inNotebookSheet||rail))items.push({key:'rename',label:'Rename',glyph:'pencil',disabled:!canWrite(),act:()=>{if(canWrite())page.rename();}});
+    if(state.reader_may_delete)items.push({key:'delete',place:'danger',label:'Delete page',glyph:'drop',act:()=>page.pageAction('memory.delete',{deleted:true})});
+    if(page.mode==='cards')items.push(
+      {key:'edit',place:'key',label:page.editing?'Done':'Edit',glyph:'pencil',keys:'⌘↩',disabled:!canWriteCards(),act:()=>{if(canWriteCards()){if(page.editing)page.finish();else page.edit();}}},
+      {key:'undo',place:'key',label:'Undo',glyph:'undo',keys:'⌘Z',disabled:!canWriteCards()||!page.undos?.length,act:()=>{if(canWriteCards())page.undo();}},
+      {key:'new',place:'key',label:'New card',glyph:'pencil',keys:'↩',disabled:!canWriteCards(),act:()=>{if(canWriteCards())page.start();}}
+    );
     return items;
   }
 
@@ -53,7 +62,7 @@ export class NotebookPage extends DeckPage {
   constructor(options) {
     super({ ...options, interactiveHTML: true });
     this.passages = options.passages;
-    this.deleteUI=options.deleteUI;this.closeDeleted=options.closeDeleted;
+    this.deleteUI=options.deleteUI;this.closeDeleted=options.closeDeleted;this.startNotebook=options.startNotebook;
     this.viewPreference = options.viewPreference ?? new NotebookViews(options.bootstrap ?? {});
     Object.assign(this, { api: options.api, bootstrap: options.bootstrap, mode: options.mode ?? this.viewPreference.get(options.item) });
     this.viewPreference.set(options.item, this.mode);
@@ -97,7 +106,9 @@ export class NotebookPage extends DeckPage {
     this.imageFile=this.node('input');this.imageFile.type='file';this.imageFile.accept='image/png,image/jpeg,image/gif,image/webp';this.imageFile.hidden=true;
     this.addImage.onclick=()=>{if(this.readOnly||this.writing?.reading)return;this.imageFile.value='';this.imageFile.click();};
     this.imageFile.onchange=()=>{if(this.imageFile.files?.[0])this.captureImage(this.imageFile.files[0]);};
-    this.imagePanel.append(this.imageRows,this.addImage,this.imageFile);
+    this.cardImageFile=this.node('input');this.cardImageFile.type='file';this.cardImageFile.accept=this.imageFile.accept;this.cardImageFile.hidden=true;
+    this.cardImageFile.onchange=()=>{const ref=this.imageCardRef,file=this.cardImageFile.files?.[0];this.imageCardRef=null;if(file&&ref)this.imageIntoCard(ref,file);};
+    this.imagePanel.append(this.imageRows,this.addImage,this.imageFile,this.cardImageFile);
     // The draft mark: a toggle beside Text / Cards for someone Core lets write the page, a quiet mark for someone
     // who reads it, shown while the page is a draft. The composer takes both with the views (notebook-sheet.mjs).
     this.draft=this.node('span','notebook-draft');
@@ -147,7 +158,7 @@ export class NotebookPage extends DeckPage {
     this.drawView();
   }
   openPageMenu(at=null) {
-    const menu=openMessageMenu({anchor:this.more,at,items:this.menuItems(),label:'This page',sheet:true,doc:this.doc});
+    const menu=openNotebookMenu({anchor:this.more,at,items:this.menuItems(),label:'This page',sheet:true,doc:this.doc});
     this.listening.signal.addEventListener('abort',()=>menu?.close(false),{once:true});
     return menu;
   }
@@ -357,7 +368,10 @@ export class NotebookPage extends DeckPage {
   }
   writeNext() {
     const e = this.editing, field = e?.field;
-    if (!field || !/\S/.test(field.value.slice(field.selectionStart, field.selectionEnd))) return super.writeNext();
+    if (!field || !/\S/.test(field.value.slice(field.selectionStart, field.selectionEnd))) {
+      if (!refuseUnavailableWriting(this)) return super.writeNext();
+      return;
+    }
     if (!this.cardWritable() || e.input.readOnly() || refuseUnavailableWriting(this)) return;
     this.save();
     const split = selectionCardSplit(this.deck, { ...e, value: field.value, start: field.selectionStart, end: field.selectionEnd });
@@ -606,7 +620,7 @@ export class NotebookPage extends DeckPage {
     this.revisionShown();
     putBack();
   }
-  menuItems() { return notebookMenuItems(this); }
+  menuItems(options) { return notebookMenuItems(this,options); }
 
   async copyLink() {
     const w=this.writing,source=w?.base?.source;
@@ -657,6 +671,26 @@ export class NotebookPage extends DeckPage {
     }
     if(!w.deleted){this.views.hidden=false;this.draft.hidden=false;this.drawView();this.imagePanel.hidden=false;this.paintDraft();}
     if(w.deleted)this.titleBox.hidden=true;
+  }
+  async startNew(kind,ref=null) {
+    try {
+      if(!this.startNotebook||this.listening.signal.aborted||this.writing?.closed)return;
+      const link=ref?await this.savedCardLink(ref):pageLink(this.source.owner_scope,this.item);
+      if(this.listening.signal.aborted||this.writing?.closed||ref&&this.cardAt(ref)<0)return;
+      return this.startNotebook({kind,source:this.source,link,host:this.pageNotice,anchor:this.more,current:()=>!this.listening.signal.aborted&&!this.writing?.closed});
+    }catch(error){this.cardNotice(error.message);}
+  }
+  pickCardImage(ref) {
+    if(!this.cardWritable()||this.cardAt(ref)<0)return;
+    this.imageCardRef={...ref};this.cardImageFile.value='';this.cardImageFile.click();
+  }
+  imageIntoCard(ref,file) {
+    const at=this.cardAt(ref);if(at<0||!this.cardWritable()){this.cardNotice('This card can no longer be changed.');return;}
+    // Reuse editing's admission, local-byte queue and existing save path.
+    if(this.editing)this.finish();if(this.editing)return;
+    const current=this.cardAt(ref);if(current<0||!this.cardWritable())return;
+    this.pick(current);this.edit();if(!this.editing||this.editing.fresh||this.cardAt(ref)!==current)return;
+    this.addToCard([file],this.editing.field);
   }
   async captureImage(file) {
     try {this.imageError=null;await this.images.capture(file);}

@@ -46,15 +46,16 @@ test('a dossier address focuses its requested menu item without running it, on d
   }
 });
 
-test('a message\'s menu lists its items in order as a menu, takes the focus, and one tap does that item and closes it, giving the focus back', () => {
+test('1091 a message palette orders its marks, takes focus, and one act closes it with focus restored', () => {
   const { doc, win, anchor } = page(), done = [];
   const menu = openMessageMenu({ anchor, items: [{ label: 'Copy Link', glyph: 'link', act: () => done.push('copy') }, { label: 'Mark unread', glyph: 'unread', act: () => done.push('mark') }], label: 'This message', doc, win });
-  assert.deepEqual(labels(menu), ['Copy Link', 'Mark unread']);
-  assert.deepEqual([menu.root.getAttribute('role'), menu.root.getAttribute('aria-label'), menu.root.children.map(b => b.getAttribute('role'))], ['menu', 'This message', ['menuitem', 'menuitem']]);
+  const choices=menu.root.querySelectorAll('button');
+  assert.deepEqual(choices.map(b=>b.getAttribute('aria-label')),['Mark unread','Copy link']);
+  assert.deepEqual([menu.root.getAttribute('role'), menu.root.getAttribute('aria-label'), choices.map(b => b.getAttribute('role'))], ['menu', 'This message', ['menuitemcheckbox', 'menuitem']]);
   assert.equal(menu.root.parent, doc.body, 'outside a dialog it belongs to the page');
   assert.equal(anchor.getAttribute('aria-expanded'), 'true');
-  assert.equal(doc.activeElement, menu.root.children[0], 'the first item has the focus');
-  tap(menu.root.children[1]);
+  assert.equal(doc.activeElement, choices[0], 'a palette without ordinary rows starts on its first mark');
+  tap(choices[0]);
   assert.deepEqual(done, ['mark'], 'that item, once');
   assert.deepEqual([menu.root.parent, anchor.getAttribute('aria-expanded'), doc.activeElement, doc.listening()], [null, 'false', anchor, 0], 'closed, the focus back, nothing left listening');
 });

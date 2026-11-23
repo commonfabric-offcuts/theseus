@@ -1,4 +1,5 @@
 import { openMessageMenu, copyText } from './message-menu.mjs';
+import { openNotebookMenu } from './notebook-menu.mjs';
 import { outcomeMenuItems } from './outcome-menu-items.mjs';
 import { routeHref } from './topic-navigation.mjs';
 import { dossierMenuRoute } from './menu-route.mjs';
@@ -103,7 +104,7 @@ export class OutlineMenus {
         }
       }
       if (!items.length) return;
-      if (current()) this.menu = this.show({ anchor: row, at, items, label: workspaceId ? 'This outcome' : topicId ? 'This topic' : pageId ? 'This page' : 'This message',
+      if (current()) this.menu = (pageId&&this.show===openMessageMenu?openNotebookMenu:this.show)({ anchor: row, at, items, label: workspaceId ? 'This outcome' : topicId ? 'This topic' : pageId ? 'This page' : 'This message',
         sheet: true, doc: outline.doc, win: outline.doc.defaultView });
     } catch (error) { if (current()) this.notice(`The menu could not be opened: ${error.message}`); }
     finally { if (serial === this.serial) this.pending = null; }

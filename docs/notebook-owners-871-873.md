@@ -1,5 +1,8 @@
 # Notebook and New message: separate owners (871 + 873)
 
+Current1096 menu contract: NotebookPage keeps the page action descriptors; Notebook palettes group them into marks, View, Start new, rows, red Delete and keys. The sheet keeps Rename in its pencil and Side by side in its header. Choose dossier is removed. Earlier row ordering below is historical; writer/permission/retention ownership still applies. See [Notebook menus](notebook-menus-1096.md).
+
+
 NotebookSheet owns one dedicated dialog in both layouts, with the same
 NotebookPage and writing stream kept across closes and layout switches. The
 existing New message dialog remains the only message composer. On a topic at

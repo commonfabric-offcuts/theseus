@@ -184,8 +184,19 @@ export class CardReplies {
     return row && this.shown(id) ? { wide: replyNeedsWide(row.ui.field, row.p.editors.reply.draft) } : false;
   }
   paint(editor = null) {
-    for (const row of this.rows.values()) {
+    for (const [id, row] of this.rows) {
       if (editor && row.p.editors.reply !== editor) continue;
+      const reply = row.p.editors.reply;
+      // A direct Reader can restore this passive field while its draft is
+      // saved. Its confirmed history is not unfinished writing. Once the
+      // Reader closes, retire only that empty passive successor; explicit
+      // openings, uncertain sends and later writing keep their own surface.
+      if (!row.p.hidden && !row.clickOpened && !this.registry.current && !this.registry.pendingOpen && !this.registry.disposed &&
+          reply.submissions?.length && reply.submissions.every(item => item.status === 'confirmed' && !item.detached) &&
+          !reply.dirty && !reply.journalError && !reply.authorityRecovery && !reply.conflict && !reply.unavailable &&
+          !holdsWriting(reply.draft) && !uploadWork(reply) && !this.registry.doubt?.(reply)?.label) {
+        this.hide(id, row, { focus: false }); continue;
+      }
       const hidden = row.p.hidden || Boolean(this.registry.current);
       if (!hidden && !row.card.hasAttribute('data-card-reply')) {
         row.card.style.setProperty('--reply-message-height', `${row.sourceHeight}px`);

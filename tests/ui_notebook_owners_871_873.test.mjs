@@ -102,21 +102,21 @@ test('873 common menu orders checked views, Private Draft, sheet choices and exi
   p.switchView=mode=>{acts.push(['view',mode]);p.mode=mode;};p.markDraft=value=>{acts.push(['draft',value]);p.writing.value.draft=value;};
   p.addImage.onclick=()=>acts.push(['image']);p.rename=()=>acts.push(['rename']);p.pageAction=(...args)=>acts.push(args);f.doc.defaultView.confirm=()=>true;
   let menu=NotebookPage.prototype.menuItems.call(p);
-  assert.deepEqual(menu.map(x=>x.label),['Edit','Undo','Show as text','Show as cards','Private Draft','Choose dossier…','Add image…','Side by side','Open as a full page','Star','Rename','Delete','Copy Link']);
-  assert.deepEqual(menu.slice(2,5).map(x=>x.checked),[false,true,true]);assert.equal(item(p,'Private Draft').description,undefined);
-  item(p,'Show as text').act();assert.equal(item(p,'Show as text').checked,true);item(p,'Private Draft').act();item(p,'Add image…').act();
-  item(p,'Star').act();item(p,'Rename').act();item(p,'Delete').act();
+  assert.deepEqual(menu.map(x=>x.label),['Star','Private draft','Copy link','Text','Cards','Topic','Dossier','Add image…','Open as a full page','Delete page','Edit','Undo','New card']);
+  assert.deepEqual(['text','cards','draft'].map(key=>menu.find(x=>x.key===key).checked),[false,true,true]);assert.equal(item(p,'Private draft').description,undefined);
+  item(p,'Text').act();assert.equal(item(p,'Text').checked,true);item(p,'Private draft').act();item(p,'Add image…').act();
+  item(p,'Star').act();assert.ok(!menu.some(x=>x.key==='rename'));f.sheet.renameButton.onclick();item(p,'Delete page').act();
   assert.deepEqual(acts,[['view','text'],['draft',false],['image'],['memory.star',{starred:true}],['rename'],['memory.delete',{deleted:true}]]);
-  item(p,'Choose dossier…').act();assert.equal(f.sheet.dossiers.showing,true);assert.ok(f.sheet.dossiers.anchor===p.more);
-  item(p,'Side by side').act();menu=NotebookPage.prototype.menuItems.call(p);assert.ok(!menu.some(x=>x.label==='Choose dossier…'));assert.ok(item(p,'Side by side'));
+  assert.ok(!menu.some(x=>['dossiers','layout'].includes(x.key)));assert.equal(f.sheet.dossiers,undefined);
+  f.sheet.dockButton.onclick();menu=NotebookPage.prototype.menuItems.call(p);assert.equal(f.sheet.docked,false);assert.ok(!menu.some(x=>x.key==='layout'));
 });
 
 test('873 read-only/deleted menu and disabled shared-menu keyboard preserve Draft without a write',async t=>{
   const f=notebookFixture(t),p=menuPage(f);p.readOnly=true;let writes=0;p.markDraft=()=>writes++;p.addImage.onclick=()=>writes++;
-  assert.equal(item(p,'Private Draft').checked,true);assert.equal(item(p,'Private Draft').disabled,true);assert.equal(item(p,'Add image…').disabled,true);
-  item(p,'Private Draft').act();item(p,'Add image…').act();assert.equal(writes,0,'stale direct actions also enforce read-only');
+  assert.equal(item(p,'Private draft').checked,true);assert.equal(item(p,'Private draft').disabled,true);assert.equal(item(p,'Add image…').disabled,true);
+  item(p,'Private draft').act();item(p,'Add image…').act();assert.equal(writes,0,'stale direct actions also enforce read-only');
   f.doc.body.append(p.more);const menu=openMessageMenu({anchor:p.more,doc:f.doc,win:{innerWidth:1000,innerHeight:1000},items:[
-    item(p,'Private Draft'),
+    item(p,'Private draft'),
     {label:'Enabled',glyph:'link',act:()=>{}}]});
   t.after(()=>menu.close(false));assert.equal(menu.root.children[0].disabled,true);assert.ok(f.doc.activeElement===menu.root.children[1]);
   menu.root.children[0].onclick(event(p.more));assert.equal(writes,0);assert.equal(menu.root.isConnected,true);
@@ -128,11 +128,11 @@ test('873 Copy Link uses canonical page identity, preserves errors, reports refu
   const f=notebookFixture(t),p=menuPage(f),copied=[];shareLinksFrom('https://fixture.example');t.after(()=>shareLinksFrom(null));
   p.pageNotice.append(p.node('p','','Existing action error'));
   f.set('navigator',{clipboard:{writeText:async text=>copied.push(text)}});
-  await item(p,'Copy Link').act();assert.equal(copied[0],'https://fixture.example/?topic=t-fixture&page=p-fixture');
+  await item(p,'Copy link').act();assert.equal(copied[0],'https://fixture.example/?topic=t-fixture&page=p-fixture');
   assert.match(p.pageNotice.text,/Existing action error/);assert.match(p.pageNotice.text,/Link copied/);
-  globalThis.navigator.clipboard.writeText=async()=>{throw Error('denied');};await item(p,'Copy Link').act();assert.match(p.pageNotice.text,/Could not copy/);assert.match(p.pageNotice.text,/https:\/\/fixture.example/);
+  globalThis.navigator.clipboard.writeText=async()=>{throw Error('denied');};await item(p,'Copy link').act();assert.match(p.pageNotice.text,/Could not copy/);assert.match(p.pageNotice.text,/https:\/\/fixture.example/);
   let finish;globalThis.navigator.clipboard.writeText=()=>new Promise(resolve=>finish=resolve);
-  const before=p.pageNotice.text,pending=item(p,'Copy Link').act();p.writing.closed=true;finish();await pending;assert.equal(p.pageNotice.text,before);
+  const before=p.pageNotice.text,pending=item(p,'Copy link').act();p.writing.closed=true;finish();await pending;assert.equal(p.pageNotice.text,before);
 });
 
 test('871 CSS confines New message to the docked feed column and gives Notebook its own dialog rule',()=>{
@@ -148,7 +148,7 @@ test('873 menu Draft uses the same captured revision and Undo owner as its old t
   p.textSeen={revision:2,content:{body:'Text',draft:true}};p.cardsSeen={revision:2,content:{body:'Card',draft:true}};
   p.markDraft=NotebookPage.prototype.markDraft;
   p.writing.edit=(change,seen,mode)=>{edits.push({change,revision:seen.revision,body:seen.content.body,mode});Object.assign(p.writing.value,change);return true;};
-  item(p,'Private Draft').act();assert.deepEqual(edits,[{change:{draft:false},revision:2,body:'Card',mode:'cards'}]);
+  item(p,'Private draft').act();assert.deepEqual(edits,[{change:{draft:false},revision:2,body:'Card',mode:'cards'}]);
   assert.deepEqual(p.undos,[{kind:'draft',draft:true}]);assert.equal(p.textSeen.content.draft,false);assert.equal(p.cardsSeen.content.draft,false);
   NotebookPage.prototype.undo.call(p);assert.equal(p.drafted(),true);assert.equal(p.undos.length,0);
 });
@@ -161,7 +161,7 @@ test('871 retirement removes only Notebook and closing a docked page preserves m
 
 test('873 menu glyphs keep the chosen card drawing and draw the four new meanings',t=>{
   const f=notebookFixture(t),p=menuPage(f);
-  for(const [label,name] of [['Show as text','text'],['Show as cards','stack'],['Private Draft','draft'],['Add image…','image']])assert.equal(item(p,label).glyph,name);
+  for(const [label,name] of [['Text','text'],['Cards','stack'],['Private draft','lock'],['Add image…','image']])assert.equal(item(p,label).glyph,name);
   for(const name of ['text','draft','image','dossier']){
     const drawing=glyph(name,f.doc);assert.equal(drawing.getAttribute('aria-hidden'),'true');assert.equal(drawing.children[0].getAttribute('d'),APPROVED[name].d);assert.ok(APPROVED[name].d.length>15);
   }

@@ -88,8 +88,8 @@ export class NotebookStart {
 // and topic identities stay the same across every Return, so a request whose
 // answer was lost is sent again whole.
 export class TopicStart {
-  constructor({ api, bootstrap, workspace, participants = [], source = null }) {
-    Object.assign(this, { api, bootstrap, workspace, participants, source });
+  constructor({ api, bootstrap, workspace, participants = [], source = null, body = '' }) {
+    Object.assign(this, { api, bootstrap, workspace, participants, source, body });
     this.renew(); this.started = []; this.seen = [];
   }
   renew() {
@@ -100,7 +100,7 @@ export class TopicStart {
     if (!hasTitle(title)) throw Error('Type the topic’s title, then press Return.');
     if (this.savedTitle !== title) {
       if (this.save?.args.title !== title) this.save = envelope(this.bootstrap, 'opening.save', { opening_id: this.opening }, { opening_revision: this.revision },
-        { workspace_id: this.workspace, topic_id: this.topic, title, participants: [...this.participants], body: '', attachments: [],
+        { workspace_id: this.workspace, topic_id: this.topic, title, participants: [...this.participants], body: this.body, attachments: [],
           ...(this.source ? { source_message_id: this.source } : {}) });
       const request = this.save;
       let result;
