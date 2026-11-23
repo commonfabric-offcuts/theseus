@@ -3,6 +3,7 @@ from __future__ import annotations
 """An authorized invitation and its durable, fenced host work (1002)."""
 
 import json
+import re
 import uuid
 
 from .contract import Refusal, _body, _identifier, _revision
@@ -55,8 +56,13 @@ END_SCHEMA = [
 END_DOWN = ['DROP INDEX ' + name for name in ('hosted_seats_ending', 'hosted_seats_active', 'hosted_seats_setup', 'hosted_seats_adopt')] + [
     'ALTER TABLE hosted_seats DROP COLUMN ' + key for key in ('end_version', 'end_ms', 'end_by', 'end_state')]
 END_OCCUPIED = 'SELECT EXISTS (SELECT 1 FROM hosted_seats WHERE end_state IS NOT NULL)'
+TEMPLATE_SCHEMA = ["ALTER TABLE hosted_seats ADD COLUMN template_id TEXT"]
+TEMPLATE_DOWN = ["ALTER TABLE hosted_seats DROP COLUMN template_id"]
+TEMPLATE_OCCUPIED = 'SELECT EXISTS (SELECT 1 FROM hosted_seats WHERE template_id IS NOT NULL)'
+TEMPLATE_KEY = 'hosted_seat_templates.v1'
+TEMPLATE_BYTES = 65536
 STAGES = ('profile', 'thread', 'starting', 'persist', 'persisting', 'pin', 'route', 'delivery', 'ready')
-REASONS = frozenset(('host_not_configured', 'host_template_ambiguous', 'host_template_requires_full',
+REASONS = frozenset(('host_not_configured', 'host_template_ambiguous', 'host_template_unavailable', 'host_template_requires_full',
     'profile_conflict', 'profile_write_failed', 'path_conflict', 'auth_missing', 'incompatible', 'spawn_failed',
     'stopping', 'thread_start_failed', 'thread_start_uncertain', 'thread_settings_not_applied',
     'thread_persistence_failed', 'thread_persistence_uncertain', 'request_timed_out', 'child_exited',
@@ -64,7 +70,31 @@ REASONS = frozenset(('host_not_configured', 'host_template_ambiguous', 'host_tem
 
 
 SUMMARY_FIELDS = ('id', 'workspace_id', 'agent_id', 'inviter_id', 'owner_id', 'state', 'stage', 'version',
-                  'thread_id', 'reason', 'first_message_id', 'end_state', 'end_by', 'end_ms', 'end_version')
+                  'thread_id', 'reason', 'first_message_id', 'end_state', 'end_by', 'end_ms', 'end_version', 'template_id')
+
+
+def _template_id(value):
+    if not isinstance(value, str) or not re.fullmatch(r'template-[0-9a-f]{64}', value):
+        raise Refusal('INVALID_ARGUMENT', 'Choose a named existing host template')
+    return value
+
+
+def _template_options(options):
+    if type(options) is not list or len(options) > 128:
+        raise Refusal('INVALID_ARGUMENT', 'Publish at most128 host templates')
+    clean = []
+    for item in options:
+        if type(item) is not dict or set(item) != {'id', 'actor_id', 'model', 'reasoning_effort'}:
+            raise Refusal('INVALID_ARGUMENT', 'Publish only the named template settings')
+        _template_id(item['id'])
+        _identifier(item['actor_id'], 'actor_id')
+        if any(not isinstance(item[key], str) or not 0 < len(item[key]) <= 200 or
+               not item[key].isprintable() for key in ('model', 'reasoning_effort')):
+            raise Refusal('INVALID_ARGUMENT', 'Publish bounded named template settings')
+        clean.append(dict(item))
+    if len({item['id'] for item in clean}) != len(clean):
+        raise Refusal('INVALID_ARGUMENT', 'Each distinct template appears once')
+    return clean
 
 
 def _retryable(row):
@@ -84,6 +114,74 @@ def _record(row, *, private=False, role=True):
 
 
 class HostedSeats:
+    def _seat_publish_templates(self, db, token, options):
+        """Publish safe settings inside the caller's owned transaction."""
+        try:
+            clean = _template_options(options)
+            for item in clean:
+                self._actor(db, item['actor_id'])
+        except Refusal as error:
+            raise RunnerError(error.code, error.message) from error
+        old = db.execute('SELECT value FROM metadata WHERE key=?', (TEMPLATE_KEY,)).fetchone()
+        if not clean:
+            if old is not None:
+                db.execute('DELETE FROM metadata WHERE key=?', (TEMPLATE_KEY,))
+            return old is not None
+        payload = json.dumps({'runner_token': token, 'items': clean}, sort_keys=True, separators=(',', ':'))
+        if len(payload.encode('utf-8')) > TEMPLATE_BYTES:
+            raise RunnerError('INVALID_ARGUMENT', 'Host template catalogue exceeds its byte limit')
+        if old is not None and old[0] == payload:
+            return False
+        db.execute('INSERT OR REPLACE INTO metadata(key,value) VALUES (?,?)', (TEMPLATE_KEY, payload))
+        return True
+
+    def hosted_seat_publish_templates(self, guard, token, options):
+        """Explicit lease-owner update; acquisition uses the transaction helper."""
+        def action(db, now):
+            ownership = self._seat_owned(db, guard, token, now)
+            if ownership != 'running':
+                return {'status': ownership}, False
+            return {'status': 'ok'}, self._seat_publish_templates(db, token, options)
+        return self._effect(guard, action)
+
+    def _seat_templates(self, db):
+        state = self._runner_state(db)
+        if state['state'] != 'running' or (state['lease_until_ms'] or 0) <= _now_ms():
+            return []
+        row = db.execute('SELECT substr(CAST(value AS BLOB),1,?) FROM metadata WHERE key=?',
+                         (TEMPLATE_BYTES + 1, TEMPLATE_KEY)).fetchone()
+        if row is None:
+            return []
+        try:
+            if len(row[0]) > TEMPLATE_BYTES:
+                raise ValueError()
+            value = json.loads(row[0].decode('utf-8'))
+            if type(value) is not dict or set(value) != {'runner_token', 'items'}:
+                raise ValueError()
+            if value['runner_token'] != state['runner_token']:
+                return []
+            return [dict(item, name=self._actor(db, item['actor_id'])['name'] or item['actor_id'])
+                    for item in _template_options(value['items'])]
+        except (ValueError, TypeError, KeyError, Refusal):
+            raise Refusal('SEAT_TEMPLATES_UNAVAILABLE', 'Host templates could not be read. Your writing is kept.')
+
+    def _view_hosted_seat_templates(self, db, actor, args):
+        workspace = self._workspace(db, actor, _identifier(args.get('workspace_id'), 'workspace_id'))
+        self._seat_owner(db, actor, workspace)
+        items = self._seat_templates(db)
+        return {'instance_id': self.instance_id, 'available': bool(items), 'items': items}
+
+    def _seat_choose_template(self, db, requested):
+        items = self._seat_templates(db)
+        if requested is not None:
+            identity = _template_id(requested)
+            if not any(item['id'] == identity for item in items):
+                raise Refusal('SEAT_TEMPLATE_UNAVAILABLE', 'The selected template is no longer available. Choose a current named template.')
+            return identity
+        if len(items) > 1:
+            raise Refusal('SEAT_TEMPLATE_REQUIRED', 'Choose an existing host template: ' + ', '.join(item['name'] for item in items))
+        return items[0]['id'] if items else None
+
     def _seat_schedule(self, db):
         return {'pending': bool(db.execute("SELECT EXISTS (SELECT 1 FROM hosted_seats INDEXED BY hosted_seats_setup WHERE end_state IS NULL AND state IN ('pending','preparing'))").fetchone()[0]),
                 'ending': bool(db.execute("SELECT EXISTS (SELECT 1 FROM hosted_seats WHERE end_state='ending')").fetchone()[0]),
@@ -112,8 +210,10 @@ class HostedSeats:
 
     def _command_workspace_hosted_seat_retry(self, db, actor, envelope):
         target, args = envelope['target'], envelope['args']
-        if set(target) != {'workspace_id', 'seat_request_id'} or args:
+        if set(target) != {'workspace_id', 'seat_request_id'} or set(args) - {'template_id'}:
             raise Refusal('INVALID_ARGUMENT', 'Name one outcome and the original seat request')
+        if 'template_id' in args:
+            _template_id(args['template_id'])
         workspace = self._workspace(db, actor, target['workspace_id'], organise=True)
         self._seat_owner(db, actor, workspace)
         identity = _identifier(target['seat_request_id'], 'seat_request_id')
@@ -125,12 +225,17 @@ class HostedSeats:
         _revision(envelope['expected'], 'seat_revision', row['version'])
         if not _retryable(row):
             raise Refusal('SEAT_REQUIRES_RECONCILIATION', 'This seat is active or its native creation/settings need reconciliation. Retry cannot create a replacement context.')
+        template = row['template_id']
+        if 'template_id' in args:
+            if row['stage'] != 'profile' or row['plan'] is not None or row['thread_id'] is not None:
+                raise Refusal('SEAT_TEMPLATE_LOCKED', 'This seat already has its host plan. Its template cannot change.')
+            template = self._seat_choose_template(db, args['template_id'])
         if not self._seat_access(db, row):
             raise Refusal('SEAT_ACCESS_CHANGED', 'The current human owner and enabled seat membership are required before setup can resume.')
         if row['reason'] == 'conversation_missing' and self._conversation_of(db, workspace['id']) is None:
             raise Refusal('SEAT_CONVERSATION_REQUIRED', 'Create this outcome’s Conversation before retrying setup.')
         self._seat_capacity(db)
-        db.execute("UPDATE hosted_seats SET state='pending',reason=NULL,runner_token=NULL,version=version+1 WHERE id=?", (identity,))
+        db.execute("UPDATE hosted_seats SET state='pending',reason=NULL,runner_token=NULL,template_id=?,version=version+1 WHERE id=?", (template, identity))
         row = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
         self._seat_event(db, row)
         return self._seat_invitation(workspace, row, self._actor(db, row['agent_id'])['name']), [
@@ -138,8 +243,10 @@ class HostedSeats:
 
     def _command_workspace_hosted_seat_add(self, db, actor, envelope):
         target, args = envelope['target'], envelope['args']
-        if set(target) != {'workspace_id'} or set(args) != {'name', 'role'}:
+        if set(target) != {'workspace_id'} or not {'name', 'role'} <= set(args) or set(args) - {'name', 'role', 'template_id'}:
             raise Refusal('INVALID_ARGUMENT', 'Name one outcome, a seat name and its role')
+        if 'template_id' in args:
+            _template_id(args['template_id'])
         workspace = self._workspace(db, actor, _identifier(target['workspace_id'], 'workspace_id'), organise=True)
         self._seat_owner(db, actor, workspace)
         _revision(envelope['expected'], 'workspace_revision', workspace['version'])
@@ -165,17 +272,20 @@ class HostedSeats:
                 raise Refusal('NAME_TAKEN', 'That name already belongs to another invitation. Choose another name.')
             if existing['role'] != role:
                 raise Refusal('SEAT_ROLE_MISMATCH', 'This seat already has a recorded role. Keep that role or choose another name.')
+            if 'template_id' in args and args['template_id'] != existing['template_id']:
+                raise Refusal('SEAT_TEMPLATE_MISMATCH', 'This seat already has a recorded template. Keep that choice or choose another name.')
             return self._seat_invitation(workspace, existing, existing['name']), []
         # Manual invitations and other outcomes' seats are never adopted.
         if name and invite._holders(db, name, invite.agent_id(name)):
             raise Refusal('NAME_TAKEN', 'That name already belongs to someone here. Choose another name.')
         self._seat_capacity(db)
+        template = self._seat_choose_template(db, args.get('template_id'))
         added, affected = self._command_workspace_agent_invite(db, actor,
             dict(envelope, args={'name': args['name'], 'harness': 'codex'}))
         identity = 'seat-' + uuid.uuid4().hex
-        db.execute('INSERT INTO hosted_seats(id,workspace_id,agent_id,inviter_id,owner_id,role,state,stage,version,created_ms) '
-                   "VALUES (?,?,?,?,?,?,'pending','profile',1,?)",
-                   (identity, workspace['id'], added['agent']['id'], actor, owner['id'], role, _now_ms()))
+        db.execute('INSERT INTO hosted_seats(id,workspace_id,agent_id,inviter_id,owner_id,role,state,stage,version,created_ms,template_id) '
+                   "VALUES (?,?,?,?,?,?,'pending','profile',1,?,?)",
+                   (identity, workspace['id'], added['agent']['id'], actor, owner['id'], role, _now_ms(), template))
         seat = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
         self._seat_event(db, seat)
         result = dict(added, seat_request_id=identity, seat=_record(seat))

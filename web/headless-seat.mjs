@@ -2,7 +2,9 @@ import { openSeatJournal } from './seat-journal.mjs';
 import { checkedView } from './freshness.mjs';
 
 const copy = structuredClone;
-const sameForm = (a, b) => a?.name === b?.name && a?.role === b?.role;
+const sameForm = (a, b) => a?.name === b?.name && a?.role === b?.role && a?.template_id === b?.template_id;
+const validTemplate = id => typeof id === 'string' && /^template-[0-9a-f]{64}$/.test(id);
+const templateRefusal = seat => ['host_template_ambiguous', 'host_template_unavailable', 'host_not_configured'].includes(seat.reason);
 const authorityOf = bootstrap => ({ authority_id: bootstrap.authority.authority_id, authority_epoch: bootstrap.authority.authority_epoch });
 
 // The form's writing and its exact outstanding request are separate. A late
@@ -46,6 +48,12 @@ export class SeatAddition {
     if (!this.row.form.name.trim()) throw Error('Give the seat a name.');
     if (!this.row.form.role.trim()) throw Error('Describe the seat’s role.');
     if (new TextEncoder().encode(this.row.form.role).length > 16384 || this.row.form.role.includes('\0')) throw Error('The role needs at most 16 KiB of text, with no null characters.');
+    if (this.templates) {
+      if (!this.templates.available) throw Error('The host’s templates are not available. Your writing is kept; reopen Headless Codex to check again.');
+      const id = this.row.form.template_id;
+      if (id && !this.templates.items.some(item => item.id === id)) throw Error('The selected template is no longer available. Choose a current named template.');
+      if (this.templates.items.length > 1 && !id) throw Error('Choose a named host template.');
+    }
   }
   request(version = this.workspace.version) {
     return { v: 1, instance_id: this.bootstrap.instance_id, operation_id: this.id(), kind: 'workspace.hosted_seat_add',
@@ -76,7 +84,8 @@ export class SeatAddition {
       await this.checkAuthority();
       this.row.request = { v: 1, instance_id: this.bootstrap.instance_id, operation_id: this.id(), kind: 'workspace.hosted_seat_retry',
         target: { workspace_id: this.workspace.id, seat_request_id: seat.id },
-        expected: { authority: authorityOf(this.bootstrap), seat_revision: seat.version }, args: {} };
+        expected: { authority: authorityOf(this.bootstrap), seat_revision: seat.version },
+        args: templateRefusal(seat) && this.row.form.template_id ? { template_id: this.row.form.template_id } : {} };
       this.row.requestLabel = label; this.version++; return this.dispatch(false);
     });
   }
@@ -115,7 +124,8 @@ export class SeatAddition {
       const ending = request.kind === 'workspace.hosted_seat_end';
       if (result?.workspace_id !== request.target.workspace_id || typeof result.seat_request_id !== 'string' ||
           result.seat?.id !== result.seat_request_id || result.seat.agent_id !== result.agent?.id ||
-          (retry ? result.seat_request_id !== request.target.seat_request_id : result.seat.role !== request.args.role)) {
+          (retry ? result.seat_request_id !== request.target.seat_request_id : result.seat.role !== request.args.role) ||
+          request.args.template_id && result.seat.template_id !== request.args.template_id) {
         this.notice = 'Seat request is unconfirmed: its seat identity did not match the request.'; throw Error(this.notice);
       }
       this.row.request = null; this.row.requestLabel = null; this.row.lastSeatId = result.seat_request_id;
@@ -155,7 +165,9 @@ const stages = { profile: 'seat setup', thread: 'Codex connection', starting: 's
   persisting: 'saved context', pin: 'execution controls', route: 'work route', delivery: 'first task' };
 const reasons = {
   auth_missing: 'The existing host is not signed in.', host_not_configured: 'No existing host template is configured.',
-  host_template_ambiguous: 'The host needs to select which existing template to use.', host_template_requires_full: 'This host template cannot add a seat while it is running.',
+  host_template_ambiguous: 'Choose a named template in Headless Codex, then Retry setup.',
+  host_template_unavailable: 'The selected template is no longer available. Choose a current template in Headless Codex, then Retry setup.',
+  host_template_requires_full: 'This host template cannot add a seat while it is running.',
   thread_start_uncertain: 'Native seat creation is unconfirmed. Its original request is kept; another thread will not be created automatically.',
   thread_persistence_uncertain: 'Saving the native context is unconfirmed. Its known thread is kept.',
   thread_settings_not_applied: 'Codex did not apply the requested runtime settings.',
@@ -192,18 +204,21 @@ export class HeadlessSeatControl {
     this.name.setAttribute('aria-label', 'Headless seat name');
     this.role = make('textarea', { id: 'headless-seat-role', rows: 4, spellcheck: true });
     this.role.setAttribute('aria-label', 'Headless seat role');
+    this.templateChoices = make('div', { className: 'seat-actions' });
+    this.templateChoices.setAttribute('role', 'group'); this.templateChoices.setAttribute('aria-label', 'Existing host template');
+    this.templateArea = make('section', { hidden: true }, make('p', { textContent: 'Template' }), this.templateChoices);
     this.submit = make('button', { type: 'submit', id: 'headless-seat-submit', className: 'choice-chip', textContent: 'Add seat' });
     this.retry = make('button', { type: 'button', id: 'headless-seat-retry', className: 'text-action', hidden: true });
     this.form = make('form', { className: 'seat-form', hidden: true },
       make('p', { className: 'seat-access', textContent: 'This seat runs with full access on this Mac, including sub-agents, as the hosted lanes do.' }),
-      make('label', {}, 'Name', this.name), make('label', {}, 'Role', this.role),
+      make('label', {}, 'Name', this.name), make('label', {}, 'Role', this.role), this.templateArea,
       make('div', { className: 'seat-actions' }, this.submit, this.retry));
     this.form.setAttribute('aria-label', 'Add a headless Codex seat');
-    this.form.onsubmit = event => { event.preventDefault(); this.act(() => this.owner.add()); };
+    this.form.onsubmit = event => { event.preventDefault(); this.act(async () => { await this.loadTemplates(); return this.owner.add(); }); };
     this.retry.onclick = () => this.act(() => this.owner.again());
     const edited = () => {
       if (!this.owner) return;
-      this.owner.edit({ name: this.name.value, role: this.role.value }).catch(error => this.say(error.message));
+      this.owner.edit({ ...this.owner.row.form, name: this.name.value, role: this.role.value }).catch(error => this.say(error.message));
     };
     this.name.addEventListener('input', edited); this.role.addEventListener('input', edited);
     this.form.addEventListener('keydown', event => {
@@ -224,6 +239,7 @@ export class HeadlessSeatControl {
       this.owner = new SeatAddition({ api: this.api, bootstrap: this.bootstrap, workspace: this.workspace,
         journal: this.journal, changed: () => this.paintForm(), added: value => { if (this.current()) this.added(value); } });
       await this.owner.load();
+      if (!this.form.hidden) await this.loadTemplates();
     } catch (error) { this.owner = null; this.localError = error.message; this.say(error.message); }
     finally { this.loadFinished = true; this.paintForm(); }
   }
@@ -238,6 +254,40 @@ export class HeadlessSeatControl {
     if (this.notice.textContent !== words) this.notice.textContent = words;
     this.notice.hidden = !words; this.host.hidden = !words && !this.list.children.length;
   }
+  async loadTemplates() {
+    const workspace = this.workspace.id;
+    try {
+      const answer = checkedView(await this.api.view('hosted_seat_templates', { workspace_id: workspace },
+        { readClass: 'foreground' }), this.bootstrap.instance_id);
+      if (typeof answer.available !== 'boolean' || !Array.isArray(answer.items) || answer.items.length > 128 ||
+          answer.items.some(item => !validTemplate(item.id) || ['name', 'model', 'reasoning_effort'].some(key => typeof item[key] !== 'string')))
+        throw Error('Host templates could not be confirmed.');
+      if (this.disposed || !this.current() || this.workspace.id !== workspace || !this.owner) return;
+      this.owner.templates = copy(answer); this.templateReadError = '';
+    } catch (error) {
+      if (this.disposed || !this.current() || this.workspace.id !== workspace || !this.owner) return;
+      this.owner.templates = { available: false, items: [] }; this.templateReadError = error.message;
+    }
+    this.paintForm();
+  }
+  paintTemplates(blocked) {
+    const items = this.owner?.templates?.items ?? [], selected = this.owner?.row?.form.template_id;
+    this.templateArea.hidden = items.length <= 1 && !selected;
+    const signature = JSON.stringify(items.map(item => [item.id, item.name, item.model, item.reasoning_effort]));
+    if (signature !== this.templateSignature) {
+      this.templateSignature = signature;
+      this.templateChoices.replaceChildren(...items.map(item => {
+        const button = element(this.host.ownerDocument, 'button', { type: 'button', className: 'choice-chip',
+          textContent: `${item.name} · ${item.model} · ${item.reasoning_effort}` });
+        button.dataset.seatTemplate = item.id;
+        button.onclick = () => this.owner.edit({ ...this.owner.row.form, template_id: item.id }).catch(error => this.say(error.message));
+        return button;
+      }));
+    }
+    for (const button of this.templateChoices.querySelectorAll('button')) {
+      button.setAttribute('aria-pressed', String(button.dataset.seatTemplate === selected)); button.disabled = blocked;
+    }
+  }
   paintForm() {
     if (this.disposed || !this.current()) return;
     const owner = this.owner, row = owner?.row;
@@ -247,19 +297,23 @@ export class HeadlessSeatControl {
     }
     const blocked = !this.manage || owner?.parked || !this.loadFinished;
     this.name.readOnly = this.role.readOnly = Boolean(blocked);
-    this.submit.disabled = blocked || !owner || Boolean(owner.busy) || Boolean(row?.request);
+    this.submit.disabled = blocked || !owner || Boolean(owner.busy) || Boolean(row?.request) ||
+      !owner.templates?.available || owner.templates.items.length > 1 && !row?.form.template_id;
+    this.paintTemplates(Boolean(blocked || owner?.busy || row?.request));
     this.retry.hidden = !row?.request;
     this.retry.disabled = blocked || Boolean(owner?.busy);
     if (row?.request) this.retry.textContent = `Check / retry for ${row.requestLabel ?? row.request.args.name ?? 'the previous seat'}`;
     for (const button of this.list.querySelectorAll('[data-seat-retry], [data-seat-end]')) button.disabled = Boolean(blocked || !owner || owner.busy || row?.request);
     this.form.setAttribute('aria-busy', owner?.busy ? 'true' : 'false');
-    this.say(owner?.storageError || owner?.notice || this.localError || (row?.request ? 'A seat request is unconfirmed. Open Headless Codex to check its saved request.' : ''));
+    this.say(owner?.storageError || owner?.notice || this.localError || this.templateReadError ||
+      (!this.form.hidden && owner?.templates && !owner.templates.available ? 'The host’s templates are not available yet. Your writing is kept.' : '') ||
+      (row?.request ? 'A seat request is unconfirmed. Open Headless Codex to check its saved request.' : ''));
   }
   toggle(open = this.form.hidden, focus = true) {
     if (open && !this.manage) return;
     if (open) this.closeOthers();
     this.form.hidden = !open; this.opener.setAttribute('aria-expanded', String(open));
-    if (open) this.name.focus(); else if (focus && !this.opener.hidden) this.opener.focus();
+    if (open) { this.name.focus(); this.loadTemplates(); } else if (focus && !this.opener.hidden) this.opener.focus();
   }
   async refresh(workspace, members, manage) {
     this.workspace = copy(workspace); this.manage = manage; this.opener.hidden = !manage;
@@ -292,7 +346,15 @@ export class HeadlessSeatControl {
           if (manage && seat.retryable) {
             const retry = element(doc, 'button', { type: 'button', className: 'text-action', textContent: 'Retry setup' });
             retry.dataset.seatRetry = seat.id; retry.setAttribute('aria-label', `Retry setup for ${label}`);
-            retry.onclick = () => this.act(() => this.owner.retrySeat(seat, label)); item.append(retry);
+            retry.onclick = () => this.act(async () => {
+              if (templateRefusal(seat)) {
+                await this.loadTemplates();
+                if (!this.owner.row.form.template_id) {
+                  this.toggle(true); this.owner.notice = `Choose a named template for ${label}, then Retry setup.`; return;
+                }
+              }
+              return this.owner.retrySeat(seat, label);
+            }); item.append(retry);
           }
           if (manage && !['ending', 'ended'].includes(seat.state)) {
             const end = element(doc, 'button', { type: 'button', className: 'text-action', textContent: 'End seat' });
