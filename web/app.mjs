@@ -88,6 +88,7 @@ import { NotebookPage } from './notebook-page.mjs';
 import { NotebookRailMenu } from './notebook-rail-menu.mjs';
 import { NotebookSheet, notebookDockWanted, returning as notebookReturning } from './notebook-sheet.mjs';
 import { HealthLight } from './health-light.mjs';
+import { releaseToastsFor } from './release-toasts.mjs';
 import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
 import { ToolPage, OutcomeTools, ToolsRail, TopicTools } from './skills.mjs';
@@ -3340,8 +3341,11 @@ async function initialize() {
     // without it, the page opening and the page coming back into view read
     // it, and it says it could not check while the feed is down
     // (health-light.mjs).
+    const releaseToasts = releaseToastsFor(document, bootstrap.instance_id, bootstrap.actor);
     healthLight = new HealthLight({ link: $('health-link'), feed: () => live?.state ?? null,
+      observe: answer => { if (!retired) releaseToasts.observe(answer); },
       read: async () => checkedView(await api.view('health_light', {}, { readClass: 'background' }), bootstrap.instance_id) });
+    window.addEventListener('pagehide', () => releaseToasts.dispose());
     live?.listen(event => run(() => healthLight.heard(event)));
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(() => healthLight.load()); });
     run(() => healthLight.load());

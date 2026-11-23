@@ -1553,3 +1553,8 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 .card-document .attachment-label{max-width:100%;min-width:0}
 .card-document button,.card-document a{display:inline-flex;align-items:center;min-height:44px;max-width:100%;white-space:normal;overflow-wrap:anywhere}
 .card-document-notice{font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}
+
+/*1135 one release notice, outside the writing surfaces; never takes focus. */
+.release-toast { position:fixed; right:1rem; bottom:calc(1rem + env(safe-area-inset-bottom)); z-index:95; display:flex; align-items:center; gap:.7rem; max-width:min(28rem,calc(100vw - 2rem)); padding:.35rem .7rem; background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:.5rem; box-shadow:0 .25rem 1rem color-mix(in srgb,var(--ink) 12%,transparent); }
+.release-toast a { display:flex; align-items:center; min-height:2.75rem; overflow-wrap:anywhere; }
+.release-toast button { flex:none; min-width:2.75rem; min-height:2.75rem; padding:0 .5rem; }

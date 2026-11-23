@@ -44,8 +44,8 @@ export function standing({ best, known, floor, failed, feed }) {
 
 export class HealthLight {
   // read: the health_light view; feed: the live feed's state ('live', 'down', or null).
-  constructor({ link, read, feed = () => null }) {
-    Object.assign(this, { link, read, feed });
+  constructor({ link, read, feed = () => null, observe = null }) {
+    Object.assign(this, { link, read, feed, observe });
     this.best = null; this.known = -1; this.floor = -1; this.failed = false;
     this.running = null; this.again = false; this.asking = -1;
   }
@@ -75,7 +75,10 @@ export class HealthLight {
     // Behind the latest commit with nothing from the feed to say it: read it,
     // unless the read running began at that commit already.
     const behind = !this.best || this.best.seq < this.known;
-    if (this.feed() === 'live' && behind && !(this.running && this.asking >= this.known)) return this.load();
+    //1135 shares this read on commits/reconnects, even when the feed already
+    // supplies the red keys. No second poller or parallel health read.
+    const shared = this.observe && (event?.kind === 'commit' || event?.state === 'live');
+    if (this.feed() === 'live' && (behind || shared) && !(this.running && this.asking >= this.known)) return this.load();
     return null;
   }
 
@@ -103,6 +106,8 @@ export class HealthLight {
     if (!keys(answer?.red)) { this.failed = true; return false; }
     // A server that does not name the commit: the commit known when the read began.
     this.take({ seq: Number.isSafeInteger(answer.commit_seq) ? answer.commit_seq : started, red: answer.red }, true);
+    if (this.observe && this.feed() !== 'down' && Number.isSafeInteger(answer.commit_seq) &&
+        answer.commit_seq >= Math.max(this.known, this.floor)) this.observe(answer);
     return true;
   }
 
