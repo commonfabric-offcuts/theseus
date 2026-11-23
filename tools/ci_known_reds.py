@@ -224,7 +224,54 @@ def fixture_exit_row(name, code, log, rows, harness, report, history):
     error = message + '\n' + '\n'.join('    at fixture (file://%s:%s:1)' % (match[1], match[2]) for match in frames)
     return {'name': 'fixture exit %d' % code, 'passed': False, 'error': error}
 
-def cases(step, out, harness=None, history=False, allow_empty=False):
+def mode_end_state(name, report, log):
+    """The recorded end, including absent fields; never synthesize completion."""
+    rows = report.get('results')
+    require(isinstance(rows, list), name + ': missing case results')
+    completion = {k: report[k] for k in ('bodyCompleted', 'harnessCompleted') if k in report}
+    require(all(type(v) is bool for v in completion.values()), name + ': invalid completion value')
+    errors = {k: report[k] for k in ('bodyError', 'harnessError') if k in report}
+    require(all(v is None or isinstance(v, str) and bool(v.strip()) for v in errors.values()),
+            name + ': invalid body error')
+    require(not any(completion.values()) or not any(errors.values()), name + ': inconsistent completed body')
+    marker = END_LINE in log.splitlines()
+    if NATIVE[name].results == 'results.json':
+        final = _final_json(log)
+        complete = isinstance(final, dict) and final.get('closed') is True and final.get('results') == rows
+    elif NATIVE[name].harness == COMPOSE:
+        complete = report.get('harnessCompleted') is True and report.get('plannedPhases') == report.get('completedPhases')
+    else:
+        complete = marker or bool(rows) and all(r.get('passed') is True for r in rows)
+    if completion:
+        complete = (complete if NATIVE[name].harness == COMPOSE else True) and all(completion.values())
+    complete = complete and not any(errors.values())
+    return dict(completed=bool(complete), completion=completion, case_count=len(rows),
+                errors=errors, end_assertion=marker,
+                phases={k: report[k] for k in ('plannedPhases', 'completedPhases') if k in report})
+
+
+def incomplete_cleanup(name, report):
+    """End-state agreement cannot excuse an unsuccessful owned cleanup."""
+    require(report.get('browserClosed') is True and type(report.get('fixtureExitCode')) is int
+            and report['fixtureExitCode'] == 0 and report.get('fixtureExitSignal') is None,
+            name + ': incomplete mode cleanup failed')
+    require(report.get('fixtureErrors', '') == '' and report.get('teardownError') is None,
+            name + ': incomplete mode fixture or teardown error')
+    health = report.get('finalHealth')
+    require(health is None or isinstance(health, dict) and health.get('fatal') == [],
+            name + ': incomplete mode health failure')
+    if NATIVE[name].harness == COMPOSE:
+        short = report.get('shortFixture')
+        require(isinstance(short, dict) and type(short.get('exitCode')) is int and short['exitCode'] == 0
+                and short.get('exitSignal') is None and short.get('errors') == '',
+                name + ': incomplete compose short-fixture cleanup failed')
+        planned, completed = report.get('plannedPhases'), report.get('completedPhases')
+        require(isinstance(planned, list) and bool(planned) and all(isinstance(p, str) and p for p in planned)
+                and len(planned) == len(set(planned)) and isinstance(completed, list)
+                and completed == planned[:len(completed)], name + ': invalid incomplete phase record')
+
+
+def cases(step, out, harness=None, history=False, allow_empty=False, allow_incomplete=False):
     name = step['name']
     native = NATIVE[name]
     report = read_json(out / 'native' / native.name / native.results)
@@ -238,8 +285,13 @@ def cases(step, out, harness=None, history=False, allow_empty=False):
     require(step.get('counts') == counts, name + ': summary counts disagree with report')
     require(counts['browser_closed'] is True, name + ': browser cleanup failed')
     log = (out / (name + '.log')).read_text()
+    end = mode_end_state(name, report, log)
+    deferred = (allow_incomplete and bool(rows) and not end['completed']
+                and report.get('fixtureExitCode') == 0 and native.results != 'results.json')
+    if deferred:
+        incomplete_cleanup(name, report)
     if native.harness == COMPOSE:
-        require(compose_completed(report), name + ': phases or fixture cleanup unattested')
+        require(compose_completed(report) or deferred, name + ': phases or fixture cleanup unattested')
     elif native.results == 'results.json':
         final = _final_json(log)
         require(isinstance(final, dict) and final.get('closed') is True and final.get('results') == rows,
@@ -252,7 +304,10 @@ def cases(step, out, harness=None, history=False, allow_empty=False):
             # The harness exits non-zero on the fixture's exit however its cases went.
             rows, good = rows + [fixture_exit_row(name, code, log, rows, harness, report, history)], False
         elif counts['fail']:
-            require(END_LINE in log.splitlines(), name + ': harness did not reach end')
+            require(END_LINE in log.splitlines() or deferred, name + ': harness did not reach end')
+    if rows and not end['completed'] and report.get('fixtureExitCode') == 0:
+        require(deferred, name + ': harness did not reach end')
+        good = False
     require(type(step.get('exit')) is int and step['exit'] == (0 if good else 1), name + ': abnormal harness exit')
     require(step.get('passed') is good, name + ': inconsistent raw verdict')
     return rows
@@ -262,6 +317,24 @@ def mode_observation(step, out, rows, root, commit, checkout, strict=False):
     """Retain raw observations; an excluded mode still owes complete evidence."""
     name, native = step['name'], NATIVE[step['name']]
     report = read_json(out / 'native' / native.name / native.results)
+    log = evidence_log(out / (name + '.log'))
+    end = mode_end_state(name, report, log)
+    if len(rows) == len(report['results']) + 1 and report.get('fixtureExitCode') != 0:
+        # cases() already validated the terminal fixture assertion and balanced
+        # case log under the existing legacy-history rule. It is not truncation.
+        end['completed'] = True
+        end['completion_proof'] = 'validated-terminal-fixture-assertion'
+    # Keep original errors in the observation. Only the comparison key uses the
+    # existing verified-checkout/generated-ID normalization, with source frames
+    # checked against this record's own commit.
+    for field, error in end['errors'].items():
+        if error is not None:
+            require(error in log, name + ': body error differs from retained log')
+            if field == 'bodyError':
+                require(evidence_log(out / 'native' / native.name / 'body-error.txt') == error,
+                        name + ': body error differs from retained evidence')
+            fingerprint(error, checkout, root, commit)
+            end['errors'][field] = normalize(error, checkout)
     if strict:
         log = evidence_log(out / (name + '.log'))
         if native.harness == COMPOSE:
@@ -293,9 +366,9 @@ def mode_observation(step, out, rows, root, commit, checkout, strict=False):
         for row in rows:
             if row['passed'] is False:
                 fingerprint(row.get('error'), checkout, root, commit)
-    return dict(counts=step['counts'], exit=step['exit'], raw_passed=step['passed'],
+    return dict(counts=step['counts'], exit=step['exit'], raw_passed=step['passed'], end_state=end,
                 results=rows, **{k: report[k] for k in
-                ('bodyCompleted', 'bodyError', 'teardownError', 'fixtureExitCode',
+                ('bodyCompleted', 'harnessCompleted', 'bodyError', 'harnessError', 'teardownError', 'fixtureExitCode',
                  'fixtureExitSignal', 'fixtureErrors', 'browserClosed', 'closed') if k in report})
 
 def profile_identity(profile):
@@ -849,12 +922,12 @@ def catalog_context(root,commit):
         globals().update(previous)
 
 
-def read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False, history_steps=None, allow_empty_modes=(), mode_records=None, strict_modes=()):
+def read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False, history_steps=None, allow_empty_modes=(), mode_records=None, strict_modes=(), incomplete_modes=None):
     with catalog_context(root,commit):
-        return _read_evidence(summary_path,provenance_path,shards,root,commit,run,base,expected_merge,binding,history,history_steps,allow_empty_modes,mode_records,strict_modes)
+        return _read_evidence(summary_path,provenance_path,shards,root,commit,run,base,expected_merge,binding,history,history_steps,allow_empty_modes,mode_records,strict_modes,incomplete_modes)
 
 
-def _read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False, history_steps=None, allow_empty_modes=(), mode_records=None, strict_modes=()):
+def _read_evidence(summary_path, provenance_path, shards, root, commit, run, base, expected_merge, binding=None, history=False, history_steps=None, allow_empty_modes=(), mode_records=None, strict_modes=(), incomplete_modes=None):
     candidate_root = root
     traffic = json.loads(source(root,commit,REPLAY_FILE)) if 'wake-replay' in REQUIRED else None
     provenance, summary = read_json(provenance_path), read_json(summary_path)
@@ -983,9 +1056,15 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
             if step['name'] in NATIVE:
                 name = step['name']
                 rows = cases(step, out, (raw['tools'].get('harnesses') or {}).get(NATIVE[name].harness),
-                             history, allow_empty=name in allow_empty_modes)
+                             history, allow_empty=name in allow_empty_modes,
+                             allow_incomplete=history or name in (incomplete_modes or {}))
                 observation = mode_observation(step, out, rows, root, commit, raw['checkout'],
                                                strict=not rows or name in strict_modes)
+                if not history and rows and not observation['end_state']['completed']:
+                    selected_end = (incomplete_modes or {}).get(name)
+                    require(selected_end is not None and [observation['end_state']] == selected_end['end_states'],
+                            name + ': end state differs from selected base history')
+                    observation['shared_incomplete'] = True
                 if mode_records is not None and name in selected:
                     mode_records.setdefault(name, []).append(observation)
                 observed.append((name, rows, profile, raw['checkout']))
@@ -1360,7 +1439,34 @@ def base_blind_modes(records, required):
     return excluded
 
 
-def compare_with_exclusions(failures, known, base_runs, excluded, modes):
+def shared_incomplete_modes(records, required):
+    """Every selected record must prove the same nonempty incomplete end."""
+    shared = {}
+    for name in required:
+        if not name.startswith('native-'):
+            continue
+        selected = [r for r in records if name in r['verified_steps']]
+        if not selected:
+            continue
+        states, identities = [], []
+        for record in selected:
+            observations = record['browser_modes'].get(name)
+            require(isinstance(observations, list) and bool(observations), name + ': missing selected base mode')
+            ends = [o.get('end_state') for o in observations]
+            states.append(ends)
+            identities.append(dict({k: record[k] for k in ('id', 'head_sha', 'created_at')},
+                observations=[{k: o[k] for k in ('end_state', 'bodyCompleted', 'harnessCompleted',
+                    'bodyError', 'harnessError', 'counts', 'exit', 'raw_passed') if k in o} for o in observations]))
+        # Grouped compose has its own verified completion format and no end_state;
+        # it cannot acquire this exception by a missing-field default.
+        if (len(states[0]) == 1 and all(isinstance(s, dict) and s['case_count'] > 0
+                and s['completed'] is False for s in states[0])
+                and all(s == states[0] for s in states)):
+            shared[name] = dict(end_states=states[0], base_runs=identities)
+    return shared
+
+
+def compare_with_exclusions(failures, known, base_runs, excluded, modes, incomplete=None):
     # Evidence is validated before this comparison; no bad fingerprint is hidden.
     require(not any(f.get('fingerprint_problem') for f in failures if f['step'] in excluded),
             'excluded candidate contains invalid assertion evidence')
@@ -1369,6 +1475,12 @@ def compare_with_exclusions(failures, known, base_runs, excluded, modes):
         complete_runs=len(identities), base_runs=identities,
         reason='Every selected authenticated base record has zero cases; this mode is not judged.',
         candidate=modes[name]) for name, identities in excluded.items()}
+    for name, shared in (incomplete or {}).items():
+        if any(o.get('shared_incomplete') for o in modes.get(name, [])):
+            result['browser_windows'][name] = dict(mode='shared-incomplete', excluded='completion-only',
+                reason='Every selected authenticated base record has the same incomplete end state; reached cases are still judged.',
+                run_ids=[r['id'] for r in shared['base_runs']], complete_runs=len(shared['base_runs']),
+                base_runs=shared['base_runs'], candidate=modes[name])
     return result
 
 
@@ -1410,20 +1522,22 @@ def validate(summary_path, provenance_path, shards, base_root, candidate_root, p
     required = source_catalog(candidate_root, commit)['REQUIRED']
     known, base_runs = known_base_failures(known_runs,candidate_root,base,binding['producer'],required)
     excluded = base_blind_modes(base_runs, required)
+    incomplete = shared_incomplete_modes(base_runs, required)
     modes = {}
     observed, summary = read_evidence(summary_path,provenance_path,shards,candidate_root,commit,run,raw_base,expected_merge,binding,
-                                      allow_empty_modes=excluded, mode_records=modes, strict_modes=excluded)
+                                      allow_empty_modes=excluded, mode_records=modes, strict_modes=excluded,
+                                      incomplete_modes=incomplete)
     failures, mutations = failure_records(observed,candidate_root,commit,run['id'],window=True)
-    result = compare_with_exclusions(failures, known, base_runs, excluded, modes)
+    result = compare_with_exclusions(failures, known, base_runs, excluded, modes, incomplete)
     require(not summary['passed'] or binding['producer']['conclusion'] == 'success', 'producer failed outside reported checks')
     manifest = read_json(known_runs)
     result['browser_windows'].update({name: {'run_ids': ids, 'complete_runs': len(ids),
                                       'mode': 'window' if len(ids) >= 5 else 'three-control-fallback'}
-                                 for name, ids in (manifest.get('browser_window_runs') or {}).items() if name not in excluded})
+                                 for name, ids in (manifest.get('browser_window_runs') or {}).items() if name not in result['browser_windows']})
     # Original artifacts retain all observations. The public result needs run
     # provenance and the named comparison, not ten copies of every passing case.
     shown_runs = [{k:v for k,v in row.items() if k not in ('browser_cases', 'browser_modes')} for row in base_runs]
-    result.update(run=run,base=base,merge=expected_merge,raw_passed=summary['passed'],producer=binding['producer'],controller=binding['controller'],status_head_sha=binding['producer']['head_sha'],known_base_runs=shown_runs,mutation_advisories=mutations,test_definition_changes=test_definition_changes(candidate_root,base['sha'],commit),runtime_code_paths=[str(Path(__file__).resolve())],known_policy='authenticated-all-zero-browser-exclusion-1124;browser-ten-complete-min-five;fallback-original-three;nonbrowser-all-original-controls',train=train_identity(candidate_root,commit,binding))
+    result.update(run=run,base=base,merge=expected_merge,raw_passed=summary['passed'],producer=binding['producer'],controller=binding['controller'],status_head_sha=binding['producer']['head_sha'],known_base_runs=shown_runs,mutation_advisories=mutations,test_definition_changes=test_definition_changes(candidate_root,base['sha'],commit),runtime_code_paths=[str(Path(__file__).resolve())],known_policy='authenticated-shared-incomplete-end-1125;authenticated-all-zero-browser-exclusion-1124;browser-ten-complete-min-five;fallback-original-three;nonbrowser-all-original-controls',train=train_identity(candidate_root,commit,binding))
     return result
 
 

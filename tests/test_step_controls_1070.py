@@ -502,5 +502,253 @@ class BaseBlindMode1124Case(unittest.TestCase):
         self.assertEqual(result['unexpected'][0]['fingerprint_problem'], row['fingerprint_problem'])
 
 
+class SharedIncomplete1125Case(unittest.TestCase):
+    """Ordinary artifact/receipt judge units; no browser or live API."""
+    setUp = StepControlsCase.setUp
+    git = StepControlsCase.git
+    known = StepControlsCase.known
+    save_step = BaseBlindMode1124Case.save_step
+    manifest = BaseBlindMode1124Case.manifest
+
+    def compose_catalog(self):
+        old = self.sha
+        p = self.repo / 'tools/release_check.py'
+        p.write_text(p.read_text() + "COMPOSE = 'tests/reader.mjs'\n")
+        self.git('add', '.')
+        self.git('-c', 'user.name=fixture', '-c', 'user.email=fixture@invalid', 'commit', '-qm', 'compose catalog')
+        self.sha = self.git('rev-parse', 'HEAD').strip()
+        self.tree = self.git('rev-parse', 'HEAD^{tree}').strip()
+        self.merge = dict(sha=self.sha, tree=self.tree, first_parent=old, second_parent=None)
+
+    def bundle(self, run_id, complete=False, shape='body', error='stopped', count=1,
+               new_red=False, all_pass=False):
+        folder, run = BaseBlindMode1124Case.bundle(self, run_id, zero=False, new_red=new_red)
+        out = folder / 'shards/check-2'
+        path = out / 'native/reader/native.json'
+        report = json.loads(path.read_text())
+        first = report['results'][0]
+        report['results'] = [dict(first, name=first['name'] if i == 0 else 'extra case %d' % i)
+                             for i in range(count)]
+        if all_pass:
+            for row in report['results']:
+                row['passed'] = True
+                row.pop('error', None)
+        for field in ('bodyCompleted', 'bodyError', 'harnessCompleted', 'harnessError'):
+            report.pop(field, None)
+        value = (None if complete or error is None else
+                 'Error: %s m-%032x\n    at /fixture/tests/reader.mjs:1:1' % (error, run_id))
+        if shape != 'absent':
+            report['harnessCompleted' if shape in ('harness', 'compose') else 'bodyCompleted'] = complete
+            report['harnessError' if shape in ('harness', 'compose') else 'bodyError'] = value
+        else:
+            value = None
+        if shape == 'compose':
+            report.update(plannedPhases=CONTROLLER.PHASES,
+                          completedPhases=CONTROLLER.PHASES if complete else [],
+                          shortFixture=dict(exitCode=0, exitSignal=None, errors=''))
+        path.write_text(json.dumps(report))
+        log = CONTROLLER.END_LINE + '\n' if complete else (value + '\n' if value else '')
+        (out / 'native-reader.log').write_text(log)
+        if shape == 'body' and value:
+            (path.parent / 'body-error.txt').write_text(value)
+        step = json.loads((out / 'summary.json').read_text())['steps'][0]
+        step['counts'], good = CONTROLLER.native_counts(
+            CONTROLLER.NativeStep('reader', 'tests/reader.mjs', (), 'native.json'), path.parent)
+        step.update(exit=0 if complete and good else 1, passed=bool(complete and good))
+        self.save_step(folder, 2, step)
+        return folder, run
+
+    def controls(self, **kwargs):
+        return [self.bundle(i, **kwargs) for i in range(1, 4)]
+
+    def judge(self, candidate, controls):
+        known, records = self.known(self.manifest(controls))
+        excluded = CONTROLLER.base_blind_modes(records, self.required)
+        incomplete = CONTROLLER.shared_incomplete_modes(records, self.required)
+        folder, run = candidate
+        modes = {}
+        observed, summary = CONTROLLER.read_evidence(
+            folder / 'release-check/summary.json', folder / 'release-check/provenance.json', folder / 'shards',
+            self.repo, self.sha, run, {'ref': None, 'sha': None}, self.merge,
+            allow_empty_modes=excluded, strict_modes=excluded, mode_records=modes, incomplete_modes=incomplete)
+        failed, _ = CONTROLLER.failure_records(observed, self.repo, self.sha, run['id'], window=True)
+        return CONTROLLER.compare_with_exclusions(failed, known, records, excluded, modes, incomplete), summary
+
+    def test_shared_body_end_keeps_known_reds_and_discloses_every_selected_run(self):
+        candidate = self.bundle(99)
+        folder, run = candidate
+        with self.assertRaisesRegex(CONTROLLER.Refused, 'harness did not reach end'):
+            CONTROLLER.read_evidence(folder / 'release-check/summary.json', folder / 'release-check/provenance.json',
+                folder / 'shards', self.repo, self.sha, run, {'ref': None, 'sha': None}, self.merge)
+        result, raw = self.judge(candidate, self.controls())
+        self.assertTrue(result['passed'], result)
+        self.assertFalse(raw['passed'])
+        self.assertEqual(len(result['expected']), 1)
+        window = result['browser_windows']['native-reader']
+        self.assertEqual(window['excluded'], 'completion-only')
+        self.assertEqual(window['run_ids'], [1, 2, 3])
+        self.assertEqual([x['observations'][0]['end_state']['case_count'] for x in window['base_runs']], [1, 1, 1])
+        self.assertIn('m-%032x' % 99, window['candidate'][0]['bodyError'])
+        self.assertIn('m-ID1', window['candidate'][0]['end_state']['errors']['bodyError'])
+        self.assertEqual(window['candidate'][0]['counts']['fail'], 1)
+        self.assertEqual(window['candidate'][0]['exit'], 1)
+
+    def test_shared_end_does_not_hide_a_new_reached_red(self):
+        result, _ = self.judge(self.bundle(99, new_red=True), self.controls())
+        self.assertFalse(result['passed'])
+        self.assertEqual(result['unexpected'][0]['case']['name'], 'new candidate failure')
+        self.assertEqual(result['browser_windows']['native-reader']['excluded'], 'completion-only')
+
+    def test_same_case_with_a_new_assertion_is_still_unexpected(self):
+        candidate, controls = self.bundle(99), self.controls()
+        path = candidate[0] / 'shards/check-2/native/reader/native.json'
+        report = json.loads(path.read_text())
+        report['results'][0]['error'] = 'AssertionError: different failure\n at /fixture/tests/reader.mjs:1:1'
+        path.write_text(json.dumps(report))
+        result, _ = self.judge(candidate, controls)
+        self.assertFalse(result['passed'])
+        self.assertEqual(result['unexpected'][0]['case']['name'], 'known case')
+
+    def test_absent_completion_and_error_remain_absent(self):
+        result, _ = self.judge(self.bundle(99, shape='absent'), self.controls(shape='absent'))
+        end = result['browser_windows']['native-reader']['candidate'][0]['end_state']
+        self.assertEqual(end['completion'], {})
+        self.assertEqual(end['errors'], {})
+        self.assertFalse(end['completed'])
+        self.assertTrue(result['passed'])
+
+    def test_harness_completion_and_error_shape_is_not_header_specific(self):
+        result, _ = self.judge(self.bundle(99, shape='harness'), self.controls(shape='harness'))
+        end = result['browser_windows']['native-reader']['candidate'][0]['end_state']
+        self.assertEqual(end['completion'], {'harnessCompleted': False})
+        self.assertIn('harnessError', end['errors'])
+        self.assertTrue(result['passed'])
+
+    def test_compose_shared_end_keeps_phase_record_and_both_fixture_cleanups(self):
+        self.compose_catalog()
+        result, _ = self.judge(self.bundle(99, shape='compose'), self.controls(shape='compose'))
+        end = result['browser_windows']['native-reader']['candidate'][0]['end_state']
+        self.assertEqual(end['phases']['completedPhases'], [])
+        self.assertEqual(end['phases']['plannedPhases'], CONTROLLER.PHASES)
+        self.assertTrue(result['passed'])
+
+    def test_completed_base_refuses_incomplete_candidate(self):
+        with self.assertRaisesRegex(CONTROLLER.Refused, 'harness did not reach end'):
+            self.judge(self.bundle(99), self.controls(complete=True))
+
+    def test_different_count_or_error_refuses(self):
+        for kwargs in ({'count': 2}, {'error': 'another stopping point'}):
+            with self.subTest(kwargs=kwargs):
+                # Distinct directories keep each raw comparison independent.
+                offset = 10 if 'count' in kwargs else 20
+                controls = [self.bundle(offset + i, **kwargs) for i in range(1, 4)]
+                with self.assertRaisesRegex(CONTROLLER.Refused, 'end state differs'):
+                    self.judge(self.bundle(offset + 99), controls)
+
+    def test_mixed_complete_and_incomplete_history_refuses(self):
+        controls = [self.bundle(1), self.bundle(2, complete=True), self.bundle(3)]
+        with self.assertRaisesRegex(CONTROLLER.Refused, 'harness did not reach end'):
+            self.judge(self.bundle(99), controls)
+
+    def test_a_later_selected_record_with_a_different_count_defeats_the_exception(self):
+        controls = [self.bundle(1), self.bundle(2, count=2), self.bundle(3)]
+        with self.assertRaisesRegex(CONTROLLER.Refused, 'harness did not reach end'):
+            self.judge(self.bundle(99), controls)
+
+    def test_absent_false_and_null_error_are_not_collapsed(self):
+        controls = [self.bundle(1, shape='absent'), self.bundle(2, error=None), self.bundle(3, shape='absent')]
+        with self.assertRaisesRegex(CONTROLLER.Refused, 'harness did not reach end'):
+            self.judge(self.bundle(99, shape='absent'), controls)
+
+    def test_completed_candidate_over_incomplete_base_is_judged_normally(self):
+        controls = self.controls()
+        result, _ = self.judge(self.bundle(99, complete=True), controls)
+        self.assertTrue(result['passed'])
+        self.assertEqual(len(result['expected']), 1)
+        self.assertEqual(result['browser_windows'], {})
+        result, _ = self.judge(self.bundle(100, complete=True, new_red=True), controls)
+        self.assertFalse(result['passed'])
+        self.assertEqual(result['unexpected'][0]['case']['name'], 'new candidate failure')
+
+    def test_true_harness_completion_is_not_mislabeled_as_incomplete(self):
+        result, _ = self.judge(self.bundle(99, complete=True, shape='harness'), self.controls(complete=True, shape='harness'))
+        self.assertTrue(result['passed'])
+        self.assertEqual(result['browser_windows'], {})
+
+    def test_all_passed_prefix_still_preserves_aborted_direct_exit_and_raw_failure(self):
+        result, raw = self.judge(self.bundle(99, all_pass=True), self.controls(all_pass=True))
+        observation = result['browser_windows']['native-reader']['candidate'][0]
+        self.assertTrue(result['passed'])
+        self.assertEqual(observation['counts']['pass'], 1)
+        self.assertEqual(observation['exit'], 1)
+        self.assertFalse(observation['raw_passed'])
+        self.assertFalse(raw['passed'])
+
+    def test_empty_selection_cannot_authorize_an_incomplete_candidate(self):
+        with self.assertRaisesRegex(CONTROLLER.Refused, 'harness did not reach end'):
+            self.judge(self.bundle(99), [])
+
+    def test_partial_counts_exit_and_cleanup_are_still_validated(self):
+        controls, candidate = self.controls(), self.bundle(99)
+        folder = candidate[0]
+        path = folder / 'shards/check-2/native/reader/native.json'
+        original = path.read_text()
+        for field, value in [('browserClosed', False), ('fixtureExitCode', 2), ('fixtureErrors', 'error'), ('teardownError', 'error')]:
+            with self.subTest(field=field):
+                report = json.loads(original)
+                report[field] = value
+                path.write_text(json.dumps(report))
+                with self.assertRaises(CONTROLLER.Refused):
+                    self.judge(candidate, controls)
+                path.write_text(original)
+        step = json.loads((folder / 'shards/check-2/summary.json').read_text())['steps'][0]
+        for field, value in [('exit', 0), ('counts', {'tests': 100})]:
+            with self.subTest(field=field):
+                self.save_step(folder, 2, dict(step, **{field: value}))
+                with self.assertRaises(CONTROLLER.Refused):
+                    self.judge(candidate, controls)
+                self.save_step(folder, 2, step)
+
+    def test_partial_body_error_requires_retained_log_and_verified_source(self):
+        controls, candidate = self.controls(), self.bundle(99)
+        folder = candidate[0]
+        path = folder / 'shards/check-2/native/reader/body-error.txt'
+        path.unlink()
+        with self.assertRaisesRegex(CONTROLLER.Refused, 'unreadable evidence log'):
+            self.judge(candidate, controls)
+        report_path = path.parent / 'native.json'
+        report = json.loads(report_path.read_text())
+        report['bodyError'] = report['bodyError'].replace('/fixture/', '/foreign/')
+        report_path.write_text(json.dumps(report))
+        path.write_text(report['bodyError'])
+        (folder / 'shards/check-2/native-reader.log').write_text(report['bodyError'])
+        with self.assertRaisesRegex(CONTROLLER.Refused, 'outside verified checkout'):
+            self.judge(candidate, controls)
+
+    def test_missing_or_corrupt_selected_base_report_is_not_an_end_state(self):
+        controls, candidate = self.controls(), self.bundle(99)
+        path = controls[0][0] / 'shards/check-2/native/reader/native.json'
+        original = path.read_text()
+        for value in (None, '{}', '{'):
+            with self.subTest(value=value):
+                path.unlink() if value is None else path.write_text(value)
+                with self.assertRaises(CONTROLLER.Refused):
+                    self.judge(candidate, controls)
+                path.write_text(original)
+
+    def test_compose_short_fixture_failure_cannot_be_excepted(self):
+        self.compose_catalog()
+        controls, candidate = self.controls(shape='compose'), self.bundle(99, shape='compose')
+        for pair in (controls[0], candidate):
+            path = pair[0] / 'shards/check-2/native/reader/native.json'
+            original = path.read_text()
+            report = json.loads(original)
+            report['shortFixture']['exitCode'] = 1
+            path.write_text(json.dumps(report))
+            with self.assertRaisesRegex(CONTROLLER.Refused, 'short-fixture cleanup'):
+                self.judge(candidate, controls)
+            path.write_text(original)
+
+
 if __name__ == '__main__':
     unittest.main()
