@@ -12,7 +12,7 @@ stage entry.
 
 An agent's whisper is never where an item came from (private_source_refused); a person's may be.
 
-What pieces hold, how each piece ended and which topics the pipeline holds shipped (Ready for review) are derived
+What pieces hold, how each piece ended and which topics the pipeline holds shipped are derived
 state: every command that changes what a piece holds or whether its items shipped (piece_start and its return to
 building, combine, a drop, piece_finish, turning releases on or off, and a release record) appends its fact to the
 outcome's log (pipeline_facts) and then _settle writes the differences between pipeline_state.derive() of the facts and what is
@@ -34,6 +34,7 @@ from .whispers import actor_kind, private_source_refused
 from .message_edit import held_refusal, is_held, words as message_words, withheld
 from .removal import value as removal_value
 from .piece_freeze import PieceFreezes
+from .judgment import SHA
 
 
 # A stage entry keeps its past: once left, nothing in it changes, but (version 30) the derived end _settle wrote on a
@@ -361,12 +362,11 @@ class Pipeline(PieceFreezes):
         to change only how it ended), and the topics the pipeline holds shipped. Nothing else writes these, so what is
         stored is always derive() of the facts so far, whatever order they came in.
 
-        A topic the pipeline newly holds shipped is set Ready for review by nobody, "Live in release N since <its deployed
-        time>", unless someone has already said it is done, so a person's earlier word gives way; the person marks it
-        Done. One it holds with a newer N gets the new note while its review is the pipeline's own, and one it no longer
-        holds (work for it appeared again) goes back to active while its state is the pipeline's own (a review, or a Done
-        it said before it said review). A person's word given while the pipeline holds a topic, a Done or a reopen,
-        stands, and a message in the topic leaves the pipeline's review as it is. The database keeps the owner's word
+        A newly shipped agent Build topic is Done (1081); a legacy person-linked topic keeps Ready for review.
+        The release's deployed time supplies the note. An earlier manual Done and later manual state keep their
+        meaning; system-owned state returns to active when work appears again. Starting an actual new piece also
+        opens its topic. A message preserves a pipeline-owned Done, rather than reopening the shipping announcement.
+        The database keeps the owner's word
         on leaving a stage (D24): an end written by someone's act that cannot leave it refuses the write, and an end a
         record wrote (nobody's) leaves any stage."""
         state = pipeline_state.derive(pipeline_state.read_facts(db, workspace_id))
@@ -406,7 +406,9 @@ class Pipeline(PieceFreezes):
         for piece in sorted(changed):
             db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (piece,))
             self._bump(db, workspace_id, piece)
-        # pipeline_done_topics keeps the topics the pipeline holds shipped (its name is from when it held them Done).
+        # The same authoritative hold closes agent Build topics (1081); legacy
+        # person-linked topics retain their Ready for review rule.
+        builds = self._build_topics(db, workspace_id)
         held = dict(db.execute("SELECT topic_id,release FROM pipeline_done_topics WHERE workspace_id=?", (workspace_id,)).fetchall())
         for topic_id in sorted(set(held) | set(state.done_topics)):
             new, old = state.done_topics.get(topic_id), held.get(topic_id)
@@ -417,8 +419,14 @@ class Pipeline(PieceFreezes):
             # (kept Done, never moved back to review). Anyone's word, or a reopen since, is theirs.
             nobodys = topic["state_by"] is None and topic["state_message_id"] is None
             its_review = nobodys and topic["state"] == "review"
-            if new is not None and (its_review or (old is None and topic["state"] != "done")):
-                self._set_topic_state(db, topic, None, {"state": "review", "note": _live_since(db, new)})
+            its_done = nobodys and topic["state"] == "done"
+            if new is not None and (its_review or (topic_id in builds and its_done) or (old is None and topic["state"] != "done")):
+                args = {"state": "done" if topic_id in builds else "review", "note": _live_since(db, new)}
+                if topic_id in builds and topic["archived"]:
+                    args["archived"] = False
+                self._set_topic_state(db, topic, None, args)
+            elif new is not None and topic_id in builds and topic["archived"]:
+                self._set_topic_state(db, topic, None, {"archived": False})
             elif new is None and nobodys and topic["state"] in ("review", "done"):
                 self._set_topic_state(db, topic, None, {"state": "active", "note": ""})
             if new is None:
@@ -426,6 +434,58 @@ class Pipeline(PieceFreezes):
             else:
                 db.execute("INSERT INTO pipeline_done_topics VALUES (?,?,?) ON CONFLICT(topic_id) DO UPDATE SET release=excluded.release",
                            (topic_id, workspace_id, new))
+
+    def _archive_parked_build_topics(self, db, workspace_id, numbers, shipped):
+        """A real historical binding, wholly parked and with no open entry, leaves the rail.
+
+        Current item placement and existing member/entry facts suffice; no
+        title-derived relationship or second work-state record is created.
+        """
+        affected = {row[0] for row in db.execute(
+            "SELECT DISTINCT p.topic_id FROM pipeline_pieces p JOIN pipeline_piece_members m ON m.piece_id=p.id "
+            "WHERE p.workspace_id=? AND m.number IN (SELECT value FROM json_each(?))",
+            (workspace_id, _json(list(numbers))))}
+        builds = self._build_topics(db, workspace_id) & affected
+        if not builds:
+            return
+        open_topics = {row[0] for row in db.execute(
+            "SELECT DISTINCT p.topic_id FROM pipeline_pieces p JOIN pipeline_stage_entries e ON e.piece_id=p.id "
+            "WHERE p.workspace_id=? AND p.topic_id IN (SELECT value FROM json_each(?)) AND e.left_ms IS NULL",
+            (workspace_id, _json(sorted(builds))))}
+        pending = {}
+        for topic_id, number, section in db.execute(
+                "SELECT DISTINCT p.topic_id,i.number,i.section FROM pipeline_pieces p "
+                "JOIN pipeline_piece_members m ON m.piece_id=p.id "
+                "JOIN pipeline_items i ON i.workspace_id=m.workspace_id AND i.number=m.number "
+                "WHERE p.workspace_id=? AND p.topic_id IN (SELECT value FROM json_each(?))",
+                (workspace_id, _json(sorted(builds)))):
+            if topic_id in builds and number not in shipped:
+                pending.setdefault(topic_id, set()).add(section)
+        for topic_id, sections in pending.items():
+            if topic_id in open_topics or not sections <= {"candidates", "later"}:
+                continue
+            topic = db.execute("SELECT * FROM topics WHERE id=?", (topic_id,)).fetchone()
+            if topic["kind"] == "topic" and not topic["archived"]:
+                self._set_topic_state(db, topic, None, {"archived": True})
+
+    def _open_build_topic(self, db, topic_id):
+        """Starting actual work opens its topic; old state/history stays in its records."""
+        topic = db.execute("SELECT * FROM topics WHERE id=?", (topic_id,)).fetchone()
+        args = {"archived": False} if topic["archived"] else {}
+        if topic["state"] == "done":
+            args.update(state="active", note="")
+        if args:
+            self._set_topic_state(db, topic, None, args)
+
+    def _pipeline_holds_done_topic(self, db, topic):
+        """Only a pipeline-owned agent Build Done survives a shipping announcement."""
+        if topic["state_by"] is not None or topic["state_message_id"] is not None:
+            return False
+        return db.execute(
+            "SELECT 1 FROM pipeline_done_topics d JOIN pipelines p ON p.workspace_id=d.workspace_id "
+            "JOIN topics t ON t.id=d.topic_id JOIN actors a ON a.id=t.creator_id "
+            "WHERE d.topic_id=? AND p.enabled=1 AND t.kind='topic' AND a.kind='agent'",
+            (topic["id"],)).fetchone() is not None
 
     def _open_piece_of(self, db, workspace_id, number):
         """The piece an item is in (3.4): its member row that has not left, open or closed. An item that shipped in a release,
@@ -799,7 +859,8 @@ class Pipeline(PieceFreezes):
             raise Refusal("OWNER_PLACED", "%s placed this item at %s. Say so once in this outcome's conversation; "
                           "Theseus does not move it back. Once %s says go ahead, move it with that message as because."
                           % (owner, _clock(placed["ms"]), owner))
-        if self._shipped(db, pipeline, item, self._shipped_numbers(db)):
+        releases = self._shipped_numbers(db)
+        if self._shipped(db, pipeline, item, releases):
             raise Refusal("ITEM_SHIPPED", "A shipped item stays where it shipped")
         undo_of, undone = args.get("undo_of"), None
         if undo_of is not None:
@@ -891,6 +952,8 @@ class Pipeline(PieceFreezes):
             for moving in aside or [number]:
                 self._fact(db, workspace["id"], "drop", ms, actor, dict({"number": moving}, **({"aside": note} if aside is not None else {})))
             self._settle(db, workspace["id"])
+        self._archive_parked_build_topics(db, workspace["id"], aside or [number],
+                                          releases if pipeline["ships_in_releases"] else {})
         version = self._bump(db, workspace["id"], number)
         answer = {"workspace_id": workspace["id"], "number": number, "section": section, "event": events[number], "pipeline_revision": version}
         if aside is not None:
@@ -1099,6 +1162,7 @@ class Pipeline(PieceFreezes):
         self._fact(db, workspace["id"], "start", ms, actor, {"piece": piece_id, "numbers": [item["number"] for item in items],
                                                              "from_release": release["id"] if args.get("from_release") else None})
         self._settle(db, workspace["id"])
+        self._open_build_topic(db, topic["id"])
         version = self._bump(db, workspace["id"], piece_id)
         return {"piece_id": piece_id, "numbers": [item["number"] for item in items], "stage_id": stage["stage_id"], "pipeline_revision": version}, []
 
@@ -1139,6 +1203,8 @@ class Pipeline(PieceFreezes):
             raise Refusal("TOPIC_HAS_PIECE", "That topic already holds a piece of work under way")
         db.execute("UPDATE pipeline_pieces SET topic_id=?,version=version+1 WHERE id=?", (topic["id"], piece["id"]))
         self._settle(db, workspace["id"])
+        if self._open_entry(db, piece["id"]) is not None:
+            self._open_build_topic(db, topic["id"])
         self._build_moved(db, {before, topic["id"]})
         version = self._bump(db, workspace["id"], piece["id"])
         return {"piece_id": piece["id"], "from_topic_id": before, "topic_id": topic["id"],
@@ -1237,8 +1303,23 @@ class Pipeline(PieceFreezes):
         missing = [piece["id"] for piece, _, _, freeze in selected if freeze is None]
         if multiple and missing:
             raise Refusal("FREEZE_REQUIRED", "Freeze every selected piece before combining several items: %s" % ", ".join(missing))
-        if multiple and any(freeze and freeze["judged"] for _, _, _, freeze in selected):
-            raise Refusal("JUDGED_BUNDLE", "A judged item pays its own gauntlet; land it alone, without bundling another item")
+        judged = [bool(freeze and freeze["judged"]) for _, _, _, freeze in selected]
+        train_sources = None
+        if multiple and any(judged):
+            if not all(judged):
+                raise Refusal("JUDGED_BUNDLE", "A judged train contains only frozen judged pieces, not an ordinary/judged mixture")
+            if not isinstance(args.get("commit_sha"), str) or SHA.fullmatch(args["commit_sha"]) is None:
+                raise Refusal("INVALID_ARGUMENT", "A judged train names its one full candidate commit")
+        if all(judged):
+            train_sources = [{"id": piece["id"], "items": members, "version": piece["version"],
+                              "freeze": freeze, "approval": self._piece_approval(db, piece["id"], freeze)}
+                             for piece, _, members, freeze in selected]
+            if multiple:
+                if any(source["approval"] is None for source in train_sources):
+                    raise Refusal("PIECE_NOT_APPROVED", "A judged train keeps each frozen source's canonical approval")
+                ordered = sorted(train_sources, key=lambda source: (source["approval"]["at_ms"], source["approval"]["seq"]))
+                if train_sources != ordered:
+                    raise Refusal("JUDGED_ORDER", "Carry judged pieces in canonical approval order")
         ms = _now_ms()
         release_id = "p-" + uuid.uuid4().hex[:24]
         # A topic's first piece makes it a Build topic (item 297).
@@ -1252,7 +1333,12 @@ class Pipeline(PieceFreezes):
             self._leave(db, actor, entry, "combined", ms)
             numbers += members
         self._enter(db, actor, {"id": release_id, "workspace_id": workspace["id"]}, first, 1, None, ms, args.get("ask_message_id"))
-        self._fact(db, workspace["id"], "combine", ms, actor, {"release": release_id, "pieces": list(dict.fromkeys(piece_ids)), "numbers": numbers})
+        payload = {"release": release_id, "pieces": list(dict.fromkeys(piece_ids)), "numbers": numbers}
+        if train_sources is not None:
+            # A combine is a durable candidate plan. Git membership and the
+            # authenticated run are checked by admission outside this transaction.
+            payload["judged_train"] = {"candidate_commit": args.get("commit_sha"), "sources": train_sources}
+        self._fact(db, workspace["id"], "combine", ms, actor, payload)
         self._settle(db, workspace["id"])
         version = self._bump(db, workspace["id"], release_id)
         return {"piece_id": release_id, "release_number": release, "numbers": numbers, "pipeline_revision": version}, []
@@ -1327,6 +1413,21 @@ class Pipeline(PieceFreezes):
             cache[key] = outcome_rules.typical(durations, basis)
         return cache[key]
 
+    def _piece_approval(self, db, piece_id, freeze):
+        if freeze is None:
+            return None
+        # Administrative Review/Wait moves cannot erase the first approval of
+        # these frozen bytes. A genuinely new freeze starts a new source epoch.
+        row = db.execute("SELECT approval.seq,approval.left_ms FROM pipeline_stage_entries approval "
+                         "JOIN pipeline_stage_entries following ON following.piece_id=approval.piece_id AND following.seq="
+                         "(SELECT min(next.seq) FROM pipeline_stage_entries next WHERE next.piece_id=approval.piece_id "
+                         "AND next.seq>approval.seq) WHERE approval.piece_id=? AND approval.left_outcome='approved' "
+                         "AND approval.left_ms>=? AND following.entered_ms=approval.left_ms AND following.stage_id="
+                         "(SELECT stage_id FROM pipeline_stages WHERE workspace_id=approval.workspace_id AND scope='piece' "
+                         "AND position IS NOT NULL ORDER BY position DESC LIMIT 1) ORDER BY approval.left_ms,approval.seq LIMIT 1",
+                         (piece_id, freeze["at_ms"])).fetchone()
+        return {"at_ms": row["left_ms"], "seq": row["seq"]} if row else None
+
     def _piece_view(self, db, actor, workspace, piece, stages, work, cache, titles):
         entries = db.execute("SELECT * FROM pipeline_stage_entries WHERE piece_id=? ORDER BY seq", (piece["id"],)).fetchall()
         by_id = {stage["stage_id"]: stage for stage in self._stages(db, workspace["id"], current=False)}
@@ -1352,6 +1453,14 @@ class Pipeline(PieceFreezes):
                 "stages_so_far": [entry_view(entry) for entry in entries if entry["left_ms"] is not None],
                 "stage": None, "ahead": [], "ahead_ids": [], "version": piece["version"],
                 "you_set_aside": current is not None and self._set_aside_refusal(db, actor, workspace, piece, current) is None}
+        view["approval"] = self._piece_approval(db, piece["id"], view["freeze"]) if piece["kind"] == "piece" else None
+        if piece["kind"] == "release":
+            fact = db.execute("SELECT payload FROM pipeline_facts WHERE workspace_id=? AND kind='combine' "
+                              "AND json_extract(payload,'$.release')=? ORDER BY seq DESC LIMIT 1",
+                              (workspace["id"], piece["id"])).fetchone()
+            planned = _loads(fact["payload"], {}).get("judged_train") if fact else None
+            view["train_sources"] = planned["sources"] if isinstance(planned, dict) else None
+            view["train_candidate"] = planned.get("candidate_commit") if isinstance(planned, dict) else None
         topic = db.execute("SELECT id,substr(CAST(title AS BLOB),1,257) AS title_prefix,state FROM topics WHERE id=?", (piece["topic_id"],)).fetchone()
         if topic is not None:
             title, _ = _prefix(topic["title_prefix"], 256)

@@ -277,35 +277,32 @@ release check's `--report`, and which piece a candidate's readings name.
   work left (an item still in one, or combined from one and still being built,
   that no record names and no drop ended), no release in it is being put
   together, and some of its work shipped, N the newest release that shipped
-  any. Such a topic is **Ready for review**, "Live in release N since 9:05 AM
-  Tue Nov 10": the release's deployed time in the page's dated form
-  ([times.md](times.md)), in the time zone the deploy wrote it in. The person
-  marks it Done, with ✅ Done at the top of the topic
-  ([topic-settings.md](topic-settings.md#done-at-the-top-of-a-topic)) or the
-  Done chip; the pipeline never says a topic is Done, and neither should an
-  agent of a Build topic. The pipeline writes the topic's state itself, by
-  nobody, in the transaction of the write that changed what it holds
-  (`_settle`), at three moments and no others. Starting to hold a topic sets it
-  Ready for review whatever it stood at (active after a person's reopen,
-  waiting, or a review someone said), unless someone has said it is Done: for a
-  topic it starts to hold, the pipeline's rule wins over every word but a Done.
-  Holding it with a newer N rewrites the note, while the review is still the
-  pipeline's own (said by nobody, with no `state_message_id`). Work for it
-  appearing again (a piece started or a release combined there, or an item
-  going back to building from a piece there) withdraws the hold, and the topic
-  goes back to active with no note, again only while its state is the
-  pipeline's own. A person's word given while the pipeline holds a topic stands:
-  a Done, or any other state said since (`state active`, waiting, a review of
-  their own), keeps the topic as they said it until the pipeline lets it go and
-  starts to hold it again, and a person's Done stays Done through a newer N and
-  the end of the hold. A message in the topic changes none of this: the
-  shipping agent's "what to try" leaves the pipeline's review as it is, still
-  the pipeline's own ([topic-list.md](topic-list.md#a-message-in-a-done-topic)).
-  Until 10 November 2026 the pipeline held such a topic Done, "Shipped in
-  release N"; those topics stay Done (nothing moves them to review), that Done
-  still counts as the pipeline's own when work for the topic appears again,
-  and a newer N leaves it Done. The table that keeps what the pipeline holds is
-  still named `pipeline_done_topics`.
+  any. For an agent-created Build topic in an enabled pipeline, the actual
+  record makes it **Done** for every reader (1081), with "Live in release N
+  since 9:05 AM Tue Nov 10" using the deploy's own time zone
+  ([times.md](times.md)). A legacy person-linked topic keeps **Ready for review**
+  and the person's Done action. Conversations never close this way.
+
+  Core writes its state, by nobody, in the transaction changing the hold
+  (`_settle`). An earlier manual Done is retained. Otherwise starting the hold
+  replaces the prior state; a newer release updates Core's own state/note.
+  A later explicit manual word stands until the hold changes. A message,
+  including the shipping announcement, preserves Core's Build Done; an
+  ordinary/manual Done still reopens on a new message. New actual piece work
+  unarchives its topic and reopens a completed one. Partial shipment or a
+  combine still awaiting a record leaves ongoing work open.
+
+  A bound agent topic wholly set aside into Candidates or Later, with no open
+  stage entry, is archived by that item's placement transition. Starting work
+  opens it again; moving an item back to Now alone is not starting a piece.
+  Archiving keeps its state, notes, asks and all set-aside history. It neither
+  finishes the item nor changes who may read it. Ordinary/unbound topics are
+  not classified by title or source prose. Only the topic set belonging to the
+  transition is considered; unrelated parked topics are not swept. Legacy
+  cleanup needs its separate exact reviewed topic list.
+
+  The existing table retaining Core's shipment hold remains named
+  `pipeline_done_topics`; no extra lifecycle authority or schema step is added.
 - Upgrading to version 30 writes version 29's pipeline as facts, in time
   order; the first pipeline write after the upgrade (the deploy's record is one)
   writes the state they derive.

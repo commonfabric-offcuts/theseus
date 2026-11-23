@@ -80,9 +80,13 @@ test('967 unused caret arrows never reach spatial navigation, including empty ed
     const page = Object.assign(Object.create(NotebookPage.prototype), {
       host: { hidden: false }, mode, text: field, textInput: input,
       editing: mode === 'cards' ? { field, input } : null,
-      writeBeside: () => false, foldWriting: () => false,
+      writeBeside: () => false,
     });
-    for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']) {
+    // Cards' collapsed end arrows are now1058 finish commands. Keep this
+    // unused-caret test on interior arrows; Text retains even empty arrows.
+    if(value)field.selectionStart=field.selectionEnd=1;
+    const keys=mode==='cards'&&!value?['ArrowUp','ArrowDown']:['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'];
+    for (const key of keys) {
       const event = { key, target: field, stopPropagation() { this.stopped = true; }, preventDefault() { this.defaultPrevented = true; } };
       page.key(event);
       assert.equal(event.stopped, true, `${mode}/${JSON.stringify(value)}/${key}`);
