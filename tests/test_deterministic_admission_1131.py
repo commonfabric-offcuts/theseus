@@ -705,6 +705,53 @@ else:
                 cohort['run'] = self.raw(run); self.value['core_cohort'] = self.raw(cohort); self.bind_audit()
                 with self.assertRaisesRegex(deploy.Refused, reason): self.admit()
 
+    def test_1131_r4_complete_train_prepares_and_verifies_release_record(self):
+        self.r3_migration_evidence(grouped=True)
+        deterministic = self.admit()['deterministic']
+        captured = {'file':str(self.root/'train.json'), 'pr':1, 'kind':'judged-first',
+                    'merge_commit':self.head, 'merged_tree':self.tree, 'release_branch':'release/scratch',
+                    'items':[{'item':1131, 'approved_head':self.source, 'review':'scratch independent review'}],
+                    'hosted_run':None, 'judgment':self.value, 'deterministic':deterministic}
+        measured = releases.train_measurements(captured)
+        original = copy.deepcopy(measured)
+        folder = (self.root/'record-evidence').resolve(); folder.mkdir(mode=0o700)
+        record = {'release':2, 'commit':self.head, 'previous':self.base, 'items':[1131],
+                  'source':'deploy', 'measurements':measured}
+        prepared = releases.prepare_record(record, folder)
+        row = dict(prepared, evidence=str(folder), deployed_at='2026-11-23T00:00:00+00:00')
+        self.assertEqual(releases.verify_record(row, folder), original)
+        self.assertEqual(measured, original)
+        projected = row['measurements']['train']
+        self.assertEqual(projected['judge_receipts_sha256'], {
+            'deterministic':proof.evidence_digest(self.value), 'audit':releases.digest(self.value['audit'])})
+        self.assertEqual(projected['judgment'], self.value)
+        self.assertNotIn('producer_runs', projected['judgment'])
+        self.assertNotIn('verdict_checks', projected['judgment'])
+        self.assertEqual(projected['deterministic']['core_cohort']['captured_counts'],
+                         {'tests':2, 'failures':1})
+        # Mutate the actual scratch record projection, then restore its exact
+        # serialized bytes. The full canonical measurement artifact stays fixed.
+        path = self.root/'release-record.json'
+        saved = json.dumps(row, sort_keys=True).encode(); path.write_bytes(saved)
+        for field in ('evidence-digest', 'audit-message', 'audit-revision'):
+            changed = json.loads(saved)
+            if field == 'evidence-digest':
+                changed['measurements']['train']['judge_receipts_sha256']['deterministic'] = '0'*64
+            elif field == 'audit-message':
+                changed['measurements']['train']['judgment']['audit']['message'] = 'm-'+'b'*32
+            else:
+                changed['measurements']['train']['judgment']['audit']['revision'] += 1
+            path.write_text(json.dumps(changed))
+            try:
+                with self.subTest(field=field):
+                    with self.assertRaisesRegex(train.Refused, 'projection differs') as caught:
+                        releases.verify_record(json.loads(path.read_bytes()), folder)
+                    print('R4 record mutation refused:', field, str(caught.exception))
+            finally:
+                path.write_bytes(saved)
+            self.assertEqual(path.read_bytes(), saved)
+            self.assertEqual(releases.verify_record(json.loads(path.read_bytes()), folder), original)
+
 
 if __name__ == '__main__':
     unittest.main()

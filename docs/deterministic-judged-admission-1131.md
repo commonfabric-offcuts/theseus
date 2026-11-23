@@ -77,6 +77,13 @@ appropriate additional tests remains an explicit independent review obligation;
 Core's existing freeze has no machine-readable test inventory. No new Core
 schema or page-only authority is introduced.
 
+For release-record storage (revision4), `judge_receipts_sha256.deterministic`
+keeps the canonical judgment digest excluding audit, and its `audit` entry hashes
+the complete audit reference (message plus revision). The original judgment,
+audit reference and comparison qualifications remain available unchanged in the
+record and its canonical full-measurements artifact. Legacy records retain their
+producer/verdict digests. Projection and verification make no admission decision.
+
 The read-only CLI accepts `admit SHA --config FILE --judgment ABSOLUTE_JSON`;
 the landing caller passes the same judgment to `deployment.admit` before merge
 and in its train file. Legacy judgment records remain readable; they do not

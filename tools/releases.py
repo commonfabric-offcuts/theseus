@@ -41,7 +41,7 @@ if __package__ in (None, ""):
 
 from aim_next.contract import _json
 from aim_next.releases import judgment_pending, release_row, MAX_EVIDENCE_BYTES, MAX_MEASUREMENTS_BYTES
-from tools import train as train_check
+from tools import train as train_check, deterministic_admission
 
 NUMBER = re.compile(r"[1-9][0-9]*")
 # Release records the repository keeps for releases recorded afterwards (docs/releases.md).
@@ -193,8 +193,13 @@ def compact_measurements(full, path):
         judgment = train.get("judgment")
         if isinstance(judgment, dict):
             _require("judge_receipts_sha256" not in train, "judge receipt digest field is reserved")
-            result["train"]["judge_receipts_sha256"] = {
-                key: digest(judgment[key]) for key in ("producer_runs", "verdict_checks")}
+            if deterministic_admission.selected(judgment):
+                result["train"]["judge_receipts_sha256"] = {
+                    "deterministic": deterministic_admission.evidence_digest(judgment),
+                    "audit": digest(judgment["audit"])}
+            else:
+                result["train"]["judge_receipts_sha256"] = {
+                    key: digest(judgment[key]) for key in ("producer_runs", "verdict_checks")}
         moved = train.get("base_move")
         receipts = moved.get("receipts") if isinstance(moved, dict) else None
         if isinstance(receipts, dict) and "obligations" in receipts:
