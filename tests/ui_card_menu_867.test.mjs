@@ -87,6 +87,7 @@ function documentPort(){
   // Store the requested range for the real beforeinput/input handlers. This
   // memory port does not claim browser selection, focus or keyboard behavior.
   setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}
+  cloneNode(deep=false){const n=doc.createElement(this.tag);for(const [key,value]of Object.entries(this.attributes))n.setAttribute(key,value);n.className=this.className;if(deep)n.append(...this.children.map(c=>c.nodeType===3?c.textContent:c.cloneNode(true)));return n;}
   get childNodes(){return this.children;}
   get textContent(){return this.children.map(c=>c.textContent).join('');}
   set textContent(text){this.children=[];if(text)this.append(String(text));}
@@ -101,6 +102,7 @@ function documentPort(){
  }
  doc.createElement=tag=>new Node(tag);doc.createElementNS=(_,tag)=>doc.createElement(tag);
  doc.createTextNode=text=>({nodeType:3,textContent:String(text)});doc.body=doc.createElement('body');doc.body.root=true;
+ doc.getElementById=id=>doc.body.querySelector('#'+id);const pencil=doc.createElement('button');pencil.id='new-message';const svg=doc.createElement('svg'),path=doc.createElement('path');svg.setAttribute('viewBox','0 0 24 24');path.setAttribute('d','M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16z M13.5 6.5l4 4');svg.append(path);pencil.append(svg);doc.body.append(pencil);
  return doc;
 }
 function menuPage(raw=card(),doc=documentPort()){
@@ -136,25 +138,25 @@ test('867 opening the real shared menu and Copy text never allocates or saves a 
  const copied=clipboard(t),raw=card('Literal *title*','**Words**',null)+'### Child\n\nChild words\n',p=menuPage(raw);
  const menu=p.openCardMenu(0,p.anchor);t.after(()=>menu?.close(false));
  assert.equal(menu.root.getAttribute('aria-label'),'This card');
- assert.deepEqual(menu.root.children.map(n=>n.querySelector('.menu-description')?.children[0]?.textContent??n.textContent),['Copy text','Copy link','Delete','Set color','Chat about this…']);
- assert.deepEqual(menu.root.children.map(n=>n.querySelector('svg').getAttribute('data-glyph')),['copy','link','drop','palette','topic']);
- await p.cardMenuItems(p.cardRef(0),p.anchor)[0].act();assert.deepEqual(copied,['Literal *title*\n\nWords']);
+ assert.deepEqual(menu.root.querySelectorAll('button').map(n=>n.dataset.notebookAction),['color-none',...AGENT_PALETTE.map(c=>'color-'+c),'copy','copy-text','chat','image','start-topic','start-dossier','delete','move--1','move-1','merge--1','merge-1','edit']);
+ assert.equal(menu.root.querySelectorAll('button').find(n=>n.dataset.notebookAction==='copy-text').querySelector('svg').getAttribute('data-glyph'),'copy');assert.equal(menu.root.querySelectorAll('button').find(n=>n.dataset.notebookAction==='delete').textContent,'Delete card⌘⌫');
+ await p.cardMenuItems(p.cardRef(0),p.anchor).find(i=>i.key==='copy-text').act();assert.deepEqual(copied,['Literal *title*\n\nWords']);
  assert.equal(deckBody(p.deck),raw);assert.deepEqual(p.acts,[]);
 });
 test('867 Delete targets the menu card and its children, irrespective of other selected cards; one Undo restores ids/colors',()=>{
  const raw=card()+'### Child\n\nchild\n\n'+card('Other','other',details(B,'rose')),p=menuPage(raw);
- p.selected=new Set([0,2]);p.cardMenuItems(p.cardRef(0),p.anchor)[2].act();
+ p.selected=new Set([0,2]);p.cardMenuItems(p.cardRef(0),p.anchor).find(i=>i.key==='delete').act();
  assert.deepEqual(p.deck.cards.map(c=>c.title),['Other']);assert.equal(p.undos.length,1);p.undo();
  assert.deepEqual(p.deck.cards.map(c=>c.title),['First','Child','Other']);assert.equal(cardDetails(p.deck.cards[0].words).id,A);assert.equal(cardDetails(p.deck.cards[2].words).color,'rose');
 });
-for(const state of ['readOnly','reading','conflict','deleted','closed','actionPending','actionRunning','aborted'])test('867 stale destructive menu handlers recheck '+state,()=>{
+for(const state of ['readOnly','reading','conflict','deleted','closed','actionPending','actionRunning','aborted'])test('867 stale destructive menu handlers recheck '+state,async()=>{
  const p=menuPage(),items=p.cardMenuItems(p.cardRef(0),p.anchor),before=deckBody(p.deck);p.writing={};
  if(state==='aborted')p.listening.abort();else p.writing[state]=true;
- items[2].act();assert.equal(items[3].act(),undefined);assert.equal(deckBody(p.deck),before);assert.deepEqual(p.acts,[]);
+ items.find(i=>i.key==='delete').act();assert.equal(await items.find(i=>i.key==='color-blue').act(),undefined);assert.equal(deckBody(p.deck),before);assert.deepEqual(p.acts,[]);
 });
-test('867 stale menu cannot delete or recolor a different same-text card after removal',()=>{
+test('867 stale menu cannot delete or recolor a different same-text card after removal',async()=>{
  const p=menuPage(card('Same','words',details())+card('Same','words',details(B))),items=p.cardMenuItems(p.cardRef(0),p.anchor);
- p.deck.cards.shift();items[2].act();assert.equal(items[3].act(),undefined);assert.equal(p.deck.cards.length,1);assert.deepEqual(p.acts,[]);
+ p.deck.cards.shift();items.find(i=>i.key==='delete').act();assert.equal(await items.find(i=>i.key==='color-blue').act(),undefined);assert.equal(p.deck.cards.length,1);assert.deepEqual(p.acts,[]);
 });
 test('867 link allocation saves once before copying; rename and movement keep the route identity',async t=>{
  const copied=clipboard(t),{p,w,calls}=await writingPort(t),ref=p.cardRef(0);await p.copyCard(ref,true);
@@ -234,8 +236,8 @@ test('867 closing the page closes its menu and picker; saved color cannot focus 
 });
 test('867 read-only Copy link requires an existing primary; Copy text remains available',async t=>{
  const copied=clipboard(t),{p,w}=await writingPort(t,card());w.readOnly=true;p.readOnly=true;
- let items=p.cardMenuItems(p.cardRef(0),p.anchor);assert.deepEqual(items.map(x=>!!x.disabled),[false,false,true,true,true]);await items[1].act();assert.equal(copied.length,1);
- p.deck=parseDeck(card('Old','words',null));items=p.cardMenuItems(p.cardRef(0),p.anchor);assert.deepEqual(items.map(x=>!!x.disabled),[false,true,true,true,true]);await items[1].act();assert.equal(copied.length,1);
+ let items=p.cardMenuItems(p.cardRef(0),p.anchor);assert.deepEqual(['copy-text','copy','delete','color-blue','chat'].map(key=>!!items.find(x=>x.key===key).disabled),[false,false,true,true,true]);await items.find(x=>x.key==='copy').act();assert.equal(copied.length,1);
+ p.deck=parseDeck(card('Old','words',null));items=p.cardMenuItems(p.cardRef(0),p.anchor);assert.deepEqual(['copy-text','copy','delete','color-blue','chat'].map(key=>!!items.find(x=>x.key===key).disabled),[false,true,true,true,true]);await items.find(x=>x.key==='copy').act();assert.equal(copied.length,1);
 });
 test('867 Text merge keeps an unidentified first card uncolored with aliases, and Undo splits originals',()=>{
  const raw=card('First','first',null)+card('Second','second',details(B,'rose')),projection=new CardTextProjection(),visible=projection.show(raw);
@@ -346,19 +348,19 @@ for(const fence of ['```js','~~~~'])test('867 review metadata allocation on uncl
 });
 test('867 review Copy text of an unpicked metadata-bearing twin excludes bookkeeping',async t=>{
  const copied=clipboard(t),raw=card('Same','first',details(A))+card('Same','second **words**',details(B,'rose')),p=menuPage(raw);
- const menu=p.openCardMenu(1,p.anchor);t.after(()=>menu?.close(false));await p.cardMenuItems(p.cardRef(1),p.anchor)[0].act();
+ const menu=p.openCardMenu(1,p.anchor);t.after(()=>menu?.close(false));await p.cardMenuItems(p.cardRef(1),p.anchor).find(i=>i.key==='copy-text').act();
  assert.deepEqual(copied,['Same\n\nsecond words']);assert.equal(deckBody(p.deck),raw);
 });
 test('867 review Copy link and color allocate on an unpicked identical twin',async t=>{
  const copied=clipboard(t),one=card('Same','same words',null),{p}=await writingPort(t,one+one);
- await p.cardMenuItems(p.cardRef(1),p.anchor)[1].act();const id=parseRoute(new URL(copied[0])).card;
+ await p.cardMenuItems(p.cardRef(1),p.anchor).find(i=>i.key==='copy').act();const id=parseRoute(new URL(copied[0])).card;
  assert.equal(cardDetails(p.deck.cards[0].words).id,null);assert.equal(cardDetails(p.deck.cards[1].words).id,id);
  const anchor=p.doc.createElement('button');p.doc.body.append(anchor);const picker=p.cardColors(p.cardRef(1),anchor);t.after(()=>picker.close(false));await picker.root.querySelectorAll('.swatch')[1].onclick();
  assert.equal(cardDetails(p.deck.cards[0].words).color,null);assert.equal(cardDetails(p.deck.cards[1].words).color,AGENT_PALETTE[1]);
 });
 test('867 review Delete on an unpicked twin leaves the picked twin alone',()=>{
  const p=menuPage(card('Same','words',details(A))+card('Same','words',details(B,'rose')));
- p.cardMenuItems(p.cardRef(1),p.anchor)[2].act();assert.deepEqual(metaOf(deckBody(p.deck)).map(c=>c.id),[A]);p.undo();assert.deepEqual(metaOf(deckBody(p.deck)).map(c=>c.id),[A,B]);
+ p.cardMenuItems(p.cardRef(1),p.anchor).find(i=>i.key==='delete').act();assert.deepEqual(metaOf(deckBody(p.deck)).map(c=>c.id),[A]);p.undo();assert.deepEqual(metaOf(deckBody(p.deck)).map(c=>c.id),[A,B]);
 });
 test('867 review Copy link starts promised clipboard data before its save settles',async t=>{
  clipboard(t);const old=globalThis.ClipboardItem;globalThis.ClipboardItem=class {constructor(data){this.data=data;}};t.after(()=>{globalThis.ClipboardItem=old;});
@@ -413,7 +415,8 @@ test('867 review a truncated Notebook excerpt does not expose a partial hidden J
 async function text867(t,raw){
  const f=await writingPort(t,raw),doc=documentPort(),make=doc.createElement;
  doc.createElement=tag=>{const n=make(tag);n.before=x=>n.parent?.insertBefore(x,n);n.after=(...xs)=>{const next=n.parent?.children[n.parent.children.indexOf(n)+1];for(const x of xs)n.parent?.insertBefore(x,next);};return n;};
- const p=new NotebookPage({doc,host:doc.body,item:'page',mode:'text',bootstrap:{},viewPreference:{get:()=> 'text',set(){}},header:{title:doc.createElement('h1')}});
+ const host=doc.createElement('section');doc.body.append(host);
+ const p=new NotebookPage({doc,host,item:'page',mode:'text',bootstrap:{},viewPreference:{get:()=> 'text',set(){}},header:{title:doc.createElement('h1')}});
  Object.assign(p,{writing:f.w,deck:parseDeck(raw),base:{revision:1,body:raw},paint(){},keepNamed(){}});p.sync(true);
  const input=(start,end,insert,inputType='insertText')=>{
   p.text.setSelectionRange(start,end);
@@ -473,7 +476,7 @@ for(const action of ['Copy link','Set color'])test('867 R3 '+action+' waits for 
 });
 for(const action of ['Copy text','Copy link','Delete'])test('867 R3 unpicked card menu owns '+action,async t=>{
  const copied=clipboard(t),p=menuPage(card('Picked','one',details(A))+card('Unpicked','two',details(B)));p.picked=0;
- const menu=p.openCardMenu(1,p.anchor);t.after(()=>menu.close(false));const button=menu.root.children.find(n=>n.textContent===action);assert.ok(button);await button.onclick({preventDefault(){},stopPropagation(){}});
+ const menu=p.openCardMenu(1,p.anchor);t.after(()=>menu.close(false));const button=menu.root.querySelectorAll('button').find(n=>n.dataset.notebookAction===({'Copy text':'copy-text','Copy link':'copy','Delete':'delete'})[action]);assert.ok(button);await button.onclick({preventDefault(){},stopPropagation(){}});
  if(action==='Copy text')assert.deepEqual(copied,['Unpicked\n\ntwo']);else if(action==='Copy link')assert.equal(parseRoute(new URL(copied[0])).card,B);else assert.deepEqual(p.deck.cards.map(c=>c.title),['Picked']);
 });
 test('867 R3 downward merge allocates lazily on the lower survivor before split Undo',()=>{
@@ -507,7 +510,7 @@ test('867 R3 whole-card move crosses exact anchors without borrowing identity',a
 for(const action of ['Delete','move','merge'])test('867 R3 Cards '+action+' survives a confirmed save then command-Z restores link and color',async t=>{
  const copied=clipboard(t),alias='c-33333333333333333333333333333333',raw=card('First','first',details(A,'blue',[alias]))+card('Second','second',details(B,'rose')),{p,w}=await writingPort(t,raw);
  await p.copyCard(p.cardRef(0),true);const route=parseRoute(new URL(copied[0]));
- if(action==='Delete'){const menu=p.openCardMenu(0,p.anchor);t.after(()=>menu.close(false));menu.root.children.find(n=>n.textContent==='Delete').onclick({stopPropagation(){}});}else p.key({key:'ArrowDown',metaKey:true,shiftKey:action==='merge',target:p.list,preventDefault(){}});
+ if(action==='Delete'){const menu=p.openCardMenu(0,p.anchor);t.after(()=>menu.close(false));menu.root.querySelectorAll('button').find(n=>n.dataset.notebookAction==='delete').onclick({stopPropagation(){}});}else p.key({key:'ArrowDown',metaKey:true,shiftKey:action==='merge',target:p.list,preventDefault(){}});
  await w.flush();assert.equal(w.dirty,false);p.key({key:'z',metaKey:true,target:p.list,preventDefault(){}});await w.flush();
  assert.deepEqual(metaOf(w.base.content.body).map(c=>[c.id,c.aliases,c.color]),[[A,[alias],'blue'],[B,[],'rose']]);
  p.pick=i=>{p.picked=i;};assert.equal(p.pickCardId(route.card),true);assert.equal(p.picked,0);assert.equal(p.cardAt({id:alias}),0);
@@ -574,23 +577,24 @@ function press867(p,at){
  const button=p.list.children[at].querySelector('.deck-menu');assert.ok(button,'painted overflow');button.listeners.click({target:button,stopPropagation(){}});
  const menu=p.doc.body.querySelector('[role="menu"]');assert.ok(menu,'real shared menu');return menu;
 }
-function choice867(menu,label){const button=menu.children.find(n=>n.textContent===label);assert.ok(button);return button.onclick({preventDefault(){},stopPropagation(){}});}
+function choice867(menu,key){const button=menu.querySelectorAll('button').find(n=>n.dataset.notebookAction===key);assert.ok(button);return button.onclick({preventDefault(){},stopPropagation(){}});}
 test('867 R4 writing holder menu follows its own card after another writer inserts above',async t=>{
  const {p,w,api,source}=await text867(t,card('Budget','words',details(A)));painted867(t,p);p.mode='cards';edit867(p,0);p.paint();
  api.view=async()=>({...source(),body:card('Incoming','other',details(B))+card('Budget','words',details(A)),source_ref:{...source().source_ref,revision:2}});
  await w.refresh();p.sync();assert.equal(p.picked,0);assert.ok(p.list.children[1].classList.contains('deck-writing'));
- choice867(press867(p,1),'Delete');assert.deepEqual(p.deck.cards.map(c=>c.title),['Incoming']);assert.deepEqual(metaOf(w.value.body).map(r=>r.id),[B]);
+ choice867(press867(p,1),'delete');assert.deepEqual(p.deck.cards.map(c=>c.title),['Incoming']);assert.deepEqual(metaOf(w.value.body).map(r=>r.id),[B]);
 });
 for(const written of ['', 'Changed\nnew\n\n## Added\nmore'])test('867 R4 an unpicked twin menu survives finishing another editor: '+JSON.stringify(written),async t=>{
  const copied=clipboard(t),p=painted867(t,menuPage(card('Editing','edit',null)+card('Same','same',null)+card('Same','same',null)));
- edit867(p,0,written);p.paint();const menu=press867(p,2);choice867(menu,'Delete');
+ edit867(p,0,written);p.paint();const menu=press867(p,2);choice867(menu,'delete');
  assert.deepEqual(p.deck.cards.map(c=>c.title),written?['Changed','Added','Same']:['Same']);
  // Delete's Undo records which occurrence survived, not just an identical body.
  assert.equal(p.undos.at(-1).near,written?2:0);
 });
 test('867 R4 Set color through the unpicked painted idless twin menu allocates only on that twin',async t=>{
  const {p,w}=await writingPort(t,card('Same','same',null)+card('Same','same',null));painted867(t,p);p.paint();p.picked=0;
- choice867(press867(p,1),'Set color');const picker=p.doc.body.querySelector('.color-picker');assert.ok(picker);await picker.querySelectorAll('.swatch')[1].onclick();
+ let choosing;const choose=p.chooseCardColor.bind(p);p.chooseCardColor=(...args)=>choosing=choose(...args);
+ choice867(press867(p,1),'color-'+AGENT_PALETTE[1]);assert.ok(choosing,'the actual menu invoked the save owner');await choosing;
  const rows=metaOf(w.base.content.body);assert.deepEqual(rows[0].ids,[]);assert.equal(rows[0].color,null);assert.ok(rows[1].id);assert.equal(rows[1].color,AGENT_PALETTE[1]);
 });
 for(const action of ['Copy link','Set color'])test('867 R4 '+action+' awaits its own save after a pending resend',async t=>{
@@ -705,18 +709,18 @@ for(const state of ['fresh anchor deleted','edited card deleted'])test('867 R5 m
  if(state==='fresh anchor deleted')fresh867(p,0,'New\nnew writing');else edit867(p,0,'New\nnew writing');
  // A later read deleted the anchor/editor card while its box was kept open.
  p.deck=parseDeck(card('Target','target',details(B))+card('End','end',null));p.paint();
- choice867(pressExisting867(p,0),'Delete');
+ choice867(pressExisting867(p,0),'delete');
  assert.deepEqual(p.deck.cards.map(c=>c.title),['New','End']);assert.equal(p.deck.cards[0].words,'new writing');assert.equal(p.cardAt({id:B}),-1);
  p.undo();assert.equal(p.cardAt({id:B}),state==='fresh anchor deleted'?0:1);
 });
 test('867 R5 a menu above the editor keeps its target after the editor adds a card',t=>{
  const p=painted867(t,menuPage(card('Target','target',details(A))+card('Editing','words',null)));
- edit867(p,1,'Changed\nnew\n\n## Added\nmore');p.paint();choice867(pressExisting867(p,0),'Delete');
+ edit867(p,1,'Changed\nnew\n\n## Added\nmore');p.paint();choice867(pressExisting867(p,0),'delete');
  assert.deepEqual(p.deck.cards.map(c=>c.title),['Changed','Added']);assert.equal(p.cardAt({id:A}),-1);
 });
 test('867 R5 a menu beside a fresh card keeps the pressed identical twin',t=>{
  const p=painted867(t,menuPage(card('Anchor','anchor',null)+card('Same','same',null)+card('Same','same',null)));
- fresh867(p,0,'New\nnew');p.paint();choice867(pressExisting867(p,2),'Delete');
+ fresh867(p,0,'New\nnew');p.paint();choice867(pressExisting867(p,2),'delete');
  assert.deepEqual(p.deck.cards.map(c=>c.title),['Anchor','New','Same']);assert.equal(p.undos.at(-1).near,2);
 });
 for(const child of [false,true])test('867 R5 a menu on the cleared editor opens no replacement menu, child='+child,t=>{

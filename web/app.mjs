@@ -93,6 +93,8 @@ import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mj
 import { ToolPage, OutcomeTools, ToolsRail, TopicTools } from './skills.mjs';
 import { openDossierMove } from './dossier-move.mjs';
 import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
+import { openNotebookMenu, notebookReaderMenuItems } from './notebook-menu.mjs';
+import { NotebookStarts } from './notebook-start.mjs';
 import { DossierSelectionQuote } from './dossier-selection-quote.mjs';
 import { NotebookPassages } from './notebook-passages.mjs';
 import { NotebookQuoteTransfer } from './notebook-quote-transfer.mjs';
@@ -2501,18 +2503,23 @@ function readerTextEdit(event) {
 function openReaderMenu() {
   const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = readerMessageMenuItems(p);
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
-    const act=action=>run(async()=>{const opener=p.opener;$('reader-close').click();if(await openNotebook(ref.id,{opener})){const page=notebookSheetOf().current;if(action==='rename')page.rename();else page.menuItems().find(item=>item.label===action)?.act();}});
-    items.push({label:p.source.starred?'Unstar':'Star',glyph:p.source.starred?'starred':'star',act:()=>act(p.source.starred?'Unstar':'Star')});
-    if(p.source.reader_may_write)items.push({label:'Rename',glyph:'pencil',act:()=>act('rename')});
-    if(p.source.reader_may_delete)items.push({label:'Delete',glyph:'drop',act:()=>act('Delete')});
-    items.push({ label: 'Copy Link', glyph: 'link', act: () => run(() => copyPageLink(p.source, null, button)) },
-      { label: `Copy Link to Revision ${ref.revision}`, glyph: 'link', act: () => run(() => copyPageLink(p.source, ref.revision, button)) });
-    // Edit page only for someone Core lets write the page (its reader_may_write, docs/notebook-pages.md).
-    if (p.source.reader_may_write === true) items.push({ label: 'Edit page', glyph: 'pencil', act: () => { const opener = p.opener; $('reader-close').click(); run(() => openNotebook(ref.id, { opener })); } });
+    const source=p.source;
+    const act=key=>run(async()=>{
+      if(registry.current!==p||p.sourceUnavailable||reader.source!==source)return;
+      if(key==='copy'||key==='revision')return copyPageLink(source,key==='revision'?ref.revision:null,button);
+      if(key.startsWith('start-'))return notebookStartsOf().show({kind:key.slice(6),source,link:pageLink(source.owner_scope,ref.id),host:$('source-body').parentElement,anchor:button,current:()=>registry.current===p&&!p.sourceUnavailable});
+      const opener=p.opener;$('reader-close').click();
+      if(await openNotebook(ref.id,{opener})){
+        const page=notebookSheetOf().current;
+        if(key==='edit')return;
+        page.menuItems({rail:true}).find(item=>item.key===key&&!item.disabled)?.act();
+      }
+    });
+    items.push(...notebookReaderMenuItems(source,act));
   }
   if (reader.quotable) items.push({ label: 'Quote selection', glyph: 'quote', act: () => reader.quote() });
   if (reader.layoutChoice) items.push({ label: reader.layoutChoice, glyph: 'layout', act: () => reader.toggleLayout() });
-  openMessageMenu({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message', sheet: true });
+  (ref?.kind==='memory'?openNotebookMenu:openMessageMenu)({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message', sheet: true });
 }
 // Terminal state belongs to its exact message, even when a receipt arrives after a Reader step.
 function learnQuestionState({ message_id, question }) {
@@ -4450,7 +4457,7 @@ async function initializeDeckPage(route) {
   // need the shared controller, and a retired run must not create one.
   const passages={bind(entry,state){if(!retired)notebookPassagesOf().bind(entry,state);}};
   const page=new NotebookPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
-    item:route.id,read:pipelineView,send:pipelineSend,place,deleteUI:notebookDeleting,closeDeleted:async page=>{page.close();page.writing.close();await page.writing.serial;await page.store.close();return openDestination({kind:page.source.owner_scope.kind,id:page.source.owner_scope.id},'the Notebook page’s topic or outcome');},askIn:notebookAskIn,api,bootstrap,mode:route.card?'cards':route.view,viewPreference:notebookViewsOf(),passages});
+    item:route.id,read:pipelineView,send:pipelineSend,place,deleteUI:notebookDeleting,closeDeleted:async page=>{page.close();page.writing.close();await page.writing.serial;await page.store.close();return openDestination({kind:page.source.owner_scope.kind,id:page.source.owner_scope.id},'the Notebook page’s topic or outcome');},askIn:notebookAskIn,api,bootstrap,startNotebook:options=>notebookStartsOf().show(options),mode:route.card?'cards':route.view,viewPreference:notebookViewsOf(),passages});
   linkOwnerScope = () => page.source?.owner_scope;
   linkNotice = words => page.say(words, 'attention');
   shell.guard(()=>Boolean(page.writing?.journalPending||page.writing?.journalError));
@@ -4512,6 +4519,8 @@ function notebookCreator(host, scope) {
   return new NotebookCreate({ host, scope, api, bootstrap, open: (route, opener) => openNotebook(route.id, { write: route.write, opener }) });
 }
 // A card's ask goes to the page's topic, or to its outcome's conversation, and to an agent there (docs/decks.md).
+let notebookStarts=null;
+function notebookStartsOf(){return notebookStarts??=new NotebookStarts({api,bootstrap,read:pipelineView,open:openDestination});}
 async function notebookAskIn(scope) {
   const topicId=scope.kind==='topic'?scope.id:(await pipelineView('conversation',{workspace_id:scope.id})).conversation?.topic_id;
   if(!topicId)return null;
@@ -4577,7 +4586,7 @@ function notebookSheetOf() {
   if (notebookSheet) return notebookSheet;
   notebookSheet = new NotebookSheet({
     make: (id, host, header, idSuffix, revisionShown) => {
-      const page = new NotebookPage({ host, header, item: id, read: pipelineView, send: pipelineSend, askIn: notebookAskIn, api, bootstrap, viewPreference: notebookViewsOf(), deleteUI:notebookDeleting,closeDeleted:page=>{if(notebookSheet.current===page){notebookSheet.close();notebookSheet.current=null;}const target={...shell.route()};if(target.page===page.item){delete target.page;history.replaceState(history.state,'',routeHref(target));}page.more.remove();page.host.remove();page.close();}, idSuffix, shortKeys: true, revisionShown, passages: notebookPassagesOf(),
+      const page = new NotebookPage({ host, header, item: id, read: pipelineView, send: pipelineSend, askIn: notebookAskIn, api, bootstrap, startNotebook:options=>notebookStartsOf().show(options), viewPreference: notebookViewsOf(), deleteUI:notebookDeleting,closeDeleted:page=>{if(notebookSheet.current===page){notebookSheet.close();notebookSheet.current=null;}const target={...shell.route()};if(target.page===page.item){delete target.page;history.replaceState(history.state,'',routeHref(target));}page.more.remove();page.host.remove();page.close();}, idSuffix, shortKeys: true, revisionShown, passages: notebookPassagesOf(),
         place: async scope => ({ href: routeHref({ kind: scope.kind, id: scope.id, page: id }), title: '' }) });
       followCommits(() => notebookSheet.followed(page));
       return page;

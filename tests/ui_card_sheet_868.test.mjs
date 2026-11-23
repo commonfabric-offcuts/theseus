@@ -100,7 +100,9 @@ test('868 only title and glyphs stay outside the active page scroller in modal a
   assert.deepEqual(s.actions.children,[s.newButton,s.dockButton,page.more,s.closer]);
   for(const docked of [true,false]) {
     s.setDocked(docked);
-    for(const control of [s.status,page.pageNotice,s.dossiers.root,page.bar,page.list])assert.ok(page.host.contains(control),'control shares the cards scroll owner');
+    //1096 "Choose dossier…" leaves the page menu and NotebookDossiers has no caller.
+    assert.equal(s.dossiers,undefined);
+    for(const control of [s.status,page.pageNotice,page.bar,page.list])assert.ok(page.host.contains(control),'control shares the cards scroll owner');
     assert.ok(page.more.parentElement===s.actions,'page menu belongs to the fixed head');
     assert.equal(page.host.querySelector('.notebook-sheet-toolbar'),null);
     assert.equal(page.status.getAttribute('role'),'status');assert.equal(page.status.textContent,'Saved to Theseus');

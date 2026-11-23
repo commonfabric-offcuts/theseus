@@ -1,5 +1,8 @@
 # Notebook page menu (792) — SPEC
 
+Current1096 menu contract: The1096 palette replaces the older menu row presentation while retaining all stored-data, permission, confirmation and recovery rules below. Star is a mark; Rename appears only where there is no sheet pencil; Delete page stands alone in red. See notebook-menus-1096.md for all page/card/Reader actions. See [Notebook menus](notebook-menus-1096.md).
+
+
 Base: live99 a34f72f0b3555a274fd4ae5adb07123ff89c3a85, schema 47.
 One shared existing overflow menu, in the Notebook Text and Cards editor,
 including the composer and full page: Star/Unstar, Rename, Delete. The

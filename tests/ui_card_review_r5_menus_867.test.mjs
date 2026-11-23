@@ -37,13 +37,11 @@ async function act867(t,p,rowIndex,action){
  button.listeners.click({target:button,stopPropagation(){}});
  const menu=p.doc.body.querySelector('[role="menu"]');
  if(!menu)return {action,result:'no menu',deck:titles(p)};
- const item=menu.children.find(n=>n.textContent===action);
+ const key=({'Copy text':'copy-text','Delete':'delete','Set color':'color-rose'})[action];const item=menu.querySelectorAll('button').find(n=>n.dataset.notebookAction===key);
  const r=item.onclick({preventDefault(){},stopPropagation(){}});
  if(action==='Copy text'){await r;return {action,copied:copied[0]?.replace(/\n+/g,' / '),deck:titles(p)};}
  if(action==='Delete'){const u=p.undos.at(-1);return {action,removed:u?.kind==='add'?{title:textCard(u.text).title,at:u.near+1,rest:u.rest?.length??0}:u,deck:titles(p)};}
- const picker=p.doc.body.querySelector('.color-picker');if(!picker)return {action,result:'no picker',deck:titles(p)};
- const sw=picker.querySelectorAll('.swatch').find(n=>n.getAttribute('aria-label')==='rose');
- await sw.onclick();
+ await r;
  const colored=p.deck.cards.map((c,i)=>[i,c.title,cardDetails(c.words).color]).filter(x=>x[2]==='rose');
  return {action,colored,deck:titles(p)};
 }
@@ -235,7 +233,7 @@ test('R5MENU (note) a menu left open across a remote shift of id-less twins',asy
  const p=painted867(t,menuPage(card('Same','same words',null)+card('Same','same words',null)));p.paint();
  const menu=press867(p,1);
  p.deck=parseDeck(card('Incoming','x',null)+card('Same','same words',null)+card('Same','same words',null));p.paint();
- choice867(menu,'Delete');console.log(JSON.stringify({name:'A8 rerun',deck:titles(p),undoNear:p.undos.at(-1)?.near}));
+ choice867(menu,'delete');console.log(JSON.stringify({name:'A8 rerun',deck:titles(p),undoNear:p.undos.at(-1)?.near}));
 });
 // --- S11: a fresh card whose writing holds a second heading; the ⋯ on the card below it ---
 for(const [target,index] of [['Below',1],['Same',2]])scenario(`fresh card after Top whose writing adds '## Same'; ⋯ on ${target}@${index}`,async t=>{
@@ -256,7 +254,7 @@ for(const marked of [false,true])test(`A8NOTE real sync; twins ${marked?'marked 
  const took=await w.refresh();p.sync();
  const menuStillOpen=p.doc.body.querySelector('[role="menu"]')===menu;
  const before=deckBody(p.deck);
- choice867(menu,'Delete');
+ choice867(menu,'delete');
  const after=deckBody(p.deck);const undoNear=p.undos.at(-1)?.near;
  p.undo();const undone=deckBody(p.deck);
  console.log(JSON.stringify({name:'A8NOTE',marked,took,menuStillOpen,anchorConnected:anchor.isConnected,
