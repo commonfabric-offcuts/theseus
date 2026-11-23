@@ -3,7 +3,8 @@
 const rule='break-out-paragraphs';
 export class ParagraphSwitch {
   constructor({doc,preferences,changed=()=>{},current=()=>true,
-    MutationObserver=doc.defaultView?.MutationObserver??globalThis.MutationObserver}) {
+    MutationObserver=doc.defaultView?.MutationObserver??globalThis.MutationObserver,
+    AbortController=doc.defaultView?.AbortController??globalThis.AbortController}) {
     Object.assign(this,{doc,preferences,changed,current,closed:false,element:null,listening:new AbortController()});
     this.mount();
     this.observer=MutationObserver?new MutationObserver(()=>this.mount()):null;
