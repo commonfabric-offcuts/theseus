@@ -34,7 +34,17 @@ One notice holds all names for a send. It names the sent scope and its audience
 limit, offers the permitted explicit membership action, and stays until
 Dismiss. It does not take focus or open the phone rail drawer. Both looks use
 the existing page-notices host, which remains visible above a closed phone rail.
-Only a transient optional read failure offers Check again. A terminal refusal (including UNKNOWN_VIEW or FORBIDDEN after unsend) removes the advice and never changes the confirmed send.
+After a transient optional read failure (retry, defer, resync or superseded),
+the page waits 500 ms and automatically tries the whole bounded read once more.
+It paints no error notice or Check again control. A second failure stops quietly;
+a complete answer paints the existing outsider list and explicit Add controls,
+or nothing if there are no outsiders. Paging restarts at zero after a failed
+page so an incomplete name list is never painted. Repeated publication of the
+same send cannot start another check or retry. Disposal cancels its pending
+timer; retirement, dismissal and a changed authority prevent a delayed read or
+late result from taking effect. A terminal refusal (including UNKNOWN_VIEW or
+FORBIDDEN after unsend) removes the advice without a retry and never changes the
+confirmed send.
 
 Adding is a separate, explicit existing Core command bound to the sent scope,
 not whatever topic is now open. A normal-topic reader may add a participant;

@@ -18,13 +18,18 @@ const scope = { kind:'topic', id:'t1', title:'Original topic', revision:7, may_a
   add_kind:'participation.set', target:{ topic_id:'t1' }, revision_field:'topic_revision' };
 const answer = (people=['outside'], more={}) => ({ instance_id:'i1', message_id:'m-s1', scope,
   items:people.map(actor_id=>({ actor_id, name:actor_id, kind:'agent', may_add:true })), next_cursor:null, ...more });
-function fixture(api={}) {
+function fixture(api={},options={}) {
   const doc = { createElement: tag => new Element(tag, doc) }, host = new Element('div', doc); host.id = 'page-notices';
   let current = true;
-  const owner = new MentionNotices({ host, api:{ view:async()=>answer(), ...api }, instanceId:'i1', authority:()=>authority, current:()=>current });
+  const owner = new MentionNotices({ host, api:{ view:async()=>answer(), ...api }, instanceId:'i1', authority:()=>authority, current:()=>current, ...options });
   return { owner, host, buttons:()=>host.all().filter(node=>node.tag==='button'), retire:()=>{ current=false; } };
 }
 const deferred = () => { let resolve; const promise=new Promise(r=>resolve=r); return { promise, resolve }; };
+function retryClock() {
+  let next=0;const pending=new Map();
+  return {pending,timers:{setTimeout(fn,delay){const id=++next;pending.set(id,{fn,delay});return id;},clearTimeout(id){pending.delete(id);}},
+    async tick(){assert.equal(pending.size,1,'one delayed check');const [id,{fn,delay}]=pending.entries().next().value;assert.equal(delay,500);pending.delete(id);await fn();}};
+}
 
 test('one notice for a confirmed send, all paged names, repeated confirmation deduplicated', async()=>{
   const calls=[]; const f=fixture({ view:async(name,args)=>{ calls.push([name,args]); return args.cursor ? answer(['outside','other']) : answer(['outside'],{next_cursor:23}); } });
@@ -45,12 +50,22 @@ test('pending advisory cannot block publication caller, change focus or land aft
   const pending=f.owner.published(null,item());assert.equal(f.host.children.length,0);
   f.retire(); read.resolve(answer());await pending;assert.equal(f.host.children.length,0);
 });
-test('optional read failure offers Check again and retains one notice for the same send',async()=>{
-  let reads=0;const f=fixture({view:async()=>{if(++reads===1)throw TypeError('offline');return answer();}});
-  await f.owner.published(null,item());assert.equal(f.buttons()[0].textContent,'Check again');
-  await f.buttons()[0].onclick();assert.equal(f.host.children.length,1);assert.equal(f.buttons()[0].textContent,'Add @outside to topic');
+test('1142 a failed check retries quietly once and an outsider answer shows the existing list',async()=>{
+  const clock=retryClock();let reads=0,commands=0;
+  const f=fixture({view:async()=>{if(++reads===1)throw TypeError('offline');return answer();},command:async()=>{commands++;}},{timers:clock.timers});
+  await f.owner.published(null,item());assert.equal(reads,1);assert.equal(f.host.children.length,0);
+  await f.owner.published(null,item());assert.equal(reads,1);assert.equal(clock.pending.size,1);
+  await clock.tick();assert.equal(reads,2);assert.equal(f.host.children.length,1);
+  assert.deepEqual(f.buttons().map(b=>b.textContent),['Add @outside to topic','×']);assert.equal(commands,0);
   await f.buttons().at(-1).onclick();assert.equal(f.host.children.length,0);
-  await f.owner.published(null,item());assert.equal(f.host.children.length,0);
+  await f.owner.published(null,item());assert.equal(reads,2);assert.equal(f.host.children.length,0);assert.equal(clock.pending.size,0);
+});
+test('1142 a failed check and failed automatic retry leave no notice in the rail',async()=>{
+  const clock=retryClock();let reads=0,commands=0;
+  const f=fixture({view:async()=>{reads++;throw TypeError('offline');},command:async()=>{commands++;}},{timers:clock.timers});
+  await f.owner.published(null,item());assert.equal(reads,1);assert.equal(f.host.children.length,0);
+  await clock.tick();assert.equal(reads,2);assert.equal(f.host.children.length,0);assert.equal(clock.pending.size,0);assert.equal(commands,0);
+  await f.owner.published(null,item());assert.equal(reads,2);assert.equal(clock.pending.size,0);
 });
 test('add is bound to sent scope; uncertain retry keeps operation; definitive conflict retries once',async()=>{
   const requests=[];const f=fixture({command:async envelope=>{
@@ -76,9 +91,37 @@ for(const code of ['FORBIDDEN','UNKNOWN_VIEW','INVALID_ARGUMENT'])test('terminal
  let reads=0;const f=fixture({view:async()=>{reads++;return {instance_id:'i1',error:{code,message:'Definitive '+code,retryable:false}};}});
  await f.owner.published(null,item());await f.owner.published(null,item());assert.equal(reads,1);assert.equal(f.host.children.length,0);
 });
-test('retryable Core read refusal offers one retry and terminal unsend removes that notice',async()=>{
- let reads=0;const f=fixture({view:async()=>++reads===1?{error:{code:'SERVER_BUSY',message:'busy',retryable:true}}:{error:{code:'FORBIDDEN',message:'unsent',retryable:false}}});
- await f.owner.published(null,item());assert.equal(f.buttons()[0].textContent,'Check again');await f.buttons()[0].onclick();assert.equal(reads,2);assert.equal(f.host.children.length,0);
+test('retryable Core read refusal retries quietly and terminal unsend stays silent',async()=>{
+ const clock=retryClock();let reads=0;const f=fixture({view:async()=>++reads===1?{error:{code:'SERVER_BUSY',message:'busy',retryable:true}}:{error:{code:'FORBIDDEN',message:'unsent',retryable:false}}},{timers:clock.timers});
+ await f.owner.published(null,item());assert.equal(f.host.children.length,0);await clock.tick();assert.equal(reads,2);assert.equal(f.host.children.length,0);assert.equal(clock.pending.size,0);
+});
+for(const code of ['SERVER_BUSY','CLEANUP_DEFERRED','RESYNC_REQUIRED','READ_SUPERSEDED'])test('1142 quiet retry is bounded for '+code,async()=>{
+ const clock=retryClock();let reads=0;const f=fixture({view:async()=>{reads++;return {error:{code,message:code}};}},{timers:clock.timers});
+ await f.owner.published(null,item());assert.equal(reads,1);assert.equal(f.host.children.length,0);
+ await clock.tick();assert.equal(reads,2);assert.equal(f.host.children.length,0);assert.equal(clock.pending.size,0);
+});
+test('1142 a failed later page restarts the bounded check without leaking a partial outsider list',async()=>{
+ const clock=retryClock(),cursors=[];let attempt=0;
+ const f=fixture({view:async(_name,args)=>{cursors.push(args.cursor);if(cursors.length===1)return answer(['partial'],{next_cursor:23});if(cursors.length===2)throw TypeError('offline');attempt++;return answer([]);}},{timers:clock.timers});
+ await f.owner.published(null,item());assert.equal(f.host.children.length,0);
+ await clock.tick();assert.deepEqual(cursors,[0,23,0]);assert.equal(attempt,1);assert.equal(f.host.children.length,0);
+});
+test('1142 disposal cancels its delayed retry; retirement or authority change cannot start it',async()=>{
+ for(const end of ['dispose','retire','authority']){
+  const clock=retryClock();let reads=0;const f=fixture({view:async()=>{reads++;throw TypeError('offline');}},{timers:clock.timers});
+  await f.owner.published(null,item());assert.equal(clock.pending.size,1);
+  if(end==='dispose'){f.owner.dispose();assert.equal(clock.pending.size,0);}else{
+   if(end==='retire')f.retire();else f.owner.authority=()=>({...authority,authority_epoch:'changed'});
+   await clock.tick();
+  }
+  assert.equal(reads,1);assert.equal(f.host.children.length,0);assert.equal(clock.pending.size,0);
+ }
+});
+test('1142 a delayed outsider answer cannot paint after its owner is disposed',async()=>{
+ const clock=retryClock(),late=deferred();let reads=0;
+ const f=fixture({view:async()=>{if(++reads===1)throw TypeError('offline');return late.promise;}},{timers:clock.timers});
+ await f.owner.published(null,item());const retried=clock.tick();assert.equal(reads,2);
+ f.owner.dispose();late.resolve(answer());await retried;assert.equal(f.host.children.length,0);assert.equal(clock.pending.size,0);
 });
 for(const code of ['FORBIDDEN','INVALID_RECIPIENT','TOO_MANY_PARTICIPANTS'])test('rejected Add is definitive visible text and never Check add: '+code,async()=>{
  let calls=0;const reason='Cannot add: '+code;const f=fixture({command:async request=>{calls++;return {instance_id:'i1',operation_id:request.operation_id,status:'rejected',recorded:false,error:{code,message:reason}};}});

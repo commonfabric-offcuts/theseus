@@ -4,12 +4,13 @@ import { finishPageNotice } from './page-notices.mjs';
 const pair = value => ({authority_id:value?.authority_id,authority_epoch:value?.authority_epoch});
 const same = (a,b) => a?.authority_id === b?.authority_id && a?.authority_epoch === b?.authority_epoch;
 const element = (doc,tag,text) => { const node=doc.createElement(tag); if(text!==undefined)node.textContent=text; return node; };
+const timers = { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: id => clearTimeout(id) };
 
 // Advice after durable publication, shared by every EditorRegistry composer.
 // This owner never sends a message or changes the editor/confirmation state.
 export class MentionNotices {
-  constructor({host,api,instanceId,authority,current=()=>true}) {
-    Object.assign(this,{host,api,instanceId,authority,current}); this.entries=new Map();
+  constructor({host,api,instanceId,authority,current=()=>true,timers:clock=timers}) {
+    Object.assign(this,{host,api,instanceId,authority,current,timers:clock}); this.entries=new Map();
   }
   live(entry) { return !this.disposed && this.current() && same(entry.authority,this.authority()); }
   published(_editor,item) {
@@ -22,7 +23,7 @@ export class MentionNotices {
     return this.check(entry);
   }
   check(entry) {
-    if(entry.checking || entry.dismissed || !this.live(entry))return entry.task;
+    if(entry.checking || entry.retryTimer!=null || entry.dismissed || !this.live(entry))return entry.task;
     entry.checking=true;
     entry.task=(async()=>{
       try {
@@ -41,11 +42,14 @@ export class MentionNotices {
           }
           entry.scope=page.scope;cursor=page.next_cursor;
         }while(cursor!==null);
-        entry.people=people;entry.error=false;this.paint(entry);
+        entry.people=people;this.paint(entry);
       } catch(error) {
         if(this.live(entry) && !entry.dismissed){
-          if(['retry','defer','resync','superseded'].includes(readFailure(error).kind)){entry.error=true;this.paint(entry);}
-          else {entry.dismissed=true;entry.node?.remove();}
+          entry.node?.remove();
+          if(!entry.retried && ['retry','defer','resync','superseded'].includes(readFailure(error).kind)){
+            entry.retried=true;
+            entry.retryTimer=this.timers.setTimeout(()=>{entry.retryTimer=null;return this.check(entry);},500);
+          } else entry.dismissed=true;
         }
       } finally {entry.checking=false;}
     })();
@@ -53,25 +57,22 @@ export class MentionNotices {
   }
   paint(entry) {
     if(!this.live(entry) || entry.dismissed)return;
-    if(!entry.error && !entry.people.size){entry.node?.remove();return;}
+    if(!entry.people.size){entry.node?.remove();return;}
     const doc=this.host.ownerDocument;
     if(!entry.node){entry.node=element(doc,'div');entry.node.className='notice mention-notice';entry.node.dataset.sendOperation=entry.operation;entry.node.setAttribute('role','status');this.host.append(entry.node);}
     entry.node.replaceChildren();
     const button=(label,action)=>{const node=element(doc,'button',label);node.type='button';node.onclick=action;return node;};
-    if(entry.error)entry.node.append(element(doc,'p','Sent. Mention membership could not be checked.'),button('Check again',()=>this.check(entry)));
-    else {
-      entry.node.append(element(doc,'p',`Sent. These mentions are outside this message’s audience in ${entry.scope.title}:`));
-      const list=element(doc,'ul');entry.node.append(list);
-      for(const person of entry.people.values()) {
-        const row=element(doc,'li'), label=person.name===person.actor_id?`@${person.actor_id}`:`${person.name} (@${person.actor_id})`;
-        row.append(element(doc,'span',label));list.append(row);
-        if(entry.scope.kind==='outcome' && person.kind==='agent')row.append(element(doc,'p','Team membership does not subscribe an agent to this Conversation. Name them in To on future messages.'));
-        if(person.refused)row.append(element(doc,'p',person.refused));
-        else if(person.added)row.append(element(doc,'p',`Added to ${entry.scope.kind} · not resent`));
-        else if(entry.scope.may_add && person.may_add!==false) {
-          const add=button(`Add @${person.actor_id} to ${entry.scope.kind}`,()=>this.add(entry,person,add));
-          add.title=`Add to ${entry.scope.kind} for future ${entry.scope.kind==='outcome' && person.kind==='agent'?'addressing':'messages'}. This message will not be resent.`;row.append(add);
-        }
+    entry.node.append(element(doc,'p',`Sent. These mentions are outside this message’s audience in ${entry.scope.title}:`));
+    const list=element(doc,'ul');entry.node.append(list);
+    for(const person of entry.people.values()) {
+      const row=element(doc,'li'), label=person.name===person.actor_id?`@${person.actor_id}`:`${person.name} (@${person.actor_id})`;
+      row.append(element(doc,'span',label));list.append(row);
+      if(entry.scope.kind==='outcome' && person.kind==='agent')row.append(element(doc,'p','Team membership does not subscribe an agent to this Conversation. Name them in To on future messages.'));
+      if(person.refused)row.append(element(doc,'p',person.refused));
+      else if(person.added)row.append(element(doc,'p',`Added to ${entry.scope.kind} · not resent`));
+      else if(entry.scope.may_add && person.may_add!==false) {
+        const add=button(`Add @${person.actor_id} to ${entry.scope.kind}`,()=>this.add(entry,person,add));
+        add.title=`Add to ${entry.scope.kind} for future ${entry.scope.kind==='outcome' && person.kind==='agent'?'addressing':'messages'}. This message will not be resent.`;row.append(add);
       }
     }
     finishPageNotice(entry.node,()=>{entry.dismissed=true;entry.node.remove();});
@@ -108,5 +109,8 @@ export class MentionNotices {
       if(this.live(entry) && !entry.dismissed){button.textContent=person.request?`Check add @${person.actor_id}`:`Try add @${person.actor_id} again`;button.title=error.message;}
     } finally {person.busy=false;if(this.live(entry) && !entry.dismissed)button.disabled=Boolean(person.added || person.refused);}
   }
-  dispose(){this.disposed=true;for(const entry of this.entries.values())entry.node?.remove();}
+  dispose(){this.disposed=true;for(const entry of this.entries.values()){
+    if(entry.retryTimer!=null)this.timers.clearTimeout(entry.retryTimer);
+    entry.retryTimer=null;entry.node?.remove();
+  }}
 }
