@@ -7653,7 +7653,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   const closedLook = ['root:tab', ...Array.from({ length: 7 }, (_, n) => `r${n + 8}:card`)];
   const openedLook = ['root:card', ...Array.from({ length: 7 }, (_, n) => `r${n + 1}:${n === 4 ? 'folded' : 'row'}`), ...closedLook.slice(1)];
 
-  for (const device of Object.keys(DEVICES)) for (const theme of ['light', 'dark']) {
+  // Register names without browser helpers: selection-only callers omit them.
+  for (const device of ['laptop', 'phone']) for (const theme of ['light', 'dark']) {
     await check(`reading item 1101 first-message drawing and Fold menu agree through native acts and reload ${device} ${theme}`, async () => {
       const topic = `head-fold-1101-${device}-${theme}`, ids = await earlierSeed(topic);
       const p = await open(topic, device, topic, ids.root);
