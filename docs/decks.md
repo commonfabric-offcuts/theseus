@@ -355,8 +355,8 @@ fail that check. This unit control alone does not establish native behavior.
 | edit the card | a click where the cursor should go, or ⌘Return | Edit, or a tap where the cursor should go |
 | finish editing | Escape or ⇧⌘Return | Done |
 | finish editing, and write a new card below it | ⌘Return | |
-| finish editing a card with children, and fold them away | ← at the very start | |
-| finish editing a card with folded children, and show them | → at the very end | |
+| finish editing and display the same card | ← at the collapsed very start, → at the collapsed very end | |
+| outdent while keeping the card's editor and caret | ⇧Tab at the collapsed very start or end | |
 | while editing, move the card past the one above or below it | ⌘↑ ⌘↓ | |
 | while editing, indent or outdent the card at the collapsed text start; elsewhere the current line or selected lines | Tab, ⇧Tab | |
 | while editing, move the line the cursor is on past the line above or below it | ⌥↑ ⌥↓ | |
@@ -388,8 +388,10 @@ While a card is being written, ⌘↑ and ⌘↓ move it by the same rules; what
 written, and the cursor, stay where they were. At the collapsed very first
 text position, Tab and ⇧Tab indent and outdent the card, including a new
 empty box after ⌘Return. A blocked first-card indent or top-level outdent
-keeps the words and focus. Elsewhere, including a selection beginning at
-zero, they indent and outdent the current line or selected lines, through the
+keeps the words and focus. Shift-Tab at the collapsed very last text position
+also outdents the card and retains its editor, exact words and caret (1058).
+Elsewhere, including nonempty selections reaching either end,
+they indent and outdent the current line or selected lines, through the
 single `WritingInput.indentKey` rule: two spaces in, up to two spaces or one
 leading tab out. A selection ending at the next line's start excludes that
 line. One insertion uses the existing input/autosave path and the field's
@@ -407,12 +409,12 @@ writing. ⌘Return leaves it and opens a new card right after it and its
 children, at its depth; from a box with nothing written ⌘Return only leaves,
 so it never makes an empty card. ⌥Return finishes the box and opens a fresh
 card directly above the picked card, just as it does outside writing.
-← at the very start of a card that has children finishes it and folds its
-children away, the card picked. → at the very end of a card with folded
-children finishes it and shows its children, keeping the parent picked.
-With no folded children, or away from that end, → stays the box's; a selected
-range or modified arrow also stays the box's. On a card with no children,
-← stays the box's. ↑ at the very start of what is written finishes
+← at the collapsed very start or → at the collapsed very end finishes the
+editor and displays that card, retaining focus there without toggling its
+children or handing focus to another pane (1058). Away from those ends,
+or with a nonempty selection or modified arrow, the key stays the box's.
+Displayed-card tree keys retain folding and pane navigation. ↑ at the very
+start of what is written finishes
 the card and opens the card that shows above it for writing, the cursor at
 its end; ↓ at the very end does the same with the card below, the cursor at
 its start. Anywhere else in the box ↑ and ↓ move the cursor as usual, and at

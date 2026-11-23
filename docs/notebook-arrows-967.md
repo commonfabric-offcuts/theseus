@@ -7,7 +7,9 @@ holding focus, including cards being displayed without an editor.
 
 The existing card tree gets first use of Left/Right; an unused outward Left
 from a top-level card hands focus back to the feed. Page controls also have
-an outward route. An editor retains its writing keys. Modal sheets retain
+an outward route. An editor retains its writing keys;1058 finishes a Card
+editor on Left at its collapsed start or Right at its collapsed end,
+displaying that card in the same pane. Modal sheets retain
 their focus boundary, and hidden/closed Notebook pages are never entered.
 Without a docked Notebook, the existing feed/outline/right-rail routes stay
 unchanged. No persisted data or Core commands change.
@@ -30,9 +32,10 @@ plain Left at a top-level card's tree boundary hands focus back to the feed;
 folding and parent selection precede that handoff. The spatial navigation
 owner also recognizes the sheet's page controls. Modal isolation is unchanged.
 
-An unused editor arrow stops before the window's spatial fallback, even
-when the field is empty. Its native caret action and existing editor commands
-remain available. No changes to passage selection, quote provenance, card
+An editor arrow stops before the window's spatial fallback.1058's collapsed
+Card-end commands finish in the same pane, including an empty fresh box;
+other unused arrows retain their native caret action. Text view keeps its
+writing keys even when empty. No changes to passage selection, quote provenance, card
 selection paint, saved writing, or Core records are involved.
 
 Actual native reds on 252 and 266 leave focus outside the shown Notebook

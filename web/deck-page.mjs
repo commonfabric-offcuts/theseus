@@ -17,7 +17,7 @@ import { reach } from './arrow-reach.mjs';
 export const UNDO_LIMIT = 50;
 const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · Context Menu or ⇧F10 card menu · → card controls';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
-const WRITING_KEYS = 'Escape or ⇧⌘Return done · ⌘Return new card below, ⌥Return above · ← at the very start folds children, → at the very end unfolds them · ⌘↑ ⌘↓ move the card · Tab at start indent card, ⇧Tab outdent; elsewhere indent lines · ⌥↑ ⌥↓ move a line · ↑ at the very start or ↓ at the very end goes on to the card beside';
+const WRITING_KEYS = 'Escape or ⇧⌘Return done · ⌘Return new card below, ⌥Return above · ← at the very start or → at the very end done (no selection) · ⌘↑ ⌘↓ move the card · Tab at start indent card, ⇧Tab at start or end outdent (no selection); elsewhere indent lines · ⌥↑ ⌥↓ move a line · ↑ at the very start or ↓ at the very end goes on to the card beside';
 // The same lines, short, where the cards stand in the composer over the feed (notebook-sheet.mjs); each keeps its
 // long form as its tooltip.
 const SHORT_KEYS = ['↑ ↓ pick · Return new card · ⌘Return edit · ⇧F10 menu', 'Escape done · ⌘Return next card', '⌘Return ask · Escape back'];
@@ -364,13 +364,14 @@ export class DeckPage {
     if (event.target.closest?.('.fence-copy')) return;
     const command = event.metaKey || event.ctrlKey, up = event.key === 'ArrowUp', down = event.key === 'ArrowDown';
     // The box's line keys come first. Escape and ⇧⌘Return finish; ⌘Return adds below and ⌥Return above.
-    // ⌘↑/↓ move the card. At the text boundaries, ↑/↓ continue writing beside it and ←/→ fold/unfold children.
-    // Tab at the collapsed text start moves the card; elsewhere it indents lines through WritingInput.
+    // ⌘↑/↓ move the card. At the text boundaries, ↑/↓ continue writing beside it; ←/→ finish in display mode.
+    // Tab at the collapsed text start moves the card; ⇧Tab also outdents at the end. Elsewhere it indents lines.
     // Even a blocked card move, unchanged ⇧Tab or Safari's ⌥Tab keeps the box's focus.
     if (this.editing) {
       const field = this.editing.field, plain = !command && !event.shiftKey && !event.altKey;
       if (event.target !== field) return;
-      if (event.key === 'Tab' && !command && !event.altKey && field.selectionStart === 0 && field.selectionEnd === 0) {
+      const collapsed = field.selectionStart === field.selectionEnd, end = field.selectionEnd === field.value.length;
+      if (event.key === 'Tab' && !command && !event.altKey && collapsed && (field.selectionStart === 0 || event.shiftKey && end)) {
         event.preventDefault();
         if (this.base && !this.readOnly && !this.editing.input.readOnly()) this.moveWriting({ kind: event.shiftKey ? 'outdent' : 'indent' });
         return;
@@ -384,8 +385,7 @@ export class DeckPage {
       else if ((up || down) && command && !event.shiftKey && !event.altKey) this.moveWriting({ kind: 'move', step: up ? -1 : 1 });
       else if (plain && up && field.selectionEnd === 0) { if (!this.writeBeside(-1)) return; }
       else if (plain && down && field.selectionStart === field.value.length) { if (!this.writeBeside(1)) return; }
-      else if (plain && event.key === 'ArrowLeft' && field.selectionEnd === 0) { if (!this.foldWriting()) return; }
-      else if (plain && event.key === 'ArrowRight' && field.selectionStart === field.value.length) { if (!this.foldWriting(false)) return; }
+      else if (plain && collapsed && (event.key === 'ArrowLeft' && field.selectionStart === 0 || event.key === 'ArrowRight' && end)) this.finish();
       else return;
       event.preventDefault();
       return;
@@ -705,22 +705,6 @@ export class DeckPage {
     if (!editing.fresh) { const at = findCard(this.deck, editing.text, editing.near); if (at >= 0) this.picked = at; }
     this.finish();
     if (!this.editing) this.start();
-  }
-  // ← at the start folds children; → at the end unfolds folded children. Finishing keeps their parent picked.
-  // A new/cleared card or one without children keeps the key in its box, as does → with nothing folded.
-  foldWriting(fold = true) {
-    const editing = this.editing;
-    if (editing.fresh || !cardText(textCard(editing.field.value))) return false;
-    const at = findCard(this.deck, editing.text, editing.near);
-    if (at < 0 || groupEnd(this.deck.cards, at) === at + 1) return false;
-    const title = this.deck.cards[at].title;
-    if (!fold && !this.folded.has(title)) return false;
-    this.picked = at;
-    this.finish();
-    const i = this.picked, card = this.deck.cards[i];
-    if (!fold && title !== card?.title) { this.folded.delete(title); this.keepFolds(); }
-    if (card && groupEnd(this.deck.cards, i) > i + 1 && this.folded.has(card.title) !== fold) this.fold(i);
-    return true;
   }
   // Escape, ⌘Return or Done: what was written becomes the card; a new card with nothing written is not made.
   finish({target=null} = {}) {

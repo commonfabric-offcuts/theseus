@@ -39,11 +39,11 @@ for (const step of [-1, 1]) test(`866 merge ${step} appends moved title and word
   assert.equal(deckBody(applyAct(parseDeck(deckBody(undone.deck)), undone.undo).deck), deckBody(done.deck));
 });
 
-test('866 Right at the end finishes writing, unfolds children and keeps the parent picked', () => {
+test('1058 replaces 866 editing Right folding: finish keeps the parent picked and its existing fold', () => {
   const p = page(); p.folded.add('Parent'); p.write(); p.editing.field.value += ' added'; p.editing.field.setSelectionRange(p.editing.field.value.length, p.editing.field.value.length);
   assert.equal(key(p, 'ArrowRight').defaultPrevented, true);
-  assert.equal(Boolean(p.editing), false); assert.equal(p.picked, 0); assert.equal(p.folded.has('Parent'), false);
-  assert.match(p.deck.cards[0].words, /added$/); assert.equal(p.layout().shown[1], true);
+  assert.equal(Boolean(p.editing), false); assert.equal(p.picked, 0); assert.equal(p.folded.has('Parent'), true);
+  assert.match(p.deck.cards[0].words, /added$/); assert.equal(p.layout().shown[1], false);
 });
 test('866 writing Tab and Shift-Tab indent lines through WritingInput without moving the card', () => {
   const p = page(); p.write(); const f = p.editing.field, original = f.value, at = f.value.indexOf('two'); f.setSelectionRange(at, at);
@@ -63,7 +63,9 @@ test('866 Option-Return finishes the current card and opens a fresh sibling dire
   assert.equal(p.editing.field.value, ''); assert.match(p.deck.cards[2].words, /kept$/);
 });
 
-for (const change of ['no children', 'unfolded', 'inside', 'selection', 'fresh', 'empty', 'shift', 'command', 'option', 'composing', 'ime229', 'prevented', 'other field']) test('866 Right stays in the writing box: '+change, () => {
+// 1058 explicitly replaces the no-children/unfolded/fresh/empty boundary
+// expectations; named1058 cases now require display for those states.
+for (const change of ['inside', 'selection', 'shift', 'command', 'option', 'composing', 'ime229', 'prevented', 'other field']) test('866 Right stays in the writing box: '+change, () => {
   const p=page(); p.folded.add('Parent'); p.write(change==='no children'?2:0); const field=p.editing.field, extra={};
   if(change==='unfolded')p.folded.clear();
   if(change==='inside')field.setSelectionRange(3,3);
@@ -80,9 +82,9 @@ for (const change of ['no children', 'unfolded', 'inside', 'selection', 'fresh',
   const before=field.value;key(p,'ArrowRight',extra);
   assert.equal(Boolean(p.editing),true);assert.equal(p.editing.field,field);assert.equal(field.value,before);assert.deepEqual(p.acts,[]);
 });
-test('866 Right after a parent rename opens its children and retires its old fold name',()=>{
+test('1058 Right after a parent rename finishes through the normal edit act',()=>{
   const p=page();p.folded.add('Parent');p.write();const f=p.editing.field;f.value=f.value.replace('Parent','Renamed');f.setSelectionRange(f.value.length,f.value.length);
-  key(p,'ArrowRight');assert.equal(Boolean(p.editing),false);assert.equal(p.deck.cards[0].title,'Renamed');assert.equal(p.layout().shown[1],true);assert.equal(p.folded.has('Parent'),false);
+  key(p,'ArrowRight');assert.equal(Boolean(p.editing),false);assert.equal(p.deck.cards[0].title,'Renamed');assert.equal(p.layout().shown[1],true);assert.equal(p.acts.at(-1).kind,'edit');
 });
 for(const body of ['', '## First\n', '## First\n\n### Child\n\n## Last\n'])test('866 Option-Return above handles first and empty cards '+JSON.stringify(body),()=>{
   const p=page(body);if(p.deck.cards.length)p.write();else p.open({text:'',fresh:true,after:null,depth:0,near:-1});

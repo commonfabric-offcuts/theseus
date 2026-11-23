@@ -2008,17 +2008,31 @@
    }
   },
   {
-   "item": 295,
-   "act": "A release record shipping a piece's last work sets its topic Ready for review, \"Live in release N since …\", never Done",
+   "item": 1081,
+   "act": "An actual release record makes the agent Build topic Done for every member, including a reader who never opened it",
    "break": [
     [
      "aim_next/pipeline.py",
-     "self._set_topic_state(db, topic, None, {\"state\": \"review\", \"note\": _live_since(db, new)})",
-     "self._set_topic_state(db, topic, None, {\"state\": \"done\", \"note\": _live_since(db, new)})"
+     "\"state\": \"done\" if topic_id in builds else \"review\"",
+     "\"state\": \"review\""
     ]
    ],
    "check": {
-    "python": "test_shipped_topic_review.py"
+    "python": "test_build_topic_lifecycle_1081.py"
+   }
+  },
+  {
+   "item": 295,
+   "act": "A retained person-linked shipped topic keeps Ready for review and the actual release time (1081 preserves the legacy person rule)",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "\"state\": \"done\" if topic_id in builds else \"review\"",
+     "\"state\": \"done\""
+    ]
+   ],
+   "check": {
+    "python": "test_build_topic_lifecycle_1081.py"
    }
   },
   {
@@ -2027,17 +2041,17 @@
    "break": [
     [
      "aim_next/pipeline.py",
-     "if new is not None and (its_review or (old is None and topic[\"state\"] != \"done\")):",
+     "if new is not None and (its_review or (topic_id in builds and its_done) or (old is None and topic[\"state\"] != \"done\")):",
      "if new is not None:"
     ]
    ],
    "check": {
-    "python": "test_shipped_topic_review.py"
+    "python": "test_build_topic_lifecycle_1081.py"
    }
   },
   {
    "item": 295,
-   "act": "Work appearing again in a shipped piece's topic puts the pipeline's own review back to active",
+   "act": "When a retained person-linked topic loses its shipment hold, only the pipeline-owned review returns to active; a person's later review stands",
    "break": [
     [
      "aim_next/pipeline.py",
@@ -2046,21 +2060,21 @@
     ]
    ],
    "check": {
-    "python": "test_shipped_topic_review.py"
+    "python": "test_build_topic_lifecycle_1081.py"
    }
   },
   {
    "item": 295,
-   "act": "A message in a topic Ready for review leaves it in review; only a done topic is reopened",
+   "act": "A message preserves a pipeline-owned shipped Build Done and a legacy Ready for review; a manual Done still reopens",
    "break": [
     [
      "aim_next/topic_state.py",
-     "        if topic[\"state\"] == \"done\":\n            db.execute(\"UPDATE topics SET state='active'",
-     "        if topic[\"state\"] in (\"done\", \"review\"):\n            db.execute(\"UPDATE topics SET state='active'"
+     "        if topic[\"state\"] == \"done\" and not self._pipeline_holds_done_topic(db, topic):\n            db.execute(\"UPDATE topics SET state='active'",
+     "        if topic[\"state\"] in (\"done\", \"review\") and not self._pipeline_holds_done_topic(db, topic):\n            db.execute(\"UPDATE topics SET state='active'"
     ]
    ],
    "check": {
-    "python": "test_shipped_topic_review.py"
+    "python": "test_build_topic_lifecycle_1081.py"
    }
   },
   {
@@ -7557,17 +7571,17 @@
   },
   {
    "item": 396,
-   "act": "← at the very start of a card being written folds away its children",
+   "act": "← at the very start of a card being written displays the same card with its children untouched",
    "break": [
     [
      "web/deck-page.mjs",
-     "if (!this.foldWriting()) return;",
-     "return;"
+     "      else if (plain && collapsed && (event.key === 'ArrowLeft' && field.selectionStart === 0 || event.key === 'ArrowRight' && end)) this.finish();",
+     "      else if (plain && collapsed && (event.key === 'ArrowLeft' && field.selectionStart === 0 || event.key === 'ArrowRight' && end)) return;"
     ]
    ],
    "check": {
     "native": "notebook",
-    "case": "← at its very start folds"
+    "case": "← at its very start displays"
    }
   },
   {
@@ -7582,7 +7596,7 @@
    ],
    "check": {
     "native": "notebook",
-    "case": "← at its very start folds"
+    "case": "← at its very start displays"
    }
   },
   {
