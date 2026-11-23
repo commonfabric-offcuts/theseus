@@ -18,6 +18,8 @@ REFERENCE_OR_PRIVATE_VIEWS = {'assessment', 'assessments', 'dossier_cover', 'dos
     'editor_state', 'memory_current', 'memory_items', 'memory_stars', 'memory_status', 'message_acts',
     'opening', 'openings', 'workspace_links', 'source_topics', 'stack_namer', 'stack_positions', 'submission', 'submissions', 'topic_membership'}
 METADATA_VIEWS = {'actors', 'changes', 'colors', 'health', 'health_light', 'marks', 'onboarding_prompt',
+    'opening', 'openings', 'source_topics', 'stack_namer', 'stack_positions', 'submission', 'submissions', 'topic_membership'}
+METADATA_VIEWS = {'actors', 'changes', 'colors', 'health', 'health_light', 'hosted_seat_templates', 'marks', 'onboarding_prompt',
     'outcome_live', 'pipeline_row', 'reactions', 'releases', 'tool', 'tools', 'topic_tools', 'topic_unread',
     'wakes', 'workspace_counts', 'workspace', 'workspace_members', 'workspace_topics', 'workspaces', 'topic', 'outcome_light'}
 
