@@ -48,8 +48,30 @@ run is accepted. New passing tests are allowed. A snapshot names every tracked
 file's actual captured Git blob identity; the guard compares it with Git.
 
 `core_cohort` names the exact carry, each frozen piece's `piece_id`, source
-`head`, named Python test files, and passing verbose unittest runs covering
-their union plus `tests/test_migrations.py` and changed migration test files.
+`head`, named Python test files, and verbose unittest captures. Under revision3
+(Warp19122/19126), every piece's own named tests must still pass. Required
+migration files (`tests/test_migrations.py` and changed migration tests) must
+either pass on carry or be covered by a validated existing `python_comparisons`
+entry. That entry keeps the existing `{files, base, carry}` shape and actual
+run references: no new failed case/file, lost live case, or added incomplete
+outcome is accepted. Every credited migration file must have actual named
+outcomes on both sides of its comparison, including grouped comparisons; a
+positive aggregate for another file supplies no coverage. No new judgment
+field or relabeled command is required.
+
+The Core capture may contain the piece tests alone or those tests plus named
+migration files. Its complete actual command/output is parsed, even when it
+contains an existing migration red; only migration files with a validated
+comparison may remain red. Each declared file needs actual named case coverage.
+When that capture contains migration reds or skips, its migration case/file
+identities and multiplicities must retain the live comparison's cases and add
+no failure or skip. A comparison for one case cannot excuse a different red
+in the Core capture.
+The result keeps the whole capture counts separately from the passing subset
+counts and names passing versus compared migration files. An existing red is
+never reported as a passing migration run. A file named both for a piece and
+for migrations still must pass as that piece's test. A changed migration test
+absent on live must pass on carry, since it has no matching live failure.
 The audit binds these named cohorts to the frozen sources. Selection of the
 appropriate additional tests remains an explicit independent review obligation;
 Core's existing freeze has no machine-readable test inventory. No new Core

@@ -348,8 +348,17 @@ def validate(value, git, live, candidate):
     # Git timestamps are authored metadata, not an ordering witness. The bound
     # affirmative audit below explicitly accepts independently read carry order.
     node = comparison(value['node_comparison'], git, live, carry['head'], node=True)
+    python_runs = []
     for ref in value.get('python_comparisons', []):
         comparison(ref, git, live, carry['head'], node=False)
+        data = document(ref)
+        paths = set(file_names(data['files']))
+        # Retain the same validated case counters for migration coverage and
+        # reconciliation below. Declared command filenames alone are not proof
+        # that those files produced outcomes in a grouped execution.
+        python_runs.append((paths,
+            unit_run(data['base'], git, live, node=False, expected=paths),
+            unit_run(data['carry'], git, carry['head'], node=False, expected=paths)))
     cohort = fields(document(value['core_cohort']), 'head tree pieces migration_tests run')
     require(cohort['head'] == carry['head'] and cohort['tree'] == carry['tree'], 'Core cohort has another carry')
     require(isinstance(cohort['pieces'], list) and bool(cohort['pieces']), 'missing named frozen Core cohorts')
@@ -364,8 +373,42 @@ def validate(value, git, live, candidate):
     required_migrations = {'tests/test_migrations.py'} | {
         path for path in changed if re.fullmatch(r'tests/test_[^/]*(?:migration|migrate)[^/]*\.py', path)}
     require(required_migrations <= migrations, 'migration chain tests are missing')
-    units = unit_run(cohort['run'], git, carry['head'], node=False, expected=tests | migrations)
-    require(not units['failures'] and not units['skipped'] and not units['failed_files'], 'Core/migration cohort is not PASS')
+    compared_files = set()
+    for paths, old, new in python_runs:
+        selected_migrations = migrations & paths
+        require(selected_migrations <= {case[0] for case in old['cases']} &
+                {case[0] for case in new['cases']},
+                'migration comparison has a named file with no observed case')
+        compared_files.update(selected_migrations)
+    # Preserve an actual grouped command containing both pieces and migrations;
+    # do not slice its raw log or relabel it as a different invocation.
+    captured = document(cohort['run'])
+    captured_files = set(file_names(captured['grouped']['files'] if 'grouped' in captured else
+                                   [row['file'] for row in captured.get('files', [])]))
+    require(tests <= captured_files <= tests | migrations, 'Core capture omits piece tests or names an unrelated file')
+    units = unit_run(cohort['run'], git, carry['head'], node=False, expected=captured_files)
+    observed = {case[0] for case in units['cases']}
+    skipped_files = {case[0] for case in units['skipped']}
+    require(tests <= observed and not tests & (units['failed_files'] | skipped_files),
+            'Core piece cohort is not PASS')
+    require(captured_files <= observed, 'Core capture has a named file with no observed case')
+    passing_files = observed - units['failed_files'] - skipped_files
+    for paths, old, _ in python_runs:
+        selected_migrations = (migrations & captured_files & paths) - passing_files
+        if not selected_migrations:
+            continue
+        def migration_cases(run, key):
+            return Counter({case: count for case, count in run[key].items()
+                            if case[0] in selected_migrations})
+        require(not migration_cases(old, 'cases') - migration_cases(units, 'cases'),
+                'Core migration capture omits live file/case coverage')
+        require(not migration_cases(units, 'failures') - migration_cases(old, 'failures'),
+                'a Core migration case/file is newly failing against live')
+        require(not migration_cases(units, 'skipped') - migration_cases(old, 'skipped'),
+                'Core migration capture adds skipped or incomplete cases')
+    require(migrations <= passing_files | compared_files,
+            'Migration cohort is not PASS and lacks a matching live comparison')
+    passing_counts = {'tests': sum(count for case, count in units['cases'].items() if case[0] in passing_files)}
     cells, covered = [], set()
     for row in value['browser_cells']:
         fields(row, 'paths page cell head tree completed raw')
@@ -391,7 +434,10 @@ def validate(value, git, live, candidate):
             comparison(compared['raw'], git, live, carry['head'], node=compared['kind'] == 'node')
     return {'head': carry['head'], 'base': live, 'tree': carry['tree'], 'created_at_ms': carry['created_at_ms'],
             'node_comparison': node, 'core_cohort': {'run': units['run'], 'attempt': units['attempt'],
-                'counts': units['counts'], 'result': 'PASS', 'pieces': cohort['pieces'], 'migration_tests': sorted(migrations)},
+                'counts': passing_counts, 'captured_counts': units['counts'], 'result': 'PASS', 'pieces': cohort['pieces'],
+                'migration_tests': sorted(migrations), 'migration_evidence': {
+                    'passed_on_carry': sorted(migrations & passing_files),
+                    'compared_against_live': sorted(migrations & compared_files)}},
             'browser_cells': cells, 'audit': value['audit'], 'evidence_sha256': evidence_digest(value),
             'verdicts': value.get('verdicts', []), 'git_committer_time_ms': int(stamp) * 1000}
 

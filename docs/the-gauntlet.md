@@ -36,8 +36,10 @@ its effects. The1131 judgment binds:
 - The whole Node suite on the carry against actual live, retaining each case's
   name, ancestry and multiplicity, all test-file coverage and failing-file
   identities. No added failing case or file is allowed; new passing tests are.
-- Passing Core unit tests named for each frozen piece and the migration-chain
-  tests on that carry. The independent read checks that the named cohort is
+- Passing Core unit tests named for each frozen piece. Under1131 revision3,
+  migration-chain files either pass on carry or compare against the same files
+  on actual live by case/file identity, with no new failure. Existing migration
+  reds remain red. The independent read checks that the named cohort is
   appropriate and complete; a freeze currently has no test inventory of its own.
 - A completed real-browser case for each changed web page, with exact source
   and raw record bindings. The reviewer checks the page mapping and actual
@@ -54,6 +56,14 @@ unavailable judge machinery remain attributed failures, not passing cases and
 not an independent Verdict veto. Do not manufacture another candidate or feed
 the same tree through the gate again merely to repair those machine failures.
 Record and fix the machinery separately.
+
+An incomplete run gets a named diagnosis and at most one bounded corrective
+attempt. Preserve completed evidence; do not restart a whole suite for a
+missing file or repeat a browser retry.
+
+When a change lacks its minimum evidence, name that exact gap and use valid
+retained evidence or a specifically authorized alternative. Never invent a
+pass, waive a real new failure, or hold unrelated work for that gap.
 
 If live changes, an old base comparison is not current-live evidence. Preserve
 what actually ran and prepare the required deterministic evidence for the

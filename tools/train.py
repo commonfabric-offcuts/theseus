@@ -366,7 +366,7 @@ def said(train):
         words = "the hosted judgment is pending (PR #%d); attach it with tools/releases.py attach-judgment" % train["pr"]
     elif deterministic_admission.selected(judgment):
         evidence = train['deterministic']
-        words = ('deterministic carry %s, node %s, Core/migrations PASS, browser cells %s (audit %s)' %
+        words = ('deterministic carry %s, node %s, named Core PASS, migrations checked, browser cells %s (audit %s)' %
                  (evidence['head'][:12], evidence['node_comparison']['carry']['run'],
                   ', '.join(evidence['browser_cells']) or 'none: no web change', judgment['audit']['message']))
     else:

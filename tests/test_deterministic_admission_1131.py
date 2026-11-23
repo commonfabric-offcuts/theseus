@@ -440,7 +440,7 @@ else:
                         'base': {'ref': 'release/live73'}, 'head': {'sha': self.head}}
             raise AssertionError('unexpected Verdict/producer read: '+url)
         result = train.judge(path, merged, self.base, 'release/live73', 'scratch/repo', self.git, SimpleNamespace(get=get))
-        self.assertIn('Core/migrations PASS', train.said(result))
+        self.assertIn('named Core PASS, migrations checked', train.said(result))
         self.assertEqual(len(queried), 2)
         self.assertEqual(releases.train_measurements(result)['train']['deterministic']['core_cohort']['result'], 'PASS')
 
@@ -527,6 +527,183 @@ else:
         self.assertIn('02-checkout',names)
         self.assertNotIn('02-admission',names)
         self.assertFalse((evidence/'02-checks.json').exists())
+
+    def r3_migration_evidence(self, old_fail=True, new_fail=True, piece_fail=False, grouped=False):
+        paths = ['tests/test_migrations.py']
+        compared = {'files': paths, 'base': self.unit(self.base, node=False, names=paths, fail=old_fail),
+                    'carry': self.unit(self.head, node=False, names=paths, fail=new_fail)}
+        for side in ('base', 'carry'):
+            run = json.loads(Path(compared[side]['path']).read_text())
+            row = run['files'][0]
+            row['stderr'] = self.raw(Path(row['stderr']['path']).read_text().replace(
+                'test_behavior (test_core.Scratch)', 'test_chain (test_migrations.Scratch)'))
+            compared[side] = self.raw(run)
+        self.value['python_comparisons'] = [self.raw(compared)]
+        own = self.unit(self.head, node=False, names=['tests/test_core.py'], fail=piece_fail)
+        if grouped:
+            own = self.grouped(self.head, False)
+            capture = json.loads(Path(own['path']).read_text())
+            row = capture['grouped']
+            text = ('test_behavior (test_core.Scratch) ... %s\n'
+                    'test_chain (test_migrations.Scratch) ... %s\n\nRan 2 tests in 0.01s\n\n' %
+                    ('FAIL' if piece_fail else 'ok', 'FAIL' if new_fail else 'ok'))
+            failures = int(piece_fail) + int(new_fail)
+            row['stderr'] = self.raw(text + ('FAILED (failures=%d)\n' % failures if failures else 'OK\n'))
+            row['counts'] = {'tests':2, 'status':'FAILED' if failures else 'OK'}
+            if failures: row['counts']['failures'] = failures
+            row['exit'] = int(bool(failures)); own = self.raw(capture)
+        self.value['core_cohort'] = self.change_document(self.value['core_cohort'], lambda d: d.update(run=own))
+        self.bind_audit()
+
+    def test_1131_r3_matching_migration_red_allows_passing_named_piece_tests(self):
+        self.r3_migration_evidence()
+        found = self.admit()['deterministic']['core_cohort']
+        self.assertEqual(found['result'], 'PASS')
+        self.assertEqual(found['counts']['tests'], 1)
+        self.assertEqual(found['migration_evidence']['compared_against_live'], ['tests/test_migrations.py'])
+        self.assertEqual(found['migration_evidence']['passed_on_carry'], [])
+
+    def test_1131_r3_actual_grouped_capture_keeps_its_red_counts_and_piece_passes(self):
+        self.r3_migration_evidence(grouped=True)
+        found = self.admit()['deterministic']['core_cohort']
+        self.assertEqual(found['counts']['tests'], 1)
+        self.assertEqual(found['captured_counts'], {'tests':2, 'failures':1})
+        self.assertEqual(found['migration_evidence']['compared_against_live'], ['tests/test_migrations.py'])
+
+    def test_1131_r3_new_migration_failure_still_blocks_before_effects(self):
+        self.r3_migration_evidence(old_fail=False)
+        with self.assertRaisesRegex(deploy.Refused, 'newly failing'): self.admit()
+
+    def test_1131_r3_red_migration_without_comparison_is_not_waived(self):
+        self.r3_migration_evidence(grouped=True)
+        self.value.pop('python_comparisons'); self.bind_audit()
+        with self.assertRaisesRegex(deploy.Refused, 'matching live comparison'): self.admit()
+
+    def test_1131_r3_piece_failure_is_never_waived_by_migration_comparison(self):
+        self.r3_migration_evidence(piece_fail=True, grouped=True)
+        # Even a separate matched comparison of that same piece file does not
+        # replace the requirement that its named carry cohort passed.
+        paths = ['tests/test_core.py']
+        self.value['python_comparisons'].append(self.raw({'files':paths,
+            'base':self.unit(self.base,node=False,names=paths,fail=True),
+            'carry':self.unit(self.head,node=False,names=paths,fail=True)}))
+        self.bind_audit()
+        with self.assertRaisesRegex(deploy.Refused, 'Core piece cohort is not PASS'): self.admit()
+
+    def test_1131_r3_file_named_for_piece_and_migrations_must_still_pass(self):
+        self.r3_migration_evidence(grouped=True)
+        self.value['core_cohort'] = self.change_document(self.value['core_cohort'],
+            lambda d: d['pieces'][0]['tests'].append('tests/test_migrations.py'))
+        self.bind_audit()
+        with self.assertRaisesRegex(deploy.Refused, 'Core piece cohort is not PASS'): self.admit()
+
+    def test_1131_r3_comparison_cannot_hide_a_missing_baseline_migration_case(self):
+        self.r3_migration_evidence()
+        pair = json.loads(Path(self.value['python_comparisons'][0]['path']).read_text())
+        run = json.loads(Path(pair['carry']['path']).read_text())
+        row = run['files'][0]; text = Path(row['stderr']['path']).read_text()
+        row['stderr'] = self.raw(text.replace('test_chain', 'test_other_chain'))
+        pair['carry'] = self.raw(run); self.value['python_comparisons'] = [self.raw(pair)]; self.bind_audit()
+        with self.assertRaisesRegex(deploy.Refused, 'omits live file/case'): self.admit()
+
+    def test_1131_r3_piece_file_with_no_executed_case_is_not_a_pass(self):
+        self.r3_migration_evidence(grouped=True)
+        run = json.loads(Path(json.loads(Path(self.value['core_cohort']['path']).read_text())['run']['path']).read_text())
+        row = run['grouped']
+        row.update(stderr=self.raw('test_chain (test_migrations.Scratch) ... FAIL\n\nRan 1 test in 0.01s\n\nFAILED (failures=1)\n'),
+                   counts={'tests':1,'status':'FAILED','failures':1})
+        self.value['core_cohort'] = self.change_document(self.value['core_cohort'], lambda d: d.update(run=self.raw(run)))
+        self.bind_audit()
+        with self.assertRaisesRegex(deploy.Refused, 'Core piece cohort is not PASS'): self.admit()
+
+    def test_1131_r3_comparison_of_another_file_does_not_cover_migrations(self):
+        self.r3_migration_evidence()
+        paths = ['tests/test_core.py']
+        self.value['python_comparisons'] = [self.raw({'files':paths,
+            'base':self.unit(self.base,node=False,names=paths),
+            'carry':self.unit(self.head,node=False,names=paths)})]
+        self.bind_audit()
+        with self.assertRaisesRegex(deploy.Refused, 'matching live comparison'): self.admit()
+
+    def test_1131_r3_zero_or_incomplete_migration_comparison_never_passes(self):
+        for mode in ('zero', 'cancelled', 'missing-terminal', 'missing-file'):
+            self.r3_migration_evidence()
+            pair = json.loads(Path(self.value['python_comparisons'][0]['path']).read_text())
+            run = json.loads(Path(pair['carry']['path']).read_text())
+            row = run['files'][0]
+            if mode == 'zero':
+                row.update(stderr=self.raw('Ran 0 tests in 0.01s\n\nOK\n'),
+                           counts={'tests':0,'status':'OK'},exit=0)
+            elif mode == 'cancelled':
+                row['exit'] = -15
+            elif mode == 'missing-terminal':
+                row['stderr'] = self.raw('test_behavior (test_core.Scratch) ... FAIL\n')
+            else:
+                run['files'] = []
+            pair['carry'] = self.raw(run); self.value['python_comparisons'] = [self.raw(pair)]; self.bind_audit()
+            with self.subTest(mode=mode), self.assertRaises(deploy.Refused): self.admit()
+
+    def test_1131_r3_newly_failed_file_is_not_waived_by_matching_failure_total(self):
+        self.r3_migration_evidence()
+        names = ['tests/test_migrations.py','tests/test_core.py']
+        old = json.loads(Path(self.unit(self.base,node=False,names=names)['path']).read_text())
+        new = json.loads(Path(self.unit(self.head,node=False,names=names)['path']).read_text())
+        old['files'][0] = json.loads(Path(self.unit(self.base,node=False,names=names[:1],fail=True)['path']).read_text())['files'][0]
+        new['files'][1] = json.loads(Path(self.unit(self.head,node=False,names=names[1:],fail=True)['path']).read_text())['files'][0]
+        self.value['python_comparisons'] = [self.raw({'files':names,'base':self.raw(old),'carry':self.raw(new)})]
+        self.bind_audit()
+        with self.assertRaisesRegex(deploy.Refused, 'newly failing'): self.admit()
+
+    def test_1131_r3_grouped_comparison_must_observe_each_required_file_on_both_sides(self):
+        for omitted in (('base', 'carry'), ('base',), ('carry',)):
+            with self.subTest(omitted=omitted):
+                self.r3_migration_evidence()
+                pair = {'files':['tests/test_core.py', 'tests/test_migrations.py']}
+                for side, head in (('base', self.base), ('carry', self.head)):
+                    run = json.loads(Path(self.grouped(head, False)['path']).read_text())
+                    if side in omitted:
+                        run['grouped'].update(stderr=self.raw(
+                            'test_behavior (test_core.Scratch) ... ok\n\nRan 1 test in 0.01s\n\nOK\n'),
+                            counts={'tests':1, 'status':'OK'})
+                    pair[side] = self.raw(run)
+                self.value['python_comparisons'] = [self.raw(pair)]; self.bind_audit()
+                with self.assertRaises(deploy.Refused): self.admit()
+
+    def test_1131_r3_mixed_core_migration_outcomes_must_match_live_baseline(self):
+        for mode in ('new-failure', 'new-class', 'new-skip', 'missing-case',
+                     'extra-failure-multiplicity', 'unobserved-file'):
+            with self.subTest(mode=mode):
+                self.r3_migration_evidence(grouped=True)
+                cohort = json.loads(Path(self.value['core_cohort']['path']).read_text())
+                run = json.loads(Path(cohort['run']['path']).read_text())
+                cases = ['test_behavior (test_core.Scratch) ... ok',
+                         'test_chain (test_migrations.Scratch) ... FAIL']
+                failures, skipped = 1, 0
+                reason = 'newly failing'
+                if mode in ('new-failure', 'new-class'):
+                    cases[1] = cases[1].replace('FAIL', 'ok')
+                    cases.append('test_other (test_migrations.Scratch) ... FAIL' if mode == 'new-failure'
+                                 else 'test_chain (test_migrations.Other) ... FAIL')
+                elif mode == 'new-skip':
+                    cases.append("test_other (test_migrations.Scratch) ... skipped 'not executed'")
+                    skipped = 1; reason = 'adds skipped'
+                elif mode == 'missing-case':
+                    cases[1] = cases[1].replace('test_chain', 'test_other')
+                    reason = 'omits live file/case'
+                elif mode == 'extra-failure-multiplicity':
+                    cases.append(cases[1]); failures = 2
+                else:
+                    cases = cases[:1]; failures = 0; reason = 'no observed case'
+                counts = {'tests':len(cases), 'status':'FAILED' if failures else 'OK'}
+                if failures: counts['failures'] = failures
+                if skipped: counts['skipped'] = skipped
+                summary = ('FAILED (failures=%d%s)' % (failures, ', skipped=1' if skipped else '')
+                           if failures else 'OK')
+                run['grouped'].update(stderr=self.raw('\n'.join(cases) +
+                    '\n\nRan %d tests in 0.01s\n\n%s\n' % (len(cases), summary)),
+                    counts=counts, exit=int(bool(failures)))
+                cohort['run'] = self.raw(run); self.value['core_cohort'] = self.raw(cohort); self.bind_audit()
+                with self.assertRaisesRegex(deploy.Refused, reason): self.admit()
 
 
 if __name__ == '__main__':
