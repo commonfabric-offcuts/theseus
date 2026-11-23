@@ -114,10 +114,10 @@ try{
       if(name==='confirmed-draft-image-privacy'){
         assert.equal(source.body,original.body);assert.equal(source.source_ref.revision,original.source_ref.revision);
         await page.locator('#writing-body').click();await page.keyboard.press('Meta+ArrowDown');await page.keyboard.type('Kept1076 draft.');
-        await page.locator('#who-chip').click();await page.locator('#recipient-open').click();
+        await page.locator('#who-chip').click();await page.locator('#recipient-input').click();
         for(const chip of await page.locator('#recipient-chips [data-name][aria-pressed=true]').all())if(await chip.getAttribute('data-name')!=='fixture-notebook-agent')await chip.click();
         const agent=page.locator('#recipient-chips [data-name="fixture-notebook-agent"]');if(await agent.getAttribute('aria-pressed')!=='true')await agent.click();
-        await page.locator('#recipient-done').click();await page.locator('#intent-row [data-intent=whisper]').click();await page.locator('#who-done').click();
+        await page.locator('#intent-row [data-intent=whisper]').click();await page.locator('#who-done').click();
         await page.locator('#plus-button').click();const chooser=page.waitForEvent('filechooser');await page.locator('#add-image').click();await(await chooser).setFiles(resolve('tests/fixtures/media/screen.png'));if(await page.locator('#plus-done').isVisible())await page.locator('#plus-done').click();
         let draft;
         for(let n=0;n<120;n++){draft=(await view('editor_state',{topic_id:'t1',source_ref:ref})).draft;if(draft?.attachments.length===1&&draft.body.includes('Kept1076 draft.')&&draft.whisper===true)break;await page.waitForTimeout(50);}
