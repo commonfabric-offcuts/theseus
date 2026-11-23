@@ -115,7 +115,8 @@ import { headerClick } from './reply-stacks.mjs';
 import { revealSelection } from './reveal.mjs';
 import { deferFencePaint } from './fence-copy.mjs';
 import { formatWords, redrawMessageWords } from './message-format.mjs';
-import { TextDisplayPreferences, textDisplayRules } from './text-display-rules.mjs';
+import { TextDisplayPreferences } from './text-display-rules.mjs';
+import {ParagraphSwitch} from './paragraph-switch.mjs';
 import { shell } from './rails.mjs';
 import { SessionRenewal } from './session-renewal.mjs';
 import { showLine, lineText } from './lines.mjs';
@@ -125,8 +126,8 @@ import { showLine, lineText } from './lines.mjs';
 // way lands there and never on the page that followed it.
 let retired = null, notebookSheet = null, outcomeColorPicker = null, mentionNotices = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
-let outcomePageLayout = null, topicClosing = null, notebookDeleting=null, olderFeed = null;
-const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); },
+let outcomePageLayout = null, topicClosing = null, notebookDeleting=null, olderFeed = null, paragraphSwitch=null;
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); paragraphSwitch?.dispose(); },
   updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
 // The901 shell restores the foot and separator from copies for each run.
 railDensity();
@@ -2316,7 +2317,6 @@ function sharedMessageMenuItems(item, { say, anchor = say, presentation = null, 
     if (remote || !messageEdit && item.topic_id === topic.id) items.push({ label: 'Start a new dossier', glyph: 'pencil',
       act: () => fromSource(p => startNewDossier(p, inReader)) });
   }
-  if (remote || !messageEdit) items.push(...textDisplayMenuItems());
   return [...items, ...stack.last].map(choice => ({ ...choice, key: choice.key ?? choice.label,
     ...(remote ? { act: () => remote.choose(choice.key ?? choice.label, choice.label) } : {}) }));
 }
@@ -3231,21 +3231,14 @@ async function reconnect() {
 let textDisplayPreferences = null;
 const displayRules = () => textDisplayPreferences?.enabled ?? [];
 
-function textDisplayMenuItems() {
-  return textDisplayRules.map(rule => ({
-    label: `${rule.name} · ${displayRules().includes(rule.id) ? 'On' : 'Off'}`,
-    checked: displayRules().includes(rule.id), glyph: 'layout',
-    act: () => {
-      textDisplayPreferences.toggle(rule.id);
-      keepListAnchor(() => {
-        for (const host of document.querySelectorAll('.message-preview')) redrawMessageWords(host, displayRules());
-      });
-      // Source-only repaint: no writing, session, read mark or delivery action.
-      if (reader?.dialog.open && reader.source?.source_ref?.kind === 'message' && !reader.presentation?.sourceUnavailable) {
-        reader.redrawSource();
-      }
-    },
-  }));
+function redrawTextDisplay() {
+  keepListAnchor(() => {
+    for (const host of document.querySelectorAll('.message-preview')) redrawMessageWords(host, displayRules());
+  });
+  // Source-only repaint: no writing, session, read mark or delivery action.
+  if (reader?.dialog.open && reader.source?.source_ref?.kind === 'message' && !reader.presentation?.sourceUnavailable) {
+    reader.redrawSource();
+  }
 }
 
 let startup = null;
@@ -3266,6 +3259,8 @@ async function initialize() {
   let displayStorage;
   try { displayStorage = window.localStorage; } catch { /* device preferences stay in memory */ }
   textDisplayPreferences = new TextDisplayPreferences(bootstrap.instance_id, bootstrap.actor, displayStorage);
+  paragraphSwitch?.dispose();
+  paragraphSwitch=new ParagraphSwitch({doc:document,preferences:textDisplayPreferences,changed:redrawTextDisplay,current:()=>!retired&&shell.page===thisRun});
   // Every page, the phone check among them, takes the restarted server's session in place.
   renewal ??= new SessionRenewal({ api, bootstrap, live: () => live, makeApi: fresh => new Api(fresh),
     adopted: fresh => { document.querySelector('meta[name="aim-next-session"]').content = fresh; } });

@@ -13,15 +13,21 @@ export async function textDisplay768Checks({check,page,until,view,control,shot,f
   const reader=(p,id)=>until(()=>p.evaluate(`document.querySelector('#reader').open&&document.querySelector('#source-body').textContent.includes(${JSON.stringify(id)})`),'item 768 Reader open');
   const openSource=async(p,device,id,first)=>{await centre(p,words(id));await press(p,device,words(id));if(!await p.evaluate("document.querySelector('#reader').open"))await press(p,device,words(id));await reader(p,first);};
   const toggle=async(p,device,id,inReader,on)=>{
-    if(inReader)await press(p,device,'#reader-menu');
-    else {await light(p,device,id);await press(p,device,'.message-bar [data-act=more]');}
-    const menu=await until(()=>p.evaluate(`(()=>{const bs=[...document.querySelectorAll('.message-menu-list > button')];return bs.length?bs.map((b,i)=>({i,text:b.firstChild.textContent,checked:b.getAttribute('aria-checked')})):null})()`),'item 768 ellipsis menu opens');
-    const entries=menu.filter(b=>b.text.startsWith('Break out paragraphs'));
-    assert.equal(entries.length,1,'exactly one existing-menu toggle, feed and Reader');
-    assert.equal(entries[0].text,'Break out paragraphs · '+(on?'Off':'On'));
-    assert.equal(entries[0].checked,String(!on));
-    await press(p,device,`.message-menu-list > button:nth-child(${entries[0].i+1})`);
-    await until(()=>p.evaluate("!document.querySelector('.message-menu-list')"),'item 768 toggle closes its menu');
+    // 1091 moves the same device preference into the rail. A modal Reader
+    // legitimately closes before reaching it, then the same source reopens;
+    // all the writing/source assertions below still apply. Every press uses
+    // native input; no inert modal ancestor or synthetic click is bypassed.
+    const first=inReader?await p.evaluate("document.querySelector('#source-body').textContent.slice(0,24)"):null;
+    if(inReader)await closeReader(p,device);
+    if(device==='phone')await press(p,device,'#rail-open');
+    const group='.rail-foot .look-switch[data-switch=paragraphs]';
+    await centre(p,group);
+    assert.equal(await p.evaluate(`document.querySelectorAll(${JSON.stringify(group)}).length`),1,'one rail-foot preference');
+    assert.equal(await p.evaluate(`document.querySelector('${group} [data-value=on]').getAttribute('aria-pressed')`),String(!on));
+    await press(p,device,`${group} [data-value=${on?'on':'off'}]`);
+    await until(()=>p.evaluate(`document.querySelector('${group} [data-value=on]').getAttribute('aria-pressed')==='${on}'`),'rail preference changed');
+    if(device==='phone')await p.key('Escape');
+    if(inReader)await openSource(p,device,id,first);
   };
   // Native copy/paste edit commands in Chrome; WebKit receives its own keyboard
   // press. No clipboard stub, synthetic ClipboardEvent or execCommand.
