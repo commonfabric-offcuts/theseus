@@ -981,6 +981,14 @@ def report_lines(answer, at):
         waiting = "%d waiting%s" % (agent["waiting"], when(agent.get("waiting_since_ms"))) if agent.get("waiting") else "nothing waiting"
         reached = " · a wake last got through%s" % when(agent.get("reached_ms"), "at") if isinstance(agent.get("reached_ms"), int) else ""
         lines.append("  %s  %s · %s%s" % (agent["actor_id"].ljust(width), state, waiting, reached))
+        recovery = (agent.get('execution') or {}).get('replacement')
+        if recovery:
+            lines.append('    Thread replaced%s: %s -> %s; completed turns %s.' % (
+                when(recovery['committed_ms'], 'at'), recovery['old']['thread_id'], recovery['new']['thread_id'],
+                ', '.join(recovery['turns'])))
+        phase = (agent.get('execution') or {}).get('recovery_state')
+        if phase and phase != 'committed':
+            lines.append('    Thread recovery: %s; pending deliveries remain recorded.' % phase)
     if machine:
         cores = "%s cores" % machine["cpus"] if machine.get("cpus") else "a core count that could not be read"
         lines.append("This Mac: load %s on %s (1, 5 and 15 minutes: %s)" % (

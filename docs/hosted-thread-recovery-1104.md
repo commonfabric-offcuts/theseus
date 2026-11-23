@@ -99,3 +99,49 @@ standing in for a route change. Apply the relevant original owners, observe
 failure, restore exact bytes and retain raw exits, source maps and all failures.
 The fake app-server proves the host protocol/effect path, not native Codex
 service behavior or exhaustive process history. No timing/performance claim.
+
+## Implemented boundaries and limits
+
+The CLI advertises activity protocol1 with `--hosted-activity-version`. Before
+a counted turn the host probes the selected executable with a two-second bound;
+a failed or incompatible probe is unknown. Real selected CLI entry (full mode)
+or bound Unix transport (workspace mode) advances an actor-specific Core
+sequence. This is trusted executable capability reporting, not binary attestation
+or proof of the model process's intent. Existing command-string usage counts do
+not decide recovery.
+
+The cursor, control revision and configuration digest precede turn/start. Core
+counts unique completions; replayed early events settle the same turn once.
+Completion learned later from native history is unknown. Each triggering turn
+retains one indexed qualifying pending-delivery head and its active-group count,
+without message bodies or an inbox scan. The third qualifying completion clears
+scheduler parking for the durable intent's next dispatch; ordinary wake cooldown
+still applies and deliveries stay pending.
+
+Phases are ready -> creating -> created -> prepared -> committed. Prepared means
+settings were checked and the developer setup item was confirmed persisted. A
+lost persistence answer retries the same recorded id and rechecks native settings.
+A creation answer that exposes no id is **uncertain**: there is no safe second
+thread/start. This implementation does not invent native idempotency or read
+native account storage to reconstruct it. Health exposes the incomplete state
+with pending work intact. A later matching creation callback can retain its one
+id; opaque uncertainty does not claim automatic forward progress.
+
+Workspace socket permissions are launch-scoped. The host rotates its socket and
+app-server only with every other context in that home idle; another running
+turn or attach defers activation. Full mode needs no permission reload. Other
+homes and old native thread/history remain. Profile/configuration files are not
+rewritten. The factual one-line reason is retained in a developer setup item.
+
+Fixture runner/CLI/provision processes use distinct explicit Python cache
+prefixes. Scratch databases, native wire logs, exact source maps and direct exits
+prove fixture behavior, not live recovery, native gestures, exhaustive child
+import history or timing performance. No installed Codex service is exercised.
+
+Each authorized creation also has an actor-bound, per-intent journal. A late
+created-id answer after cancellation updates only that cancelled intent; a
+newer intent stays current. Committed intent/receipt history is never changed
+by a later creation callback, and a different second id is refused. This
+journal survives the latest-streak record moving to another intent. Ordinary
+unhosted CLI callers keep a read transaction; only hosted activity takes a
+writer. SQLite contention returns the existing typed busy outcome.

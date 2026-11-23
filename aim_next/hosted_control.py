@@ -63,7 +63,8 @@ class HostedControl:
             state = "waiting" if waiting else "idle"
         return {"state": state, "desired": control["desired"], "execution_revision": control["revision"],
                 "can_control": viewer == control["owner_id"], "since_ms": active[0] if active else control["changed_ms"],
-                "last_finished": last, "failure": failure, "work": work}
+                "last_finished": last, "failure": failure, "work": work,
+                **self._recovery_health(db, actor_id, delivery._now_ms())}
 
     def _record_hosted_completion(self, db, actor_id, thread_id, status, now):
         value = _json({"thread_id": thread_id, "status": status, "finished_ms": now})

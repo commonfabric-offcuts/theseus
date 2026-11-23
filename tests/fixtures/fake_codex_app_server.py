@@ -253,6 +253,8 @@ class Fake:
                                             "instructions": params.get("developerInstructions")}
         self.save()
         self.load(thread_id, params.get("developerInstructions"))
+        if self.script.get('recovery_start_answer_error') and len(self.state['threads']) > 1:
+            return self.error(request, -32603, 'injected uncertain creation answer')
         if self.once('silence_thread_start_once'):
             return
         self.send({"id": request["id"], "result": self.settings(params, thread_id)})
@@ -282,6 +284,8 @@ class Fake:
         record = self.state["threads"][params["threadId"]]
         record["persisted"] = True
         self.save()
+        if len(self.state['threads']) > 1 and self.once('recovery_inject_answer_error_once'):
+            return self.error(request, -32603, 'injected uncertain persistence answer')
         self.send({"id": request["id"], "result": {}})
 
     def on_thread_turns_list(self, request, params):
@@ -461,8 +465,12 @@ class Fake:
         if status == "completed":
             for index in range(behaviour.get("commands", 0)):
                 self.command(thread_id, turn, "grep -rl read_through tests")
+            if behaviour.get('cli_path_mention'):
+                self.command(thread_id, turn, 'echo ' + self.loaded[thread_id][0])
+            if behaviour.get('cli_activity_only'):
+                self.cli(thread_id, turn, ['binding'])
             topics = []
-            for item in turn["deliveries"]:
+            for item in ([] if behaviour.get('no_cli') else turn["deliveries"]):
                 if item["topic"] not in topics:
                     topics.append(item["topic"])
             reply = behaviour.get("reply", "ok").format(history=(record["history"] or [""])[-1])
@@ -473,7 +481,7 @@ class Fake:
                                               'Scripted scratch deploy fixture tests execution.', '-'], reply)
                 else:
                     self.cli(thread_id, turn, ["post", topic, "-"], reply)
-            if turn["deliveries"]:
+            if turn["deliveries"] and not behaviour.get('no_cli'):
                 self.cli(thread_id, turn, ["ack"] + [item["delivery"] for item in turn["deliveries"]])
             record["history"].append(reply)
         usage = {"inputTokens": 100, "cachedInputTokens": 20, "outputTokens": 10, "reasoningOutputTokens": 5, "totalTokens": 115}
