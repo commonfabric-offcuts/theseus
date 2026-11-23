@@ -1,5 +1,8 @@
 # Topic and Notebook menus
 
+Current1096 menu contract: The Notebook row borrows the1096 page palette, including Rename even while that page is loaded in the sheet. The row still performs only its named foreground read; actions open/recheck the shared writer. Side by side remains in the sheet header and Choose dossier is removed. Outcome/topic menu redesign is separate. See [Notebook menus](notebook-menus-1096.md).
+
+
 Topic title overflow and siderail rows use one descriptor list. Done/Active
 and Archive/Bring back use the existing topic fields and revision fences.
 Loaded topics use TopicStatePanel; other topics use the same envelope owner.

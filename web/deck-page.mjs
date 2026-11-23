@@ -1,4 +1,5 @@
-import { openMessageMenu, copyText } from './message-menu.mjs';
+import { copyText } from './message-menu.mjs';
+import { openNotebookMenu } from './notebook-menu.mjs';
 import { copyPrompt } from './onboarding.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { AGENT_PALETTE } from './author-colors.mjs';
@@ -794,12 +795,9 @@ export class DeckPage {
     await w.flush();
     if(running&&!w.error&&!w.closed&&!w.conflict&&w.dirty)await w.flush();
   }
-  async copyCard(ref, link=false) {
-    let at=this.cardAt(ref);if(at<0)return;
-    let words;
-    if(link){
-      const id=this.ensureCardId(ref);if(!id)return;
-      const text=(async()=>{
+  async savedCardLink(ref) {
+      const id=this.ensureCardId(ref);if(!id)throw Error('The card link is not saved yet.');
+
       // A new link must name a revision actually saved, not just an unsaved device copy.
       if(this.writing){
         await this.saveCardChange();
@@ -812,7 +810,12 @@ export class DeckPage {
         if(this.acts.length||this.sending||this.held||this.cardAt(ref)<0)throw Error('The card link is not saved yet. Try Copy link again after saving.');
       }
       return placeLink({kind:'cards',id:this.item,card:id,view:'cards'});
-      })();
+  }
+  async copyCard(ref, link=false) {
+    let at=this.cardAt(ref);if(at<0)return;
+    let words;
+    if(link){
+      const text=this.savedCardLink(ref);
       // Start the clipboard write before yielding the click's activation.
       const copying=copyPrompt(text);
       try{words=await text;}catch(error){await copying;this.cardNotice(error.message);return;}
@@ -834,26 +837,31 @@ export class DeckPage {
       this.asking?'Finish or cancel the current question first.':
       !this.room?.agents.length?(!this.room&&!this.roomConfirmed?'Who can be asked is not confirmed yet.':this.source?.owner_scope?.kind==='workspace'
         ?'No agent in this outcome’s Conversation yet':'No agent in this topic yet'):'';
+    const writable=()=>this.cardAt(ref)>=0&&this.cardWritable();
+    const current=cardDetails(this.deck.cards[at].words).color??null;
+    const onCard=act=>()=>{const at=this.cardAt(ref);if(at<0||!this.cardWritable())return;this.pick(at);return act(at);};
     return [
-      {label:'Copy text',glyph:'copy',act:()=>this.copyCard(ref)},
-      {label:'Copy link',glyph:'link',disabled:!hasId&&!this.cardWritable(),act:()=>this.copyCard(ref,true)},
-      {label:'Delete',glyph:'drop',disabled:!this.cardWritable(),act:()=>{
-        const at=this.cardAt(ref);if(at<0||!this.cardWritable())return;
-        this.act({kind:'remove',text:cardText(this.deck.cards[at]),near:at});
-      }},
-      {label:'Set color',glyph:'palette',disabled:!this.cardWritable(),act:()=>this.cardColors(ref,anchor)},
-      {label:'Chat about this…',glyph:'topic',disabled:Boolean(chatWhy),description:chatWhy,act:()=>{
+      ...[null,...AGENT_PALETTE].map(color=>({key:'color-'+(color??'none'),place:'swatch',color,label:color??'No colour',glyph:'palette',checked:current===color,disabled:!writable(),act:async()=>{
+        try{const result=await this.chooseCardColor(ref,color);if(result?.status!=='committed')this.cardNotice(result?.error?.message??'The colour is not confirmed saved.');}
+        catch(error){this.cardNotice(error.message);}
+      }})),
+      {key:'copy',place:'mark',label:'Copy link',glyph:'link',disabled:!hasId&&!writable(),act:()=>this.copyCard(ref,true)},
+      {key:'copy-text',label:'Copy text',glyph:'copy',act:()=>this.copyCard(ref)},
+      {key:'chat',label:'Chat about this…',glyph:'topic',disabled:Boolean(chatWhy),description:chatWhy,act:()=>{
         const at=this.cardAt(ref);if(at>=0)this.ask(at);
-      }}
+      }},
+      {key:'image',label:'Add image…',glyph:'image',disabled:!writable()||!this.pickCardImage,act:()=>this.pickCardImage?.(ref)},
+      ...['topic','dossier'].map(kind=>({key:'start-'+kind,place:'start',label:kind==='topic'?'Topic':'Dossier',ariaLabel:kind==='topic'?'Start a topic from this card':'Start a new dossier from this card',glyph:kind==='topic'?'topic':'pencil',disabled:!this.startNew||!hasId&&!writable(),act:()=>this.startNew?.(kind,ref)})),
+      {key:'delete',place:'danger',label:'Delete card',glyph:'drop',keys:'⌘⌫',disabled:!writable(),act:()=>{
+        const at=this.cardAt(ref);if(at>=0&&this.cardWritable())this.act({kind:'remove',text:cardText(this.deck.cards[at]),near:at});
+      }},
+      ...[-1,1].map(step=>({key:'move-'+step,place:'key',keyGroup:'move',label:step<0?'Move card up':'Move card down',glyph:'move',keys:step<0?'⌘↑':'⌘↓',disabled:!writable(),act:onCard(()=>this.actOn('move',step))})),
+      ...[-1,1].map(step=>({key:'merge-'+step,place:'key',keyGroup:'merge',label:step<0?'Merge card up':'Merge card down',glyph:'move',keys:step<0?'⇧⌘↑':'⇧⌘↓',disabled:!writable(),act:onCard(at=>this.act({kind:'merge',text:cardText(this.deck.cards[at]),near:at,step}))})),
+      {key:'edit',place:'key',keyGroup:'edit',label:'Edit card',glyph:'pencil',keys:'⌘↩',disabled:!writable(),act:onCard(()=>this.edit())},
     ];
   }
-  cardColors(ref,anchor) {
-    const at=this.cardAt(ref);if(at<0||!this.cardWritable())return;
-    const card=this.deck.cards[at];
-    const page=this;
-    const picker=openColorPicker({anchor,back:{get isConnected(){return !page.listening?.signal.aborted;},focus:()=>this.show(true)},agent:card.title||'Untitled card',
-      palette:AGENT_PALETTE,chosen:cardDetails(card.words).color,own:null,resetLabel:'No color',doc:this.doc,
-      choose:async color=>{
+
+  async chooseCardColor(ref,color) {
         if(!this.cardWritable()||!(color===null||AGENT_PALETTE.includes(color)))return {error:{message:'This card cannot be changed.'}};
         const id=this.ensureCardId(ref),at=this.cardAt(ref);if(!id||at<0)return {error:{message:'This card is no longer here.'}};
         this.act({kind:'details',text:cardText(this.deck.cards[at]),near:at,color,fromColor:cardDetails(this.deck.cards[at].words).color});
@@ -868,7 +876,14 @@ export class DeckPage {
           if(this.acts.length||this.sending||this.held)return {error:{message:'The color is not confirmed saved. Try again.'}};
         }
         return {status:'committed'};
-      }});
+  }
+  cardColors(ref,anchor) {
+    const at=this.cardAt(ref);if(at<0||!this.cardWritable())return;
+    const card=this.deck.cards[at];
+    const page=this;
+    const picker=openColorPicker({anchor,back:{get isConnected(){return !page.listening?.signal.aborted;},focus:()=>this.show(true)},agent:card.title||'Untitled card',
+      palette:AGENT_PALETTE,chosen:cardDetails(card.words).color,own:null,resetLabel:'No color',doc:this.doc,
+      choose:color=>this.chooseCardColor(ref,color)});
     this.listening?.signal.addEventListener('abort',()=>picker?.close(false),{once:true});
     return picker;
   }
@@ -886,7 +901,7 @@ export class DeckPage {
       anchor=this.list.querySelector(`.deck-card[data-index="${index}"]`)?.querySelector('.deck-menu')??anchor;
     }
     const ref=this.cardRef(index);if(!ref)return;
-    const menu=openMessageMenu({anchor,at,items:this.cardMenuItems(ref,anchor),label:'This card',sheet:true,doc:this.doc});
+    const menu=openNotebookMenu({anchor,at,items:this.cardMenuItems(ref,anchor),label:'This card',sheet:true,doc:this.doc});
     this.listening?.signal.addEventListener('abort',()=>menu?.close(false),{once:true});
     return menu;
   }

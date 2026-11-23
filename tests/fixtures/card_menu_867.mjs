@@ -26,6 +26,6 @@ function press867(p,at){
  const button=p.list.children[at].querySelector('.deck-menu');assert.ok(button,'painted overflow');button.listeners.click({target:button,stopPropagation(){}});
  const menu=p.doc.body.querySelector('[role="menu"]');assert.ok(menu,'real shared menu');return menu;
 }
-function choice867(menu,label){const button=menu.children.find(n=>n.textContent===label);assert.ok(button);return button.onclick({preventDefault(){},stopPropagation(){}});}
+function choice867(menu,key){const button=menu.querySelectorAll('button').find(n=>n.dataset.notebookAction===key);assert.ok(button);return button.onclick({preventDefault(){},stopPropagation(){}});}
 
 export { clipboard, painted867, edit867, press867, choice867 };

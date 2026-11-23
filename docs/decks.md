@@ -1,5 +1,8 @@
 # Notebook Cards: a Notebook page as a deck
 
+Current1096 menu contract: Cards use inline No colour/eight hue swatches and Copy link marks, then Copy text, Chat, Add image into the chosen card, Start new Topic/Dossier, Delete card and move/merge/edit keys. Page and Reader layouts are specified in notebook-menus-1096.md. See [Notebook menus](notebook-menus-1096.md).
+
+
 A tool for sorting ideas and capturing notes, usable from any outcome. Any
 Notebook page opens as a deck of cards, sorted as a list, a card's children
 grouped under it. It is deliberately light (pipeline item 278): no Core

@@ -10,15 +10,15 @@ test('961 secondary entry uses the targeted card owner and pointer; Delete saves
   const row=p.list.children[1],e=event(row);p.contextMenu(e);
   const menu=p.doc.body.querySelector('[role="menu"]');assert.ok(menu);assert.equal(e.defaultPrevented,true);
   assert.equal(menu.style.left,'125px');assert.equal(menu.style.top,'220px');
-  menu.children.find(n=>n.textContent==='Delete').onclick({stopPropagation(){}});
+  menu.querySelectorAll('button').find(n=>n.dataset.notebookAction==='delete').onclick({stopPropagation(){}});
   await w.flush();assert.equal(source().body,card('First','keep',null).trimEnd()+'\n');
 });
 
 test('961 the constructor binds page/menu/title entry to the same page descriptors',async t=>{
   const {p,w}=await text867(t,card());w.pageState={starred:false,reader_may_delete:false};p.readOnly=true;
   p.doc.getSelection=()=>({isCollapsed:true});
-  const ordinary=p.more.onclick();const snapshot=n=>n.children.map(c=>[c.textContent,c.disabled,c.getAttribute('aria-checked')]);
-  const expected=snapshot(ordinary.root);assert.ok(expected.some(([s])=>s.startsWith('Show as cards')));ordinary.close(false);
+  const ordinary=p.more.onclick();const snapshot=n=>n.querySelectorAll('button').map(c=>[c.dataset.notebookAction,c.disabled,c.getAttribute('aria-checked')]);
+  const expected=snapshot(ordinary.root);assert.ok(expected.some(([s])=>s==='cards'));ordinary.close(false);
   for(const surface of [p.host,p.header.title,p.more]) {
     const e=event(surface);surface.listeners.contextmenu(e);assert.equal(e.defaultPrevented,true);
     const menu=p.doc.body.querySelector('[role="menu"]');assert.deepEqual(snapshot(menu),expected);
