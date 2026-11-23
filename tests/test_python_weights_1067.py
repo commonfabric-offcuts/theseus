@@ -240,13 +240,13 @@ class NestedRunners(unittest.TestCase):
         jobs=[j for j in sh.jobs(self.root,sh.select_python_weights(self.root,weights,lookup=self.fresh)) if j.get('python_shard')]
         self.assertEqual(len(jobs),4)
         empty=[j for j in jobs if not j['files']];self.assertEqual(len(empty),1)
-        self.assertEqual(empty[0]['timeout'],math.ceil(.5*1.5))
+        self.assertEqual(empty[0]['timeout'],30)
         for path in (self.root/'tests').iterdir():path.unlink()
         selected=sh.select_python_weights(self.root,weights)
         self.assertEqual(selected['units']['weight_source']['lookup_skip_reason'],'empty_python_inventory')
         jobs=[j for j in sh.jobs(self.root,selected) if j.get('python_shard')]
         self.assertEqual(len(jobs),4);self.assertTrue(all(j['files']==[] for j in jobs))
-        self.assertTrue(all(j['timeout']==math.ceil(.5*1.5) for j in jobs))
+        self.assertTrue(all(j['timeout']==30 for j in jobs))
         with redirect_stdout(io.StringIO()),redirect_stderr(io.StringIO()):
             self.assertEqual(sh.run(self.root,'1/4',weights,assignment=[]),0)
 
@@ -256,7 +256,7 @@ class NestedRunners(unittest.TestCase):
         self.assertEqual(sorted(p for j in jobs for p in j['files']), sh.test_files(self.root))
         for job in jobs:
             minutes = sum(selected['units']['python_minutes'][p] for p in job['files'])
-            self.assertEqual(job['timeout'], math.ceil((minutes+.5)*1.5))
+            self.assertEqual(job['timeout'], max(30, math.ceil((minutes+.5)*2)))
             self.assertEqual(job['weight_source']['run_id'], 9)
 
     def test_bounded_lookup_kills_a_real_stalled_child_then_names_timeout(self):
