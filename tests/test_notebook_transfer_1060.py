@@ -9,13 +9,15 @@ from pathlib import Path
 
 from reader_fixture import ReaderCase
 from aim_next.profile import write_profile
-from aim_next.migrations import MigrationError, migrate
+from aim_next.migrations import MigrationError, STEPS, migrate
+from aim_next.memory_transfer import MEMORY_TRANSFER_SCHEMA
 import test_media
 
 TOPIC = {"kind": "topic", "id": "t1"}
 OUTCOME = {"kind": "workspace", "id": "w1"}
 OTHER = {"kind": "workspace", "id": "w2"}
 WORDS = "Original Notebook words\n\nA second paragraph."
+TRANSFER_STEP = next(step for step in STEPS if step[2] is MEMORY_TRANSFER_SCHEMA)
 
 
 class TransferCase(ReaderCase):
@@ -252,17 +254,17 @@ class TransferCase(ReaderCase):
     def test_upgrade_preserves_legacy_page_and_occupied_downgrade_refuses_transfer_history(self):
         self.committed(self.memory(body=WORDS))
         identity = self.sql("SELECT seq,id,creator_id,current_revision FROM memory_items")
-        migrate(self.path, "test-instance", self.binding, "65")
+        migrate(self.path, "test-instance", self.binding, TRANSFER_STEP[0])
         with sqlite3.connect(str(self.path)) as db:
             with self.assertRaises(sqlite3.IntegrityError):
                 db.execute("UPDATE memory_items SET scope_id='elsewhere' WHERE id='memory-one'")
-        migrate(self.path, "test-instance", self.binding)
+        migrate(self.path, "test-instance", self.binding, STEPS[-1][1])
         self.assertEqual(self.sql("SELECT seq,id,creator_id,current_revision FROM memory_items"), identity)
         self.assertEqual(self.page()["body"], WORDS)
         self.committed(self.transfer(op="after-upgrade"))
         before = self.effects()
         with self.assertRaises(MigrationError):
-            migrate(self.path, "test-instance", self.binding, "65")
+            migrate(self.path, "test-instance", self.binding, TRANSFER_STEP[0])
         self.assertEqual(self.effects(), before)
 
     def test_second_copy_revision_storage_failure_rolls_back_both_pages_and_witness(self):
@@ -311,7 +313,7 @@ class TransferCase(ReaderCase):
     def test_empty_downgrade_restores_exact_revision_layout_and_all_legacy_values(self):
         self.committed(self.memory(body=WORDS))
         before = self.effects()
-        migrate(self.path, "test-instance", self.binding, "65")
+        migrate(self.path, "test-instance", self.binding, TRANSFER_STEP[0])
         def unique_columns():
             return sorted(tuple(row[2] for row in self.sql('PRAGMA index_info(' + index[1] + ')'))
                           for index in self.sql('PRAGMA index_list(memory_revisions)') if index[2])
@@ -320,7 +322,7 @@ class TransferCase(ReaderCase):
         self.assertTrue(sql.startswith("CREATE TABLE memory_revisions ("), sql)
         self.assertIn("UNIQUE(author_id,operation_id))", sql)
         self.assertEqual(self.effects(), before)
-        migrate(self.path, "test-instance", self.binding)
+        migrate(self.path, "test-instance", self.binding, STEPS[-1][1])
         self.assertEqual(unique_columns(), [('author_id', 'operation_id', 'item_id'), ('item_id', 'revision')])
         self.assertEqual(self.effects(), before)
         self.assertEqual(self.sql("PRAGMA foreign_key_check"), [])
@@ -336,15 +338,15 @@ class TransferCase(ReaderCase):
             # Model the same retained later layout that the existing seat
             # migration fixtures leave beside their lower schema marker.
             with sqlite3.connect(str(self.path)) as db:
-                db.execute("UPDATE metadata SET value='65' WHERE key='schema_version'")
-            migrate(self.path, "test-instance", self.binding)
+                db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (TRANSFER_STEP[0],))
+            migrate(self.path, "test-instance", self.binding, STEPS[-1][1])
             self.assertEqual(self.effects(), before)
             self.assertEqual(self.sql("SELECT * FROM memory_transfer_acts ORDER BY rowid"), witnesses)
             self.assertEqual(self.sql("SELECT name,sql FROM sqlite_master WHERE name LIKE '%memory%' ORDER BY name"), schema)
             self.assertEqual(self.sql("PRAGMA foreign_key_check"), [])
             self.assertEqual(self.sql("PRAGMA integrity_check"), [("ok",)])
         with self.assertRaises(MigrationError) as refused:
-            migrate(self.path, "test-instance", self.binding, "65")
+            migrate(self.path, "test-instance", self.binding, TRANSFER_STEP[0])
         self.assertEqual(refused.exception.code, "RECORDS_WOULD_BE_LOST")
         self.assertEqual(self.effects(), before)
         with sqlite3.connect(str(self.path)) as db:
