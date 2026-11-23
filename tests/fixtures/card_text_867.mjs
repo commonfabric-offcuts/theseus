@@ -19,6 +19,10 @@ function documentPort(){
   // Store the requested range for the real beforeinput/input handlers. This
   // memory port does not claim browser selection, focus or keyboard behavior.
   setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}
+  // Preserve independent shared-menu and Notebook key listeners. This port
+  // dispatches handlers; it does not model browser event propagation.
+  addEventListener(type,listener){const groups=this.handlerGroups??=new Map(),list=groups.get(type)??[];if(!list.includes(listener))list.push(listener);groups.set(type,list);this.listeners[type]=event=>{for(const fn of [...list])fn.call(this,event);};}
+  removeEventListener(type,listener){const list=this.handlerGroups?.get(type);if(!list)return;const at=list.indexOf(listener);if(at>=0)list.splice(at,1);if(!list.length){this.handlerGroups.delete(type);delete this.listeners[type];}}
   cloneNode(deep=false){const n=doc.createElement(this.tag);for(const [key,value]of Object.entries(this.attributes))n.setAttribute(key,value);n.className=this.className;if(deep)n.append(...this.children.map(c=>c.nodeType===3?c.textContent:c.cloneNode(true)));return n;}
   get childNodes(){return this.children;}
   get textContent(){return this.children.map(c=>c.textContent).join('');}

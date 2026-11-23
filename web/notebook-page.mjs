@@ -33,6 +33,7 @@ export function notebookMenuItems(page,{rail=false}={}) {
     // Read the current writer again when a menu action runs: permission or recovery
     // may have changed since this list opened. The ordinary buttons use the same owners.
     const canWrite=()=>page.writing===w&&!page.readOnly&&!w.readOnly&&!w.reading&&!w.deleted&&!w.closed&&!w.actionPending&&!w.actionRunning;
+    const canWriteCards=()=>canWrite()&&page.mode==='cards'&&page.menuCurrent?.()!==false;
     const extras=position=>page.menuExtras?.(position)??[];
     const items=[
       {key:'star',place:'mark',label:state.starred?'Unstar':'Star',glyph:state.starred?'starred':'star',checked:Boolean(state.starred),act:()=>page.pageAction('memory.star',{starred:!state.starred})},
@@ -48,9 +49,9 @@ export function notebookMenuItems(page,{rail=false}={}) {
     if(!page.readOnly&&(!page.inNotebookSheet||rail))items.push({key:'rename',label:'Rename',glyph:'pencil',disabled:!canWrite(),act:()=>{if(canWrite())page.rename();}});
     if(state.reader_may_delete)items.push({key:'delete',place:'danger',label:'Delete page',glyph:'drop',act:()=>page.pageAction('memory.delete',{deleted:true})});
     if(page.mode==='cards')items.push(
-      {key:'edit',place:'key',label:page.editing?'Done':'Edit',glyph:'pencil',keys:'⌘↩',disabled:!canWrite(),act:()=>{if(canWrite()){if(page.editing)page.finish();else page.edit();}}},
-      {key:'undo',place:'key',label:'Undo',glyph:'undo',keys:'⌘Z',disabled:!canWrite()||!page.undos?.length,act:()=>{if(canWrite())page.undo();}},
-      {key:'new',place:'key',label:'New card',glyph:'pencil',keys:'↩',disabled:!canWrite(),act:()=>{if(canWrite())page.start();}}
+      {key:'edit',place:'key',label:page.editing?'Done':'Edit',glyph:'pencil',keys:'⌘↩',disabled:!canWriteCards(),act:()=>{if(canWriteCards()){if(page.editing)page.finish();else page.edit();}}},
+      {key:'undo',place:'key',label:'Undo',glyph:'undo',keys:'⌘Z',disabled:!canWriteCards()||!page.undos?.length,act:()=>{if(canWriteCards())page.undo();}},
+      {key:'new',place:'key',label:'New card',glyph:'pencil',keys:'↩',disabled:!canWriteCards(),act:()=>{if(canWriteCards())page.start();}}
     );
     return items;
   }

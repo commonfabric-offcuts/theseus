@@ -43,21 +43,23 @@ test('887 title Rename and stateful star delegate to current page menu, includin
   s.renameButton.onclick();assert.equal(acts.filter(x=>x==='rename').length,1);
   p.writing.actionPending={};s.paintHeader(p);assert.equal(s.starButton.disabled,true);s.starButton.onclick();assert.equal(acts.length,3);
 });
-test('887 Cards menu owns Edit/Done and Undo; no New card menu row; full-page follows layout even on phone',async t=>{
+test('887 Cards keys own Edit/Done, Undo and New card; full-page remains available even on phone',async t=>{
   const {sheet:s,p,acts}=await fixture(t,{wide:false});
-  assert.deepEqual(p.menuItems().slice(0,2).map(x=>[x.key,x.label,x.keys]),[['edit','Edit','⌘Return'],['undo','Undo','⌘Z']]);
-  assert.equal(choice(p,'new'),undefined);assert.ok(choice(p,'fullpage'));assert.equal(choice(p,'layout'),undefined);
+  //1096 page menu: "Edit and Undo become keys"; Cards keys also include new card ↩.
+  assert.deepEqual(p.menuItems().filter(x=>x.place==='key').map(x=>[x.key,x.label,x.keys]),[['edit','Edit','⌘↩'],['undo','Undo','⌘Z'],['new','New card','↩']]);
+  assert.equal(p.menuItems().some(x=>x.key==='new'&&x.place!=='key'),false);assert.ok(choice(p,'fullpage'));assert.equal(choice(p,'layout'),undefined);
   choice(p,'edit').act();assert.equal(choice(p,'edit').label,'Done');choice(p,'edit').act();choice(p,'undo').act();s.newButton.onclick();
   assert.deepEqual(acts.filter(x=>x!=='focus'),['edit','done','undo','new']);
   p.mode='text';s.paintHeader(p);assert.equal(s.newButton.hidden,true);assert.equal(choice(p,'edit'),undefined);assert.equal(choice(p,'undo'),undefined);
   s.newButton.onclick();assert.equal(acts.filter(x=>x==='new').length,1);
 });
 test('887 stale card menu cannot write after permission loss, view switch, writer close or page replacement',async t=>{
-  const {sheet:s,p,acts}=await fixture(t);const edit=choice(p,'edit'),undo=choice(p,'undo');assert.ok(edit&&undo,'card actions present');
+  const {sheet:s,p,acts}=await fixture(t);const edit=choice(p,'edit'),undo=choice(p,'undo'),fresh=choice(p,'new');assert.ok(edit&&undo&&fresh,'card actions present');
   for(const change of [()=>p.readOnly=true,()=>{p.readOnly=false;p.mode='text';},()=>{p.mode='cards';p.writing.closed=true;},()=>{p.writing.closed=false;s.current={};}]) {
-    change();edit.act();undo.act();
+    change();edit.act();undo.act();fresh.act();
   }
   assert.deepEqual(acts,[]);s.current=p;
+  s.showing=false;edit.act();undo.act();fresh.act();assert.deepEqual(acts,[]);
 });
 test('887 confirmed save dot keeps its time across saving/repaints; refusal removes dot and Retry stays live',async t=>{
   const {sheet:s,p,acts}=await fixture(t);
@@ -87,7 +89,7 @@ test('887 a departing page save cannot overwrite the current page header',async 
 test('887 full Notebook page keeps its normal status words and menu',async t=>{
   const {p}=await fixture(t);delete p.presentStatus;delete p.menuExtras;
   p.say('Saved to Theseus','saved');assert.match(p.status.text,/Saved to Theseus/);assert.ok(p.status.querySelector('time'));
-  assert.equal(choice(p,'edit'),undefined);assert.equal(choice(p,'fullpage'),undefined);
+  assert.equal(choice(p,'edit').place,'key');assert.equal(choice(p,'fullpage'),undefined);
   const doc=p.doc,host=p.node('div'),header={title:p.node('span'),description:p.node('span'),eyebrow:p.node('span')};
   const full=new DeckPage({doc,host,header,item:'full'});assert.deepEqual(full.bar.children.slice(1).map(n=>n.textContent),['Edit','New card','Undo']);full.listening.abort();
 });
@@ -132,9 +134,10 @@ test('887 actual view and writer notification hooks repaint header affordances',
   p.writing.pageState.starred=true;s.revised(p);assert.equal(s.starButton.getAttribute('aria-pressed'),'true');
   p.readOnly=true;s.revised(p);assert.equal(s.renameButton.hidden,true);
 });
-test('887 full-page action follows layout and uses the current Text/Cards route',async t=>{
+test('887 full-page action follows Add image and uses the current Text/Cards route',async t=>{
   const {sheet:s,p}=await fixture(t),routes=[];s.fullHref=(id,mode)=>`/page/${id}/${mode}`;s.goBack=url=>routes.push(url);
-  const keys=p.menuItems().map(x=>x.key);assert.equal(keys[keys.indexOf('layout')+1],'fullpage');
+  //1096 leaves Side by side in the sheet header; Open full page follows Add image.
+  const keys=p.menuItems().map(x=>x.key);assert.equal(keys.includes('layout'),false);assert.equal(keys[keys.indexOf('image')+1],'fullpage');
   choice(p,'fullpage').act();p.mode='text';choice(p,'fullpage').act();assert.deepEqual(routes,['/page/p/cards','/page/p/text']);
 });
 

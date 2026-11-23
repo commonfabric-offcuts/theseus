@@ -215,6 +215,7 @@ export class NotebookSheet {
       const header = { eyebrow: this.node('span'), title: this.node('span'), description: this.node('span') };
       page = this.make(id, host, header, '-sheet', () => this.revised(page));
       page.inNotebookSheet=true;
+      page.menuCurrent=()=>this.showing&&this.current===page;
       page.menuExtras = position => notebookSheetMenuItems(this, position, page);
       page.surfaceChanged = () => this.paintHeader(page);
       page.presentStatus = (words, state, again) => this.presentStatus(page, words, state, again);
