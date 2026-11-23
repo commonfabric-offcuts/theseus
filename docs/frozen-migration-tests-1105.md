@@ -19,8 +19,10 @@ before no-op or any freeze/piece/pipeline mutation. No Git runs in Core's
 transaction. `MIGRATION_TEST_LITERAL` names the file and 1-based line and says
 use `next(step for step in STEPS if step[2] is X_SCHEMA)` for a step and
 `STEPS[-1][1]` for latest. Malformed source/coverage uses INVALID_ARGUMENT.
-The exact request keeps source bodies in the existing immutable operation
-record; the existing freeze row/view still names base/head/files/classification.
+Core's immutable operation fingerprint binds the exact supplied bodies for
+replay; Core retains the fingerprint and receipt, not the source bodies. The
+original request bodies remain in the CLI's durable outbox. The existing
+freeze row/view still names base/head/files/classification.
 As with the existing path binder, the authorized producer is trusted to bind
 its supplied source to Git: Core cannot authenticate an external repository.
 
