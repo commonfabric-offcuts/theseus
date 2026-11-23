@@ -17,11 +17,17 @@ function notebookSourcePositions(body, shown, bounds) {
   let next = bounds.start;
   const positions = [];
   for (const [i, line] of shown.split('\n').entries()) {
-    if (i) positions.push(next - 1);
+    if (i) {
+      // Empty display lines also need a real source newline. An omitted image
+      // or detail line may stand at next; never attribute its first byte as LF.
+      const newline=body.indexOf('\n',next);
+      if(newline<next || newline>=bounds.end)return null;
+      positions.push(newline);next=newline+1;
+    }
     const at = body.indexOf(line, next);
     if (at < next || at + line.length > bounds.end) return null;
     for (let k = 0; k < line.length; k++) positions.push(at + k);
-    next = at + line.length + 1;
+    next = at + line.length;
   }
   return positions;
 }
@@ -145,6 +151,27 @@ export class NotebookPassages {
       ...notebookSourceSpan(source.body, text, excerpt, bounds) };
     this.clear(); this.selection.clear();
     await this.quote(chosen, entry);
+  }
+  // The card editor already owns native selection and confirmation. Reuse this
+  // saved-source projection and the same final quote owner, without binding a
+  // writing control as a display passage or changing its selection/focus.
+  async openEditor(entry, {source,text,shown=text,excerpt,bounds}) {
+    if(!source?.source_ref?.revision || !excerpt?.text?.trim())return false;
+    // The ordinary card serializer may trim words outside the selection.
+    // Locate its actual visible card back in the captured field, then invert
+    // those positions. Every selected code unit must survive at its original
+    // place: never search for a replacement occurrence of the selected phrase.
+    const positions=notebookSourcePositions(text,shown,{start:0,end:text.length});
+    const start=positions?.indexOf(excerpt.start) ?? -1, end=start+excerpt.text.length;
+    if(start<0 || excerpt.end-excerpt.start!==excerpt.text.length ||
+        text.slice(excerpt.start,excerpt.end)!==excerpt.text || shown.slice(start,end)!==excerpt.text ||
+        positions.slice(start,end).some((at,i)=>at!==excerpt.start+i))return false;
+    const mapped={start,end,text:excerpt.text}, parts=notebookSourceParts(source.body,shown,mapped,bounds);
+    if(!parts.length || parts.join('')!==excerpt.text)return false;
+    const chosen={source:structuredClone(source.source_ref),owner_scope:{...source.owner_scope},
+      text:excerpt.text,parts,...notebookSourceSpan(source.body,shown,mapped,bounds)};
+    this.clear();this.selection.clear();
+    await this.quote(chosen,entry);return true;
   }
   clear() { this.current = null; this.passages.clear(); }
 }

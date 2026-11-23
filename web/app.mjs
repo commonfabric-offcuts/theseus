@@ -4493,7 +4493,10 @@ async function initializeDeckPage(route) {
   };
   // Route construction supplies the binding port; only actual saved words
   // need the shared controller, and a retired run must not create one.
-  const passages={bind(entry,state){if(!retired)notebookPassagesOf().bind(entry,state);}};
+  const passages={
+    bind(entry,state){if(!retired)notebookPassagesOf().bind(entry,state);},
+    openEditor(entry,state){return !retired&&notebookPassagesOf().openEditor(entry,state);}
+  };
   const page=new NotebookPage({host:$('deck-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
     item:route.id,read:pipelineView,send:pipelineSend,place,deleteUI:notebookDeleting,closeDeleted:async page=>{page.close();page.writing.close();await page.writing.serial;await page.store.close();return openDestination({kind:page.source.owner_scope.kind,id:page.source.owner_scope.id},'the Notebook page’s topic or outcome');},askIn:notebookAskIn,api,bootstrap,startNotebook:options=>notebookStartsOf().show(options),mode:route.card?'cards':route.view,viewPreference:notebookViewsOf(),passages});
   linkOwnerScope = () => page.source?.owner_scope;
