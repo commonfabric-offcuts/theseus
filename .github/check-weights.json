@@ -962,12 +962,12 @@
    "tests/test_workspaces.py": 0.01508913958333172
   },
   "minutes": {
-   "node-units": 2.081458,
+   "node-units": 4.3,
    "deploy-refusals": 1.088172
   },
   "sources": {
    "python": "https://github.com/commonfabric-offcuts/theseus/actions/runs/44112970996; python-units summary timing.files (seconds / 60)",
-   "node-units": "https://github.com/commonfabric-offcuts/theseus/actions/runs/44112985174; 2026-11-17T15:20:10.477288+00:00 to 15:22:15.364724+00:00 = 124.887s",
+   "node-units": "https://github.com/commonfabric-offcuts/theseus/actions/runs/45107018631; 2026-11-23T03:39:11Z to 03:43:25Z = 254s when the 5-minute cap cut it, after 161s, 216s and 215s on runs 45085497980, 45093156874 and 45102799627 the same day; the suite holds 5076 tests",
    "deploy-refusals": "train 30 https://github.com/commonfabric-offcuts/theseus/actions/runs/44007172971; 2026-11-17T03:35:34.654631+00:00 to 03:36:39.944916+00:00 = 65.290s (control was cancelled before completion)",
    "setup_minutes": "pool Node job 15:19:27 to step start 15:20:10.477288 + step finish 15:22:15.364724 to job end 15:22:26 = 54.113s; rounded up to 0.902 minutes",
    "timeout": "ceil((sum of measured file minutes, or measured step minutes, + setup_minutes) * 1.5) for each unit job; browser/replay keep their existing limits"
