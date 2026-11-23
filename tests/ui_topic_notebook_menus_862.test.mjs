@@ -34,6 +34,11 @@ function fixture(kind) {
   return { ...r, doc, row, record, handles, outline, menus, shown, reads, sent };
 }
 
+test('1060 a page moved to an outcome retains its own scoped rail menu',async()=>{
+ const f=fixture('page');f.record.owner_scope={kind:'workspace',id:'w'};f.row.pageTarget={kind:'workspace',id:'w',page:'p'};
+ f.row.notebookScope=f.record.owner_scope;await f.menus.open(f.row);assert.equal(f.shown.length,1);assert.equal(f.sent.length,0);
+});
+
 test('862 a Topic row opens its named shared menu without navigating or sending', async () => {
   const f = fixture('topic'); await f.menus.open(f.row);
   assert.deepEqual(f.reads, [['topic', { topic_id: 't' }]]);
