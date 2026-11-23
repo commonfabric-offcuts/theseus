@@ -357,7 +357,10 @@ export class NotebookPage extends DeckPage {
   }
   writeNext() {
     const e = this.editing, field = e?.field;
-    if (!field || !/\S/.test(field.value.slice(field.selectionStart, field.selectionEnd))) return super.writeNext();
+    if (!field || !/\S/.test(field.value.slice(field.selectionStart, field.selectionEnd))) {
+      if (!refuseUnavailableWriting(this)) return super.writeNext();
+      return;
+    }
     if (!this.cardWritable() || e.input.readOnly() || refuseUnavailableWriting(this)) return;
     this.save();
     const split = selectionCardSplit(this.deck, { ...e, value: field.value, start: field.selectionStart, end: field.selectionEnd });

@@ -439,7 +439,7 @@ export class NotebookSheet {
     try { earlier = await this.source({ ...source.source_ref, revision: since }); }
     catch (error) { say(`What changed since revision ${since} could not be read. ${error.message}`); return; }
     if (!live()) return;
-    const changes = this.node('details', 'source-changes'); changes.open = true;
+    const changes = this.node('details', 'source-changes'); changes.open = false;
     const shown = this.node('div', 'notebook-sheet-changes-body');
     changes.append(this.node('summary', '', `What changed since you read revision ${since}`), shown);
     paintChanges(shown, earlier.body ?? '', source.body ?? '', this.doc);

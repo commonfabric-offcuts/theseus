@@ -488,7 +488,7 @@ export class Reader {
   showChanges(since, before, after) {
     this.$('source-changes-title').textContent = `What changed since you read revision ${since}`;
     paintChanges(this.$('source-changes-body'), before, after);
-    this.$('source-changes').open = true; this.$('source-changes').hidden = false;
+    this.$('source-changes').open = false; this.$('source-changes').hidden = false;
   }
 
   get layoutShape() { return this.card || this.narrow.matches ? 'stacked' : this.temporaryWide ? 'wide' : this.layout.mode; }

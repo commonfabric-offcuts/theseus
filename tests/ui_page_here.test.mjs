@@ -50,7 +50,8 @@ test('a page read at an older revision shows what changed since, above its words
   const at = f.host.children.findIndex(child => child.className === 'source-changes');
   assert.ok(at >= 0 && at < f.host.children.findIndex(child => child.className.split(' ').includes('page-here-body')));
   const changes = f.host.children[at];
-  assert.equal(changes.open, true);
+  assert.equal(changes.open, false, '1116 starts closed');
+  changes.open = true; assert.equal(changes.open, true, 'person can open it');
   assert.equal(changes.children[0].textContent, 'What changed since you read revision 1');
   assert.match(changes.textContent, /Friday.*Monday/);
 });
