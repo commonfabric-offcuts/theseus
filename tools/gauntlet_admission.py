@@ -15,7 +15,7 @@ class Refused(Exception):
 class _FrozenPaths(list):
     """Bind a pending freeze lazily when its existing validator classifies it.
 
-    The raw list shape stays intact, including for 1087's extracted _frozen
+    The raw list shape stays intact, including for 1087's extracted _freeze
     validator. Unapproved/unrelated rows cause no Git read or new wait.
     """
     def __init__(self, config, freeze, run):
@@ -43,6 +43,16 @@ def _bound_freeze(config, freeze, run):
     if isinstance(freeze, dict) and isinstance(freeze.get('files'), list):
         return dict(freeze, files=_FrozenPaths(config, freeze, run))
     return freeze
+
+
+def _bound_piece(config, piece, run):
+    value = dict(piece, freeze=_bound_freeze(config, piece.get('freeze'), run))
+    #1087's immutable release snapshots keep their exact list/JSON contents.
+    # Bind their classification inputs too when that reviewed source is carried.
+    if isinstance(value.get('train_sources'), list):
+        value['train_sources'] = [dict(source, freeze=_bound_freeze(config, source.get('freeze'), run))
+                                  if isinstance(source, dict) else source for source in value['train_sources']]
+    return value
 
 
 def require(holds, words):
@@ -114,7 +124,7 @@ def approved(config, run):
         for piece in page['pieces']:
             require(isinstance(piece, dict) and isinstance(piece.get('id'), str) and isinstance(piece.get('items'), list) and
                     all(type(n) is int and n > 0 for n in piece['items']), 'The admission pipeline has a malformed piece')
-            value = {'id': piece['id'], 'items': piece['items'], 'freeze': _bound_freeze(config, piece.get('freeze'), run),
+            value = {'id': piece['id'], 'items': piece['items'], 'freeze': piece.get('freeze'),
                      'version': piece.get('version'), 'stage': (piece.get('stage') or {}).get('stage_id')}
             require(piece['id'] not in pieces or pieces[piece['id']] == value,
                     'The admission pipeline changed a piece while paging')
@@ -126,7 +136,7 @@ def approved(config, run):
                     release.get('release_number') == open_release['release'] and
                     release.get('stage') == open_release['stage'] and type(release.get('version')) is int,
                     'The admission pipeline omitted or changed its open-release owner')
-            value = {'id': release['id'], 'items': release['items'], 'freeze': _bound_freeze(config, release.get('freeze'), run),
+            value = {'id': release['id'], 'items': release['items'], 'freeze': release.get('freeze'),
                      'version': release['version'], 'stage': release['stage']['stage_id'], 'release': open_release['release']}
             require(value['id'] not in pieces or pieces[value['id']] == value,
                     'The admission pipeline changed a release while paging')
@@ -138,7 +148,7 @@ def approved(config, run):
             pending = waiting | (set(open_release['items']) if open_release else set())
             require(pending <= {n for p in pieces.values() for n in p['items']},
                     'The admission pipeline omitted an approved piece')
-            return list(pieces.values()), pending, expected
+            return [_bound_piece(config, piece, run) for piece in pieces.values()], pending, expected
         require(type(next_cursor) is int and next_cursor > cursor and next_cursor not in seen,
                 'The admission pipeline did not complete its pages')
         seen.add(cursor); cursor = next_cursor
