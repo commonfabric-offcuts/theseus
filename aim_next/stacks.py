@@ -19,6 +19,9 @@ change:
   their own order of the topic's stacks, as a number to sort by, or none to let
   new replies move it again. Theirs alone. The page places a dossier on its first
   message, which its position carries to every message in it (item 550).
+- `level` (stack.level): the reader explicitly chose folded or open for the
+  dossier, on its canonical first message; none returns to the applicable
+  default. Personal, independent of message folds, stars, and order.
 - `name` (stack.name): the short name of the dossier this message is the first
   message of; a name typed anywhere in a dossier lands there. The topic's:
   anyone who reads it may rename it, everyone sees it, and it says who typed
@@ -129,11 +132,18 @@ MESSAGE_REFRESH_UP = _rebuilt(ACT_MESSAGE_REFRESH[0]) + ASIDE_INDEXES[1:] + COVE
 MESSAGE_REFRESH_DOWN = _rebuilt(ACT_REFRESH[0]) + ASIDE_INDEXES[1:] + COVER_INDEXES
 MESSAGE_REFRESH_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='message_refresh')"
 
-PERSONAL = {"star", "deal", "fold", "place", "aside"}
+# 858 keeps a reader's explicit dossier presentation on its canonical first message.
+ACT_LEVEL = [_act_table(("star", "deal", "fold", "place", "name", "join", "aside", "cover", "cover_refresh", "message_refresh", "level"))] + ACT_INDEXES + ASIDE_INDEXES + COVER_INDEXES
+LEVEL_UP = _rebuilt(ACT_LEVEL[0]) + ASIDE_INDEXES[1:] + COVER_INDEXES
+LEVEL_DOWN = _rebuilt(ACT_MESSAGE_REFRESH[0]) + ASIDE_INDEXES[1:] + COVER_INDEXES
+# A cleared preference still has history and revisions; rollback must retain it.
+LEVEL_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='level')"
+
+PERSONAL = {"star", "deal", "fold", "place", "aside", "level"}
 # The command for each act, and the revision its sender read.
 KINDS = {"message.star": ("star", "star_revision"), "message.deal": ("deal", "deal_revision"),
          "message.fold": ("fold", "fold_revision"), "stack.place": ("place", "place_revision"), "stack.name": ("name", "name_revision"),
-         "stack.join": ("join", "join_revision"), "stack.aside": ("aside", "aside_revision")}
+         "stack.join": ("join", "join_revision"), "stack.aside": ("aside", "aside_revision"), "stack.level": ("level", "level_revision")}
 # A short name is one line of at most this many characters; the page ends a long one in "…".
 NAME_CHARS = 200
 # A place is a number to sort by; this bound keeps it exact as JSON in every client.
@@ -146,9 +156,9 @@ MINT_WORDS = (2, 5)
 HELD_BY_STAR = ("STARRED_IN_DOSSIER", "This dossier has a message you starred: unstar it to archive it")
 # What an act stands at before anyone has made it.
 NONE = {"aside": {"through": None}, "star": {"starred": False}, "deal": {"dealt": False}, "fold": {"folded": False}, "place": {"key": None}, "name": {"name": ""}, "join": {"into": None},
-        "cover": cover_values.EMPTY_COVER}
+        "cover": cover_values.EMPTY_COVER, "level": {"level": None}}
 EMPTY = {"aside": None, "aside_revision": 0, "starred": False, "star_revision": 0, "dealt": False, "deal_revision": 0, "folded": False, "fold_revision": 0,
-         "placed": None, "place_revision": 0,
+         "placed": None, "place_revision": 0, "level": None, "level_revision": 0,
          "name": None, "name_revision": 0, "joined": None, "join_revision": 0, "cover": None, "cover_revision": 0, "cover_refresh": None, "cover_refresh_revision": 0, "message_refresh": None, "message_refresh_revision": 0}
 
 
@@ -160,6 +170,10 @@ def _flag(args, name, words):
 
 def _value(kind, args):
     """The act's stored value, from its command's args, or a refusal saying what it takes."""
+    if kind == "level":
+        if set(args) != {"level"} or (args["level"] is not None and args["level"] not in ("folded", "open")):
+            raise Refusal("INVALID_ARGUMENT", "Choose folded or open for this dossier, or none for its default")
+        return {"level": args["level"]}
     if kind == "aside":
         through = args.get("through", False) if set(args) in ({"through"}, {"through", "key"}) else False
         if through is not None and (isinstance(through, bool) or not isinstance(through, int) or through < 1):
@@ -200,6 +214,8 @@ def _value(kind, args):
 def _shown(kind, row):
     """An act's row as a reader reads it, in the item's `acts` fields."""
     value = json.loads(row["value"])
+    if kind == "level":
+        return {"level": value["level"]}
     if kind == "aside":
         return {"aside": value["through"]}
     if kind == "star":
@@ -581,6 +597,7 @@ def stack_positions(db, actor, items, *, context=None):
             positions[root] = {**move_fields(db, actor, root), "root_id": root, "through": through, "aside_revision": acts["aside_revision"],
                                "name": acts["name"], "name_revision": acts["name_revision"], "join_revision": acts["join_revision"],
                                "placed": acts["placed"], "place_revision": acts["place_revision"],
+                               "level": acts["level"], "level_revision": acts["level_revision"],
                                "places": [each for each in places.get(root, []) if each["message_id"] != root],
                                "starred": starred,
                                "order_key": order["key"],
@@ -643,8 +660,8 @@ class Stacks:
         kind, expected_name = KINDS[envelope["kind"]]
         message, topic = self._acted_message(db, actor, envelope["target"])
         value = _value(kind, envelope["args"])
-        # A dossier is put aside and named as a whole, on its first message as this reader's Core finds it.
-        if kind in ("aside", "name") and StackRoots(db, actor).root(message["id"]) != message["id"]:
+        # Dossier acts name its canonical first message as this reader's Core finds it.
+        if kind in ("aside", "name", "level") and StackRoots(db, actor).root(message["id"]) != message["id"]:
             raise Refusal("STACK_CHANGED", "This is not the first message of its dossier now; read it again")
         if kind == "aside":
             if value["through"] is not None and value["through"] > _seen_seq(db, actor, message["topic_id"]):
@@ -762,7 +779,7 @@ class Stacks:
         self._change(db, "actor", actor, "acts", message["topic_id"], version)
         return dict(result, acts_version=version), [{"kind": "acts", "id": message["topic_id"], "version": version}]
 
-    _command_message_star = _command_message_deal = _command_message_fold = _command_stack_place = _command_stack_name = _command_stack_join = _command_stack_aside = _command_stack_act
+    _command_message_star = _command_message_deal = _command_message_fold = _command_stack_place = _command_stack_name = _command_stack_join = _command_stack_aside = _command_stack_level = _command_stack_act
 
     def _view_stack_positions(self, db, actor, args):
         topic = self._topic(db, actor, args.get("topic_id"))
