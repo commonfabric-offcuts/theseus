@@ -5,6 +5,11 @@ from __future__ import annotations
 
 Usage: tools/deploy.py --config CONFIG.json (--release-check SUMMARY.json | --train TRAIN.json) SHA EVIDENCE_DIR
                        [--release N] [--live-since TIME] [--no-items] [--known-reds FILE] [--dry-run]
+       tools/deploy.py rehearse CANDIDATE EVIDENCE_DIR --config CONFIG.json
+                       --train TRAIN.json --judgment JUDGMENT.json --release N
+
+rehearse authenticates an OPEN PR head and prepares its dry release record.
+It writes only a new evidence directory; it grants no merge or deploy lease.
 
 SHA is the full commit, and SUMMARY.json is tools/release_check.py's summary
 for exactly that commit, or for a commit whose tree, read from the live
@@ -31,6 +36,7 @@ writes no record of its own. docs/tools.md describes the config.
 
 import collections
 import datetime
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -798,6 +804,78 @@ def admit(config, candidate, *, started_landing=False, trained=None, producer=No
         raise Refused(str(error))
 
 
+def rehearse(config, candidate, evidence, train, judgment, *, number, github):
+    """1137: prepare a real record for an OPEN PR; write only new evidence.
+
+    No runner-policy preparation, process lifecycle, merge, Core write or
+    notification is reachable from this entry. Its result is not a lease.
+    """
+    require(re.fullmatch(r'[0-9a-f]{40}', candidate or ''), 'rehearsal needs the full candidate commit')
+    require(type(number) is int and number > 0, 'rehearsal needs its positive release number')
+    require(config.release_branch and config.repository, 'rehearsal needs the configured branch and repository')
+    require(not config.outcome, 'pre-merge train rehearsal does not take a local outcome-check summary')
+    train, judgment = Path(train), Path(judgment)
+    require(train.is_absolute() and judgment.is_absolute(), 'rehearsal input paths must be absolute')
+    evidence = Path(evidence)
+    require(evidence.is_absolute() and evidence == evidence.resolve(),
+            'rehearsal evidence must be absolute and resolved')
+    try:
+        evidence.mkdir(mode=0o700, parents=True, exist_ok=False)
+    except OSError as error:
+        raise Refused('rehearsal needs a new exclusive evidence directory: %s' % error)
+    try:
+        captured_train, captured_judgment = evidence / 'train-input.json', evidence / 'judgment-input.json'
+        inputs, raw_inputs = {}, {}
+        for name, source, captured in (('train', train, captured_train),
+                                        ('judgment', judgment, captured_judgment)):
+            entry = {'path': str(source), 'captured': None}
+            inputs[name] = entry
+            try:
+                raw = source.read_bytes()
+            except OSError as error:
+                entry['read_error'] = {'type': type(error).__name__, 'errno': error.errno, 'message': str(error)}
+                continue
+            releases.publish_once(captured, raw)
+            entry.update(captured=str(captured), sha256=hashlib.sha256(raw).hexdigest(), bytes=len(raw))
+            raw_inputs[name] = raw
+        record(evidence, '00-inputs', inputs)
+        unread = [name for name, entry in inputs.items() if 'read_error' in entry]
+        require(not unread, 'rehearsal input could not be read: %s' % ', '.join(unread))
+        selected = train_check.base_move.loads(raw_inputs['judgment'].decode('utf-8'))
+        head = run(['git', '-C', str(config.live), 'rev-parse', 'HEAD'])
+        dirty = run(['git', '-C', str(config.live), 'status', '--porcelain', '--untracked-files=no'])
+        require(head.returncode == 0 and re.fullmatch(r'[0-9a-f]{40}', head.stdout.strip()) and
+                dirty.returncode == 0 and not dirty.stdout.strip(), 'rehearsal live source is unreadable or dirty')
+        base = head.stdout.strip()
+        trained = train_check.rehearse(captured_train, candidate, base, config.release_branch, config.repository,
+                                      lambda *args: run(['git', '-C', str(config.live)] + list(args)),
+                                      github, selected)
+        record(evidence, '00-train', trained)
+        admission = admit(config, candidate, judgment=selected)
+        trained['admission'] = admission
+        record(evidence, '00-admission', admission)
+        record(evidence, '00-plan', {'mode': 'premerge', 'dry_run': True,
+                                   'candidate': candidate, 'tree': trained['merged_tree'],
+                                   'live': base, 'release': number, 'premerge': trained['premerge']})
+        measured = releases.train_measurements(trained)
+        measured['train']['admission'] = admission
+        measured['train']['premerge'] = trained['premerge']
+        measured = dict(measured, **steps_beyond_policy(config, base))
+        planned, before, commits, latest = release_plan(config, base, candidate, measured, number, False,
+                                                       evidence=evidence)
+        require(planned is not None, 'pre-merge rehearsal is not an already-live restart')
+        result = {'mode': 'premerge', 'dry_run': True, 'premerge': trained['premerge'],
+                  'record': planned, 'before': before, 'commits': commits,
+                  'latest_recorded': latest and latest['release'], 'admission': admission}
+        record(evidence, '02-release', result)
+        return result
+    except (Refused, train_check.Refused, train_check.base_move.Refused, Refusal,
+            OSError, ValueError, KeyError, TypeError, RecursionError) as error:
+        record(evidence, 'refused', {'mode': 'premerge', 'candidate': candidate, 'reason': str(error),
+                                    'effects': 'nothing merged, stopped, started or recorded in Core'})
+        raise Refused('pre-merge rehearsal: %s; nothing was merged or stopped' % error) from error
+
+
 def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, live_since=None, known_reds=None,
            train=None, github=None, revert=()):
     require(re.fullmatch(r"[0-9a-f]{40}", sha or ""), "give the full 40-character commit, not %r" % sha)
@@ -1143,6 +1221,23 @@ def publish_release_branch(config, sha, evidence):
 def main(argv=None):
     import argparse
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == 'rehearse':
+        parser = argparse.ArgumentParser(description='Prepare an OPEN PR release record; evidence writes only.')
+        parser.add_argument('candidate')
+        parser.add_argument('evidence', type=Path)
+        parser.add_argument('--config', required=True)
+        parser.add_argument('--train', type=Path, required=True)
+        parser.add_argument('--judgment', type=Path, required=True)
+        parser.add_argument('--release', type=int, required=True)
+        options = parser.parse_args(argv[1:])
+        try:
+            answer = rehearse(load_config(options.config), options.candidate, options.evidence,
+                              options.train, options.judgment, number=options.release, github=train_check.GhCli())
+        except (Refused, OSError, ValueError, train_check.base_move.Refused) as error:
+            print('refused: %s' % error, file=sys.stderr)
+            return 1
+        print(json.dumps(answer, sort_keys=True))
+        return 0
     if argv and argv[0] == "admit":
         parser = argparse.ArgumentParser(description="Read judged admission before a hosted run or landing; no effects.")
         parser.add_argument("candidate")

@@ -341,6 +341,72 @@ def judge(path, sha, live, release_branch, repository, git, github):
     return result
 
 
+def rehearse(path, candidate, live, release_branch, repository, git, github, judgment):
+    """1137: authenticate an OPEN PR's actual head for record preparation only.
+
+    This does not call pull_merge or claim candidate is on the release branch.
+    Normal judge() remains the only merged-train deployment authentication.
+    """
+    train = load(path)
+    if candidate != train['merge_commit'] or candidate == live:
+        raise Refused('pre-merge rehearsal needs the train candidate, distinct from actual live')
+    if deterministic_admission.canonical(judgment) != deterministic_admission.canonical(train['judgment']):
+        raise Refused('pre-merge judgment differs from the train judgment')
+    on_branch(github, repository, live, release_branch)
+    try:
+        pull = github.get(PULL_PATH % (repository, train['pr']))
+    except Unreadable as error:
+        raise Refused('pre-merge PR could not be read: %s' % error)
+    base = pull.get('base') if isinstance(pull, dict) else None
+    head = pull.get('head') if isinstance(pull, dict) else None
+    if (not isinstance(pull, dict) or pull.get('number') != train['pr'] or
+            pull.get('state') != 'open' or pull.get('merged') is not False or
+            not isinstance(base, dict) or not isinstance(head, dict) or
+            base.get('ref') != release_branch or base.get('sha') != live or
+            head.get('sha') != candidate or
+            not isinstance(base.get('repo'), dict) or not isinstance(head.get('repo'), dict) or
+            base['repo'].get('full_name') != repository or head['repo'].get('full_name') != repository):
+        raise Refused('pre-merge PR is not the OPEN unmerged candidate on the actual configured base/repository')
+    if not _contains(git, live, candidate, 'candidate descends from actual live'):
+        raise Refused('pre-merge candidate does not descend from actual live')
+    for item in train['items']:
+        if not _contains(git, item['approved_head'], candidate, 'approved source is in candidate'):
+            raise Refused('pre-merge candidate omits an approved item head')
+    tree = tree_of(git, candidate)
+    if tree != train['merged_tree']:
+        raise Refused('pre-merge candidate tree differs from the train tree')
+    changed = [name for name in _ask(git, 'pre-merge changed paths', 'diff', '--no-renames',
+                                    '--name-only', '-z', live, candidate).split('\0') if name]
+    kept = guarded(changed)
+    context = None
+    if train['kind'] == 'ordinary':
+        if kept or judgment is not None:
+            raise Refused('an ordinary pre-merge train has no guarded changes or pre-merge judgment')
+        selected = 'pending'
+    else:
+        if not deterministic_admission.selected(judgment):
+            raise Refused('pre-merge judged-first rehearsal requires version1131 evidence')
+        try:
+            context = deterministic_admission.validate(judgment, git, live, candidate)
+        except deterministic_admission.Refused as error:
+            raise Refused(str(error))
+        selected = judgment
+    hosted = None
+    if train['hosted_run'] is not None:
+        hosted = listed(github, repository, 'run', train['hosted_run'])
+        if hosted['head_sha'] != candidate:
+            raise Refused('pre-merge hosted observation names another candidate')
+    result = {'file': str(path), 'pr': train['pr'], 'kind': train['kind'],
+              'merge_commit': candidate, 'merged_tree': tree, 'release_branch': release_branch,
+              'live': live, 'items': train['items'], 'hosted_run': hosted,
+              'guarded_changes': kept, 'judgment': selected,
+              'premerge': {'state': 'open', 'merged': False, 'candidate': candidate,
+                           'base': live, 'tree': tree, 'repository': repository, 'pr': train['pr']}}
+    if context is not None:
+        result['deterministic'] = context
+    return result
+
+
 def before_merge(git, github, repository, judgment, merge, tree):
     """A judged-first train's judgment: every run and check names one head, a parent of the merge commit whose tree
     is the merge commit's, and each conclusion is kept as it is."""
