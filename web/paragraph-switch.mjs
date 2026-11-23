@@ -5,7 +5,7 @@ export class ParagraphSwitch {
   constructor({doc,preferences,changed=()=>{},current=()=>true,
     MutationObserver=doc.defaultView?.MutationObserver??globalThis.MutationObserver,
     AbortController=doc.defaultView?.AbortController??globalThis.AbortController}) {
-    Object.assign(this,{doc,preferences,changed,current,closed:false,element:null,listening:new AbortController()});
+    Object.assign(this,{doc,preferences,changed,current,closed:false,element:null,listening:AbortController?new AbortController():null});
     this.mount();
     this.observer=MutationObserver?new MutationObserver(()=>this.mount()):null;
     const target=doc.documentElement??doc.body;
@@ -23,7 +23,7 @@ export class ParagraphSwitch {
         button.addEventListener('click',()=>{
           if(this.closed||!this.current()||this.preferences.enabled.includes(rule)===on)return;
           this.preferences.toggle(rule);this.paint();this.changed();
-        },{signal:this.listening.signal});group.append(button);
+        },{signal:this.listening?.signal});group.append(button);
       }
     }
     this.paint();if(this.element.parentElement!==foot)foot.append(this.element);
@@ -34,6 +34,6 @@ export class ParagraphSwitch {
   }
   dispose() {
     if(this.closed)return;
-    this.closed=true;this.listening.abort();this.observer?.disconnect();this.element?.remove();
+    this.closed=true;this.listening?.abort();this.observer?.disconnect();this.element?.remove();
   }
 }
