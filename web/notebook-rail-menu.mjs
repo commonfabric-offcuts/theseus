@@ -2,12 +2,13 @@ import { notebookMenuItems } from './notebook-page.mjs';
 import { notebookActionEnvelope } from './notebook-writing.mjs';
 import { notebookSheetMenuItems } from './notebook-sheet.mjs';
 import { pageLink } from './links.mjs';
-import { copyText, openMessageMenu } from './message-menu.mjs';
+import { copyText } from './message-menu.mjs';
+import { openNotebookMenu } from './notebook-menu.mjs';
 
 // The rail borrows the actual page list. Metadata suffices to draw an unopened
 // page's choices; only an explicit choice may ask the sheet to open its writer.
 export class NotebookRailMenu {
-  constructor({ loaded, open, layout, mode, current, changed, notice, copy = copyText, show = openMessageMenu }) {
+  constructor({ loaded, open, layout, mode, current, changed, notice, copy = copyText, show = openNotebookMenu }) {
     Object.assign(this, { loaded, open, layout, mode, current, changed, notice, copy, show });
   }
   items(source, choose) {
@@ -17,12 +18,13 @@ export class NotebookRailMenu {
       readOnly: !source.reader_may_write, mode: this.mode(id), drafted: () => source.draft === true,
       menuExtras: position => notebookSheetMenuItems(this.layout(), position),
     };
-    return (loaded ? loaded.menuItems() : notebookMenuItems(page)).map(item => ({ ...item, act: () => choose(item.key, item.label) }));
+    const items=loaded?loaded.menuItems({rail:true}):notebookMenuItems(page);
+    return items.map(item => ({ ...item, act: () => choose(item.key, item.label) }));
   }
   async act(source, key, label, row, commands, handles) {
     if (!this.current(handles)) return false;
     const id = source.source_ref.id, loaded = this.loaded(id);
-    const choiceOf = page => page?.menuItems().find(item => item.key === key && item.label === label && !item.disabled);
+    const choiceOf = page => page?.menuItems({rail:true}).find(item => item.key === key && item.label === label && !item.disabled);
     if (loaded) {
       const choice = choiceOf(loaded);
       if (!choice) throw Error('The page changed. Open its menu again.');
@@ -41,7 +43,7 @@ export class NotebookRailMenu {
     if (!await this.open(id, { opener: row }) || !this.current(handles)) return false;
     const page = this.loaded(id), choice = choiceOf(page);
     if (!choice) throw Error('The page changed. Open its menu again.');
-    if (['text', 'cards', 'rename', 'dossiers', 'layout'].includes(key)) return choice.act();
+    if (['text', 'cards', 'rename', 'start-topic', 'start-dossier'].includes(key)) return choice.act();
     this.show({ anchor: page.more, items: page.menuItems(), label: 'This page', sheet: true, focusKey: key, doc: page.doc });
   }
 }

@@ -48,6 +48,8 @@ export const APPROVED = Object.freeze({
   palette: { d: 'M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-3.7 1.5 1.5 0 0 1 1-2.8h2a4 4 0 0 0 4-4A9 9 0 0 0 12 3 M7 8h.01 M12 6h.01 M17 9h.01 M6 13h.01' },
   // Notebook menu: text lines, a draft sheet, an image and a dossier folder (873).
   text: { d: 'M4 5h16 M4 10h16 M4 15h16 M4 20h10' },
+  //1096: Private draft is a lock; the old draft-sheet glyph remains used elsewhere.
+  lock: { d: 'M6 10h12v11H6Z M8 10V7a4 4 0 0 1 8 0v3' },
   draft: { d: 'M14 3H5v18h14V8Z M14 3v5h5 M8 12h8 M8 16h5' },
   image: { d: 'M3 4h18v16H3Z M3 17l5-5 4 4 4-6 5 7 M8 8h.01' },
   dossier: { d: 'M3 7V4h7l3 3h8v13H3Z M3 7h18' },
