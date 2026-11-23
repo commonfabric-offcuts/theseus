@@ -1393,9 +1393,9 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         const before = await geometry(id);
         assert.ok(before.overflow > 100, name + ': the message starts clipped');
         await press(p, device, BAR + ' [data-act="more"]');
-        const index = await p.evaluate(`[...document.querySelectorAll('.message-menu-list > button')].findIndex(b=>b.textContent==='Show full message')`);
+        const index = await p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].findIndex(b=>b.dataset.menuLabel==='Show full message')`);
         assert.ok(index >= 0, name + ': the clipped message offers Show full message');
-        await press(p, device, `.message-menu-list > button:nth-child(${index + 1})`);
+        await press(p, device, `.message-menu-list [data-menu-key="Show full message"]`);
         await until(async () => (await geometry(id)).height > before.height + 100, name + ': the card grows to show its entire message');
         const whole = await geometry(id);
         assert.ok(whole.overflow <= 1, name + ': nothing remains in an internal scrolling viewport');
@@ -1441,9 +1441,9 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     const p = await open(topic, 'laptop', topic, ids.long, init);
     const choose = async () => {
       await light(p, 'laptop', ids.long); await press(p, 'laptop', BAR + ' [data-act="more"]');
-      const index = await p.evaluate(`[...document.querySelectorAll('.message-menu-list > button')].findIndex(b=>b.textContent==='Show full message')`);
+      const index = await p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].findIndex(b=>b.dataset.menuLabel==='Show full message')`);
       assert.ok(index >= 0, 'the action remains available');
-      await press(p, 'laptop', `.message-menu-list > button:nth-child(${index + 1})`);
+      await press(p, 'laptop', `.message-menu-list [data-menu-key="Show full message"]`);
     };
     const shape = () => p.evaluate(`(c=>({height:c.getBoundingClientRect().height,words:c.querySelector('.message-preview').textContent}))(document.querySelector(${JSON.stringify(card(ids.long))}))`);
     await light(p, 'laptop', ids.long); const before = await shape();
@@ -1473,9 +1473,9 @@ export async function readingChecks({ check, page, until, view, control, shot, f
           return {y:Math.round(r.getBoundingClientRect().top),inner:c.scrollTop,pageY:scrollY,full:c.dataset.full==='shown',overflow:c.scrollHeight-c.clientHeight}}}return null})()`);
       const showFull = async id => {
         await press(p, device, BAR + ' [data-act="more"]');
-        const index = await p.evaluate(`[...document.querySelectorAll('.message-menu-list > button')].findIndex(b=>b.textContent==='Show full message')`);
+        const index = await p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].findIndex(b=>b.dataset.menuLabel==='Show full message')`);
         assert.ok(index >= 0, `${device}: the lit message offers Show full message`);
-        await press(p, device, `.message-menu-list > button:nth-child(${index + 1})`);
+        await press(p, device, `.message-menu-list [data-menu-key="Show full message"]`);
         await until(async () => (await place(id, 'Paragraph 0.'))?.full === true, `${device}: the card shows its whole message`);
         await frames();
       };
@@ -3543,9 +3543,9 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await light(p, 'laptop', ids.long);
       await until(async () => (await control({ method: 'admission_events', after: since })).events.some(e => e.event === 'hold-enter' && e.hold_id === hold), 'the lit card\'s read ahead is held in the server');
       await p.point(BAR + ' [data-act="more"]');
-      const index = await p.evaluate(`[...document.querySelectorAll('.message-menu-list > button')].findIndex(b=>b.textContent==='Show full message')`);
+      const index = await p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].findIndex(b=>b.dataset.menuLabel==='Show full message')`);
       assert.ok(index >= 0, 'Show full message is offered on the cut-off card');
-      await p.point(`.message-menu-list > button:nth-child(${index + 1})`);
+      await p.point(`.message-menu-list [data-menu-key="Show full message"]`);
       const shape = () => p.evaluate(`(c=>({full:c.dataset.full??null,last:c.querySelector(':scope > .message-preview').textContent.includes('Paragraph 69.'),status:document.querySelector('#app-status').hidden?null:document.querySelector('#app-status').textContent}))(document.querySelector(${JSON.stringify(card(ids.long))}))`);
       let seen;
       await until(async () => { seen = await shape(); return seen.full === 'shown' || seen.status !== null; }, 'Show full shows the message or says why not');

@@ -142,20 +142,22 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
   });
 
   // docs/links.md, "A message's link", "A message's menu" and "Topics named in a message".
-  const items = p => p.evaluate(`[...document.querySelectorAll('.message-menu-list [role=menuitem]')].map(b=>b.textContent)`);
-  // A message's menu also offers its stack's acts (docs/reply-stacks.md),
-  // which stack_native.mjs checks; here the menu is checked without them.
-  const STACK_ITEMS = /^(Star for me|Unstar|Rename|(Show|Hide) the full message|Fold|Unfold|Split back out|Move or join…|Move below More|Bring back above More|Move its stack (up|down)|Join the stack (above|below))/;
-  const own = labels => labels.filter(label => !STACK_ITEMS.test(label));
+  const items = p => p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].map(b=>b.dataset.menuLabel??b.firstChild.textContent)`);
+  // 1091 presents marks as icons and groups starts/keys. These link cases
+  // project their own Copy/Read/Edit acts; the complete offered palette and
+  // glyph/focus layout have their own message_palette_1091_native checks.
+  const LINK_ITEMS = new Set(['Copy Link','Edit','Mark unread','Mark read','Start a topic from this','Wide layout','Stacked layout','Edit page']);
+  const own = labels => labels.filter(label => LINK_ITEMS.has(label)||/^Copy Link to Revision \d+$/.test(label));
   // A menu that lists something else fails naming what it listed.
   const menuOpen = async (p, want) => {
+    if(await p.evaluate(`Boolean(document.querySelector('.menu-palette'))`)) want=[...want.filter(w=>/^Mark (unread|read)$/.test(w)),...want.filter(w=>!/^Mark (unread|read)$/.test(w))];
     let seen;
     try { await until(async () => JSON.stringify(seen = own(await items(p))) === JSON.stringify(want), 'the menu lists ' + want.join(', ')); }
     catch (error) { assert.deepEqual(seen, want, `${error.message} (lit: ${await p.evaluate(`[...document.querySelectorAll('#messages .lit[data-id]')].map(e=>e.dataset.id+' '+e.className).join(', ')`)})`); }
   };
   const choose = async (p, label) => {
     const at = (await items(p)).indexOf(label); assert.ok(at >= 0, 'the menu offers ' + label);
-    await p.point(`.message-menu-list [role=menuitem]:nth-child(${at + 1})`);
+    await p.point(await p.evaluate(`Boolean(document.querySelector('.menu-palette'))`)?`.message-menu-list [data-menu-label=${JSON.stringify(label)}]`:`.message-menu-list > button:nth-child(${at + 1})`);
     await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'the menu closed');
   };
   // The page's own clipboard: what it is handed is kept on the page, and the Mac's pasteboard is never touched.
@@ -204,13 +206,13 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     assert.ok(more.x + more.width <= bar.x + bar.width && more.x >= bar.x, 'the ⋯ on the bar');
     await clipboard(p);
     await p.point(menuMore);
-    await menuOpen(p, ['Copy Link', 'Mark unread']);
+    await menuOpen(p, ['Mark unread', 'Copy Link']);
     const list = await p.box('.message-menu-list');
     // Its longest words are a stack's move with its keys ("Join the stack above ⇧⌘↑"), with the glyph each item shows
     // before its words, 18px and a 10px gap (items 602 and 601).
     assert.ok(list.width < 288, 'the menu is as wide as its words: ' + list.width);
     assert.ok(Math.abs(list.x + list.width - (more.x + more.width)) < 2 && list.y >= more.y + more.height, 'under the ⋯, their right edges lined up');
-    assert.equal(await p.evaluate(`document.activeElement?.textContent`), 'Star for me', 'the first item has the focus');
+    assert.equal(await p.evaluate(`document.activeElement === document.querySelector('.menu-palette .palette-rows button:not(:disabled)')`), true, '1091 first ordinary action has focus');
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(menuMore)}).getAttribute('aria-expanded')`), 'true');
     await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
     await frame(p); await shot(p, 'links-menu-light');
@@ -223,18 +225,18 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(menuMore)}).textContent`), 'Link copied');
     // The next press on the ⋯ itself opens its menu: its words change back only once that press has landed.
     // The pointer rests on the card again first: the bar is the lit message's, and the menu may have closed over another card.
-    await light(p, menuCard); await p.point(menuMore); await menuOpen(p, ['Copy Link', 'Mark unread']);
+    await light(p, menuCard); await p.point(menuMore); await menuOpen(p, ['Mark unread', 'Copy Link']);
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(menuMore)}).textContent`), '⋯', 'until the next press');
     await choose(p, 'Mark unread');
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(menuCard + ' .unread-mark')}))`), 'the card is marked unread');
     await lineShows(p, true);
-    await light(p, menuCard); await p.point(menuMore); await menuOpen(p, ['Copy Link', 'Mark read']); await choose(p, 'Mark read');
+    await light(p, menuCard); await p.point(menuMore); await menuOpen(p, ['Mark read', 'Copy Link']); await choose(p, 'Mark read');
     await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(menuCard + ' .unread-mark')})`), 'the mark is cleared');
     await lineShows(p, false);
     assert.equal(await open(p, 'reader'), false, 'no press opened the card');
     // Where the clipboard refuses, the link is given to select.
     await clipboard(p, true);
-    await light(p, menuCard); await p.point(menuMore); await menuOpen(p, ['Copy Link', 'Mark unread']); await choose(p, 'Copy Link');
+    await light(p, menuCard); await p.point(menuMore); await menuOpen(p, ['Mark unread', 'Copy Link']); await choose(p, 'Copy Link');
     await until(() => p.evaluate(`document.querySelector('#app-status').textContent === ${JSON.stringify('The link could not be copied here. Select it to copy it: ' + link)}`), 'the link to select');
     assert.deepEqual(p.errors, []);
   });
@@ -254,7 +256,7 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     const [x, y] = await p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(card + ' .message-preview')}),r=document.createRange();r.selectNodeContents(e);const l=[...r.getClientRects()].at(-1),b=e.getBoundingClientRect();
       return [Math.round(Math.min(l.right+30,b.right-10)),Math.round(l.top+l.height/2)]})()`);
     await rightClick(p, x, y);
-    await menuOpen(p, ['Copy Link', 'Mark unread']);
+    await menuOpen(p, ['Mark unread', 'Copy Link']);
     const list = await p.box('.message-menu-list');
     assert.deepEqual([Math.round(list.x), Math.round(list.y)], [x, y], 'at the pointer');
     assert.deepEqual(await p.evaluate('window.contexts'), [true], 'the page took that right-click');
@@ -268,7 +270,7 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     // opens all the same, leaving no word selected.
     const word = await p.evaluate(`(()=>{const t=document.createTreeWalker(document.querySelector(${JSON.stringify(card + ' .message-preview')}),NodeFilter.SHOW_TEXT).nextNode(),r=document.createRange();r.setStart(t,0);r.setEnd(t,5);const b=r.getBoundingClientRect();return [Math.round(b.x+b.width/2),Math.round(b.y+b.height/2)]})()`);
     await rightClick(p, ...word);
-    await menuOpen(p, ['Copy Link', 'Mark unread']);
+    await menuOpen(p, ['Mark unread', 'Copy Link']);
     assert.equal(await p.evaluate('getSelection().isCollapsed'), true, 'no word is left selected');
     await p.key('Escape');
     await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'Escape closes it');
@@ -306,10 +308,11 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     for (let i = 0; i < 5; i++) await p.key('Tab');
     assert.equal(await focused(), 'bar:more', 'Tab from the card reaches its ⋯');
     await p.key('Enter');
-    await menuOpen(p, ['Copy Link', 'Mark unread']);
-    assert.equal(await p.evaluate(`document.activeElement?.textContent`), 'Star for me');
+    await menuOpen(p, ['Mark unread', 'Copy Link']);
+    assert.equal(await p.evaluate(`document.activeElement === document.querySelector('.menu-palette .palette-rows button:not(:disabled)')`), true, '1091 first ordinary action has focus');
+    await p.key('Home');
     await p.key('ArrowUp');
-    assert.equal(await p.evaluate(`document.activeElement?.textContent`), (await items(p)).at(-1), 'Up from the first wraps to the last');
+    assert.equal(await p.evaluate(`document.activeElement?.dataset.menuLabel`), (await items(p)).at(-1), 'Up from the first wraps to the last');
     await p.key('Escape');
     await until(() => p.evaluate(`!document.querySelector('.message-menu-list') && document.activeElement === document.querySelector(${JSON.stringify(menuMore)})`), 'closed, the focus back on the ⋯');
     assert.equal(await open(p, 'reader'), false);

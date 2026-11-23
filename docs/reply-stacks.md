@@ -572,6 +572,9 @@ beside the tab, where the tab never reaches:
   (the arrow coming up) once the dossier is below More; none on a dossier
   Core has no place for yet.
 - ⋯: the menu a right-click on the first message gives, opened under it.
+  Item1091 gives it the same message palette: marks, action rows, separate
+  Topic/Dossier starts, the offered destructive action and grouped key
+  buttons. Rename stays on the dossier pencil.
 
 They show while a pointer is over the dossier, and are there to be found
 (invisible, never gone) as the pointer crosses to them; by touch, once the
