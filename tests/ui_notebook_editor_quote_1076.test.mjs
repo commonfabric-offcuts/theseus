@@ -433,6 +433,24 @@ test('1076 prose/image/prose: Command-Return splits the second prose without los
   assert.equal(p.undos.length, 1); p.key(undoKey(f.field)); await f.writer.serial;
   assert.equal(p.editing, null); assert.equal(f.writer.value.body, proseImageProse);
 });
+test('1076 prose/image/prose: Command-Return on first prose preserves raw image-before-second-prose order and Undo', async t => {
+  const f = splitFixture(t, { text: proseImageProse, selected: 'First prose.' }, 'First prose.'), p = f.page;
+  assert.deepEqual(f.notices, []);
+  assert.equal(p.editing.selectionSplit.display, proseImageProse.replace('First prose.', ''),
+    'only the chosen prose is removed; every kept image/prose byte stays in its original order');
+  assert.equal(p.undos.length, 1); p.key(undoKey(f.field)); await f.writer.serial;
+  assert.equal(p.editing, null); assert.equal(f.writer.value.body, proseImageProse);
+});
+test('1076 split removes the selected prose occurrence without rebinding to the same words in a hidden image name', async t => {
+  const text = '## Source\n\nKeep.\n\n' + imageLine('payload', 'isolated-image') +
+    '\n\npayload\n\n## Neighbor\n\nUntouched.\n';
+  const f = splitFixture(t, { text, selected: 'payload' }, 'payload'), p = f.page, at = text.lastIndexOf('payload');
+  assert.deepEqual(f.notices, []);
+  assert.equal(p.editing.selectionSplit.display, text.slice(0, at) + text.slice(at + 'payload'.length));
+  assert.ok(p.previewBody().includes(imageLine('payload', 'isolated-image')));
+  p.key(undoKey(f.field)); await f.writer.serial;
+  assert.equal(f.writer.value.body, text);
+});
 test('1076 prose/image/prose: Return quotes the second prose from the unchanged raw card', async t => {
   const f = fixture(t, { text: proseImageProse, selected: 'Second prose.' }), before = state(f.field);
   await press(f);

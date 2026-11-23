@@ -110,6 +110,10 @@ try{
       const source=await current(),ref=command.args.quotes.at(-1).source;assert.deepEqual(ref,{kind:'memory',id:item,revision:source.source_ref.revision});
       const quotes=command.args.quotes.filter(q=>q.source.id===item);assert.equal(quotes.map(q=>q.excerpt).join(''),selected);for(const q of quotes)assert.ok(source.body.includes(q.excerpt));
       result.quoteCommand=command;result.quoteReceipt=receipt;result.confirmed=source;
+      if(name==='fresh1075-split'){
+        const expected=original.body.replace(selected,'').replace('## Neighbor',`## ${selected}\n\n## Neighbor`);
+        assert.equal(source.body,expected,'the forward split removes only the selected prose and keeps the image before After picture.');
+      }
       assert.equal(await page.locator('#writing-body').evaluate(f=>document.activeElement===f),true);
       if(name==='confirmed-draft-image-privacy'){
         assert.equal(source.body,original.body);assert.equal(source.source_ref.revision,original.source_ref.revision);
