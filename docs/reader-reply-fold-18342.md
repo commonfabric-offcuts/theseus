@@ -1,0 +1,7 @@
+# Reader reply folds after confirmed send
+
+Owner request: Landing18342 m-15a114b181314c16b6d8f643370c3c3a, Warp relay of Tony23:21 screenshot. This urgent web-only ordinary fix precedes1096;1096 source/evidence remains preserved in its own tree. Intake actual live356 bc8f125646fb7450b1a1242f851562feb3887751/schema66, fresh own page-lane6/reader-after-send-356-18342.
+
+Reproduce source: wide Reader opened from a dossier with multiple folded messages. After a reply is confirmed, the empty shared card reply composer must close/fold and the new message must be at the dossier foot. Preserve later writing, images/uploads, uncertain-send retry, authority/permission, navigation and newer opening ownership. Neither1046 nor1101 is assumed causal from the screenshot or adjacent history. Read the actual CardReplies/InlineComposer/Reader/EditorRegistry publication and reply-stack drawing owners before changing the owner responsible.
+
+Verification: actual old/current/restored small command-owner checks, then isolated Chrome for Testing native wide Reader send on synthetic dossier records and readback; preserve raw failure, exact selected source and cleanup. Inspect original live-source behavior without live account writes or TonyChrome. Existing narrow/native gestures and recovery fences remain. No browser launch while1113 INUSE; new workload must be coordinated under fresh strict load<12 on18CPU and Browser13202 exact cleanup. No gauntlet or guarded-path edits. Warp reviews/carries/lands; Fable canonical binding and workload order.
