@@ -125,9 +125,47 @@ test('1076 selection across title/body and a hidden image keeps exact confirmed 
   const selected = 'Source\nAbove.\n\n\nBelow.';
   const f = fixture(t, { text, selected }), before = state(f.field);
   await press(f); assert.deepEqual(state(f.field), before); assert.equal(f.quotes.length, 1);
+  assert.equal(f.requests.length, 0, 'quoting unchanged hidden-image writing sends no memory revise');
+  assert.equal(f.writer.base.revision, 1); assert.equal(f.writer.base.source.body, text);
   const c = f.quotes[0].choice; assert.equal(c.text, selected);
   assert.equal(c.parts.join(''), c.text); assert.ok(c.parts.length > 1);
   assert.ok(c.parts.every(part => f.writer.base.source.body.includes(part))); assert.equal(c.start, -1);
+});
+test('1076 unchanged hidden-image editor preview and save preserve the raw body', async t => {
+  const text = '## Source\n\nbefore kept after\n\n' + imageLine('Picture', 'isolated-image') + '\n\nAfter picture.\n\n## Neighbor\n\nUntouched.\n';
+  const f = fixture(t, { text }), before = state(f.field);
+  assert.equal(f.page.boxChanged(f.page.editing), false);
+  assert.equal(f.page.previewBody(), text, 'an unchanged editor does not rewrite its hidden image position');
+  f.page.save(); await f.page.saveCardChange();
+  assert.equal(f.requests.length, 0); assert.equal(f.writer.dirty, false);
+  assert.equal(f.writer.base.revision, 1); assert.equal(f.writer.base.source.body, text);
+  assert.deepEqual(state(f.field), before);
+});
+test('1076 unchanged duplicate hidden-image card quotes its own original occurrence', async t => {
+  const card = '## Source\n\nbefore kept after\n\n' + imageLine('Picture', 'isolated-image') + '\n\nBelow.\n';
+  const text = card + '\n' + card;
+  const f = fixture(t, { text, selected: 'Below.', index: 1 }), before = state(f.field);
+  await press(f); assert.deepEqual(state(f.field), before);
+  assert.equal(f.requests.length, 0); assert.equal(f.writer.base.revision, 1);
+  assert.equal(f.writer.base.source.body, text); assert.equal(f.quotes.length, 1);
+  const c = f.quotes[0].choice;
+  assert.equal(c.start, text.lastIndexOf('Below.')); assert.equal(c.end, c.start + 'Below.'.length);
+  assert.deepEqual(c.source, f.source.source_ref);
+});
+test('1076 dirty hidden-image writing still flushes and quotes the confirmed revision', async t => {
+  const text = '## Source\n\nbefore kept after\n\n' + imageLine('Picture', 'isolated-image') + '\n\nAfter picture.\n\n## Neighbor\n\nUntouched.\n';
+  const f = fixture(t, { text }), edited = f.field.value + ' edited';
+  f.field.value = edited; const before = state(f.field);
+  await press(f); assert.deepEqual(state(f.field), before);
+  assert.equal(f.requests.length, 1); assert.equal(f.requests[0].kind, 'memory.revise');
+  assert.equal(f.requests[0].expected.item_revision, 1); assert.equal(f.writer.base.revision, 2);
+  assert.equal(f.writer.base.source.body, f.requests[0].args.body);
+  assert.ok(f.writer.base.source.body.includes('After picture. edited'));
+  assert.ok(f.writer.base.source.body.includes(imageLine('Picture', 'isolated-image')));
+  assert.equal(f.writer.dirty, false); assert.equal(f.writer.pending, null);
+  assert.equal(f.quotes.length, 1); const c = f.quotes[0].choice;
+  assert.deepEqual(c.source, { ...f.source.source_ref, revision: 2 });
+  assert.equal(f.writer.base.source.body.slice(c.start, c.end), 'kept');
 });
 for (const save of ['refused', 'unconfirmed']) test(`1076 ${save} save retains exact editor selection and opens no quote`, async t => {
   const f = fixture(t, { value: 'Source\nbefore kept after, edited', save }), before = state(f.field);

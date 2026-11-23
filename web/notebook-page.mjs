@@ -307,7 +307,9 @@ export class NotebookPage extends DeckPage {
   // history. Done later applies this same edit to the visible deck once.
   previewBody() {
     const e=this.editing;
-    if(!e)return deckBody(this.deck);
+    // An unchanged box omits hidden image/stack lines. Keep its raw card;
+    // rebuilding it with boxText would move those lines without an edit.
+    if(!e || (!e.fresh && !this.boxChanged(e)))return deckBody(this.deck);
     const to=this.boxText(e);
     const act=e.fresh?{kind:'add',after:e.after,text:to,depth:e.depth,near:e.near}:{kind:'edit',text:e.text,to,near:e.near};
     const done=applyAct(this.deck,act);
@@ -517,7 +519,7 @@ export class NotebookPage extends DeckPage {
         const to=this.boxText(editing), act=editing.fresh
           ?{kind:'add',after:editing.after,text:to,depth:editing.depth,near:editing.near}
           :{kind:'edit',text:editing.text,to,near:editing.near};
-        const done=applyAct(this.deck,act), preview=done?.deck??this.deck;
+        const done=(editing.fresh || this.boxChanged(editing))?applyAct(this.deck,act):null, preview=done?.deck??this.deck;
         const index=done?.at??findCard(this.deck,editing.text,editing.near), body=deckBody(preview);
         const saved=parseDeck(body), card=saved.cards[index];
         if(!card) {refuse('The selected writing could not be matched to its card. Your writing is kept.');return;}
