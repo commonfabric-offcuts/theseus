@@ -343,8 +343,8 @@ test('1076 a newer selected Return supersedes only the older pending quote, reta
 
 // Actual1075 writeNext/act/finish/save/updateSelectionUndo/history with the
 // same explicit field/mount port as its existing semantic split tests.
-function splitFixture(t) {
-  const f = fixture(t), p = f.page; p.keepFolds = () => {};
+function splitFixture(t, options, selected = 'kept') {
+  const f = fixture(t, options), p = f.page; p.keepFolds = () => {};
   p.open = editing => {
     const field = new Field(editing.shown ?? editing.text), at = editing.at ?? field.value.length;
     field.setSelectionRange(at, at); p.doc.activeElement = field;
@@ -354,10 +354,35 @@ function splitFixture(t) {
   };
   const event = { key: 'Enter', metaKey: true, target: f.field, preventDefault() { this.defaultPrevented = true; } };
   p.key(event); assert.equal(event.defaultPrevented, true); assert.equal(p.editing.fresh, true);
-  assert.equal(p.editing.field.value, 'kept'); f.field = p.editing.field;
+  assert.equal(p.editing.field.value, selected); f.field = p.editing.field;
   return f;
 }
 const undoKey = field => ({ key: 'z', metaKey: true, target: field, preventDefault() { this.defaultPrevented = true; } });
+const proseImageProse = '## Source\n\nFirst prose.\n\n' + imageLine('Picture', 'isolated-image') +
+  '\n\nSecond prose.\n\n## Neighbor\n\nUntouched.\n';
+test('1076 prose/image/prose: Command-Return splits the second prose without loss or a changed-card refusal', async t => {
+  const f = splitFixture(t, { text: proseImageProse, selected: 'Second prose.' }, 'Second prose.'), p = f.page;
+  const split = p.editing.selectionSplit;
+  assert.deepEqual(f.notices, [], 'the equality guard accepts the same raw preview body');
+  assert.equal(split.before, proseImageProse, 'the inverse retains the exact image-between-prose source');
+  assert.equal(p.previewBody(), '## Source\n\nFirst prose.\n\n' + imageLine('Picture', 'isolated-image') +
+    '\n\n## Second prose.\n\n## Neighbor\n\nUntouched.\n');
+  f.field.setSelectionRange(0, f.field.value.length, 'backward'); await press(f);
+  assert.equal(f.quotes.length, 1); assert.equal(f.quotes[0].choice.text, 'Second prose.');
+  assert.equal(f.writer.base.source.body.slice(f.quotes[0].choice.start, f.quotes[0].choice.end), 'Second prose.');
+  assert.equal(p.undos.length, 1); p.key(undoKey(f.field)); await f.writer.serial;
+  assert.equal(p.editing, null); assert.equal(f.writer.value.body, proseImageProse);
+});
+test('1076 prose/image/prose: Return quotes the second prose from the unchanged raw card', async t => {
+  const f = fixture(t, { text: proseImageProse, selected: 'Second prose.' }), before = state(f.field);
+  await press(f);
+  assert.deepEqual(f.notices, []); assert.deepEqual(state(f.field), before);
+  assert.equal(f.requests.length, 0); assert.equal(f.writer.base.source.body, proseImageProse);
+  assert.equal(f.writer.base.revision, 1); assert.equal(f.quotes.length, 1);
+  const c = f.quotes[0].choice;
+  assert.deepEqual(c.source, f.source.source_ref); assert.equal(c.text, 'Second prose.');
+  assert.equal(c.start, proseImageProse.indexOf('Second prose.')); assert.equal(c.end, c.start + c.text.length);
+});
 test('1076 Return after1075 fresh split quotes its confirmed range and preserves the one split inverse', async t => {
   const f = splitFixture(t), p = f.page, editing = p.editing, inverse = p.undos[0];
   assert.equal(p.undos.length, 1); f.field.setSelectionRange(0, 4, 'backward'); const before = state(f.field);

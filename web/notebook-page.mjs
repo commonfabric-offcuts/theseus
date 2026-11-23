@@ -305,16 +305,18 @@ export class NotebookPage extends DeckPage {
   }
   // Include the unfinished card without altering its textarea or native undo
   // history. Done later applies this same edit to the visible deck once.
-  previewBody() {
+  previewCard() {
     const e=this.editing;
     // An unchanged box omits hidden image/stack lines. Keep its raw card;
     // rebuilding it with boxText would move those lines without an edit.
-    if(!e || (!e.fresh && !this.boxChanged(e)))return deckBody(this.deck);
+    const unchanged={deck:this.deck,at:e&&!e.fresh?findCard(this.deck,e.text,e.near):-1};
+    if(!e || (!e.fresh && !this.boxChanged(e)))return unchanged;
     const to=this.boxText(e);
     const act=e.fresh?{kind:'add',after:e.after,text:to,depth:e.depth,near:e.near}:{kind:'edit',text:e.text,to,near:e.near};
     const done=applyAct(this.deck,act);
-    return done?deckBody(done.deck):deckBody(this.deck);
+    return done??unchanged;
   }
+  previewBody() { return deckBody(this.previewCard().deck); }
   textEdited() {
     if(!this.writing || !this.textSeen)return;
     const seen=this.textSeen;
@@ -362,7 +364,8 @@ export class NotebookPage extends DeckPage {
     if (!field || !/\S/.test(field.value.slice(field.selectionStart, field.selectionEnd))) return super.writeNext();
     if (!this.cardWritable() || e.input.readOnly() || refuseUnavailableWriting(this)) return;
     this.save();
-    const split = selectionCardSplit(this.deck, { ...e, value: field.value, start: field.selectionStart, end: field.selectionEnd });
+    const preview = this.previewCard();
+    const split = selectionCardSplit(preview.deck, { ...e, value: field.value, start: field.selectionStart, end: field.selectionEnd }, preview.at);
     if (!split || split.before !== this.previewBody()) {
       this.say('That card changed while you wrote. Your writing and selection are kept.', 'attention'); return;
     }
@@ -514,13 +517,9 @@ export class NotebookPage extends DeckPage {
         if(writing.closed || writing.deleted || writing.conflict || writing.journalError || writing.actionPending || writing.actionRunning) {
           refuse('The page is not ready to confirm this selection. Your writing and selection are kept.');return;
         }
-        // Use the same preview act as save(), retaining its position so a duplicate
+        // Use the same preview as save(), retaining its position so a duplicate
         // phrase on another card can never supply the quoted source.
-        const to=this.boxText(editing), act=editing.fresh
-          ?{kind:'add',after:editing.after,text:to,depth:editing.depth,near:editing.near}
-          :{kind:'edit',text:editing.text,to,near:editing.near};
-        const done=(editing.fresh || this.boxChanged(editing))?applyAct(this.deck,act):null, preview=done?.deck??this.deck;
-        const index=done?.at??findCard(this.deck,editing.text,editing.near), body=deckBody(preview);
+        const preview=this.previewCard(), index=preview.at, body=deckBody(preview.deck);
         const saved=parseDeck(body), card=saved.cards[index];
         if(!card) {refuse('The selected writing could not be matched to its card. Your writing is kept.');return;}
         const from=saved.opening.length+saved.cards.slice(0,index).reduce((n,c)=>n+c.raw.length,0);

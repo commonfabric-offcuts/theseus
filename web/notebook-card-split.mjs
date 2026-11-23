@@ -4,19 +4,14 @@ import { cardDetails, withCardDetails } from './card-details.mjs';
 // One in-memory model act, using existing card serialization. A fresh editor
 // still owns its exact selected string; Core receives the ordinary normalized
 // card body. No card identity or durable representation is introduced.
-export function selectionCardSplit(deck, editing) {
+export function selectionCardSplit(deck, editing, at = findCard(deck, editing.text, editing.near)) {
   const { value, start, end } = editing;
   if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start || end > value.length) return null;
   const selected = value.slice(start, end);
   if (!/\S/.test(selected)) return null;
-  // Use the actual editor preview owner, including its unchanged/raw and
-  // metadata rules, rather than reserializing an unchanged source first.
-  const text = boxText({ ...editing, written: value });
-  const prepared = applyAct(deck, editing.fresh
-    ? { kind: 'add', after: editing.after, text, depth: editing.depth, near: editing.near }
-    : { kind: 'edit', text: editing.text, to: text, near: editing.near });
-  const beforeDeck = prepared?.deck ?? deck;
-  const at = prepared?.at ?? (editing.fresh ? -1 : findCard(deck, editing.text, editing.near));
+  // The caller supplies the actual editor preview and its card occurrence.
+  // Preparing it again would relocate hidden images in unchanged raw cards.
+  const beforeDeck = deck;
   if (at < 0 || !beforeDeck.cards[at]) return null;
   const current = beforeDeck.cards[at];
   const remainder = value.slice(0, start) + value.slice(end);
