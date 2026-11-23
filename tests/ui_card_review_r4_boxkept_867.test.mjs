@@ -18,7 +18,7 @@ function pressBox(p,at){
  const button=p.list.children[at].querySelector('.deck-menu');assert.ok(button,'painted overflow');button.listeners.click({target:button,stopPropagation(){}});
  const menu=p.doc.body.querySelector('[role="menu"]');assert.ok(menu,'real shared menu');return menu;
 }
-function chooseBox(menu,label){const button=menu.children.find(n=>n.textContent===label);assert.ok(button);return button.onclick({preventDefault(){},stopPropagation(){}});}
+function chooseBox(menu,key){const button=menu.querySelectorAll('button').find(n=>n.dataset.notebookAction===key||n.textContent===key);assert.ok(button);return button.onclick({preventDefault(){},stopPropagation(){}});}
 const titlesOf=p=>p.deck.cards.map(c=>c.title);
 const rowsOf=p=>p.list.children.map(r=>[r.classList.contains('deck-writing')?'holder':r.querySelector('.deck-title')?.textContent,r.dataset.index,Boolean(r.querySelector('.deck-menu'))]);
 // The writer wired as notebook-page.mjs load() wires it (reconcile → mergeIncoming, localActive → boxChanged).
@@ -50,7 +50,7 @@ for(const withIds of [true,false])test(`BOXKEPT claim: unsaved Top edit, box on 
  assert.equal(w.conflict,null);assert.ok(p.editing);assert.ok(holder&&!holder.querySelector('.deck-menu'),'holder painted without a ⋯');
  p.editing.field.value='Budget\nchanged words';
  const below=p.list.children.findIndex(r=>r.querySelector('.deck-title')?.textContent==='Below');
- chooseBox(pressBox(p,below),'Delete');
+ chooseBox(pressBox(p,below),'delete');
  console.log(`BOXKEPT(ids ${withIds}) after Delete on Below:`,JSON.stringify(titlesOf(p)),'| notice:',p.notice);
  assert.deepEqual(titlesOf(p),['Top','Budget'],'Delete must remove Below, the pressed card; the rewritten Budget stands');
 });
@@ -71,7 +71,7 @@ test('BOXKEPT control: same path but nothing typed into the kept box → ⋯ on 
  editBox(p,1);p.paint();setRemote(card('Top','t',details(B))+card('Below','b',details(C)));await w.refresh();p.sync();
  assert.equal(w.conflict,null);assert.ok(p.editing);
  const below=p.list.children.findIndex(r=>r.querySelector('.deck-title')?.textContent==='Below');
- chooseBox(pressBox(p,below),'Delete');
+ chooseBox(pressBox(p,below),'delete');
  console.log('BOXKEPT control (untyped) after Delete on Below:',JSON.stringify(titlesOf(p)));
  assert.deepEqual(titlesOf(p),['Top']);
 });
@@ -81,7 +81,7 @@ test('BOXKEPT control: no unsaved edit → the box is discarded by sync, ⋯ on 
  console.log('BOXKEPT control (clean): conflict',Boolean(w.conflict),'editing kept',Boolean(p.editing),'rows',JSON.stringify(rowsOf(p)));
  assert.equal(p.editing,null);
  const below=p.list.children.findIndex(r=>r.querySelector('.deck-title')?.textContent==='Below');
- chooseBox(pressBox(p,below),'Delete');assert.deepEqual(titlesOf(p),['Top']);
+ chooseBox(pressBox(p,below),'delete');assert.deepEqual(titlesOf(p),['Top']);
 });
 test('BOXKEPT control: box already changed when the deletion arrives → conflict, as designed',async t=>{
  const {p,w,setRemote}=await liveWriter(t,page3(true));paintedBox(t,p);

@@ -39,9 +39,13 @@ for(const [name,extra] of [['ContextMenu',{}],['F10',{shiftKey:true}]])test(`927
   assert.equal(key(p,row,name,extra).defaultPrevented,true);
   const menu=p.doc.body.querySelector('[role="menu"]');assert.ok(menu);assert.equal(p.doc.activeElement.textContent,'Copy text');
   const menuKey=key=>menu.listeners.keydown({key,stopPropagation(){},preventDefault(){}});
-  menuKey('ArrowDown');assert.equal(p.doc.activeElement.textContent,'Copy link');
+  //1096: Copy link is a mark; first ordinary row is Copy text, then Chat.
+  const enabled=menu.querySelectorAll('button').filter(n=>!n.disabled),first=enabled.indexOf(p.doc.activeElement);
+  menuKey('ArrowDown');assert.equal(p.doc.activeElement,chat(menu));
   menuKey('ArrowUp');assert.equal(p.doc.activeElement.textContent,'Copy text');
-  menuKey('End');assert.equal(p.doc.activeElement,chat(menu));
+  for(let n=1;n<=enabled.length;n++){menuKey('ArrowDown');assert.equal(p.doc.activeElement,enabled[(first+n)%enabled.length]);}
+  menuKey('Home');assert.equal(p.doc.activeElement,enabled[0]);
+  menuKey('End');assert.equal(p.doc.activeElement,enabled.at(-1));assert.equal(p.doc.activeElement.dataset.notebookAction,'edit');
   menuKey('Escape');assert.equal(menu.isConnected,false);assert.equal(p.doc.activeElement,row);
   assert.equal(p.picked,1,'cursor control continues from the menu card');
   key(p,row,'ArrowUp');assert.equal(p.picked,0);

@@ -1,5 +1,8 @@
 # Notebook beside the topic feed (854)
 
+Current1096 menu contract: Side by side stays in the sheet header. Choose dossier is removed and has no caller; the page palette offers its own View switch and Start new actions. The old menu-placement discussion below is historical. See [Notebook menus](notebook-menus-1096.md).
+
+
 The existing NotebookSheet can switch between a modal and a nonmodal dialog.
 It keeps the same NotebookPage, writing stream, open card, selection and scroll.
 It owns a dedicated dialog in both modes (871). On a topic page at least

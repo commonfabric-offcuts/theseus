@@ -24,7 +24,6 @@ import { paintChanges } from './page-changes.mjs';
 import { glyph } from './glyphs.mjs';
 import { timeNode } from './times.mjs';
 import { DeckPage } from './deck-page.mjs';
-import { NotebookDossiers } from './notebook-dossiers.mjs';
 import { panes } from './panes.mjs';
 import { departing, railRowFor, land, rowRect, openFrom } from './paper-flight.mjs';
 
@@ -52,20 +51,10 @@ const mayWriteCards = (sheet, page) => sheet.current === page && sheet.showing &
   !page.writing.deleted && !page.writing.closed && !page.writing.actionPending && !page.writing.actionRunning;
 
 export function notebookSheetMenuItems(sheet, position, page = null) {
-  if (position === 'first') return page?.mode === 'cards' ? [
-    { key: 'edit', label: page.editing ? 'Done' : 'Edit', glyph: 'pencil', keys: '⌘Return', disabled: !mayWriteCards(sheet, page),
-      act: () => { if (!mayWriteCards(sheet, page)) return; if (page.editing) page.finish(); else page.edit(); if (!page.editing) page.show(true); } },
-    { key: 'undo', label: 'Undo', glyph: 'undo', keys: '⌘Z', disabled: !mayWriteCards(sheet, page) || !page.undos?.length,
-      act: () => { if (mayWriteCards(sheet, page)) { page.undo(); if (!page.editing) page.show(true); } } },
-  ] : [];
-  if (position === 'beforeImage') return sheet.docked && sheet.dossiers ? [{ key: 'dossiers', label: 'Choose dossier…', glyph: 'dossier', act: () => sheet.dossiers.toggle() }] : [];
-  if (position !== 'afterImage') return [];
-  return [
-    ...(sheet.canDock() ? [{ key: 'layout', label: 'Side by side', glyph: 'layout', checked: sheet.docked, act: () => sheet.setDocked(!sheet.docked) }] : []),
-    ...(page ? [{ key: 'fullpage', label: 'Open as a full page', glyph: 'openpage', act: () => {
-      if (sheet.current === page) sheet.goBack(sheet.fullHref(page.item, page.mode));
-    } }] : []),
-  ];
+  if(position!=='afterImage'||!page)return [];
+  return [{key:'fullpage',label:'Open as a full page',glyph:'openpage',act:()=>{
+    if(sheet.current===page)sheet.goBack(sheet.fullHref(page.item,page.mode));
+  }}];
 }
 
 export class NotebookSheet {
@@ -119,8 +108,6 @@ export class NotebookSheet {
     this.head.append(this.heading, this.actions);
     this.body = node('div', 'notebook-sheet-pages');
     this.root.append(this.head, this.body);
-    if (feed) this.dossiers = new NotebookDossiers({ doc, host: this.root, anchor: this.dockButton, read: feed.read,
-      topicId: feed.topicId, choose: id => this.openInFeed(feed.topicId, id) });
     this.paintDock();
     this.dialog.append(this.root);
     this.pane = { host: this.dialog, active: () => this.showing && this.docked,
@@ -150,7 +137,6 @@ export class NotebookSheet {
       if (modal && modal !== this.dialog) return;
       // Unused Escape closes as ✕ does; while docked, keys in the feed belong to the feed.
       if (event.key === 'Escape' && !event.isComposing && (!this.docked || this.dialog.contains(event.target))) {
-        if (this.dossiers?.showing) { event.preventDefault(); this.dossiers.close(true); return; }
         event.preventDefault(); this.close(); return;
       }
       if (!this.dialog.contains(event.target) || !MOVING_KEYS.includes(event.key)) return;
@@ -175,7 +161,6 @@ export class NotebookSheet {
   setDocked(wanted, remember = true) {
     if (remember) { this.beside = false; this.dockWanted = Boolean(wanted); keep(DOCKED, this.dockWanted); }
     const next = Boolean(this.showing && wanted && this.canDock());
-    this.dossiers?.close();
     if (next !== this.docked) {
       const focused = this.doc.activeElement;
       // Reading while docked may move the feed. The new modal freezes that
@@ -229,6 +214,8 @@ export class NotebookSheet {
       const host = this.node('section', 'deck-page notebook-sheet-page'); host.setAttribute('aria-label', 'Notebook page');
       const header = { eyebrow: this.node('span'), title: this.node('span'), description: this.node('span') };
       page = this.make(id, host, header, '-sheet', () => this.revised(page));
+      page.inNotebookSheet=true;
+      page.menuCurrent=()=>this.showing&&this.current===page;
       page.menuExtras = position => notebookSheetMenuItems(this, position, page);
       page.surfaceChanged = () => this.paintHeader(page);
       page.presentStatus = (words, state, again) => this.presentStatus(page, words, state, again);
@@ -301,11 +288,10 @@ export class NotebookSheet {
     this.current = page;
     this.title.replaceChildren(page.sheetTitle);
     page.more.classList.add('sheet-glyph'); this.actions.insertBefore(page.more, this.closer);
-    if (this.dossiers) this.dossiers.anchor = page.more;
     this.status.replaceChildren(page.status);
     // The header owns confirmation and actions; recovery stays in the same
     // scroller as the cards, which keeps its scroll position across closes.
-    page.host.prepend(this.status, page.pageNotice, ...(this.dossiers ? [this.dossiers.root] : []));
+    page.host.prepend(this.status,page.pageNotice);
     page.host.querySelector('.notebook-tools')?.remove();
     page.addImage?.remove();
     page.bar?.replaceChildren(page.count);
@@ -339,6 +325,7 @@ export class NotebookSheet {
   pageChoice(key) {
     const page = this.current, w = page?.writing;
     if (!this.showing || !w || w.closed || w.actionRunning || w.actionPending) return;
+    if(key==='rename'){if(!page.readOnly&&!w.readOnly&&!w.reading&&!w.deleted)page.rename();return;}
     const item = page.menuItems().find(item => item.key === key);
     if (item && !item.disabled) return item.act();
   }
@@ -459,7 +446,6 @@ export class NotebookSheet {
   closed() {
     if (!this.showing) return;
     this.still?.abort();
-    this.dossiers?.close();
     const wasDocked = this.docked; this.docked = false; this.paintDock();
     const page = this.current;
     if (page) { this.keep(page); page.host.hidden = true; }
@@ -547,7 +533,7 @@ export class NotebookSheet {
   retire() {
     if (panes.notebook === this.pane) panes.notebook = null;
     this.listening.abort(); this.showing = false;
-    this.wide?.removeEventListener('change', this.resized); this.still?.abort(); this.dossiers?.close();
+    this.wide?.removeEventListener('change', this.resized); this.still?.abort();
     this.docked = false; this.paintDock();
     if (this.dialog.open) this.dialog.close();
     this.dialog.remove();
