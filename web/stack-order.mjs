@@ -22,7 +22,7 @@ import { ownWithdrawnQuestion } from './question-withdrawal.mjs';
 const actsOf = item => item?.acts ?? {};
 
 // Each act and the revision Core counts it by.
-const REVISIONS = { aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision', cover: 'cover_revision', cover_refresh: 'cover_refresh_revision', message_refresh: 'message_refresh_revision' };
+const REVISIONS = { level: 'level_revision', aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision', cover: 'cover_revision', cover_refresh: 'cover_refresh_revision', message_refresh: 'message_refresh_revision' };
 
 // What Core holds of a message's acts, from what the page knew and an answer
 // it read or was given since: each act as the later of the two by its
@@ -260,8 +260,8 @@ export function earlierOf(stack, level, { held = null } = {}) {
 // filled), and folded, a stack gathered from branches under a first message
 // the page has not loaded keeps each branch's head in view (branches): before
 // 550 each was a stack of its own, its card in view, and a fold loses none.
-function shownWithoutContext(stack, item, { level = 'folded', kept = () => false, earlier = false, held = null } = {}) {
-  if (stack.filled?.has(item.id) || item.yours?.note === true) return true;
+function shownWithoutContext(stack, item, { level = 'folded', kept = () => false, writing = () => false, earlier = false, held = null } = {}) {
+  if (writing(item) || stack.filled?.has(item.id) || item.yours?.note === true) return true;
   if (!earlier && earlierOf(stack, level, { held }).includes(item)) return false;
   if (level === 'open') return true;
   if (level === 'head') return false;
@@ -310,11 +310,11 @@ const messages = n => (n === 1 ? 'message' : 'messages');
 // earlier: true } in its place. A first message shown whole by a landing
 // (headWhole, 875) is omitted from that row's count and press target, without
 // moving the held boundary for the newest seven.
-export function rowsOf(stack, { level = 'folded', kept, unread = () => false, newReply = unread, peeked = () => false, earlier = false, held = null, headWhole = false } = {}) {
-  const options = { level, kept, newReply, earlier, held }, context = contextParents(stack, options);
+export function rowsOf(stack, { level = 'folded', kept, writing = () => false, unread = () => false, newReply = unread, peeked = () => false, earlier = false, held = null, headWhole = false } = {}) {
+  const options = { level, kept, writing, newReply, earlier, held }, context = contextParents(stack, options);
   const rows = [], all = stack.replies, show = item => shown(stack, item, { ...options, context });
   const earliest = earlierOf(stack, level, { held });
-  const hiddenEarlier = earliest.filter(item => item.yours?.note !== true && (!headWhole || item !== stack.head));
+  const hiddenEarlier = earliest.filter(item => !writing(item) && item.yours?.note !== true && (!headWhole || item !== stack.head));
   if (hiddenEarlier.length && !earlier) rows.push({ kind: 'earlier', items: hiddenEarlier, words: `${hiddenEarlier.length} earlier ${(headWhole ? replies : messages)(hiddenEarlier.length)}`, fresh: hiddenEarlier.filter(unread).length });
   let run = [], before = true;
   const flush = () => {
@@ -328,7 +328,7 @@ export function rowsOf(stack, { level = 'folded', kept, unread = () => false, ne
     if (!show(item)) { if (!earliest.includes(item)) run.push(item); continue; }
     flush(); before = false;
     if (stack.joins.has(item.id)) rows.push({ kind: 'join', item, join: stack.joins.get(item.id) });
-    rows.push({ kind: 'reply', item, folded: rowFolded(item, { peeked }) || context.has(item.id) && !peeked(item), context: context.has(item.id) });
+    rows.push({ kind: 'reply', item, folded: !writing(item) && rowFolded(item, { peeked }) || context.has(item.id) && !peeked(item), context: context.has(item.id) });
     if (earliest.includes(item)) rows[rows.length - 1].earlier = true;
   }
   flush();

@@ -1911,6 +1911,46 @@ async function readingPage() {
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
+// 858: server-side fixture records, consumed through the real page command
+// queue and position reader. These are separate from visit-only presentation.
+const levelPosition858 = root => ({ root_id: root, through: null, below: false, aside_revision: 0,
+  name: null, name_revision: 0, level: null, level_revision: 0, at: { acts: 0, messages: 0 } });
+function savedLevels858(f, views = f.views) {
+  const records = new Map(); let clock = 0;
+  const current = position => {
+    if (!records.has(position.root_id)) records.set(position.root_id,
+      { level: position.level ?? null, level_revision: position.level_revision ?? 0 });
+    return records.get(position.root_id);
+  };
+  for (const item of views.messages.values()) if (item.stack_position) current(item.stack_position);
+  for (const method of ['ownAct', 'learnPositions', 'readPositions']) views[method] ??= TopicViews.prototype[method];
+  const command = f.api.command, view = f.api.view;
+  f.api.command = async envelope => {
+    if (envelope.kind !== 'stack.level') return command(envelope);
+    f.calls.push({ kind: envelope.kind, envelope });
+    const position = [...views.messages.values()].find(item => item.stack_position?.root_id === envelope.target.message_id)?.stack_position;
+    assert.ok(position, 'the fixture supplies the canonical root, even when unloaded');
+    const record = current(position);
+    assert.equal(envelope.expected.level_revision, record.level_revision, 'each queued act uses the last Core receipt');
+    assert.equal(envelope.expected.authority.authority_id, 'a1');
+    assert.equal(envelope.expected.authority.authority_epoch, 'e1');
+    const changed = record.level !== envelope.args.level;
+    record.level = envelope.args.level; if (changed) record.level_revision++;
+    const before = clock; if (changed) clock++;
+    return { instance_id: 'fixture', operation_id: envelope.operation_id, recorded: true, status: 'committed',
+      result: { message_id: envelope.target.message_id, topic_id: 't1', ...record, changed, acts_before: before, acts_version: clock } };
+  };
+  f.api.view = async (name, args, options) => {
+    if (name !== 'stack_positions') return view(name, args, options);
+    f.calls.push({ name, args });
+    return { instance_id: 'fixture', topic_id: 't1', items: args.message_ids.flatMap(id => {
+      const position = views.messages.get(id)?.stack_position;
+      return position ? [{ message_id: id, stack_position: { ...position, ...current(position), at: { ...position.at, acts: clock } } }] : [];
+    }) };
+  };
+  return records;
+}
+
 // Item 857 starts ordinary dossiers open. A check about a folded dossier
 // makes that choice through the actual chevron before checking its behavior.
 const foldDossier = (f, id) => {
@@ -1930,9 +1970,16 @@ test('843 actual dossier chevron clears its session marks on collapse, preserves
     { id: 'm2', seq: 2, body: 'Reply', reply_to: 'm1' },
     { id: 'm3', seq: 3, body: 'Newest reply', reply_to: 'm1' },
     { id: 'm4', seq: 4, body: 'Unrelated dossier' },
-  ].map(item => ({ ...item, author_id: 'agent-a', topic_id: 't1', unread: false, acts: { folded: false, fold_revision: 0 } }));
+  ].map(item => ({ ...item, author_id: 'agent-a', topic_id: 't1', unread: false, acts: { folded: false, fold_revision: 0, aside: null, aside_revision: 0, name: null, name_revision: 0 },
+    stack_position: levelPosition858(item.id === 'm4' ? 'm4' : 'm1') }));
   for (const item of items) f.views.messages.set(item.id, item);
-  const stored = JSON.stringify(items), commands = f.calls.filter(c => c.kind).length;
+  const saved = savedLevels858(f);
+  // The new preference and its acts watermark may change; every other fact stays.
+  const unchangedFacts = () => JSON.stringify(items.map(({ acts, stack_position, ...item }) => ({ ...item,
+    acts: Object.fromEntries(Object.entries(acts).filter(([key]) => !['level', 'level_revision'].includes(key))),
+    position: { ...Object.fromEntries(Object.entries(stack_position).filter(([key]) => !['level', 'level_revision', 'at'].includes(key))),
+      at: Object.fromEntries(Object.entries(stack_position.at).filter(([key]) => key !== 'acts')) } })));
+  const stored = unchangedFacts(), commands = f.calls.filter(c => c.kind && c.kind !== 'stack.level').length;
   // An already-folded dossier receives these arrivals. Seeding the earlier
   // choice avoids handling these very messages in a setup collapse (843).
   f.runObservation("stackState(document.getElementById('messages')).levels.set('m1', 'folded')");
@@ -1955,8 +2002,29 @@ test('843 actual dossier chevron clears its session marks on collapse, preserves
   assert.deepEqual(marks(), ['m4'], 'Undo or a repeated live page cannot resurrect handled marks');
   f.runObservation("visitNew.arrive([{id:'later',author_id:'agent-a'}])");
   assert.deepEqual(marks(), ['later', 'm4'], 'later arrivals still become new');
-  assert.equal(JSON.stringify(items), stored, 'stored read and fold facts remain untouched');
-  assert.equal(f.calls.filter(c => c.kind).length, commands, 'collapse sends no Core command');
+  assert.equal(unchangedFacts(), stored, 'message/read/fold and other dossier facts remain untouched');
+  assert.equal(f.calls.filter(c => c.kind && c.kind !== 'stack.level').length, commands, 'no unrelated Core act is added');
+  assert.deepEqual(f.calls.filter(c => c.kind === 'stack.level').map(c =>
+    [c.envelope.target.message_id, c.envelope.args.level, c.envelope.expected.level_revision]),
+    [['m1', 'open', 0], ['m1', 'folded', 1], ['m1', 'open', 2]], '858 saves expansion, collapse and Undo on the canonical root');
+  assert.deepEqual(saved.get('m1'), { level: 'open', level_revision: 3 });
+  assert.deepEqual(saved.get('m4'), { level: null, level_revision: 0 }, 'the unrelated dossier keeps its own preference');
+});
+test('858 cached dossier data without a canonical level fence cannot manufacture a saved choice', async () => {
+  for (const position of [null, (() => { const p = levelPosition858('m1'); delete p.level_revision; return p; })()]) {
+    const { f } = await readingPage();
+    for (const [id, seq, reply_to] of [['m1', 1, null], ['m2', 2, 'm1']]) {
+      f.views.messages.set(id, { id, seq, reply_to, topic_id: 't1', author_id: 'agent-a', body: id, unread: false,
+        acts: { folded: false, fold_revision: 0 }, ...(position ? { stack_position: position } : {}) });
+    }
+    f.paintViews('messages'); await settle();
+    const folder = entryIn(f, 'm1').closest('.reply-stack');
+    folder.children.find(node => node.classList?.contains('stack-toggle')).onclick(); await settle();
+    assert.equal(folder.dataset.fold, 'open', 'the unfenced choice is not left looking saved');
+    assert.deepEqual(f.calls.filter(call => call.kind === 'stack.level'), [], 'neither a guessed root nor a guessed revision is written');
+    assert.match(f.runObservation('stackFeed.said.textContent'), /Read this dossier again/);
+    for (const item of f.views.messages.values()) assert.deepEqual([item.unread, item.acts.folded, item.acts.fold_revision], [false, false, 0]);
+  }
 });
 const messages = (from, through) => Array.from({ length: through - from + 1 }, (_, i) => ({ id: 'm' + (from + i), seq: from + i, author_id: 'agent-a', body: 'Body ' + (from + i), topic_id: 't1' }));
 const page = (from, through, next) => ({ instance_id: 'fixture', items: messages(from, through), next_cursor: next, relevant_versions: { topic: 1 } });
@@ -3796,13 +3864,15 @@ test('folded, a stack gathered under a first message not loaded shows its head\'
   const { f } = await readingPage();
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
-  const at = root => ({ root_id: root, through: null, below: false, aside_revision: 0, name: null, name_revision: 0, at: { acts: 1, messages: 0 } });
+  const at = root => levelPosition858(root);
   const item = (seq, root, extra = {}) => ({ id: 'm' + seq, seq, author_id: 'fable', author_kind: 'agent', body: 'Body ' + seq, topic_id: 't1', stack_position: at(root), ...extra });
   // m2..m5 answer m1, above the page, all unread; m20..m22 answer m10, above the page, all read; m40 heads its own reply m41.
   const items = [...[2, 3, 4, 5].map(seq => item(seq, 'm1', { reply_to: 'm1', unread: true })), ...[20, 21, 22].map(seq => item(seq, 'm10', { reply_to: 'm10' })),
     item(40, 'm40'), item(41, 'm40', { reply_to: 'm40' })];
   views.messagesPage({ instance_id: 'fixture', items, next_cursor: null, relevant_versions: { topic: 1 } }, { initial: true }); await settle();
+  savedLevels858(f, views);
   for (const id of ['m2', 'm20', 'm40']) foldDossier(f, id);
+  await settle();
   const section = id => entryIn(f, id)?.closest('.reply-stack') ?? null;
   const look = id => [section(id)?.dataset.stack, section(id)?.dataset.fold, section(id)?.dataset.headOpen];
   assert.deepEqual([look('m2'), look('m20'), look('m40')], [['m2', 'folded', 'true'], ['m20', 'folded', 'true'], ['m40', 'folded', 'false']],
@@ -4738,7 +4808,7 @@ test('cards inside a reply stack count as read on screen, and a range breaks at 
 // (ui_conversation.test.mjs) and the browser's (conversation_native.mjs) read
 // their words; here each painter records the card it was given and the link it
 // follows, so these checks read what the page hands them for a stacked message.
-async function conversationPage(list, { waits = [], href = 'https://fixture/?topic=t1', folded = [] } = {}) {
+async function conversationPage(list, { waits = [], href = 'https://fixture/?topic=t1', folded = [], legacyPositions = false } = {}) {
   const painted = { tags: new Map(), asks: new Map(), about: new Map() }, renames=[];
   const f = fixture(href, { history: { state: null, replaceState(_state,_title,url) {renames.push(url);} },
     paintItemTags: (card, item, shownWaits, _reader, open) => painted.tags.set(card.dataset.id, { card, item, waits: shownWaits, open }),
@@ -4758,10 +4828,28 @@ async function conversationPage(list, { waits = [], href = 'https://fixture/?top
   Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
   for (const message of list) f.views.messages.set(message.id, { topic_id: 't1', sent_ms: null, reply_to: null, unread: false, item: null, ...message });
   f.views.newest = Math.max(...list.map(message => message.seq));
-  // The first page of messages is painted as the page starts, as TopicViews paints it.
-  // Tests of links may need a folded destination before initialize handles
-  // the address. Choose it on the actual first paint, through its chevron.
-  f.views.messagesPage = () => { f.paintViews('messages'); for (const id of folded) foldDossier(f, id); };
+  // 858: Core's saved choice arrives before a link/address is handled. A
+  // legacy response deliberately lacks that authority and retains only a
+  // temporary visit view, for its separate layout/reheading coverage.
+  if (folded.length && !legacyPositions) {
+    const source = new Map(list.map(message => [message.id, message]));
+    const rootOf = message => {
+      if (message.stack_position) return message.stack_position.root_id;
+      let at = message;
+      while (at.reply_to && source.has(at.reply_to)) at = source.get(at.reply_to);
+      return at.reply_to ?? at.id;
+    };
+    const roots = new Set(folded.map(id => rootOf(source.get(id))));
+    for (const message of f.views.messages.values()) {
+      const root = rootOf(message), level = roots.has(root) ? 'folded' : null, revision = roots.has(root) ? 1 : 0;
+      message.stack_position = { ...levelPosition858(root), ...message.stack_position, level, level_revision: revision };
+      if (message.id === root) message.acts = { ...message.acts, level, level_revision: revision };
+    }
+  }
+  f.views.messagesPage = () => {
+    if (legacyPositions) for (const id of folded) f.runObservation(`stackState(document.getElementById('messages')).levels.set(${JSON.stringify(id)}, 'folded')`);
+    f.paintViews('messages');
+  };
   const view = f.api.view;
   f.api.view = async (name, args, options) => {
     if (name === 'conversation') return { instance_id: 'fixture', conversation: { topic_id: 't1', version: 1, coordinator: { actor_id: 'agent-a' },
@@ -4865,7 +4953,7 @@ test('on the conversation page a link to a message folded in a stack opens its s
 
 test('on the conversation page More messages brings a stack\'s first message: the replies gather under it, and its tags and what it keeps in view follow', async () => {
   const all = conversationMessages(), first = all[0];
-  const { f, painted, stackOf } = await conversationPage(all.slice(1), { waits: ASKED, folded: ['m2'] });
+  const { f, painted, stackOf } = await conversationPage(all.slice(1), { waits: ASKED, folded: ['m2'], legacyPositions: true });
   // Its parent not loaded, the ask heads nothing and stands alone; m2 heads its own replies.
   assert.deepEqual([stackOf('m4'), stackOf('m3') === stackOf('m2'), entryIn(f, 'm2').closest('.reply-stack')?.children[0].dataset.id], [null, true, 'm2']);
   f.views.messages.set(first.id, { topic_id: 't1', sent_ms: null, reply_to: null, unread: false, ...first });
@@ -4874,7 +4962,8 @@ test('on the conversation page More messages brings a stack\'s first message: th
   assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => stackOf(id) === stack), [true, true, true, true], 'the older message heads the one stack');
   // This legacy response omits Core's stack_position. Until m1 is loaded,
   // it names m2 and m4 as separate dossiers; m1 therefore starts a new view.
-  foldDossier(f, 'm1');
+  f.runObservation("stackState(document.getElementById('messages')).levels.set('m1', 'folded')");
+  f.paintViews('messages'); await settle();
   assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, true, true, true], 'read asks and New items do not add extra messages');
   assert.equal(entryIn(f, 'm1').dataset.item, undefined, 'More paints no retired Only new marker');
   assert.equal(painted.about.get('m1').item.id, 'm1', 'More keeps ordinary source-link context');
@@ -4883,7 +4972,8 @@ test('on the conversation page More messages brings a stack\'s first message: th
   // its first message is loaded. Its explicit fold must survive reheading.
   const positioned = all.map(message => ({ ...message, stack_position: {
     root_id: message.id === 'm6' ? 'm6' : 'm1', through: null, below: false, aside_revision: 0,
-    name: null, name_revision: 0, at: { acts: 1, messages: 0 },
+    name: null, name_revision: 0, level: message.id === 'm6' ? null : 'folded', level_revision: message.id === 'm6' ? 0 : 1,
+    at: { acts: 1, messages: 0 },
   } }));
   const current = await conversationPage(positioned.slice(1), { waits: ASKED, folded: ['m2'] });
   assert.equal(current.stackOf('m4') === current.stackOf('m2'), true, 'Core identifies the unloaded first message for every branch');

@@ -11,8 +11,8 @@
 // its place. A stack carries the data-seq of its newest message and the id of
 // its head in data-stack. What a stack looks like is web/stack-look.css's
 // alone: this module sets only the class names and data attributes it
-// documents. How far each stack is folded, and which head shows its full
-// message, are this page's own and never recorded. A message the reader
+// documents. Explicit dossier folded/open choices are personal Core acts;
+// temporary reveals and which head shows its full message stay on this page. A message the reader
 // folded is their own act, kept in Core (stack-feed.mjs): wherever it shows
 // it is one row, who wrote it and its first words, with a cue that it is
 // folded; a stack's first message too, under its head row, which stays the
@@ -106,7 +106,7 @@ export function topOf(list, entry) {
   return at;
 }
 
-// What the page keeps for a list's stacks: each stack's level ('folded',
+// What the page keeps for a list's stacks: temporary level overrides ('folded',
 // 'open', or 'head' for a quiet agent dossier not yet opened), replies kept in
 // view once kept, folded messages opened for this view (peeked), messages a
 // link, search or Starred drew where their dossier sits though it is put below
@@ -121,7 +121,8 @@ export function topOf(list, entry) {
 // so a message arriving hides nothing. Item 550: what More messages was
 // pressed with (filling, fillFrom), the older messages it filled the stack
 // shown last above it with (filled), and those it showed as cards of their
-// own (apart; stack-order.mjs, gather). None is ever recorded.
+// own (apart; stack-order.mjs, gather). These holds are never recorded;
+// savedLevels is only the current Core projection, separate from visit overrides.
 export function stackState(list) {
   if (!states.has(list)) {
     // Scroll events do not bubble. Capture the box's own offsets when it
@@ -132,7 +133,7 @@ export function stackState(list) {
       if (left || top) scrolled.set(box, { left, top });
       else scrolled.delete(box);
     }, { capture: true, passive: true });
-    states.set(list, { scrolled, levels: new Map(), kept: new Set(), unreadKept: new Set(), contextRows: new Set(), peeked: new Set(), here: new Map(), renaming: null,
+    states.set(list, { scrolled, levels: new Map(), savedLevels: new Map(), kept: new Set(), unreadKept: new Set(), contextRows: new Set(), peeked: new Set(), here: new Map(), renaming: null,
     stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: false, coordinationHere: new Set(), below: new Set(), viewer: null, again: () => {}, waiting: new Set(),
     checking: new Map(), earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set(), filling: null, filled: new Set(), apart: new Set() });
   }
@@ -183,7 +184,7 @@ function fill(state, loaded) {
 // stack left there (one that stopped being agent-only, say, after ⌘Z took it
 // back to its row) shows latest plus unread.
 export function levelOf(state, id) {
-  const level = state.levels.get(id) ?? (state.coordination.has(id) ? 'head' : 'open');
+  const level = state.levels.get(id) ?? state.savedLevels?.get(id)?.level ?? (state.coordination.has(id) ? 'head' : 'open');
   return level === 'head' && !state.coordination.has(id) ? 'folded' : level;
 }
 
@@ -194,11 +195,12 @@ export function levelOf(state, id) {
 // themselves are theirs in Core, and no state choice changes them. A dossier
 // a link drew where it sits stays drawn there (here). Its earlier-messages row
 // closes again, and what it showed whole folds back to rows (item 476).
-export function setLevel(state, stack, level) {
+export function setLevel(state, stack, level, { save = false } = {}) {
   state.levels.set(stack.id, level);
   state.peeked.delete(stack.id);
   for (const item of stack.replies) { state.kept.delete(item.id); state.unreadKept.delete(item.id); state.peeked.delete(item.id); }
   state.earlier.delete(stack.id); for (const item of [stack.head, ...stack.replies]) state.whole.delete(item.id);
+  if (save) state.on?.level?.(stack, level);
 }
 
 // How the page shows its stacks as last drawn (stack-order.mjs, shownOrder):
@@ -231,7 +233,7 @@ export function drawn(list, id) {
   if (stack && view.hidden(stack)) return false;
   const item = !stack ? { id } : stack.id === id ? stack.head : stack.replies.find(each => each.id === id);
   if (view.only) return Boolean(view.only(item));
-  return !stack || item === stack.head || shown(stack, item, { level: levelOf(state, stack.id), kept: each => state.kept.has(each.id), newReply: each => state.unreadKept.has(each.id), earlier: state.earlier.has(stack.id), held: state.held.get(stack.id) ?? null });
+  return !stack || item === stack.head || shown(stack, item, { level: levelOf(state, stack.id), kept: each => state.kept.has(each.id), writing: each => state.writing?.has(each.id), newReply: each => state.unreadKept.has(each.id), earlier: state.earlier.has(stack.id), held: state.held.get(stack.id) ?? null });
 }
 // The page as stepping reads it (stack-order.mjs, pageOf and stepTarget).
 export const stackPage = (state, messages = null) => pageOf(state.stacks, shownView(state), { known: messages?.values() ?? [], viewer: state.viewer });
@@ -352,10 +354,10 @@ export function headClick(list, entry, event) {
   const open = levelOf(state, stack.id) === 'open', row = Boolean(event?.target?.closest?.('.stack-head'));
   if (act === 'hide' || (open && row)) {
     state.on?.acted?.(stack.id);
-    setLevel(state, stack, 'folded'); state.again();
+    setLevel(state, stack, 'folded', { save: true }); state.again();
     return true;
   }
-  if (!open && (row || found.section.dataset.headOpen !== 'true')) { setLevel(state, stack, 'open'); state.again(); return true; }
+  if (!open && (row || found.section.dataset.headOpen !== 'true')) { setLevel(state, stack, 'open', { save: true }); state.again(); return true; }
   return false;
 }
 
@@ -773,7 +775,7 @@ function paintStack(section, stack, byId, context) {
   // (stack-order.mjs, gather) is headed by one of its replies, a card of its
   // own before 550: folded, it shows whole, as each reply kept in view does,
   // never as its tab alone.
-  const whole = single || open || stack.dossier !== stack.id || stack.head.yours?.note === true;
+  const whole = single || open || stack.dossier !== stack.id || stack.head.yours?.note === true || state.writing.has(stack.head.id);
   const kept = item => {
     if (state.kept.has(item.id)) return true;
     if (!unread(item)) return false;
@@ -785,13 +787,13 @@ function paintStack(section, stack, byId, context) {
   if (separate) unhead(head);
   const shown = paintHead(separate ? p.header : cardIn(head), stack, { open: open && !separate, state, unread, nameOf, doc, separate });
   p.toggle.dataset.state = level;
-  Object.assign(section.dataset, { coordination: coordination ? 'agents' : '', compact: String(!separate && !whole && coordination && level === 'head' && state.renaming !== stack.id && !stack.replies.some(item => item.yours?.note === true)) });
+  Object.assign(section.dataset, { coordination: coordination ? 'agents' : '', compact: String(!separate && !whole && coordination && level === 'head' && state.renaming !== stack.id && !stack.replies.some(item => item.yours?.note === true || state.writing.has(item.id))) });
   p.toggle.setAttribute('aria-expanded', String(level !== 'head'));
   p.toggle.setAttribute('aria-label', `${{ head: 'Closed; show latest and unread replies', folded: 'Latest and unread replies; show all messages', open: 'All messages; show latest and unread replies' }[level]}: ${shown.name}`);
-  p.toggle.onclick = () => { setLevel(state, stack, LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length]); state.on?.folded?.(stack, level); state.again(); };
+  p.toggle.onclick = () => { setLevel(state, stack, LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length], { save: true }); state.on?.folded?.(stack, level); state.again(); };
   const desired = [];
   const newReply = item => { if (unread(item)) state.unreadKept.add(item.id); return state.unreadKept.has(item.id); };
-  const rows = single ? [] : rowsOf(stack, { level, kept, unread, newReply, peeked: item => state.peeked.has(item.id), earlier: earlierOpen, held, headWhole: open });
+  const rows = single ? [] : rowsOf(stack, { level, kept, writing: item => state.writing.has(item.id), unread, newReply, peeked: item => state.peeked.has(item.id), earlier: earlierOpen, held, headWhole: open });
   // A reply drawn starred stays as an unread one does: its star taken off, here or elsewhere, never folds it away under the reader (item 413).
   for (const row of rows) if (row.kind === 'reply' && row.item.acts?.starred === true) state.kept.add(row.item.id);
   for (const row of rows) {
@@ -799,7 +801,7 @@ function paintStack(section, stack, byId, context) {
       const entry = byId.get(row.item.id); entry.hidden = false; desired.push(entry);
       if (row.context && row.folded) { state.contextRows.add(row.item.id); state.folded.add(row.item.id); }
       // An earlier message reads as its row; one the reader folded keeps that row, a starred one stays whole.
-      if (row.earlier && !row.folded && row.item.yours?.note !== true && row.item.acts?.starred !== true && !state.whole.has(row.item.id)) state.earlierRows.add(row.item.id);
+      if (row.earlier && !row.folded && !state.writing.has(row.item.id) && row.item.yours?.note !== true && row.item.acts?.starred !== true && !state.whole.has(row.item.id)) state.earlierRows.add(row.item.id);
       continue;
     }
     if (row.kind === 'earlier') {
@@ -944,10 +946,24 @@ export function arrangeStacks(list, messages, options = {}) {
   const stacks = visibleStacks(gathered, viewer);
   for (const [from, to] of reheaded(state.stacks, stacks)) rehead(state, from, to);
   state.stacks = stacks;
+  // Hydrate the existing Core projection without performing an explicit gesture:
+  // remote choices must not release writing/reading holds. An unchanged read
+  // preserves a temporary link reveal; a new choice or canonical root replaces it.
+  for (const stack of stacks) {
+    const position = positionOf(stack);
+    if (!position || !('level_revision' in position)) continue;
+    const next = { root: position.root_id, level: position.level, revision: position.level_revision };
+    const before = state.savedLevels.get(stack.id);
+    if (before && (before.root !== next.root || before.revision !== next.revision || before.level !== next.level)) state.levels.delete(stack.id);
+    state.savedLevels.set(stack.id, next);
+  }
   // The dossiers whose title bar shows the reader's star, and which Archive refuses (item 635).
+  // The inline-composer owner marks its open cards. This is a local reading
+  // hold, not a Core preference: a remote collapse cannot hide active writing.
+  state.writing = new Set(loaded.filter(item => cardIn(byId.get(item.id))?.getAttribute('data-card-reply') != null).map(item => item.id));
   state.starred = starredDossiers(gathered, id => messages.has(id));
   state.earlierRows = new Set(); state.contextRows = new Set();
-  state.folded = new Set(loaded.filter(item => rowFolded(item, { peeked: each => state.peeked.has(each.id) })).map(item => item.id));
+  state.folded = new Set(loaded.filter(item => !state.writing.has(item.id) && rowFolded(item, { peeked: each => state.peeked.has(each.id) })).map(item => item.id));
   state.coordination = new Set(stacks.filter(stack => coordinationStack(stack, quiet)).map(stack => stack.id));
   list.dataset.showCoordination = String(state.showCoordination);
   const coordinationNews = stacks.some(stack => state.coordination.has(stack.id) && [stack.head, ...stack.replies].some(unread));
