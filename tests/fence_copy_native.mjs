@@ -97,12 +97,14 @@ async function check(name, run) {
 try {
   facts = await control({ method: 'ready' });
   await control({ method: 'navigation_topics', topics: [{ id: 'fence-topic', title: 'Fence reading' }] });
-  const message = (await control({ method: 'agent_message', operation_id: 'fence-message', topic_id: 'fence-topic', join: true, source: 'topic', body })).result.message_id;
+  // An agent's root in a topic with dossiers names why it starts a new stack.
+  const message = (await control({ method: 'agent_message', operation_id: 'fence-message', topic_id: 'fence-topic', join: true, source: 'topic', body,
+    divergence_reason: 'The fence copy check wants a fresh message of its own to copy from.' })).result.message_id;
   await control({ method: 'outcome_reference', operation_id: 'fence-note', item_id: 'fence-note', title: 'Fence notebook', body: note });
   const conversation = (await control({ method: 'agent_view', name: 'conversation', args: { workspace_id: 'w1' } })).conversation;
-  const conversationMessage = (await control({ method: 'agent_message', operation_id: 'fence-conversation', topic_id: conversation.topic_id, source: 'topic', body, whole_topic: true })).result.message_id;
+  const conversationMessage = (await control({ method: 'agent_message', operation_id: 'fence-conversation', topic_id: conversation.topic_id, source: 'topic', divergence_reason: 'The fence copy check starts a message of its own.', body, whole_topic: true })).result.message_id;
   const longPayload = 'A'.repeat(1800) + '\nlast';
-  const longMessage = (await control({ method: 'agent_message', operation_id: 'fence-long', topic_id: 'fence-topic', source: 'topic', body: '```\n' + longPayload + '\n```' })).result.message_id;
+  const longMessage = (await control({ method: 'agent_message', operation_id: 'fence-long', topic_id: 'fence-topic', source: 'topic', divergence_reason: 'The fence copy check starts a message of its own.', body: '```\n' + longPayload + '\n```' })).result.message_id;
   for (engine of ['chromium', 'webkit']) {
     browser = await playwright[engine].launch({ headless: true, ...(engine === 'chromium' ? { executablePath: chrome } : {}) });
     observations.push({ engine, version: browser.version(), clipboardPermissions: 'not granted', phone: 'desktop engine with touch; not a physical iPhone' });
@@ -234,7 +236,7 @@ try {
     await check('copy refusal at the first fence of a tall feed or Notebook card keeps its place and retries', async () => {
       const lines = Array.from({ length: 70 }, (_, i) => 'Paragraph ' + i + ' has enough words to wrap on a small screen.');
       const text = 'Before.\n\n~~~\nfirst fenced words\n~~~\n\n' + lines.join('\n\n');
-      const item = await control({ method: 'agent_message', operation_id: 'long-copy-' + engine, topic_id: 'fence-topic', join: true, source: 'topic', body: text });
+      const item = await control({ method: 'agent_message', operation_id: 'long-copy-' + engine, topic_id: 'fence-topic', join: true, source: 'topic', divergence_reason: 'The fence copy check starts a message of its own.', body: text });
       const noteId = 'long-copy-note-' + engine;
       await control({ method: 'outcome_reference', operation_id: noteId, item_id: noteId, title: 'Long copy note', body: '## Long card\n' + text });
       for (const phone of [false, true]) for (const [route, selector] of [
@@ -309,7 +311,7 @@ try {
     await check('a secondary click keeps the native link selection inside a feed card', async () => {
       const address = 'https://example.com/x';
       const item = await control({ method: 'agent_message', operation_id: 'fence-link-' + engine,
-        topic_id: 'fence-topic', join: true, source: 'topic', body: 'Linked ' + address });
+        topic_id: 'fence-topic', join: true, source: 'topic', divergence_reason: 'The fence copy check starts a message of its own.', body: 'Linked ' + address });
       const p = await open('/?topic=fence-topic'), card = p.locator(query(item.result.message_id));
       await card.locator('a').click({ button: 'right' });
       assert.equal(await p.evaluate(() => getSelection().toString()), address);
@@ -612,8 +614,8 @@ try {
       const forms = ['', '\n'].flatMap(first => ['', '\n'].map(last => '```' + first + words + last + '```'));
       const all = forms.map((form, i) => `## reply ${i + 1}\n${form}`).join('\n\n'), id = 'fence-arrangements-' + engine;
       await control({ method: 'outcome_reference', operation_id: id, item_id: id, title: 'Fence arrangements', body: all });
-      const topicId = (await control({ method: 'agent_message', operation_id: id + '-topic', topic_id: 'fence-topic', source: 'topic', body: all })).result.message_id;
-      const conversationId = (await control({ method: 'agent_message', operation_id: id + '-conversation', topic_id: conversation.topic_id, source: 'topic', body: all, whole_topic: true })).result.message_id;
+      const topicId = (await control({ method: 'agent_message', operation_id: id + '-topic', topic_id: 'fence-topic', source: 'topic', divergence_reason: 'The fence copy check starts a message of its own.', body: all })).result.message_id;
+      const conversationId = (await control({ method: 'agent_message', operation_id: id + '-conversation', topic_id: conversation.topic_id, source: 'topic', divergence_reason: 'The fence copy check starts a message of its own.', body: all, whole_topic: true })).result.message_id;
       for (const phone of [false, true]) {
         const surfaces = [
           ['/?topic=fence-topic', query(topicId)],
@@ -681,7 +683,7 @@ try {
       const gap = Array.from({ length: 9 }, (_, i) => 'Line ' + i + ' has enough words to wrap on a phone.').join('\n\n');
       const words = ['Before.', '~~~\nfirst copy\n~~~', gap, '~~~\nsecond copy\n~~~', gap.repeat(10)].join('\n\n');
       const message = (await control({ method: 'agent_message', operation_id: 'geometry-' + engine,
-        topic_id: 'fence-topic', source: 'topic', body: words })).result.message_id;
+        topic_id: 'fence-topic', source: 'topic', divergence_reason: 'The fence copy check starts a message of its own.', body: words })).result.message_id;
       for (const width of [320, 375, 390, 1280]) for (const dark of [false, true]) {
         const p = await open('/?topic=fence-topic', { phone: width !== 1280, width, dark });
         const selector = query(message), card = p.locator(selector);
@@ -746,7 +748,7 @@ try {
     await check('Tab reveals the Copy corner when a long fence spans its card scroller', async () => {
       const content = Array.from({ length: 200 }, (_, n) => 'line ' + n + ' of the same tall fenced payload').join('\n');
       const id = (await control({ method: 'agent_message', operation_id: 'focus-tall-' + engine,
-        topic_id: 'fence-topic', source: 'topic', body: '```\n' + content + '\n```\n\n[following link](https://example.com/after)' })).result.message_id;
+        topic_id: 'fence-topic', source: 'topic', divergence_reason: 'The fence copy check starts a message of its own.', body: '```\n' + content + '\n```\n\n[following link](https://example.com/after)' })).result.message_id;
       const p = await open('/?topic=fence-topic'), card = p.locator(query(id)), glyph = p.locator(feedCopy(query(id)));
       await card.focus();
       await wait(p, id => document.querySelector('.message-card[data-id="' + id + '"]').classList.contains('scroll-in-place'), id);
@@ -773,7 +775,7 @@ try {
     });
     await check('backward entry reaches a trailing external Copy button', async () => {
       for (const [shape, source] of [['only', ''], ['linked', '[before](https://example.com/before)\n\n']]) {
-        const id = (await control({ method: 'agent_message', operation_id: 'tab-reentry-' + shape + engine, topic_id: 'fence-topic', source: 'topic', body: source + '```\nlast payload\n```' })).result.message_id;
+        const id = (await control({ method: 'agent_message', operation_id: 'tab-reentry-' + shape + engine, topic_id: 'fence-topic', source: 'topic', divergence_reason: 'The fence copy check starts a message of its own.', body: source + '```\nlast payload\n```' })).result.message_id;
         const p = await open('/?topic=fence-topic'), card = p.locator(query(id)), glyph = p.locator(feedCopy(query(id)));
         const tab = engine === 'webkit' ? 'Alt+Tab' : 'Tab', back = engine === 'webkit' ? 'Alt+Shift+Tab' : 'Shift+Tab';
         await glyph.waitFor({ state: 'attached' });
@@ -794,7 +796,7 @@ try {
     });
 
     await check('all inline controls stay in forward and reverse Tab order', async () => {
-      const id = (await control({ method: 'agent_message', operation_id: 'fence-tabs-' + engine, topic_id: 'fence-topic', source: 'topic',
+      const id = (await control({ method: 'agent_message', operation_id: 'fence-tabs-' + engine, topic_id: 'fence-topic', source: 'topic', divergence_reason: 'The fence copy check starts a message of its own.',
         body: '[before](https://example.com/before)\n\n```\none\n```\n\n[middle](https://example.com/middle)\n\n```\ntwo\n```\n\n[after](https://example.com/after)' })).result.message_id;
       const p = await open('/?topic=fence-topic'), card = query(id);
       await p.locator(card).focus();
