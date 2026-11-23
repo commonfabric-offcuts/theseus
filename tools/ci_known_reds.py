@@ -97,6 +97,13 @@ def unique(values, what):
     require(len(values) == len(set(values)), 'duplicate ' + what)
     return set(values)
 
+def shard_plan(shard_required, summary_required):
+    """A shard's required inventory is the run's aggregate inventory as a set: the same steps, each once, in any order.
+    Links' lone run (45072395285) was refused because its first shard listed the same steps in another order (1099)."""
+    require(unique(shard_required, 'shard required steps') == unique(summary_required, 'summary required steps'),
+            'shard required plan differs')
+
+
 def identity(row):
     require(isinstance(row, dict) and isinstance(row.get('name'), str) and row['name'], 'unnamed case')
     return {'name': row['name'], 'phase': row.get('phase'), 'engine': row.get('engine'),
@@ -945,7 +952,7 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
                         replay_evidence(step, out, traffic)
                 if partition is not None:
                     part_identities.extend(key(row) for row, _ in unit_records((out/'python-units.log').read_text()))
-        require(raw['required'] == summary['required'], 'shard required plan differs')
+        shard_plan(raw['required'], summary['required'])
     if parts and 'python-units' in selected:
         require(set(verified_parts) == set(parts), 'incomplete Python partition coverage')
         require(len(part_identities) == len(set(part_identities)), 'duplicate executed identity across Python partitions')
