@@ -8,8 +8,8 @@ Lane test runs and landings on one Mac share kernel locks in place of hold and F
 
 ## What it guarantees
 
-- At most three lane runs at once. A fourth waits for a free slot and says so once.
-- A landing first marks itself pending, so no new run starts. Then it waits for the runs already open to end, and runs alone. Runs that arrived while it waited start once it ends.
+- At most three lane runs at once. A fourth waits for a free slot and says so once. A run waiting for a slot holds no landing lock, so it never keeps a landing from draining.
+- A landing first marks itself pending, so no new run starts. That includes a run that was already waiting for a slot when one frees: it gives the slot back and waits for the landing. Then the landing waits for the runs already open to end, and runs alone. Runs that arrived while it waited start once it ends.
 - Each lock is an flock on an open file under `~/.local/share/theseus/locks` (`THESEUS_LOCK_DIR` overrides it), and the wrapped command inherits that file. The kernel releases the lock once both the wrapper and its command have exited, for any reason, so a lock is never left behind. A wrapper killed with `kill -9` leaves the lock with its command, so a landing never starts over a run whose command is still going.
 - The wrapped command's exit code is the wrapper's exit code, and SIGINT, SIGTERM and SIGHUP are forwarded to it.
 
@@ -17,4 +17,4 @@ Lane test runs and landings on one Mac share kernel locks in place of hold and F
 
 It covers this Mac only. A lane on another Mac is outside it.
 
-Tests: `tests/test_lane_lock.py` drives the real command in six cases: three slots with a fourth waiting; a landing that waits for an open run and holds a later run until it ends; a killed run wrapper whose command keeps its slot until that command dies; a killed landing wrapper whose command keeps runs out until it ends; a lone landing starting at once; and exit-code passthrough with status.
+Tests: `tests/test_lane_lock.py` drives the real command in seven cases: three slots with a fourth waiting; a run waiting for a slot that does not take a freed one while a landing is pending; a landing that waits for an open run and holds a later run until it ends; a killed run wrapper whose command keeps its slot until that command dies; a killed landing wrapper whose command keeps runs out until it ends; a lone landing starting at once; and exit-code passthrough with status.

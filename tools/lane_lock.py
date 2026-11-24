@@ -117,16 +117,29 @@ def run_child(command, held):
     return child.wait()
 
 
+def admit(directory, label, slots):
+    """A slot and the shared running lock, taken only while no landing is pending. A run waiting
+    for capacity holds no landing lock, so it cannot keep a pending landing from draining."""
+    while True:
+        slot = take_slot(directory, label, slots)
+        try:
+            gate = Held(directory / 'landing-pending', fcntl.LOCK_SH, blocking=False)
+        except BlockingIOError:
+            slot.release()
+            pending = holder(directory / 'landing-pending')
+            say('a landing is pending ({}); waiting for it to end'.format((pending or {}).get('label')))
+            # Passing through the pending lock means that landing has ended.
+            Held(directory / 'landing-pending', fcntl.LOCK_SH).release()
+            continue
+        try:
+            # With the pending lock held shared, no landing is pending or running, so this does not wait.
+            return slot, Held(directory / 'landing-running', fcntl.LOCK_SH)
+        finally:
+            gate.release()
+
+
 def run(label, command, slots=SLOTS):
-    directory = lock_dir()
-    pending = holder(directory / 'landing-pending')
-    if pending:
-        say('a landing is pending ({}); waiting for it to end'.format(pending.get('label')))
-    # Passing through the pending lock means no landing is waiting to start.
-    gate_entry = Held(directory / 'landing-pending', fcntl.LOCK_SH)
-    gate_entry.release()
-    running = Held(directory / 'landing-running', fcntl.LOCK_SH)
-    slot = take_slot(directory, label, slots)
+    slot, running = admit(lock_dir(), label, slots)
     try:
         return run_child(command, [running, slot])
     finally:
