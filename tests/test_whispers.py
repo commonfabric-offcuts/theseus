@@ -951,6 +951,8 @@ MESSAGE_READS = {
     "aim_next/answer_delivery.py": ("receipt insertion guard binds an agent's public question and recipient; admission reads only the actor's "
                                      "pending deliveries in this topic, then checks exact asked-recipient membership and private_to before "
                                      "returning an actual reply identity; current dossier roots use StackRoots under visibility", 3),
+    "aim_next/answer_recovery.py": ("only the indexed answer's sequence, after source and answer both pass _message_access; "
+                                    "the answer must be the reader's own and neither source nor answer may be withheld", 1),
     "aim_next/delivery.py": ("migration backfill or settling, before any whisper exists or of the reader's own deliveries", 8),
     "aim_next/conversation.py": ("the topic page and its images to pick (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations, "
                                  "and the messages a page names to refresh, each reached through _message_access and read under VISIBLE; "
