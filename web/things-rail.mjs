@@ -29,6 +29,7 @@ import { KeyTree } from './key-tree.mjs';
 import { panes } from './panes.mjs';
 import { ImageRailMenu } from './image-rail-menu.mjs';
 import { WorkspaceLinks } from './workspace-links.mjs';
+import { OutlineMenus } from './outline-menus.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
 import { nearest } from './arrow-reach.mjs';
@@ -171,6 +172,9 @@ export class ThingsRail {
     this.build();
     this.imageMenus = new ImageRailMenu(this);
     this.links = new WorkspaceLinks(this);
+    const rail = this;
+    this.notebookMenus = new OutlineMenus({ doc, list: this.sections.get('notebook').body,
+      message: this.message, get handles() { return rail.handles; } });
     // The keys move through the sections and their rows as one tree
     // (key-tree.mjs): ↑ ↓ between them, → and ⌘→ ⌘← open and fold a
     // section, Return opens a row, and plain ← goes back to the messages
@@ -457,7 +461,7 @@ export class ThingsRail {
   // Nothing of the topic before stays on screen: every section goes,
   // with its words, until this one's read lands.
   clear() {
-    this.imageMenus?.reset(); this.imageReturn = null; this.links?.reset();
+    this.imageMenus?.reset(); this.imageReturn = null; this.links?.reset(); this.notebookMenus?.reset();
     for (const part of this.sections.values()) { part.drawn = null; part.details.hidden = true; part.body.replaceChildren(); part.sum.textContent = ''; }
     for (const creator of this.creators.values()) creator.setAvailable(false);
     this.nothing.hidden = true; this.message.hidden = true; this.retry.hidden = true;
@@ -695,6 +699,8 @@ export class ThingsRail {
     return { sum: `${items.length}${more ? '+' : ''}`, key: JSON.stringify(['note', scope, more, items.map(item => [item.id, item.title, item.revision, item.read_revision, item.draft === true])]), node: () => {
       const list = element(doc, 'ul', { className: 'things-list' }, ...items.map(item => {
         const link = this.placeLink({ ...scope, page: item.id }, this.notebookName(item));
+        link.classList.add('ol-page'); link.dataset.pageId = item.id;
+        link.pageTarget = { ...scope, page: item.id }; link.notebookScope = scope;
         paintChanged(link, item);
         // A page shows its own first words under its title, so it reads as a page rather than a link.
         const words = openingWords(item.body, this.notebookName(item));

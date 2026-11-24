@@ -30,7 +30,7 @@ try{
  const cells=process.argv.includes('--quick')?[['Bookends','light']]:['Bookends','Paper'].flatMap(look=>['light','dark'].map(theme=>[look,theme]));
  for(const [look,theme]of cells){
   const key=look+'-'+theme,context=await browser.newContext({viewport:{width:1280,height:1000},colorScheme:theme});
-  await context.addInitScript(()=>{window.document982=crypto.randomUUID();});page=await context.newPage();page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push({key,error:e.message}));
+  await context.addInitScript(()=>{window.document982=crypto.randomUUID();window.stopDocumentClick1207=false;document.addEventListener('click',event=>{if(window.stopDocumentClick1207){window.stopDocumentClick1207=false;event.stopImmediatePropagation();}},true);});page=await context.newPage();page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push({key,error:e.message}));
   await page.goto(facts.origin+'/?topic='+expected[0]);await page.waitForFunction(()=>document.body.dataset.ready==='true');await page.getByRole('button',{name:look,exact:true}).click();
   const conversation=(await control({method:'agent_view',actor:facts.actor,name:'conversation',args:{workspace_id:workspace}})).conversation;
   if(conversation&&!expected.includes(conversation.topic_id))expected.push(conversation.topic_id);
@@ -40,7 +40,8 @@ try{
   // before pressing a control, as a person does, rather than clicking a
   // clipped button whose own DOM rectangle still exists.
   const reveal=async()=>{
-   await outcome.locator('.ol-own').hover({position:{x:30,y:10}});
+   const point=await outcome.locator('.ol-own').evaluate(a=>{const h=a.querySelector('.ol-topic-list'),p=h.querySelector('[data-rail-fold=peek]'),box=h.getBoundingClientRect();return{x:box.left+30,y:p?p.getBoundingClientRect().top-20:box.top+10};});
+   await page.mouse.move(point.x,point.y);
    await page.waitForFunction(workspace=>{const a=document.querySelector(`.ol-outcome[data-workspace-id="${workspace}"] .ol-own`),h=a?.querySelector('.ol-topic-list');return h&&getComputedStyle(h).maskImage==='none'&&h.clientHeight>=h.scrollHeight-1;},workspace,{timeout:5000});
   };
   if(await outcome.locator('.ol-topics').evaluate(el=>el.hidden))await outcome.locator('.ol-disclosure').click();
@@ -55,6 +56,22 @@ try{
    assert.ok(at.loaded>8);assert.ok(at.seventhEnd<=at.hostEnd+1);assert.ok(Math.abs(at.peek-.85)<.05);assert.match(at.mask,/linear-gradient/);assert.equal(at.footer,0);
    const ax=await context.newCDPSession(page);try{const tree=await ax.send('Accessibility.getFullAXTree');assert.ok(tree.nodes.some(n=>!n.ignored&&n.name?.value?.includes('More982 topic')));}finally{await ax.detach();}
    records.push({phase:'1161-native-rest',...at});
+  });
+  await check(key+' 1207 only the fade zone reveals, and page click or key dismisses the latched list',async()=>{
+   await outcome.locator('.ol-topic-list').hover({position:{x:30,y:10}});
+   assert.equal(await outcome.locator('.ol-own').getAttribute('data-topic-revealed'),null);
+   assert.notEqual(await outcome.locator('.ol-topic-list').evaluate(h=>getComputedStyle(h).maskImage),'none');
+   await reveal();await page.mouse.move(1200,900);await page.mouse.wheel(0,40);
+   assert.equal(await outcome.locator('.ol-own').getAttribute('data-topic-revealed'),'');
+   const before=page.url();await page.locator('#main').click({position:{x:20,y:20}});
+   assert.equal(await outcome.locator('.ol-own').getAttribute('data-topic-revealed'),null);assert.equal(page.url(),before);
+   await reveal();await page.keyboard.press('Shift');
+   assert.equal(await outcome.locator('.ol-own').getAttribute('data-topic-revealed'),null);assert.equal(page.url(),before);
+   // A fixture document interceptor installed before the application models
+   // the real body-edit owner's stopImmediatePropagation, with native input.
+   await reveal();await page.evaluate(()=>{window.stopDocumentClick1207=true;});
+   await page.locator('#main').click({position:{x:20,y:20}});
+   assert.equal(await outcome.locator('.ol-own').getAttribute('data-topic-revealed'),null);
   });
   await check(key+' 1161 hover exposes More topics at the list foot',async()=>{
    await reveal();const at=await outcome.locator('.ol-own').evaluate(a=>({footer:a.querySelector('.ol-topic-foot').getBoundingClientRect().height,mask:getComputedStyle(a.querySelector('.ol-topic-list')).maskImage}));

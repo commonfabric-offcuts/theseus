@@ -883,6 +883,8 @@ class WhisperCLICase(verbs.AgentVerbCase):
 # Every view, and how a whisper is kept from anyone outside it (spec §6). A new
 # view is classified here before it ships; until then this audit fails.
 VIEW_PATHS = {
+    "current_rule": "outcome membership before current or exact-operation policy history; stored public source references contain no whisper words",
+    "work_context": "readable outcome/piece/topic scope before bounded rule, stage, check and source metadata; no message words are selected",
     "workspace_links": "outcome owner/team scope; separate link rows contain no message words or whisper references",
     "assessment": "request/report metadata scoped by readable topic; all cited messages validated public in that topic",
     "assessments": "paged readable-topic or own-assessor metadata; private citations refused before recording",
@@ -939,6 +941,8 @@ VIEW_PATHS = {
 }
 # Each read of the messages table outside the visibility rule, and why it shows no whisper to anyone outside it.
 MESSAGE_READS = {
+    "aim_next/current_rule.py": ("source metadata after _message_access, selecting private_to and outcome only to refuse private or cross-outcome policy sources; current public words are read through the existing source guard afterward", 1),
+    "aim_next/cover_refresh.py": ("first-cover recipient lookup follows _acted_message and current-root admission, then walks only requester-visible MEMBERS and reads the last agent reply's author; candidate enabled/access/root checks remain; the existing completion lookup follows the guarded changed-write path and reads only immutable message metadata", 2),
     "aim_next/drafts.py": ("the actor-owned submission and submission list exclude a published unsent message by the same actor and exact send operation; existence-only checks return no message identity or words; private unsent draft/prepared content remains its owner's", 2),
     "aim_next/removal.py": ("migration horizon and trigger constraints return no content; first exposure reads only bounded final-projection ids, human non-author rows beyond both horizons; eligibility reads only the checked human author's message and existence of indexed replies; removal starts through _editable/_message_access; notice history and decision receipt lookup use that exact owned message, its original operation and still-current answer revision; wait recovery walks only the removing actor's earlier addressed asks in the same topic, which cannot be whispers; summary repair reads only public surviving messages; no SQL read here returns message words", 14),
     "aim_next/withdrawal.py": ("one ask's id/topic/sequence/author/intent/addressees/private status only, after _editable "

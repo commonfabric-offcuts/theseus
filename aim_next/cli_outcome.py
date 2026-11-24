@@ -99,6 +99,7 @@ def register(verb):
     piece.add_argument("--size")
     piece.add_argument("--ask")
     piece.add_argument("--from-release", action="store_true")
+    piece.add_argument("--clock", dest="clock_file")
     freeze = verb("freeze")
     freeze.add_argument("piece")
     freeze.add_argument("--repo", required=True)
@@ -346,6 +347,11 @@ class PipelineVerbs:
             args["ask_message_id"] = options.ask
         if options.from_release:
             args["from_release"] = True
+        if options.clock_file:
+            try:
+                args["clock"] = json.loads(self.read_file(options.clock_file, 65536))
+            except (ValueError, UnicodeError):
+                self.refuse("INVALID_ARGUMENT", "The initial clock is one JSON object")
         result = self.command("pipeline.piece_start", {"workspace_id": options.outcome}, args)
         self.out.plain("started piece %s with %s in %s" % (result["piece_id"], ", ".join(map(str, result["numbers"])), result["stage_id"]))
 

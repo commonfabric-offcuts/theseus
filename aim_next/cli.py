@@ -36,10 +36,12 @@ class UsageError(ValueError):
 
 
 from .cli_outcome import PipelineVerbs, _words as held_words, register as register_pipeline
+from .cli_clock import ClockVerbs, register as register_clock
 from .cli_targets import WORDS as TARGET_WORDS, TargetVerbs, register as register_targets
 from .cli_tools import ToolVerbs, register as register_tools
 from .cli_covers import CoverVerbs, register as register_covers
 from .cli_links import LinkVerbs, register as register_links
+from .cli_current_rule import CurrentRuleVerbs, register as register_current_rule
 
 
 class Parser(argparse.ArgumentParser):
@@ -201,7 +203,11 @@ USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute
          "| notes SCOPE [--topic] | note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE|- "
          "| note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE|- "
          "| note read ITEM [--revision N] | note link ITEM [--revision N] [--origin URL] "
+         "| current-rule OUTCOME [--history JSON] | current-rule-update OUTCOME FILE|- --expected N --notebook-expected N [--operation ID] "
+         "| work-context (--outcome OUTCOME | --piece PIECE | --topic TOPIC) "
          "| pipeline OUTCOME [--section S] | item OUTCOME N | item-edit OUTCOME N [--title T] [--size S] [--group G] [--words FILE|-] "
+         "| clock PIECE | clock-record PIECE --expected N [--operation ID] FILE|- | predictions OUTCOME --pieces P,Q "
+         "| clock-run PIECE --attempt ID --source MESSAGE --source-revision N --argv JSON [--phase test|command] [--timeout SECONDS] "
          "| pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off] "
          "| stages OUTCOME [--set FILE] | add OUTCOME --title T [--size S] [--section S] [--group G] [--from m-…] [--note TEXT] TEXT|- "
          "| add-source OUTCOME N (--from m-… | --page ID | --note TEXT) | move OUTCOME N (--above M | --below M | --to SECTION [--note TEXT] | --undo EVENT) "
@@ -446,7 +452,9 @@ def _parser():
     link.add_argument("item")
     link.add_argument("--revision", type=int)
     link.add_argument("--origin")
+    register_current_rule(verb)
     register_pipeline(verb)
+    register_clock(verb)
     register_targets(verb)
     register_tools(verb)
     register_covers(verb)
@@ -579,7 +587,7 @@ class Failed(Exception):
         self.code, self.recorded = code, recorded
 
 
-class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
+class Agent(CurrentRuleVerbs, ClockVerbs, PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
     """The everyday verbs: each builds its envelopes, saves each request before dispatch."""
 
     def __init__(self, profile, options, stdin, lines):
@@ -1449,6 +1457,7 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
 
     def do_inbox(self):
         items = sorted(self.pages("deliveries", {}), key=lambda item: item["seq"])
+        self.context_deliveries = items
         to_name = set()
         for item in items:
             # Each dossier to name is said once, on its oldest delivery.
@@ -2038,6 +2047,7 @@ def _agent_verb(options, stdin, stdout, stderr):
             _utf8_arguments(options)
             agent = Agent(_selected_profile(options), options, stdin, lines)
             getattr(agent, "do_" + options.verb.replace("-", "_"))()
+            agent.show_work_context()
             return agent.exit
         except BrokerFailure as error:
             if error.exit_code != 1:

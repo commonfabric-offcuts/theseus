@@ -38,7 +38,18 @@ class WakeReadCase(reader_fixture.ReaderCase):
         self.loop.routes = {'agent-a': 'fixture-route'}
 
     def config(self, pages):
-        read = mock.Mock(side_effect=pages)
+        pages = iter(pages)
+
+        # The inbox pages (or the errors they raise) are the fixture's; the wake's other reads, such as its work
+        # context, use the real store.
+        def view(actor, name, args):
+            if name != 'deliveries':
+                return self.store.view(actor, name, args)
+            page = next(pages)
+            if isinstance(page, BaseException):
+                raise page
+            return page
+        read = mock.Mock(side_effect=view)
         profile = types.SimpleNamespace(actor_id='agent-a', instance_id='test-instance',
                                         store=lambda: types.SimpleNamespace(view=read))
         return types.SimpleNamespace(profile=profile), read
