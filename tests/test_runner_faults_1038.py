@@ -475,7 +475,11 @@ class FaultCase(effects.EffectsRunnerCase):
                 writer.close()
             elapsed = time.monotonic() - started
             self.assertEqual(caught.exception.code, 'DATABASE_BUSY')
-            self.assertGreaterEqual(len(calls), 2); self.assertLessEqual(len(calls), 6)
+            # One five-second writer wait now exhausts the four-second
+            # storage retry budget; it must not start another five-second act.
+            self.assertEqual(len(calls), 1)
+            self.assertGreaterEqual(elapsed, 5)
+            self.assertLess(elapsed, 8)
             self.assertLessEqual(sum(delays), 2.5)
             self.assertEqual(self.sql('SELECT version,runner_token,lease_until_ms FROM runner_state'), before)
             print(json.dumps({'actual_sqlite_exhaustion_attempts': len(calls), 'backoffs': delays,

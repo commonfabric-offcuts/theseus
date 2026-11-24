@@ -167,6 +167,7 @@ export function healthLines(answer, { now, feed } = {}) {
   if (server) {
     const live = feedLost(feed) ? 'live updates lost' : server.live_feed ? 'live updates on' : 'no live updates';
     const details = [`It serves database version ${answer.schema_version}.`];
+    if (Number.isInteger(server.database_busy_last_minute)) details.push(`${server.database_busy_last_minute} database-busy replies in the last minute. This count resets when the server restarts.`);
     if (!server.live_feed) details.push('Without live updates, this page and the Health link read again only when opened or shown, and a runner that stops answering is told to the team by the next act, not at the moment.');
     lines.push({ group: 'Theseus', key: 'server', label: 'Server', summary: `Answering since ${at(server.started_ms, now)} · ${live}`, details, bad: feedLost(feed) });
   }
