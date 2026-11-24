@@ -1071,6 +1071,10 @@ export class DeckPage {
     return () => { for (const [node, top] of places) if (node.scrollTop !== top) node.scrollTop = top; };
   }
 
+  cardTitle(card) {
+    return this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled');
+  }
+
   paint() {
     if (deferFencePaint(this.host, () => this.paint())) return;
     const putBack = !this.keyed ? this.holdPage() : () => {};
@@ -1084,7 +1088,7 @@ export class DeckPage {
     while (!shown[this.picked] && parents[this.picked] >= 0) this.picked = parents[this.picked];
     const rows = cards.map((card, index) => {
       const row = this.node('li', 'deck-card'), { words: all, stacks } = cardStacks(cardDetails(card.words).words, messageOf), { words, images } = cardImages(all);
-      const title = this.node('h3', card.title ? 'deck-title' : 'deck-title muted', card.title || 'Untitled');
+      const title = this.cardTitle(card);
       if (groupEnd(cards, index) > index + 1) title.prepend(this.foldButton(index));
       this.paintCardTint(row,card);
       row.dataset.index = String(index);
