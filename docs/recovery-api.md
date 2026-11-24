@@ -46,6 +46,13 @@ oversize fails rather than truncating. Inspection checks hashes and actual DB
 metadata/media rows. Its SHA256 is a caller-pinned content identity, not a
 signature against a malicious operator. Pending media bytes are not ready bytes.
 Snapshot uses SQLite backup in 64-page steps; a busy backup attempt is bounded.
+Ready backup media first try a Darwin copy-on-write clone from the verified
+source descriptor, then fall back to the exclusive independent byte copy if
+the clone is unavailable or fails. Both paths verify size/hash, stable source
+identity and durable completion before the manifest. Clones use distinct inodes;
+later writes do not cross between source and bundle. Restore still uses byte
+copies. See [Backup media clones](backup-media-clones-1147.md) for the contract
+and the limits of the separately measured allocation proof.
 Initial source commits can continue, and any changed commit identity requires a
 fresh backup before normal cutover.
 
