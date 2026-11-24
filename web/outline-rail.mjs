@@ -751,17 +751,32 @@ export class OutlineRail {
     return { kind: 'workspace', id: outcome.id };
   }
   // The outcome's pencil: one title line under its row, whether it is open or
-  // folded; Return starts the topic and opens it.
+  // folded; Return starts the topic and opens its writing (item 1165).
   topicLine(outcome) {
-    let starter = null;
+    let starter = null, choice = 0;
     const line = new OneLine({ id: `ol-new-topic-${outcome.id}`, label: `Title of the new topic in ${outcome.item.title}`, placeholder: 'New topic title', className: 'rail-line',
       submit: async title => {
+        const handles = this.handles, run = this.run, selected = choice;
+        const navigationCurrent = handles?.navigationCurrent?.() ?? (() => false);
+        const current = () => selected === choice && this.handles === handles && this.run === run && line.root.isConnected && navigationCurrent();
         starter ??= new TopicStart({ api: this.handles.api, bootstrap: this.handles.bootstrap, workspace: outcome.id });
-        const id = await starter.start(title);
-        starter = null; line.input.value = ''; close();
-        await this.open({ kind: 'topic', id }, title);
+        let id;
+        try { id = await starter.start(title); }
+        catch (error) { if (current()) throw error; return; }
+        starter = null;
+        if (!current()) {
+          if (selected === choice) {
+            line.input.value = ''; line.root.remove(); outcome.newTopic.setAttribute('aria-expanded', 'false');
+          }
+          return;
+        }
+        line.input.value = ''; close();
+        await this.open({ kind: 'topic', id, act: 'topic-write' }, title);
       } });
     const close = lineFromButton({ button: outcome.newTopic, after: outcome.row, line });
+    const toggle = outcome.newTopic.onclick;
+    outcome.newTopic.onclick = () => { choice++; toggle(); };
+    line.cancel = () => { choice++; close(); };
   }
   // New outcome, the heading's pencil: one title line under the heading; Return creates it and opens its page.
   newOutcomeLine() {
