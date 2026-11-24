@@ -132,18 +132,21 @@ anyone, as before item 614. An edit that leaves the words as they were is
 refused (check 7), so it changes nothing.
 
 `topic_messages` items and the `source` view give that person `struck`:
-`{revision, cuts}` for the revision they had read, or null (an agent, a
-message never edited, a person with no such row, or no words taken away).
-Each cut is `{at, words}`: a run of the words they had read that the latest
-words no longer hold, and where it stood, `at` counted in the latest words in
-UTF-16 code units, as a page's string counts them. The words are compared as
-runs of letters and digits, with every other mark on its own, so "85," becoming
-"86," strikes "85" and keeps the comma, and a change of spacing alone strikes
-nothing. The comparison is the shortest edit between the parts that differ
-(`message_edit.struck_words`), bounded: past 20,000 tokens or 400 changed
-tokens the differing part is one cut; at most 50 cuts are given, each of at
-most 1,000 characters (and "…"). A topic item that holds only the first words
-(`preview`) gives only the cuts within them; the `source` view gives them all.
+`{revision, cuts, added}` for the revision they had read, or null (an agent,
+a message never edited, a person with no such row, or no changed words).
+Each cut is `{at, words}`: removed words, placed before `at` in the current
+body. Each addition is `{start, end}`, a range in that same body. Every
+position counts UTF-16 code units. Numbers such as `0.4%`, `1,000` and `8:50`
+are whole tokens; a comma not followed by a digit stays separate. Changes
+separated by spaces/punctuation and at most one common word merge into one
+replacement phrase. Whitespace-only changes have neither cuts nor additions;
+pure additions have an empty `cuts` list and populated `added`.
+
+The shortest comparison (`message_edit.struck_words`) retains its bounds:
+past 20,000 tokens or 400 edits the differing middle is one change; at most
+50 cuts and 50 added ranges are supplied, each removal limited to 1,000
+characters plus an ellipsis. Excerpts omit ranges starting beyond their end
+and clip an addition's end to their length. The `source` view gives all ranges.
 Reading the message again keeps them: what they had read stays struck until
 another edit, which strikes from the revision they read last.
 
@@ -548,22 +551,27 @@ What the edit mode shows (`web/message-edit.mjs`):
 A message's author line, and the Reader's provenance, say "Edited" once it has
 been.
 
-### Words struck through
+### Added and removed words
 
-Where Core gives the person `struck` (an agent's edit of a message they had
-read), the card and the Reader draw the new words as always and put each cut's
-words, struck through, just before the character at its place
-(`message-format.mjs`, `strike`): "Built on release ~~85~~ 86". The struck
-words are a `<del class="struck-words">` in the muted colour, titled "Words you
-read before the author changed them", with a space either side where a word
-would touch them. Their text maps to that one place in the new words, so a
-selection, a lit passage or a quote over them takes only the new words, and
-every other position the drawn words know is as it was. A card cut to its
-first words strikes what it shows. Once it reads on in place, lit as a box
-holding the whole message or grown by Show full, it draws the whole message's
-words and strikes all its cuts, read with them from the `source` view
-(`card-scroll.mjs`); a card that held its whole message already strikes its
-own item's cuts.
+Where Core supplies `struck`, cards, dossiers and Reader show removed words
+in a muted `<del class="struck-words">` before their replacement, with a small
+space where needed. Added words are `<ins class="added-words">`, with a 13%
+ink fill and 1.5px accent underline, offset 3px. Screen readers hear “removed:”
+and “added:”. Their labels and removals have zero source width. Added words
+retain their source positions across Markdown links, bold words and lists;
+selection and quoting still read only the current body.
+
+The byline says `Edited · hide changes` by default for eligible readers.
+Hiding redraws cached words without fetching, reading, or changing writing;
+it says `Edited · show changes` until shown again. The device remembers this
+choice separately for each instance, actor and message revision. A later edit
+defaults to showing changes again. Denied browser storage keeps the choice for
+this page's life. Without Core's `struck`, only `Edited` appears.
+
+CardScroll caches the complete `struck` object with the full source/revision,
+so reading beyond an excerpt draws additions and removals past it and updates
+the byline, including when the excerpt held no changes. Revision invalidation
+clears that cache. Fence-copy presses continue to defer destructive redraws.
 
 ### How an open page learns of an edit
 
