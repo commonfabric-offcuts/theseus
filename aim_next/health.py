@@ -725,9 +725,10 @@ class Health:
         With always False (the server's settling) it commits only when what is
         red, the moment kept for it, or what is told changed, and returns
         whether it advanced the commit."""
+        clock_posted = self._clock_settle_due(db, now)
         routes = self._health_routes(db)
         every = self._health_reds(db, now, routes)
-        posted = self._health_tell(db, now, routes, every)
+        posted = self._health_tell(db, now, routes, every) or clock_posted
         if posted:
             every = self._health_reds(db, now, routes)
         red, due = sorted(every), self._health_due(db, now, every)
@@ -820,7 +821,8 @@ class Health:
         unrenewed), and when a runner's absence will have lasted long enough
         to be told."""
         state = self._runner_state(db)
-        moments = []
+        clock_due = self._clock_next_due(db)
+        moments = [] if clock_due is None else [clock_due]
         if state["state"] == "running" and state["lease_until_ms"] is not None and state["lease_until_ms"] > now:
             moments.append(state["lease_until_ms"])
         runner = reds.get("runner")
