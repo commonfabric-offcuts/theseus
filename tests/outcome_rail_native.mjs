@@ -735,7 +735,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  await check('rail a new message raises a folded outcome\'s count and the new total live; open, the row counts only its Conversation; reading the topic lowers them', async () => {
+  await check('rail a new message raises a folded outcome\'s count and the new total live; expanded, the outcome has no badge; reading the topic lowers its count and the total', async () => {
     await control({ method: 'light_outcome', outcome: 'rail-count-o', title: 'Counting outcome', topic: { id: 'rail-count-t', title: 'Counting topic' } });
     const p = await open('rail-count', '/?topic=t1');
     await settled(p, 'the topic is up');
@@ -747,12 +747,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.equal(parseInt(raised.fresh.text, 10), total + 1, 'and so does the new total');
     assert.deepEqual(Object.keys(raised.outcomes), Object.keys(first.outcomes), 'nothing moved: the outcomes keep their order');
     assert.equal(await loaded(p), before, 'with no reload');
-    // Opened from the keys (⌘→), the outcome's own row counts only its Conversation; the topic row counts the topic.
+    // Opened from the keys (⌘→), the outcome has no badge; the topic row counts the topic.
     await keysTo(p, 'name:rail-count-o');
     await p.key('ArrowRight', 4);
     const opened = await until(async () => { const seen = await outline(p); const row = seen.outcomes['rail-count-o']; return row.topics.some(topic => topic.id === 'rail-count-t' && topic.unread === count + 1) && seen; }, 'open, the topic row counts its unread');
-    assert.equal(opened.outcomes['rail-count-o'].count, 0, 'and the outcome row counts only its Conversation, which has nothing new');
-    // Reading the topic lowers both.
+    assert.equal(opened.outcomes['rail-count-o'].count, 0, '1164: the expanded outcome has no unread count');
+    // Reading the topic lowers its count and the aggregate total.
     await outlineAtRest(p, 'the outcome opened');
     await p.point('#outline a[data-topic-id="rail-count-t"]');
     await arrived(p, '?topic=rail-count-t', 'Counting topic', 'the topic opens in place');
@@ -3415,11 +3415,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  // What is new in a Build topic is counted where the person can reach it
-  // (docs/rails.md, "Counts" and "Chips"): the outline has no row for one, so
-  // an open outcome's row counts its Build topics with its Conversation, a
-  // press on that row opens the Conversation beside the right rail that lists
-  // them, and on a phone "Pipeline & pages" carries the count to the sheet.
+  // What is new in a Build topic remains in the right rail (docs/rails.md,
+  // "Counts" and "Chips"). New includes its outcome, but an expanded outcome
+  // has no unread badge (1164). On a phone "Pipeline & pages" carries the
+  // Build count to the sheet; each topic there keeps its own count.
   // Each count is read from Core as it stands when the case runs.
   const buildNews = async (operation, n) => {
     for (let at = 0; at < n; ++at) await control({ method: 'agent_message', operation_id: `rail-build-news-${operation}-${at}`, sender: BUILD_AGENT, topic_id: 'rb-now', whole_topic: true, body: `News ${operation} ${at}` });
@@ -3438,7 +3437,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       badgeRight:badge&&badge.checkVisibility()?Math.round(badge.getBoundingClientRect().right):0,
       width:innerWidth,scroll:document.documentElement.scrollWidth,sum:document.querySelector('#things .things-sec[data-key=pipeline] > summary .sum')?.textContent??null}})()`);
 
-  await check('rail "N new" pressed from another outcome\'s topic counts a Build topic\'s new messages on its outcome\'s row, and a press on that row reaches them in its right rail', async () => {
+  await check('rail "N new" includes an outcome with Build unread without an expanded outcome badge, and the right rail keeps the Build counts', async () => {
     await buildOutcome();
     await buildNews('chip', 3);
     const p = await openAt('rail-build-chip', '/?topic=t1', 'laptop', 'light');
@@ -3447,30 +3446,31 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.point('#outline-only-new');
     const want = await buildCounts('rail-build-o');
     assert.ok(want.build >= 3, `Core counts the Build topic's new messages apart (${JSON.stringify(want)})`);
-    const shown = await until(async () => { const now = await outline(p); return now.outcomes['rail-build-o']?.open && now.outcomes['rail-build-o'].count === want.build + want.conversation && now; },
-      `"N new" shows the outcome open, its row counting its Conversation and its Build topics (${JSON.stringify(want)})`);
+    const shown = await until(async () => { const now = await outline(p); return now.outcomes['rail-build-o']?.open && now.outcomes['rail-build-o'].count === 0 && now; },
+      `"N new" includes the expanded outcome without an unread count despite positive Build facts (${JSON.stringify(want)})`);
     assert.ok(!shown.outcomes['rail-build-o'].topics.some(row => row.id.startsWith('rb-') && row.id !== 'rb-plain'), 'and still no Build topic among its rows');
-    // Another outcome shown open counts its Conversation alone, its Build topics having nothing new.
+    assert.equal(await p.evaluate(`Boolean(document.querySelector('#outline .ol-outcome[data-workspace-id="rail-build-o"] .ol-title .unread-count'))`), false, '1164: no badge node remains');
+    // Other expanded outcomes follow the same rule, whatever their counts.
     for (const [id, row] of Object.entries(shown.outcomes)) {
       if (id === 'rail-build-o' || !row.open) continue;
       const other = await buildCounts(id);
-      assert.equal(row.count, other.conversation + other.build, `${id}: its row counts its Conversation and its Build topics, once each (${JSON.stringify(other)})`);
+      assert.equal(row.count, 0, `${id}: no expanded outcome count (${JSON.stringify(other)})`);
     }
-    const spoken = await p.evaluate(`document.querySelector('#outline .ol-outcome[data-workspace-id="rail-build-o"] .ol-name .sr-only')?.textContent ?? ''`);
-    assert.match(spoken, /its Build topics$/, 'a screen reader hears where they are: ' + spoken);
+    const spoken = await p.evaluate(`document.querySelector('#outline .ol-outcome[data-workspace-id="rail-build-o"] .ol-title .sr-only')?.textContent ?? ''`);
+    assert.equal(spoken, '', '1164: no residual spoken unread count or Build-count suffix');
     await shot(p, 'rail-build-chip');
     await outlineAtRest(p, 'only what is new');
     await p.point('#outline .ol-outcome[data-workspace-id="rail-build-o"] .ol-name');
     await arrived(p, '?conversation=rail-build-o', null, 'a press on the row opens its Conversation');
     await settled(p, 'the Conversation is up');
     const there = await until(async () => { const now = await buildRail(p); return now.rows.find(row => row.id === 'rb-now')?.unread >= 3 && now; }, 'beside it, the right rail lists the Build topic with its new messages');
-    assert.equal(there.rows.reduce((sum, row) => sum + row.unread, 0), want.build, 'the right rail\'s rows hold every one the row counted');
+    assert.equal(there.rows.reduce((sum, row) => sum + row.unread, 0), want.build, 'the right rail\'s rows retain the positive Build unread facts');
     assert.equal((await thingsButton(p)).sum, `${there.groups.includes('Now') ? 1 : 0} in Now · ${want.build} new`, 'folded, the Pipeline section would still say what is new');
     await shot(p, 'rail-build-chip-arrived');
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  await check('rail on a phone, on a Build topic\'s outcome, the drawer\'s outcome row counts its Build topics\' new messages and "Pipeline & pages" carries them to their rows; at 320 375 390, light and dark', async () => {
+  await check('rail on a phone, an expanded outcome has no badge while "Pipeline & pages" carries Build unread to its rows; at 320 375 390, light and dark', async () => {
     await buildOutcome();
     await buildNews('phone', 2);
     const want = await buildCounts('rail-build-o');
@@ -3487,7 +3487,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await shot(p, `rail-build-phone-${size}-${theme}`);
       await tap(p, '#rail-open');
       await until(async () => (await drawer(p)).open, at + ': the drawer opens');
-      const row = await until(async () => { const now = (await outline(p)).outcomes['rail-build-o']; return now?.open && now.count === want.build + want.conversation && now; }, at + ': the outcome\'s row counts its Build topics with its Conversation');
+      const row = await until(async () => { const now = (await outline(p)).outcomes['rail-build-o']; return now?.open && now.count === 0 && now; }, at + ': the expanded outcome has no unread count');
+      assert.equal(await p.evaluate(`Boolean(document.querySelector('#outline .ol-outcome[data-workspace-id="rail-build-o"] .ol-title .unread-count'))`), false, at + ': no outcome badge node despite positive Build unread');
       assert.ok(!row.topics.some(each => ['rb-now', 'rb-review', 'rb-wait'].includes(each.id)), at + ': and lists none of them');
       await shot(p, `rail-build-phone-drawer-${size}-${theme}`);
       await p.key('Escape');
