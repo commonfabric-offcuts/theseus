@@ -2540,6 +2540,72 @@
         "tests/fixtures/schema_48.sql"
       ],
       "scope": "repository"
+    },
+    "e491f55fe66c40d97e8ebcd33dcbd03be9e660be1817078be02d3b3e65e43992:4": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:3": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:4": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:5": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:6": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "49a960495806783bffaf0180992e0f3d4944d75f8d94a0340c8cdfbc8035834d": {
+      "scope": "repository",
+      "inputs": [
+        "tests/fixtures/schema_10.sql",
+        "tests/fixtures/schema_11.sql",
+        "tests/fixtures/schema_12.sql",
+        "tests/fixtures/schema_12_early.sql",
+        "tests/fixtures/schema_13.sql",
+        "tests/fixtures/schema_14.sql",
+        "tests/fixtures/schema_15.sql",
+        "tests/fixtures/schema_16.sql",
+        "tests/fixtures/schema_17.sql",
+        "tests/fixtures/schema_18.sql",
+        "tests/fixtures/schema_19.sql",
+        "tests/fixtures/schema_20.sql",
+        "tests/fixtures/schema_21.sql",
+        "tests/fixtures/schema_22.sql",
+        "tests/fixtures/schema_23.sql",
+        "tests/fixtures/schema_24.sql",
+        "tests/fixtures/schema_25.sql",
+        "tests/fixtures/schema_26.sql",
+        "tests/fixtures/schema_27.sql",
+        "tests/fixtures/schema_28.sql",
+        "tests/fixtures/schema_29.sql",
+        "tests/fixtures/schema_30.sql",
+        "tests/fixtures/schema_32.sql",
+        "tests/fixtures/schema_33.sql",
+        "tests/fixtures/schema_34.sql",
+        "tests/fixtures/schema_35.sql",
+        "tests/fixtures/schema_36.sql",
+        "tests/fixtures/schema_37.sql",
+        "tests/fixtures/schema_38.sql",
+        "tests/fixtures/schema_39.sql",
+        "tests/fixtures/schema_40.sql",
+        "tests/fixtures/schema_41.sql",
+        "tests/fixtures/schema_42.sql",
+        "tests/fixtures/schema_43.sql",
+        "tests/fixtures/schema_44.sql",
+        "tests/fixtures/schema_45.sql",
+        "tests/fixtures/schema_46.sql",
+        "tests/fixtures/schema_47.sql",
+        "tests/fixtures/schema_48.sql",
+        "tests/fixtures/schema_8.sql",
+        "tests/fixtures/schema_9.sql"
+      ]
     }
   },
   "tests/test_new_line.py": {
@@ -5808,6 +5874,62 @@
     "515ccc360c6b896116b0e6b3b3c8241356841051f2984f73d8e01ea5bc806921:1": {
       "inputs": [],
       "scope": "generated/system/product"
+    }
+  },
+  "tests/historical_fixture.py": {
+    "904d20f0e3e527cb7a9ea6cddfa245961aa9d0d7ac42e3a2131120ecd9467311": {
+      "scope": "repository",
+      "inputs": [
+        "tests/fixtures/schema_10.sql",
+        "tests/fixtures/schema_11.sql",
+        "tests/fixtures/schema_12.sql",
+        "tests/fixtures/schema_12_early.sql",
+        "tests/fixtures/schema_13.sql",
+        "tests/fixtures/schema_14.sql",
+        "tests/fixtures/schema_15.sql",
+        "tests/fixtures/schema_16.sql",
+        "tests/fixtures/schema_17.sql",
+        "tests/fixtures/schema_18.sql",
+        "tests/fixtures/schema_19.sql",
+        "tests/fixtures/schema_20.sql",
+        "tests/fixtures/schema_21.sql",
+        "tests/fixtures/schema_22.sql",
+        "tests/fixtures/schema_23.sql",
+        "tests/fixtures/schema_24.sql",
+        "tests/fixtures/schema_25.sql",
+        "tests/fixtures/schema_26.sql",
+        "tests/fixtures/schema_27.sql",
+        "tests/fixtures/schema_28.sql",
+        "tests/fixtures/schema_29.sql",
+        "tests/fixtures/schema_30.sql",
+        "tests/fixtures/schema_32.sql",
+        "tests/fixtures/schema_33.sql",
+        "tests/fixtures/schema_34.sql",
+        "tests/fixtures/schema_35.sql",
+        "tests/fixtures/schema_36.sql",
+        "tests/fixtures/schema_37.sql",
+        "tests/fixtures/schema_38.sql",
+        "tests/fixtures/schema_39.sql",
+        "tests/fixtures/schema_40.sql",
+        "tests/fixtures/schema_41.sql",
+        "tests/fixtures/schema_42.sql",
+        "tests/fixtures/schema_43.sql",
+        "tests/fixtures/schema_44.sql",
+        "tests/fixtures/schema_45.sql",
+        "tests/fixtures/schema_46.sql",
+        "tests/fixtures/schema_47.sql",
+        "tests/fixtures/schema_48.sql",
+        "tests/fixtures/schema_8.sql",
+        "tests/fixtures/schema_9.sql"
+      ]
+    }
+  },
+  "tests/test_historical_fixture_1184.py": {
+    "799a51b2ca7fd65b285092171cefb29a57bf0fdf8119da0ce0d6cc596b595206": {
+      "scope": "repository",
+      "inputs": [
+        "tests/fixtures/schema_46.sql"
+      ]
     }
   }
 }

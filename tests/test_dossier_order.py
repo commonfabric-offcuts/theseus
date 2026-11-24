@@ -5,6 +5,7 @@ import unittest
 
 from aim_next.store import Store
 import test_stack_aside as fixtures
+from tests.historical_fixture import restore_frozen_layout
 
 
 class DossierOrderCase(fixtures.AsideCase):
@@ -71,8 +72,7 @@ class DossierOrderCase(fixtures.AsideCase):
         self.post('B was the newest active dossier at upgrade', reply_to=b)
         self.committed(self.command('stack.place', {'key': 9000}, target={'message_id': a}, expected={'place_revision': 0}))
         messages, acts = self.sql('SELECT * FROM messages'), self.sql('SELECT * FROM message_acts')
-        self.sql('DROP TABLE dossier_order')
-        self.sql("UPDATE metadata SET value='48' WHERE key='schema_version'")
+        restore_frozen_layout(self.path, '48')
         result = migrate(self.path, 'test-instance', self.binding)
         self.assertTrue(result['migrated'])
         self.store = Store(self.path, 'test-instance', expected_binding=self.binding)
