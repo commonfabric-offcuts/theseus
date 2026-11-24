@@ -19,6 +19,37 @@ focused review of that wider scope. The [review log](fresh-agent-boot-review.md)
 keeps the eight reviews of the original draft separate from this review and
 from runtime/trial evidence.
 
+## Tony's first terminal after reboot
+
+Fresh external Warp boots Theseus. Warp 23462 supplies this concrete launch
+procedure; install and verify its seat-file version before the physical test.
+The service and runner have no automatic launch agent on the observed Mac.
+
+Open a new terminal and run:
+
+```sh
+cd /Users/commonfabric/warp-seat && claude --dangerously-skip-permissions
+```
+
+Warp created that empty durable directory for the trial. Start there rather than
+`/Users/commonfabric/aim-next`, whose Claude project memory is populated. Also
+complete the broader memory-input audit; an empty starting directory alone does
+not prove that no global or attached memory was loaded. Do not resume an old
+Claude session. Paste the owner-supplied first message:
+
+```text
+/loop You are warp, the landing seat of Theseus on this Mac. Your instructions are /Users/commonfabric/aim-next/docs/seats/warp.md. Read it and follow it, starting with its After a reboot section.
+```
+
+That role file must contain the same boot entry, persistent helper/config
+locations and checks. Fresh Warp starts the service and then the safely gated
+runner using it. The proposed cold-stop drill must test this exact directory,
+launch, input and commands, including availability of the supplied `/loop`
+mechanism. No remembered command, restored terminal state or old watcher supplies
+missing boot instructions. Warp's 23454 forecast is docs at14:45, dry run about14:50,
+physical reboot15:15 Pacific, contingent on the named prerequisites; it is not
+proof that any of these has happened.
+
 ## Current capability and prerequisites
 
 The inspected baseline is release 418,
@@ -86,14 +117,13 @@ and their actual owner review before boot.
 
 ### Whether Fable and Auditor should be hosted
 
-Flex recommends both move to hosted Codex: one wake/refresh/Stop lifecycle,
+The target discussed in Tony 23442/23459 is hosted Codex for both; Flex recommends it: one wake/refresh/Stop lifecycle,
 repository role input and supported activation receipts simplify cold boot.
 Auditor's separate authority and independent evidence reads remain intact.
 Auditor is the simpler first migration; Fable also needs coordinator/subscription/
 watch parity and a single-owner handoff. The tradeoff is a shared runner failure
 domain and loss of desktop conveniences; external Warp and human-readable Health
-must expose service/runner failure. This is a recommendation responding to Tony
-23442, not authority to mutate routes. Current routes above remain facts until a
+must expose service/runner failure. This planning decision does not itself perform or grant an unsupported route mutation. Current routes above remain facts until a
 supported, separately authorized conversion preserves identity, permissions,
 unread work, private-message boundaries and original operations. No double route
 or coordinator may remain. Lock the chosen architecture before the physical test.
