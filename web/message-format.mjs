@@ -112,9 +112,13 @@ function outerEdge(node, side) {
   for (;;) {
     const parent = at.parentNode, span = parent ? SOURCE.get(parent) : null;
     if (!span || span.link) break;
-    const kids = parent.childNodes;
+    const kids = [...parent.childNodes].filter(child => {
+      const childSpan = SOURCE.get(child);
+      return !childSpan?.speech && !childSpan?.changeDecoration &&
+        !(childSpan && !childSpan.words && childSpan.start === childSpan.end);
+    });
     if (kids[side === 'start' ? 0 : kids.length - 1] !== at) break;
-    at = parent; found = span;
+    at = parent; if (!span.change) found = span;
   }
   return found ? found[side] : null;
 }
@@ -130,7 +134,7 @@ function linkPosition(a, span, offset, length, end) {
 
 // The text nodes under node, in order.
 function textsIn(node, found = []) {
-  for (const child of node.childNodes ?? []) { if (child.nodeType === 3) found.push(child); else textsIn(child, found); }
+  for (const child of node.childNodes ?? []) { if (SOURCE.get(child)?.speech) continue; if (child.nodeType === 3) found.push(child); else textsIn(child, found); }
   return found;
 }
 
@@ -148,12 +152,12 @@ export function sourcePosition(node, offset, end = false) {
     if (!span) {
       // Words drawn inside a link (a [named](link)'s marks among them) are the link's.
       let a = node.parentNode;
-      while (a && !SOURCE.has(a)) a = a.parentNode;
+      while (a && (!SOURCE.has(a) || SOURCE.get(a).change)) a = a.parentNode;
       const link = a ? SOURCE.get(a) : null;
       if (!link?.link) return null;
       let before = 0;
       for (const words of textsIn(a)) { if (words === node) break; before += words.data.length; }
-      return linkPosition(a, link, before + offset, a.textContent.length, end);
+      return linkPosition(a, link, before + offset, textsIn(a).reduce((n, text) => n + text.data.length, 0), end);
     }
     const length = node.data.length;
     if (offset <= 0 || offset >= length) {
@@ -910,7 +914,7 @@ export function formatWords(host, text, options = {}) {
   if (deferFencePaint(host, () => formatWords(host, text, options))) return host;
   host.replaceChildren();
   for (const node of formatNodes(text, { doc: host.ownerDocument ?? globalThis.document, ...options })) host.append(node);
-  strike(host, options.struck);
+  if (options.showChanges !== false) { strike(host, options.struck); mark(host, options.struck?.added); }
   host.classList.add('formatted');
   DRAWN.set(host, String(text ?? ''));
   if (options.displayRules !== undefined) MESSAGE_DRAWINGS.set(host, { ...options });
@@ -932,9 +936,9 @@ export const hasTextDisplayRules = host => Boolean(DISPLAY_RULES.get(host)?.leng
 export const drawnDisplayRules = host => DISPLAY_RULES.get(host) ?? [];
 // Redraw an opted-in message only, retaining its exact revision, strike and
 // excerpt options. No fetch, read mark or writing lifecycle is involved.
-export function redrawMessageWords(host, displayRules) {
+export function redrawMessageWords(host, displayRules, changes = {}) {
   const options = MESSAGE_DRAWINGS.get(host);
-  if (options) formatWords(host, DRAWN.get(host), { ...options, displayRules });
+  if (options) formatWords(host, DRAWN.get(host), { ...options, displayRules, ...changes });
 }
 export const drawnText = host => DRAWN.get(host);
 // The revision of a message those words are (formatWords' revision), when the
@@ -1004,8 +1008,8 @@ export function composeFormattedWords(host, text, revision, parts) {
 // one passage, shown as a block. A passage never cuts a link, code or a
 // mark: the sentences one spans join, as the line's own reading says. images, for a Notebook page: images.of(line)
 // names the image a line puts there, and that line is a passage of its own holding images.node(image, doc).
-export function drawPassages(host, body, doc = globalThis.document, { meter, copyFences = false, images = null, struck = null, displayRules = [], notebook = false, replyBasis, agentReply = false } = {}) {
-  if (deferFencePaint(host, () => drawPassages(host, body, doc, { meter, copyFences, images, struck, displayRules, notebook, replyBasis, agentReply }))) return;
+export function drawPassages(host, body, doc = globalThis.document, { meter, copyFences = false, images = null, struck = null, showChanges = true, displayRules = [], notebook = false, replyBasis, agentReply = false } = {}) {
+  if (deferFencePaint(host, () => drawPassages(host, body, doc, { meter, copyFences, images, struck, showChanges, displayRules, notebook, replyBasis, agentReply }))) return;
   body = String(body ?? '');
   host.replaceChildren();
   const basis = notebook ? null : replyBasisPresentation(body, { replyBasis, agentReply });
@@ -1059,7 +1063,7 @@ export function drawPassages(host, body, doc = globalThis.document, { meter, cop
     if (!SOURCE.has(node)) placed(node, { start, end });
     host.append(node);
   });
-  strike(host, struck);
+  if (showChanges) { strike(host, struck); mark(host, struck?.added); }
   DRAWN.set(host, body);
   DISPLAY_RULES.set(host, displayRules);
 }
@@ -1072,7 +1076,8 @@ export function drawPassages(host, body, doc = globalThis.document, { meter, cop
 // selection or a quote over it takes none of its words and every position the
 // drawn words know stays as it was. A place no drawn words reach (inside a
 // link's marks, past the end) takes the first drawn words after it, else the end.
-export function strike(host, cuts) {
+export function strike(host, changes) {
+  const cuts = Array.isArray(changes) ? changes : changes?.cuts;
   if (!Array.isArray(cuts) || !cuts.length) return host;
   const doc = host.ownerDocument;
   // From the last place back, so each split leaves the places before it where they were.
@@ -1094,8 +1099,10 @@ export function strike(host, cuts) {
       else { anchor = found; side = 'before'; before = texts[i - 1] ?? null; after = found; }
     }
     const del = doc.createElement('del');
+    placed(del, { start: at, end: at, changeDecoration: true });
     del.className = 'struck-words';
     del.title = 'Words you read before the author changed them';
+    if (!Array.isArray(changes)) del.append(changeLabel(doc, 'removed: ', at));
     del.append(placed(doc.createTextNode(words), { start: at, end: at }));
     const gap = () => placed(doc.createTextNode(' '), { start: at, end: at });
     const touches = (node, last) => { const text = node?.data ?? ''; return Boolean(text) && !/\s/.test(last ? text.at(-1) : text[0]); };
@@ -1103,6 +1110,48 @@ export function strike(host, cuts) {
     if (side === 'after') anchor.after(...nodes);
     else if (side === 'before') anchor.before(...nodes);
     else host.append(...nodes);
+  }
+  return host;
+}
+
+// Spoken labels have no source width and are excluded from link offsets.
+function changeLabel(doc, text, at) {
+  const label = doc.createElement('span'); label.className = 'sr-only';
+  label.append(placed(doc.createTextNode(text), { start: at, end: at }));
+  return placed(label, { start: at, end: at, speech: true });
+}
+
+// Split each mapped text independently: an added phrase can cross a link,
+// bold word or list boundary without moving any of its original positions.
+export function mark(host, added) {
+  if (!Array.isArray(added) || !added.length) return host;
+  const doc = host.ownerDocument;
+  for (const { start, end } of [...added].reverse()) {
+    for (const text of textsIn(host)) {
+      const span = SOURCE.get(text), mapped = span?.words;
+      let from = 0, to = text.data.length;
+      if (mapped) {
+        while (from < to && mapped.pos(from) < start) from++;
+        while (to > from && mapped.pos(to - 1) >= end) to--;
+      } else {
+        // A named link is atomic for quoting. Its displayed label is marked
+        // whole when its source overlaps this addition, with its map intact.
+        let link = text.parentNode;
+        while (link && !SOURCE.get(link)?.link) link = link.parentNode;
+        const range = link && SOURCE.get(link);
+        if (!range || range.end <= start || range.start >= end || span) continue;
+      }
+      if (from >= to) continue;
+      const ins = doc.createElement('ins'); ins.className = 'added-words';
+      const a = mapped ? mapped.at(from) : sourcePosition(text, 0),
+        b = mapped ? mapped.at(to) : sourcePosition(text, text.data.length, true);
+      placed(ins, { start: a, end: b, change: true });
+      ins.append(changeLabel(doc, 'added: ', a), placed(doc.createTextNode(text.data.slice(from, to)),
+        mapped ? { words: mapped.slice(from, to) } : { start: a, end: b }));
+      text.parentNode.replaceChild(ins, text);
+      if (from) ins.before(placed(doc.createTextNode(text.data.slice(0, from)), { words: mapped.slice(0, from) }));
+      if (to < text.data.length) ins.after(placed(doc.createTextNode(text.data.slice(to)), { words: mapped.slice(to) }));
+    }
   }
   return host;
 }

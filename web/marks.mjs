@@ -1,3 +1,4 @@
+import { editChangeMark } from './message-changes.mjs';
 // The person's marks on messages, as this page knows them. A mark's revision
 // is its whole state (odd marked, even not, 0 never marked) and only grows, so
 // the page keeps, for each message, the highest revision anything has told it:
@@ -224,9 +225,9 @@ export function carriesNode(doc, carries, marks = carryMarks(carries)) {
 // (carriesOf): beside the time, a small glyph for each thing the message
 // carries, a mark and not a control, named and titled in words. edited: its
 // words were changed after it was sent (docs/message-edit.md), said last.
-export function paintAuthor(author, name, sent, marked, edited = false, carries = null) {
+export function paintAuthor(author, name, sent, marked, edited = false, carries = null, changes = null) {
   const marks = carryMarks(carries);
-  const shows = JSON.stringify([marks, name, sent, sent === null ? null : shownTime(sent), marked, edited]);
+  const shows = JSON.stringify([marks, name, sent, sent === null ? null : shownTime(sent), marked, edited, changes?.struck, changes?.shown()]);
   if (author.dataset.shows === shows) return;
   author.dataset.shows = shows;
   author.replaceChildren();
@@ -251,7 +252,8 @@ export function paintAuthor(author, name, sent, marked, edited = false, carries 
     else at.append(' · ', time);
     author.append(at);
   } else if (held) author.append(held);
-  if (edited) { const mark = document.createElement('span'); mark.className = 'message-edited'; mark.append(' · Edited'); author.append(mark); }
+  const edit = editChangeMark(document, edited, changes);
+  if (edit) author.append(edit);
 }
 
 // Item 649: a shortcut on the drawn card to the reader's own private note.

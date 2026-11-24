@@ -971,7 +971,8 @@ test('a card read on in place, or shown full, strikes what the whole message too
     preview.getBoundingClientRect = () => ({ top: 10, height: 100 });
     return { card, preview };
   };
-  const struckOf = host => byClass(host, 'struck-words').map(node => node.textContent);
+  const visible = node => node.nodeType === 3 ? node.data : node.classList?.contains('sr-only') ? '' : node.childNodes.map(visible).join('');
+  const struckOf = host => byClass(host, 'struck-words').map(visible);
   const sourceFor = struck => ({ source_ref: { kind: 'message', id: 'm' }, body: whole, revision: 2, struck });
   const cut = { id: 'm', preview: true, body: excerpt, revision: 2, struck: { revision: 1, cuts: [cuts[0]] } };
   for (const [name, struck, shown, words] of [['had read it', { revision: 1, cuts }, struckWhole, ['85', '85']], ['had not read it', null, whole, []]]) {
@@ -979,17 +980,17 @@ test('a card read on in place, or shown full, strikes what the whole message too
     const lit = cardOf();
     assert.equal(await new CardScroll({ read: async () => sourceFor(struck) }).expand(lit.card, cut), true, name);
     assert.equal(lit.card.dataset.whole, 'shown', name);
-    assert.deepEqual([lit.preview.textContent, struckOf(lit.preview)], [shown, words], `lit, ${name}`);
+    assert.deepEqual([visible(lit.preview), struckOf(lit.preview)], [shown, words], `lit, ${name}`);
     assert.equal(format.drawnText(lit.preview), whole, `lit, ${name}: the new words are what is drawn`);
     // Show full on the cut-off card: the same.
     const full = cardOf();
     assert.equal(await new CardScroll({ read: async () => sourceFor(struck) }).showFull(full.card, cut), true, name);
-    assert.deepEqual([full.preview.textContent, struckOf(full.preview)], [shown, words], `shown full, ${name}`);
+    assert.deepEqual([visible(full.preview), struckOf(full.preview)], [shown, words], `shown full, ${name}`);
     // Show full on a card that holds its whole message (no excerpt): its own item's struck words, with no read.
     const tall = cardOf();
     const own = new CardScroll({ read: async () => { throw Error('a whole card is not read again'); } });
     assert.equal(await own.showFull(tall.card, { id: 'm', preview: false, body: whole, revision: 2, struck }), true, name);
-    assert.deepEqual([tall.preview.textContent, struckOf(tall.preview)], [shown, words], `a whole card shown full, ${name}`);
+    assert.deepEqual([visible(tall.preview), struckOf(tall.preview)], [shown, words], `a whole card shown full, ${name}`);
   }
 });
 

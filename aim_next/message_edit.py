@@ -419,7 +419,7 @@ def quoted_revision(db, message_id, quote_source, excerpt):
 # little for a correction of a few words. Bounded, since a message's words reach a megabyte: a middle part of more than
 # STRUCK_TOKENS words, or one that needs more than STRUCK_EDITS words changed, is one change; at most STRUCK_CUTS places
 # are given, and each place's words are cut to STRUCK_CHARS characters.
-TOKENS = re.compile(r"\s+|\w+|[^\w\s]")
+TOKENS = re.compile(r"\s+|\d+(?:[.,:]\d+)*%?|\w+|[^\w\s]")
 STRUCK_TOKENS = 20000
 STRUCK_EDITS = 400
 STRUCK_CUTS = 50
@@ -432,8 +432,7 @@ def _units(text):
 
 
 def _runs(a, b):
-    """[(i1, i2, j)]: each run of a[i1:i2] that the shortest edit from a to b takes away, j the place in b where it
-    stood; None when it needs more than STRUCK_EDITS words changed."""
+    """Changed token ranges [(i1, i2, j1, j2)]; None above STRUCK_EDITS."""
     n, m = len(a), len(b)
     frontier, trace = {1: 0}, []
     for d in range(min(n + m, STRUCK_EDITS) + 1):
@@ -450,8 +449,8 @@ def _runs(a, b):
 
 
 def _walk_back(trace, x, y):
-    """The runs taken away, from the edit's trace, walked back from its end."""
-    taken = []
+    """Keep both deletions and insertions from the shortest edit's trace."""
+    changes = []
     for d in range(len(trace) - 1, -1, -1):
         frontier, k = trace[d], x - y
         before = k + 1 if k == -d or (k != d and frontier[k - 1] < frontier[k + 1]) else k - 1
@@ -459,23 +458,20 @@ def _walk_back(trace, x, y):
         py = px - before
         while x > px and y > py:
             x, y = x - 1, y - 1
-        if d > 0 and x != px:
-            taken.append((px, py))
+        if d > 0:
+            changes.append((px, x, py, y))
         x, y = px, py
-    # Words taken away one after another in a are one change: only words put in can lie between them in b.
     runs = []
-    for i, j in reversed(taken):
-        if runs and runs[-1][1] == i:
-            runs[-1] = (runs[-1][0], i + 1, runs[-1][2])
+    for i1, i2, j1, j2 in reversed(changes):
+        if runs and runs[-1][1] == i1 and runs[-1][3] == j1:
+            runs[-1] = (runs[-1][0], i2, runs[-1][2], j2)
         else:
-            runs.append((i, i + 1, j))
+            runs.append((i1, i2, j1, j2))
     return runs
 
 
 def struck_words(old, new):
-    """[{at, words}]: each run of old's words that new no longer holds, where it stood in new. at is a place in new,
-    counted in UTF-16 code units as a page counts its text: the struck words go just before the character there (at
-    new's length: after its end). In order of at, never two at one place."""
+    """Bounded {cuts, added}, positioned in new's UTF-16 units (item 1169)."""
     a, b = TOKENS.findall(old), TOKENS.findall(new)
     start = 0
     while start < len(a) and start < len(b) and a[start] == b[start]:
@@ -486,29 +482,38 @@ def struck_words(old, new):
     middle_a, middle_b = a[start:len(a) - end], b[start:len(b) - end]
     runs = None if len(middle_a) + len(middle_b) > STRUCK_TOKENS else _runs(middle_a, middle_b)
     if runs is None:
-        runs = [(0, len(middle_a), 0)] if middle_a else []
+        runs = [(0, len(middle_a), 0, len(middle_b))]
+    # A shared word (including a whole number), with spaces/punctuation, joins
+    # nearby changes into one readable phrase. Never merge across two words.
+    merged = []
+    for i1, i2, j1, j2 in runs:
+        if merged:
+            previous = merged[-1]
+            gap_a, gap_b = middle_a[previous[1]:i1], middle_b[previous[3]:j1]
+            if gap_a == gap_b and sum(bool(re.search(r"\w", token)) for token in gap_b) <= 1:
+                merged[-1] = (previous[0], i2, previous[2], j2)
+                continue
+        merged.append((i1, i2, j1, j2))
     places = [_units("".join(b[:start]))]
     for token in middle_b:
         places.append(places[-1] + _units(token))
-    cuts = []
-    for i1, i2, j in runs:
-        words = "".join(middle_a[i1:i2]).strip()
-        if not words:
-            continue
-        if len(words) > STRUCK_CHARS:
-            words = words[:STRUCK_CHARS] + "\u2026"
-        if cuts and cuts[-1]["at"] == places[j]:
-            cuts[-1]["words"] += " " + words
-        else:
-            cuts.append({"at": places[j], "words": words})
-    return cuts[:STRUCK_CUTS]
+    cuts, added = [], []
+    for i1, i2, j1, j2 in merged:
+        old_words = "".join(middle_a[i1:i2]).strip()
+        replacement = "".join(middle_b[j1:j2])
+        new_words = replacement.strip()
+        at = places[j1] + _units(replacement[:len(replacement) - len(replacement.lstrip())])
+        if old_words and len(cuts) < STRUCK_CUTS:
+            cuts.append({"at": at, "words": old_words[:STRUCK_CHARS] + ("\u2026" if len(old_words) > STRUCK_CHARS else "")})
+        if new_words and len(added) < STRUCK_CUTS:
+            added.append({"start": at, "end": at + _units(new_words)})
+    return {"cuts": cuts, "added": added}
 
 
 def struck(db, actor, message_id, revision_now, words_now, shown=None):
     """What one reader sees struck through on one message, or None: for a person whose row of message_exposures (written
-    by the message's agent author's edit, item 614) names a revision they had read below the latest, {revision, cuts}
-    with cuts from struck_words; shown, when the reader is given only the first words (a card's excerpt), keeps the
-    cuts that fall within them. None for an agent, a message never edited, or a person with no such row."""
+    by the message's agent author's edit, item 614) names a revision they had read below the latest, {revision, cuts, added}
+    from struck_words; shown clips these ranges to a card's excerpt. None for an agent, a message never edited, or a person with no such row."""
     if revision_now <= 1:
         return None
     row = db.execute("SELECT e.revision FROM message_exposures e JOIN actors a ON a.id=e.actor_id AND a.kind='human' "
@@ -518,10 +523,13 @@ def struck(db, actor, message_id, revision_now, words_now, shown=None):
     before = words_at(db, message_id, row[0], plain=True)
     if before is None:
         return None
-    cuts = struck_words(before[0], words_now)
+    changes = struck_words(before[0], words_now)
     if shown is not None:
-        cuts = [cut for cut in cuts if cut["at"] < _units(shown)]
-    return {"revision": row[0], "cuts": cuts} if cuts else None
+        limit = _units(shown)
+        changes["cuts"] = [cut for cut in changes["cuts"] if cut["at"] < limit]
+        changes["added"] = [{"start": run["start"], "end": min(run["end"], limit)}
+                            for run in changes["added"] if run["start"] < limit]
+    return dict(changes, revision=row[0]) if changes["cuts"] or changes["added"] else None
 
 
 EDIT_ARGUMENTS = "Name one message and its new words"
