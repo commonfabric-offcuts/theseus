@@ -1560,3 +1560,14 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 .release-toast { position:fixed; right:1rem; bottom:calc(1rem + env(safe-area-inset-bottom)); z-index:95; display:flex; align-items:center; gap:.7rem; max-width:min(28rem,calc(100vw - 2rem)); padding:.35rem .7rem; background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:.5rem; box-shadow:0 .25rem 1rem color-mix(in srgb,var(--ink) 12%,transparent); }
 .release-toast a { display:flex; align-items:center; min-height:2.75rem; overflow-wrap:anywhere; }
 .release-toast button { flex:none; min-width:2.75rem; min-height:2.75rem; padding:0 .5rem; }
+
+/* 1157: Notebook display-card actions occupy their own header column. */
+.deck-card:has(>.notebook-card-actions){display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:.5rem}
+.deck-card:has(>.notebook-card-actions)>.deck-title{grid-column:1;grid-row:1;padding-right:0}
+.deck-card:has(>.notebook-card-actions)>:not(.deck-title):not(.notebook-card-actions){grid-column:1/-1}
+.notebook-card-actions{position:static;grid-column:2;grid-row:1;align-self:start;justify-content:flex-end;flex-wrap:wrap;max-width:10rem}
+.notebook-card-copy,.notebook-card-add{min-width:32px;padding:0 .3rem}
+.notebook-card-add::before{content:attr(data-text);font-size:1.2rem;line-height:1}
+@media(pointer:coarse){.notebook-card-copy,.notebook-card-add{min-width:44px;min-height:44px}}
+
+.notebook-card-action{opacity:0;pointer-events:none}:where(.deck-pointing) .deck-card:hover .notebook-card-action,.deck-card[aria-current=true] .notebook-card-action,.notebook-card-action:focus{opacity:1;pointer-events:auto}

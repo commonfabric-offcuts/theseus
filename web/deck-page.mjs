@@ -809,7 +809,7 @@ export class DeckPage {
       return placeLink({kind:'cards',id:this.item,card:id,view:'cards'});
   }
   async copyCard(ref, link=false) {
-    let at=this.cardAt(ref);if(at<0)return;
+    let at=this.cardAt(ref);if(at<0)return false;
     let words;
     if(link){
       const text=this.savedCardLink(ref);
@@ -818,13 +818,14 @@ export class DeckPage {
       try{words=await text;}catch(error){await copying;this.cardNotice(error.message);return;}
       const copied=await copying;
       this.cardNotice(copied?'Card link copied.':`Could not copy. Select this text and use Copy: ${words}`);
-      return;
+      return copied;
     }else{
       const card=this.deck.cards[at],written=this.written(card);
       words=plainCardText(card.title,written.words,this.doc);
     }
     const copied=await copyText(words);
     this.cardNotice(copied?(link?'Card link copied.':'Card text copied.'):`Could not copy. Select this text and use Copy: ${words}`);
+    return copied;
   }
   cardMenuItems(ref,anchor) {
     const at=this.cardAt(ref);if(at<0)return [];
