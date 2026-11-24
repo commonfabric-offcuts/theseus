@@ -317,6 +317,11 @@ class Execution(Seat):
         self.assertEqual(out.returncode, 5)
         self.assertIn('tests/a.test.mjs :: one -> skip', out.stdout)
 
+    def test_an_entry_naming_its_case_as_a_list_refuses_with_the_shape(self):
+        out = self.compare([('tests/a.test.mjs', 'one', 'pass')], named=[{'file': 'tests/a.test.mjs', 'names': ['two'], 'why': 'on purpose'}])
+        self.assertEqual(out.returncode, 2, out.stdout)
+        self.assertIn('each one non-empty string', out.stdout)
+
     def test_an_entry_without_a_reason_refuses(self):
         out = self.compare([('tests/a.test.mjs', 'one', 'pass')], named=[{'file': 'tests/a.test.mjs', 'names': 'two', 'why': ' '}])
         self.assertEqual(out.returncode, 2)
