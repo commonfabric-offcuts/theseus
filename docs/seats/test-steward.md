@@ -6,6 +6,10 @@ and useful missing coverage early; do not create another approval queue.
 
 ## First command after a restart
 
+Locate this file from the selected absolute CLI's repository root, not from the
+hosted working directory or an old checkout. Record the revision or SHA256 of
+the file actually read; a configured pointer alone is not a file-read receipt.
+
 Run **`inbox` using the bound CLI supplied to this seat at startup**. Keep that
 actor, profile and binding. The runner supplies the absolute invocation; this
 file supplies no replacement credentials or permission to resume a stopped seat.
@@ -17,6 +21,24 @@ handoff. Reconcile the actual live base, pushed candidate, open requests and any
 owned operation or child before continuing. An old checkpoint is a pointer to
 evidence, not proof of the current state. Use command/wake action context when
 available; a source rule takes precedence over a remembered plan.
+
+An empty inbox does not settle an assigned review. Recover open work from the
+current pipeline, piece conversation and its existing handoff before declaring
+the seat idle. Preserve original source-start and forecast clocks, saved
+operation identities and any uncertain producer; absence of a scratch file is
+neither a completion receipt nor permission to rerun it.
+
+## Durable recovery
+
+Own source branches live under `/Users/commonfabric/aim-worktrees`. Publish the
+exact pushed head and base in the existing request stack. Keep readiness,
+baseline blind spots, repair owners and raw proof links or attachments there or
+in the Notebook so a fresh reader can recover them without this chat. The hosted
+workspace and its private `CHECKPOINT.json` are conveniences, not the work record.
+No operating recipe requires a temporary directory. Historical fixture,
+browser-profile and PID paths remain evidence; do not manufacture cleanup or a
+pass when those paths disappear after reboot. Reconcile an incomplete review
+from its retained sources, and name missing evidence explicitly.
 
 ## Work
 
@@ -75,8 +97,12 @@ the outbox under its original operation ID. Preserve binding refusals and seek
 resolution through the unchanged working bound channel; never borrow a profile
 or retrieve refused content elsewhere.
 
-After handled deliveries, use the bound CLI's `watch --once` and resume that same
-native wait. Do not create duplicate watchers or poll for a person's answer.
-Keep the standing assignment active until explicitly ended. Find current pilots,
-benchmark cohorts and restart conditions in their sourced records, not in this
-file; neither a forecast nor silence grants a restart.
+This is a runner-hosted seat. After completing handled work, or posting a
+concrete missing-input ask and acknowledging the handled delivery, end the turn;
+the runner delivers the next work. Do not keep a hosted turn open with a watch,
+sleep or a newly created persistent goal. This hosted lifecycle takes precedence
+over the agent guide's external-session watch/goal loop; an ordinary delivery
+does not create a new goal. Preserve an existing user-controlled goal according
+to its actual contract rather than changing its status to simulate a handoff.
+Find current pilots, benchmark cohorts and restart conditions in their sourced
+records, not in this file; neither a forecast nor silence grants a restart.

@@ -433,6 +433,21 @@ def recovery_fingerprint(config):
     return hashlib.sha256(json.dumps(values, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+def seat_role_file(config):
+    """The actor role in the verified configured CLI repository, never the cwd."""
+    root = Path(config.cli).parent
+    if root.name == 'bin':
+        root = root.parent
+    return root / 'docs' / 'seats' / (config.profile.actor_id + '.md')
+
+
+def seat_bootstrap(config):
+    seat_file = seat_role_file(config)
+    return ('Seat startup: first read ' + str(seat_file) + ' in the live repository rooted at the configured CLI. '
+            'Then recover current work from the board with your own actor and binding. '
+            'This setup input is not a work request or restart authorization.')
+
+
 def thread_settings(config, endpoint=None):
     """Thread-level settings, identical on thread/start (provisioning) and thread/resume (design §3.3-3.4)."""
     roots = list(config.writable_roots)
@@ -452,10 +467,14 @@ def thread_settings(config, endpoint=None):
         settings['config'] = {'permissions': {name: policy}, 'features': {'network_proxy': True}, 'agents': {'enabled': False}}
         settings['developerInstructions'] = hosted_notice.developer_instructions(config.profile.actor_id, config.cli, config.profile_path, endpoint)
     effort = getattr(config, "reasoning_effort", None)
+    settings['developerInstructions'] += '\n\n' + seat_bootstrap(config)
     if effort is not None:
         settings["config"]["model_reasoning_effort"] = effort
     instructions = getattr(config, "instructions", "")
-    if instructions:
+    # Keep configured roles for legacy CLI roots without a repository seat file.
+    # An unreadable existing file still selects the repository role; the agent
+    # reports its read failure instead of silently receiving stale role text.
+    if instructions and not seat_role_file(config).is_file():
         settings["developerInstructions"] += "\n\nStanding role:\n" + instructions
     if config.model is not None:
         settings["model"] = config.model
@@ -866,6 +885,8 @@ class Host:
         def unavailable(reason):
             self.log.write('recovery_waits', actor=thread.actor, intent=intent['id'], reason=reason)
             return self._settle(work, 'unavailable', None, reason)
+        if intent.get('trigger', {}).get('kind') == 'seat_refresh' and thread.active_turn is not None:
+            return unavailable('refresh_turn_open')
         def activate():
             if work.abandoned:
                 return unavailable('abandoned')
@@ -904,7 +925,7 @@ class Host:
                 activate()
             self._request(work, 'thread/inject_items', {'threadId':intent['new']['thread_id'], 'items':[{
                 'type':'message', 'role':'developer', 'content':[{'type':'input_text', 'text':reason}]}]}, persisted)
-        reason = ('Theseus replaced the prior thread. ' + RECOVERY_REASON + ' '
+        reason = ('Theseus replaced the prior thread. ' + intent.get('reason', RECOVERY_REASON) + ' '
                   'The actor and instructions are unchanged; the prior thread is retained. Recovery ' + intent['id'] + '.')
         if intent['phase'] == 'committed':
             return adopt(intent)
@@ -926,6 +947,8 @@ class Host:
             # A lost creation answer is not permission to create another id.
             return unavailable('recovery_creation_unconfirmed')
         authorized = self.core('hosted_recovery', thread.actor, config.destination, 'creating', identity, recovery_fingerprint(config))
+        if authorized.get('status') == 'waiting':
+            return unavailable('refresh_turn_open')
         if not authorized.get('create'):
             return unavailable('recovery_creation_unconfirmed')
         params = thread_settings(config, thread.bridge.path if thread.bridge else None)
