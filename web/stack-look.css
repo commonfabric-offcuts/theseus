@@ -359,26 +359,24 @@
   font-size:.76rem;text-decoration:underline;text-underline-offset:3px}
 :is(.stack-split,.stack-unplace):hover{background:var(--stack-folder-deep)}
 
-/* 1167: Tony's selected default, ink7% / no line / open chevron on hover.
+/* 1167/1176: ink7% / no line, band and chevron only on header hover.
    Balanced margins/padding reach the sheet's edges without moving its words.
-   The card remains the keyboard stop; its focus lights the same header. */
+   The card keeps its existing keyboard stop and focus ring. */
 .reply-stack[data-single=false]:not(.only-new *) .message-header-foldable>.message-fold-header{
-  margin:-1rem -1.15rem .4rem;padding:1rem 1.15rem 0;border-radius:var(--stack-r-sheet) var(--stack-r-sheet) 0 0;
-  transition:background .12s}
-.reply-stack[data-single=false]:not(.only-new *) .message-header-foldable>.message-fold-header:is(:hover,:active,:focus-within),
-.reply-stack[data-single=false]:not(.only-new *) .message-header-foldable:focus-visible>.message-fold-header{
+  margin:-1rem -1.15rem .4rem;padding:1rem 1.15rem 0;border-radius:var(--stack-r-sheet) var(--stack-r-sheet) 0 0}
+.reply-stack[data-single=false]:not(.only-new *) .message-header-foldable>.message-fold-header:hover,
+.reply-stack[data-single=false]:not(.only-new *) .message-header-foldable[data-folded=true]:not([data-earlier=true]):has(>.message-folded:hover){
   background:color-mix(in srgb,var(--ink) 7%,transparent)}
 /* The glyph takes no inline room: even the protruding first agent badge keeps
    its old first-child alignment. One SVG survives both saved fold states. */
 .reply-stack[data-single=false]:not(.only-new *) .message-header-foldable>.message-header-chevron{
   position:absolute;left:.125rem;top:1.6rem;width:14px;height:14px;pointer-events:none;
   color:var(--ink);opacity:0;transform:translateY(-50%) rotate(0deg);
-  transition:transform .16s ease,opacity .12s,color .12s}
-.reply-stack[data-single=false]:not(.only-new *) .message-header-foldable>.message-fold-header:is(:hover,:active,:focus-within)~.message-header-chevron,
-.reply-stack[data-single=false]:not(.only-new *) .message-header-foldable:focus-visible>.message-header-chevron{opacity:1}
+  transition:transform .16s ease}
+.reply-stack[data-single=false]:not(.only-new *) .message-header-foldable>.message-fold-header:hover~.message-header-chevron{opacity:1}
 .reply-stack[data-single=false]:not(.only-new *) .message-header-foldable[data-folded=true]>.message-header-chevron{
-  display:block!important;top:50%;color:var(--muted);opacity:.5;transform:translateY(-50%) rotate(-90deg)}
-.reply-stack[data-single=false]:not(.only-new *) .message-header-foldable[data-folded=true]:is(:hover,:active,:focus-visible)>.message-header-chevron{color:var(--ink);opacity:1}
+  display:block!important;top:50%;color:var(--muted);opacity:0;transform:translateY(-50%) rotate(-90deg)}
+.reply-stack[data-single=false]:not(.only-new *) .message-header-foldable[data-folded=true]:not([data-earlier=true]):has(>.message-folded:hover)>.message-header-chevron{color:var(--ink);opacity:1}
 .reply-stack[data-single=false]:not(.only-new *) .message-header-foldable[data-earlier=true]>.message-header-chevron{display:none!important}
 @media(prefers-reduced-motion:reduce){.message-header-foldable>.message-header-chevron{transition:none}}
 
