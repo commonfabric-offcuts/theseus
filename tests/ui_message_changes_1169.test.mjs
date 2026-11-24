@@ -8,7 +8,8 @@ import { constructCases, doc, walk, byClass, visible } from './message_changes_f
 const cases = constructCases(CardScroll);
 const positions = host => walk(host).filter(node => node.nodeType === 3)
   .filter(node => sourcePosition(node, 0) !== sourcePosition(node, node.data.length, true))
-  .flatMap(node => Array.from({ length: node.data.length + 1 }, (_, k) => sourcePosition(node, k, k === node.data.length)));
+  .flatMap(node => Array.from({ length: node.data.length + 1 }, (_, k) => sourcePosition(node, k, k === node.data.length)))
+  .filter((at, i, all) => i === 0 || at !== all[i - 1]);
 
 test('1169 added marks cross bold and named links without moving quote positions', () => {
   const { host, plain } = cases[0], body = '**new** [words](https://example.com)';
