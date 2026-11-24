@@ -7,7 +7,7 @@ import sqlite3
 import uuid
 
 from . import delivery, route_pins
-from .contract import Refusal, _json
+from .contract import Refusal, _identifier, _json, _revision
 
 
 DEFAULT_TURNS = 3
@@ -16,6 +16,8 @@ REASON = 'Three consecutive completed turns left deliveries pending without reco
 PREFIX = 'hosted_recovery.v1:'
 ACTIVITY = 'hosted_cli_activity.v1:'
 MAX_RECORD = 32768
+REFRESH_REASON = 'The outcome human owner requested a fresh hosted thread.'
+REFRESH_BATCH_LIMIT = 32
 
 
 def read(db, key):
@@ -44,6 +46,118 @@ def put(db, key, value):
 
 
 class HostedRecovery:
+    def _refresh_seat_state(self, db, workspace, actor):
+        _identifier(actor, 'actor_id')
+        member = self._actor(db, actor)
+        if member['kind'] != 'agent' or not db.execute(
+                'SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?',
+                (workspace['id'], actor)).fetchone():
+            raise Refusal('NOT_A_HOSTED_MEMBER', 'Name an enabled hosted agent in this outcome')
+        if db.execute('SELECT 1 FROM hosted_seats WHERE agent_id=? AND end_state IS NOT NULL', (actor,)).fetchone():
+            raise Refusal('SEAT_ENDED', 'An ending or ended seat cannot be refreshed')
+        binding = self._recovery_binding(actor)
+        try:
+            pin = route_pins._stored(db, route_pins._key(binding))
+        except route_pins.RoutePinError as error:
+            raise Refusal(error.code, str(error)) from error
+        control = self._hosted_control(db, actor)
+        if not pin or pin.get('binding') != binding or pin['destination']['kind'] != route_pins.HOSTED_KIND or not control:
+            raise Refusal('HOSTED_CONTROL_MISSING', 'This actor has no bound hosted pin and controls')
+        if control['desired'] != 'running':
+            raise Refusal('HOSTED_SEAT_STOPPED', 'A stopped seat cannot be refreshed')
+        return dict(actor_id=actor, execution_revision=control['revision'],
+                    thread_id=pin['destination']['thread_id'], destination=pin['destination'])
+
+    @staticmethod
+    def _refresh_actors(actors):
+        if type(actors) is not list or not 1 <= len(actors) <= REFRESH_BATCH_LIMIT:
+            raise Refusal('INVALID_ARGUMENT', 'Name between1 and32 distinct hosted actors')
+        for actor in actors:
+            _identifier(actor, 'actor_id')
+        if len(set(actors)) != len(actors):
+            raise Refusal('INVALID_ARGUMENT', 'Name each hosted actor once')
+        return actors
+
+    def _view_hosted_seat_refresh(self, db, actor, args):
+        workspace = self._workspace(db, actor, args.get('workspace_id'), organise=True)
+        self._seat_owner(db, actor, workspace)
+        seats = []
+        for named in self._refresh_actors(args.get('actor_ids')):
+            value = self._recovery_record(db, named)
+            intent = value.get('intent') or value.get('receipt')
+            member = db.execute('SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?',
+                                (workspace['id'], named)).fetchone()
+            if not member and (not intent or intent.get('trigger', {}).get('workspace_id') != workspace['id']):
+                raise Refusal('FORBIDDEN', 'This actor has no seat or refresh history in this outcome')
+            try:
+                state = self._refresh_seat_state(db, workspace, named)
+                seats.append({k: state[k] for k in ('actor_id', 'execution_revision', 'thread_id')})
+            except Refusal as error:
+                # Status remains readable after Stop or loss of eligibility;
+                # the guarded command still refuses the whole request.
+                seats.append(dict(actor_id=named, error=dict(code=error.code, message=str(error))))
+            seats[-1]['intent'] = intent
+        return dict(workspace_id=workspace['id'], workspace_revision=workspace['version'], seats=seats)
+
+    def _command_workspace_hosted_seat_refresh(self, db, actor, envelope):
+        if set(envelope['target']) != {'workspace_id'} or set(envelope['args']) != {'seats'}:
+            raise Refusal('INVALID_ARGUMENT', 'Name one outcome and its captured hosted seats')
+        workspace = self._workspace(db, actor, envelope['target']['workspace_id'], organise=True)
+        self._seat_owner(db, actor, workspace)
+        _revision(envelope['expected'], 'workspace_revision', workspace['version'])
+        supplied = envelope['args']['seats']
+        if type(supplied) is not list or any(type(s) is not dict or set(s) != {
+                'actor_id', 'execution_revision', 'thread_id'} for s in supplied):
+            raise Refusal('INVALID_ARGUMENT', 'Use captured actor, control revision and thread for each seat')
+        self._refresh_actors([s['actor_id'] for s in supplied])
+        plans = []
+        # No metadata mutation until every member, control, pin and prior intent is admitted.
+        for sent in supplied:
+            state = self._refresh_seat_state(db, workspace, sent['actor_id'])
+            if type(sent['execution_revision']) is not int or sent['execution_revision'] != state['execution_revision']:
+                raise Refusal('REVISION_CONFLICT', 'This hosted control changed; read it again')
+            if sent['thread_id'] != state['thread_id']:
+                raise Refusal('ROUTE_PIN_MISMATCH', 'This hosted pin changed; preserve the original request')
+            value = self._recovery_record(db, sent['actor_id'])
+            intent = value.get('intent')
+            if intent and intent['phase'] not in ('committed', 'cancelled'):
+                if (intent.get('trigger', {}).get('kind') != 'seat_refresh'
+                        or intent['old'] != state['destination']
+                        or intent['context']['revision'] != state['execution_revision']):
+                    raise Refusal('HOSTED_RECOVERY_IN_PROGRESS', 'Reconcile the existing recovery before another refresh')
+                plans.append((state, value, False))
+                continue
+            now = delivery._now_ms()
+            value['intent'] = dict(id='hr-' + uuid.uuid4().hex, phase='ready', old=state['destination'], new=None,
+                origin=(value.get('receipt') or {}).get('origin', state['destination']),
+                context=dict(revision=state['execution_revision'], config_sha256=None),
+                turns=[], triggering_turns=[], created_ms=now, reason=REFRESH_REASON,
+                trigger=dict(kind='seat_refresh', operation_id=envelope['operation_id'],
+                             actor_id=actor, workspace_id=workspace['id'], requested_ms=now))
+            value['streak'] = []
+            plans.append((state, value, True))
+        for state, value, changed in plans:
+            if changed:
+                self._save_recovery(db, state['actor_id'], value)
+                db.execute('UPDATE recipient_schedule SET unanswered_wakes=0,named_seq=NULL,retry_count=0,'
+                           'next_due_ms=CASE WHEN claim_token IS NULL THEN ? ELSE claim_until_ms END '
+                           'WHERE recipient_id=? AND pending_count>0',
+                           (value['intent']['created_ms'], state['actor_id']))
+        return dict(workspace_id=workspace['id'], intents=[dict(v['intent'], actor_id=s['actor_id'])
+                    for s, v, unused in plans]), []
+
+    def _refresh_context(self, db, actor, intent):
+        trigger = intent['trigger']
+        try:
+            workspace = self._workspace(db, trigger['actor_id'], trigger['workspace_id'], organise=True)
+            self._seat_owner(db, trigger['actor_id'], workspace)
+            state = self._refresh_seat_state(db, workspace, actor)
+        except Refusal:
+            return None
+        if state['destination'] != intent['old']:
+            return None
+        return dict(revision=state['execution_revision'])
+
     def _recovery_binding(self, actor):
         return dict(instance_id=self.instance_id, actor_id=actor, db_path=str(self.path),
                     authority_id=self.binding['authority_id'], authority_epoch=self.binding['authority_epoch'])
@@ -281,11 +395,23 @@ class HostedRecovery:
                     raise Refusal('HOSTED_RECOVERY_STALE', 'Creation was not authorized for this intent')
                 intent.update(new=new, phase=intent['phase'] if intent['phase'] in ('cancelled','prepared') else 'created')
             else:
-                context = self._recovery_context(db, actor, destination)
-                if context is not None: context['config_sha256'] = fingerprint
+                manual = intent.get('trigger', {}).get('kind') == 'seat_refresh'
+                context = self._refresh_context(db, actor, intent) if manual else self._recovery_context(db, actor, destination)
+                if context is not None:
+                    context['config_sha256'] = fingerprint
+                if (manual and intent['phase'] == 'ready' and intent['context'].get('config_sha256') is None
+                        and type(fingerprint) is str and len(fingerprint) == 64
+                        and context is not None and context['revision'] == intent['context']['revision']):
+                    intent['context']['config_sha256'] = fingerprint
                 active = db.execute('SELECT 1 FROM hosted_turns INDEXED BY hosted_turns_open WHERE thread_id=? AND final_status IS NULL LIMIT 1',
                                     (destination['thread_id'],)).fetchone()
-                if context != intent['context'] or active:
+                if context != intent['context']:
+                    intent['phase'] = 'cancelled'
+                elif active and manual:
+                    self._save_recovery(db, actor, value)
+                    return {'status':'waiting', 'intent':intent,
+                            **({'create':False} if action == 'creating' else {})}, True
+                elif active:
                     intent['phase'] = 'cancelled'
                 elif action == 'creating' and intent['phase'] == 'ready':
                     intent.update(phase='creating', creation_started_ms=now)
