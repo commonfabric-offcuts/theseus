@@ -523,8 +523,14 @@ class Store(CurrentRule, PieceClock, HostedRecovery, WorkspaceLinks, MentionReac
                         "attention": {"after": self._addressed_after(db, actor)}, "actor_kind": kind}
             if view_name == "operation":
                 op_id = _identifier(args.get("operation_id"), "operation_id")
-                row = db.execute("SELECT outcome FROM operations WHERE actor_id=? AND id=?", (actor, op_id)).fetchone()
-                return json.loads(row[0]) if row else {"instance_id": self.instance_id, "operation_id": op_id,
+                expected = args.get('expected_fingerprint')
+                if 'expected_fingerprint' in args and (type(expected) is not str or len(expected) != 64
+                                                       or any(char not in '0123456789abcdef' for char in expected)):
+                    raise Refusal('INVALID_ARGUMENT', 'Use an exact saved-request fingerprint')
+                row = db.execute("SELECT outcome,fingerprint FROM operations WHERE actor_id=? AND id=?", (actor, op_id)).fetchone()
+                if row is not None and expected is not None and row['fingerprint'] != expected:
+                    raise Refusal('OPERATION_PAYLOAD_MISMATCH', 'This operation already names different content')
+                return json.loads(row['outcome']) if row else {"instance_id": self.instance_id, "operation_id": op_id,
                                                      "status": "unknown", "recorded": False}
             handler = getattr(self, "_view_" + view_name, None)
             if handler is None:

@@ -854,6 +854,7 @@ class Health:
     def _view_health(self, db, actor, args):
         """The runner, each agent's waiting work and wakes, the Mac's load and the latest release, read together."""
         from .delivery import _now_ms
+        from . import wake_diagnostics
         now = _now_ms()
         state = self._runner_state(db)
         routes = self._health_routes(db)
@@ -879,7 +880,7 @@ class Health:
             if prior_fault is not None:
                 runner['prior']['fault'] = prior_fault
         agents = []
-        rows = db.execute("SELECT a.id,a.name,s.recipient_id IS NOT NULL AS scheduled,s.next_due_ms,f.reached_ms,s.claim_until_ms "
+        rows = db.execute("SELECT a.id,a.name,s.recipient_id IS NOT NULL AS scheduled,s.next_due_ms,f.reached_ms,f.failed_ms,s.claim_until_ms "
                           "FROM actors a LEFT JOIN recipient_schedule s ON s.recipient_id=a.id LEFT JOIN wake_facts f ON f.recipient_id=a.id "
                           "WHERE a.kind='agent' AND a.enabled=1 ORDER BY a.id LIMIT ?", (AGENT_LIMIT,)).fetchall()
         for row in rows:
@@ -892,11 +893,18 @@ class Health:
                 "JOIN messages m ON m.id=d.message_id LEFT JOIN answer_receipts ar ON ar.id=d.answer_id WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0"
                 + ("" if row["id"] == actor else " AND " + READ_BY), (row["id"],) if row["id"] == actor else (row["id"], actor)).fetchone()
             item = {"actor_id": row["id"], "name": row["name"], "route": route, "waiting": waiting, "waiting_since_ms": oldest}
+            observation = wake_diagnostics.health(db, row['id'], now)
+            if observation is not None:
+                item['wake_read'] = observation
             if row["scheduled"]:
                 item.update(next_due_ms=row["next_due_ms"] if waiting else None, reached_ms=row["reached_ms"])
                 failing, parked = reds.get("failing:" + row["id"]), reds.get("parked:" + row["id"])
                 if failing is not None:
                     item["failing"] = {key: failing[key] for key in ("count", "since_ms", "outcome", "reason", "why", "ask_app_open")}
+                    if (failing['reason'] == 'deliveries_unavailable' and observation is not None
+                            and observation['finished_ms'] == row['failed_ms'] and observation['outcome'] == failing['outcome']
+                            and observation['category'] in ('malformed', 'core_refusal', 'transport_failure')):
+                        item['failing']['why'] = observation['why']
                 if parked is not None:
                     item["not_answering"] = {"count": parked["count"], "since_ms": parked["since_ms"]}
                 if row["claim_until_ms"] is not None and row["claim_until_ms"] > now:

@@ -7,11 +7,12 @@ import uuid
 
 from . import delivery
 from .authority import RunnerGuard
-from .contract import LIMITS, StoreError
+from .contract import LIMITS, StoreError, Refusal
 from . import work
 from .wake_health import ANSWERING
 from .health import REASON
 from . import runner_faults
+from . import wake_diagnostics
 
 
 RUNNER_SCHEMA = [
@@ -340,6 +341,24 @@ class Runner:
                                "route_binding": {"instance_id": self.instance_id, "actor_id": row["recipient_id"], "db_path": str(self.path),
                                                  "authority_id": self.binding["authority_id"], "authority_epoch": self.binding["authority_epoch"]}})
             return {"status": "ok", "claims": claims, "scanned": len(rows), "next_due_ms": self._next_due(db, routed)}, bool(claims) or settled or released
+        return self._effect(guard, action)
+
+    def record_wake_read(self, guard, runner_token, claim_token, observation):
+        """Observe a claimed inbox read without accepting, handing or settling its wake."""
+        try:
+            observation = wake_diagnostics.validate(observation)
+        except (ValueError, TypeError, Refusal) as error:
+            raise RunnerError('INVALID_ARGUMENT', 'Use a bounded wake read observation') from error
+        def action(db, now):
+            attempt = db.execute('SELECT * FROM wake_attempts WHERE claim_token=?', (claim_token,)).fetchone()
+            if (self._ownership(self._runner_state(db), guard, runner_token, now) != 'running'
+                    or attempt is None or attempt['runner_token'] != runner_token or attempt['lease_until_ms'] <= now):
+                return {'status': 'stale'}, False
+            row = db.execute('SELECT claim_token FROM recipient_schedule WHERE recipient_id=?', (attempt['recipient_id'],)).fetchone()
+            if row is None or row[0] != claim_token:
+                return {'status': 'stale'}, False
+            recorded = wake_diagnostics.put(db, attempt['recipient_id'], attempt['id'], now, observation)
+            return {'status': 'observed', 'observation': recorded}, True
         return self._effect(guard, action)
 
     def finish_wake(self, guard, runner_token, claim_token, outcome, turn=None, reason=None, from_turn=None):
