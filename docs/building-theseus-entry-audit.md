@@ -165,6 +165,8 @@ Current selection at23641:1216's control was finishing; its later tested handoff
 Ready2 onbbb8f548 under23646, retaining the replaced freezes as history and
 landing immediately after1216.1215 keeps its original Build/open post-reboot hold;
 1028 keeps original Build4/after-dry-run ownership.1213/1219 are shipped421/422.
+The later23654 publication and Flex's bound release read record1216 shipped423
+(`94cc6a5d`), distinct from1218 installation or the dry run/reboot.
 Read the actual current records before acting rather than replay this dated list.
 
 Fable's raw operations/readbacks are under

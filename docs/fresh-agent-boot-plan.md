@@ -96,7 +96,7 @@ release420 (`1e6c6d788ed49c82e75b32b62361e2475cd882c6`) is the web-only1217
 Undo repair; it also does not establish1213/1216 installation.
 Later receipt23571 and bound releases read record1213 live in release421,
 `b889d17662c059e8427f3f7d64f94e12128f6a36`. Owner refresh admission/pointer
-is installed. Current observed live is422,
+is installed. The23647 observation is422,
 `fd6095183c9d49145bf6b4b65aee2dfcc5db65c8`, a docs-only1219 successor that
 kept the421 runner.1216 role precedence,1218 instructions, migrations and real-model
 cold-start evidence are still separate. The release headline's seat-file wording
@@ -111,6 +111,13 @@ improve. Its24 shared host failures and later blocked obligations remain. The
 tests.1218's replacement freeze isbbb8f548/Ready2 under23646, immediately after
 1216. These are tested/source-review facts; actual landing, repository-role model
 reads, native refresh and physical boot are separate.
+Later23654 and a separate bound release read establish1216 deployed423,
+`94cc6a5d167dc5d7ed9a89f45e3d83a5f86513cb`, at14:49:04.675 Pacific, schema69.
+This closes1216 installation, not1218 installation, actual model file reading,
+fresh-context activation or the physical trial. Warp's publication reports a
+whole-Node comparison5693PASS/26FAIL each with no new failure; the failing
+obligations remain, and these landing reports are separate from the physical421
+Python pair above.
 An ordinary runner restart resumes the pinned thread. Existing automatic 1104
 recovery can replace one under its qualifying conditions. Installing repository
 seat files did not configure agents to read them.
@@ -595,7 +602,7 @@ test; missing mechanisms do not justify excluding their actors.
 | Owner | Required next action |
 | --- | --- |
 | Core7 / Warp |1213 is installed421; retain its proof and installed owner submission/status/continuation syntax, guards/coalescing and trace fields. Verify deployed/native dry-run behavior under the confirmed admission-before-runner contract (23495). |
-| Core8 / Fable / Warp |1216 tested92e552ed is approved Ready1; land it after1213 and verify actual repository-role assembly/adoption, preserving trusted binding and unavailable-file behavior.1218 approvedbbb8f548 follows immediately. |
+| Core8 / Fable / Warp |1216 tested92e552ed shipped423; retain assembly proof and unavailable-file limits, then observe actual model adoption separately.1218 approvedbbb8f548 follows immediately; its installed carry is still owed. |
 | Fable / role owners | Finish the eleven reviewed seat files and memory/dependency audit. Team/designer files and corrected hosted wait instructions are prepared in the combined carry and need verified installation; all required source/scripts/evidence must survive without scratch. |
 | Warp / Tony | Install the repository boot entry, exact service/runner stop/start and verification commands; prepare fresh Claude terminal inputs with no auto-loaded memory. A new deploy/release is not fabricated for a same-release restart. |
 | Fable / Tony / Warp |Provision/bind Fable before the seven-seat refresh; retire Auditor's old queue route while preserving durable state. Supply fresh external Team/Auditor Codex and Warp/designer Claude launches plus external delivery/wait ownership. Guarded queue-to-hosted product work stays1221 Next, outside this trial. |
@@ -615,7 +622,8 @@ adopts all-agent/service/runner scope and repository-only cold startup. Fable
 23434 identifies Team's external chat and all-six role conflicts; Warp 23437
 identifies designer and the role-source follow-up. Core7 23439 selects separate
 1216; Fable23441 assigns it. These earlier419/420 observations are historical;
-current bound live at reconciliation is422 / `fd609518`, with1213 installed421.
+the23647 observation is422 / `fd609518`, with1213 installed421. The later23654
+publication and bound release read record1216 installed423 / `94cc6a5d`.
 Execution reads current policy afresh (last read rule6 / Notebook42).
 Fable23641 names1223/PR513 for this seven-path document carry: Flex source,
 Fable exact-head review, Warp actual-live carry/landing. It adds no third
