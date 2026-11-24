@@ -116,11 +116,26 @@ function agentLines(agent, now, sending) {
   const state = agent.execution ? ({idle:'idle',working:'working',waiting:'waiting for a reply',stopping:'stopping',stopped:'stopped',failed:'last turn failed',unavailable:'runtime unavailable'}[agent.execution.state] ?? 'state unavailable') : agent.failing ? "can't be woken" : agent.not_answering ? 'not answering' : agent.waking ? 'being woken now'
     : !agent.route ? 'not woken here' : agent.waiting > 0 ? 'wakes going out' : 'all caught up';
   const details = [];
+  const replacement = agent.execution?.replacement;
+  const age = (now ?? Date.now()) - replacement?.committed_ms;
+  const replaced = Number.isInteger(replacement?.committed_ms) && age >= 0 && age < 24 * 60 * 60 * 1000
+    && typeof replacement?.old?.thread_id === 'string' && typeof replacement?.new?.thread_id === 'string';
   if (agent.execution) {
     details.push(agent.execution.desired === 'stopped' ? 'Work stays queued. Continue resumes this same agent context.' : 'This agent keeps its Codex context across deliveries and restarts.');
     if (agent.execution.failure && !agent.failing) details.push(`Last failure: ${agent.execution.failure}.`);
     const last = agent.execution.last_finished;
     if (last) details.push(`Last turn ${last.status} at ${at(last.finished_ms, now)}.`);
+    if (replaced) {
+      details.push(`Context replaced at ${at(replacement.committed_ms, now)}. ${replacement.reason}`);
+      details.push(`Previous context: ${replacement.old.thread_id}. Current context: ${replacement.new.thread_id}.`);
+      if (Array.isArray(replacement.turns)) details.push(`Triggering turns: ${replacement.turns.join(', ')}.`);
+    }
+    const recovery = agent.execution.recovery_state;
+    if (recovery && recovery !== 'committed') {
+      const words = { ready: 'is ready', creating: 'is creating a context', created: 'has a context awaiting setup confirmation',
+        prepared: 'is ready to activate', uncertain: 'is unconfirmed', cancelled: 'was cancelled', invalid: 'has an invalid record' };
+      details.push(`Context recovery ${words[recovery] ?? 'has an unavailable status'}.`);
+    }
   }
   if (agent.failing) details.push(`${failedPhrase(agent.failing, now).replace(/^./, c => c.toUpperCase())} (${plural(agent.failing.count, 'time')}). ${why(agent.failing)}`);
   // Health's own facts only: what the scheduler then does is its own (docs/effects-runner.md).
@@ -134,7 +149,7 @@ function agentLines(agent, now, sending) {
   } else {
     details.push('This Theseus has no route to wake it: it reads its work when it looks.');
   }
-  return { summary: `${agent.actor_id} — ${state} · ${waiting}`, details, agent: agent.actor_id, execution:agent.execution, bad: Boolean(agent.failing || agent.not_answering) };
+  return { summary: `${agent.actor_id} — ${state} · ${waiting}${replaced ? ' · context replaced' : ''}`, details, agent: agent.actor_id, execution:agent.execution, bad: Boolean(agent.failing || agent.not_answering) };
 }
 
 // The page's lines, from one health answer: [{group, key, label, summary, details, bad}].
