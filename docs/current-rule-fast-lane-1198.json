@@ -17,7 +17,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
       },
       "supersedes": []
     },
@@ -38,7 +38,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
       },
       "supersedes": []
     },
@@ -61,7 +61,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
       },
       "supersedes": []
     },
@@ -81,7 +81,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
       },
       "supersedes": []
     },
@@ -93,7 +93,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
       },
       "supersedes": []
     },
@@ -105,7 +105,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
       },
       "supersedes": []
     },
@@ -123,7 +123,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
       },
       "supersedes": []
     },
@@ -142,7 +142,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
       },
       "supersedes": []
     },
@@ -159,7 +159,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
       },
       "supersedes": []
     },
@@ -175,7 +175,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
       },
       "supersedes": []
     },
@@ -191,7 +191,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
       },
       "supersedes": []
     },
@@ -216,7 +216,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
       },
       "supersedes": []
     },
@@ -228,7 +228,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
       },
       "supersedes": []
     },
@@ -240,7 +240,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
       },
       "supersedes": []
     },
@@ -260,7 +260,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
       },
       "supersedes": []
     },
@@ -272,7 +272,25 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 18
+        "revision": 19
+      },
+      "supersedes": []
+    },
+    {
+      "id": "1184-size-exception",
+      "summary": "1184 exceeds the existing source-size bound. Warp carries to actual live; Fable reads that exact carry, recorded by the existing SPEC.json carry_read {topic,seq,id,why}, then the landing moves Review/Wait. This supplies neither approval before the read nor a consumer/landing waiver.",
+      "scope": {
+        "items": [
+          1184
+        ]
+      },
+      "effect": {
+        "freeze": "carry_read"
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 19
       },
       "supersedes": []
     }

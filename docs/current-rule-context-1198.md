@@ -2,7 +2,7 @@
 
 Authority is Fable's assignment22719, accepted Fast lane revision8 and the
 current-rule Notebook n-85ea0961d1fd4e5791fed9024aa9b720. Its revision7 was the
-assignment's starting source; revision18 is the final read used by this bootstrap, including adopted404 execution,
+assignment's starting source; revision19 is the final read used by this bootstrap, including adopted404 execution,
 per-file continuations, scoped1194/1184 exceptions, installed1196, explicit
 process-versus-coverage accounting and the five-feature postmortem. The bootstrap keeps those exact sources and scoped
 exceptions, rather than treating a snapshot of resource occupancy as a grant.
@@ -126,3 +126,8 @@ That compact clock grants no policy, queue or shipping-action authority. Preserv
 1180's pending-read refusal stop before any optional context lookup, and1200's
 additive job notice branch. These are explicit carry resolutions, not installed
 capabilities or completion dependencies of this standalone source.
+
+An explicit freeze-size exception routes to the existing carry/read landing path.
+The view names the configured freezer as the required carry reader and labels
+that external exact-head read unavailable here. It never manufactures a carry
+SHA or approval, and required failures/source findings still take priority.

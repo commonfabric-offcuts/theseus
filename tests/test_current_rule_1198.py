@@ -221,7 +221,9 @@ class CurrentRuleCase(PipelineCase):
         self.assertEqual(context["freeze_mode"], "carry_read")
         self.assertIn("python_compare", context["requirements"])
         self.assertIsNone(context["source"]["own_head"])
-        self.assertEqual(context["next_action"]["kind"], "read_source")
+        self.assertEqual(context["next_action"], {"kind": "read_carry_and_land", "owner_role": "lander", "owner_actor_id": "owner"})
+        self.assertEqual(context["proof"]["carry_read"], {"availability": "unavailable",
+            "reader_actor_id": "agent-a", "authority": "existing_carry_read_record"})
 
     def test_scoped_context_is_read_only_and_bounded(self):
         self.committed(self.install())

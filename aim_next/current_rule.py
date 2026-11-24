@@ -450,12 +450,15 @@ class CurrentRule:
         if frozen is None and freeze_mode == "required":
             context["limitations"].append("push/carry head is unrecorded; no source identity is inferred")
             return action("finish_build_and_record_source")
+        if frozen is None:
+            # This existing manual route needs the actual carry and its read;
+            # generic source_read must not substitute an impossible own freeze.
+            context["limitations"].append("carry-read exception active; exact carry/head/read is not recorded here")
+            context["proof"]["carry_read"] = {"availability": "unavailable",
+                "reader_actor_id": owners["freezer"], "authority": "existing_carry_read_record"}
+            return action("read_carry_and_land", "lander", owners["lander"])
         if "source_read" in required and approval is None:
             return action("read_source", "reader", owners["reader"])
         if piece["kind"] == "release":
             return action("land", "lander", owners["lander"])
-        # The exception supplies a route, never fabricated approval or a SHA.
-        if frozen is None:
-            context["limitations"].append("carry-read exception active; exact carry/head/read is not recorded here")
-            return action("read_carry_and_land", "lander", owners["lander"])
         return action("carry_and_combine", "carrier", owners["carrier"])
