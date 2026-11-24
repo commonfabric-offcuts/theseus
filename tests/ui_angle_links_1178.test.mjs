@@ -109,7 +109,7 @@ test('1178 repeated unclosed angle destinations retain linear formatter work', (
   assert.ok(work[1] <= 2.2 * work[0]);
 });
 
-test('1178 the actual message CardScroll owner paints an inert selectable reference', async () => {
+test('1178 the actual message CardScroll owner keeps references selectable and isolates their clicks', async () => {
   const doc = document1178(), card = doc.createElement('article'), preview = doc.createElement('div');
   preview.className = 'message-preview'; card.append(preview); doc.body.append(card);
   let folds = 0, opens = 0; card.addEventListener('click', () => folds++);

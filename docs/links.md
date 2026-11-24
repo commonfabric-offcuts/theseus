@@ -60,6 +60,16 @@ the message a new topic answers. `web/links.mjs` draws them.
   topic keeps its words; it does not show the topic's name.
 - Writing stays plain text: nothing becomes a link while it is written.
 
+An explicit local-file reference such as `[the plan](</path/file.md:28>)`
+shows its label with the complete destination as its title. A plain primary
+click copies that destination, including its line, and briefly shows “Copied”
+after the clipboard accepts it. If copying is unavailable or refused it says
+“Could not copy”. The label stays selectable and opens nothing; selecting text
+or using a modifier does not copy. This applies wherever messages, Reader
+passages and Notebook Display pages/cards render these references. `~/` and
+`file:` destinations are copied as written, without resolving a filesystem
+path. See [local-file-copy-1190.md](local-file-copy-1190.md).
+
 ## Written query links and topic names
 
 An explicit link such as `[The smoke checks](?topic=Landing&page=n-…)`
