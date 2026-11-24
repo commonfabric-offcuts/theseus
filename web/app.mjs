@@ -29,6 +29,7 @@ import { OutcomeChanges, outcomeReads } from './outcome-refresh.mjs';
 import { DossierHeads } from './stack-order.mjs';
 import { TopicViews, followEdits } from './topic-views.mjs';
 import { visitNewFor, paintVisitNew } from './visit-new.mjs';
+import { captureArchivedNew } from './archive-new.mjs';
 import { resolveTopicLink, topicLinkNeedsLookup } from './topic-link-route.mjs';
 import { readTopicList, TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, topicTarget, paintChanged, changedSince } from './topic-navigation.mjs';
 import { ImagePage } from './image-page.mjs';
@@ -1572,7 +1573,8 @@ function feedOf() {
     // The page's own act, once Core answers it, tells the Reader's neighbours whether it could have moved them (item 426).
     send: async envelope => { const receipt = await api.command(envelope); if (receipt?.status === 'committed') views.ownAct(envelope.kind, receipt.result); return receipt; },
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
-    keep: newOnPage, unread: newOnPage, acted: clearVisitNew, nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
+    keep: newOnPage, unread: newOnPage, acted: clearVisitNew, captureArchive: captureArchiveReading,
+    nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     newest: (stack, mark) => run(() => openDossierNew(stack, mark)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), arranged: stacksRedrawn,
     hold: (paint, act) => keepListAnchor(paint, act), navigate: () => releaseTopArrivals(), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyInCard(id, card)),
@@ -1605,6 +1607,19 @@ const openedIds = new Set();
 function openedHere(id) { clearVisitNew(id); if (openedIds.has(id)) return; openedIds.add(id); paintCardReading(); }
 const newOnPage = item => !cardRead(item) || Boolean(visitNew?.has(item.id));
 let visitPaintQueued = false;
+function captureArchiveReading(root, through) {
+  const epoch = listAccessEpoch, topicId = topic?.id, instanceId = bootstrap.instance_id;
+  const authority = { authority_id: registry.runtime.current.authority_id, authority_epoch: registry.runtime.current.authority_epoch };
+  return captureArchivedNew({ root, through, messages: feedMessages, viewer: bootstrap.actor, marks, visit: visitNew, revisionOf,
+    current: () => !retired && !topicUnavailable && !registry.disposed && !authorityReviewPending() &&
+      epoch === listAccessEpoch && topic?.id === topicId && bootstrap.instance_id === instanceId &&
+      registry.runtime.current.authority_id === authority.authority_id && registry.runtime.current.authority_epoch === authority.authority_epoch,
+    changed: () => {
+      keepListAnchor(() => { stackMessages(); paintCardReading(); paintMessageUpdates(); });
+      attention?.refresh();
+      if (commitReload) run(commitReload);
+    } });
+}
 function clearVisitNew(id) {
   if (!visitNew?.clear(id) || visitPaintQueued) return;
   visitPaintQueued = true;
@@ -3884,7 +3899,8 @@ function readyRails(workspaceId, handles = {}) {
     closeTopic: (current, envelope) => topicClosing.send(current, envelope),
     notebookMenu: (source, row, choose) => notebookRailMenu().items(source, choose),
     notebookMenuAction: (source, key, label, row, commands) => notebookRailMenu().act(source, key, label, row, commands, shell.handles),
-    markMenu: markFromRail, menuChanged: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, ...handles });
+    markMenu: markFromRail, captureArchiveReading: (root, through, topicId) => topic?.id === topicId ? captureArchiveReading(root, through) : null,
+    menuChanged: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, ...handles });
   topicClosing?.start();
 }
 // A notification opens its readable topic, or Outcomes when access is gone.

@@ -4,6 +4,7 @@ import { placeLink } from './links.mjs';
 import { routeHref } from './topic-navigation.mjs';
 import { RailMenuCommands } from './rail-menu-commands.mjs';
 import { stackActEnvelope, HELD_BY_STAR } from './stack-feed.mjs';
+import { archiveReadConfirmed } from './archive-new.mjs';
 
 const TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const still = current => { if (!current()) throw Error('The page changed. Open the image menu again.'); };
@@ -67,18 +68,25 @@ export class ImageArchive {
     if (!below && (latest.instance_id !== handles.bootstrap.instance_id || latest.items?.length !== 1 ||
         latest.items[0].topic_id !== image.topic_id || !Number.isSafeInteger(latest.items[0].seq) || latest.items[0].seq < item.seq)) throw Error('The message archive boundary could not be confirmed.');
     const request = stackActEnvelope({ instanceId: handles.bootstrap.instance_id, authority: handles.bootstrap.authority,
-      kind: 'stack.aside', item: { id: position.root_id, acts: { aside_revision: position.aside_revision } }, args: { through: below ? null : latest.items[0].seq } });
-    return { key, label, request, before: { through: position.through, key: position.order_key }, disabled: !below && Boolean(position.starred?.length) };
+      kind: 'stack.aside', item: { id: position.root_id, acts: { aside_revision: position.aside_revision } },
+      args: { through: below ? null : latest.items[0].seq, ...(!below ? { clear_new: true } : {}) } });
+    return { key, label, request, topicId: image.topic_id, before: { through: position.through, key: position.order_key }, disabled: !below && Boolean(position.starred?.length) };
   }
   async perform(handles, plan, current) {
     still(current);
     if (plan.disabled) throw Error(HELD_BY_STAR);
+    if (plan.request.args.clear_new === true && !('finishArchive' in plan))
+      plan.finishArchive = handles.captureArchiveReading?.(plan.request.target.message_id, plan.request.args.through, plan.topicId) ?? null;
     this.pending.set(plan.key, { ...plan, label: plan.label.replace(/^Retry /, '') });
     let receipt;
     try { receipt = await this.commands.send(handles, plan.request); }
     catch (error) {
       if (!this.commands.retained(handles, plan.request.kind, plan.request.target)) this.pending.delete(plan.key);
       throw error;
+    }
+    if (plan.request.args.clear_new === true) {
+      if (!archiveReadConfirmed(receipt, plan.request, plan.topicId)) throw Error('The archive reading was not confirmed. Choose it again to retry the same request.');
+      if (current()) plan.finishArchive?.();
     }
     this.pending.delete(plan.key);
     if (plan.undo) return null;

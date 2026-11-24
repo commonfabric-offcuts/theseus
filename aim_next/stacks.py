@@ -60,7 +60,7 @@ from .contract import READABLE, Refusal, _bounded_page, _identifier, _page_size
 from .delivery import _now_ms
 from .whispers import VISIBLE, visible
 from .message_edit import words, withheld
-from .topic_reading import message_key
+from .topic_reading import message_key, unread_groups
 from . import cover_values, dossier_order
 
 
@@ -175,10 +175,14 @@ def _value(kind, args):
             raise Refusal("INVALID_ARGUMENT", "Choose folded or open for this dossier, or none for its default")
         return {"level": args["level"]}
     if kind == "aside":
-        through = args.get("through", False) if set(args) in ({"through"}, {"through", "key"}) else False
+        through = args.get("through", False) if "through" in args and not set(args) - {"through", "key", "clear_new"} else False
         if through is not None and (isinstance(through, bool) or not isinstance(through, int) or through < 1):
             raise Refusal("INVALID_ARGUMENT", "Name the last observed message sequence, or none to bring the dossier back")
+        if "clear_new" in args and (not isinstance(args["clear_new"], bool) or args["clear_new"] and through is None):
+            raise Refusal("INVALID_ARGUMENT", "Clear New is a boolean on Archive, not on Bring back")
         key = _value("place", {"key": args["key"]}) if "key" in args else {}
+        # Clear New is an explicit reading act, not part of saved placement.
+        # Positional Undo continues to send only through/key.
         return dict({"through": through}, **key)
     if kind == "star":
         return _flag(args, "starred", "Name one message and whether it is starred")
@@ -656,6 +660,43 @@ class Stacks:
             at = row[0]
         raise Refusal("INVALID_ARGUMENT", "This stack is joined too deep to join again")
 
+    def _clear_archive_new(self, db, actor, message, through):
+        """Read this actor's visible dossier through Archive's observed boundary.
+
+        Called only after all aside/root/access/star/revision fences, within
+        the command transaction. Reuse the delivery and mark owners so counts,
+        wake eligibility and change records agree. No topic-wide read range,
+        other reader, or later message is consumed. The receipt is counts only.
+        """
+        params = {"actor": actor, "root": message["id"], "through": through}
+        eligible = (" m.seq<=:through AND m.author_id<>:actor AND NOT EXISTS ("
+                    "SELECT 1 FROM message_removals r WHERE r.message_id=m.id AND r.kind='unsent')")
+        roots = StackRoots(db, actor)
+        groups = unread_groups(db, actor, message["topic_id"])
+        # The same group owner drives the page, New line and counts; correction,
+        # request and answer notifications are not New and stay pending.
+        params.update({"group%d" % n: group for n, group in enumerate(groups)})
+        pending = db.execute(MEMBERS + " SELECT d.* FROM members p JOIN messages m ON m.id=p.id "
+                             "JOIN deliveries d ON d.message_id=m.id WHERE d.recipient_id=:actor "
+                             "AND d.state='pending' AND d.group_id IN (" +
+                             ",".join(":group%d" % n for n in range(len(groups))) + ") AND " + eligible,
+                             params).fetchall() if groups else []
+        deliveries = 0
+        for row in pending:
+            # An unsent ancestor can terminate today's canonical ancestry.
+            if roots.root(row["message_id"]) != message["id"]:
+                continue
+            self._acknowledge(db, actor, row)
+            deliveries += 1
+        marked = db.execute(MEMBERS + " SELECT m.id,m.topic_id,m.seq FROM members p JOIN messages m ON m.id=p.id "
+                            "JOIN message_marks k ON k.message_id=m.id AND k.actor_id=:actor "
+                            "WHERE k.revision%2=1 AND " + eligible, params).fetchall()
+        marks = 0
+        for row in marked:
+            if roots.root(row["id"]) == message["id"] and self._clear_mark(db, actor, row) is not None:
+                marks += 1
+        return {"through": through, "deliveries": deliveries, "marks": marks}
+
     def _command_stack_act(self, db, actor, envelope):
         kind, expected_name = KINDS[envelope["kind"]]
         message, topic = self._acted_message(db, actor, envelope["target"])
@@ -694,6 +735,8 @@ class Stacks:
                 code, words = NOT_THE_NAMER[why]
                 raise Refusal(code, words % namer if "%s" in words else words)
         result = {"message_id": message["id"], "topic_id": message["topic_id"], "seq": message["seq"]}
+        if kind == "aside" and envelope["args"].get("clear_new") is True:
+            result["cleared_new"] = self._clear_archive_new(db, actor, message, value["through"])
         same = (self._act_value(db, message["id"], kind, owner) or NONE[kind]) == value
         if kind == "place":
             root = StackRoots(db, actor).root(message["id"])
