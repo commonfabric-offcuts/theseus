@@ -93,6 +93,8 @@ class PieceClock:
                 or ref["kind"] != "message" or type(ref["revision"]) is not int or ref["revision"] < 1):
             raise Refusal("INVALID_ARGUMENT", "A clock source names a public message and its revision")
         source = self._source(db, actor, ref)
+        if source["current_revision"] != ref["revision"]:
+            raise Refusal("INVALID_CLOCK_SOURCE", "Read and name the source message's current revision")
         identity = db.execute("SELECT m.private_to,t.workspace_id FROM messages m JOIN topics t ON t.id=m.topic_id WHERE m.id=?", (ref["id"],)).fetchone()
         if (identity["private_to"] is not None or identity["workspace_id"] != workspace["id"]
                 or source.get("withheld") or (author is not None and source["author"] != author)):
@@ -123,7 +125,7 @@ class PieceClock:
         if pipeline is None or not pipeline["ships_in_releases"]:
             return None
         numbers = [row[0] for row in db.execute("SELECT number FROM pipeline_piece_members WHERE piece_id=? ORDER BY number", (piece["id"],))]
-        if not numbers or build is None:
+        if not numbers:
             return None
         receipts = []
         for number in numbers:
@@ -131,7 +133,8 @@ class PieceClock:
             if index is None:
                 return None
             row = db.execute("SELECT number,commit_sha,deployed_ms,recorded_ms,items FROM releases WHERE number=?", (index["release"],)).fetchone()
-            if row is None or number not in json.loads(row["items"]) or row["deployed_ms"] < build["entered_ms"]:
+            if (row is None or number not in json.loads(row["items"])
+                    or (build is not None and row["deployed_ms"] < build["entered_ms"])):
                 return None
             receipts.append(dict(row))
         last = max(receipts, key=lambda r: (r["deployed_ms"], r["number"]))
@@ -448,22 +451,24 @@ class PieceClock:
             build = self._clock_build(db, piece)
             live = self._clock_live(db, piece, build)
             actual = state["pushes"][0] if forecast["milestone"] == "push" and state["pushes"] else live
-            if actual is not None:
+            first, current = forecast["revisions"][0], forecast["revisions"][-1]
+            if actual is not None and actual["occurred_ms"] <= first["deadline_ms"] + HOUR:
                 changed = True
                 continue
             workspace = db.execute("SELECT * FROM workspaces WHERE id=?", (piece["workspace_id"],)).fetchone()
             conversation = self._conversation_of(db, workspace["id"])
-            first, current = forecast["revisions"][0], forecast["revisions"][-1]
             db.execute("SAVEPOINT clock_notice")
             try:
                 if conversation is None or not self._health_author(db):
                     raise Refusal("CLOCK_NOTICE_UNAVAILABLE", "The outcome has no usable notice destination")
                 numbers = [r[0] for r in db.execute("SELECT number FROM pipeline_piece_members WHERE piece_id=? ORDER BY number", (piece["id"],))]
-                text = ("Forecast for piece %s (%s), %s, is more than one hour late. Original deadline %d; "
+                elapsed = (actual["occurred_ms"] if actual is not None else now) - forecast["anchor"]["ms"]
+                text = ("Forecast for piece %s (%s), %s, %s more than one hour late. Original deadline %d; "
                         "elapsed from its original anchor %dms. Current revision%d, deadline%d: %s. "
                         "This is one notice; the original forecast and every revision remain on the clock.") % (
-                            piece["id"], ",".join(str(n) for n in numbers), forecast["milestone"], first["deadline_ms"],
-                            now-forecast["anchor"]["ms"], current["revision"], current["deadline_ms"], current["reason"])
+                            piece["id"], ",".join(str(n) for n in numbers), forecast["milestone"],
+                            "was" if actual is not None else "is", first["deadline_ms"],
+                            elapsed, current["revision"], current["deadline_ms"], current["reason"])
                 result, _ = self._publish(db, "theseus", "clock-slip:" + piece["id"] + ":" + forecast["id"], conversation["id"],
                                           {"body": text, "attachments": [], "quotes": [], "addressees": [workspace["owner_id"]], "intent": "tell"},
                                           topic=conversation)

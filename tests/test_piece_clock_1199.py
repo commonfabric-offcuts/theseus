@@ -383,6 +383,70 @@ class ClockCase(steering.PipelineCase):
         self.assertIn("CLOCK_EVENT_EXISTS", err)
         self.assertEqual(marker.read_text(), "ran\n", "the same physical attempt did not run twice")
 
+    def test_clock_source_rejects_future_and_stale_revisions_without_mutating(self):
+        self.bind()
+        before = self.clock()["record"]
+        future = dict(self.lane_source, revision=999)
+        self.rejected(self.event("segment", source=future, id="forged", mode="source", start_ms=self.now), "INVALID_CLOCK_SOURCE")
+        self.assertEqual(self.clock()["record"], before)
+        self.committed(self.command("message.edit", {"body": "My revised estimate source"},
+                                   {"message_id": self.lane_source["id"]}, {"message_revision": 1}, actor="agent-b"))
+        self.rejected(self.event("segment", id="stale-source", mode="source", start_ms=self.now), "INVALID_CLOCK_SOURCE")
+        current = dict(self.lane_source, revision=2)
+        self.committed(self.event("segment", source=current, id="current-source", mode="source", start_ms=self.now))
+        self.assertEqual(self.clock()["record"]["segments"][0]["source"], current)
+
+    def test_actual_live_without_a_build_stays_completed_with_a_missing_build_metric(self):
+        self.build_topic("review-only")
+        self.add("Missing historical Build", section="now", size="small")
+        review = self.committed(self.command("pipeline.piece_start", {
+            "numbers": [2], "topic_id": "review-only", "stage_id": "review"}, {"workspace_id": "w1"}))["piece_id"]
+        self.now += 1000
+        self.live(numbers=(2,))
+        clock = self.clock(piece=review)["clock"]
+        self.assertIsNone(clock["first_build"])
+        self.assertEqual(clock["first_live"]["release"], 1)
+        self.assertIsNone(clock["build_to_live_ms"])
+        counts = self.cohort([review])["counts"]
+        self.assertEqual((counts["completed"], counts["eligible"], counts["missing_build"]), (1, 0, 1))
+
+    def test_restart_after_late_completion_keeps_one_notice_with_actual_elapsed(self):
+        self.bind()
+        start = self.now
+        deadline = start+1000
+        self.forecast(deadline=deadline)
+        self.now = deadline+3600001
+        # The actual release commits while notice settling is unavailable.
+        with mock.patch.object(self.store, "_clock_settle_due", return_value=False):
+            self.live()
+        self.assertEqual(self.notices(), [])
+        actual = self.now
+        self.now += 7200000
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.store.settle_health_due(self.now)
+        self.assertEqual(len(self.notices()), 1)
+        self.assertIn("was more than one hour late", self.notices()[0][1])
+        self.assertIn(str(actual-start)+"ms", self.notices()[0][1])
+        self.assertEqual(self.clock()["clock"]["first_live"]["occurred_ms"], actual)
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.now += 60000
+        self.store.settle_health_due(self.now)
+        self.assertEqual(len(self.notices()), 1)
+
+    def test_timely_push_and_live_do_not_send_slips_on_a_later_restart(self):
+        self.bind()
+        deadline = self.now+1000
+        self.forecast(id="timely-live", deadline=deadline)
+        self.forecast(id="timely-push", milestone="push", deadline=deadline)
+        self.now = deadline+3600000
+        self.push()
+        self.live()
+        self.now += 7200000
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.store.settle_health_due(self.now)
+        self.assertEqual(self.notices(), [])
+        self.assertEqual([f["status"] for f in self.clock()["clock"]["forecasts"]], ["achieved", "achieved"])
+
     def test_invalid_event_and_cohort_types_refuse_before_any_clock_mutation(self):
         self.bind()
         before = self.clock()["record"]

@@ -15,6 +15,8 @@ are written by that authenticated lane or the owner/coordinator. A missing lane
 is absent, never inferred from a topic creator. Each event names a public,
 readable source message and its revision in the same outcome. No source body
 or private words are copied into clock records.
+Writes refuse a stale or invented source revision; retained events keep the
+revision actually validated when they were recorded.
 
 Events: `lane` (actor and work class page/core/database), `segment` (source or
 resume start), `forecast` (stable ID, push/live milestone, build/segment/freeze
@@ -64,6 +66,8 @@ Live comes only from the immutable release table. Recording a release writes
 an exact per-item clock index in that same transaction. An explicit release
 reconciliation supports older records without scanning release history.
 Only a release covering this piece's items after its Build satisfies it.
+When historical Build is missing, the actual matching release is still shown
+as completed with a missing Build metric; no cycle duration is invented.
 Push attainment is shown separately; only matching live changes a prediction
 to achieved. Original signed/absolute live error and each later revision's
 accuracy are separate. Missing originals remain in the eligible denominator.
@@ -89,6 +93,9 @@ The notice and deduplication mark commit atomically; retries, a fresh operation
 or a restart cannot repeat it. A linked earlier slip/withdrawal suppresses a
 duplicate, retaining that public message. Failed publication stays pending,
 visible and retryable rather than reported as delivered.
+Recovery also notices a milestone that actually finished more than one hour
+late while settling was unavailable. Its elapsed value ends at that actual
+event; a timely completion stays silent even when recovery happens later.
 
 This uses the existing Core health/feed due-time settling path, not a new
 scheduler. One bounded exact metadata due queue is maintained on clock writes;
