@@ -117,7 +117,7 @@ def _named(value):
     return value if isinstance(value, str) and SAFE_ID.fullmatch(value) else UNNAMED
 
 
-def notice(items, handed_seq, actor_id, attempt_id, complete=True):
+def notice(items, handed_seq, actor_id, attempt_id, complete=True, work_context=None):
     """The notice for one claim from the recipient's pending deliveries (design §3.9).
 
     `items` are `deliveries` view items, `handed_seq` the claim's: deliveries
@@ -217,5 +217,10 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
                        '' if item['answer']['stands'] else ' (no longer stands)')) + item['message']['body']) if item.get('answer') else
                      item["request"]["body"] if item.get("request") else item["message"]["body"]}, ensure_ascii=False)) for item in listed)
         context = {"theseus.previews." + attempt_id: {"kind": "untrusted", "value": previews}}
+    if work_context is not None:
+        from .work_context import lines as context_lines
+        lines.extend(context_lines(work_context))
+        context = dict(context or {})
+        context["theseus.work-context." + attempt_id] = {"kind": "untrusted", "value": json.dumps(work_context, ensure_ascii=False)}
     return {"input": [{"type": "text", "text": "\n".join(lines), "text_elements": []}],
             "additionalContext": context, "announced_seq": max(item["seq"] for item in listed)}

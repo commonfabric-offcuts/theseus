@@ -203,10 +203,11 @@ class StoreOpenError(StoreError):
 _TOPIC_SUMMARY = "LEFT JOIN topic_summaries s ON s.topic_id=t.id LEFT JOIN messages m ON m.id=s.latest_message_id "
 
 
+from .current_rule import CurrentRule
 from .hosted_recovery import HostedRecovery
 
 
-class Store(PieceClock, HostedRecovery, WorkspaceLinks, MentionReach, RailDimming, Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, OutcomeColors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
+class Store(CurrentRule, PieceClock, HostedRecovery, WorkspaceLinks, MentionReach, RailDimming, Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, OutcomeColors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
             OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Covers, CoverRefresh, DossierMove, AskCover, Blocking, MessageEdit, Invites, Tools, Withdrawal, RefreshDelivery, Questions, AnswerDelivery, Removal, HostedSeats):
     def __init__(self, db_path, expected_instance_id, *, expected_binding, machine=None, tools=None):
         self.path = Path(db_path).resolve()

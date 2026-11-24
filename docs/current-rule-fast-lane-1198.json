@@ -1,0 +1,304 @@
+{
+  "policy_id": "fast-lane",
+  "notebook_id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+  "rules": [
+    {
+      "id": "build-proof",
+      "summary": "23053/23060: own tests plus directly named importing/source-reading whole files on the current407-based piece and407, with no new or changed failure cause. Never expand through Store/import chains. About40+ goes to Warp with names/counts;1198 is the resolved39 Python files,9 native postlanding and its fixture input. Retain body/barrier and original interruption evidence. No broad Python,404/406 controls, lane Node pairs or783 phases.",
+      "scope": {},
+      "effect": {
+        "require": [
+          "red_green",
+          "consumers",
+          "source_read"
+        ],
+        "freeze": "required"
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "page-path",
+      "summary": "Ordinary page handoff uses the own/direct selected whole-file current407 comparison. Exact source/read/freeze remain; whole Node carry/live comparison belongs to landing and native browser obligations follow landing.",
+      "scope": {
+        "paths": [
+          "page"
+        ]
+      },
+      "effect": {
+        "require": [
+          "freeze",
+          "node_compare"
+        ]
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "core-path",
+      "summary": "23053 ordinary Core handoff compares the own/direct named Python files on the piece carried onto current407 and407, preserving actual failure causes. No transitive Store expansion or whole-suite handoff. Exact freeze/read remain; whole Node comparison belongs to landing, even when the mechanical flag says ordinary.",
+      "scope": {
+        "paths": [
+          "core",
+          "database"
+        ]
+      },
+      "effect": {
+        "require": [
+          "freeze",
+          "python_compare",
+          "node_compare"
+        ]
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "database-path",
+      "summary": "Database changes retain the existing judged path and real-data rehearsal.",
+      "scope": {
+        "paths": [
+          "database"
+        ]
+      },
+      "effect": {
+        "require": [
+          "judged_rehearsal"
+        ]
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "source-lifetime",
+      "summary": "Preserve source/evidence for required readers and carry, or Warp explicit clean-tree release; preserve dirty removal refusals.",
+      "scope": {},
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "resource-admission",
+      "summary": "Warp22800 adopts the corrected404 lane lock: every test invocation uses the installed wrapper, three slots, landing priority and load below12. Still-unentered controls/continuations use one complete unfiltered file per lock; retain queue/body/terminal/cleanup and interrupted originals. Unknown occupancy grants no entry.",
+      "scope": {},
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "1169-core",
+      "summary": "1169 is actual Core work; its ordinary no-schema mechanical flag never waives Core proof/read/freeze/comparison.",
+      "scope": {
+        "items": [
+          1169
+        ]
+      },
+      "effect": {
+        "work_type": "core"
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "1194-size-exception",
+      "summary": "1194 uses1177 carry/read path due1186 freeze-size limit; the prior failed migration preflight and original proof remain. Landed400 retains migrate250ms;1201 carries the writer line with1200 under22759.",
+      "scope": {
+        "items": [
+          1194
+        ]
+      },
+      "effect": {
+        "freeze": "carry_read",
+        "work_type": "core"
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "1184-scope",
+      "summary": "1184 shipped in406; preserve original rejected and later consumer/migration/body evidence. Flex owns fixture/body contracts;22988 delegated only1200 schema70 current_legacy_rows to Page6, preserving older rows, frozen-layout checks and1194 forwarding.1200/1201 are now parked by23053 with branches/evidence retained. The earlier judged route remains history, not current landing work.1138 is duplicate scope.",
+      "scope": {
+        "items": [
+          1184,
+          1138
+        ]
+      },
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "1174-browser-waiver",
+      "summary": "1174 retains its existing browser waiver; topic-row and badge first-unread equivalence is the product behavior.",
+      "scope": {
+        "items": [
+          1174
+        ]
+      },
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "1160-postlanding-cell",
+      "summary": "1160 final hotkey/Health browser cell stays postlanding/unrun until actual evidence. Earlier proof keeps its original head.",
+      "scope": {
+        "items": [
+          1160
+        ]
+      },
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "1028-prerequisites",
+      "summary": "All six named1028 no-preparation prerequisites are now actually live. Preserve originalBuild4 and failed evidence; reconcile current source when assigned.1203\u20131207 precede1028 as lanes actually free; existing machinery bindings are not interrupted.",
+      "scope": {
+        "items": [
+          1028
+        ]
+      },
+      "effect": {
+        "wait_items_live": [
+          1172,
+          1161,
+          1171,
+          1174,
+          1160,
+          1190
+        ]
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "independent-followons",
+      "summary": "1199 clock and1180 recovery remain independent1198 follow-ons.23053 parks1200/1201 today and removes1200 from restart prerequisites. Restart still requires1198/1196/1180/1199 live, the five features and prediction postmortem, isolated checks and a separately scheduled live drill. No restart authorization or invented forecast.",
+      "scope": {},
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "real-failures",
+      "summary": "Actual required failures and unresolved source findings stop this piece. Old packet/lease/grant or unrelated asks do not replace the current rule.",
+      "scope": {},
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "benchmark-cohort",
+      "summary": "The cover KPI cohort is only1203\u20131207. Preserve original Build/source starts, first live forecasts, revisions/reasons and actual receipts; missing originals stay missing.45minute target is only small page pieces; Core/tool clocks stay separate. No median to Tony. Postmortem follows all five before restart.",
+      "scope": {
+        "items": [
+          1203,
+          1204,
+          1205,
+          1206,
+          1207
+        ]
+      },
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "installed-landing-kit",
+      "summary": "1196 is installed in405 and1209 seat documents in407. Preserve actual normalized cause/execution comparison and original publication refusal/recovery. Installation is not seat configuration, adoption or restart. Current pipeline/release records own live state; this bootstrap is not a copied live-state authority.",
+      "scope": {},
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    },
+    {
+      "id": "1184-size-exception",
+      "summary": "1184 exceeds the existing source-size bound. Warp carries to actual live; Fable reads that exact carry, recorded by the existing SPEC.json carry_read {topic,seq,id,why}, then the landing moves Review/Wait. This supplies neither approval before the read nor a consumer/landing waiver.",
+      "scope": {
+        "items": [
+          1184
+        ]
+      },
+      "effect": {
+        "freeze": "carry_read"
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 23
+      },
+      "supersedes": []
+    }
+  ],
+  "owners": {
+    "reader": "warp",
+    "carrier": "warp",
+    "freezer": "fable",
+    "lander": "warp"
+  }
+}
