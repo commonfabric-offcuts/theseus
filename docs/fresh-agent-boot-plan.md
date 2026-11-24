@@ -329,16 +329,22 @@ The aim is reliable Fast lane shipping from durable knowledge. Starting threads
 is a readiness observation; one landing is initial recovery evidence, not a
 claim of sustained low prediction error.
 
-Before reboot, Fable/Warp record the next **five consecutive ordinary eligible
-product pieces** as a proposed comparison cohort, or a clearly sourced replacement
-if the work mix requires it. Lock membership, selection rule, target milestones
-and thresholds before outcomes; include slow, failed and incomplete members.
-The comparison proposal uses the earlier benchmark's under-45-minute
-Build-to-live target and within-15-minute first-LIVE-prediction target. Those
-installed benchmark rules were scoped to 1203–1207; applying these targets to a
-new cohort is a reviewable plan proposal, not an invented current-rule update.
+Warp23514 adopts a second reported result, **not a shipping gate**: take the
+first five pieces that land after reboot, whatever their work type. Report all
+five live within45 minutes of the first one's Build, and at least four within15
+minutes of their lane's first LIVE prediction. A miss is reported, not a stop.
+If fewer than five are ready, state the actual number and incomplete result;
+do not select a favorable replacement cohort. This sourced disposition replaces
+the earlier proposed next-five-product/per-piece45-minute interpretation.
 
-For every new piece, record the fresh lane's first forecast before construction
+Keep each original Build and first prediction, including continued pre-boot
+work such as1215. Its deliberate hold must not be erased by a fresh Build clock;
+if that first piece's original Build predates reboot, the45-minute interval
+includes that time and may already miss. Show that fact and the hold separately,
+rather than reinterpret “first one's Build” silently. Fable/Auditor reconcile the
+recorded numeric result against the original canonical clocks.
+
+For genuinely new work, record the fresh lane's first forecast before construction
 at its actual original Build/source-inspection boundary, then actual source,
 push, handoff and completed publication times. Keep later forecasts/reasons
 separately. Signed error is actual publication minus that first prediction;

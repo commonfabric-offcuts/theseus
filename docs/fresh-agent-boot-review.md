@@ -109,3 +109,12 @@ Whole-system reviews recorded: Warp23494 and Steward23510. Remaining focused
 responses: Fable, Auditor, core-lane7, core-lane8, page-lane5 and page-lane6.
 Core7's23495 ordering evidence is a scoped technical confirmation, not a claim
 to have reviewed the whole revised document.
+
+Fable23512 read the wider plan, flags the exact-eight-actor manifest and private
+checkpoint wording (fixed by standalone Flex5250350c, merged into1218), and
+requests a sourced cohort/threshold disposition. Warp23514 adopts the first
+five landings, whatever their type: all within45 minutes of the first one's
+Build and at least four predictions within15 minutes, reported as a second
+result rather than a gate. The plan now states that exact definition, preserves
+original pre-boot Builds/forecasts and explains that the1215 hold can make the
+45-minute total miss; it never resets the clock to improve it.
