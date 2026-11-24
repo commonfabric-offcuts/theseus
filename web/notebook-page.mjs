@@ -2,9 +2,10 @@ import { CardTextProjection, cardTextValue } from './notebook-card-text.mjs';
 import { stripDetails } from './card-details.mjs';
 import { pageLink } from './links.mjs';
 import { copyText } from './message-menu.mjs';
+import { showGlyph } from './glyphs.mjs';
 import { openNotebookMenu } from './notebook-menu.mjs';
 import { DeckPage, UNDO_LIMIT } from './deck-page.mjs';
-import { applyAct, deckBody, parseDeck, cardText, cardImages, cardRegionShape, imageLine, textCard, findCard } from './deck.mjs';
+import { applyAct, deckBody, parseDeck, cardText, cardImages, cardRegionShape, imageLine, textCard, findCard, groupEnd, DEEPEST } from './deck.mjs';
 import { WritingInput, commandLetter } from './writing-input.mjs';
 import { selectionCardSplit } from './notebook-card-split.mjs';
 import { NotebookEditHistory } from './notebook-edit-history.mjs';
@@ -503,6 +504,56 @@ export class NotebookPage extends DeckPage {
     // The cards' asks come and go with the mark.
     if(this.paintedDraft!==undefined&&this.paintedDraft!==on)this.paint();
     this.paintedDraft=on;
+  }
+  bubbles(index, stacks) {
+    const controls=super.bubbles(index,stacks), ref=this.cardRef(index);
+    if(this.mode==='text'||!ref)return controls;
+    controls.classList.add('notebook-card-actions');
+    const button=(className,label)=>{
+      const node=this.node('button','deck-bubble notebook-card-action '+className);
+      node.type='button';node.title=label;node.setAttribute('aria-label',label);
+      node.addEventListener('pointerdown',event=>event.stopPropagation());
+      node.addEventListener('mousedown',event=>event.preventDefault());
+      for(const name of ['keydown','keyup'])node.addEventListener(name,event=>{
+        if(!['Enter',' '].includes(event.key)||event.metaKey||event.ctrlKey||event.altKey)return;
+        event.stopPropagation();if(event.repeat)event.preventDefault();
+      });
+      return node;
+    };
+    const copy=button('notebook-card-copy','Copy card text');
+    showGlyph(copy,'copy',this.doc);
+    copy.onclick=async event=>{
+      event.preventDefault();event.stopPropagation();
+      if(copy.disabled)return;
+      copy.disabled=true;
+      try {
+        const copied=await this.copyCard(ref);
+        if(!copied||this.listening?.signal.aborted||!copy.isConnected||this.cardAt(ref)<0)return;
+        showGlyph(copy,'kept',this.doc);copy.dataset.copied='true';
+        copy.title='Card text copied';copy.setAttribute('aria-label',copy.title);
+      } catch(error) { this.cardNotice('Could not copy this card: '+(error.message??error)); }
+      finally { if(copy.isConnected&&!this.listening?.signal.aborted)copy.disabled=false; }
+    };
+    const add=button('notebook-card-add','Add child card');
+    add.dataset.text='+';
+    const deepest=this.deck.cards[index].depth>=DEEPEST;
+    add.disabled=!this.cardWritable()||Boolean(this.asking)||deepest||Boolean(this.unavailable);
+    if(deepest){add.title='Cannot add a child: this card is at the deepest level';add.setAttribute('aria-label',add.title);}
+    add.onclick=event=>{event.preventDefault();event.stopPropagation();if(!add.disabled)return this.addChildCard(ref);return false;};
+    controls.append(copy,add);
+    return controls;
+  }
+  addChildCard(ref) {
+    if(this.mode==='text'||!this.cardWritable()||this.asking||refuseUnavailableWriting(this))return false;
+    if(this.editing)this.finish();
+    if(this.editing||!this.cardWritable())return false;
+    const at=this.cardAt(ref), card=this.deck.cards[at];
+    if(!card||card.depth>=DEEPEST)return false;
+    const last=groupEnd(this.deck.cards,at)-1;
+    if(this.folded.delete(card.title))this.keepFolds();
+    this.picked=at;
+    this.open({text:'',after:cardText(this.deck.cards[last]),depth:card.depth+1,near:last,fresh:true,at:0});
+    return Boolean(this.editing?.fresh);
   }
   paint() {
     if(this.mode!=='text') { super.paint(); this.readingPassages(); }
