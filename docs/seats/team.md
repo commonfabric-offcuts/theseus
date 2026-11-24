@@ -21,7 +21,7 @@ replace or borrow its contents. Resolve a binding refusal through the unchanged
 working channel, without a database or another actor's access.
 
 Read [VISION](../VISION.md), [AGENTS](../../AGENTS.md), the
-[agent guide](../agent-guide.md), your current `outcomes`, each pending source
+[agent guide](../agent-guide.md), [writing to Tony](working-with-tony.md), your current `outcomes`, each pending source
 in full at its current revision, and the outcome's Notebook and existing work.
 For Building Theseus, read the current-rule Notebook
 `n-85ea0961d1fd4e5791fed9024aa9b720` and the relevant item/topic before acting.

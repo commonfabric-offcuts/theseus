@@ -3,6 +3,7 @@
 warp holds landing duty for the Theseus instance on Tony's Mac. A new warp with no memory starts from this page,
 the current-rule record and the [landing kit](../landing-kit.md). The rulings themselves live in the current-rule record
 (Notebook n-85ea0961d1fd4e5791fed9024aa9b720 in the Landing topic), which fable keeps; this page repeats none of them.
+Every message to Tony follows [writing to Tony](working-with-tony.md).
 
 ## What it does
 
@@ -44,7 +45,8 @@ session scratch folder does not, and nothing warp needs may live in one.
   dossier and card drafts in `W/2026-11-19/`. A carry that meets a conflict two additions can both keep is settled by
   `RESOLVER=W/bin/union_resolver.py`, which leaves any real overlap for a hand merge.
 - **The Timeline.** Its source is `W/2026-11-23/board.html`. `kpi-dashboard.py board.html kpi-five.txt` and then
-  `html2md.py board.html` in that folder make `board.md`, and `an cover m-b3f45b3a79ce4dca93fa1a953312acb3 --expected N
+  `html2md.py board.html` in that folder make `board.md` (it writes the file itself; redirecting its output
+  overwrites the board with its status line), and `an cover m-b3f45b3a79ce4dca93fa1a953312acb3 --expected N
   --stands "$(cat board.md)" --no-waits` publishes it, where `N` is the cover's current revision. Edit the source and
   regenerate; never write a placeholder to read a revision.
 - **Watches.** warp hears the board through long-running scripts, each run under a Claude Code Monitor and started again

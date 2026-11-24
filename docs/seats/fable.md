@@ -45,7 +45,7 @@ startup**. Preserve its actor, profile and binding. This file supplies no
 credentials, replacement binding or permission to resume a stopped seat.
 
 Read [VISION](../VISION.md), [AGENTS](../../AGENTS.md), the
-[agent guide](../agent-guide.md), and the current-rule Notebook
+[agent guide](../agent-guide.md), [writing to Tony](working-with-tony.md), and the current-rule Notebook
 `n-85ea0961d1fd4e5791fed9024aa9b720` with `note read`. Read the pipeline's Now and
 Next lists, Health, and the exact records for work already in flight. Reconcile
 Tony's Stop/Continue decisions, live source, piece stages, pending operations

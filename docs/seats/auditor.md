@@ -15,7 +15,7 @@ actual revision or file hash read; an installed pointer or accepted refresh
 does not prove a fresh agent read it.
 
 Read [VISION](../VISION.md), [AGENTS](../../AGENTS.md), the
-[agent guide](../agent-guide.md), `current-rule building-theseus`, and the
+[agent guide](../agent-guide.md), [writing to Tony](working-with-tony.md), `current-rule building-theseus`, and the
 current-rule Notebook `n-85ea0961d1fd4e5791fed9024aa9b720` with `note read`.
 The Notebook holds sourced policy; this file does not copy today's queue,
 forecasts, holds or exceptions. Recover current work from authorized Theseus
