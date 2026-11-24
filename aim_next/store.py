@@ -72,6 +72,7 @@ from .removal import Removal, REMOVAL_UP
 from .piece_freeze import FREEZE_SCHEMA
 from .hosted_seats import HostedSeats, SEAT_SCHEMA, END_SCHEMA
 from .workspace_links import WorkspaceLinks, LINK_SCHEMA
+from .piece_clock import PieceClock
 SCHEMA_VERSION = "69"
 from .hosted_seats import HostedSeats, SEAT_SCHEMA, END_SCHEMA, TEMPLATE_SCHEMA
 
@@ -206,7 +207,7 @@ from .current_rule import CurrentRule
 from .hosted_recovery import HostedRecovery
 
 
-class Store(CurrentRule, HostedRecovery, WorkspaceLinks, MentionReach, RailDimming, Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, OutcomeColors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
+class Store(CurrentRule, PieceClock, HostedRecovery, WorkspaceLinks, MentionReach, RailDimming, Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, OutcomeColors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
             OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Covers, CoverRefresh, DossierMove, AskCover, Blocking, MessageEdit, Invites, Tools, Withdrawal, RefreshDelivery, Questions, AnswerDelivery, Removal, HostedSeats):
     def __init__(self, db_path, expected_instance_id, *, expected_binding, machine=None, tools=None):
         self.path = Path(db_path).resolve()
@@ -279,6 +280,7 @@ class Store(CurrentRule, HostedRecovery, WorkspaceLinks, MentionReach, RailDimmi
             found["release"], written = write_release(db, record, _now_ms())
             if written:
                 self._ship_release(db, found["release"])
+                self._clock_record_release(db, found["release"])
             return written
         written = self._operator_write(write, "recorded", "release record")
         return {"instance_id": self.instance_id, "release": found["release"], "recorded": written}

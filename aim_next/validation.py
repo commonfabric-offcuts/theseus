@@ -5,6 +5,7 @@ from .contract import LIMITS, Refusal, _identifier, _json
 
 COMMANDS = {
     "current_rule.update": "_command_current_rule_update",
+    "pipeline.clock_record": "_command_pipeline_clock_record",
     **{"assessment."+name: "_command_assessment_"+name for name in ("request","attach","finish","renew","abandon")},
     "agent.execution": "_command_agent_execution",
     "workspace.create": "_command_workspace_create",
@@ -146,9 +147,13 @@ REQUIRED_EXPECTED = {"current_rule.update": "rule_revision","workspace.link_set"
                      "message.star": "star_revision", "message.deal": "deal_revision", "message.fold": "fold_revision", "message.fold_through": "fold_revision", "stack.aside": "aside_revision",
                      "stack.place": "place_revision", "stack.level": "level_revision", "stack.name": "name_revision", "stack.join": "join_revision",
                      "stack.move": "move_revision", "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
+EXPECTED["pipeline.clock_record"] = {"clock_revision"}
+REQUIRED_EXPECTED["pipeline.clock_record"] = "clock_revision"
 VIEWS = {
     "current_rule": {"workspace_id", "history"},
     "work_context": {"workspace_id", "piece_id", "topic_id", "topic_ids"},
+    "pipeline_clock": {"piece_id"},
+    "pipeline_predictions": {"workspace_id", "piece_ids", "from_ms", "until_ms", "work_class"},
     "workspace_links": {"workspace_id", "cursor", "limit"},
     "submission_mention_reach": {"submission_id", "cursor", "limit"},
     "rail_dimming": {"candidate"},

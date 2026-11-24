@@ -55,7 +55,7 @@ def rendering(record):
             lines.append("Supersedes: " + _json(rule["supersedes"]))
         lines.append("")
     lines += ["Prior records: " + _json(record["previous"]),
-              "Clock/lane1199, wake recovery1180 and browser jobs1200 are separate capabilities."]
+              "Wake recovery1180 and browser jobs1200 are separate capabilities."]
     return "\n".join(lines) + "\n"
 
 
@@ -290,7 +290,7 @@ class CurrentRule:
         return {"instance_id": self.instance_id, "capability_version": CAPABILITY,
                 "contexts": [self._rule_work_context(db, actor, w, p) for w, p in scopes],
                 "truncated": truncated,
-                "unavailable_capabilities": ["lane_clock_1199", "wake_recovery_1180", "browser_jobs_1200"]}
+                "unavailable_capabilities": ["wake_recovery_1180", "browser_jobs_1200"]}
 
     def _rule_work_context(self, db, actor, workspace, piece):
         record = self._current_rule(db, workspace["id"])
@@ -301,7 +301,7 @@ class CurrentRule:
                        "notebook_id": record["notebook_id"], "notebook_revision": record["notebook_revision"]},
                    "availability": "available" if record else "unconfigured",
                    "live": {"release": live["number"], "head": live["commit_sha"]} if live else None,
-                   "lane": {"availability": "unavailable", "followup": 1199},
+                   "lane": None,
                    "resources": {"availability": "unknown", "admission": "existing_execution_tool",
                                  "load_below": 12, "max_lane_runs": 3},
                    "blockers": [], "limitations": [], "requirements": [], "checks": [],
@@ -316,6 +316,8 @@ class CurrentRule:
                                       "owner_actor_id": workspace["coordinator_id"] or workspace["owner_id"]}
             return context
         context["piece_revision"] = piece["version"]
+        # The compact piece clock: lane, estimate and elapsed time only, with no policy or shipping authority.
+        context["lane"] = self._piece_clock_context(db, actor, piece["id"])
         members = self._members(db, piece["id"])
         context["items"] = members
         entry = db.execute("SELECT * FROM pipeline_stage_entries WHERE piece_id=? ORDER BY seq DESC LIMIT 1",

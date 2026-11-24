@@ -167,7 +167,8 @@ class CurrentRuleCase(PipelineCase):
         self.assertEqual(context["next_action"], {"kind": "read_source", "owner_role": "reader", "owner_actor_id": "agent-b"})
         self.assertNotIn("packet", json.dumps(context))
         self.assertEqual(context["resources"]["availability"], "unknown")
-        self.assertEqual(context["lane"]["availability"], "unavailable")
+        self.assertEqual(context["lane"]["piece_id"], context["piece_id"])
+        self.assertEqual(context["lane"]["estimate_status"], "no estimate yet")
 
     def test_real_required_failure_stops_and_a_real_successor_restores_existing_action(self):
         self.define_required()

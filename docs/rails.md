@@ -47,6 +47,13 @@ press on a topic's unread count opens it at its oldest unread message, here
 and on the right rail's Build rows alike (item 613; docs/attention.md, "In the
 browser").
 
+Seven topic rows stay fully visible, followed by a fading eighth when more
+are available. On a hovering pointer, the fade plus one row above it reveals
+the whole list. That reveal stays open through hovering and scrolling; the
+next click or key press anywhere on the page, including either side rail,
+closes it without consuming the action. Keyboard focus and the current topic
+remain visible through the existing keyboard/current-topic rules.
+
 - **Pencils.** A pencil means "new", the same glyph as New message and a new
   Notebook page (item 305). A quiet pencil beside an outcome's name starts a
   new topic there: a press opens the New topic title line under the row,
@@ -252,6 +259,14 @@ sheet. Initial bounded Notebook reads and admission checks remain: their cache
 supports source reads and revision tracking, but memory updates do not repaint
 the feed. The same current-topic pencil, permission check, paging, changed light,
 creation receipt and retry identity remain owned by the existing Notebook code.
+
+Right-clicking a Notebook page in the minimized right rail opens that page's
+existing Notebook menu (1203). The menu key, Shift-F10 and touch hold use the
+same door. Actions confirm the page's current source and owning topic before
+being offered; navigating away closes or cancels the menu. Selected text keeps
+the browser's menu, and an ordinary click still opens the shared Notebook sheet.
+The rail uses the shared Notebook action adapter, so new page actions appear in
+the same menu on each surface.
 
 - **Pipeline** lists the outcome's Build topics, each once, with stages from
   the `pipeline` view: under
