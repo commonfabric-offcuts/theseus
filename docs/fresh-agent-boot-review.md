@@ -122,12 +122,17 @@ above; none is inferred from silence or an original-draft reply.
 | Core7 23526, `m-cfb5a2f23c3b4a5492f1e7fe01c70a92`, r1 | Evidence section now gives exact reconcile/retry/latest-status semantics, durable original request bytes/order, JSON receipt fields and coalesced mapping. Guarded runner owns partial adoption/continuation; operator status is observation. `committed_ms` is distinct from native adoption/action. Lost-write-plus-correction and actual model file read remain owed, outside17 own cases. |
 | Core8 23527, `m-3da6fac6d9fe432484e3d26af3226e85`, r1 | Capability/startup now distinguishes regular-file selection, unreadable-regular pointer failure and absent/nonregular exact legacy fallback. No unavailable-file branch counts as correctly prompted; actual serialized/read evidence remains required. |
 | Page5 23540, `m-475b718874b94af3b9c185c948b02fd9`, r1 | Original1215 Build/deadline makes the selected45-minute result a necessary miss if reboot15:15. Added raw-byte purge/preserve manifest, owner outbox survival and durable reconstruction; refreshed exact native handoff/cleanup/hold state. First-push machine field stays unknown until supported recording. Footer419 is historical. |
-| Auditor | Focused whole-system response pending. Its historical bundle/runtime/timing audits are not substituted for this review. |
+| Auditor23550, `m-66294bb20f5444f0be638f2373303488`, r1 | A7 accepted: original trial ID/time precedes the first included shutdown in step3; Fable names an offline-readable persistent record, UTC/offset, clock source and uncertainty. A8 accepted as prospective literal-live interpretation pending Warp confirmation: first publication ends result1, canonical first_live/deployed_ms scores result2. Retain both endpoints and missing evidence. Existing fallback/partial-state/startup findings corroborated. |
 
-Seven of eight whole-system reviewers have responded (Warp, Fable, Steward,
-Page6, Core7, Core8, Page5); their findings are incorporated or explicitly assigned
+All eight whole-system reviewers have responded (Warp, Fable, Steward,
+Page6, Core7, Core8, Page5, Auditor); their findings are incorporated or explicitly assigned
 as execution evidence. No review here proves actual migration, installed role
 read, physical reboot or publication. Fable23529 independently exposes the
 existing-seat migration gap: seat-add refuses an existing invitation and operator
 provisioning can create before discovering an incompatible pin. The plan now
 requires Warp's supported concrete transition before any attempt.
+
+Auditor23550 is the wider complete-file response atf328a643, not a reuse of its
+original draft review. Its timing fixes are incorporated. Warp's explicit
+endpoint disposition is the remaining policy clarification; actual execution
+prerequisites and installed-document carry remain separately owned.

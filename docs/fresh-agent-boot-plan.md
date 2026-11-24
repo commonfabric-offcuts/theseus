@@ -14,8 +14,9 @@ After the physical reboot **fresh Warp** performs that role; no old agent remain
 as observer or rescuer. Tony initiates and witnesses the reboot. Fresh Warp and
 Auditor reconstruct timing from durable records, not a surviving stopwatch.
 
-This revision follows Tony's clarifications 23423 and 23438. Seven whole-system
-reviews are reconciled; Auditor's focused whole-system response remains owed. The [review log](fresh-agent-boot-review.md)
+This revision follows Tony's clarifications 23423 and 23438. All eight whole-system
+reviews are received and reconciled; the endpoint disposition below remains
+for Warp to confirm before execution. The [review log](fresh-agent-boot-review.md)
 keeps the eight reviews of the original draft separate from this review and
 from runtime/trial evidence.
 
@@ -277,7 +278,14 @@ waiting follows the trusted runner instructions, not an inherited watch/goal loo
    activation**. Intent dispatch must replace before ordinary sending. Observe
    new identity, effective kickoff/file read and action. This is a dry run, not
    the physical reboot or final all-agent success.
-3. **Make the pre-boot state durable and quiescent.** Owners finish or safely
+3. **Record the trial, then make state durable and quiescent.** Before the
+   first shutdown action included in the trial, Tony records its durable trial
+   ID and earliest initiating owner-act timestamp. Fable names an exact
+   persistent offline-readable evidence record outside the agreed purge,
+   available to fresh Warp/Auditor, with UTC and local offset, clock source,
+   precision/uncertainty and that original event. Preserve it across the offline
+   interval; this is contemporaneous trial evidence, not an outgoing task recap.
+   Owners finish or safely
    checkpoint outstanding work and reconcile original uncertain operations. Drain
    owned producers with complete receipts; do not cancel someone else's work.
    Record current worktree/branch/base/dirty state, pushed recovery head, durable
@@ -285,8 +293,8 @@ waiting follows the trusted runner instructions, not an inherited watch/goal loo
    coordinator/watch ownership explicitly. Stop the old runner/supervisor and
    external watches/sessions through their supported owners. Record stop/cleanup
    facts and any uncertainty before Tony's physical reboot.
-4. **Record time zero and physically reboot.** Tony records the initiating
-   owner action and persistent trial ID before shutdown. He reboots the Mac and
+4. **Physically reboot using that original time zero.** Verify step3's
+   record already precedes the first included shutdown action. Tony reboots the Mac and
    removes the agreed scratch/memory inputs. No old process/session or observer
    supplies continuity. Do not start a replacement from a remembered terminal
    command; use the installed repository boot entry.
@@ -386,8 +394,13 @@ recorded numeric result against the original canonical clocks.
 For genuinely new work, record the fresh lane's first forecast before construction
 at its actual original Build/source-inspection boundary, then actual source,
 push, handoff and completed publication times. Keep later forecasts/reasons
-separately. Signed error is actual publication minus that first prediction;
-absolute error is its magnitude. Report each error, all target hits/misses,
+separately. For result two, use canonical `first_live` / release `deployed_ms` minus the
+original LIVE prediction for signed error; absolute error is its magnitude.
+Completed first publication remains result one's endpoint. Retain both live and
+publication timestamps, never choosing whichever scores better. Auditor23550
+proposes this literal-live interpretation of rule4; Warp must confirm the
+endpoint disposition before observation. Missing publication is not waived by
+deployment, and missing originals remain unknown. Report each error, all target hits/misses,
 completion rate and maximum error. Missing originals remain missing; no medians,
 backfill, reset clocks or favorable reselection. Continued pre-boot work retains
 its original forecast and a separately labeled fresh recovery forecast; it is
@@ -491,7 +504,7 @@ reads current policy afresh (currently rule4 / Notebook40).
 
 All eight requested reviewers read draft `3d27c16fe8da77c8b33360b839289ba578cc393f`.
 Their findings are reconciled in the log; the material whole-system revision
-requires its own focused review. Neither eight earlier replies nor this document
+has all eight focused responses recorded in the log. Those reviews and this document do not
 establish final operational approval, runtime readiness or successful reboot.
 
 Repository contracts: [seat files](seats/fable.md),

@@ -1,0 +1,45 @@
+{
+  "purpose": "Original supported bound read identities; local raw copies are evidence, not a boot manual",
+  "files": [
+    {
+      "name": "fresh-eyes-pipeline.ndjson",
+      "bytes": 1120487,
+      "sha256": "11e320f08a75f40ffb5430e878060debe64f0c701c7bfbaed8a64e35048c97fc"
+    },
+    {
+      "name": "fresh-eyes-stages.ndjson",
+      "bytes": 73113,
+      "sha256": "447d77aadc77f1a83e9f1f38b3b777dd99e5b48b6626b1950a40d6035a2311ab"
+    },
+    {
+      "name": "fresh-eyes-topics.ndjson",
+      "bytes": 620286,
+      "sha256": "57374d5101e94f663396584c1fdccb2b3424668f93b0eb790082963bcb8f046b"
+    },
+    {
+      "name": "fresh-eyes-notes.ndjson",
+      "bytes": 15588,
+      "sha256": "b50211ba2eda586aa55d117a120592fb8c6ab53af6a34b3c4d3423d36ad5129c"
+    },
+    {
+      "name": "fresh-eyes-tools.ndjson",
+      "bytes": 3501,
+      "sha256": "2a52004741ee1f61589da7e1033d449990bf5c10c4eb086b5a1b51ceba252d24"
+    },
+    {
+      "name": "fresh-eyes-workspace.json",
+      "bytes": 526,
+      "sha256": "599a58b2ed3b18e09b88cc30022c1f15dd03a5e584af79a7751eb53232f29d90"
+    },
+    {
+      "name": "fresh-eyes-members.json",
+      "bytes": 1060,
+      "sha256": "14a2134bc66707e77dff0a9abbde8f8e5750eb858c9a3616959497b2a8c544a8"
+    },
+    {
+      "name": "fresh-eyes-links.json",
+      "bytes": 448,
+      "sha256": "cf101cbe9d5cd67322fa72ce7280e577749a588add483b63084174536fed43c5"
+    }
+  ]
+}

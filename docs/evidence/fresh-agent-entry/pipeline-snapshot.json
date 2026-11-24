@@ -1,0 +1,4449 @@
+{
+  "kind": "read-only audit snapshot; not an assignment queue",
+  "date": "2026-11-24",
+  "source_head": "1e6c6d788ed49c82e75b32b62361e2475cd882c6",
+  "pipeline_revision": 12559,
+  "workspace_revision": 23384,
+  "raw_stored_counts": {
+    "candidates": 187,
+    "dropped": 38,
+    "later": 326,
+    "next": 58,
+    "now": 609
+  },
+  "visible_counts": {
+    "now": 12,
+    "next": 44,
+    "later": 322,
+    "candidates": 157
+  },
+  "items": [
+    {
+      "number": 1028,
+      "title": "Notebook card colours redone for Bookends and Paper; a page's colour is chosen per page from its drop-down menu and a right-click menu on its thumbnail",
+      "section": "now",
+      "version": 92,
+      "glyph": "building",
+      "piece": {
+        "id": "p-89a0ba1a36a64e91be3bc83b",
+        "kind": "piece",
+        "held": []
+      }
+    },
+    {
+      "number": 1100,
+      "title": "An additive schema step lands as an ordinary piece, with the runner restart inside the ordinary landing",
+      "section": "now",
+      "version": 12,
+      "glyph": "building",
+      "piece": {
+        "id": "p-c6768036d0d34b5caa8c313f",
+        "kind": "piece",
+        "held": []
+      }
+    },
+    {
+      "number": 1106,
+      "title": "An arriving message holds an empty band at the top of the feed until the Archived shelf finishes rebuilding",
+      "section": "now",
+      "version": 18,
+      "glyph": "building",
+      "piece": {
+        "id": "p-cb6e92be97654ab3bbe3d6e2",
+        "kind": "piece",
+        "held": []
+      }
+    },
+    {
+      "number": 1126,
+      "title": "The judge excludes a browser mode whose fixture dies before any case on the candidate exactly as it dies on every selected base record, and discloses it",
+      "section": "now",
+      "version": 2,
+      "glyph": "building",
+      "piece": {
+        "id": "p-85cee699d2084fd4809d4edd",
+        "kind": "piece",
+        "held": []
+      }
+    },
+    {
+      "number": 1131,
+      "title": "Judged changes land on deterministic evidence; the gauntlet reports after",
+      "section": "now",
+      "version": 12,
+      "glyph": "building",
+      "piece": {
+        "id": "p-0b4e3cb807be4c9eabbea072",
+        "kind": "piece",
+        "held": []
+      }
+    },
+    {
+      "number": 1136,
+      "title": "A refused deploy restores service and an interrupted deploy can resume",
+      "section": "now",
+      "version": 5,
+      "glyph": "building",
+      "piece": {
+        "id": "p-97a435d7b3c2411eb9b5f2a2",
+        "kind": "piece",
+        "held": []
+      }
+    },
+    {
+      "number": 1149,
+      "title": "Deploy recognizes a runner resumed with --resume-version",
+      "section": "now",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1150,
+      "title": "Drain response bodies before the browser observer closes its context",
+      "section": "now",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1213,
+      "title": "A hosted seat gets a fresh agent on demand, started from its seat file",
+      "section": "now",
+      "version": 4,
+      "glyph": "building",
+      "piece": {
+        "id": "p-9f111f90a0304257a489cbb2",
+        "kind": "piece",
+        "held": []
+      }
+    },
+    {
+      "number": 1215,
+      "title": "Native outcomes prove dossier swipe archive and first rail Delete with Undo",
+      "section": "now",
+      "version": 15,
+      "glyph": "building",
+      "piece": {
+        "id": "p-67119cb4f9264984b220a07b",
+        "kind": "piece",
+        "held": []
+      }
+    },
+    {
+      "number": 1216,
+      "title": "Hosted agents use their repository seat file instead of a stale configured role",
+      "section": "now",
+      "version": 6,
+      "glyph": "building",
+      "piece": {
+        "id": "p-07057b516b0744c2ad0d11c4",
+        "kind": "piece",
+        "held": []
+      }
+    },
+    {
+      "number": 1218,
+      "title": "Every seat can recover from repository instructions after reboot",
+      "section": "now",
+      "version": 9,
+      "glyph": "building",
+      "piece": {
+        "id": "p-3dbbbd020be344368bb7069f",
+        "kind": "piece",
+        "held": []
+      }
+    },
+    {
+      "number": 1186,
+      "title": "Core's freeze refuses tests/test_migrations.py: a Python test file over 256 KB cannot be frozen",
+      "section": "next",
+      "version": 2,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1185,
+      "title": "tests/acts.json: outline-rail acts whose break text no longer applies (three on 386, two more after 1164)",
+      "section": "next",
+      "version": 2,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1179,
+      "title": "Two node fixture files reach their own assertions again (ui_unread_landing, ui_removal_page_151)",
+      "section": "next",
+      "version": 3,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 700,
+      "title": "The Theseus server on 5192 gives a caller without the token no session, token or identity",
+      "section": "next",
+      "version": 2,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 701,
+      "title": "The AIM servers on 5190 and 5191 give a caller without the token no session, token or identity",
+      "section": "next",
+      "version": 2,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 702,
+      "title": "Port 5000 on every address is macOS's AirPlay Receiver (Control Center): read what it gives a local caller",
+      "section": "next",
+      "version": 2,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 706,
+      "title": "The start-line race test cuts using the same clock as its open",
+      "section": "next",
+      "version": 5,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 367,
+      "title": "The navigation harness checks the abandoned request it means, not every cancellation",
+      "section": "next",
+      "version": 3,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 626,
+      "title": "Compose cases end only when every draft save the page started has landed (a late save leaks into the next case)",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 627,
+      "title": "The harness press takes each 'is it still' reading after a drawn frame, so a press never lands on a control that moved in an undrawn frame",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 631,
+      "title": "The units floor: per-module times from one instrumented run, then the seven modules at over three seconds a test",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 637,
+      "title": "The navigation case's autosave guard measures the wall clock: a slow runner fails 'outcome link activated before autosave debounce'",
+      "section": "next",
+      "version": 3,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 639,
+      "title": "A denied topic is read again when the rail's first read lands after the refusing commit ('the denied topic's messages are not read again')",
+      "section": "next",
+      "version": 3,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 677,
+      "title": "A reader whose delivery an edit never re-opens sees the first revision they were exposed to struck, never an intermediate",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 678,
+      "title": "A read that lands just after an agent's edit counts the new revision as read",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 679,
+      "title": "A whitespace-only agent edit makes a message unread again",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 680,
+      "title": "A member who joined after an agent's message gets no strike when it is edited",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 681,
+      "title": "Copying across struck words with Cmd+C copies the struck words",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 682,
+      "title": "A reader persistence case reads the save label before it settles",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 716,
+      "title": "A multi-item piece uses one tool-owned acceptance record path",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 724,
+      "title": "Repair the rail and edit-build cases that fail only in whole steps",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 594,
+      "title": "A member added to a topic receives its earlier messages, and the composer says when a message is going to no one",
+      "section": "next",
+      "version": 4,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 794,
+      "title": "The landing route is decided by what a piece's diff touches",
+      "section": "next",
+      "version": 4,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 795,
+      "title": "Approved ordinary pieces open a pull request without waiting to be grouped",
+      "section": "next",
+      "version": 5,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 797,
+      "title": "A stored-data migration takes its schema number when it lands, not when it is built",
+      "section": "next",
+      "version": 4,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1078,
+      "title": "Selected text in a Notebook card stays readable under every look: the selection colour never hides the words",
+      "section": "next",
+      "version": 10,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1127,
+      "title": "The reading fixture finds its own helpers when a harness starts it in Python's isolated mode",
+      "section": "next",
+      "version": 6,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1139,
+      "title": "Publish release-state and dossier data for the toast UI and complete its integration",
+      "section": "next",
+      "version": 3,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1140,
+      "title": "Bring the gauntlet's remaining known reds to green on live",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1141,
+      "title": "A judged release always records its candidate commit",
+      "section": "next",
+      "version": 3,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1143,
+      "title": "Every page notice earns its place",
+      "section": "next",
+      "version": 4,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1144,
+      "title": "The deploy rehearses a schema change and puts live back by itself",
+      "section": "next",
+      "version": 3,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1148,
+      "title": "Repair native-openings body-error agreement with its retained log",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1155,
+      "title": "The runner retains a deliveries-read error and retries a busy read without failing the seat",
+      "section": "next",
+      "version": 2,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1137,
+      "title": "Prove release-machine failure handling with isolated behavioral controls",
+      "section": "next",
+      "version": 15,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1181,
+      "title": "A lane's planned red is read even when Node cannot name the failing assertion's type or line; reference checks stay reference checks",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1182,
+      "title": "The installed deploy tool's file guard follows live's rule, so a test-read declaration lands as an ordinary release",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1183,
+      "title": "Repair native-openings body-error and retained-log mismatch on 75ee1639",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1187,
+      "title": "Sixteen live Python tests fail at their own checks: stacks, removal 151, stack aside, dossier order, agent root posts, topic reading",
+      "section": "next",
+      "version": 4,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1188,
+      "title": "A Core landing records which hosted turns its deploy cut and whether each was replayed",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1189,
+      "title": "The message-marking tests never reach their checks: their fixture starts a piece in a person topic (PERSON_TOPIC)",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1191,
+      "title": "Native browser cells die SIGXFSZ under the capture parent's 2 MiB file-size limit",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1192,
+      "title": "A waiting-light test imports DimChoices from its old module and has not run since",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 1193,
+      "title": "Core lanes' wakes fail deliveries_unavailable and the runner keeps no error",
+      "section": "next",
+      "version": 1,
+      "glyph": "next",
+      "piece": null
+    },
+    {
+      "number": 132,
+      "title": "make sure all entry fields follow terminal keyboard controls like cmd-w and cmd-u (for example this field I'm using to add to Later now on the pipeline field.",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 133,
+      "title": "Redesign the Outcome page that is currently just a list of topics and stuff into a useful dashboard",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 134,
+      "title": "Design the right top level interface for mobile",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 32,
+      "title": "Make progress readable for Tony while agent work stays reachable",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 79,
+      "title": "Choose agents from a list, and an @mention adds that agent to To",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 45,
+      "title": "A newly registered agent appears in the pickers without a reload",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 141,
+      "title": "Bare code references become links",
+      "section": "later",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 143,
+      "title": "A topic for each pull request",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 144,
+      "title": "An outcome watches a repository's checks",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 155,
+      "title": "Refer to the images you are sending as you write",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 60,
+      "title": "Recipient chips: an old Reader refusal shows in the composer",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 142,
+      "title": "Done carries its evidence",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 139,
+      "title": "An outcome keeps its findings",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 145,
+      "title": "The mutation tool's own verdict is checked",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 135,
+      "title": "A busy server never shows you its words, and one click doesn't crowd it",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 181,
+      "title": "Where parallel work collides: find the two or three splits that free the most",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 158,
+      "title": "Each group in Next says why its pieces go together",
+      "section": "later",
+      "version": 9,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 157,
+      "title": "A new pipeline item can carry an image",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 156,
+      "title": "The Reader's message header carries its author's colour",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 199,
+      "title": "Builders and reviewers record their own stage moves, so stage times are real",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 200,
+      "title": "The deploy checks that no check got worse",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 201,
+      "title": "Releases show in the pipe: dotted while forming, solid once its check starts",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 202,
+      "title": "Spec and Design become the first stages of Now",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 203,
+      "title": "An item carries its spec, its design link and Tony's call",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 204,
+      "title": "Ready is a stage; Try is a mark with its preview link",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 205,
+      "title": "Theseus counts the pieces in flight at Build and Review",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 206,
+      "title": "The deploy follows a passing check at the next quiet moment",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 207,
+      "title": "Ship first is a stage only Tony lets a piece out of, and owed tests are a debt",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 208,
+      "title": "Review cannot be left while an act has no test",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 209,
+      "title": "The deploy refuses new releases once a test debt is two releases old",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 210,
+      "title": "Review routes what it finds by kind",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 211,
+      "title": "A spec lists its bars, and review checks them",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 212,
+      "title": "The phone design review is a skill",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 213,
+      "title": "A set-aside says why, from four reasons",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 214,
+      "title": "A preview says what it cannot show",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 215,
+      "title": "The database rehearsal and the review of the combination are named steps of a release",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 216,
+      "title": "The Experience guidelines take this week's lessons; How we work takes the new rules",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 217,
+      "title": "Aim: one ranked list of groups with each item's risk",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 218,
+      "title": "Health says when a process review is due",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 219,
+      "title": "The hand-built release page retires once the pipe shows releases and Ready",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 220,
+      "title": "After-checks by risk, a proven state, and an undo",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 161,
+      "title": "drag and drop to reorder in NEXT and LATER in pipeline.  ability to move entire agent-organized sections from CANDIDATE into LATER or NEXT",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 115,
+      "title": "A new outcome starts with the team's default tools",
+      "section": "later",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 129,
+      "title": "An item's own page can move it between sections",
+      "section": "later",
+      "version": 8,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 149,
+      "title": "A Ready image offers no Check confirmation",
+      "section": "later",
+      "version": 8,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 146,
+      "title": "The On the pipeline mark opens its item",
+      "section": "later",
+      "version": 8,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 163,
+      "title": "in the left siderail: add a button to add a New item to the Release pipeline, similar to how we have a New topic button next to Topics",
+      "section": "later",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 274,
+      "title": "Reader tidy-ups from its review",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 275,
+      "title": "Rails tidy-ups from their reviews",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 277,
+      "title": "Two-finger tap selects a sentence in the Reader on a phone",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 287,
+      "title": "Clicking an outcome with a new-message badge opens the oldest unread message, scrolled to it",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 293,
+      "title": "A click outside an open menu only closes the menu",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 294,
+      "title": "A private reply clears Waiting on you",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 174,
+      "title": "On a phone, tapping a field never zooms the page",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 304,
+      "title": "Previews in the right rail have real names, not addresses",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 309,
+      "title": "A person on the team can take over an outcome whose owner has retired",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 310,
+      "title": "The Now badge shimmers when an agent is in the To field",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 330,
+      "title": "@ and # mentions: drop lists while writing, picks become pills",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 373,
+      "title": "Waiting on you: the wrap is asserted, failing storage has a browser case, and the light's button is a full tap target on a phone",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 375,
+      "title": "Decide whether an agent's quiet reply brings a put-aside coordination row back above More",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 453,
+      "title": "Swiping right to fold leaves the folded messages' words drawn over the page (iPhone)",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 398,
+      "title": "The left sidebar's scroll bar shows only while it is scrolling",
+      "section": "later",
+      "version": 6,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 399,
+      "title": "The composer's message scroll bar shows only while it is scrolling",
+      "section": "later",
+      "version": 7,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 484,
+      "title": "Let the producer and Verdict share one list of executable producer paths",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 485,
+      "title": "The Outcomes heading pencil reads as position 1 of the outcomes to a screen reader",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 486,
+      "title": "Leaving the rail from the heading pencil forgets its undo",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 487,
+      "title": "A folded outcome's pencil keeps the Tab stop after focus leaves it",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 488,
+      "title": "Decide where Home lands in the Outcomes tree, and check it",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 489,
+      "title": "Put the commandsSent comment back above its function in the rail check",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 490,
+      "title": "The title line's Saved state gets an assertion of its own",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 491,
+      "title": "Test the doubled-space fold when a rename's head is the loaded first message",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 492,
+      "title": "The node check of a loaded first message's own name catches headOf reading the position",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 493,
+      "title": "Test that a rename on a replies-only page shows its name before Core answers",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 494,
+      "title": "learnPositions keeps a split-out stack's position across its 100-id chunks",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 495,
+      "title": "Pending split and join rename states get phone cases at 320, 375 and 390",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 496,
+      "title": "While a split waits for its answer, the split-out stack keeps 'Move below More'",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 497,
+      "title": "rootOf with no position does not match another position-less stack",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 498,
+      "title": "Two older 470 ledger rows end on an assertion, not a timeout",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 499,
+      "title": "The 470 native case comments describe the folded shown line",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 500,
+      "title": "The 470 untouched-rename act's words match what its case shows",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 501,
+      "title": "Folding spaces in a dossier's shown line is pinned beyond messagePreview's own test",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 502,
+      "title": "Decide and check the rename guard when the first message is edited while the field is open",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 503,
+      "title": "Item 470: two review findings refuted as designed, with the reason",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 504,
+      "title": "A failed browser case leaves its last DOM, console and request log in the archive",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 505,
+      "title": "Check that the logo's ? still opens the guide after a move in place, with its handler bound once",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 506,
+      "title": "Ledger row for Health ending the rail on rail pages that are not a topic or Conversation",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 507,
+      "title": "Comments in health-light.mjs and aim.css say Health ends the rail",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 508,
+      "title": "A finger reaches the logo's ? on a touchscreen laptop with a fine primary pointer",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 509,
+      "title": "A ledger act whose check hangs under its break fails that act, not the whole acts run",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 510,
+      "title": "Deploy: owner acceptances read by the committed known-reds tool",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 511,
+      "title": "Check focus when New message closes before a Notebook card",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 514,
+      "title": "Known reds: a row matched across runner profiles says so in the record",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 517,
+      "title": "Down pressed during an outcome's topic read sends the keys back to the outcome row",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 518,
+      "title": "WebKit coverage for 'a mouse close of the Reader rings nothing'",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 519,
+      "title": "keptByPress guard has no check: harness browsers focus a clicked link, Safari does not",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 380,
+      "title": "One name for Notebook pages everywhere: decide \"Notebook pages\" or \"Notes in Notebooks\" first",
+      "section": "later",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 159,
+      "title": "Attach any file from the page, not only images",
+      "section": "later",
+      "version": 6,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 306,
+      "title": "\"Waiting for…\" moves to the bottom of the right rail",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 331,
+      "title": "On a phone, a line that appears above the messages doesn't move the line you're tapping",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 332,
+      "title": "The phone composer check opens the conversation page directly, so no cut-off read counts as a page error",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 333,
+      "title": "The WebKit rail check compares a mark it set, not the page clock, to tell a move in place",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 336,
+      "title": "The colors New line check waits for the line to move under the oldest unread, not a fixed moment",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 352,
+      "title": "A focused check runs the changed browser cases first, in seconds",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 365,
+      "title": "A group move of cards past an agent's change merges instead of asking",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 369,
+      "title": "A create the server refuses for good no longer locks the title line until reload",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 370,
+      "title": "Notebook page creation has checks for press outside, Return twice, the All-of-outcome toggle, an in-place topic move and a folded section",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 374,
+      "title": "The older-messages button follows the agent-coordination filter and a link reveal, with a check",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 395,
+      "title": "In Safari, a pointer resting since the page loaded can't take the keyboard's place on the first Up",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 417,
+      "title": "A deploy drains hosted turns instead of interrupting them",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 419,
+      "title": "The renamed-agent case also runs in WebKit and on a phone",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 420,
+      "title": "The composer's browser step records how its fixture exited",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 425,
+      "title": "The small controls' follow-ups: the star's name, target and focus, a doubled star, Only new with agent coordination",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 427,
+      "title": "Notebook write rule and Draft follow-ups: stale controls after a rights change, an open ask on a draft page, read records for withheld pages",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 428,
+      "title": "A Notebook's More button may vanish once it holds about 40 pages",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 431,
+      "title": "Keys and filters follow-ups: dead-end sections above the feed, 44px filter chips, Only new focus",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 435,
+      "title": "405 part 1 follow-ups: dispatcher budget, runtime digest, thread loss, citation reasons, read scope",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 436,
+      "title": "429 follow-ups (B3 round): ring under the next card, fold-line hover, join margin scope, covered-edge reveal",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 437,
+      "title": "A denied topic's messages were read again once in release 70's check (native-live), cause unknown",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 438,
+      "title": "WebKit ⌘C on a long lit message copied nothing once in release 70's check, cause unknown",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 439,
+      "title": "WebKit: a click on a Notebook card in the bottom tenth scrolled once in release 71's check, cause unknown",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 440,
+      "title": "401/406 follow-ups: menu docs, Show full's read-failure wording, Reader count repaint, composer thumb 40px",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 441,
+      "title": "413 follow-ups: docs rows, a negative check for another reader's star, a real fold before the whole-star assertion",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 442,
+      "title": "The deploy itself refuses an acceptance that counts an unrun step or another commit's result as passed",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 443,
+      "title": "433 follow-ups: a Reader-alone act answer can miss its copy; held-read waits in the new cases; phone taps outside the FELL guard",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 444,
+      "title": "432 follow-ups: pin the documented 1 s add reserve in the test; bootstrap start inside the adapter deadline; the docs' macOS cause is inferred",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 445,
+      "title": "The Codex broker compiles aim_next on every wake; under a stall its imports eat the add reserve and the refusal blames Codex",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 446,
+      "title": "Tests that write an executable each setUp can flake under load; apply 432's write-once, warm-once pattern",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 448,
+      "title": "398/399 follow-ups: bar style read once per page load, WebKit viewport repaint unproven, programmatic scrolls flash the bar, docs placement, reduced-motion browser check",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 449,
+      "title": "A cut-off card's whole message is read once, even when ⌘C or Show full asks while the lighting read is on its way",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 450,
+      "title": "447 follow-ups: a quote longer than the 1 KB feed excerpt, markdown links shown raw in the line, a cut that can split an emoji, test gaps, the merge onto release 71",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 451,
+      "title": "405 continued (HELD): assessment dispatch and checks, the first real team assessment, checkpoints and renewal",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 299,
+      "title": "An agent is woken only by messages for it, as a person is",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 298,
+      "title": "To line: \"No one (just post it)\"",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 308,
+      "title": "Mark an outcome reached from a ⋯ menu on its row",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 318,
+      "title": "An agent answers a small request it has done with a 👍, not a message",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 334,
+      "title": "Find what loops the image's resize observer in WebKit reading",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 515,
+      "title": "Carry an earlier hosted judgment onto a train with the identical Git tree",
+      "section": "later",
+      "version": 7,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 335,
+      "title": "The WebKit rail check at 390 after a move in place taps the reply only once the page has settled",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 526,
+      "title": "475's follow-ups: dots after a join or split, the reader's own reply in the same dossier, an agent switched off",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 529,
+      "title": "Images: a lost publication, a reload and repeated adoption throw 'This writing is not registered in this document' from Reader.paintImages",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 531,
+      "title": "297's follow-ups: a folded Pipeline section's roll-up, the Build-topic queries' cost, the phone badge's paint order",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 532,
+      "title": "Rail checks: 'no sideways scroll' compares scrollWidth with innerWidth, which Chromium widens with an overflowing page",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 533,
+      "title": "127's follow-ups: the fold rows' marks, a clipped-mark check, check weights, the look of an empty marks box, the 320 blank line, the changes-query doc",
+      "section": "later",
+      "version": 9,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 536,
+      "title": "378/465 review follow-ups: focus option, reorder guard, pill height, archive button's name, WebKit busy state, 320 origin line, paint cost",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 537,
+      "title": "471/472/430 review follow-ups: touch Option-swipe, two surviving mutants, the phone header's fold target, the ring without anchor positioning",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 538,
+      "title": "321 review follow-ups: Tab to ×, drop outside a writing card, a phone photo into a card, Undo past the limits, revise cost, narrow reload windows",
+      "section": "later",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 539,
+      "title": "476/474 review follow-ups: two surviving mutants, an earlier row read on screen, the earlier-messages doc line, repaint after readable again, held after a direct level write",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 540,
+      "title": "479 review follow-ups: the delivery-read bound, the watch hint repeats, an ignored hint, the namer changing between reply and mint",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 542,
+      "title": "525 review follow-ups: _begins's guards, the give-back's enabled guard, the hash cut's hyphen, a racing write's answer, a moved coordinator, Unicode-version ids, the NAME_UNUSABLE wording",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 544,
+      "title": "523 review follow-ups: one /api/build read per move, a hung build read, Cmd-Return to another build, the refused move's notice at 320, a refused back's why line, marks left before a refused move",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 530,
+      "title": "Runner lane: 483's waits and cleanup meet the Notebook sheet press (3 of 3 on train 16's tree against 1 of 3 on live's)",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 534,
+      "title": "Notebook pencil case samples its rectangles while the 390 phone drawer is still sliding (WebKit)",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 521,
+      "title": "Browser runner: the two fence-copy WebKit cases wait on the event, not a timeout",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 522,
+      "title": "Message editing check: the resumed-Save case samples its fetch log before the draft request finishes (test timing, hosted runner)",
+      "section": "later",
+      "version": 8,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 524,
+      "title": "Runner lane: the dossier rename case waits on stack_positions settling, so neither :4238 nor :4126 races",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 543,
+      "title": "Train 19 attribution: three cases red once on the train's whole runs, never on live's (swipe fold, New message and Escape, who chip and In)",
+      "section": "later",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 512,
+      "title": "Deploy: the ordinary-train guard's files come from the deploy's import closure",
+      "section": "later",
+      "version": 7,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 513,
+      "title": "Deploy: a train carries only approved heads and named, reviewed resolutions",
+      "section": "later",
+      "version": 7,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 520,
+      "title": "The known-reds policy refuses live itself: bring the input-read audit and plan inventory current, and refuse a head its own policy refuses",
+      "section": "later",
+      "version": 13,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 551,
+      "title": "A dossier tab minted, new, starred and folded may wrap 'Named by' to a third line at 320",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 554,
+      "title": "523 follow-ups: a page loaded across a deploy restart, and the build read on every move",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 556,
+      "title": "471/472/430 follow-ups: an empty Option-swipe's undo, the touch Option path, two unguarded rules",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 559,
+      "title": "476 follow-up: an unfolded earlier message comes back as its row, not whole",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 560,
+      "title": "548 follow-ups: set aside on a reply the page will still send, older journal replies, a refusal's words",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 562,
+      "title": "Arrow keys: what 301's review left (folded dossier toggle, links inside message words, unchecked guards)",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 563,
+      "title": "527's review follow-ups: check gaps in passage lighting (scrolled box, older-revision scroll)",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 565,
+      "title": "378/465's review follow-ups: archive button's announced state, guards with no check, phone Team pills under 44px",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 566,
+      "title": "548's review follow-ups: set aside on a reply the page will still send, an aside list kept only in memory, a refusal worded for Core",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 568,
+      "title": "549's review follow-ups: quarantine identity beyond the name, quarantine.py passes reads any summary, a refused shard's provenance",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 569,
+      "title": "547's review follow-ups: a refused card act said only for a read's round trip, notices on a retired page, a busy line left on an idle page",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 570,
+      "title": "558's review follow-ups: a case filter that names no real case still passes the ledger guard; a zero-case act run reads SURVIVED",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 571,
+      "title": "378/465 touches' review follow-ups: unloaded-root dossier title, archive button's doubled state, Team pills 32px on a phone, dead guards",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 572,
+      "title": "418's review follow-ups: the Chromium CDP harnesses' context-destroyed rethrow and catch-alls; until()'s null throw; the close case's 'at once'",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 573,
+      "title": "567's review follow-up: the pipeline view's same-millisecond tie order has no view-level check",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 574,
+      "title": "553's review follow-ups: a policy covering train 21's two new steps; the source_commit guard has no check; candidate-side reads left in the policy check",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 576,
+      "title": "473/477/426 post-approval follow-ups: the 320px tab name, hidden glyphs heard by VoiceOver, the fold's width-only query, uncovered lines",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 577,
+      "title": "363's review follow-ups: inline case coupling, the compose close() wait, the phone composer rules reaching the sheet, holdRoom's gap lifetime",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 578,
+      "title": "404's review follow-ups: Edit after Bring back unchecked, Archived (N) one page, stale light on an open topic, Edit purpose on an ended outcome",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 580,
+      "title": "575's review follow-ups: the deploy reads the candidate's test-input declarations; no duplicate node-units identity guard",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 581,
+      "title": "301's merged-tree fix follow-ups: the walker's new press runs no dead-end test; no ledger row for the sheet exclusion",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 583,
+      "title": "547 phone-notices fix follow-ups: two notices' folded-phone edge, rails.md, a teardown timeout",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 584,
+      "title": "17's review follow-ups (round 1, carried; check each at the approved head first)",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 585,
+      "title": "An agent joining a topic while a send to it is landing is refused REVISION_CONFLICT",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 586,
+      "title": "575 plan-frames fix follow-ups: two known-reds checks with no unit test that fails without them",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 587,
+      "title": "Phone 320: a plain card's hidden star wraps to an empty line when the time is wide",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 590,
+      "title": "A pointer press on Review while writing can open nothing (lost click, Chrome)",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 591,
+      "title": "Order-leak fix follow-ups: five unwaited outline presses, the at-rest gap, pressReview's comment",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 592,
+      "title": "589 follow-ups: the ✕ way of putting the composer back has no test or break row; ✎ on an expanded resting composer",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 595,
+      "title": "589 first-commit follow-ups: sub-pixel creep while writing, untested home guard, other holds get no room, Chrome's extra 38px",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 596,
+      "title": "Team-row fix follow-ups: thin 1280 room and its 4px threshold, failed cases leave pages open, .wake-light padding uncovered",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 600,
+      "title": "The CLI's coordinator verb says FORBIDDEN for an outcome named by title; the id works",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 605,
+      "title": "593's follow-up: drive one Reader access state end to end through the compose fixture",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 607,
+      "title": "588's follow-ups: a release-check summary must name a commit, and Health shows a judged-tree release's hosted judgment",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 599,
+      "title": "An outcome's coordinator receives every topic of its outcome, not only the Conversation",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 611,
+      "title": "On a phone the late \"N new in other outcomes\" line moves the thumbs-up under a finger",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 612,
+      "title": "A stacked card's hover ring is the focus teal where docs/reading-colors.md asks a neutral grey",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 621,
+      "title": "A refused post to a person is raised to the seat at once, never dropped silent",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 616,
+      "title": "A message records at posting whether the dots were live, replacing the global wait start and its item-numbered key",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 618,
+      "title": "550 follow-up: a failed position read right after a committed split can draw a split-out head back inside its old dossier",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 619,
+      "title": "Reader header check measures the element that clips the dossier name: a short name whole, a long one ending in … on one line",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 620,
+      "title": "606 follow-ups: the colors check's 'ringed alike' message for stacked cards, a layout shift under the team's add field, reading-colors.md describing pre-stack borders",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 622,
+      "title": "550 follow-ups: undo after a partial refusal, a stale listing, one bad join failing a topic's page, tie order by id",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 629,
+      "title": "608 follow-ups: a quoted path in the scoped deploy's diff, live HEAD read twice, refusal translation untested",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 630,
+      "title": "550 review-5 follow-ups: an unloaded place joined away shows for one round trip; shownPlaces and Core test gaps",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 561,
+      "title": "The composer's title names the dossier it writes into, not the topic",
+      "section": "later",
+      "version": 7,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 657,
+      "title": "603's follow-ups: the revision hash and readability, the writer's cwd, --topic against the piece, an Edit-open race, two lines of yes-words, acts rows for --now/--window",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 663,
+      "title": "Start line: the dissent set's 🚫 and bare ⛔ each get a case",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 683,
+      "title": "A 👍 on an unread message sometimes fails to light with its bar (4 of 18 runs; diagnose)",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 684,
+      "title": "A dossier's folder takes the oldest loaded reply's colour until its root loads",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 685,
+      "title": "A compact agent coordination dossier never shows its agent's colour",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 686,
+      "title": "With the Reader open, every act re-reads the neighbours and can leave core null",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 687,
+      "title": "No case checks that a dossier being renamed shows no title bar glyphs",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 688,
+      "title": "No check covers paintBar's behind.clear(): Fold could reappear on a starred message at 320",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 689,
+      "title": "At narrow widths every scroll forces a layout through fit()",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 690,
+      "title": "WebKit at 320: the rail's first row scrolls sideways while a topic waits on the reader",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 691,
+      "title": "The send to ownAct call in app.mjs has no deterministic check",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 692,
+      "title": "The reading case 'edit hold resumed Save' races its wait (red 2 of 8)",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 693,
+      "title": "Title bar glyphs hidden by opacity stay in VoiceOver's tree on touch",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 694,
+      "title": "The title bar fold also applies to laptop windows narrower than 404px",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 695,
+      "title": "The ⋯ menu's folded glyph items act on a stale 'below' if another device moves the dossier",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 696,
+      "title": "Reverting 475 will need hand conflict resolution in app.mjs and three test files",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 697,
+      "title": "docs/reply-stacks.md's case table row omits the at-rest tab-width measurement",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 698,
+      "title": "The at-rest tab width is measured only in the light theme",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 699,
+      "title": "rails.mjs:59's title bar glyph region has no check that fails without it",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 707,
+      "title": "An Undo refused by the star hold remains available after unstarring",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 708,
+      "title": "Diagnose WebKit phone More-menu setup failing before Undo",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 709,
+      "title": "550 follow-up: opening a gathered dossier hides replies that were visible folded",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 710,
+      "title": "550 follow-up: cover the older-than-loaded guard while More fills a dossier",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 711,
+      "title": "550 follow-up: a gathered dossier’s tab and Reader title disagree before its root loads",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 712,
+      "title": "550 follow-up: joining a card shown apart by More can move its whole dossier",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 713,
+      "title": "550 follow-up: a live reply to a card shown apart by More lands in the main dossier",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 714,
+      "title": "Coverage: dossier title actions preserve saved topic rail order",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 720,
+      "title": "A WebKit departure scenario has a supported native harness",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 725,
+      "title": "Verdict recognises reviewed schema-fixture input declarations",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 733,
+      "title": "Append-only repair for release94 companion items477/426",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 726,
+      "title": "Folded author grouping has native accessibility and moving-line controls",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 727,
+      "title": "Complete Notebook thumbnail and recovery-control checks (651)",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 728,
+      "title": "Complete the remaining card editor coverage (652)",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 729,
+      "title": "Own repeated browser focus and collector-ordering flakies (42)",
+      "section": "later",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 730,
+      "title": "Resolve17 changed-input reading stops and6 freshness stops after release94",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 732,
+      "title": "Complete717 Tab-focus and width-mutant coverage",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 736,
+      "title": "Complete715 guarded phone return and cross-topic recovery coverage",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 640,
+      "title": "A dossier closed to its latest shows its starred first message whole",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 739,
+      "title": "Repair Notebook and image browser evaluate syntax in both engines",
+      "section": "later",
+      "version": 8,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 660,
+      "title": "The pool's door reaps a line file whose lock no process holds",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 735,
+      "title": "A dossier shows the star in its title bar while no starred message is visible in it when fully expanded",
+      "section": "later",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 741,
+      "title": "Complete the note-corner Chromium privacy checks after reload",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 742,
+      "title": "Resolve the three neighboring checks on the promises-cover source",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 743,
+      "title": "A folded dossier's meta line ends in a red dot and red ellipsis on the phone",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 744,
+      "title": "The composer's Review buttons can be resolved or dismissed by the person",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 675,
+      "title": "Select the sent reply or the folded message’s parent dossier in the feed",
+      "section": "later",
+      "version": 8,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 647,
+      "title": "⌘C copies the hover-selected text in the composer or a message",
+      "section": "later",
+      "version": 8,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 745,
+      "title": "Resolve the changed-input checks on the starred-card source",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 746,
+      "title": "Verify title editing through native gear opening and a complete field-return negative control",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 747,
+      "title": "Dossier star: classify and complete the remaining native coverage",
+      "section": "later",
+      "version": 6,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 748,
+      "title": "Repair the thumbnail first-touch source mutant after note-corner integration",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 749,
+      "title": "Classify train47 neighboring assertions and edit-build stops on changed inputs",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 750,
+      "title": "Two WebKit 320 folded-page checks stop before the composer swipe",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 753,
+      "title": "Whisper outlines: exact before comparisons for quoted, saving and refused composers",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 754,
+      "title": "At 320px, Retry composer must not overlap its startup-error notice",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 755,
+      "title": "Run all twelve FrozenReaders controls on CI with authenticated portable fixtures",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 703,
+      "title": "A click anywhere across a message's header folds or unfolds it",
+      "section": "later",
+      "version": 6,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 762,
+      "title": "A cover's payload link shows as its descriptor, not a bare address",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 763,
+      "title": "Keyboard reach of the phone Quote pill",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 764,
+      "title": "Verify thumbnail readiness across Notebook redraws",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 765,
+      "title": "Reach retained-reply Review with native Tab",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 766,
+      "title": "Resolve overlapping empty-Notebook error guidance",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 771,
+      "title": "Verify phone traversal before Reader promise actions",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 772,
+      "title": "A wait's options are buttons on the cover beside the Waiting-for pill, and a tap answers",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 773,
+      "title": "Observe writing recovery after discovery before judging a reloaded reply",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 776,
+      "title": "A companion item shipped inside another item's approved source can be finished by naming that release",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 777,
+      "title": "Complete the compact writing-panel evidence without ambiguous controls or overwritten captures",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 718,
+      "title": "A hosted run places its red cases at the tested merge and live head",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 789,
+      "title": "Compose cleanup retains the primary error when Browser.close also fails",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 737,
+      "title": "A cover's short names link straight to their items",
+      "section": "later",
+      "version": 10,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 751,
+      "title": "A refused tap on a phone says why where the person is reading",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 804,
+      "title": "On a 390-pixel phone in dark, Space on the topic page's right rail reaches the topic title",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 806,
+      "title": "The guarded deploy records a revert as a recovery, with no feature item and no bookkeeping commit",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 809,
+      "title": "Admit focused judged-landing proof without waiting for a full Checks producer",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 579,
+      "title": "Pool runs refuse a merge step of a train over eight steps",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 582,
+      "title": "Known-reds policy sourced at each deploy's base, made by the deploy from that base's push run",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 609,
+      "title": "A follow-up fix's claim on a shipped item is recorded as a follow-up, and the cut refuses one that is not",
+      "section": "later",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 623,
+      "title": "A screenshot timeout after a step's results still leaves a closed record, so the run's record stands",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 633,
+      "title": "The fast path's step selector chooses each page's WebKit step beside its Chromium one",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 638,
+      "title": "The pool door caps live waiters per Mac at eight, queues the rest in order, and refuses a ninth with the count",
+      "section": "later",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 658,
+      "title": "A train's cut records its own push, so its pool runs need no hand mark",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 659,
+      "title": "A release piece drops a member whose train was taken down",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 752,
+      "title": "Carry browser receipts across a test-only correction with exact input proof",
+      "section": "later",
+      "version": 10,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 761,
+      "title": "The in-flight schedule tracks pull requests beside trains",
+      "section": "later",
+      "version": 6,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 740,
+      "title": "Size browser shards for long reading steps before their timeout",
+      "section": "later",
+      "version": 12,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 723,
+      "title": "Sibling trains cut on live can check in parallel and land through the base-moved guard",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 719,
+      "title": "Verdict accepts a retargeted stacked PR when both base commits have the same tree",
+      "section": "later",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 775,
+      "title": "The shard planner splits native compose into independent case groups by default, each with a per-case limit",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 779,
+      "title": "The landing guard admits a step's original partial plus its grouped continuation as one exact union",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 796,
+      "title": "A short preflight of the shared test setup and every seat's reply path runs before any broad run",
+      "section": "later",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 801,
+      "title": "A train's summary is produced for any finished run: the plan travels by file, and cancelled or missing jobs are named",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 802,
+      "title": "A fixture restart refreshes the shared session, so later checks read the same committed cover",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 808,
+      "title": "Landing doc: the broad suite watches after release and never gates; judged-first means focused Core tests",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 767,
+      "title": "Coming back to the page after a while leaves no script error stuck at the top of the rail",
+      "section": "later",
+      "version": 6,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 717,
+      "title": "Promises and their times appear on the dossier cover",
+      "section": "later",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 791,
+      "title": "Headless agent for any outcome: \"Add an agent…\" starts a hosted Codex agent (discuss with Tony first)",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 811,
+      "title": "Authenticate completed producer archives and their exact baseline in Verdict",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 812,
+      "title": "Standalone message is drawn inside an open dossier in the shipped 799 check",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 814,
+      "title": "Preserve find, hash and assistive scroll intent during a pending card hold",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 815,
+      "title": "Refresh measured browser weights and split native-reading and native-compose",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 816,
+      "title": "Native suite visible after the token fix: failures to triage",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 817,
+      "title": "Reader writing is empty after reload on live109",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 818,
+      "title": "Make the Reader quote-selection mutant target countable by preflight",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 819,
+      "title": "Land CI and producer changes first through the validator’s own path",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 820,
+      "title": "Loading starred dossiers… appears after first paint above the messages and moves the page about 32px; a press aimed before it lands on what slid under",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 822,
+      "title": "Native suites vary between runs of one tree",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 823,
+      "title": "Prove late image and cover revision hold in both engines",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 836,
+      "title": "An outcome's page shows its topics as a grid of summary cards: the newest cover, or the newest message that isn't agent talk",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 942,
+      "title": "A kept hosted runner whose lease has expired, with no turn open, is restarted by the deploy rather than refusing it",
+      "section": "later",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 952,
+      "title": "The outline's topics sometimes render as large black cards instead of rail rows",
+      "section": "later",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1027,
+      "title": "The Archive area's right-click menu closes when any other action happens",
+      "section": "later",
+      "version": 10,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1064,
+      "title": "PAUSED · Your private notes show as one sticky-note block on their dossier, Tool style, with the first words of each",
+      "section": "later",
+      "version": 8,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1152,
+      "title": "Retain each item’s ready and blocker times across administrative re-pieces",
+      "section": "later",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1153,
+      "title": "Check native scenario control names against current owner source before launching a browser",
+      "section": "later",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1154,
+      "title": "Show unresolved source-only decisions apart from exclusive producer slots",
+      "section": "later",
+      "version": 8,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1200,
+      "title": "Every release keeps its pending browser checks as durable gauntlet jobs",
+      "section": "later",
+      "version": 22,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1201,
+      "title": "The migration writer gets the bounded five-second write wait",
+      "section": "later",
+      "version": 11,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 147,
+      "title": "Other people sign in to Theseus as themselves",
+      "section": "candidates",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 150,
+      "title": "AIM-style \"read\" styling within composer and feed views of messages.",
+      "section": "candidates",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 152,
+      "title": "Tokenize the entire interface so it can be expressed with entirely different styling.",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 153,
+      "title": "Add a button to the Candidates section here in the pipeline to ask the agent to recompile categorization",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 62,
+      "title": "Delete a topic",
+      "section": "candidates",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 89,
+      "title": "Search messages, with filters for yours, by author and by date",
+      "section": "candidates",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 168,
+      "title": "A Cluster button: regroup a pipeline section on request, with your note",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 169,
+      "title": "After Next lands: build one system eval-first in Theseus, and keep its eval tooling",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 171,
+      "title": "A broker check sometimes fails when the machine is busy, and blocks a release",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 172,
+      "title": "Health: an agent's note in a turn that is ending can be credited to the next turn",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 173,
+      "title": "Health: drop the turn start times nothing reads",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 176,
+      "title": "Redo the phone check so every step is unmistakable",
+      "section": "candidates",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 177,
+      "title": "On a phone, holding on a message selects its text",
+      "section": "candidates",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 180,
+      "title": "A turn that finished is not counted as lost when Codex answers the next turn first",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 182,
+      "title": "Every item in a piece shows its stage, at the top of the card",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 184,
+      "title": "Where to aim, with each item's risk, on the pipeline page",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 185,
+      "title": "The draft-save check waits for the page's own label, not only the server",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 187,
+      "title": "A done topic with a message you haven't read stays in the side rail until you read it",
+      "section": "candidates",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 188,
+      "title": "An outcome's card says Quiet only when nothing has happened since that time",
+      "section": "candidates",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 221,
+      "title": "Flaky test: the Codex broker's late valid list test fails about 1 run in 4",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 222,
+      "title": "Flaky test: a topic started anyway can be read as the topic the page was already on",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 223,
+      "title": "Make a thread: a message's menu turns it into the parent of a reply stack",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 229,
+      "title": "The pipeline page says each refusal in plain words, not Core's own",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 230,
+      "title": "A failed read before a send says nothing was sent and offers Try again",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 231,
+      "title": "Add to pipeline from a message can add the item twice after a lost answer",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 232,
+      "title": "A held stage whose resend is refused by an authority change stays 'not known' forever",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 240,
+      "title": "The lost-answer browser check counts Core's items after the resend lands",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 241,
+      "title": "Pipeline acts with no held line offer Try again after a lost answer, in plain words",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 242,
+      "title": "After a lost answer the pipeline page reads before it sends the next change",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 243,
+      "title": "A read refused for a lasting reason doesn't offer an endless Try again",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 244,
+      "title": "The ⋯ menu on a pipeline row opens against its button, not a row below it",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 245,
+      "title": "Your sent messages dim to dark gray once someone answers them",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 246,
+      "title": "A name left typed in To after it was named stays after Send",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 247,
+      "title": "On a phone, why Send waits shows above the naming sheet, not behind it",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 248,
+      "title": "Decide whether the who chip must be reachable by Tab in Safari's default setting",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 249,
+      "title": "Five sub-rules the act ledger found with no check",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 250,
+      "title": "The act ledger stays true to the code",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 251,
+      "title": "In Safari, ⌘Z after ⌥↑ or an #img pick also undoes the typing before it",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 252,
+      "title": "The live case 'a message arriving leaves the card being read in place' fails when run alone",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 254,
+      "title": "An ask back can briefly show New beside Waiting on you in the Conversation",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 258,
+      "title": "Find why fseventsd grows on this Mac, and cut what feeds it",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 260,
+      "title": "Browser checks for a surface closing with a panel open, and a WebKit harness that leaves a page mid-fetch",
+      "section": "candidates",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 262,
+      "title": "A whisper that has been answered shows a black dotted outline",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 263,
+      "title": "Pull a Discord message or thread into a topic",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 264,
+      "title": "The deploy refuses a commit whose Pipeline line git can't read as a trailer",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 267,
+      "title": "A browser check clicks, taps and presses Return on links inside formatted blocks",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 268,
+      "title": "An outcome's Notebook page shows formatted on its own page, as it does in the Reader",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 269,
+      "title": "An open page picks up a new release without a reload",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 270,
+      "title": "Uploads: a client that goes silent mid-upload is checked to stop at the body deadline",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 271,
+      "title": "The other backend tests that count real seconds wait on events instead",
+      "section": "candidates",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 279,
+      "title": "# in a reply opens a list of stacks, topics and outcomes to refer to",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 282,
+      "title": "Discuss and redesign how agents are assigned to new topics and new outcomes: today it is too manual",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 317,
+      "title": "Review versions shows only when there is a real choice, and says it plainly",
+      "section": "candidates",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 319,
+      "title": "Every topic has a Scratchpad Notebook page by default",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 322,
+      "title": "Undo still works after moving the card you are writing",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 323,
+      "title": "Down from a cleared card always opens the card after it",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 340,
+      "title": "Phone: go-ahead ask bar sometimes misses the answer after a head press",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 343,
+      "title": "One strong highlight at a time in stacks",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 346,
+      "title": "Message bar can vanish on the way to it when it sits below a stack card",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 347,
+      "title": "Colors check: card border, hover and focus-ring expects fail on live",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 351,
+      "title": "A sent message shows its images as well as the composer did while attaching them",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 392,
+      "title": "A Notebook page can be marked as a draft, and agents leave its words alone",
+      "section": "candidates",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 397,
+      "title": "The rail's \"1 question\" opens that question",
+      "section": "candidates",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 414,
+      "title": "Notebook in the composer: the review's follow-ups",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 416,
+      "title": "Folding: the review's follow-ups (holding x, diagonal swipes, Safari scroll)",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 423,
+      "title": "The release check keeps each failed case's first failing assertion: its file and line, and the actual and expected values",
+      "section": "candidates",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 424,
+      "title": "Inline correction's 'unavailable startup remains readable and Retry restores its composer' times out at its failed-open explanation on live",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 456,
+      "title": "The Reader's message reaches the compose check's size bar, Chromium and WebKit",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 457,
+      "title": "Remove with an upload in flight or failing: focus hand-off and presses meet the inline check",
+      "section": "candidates",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 460,
+      "title": "Review versions offers an empty, never-acknowledged copy after Quote then Undo",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 466,
+      "title": "Send from New message adds the message's card and selects it",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 468,
+      "title": "Nothing above More changes position when messages arrive",
+      "section": "candidates",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 469,
+      "title": "The outcome page lets its owner choose who answers in its Conversation",
+      "section": "candidates",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 99,
+      "title": "Preview the next release from the side rail",
+      "section": "candidates",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 123,
+      "title": "The map lives in Theseus, and picking from it writes your reply",
+      "section": "candidates",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 125,
+      "title": "Scheduled actions",
+      "section": "candidates",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 463,
+      "title": "Help moves to a ? beside the logo; Health moves to the rail's bottom",
+      "section": "candidates",
+      "version": 10,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 412,
+      "title": "Dossiers drawn as a stack of message cards, with motion",
+      "section": "candidates",
+      "version": 8,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 528,
+      "title": "People lists show the lobby's join-time name (tE) instead of the profile's name",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 541,
+      "title": "A hold's effect is unreadable afterward: deliveries keep no hand-out time",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 545,
+      "title": "A saved reply must let you leave the topic and return to it later",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 821,
+      "title": "Opening the composer moves a feed card",
+      "section": "candidates",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 846,
+      "title": "The Claude Code invitation waits with a background watch, not a foreground one its timeout kills",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 850,
+      "title": "⌘↑ and ⌘↓ move the picked card again in a Notebook page's card view",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 855,
+      "title": "Follow-up: the docked feed can show only the picked dossier",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 856,
+      "title": "Maybe: a dossier as its own component, so any page can show one",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 883,
+      "title": "The message-edit migration tests run again: their schema-39 fixture matches what the migration leaves",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 884,
+      "title": "The six unread-landing checks pass again: their page fixture knows listAccessEpoch and rowItems",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 892,
+      "title": "Unstarring a Notebook page from the side rail works when the page isn't open",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 895,
+      "title": "Sharing a photo from an iPhone just works; no Review versions in the composer",
+      "section": "candidates",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 897,
+      "title": "Browser suites open Notebook pages from the right rail",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 898,
+      "title": "Review versions is gone: saved copies merge on their own, and a real problem gets one line and one button",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 903,
+      "title": "A hosted turn's hung shell command can't hold the runner forever, and Health names the open turn",
+      "section": "candidates",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 915,
+      "title": "One Delete on your own message: it unsends when nobody has seen it and retracts when someone has",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 918,
+      "title": "A swipe right stopped folding every message in one dossier until the topic changed (not reproduced)",
+      "section": "candidates",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 946,
+      "title": "A coordinator that stops reading is detected even while its delivery watcher stays alive",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 778,
+      "title": "Text in a message card can be selected by dragging in Safari, while a tap, a click and the keyboard still open the card",
+      "section": "candidates",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 813,
+      "title": "Keep native fixture failures explicit and capture 731 phone failures before close",
+      "section": "candidates",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1012,
+      "title": "Reveal a rail image in Finder on the serving Mac; Download elsewhere",
+      "section": "candidates",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1031,
+      "title": "The left rail animates its updates so a change reads from the corner of the eye: waiting-for and badges arriving, dimmed and undimmed, and an archive",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1035,
+      "title": "The feed gets a custom scroll bar that shows where each dossier sits and its state, above and below the view, with new and unread marked",
+      "section": "candidates",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1056,
+      "title": "Core's SQLite journaling: WAL instead of DELETE, decided as a Core contract with measurements",
+      "section": "candidates",
+      "version": 3,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1057,
+      "title": "Only the pencil renames a title; the pencil sits on the title's centre line; an outcome's hue picker aligns with its title",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1061,
+      "title": "Native test producers report the fixture's errors and exit instead of dropping them: the errors reader is called, not written",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1066,
+      "title": "On a phone, tapping a dossier floats Archive instead of the cover-card button, and archiving animates",
+      "section": "candidates",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1068,
+      "title": "An agent's whisper stacked under your public message ends its Waiting for a reply, though the rule says a whisper is not a reply",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1080,
+      "title": "The Archived panel: its N new is a door through the dossiers with news, a right-click clears the marks, and Delete moves a dossier to a folded Trash",
+      "section": "candidates",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1085,
+      "title": "The node unit suite is green again on the base: the 40 failing cases across eight files fixed or retired",
+      "section": "candidates",
+      "version": 7,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1090,
+      "title": "The native reading suite's sea of red is read at the root: why 771 of 808 reading cases and 760 of 793 webkit-reading cases fail on the base, and fixed there",
+      "section": "candidates",
+      "version": 8,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1094,
+      "title": "An agent publishes a skill or tool it made into the native catalog from its outcome, without an application release",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1095,
+      "title": "An agent can hand work to another agent that is not in its topic: a reply path to warp or any agent from any outcome",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1098,
+      "title": "The page says whether notifications are on, off or blocked, with a Test button",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1107,
+      "title": "An ordinary landing refuses while a judged train's release is in Combine, and an import never closes a release it did not create",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1108,
+      "title": "The runner supervisor restarts the runner after a lost ownership lease, instead of waiting for a person",
+      "section": "candidates",
+      "version": 6,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1110,
+      "title": "A Personal topic shows 'Cannot read properties of undefined (reading running)': the retained-images review reads the session's upload record before it exists",
+      "section": "candidates",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1111,
+      "title": "Test input declarations under tools/ make every test-adding item producer code to the judge",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1118,
+      "title": "A thumbs up or a reply in a dossier answers instantly, on mobile too and in a topic with many dossiers",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1120,
+      "title": "Reader hides the reply pane while editing your own message",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1121,
+      "title": "The topic page's inline composer reads Start a new dossier instead of Write a new message",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1128,
+      "title": "The agent runner outlives a locked database during the pipeline's canonical writes",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1129,
+      "title": "Live's own runs are read every morning for dead browser modes",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1130,
+      "title": "The judge re-judges an existing producer run when only its own rules changed",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1134,
+      "title": "CI-incomplete notices read shipping state and distinguish cancelled producer runs",
+      "section": "candidates",
+      "version": 5,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1175,
+      "title": "A CLI write that finds the store busy for 250 ms refuses and waits on a manual retry",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 1208,
+      "title": "CLI retry must recover an unrecorded busy request",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 189,
+      "title": "On a phone, a way back to Outcomes from a topic list, like ≡ Topics",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 190,
+      "title": "Sent to you by name sits under the list of Outcomes on the home page",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 191,
+      "title": "Inside an outcome, Sent to you by name shows only that outcome's messages",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 196,
+      "title": "Clicking a topic in the side rail takes you to its latest message",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 197,
+      "title": "The Unread pill is red",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 233,
+      "title": "Composer: the thumbs-up button sits next to Send",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 234,
+      "title": "Composer: a thumbs-up from inside the composer closes it",
+      "section": "candidates",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 235,
+      "title": "Composer: a scroll inside the composer never scrolls the page behind it",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 236,
+      "title": "A message already sent opens with Close, not a dimmed Send",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 237,
+      "title": "A thumbs-up marks the message read, so it dims, in topics and the Conversation",
+      "section": "candidates",
+      "version": 2,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 238,
+      "title": "Clicking Waiting on you lands on the message that waits on you",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 93,
+      "title": "A steward agent keeps the outcomes clean and clear",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 100,
+      "title": "Bring your 1:1 meeting prep into Theseus",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 36,
+      "title": "Prove a delivered message actually gets handled",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 38,
+      "title": "Count wakes, model turns and empty turns separately",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 39,
+      "title": "Later: cut empty turns safely with explicit work ownership",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 41,
+      "title": "Move the Codex agents into Theseus hosting",
+      "section": "candidates",
+      "version": 4,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 44,
+      "title": "Remove the 250 ms limit when the wake adapter reads the process list",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 46,
+      "title": "Pickers show who can be reached now",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 9,
+      "title": "Shared understanding of the goal and how it is measured",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 13,
+      "title": "Checks that measure speed, on every deploy",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 15,
+      "title": "An outcome's checks run on every change before it merges",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 16,
+      "title": "Topics can say 'done when this check passes'; agents can close a passing outcome",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 19,
+      "title": "Decisions are followed because a check or the screen enforces them",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 21,
+      "title": "A test instance Tony can see, for quick punch-list rounds",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 33,
+      "title": "Agents manage which outcomes and topics exist",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 68,
+      "title": "Move daily coordination from AIM to Theseus",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 119,
+      "title": "The agent watch can show deliveries only",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 120,
+      "title": "The deploy closes the building topics of the items it ships",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 65,
+      "title": "Baseline records its cutoff and observation time correctly",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 66,
+      "title": "A notification never uses up the inbox",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    },
+    {
+      "number": 6,
+      "title": "'Your journeys': checks that walk through Tony's actual day",
+      "section": "candidates",
+      "version": 1,
+      "glyph": "idle",
+      "piece": null
+    }
+  ],
+  "pieces": [
+    {
+      "id": "p-c6768036d0d34b5caa8c313f",
+      "items": [
+        1100
+      ],
+      "stage": "wait",
+      "stage_entered_ms": 1795397526683,
+      "freeze": {
+        "head_commit": "91c5bdf2da2d583cdff740e6ca7e67ee3b951b68",
+        "base_commit": "488381d2de0becb68d2adab48f02bf9862b516ea"
+      }
+    },
+    {
+      "id": "p-85cee699d2084fd4809d4edd",
+      "items": [
+        1126
+      ],
+      "stage": "wait",
+      "stage_entered_ms": 1795440961250,
+      "freeze": {
+        "head_commit": "43cee6bd7e295b1bb19907ec62a1ddede9d99160",
+        "base_commit": "7b2a8ea6575afefb6b0b8ed90330a8506464591f"
+      }
+    },
+    {
+      "id": "p-0b4e3cb807be4c9eabbea072",
+      "items": [
+        1131
+      ],
+      "stage": "wait",
+      "stage_entered_ms": 1795460725015,
+      "freeze": {
+        "head_commit": "9377283ecdcc60a84ed173117dad03cfac65afe0",
+        "base_commit": "69acc0c7f213b41446eb72390aa5d96e7eca1150"
+      }
+    },
+    {
+      "id": "p-3dbbbd020be344368bb7069f",
+      "items": [
+        1218
+      ],
+      "stage": "wait",
+      "stage_entered_ms": 1795557294202,
+      "freeze": {
+        "head_commit": "0e665717fadebaaca8d0c8cf2640e2dee05728b6",
+        "base_commit": "1e6c6d788ed49c82e75b32b62361e2475cd882c6"
+      }
+    },
+    {
+      "id": "p-89a0ba1a36a64e91be3bc83b",
+      "items": [
+        1028
+      ],
+      "stage": "build",
+      "stage_entered_ms": 1795494847602,
+      "freeze": {
+        "head_commit": "0094d5365bc68c12a9d3c8b7c76b305fb7e39e56",
+        "base_commit": "488381d2de0becb68d2adab48f02bf9862b516ea"
+      }
+    },
+    {
+      "id": "p-cb6e92be97654ab3bbe3d6e2",
+      "items": [
+        1106
+      ],
+      "stage": "build",
+      "stage_entered_ms": 1795403672913,
+      "freeze": null
+    },
+    {
+      "id": "p-97a435d7b3c2411eb9b5f2a2",
+      "items": [
+        1136
+      ],
+      "stage": "build",
+      "stage_entered_ms": 1795452543503,
+      "freeze": null
+    },
+    {
+      "id": "p-9f111f90a0304257a489cbb2",
+      "items": [
+        1213
+      ],
+      "stage": "build",
+      "stage_entered_ms": 1795554224545,
+      "freeze": null
+    },
+    {
+      "id": "p-67119cb4f9264984b220a07b",
+      "items": [
+        1215
+      ],
+      "stage": "build",
+      "stage_entered_ms": 1795554473213,
+      "freeze": null
+    },
+    {
+      "id": "p-07057b516b0744c2ad0d11c4",
+      "items": [
+        1216
+      ],
+      "stage": "build",
+      "stage_entered_ms": 1795555877756,
+      "freeze": null
+    }
+  ]
+}

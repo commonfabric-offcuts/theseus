@@ -1,0 +1,92 @@
+[
+  {
+    "item": "building-theseus-release-pipeline",
+    "old_revision": 78,
+    "title": "Historical pipeline — before structured records",
+    "exit": 0,
+    "committed": true,
+    "exact_readback": true,
+    "operation_id": "cli-9e0361aa8de3424f9a5e74b04f6efc6d",
+    "revision": 79
+  },
+  {
+    "item": "building-theseus-adjacency-map",
+    "old_revision": 37,
+    "title": "Historical adjacency map — 96-item snapshot",
+    "exit": 0,
+    "committed": true,
+    "exact_readback": true,
+    "operation_id": "cli-19fb7d0424b24eb0965c591f8dee7720",
+    "revision": 38
+  },
+  {
+    "item": "building-theseus-measurements",
+    "old_revision": 8,
+    "title": "Historical measurements — releases18–22",
+    "exit": 0,
+    "committed": true,
+    "exact_readback": true,
+    "operation_id": "cli-fc861dbe1d54456587951150b45965bf",
+    "revision": 9
+  },
+  {
+    "item": "n-276bbb1a6c2e42748ae41edbd41021cc",
+    "old_revision": 8,
+    "title": "Historical flight plan — November14 release73",
+    "exit": 0,
+    "committed": true,
+    "exact_readback": true,
+    "operation_id": "cli-e43cf2bce29d4317b696cdb1758988b0",
+    "revision": 9
+  },
+  {
+    "item": "building-theseus-how-we-work",
+    "old_revision": 19,
+    "title": "Historical workflow — sourced policies preserved",
+    "exit": 0,
+    "committed": true,
+    "exact_readback": true,
+    "operation_id": "cli-1c4f618201bb4eb8b7cb2be0bfa33b2a",
+    "revision": 20
+  },
+  {
+    "item": "building-theseus-architecture",
+    "old_revision": 1,
+    "title": "Reference — architecture (early snapshot)",
+    "exit": 0,
+    "committed": true,
+    "exact_readback": true,
+    "operation_id": "cli-63b85e543f6f4715a18bdfa5e72a7bd9",
+    "revision": 2
+  },
+  {
+    "item": "n-4b6e44fff95a485fbc65274f88d414de",
+    "old_revision": 1,
+    "title": "Reference — hosted GitHub identity proposal",
+    "exit": 0,
+    "committed": true,
+    "exact_readback": true,
+    "operation_id": "cli-d72e2f44e26544688ff5f914aa6e9beb",
+    "revision": 2
+  },
+  {
+    "item": "n-7490de76b5de451b9e34021c84711299",
+    "old_revision": 2,
+    "title": "Reference — message-edit acceptance (228)",
+    "exit": 0,
+    "committed": true,
+    "exact_readback": true,
+    "operation_id": "cli-a173e7994fff49c2847b854ec1e5b827",
+    "revision": 3
+  },
+  {
+    "item": "building-theseus-experience",
+    "old_revision": 7,
+    "title": "Reference — experience principles",
+    "exit": 0,
+    "committed": true,
+    "exact_readback": true,
+    "operation_id": "cli-f5018036330a403b9fd9edcc15cacf5c",
+    "revision": 8
+  }
+]
