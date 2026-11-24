@@ -82,3 +82,12 @@ test('996 inset Notebook pencil Left goes directly to feed and pointer disclosur
   const button = part.details.querySelector('.things-disclosure'); assert.ok(button);
   const event = key(button, 'click', { button: 0 }); button.onclick(event); assert.equal(part.details.open, false); assert.equal(event.stopped, true);
 });
+
+test('⌘Z on a right-rail row goes on to the page’s Undo, while a key the rail acts on is still its own', t => {
+  const f = fixture(t), rows = f.rail.treeRows(), row = rows.find(each => each.el === f.part('notebook').body.querySelector('a'));
+  const tree = Object.assign(Object.create(KeyTree.prototype), { doc: f.doc, column: f.rail.host, list: () => f.rail.treeRows(), act: f.rail.act.bind(f.rail) });
+  row.el.focus(); const undo = key(row.el, 'z', { metaKey: true }); tree.key(undo);
+  assert.equal(undo.defaultPrevented, undefined, 'the page’s Undo still hears ⌘Z');
+  const left = key(row.el, 'ArrowLeft'); tree.key(left);
+  assert.equal(left.defaultPrevented, true); assert.ok(f.doc.activeElement === f.feed);
+});
