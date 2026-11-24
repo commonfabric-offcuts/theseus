@@ -9,7 +9,7 @@ import { DossierHeads } from '../web/stack-order.mjs';
 import { arrangeStacks, stackState } from '../web/reply-stacks.mjs';
 import { cardIn, paintFoldWords } from '../web/fold.mjs';
 import { paintAuthor, carriesOf } from '../web/marks.mjs';
-import { wasEdited } from '../web/message-edit-writing.mjs';
+import { revisionOf, wasEdited } from '../web/message-edit-writing.mjs';
 import { dropCardImages } from '../web/card-images.mjs';
 import { paintWithdrawal, withdrawalItem, Withdrawals } from '../web/question-withdrawal.mjs';
 import { removalItem, paintRemoval, readRemoval, Removals } from '../web/message-removal.mjs';
@@ -114,6 +114,7 @@ function cardEnvironment(t, { views, heads = null, entries = new Map(), registry
     menu: { paint() { counts.menu++; } },
     reader: { paintOrigin() { counts.origin++; }, hideUnavailableSource() { counts.hidden++; } },
     revokeMedia() {}, paintReaderMark() {}, paintReaderThumb$() {},
+    cardScroll: null, messageChanges: null, toggleMessageChanges() {}, revisionOf,
   };
   const methods = evaluate(env, headCode + authorCode + learnedCode,
     '{ learnMessageRemoval, refreshDossierHeads, syncDossierHeads, paintCardAuthor }');
