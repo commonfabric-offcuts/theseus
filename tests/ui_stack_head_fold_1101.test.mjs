@@ -124,3 +124,57 @@ test('1101 star, own-note and link-peek exceptions retain their existing fold re
   assert.equal(f.state.earlier.has('m1'), false); assert.equal(f.cards.get('m2').hidden, true);
   assert.deepEqual(f.records.get('m1'), { folded: true, fold_revision: 2, starred: false }); assert.deepEqual(f.commands, []);
 });
+
+// Item 1146: the renderer's temporary reveal is distinct from the saved fold.
+// These handler/renderer checks make no native gesture or timing claim.
+test('1146 Fold closes a saved-folded peek without a command, notice or undo', () => {
+  const records = new Map([['m1', { folded: true, fold_revision: 7, starred: false }]]);
+  const f = fixture({ records }), notices = [], focuses = [];
+  f.feed.say = words => notices.push(['say', words]);
+  f.feed.status = words => notices.push(['status', words]);
+  f.feed.focusOn = id => focuses.push(id);
+  f.feed.refuseFold = StackFeed.prototype.refuseFold;
+  reveal(f.head(), { full: true });
+  assert.equal(f.state.peeked.has('m1'), true);
+  assert.notEqual(f.head().dataset.folded, 'true', 'the revealed body starts open');
+  assert.equal(f.feed.setFold(f.messages.get('m1'), true), true, 'closing the peek is a handled action');
+  assert.equal(f.state.peeked.has('m1'), false);
+  assert.equal(f.head().dataset.folded, 'true', 'the real renderer restores the personal folded row');
+  assert.equal(f.head().querySelector('.message-folded').children[1].textContent, 'Exact first line 1');
+  assert.deepEqual(records.get('m1'), { folded: true, fold_revision: 7, starred: false });
+  assert.deepEqual(f.commands, []);
+  assert.deepEqual(f.feed.undos, []);
+  assert.deepEqual(notices, []);
+  assert.deepEqual(focuses, ['m1']);
+  reveal(f.head(), { full: true });
+  assert.equal(f.feed.setFold(f.messages.get('m1'), true, { focus: false }), true);
+  assert.deepEqual(focuses, ['m1'], 'the existing focus option is respected');
+});
+
+test('1146 a starred reveal retains the existing Fold refusal and stays open', () => {
+  const records = new Map([['m1', { folded: true, fold_revision: 8, starred: true }]]);
+  const f = fixture({ records }), item = f.messages.get('m1');
+  reveal(f.head(), { full: true });
+  const reason = f.feed.foldReason(item, true);
+  assert.ok(reason);
+  assert.notEqual(reason, 'Already folded.');
+  assert.deepEqual(f.feed.setFold(item, true), { refused: reason });
+  assert.equal(f.state.peeked.has('m1'), false);
+  assert.notEqual(f.head().dataset.folded, 'true');
+  assert.deepEqual(records.get('m1'), { folded: true, fold_revision: 8, starred: true });
+  assert.deepEqual(f.commands, []);
+});
+
+test('1146 an unfolded reveal still sends the ordinary saved fold and keeps Undo', () => {
+  const f = fixture(), item = f.messages.get('m1');
+  reveal(f.head(), { full: true });
+  assert.equal(f.state.peeked.has('m1'), false);
+  assert.deepEqual(f.feed.setFold(item, true), { recorded: true });
+  assert.equal(f.state.peeked.has('m1'), false);
+  assert.equal(f.head().dataset.folded, 'true');
+  assert.deepEqual(f.commands.map(({ kind, id, args }) => ({ kind, id, args })),
+    [{ kind: 'message.fold', id: 'm1', args: { folded: true } }]);
+  assert.equal(f.feed.undos.length, 1);
+  f.feed.undos[0]();
+  assert.equal(f.records.get('m1').folded, false);
+});
