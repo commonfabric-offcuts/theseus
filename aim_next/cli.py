@@ -1963,7 +1963,9 @@ def _selected_profile(options):
     if options.broker:
         from .hosted_cli import RemoteProfile
         return RemoteProfile.connect(options.broker)
-    return load_profile(options.profile)
+    profile = load_profile(options.profile)
+    profile.store().observe_cli(profile.actor_id)
+    return profile
 
 
 def _agent_verb(options, stdin, stdout, stderr):
@@ -2020,6 +2022,9 @@ def main(argv=None, *, stdin=None, stdout=None, stderr=None):
     stdin = sys.stdin.buffer if stdin is None else stdin
     stdout = sys.stdout if stdout is None else stdout
     stderr = sys.stderr if stderr is None else stderr
+    if (sys.argv[1:] if argv is None else list(argv)) == ['--hosted-activity-version']:
+        stdout.write('1\n')
+        return 0
     parser = _parser()
     try:
         options = parser.parse_args(argv)

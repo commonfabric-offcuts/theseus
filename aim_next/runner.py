@@ -462,6 +462,7 @@ class Runner:
                    (attempt["id"], attempt["recipient_id"], turn["thread_id"], turn["turn_id"], turn["mode"], turn["client_id"],
                     turn["announced_seq"], now, ended["final_status"] if ended else None, ended["error_code"] if ended else None,
                     now if ended else None))
+        self._recovery_handed(db, attempt, turn)
         if not ended:
             # The turn and every hand it takes are one attempt to reach the agent, settled when it ends
             # (health.py); a hand to a turn that had already ended joins an attempt already settled.
@@ -495,7 +496,7 @@ class Runner:
             return {"status": "recorded", "seen_ms": now}, True
         return self._effect(guard, action)
 
-    def end_hosted_turn(self, guard, runner_token, thread_id, turn_id, status, error_code=None, usage=None):
+    def end_hosted_turn(self, guard, runner_token, thread_id, turn_id, status, error_code=None, usage=None, observed=True):
         """Finish every open row of one turn; a turn that failed or dropped a steer hands its work back."""
         _thread(thread_id)
         _text(turn_id, "turn_id")
@@ -510,11 +511,11 @@ class Runner:
             ownership = self._ownership(self._runner_state(db), guard, runner_token, now)
             if ownership != "running":
                 return {"status": ownership}, False
-            ended = self._turn_ended(db, now, thread_id, turn_id, status, error_code, counts)
+            ended = self._turn_ended(db, now, thread_id, turn_id, status, error_code, counts, observed)
             return ({"status": "unknown"}, False) if ended is None else (ended, True)
         return self._effect(guard, action)
 
-    def _turn_ended(self, db, now, thread_id, turn_id, status, error_code=None, counts=None):
+    def _turn_ended(self, db, now, thread_id, turn_id, status, error_code=None, counts=None, observed=True):
         """Finish every open row of one turn, at now; None when Core lists none."""
         rows = db.execute("SELECT * FROM hosted_turns INDEXED BY hosted_turns_open WHERE thread_id=? AND turn_id=? AND final_status IS NULL "
                           "ORDER BY handed_ms,attempt_id", (thread_id, turn_id)).fetchall()
@@ -541,6 +542,7 @@ class Runner:
         rearmed = False
         for recipient in sorted({row["recipient_id"] for row in rows}):
             self._record_hosted_completion(db, recipient, thread_id, status, now)
+            self._recovery_completed(db, recipient, thread_id, turn_id, status if observed else 'lost', unseen, now)
             schedule = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (recipient,)).fetchone()
             clean = status == "completed" and not unseen
             if clean:

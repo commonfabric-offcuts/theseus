@@ -346,3 +346,31 @@ test('a release from a merged train says no release check ran here and what its 
     /^Its release check: 1,106 Python, 740 Node and 208 of 208 browser checks passed\.$/);
   assert.equal(details({ check: null })[0], 'No release check summary was kept for it.');
 });
+
+
+test('1104 a committed replacement is visible for one day with its exact contexts and turns', () => {
+  const replacement = { committed_ms: NOW, reason: 'Three completed turns left work pending without a CLI call.',
+    old: { thread_id: 'context-old' }, new: { thread_id: 'context-new' }, turns: ['turn-a', 'turn-b', 'turn-c'] };
+  const page = answer({ agents: [agent('hosted-a', { route: 'codex_hosted', execution: {
+    state: 'idle', desired: 'running', replacement, recovery_state: 'committed' } })] });
+  const line = now => healthLines(page, { now }).find(x => x.key === 'agent:hosted-a');
+  for (const age of [0, 24 * 60 * MIN - 1]) {
+    const shown = line(NOW + age);
+    assert.match(shown.summary, /context replaced/i);
+    const details = shown.details.join(' ');
+    for (const value of ['context-old', 'context-new', 'turn-a', 'turn-b', 'turn-c', replacement.reason]) assert.ok(details.includes(value), value);
+  }
+  for (const now of [NOW - 1, NOW + 24 * 60 * MIN]) {
+    assert.doesNotMatch(line(now).summary, /context replaced/i);
+    assert.doesNotMatch(line(now).details.join(' '), /context-old|turn-a/);
+  }
+});
+
+test('1104 incomplete recovery is named separately and never claims a replacement', () => {
+  const page = answer({ agents: [agent('hosted-a', { execution: {
+    state: 'idle', desired: 'running', replacement: null, recovery_state: 'uncertain' } })] });
+  const line = healthLines(page, { now: NOW }).find(x => x.key === 'agent:hosted-a');
+  assert.doesNotMatch(line.summary, /context replaced/i);
+  assert.match(line.details.join(' '), /recovery.*unconfirmed/i);
+  assert.deepEqual(healthProblems(page, { now: NOW }), [], 'Core continues to own what is red');
+});

@@ -252,7 +252,7 @@ def load_hosted_config(path, *, expected_binding=None):
     _require(type(supplied) is list and len(supplied)==2 and all(isinstance(root,str) for root in supplied)
              and set(supplied)==set(roots),'invalid_writable_roots')
     hosted_outbox(roots[1])
-    pin = profile.store().read_route_pin(profile.actor_id,destination)
+    pin = profile.store().resolve_hosted_route(profile.actor_id,destination)
     config = HostedConfig(path,selected_profile,profile,cli,executable,dict(pin['destination']),cwd,model,roots,*options)
     if config.permission_mode == 'workspace':
         from .hosted_permissions import validate_workspace
