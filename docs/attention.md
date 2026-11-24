@@ -661,8 +661,11 @@ one reloads them when shown again.
 A topic row's count leads to what it counts (item 613). A press on the count,
 in the outline, the outcome page's topic list or the right rail's Build rows,
 opens the topic at the oldest message still unread for the reader
-(`?topic=T&at=unread`, docs/links.md), where the rest of the row opens the topic
-as before. The page reads in older pages of the topic as far as that message,
+(`?topic=T&at=unread`, docs/links.md). In the outline and the outcome page's
+topic list, pressing the rest of a row with an unread count makes that same
+landing (item 1174); without a count its opening behavior is unchanged. The
+right rail's pointer row keeps its existing opening behavior. The page reads
+in older pages of the topic as far as that message,
 however far up it is, and on to the first message of the dossier it is in, so
 the dossier is drawn whole rather than from the message; it opens the dossier,
 expands its earlier row as far as the message (docs/reply-stacks.md, "Earlier
