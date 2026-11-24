@@ -14,8 +14,3 @@ Choosing a destination still calls the existing transfer owner. A move to the
 current Notebook remains disabled; a copy there remains available. A departed
 writer cannot open the picker or transfer a page. Core still validates access,
 source revisions and the selected destination in the transfer transaction.
-
-The focused checks cover topic membership, conversation identity/order,
-pagination, explicit groups, reader errors and the existing transfer controls.
-The existing transfer browser driver runs in one isolated Chromium cell; it
-does not establish physical-device behavior.
