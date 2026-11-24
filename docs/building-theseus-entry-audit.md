@@ -125,3 +125,24 @@ landing. The separate boot plan still owns migrations, purge/preserve manifest,
 input isolation, actual file reads, dry run and physical-test evidence. No tests,
 producers, route changes, migrations, starts/stops or physical reboot ran for
 this audit.
+
+
+## Coordinator disposition after the snapshot
+
+Fable23589 proposes the concrete moves; Warp23592 rules them prospectively.
+1100/1126/1131 and1106/1136/1149/1150 go to Later with history/residual triggers;
+1131's guard9377283e is recorded as in use, not an invented app shipment.
+1028 keeps original Build4, with Fable owning re-entry after the dry run and
+current-live scope/proof reconciliation. The44 old unassigned Next rows go to
+Later with provenance;1220 stays queued, and Tony-placed cards retain their guard.
+This preserves clocks instead of treating all six old pieces identically.
+
+Stage IDs/events stay: Product preview, Ready for landing, Prepare release,
+Landing checks. Warp maps the checks to installed preflight/approved-head/guard,
+own carried tests, whole-Node actual-live comparison, paired affected files,
+deploy exit and publication readback. It explicitly removes browser-checks from
+the prospective gate under Tony's November23 rule; Units maps to those deterministic
+proofs. A product preview Tony requested retains his actual word before test work;
+the old universal preview prohibition is narrowed. These are sourced dispositions,
+not proof that the stage writes/moves have happened. Fable's exact readbacks,
+owner-placed refusals, current Ready record and PR513 carry remain owed here.

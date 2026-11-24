@@ -20,6 +20,27 @@ disposition below. The [review log](fresh-agent-boot-review.md)
 keeps the eight reviews of the original draft separate from this review and
 from runtime/trial evidence.
 
+## Cohort conflict reported after review
+
+Warp23590 revision2 /23593 proposes that Auditor sit out: remove only its queue
+route during the trial, preserve pin/control/context/deliveries, restore the route
+afterwards, and build a guarded queue-to-hosted transition separately. The earlier
+proposal to let its old conversation participate is superseded. Verified absence
+would avoid old-memory assistance, but exercise **seven hosted participants**,
+not the eight named by current-rule5 / Notebook41, read after that proposal.
+It also does not prove a fresh boot of all eleven actors in Tony's original scope.
+Record that dimension as unexercised/incomplete unless Tony explicitly changes
+that scope; “every participant is fresh” and “every required actor starts fresh”
+are different measured claims. The two timing results remain separately measurable.
+This is an execution-scope conflict, not an additional landing/dry-run hold.
+
+The eight-actor manifest/refresh step below describes the original full target,
+**not a command to execute while Auditor remains a queue route**: owner refresh
+validates eligibility atomically, so including that route would refuse the batch.
+Before a multi-actor trial, its named owner must reconcile the actual participant
+manifest, sourced current rule and repository kickoff. The one-idle-seat dry run
+and the existing1216/1218 landings can proceed within their own recorded scope.
+
 ## Tony's first terminal after reboot
 
 Fresh external Warp boots Theseus. Tony’s local copy of the launch command and
@@ -133,7 +154,8 @@ PR509 includes them. Their actual installation and owner review precede boot.
 Tony 23459 accepts hosting both, and Warp 23486 states the target: one wake/refresh/Stop lifecycle,
 repository role input and supported activation receipts simplify cold boot.
 Auditor's separate authority and independent evidence reads remain intact.
-Auditor is the simpler first migration; Fable also needs coordinator/subscription/
+The original order treated Auditor as the simpler migration; Warp23590 now
+reports no supported queue-to-hosted conversion. Fable also needs coordinator/subscription/
 watch parity and a single-owner handoff. The tradeoff is a shared runner failure
 domain and loss of desktop conveniences; external Warp and human-readable Health
 must expose service/runner failure. This planning decision does not itself perform or grant an unsupported route mutation. The current-route column is historical input to retire; the target column is
@@ -145,6 +167,18 @@ for both actors before provisioning;1213/1216 do not perform that migration.
 A supported conversion preserves identity, permissions,
 unread work, private-message boundaries and original operations. No double route
 or coordinator may remain. Lock the chosen architecture before the physical test.
+
+Warp23590 supplies Fable's operator path from `hosted-codex-rollout.md`: while
+runner/guard are stopped/free, verify the existing actor/profile binding against
+the runner's current profile (`aim-lead.profile.json`, not the rollout example's
+old profile), verify no existing pin/route, provision with owner Tony, stage and
+validate the route, then read pin/control/first resume back. Retain outbox and
+pending mail; Tony retires the external chat. A conflicting pin can leave an
+unused created native thread before refusal: retain its identity and do not retry
+creation. This is the operator's sourced procedure, not executed migration proof.
+The queue pin is immutable under the installed ordinary provisioning path;
+hosted recovery does not convert a queue pin. The Auditor transition remains a
+separate product need, and its exclusion proposal is scoped above.
 
 ## What may survive the physical reboot
 
@@ -378,7 +412,7 @@ The aim is reliable Fast lane shipping from durable knowledge. Starting threads
 is a readiness observation; one landing is initial recovery evidence, not a
 claim of sustained low prediction error.
 
-Current fast-lane rule4 / Notebook40 adopts Warp23514's second reported result,
+Current fast-lane rule5 / Notebook41 retains Warp23514's second reported result,
 **not a shipping gate**: take the
 first five pieces that land after reboot, whatever their work type. Report all
 five live within45 minutes of the first one's Build, and at least four within15
@@ -506,7 +540,7 @@ identifies designer and the role-source follow-up. Core7 23439 selects separate
 1216; Fable 23441 assigns it. Current inspected live is 419 / `ce13ce60`; runtime
 work is not claimed deployed. That419 statement is the historical source
 snapshot; the later independently observed live is420 / `1e6c6d78`. Execution
-reads current policy afresh (currently rule4 / Notebook40).
+reads current policy afresh (last read rule5 / Notebook41).
 
 All eight requested reviewers read draft `3d27c16fe8da77c8b33360b839289ba578cc393f`.
 Their findings are reconciled in the log; the material whole-system revision

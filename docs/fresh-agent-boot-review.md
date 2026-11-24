@@ -138,3 +138,16 @@ original draft review. Its timing fixes are incorporated. Warp23581 explicitly c
 both timestamps without post-outcome selection. All document findings are
 reconciled; actual execution prerequisites and installed-document carry remain
 separately owned.
+
+
+## Subsequent execution-scope proposal
+
+Warp23590 revision2 and23593 replace its retained-Auditor proposal with an
+Auditor route-off / seven-hosted-participant trial. That is subsequent to the
+whole-system reviews above. Current-rule5 / Notebook41 still retains the
+eight-actor cohort. The plan now distinguishes fresh participating agents from
+Tony's original all-eleven fresh-boot goal and labels the original eight-actor
+refresh manifest non-executable while Auditor remains a queue route. No later
+scope acceptance, migration or route-off action is inferred. Fable's newly sourced
+operator provisioning path is documented with its immutable-pin/orphan limit.
+The existing single-seat dry run remains separate.
