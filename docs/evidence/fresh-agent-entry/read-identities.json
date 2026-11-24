@@ -41,5 +41,189 @@
       "bytes": 448,
       "sha256": "cf101cbe9d5cd67322fa72ce7280e577749a588add483b63084174536fed43c5"
     }
-  ]
+  ],
+  "reconciliation_23641": {
+    "source_message": {
+      "id": "m-7ff63fbc02a34e9ba7fa6fab8f7ed380",
+      "revision": 1,
+      "seq": 23641
+    },
+    "current_rule": {
+      "revision": 6,
+      "notebook_revision": 42
+    },
+    "later_placement_read": {
+      "pipeline_revisions": [
+        12666
+      ],
+      "pages": 6,
+      "later_rows": 373,
+      "verified_numbers": [
+        367,
+        594,
+        626,
+        627,
+        631,
+        637,
+        639,
+        677,
+        678,
+        679,
+        680,
+        681,
+        682,
+        700,
+        701,
+        702,
+        706,
+        716,
+        724,
+        794,
+        795,
+        797,
+        1078,
+        1100,
+        1106,
+        1126,
+        1127,
+        1131,
+        1136,
+        1137,
+        1139,
+        1140,
+        1141,
+        1143,
+        1144,
+        1148,
+        1149,
+        1150,
+        1155,
+        1179,
+        1181,
+        1182,
+        1183,
+        1185,
+        1186,
+        1187,
+        1188,
+        1189,
+        1191,
+        1192,
+        1193
+      ],
+      "limits": "Current Later placement is independently verified; original operation completion and each residual body are sourced to Fable23641, not inferred from placement."
+    },
+    "stage_and_next_read": {
+      "pipeline_revision": 12659,
+      "next": [
+        1220,
+        1221,
+        1222
+      ],
+      "landing_checks_gate": [
+        "units"
+      ],
+      "stage_ids_preserved": true
+    },
+    "named_carry": {
+      "item": 1223,
+      "source": "flex",
+      "review": "fable",
+      "carry_and_landing": "warp",
+      "pr": 513
+    },
+    "raw_archive": {
+      "name": "flex-entry-reconciliation23652.zip",
+      "bytes": 226087,
+      "sha256": "dde03be010cc55e43e6202431dc5c6b9564bae5ffe472bf7541c597649610199",
+      "delivery": "attached to final1223 source handoff in the original Releases request stack"
+    },
+    "raw_reads": [
+      {
+        "name": "flex-later23651-0.json",
+        "bytes": 125080,
+        "sha256": "4b134ae3c47372f8ac7a3c70ec4e01cd622651aebcbf6c91e8d59b2f4362e81f"
+      },
+      {
+        "name": "flex-later23651-0.json.request.json",
+        "bytes": 416,
+        "sha256": "6692ed512cfec77a01237df5319313758cfd8e6f873e716001f5b584cc1bc9a4"
+      },
+      {
+        "name": "flex-later23651-100.json",
+        "bytes": 132161,
+        "sha256": "63d9892da2c5936859c9394323bab32bc50b88e942323a848a7f305bcea47097"
+      },
+      {
+        "name": "flex-later23651-100.json.request.json",
+        "bytes": 418,
+        "sha256": "325cf073961e0fae615d83c05346d614129f3042b63e3163654a6f820595bf41"
+      },
+      {
+        "name": "flex-later23651-158.json",
+        "bytes": 130115,
+        "sha256": "4fd337e3c7db9183ba8304e58ba950bce6167738181e991da4873eefe688d0d4"
+      },
+      {
+        "name": "flex-later23651-158.json.request.json",
+        "bytes": 418,
+        "sha256": "9cce2f9c4a291e0d0595c5139633a9ebae1fcc6b053e9b1b00db642f0eb96d1f"
+      },
+      {
+        "name": "flex-later23651-238.json",
+        "bytes": 131499,
+        "sha256": "c55b15648f3664a6c3c4f15868a8be312758e4b46e35f61d4e8ba74f4d502a8c"
+      },
+      {
+        "name": "flex-later23651-238.json.request.json",
+        "bytes": 418,
+        "sha256": "3c655f0cf5778a05b4b4fe2bc36b8c26e0076023ed62d2a2f0c7112c4040b7ee"
+      },
+      {
+        "name": "flex-later23651-291.json",
+        "bytes": 132011,
+        "sha256": "2feb0a1a023b7a03c0e5c3e5380bdd019f4211656da4bfdb80920b88979d85a2"
+      },
+      {
+        "name": "flex-later23651-291.json.request.json",
+        "bytes": 418,
+        "sha256": "23ad8fb857a6c8fd3efea7dc1778c7ca4e6699719d83a5d4808a6826e1b65504"
+      },
+      {
+        "name": "flex-later23651-332.json",
+        "bytes": 95691,
+        "sha256": "79c9a8097ca02e3633a9f4c5af7a2c379108dba2259678d9c13eb44c764a6531"
+      },
+      {
+        "name": "flex-later23651-332.json.request.json",
+        "bytes": 418,
+        "sha256": "ca35c607bc128ff900402f8e0a9942bc7faff75bd46ca89d492f5566ff2b22c3"
+      },
+      {
+        "name": "flex-rule6.ndjson",
+        "bytes": 22109,
+        "sha256": "d7dac6a478e6c0b0725406e8ee33338ebc5b1d8f03e91c3644b11659dc3bee24"
+      },
+      {
+        "name": "flex-next23641.ndjson",
+        "bytes": 10500,
+        "sha256": "d8f598333cc9220e6d44baf523bed7e77e78c70ba9992e7d92544c0844c65260"
+      },
+      {
+        "name": "flex-stages23641.ndjson",
+        "bytes": 39905,
+        "sha256": "92973ab33806c4898c3e18c3a3e75454e8466df11e9c2c8bd4082e6047ab89d9"
+      },
+      {
+        "name": "flex-item1223.ndjson",
+        "bytes": 6283,
+        "sha256": "0c867e8d80bd9b72a103fdfd5aa1431e4a88e598f34c7562ee8e2491b844e5b4"
+      },
+      {
+        "name": "flex-dispositions23641.json",
+        "bytes": 20703,
+        "sha256": "4ef12c1e84dc526794f65f9775a2a22f4cfe0d45bbc4709533001a7e52529283"
+      }
+    ]
+  }
 }

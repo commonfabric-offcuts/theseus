@@ -44,7 +44,7 @@ does not mean implementation or live proof already exists.
 | W7: Page5 is building and cannot be assumed idle. | Accepted: execution step2 selects from live controls/work/producer ownership; no actor named idle in advance. |
 | P5.1: Refresh loses dirty-tree/operation/clock knowledge. | Accepted: **Correct startup and work recovery** and **What may survive** require durable branch/head/evidence/operation references; scratch pointer alone insufficient. |
 | P5.2: Empty inbox is not proof of child cleanup. | Accepted: execution steps2–3 require manifests, exits and PID/profile/port absence; no basename cleanup or replacement producer. |
-| F1: Auditor queue reuses its thread. | Corrected current-route fact; target is hosted after1216, queue consumer retired through supported migration. Exclusion no longer satisfies Tony's whole-system scope. |
+| F1: Auditor queue reuses its thread. | Corrected route fact. The intermediate hosted target and later exclusion are superseded by23599r2/current-rule6: fresh external Auditor, old queue consumer retired with identity/work preserved. Exclusion does not satisfy the all-eleven scope. |
 | F2: New Fable chat does not transfer coordinator/watch responsibility. | Accepted as required ownership transfer, now to hosted Fable; old consumer/watch relieved, no duplicate coordinator. |
 | F3: Stored historic roles conflict with seat pointer; file changes after launch. | Accepted: separate1216 role-source assembly plus reviewed effective input, expected versus actual file-read hashes. **Correct startup**; Core8/Fable own implementation/configuration proof. |
 | F4: Retain first→last activation and first activation→landing. | Accepted in **Shipping and prediction acceptance** with every route's request/action time; primary change separately sourced. |
@@ -61,7 +61,7 @@ does not mean implementation or live proof already exists.
 | C7.2: No immediate idle activation. | Accepted: named delivery after acceptance, positive zero-pending fixture, distinct open-turn/accepted/activated times. |
 | C7.3: Pointer assembly preserves role; hash collection is extra evidence. | Accepted:1213/1216 scopes separate, no inferred file-read hash from thread/start. Fable owns actual collection. |
 | C7.4: Status authority and committed receipt differ from incomplete continuation. | Accepted: owner result access, Health retention, separate incomplete phase status and no second opaque create. |
-| A1: Queue continuation and Fable handoff need concrete mechanisms. | Incorporated with target hosted migrations; old external/exclusion option superseded. Missing mechanism blocks full trial. |
+| A1: Queue continuation and Fable handoff need concrete mechanisms. | Current disposition is hosted Fable provisioned before refresh plus external Auditor with explicit ongoing delivery/native-wait ownership. Old retained-context/exclusion proposals are superseded; the external handoff remains Warp-owned. |
 | A2: Unconditional inbox conflicts with paged auditor wake. | Accepted: trusted actor/wake protocol, exhaust cursors without old-generation filter, current sources/privacy/snapshot boundary. |
 | A3: Role baseline/hash and actual-read mismatch need reconciliation. | Accepted: authorized effective baseline, actual startup bytes and separately observed actual role read before correctness claim. |
 | A4: Reconcile metric conflict and earliest external owner action. | Accepted: sourced earliest initiating owner act, now physical shutdown/reboot; retain older definitions and all intervals. |
@@ -72,9 +72,10 @@ does not mean implementation or live proof already exists.
 
 Tony's physical-reboot requirement adds fresh Warp, durable boot entry, no
 private memory/scratch dependence, all eleven actors and post-boot prediction
-measurement. Warp23462 supplies `/Users/commonfabric/warp-seat`, the launch
-command and kickoff; those are copied into the plan. Warp23471 reports the
-local KICKOFF.txt copy. Runtime assembly, role files, supported migrations and
+measurement. Warp23462 supplied `/Users/commonfabric/warp-seat`, the launch
+command and kickoff; Warp23471 reported that original local copy. Tony23627/
+Warp23630 later relocate the four launch folders under `~/theseus`, as recorded
+in the current plan. Runtime assembly, role files, supported migrations and
 cold-start invocation still require their own proof.
 
 The prerequisite table assigns runtime, migration, installed-document, memory,
@@ -142,12 +143,52 @@ separately owned.
 
 ## Subsequent execution-scope proposal
 
-Warp23590 revision2 and23593 replace its retained-Auditor proposal with an
-Auditor route-off / seven-hosted-participant trial. That is subsequent to the
-whole-system reviews above. Current-rule5 / Notebook41 still retains the
-eight-actor cohort. The plan now distinguishes fresh participating agents from
-Tony's original all-eleven fresh-boot goal and labels the original eight-actor
-refresh manifest non-executable while Auditor remains a queue route. No later
-scope acceptance, migration or route-off action is inferred. Fable's newly sourced
-operator provisioning path is documented with its immutable-pin/orphan limit.
-The existing single-seat dry run remains separate.
+Warp23590 revision2 and23593 replaced its retained-Auditor proposal with an
+Auditor route-off / seven-hosted-only trial. At that observation, rule5/Notebook41
+still named eight hosted actors. Sourceba636d2d correctly recorded the missing
+Auditor fresh-context proof rather than calling7/7 participants an11/11 result.
+No route-off execution or later scope acceptance was inferred. That proposal is
+now historical, not the current procedure.
+
+## Current route, startup order and record reconciliation
+
+Warp23599 revision2 (`m-e6afb9f16d2446ac996e5ae076810243`), Steward23600 and
+Fable23610 restore all eleven through seven hosted and four external participants.
+Bound current-rule6/Notebook42 records that change and1028's original-Build4
+re-entry ownership after the dry run. The plan now puts Auditor outside hosted
+refresh, preserving its identity/pending/private work and original operations;
+the old queue consumer must retire. No new approval round or trial success is
+inferred from these later source changes.
+
+Fable23628 found the concrete inadmissible-order bug in1218's seven-seat command:
+external/unpinned Fable was requested before its operator provisioning. Warp23642
+fixes that inbbb8f548, after Tony23627/Warp23630's `~/theseus` path relocation in
+dab49024 and da6344b4's cohort correction. Fable23646 approves the exact replacement
+as Ready2. Flex reads full resulting warp.md: stopped-runner provisioning/binding
+and Auditor route removal precede the batch; fresh Warp verifies both and
+completes any missing supported work before admission. The other ten seat blobs
+and old approvals remain. This is source/order proof, not a migration, model read
+or physical reboot.
+
+Flex23601 and Auditor23637/23640 independently find that Auditor's new KICKOFF
+delegates to a seat file expecting dispatcher-owned later wakes; removing that
+dispatcher route supplies no replacement wait owner. Fable23641/23646 retain the
+external assignment/delivery/native-wait handoff under Warp. The plan explicitly
+records this remaining handoff and separate new-context/read/action evidence.
+The local files were read at their new `~/theseus/{warp,designer,team,auditor}`
+paths; no file or route was changed by Flex.
+
+Fable23641 returns actual23592 queue/stage operations/readbacks, names PR513's
+carry as1223 Now, onboarding repair1222 Next/Flex and guarded migration1221
+Next/Core7;1220 remains Next. Flex independently reads current Next/stages and
+all51 moved Later rows. The entry audit keeps the original535-row snapshot as
+dated evidence and adds this later reconciliation. Freeze/carry/publication
+remain separate from document completion. This prose carry adds no third
+prerequisite to the1216/1218 single-seat dry run.
+
+Auditor23607/23609 corroborates the already incorporated A7/A8 corrections and
+identifies missing exact historical PUBLISHED timestamps. The plan retains that
+measurement limit and the separately proposed publication timestamp/skeleton
+repairs without claiming they are implemented or launching another producer.
+Warp23454 revision2's reboot15:35 supersedes15:15 as forecast;1215's separately
+sourced old LIVE revision is preserved pending that lane's own replacement.

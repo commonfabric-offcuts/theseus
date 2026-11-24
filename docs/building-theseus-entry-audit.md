@@ -116,33 +116,61 @@ make current entry unmistakable, then consider a new product outcome only for
 a genuinely new scope with an explicit identity/config migration. A clean page
 alone is not a clean execution state.
 
-## What remains owed
+## Current handoff
 
-Fable's supported queue/stage dispositions and readable current Ready selection;
-repository carry of the guide/plan/audit; and the onboarding repair's named owner.
-These are concrete cleanup work, not newly invented prerequisites for an unrelated
-landing. The separate boot plan still owns migrations, purge/preserve manifest,
-input isolation, actual file reads, dry run and physical-test evidence. No tests,
+Fable23641 completes the supported queue/stage reconciliation and names the
+remaining owners.1223 Now is this PR513 seven-path document carry: Flex source,
+Fable exact-head review, Warp actual-live carry/landing.1222 Next assigns Flex
+the onboarding formatter repair;1221 Next assigns Core7 the post-reboot guarded
+queue-to-hosted transition.1220 remains Next for the host-fixture repair. None
+of those three Next items has a piece/Build/producer in the readback. This carry
+adds no third prerequisite to the1216/1218 single-seat dry run.
+
+Repository installation still needs its actual carry/landing receipt. The
+separate boot plan owns provisioning, purge/preserve manifest, input isolation,
+actual file reads, dry run and physical-test evidence. The external Auditor
+delivery/native-wait handoff remains Warp-owned under23601/23637. No tests,
 producers, route changes, migrations, starts/stops or physical reboot ran for
-this audit.
+this audit. A named later repair is not permission to start its producer now.
 
 
 ## Coordinator disposition after the snapshot
 
-Fable23589 proposes the concrete moves; Warp23592 rules them prospectively.
-1100/1126/1131 and1106/1136/1149/1150 go to Later with history/residual triggers;
+Fable23589 proposes the concrete moves; Warp23592 rules them; Fable23641 supplies
+completed operations and per-item readbacks.1100/1126/1131 and1106/1136/1149/1150
+are now Later with history/residual triggers; five old pieces are set aside with
+their complete stage histories retained. The original535-row snapshot above
+is deliberately unchanged and cannot assign current work.
 1131's guard9377283e is recorded as in use, not an invented app shipment.
 1028 keeps original Build4, with Fable owning re-entry after the dry run and
-current-live scope/proof reconciliation. The44 old unassigned Next rows go to
-Later with provenance;1220 stays queued, and Tony-placed cards retain their guard.
+current-live scope/proof reconciliation, now sourced in rule6/Notebook42. The44
+old Next rows are Later with provenance; every pre-move owner was Fable or Warp,
+so no Tony placement was overridden.1220 stays queued.
 This preserves clocks instead of treating all six old pieces identically.
 
 Stage IDs/events stay: Product preview, Ready for landing, Prepare release,
 Landing checks. Warp maps the checks to installed preflight/approved-head/guard,
 own carried tests, whole-Node actual-live comparison, paired affected files,
 deploy exit and publication readback. It explicitly removes browser-checks from
-the prospective gate under Tony's November23 rule; Units maps to those deterministic
+the gate under Tony's November23 rule; Units maps to those deterministic
 proofs. A product preview Tony requested retains his actual word before test work;
-the old universal preview prohibition is narrowed. These are sourced dispositions,
-not proof that the stage writes/moves have happened. Fable's exact readbacks,
-owner-placed refusals, current Ready record and PR513 carry remain owed here.
+the old universal preview prohibition is narrowed. Fable's pipeline12608 readback
+records the applied definitions. Flex independently reads the same stage IDs,
+scope/owner flags and `units`-only Landing checks gate at12659, plus Next containing
+only1220/1221/1222. Its paged Later read verifies all51 named moved rows. Placement
+does not itself prove each underlying feature is correct, shipped or stopped.
+
+Current selection at23641:1216's control was finishing; its later tested handoff
+23644 and Fable23647 approve exact422 carry92e552ed in Ready1.1218 is approved
+Ready2 onbbb8f548 under23646, retaining the replaced freezes as history and
+landing immediately after1216.1215 keeps its original Build/open post-reboot hold;
+1028 keeps original Build4/after-dry-run ownership.1213/1219 are shipped421/422.
+Read the actual current records before acting rather than replay this dated list.
+
+Fable's raw operations/readbacks are under
+`fable-tools/coordinator-20261117/records15245/`: `queue23592-move-*-read.jsonl`,
+`queue23592-next-move-*-read.jsonl`, `stages23592-read.jsonl`,
+`rule23610-update-read.jsonl` and1221/1222/1223 item reads. The
+[read identities](evidence/fresh-agent-entry/read-identities.json) also retain
+Flex's separate bound-read hashes and reconciliation. Canonical source approval
+and actual PR513 carry/publication remain the named owners' next work.

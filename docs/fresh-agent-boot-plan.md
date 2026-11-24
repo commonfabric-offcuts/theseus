@@ -20,38 +20,39 @@ disposition below. The [review log](fresh-agent-boot-review.md)
 keeps the eight reviews of the original draft separate from this review and
 from runtime/trial evidence.
 
-## Cohort conflict reported after review
+## Current all-eleven arrangement
 
-Warp23590 revision2 /23593 proposes that Auditor sit out: remove only its queue
-route during the trial, preserve pin/control/context/deliveries, restore the route
-afterwards, and build a guarded queue-to-hosted transition separately. The earlier
-proposal to let its old conversation participate is superseded. Verified absence
-would avoid old-memory assistance, but exercise **seven hosted participants**,
-not the eight named by current-rule5 / Notebook41, read after that proposal.
-It also does not prove a fresh boot of all eleven actors in Tony's original scope.
-Record that dimension as unexercised/incomplete unless Tony explicitly changes
-that scope; “every participant is fresh” and “every required actor starts fresh”
-are different measured claims. The two timing results remain separately measurable.
-This is an execution-scope conflict, not an additional landing/dry-run hold.
+Warp23599 revision2, Steward23600 and Fable23610 restore the original all-eleven
+target through **seven hosted seats and four fresh external seats**. Bound
+current-rule6 / Notebook42 records that arrangement: hosted Fable, Flex,
+test-steward, core-lane7, core-lane8, page-lane5 and page-lane6; external Warp
+and designer in new Claude terminals, Team and Auditor in new Codex chats.
+Auditor is outside the atomic hosted refresh request. Warp retires its old queue
+consumer and hands ongoing delivery handling/native waits to its fresh external
+chat, retaining identity, pin, controls, private/pending deliveries and original
+operations. Fable must be provisioned/bound as hosted before its refresh is
+admitted. No other globally registered actor joins the batch.
 
-The eight-actor manifest/refresh step below describes the original full target,
-**not a command to execute while Auditor remains a queue route**: owner refresh
-validates eligibility atomically, so including that route would refuse the batch.
-Before a multi-actor trial, its named owner must reconcile the actual participant
-manifest, sourced current rule and repository kickoff. The one-idle-seat dry run
-and the existing1216/1218 landings can proceed within their own recorded scope.
+The earlier retained-Auditor and Auditor-excluded proposals are superseded, not
+successful all-eleven trials. The review log preserves their limits. Hosting
+Auditor remains separate queued product work (1221); it is unnecessary for this
+trial's fresh external route. A kickoff file or removed route proves neither
+new-context adoption nor actual repository-file read/first action. Record those
+observations separately for all eleven participants. This reconciliation adds
+no dry-run prerequisite beyond the existing1216/1218 installation sequence.
 
 ## Tony's first terminal after reboot
 
 Fresh external Warp boots Theseus. Tony’s local copy of the launch command and
-first message is `/Users/commonfabric/warp-seat/KICKOFF.txt` (Warp 23471). Warp 23462 supplies this concrete launch
+first message is `/Users/commonfabric/theseus/warp/KICKOFF.txt` (Warp23630,
+superseding the earlier `warp-seat` location). Warp23462 supplies this concrete launch
 procedure; install and verify its seat-file version before the physical test.
 The service and runner have no automatic launch agent on the observed Mac.
 
 Open a new terminal and run:
 
 ```sh
-cd /Users/commonfabric/warp-seat && claude --dangerously-skip-permissions
+cd /Users/commonfabric/theseus/warp && claude --dangerously-skip-permissions
 ```
 
 Warp created that empty durable directory for the trial. Start there rather than
@@ -69,9 +70,21 @@ locations and checks. Fresh Warp starts the service and then the safely gated
 runner using it. The proposed cold-stop drill must test this exact directory,
 launch, input and commands, including availability of the supplied `/loop`
 mechanism. No remembered command, restored terminal state or old watcher supplies
-missing boot instructions. Warp's 23454 forecast is docs at14:45, dry run about14:50,
-physical reboot15:15 Pacific, contingent on the named prerequisites; it is not
-proof that any of these has happened.
+missing boot instructions. Warp23454 revision2 forecasts the physical reboot at
+15:35 Pacific, replacing15:15 because1216 slipped; the later single-seat dry-run
+forecast is about15:10. These remain forecasts, contingent on the named
+prerequisites, not observations of a drill or reboot.
+
+The other three first messages are in
+`/Users/commonfabric/theseus/designer/KICKOFF.txt`,
+`/Users/commonfabric/theseus/team/KICKOFF.txt` and
+`/Users/commonfabric/theseus/auditor/KICKOFF.txt`. Start Warp first; once it says
+the service is up, open each other new session in its own directory and paste
+that file's message. Flex read all four files at these paths. Shared parent
+instructions must not inject a different seat's role or old work; the unchanged
+bound CLI/profile and `/Users/commonfabric/aim-next/docs/seats/` remain the
+identity and repository instruction sources. These launch files are prepared
+inputs, not evidence that their sessions ran.
 
 ## Current capability and prerequisites
 
@@ -83,10 +96,21 @@ release420 (`1e6c6d788ed49c82e75b32b62361e2475cd882c6`) is the web-only1217
 Undo repair; it also does not establish1213/1216 installation.
 Later receipt23571 and bound releases read record1213 live in release421,
 `b889d17662c059e8427f3f7d64f94e12128f6a36`. Owner refresh admission/pointer
-is installed;1216 role precedence,1218 instructions, migrations and real-model
+is installed. Current observed live is422,
+`fd6095183c9d49145bf6b4b65aee2dfcc5db65c8`, a docs-only1219 successor that
+kept the421 runner.1216 role precedence,1218 instructions, migrations and real-model
 cold-start evidence are still separate. The release headline's seat-file wording
 does not establish1216 or a model file read. Current status is dated evidence,
 not permission to refresh a seat.
+At23644/23647,1216 has a tested handoff and approved Ready1 freeze on422 carry
+`92e552edb4611a9fb438f65b47fd820d3fb3c388`. The physical eight-file pair remains
+attributable to421:235 identities/bodies per side,211PASS/24FAIL candidate versus
+205PASS/30 failing cases control; all205 old passes retained and six owned cases
+improve. Its24 shared host failures and later blocked obligations remain. The
+422 carry differs only by VISION from the executed candidate, not invented422
+tests.1218's replacement freeze isbbb8f548/Ready2 under23646, immediately after
+1216. These are tested/source-review facts; actual landing, repository-role model
+reads, native refresh and physical boot are separate.
 An ordinary runner restart resumes the pinned thread. Existing automatic 1104
 recovery can replace one under its qualifying conditions. Installing repository
 seat files did not configure agents to read them.
@@ -136,7 +160,7 @@ of a route is not proof of Stop or proof that no external session exists.
 | core-lane8 | Hosted, operator-mapped lane | Included; a possible dry-run candidate only if actually idle then. |
 | page-lane5 | Hosted, operator-mapped lane | Included after preserving current piece/worktree/producer state. Building 1215; not assumed idle. |
 | page-lane6 | Hosted, operator-mapped lane | Included; another possible candidate subject to the same live checks. |
-| Auditor (`auditor`) | Runner dispatches `codex_queue` jobs to an existing Codex thread | **Hosted under the runner**, migrated after 1216 lands. Retire the queued consumer through the supported migration. At reboot use 1213 for a fresh same-actor thread with repository instructions. |
+| Auditor (`auditor`) | Runner dispatches `codex_queue` jobs to an existing Codex thread | **Fresh external Codex chat**, launched from `~/theseus/auditor/KICKOFF.txt`. Warp removes the old queue route while retaining durable state and supplies ongoing external delivery/wait ownership. Excluded from hosted refresh. |
 | Fable (`fable`) | Codex desktop chat outside the runner | **Hosted under the runner from the reboot onward**, with supported same-actor migration and coordinator/watch handoff. Starts fresh through the hosted bootstrap/refresh; no external Fable chat after reboot. |
 | Warp (`warp`) | Claude Code session on this Mac, outside the runner | Required: Tony opens a new Claude terminal session from the durable Warp seat file after reboot, without resume/history or private memory. Fresh Warp starts service/runner, observes from records and lands. |
 | Team / team-agent (`team` in bound Health) | External Codex Team chat identified by Fable 23434 | Required: new Codex chat/thread plus `docs/seats/team.md`, trusted binding and single coordinator/watch ownership. Old chat continuity does not prove Stop state or authorize replacing automation. |
@@ -149,21 +173,18 @@ that explicit control with Tony before execution. A missing or failed actor
 makes the whole-system trial incomplete. Fable prepared Team/designer files in `5868996c`; the combined docs carry
 PR509 includes them. Their actual installation and owner review precede boot.
 
-### Fable and Auditor move inside
+### Fable moves inside; Auditor starts fresh outside
 
-Tony 23459 accepts hosting both, and Warp 23486 states the target: one wake/refresh/Stop lifecycle,
-repository role input and supported activation receipts simplify cold boot.
-Auditor's separate authority and independent evidence reads remain intact.
-The original order treated Auditor as the simpler migration; Warp23590 now
-reports no supported queue-to-hosted conversion. Fable also needs coordinator/subscription/
-watch parity and a single-owner handoff. The tradeoff is a shared runner failure
-domain and loss of desktop conveniences; external Warp and human-readable Health
-must expose service/runner failure. This planning decision does not itself perform or grant an unsupported route mutation. The current-route column is historical input to retire; the target column is
-what this test requires. Fable23529 inspected installed420: `seat-add` refuses
+Tony23459 and Warp23486 originally favored hosting both. Warp23599 revision2
+replaces that architecture for this trial with hosted Fable and external Auditor,
+keeping every actor fresh. Auditor's independent authority/evidence reads remain.
+Fable needs coordinator/subscription/watch parity and a single-owner handoff.
+The hosted seats share a runner failure domain; external Warp and human-readable
+Health must expose failure. This plan does not grant an unsupported route
+mutation. Fable23529 inspected installed420: `seat-add` refuses
 an existing manual invitation; operator provisioning can create a native thread
 before rejecting an incompatible existing pin. Neither is an established safe
-conversion. Warp must name the concrete supported transition/retirement path
-for both actors before provisioning;1213/1216 do not perform that migration.
+conversion.1213/1216 do not themselves migrate either actor.
 A supported conversion preserves identity, permissions,
 unread work, private-message boundaries and original operations. No double route
 or coordinator may remain. Lock the chosen architecture before the physical test.
@@ -177,8 +198,27 @@ pending mail; Tony retires the external chat. A conflicting pin can leave an
 unused created native thread before refusal: retain its identity and do not retry
 creation. This is the operator's sourced procedure, not executed migration proof.
 The queue pin is immutable under the installed ordinary provisioning path;
-hosted recovery does not convert a queue pin. The Auditor transition remains a
-separate product need, and its exclusion proposal is scoped above.
+hosted recovery does not convert a queue pin. Guarded conversion is1221 in Next,
+Core7's post-reboot follow-up with no piece or producer (Fable23641).
+
+Warp23642 supplies the concrete sequence in1218 source
+`bbb8f548467a5290965134ee9eb9ae64c3c0ddd3`: outgoing Warp provisions/binds Fable
+and removes Auditor's entry in the same staged route-map write with the runner
+stopped, before reboot. Fresh Warp verifies Fable present/Auditor absent before
+requesting the seven-seat batch; if missing, it completes the same supported
+operator work before admission. Preserve any original uncertain provisioning
+operation rather than starting another native thread. Tony retires the old
+external Fable chat. An initial Fable provision does not substitute for the
+specified post-reboot refresh receipt or count as a post-reboot model turn.
+
+External Auditor's continuing delivery/native-wait assignment is still a
+Warp-owned handoff gap at the read of23601/23637/23641: the current KICKOFF
+delegates to seat instructions whose later wakes are dispatcher-owned. Removing
+the old route leaves no automatic replacement by itself. Supply the supported
+external assignment/ongoing waiting ownership in the kickoff/handoff, preserving
+private pending work and uncertain original operations. Do not create a hosted
+watcher or use this old Auditor chat as fresh evidence. No Flex runtime, route,
+watch or kickoff-file mutation is performed by this document reconciliation.
 
 ## What may survive the physical reboot
 
@@ -205,6 +245,20 @@ responses. Page5 owns preserving1215's17-invocation raw set at
 `~/.local/share/theseus/page-lane5/evidence/native-rail-proof-intake-418-23347`;
 Fable owns verifying that location or its durable replacement survives the purge
 (Page5 23540). Do not erase it merely because its directory looks like scratch.
+
+Fable23653 prepares the concrete bundle at
+`/Users/commonfabric/.local/share/theseus/reboot-trial-20261124/execution-bundle-preflight.json`,
+SHA256 `8bb187b6385865f91e055e6f1e13194be12f9f6b257d1d5909c485821b64d904`;
+Flex verifies that file hash. It names all eleven actors, approvedbbb8f548 seat
+hashes, the four relocated kickoff hashes, launch owners and unfilled observation
+fields. Its sibling `1215-raw-inventory.json` inventories1095 entries/65646140
+bytes; the entire Page5 evidence root, including top-level source/operation
+records, must survive, not merely that inventory. Warp still owns the exact
+purge/preserve scope and old-consumer/memory retirement. Fable's old persistent
+coordinator goal must be explicitly relieved before fresh hosted Fable acts.
+This is prepared evidence, not an installed/frozen bundle, trial start, memory
+isolation observation or new-context proof; profile/authentication contents are
+not copied into the boot manual.
 
 Disable or set aside every auto-loaded personal/project memory store before new
 sessions open: Claude's memory index, Fable's private STATE/MODEL files, and any
@@ -332,7 +386,11 @@ waiting follows the trusted runner instructions, not an inherited watch/goal loo
    evidence, original clocks/forecasts, unread gaps and operation IDs. Relieve old
    coordinator/watch ownership explicitly. Stop the old runner/supervisor and
    external watches/sessions through their supported owners. Record stop/cleanup
-   facts and any uncertainty before Tony's physical reboot.
+   facts and any uncertainty before Tony's physical reboot. While stopped, Warp
+   completes the one-time Fable provisioning/binding and staged removal of
+   Auditor's old queue route described above. Its durable receipts survive the
+   purge. If this shutdown starts the physical trial, step3's original timestamp
+   precedes it; do not discard that time as preflight to improve the result.
 4. **Physically reboot using that original time zero.** Verify step3's
    record already precedes the first included shutdown action. Tony reboots the Mac and
    removes the agreed scratch/memory inputs. No old process/session or observer
@@ -344,20 +402,24 @@ waiting follows the trusted runner instructions, not an inherited watch/goal loo
    service at the recorded live release, verifies bound reachability and records
    new service identity/start time. Warp 23440 reports no automatic service or
    runner startup on this Mac; this step cannot assume launch agents exist.
-   The frozen combined1218 entry (PR509, branch
-   `warp/seat-files-reboot-420`, `0e665717fadebaaca8d0c8cf2640e2dee05728b6`)
+   The1218 replacement entry (PR509, branch
+   `warp/seat-files-reboot-420`, `bbb8f548467a5290965134ee9eb9ae64c3c0ddd3`)
    names `~/.local/share/theseus/warp/land/start-server.py`,
    `start-runner-with.py --seat-template core-lane7`, then
    `normalize-runner.py` and `normalize-runner.py --check` expecting `VISIBLE`.
    It obtains Tony's requests/receipts with the runner stopped before starting
-   it, as step6 requires. This supersedes `cfdf6102`, which started too early
-   (Page6 23523, Warp23524). Pin the installed carry/descendant and verify its
+   it, as step6 requires. It first verifies the staged route map: Fable hosted,
+   Auditor absent; missing operator work is completed while stopped before the
+   batch, never by an unsupported conversion. This supersedes `0e665717`'s
+   eight-seat manifest and `cfdf6102`'s early start (Page6 23523, Warp23524,
+   Fable23628, Warp23642). Pin the installed carry/descendant and verify its
    actual seat-file bytes, durable helper dependencies and cold-stop invocation.
 6. **Tony admits refresh before the runner starts.** Fresh Warp posts the
-   exact owner-bound command for all eight hosted actors, ready for Tony to
+   exact owner-bound command for all seven hosted actors, ready for Tony to
    paste. Tony submits it once and relays the saved result; neither Warp nor
    Fable submits on his behalf. The batch includes Flex, test-steward, four
-   lanes, and the supported migrated Fable/Auditor. Use the installed contract:
+   lanes, and the already provisioned/bound Fable. Auditor is external and must
+   not appear in this atomic request. Use the installed contract:
    `seat-refresh building-theseus ACTOR [ACTOR ...] --operation SAVED_ID` and
    `seat-refresh building-theseus ACTOR [ACTOR ...] --status` through Tony's own
    invocation. Retain the operation ID, each intent and the receipt before
@@ -368,8 +430,10 @@ waiting follows the trusted runner instructions, not an inherited watch/goal loo
    deployed/native behavior still needs the dry run. Fresh Warp then starts
    and verifies the runner, sends the identified first delivery to hosted Fable
    after acceptance, and fresh Fable seeds the other accepted actors before
-   waiting for activation. Tony opens a new Team Codex chat and designer's new
-   Claude terminal; no external Fable chat continues after reboot. Record each
+   waiting for activation. Tony opens new Team/Auditor Codex chats and designer's
+   new Claude terminal from their `~/theseus` kickoff files. The fresh external
+   Auditor receives the ongoing delivery/native-wait handoff; no external Fable
+   chat or old Auditor consumer continues after reboot. Record each
    real new context and actual input. If admission or migration refuses, keep
    the runner stopped and report the exact result rather than resume old work.
 7. **Recover ownership and useful work.** Fresh Fable verifies current pipeline,
@@ -412,7 +476,7 @@ The aim is reliable Fast lane shipping from durable knowledge. Starting threads
 is a readiness observation; one landing is initial recovery evidence, not a
 claim of sustained low prediction error.
 
-Current fast-lane rule5 / Notebook41 retains Warp23514's second reported result,
+Current fast-lane rule6 / Notebook42 retains Warp23514/23581's second reported result,
 **not a shipping gate**: take the
 first five pieces that land after reboot, whatever their work type. Report all
 five live within45 minutes of the first one's Build, and at least four within15
@@ -426,7 +490,7 @@ work such as1215. Its deliberate hold must not be erased by a fresh Build clock;
 if that first piece's original Build predates reboot, the45-minute interval
 includes that time. For the selected1215 first landing, original Build
 `1795554473213` is13:07:53.213 Pacific; its45-minute deadline is13:52:53.213.
-A15:15 reboot necessarily misses that condition, before publication. This is
+A15:15 or15:35 reboot necessarily misses that condition, before publication. This is
 a reported miss, not a reason to stop shipping (Page5 23540, Fable23521). Show that fact and the hold separately,
 rather than reinterpret “first one's Build” silently. Fable/Auditor reconcile the
 recorded numeric result against the original canonical clocks.
@@ -454,11 +518,24 @@ acceptance, activation and first warranted action; service/runner stop/start;
 first/last activation span; request-to-last-activation; first- and
 last-activation-to-publication. Fresh Warp reconstructs these from receipts and
 message/release times. Unknown timestamps and failed members remain visible.
-The revised15:35 forecast is exactly20 minutes after15:15; it is not an
-under20-minute result, and an earlier initiating shutdown makes the interval
-longer. Preserve that forecast without scoring or shifting time zero to fit it.
+The old15:35 first-LIVE forecast was exactly20 minutes after the old15:15 reboot
+forecast; even that forecast pair was not an under20-minute publication result.
+Warp23454 revision2 now forecasts reboot15:35. Auditor23602/23609 finds1215's
+revised LIVE15:35 still explicitly tied to the old reboot15:15; that lane needs
+its own separately sourced replacement, not an inferred15:55 or a reset Build.
+Preserve both old LIVE forecasts and the open hold. Actual timestamps still
+decide each result, including initiating shutdown and publication duration.
 Speed, product acceptance, forecast error and independence from memory receive
 separate verdicts; a fast reboot cannot compensate for unreliable shipping.
+
+Auditor23607/23608 identifies a measurement limit in historical421/422 evidence:
+dossier-post timestamps bound publication from below but do not timestamp the
+exact required-readbacks-complete `PUBLISHED` boundary. Retain a contemporaneous
+completion observation with operation/release/message IDs, live time, dossier
+readback/completion times and clock precision/uncertainty for the trial; do not
+derive it from directory names, mtimes or rounded console text. The proposed
+atomic PUBLISHED receipt and preflight Evidence-slot validation are tool
+follow-ups, not implemented changes or additional landing gates in this plan.
 
 ## Evidence, acceptance and reconciliation
 
@@ -517,11 +594,11 @@ test; missing mechanisms do not justify excluding their actors.
 
 | Owner | Required next action |
 | --- | --- |
-| Core7 / Warp | Prove and land 1213; publish installed owner submission/status/continuation syntax, guards/coalescing and trace fields. Retain the confirmed admission-before-runner contract (23495) and verify its deployed/native dry-run behavior. |
-| Core8 / Fable / Warp | Land separate 1216 after 1213 and verify repository-role assembly without stale configured instructions; preserve trusted binding and missing-file behavior. |
+| Core7 / Warp |1213 is installed421; retain its proof and installed owner submission/status/continuation syntax, guards/coalescing and trace fields. Verify deployed/native dry-run behavior under the confirmed admission-before-runner contract (23495). |
+| Core8 / Fable / Warp |1216 tested92e552ed is approved Ready1; land it after1213 and verify actual repository-role assembly/adoption, preserving trusted binding and unavailable-file behavior.1218 approvedbbb8f548 follows immediately. |
 | Fable / role owners | Finish the eleven reviewed seat files and memory/dependency audit. Team/designer files and corrected hosted wait instructions are prepared in the combined carry and need verified installation; all required source/scripts/evidence must survive without scratch. |
 | Warp / Tony | Install the repository boot entry, exact service/runner stop/start and verification commands; prepare fresh Claude terminal inputs with no auto-loaded memory. A new deploy/release is not fabricated for a same-release restart. |
-| Fable / Tony / runtime owner | Supply supported hosted migrations for Auditor (after 1216) and Fable (at boot), plus fresh Team Codex and designer Claude launches. Preserve actor/binding/operations/controls; prevent duplicate routes/coordinators. |
+| Fable / Tony / Warp |Provision/bind Fable before the seven-seat refresh; retire Auditor's old queue route while preserving durable state. Supply fresh external Team/Auditor Codex and Warp/designer Claude launches plus external delivery/wait ownership. Guarded queue-to-hosted product work stays1221 Next, outside this trial. |
 | Fable / Warp / Auditor | Lock the all-agent manifest and trial clocks, causal first landing, forecast cohort and numeric interpretation; retain holds/failures and original delivery clocks. |
 
 The separate native 1215 work and inherited six failure families retain their
@@ -537,10 +614,12 @@ of scratch, and 23442 asks about hosted Fable/Auditor. Warp 23425/23426/23440
 adopts all-agent/service/runner scope and repository-only cold startup. Fable
 23434 identifies Team's external chat and all-six role conflicts; Warp 23437
 identifies designer and the role-source follow-up. Core7 23439 selects separate
-1216; Fable 23441 assigns it. Current inspected live is 419 / `ce13ce60`; runtime
-work is not claimed deployed. That419 statement is the historical source
-snapshot; the later independently observed live is420 / `1e6c6d78`. Execution
-reads current policy afresh (last read rule5 / Notebook41).
+1216; Fable23441 assigns it. These earlier419/420 observations are historical;
+current bound live at reconciliation is422 / `fd609518`, with1213 installed421.
+Execution reads current policy afresh (last read rule6 / Notebook42).
+Fable23641 names1223/PR513 for this seven-path document carry: Flex source,
+Fable exact-head review, Warp actual-live carry/landing. It adds no third
+prerequisite to the1216/1218 single-seat dry run.
 
 All eight requested reviewers read draft `3d27c16fe8da77c8b33360b839289ba578cc393f`.
 Their findings are reconciled in the log; the material whole-system revision
