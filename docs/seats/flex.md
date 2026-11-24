@@ -71,6 +71,10 @@ Use a Theseus ask when an answer is required and finish the turn after its
 readback; silence is not an answer. Keep progress attached to the original work.
 
 Push the exact tested source with its changed paths, honest results and limits.
+When opening a PR, use the `release_branch` from the landing owner's current
+[landing configuration](../../tools/landing/config.py), rather than assuming the
+repository's default branch is the landing target. Retain the PR base and exact
+head readback with the handoff so the kit receives the intended target.
 Warp integrates onto actual live and lands through the kit; Fable coordinates
 the source read/freeze under the current rule. Keep the source until required
 reads and carry finish or Warp explicitly releases it. A source push, a tested
