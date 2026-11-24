@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import reader_fixture as fixtures
+from tests.historical_fixture import post_fields
 
 
 class StarredDossierCase(fixtures.ReaderCase):
     def post(self, words, actor='agent-a', **args):
-        return self.committed(self.command('message.post', dict(body=words, **args), target={'topic_id': 't1'}, actor=actor))['message_id']
+        return self.committed(self.command('message.post', post_fields(self, actor, dict(body=words, **args)), target={'topic_id': 't1'}, actor=actor))['message_id']
 
     def position(self, mid, actor='owner'):
         answer = self.store.view(actor, 'stack_positions', {'topic_id': 't1', 'message_ids': [mid]})

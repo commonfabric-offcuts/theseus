@@ -22,6 +22,7 @@ class AsideCase(StackCase):
         root = self.post('Root')
         reply = self.post('Already unread', reply_to=root)
         before = self.sql('SELECT * FROM deliveries')
+        after_fixture = self.sql('SELECT coalesce(max(seq),0) FROM changes')[0][0]
         self.committed(self.aside(root, self.latest()))
         self.assertTrue(self.position(reply)['below'])
         self.assertFalse(self.position(reply, 'agent-a')['below'])
@@ -33,7 +34,7 @@ class AsideCase(StackCase):
         new = self.post('New answer', reply_to=own)
         self.assertFalse(self.position(new)['below'])
         self.assertFalse(self.position(reply)['below'])
-        self.assertEqual(self.told(), [('actor', 'owner')])
+        self.assertEqual(self.told(after=after_fixture), [('actor', 'owner')])
 
     def test_racing_reply_after_observed_sequence_brings_back_without_losing_choice(self):
         root = self.post()
@@ -351,11 +352,12 @@ class StarCoverMergeCase(StackCase):
     def test_queue42_partial_position_keeps_cover_stars_and_both_place_shapes(self):
         root = self.post("Assembly roof plan")
         later = self.post("Assembly roof materials", reply_to=root)
+        initial_cover_revision = self.position(root)["cover_revision"]
         for mid, key in [(root, 1.5), (later, 2.5)]:
             self.committed(self.command("stack.place", {"key": key}, target={"message_id": mid},
                                         expected={"place_revision": 0}))
         self.committed(self.command("stack.cover", {"stands": "Roof ready"}, target={"message_id": root},
-                                    expected={"cover_revision": 0}, actor="agent-a"))
+                                    expected={"cover_revision": initial_cover_revision}, actor="agent-a"))
         self.committed(self.star(later))
         pos = self.position(later)
         self.assertEqual((pos["root_id"], pos["placed"], pos["place_revision"]), (root, 1.5, 1))
@@ -363,7 +365,7 @@ class StarCoverMergeCase(StackCase):
         self.assertIn("starred", pos, "a partial position retains the reader star field")
         self.assertEqual(pos["starred"], [later])
         self.assertEqual(pos["cover"]["stands"], "Roof ready")
-        self.assertEqual(pos["cover_revision"], 1)
+        self.assertEqual(pos["cover_revision"], initial_cover_revision + 1)
         self.assertEqual(self.position(later, "agent-a")["starred"], [])
         self.assertEqual(self.position(later, "agent-a")["places"], [])
         self.rejected(self.aside(root, self.latest()), "STARRED_IN_DOSSIER")
@@ -371,8 +373,10 @@ class StarCoverMergeCase(StackCase):
     def test_star_hold_and_return_preserve_cover_on_partial_pages(self):
         root = self.post('A plan for the shed roof')
         later = self.post('Felt, two layers', reply_to=root)
+        initial_cover_revision = self.position(root)['cover_revision']
+        initial_covers = self.rows('cover')
         self.committed(self.command('stack.cover', {'stands': 'Materials chosen'},
-                                    target={'message_id': root}, expected={'cover_revision': 0}, actor='agent-a'))
+                                    target={'message_id': root}, expected={'cover_revision': initial_cover_revision}, actor='agent-a'))
         cover = self.position(later)['cover']
         self.assertIsNotNone(cover, 'a partial position retains the dossier cover')
         self.assertEqual(cover['stands'], 'Materials chosen')
@@ -389,7 +393,7 @@ class StarCoverMergeCase(StackCase):
 
         place = partial()
         self.assertEqual((place['root_id'], place['starred'], place['below'], place['cover_revision']),
-                         (root, [later], False, 1))
+                         (root, [later], False, initial_cover_revision + 1))
         self.assertEqual(place['cover'], cover, 'the same position carries the cover and the reader\'s stars')
         self.assertTrue(self.position(later, 'agent-a')['below'], 'another reader\'s move stays personal')
         self.rejected(self.aside(root, self.latest(), revision=2), 'STARRED_IN_DOSSIER')
@@ -398,12 +402,13 @@ class StarCoverMergeCase(StackCase):
         self.committed(self.aside(root, self.latest(), revision=2))
         self.assertTrue(partial()['below'], 'unstarring frees the move with its cover intact')
         self.committed(self.command('stack.cover', {'stands': 'Roof repaired'},
-                                    target={'message_id': root}, expected={'cover_revision': 1}, actor='agent-a'))
+                                    target={'message_id': root}, expected={'cover_revision': initial_cover_revision + 1}, actor='agent-a'))
         self.committed(self.star(root))
         place = partial()
         self.assertEqual((place['starred'], place['below'], place['cover_revision'], place['cover']['stands']),
-                         ([root], False, 2, 'Roof repaired'))
-        self.assertEqual(len(self.rows('cover')), 2, 'star and aside acts never rewrite the shared cover')
+                         ([root], False, initial_cover_revision + 2, 'Roof repaired'))
+        self.assertEqual(len(self.rows('cover')), len(initial_covers) + 2, 'only the two explicit cover writes append records')
+        self.assertEqual(self.rows('cover')[:len(initial_covers)], initial_covers, 'the root cover history remains intact')
 
 
 class StarHoldCLICase(AgentCLIBase):

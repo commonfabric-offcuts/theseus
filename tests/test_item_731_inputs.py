@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Item 731: source-reading mutation controls cannot escape CI's declared read boundary."""
 import json
+import os
 from pathlib import Path
 import unittest
 
@@ -46,6 +47,8 @@ class ConversationSeedCase(unittest.TestCase):
         fixture = subprocess.Popen([sys.executable, '-X', 'pycache_prefix=' + sys.pycache_prefix,
                                     'tests/fixtures/ui_http.py', '--freshness', '--agent-colors'],
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        print(json.dumps({'owned_fixture_started': self.id(), 'pid': fixture.pid,
+                          'parent_pid': os.getpid(), 'pgid': os.getpgid(fixture.pid)}), flush=True)
         serial = 0
         def call(method, **args):
             nonlocal serial
@@ -61,7 +64,7 @@ class ConversationSeedCase(unittest.TestCase):
             def post(name, reply=None):
                 ids[name] = call('agent_message', operation_id='731-seed-' + name, topic_id=topic, source='topic', sender='aim-core',
                                  addressees=['fixture-person'], body='Exact 731 ' + name,
-                                 **({'reply_to':ids[reply]} if reply else {}))['result']['message_id']
+                                 **({'reply_to':ids[reply], 'reply_without_quote':'This fixture answer concerns the complete synthetic discussion'} if reply else {}))['result']['message_id']
             post('b'); post('b1','b'); post('a'); post('a1','a')
             def page():
                 return call('agent_view', actor='fixture-person', name='topic_messages', args={'topic_id':topic,'direction':'before','limit':100})['items']
@@ -77,6 +80,8 @@ class ConversationSeedCase(unittest.TestCase):
             code = fixture.wait(timeout=15)
             errors = fixture.stderr.read()
             fixture.stdout.close(); fixture.stderr.close()
+            print(json.dumps({'owned_fixture_reaped': self.id(), 'pid': fixture.pid,
+                              'returncode': code, 'stderr_bytes': len(errors.encode())}), flush=True)
             self.assertEqual((code,errors),(0,''))
 
 
