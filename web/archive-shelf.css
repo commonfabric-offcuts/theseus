@@ -8,8 +8,6 @@
 /* The rail never squeezes it below its heading and one row of replicas: the newest archived sits first, so the one
    just put away is always in view to land on (the rest scroll within the shelf). */
 .archive-shelf{flex:none;min-height:min(9.4rem,44dvh)}
-/*1205: the beside-page rail fills the viewport; focus keeps two thirds for its archive. */
-.archive-shelf:focus-within{height:calc(200dvh / 3);max-height:calc(200dvh / 3)}
 .archive-shelf[hidden]{display:none}
 .archive-shelf-head{display:flex;align-items:baseline;gap:.45rem;margin-bottom:.55rem}
 .archive-shelf-head h2{margin:0;font-size:.72rem;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
