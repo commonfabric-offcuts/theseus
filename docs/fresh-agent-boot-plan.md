@@ -112,9 +112,8 @@ All eleven rows need a verified fresh boot. A missing launcher or role file is
 a prerequisite to finish, not a route-based exclusion. Previously stopped work
 remains stopped; if the required cohort conflicts with a recorded Stop, resolve
 that explicit control with Tony before execution. A missing or failed actor
-makes the whole-system trial incomplete. Neither Team nor designer has a seat
-file in the inspected repository; Fable owns coordinating those durable files
-and their actual owner review before boot.
+makes the whole-system trial incomplete. Fable prepared Team/designer files in `5868996c`; the combined docs carry
+PR509 includes them. Their actual installation and owner review precede boot.
 
 ### Fable and Auditor move inside
 
@@ -279,20 +278,25 @@ waiting follows the trusted runner instructions, not an inherited watch/goal loo
    `normalize-runner.py --check` expecting `VISIBLE`. These helpers/configs
    must pass the persistence/dependency audit and cold-stop drill; the next
    step's dispatch-order question must close before using runner startup.
-6. **Prevent old-thread dispatch, then start the fresh cohort.** Prefer to admit
-   the owner refresh intents while the runner is stopped and the service is up,
-   verify the supported hosted Fable/Auditor destinations, then start the runner. Core7
-   must verify that admission order is supported. If it requires a live runner,
-   supply a supported dispatch barrier so it cannot resume/send to old threads
-   between runner start and batch acceptance. This is an unresolved ordering
-   prerequisite, not permission to edit pins or toggle actor Stop. After accepted
-   intents, the responsible fresh coordinator sends each identified delivery;
-   do not wait for activation on an empty inbox. The planned eight hosted actors include Fable and Auditor after their
-   supported migrations. Fresh external Warp sends the accepted Fable intent
-   its first identified delivery, then fresh Fable seeds the remaining actors.
-   Tony opens a fresh Team Codex chat and designer's new Claude terminal session;
-   Fable does not continue in an external desktop chat. Every launch uses the installed role file and original
-   actor authority. Record each real new context and actual startup input.
+6. **Tony admits refresh before the runner starts.** Fresh Warp posts the
+   exact owner-bound command for all eight hosted actors, ready for Tony to
+   paste. Tony submits it once and relays the saved result; neither Warp nor
+   Fable submits on his behalf. The batch includes Flex, test-steward, four
+   lanes, and the supported migrated Fable/Auditor. Use the installed contract:
+   `seat-refresh building-theseus ACTOR [ACTOR ...] --operation SAVED_ID` and
+   `seat-refresh building-theseus ACTOR [ACTOR ...] --status` through Tony's own
+   invocation. Retain the operation ID, each intent and the receipt before
+   starting the runner. Core7 23495 confirms owner admission while it is stopped
+   in two executed real-host/scripted-app-server cases on `2f908c9f`. Startup
+   may attach/resume an idle old pin; this is not a model turn. The next delivery
+   must be intercepted for replacement before any old-context turn. Actual
+   deployed/native behavior still needs the dry run. Fresh Warp then starts
+   and verifies the runner, sends the identified first delivery to hosted Fable
+   after acceptance, and fresh Fable seeds the other accepted actors before
+   waiting for activation. Tony opens a new Team Codex chat and designer's new
+   Claude terminal; no external Fable chat continues after reboot. Record each
+   real new context and actual input. If admission or migration refuses, keep
+   the runner stopped and report the exact result rather than resume old work.
 7. **Recover ownership and useful work.** Fresh Fable verifies current pipeline,
    rules, original operations, unread gaps and watch/coordination ownership;
    starts no duplicate desktop watcher. Fresh actors recover assignments even
@@ -309,7 +313,9 @@ waiting follows the trusted runner instructions, not an inherited watch/goal loo
    piece, unchanged lander or correct-looking recovery post as the whole proof.
 
 No physical reboot or fresh activation is established in the inspected records.
-1215's freeze-only hold was applied at `2026-11-24T13:19:42.450000-08:00` (Fable
+1215's revised LIVE forecast is15:35, separately sourced by Warp23480 and
+Page523484 to the planned15:15 reboot; original14:40 remains. This is a forecast,
+not proof of publication. Its freeze-only hold was applied at `2026-11-24T13:19:42.450000-08:00` (Fable
 23422). It overlaps active proof and is not all idle labor. Preserve inspection
 `12:51:24.239312`, construction `13:05:24.824831`, machine Build and original
 PUSH `14:05` / HANDOFF `14:20` / LIVE `14:40`; record hold release and revised
@@ -396,9 +402,9 @@ test; missing mechanisms do not justify excluding their actors.
 
 | Owner | Required next action |
 | --- | --- |
-| Core7 / Warp | Prove and land 1213; publish installed owner submission/status/continuation syntax, guards/coalescing and trace fields. Verify admission while runner stopped or provide a supported old-dispatch barrier. |
+| Core7 / Warp | Prove and land 1213; publish installed owner submission/status/continuation syntax, guards/coalescing and trace fields. Retain the confirmed admission-before-runner contract (23495) and verify its deployed/native dry-run behavior. |
 | Core8 / Fable / Warp | Land separate 1216 after 1213 and verify repository-role assembly without stale configured instructions; preserve trusted binding and missing-file behavior. |
-| Fable / role owners | Finish the eleven reviewed seat files and memory/dependency audit. Team/designer files and effective hosted wait instructions need completion; all required source/scripts/evidence must survive without scratch. |
+| Fable / role owners | Finish the eleven reviewed seat files and memory/dependency audit. Team/designer files and corrected hosted wait instructions are prepared in the combined carry and need verified installation; all required source/scripts/evidence must survive without scratch. |
 | Warp / Tony | Install the repository boot entry, exact service/runner stop/start and verification commands; prepare fresh Claude terminal inputs with no auto-loaded memory. A new deploy/release is not fabricated for a same-release restart. |
 | Fable / Tony / runtime owner | Supply supported hosted migrations for Auditor (after 1216) and Fable (at boot), plus fresh Team Codex and designer Claude launches. Preserve actor/binding/operations/controls; prevent duplicate routes/coordinators. |
 | Fable / Warp / Auditor | Lock the all-agent manifest and trial clocks, causal first landing, forecast cohort and numeric interpretation; retain holds/failures and original delivery clocks. |

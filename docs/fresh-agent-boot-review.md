@@ -87,3 +87,13 @@ Focused second-round review is pending for Warp, Fable, Auditor, test-steward,
 core-lane7/8 and page-lane5/6. Reviewers should identify the exact revised commit
 and corrections; silence will not be marked approval. Runtime readiness and
 reboot results remain unobserved here.
+
+## Whole-system follow-up received
+
+Warp23494 identifies the service→owner refresh receipt→runner order, Tony-only
+submission and1213→1216→seat-docs→dry-run dependency. Core7 23495 confirms
+stopped-runner admission in two executed own cases and distinguishes idle old-pin
+attachment from an old model turn. The plan now uses that concrete order and
+installed request/status syntax. This closes the ambiguity in C8.2/W4 at contract
+level; actual deployed/native boot remains unproved. Warp's follow-up reviews the
+whole-system revision; it is not attributed to the original immutable draft.
