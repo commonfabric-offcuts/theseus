@@ -266,7 +266,7 @@ export class NotebookPage extends DeckPage {
           if (title.lastChild?.nodeType === 3) title.lastChild.remove();
           title.append(shown);
         }
-        if (drawnRevision(shown) !== revision) literalWords(shown, card.title, revision);
+        if (drawnRevision(shown) !== revision) literalWords(shown, card.title, revision, { fences: true });
         parts.unshift({ node: shown, offset: card.depth + 3, start: 0, end: heading.length });
       }
       composeFormattedWords(row, whole, revision, parts);
@@ -554,6 +554,15 @@ export class NotebookPage extends DeckPage {
     this.picked=at;
     this.open({text:'',after:cardText(this.deck.cards[last]),depth:card.depth+1,near:last,fresh:true,at:0});
     return Boolean(this.editing?.fresh);
+  }
+  cardTitle(card) {
+    const title=super.cardTitle(card);
+    if(card.title) {
+      const shown=this.node('span','notebook-title-words');
+      literalWords(shown,card.title,undefined,{fences:true});
+      title.replaceChildren(shown);
+    }
+    return title;
   }
   paint() {
     if(this.mode!=='text') { super.paint(); this.readingPassages(); }

@@ -921,11 +921,27 @@ export const drawnText = host => DRAWN.get(host);
 const REVISIONS = new WeakMap();
 export const drawnRevision = host => REVISIONS.get(host);
 
-// An existing literal label can join a formatted source without interpreting
-// its Markdown or adding links. Notebook card titles already draw literally.
-export function literalWords(host, text, revision) {
-  const words = Mapped.of(String(text));
-  host.replaceChildren(placed(host.ownerDocument.createTextNode(words.text), { words }));
+// Literal labels keep their marks and links. Notebook display titles opt in
+// only to code/fences, using the same readers and source map as message words.
+export function literalWords(host, text, revision, { fences = false } = {}) {
+  const words = Mapped.of(String(text)), doc=host.ownerDocument ?? globalThis.document;
+  const literal=(from,to)=>placed(doc.createTextNode(words.text.slice(from,to)),{words:words.slice(from,to)});
+  const nodes=[];
+  if(fences) {
+    const blocks=parseBlocks(words.text);
+    if(blocks.length===1 && blocks[0].fenced && blocks[0].complete && fenceOpen(words.text)?.end >= 0) {
+      nodes.push(blockNode(blocks[0],doc,false,undefined,false,false));
+    } else {
+      let at=0;
+      for(const span of readInlineSpans(words)) if(span?.kind==='code' && span.start>=at) {
+        if(span.start>at)nodes.push(literal(at,span.start));
+        nodes.push(...inlineNodes(words.slice(span.start,span.end),{doc}));at=span.end;
+      }
+      if(at<words.text.length || !nodes.length)nodes.push(literal(at,words.text.length));
+    }
+    host.classList.add('formatted');
+  } else nodes.push(literal(0,words.text.length));
+  host.replaceChildren(...nodes);
   SOURCE.set(host, { start: 0, end: words.text.length });
   DRAWN.set(host, words.text); REVISIONS.set(host, revision); DISPLAY_RULES.set(host, []);
   return host;
