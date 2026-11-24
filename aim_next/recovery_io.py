@@ -244,18 +244,19 @@ def connection(path, *, write=False, code='CANDIDATE_INVALID', require_delete=Tr
     def observe():
         return original_checked(path) if policy == 'original' else checked(path, code=code)
     before = observe()
+    busy_ms = 5000 if write else 250
     db = sqlite3.connect(Path(path).as_uri() + ('?mode=rw' if write else '?mode=ro'),
-                         uri=True, isolation_level=None, timeout=0.25)
+                         uri=True, isolation_level=None, timeout=busy_ms / 1000.0)
     try:
         db.execute('PRAGMA synchronous=EXTRA')
         db.execute('PRAGMA fullfsync=ON')
         db.execute('PRAGMA foreign_keys=ON')
-        db.execute('PRAGMA busy_timeout=250')
+        db.execute('PRAGMA busy_timeout=%d' % busy_ms)
         actual = {key: db.execute('PRAGMA ' + key).fetchone()[0] for key in RUNTIME}
         # Availability is a read-only history observation, not candidate
         # acceptance. A readable WAL original still forbids choosing a gap.
         compared = actual if require_delete else dict(actual, journal_mode='delete')
-        require(compared == RUNTIME, 'RECOVERY_UNCONFIRMED' if policy == 'original' else code)
+        require(compared == dict(RUNTIME, busy_timeout=busy_ms), 'RECOVERY_UNCONFIRMED' if policy == 'original' else code)
         after = observe()
         require(identity(after) == identity(before), code)
         if policy == 'immutable':

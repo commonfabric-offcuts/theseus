@@ -12,6 +12,7 @@ import sqlite3
 import subprocess
 import threading
 import time
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -248,8 +249,8 @@ class EffectsRunnerCase(unittest.TestCase):
         statements=[]
         from aim_next import store as storage
         original=storage._connect
-        def connect(path):
-            db,facts=original(path)
+        def connect(path, *args, **kwargs):
+            db,facts=original(path, *args, **kwargs)
             db.set_trace_callback(lambda sql: statements.append((self.clock.elapsed,sql)))
             return db,facts
         with mock.patch.object(storage,'_connect',connect): self.loop()
@@ -659,8 +660,8 @@ class EffectsRunnerCase(unittest.TestCase):
         started=time.monotonic();statements=[];watches=[]
         from aim_next import store as storage
         original=storage._connect
-        def connect(path):
-            db,facts=original(path)
+        def connect(path, *args, **kwargs):
+            db,facts=original(path, *args, **kwargs)
             db.set_trace_callback(lambda sql:statements.append((time.monotonic()-started,sql)))
             return db,facts
         timer=threading.Timer(28.15,lambda:os.kill(os.getpid(),signal.SIGTERM))
@@ -771,7 +772,12 @@ db.rollback();db.close()
             checked.append(self.sql('SELECT count(*) FROM wake_attempts'))
             return False
         self.wait.events=[(0.5,release)]
-        with mock.patch.object(self.store,'claim_wakes',claim): result=self.loop()
+        # Core uses this fixture's wall clock. Keep the adapter on that same
+        # clock while real SQLite waits; native monotonic child bounds stay real.
+        adapter_clock=SimpleNamespace(time=lambda:self.clock.wall_ms()/1000,
+            clock_gettime_ns=time.clock_gettime_ns,CLOCK_MONOTONIC_RAW=time.CLOCK_MONOTONIC_RAW)
+        with mock.patch.object(wake_adapter, 'time', adapter_clock):
+            with mock.patch.object(self.store,'claim_wakes',claim): result=self.loop()
         self.assertEqual(checked,[[(0,)]],'failed COMMIT must leave no durable attempt')
         self.assert_busy_attempts(calls,0)
         self.assertEqual(self.sql('SELECT outcome FROM wake_results'),[('accepted',)])
@@ -1146,7 +1152,10 @@ finally:db.close()
         def release():
             releases[0]();checks.append(self.sql('SELECT count(*) FROM wake_attempts'));return False
         self.wait.events=[(0.5,release)]
-        with mock.patch.object(self.store,'claim_wakes',claim):result=self.loop()
+        adapter_clock=SimpleNamespace(time=lambda:self.clock.wall_ms()/1000,
+            clock_gettime_ns=time.clock_gettime_ns,CLOCK_MONOTONIC_RAW=time.CLOCK_MONOTONIC_RAW)
+        with mock.patch.object(wake_adapter, 'time', adapter_clock):
+            with mock.patch.object(self.store,'claim_wakes',claim):result=self.loop()
         self.assertEqual(result['status'],'stopped');self.assert_busy_attempts(calls,0)
         self.assertEqual(checks,[[(0,)]]);self.assertEqual(self.sql('SELECT outcome FROM wake_results'),[('accepted',)])
 
@@ -1235,7 +1244,7 @@ finally:db.close()
                     raise sqlite3.OperationalError('fixture rollback cleanup failure')
                 if mode=='view-os':
                     raise OSError('fixture rollback cleanup failure')
-        def connect(path):
+        def connect(path, *args, **kwargs):
             if phase[0]==stage and not injected:
                 injected.append(dict(stage=stage,mode=mode))
                 if mode=='busy':raise sqlite3.OperationalError('database is locked')
@@ -1249,10 +1258,10 @@ finally:db.close()
                         def close(inner):raise sqlite3.OperationalError('database busy during failed close')
                     def setup_connect(*args,**kwargs):
                         db=real_connect(*args,**kwargs);handles.append(db);return SetupConnection(db)
-                    with mock.patch.object(sqlite3,'connect',setup_connect):return original_connect(path)
-                db,settings=original_connect(path);handles.append(db)
+                    with mock.patch.object(sqlite3,'connect',setup_connect):return original_connect(path, *args, **kwargs)
+                db,settings=original_connect(path, *args, **kwargs);handles.append(db)
                 return Connection(db),settings
-            return original_connect(path)
+            return original_connect(path, *args, **kwargs)
         def preflight(*args,**kwargs):
             previous=phase[0];phase[0]='preflight' if kwargs.get('claim') else None
             try:return original_preflight(*args,**kwargs)

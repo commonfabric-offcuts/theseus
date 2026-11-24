@@ -846,8 +846,8 @@ class MigrationCase(fixtures.StoreCase):
                 self.db.commit()
                 raise sqlite3.OperationalError("disk I/O error")
 
-        def landing(path):
-            db, actual = connect(path)
+        def landing(path, *args, **kwargs):
+            db, actual = connect(path, *args, **kwargs)
             return LandsThenFails(db), actual
         with mock.patch.object(store_module, "_connect", landing):
             code, result, _ = self.migrate_command()
