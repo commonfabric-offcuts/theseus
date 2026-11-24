@@ -11,11 +11,12 @@ import unittest
 from unittest import mock
 
 import reader_fixture as fixtures
+from tests.historical_fixture import post_fields
 
 
 class TopicReadingCase(fixtures.ReaderCase):
     def post(self, body="Words", actor="agent-a", **args):
-        return self.committed(self.command("message.post", dict({"body": body}, **args), target={"topic_id": "t1"}, actor=actor))["message_id"]
+        return self.committed(self.command("message.post", post_fields(self, actor, dict({"body": body}, **args)), target={"topic_id": "t1"}, actor=actor))["message_id"]
 
     def page(self, actor="owner"):
         view = self.store.view(actor, "topic_messages", {"topic_id": "t1", "limit": 50})
@@ -212,7 +213,7 @@ class TopicReadingCase(fixtures.ReaderCase):
         # whisper, not the message on the record.
         whisper = self.committed(self.command("message.post", {"body": "Just you", "whisper": True, "addressees": ["agent-a"]},
                                               target={"topic_id": "t1"}))["message_id"]
-        self.committed(self.command("message.post", {"body": "Just you too", "whisper": True, "addressees": ["owner"], "reply_to": whisper},
+        self.committed(self.command("message.post", post_fields(self, "agent-a", {"body": "Just you too", "whisper": True, "addressees": ["owner"], "reply_to": whisper}),
                                     target={"topic_id": "t1"}, actor="agent-a"))
         # A message to everyone after the whispers, so the reads reach past them.
         self.post("Something for everyone", actor="agent-b")
