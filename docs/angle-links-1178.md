@@ -1,5 +1,9 @@
 # Angle bracket link destinations (1178)
 
+1190 adds clipboard copying to these local references. Their click behavior
+is now specified in [local-file-copy-1190.md](local-file-copy-1190.md); the
+1178 inert-reference language below records the original parsing change.
+
 Tony21061 reports a named Markdown link whose local destination contains spaces
 and a :28 suffix being displayed as its raw source. I read his actual attached
 image through the bound CLI. Warp21064/21065 and Fable21078/21134 assign the fix
