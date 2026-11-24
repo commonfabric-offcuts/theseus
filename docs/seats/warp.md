@@ -57,9 +57,9 @@ session scratch folder does not, and nothing warp needs may live in one.
 
 ## After a reboot
 
-A fresh warp is a new Claude Code session started in `/Users/commonfabric/warp-seat`, an empty folder kept for it:
+A fresh warp is a new Claude Code session started in `/Users/commonfabric/theseus/warp`, an empty folder kept for it:
 Claude Code keeps a memory per starting folder, and this one has none, while the live checkout's folder holds an old
-one. Tony starts it with `cd /Users/commonfabric/warp-seat && claude --dangerously-skip-permissions` and this first
+one. Tony starts it with `cd /Users/commonfabric/theseus/warp && claude --dangerously-skip-permissions` and this first
 message:
 
     /loop You are warp, the landing seat of Theseus on this Mac. Your instructions are
@@ -76,7 +76,7 @@ first fresh warp starts them, server first, before anything else touches the boa
    warp posts Tony the exact `seat-refresh OUTCOME ACTOR ...` command, naming those seven and no other hosted actor Health lists, ready to paste, and
    waits until he reports its receipts. The service records each request with the runner stopped. Auditor is not a
    hosted seat: its route is a queue route, which has no fresh-agent request, so it runs outside the runner as a new
-   Codex chat that Tony starts from `/Users/commonfabric/auditor-seat/KICKOFF.txt`, and the runner's route map holds no
+   Codex chat that Tony starts from `/Users/commonfabric/theseus/auditor/KICKOFF.txt`, and the runner's route map holds no
    entry for it.
 3. `/usr/bin/python3 -I W/land/start-runner-with.py --seat-template core-lane7` starts the runner's supervisor the same
    way; `normalize-runner.py`, then `normalize-runner.py --check` in `W/land/`, must read `VISIBLE`, or the next landing
