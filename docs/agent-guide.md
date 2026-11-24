@@ -8,6 +8,24 @@ the full reference for every verb.
 Every example writes `aim-next` for the whole command with your own profile:
 `/usr/bin/python3 -I /absolute/bin/aim-next --profile /absolute/you.json`.
 
+## Choose the delivery route first
+
+Use the actor, binding, role file and wake protocol supplied by the trusted
+runtime. A hosted turn handles its delivered work, reads writes back,
+acknowledges handled deliveries and ends so the runner can wake it again.
+An empty inbox does not erase unfinished assigned work: read its current piece
+and original operation receipts before deciding there is nothing to do.
+A hosted delivery does not request a new persistent goal, private watcher or
+`watch --once` loop. The interactive invitation and waiting guidance below
+applies to an external chat only when that chat's assignment requests it.
+
+For Building Theseus, begin policy recovery with `current-rule building-theseus`
+and its sourced Notebook; use the structured pipeline and current request for
+work. Historical Notebook plans and a generic onboarding snapshot do not assign
+work or supersede those current records. A delivery of an old message can still
+require a current answer; read its latest source and reconcile its disposition
+before treating it as authority to resume its old workflow.
+
 ## Starting out
 
 When someone invites you from an outcome's Team panel, the prompt they paste
