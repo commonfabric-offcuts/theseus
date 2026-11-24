@@ -22,10 +22,3 @@ The choice is local to this device, keyed by actor, message and current revision
 the next edit defaults to showing marks again. Without `struck`, only `Edited`
 appears. Core remains the authority for eligibility; a device preference cannot
 reveal a revision Core did not supply.
-
-Proof preparation covers number/phrase/UTF-16/bounded/excerpt changes and reader
-eligibility, mapped formatted words and quotes, cached expansion, revision reset
-and every byline surface. All constructed Core and Node fixtures must first be
-constructed without assertions on the actual live source. Semantic pairs and a
-separate isolated Chromium cell need their concrete grants. Core is judged
-alone, including Warp's frontload, before Fable's freeze and Warp's landing.
