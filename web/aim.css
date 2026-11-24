@@ -309,6 +309,7 @@ main>#outcomes-home{margin-bottom:.4rem}
 
 /* A web address in a message's words: underlined in the words' own color, so it reads on every card and page; a long one wraps. */
 .words-link{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px;overflow-wrap:anywhere;word-break:break-word;cursor:pointer}.words-link:hover{text-decoration-thickness:2px}
+.words-reference{cursor:default}
 /* A quiet word that acts, not a button. */
 .text-action{min-height:2.5rem;padding:0;border:0;border-radius:.25rem;background:none;color:var(--muted);font-size:.85rem;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:.2em}
 .text-action:hover{background:none;color:var(--ink);text-decoration-color:currentColor}

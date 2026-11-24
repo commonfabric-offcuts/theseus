@@ -206,12 +206,19 @@ function topicLink(doc, words, link, place) {
 
 // The link its author wrote as [words](target), as { href, route, written },
 // or null when the target is neither a full http(s) address nor a query
-// naming one of this instance’s existing places. It
+// naming one of this instance’s existing places. Explicit angle destinations
+// may also opt into an inert local { reference, written } instead. An address
 // goes to the target as written, whole: none of a bare address's endings
 // apply, and a link to a topic keeps its words rather than showing the
 // topic's name. Where such a link starts and ends is Markdown's to say
 // (message-format.mjs).
-export function writtenLink(target, { meter } = {}) {
+export function writtenLink(target, { meter, localReference = false } = {}) {
+  // Only an explicitly angle-wrapped destination may be a local reference.
+  // It is display text with a title, never an address the browser can open.
+  if (localReference && /^(?:\/|~|file:)/i.test(target)) {
+    tick(meter, target.length);
+    return { reference: target, written: true };
+  }
   if (target.startsWith('?')) {
     tick(meter, target.length);
     let url; try { url = new URL(target, globalThis.location.origin + '/'); } catch { return null; }
@@ -222,10 +229,20 @@ export function writtenLink(target, { meter } = {}) {
   return url ? { href: url.href, route: ownPlace(url), written: true } : null;
 }
 
-// One link as a node: an anchor showing words, or a topic's name for them.
+// One link as a node: an anchor showing words or a topic's name, or an inert
+// local reference whose title keeps the author's destination.
 // mark(node): told of each node that stands for the words, an anchor that
 // takes a bare id's place once its topic is named among them.
 export function linkNode(doc, words, link, mark = node => node) {
+  if (link.reference !== undefined) {
+    const reference = doc.createElement('span');
+    reference.textContent = words; reference.className = 'words-link words-reference';
+    reference.title = link.reference;
+    // Preserve native text selection while keeping the surrounding card's
+    // fold, edit and modifier-selection handlers out of this press.
+    for (const type of ['mousedown', 'click']) reference.addEventListener(type, event => event.stopPropagation());
+    return mark(reference);
+  }
   return named(link) ? topicLink(doc, words, link, mark) : mark(anchor(doc, words, link));
 }
 
