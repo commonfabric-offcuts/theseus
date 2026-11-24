@@ -35,7 +35,8 @@ export class KeyTree {
   // false, or undefined for a row that does not open), and aside: true for a
   // row never taken as the Tab stop for want of another (the outline's heading
   // pencil), and byRight: true for a row ↑ and ↓ pass over, reached by → alone }. act(action, row,
-  // rows): what the pane does for a key the tree does not answer itself. The
+  // rows): what the pane does for a key the tree does not answer itself; it
+  // returns false for a key it leaves to the page, which then goes on unanswered. The
   // tree speaks through a polite status of its own (say). also: rows drawn
   // outside root (the outline's heading pencil), which the tree owns
   // (aria-owns) and hears as its own.
@@ -207,11 +208,8 @@ export class KeyTree {
     const next = action === 'up' ? step(-1) : action === 'down' ? step(1) : null;
     const beyond = (action === 'up' || action === 'down') && !next;
     if (beyond) { if (reach(row.el, action, { within: this.column, doc: this.doc })) event.preventDefault(); return; }
-    event.preventDefault();
-    if (next) return this.go(next);
-    if (action === 'first') return this.go(rows[0]);
-    if (action === 'last') return this.go(rows.at(-1));
-    this.act(action, row, rows);
+    if (next || action === 'first' || action === 'last') { event.preventDefault(); return this.go(next ?? (action === 'first' ? rows[0] : rows.at(-1))); }
+    if (this.act(action, row, rows) !== false) event.preventDefault();
   }
   // ← and → on a control set in a row; ↑ and ↓ there are the page's (arrow-reach.mjs).
   ownKey(event, action, rows) {
