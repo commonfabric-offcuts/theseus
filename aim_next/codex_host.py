@@ -433,11 +433,16 @@ def recovery_fingerprint(config):
     return hashlib.sha256(json.dumps(values, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
-def seat_bootstrap(config):
+def seat_role_file(config):
+    """The actor role in the verified configured CLI repository, never the cwd."""
     root = Path(config.cli).parent
     if root.name == 'bin':
         root = root.parent
-    seat_file = root / 'docs' / 'seats' / (config.profile.actor_id + '.md')
+    return root / 'docs' / 'seats' / (config.profile.actor_id + '.md')
+
+
+def seat_bootstrap(config):
+    seat_file = seat_role_file(config)
     return ('Seat startup: first read ' + str(seat_file) + ' in the live repository rooted at the configured CLI. '
             'Then recover current work from the board with your own actor and binding. '
             'This setup input is not a work request or restart authorization.')
@@ -466,7 +471,10 @@ def thread_settings(config, endpoint=None):
     if effort is not None:
         settings["config"]["model_reasoning_effort"] = effort
     instructions = getattr(config, "instructions", "")
-    if instructions:
+    # Keep configured roles for legacy CLI roots without a repository seat file.
+    # An unreadable existing file still selects the repository role; the agent
+    # reports its read failure instead of silently receiving stale role text.
+    if instructions and not seat_role_file(config).is_file():
         settings["developerInstructions"] += "\n\nStanding role:\n" + instructions
     if config.model is not None:
         settings["model"] = config.model
