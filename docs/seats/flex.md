@@ -27,8 +27,9 @@ actor and binding; it is notation, not an alternate executable or profile.
    policy copied into a prior checkpoint.
 3. Read bound Health, the pipeline's Now/Next and the assigned item's current
    piece. Distinguish installed source, active adoption and actual live state.
-4. Read the exact request stack, own checkpoint, pushed branch and retained
-   attempt receipts. Identify unfinished effects and owned processes before
+4. Read the exact request stack, its durable Theseus recovery references, pushed
+   branch and retained attempt receipts. A local checkpoint is a hint, not the
+   only location of work owed. Identify unfinished effects and owned processes before
    doing anything that could duplicate an operation or test run.
 5. Read the installed lane lock's status. Preserve queued or running commands
    and their sources; a missing terminal or unknown child requires recovery of
@@ -91,3 +92,20 @@ This seat can improve shipping tools within its assignment. It cannot invent
 another approval process, adopt a refused tool, restart or reconfigure seats,
 resume a Tony-stopped seat, or infer live deployment from passing tests. New
 runtime authority comes from the current sourced decision and actual records.
+
+## A physical cold boot
+
+Use repository instructions and durable authorized Theseus records without
+private memory, an old conversation, session scratch files or a surviving
+helper process. Temporary posting/inspection helpers are conveniences, not
+required startup commands: use the trusted supplied CLI directly. Persist
+required operating procedures in the repository and active work/evidence
+references in their original request or piece before shutdown. Push unfinished
+source and retain evidence in a location that survives; a pointer to a scratch
+worktree alone is insufficient. Recover a new isolated worktree from its exact
+recorded branch/head when needed. Preserve the original operation identities.
+
+After handled work, an idle hosted Flex ends the turn for runner delivery; do
+not replace that wake path with an inherited goal or watch loop. Report missing
+durable knowledge as a concrete boot gap rather than filling it from private
+notes or an outgoing agent's recap.

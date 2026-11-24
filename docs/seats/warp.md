@@ -33,6 +33,63 @@ the current-rule record and the [landing kit](../landing-kit.md). The rulings th
 - Move pipeline items; fable and Tony move them.
 - Signal Tony for anything but a seat or service down or a usage limit.
 
+## Where its working files are
+
+Everything warp keeps lives under `~/.local/share/theseus/warp/` (written `W` below), which survives a reboot. A temp or
+session scratch folder does not, and nothing warp needs may live in one.
+
+- **The CLI.** The seat's profile is `~/.local/share/theseus/instances/tony-first-01/warp.profile.json`; `W/bin/an`
+  runs the live checkout's `aim-next` with it, so `an inbox`, `an read TOPIC --after SEQ` and the rest need no path.
+- **Landings.** One folder per landing, `W/land/ITEM-land/` (the kit's `new_folder.sh ITEM` makes it), with the
+  dossier and card drafts in `W/2026-11-19/`. A carry that meets a conflict two additions can both keep is settled by
+  `RESOLVER=W/bin/union_resolver.py`, which leaves any real overlap for a hand merge.
+- **The Timeline.** Its source is `W/2026-11-23/board.html`. `kpi-dashboard.py board.html kpi-five.txt` and then
+  `html2md.py board.html` in that folder make `board.md`, and `an cover m-b3f45b3a79ce4dca93fa1a953312acb3 --expected N
+  --stands "$(cat board.md)" --no-waits` publishes it, where `N` is the cover's current revision. Edit the source and
+  regenerate; never write a placeholder to read a revision.
+- **Watches.** warp hears the board through long-running scripts, each run under a Claude Code Monitor and started again
+  when the Monitor expires: `an watch` (its deliveries), `W/watch/asks-warp-watch.py` (questions asking warp),
+  `W/watch/pipeline-watch.sh` (Now and Next changes), `W/watch/backlog-watch.sh` (Tony's new messages in his Backlog
+  topics, which its `T` line lists), `W/watch/lanes-watch.sh` (a lane going quiet), `W/land/runner-keepalive.sh` (the
+  runner's restart after a storage fault) and `an releases --limit 1` read every 90 seconds (the release record).
+- **Tests.** Every run goes through `tools/lane_lock.py run` with `HOME` and `TMPDIR` under `~/.cache/warp-tests/`.
+  `W/bin/native-files.sh WORKTREE OUT FILE...` runs native browser files one at a time with the browser paths set.
+
+## After a reboot
+
+A fresh warp is a new Claude Code session started in `/Users/commonfabric/theseus/warp`, an empty folder kept for it:
+Claude Code keeps a memory per starting folder, and this one has none, while the live checkout's folder holds an old
+one. Tony starts it with `cd /Users/commonfabric/theseus/warp && claude --dangerously-skip-permissions` and this first
+message:
+
+    /loop You are warp, the landing seat of Theseus on this Mac. Your instructions are
+    /Users/commonfabric/aim-next/docs/seats/warp.md. Read it and follow it, starting with its After a reboot section.
+
+Neither the service nor the runner starts by itself: a deploy started each, and no launch agent brings them back. The
+first fresh warp starts them, server first, before anything else touches the board. One change comes before any of
+them, once: fable becomes a hosted seat and auditor's old queue route comes off the runner. The outgoing warp makes it
+with the runner stopped, before the physical reboot, by
+[the rollout's operator procedure](../hosted-codex-rollout.md): fable's existing profile, the runner's own profile,
+owner Tony, a new `fable.hosted.json`, and a staged write of the route map. In the same write, auditor's entry is
+removed by the rollback pattern, which keeps its pin, control, context and waiting deliveries. A fresh warp reads the
+route map before step 2: fable is listed and auditor is not. If either is wrong, it makes the change before step 2,
+because the refresh in step 2 is refused for a seat that is not hosted.
+
+1. `/usr/bin/python3 -I W/land/start-server.py` starts the server from its last launch record, at the live checkout's
+   head, through the deploy tool's own start.
+2. Before the runner starts, a fresh agent is requested for each of the seven hosted seats in the reboot (fable,
+   flex, test-steward, core-lane7, core-lane8, page-lane5, page-lane6), because a runner that starts first resumes
+   each seat's old thread. The request is the outcome owner's alone ([seat-refresh-1213.md](../seat-refresh-1213.md)):
+   warp posts Tony the exact `seat-refresh OUTCOME ACTOR ...` command, naming those seven and no other hosted actor Health lists, ready to paste, and
+   waits until he reports its receipts. The service records each request with the runner stopped. Auditor is not a
+   hosted seat: its route is a queue route, which has no fresh-agent request, so it runs outside the runner as a new
+   Codex chat that Tony starts from `/Users/commonfabric/theseus/auditor/KICKOFF.txt`, and the runner's route map holds no
+   entry for it.
+3. `/usr/bin/python3 -I W/land/start-runner-with.py --seat-template core-lane7` starts the runner's supervisor the same
+   way; `normalize-runner.py`, then `normalize-runner.py --check` in `W/land/`, must read `VISIBLE`, or the next landing
+   meets the runner's guard. Each seat's fresh agent starts when its next delivery reaches it.
+4. `an health` shows the release, the runner and every hosted seat. Then the restart steps below.
+
 ## First commands after a restart
 
 From a clone of this repository, with the seat's profile in `P`:
