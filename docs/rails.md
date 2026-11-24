@@ -51,7 +51,8 @@ Seven topic rows stay fully visible, followed by a fading eighth when more
 are available. On a hovering pointer, the fade plus one row above it reveals
 the whole list. That reveal stays open through hovering and scrolling; the
 next click or key press anywhere on the page, including either side rail,
-closes it without consuming the action. Keyboard focus and the current topic
+closes it without consuming the action, and so does a sideways trackpad swipe
+outside the list, such as swiping a dossier to archive. Keyboard focus and the current topic
 remain visible through the existing keyboard/current-topic rules.
 
 - **Pencils.** A pencil means "new", the same glyph as New message and a new

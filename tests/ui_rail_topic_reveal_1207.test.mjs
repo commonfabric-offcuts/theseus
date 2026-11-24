@@ -59,6 +59,19 @@ for (const type of ['click', 'keydown']) for (const place of ['page', 'left rail
   });
 }
 
+test('1207 a sideways swipe outside the list closes the reveal, as swiping a dossier to archive is', t => {
+  const f = fixture(t); f.move(320); assert.equal(f.revealed(), true);
+  const event = f.action('wheel', f.doc.createElement('section'), { deltaX: 24, deltaY: 3 });
+  assert.equal(f.revealed(), false); assert.equal(event.prevented, false);
+});
+
+test('1207 vertical scrolling anywhere, and a swipe inside the list, keep the reveal open', t => {
+  const f = fixture(t); f.move(320);
+  f.action('wheel', f.doc.createElement('section'), { deltaX: 2, deltaY: 40 });
+  f.action('wheel', f.host.children[9], { deltaX: 24, deltaY: 3 });
+  assert.equal(f.revealed(), true);
+});
+
 test('1207 dismissing with a topic click keeps the existing TopicRail navigation', t => {
   const f = fixture(t); f.move(320); const link = f.host.children[9];
   const event = f.action('click', link);
@@ -94,7 +107,7 @@ test('1207 an uncollapsed list does not start pointer reveal', t => {
 
 test('1207 disposal removes page capture and pointer listeners', t => {
   const f = fixture(t); f.move(320); assert.equal(f.revealed(), true);
-  assert.ok(f.captures.has('click')); assert.ok(f.captures.has('keydown'));
+  assert.ok(f.captures.has('click')); assert.ok(f.captures.has('keydown')); assert.ok(f.captures.has('wheel'));
   f.outcome.fold.dispose();
   assert.equal(f.captures.size, 0); assert.equal(f.area.listeners.pointermove, undefined);
 });
