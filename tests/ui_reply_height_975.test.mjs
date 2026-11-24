@@ -1,16 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ComposeBar } from '../web/compose-bar.mjs';
-
-function fixture({ wanted = 60, tall = false, fit = 'auto', normal = 100 } = {}) {
-  const attrs = new Set(tall ? ['data-tall'] : []), changes = [];
-  const root = { hasAttribute: n => attrs.has(n), toggleAttribute(n, yes) { yes ? attrs.add(n) : attrs.delete(n); } };
-  const field = { style: {}, scrollTop: 37, scrollHeight: wanted - 2, selectionStart: 3, selectionEnd: 11 };
-  const bar = Object.assign(Object.create(ComposeBar.prototype), { root, field,
-    holds: () => { changes.push('hold'); return () => changes.push('restore'); },
-    win: { getComputedStyle: () => ({ getPropertyValue: () => fit, borderTopWidth:'1px', borderBottomWidth:'1px', maxHeight: `${root.hasAttribute('data-tall') ? 200 : normal}px` }) } });
-  return { bar, root, field, changes, attrs, setNormal: value => { normal = value; } };
-}
+import { fixture } from './fixtures/reply_height_975.mjs';
 for (const [wanted, visible] of [[30,false],[98,false],[99.5,true],[100,true],[220,true]]) test(`975 visibility at measured height ${wanted}`, () => {
   const f=fixture({wanted});f.bar.fit();assert.equal(f.root.hasAttribute('data-full-field'),visible);
   assert.equal(f.field.style.height,`${Math.min(wanted,100)}px`);

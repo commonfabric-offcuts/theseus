@@ -28,7 +28,7 @@ export function revealCardReply(field, win = globalThis.window) {
 // After a keyboard resize, the act below the field belongs above the keyboard
 // too. A sheet scrolls its composer; an inline reply scrolls the page. A fixed
 // ancestor stops the search so revealing a dialog never moves its background.
-function revealWriting(field, win) {
+function revealWriting(field, win, onlyUp = false) {
   if (!field?.isConnected || field.readOnly || field.disabled) return;
   const box = field.closest('.field-box'), composer = box?.closest('.composer');
   if (!composer || !box.getClientRects().length) return;
@@ -47,7 +47,7 @@ function revealWriting(field, win) {
   // Safari may already have focused the writing far above the keyboard.
   // Settle down as well as up, keeping a tall field's top within view.
   const by = Math.min(Math.ceil(foot - bottom), Math.floor(rect.top - top));
-  if (by) (scroller ?? win).scrollBy({ top: by, behavior: 'instant' });
+  if (by > 0 || by < 0 && !onlyUp) (scroller ?? win).scrollBy({ top: by, behavior: 'instant' });
 }
 
 // The keyboard, read from the visual viewport (web/ has one reader of it):
@@ -62,7 +62,7 @@ function trackKeyboard(win, doc) {
   if (!vv || !doc) return;
   const root = doc.documentElement;
   let full = 0, width = 0, last = vv.height, lastTop = vv.offsetTop, reduced = false, frame = null;
-  let scrollingField = null;
+  let scrollingField = null, onlyUp = true;
   // A finger or wheel scroll owns an inline reply's page until the person
   // focuses or types in the writing again; viewport pan signals may follow it.
   const personScroll = () => {
@@ -70,14 +70,16 @@ function trackKeyboard(win, doc) {
     if (win.matchMedia(PHONE).matches && field?.matches?.(TYPING) && !field.readOnly &&
         field.closest?.('#reader[data-card-reply], .card-reply-composer')) scrollingField = field;
   };
-  const settle = () => {
+  const settle = typing => {
+    onlyUp = onlyUp && typing;
     if (frame !== null) return;
     // CSS uses the new viewport first; the existing width/height fitter gets
     // its frame before we measure. Coalesce every resize/pan in that interval.
     frame = win.requestAnimationFrame(() => {
       frame = win.requestAnimationFrame(() => {
         frame = null;
-        if (reduced && scrollingField !== doc.activeElement && win.matchMedia(PHONE).matches) revealWriting(doc.activeElement, win);
+        const up = onlyUp; onlyUp = true;
+        if (reduced && scrollingField !== doc.activeElement && win.matchMedia(PHONE).matches) revealWriting(doc.activeElement, win, up);
       });
     });
   };
@@ -95,7 +97,16 @@ function trackKeyboard(win, doc) {
     // Normal opening still reveals the card. Keyboard settling waits for a
     // changed phone viewport; ordinary page scrolling does not pull it back.
     if (typing && event?.type === 'focusin') revealCardReply(field, win);
-    if (typing && reduced && scrollingField !== field && win.matchMedia(PHONE).matches && (changed || event?.type === 'focusin' || event?.type === 'input' && event.target === field)) settle();
+    const pencilSheet = field?.closest?.('dialog')?.matches?.('.composer-home:not(.notebook-mode)');
+    if (typing && reduced && scrollingField !== field && win.matchMedia(PHONE).matches) {
+      // A phone pencil's own scroll pans the visual viewport. Answering that
+      // pan scrolls again and bounces the page. Focus/keyboard changes settle;
+      // typing only lifts a grown foot. Other composers retain their policy.
+      if (pencilSheet) {
+        if (widthChanged || vv.height !== last || event?.type === 'focusin') settle(false);
+        else if (event?.type === 'input' && event.target === field) settle(true);
+      } else if (changed || event?.type === 'focusin' || event?.type === 'input' && event.target === field) settle(false);
+    }
     last = vv.height; lastTop = vv.offsetTop;
   };
   vv.addEventListener('resize', read);
@@ -225,6 +236,7 @@ export class ComposeBar {
 
   dispose() {
     this.disposed = true; this.close();
+    this.twin?.remove(); this.twin = null;
     this.win.removeEventListener('click', this.outsideClick, true);
     this.phone.removeEventListener('change', this.widthChanged); this.observer.disconnect();
     if (this.fitFrame != null) { this.win.cancelAnimationFrame(this.fitFrame); this.fitFrame = null; }
@@ -427,9 +439,8 @@ export class ComposeBar {
   // when made taller), then
   // scrolls. Where the field's height is the layout's (the one quiet line,
   // the wide column), aim.css says --fit: none and the height is left alone.
-  // The field is measured at no height, which for that moment gives its room
-  // to what shares it (the Reader's message): a message scrolled to its end
-  // would be pulled down by it at each key, so it is put back as it was.
+  // A hidden twin measures natural height without collapsing the active
+  // field under its caret. The existing hold still retains adjacent content.
   fit() {
     const field = this.field, style = this.win.getComputedStyle(field);
     if (style.getPropertyValue('--fit').trim() === 'none') {
@@ -446,12 +457,27 @@ export class ComposeBar {
       try { normalMax = parseFloat(this.win.getComputedStyle(field).maxHeight); }
       finally { this.root.toggleAttribute('data-tall', true); }
     }
-    field.style.height = '0px';
     const borders = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
-    const wanted = field.scrollHeight + borders;
+    const wanted = this.measure(field) + borders;
     this.root.toggleAttribute('data-full-field', Number.isFinite(normalMax) && wanted >= normalMax - 1);
     field.style.height = `${Number.isFinite(max) ? Math.min(wanted, max) : wanted}px`;
     field.scrollTop = keep;
     back();
+  }
+
+  measure(field) {
+    let twin = this.twin;
+    if (!twin || twin.parentNode !== field.parentNode) {
+      twin?.remove();
+      twin = this.twin = field.ownerDocument.createElement('textarea');
+      twin.setAttribute('aria-hidden', 'true'); twin.tabIndex = -1; twin.readOnly = true;
+      field.parentNode.append(twin);
+    }
+    twin.className = field.className;
+    twin.placeholder = field.placeholder;
+    twin.style.cssText = 'position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;overflow:hidden;height:0;max-height:none';
+    twin.style.width = `${field.getBoundingClientRect().width}px`;
+    twin.value = field.value;
+    return twin.scrollHeight;
   }
 }
