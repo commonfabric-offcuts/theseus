@@ -143,11 +143,25 @@ export class NotebookPage extends DeckPage {
         }
       },{capture:true,signal:this.listening.signal});
     }
+    // One stable control inside the existing heading, also used by the sheet.
+    this.titleControl=this.node('span','notebook-title-edit');this.titleControl.setAttribute('role','button');
+    this.titleControl.tabIndex=-1;this.titleControl.setAttribute('aria-disabled','true');
+    const titleClick=event=>{
+      if(event.defaultPrevented||event.button>0||event.metaKey||event.ctrlKey||event.altKey||event.shiftKey)return;
+      if(this.rename()){event.preventDefault();event.stopPropagation();}
+    };
+    for(const kind of ['click','dblclick'])this.titleControl.addEventListener(kind,titleClick,{signal:this.listening.signal});
+    this.titleControl.addEventListener('keydown',event=>{
+      if(event.defaultPrevented||event.isComposing||event.keyCode===229||event.target!==this.titleControl||
+          event.metaKey||event.ctrlKey||event.altKey||event.shiftKey||!['Enter',' '].includes(event.key))return;
+      if(this.rename()){event.preventDefault();event.stopPropagation();}
+    },{signal:this.listening.signal});
     this.titleBox=this.node('input','notebook-rename');this.titleBox.setAttribute('aria-label','Page title');this.titleBox.hidden=true;
     this.titleBox.addEventListener('keydown',event=>{
-      if(event.isComposing)return;
-      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();this.endRename(false);}
-      if(event.key==='Enter'){event.preventDefault();event.stopPropagation();this.endRename(true);}
+      if(event.defaultPrevented||event.isComposing||event.keyCode===229)return;
+      if(event.key==='Escape'||event.key==='Enter'){
+        event.preventDefault();event.stopPropagation();return this.endRename(true);
+      }
     });
     this.pageNotice=this.node('div','notebook-page-notice');this.pageNotice.setAttribute('role','status');
     const tools=this.node('div','notebook-tools'); tools.append(this.views,this.draft,this.more);
@@ -295,7 +309,7 @@ export class NotebookPage extends DeckPage {
     if(this.editing)this.save();
     this.textEdited();
     this.source=w.base.source; this.base={revision:w.base.revision,body:w.base.content.body}; this.readOnly=w.readOnly||w.reading;
-    if(!this.renameSeen)this.header.title.textContent=w.value.title;
+    if(this.titleControl)this.paintTitle();else if(!this.renameSeen)this.header.title.textContent=w.value.title;
     const drawKept=force || !this.cardsSeen || !this.textSeen;
     if((!w.conflict || drawKept) && (drawKept || deckBody(this.deck)!==w.value.body)) {
       const e=this.editing;
@@ -702,6 +716,7 @@ export class NotebookPage extends DeckPage {
     if (!w.readOnly && !w.reading) this.host.style.removeProperty('min-height');
     // A person Core does not let write the page reads it: no writing controls, and nothing to pause.
     this.readOnly=w.readOnly||w.reading||w.deleted||Boolean(w.actionPending); this.text.readOnly=this.readOnly;
+    if(this.titleControl)this.paintTitle();
     this.paintPageState();
     if(this.passages)this.readingPassages();
     if(this.editing)this.editing.field.readOnly=this.readOnly;
@@ -762,17 +777,65 @@ export class NotebookPage extends DeckPage {
     // Do not replace a deletion, failed action or recovery control with this receipt.
     this.pageNotice.append(this.copyNotice);
   }
-  rename() {
-    if(this.readOnly||!this.writing?.value)return;
-    this.renameSeen=this.writing.capture();this.titleBox.value=this.renameSeen.content.title;
-    this.header.title.replaceChildren(this.titleBox);this.titleBox.hidden=false;this.titleBox.focus({preventScroll:true});this.titleBox.select();
+  titleWritable() {
+    return Boolean(this.writing?.value&&this.cardWritable()&&!this.unavailable&&!this.detached&&
+      !this.host.hidden&&this.menuCurrent?.()!==false&&!this.asking);
   }
-  async endRename(save) {
-    if(!this.renameSeen)return;
-    const seen=this.renameSeen;this.renameSeen=null;
-    if(save)this.writing.edit({title:this.titleBox.value},seen,this.mode);
-    this.titleBox.hidden=true;this.more.focus({preventScroll:true});
-    this.sync();if(save){await this.writing.flush();this.sync();}
+  paintTitle() {
+    const writable=this.titleWritable();
+    this.titleControl.tabIndex=writable?0:-1;
+    this.titleControl.setAttribute('aria-disabled',String(!writable));
+    this.titleBox.readOnly=!writable;
+    if(this.renameSeen||!this.writing?.value)return;
+    this.titleControl.textContent=this.writing.value.title;
+    this.titleControl.setAttribute('aria-label','Edit page title: '+this.writing.value.title);
+    if(!this.header.title.contains(this.titleControl))this.header.title.replaceChildren(this.titleControl);
+  }
+  rename() {
+    if(!this.titleWritable())return false;
+    // A double click follows the click which opened the input. Keep its draft
+    // and selection, and do not replace its displayed snapshot on later entry.
+    if(this.renameSeen){this.titleBox.focus({preventScroll:true});return true;}
+    if(this.editing)this.save();this.textEdited();
+    if(!this.titleWritable())return false;
+    this.renameWriter=this.writing;this.renameSeen=this.writing.capture();
+    this.titleBox.value=this.renameSeen.content.title;
+    this.header.title.replaceChildren(this.titleBox);this.titleBox.hidden=false;
+    this.titleBox.focus({preventScroll:true});this.titleBox.select();return true;
+  }
+  focusAfterRename() {
+    if(!this.titleWritable())return;
+    if(this.mode==='text') {
+      // Parse the actual displayed Text, whose hidden metadata and newlines
+      // have already been projected. Prefix removal only locates offset0 of
+      // the first card's title; it never rewrites Markdown or opening words.
+      const deck=parseDeck(this.text.value),first=deck.cards[0];
+      const prefix=first?.raw.match(/^ {0,3}#{2,6}[ \t]*/)?.[0].length??0;
+      const at=first?deck.opening.length+prefix:0;
+      this.text.focus({preventScroll:true});this.text.setSelectionRange(at,at);return;
+    }
+    if(this.editing)this.finish();
+    if(this.editing||!this.titleWritable())return;
+    this.pick(0);
+    if(this.deck.cards.length)this.edit(0);else this.start();
+  }
+  async endRename(save=true) {
+    const w=this.writing,seen=this.renameSeen;
+    if(!seen||w!==this.renameWriter||!this.titleWritable())return false;
+    // All UI completion keys save. Retain the old programmatic cancel option
+    // for callers without giving Escape a separate rollback meaning.
+    if(save&&this.titleBox.value!==seen.content.title&&
+        !w.edit({title:this.titleBox.value},seen,this.mode))return false;
+    if(w.conflict)return false;
+    this.renameSeen=null;this.renameWriter=null;this.titleBox.hidden=true;this.sync();
+    if(save)this.focusAfterRename();else this.more.focus({preventScroll:true});
+    if(save){
+      await w.flush();
+      // A completed save may update this page, but never focus a page which
+      // the person left or displace a newly opened title input.
+      if(this.writing===w&&!w.closed&&!this.detached&&!this.listening.signal.aborted&&!this.renameSeen)this.sync();
+    }
+    return true;
   }
   async pageAction(kind,args) {
     if(!kind&&!this.writing?.actionPending)return;

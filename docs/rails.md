@@ -92,20 +92,19 @@ outcome's own page, its pipeline) list every topic, since they have no right
 rail.
 
 - **Counts.** A folded outcome counts everything new inside it, and what was
-  sent to the reader by name. An open outcome counts what has no row under
-  it: its Conversation, and its Build topics, which the right rail lists in
-  place of the outline. Each topic under it shows its own count. A screen
-  reader hears where the count is ("in its Conversation and its Build
-  topics"). The counts come from the `workspaces` view (its `build` part
-  counts the open Build topics apart, docs/workspaces-query.md) and the
-  `conversation` view, and change as the live feed announces each commit. A
-  press on the outcome's row opens its Conversation, beside the right rail
-  that lists those Build topics with their counts; on a phone and at middle
-  widths "Pipeline & pages" carries their count to it.
+  sent to the reader by name. An expanded outcome has no outcome-level unread
+  badge, visually or in its accessible name (1164). Each topic under it shows
+  its own count; Build topics keep theirs in the right rail. Folding restores
+  the latest total from `workspaces`, without marking anything read. Counts
+  change as the live feed announces each commit. The outcome's name opens its
+  home; on a phone and at middle widths "Pipeline & pages" still carries the
+  Build-topic count to the right rail (`workspaces.build`,
+  docs/workspaces-query.md).
 - **Chips.** "N new" and "N waiting on you" at the top add up every outcome
   listed. Pressing one shows only the outcomes, and in them only the topics,
-  that hold what it counts; what is new in an outcome's Build topics is on
-  its row, as above. Pressing it again shows everything.
+  that hold what it counts. An outcome with only Build-topic unread remains
+  included, with its Build counts in the right rail. Pressing it again shows
+  everything.
 - **Open and folded.** Each outcome keeps its own open or folded state in
   localStorage on this device, scoped to the reader and instance. Each change
   merges with the latest stored choices, so another tab's navigation cannot

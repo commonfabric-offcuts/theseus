@@ -1426,7 +1426,6 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 .dossier-move-choices button { white-space: normal; overflow-wrap: anywhere; min-width: 0; max-width: 100%; }
 .dossier-move button:focus-visible { outline: 2px solid var(--focus); }
 .dossier-move-status { color: var(--muted); max-width: 40rem; }
-.dossier-moved-pointer { display: block; color: var(--muted); padding: .4rem 0; }
 /* Item 790: readable handoff, bounded by the device in both themes. */
 .onboarding-sheet { height: auto; overflow: auto; width: min(44rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); box-sizing: border-box; padding: 1rem; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: .7rem; }
 .onboarding-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
@@ -1573,3 +1572,7 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 @media(pointer:coarse){.notebook-card-copy,.notebook-card-add{min-width:44px;min-height:44px}}
 
 .notebook-card-action{opacity:0;pointer-events:none}:where(.deck-pointing) .deck-card:hover .notebook-card-action,.deck-card[aria-current=true] .notebook-card-action,.notebook-card-action:focus{opacity:1;pointer-events:auto}
+
+/*1159: the page title is its own quiet, keyboard-reachable editing control.*/
+.notebook-title-edit{display:inline-block;max-width:100%;vertical-align:middle;overflow:hidden;text-overflow:ellipsis}.notebook-title-edit[aria-disabled=false]{cursor:pointer}.notebook-title-edit:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+@media(max-width:760px){.notebook-title-edit{min-width:44px;min-height:44px;line-height:44px}}

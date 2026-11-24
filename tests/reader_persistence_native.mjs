@@ -107,6 +107,13 @@ for (const filename of ['tests/fixture_teardown_evidence.mjs',...(mode==='--read
   await mkdir(path.dirname(path.join(evidencePath, 'source', filename)), { recursive: true });
   await writeFile(path.join(evidencePath, 'source', filename), source);
 }
+// 1170's selected cell retains its added owners beside the shared inputs above.
+if (mode === '--reading') for (const filename of ['tests/moved_dossiers_1170_native.mjs', 'web/moved-dossiers.mjs', 'web/moved-dossiers.css', 'aim_next/dossier_move.py']) {
+  const source = await readFile(path.join(root, filename));
+  hashes[filename] = createHash('sha256').update(source).digest('hex');
+  await mkdir(path.dirname(path.join(evidencePath, 'source', filename)), { recursive: true });
+  await writeFile(path.join(evidencePath, 'source', filename), source);
+}
 const profile = await mkdtemp(path.join(os.tmpdir(), 'aim-reader-persistence-'));
 const downloadPath = await mkdtemp(path.join(os.tmpdir(), 'aim-reader-download-'));
 let chrome, chromeExit, socket, cdp, facts, finalHealth, fixtureExitCode;

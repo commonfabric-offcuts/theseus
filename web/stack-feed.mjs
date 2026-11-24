@@ -1,4 +1,5 @@
 import { stackMenuItems, STARRED_FOLD_REASON } from './stack-menu-items.mjs';
+import { archiveReadConfirmed } from './archive-new.mjs';
 import { unstarDossier } from './dossier-unstar.mjs';
 // What a person does to reply stacks on a topic page or a Conversation
 // (docs/reply-stacks.md), and the keys and menu items that do it: star a
@@ -182,8 +183,9 @@ export class StackFeed {
   // the menu a right-click on a message opens, from anchor (a title bar's ⋯). colorOf: as arrangeStacks takes it.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
     newest = () => {}, refreshPositions = async () => {}, acted = () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), navigate = () => {}, press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
-    colorOf = () => null, readNamed = null, clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, acted, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, clock, doc });
+    colorOf = () => null, readNamed = null, captureArchive = () => null, clock = () => Date.now(), doc = document }) {
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, acted, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, captureArchive, clock, doc });
+    this.archiveReads = new Map();
     this.readNamed = readNamed; this.headerStars = new Set();
     this.coordinationChoice = new CoordinationChoice({ instanceId, viewer, view: doc.defaultView ?? globalThis.window });
     this.state.showCoordination = this.coordinationChoice.on;
@@ -535,13 +537,31 @@ export class StackFeed {
   async send(kind, item, args, made = null) {
     const current = this.messages().get(item.id) ?? item;
     const envelope = made ?? stackActEnvelope({ instanceId: this.instanceId, authority: this.authority(), kind, item: current, args });
+    const clearing = kind === 'stack.aside' && envelope.args.clear_new === true;
+    let finishArchive = null;
+    if (clearing) {
+      this.archiveReads ??= new Map();
+      if (!this.archiveReads.has(envelope.operation_id))
+        this.archiveReads.set(envelope.operation_id, this.captureArchive?.(item.id, envelope.args.through) ?? null);
+      finishArchive = this.archiveReads.get(envelope.operation_id);
+    }
     let receipt;
     try { receipt = await this.commandOf(envelope); } catch (error) { throw new ActFailure(envelope, { error }); }
-    if (receipt?.status !== 'committed') throw new ActFailure(envelope, { receipt });
+    if (receipt?.status !== 'committed') {
+      if (clearing && receipt?.recorded === true && receipt.operation_id === envelope.operation_id)
+        this.archiveReads.delete(envelope.operation_id);
+      throw new ActFailure(envelope, { receipt });
+    }
+    if (clearing) {
+      if (!archiveReadConfirmed(receipt, envelope, item.topic_id))
+        throw new ActFailure(envelope, { receipt });
+      this.archiveReads.delete(envelope.operation_id);
+    }
     const answer = learned(kind, receipt.result, this.viewer, this.clock());
     // The answer goes to the message the page holds now as well: a read that landed while the act was out (a
     // 👍's reactions, a page of messages) can have put a new copy of it in the page (item 433).
     for (const each of new Set([item, current, this.messages().get(item.id)])) if (each) each.acts = laterActs(each.acts, answer);
+    if (clearing && !this.gone) finishArchive?.();
     // Option's fold says each message it folded: one the page holds, or a stand-in for one it has not loaded.
     if (kind === 'message.fold_through') for (const { message_id, fold_revision } of receipt.result.folds) {
       if (!this.messages().has(message_id) && !this.standIns.has(message_id)) this.standIns.set(message_id, { id: message_id, acts: {} });
@@ -1057,7 +1077,8 @@ export class StackFeed {
     // Brought back from the shelf: where its replica sits now, for the flight back up.
     const from = !below ? this.shelf?.replicaRect(stack.id) ?? null : null;
     if (below) this.shelf?.putAway(stack.id); else this.shelf?.broughtBack(stack.id);
-    this.act('stack.aside', item, { through, ...(typeof restoreKey === 'number' ? { key: restoreKey } : {}) });
+    this.act('stack.aside', item, { through, ...(typeof restoreKey === 'number' ? { key: restoreKey } : {}),
+      ...(below && restoreThrough === undefined ? { clear_new: true } : {}) }, [], { quiet: true });
     if (undoable) this.remember(at => this.setAside(stack, position.through !== null, { undoable: false, restoreThrough: position.through, restoreKey: position.order_key, at }));
     closeUp(this.list, () => this.arrange());
     // Focus goes to More where the page's one view draws it (Only new does
