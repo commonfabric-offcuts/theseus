@@ -326,7 +326,7 @@ def migrate(db_path, instance_id, binding, target=None):
         raise MigrationError("RUNNER_GUARD_HELD", "A runner holds this authority; stop it before upgrading") from error
     db, committing = None, False
     try:
-        db, _ = _connect(authority.db_path)
+        db, _ = _connect(authority.db_path, write=True)
         db.execute("BEGIN IMMEDIATE")
         # A step may rebuild a table that others reference (message_acts, under refresh_requests): references are
         # checked once, when the whole move commits, not while a table is between its two layouts. SQLite turns
