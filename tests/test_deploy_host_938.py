@@ -130,12 +130,13 @@ class DeployHost938Case(HostCase):
         # exit can precede an in-flight Git child; wait for those owned groups
         # before HostCase's earlier TemporaryDirectory cleanup removes .git.
         groups = {process.pid for process in self.started}
+        group_keys = {str(group) for group in groups}
         deadline = time.monotonic() + 5
         observations = []
         while True:
             rows = subprocess.check_output(['ps', '-axo', 'pid=,pgid=,command='], text=True).splitlines()
             remaining = [row.strip() for row in rows if len(row.split(None, 2)) >= 2
-                         and int(row.split(None, 2)[1]) in groups]
+                         and row.split(None, 2)[1] in group_keys]
             observations.append({'at': time.monotonic(), 'remaining': remaining})
             if not remaining or time.monotonic() >= deadline:
                 break
