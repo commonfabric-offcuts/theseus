@@ -1,3 +1,4 @@
+import { messageChanges1169 } from './message_changes_1169_native.mjs';
 // Edit a message (item 228, docs/message-edit.md), in the browser as the person
 // uses it: Edit in the ⋯ of a message they sent, from a feed card, a dossier
 // row and the Reader; the Reader's edit mode with Save (⌘Return) and Cancel;
@@ -56,6 +57,7 @@ export const EDIT_FAULTS = `(()=>{window.edits=0;window.session=[];window.faultO
 
 export async function editChecks({ check, until, view, control, facts, shot = async () => {}, engine = 'chrome' }, helpers) {
   const { seed, open, centre, tap, press, lit, light, openReader, closeReader, readerOn, into, valueOf, card, words, DEVICES } = helpers;
+  await messageChanges1169({ check, until, control, shot }, helpers);
   const FIELD = '#message-edit-field', EDIT = '#message-edit';
   const button = act => `${EDIT} button[data-act=${act}]`;
   // The ⋯ of a message from its bar, and its items' words.
@@ -721,7 +723,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   };
   // A card or the Reader as the person sees it: its words (the Reader's without its end line), each struck run's words,
   // and how a struck run is drawn.
-  const strikeOf = (p, host) => p.evaluate(`(h=>h&&{text:[...h.childNodes].filter(n=>!n.classList?.contains('reader-end')).map(n=>n.textContent).join(''),struck:[...h.querySelectorAll('del.struck-words')].map(d=>d.textContent),
+  const strikeOf = (p, host) => p.evaluate(`(h=>h&&{text:[...h.childNodes].filter(n=>!n.classList?.contains('reader-end')).map(n=>{const c=n.cloneNode(true);c.querySelectorAll?.('.sr-only').forEach(s=>s.remove());return c.textContent}).join(''),struck:[...h.querySelectorAll('del.struck-words')].map(d=>{const c=d.cloneNode(true);c.querySelectorAll('.sr-only').forEach(s=>s.remove());return c.textContent}),
     look:[...h.querySelectorAll('del.struck-words')].map(d=>{const s=getComputedStyle(d);return {through:s.textDecorationLine.includes('line-through'),title:d.title,
       quiet:s.color!==getComputedStyle(h).color}})})(document.querySelector(${JSON.stringify(host)}))`);
   const agentCards = p => p.evaluate(`[...document.querySelectorAll('#messages .message-card[data-id]')].filter(c=>c.textContent.includes('Built on release')).length`);

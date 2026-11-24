@@ -27,7 +27,7 @@ export function edges(box) {
 
 export class CardScroll {
   // press: the page's PressHold, which a redraw of the words waits on.
-  constructor({ read, press = null, displayRules = () => [] }) { this.read = read; this.press = press; this.displayRules = displayRules; this.loading = new WeakSet(); this.wholes = new Map(); this.revisions = new Map(); this.strikes = new Map(); this.bases = new Map(); this.epochs = new Map(); }
+  constructor({ read, press = null, displayRules = () => [], changes = null, changed = () => {} }) { this.read = read; this.press = press; this.displayRules = displayRules; this.changes = changes; this.changed = changed; this.loading = new WeakSet(); this.wholes = new Map(); this.revisions = new Map(); this.strikes = new Map(); this.bases = new Map(); this.epochs = new Map(); }
   // The whole of a cut-off message, read from its source once (a read that
   // fails is asked again next time); known(id) has it once it has come.
   // readClass: 'background' for what lighting a card reads ahead, which the
@@ -40,7 +40,7 @@ export class CardScroll {
     if (source?.source_ref?.id !== id || typeof source.body !== 'string') throw Error('The message could not be read whole.');
     if (this.epochs.get(id) !== epoch) throw Error('The message changed while it was being read. Try again.');
     // And what of them the reader had read and the author's edit took away, struck through (item 614).
-    this.wholes.set(id, source.body); this.revisions.set(id, revisionOf(source)); this.strikes.set(id, source.struck?.cuts ?? null); this.bases.set(id, source.reply_basis);
+    this.wholes.set(id, source.body); this.revisions.set(id, revisionOf(source)); this.strikes.set(id, source.struck ?? null); this.bases.set(id, source.reply_basis);
     return source.body;
   }
   known(id) { return this.wholes.get(id); }
@@ -73,9 +73,9 @@ export class CardScroll {
     // the page scrolls by as much as the box's own scroll gives back.
     const top = preview.getBoundingClientRect().top;
     formatWords(preview, body, { replyBasis: item.preview ? this.bases.get(item.id) : item.reply_basis, agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: item.preview ? this.revisions.get(item.id) : revisionOf(item),
-      struck: item.preview ? this.strikes.get(item.id) : item.struck?.cuts, displayRules: this.displayRules() });
+      struck: item.preview ? this.strikes.get(item.id) : item.struck, displayRules: this.displayRules(), showChanges: this.changes?.shown(item.id, item.preview ? this.revisions.get(item.id) : revisionOf(item)) ?? true });
     preview.classList.add('scroll-in-place');
-    card.dataset.whole = 'shown'; card.dataset.full = 'shown';
+    card.dataset.whole = 'shown'; card.dataset.full = 'shown'; this.changed(card, item);
     card.classList.remove('scroll-in-place'); card.classList.add('show-full');
     card.style.maxHeight = 'none'; card.scrollTop = 0;
     delete card.dataset.more;
@@ -125,14 +125,14 @@ export class CardScroll {
       // field is outside the source's scrolling room, including on close.
       const height = parseFloat(card.style.getPropertyValue?.('--reply-card-height')) || card.getBoundingClientRect().height;
       card.style.maxHeight = `${Math.ceil(height)}px`;
-      formatWords(preview, body, { replyBasis: this.bases.get(item.id), agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: this.revisions.get(item.id), struck: this.strikes.get(item.id), displayRules: this.displayRules() });
+      formatWords(preview, body, { replyBasis: this.bases.get(item.id), agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: this.revisions.get(item.id), struck: this.strikes.get(item.id), displayRules: this.displayRules(), showChanges: this.changes?.shown(item.id, item.preview ? this.revisions.get(item.id) : revisionOf(item)) ?? true });
       preview.classList.add('scroll-in-place');
       card.classList.add('scroll-in-place');
       edges(card);
       card.addEventListener('scroll', () => edges(card), { passive: true });
       const cue = card.querySelector(':scope > .message-preview-cue');
       if (cue) cue.textContent = SCROLL_CUE;
-      card.dataset.whole = 'shown';
+      card.dataset.whole = 'shown'; this.changed(card, item);
       return true;
     } catch { return false; }
     finally { this.loading.delete(card); }

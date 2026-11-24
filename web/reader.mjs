@@ -1,3 +1,4 @@
+import { editChangeMark } from './message-changes.mjs';
 import { questionPill } from './question-state.mjs';
 import { detailParts } from './card-details.mjs';
 import { messageUpdateActivity, refreshLine } from './cover-refresh.mjs';
@@ -573,7 +574,8 @@ export class Reader {
   // words its agent author changed after this person read them show struck through where they stood (item 614).
   drawSource(body) {
     const source = this.source, page = source?.source_ref?.kind === 'memory' && this.callbacks.pageImage;
-    drawPassages(this.sourceBody, body, document, { replyBasis: source?.source_ref?.kind === 'message' ? source.reply_basis : undefined, agentReply: source?.author_kind === 'agent' && Boolean(source?.reply_to), copyFences: true, struck: source?.source_ref?.kind === 'message' ? source.struck?.cuts : null,
+    drawPassages(this.sourceBody, body, document, { replyBasis: source?.source_ref?.kind === 'message' ? source.reply_basis : undefined, agentReply: source?.author_kind === 'agent' && Boolean(source?.reply_to), copyFences: true, struck: source?.source_ref?.kind === 'message' ? source.struck : null,
+      showChanges: source?.source_ref?.kind !== 'message' || (this.callbacks.messageChanges?.()?.shown(source.source_ref.id, revisionOf(source)) ?? true),
       notebook: source?.source_ref?.kind === 'memory',
       displayRules: source?.source_ref?.kind === 'message' ? this.callbacks.displayRules?.() ?? [] : [],
       images: page ? pageImages(source, attachment => this.callbacks.pageImage(attachment, source.source_ref)) : null });
@@ -1197,7 +1199,11 @@ export class Reader {
     this.sourceBody.classList.toggle('whispering', Boolean(source.whisper));
     const sent = Number.isSafeInteger(source.sent_ms) ? [' · ', timeNode(source.sent_ms, document)] : [];
     // A message whose words were changed after it was sent says so (docs/message-edit.md).
-    const edited = source.source_ref.kind === 'message' && wasEdited(source) ? [' · Edited'] : [];
+    const message = source.source_ref.kind === 'message';
+    const edit = editChangeMark(document, message && wasEdited(source), { struck: source.struck,
+      shown: () => this.callbacks.messageChanges?.()?.shown(source.source_ref.id, revisionOf(source)) ?? true,
+      toggle: () => this.callbacks.toggleMessageChanges?.(source.source_ref.id, revisionOf(source)) });
+    const edited = edit ? [edit] : [];
     const author = this.callbacks?.actorName?.(source.author) ?? source.author;
     const originText = node('span', undefined, 'reader-origin-text');
     originText.append([author, provenance].filter(Boolean).join(' · '), ...sent, ...edited);

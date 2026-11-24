@@ -67,9 +67,9 @@ class AcceptanceCase(AgentEditCase):
         self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE topic_id='t1'"), count, "no second message")
         # owner: the old words struck through where they stood, beside the new ones, on the one message.
         mine = self.item(message, actor="owner")
-        self.assertEqual((mine["body"], mine["revision"], mine["struck"]), (FIXED, 2, {"revision": 1, "cuts": [{"at": AT, "words": "85"}]}))
+        self.assertEqual((mine["body"], mine["revision"], mine["struck"]), (FIXED, 2, {"revision": 1, "cuts": [{"at": AT, "words": "85"}], "added": [{"start": AT, "end": AT + 2}]}))
         source = self.source({"kind": "message", "id": message}, actor="owner")
-        self.assertEqual((source["body"], source["struck"]), (FIXED, {"revision": 1, "cuts": [{"at": AT, "words": "85"}]}))
+        self.assertEqual((source["body"], source["struck"]), (FIXED, {"revision": 1, "cuts": [{"at": AT, "words": "85"}], "added": [{"start": AT, "end": AT + 2}]}))
         # other-reader: only the new words, no strike and no trace of the old ones.
         theirs = self.item(message, actor="other-reader")
         self.assertEqual((theirs["body"], theirs["struck"]), (FIXED, None))
@@ -90,12 +90,12 @@ class AcceptanceCase(AgentEditCase):
         self.committed(self.edit(message, FIXED, actor="agent-a"))
         self.read_through("owner", message)
         self.assertEqual(self.state("owner", message), "acknowledged")
-        self.assertEqual(self.item(message, actor="owner")["struck"], {"revision": 1, "cuts": [{"at": AT, "words": "85"}]},
+        self.assertEqual(self.item(message, actor="owner")["struck"], {"revision": 1, "cuts": [{"at": AT, "words": "85"}], "added": [{"start": AT, "end": AT + 2}]},
                          "what owner saw stays struck once read")
         # owner read revision 2; the third words take "green" away: struck from revision 2, and unread again.
         self.committed(self.edit(message, "Built on release 86, the checks are running.", revision=2, actor="agent-a"))
         self.assertEqual(self.item(message, actor="owner")["struck"],
-                         {"revision": 2, "cuts": [{"at": len("Built on release 86, the checks are "), "words": "green"}]})
+                         {"revision": 2, "cuts": [{"at": 36, "words": "green"}], "added": [{"start": 36, "end": 43}]})
         self.assertEqual(self.state("owner", message), "pending")
         # other-reader read none of them: still nothing struck.
         self.assertIsNone(self.item(message, actor="other-reader")["struck"])
@@ -106,7 +106,7 @@ class AcceptanceCase(AgentEditCase):
         self.committed(self.edit(message, FIXED, actor="agent-a"))
         # owner has not read revision 2 when revision 3 comes: what they read is still revision 1.
         self.committed(self.edit(message, "Built on release 87, the checks are green.", revision=2, actor="agent-a"))
-        self.assertEqual(self.item(message, actor="owner")["struck"], {"revision": 1, "cuts": [{"at": AT, "words": "85"}]})
+        self.assertEqual(self.item(message, actor="owner")["struck"], {"revision": 1, "cuts": [{"at": AT, "words": "85"}], "added": [{"start": AT, "end": AT + 2}]})
         self.assertEqual(self.item(message, actor="owner")["body"], "Built on release 87, the checks are green.")
         self.assertEqual(self.people_rows(message), [("owner", 1)])
 
@@ -114,7 +114,8 @@ class AcceptanceCase(AgentEditCase):
         message = self.posted()
         self.read_through("owner", message)
         self.committed(self.edit(message, FIRST + " Deployed.", actor="agent-a"))
-        self.assertIsNone(self.item(message, actor="owner")["struck"], "nothing the reader read is gone")
+        self.assertEqual(self.item(message, actor="owner")["struck"],
+                         {"revision": 1, "cuts": [], "added": [{"start": len(FIRST) + 1, "end": len(FIRST) + 10}]})
         self.assertEqual(self.state("owner", message), "pending", "the words changed, so it is new to them")
 
 
@@ -233,7 +234,7 @@ class UnreadAgainWhereItCountsCase(AgentEditCase):
 
     LAMPS = "Deployed the glossary build 41, all lamps lit."
     LAMPS_FIXED = "Deployed the glossary build 42, all lamps lit."
-    LAMPS_STRUCK = {"revision": 1, "cuts": [{"at": len("Deployed the glossary build "), "words": "41"}]}
+    LAMPS_STRUCK = {"revision": 1, "cuts": [{"at": 28, "words": "41"}], "added": [{"start": 28, "end": 30}]}
 
     def groups_hold_their_rows(self, actor):
         """Each of the actor's delivery groups counts exactly its pending rows, and its head is the first of them."""
@@ -285,7 +286,7 @@ class UnreadAgainWhereItCountsCase(AgentEditCase):
         self.assertEqual(result["unread_again"], 0, "the person who left does not have it unread again")
         self.assertEqual(self.state("owner", message), "acknowledged")
         item = self.item(message, actor="owner")
-        self.assertEqual((item["unread"], item["struck"]), (False, {"revision": 1, "cuts": [{"at": AT, "words": "85"}]}))
+        self.assertEqual((item["unread"], item["struck"]), (False, {"revision": 1, "cuts": [{"at": AT, "words": "85"}], "added": [{"start": AT, "end": AT + 2}]}))
         self.assertEqual(self.schedule("owner"), schedule, "no count that no read could settle")
         self.groups_hold_their_rows("owner")
 
@@ -336,34 +337,51 @@ class UnreadAgainWhereItCountsCase(AgentEditCase):
 
 
 class StruckWordsCase(unittest.TestCase):
-    """message_edit.struck_words: where each run of words a reader read and the new words no longer hold stood."""
+    """1169's bounded comparison; exact expected ranges, no Core fixture."""
 
-    def test_words_replaced_removed_added_and_respaced(self):
-        cases = [
-            ("release 85 today", "release 86 today", [{"at": 8, "words": "85"}]),
-            ("ship it at 5 today", "ship it today", [{"at": 8, "words": "at 5"}]),
-            ("ship it", "ship it now", []),
-            ("ship  it", "ship it", []),
-            ("release 85, green", "release 86, green", [{"at": 8, "words": "85"}]),
-            ("can't stop", "cannot stop", [{"at": 0, "words": "can't"}]),
-            ("one two three", "uno two tres", [{"at": 0, "words": "one"}, {"at": 8, "words": "three"}]),
-            ("", "words", []),
-            ("words", "", [{"at": 0, "words": "words"}]),
-        ]
-        for old, new, cuts in cases:
+    def test_whole_numbers_keep_punctuation_outside_the_number(self):
+        for old, new in [("0.4%", "0.3%"), ("1,000", "2,000"), ("8:50", "9:10"), ("85", "86")]:
+            with self.subTest(number=old):
+                self.assertEqual(message_edit.struck_words("rate " + old + ", green", "rate " + new + ", green"),
+                                 {"cuts": [{"at": 5, "words": old}], "added": [{"start": 5, "end": 5 + len(new)}]})
+
+    def test_near_changes_merge_one_common_word_and_punctuation(self):
+        self.assertEqual(message_edit.struck_words("one two three", "uno two tres"),
+                         {"cuts": [{"at": 0, "words": "one two three"}], "added": [{"start": 0, "end": 12}]})
+        self.assertEqual(message_edit.struck_words("one, three", "uno, tres"),
+                         {"cuts": [{"at": 0, "words": "one, three"}], "added": [{"start": 0, "end": 9}]})
+
+    def test_two_common_words_keep_changes_separate(self):
+        self.assertEqual(message_edit.struck_words("one two and three", "uno two and tres"),
+                         {"cuts": [{"at": 0, "words": "one"}, {"at": 12, "words": "three"}],
+                          "added": [{"start": 0, "end": 3}, {"start": 12, "end": 16}]})
+
+    def test_utf16_and_pure_addition_removal_and_spacing(self):
+        for old, new, cuts, added in [
+            ("🚀 v 85", "🚀 v 86", [{"at": 5, "words": "85"}], [{"start": 5, "end": 7}]),
+            ("ship it", "ship it now", [], [{"start": 8, "end": 11}]),
+            ("ship it at 5 today", "ship it today", [{"at": 8, "words": "at 5"}], []),
+            ("ship  it", "ship it", [], []),
+            ("", "words", [], [{"start": 0, "end": 5}]),
+            ("words", "", [{"at": 0, "words": "words"}], []),
+        ]:
             with self.subTest(old=old, new=new):
-                self.assertEqual(message_edit.struck_words(old, new), cuts)
-
-    def test_places_count_utf16_units_as_a_page_does(self):
-        # 🚀 is two UTF-16 units: "86" starts at 5 in the page's text, where a count of code points says 4.
-        self.assertEqual(message_edit.struck_words("🚀 v 85", "🚀 v 86"), [{"at": 5, "words": "85"}])
+                self.assertEqual(message_edit.struck_words(old, new), {"cuts": cuts, "added": added})
 
     def test_a_long_rewrite_is_bounded(self):
         old = " ".join("w%d" % n for n in range(2000))
         new = " ".join("x%d" % n for n in range(2000))
-        cuts = message_edit.struck_words(old, new)
-        self.assertEqual(len(cuts), 1)
-        self.assertEqual(len(cuts[0]["words"]), message_edit.STRUCK_CHARS + 1)
+        changes = message_edit.struck_words(old, new)
+        self.assertEqual(len(changes["cuts"]), 1)
+        self.assertEqual(len(changes["cuts"][0]["words"]), message_edit.STRUCK_CHARS + 1)
+        self.assertEqual(changes["added"], [{"start": 0, "end": len(new)}])
+
+    def test_ranges_and_cuts_each_have_the_fifty_change_bound(self):
+        old = " keep these ".join("old%d" % n for n in range(60))
+        new = " keep these ".join("new%d" % n for n in range(60))
+        changes = message_edit.struck_words(old, new)
+        self.assertEqual((len(changes["cuts"]), len(changes["added"])), (50, 50))
+        self.assertTrue(all(a["end"] < b["start"] for a, b in zip(changes["added"], changes["added"][1:])))
 
 
 class BriefCase(unittest.TestCase):
