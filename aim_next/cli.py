@@ -36,6 +36,7 @@ class UsageError(ValueError):
 
 
 from .cli_outcome import PipelineVerbs, _words as held_words, register as register_pipeline
+from .cli_clock import ClockVerbs, register as register_clock
 from .cli_targets import WORDS as TARGET_WORDS, TargetVerbs, register as register_targets
 from .cli_tools import ToolVerbs, register as register_tools
 from .cli_covers import CoverVerbs, register as register_covers
@@ -446,6 +447,7 @@ def _parser():
     link.add_argument("--revision", type=int)
     link.add_argument("--origin")
     register_pipeline(verb)
+    register_clock(verb)
     register_targets(verb)
     register_tools(verb)
     register_covers(verb)
@@ -578,7 +580,7 @@ class Failed(Exception):
         self.code, self.recorded = code, recorded
 
 
-class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
+class Agent(ClockVerbs, PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
     """The everyday verbs: each builds its envelopes, saves each request before dispatch."""
 
     def __init__(self, profile, options, stdin, lines):
