@@ -10,6 +10,11 @@ the current-rule record and the [landing kit](../landing-kit.md). The rulings th
    asks fable to freeze the carry, and lands it with the kit ([landing-kit.md](../landing-kit.md)). The kit holds the
    [lane lock](../lane-lock.md)'s landing lock, so no lane test run starts while it lands. A judged-first change
    ([landing.md](../landing.md#choose-the-route-from-the-complete-change)) does not take this route.
+   Publication ends with the seat's `on_live` hook (in `~/.config/theseus/landing.json`). warp's hook,
+   `~/.local/share/theseus/warp/2026-11-19/on-live.sh`, tags the item's line in the ship list on Tony's cards page.
+   An item with no ship-list line, such as a machinery piece whose card already states its release and time, passes
+   with a line saying so. Any other hook failure leaves the release live with its publication unfinished (exit 6),
+   and `publish.sh` finishes it.
 2. **Keeps Tony's Releases Timeline current.** That is the cover of message m-b3f45b3a79ce4dca93fa1a953312acb3 in
    Releases: each landing moves its line to Done with its live time, and the predicted lines carry each lane's own
    estimate. A prediction Tony holds that slips by more than an hour reaches him when it slips.
