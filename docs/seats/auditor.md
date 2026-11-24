@@ -44,7 +44,12 @@ limits from the trusted wake protocol and current sourced disposition.
 On this Mac, authorized documentation uses an own checkout under
 `/Users/commonfabric/aim-worktrees`; auditor evidence is retained under
 `/Users/commonfabric/.local/share/theseus/auditor/evidence`. Neither is a temp
-directory. Current exact source and proof references belong in the relevant
+directory. Landing evidence is read, never run, where it was made: each
+landing's `SPEC.json`, `TRAIN`, attempts and deploy and publication receipts in
+`/Users/commonfabric/.local/share/theseus/warp/land/ITEM-land/`; the runtime
+sources a runner ran in the instance's `runner-sources/`; older checks and
+deploys in `/Users/commonfabric/.local/share/theseus/fable-tools/`; and a hosted
+seat's actual turns under the instance's `hosted/codex-worker/home/sessions/`. Current exact source and proof references belong in the relevant
 Theseus conversation or piece, with necessary shared artifacts attached there.
 Stable procedures belong in the repository. Do not publish whispers, private
 questions, credential contents or a private checkpoint as a public handoff.
@@ -75,6 +80,10 @@ not prove cleanup, completion or permission to rerun a producer.
 - Finish the handled paged snapshot, retain the next unread boundary and return
   control to the dispatcher. A queue wake or hosted turn does not authorize a
   new goal, private watcher or sleep loop. The dispatcher owns later wakes.
+- On this Mac auditor has no runner route: it runs as an external chat that
+  Tony starts. That owner-started chat holds the ongoing assignment as an
+  unbudgeted goal and keeps one native `watch --once` armed, re-armed after each
+  wake and never duplicated. The queue-wake rule above does not apply to it.
 
 A new conversation or hosted migration is a separate owner operation. Preserve
 the actor, complete binding, pending deliveries and original operations; keep

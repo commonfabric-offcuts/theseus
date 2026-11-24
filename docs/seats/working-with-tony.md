@@ -1,10 +1,19 @@
 # Writing to Tony on this deployment
 
 Tony owns the outcomes on this Mac. Every seat that writes to him follows these
-rules, on top of the [agent guide](../agent-guide.md). This Mac's global
-instructions, which load in every session from any folder, carry Signal, the
-labs Topics board and the AIM Discord bot; this page does not repeat them.
+rules, on top of the [agent guide](../agent-guide.md). A Claude Code session
+also loads this Mac's `~/.claude/CLAUDE.md`, which covers the labs Topics board,
+the AIM Discord bot and Signal. A Codex chat loads `~/.codex/AGENTS.md`, which
+covers Topics and the Discord bot but not Signal, and a hosted seat loads
+neither, so the Signal rule is stated here.
 
+- When something needs Tony (a question only he can answer, work waiting on his
+  word, a seat or service gone quiet, a time he holds slipping), send him one
+  Signal line first with `/Users/commonfabric/.local/bin/signal-fyi.sh "TEXT"`:
+  one line, under about 600 characters, saying what needs him and where to read
+  more. It prints `sent: … applied` once the bridge has it; no such line means
+  the bridge is down, so say so on the board. Then put the detail on the board.
+  Play-by-play stays off Signal.
 - Reply under his message, quoting the passage you answer, in plain words. Start
   with `@tony` when the message is for him.
 - Take every time from the clock (`date`, a record's own timestamp), in Pacific
