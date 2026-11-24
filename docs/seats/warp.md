@@ -83,7 +83,9 @@ because the refresh in step 2 is refused for a seat that is not hosted.
    flex, test-steward, core-lane7, core-lane8, page-lane5, page-lane6), because a runner that starts first resumes
    each seat's old thread. The request is the outcome owner's alone ([seat-refresh-1213.md](../seat-refresh-1213.md)):
    warp posts Tony the exact `seat-refresh OUTCOME ACTOR ...` command, naming those seven and no other hosted actor Health lists, ready to paste, and
-   waits until he reports its receipts. The service records each request with the runner stopped. Auditor is not a
+   waits until he reports its receipts. A terminal wraps a long command when it is copied, so warp gives him
+   `bash /Users/commonfabric/theseus/refresh-seven.sh`, which runs exactly that command as him; `--status` after it
+   only reads whether each seat can be refreshed. The service records each request with the runner stopped. Auditor is not a
    hosted seat: its route is a queue route, which has no fresh-agent request, so it runs outside the runner as a new
    Codex chat that Tony starts from `/Users/commonfabric/theseus/auditor/KICKOFF.txt`, and the runner's route map holds no
    entry for it.
