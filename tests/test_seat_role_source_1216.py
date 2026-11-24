@@ -3,6 +3,7 @@ from __future__ import annotations
 """Repository-role selection and actual synthetic hosted startup/resume wire."""
 
 import json
+import os
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -104,6 +105,25 @@ class RoleSettings(unittest.TestCase):
 @own_cases
 class RoleHost(host_fixture.HostCase):
     turns = [{'reply': 'Fixture fresh repository role response', 'reply_to_delivery': True}]
+
+    def setUp(self):
+        super().setUp()
+        output = os.environ.get('THESEUS_ROLE_EVIDENCE_DIR')
+        if output:
+            destination = Path(output) / self.id()
+            def retain():
+                destination.mkdir(parents=True, exist_ok=False)
+                observations = {
+                    'wire': self.wire(),
+                    'host_events': self.host_events(),
+                    'runners': [r.events for r in self.runners],
+                    'config': json.loads(self.config.read_text()),
+                    'profile': json.loads(self.agent_profile.read_text()),
+                    'selected_role': (self.root / 'docs' / 'seats' /
+                                      (host_fixture.AGENT + '.md')).read_text(),
+                }
+                (destination / 'observations.json').write_text(json.dumps(observations, indent=2) + '\n')
+            self.addCleanup(retain)
 
     def provision(self, config=None, profile=None):
         seat_file = self.root / 'docs' / 'seats' / (host_fixture.AGENT + '.md')
