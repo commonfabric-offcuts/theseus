@@ -32,12 +32,6 @@ and achieve things with a constantly evolving shared understanding, while also
 unleashing what is possible when untrusted code can be evolved continuously to
 good effect, even distributed to strangers and run on intimate, personal data.
 
-Theseus is Tony's workbench. Over time it will draw more and more on loom, labs
-and the Weaver, and most immediately it will help build them. Even now, an
-agent here can use the connectors Tony maintains from his laptop into all of
-his services, to get things done and to know what is coming. In the end we
-will be building patterns, and doing so without Tony asking.
-
 ## We build Theseus with Theseus
 
 The team that builds Theseus works inside it. Our outcomes, our topics and
