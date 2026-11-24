@@ -6,8 +6,9 @@ Anyone reads who holds what:  python3 tools/lane_lock.py status
 
 A run waits while a landing is pending or running, then takes one of the run slots.
 A landing first marks itself pending, so no new run starts, then waits for the runs
-already started to end. Every lock is a kernel flock on an open file, so it is released
-when its holder exits for any reason, including a crash or kill -9.
+already started to end. Every lock is a kernel flock on an open file, and the wrapped command
+inherits that file, so the lock is held until both the wrapper and its command have exited,
+for any reason: a wrapper killed with kill -9 leaves the lock with its still-running command.
 """
 import argparse
 import fcntl
@@ -105,8 +106,9 @@ def take_slot(directory, label, slots, poll=1.0):
         time.sleep(poll)
 
 
-def run_child(command):
-    child = subprocess.Popen(command)
+def run_child(command, held):
+    # The command holds the same open files, so a lock outlives a killed wrapper while its command runs.
+    child = subprocess.Popen(command, pass_fds=[h.fd for h in held])
 
     def forward(signum, _frame):
         child.send_signal(signum)
@@ -126,7 +128,7 @@ def run(label, command, slots=SLOTS):
     running = Held(directory / 'landing-running', fcntl.LOCK_SH)
     slot = take_slot(directory, label, slots)
     try:
-        return run_child(command)
+        return run_child(command, [running, slot])
     finally:
         slot.release()
         running.release()
@@ -144,7 +146,7 @@ def landing(label, command):
         running.name(label)
         try:
             say('landing {} holds the lock; no lane run starts until it ends'.format(label))
-            return run_child(command)
+            return run_child(command, [pending, running])
         finally:
             running.release()
     finally:

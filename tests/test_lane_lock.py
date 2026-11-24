@@ -106,18 +106,32 @@ class LaneLockTest(unittest.TestCase):
         late_release.touch()
         self.assertEqual(late.wait(WAIT), 0)
 
-    def test_a_killed_run_frees_its_slot(self):
+    def test_a_killed_wrapper_keeps_its_slot_until_its_command_dies(self):
         runs = [self.start('run', 'lane {}'.format(i), 'k{}'.format(i)) for i in range(3)]
         for _, marker, _ in runs:
             self.until(marker.exists, 'three runs start')
         os.kill(runs[0][0].pid, signal.SIGKILL)
         runs[0][0].wait(WAIT)
         fourth, marker4, release4 = self.start('run', 'after kill', 'k3')
-        self.until(marker4.exists, 'a slot held by a killed run is free again')
+        self.stays(lambda: not marker4.exists(), 'a run whose wrapper was killed still holds its slot while its command runs')
+        os.kill(int(runs[0][1].read_text()), signal.SIGKILL)
+        self.until(marker4.exists, 'the slot is free once the orphaned command dies too')
         for _, _, release in runs:
             release.touch()
         release4.touch()
         self.assertEqual(fourth.wait(WAIT), 0)
+
+    def test_a_killed_landing_wrapper_keeps_runs_out_until_its_command_ends(self):
+        land, land_marker, land_release = self.start('landing', '399 1190', 'kland')
+        self.until(land_marker.exists, 'the landing starts')
+        os.kill(land.pid, signal.SIGKILL)
+        land.wait(WAIT)
+        run, run_marker, run_release = self.start('run', '1174 green', 'krun')
+        self.stays(lambda: not run_marker.exists(), 'no run starts while the orphaned landing command runs')
+        land_release.touch()
+        self.until(run_marker.exists, 'the run starts once the landing command ends')
+        run_release.touch()
+        self.assertEqual(run.wait(WAIT), 0)
 
     def test_a_landing_with_no_open_runs_starts_at_once(self):
         land, marker, release = self.start('landing', '399 1174', 'alone')

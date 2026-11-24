@@ -10,11 +10,11 @@ Lane test runs and landings on one Mac share kernel locks in place of hold and F
 
 - At most three lane runs at once. A fourth waits for a free slot and says so once.
 - A landing first marks itself pending, so no new run starts. Then it waits for the runs already open to end, and runs alone. Runs that arrived while it waited start once it ends.
-- Each lock is an flock on an open file under `~/.local/share/theseus/locks` (`THESEUS_LOCK_DIR` overrides it). The kernel releases it when its holder exits for any reason, including a crash or `kill -9`, so a lock is never left behind.
+- Each lock is an flock on an open file under `~/.local/share/theseus/locks` (`THESEUS_LOCK_DIR` overrides it), and the wrapped command inherits that file. The kernel releases the lock once both the wrapper and its command have exited, for any reason, so a lock is never left behind. A wrapper killed with `kill -9` leaves the lock with its command, so a landing never starts over a run whose command is still going.
 - The wrapped command's exit code is the wrapper's exit code, and SIGINT, SIGTERM and SIGHUP are forwarded to it.
 
 ## What it does not do
 
 It covers this Mac only. A lane on another Mac is outside it.
 
-Tests: `tests/test_lane_lock.py` drives the real command in five cases: three slots with a fourth waiting, a landing that waits for an open run and holds a later run until it ends, a killed run freeing its slot, a lone landing starting at once, and exit-code passthrough with status.
+Tests: `tests/test_lane_lock.py` drives the real command in six cases: three slots with a fourth waiting; a landing that waits for an open run and holds a later run until it ends; a killed run wrapper whose command keeps its slot until that command dies; a killed landing wrapper whose command keeps runs out until it ends; a lone landing starting at once; and exit-code passthrough with status.
