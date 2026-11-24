@@ -7,20 +7,27 @@ import { foldFixture } from './fixtures/rail_topic_fold_1161.mjs';
 // Real fold/outline/topic owners with supplied row rectangles and an event
 // adapter. These checks do not establish native pointer, layout or timing.
 function fixture(t, options = {}) {
-  const f = foldFixture(options), captures = new Map();
+  const f = foldFixture(options), captures = new Map(), captureTargets = new Map();
   f.outcome.fold.dispose();
   f.doc.defaultView.matchMedia = query => ({ matches: query.includes('hover') ? !options.phone : Boolean(options.phone) });
-  f.doc.addEventListener = (type, fn, capture) => { assert.equal(capture, true); captures.set(type, fn); };
-  f.doc.removeEventListener = (type, fn, capture) => {
+  const listen = target => (type, fn, capture) => {
+    assert.equal(capture, true); captures.set(type, fn); captureTargets.set(type, target);
+  };
+  const unlisten = (type, fn, capture) => {
     assert.equal(capture, true); if (captures.get(type) === fn) captures.delete(type);
   };
+  f.doc.addEventListener = listen('document'); f.doc.removeEventListener = unlisten;
+  f.doc.defaultView.addEventListener = listen('window'); f.doc.defaultView.removeEventListener = unlisten;
   f.outcome.fold = new RailTopicFold({ area: f.area, host: f.host, footer: f.footer, doc: f.doc });
   f.flush(); t.after(f.close);
   const move = clientY => f.emit(f.host.children[6], 'pointermove', { pointerType: options.phone ? 'touch' : 'mouse', clientY });
   const action = (type, target = f.doc.createElement('button'), extra = {}) => {
     const event = { target, button: 0, detail: 1, prevented: false, stopped: false,
-      preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; }, ...extra };
-    captures.get(type)?.(event);
+      preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; },
+      stopImmediatePropagation() { this.stopped = true; this.immediate = true; }, ...extra };
+    if (captureTargets.get(type) === 'window') captures.get(type)?.(event);
+    if (options.documentStops) event.stopImmediatePropagation();
+    if (!event.immediate && captureTargets.get(type) === 'document') captures.get(type)?.(event);
     if (type === 'click' && f.area.contains(target)) f.area.listeners.click?.(event);
     if (!event.stopped) target['on' + type]?.(event);
     return event;
@@ -57,6 +64,13 @@ test('1207 dismissing with a topic click keeps the existing TopicRail navigation
   const event = f.action('click', link);
   assert.equal(f.revealed(), false); assert.equal(event.stopped, false);
   assert.equal(f.opens[0][0], link.dataset.topicId);
+});
+
+test('1207 a document capture owner cannot keep a pointer-revealed list open', t => {
+  const f = fixture(t, { documentStops: true }); f.move(320);
+  assert.equal(f.revealed(), true);
+  f.action('click');
+  assert.equal(f.revealed(), false, 'dismiss before the app body-edit click owner stops document capture');
 });
 
 test('1207 a hover-capable narrow screen can touch an already revealed topic on its first press', t => {

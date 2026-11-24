@@ -34,10 +34,12 @@ export class RailTopicFold {
     };
     this.closeReveal = () => area.removeAttribute('data-topic-revealed');
     area.addEventListener('pointermove', this.revealMove, { passive: true });
-    // Capture includes both rails even when their normal handler stops bubbling.
+    // Window capture also precedes application handlers that stop document
+    // capture, and includes both rails when their own handlers stop bubbling.
     // Never cancel the click/key whose action dismisses the pointer reveal.
-    doc.addEventListener?.('click', this.closeReveal, true);
-    doc.addEventListener?.('keydown', this.closeReveal, true);
+    this.actionRoot = this.win.addEventListener ? this.win : doc;
+    this.actionRoot.addEventListener?.('click', this.closeReveal, true);
+    this.actionRoot.addEventListener?.('keydown', this.closeReveal, true);
     area.addEventListener('pointerdown', this.down, true);
     area.addEventListener('click', this.click, true);
     // CSS filters, refreshed words, reordered rows and newly drawn stars all
@@ -90,8 +92,8 @@ export class RailTopicFold {
     this.frame = null;
     if (this.revealMove) this.area.removeEventListener('pointermove', this.revealMove);
     if (this.closeReveal) {
-      this.doc.removeEventListener?.('click', this.closeReveal, true);
-      this.doc.removeEventListener?.('keydown', this.closeReveal, true);
+      this.actionRoot.removeEventListener?.('click', this.closeReveal, true);
+      this.actionRoot.removeEventListener?.('keydown', this.closeReveal, true);
       this.closeReveal();
     }
     if (this.down) this.area.removeEventListener('pointerdown', this.down, true);
