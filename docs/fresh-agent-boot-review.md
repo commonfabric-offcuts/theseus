@@ -9,7 +9,7 @@ reviewer's approval of revised operational claims, runtime readiness or a trial.
 Tony subsequently clarified the whole-system objective (23423), physical reboot
 and lost scratch (23438), and hosted Fable/Auditor target (23442/23459, Warp23486).
 Those changes supersede the original observer/exclusion and external-Fable
-trial proposals. A focused review of this wider revision is pending; none of the
+trial proposals. Focused whole-system review is tracked below; none of the
 eight first-round replies is relabeled as that review.
 
 ## First-round sources
@@ -77,16 +77,10 @@ command and kickoff; those are copied into the plan. Warp23471 reports the
 local KICKOFF.txt copy. Runtime assembly, role files, supported migrations and
 cold-start invocation still require their own proof.
 
-The plan's prerequisite table assigns owners for1213/1216, durable role/script
-installation, cold service/runner startup, same-actor Fable/Auditor migrations,
-old-dispatch fencing, and fixed cohort/timing. The proposed five-piece45/15
-comparison applies earlier benchmark concepts to new work; it requires review
-and a sourced pre-outcome decision, not automatic expansion of the old rule.
-
-Focused second-round review is pending for Warp, Fable, Auditor, test-steward,
-core-lane7/8 and page-lane5/6. Reviewers should identify the exact revised commit
-and corrections; silence will not be marked approval. Runtime readiness and
-reboot results remain unobserved here.
+The prerequisite table assigns runtime, migration, installed-document, memory,
+purge/preserve and execution-evidence owners. Current fast-lane rule4 / Notebook40
+records Warp23514's two reported results. These are sourced measures, not new
+landing gates. Runtime readiness and physical reboot remain unobserved here.
 
 ## Whole-system follow-up received
 
@@ -105,11 +99,6 @@ is accepted:15:35 after15:15 is exactly20 minutes, not under20, and earlier
 shutdown adds elapsed time. The plan now says so explicitly. Neither forecast
 nor scripted startup proof establishes actual-model/physical boot success.
 
-Whole-system reviews recorded: Warp23494 and Steward23510. Remaining focused
-responses after Fable23512: Auditor, core-lane7, core-lane8, page-lane5 and page-lane6.
-Core7's23495 ordering evidence is a scoped technical confirmation, not a claim
-to have reviewed the whole revised document.
-
 Fable23512 read the wider plan, flags the exact-eight-actor manifest and private
 checkpoint wording (fixed by standalone Flex5250350c, merged into1218), and
 requests a sourced cohort/threshold disposition. Warp23514 adopts the first
@@ -118,3 +107,27 @@ Build and at least four predictions within15 minutes, reported as a second
 result rather than a gate. The plan now states that exact definition, preserves
 original pre-boot Builds/forecasts and explains that the1215 hold can make the
 45-minute total miss; it never resets the clock to improve it.
+
+
+## Focused whole-system review at f328a643
+
+The explicit second request is23519, `m-84fd5c90092c4e4384938957824a8afb`.
+It pins complete plan/log at `f328a643443a64ee453090e2c5d1842c2c4806b5`.
+Earlier Warp, Steward and Fable whole-system responses remain separately sourced
+above; none is inferred from silence or an original-draft reply.
+
+| Reviewer / source | Disposition in this revision |
+| --- | --- |
+| Page6 23523, `m-f6c1975f663444e6b478c0ef1f0e05ca`, r1 | Initial three findings closed. Step5 now pins frozen combined1218 `0e665717fadebaaca8d0c8cf2640e2dee05728b6`, superseding early-start `cfdf6102`; no unresolved dispatch-order question remains. Actual installed carry, file bytes, durable helpers and cold invocation still require evidence. Warp23524 independently requests the same correction. |
+| Core7 23526, `m-cfb5a2f23c3b4a5492f1e7fe01c70a92`, r1 | Evidence section now gives exact reconcile/retry/latest-status semantics, durable original request bytes/order, JSON receipt fields and coalesced mapping. Guarded runner owns partial adoption/continuation; operator status is observation. `committed_ms` is distinct from native adoption/action. Lost-write-plus-correction and actual model file read remain owed, outside17 own cases. |
+| Core8 23527, `m-3da6fac6d9fe432484e3d26af3226e85`, r1 | Capability/startup now distinguishes regular-file selection, unreadable-regular pointer failure and absent/nonregular exact legacy fallback. No unavailable-file branch counts as correctly prompted; actual serialized/read evidence remains required. |
+| Page5 23540, `m-475b718874b94af3b9c185c948b02fd9`, r1 | Original1215 Build/deadline makes the selected45-minute result a necessary miss if reboot15:15. Added raw-byte purge/preserve manifest, owner outbox survival and durable reconstruction; refreshed exact native handoff/cleanup/hold state. First-push machine field stays unknown until supported recording. Footer419 is historical. |
+| Auditor | Focused whole-system response pending. Its historical bundle/runtime/timing audits are not substituted for this review. |
+
+Seven of eight whole-system reviewers have responded (Warp, Fable, Steward,
+Page6, Core7, Core8, Page5); their findings are incorporated or explicitly assigned
+as execution evidence. No review here proves actual migration, installed role
+read, physical reboot or publication. Fable23529 independently exposes the
+existing-seat migration gap: seat-add refuses an existing invitation and operator
+provisioning can create before discovering an incompatible pin. The plan now
+requires Warp's supported concrete transition before any attempt.

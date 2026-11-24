@@ -14,8 +14,8 @@ After the physical reboot **fresh Warp** performs that role; no old agent remain
 as observer or rescuer. Tony initiates and witnesses the reboot. Fresh Warp and
 Auditor reconstruct timing from durable records, not a surviving stopwatch.
 
-This revision follows Tony's clarifications 23423 and 23438 and is awaiting
-focused review of that wider scope. The [review log](fresh-agent-boot-review.md)
+This revision follows Tony's clarifications 23423 and 23438. Seven whole-system
+reviews are reconciled; Auditor's focused whole-system response remains owed. The [review log](fresh-agent-boot-review.md)
 keeps the eight reviews of the original draft separate from this review and
 from runtime/trial evidence.
 
@@ -65,8 +65,12 @@ seat files did not configure agents to read them.
 
 Item 1213 adds owner-authorized hosted refresh and the seat-file pointer.
 It preserves configured role bytes. The separate 1216 successor changes assembly
-to use the repository role when the verified seat file exists, retaining trusted
-binding instructions and explicit missing-file behavior. Both must land before
+to use the repository role when the selected CLI-root path is a regular file,
+retaining trusted binding instructions. An unreadable regular file suppresses
+stale configured role text but leaves the pointer/read failure visible. An
+absent or nonregular path deliberately retains the exact legacy configured role
+plus the bootstrap pointer; it does not refuse startup. Neither unavailable-file
+branch counts as a correctly prompted repository-role agent (Core8 23527). Both must land before
 claiming the stale-role problem is resolved. No hand edit of generated managed
 route files repairs their durable source coherently. Its
 proposed interface is:
@@ -126,7 +130,12 @@ Auditor is the simpler first migration; Fable also needs coordinator/subscriptio
 watch parity and a single-owner handoff. The tradeoff is a shared runner failure
 domain and loss of desktop conveniences; external Warp and human-readable Health
 must expose service/runner failure. This planning decision does not itself perform or grant an unsupported route mutation. The current-route column is historical input to retire; the target column is
-what this test requires. A supported conversion preserves identity, permissions,
+what this test requires. Fable23529 inspected installed420: `seat-add` refuses
+an existing manual invitation; operator provisioning can create a native thread
+before rejecting an incompatible existing pin. Neither is an established safe
+conversion. Warp must name the concrete supported transition/retirement path
+for both actors before provisioning;1213/1216 do not perform that migration.
+A supported conversion preserves identity, permissions,
 unread work, private-message boundaries and original operations. No double route
 or coordinator may remain. Lock the chosen architecture before the physical test.
 
@@ -145,6 +154,16 @@ source and attach durable evidence/checkpoints to the existing work; a pointer
 to a disappearing scratch worktree is insufficient. Record reconstructible
 branch/head and exact evidence identities. Recreate temporary worktrees/fixtures
 from those records after boot; never depend on an old PID or shell variable.
+
+Fable's execution bundle must contain a purge/preserve manifest: each immutable
+source, raw-artifact set and original owner-outbox request/receipt bytes; its
+verified durable destination outside the agreed purge, or the actual raw bytes
+preserved as durable Theseus attachments; and its reconstruction/read path.
+A source branch plus a summary of paths/hashes cannot reconstruct deleted raw
+responses. Page5 owns preserving1215's17-invocation raw set at
+`~/.local/share/theseus/page-lane5/evidence/native-rail-proof-intake-418-23347`;
+Fable owns verifying that location or its durable replacement survives the purge
+(Page5 23540). Do not erase it merely because its directory looks like scratch.
 
 Disable or set aside every auto-loaded personal/project memory store before new
 sessions open: Claude's memory index, Fable's private STATE/MODEL files, and any
@@ -206,8 +225,8 @@ before launch:
 > binding or unreadable-role refusal through the unchanged working channel.
 > Idle hosted waiting means end the turn and let the runner wake you.
 
-Correct prompting requires 1216's repository-role assembly and the reviewed seat
-files, with trusted binding/permission instructions retained. Fable 23434 found
+Correct prompting requires 1216's repository-role assembly and valid reviewed
+regular seat files for all eleven actors, with trusted binding/permission instructions retained. Fable 23434 found
 stale input across all six hosted seats; managed roles come from durable
 `seat.role` and operator lanes from their configured instruction files. Core7's
 1213 pointer alone does not fix those conflicts. Core8 owns the separate source
@@ -218,8 +237,11 @@ and serialized startup bytes, not merely a promise that the file exists.
 Record launch-time CLI root/runtime source, actual serialized kickoff, expected
 seat-file path/commit/hash, and the path/revision/hash actually read. If the live
 repository advances or bytes differ, reconcile that mismatch before counting a
-correctly prompted agent. Missing/unreadable selected bytes produce a diagnosis,
-not an invented role or alternate checkout.
+correctly prompted agent. Missing, nonregular or unreadable selected bytes remain a failed/unverified
+prompt dimension. Record the actual serialized legacy-or-repository-role branch
+and actual read outcome described above; do not invent a role or search another
+checkout. File-selection/wire tests establish neither a real model read nor its
+correct first action.
 
 The fresh actor reads delivered sources at their latest revisions, distinguishes
 direct requests from subscriptions, keeps whispers private, and observes the
@@ -274,12 +296,15 @@ waiting follows the trusted runner instructions, not an inherited watch/goal loo
    service at the recorded live release, verifies bound reachability and records
    new service identity/start time. Warp 23440 reports no automatic service or
    runner startup on this Mac; this step cannot assume launch agents exist.
-   Warp's proposed durable entry (branch `warp/seat-file-reboot`, `cfdf6102`)
+   The frozen combined1218 entry (PR509, branch
+   `warp/seat-files-reboot-420`, `0e665717fadebaaca8d0c8cf2640e2dee05728b6`)
    names `~/.local/share/theseus/warp/land/start-server.py`,
    `start-runner-with.py --seat-template core-lane7`, then
-   `normalize-runner.py --check` expecting `VISIBLE`. These helpers/configs
-   must pass the persistence/dependency audit and cold-stop drill; the next
-   step's dispatch-order question must close before using runner startup.
+   `normalize-runner.py` and `normalize-runner.py --check` expecting `VISIBLE`.
+   It obtains Tony's requests/receipts with the runner stopped before starting
+   it, as step6 requires. This supersedes `cfdf6102`, which started too early
+   (Page6 23523, Warp23524). Pin the installed carry/descendant and verify its
+   actual seat-file bytes, durable helper dependencies and cold-stop invocation.
 6. **Tony admits refresh before the runner starts.** Fresh Warp posts the
    exact owner-bound command for all eight hosted actors, ready for Tony to
    paste. Tony submits it once and relays the saved result; neither Warp nor
@@ -321,7 +346,17 @@ not proof of publication. Its freeze-only hold was applied at `2026-11-24T13:19:
 23422). It overlaps active proof and is not all idle labor. Preserve inspection
 `12:51:24.239312`, construction `13:05:24.824831`, machine Build and original
 PUSH `14:05` / HANDOFF `14:20` / LIVE `14:40`; record hold release and revised
-forecasts separately. A newly reached product failure is not waived for the boot.
+forecasts separately. Page5's tested handoff23517 / PR510 is
+`9d490749f1c2cd0d559206d8a1d46573d5b5e380` on420. All eight new native
+cases/68 named checks pass per side,104 inherited rail checks pass, and eight
+old Delete-selector failures retain equal diagnostics and blocked later bodies.
+All17 entered invocations have cleanup evidence; no producer remains. Fresh
+Fable's useful remaining action is releasing the same hold/freeze, followed by
+fresh Warp's required source/test read, current-live reconciliation and
+publication, not an abandoned-producer recovery or a rerun to show activity.
+Machine `clock.first_push` remains null in Page5's23540 read despite the sourced
+push receipt; the supported owner must record it from that receipt. A newly
+reached product failure is not waived for the boot.
 
 ## Shipping and prediction acceptance
 
@@ -329,7 +364,8 @@ The aim is reliable Fast lane shipping from durable knowledge. Starting threads
 is a readiness observation; one landing is initial recovery evidence, not a
 claim of sustained low prediction error.
 
-Warp23514 adopts a second reported result, **not a shipping gate**: take the
+Current fast-lane rule4 / Notebook40 adopts Warp23514's second reported result,
+**not a shipping gate**: take the
 first five pieces that land after reboot, whatever their work type. Report all
 five live within45 minutes of the first one's Build, and at least four within15
 minutes of their lane's first LIVE prediction. A miss is reported, not a stop.
@@ -340,7 +376,10 @@ the earlier proposed next-five-product/per-piece45-minute interpretation.
 Keep each original Build and first prediction, including continued pre-boot
 work such as1215. Its deliberate hold must not be erased by a fresh Build clock;
 if that first piece's original Build predates reboot, the45-minute interval
-includes that time and may already miss. Show that fact and the hold separately,
+includes that time. For the selected1215 first landing, original Build
+`1795554473213` is13:07:53.213 Pacific; its45-minute deadline is13:52:53.213.
+A15:15 reboot necessarily misses that condition, before publication. This is
+a reported miss, not a reason to stop shipping (Page5 23540, Fable23521). Show that fact and the hold separately,
 rather than reinterpret “first one's Build” silently. Fable/Auditor reconcile the
 recorded numeric result against the original canonical clocks.
 
@@ -378,7 +417,7 @@ observed live behavior; a self-report cannot supply missing execution telemetry.
 | Runtime protocol | Exact candidate and installed runner source; positive managed-seat **and** operator-lane refresh through activation and delivery. Reach valid setup before testing Stop/nonowner refusal. Retain ordinary same-pin restart control and inherited 1104/binding coverage. |
 | Concurrency and interruption | Duplicate actors, overlapping `[A,B]`/`[B,C]`, automatic uncertain intent racing manual, zero-pending request followed by delivery, open turn, Stop/control/pin races, lost create/persist/activate responses and late callbacks. No second create. |
 | Prompt and first read | Actual kickoff, expected file and actually read path/revision/hash; observed first command under that actor's protocol. Unsupported first-command telemetry is **unverified**, even if the later post says “I ran inbox.” Fable names the available supported trace before execution or states the narrower conclusion. |
-| Durable recovery | New thread's warranted action and source revision; one positive unfinished-work case. A focused synthetic lost-write-plus-source-correction case reconciles the committed original operation, reads the correction, answers only what remains owed in the same stack and ACKs only handled deliveries. A harmless idle delivery alone proves neither lost-write nor unfinished-work recovery. |
+| Durable recovery | New thread's warranted action and source revision; one positive unfinished-work case. A focused synthetic lost-write-plus-source-correction case, still owed and not covered by1213's17 own cases, reconciles the committed original operation, reads the correction, answers only what remains owed in the same stack and ACKs only handled deliveries. A harmless idle delivery alone proves neither lost-write nor unfinished-work recovery. |
 | Invocation and cleanup | Direct invocation result and owned child cleanup/absence; distinguish setup death, assertion reachability and invocation completion. No producer receipt inferred from a recovery post. |
 | Landing and time | Fresh agent's causal act, approved landing source and full publication receipts, fixed cohort and all request/activation/action/publication timestamps. |
 
@@ -397,12 +436,24 @@ is actor-owned and Fable cannot read it, Tony performs the supported read and
 relays the receipt. Coordinator status is not a grant. No private database read
 substitutes for the supported surface.
 
-For a partial batch, reconcile the original operation rather than submitting a
-new batch. If A committed its pin but lost adoption/response, adopt its recorded
-destination. If B has a created ID with uncertain persistence, continue only its
-permitted phase under the same intent and recorded ID. If C has opaque creation,
-leave it explicitly unresolved; no second `thread/start`. Do not resubmit A or
-omit C. A late callback after Stop/Continue or a newer intent may update only its
+Through Tony's unchanged bound invocation, `reconcile ORIGINAL_OPERATION` reads
+the saved original result without sending. `retry ORIGINAL_OPERATION` reconciles
+and sends only an actually unknown saved original request unchanged. Retain
+the durable owner outbox request bytes and ID, including actor order/payload;
+missing bytes are a gap, not authority to recapture a new batch under that ID.
+`seat-refresh building-theseus ACTOR [ACTOR ...] --status` reads latest actor
+intent/receipt, not the historical batch result. Prefix `--json` for structured
+intent/trigger ID, old/new destination, execution/config fingerprint, phase and
+`committed_ms`. A coalesced actor can retain the first trigger while the second
+immutable batch result maps to that same intent (Core7 23526).
+
+For a partial batch, the **guarded runner**, not a human force-phase command,
+adopts A's committed recorded destination and continues B's permitted known-ID
+phase under the same intent. Status readers observe ready/creating/uncertain/
+created/prepared/committed/cancelled; real pending work lets the runner continue.
+C's opaque creation remains explicitly unresolved; no second `thread/start`,
+new batch or omission of C. Core `committed_ms`, native adoption time and first
+agent action are distinct observations. A late callback after Stop/Continue or a newer intent may update only its
 old journal, never the newer intent/pin. Stop, owner-control and binding guards
 win; retain their exact refusal and use the unchanged working channel.
 
@@ -434,7 +485,9 @@ adopts all-agent/service/runner scope and repository-only cold startup. Fable
 23434 identifies Team's external chat and all-six role conflicts; Warp 23437
 identifies designer and the role-source follow-up. Core7 23439 selects separate
 1216; Fable 23441 assigns it. Current inspected live is 419 / `ce13ce60`; runtime
-work is not claimed deployed. Execution reads current policy afresh.
+work is not claimed deployed. That419 statement is the historical source
+snapshot; the later independently observed live is420 / `1e6c6d78`. Execution
+reads current policy afresh (currently rule4 / Notebook40).
 
 All eight requested reviewers read draft `3d27c16fe8da77c8b33360b839289ba578cc393f`.
 Their findings are reconciled in the log; the material whole-system revision
