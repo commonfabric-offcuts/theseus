@@ -169,8 +169,11 @@ Warp22665 defines two per-piece measures:
    4-of-5 target its piece remains in the eligible denominator and is not an
    on-time success; report estimate coverage alongside the rate.
 
-The daily view reports the day's median and worst observed duration/error,
-completed piece count, cohort/window and missing-estimate count. Compare like
+The daily view reports each piece's observed duration/error and names the worst
+piece, with completed count, cohort/window and missing-estimate count. Keep the
+per-piece values in Tony's report. The plan's daily-median clause is disputed in
+Fable22696 against Tony's standing instruction; Warp resolves that presentation
+choice without delaying any of these deliveries. Compare like
 piece classes; database judged work is not silently pooled with small pages.
 An on-time rate without estimate coverage invites missing-forecast gaming; an
 on-time rate without cycle time invites padded deadlines. Show both measures.
