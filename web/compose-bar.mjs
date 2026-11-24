@@ -62,6 +62,14 @@ function trackKeyboard(win, doc) {
   if (!vv || !doc) return;
   const root = doc.documentElement;
   let full = 0, width = 0, last = vv.height, lastTop = vv.offsetTop, reduced = false, frame = null;
+  let scrollingField = null;
+  // A finger or wheel scroll owns an inline reply's page until the person
+  // focuses or types in the writing again; viewport pan signals may follow it.
+  const personScroll = () => {
+    const field = doc.activeElement;
+    if (win.matchMedia(PHONE).matches && field?.matches?.(TYPING) && !field.readOnly &&
+        field.closest?.('#reader[data-card-reply], .card-reply-composer')) scrollingField = field;
+  };
   const settle = () => {
     if (frame !== null) return;
     // CSS uses the new viewport first; the existing width/height fitter gets
@@ -69,12 +77,13 @@ function trackKeyboard(win, doc) {
     frame = win.requestAnimationFrame(() => {
       frame = win.requestAnimationFrame(() => {
         frame = null;
-        if (reduced && win.matchMedia(PHONE).matches) revealWriting(doc.activeElement, win);
+        if (reduced && scrollingField !== doc.activeElement && win.matchMedia(PHONE).matches) revealWriting(doc.activeElement, win);
       });
     });
   };
   const read = event => {
     const field = doc.activeElement, typing = field?.matches?.(TYPING) && !field.readOnly;
+    if (event?.type === 'focusin' || event?.type === 'input' && event.target === field) scrollingField = null;
     const widthChanged = vv.width !== width, changed = widthChanged || vv.height !== last || vv.offsetTop !== lastTop;
     if (widthChanged) { width = vv.width; full = vv.height; reduced = false; }
     if (vv.height > full) full = vv.height;
@@ -86,11 +95,13 @@ function trackKeyboard(win, doc) {
     // Normal opening still reveals the card. Keyboard settling waits for a
     // changed phone viewport; ordinary page scrolling does not pull it back.
     if (typing && event?.type === 'focusin') revealCardReply(field, win);
-    if (typing && reduced && win.matchMedia(PHONE).matches && (changed || event?.type === 'focusin' || event?.type === 'input' && event.target === field)) settle();
+    if (typing && reduced && scrollingField !== field && win.matchMedia(PHONE).matches && (changed || event?.type === 'focusin' || event?.type === 'input' && event.target === field)) settle();
     last = vv.height; lastTop = vv.offsetTop;
   };
   vv.addEventListener('resize', read);
   vv.addEventListener('scroll', read);
+  doc.addEventListener('touchmove', personScroll, { capture: true, passive: true });
+  doc.addEventListener('wheel', personScroll, { capture: true, passive: true });
   doc.addEventListener('focusin', read);
   doc.addEventListener('focusout', read);
   doc.addEventListener('input', read);
