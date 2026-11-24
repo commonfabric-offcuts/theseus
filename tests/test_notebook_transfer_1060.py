@@ -331,6 +331,10 @@ class TransferCase(ReaderCase):
     def test_reinstall_keeps_existing_paired_revisions_witnesses_and_lossy_down_refusal(self):
         self.committed(self.memory(body=WORDS))
         self.committed(self.transfer("copy", op="before-reinstall"))
+        # Exercise the retained 1060 layout at its own successor. A real
+        # downgrade first proves later empty features can be removed; no
+        # populated record or guard is bypassed to forge a lower marker.
+        migrate(self.path, "test-instance", self.binding, TRANSFER_STEP[1])
         before = self.effects()
         witnesses = self.sql("SELECT * FROM memory_transfer_acts ORDER BY rowid")
         schema = self.sql("SELECT name,sql FROM sqlite_master WHERE name LIKE '%memory%' ORDER BY name")
@@ -339,7 +343,7 @@ class TransferCase(ReaderCase):
             # migration fixtures leave beside their lower schema marker.
             with sqlite3.connect(str(self.path)) as db:
                 db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (TRANSFER_STEP[0],))
-            migrate(self.path, "test-instance", self.binding, STEPS[-1][1])
+            migrate(self.path, "test-instance", self.binding, TRANSFER_STEP[1])
             self.assertEqual(self.effects(), before)
             self.assertEqual(self.sql("SELECT * FROM memory_transfer_acts ORDER BY rowid"), witnesses)
             self.assertEqual(self.sql("SELECT name,sql FROM sqlite_master WHERE name LIKE '%memory%' ORDER BY name"), schema)
@@ -354,6 +358,7 @@ class TransferCase(ReaderCase):
                 db.execute("UPDATE memory_transfer_acts SET id='changed'")
             with self.assertRaises(sqlite3.IntegrityError):
                 db.execute("UPDATE memory_revisions SET body='changed'")
+        migrate(self.path, "test-instance", self.binding, STEPS[-1][1])
         self.committed(self.inverse("before-reinstall", copy_revision=1, op="after-reinstall"))
         self.assertEqual(self.page()["body"], WORDS)
 

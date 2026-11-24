@@ -1839,7 +1839,7 @@ def current_legacy_rows(path):
                   "ask_cover_links", "message_withdrawals", "refresh_requests", "question_closures",
                   "answer_receipts", "message_removals", "message_first_exposures", "message_quote_sources",
                   "outcome_color_choices", "pipeline_piece_freezes", "rail_dimming",
-                  "hosted_seats", "hosted_seat_events", "workspace_links", "memory_transfer_acts"):
+                  "hosted_seats", "hosted_seat_events", "workspace_links", "memory_transfer_acts", "browser_jobs"):
         assert rows.pop(table) == [], "no post-48 act in this fixture: " + table
     with sqlite3.connect(str(path)) as db:
         release_items = db.execute("SELECT number,items FROM releases").fetchall()
@@ -1848,6 +1848,9 @@ def current_legacy_rows(path):
         "every old release/item has its exact derived source-cover link"
     maximum = max((row[0] for row in rows["messages"]), default=0)
     assert rows.pop("message_removal_horizon") == [(maximum,)], "removal backfill retains the last old message"
+    for row in rows["deliveries"]:
+        assert row[-1] is None, "old deliveries are not browser jobs"
+    rows["deliveries"] = [row[:-1] for row in rows["deliveries"]]
     for row in rows["deliveries"]:
         assert row[-3:] == (None, None, None), "old deliveries are not requests, answers or retractions"
     rows["deliveries"] = [row[:-3] for row in rows["deliveries"]]
