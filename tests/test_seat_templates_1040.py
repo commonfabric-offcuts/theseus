@@ -243,8 +243,8 @@ class TemplateAcquisition(unittest.TestCase):
         from aim_next import store as storage
         statements = []
         original = storage._connect
-        def connect(path):
-            db, facts = original(path)
+        def connect(path, *args, **kwargs):
+            db, facts = original(path, *args, **kwargs)
             db.set_trace_callback(lambda sql: statements.append((self.clock.elapsed, sql)))
             return db, facts
         with mock.patch.object(storage, '_connect', connect):

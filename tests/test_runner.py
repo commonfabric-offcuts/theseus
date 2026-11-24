@@ -315,12 +315,12 @@ class RunnerCase(DeliveryCase):
                 with sqlite3.connect(str(replacement)) as db:
                     db.execute("UPDATE runner_state SET state='paused',reason_code='operator_pause'")
                 swapped = []
-                def swapping_connect(path):
+                def swapping_connect(path, *args, **kwargs):
                     if not swapped:
                         self.path.rename(original)
                         replacement.rename(self.path)
                         swapped.append(True)
-                    return connect(path)
+                    return connect(path, *args, **kwargs)
                 try:
                     with mock.patch.object(store_module, "_connect", swapping_connect):
                         with self.assertRaises(StoreError) as caught:

@@ -308,6 +308,22 @@ class UploadInput:
         return data
 
 
+class BusyAnswers:
+    """Bounded per-second buckets for this process's preceding minute."""
+    def __init__(self, clock=time.monotonic):
+        self.clock = clock
+        self.lock = threading.Lock()
+        self.seconds = {}
+
+    def count(self, *, add=False):
+        with self.lock:
+            now = int(self.clock())
+            self.seconds = {second: count for second, count in self.seconds.items() if now - 60 < second <= now}
+            if add:
+                self.seconds[now] = self.seconds.get(now, 0) + 1
+            return sum(self.seconds.values())
+
+
 class AIMHTTPServer(ThreadingHTTPServer):
     request_queue_size = 128
     live_feed = None
@@ -454,6 +470,8 @@ class Handler(BaseHTTPRequestHandler):
     def _json_response(self, status: int, value: Any):
         body = json.dumps(value, ensure_ascii=False, allow_nan=False,
                           separators=(",", ":")).encode("utf-8")
+        if isinstance(value, dict) and isinstance(value.get("error"), dict) and value["error"].get("code") == "DATABASE_BUSY":
+            self.server.busy_answers.count(add=True)
         self._send(status, body, "application/json; charset=utf-8")
 
     def _error(self, status: int, code: str, message: str):
@@ -651,7 +669,8 @@ class Handler(BaseHTTPRequestHandler):
             if value["name"] == "health" and isinstance(result, dict) and "error" not in result:
                 # The one line Core cannot know: this server, which answered the read.
                 result = dict(result, server={"started_ms": self.server.started_ms, "pid": os.getpid(),
-                                              "live_feed": self.server.live_feed is not None})
+                                              "live_feed": self.server.live_feed is not None,
+                                              "database_busy_last_minute": self.server.busy_answers.count()})
         self._json_response(200, result)
 
     def _upload_framing(self):
@@ -1073,6 +1092,7 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
         raise ValueError("Positive request bounds are required")
     server = AIMHTTPServer((host, port), Handler)
     server.started_ms = int(time.time() * 1000)
+    server.busy_answers = BusyAnswers()
     server.store_factory = store_factory
     server.instance_id = instance_id
     server.actor = actor

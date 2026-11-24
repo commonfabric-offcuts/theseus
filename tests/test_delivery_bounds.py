@@ -19,8 +19,8 @@ def measured(operation):
     runs = [0]
     connect = store_module._connect
 
-    def instrumented(path):
-        db, runtime = connect(path)
+    def instrumented(path, *args, **kwargs):
+        db, runtime = connect(path, *args, **kwargs)
         def step():
             counts["vm_steps"] += 1
             if counts["statements"] and counts["statements"][-1].startswith("SELECT id FROM delivery_groups"):

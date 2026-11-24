@@ -79,7 +79,7 @@ class HostedRecovery:
         # This is entered by the actual selected CLI/transport, not a command
         # string event. It has no runner privilege and never acknowledges work.
         with self._authority.shared() as fence:
-            db, _ = _connect(self.path)
+            db, _ = _connect(self.path, write=write)
             try:
                 db.execute('BEGIN')
                 fence.verify()

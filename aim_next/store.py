@@ -102,10 +102,22 @@ SCHEMA = [
 ]
 
 
-def _connect(path, busy_ms=250):
+READ_BUSY_MS = 250
+WRITE_BUSY_MS = 5000
+
+
+def _write_wait(db):
+    # A read may explicitly become a writer at the exposure boundary below.
+    db.execute("PRAGMA busy_timeout=%d" % WRITE_BUSY_MS)
+    if db.execute("PRAGMA busy_timeout").fetchone()[0] != WRITE_BUSY_MS:
+        raise StoreError("The selected write lock wait is not active")
+
+
+def _connect(path, busy_ms=READ_BUSY_MS, *, write=False):
     # Explicit rw prevents a typo from silently creating a second authority.
-    # busy_ms is how long a statement waits on another connection's lock; only
-    # the live feed, which reads off any request's path, asks for longer.
+    # Connection owners choose the wait. The live feed has its own read wait.
+    if write:
+        busy_ms = WRITE_BUSY_MS
     db = sqlite3.connect(Path(path).absolute().as_uri() + "?mode=rw", uri=True,
                          isolation_level=None, timeout=busy_ms / 1000.0)
     try:
@@ -147,7 +159,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
         os.close(fd)
         binding, anchor = prepare_authority(authority_path, path, instance_id)
-        db, _ = _connect(path)
+        db, _ = _connect(path, write=True)
         try:
             db.execute("BEGIN IMMEDIATE")
             for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA + TOPIC_POSITION_SCHEMA + WRITER_SCHEMA + COVER_WAIT_SCHEMA + MEMORY_ACTION_SCHEMA + MOVE_SCHEMA + ASK_COVER_SCHEMA + DOSSIER_ORDER_SCHEMA + WITHDRAWAL_SCHEMA + REQUEST_UP + QUESTION_SCHEMA + ANSWER_UP + REMOVAL_UP + OUTCOME_COLOR_SCHEMA + FREEZE_SCHEMA + SOURCE_COVER_SCHEMA + DIM_SCHEMA + SEAT_SCHEMA + END_SCHEMA + LINK_SCHEMA + ACT_LEVEL + TEMPLATE_SCHEMA + MEMORY_TRANSFER_SCHEMA:
@@ -313,7 +325,7 @@ class Store(HostedRecovery, WorkspaceLinks, MentionReach, RailDimming, Onboardin
     def _operator_write(self, write, done, noun):
         """Run write(db) in one short write transaction; it returns whether it changed anything."""
         with self._authority.shared() as fence:
-            db, _ = _connect(self.path)
+            db, _ = _connect(self.path, write=True)
             try:
                 db.execute("BEGIN IMMEDIATE")
                 fence.verify()
@@ -415,7 +427,7 @@ class Store(HostedRecovery, WorkspaceLinks, MentionReach, RailDimming, Onboardin
             fingerprint = hashlib.sha256(_json(envelope).encode("utf-8")).hexdigest()
             fence = self._authority.shared()
             fence.__enter__()
-            db, _ = _connect(self.path)
+            db, _ = _connect(self.path, write=True)
             # All command checks, including the deduplication lookup, share the
             # write transaction. Python's implicit DML BEGIN is insufficient.
             db.execute("BEGIN" if preflight is not None else "BEGIN IMMEDIATE")
@@ -571,6 +583,7 @@ class Store(HostedRecovery, WorkspaceLinks, MentionReach, RailDimming, Onboardin
         db.rollback()
         if between is not None:
             between()
+        _write_wait(db)
         db.execute("BEGIN IMMEDIATE")
         fence.verify()
         self._check_instance(db)

@@ -30,12 +30,12 @@ class AuthorityReviewCase(fixture.AuthorityCase):
                 shutil.copy2(self.path, replacement)
                 before = self.path.read_bytes()
                 swapped = []
-                def swapped_connect(path):
+                def swapped_connect(path, *args, **kwargs):
                     if not swapped:
                         os.replace(str(self.path), str(original))
                         os.replace(str(replacement), str(self.path))
                         swapped.append(True)
-                    return original_connect(path)
+                    return original_connect(path, *args, **kwargs)
                 try:
                     with mock.patch.object(store_module, "_connect", swapped_connect):
                         if surface == "constructor":
@@ -63,11 +63,11 @@ class AuthorityReviewCase(fixture.AuthorityCase):
         shutil.copy2(self.path, replacement)
         before = self.path.read_bytes()
         connect = store_module._connect
-        def aba_connect(path):
+        def aba_connect(path, *args, **kwargs):
             os.replace(str(self.path), str(original))
             os.replace(str(replacement), str(self.path))
             try:
-                connection = connect(path)
+                connection = connect(path, *args, **kwargs)
             finally:
                 os.replace(str(self.path), str(replacement))
                 os.replace(str(original), str(self.path))
