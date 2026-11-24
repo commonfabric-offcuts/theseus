@@ -22,20 +22,12 @@ from aim_next.profile import load_profile, write_profile
 from aim_next.store import SCHEMA_VERSION, Store, StoreOpenError
 from aim_next.validation import _command_envelope
 import test_store as fixtures
+from tests.historical_fixture import post_fields, restore_frozen_layout
 
 
 def migrate(path, instance, binding, target=None):
-    """Historical-step fixtures explicitly discard 731 positions before testing older downgrade rules.
-
-    The real 49 downgrade refusal and preserved ordering are checked, without
-    this fixture preparation, in test_dossier_order.py. No product gate is bypassed.
-    """
-    result = migrate_store(path, instance, binding, target)
-    if result['schema_version'] == '49':
-        with sqlite3.connect(str(path)) as db:
-            if db.execute("SELECT 1 FROM dossier_order LIMIT 1").fetchone():
-                db.execute("DELETE FROM dossier_order")
-    return result
+    """Use the real migration without removing occupied records or bypassing guards."""
+    return migrate_store(path, instance, binding, target)
 
 
 SCHEMA_8 = (Path(__file__).parent / "fixtures" / "schema_8.sql").read_text().splitlines()
@@ -188,341 +180,8 @@ SCHEMA_48 = (Path(__file__).parent / "fixtures" / "schema_48.sql").read_text().s
 
 
 def step_back_by_hand(path, version):
-    """Recover an older stored layout from a fresh instance with plain SQL, independent of migrations.py.
-
-    "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
-    with sqlite3.connect(str(path)) as db:
-        # Schema 52's move trigger names message columns absent before 48.
-        # Restore the independently frozen historical invariant before any
-        # column is removed; messages stay immutable throughout the fixture.
-        db.execute("DROP TRIGGER immutable_messages_update")
-        db.execute(next(sql.rstrip(";") for sql in SCHEMA_48
-                        if sql.startswith("CREATE TRIGGER immutable_messages_update ")))
-        # The later ask-cover index also names private_to; none of these
-        # independently frozen layouts contains that index.
-        db.execute("DROP INDEX public_actor_writing")
-        db.execute("DROP TABLE IF EXISTS workspace_links")  # Empty 1021 collection is absent from historical layouts.
-        # 1002's tables are empty here and absent from every frozen historical
-        # layout. Its real upgrade and occupied downgrade have separate checks.
-        db.execute("DROP TABLE hosted_seat_events")
-        db.execute("DROP TABLE hosted_seats")
-        # 987's append-only freeze table is absent from every historical layout
-        # this fixture reconstructs (48 and earlier). Its real 60<->61 migration
-        # and occupied-table refusal are exercised in test_gauntlet_987.py.
-        db.execute("DROP TABLE pipeline_piece_freezes")
-        db.execute("DROP TABLE dossier_order")
-        if version == "48":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Item 738 adds the 48th step. Recover 47's act constraint using the
-        # independently frozen schema-46 definition (unchanged in 47), retaining
-        # every old act and its next ID. No production migration is called here.
-        db.execute("DROP TABLE cover_writers")
-        sequence = db.execute("SELECT seq FROM sqlite_sequence WHERE name='message_acts'").fetchone()
-        db.execute("CREATE TEMP TABLE kept_refresh_acts AS SELECT * FROM message_acts")
-        db.execute("DROP TABLE message_acts")
-        db.execute(next(sql for sql in SCHEMA_46 if sql.startswith("CREATE TABLE message_acts ")))
-        db.execute("INSERT INTO message_acts SELECT * FROM kept_refresh_acts")
-        db.execute("DROP TABLE kept_refresh_acts")
-        db.execute("DELETE FROM sqlite_sequence WHERE name='message_acts'")
-        if sequence:
-            db.execute("INSERT INTO sqlite_sequence(name,seq) VALUES ('message_acts',?)", sequence)
-        for statement in SCHEMA_46:
-            if statement.startswith("CREATE INDEX ") and " ON message_acts(" in statement:
-                db.execute(statement)
-        if version == "47":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 47 keeps derived stable topic positions, independently checked below.
-        db.execute("DROP TRIGGER topic_position_insert")
-        db.execute("DROP TABLE topic_position_clock")
-        db.execute("DROP INDEX workspace_topic_order")
-        db.execute("ALTER TABLE topics DROP COLUMN list_position")
-        db.execute("CREATE INDEX workspace_topic_order ON topics(workspace_id,archived,state='done',activity_ms DESC,id DESC)")
-        if version == "46":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The covers' version lets message_acts hold a dossier's cover, and finds the covers a message delivered the
-        # payload of: before it, the table names seven kinds.
-        db.execute("DROP TABLE message_acts")
-        for statement in ACTS_BEFORE_COVERS:
-            db.execute(statement)
-        if version == BEFORE_COVERS:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The ends' version keeps each outcome's ends: before it, every outcome is open.
-        db.execute("DROP TABLE outcome_ends")
-        if version == BEFORE_ENDS:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The tools' version keeps what is said about skills and tools: before it, nothing is.
-        for table in reversed(TOOL_TABLES):
-            db.execute("DROP TABLE " + table)
-        if version == BEFORE_TOOLS:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The invitations' version keeps who invited each agent into which outcome: before it, no one is known to have.
-        db.execute("DROP TABLE agent_invitations")
-        if version == BEFORE_INVITES:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The judgment's version keeps the hosted judgment attached to a release beside its record.
-        db.execute("DROP TABLE release_judgments")
-        if version == BEFORE_JUDGMENT:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The session's version keeps each message's edit session, what each agent was handed of a person's message,
-        # and the horizon: before it, none of them exists.
-        db.execute("DROP TABLE message_edit_sessions")
-        db.execute("DROP TABLE message_exposures")
-        db.execute("DROP TABLE message_edit_horizon")
-        if version == BEFORE_SESSION:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The edit's version keeps each message's later revisions and each delivery's revision: before it, a
-        # message is delivered to someone once.
-        db.execute("DROP TABLE message_revisions")
-        db.execute("CREATE TABLE kept AS SELECT seq,id,message_id,recipient_id,group_id,state,topic_id FROM deliveries")
-        db.execute("CREATE TABLE kept_sequence AS SELECT seq FROM sqlite_sequence WHERE name='deliveries'")
-        db.execute("DROP TABLE deliveries")
-        db.execute(DELIVERIES_BEFORE_EDIT)
-        db.execute("INSERT INTO deliveries SELECT * FROM kept")
-        db.execute("DELETE FROM sqlite_sequence WHERE name='deliveries'")
-        db.execute("INSERT INTO sqlite_sequence(name,seq) SELECT 'deliveries',seq FROM kept_sequence")
-        db.execute("DROP TABLE kept")
-        db.execute("DROP TABLE kept_sequence")
-        db.execute("CREATE INDEX recipient_deliveries ON deliveries(recipient_id,state,seq)")
-        db.execute("CREATE INDEX pending_group_deliveries ON deliveries(group_id,seq) WHERE state='pending'")
-        db.execute("CREATE INDEX pending_group_topic_deliveries ON deliveries(group_id,topic_id,seq) WHERE state='pending'")
-        db.execute("CREATE TRIGGER delivery_topic_required BEFORE INSERT ON deliveries WHEN NEW.topic_id IS NULL "
-                   "BEGIN SELECT RAISE(ABORT, 'a delivery names its topic'); END")
-        if version == BEFORE_EDIT:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The draft's version marks a Notebook revision a draft: before it, a revision has no mark.
-        db.execute("ALTER TABLE memory_revisions DROP COLUMN draft")
-        if version == BEFORE_DRAFT:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        db.execute("DROP INDEX IF EXISTS stack_replies")
-        # The fold's version lets message_acts hold a fold: before it, the table names five kinds.
-        db.execute("DROP TABLE message_acts")
-        db.execute(OLD_ACTS)
-        db.execute("CREATE INDEX topic_acts ON message_acts(topic_id,seq)")
-        db.execute("CREATE INDEX reader_stars ON message_acts(owner,kind,id)")
-        if version == BEFORE_FOLD:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The blocks' version keeps what an ask blocks.
-        db.execute("DROP TABLE message_blocks")
-        if version == BEFORE_BLOCKS:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The stacks' version keeps each star, short name, join, place and dealt-with mark.
-        db.execute("DROP TABLE message_acts")
-        if version == BEFORE_STACKS:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The order's version keeps each person's own order of their outcomes and topics.
-        db.execute("DROP TABLE outline_orders")
-        if version == BEFORE_ORDER:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The reactions' version keeps each thumbs-up and go-ahead answer, and
-        # whether a message asks for a go-ahead.
-        db.execute("ALTER TABLE messages DROP COLUMN go_ahead")
-        db.execute("DROP INDEX message_reaction_rows")
-        db.execute("DROP TABLE message_reactions")
-        if version == BEFORE_REACTIONS:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The Health page's version keeps each recipient's wake facts and its hosted turns
-        # still running, the runner's previous end, what Theseus last announced and its own member.
-        db.execute("DROP TABLE runner_prior")
-        db.execute("DROP TABLE wake_turns")
-        db.execute("DROP TABLE wake_facts")
-        db.execute("DELETE FROM metadata WHERE key IN ('health_announced','health_due')")
-        db.execute("DELETE FROM actors WHERE id='theseus'")
-        if version == BEFORE_HEALTH:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The settling step changes no layout and keeps every row.
-        if version == BEFORE_SETTLE:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The checks' version keeps each outcome's target, its checks, their runs and
-        # readings, the owner's allowances, the problems found, and each outcome's kind and Reached.
-        for table in ("outcome_reached", "outcome_kinds", "found_problems", "check_allowances", "check_readings", "check_runs",
-                      "outcome_checks", "outcome_target_revisions", "outcome_targets"):
-            db.execute("DROP TABLE " + table)
-        # It also keeps each outcome's pipeline facts and the topics the pipeline holds Done, lets a record overtaking
-        # a drop decide a piece's end again, and lets a record leave a stage on the owner's word; before it, a left entry
-        # kept everything and only the owner left such a stage.
-        db.execute("DROP TRIGGER entries_leave_by_the_owner")
-        db.execute("CREATE TRIGGER entries_leave_by_the_owner BEFORE UPDATE OF left_ms ON pipeline_stage_entries "
-                   "WHEN NEW.left_ms IS NOT NULL "
-                   "AND (SELECT json_extract(gate,'$.owner') FROM pipeline_stages WHERE workspace_id=OLD.workspace_id AND stage_id=OLD.stage_id) "
-                   "AND NEW.left_by IS NOT (SELECT owner_id FROM workspaces WHERE id=OLD.workspace_id) "
-                   "BEGIN SELECT RAISE(ABORT, 'STAGE_GATED'); END")
-        db.execute("DROP TABLE pipeline_done_topics")
-        db.execute("DROP TABLE pipeline_facts")
-        db.execute("DROP TRIGGER entries_keep_their_past")
-        db.execute("CREATE TRIGGER entries_keep_their_past BEFORE UPDATE ON pipeline_stage_entries "
-                   "WHEN OLD.left_ms IS NOT NULL OR NEW.seq IS NOT OLD.seq OR NEW.piece_id IS NOT OLD.piece_id OR NEW.stage_id IS NOT OLD.stage_id "
-                   "OR NEW.round IS NOT OLD.round OR NEW.size IS NOT OLD.size OR NEW.entered_ms IS NOT OLD.entered_ms OR NEW.entered_by IS NOT OLD.entered_by "
-                   "OR NEW.ask_message_id IS NOT OLD.ask_message_id BEGIN SELECT RAISE(ABORT, 'a stage entry keeps its past'); END")
-        if version == BEFORE_CHECKS:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # The pipeline's version keeps each outcome's pipeline, its stages, items,
-        # pieces and their entries, every event, message subjects and release notes.
-        for table in ("release_notes", "pipeline_events", "pipeline_item_sources", "message_subjects", "pipeline_stage_entries",
-                      "pipeline_piece_members", "pipeline_pieces", "pipeline_items", "pipeline_stages", "pipelines"):
-            db.execute("DROP TABLE " + table)
-        if version == BEFORE_PIPELINE:
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 28 gives each outcome its conversation. No outcome had one before, so the
-        # conversation each outcome starts with today goes, with every row about it.
-        conversations = [row[0] for row in db.execute("SELECT id FROM topics WHERE kind='conversation'")]
-        for table in [row[0] for row in db.execute("SELECT m.name FROM sqlite_master m JOIN pragma_table_info(m.name) c "
-                                                   "WHERE m.type='table' AND c.name='topic_id'")]:
-            db.executemany("DELETE FROM " + table + " WHERE topic_id=?", [(topic,) for topic in conversations])
-        db.executemany("DELETE FROM changes WHERE resource_id=? OR scope_id=?", [(topic, topic) for topic in conversations])
-        db.executemany("DELETE FROM topics WHERE id=?", [(topic,) for topic in conversations])
-        db.execute("DROP TABLE conversation_waits")
-        db.execute("DROP TABLE conversation_takes")
-        db.execute("DROP TABLE conversation_items")
-        db.execute("ALTER TABLE messages DROP COLUMN about_id")
-        db.execute("ALTER TABLE topics DROP COLUMN replaced_by")
-        db.execute("DROP INDEX outcome_conversation")
-        db.execute("ALTER TABLE topics DROP COLUMN kind")
-        if version == "27":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 27 lets a person whisper to one agent: who a message is private to,
-        # the index of each message's replies, and the trigger that keeps a whisper's shape.
-        db.execute("DROP TRIGGER whisper_shape")
-        db.execute("DROP INDEX message_reply_links")
-        db.execute("ALTER TABLE messages DROP COLUMN private_to")
-        # Version 26 counts a hosted turn as activity in its topic; the layout is version 25's.
-        if version in ("26", "25"):
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 25 indexes the pending deliveries by group and topic instead of
-        # by reader and topic, and refuses a delivery with no topic.
-        db.execute("DROP TRIGGER delivery_topic_required")
-        db.execute("DROP INDEX pending_group_topic_deliveries")
-        db.execute("CREATE INDEX pending_topic_deliveries ON deliveries(recipient_id,topic_id,seq) WHERE state='pending'")
-        if version == "24":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 24 keeps the latest message and turn by someone else beside each topic's latest.
-        db.execute("ALTER TABLE topic_turns DROP COLUMN other_by")
-        db.execute("ALTER TABLE topic_turns DROP COLUMN other_ms")
-        db.execute("ALTER TABLE topic_summaries DROP COLUMN other_message_id")
-        if version == "23":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 23 keeps a record of each release.
-        db.execute("DROP TABLE releases")
-        if version == "22":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 22 counts the wakes each recipient left unanswered, and keeps when the runner stopped.
-        db.execute("ALTER TABLE runner_state DROP COLUMN ended_ms")
-        db.execute("ALTER TABLE recipient_schedule DROP COLUMN named_seq")
-        db.execute("ALTER TABLE recipient_schedule DROP COLUMN unanswered_since_ms")
-        db.execute("ALTER TABLE recipient_schedule DROP COLUMN unanswered_wakes")
-        if version == "21":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 21 gives each participant's responsibility note a revision, and keeps the message each topic was started from.
-        db.execute("DROP INDEX topic_sources")
-        db.execute("ALTER TABLE topics DROP COLUMN source_message_id")
-        db.execute("ALTER TABLE topic_participants DROP COLUMN responsibility_revision")
-        if version == "20":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 20 keeps the revision of each Notebook page each person last read.
-        db.execute("DROP TABLE memory_reads")
-        if version == "19":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 19 keeps each topic's activity time and the message that reopened it.
-        # Its reopening lookup is absent before 19, while returns above keep it.
-        db.execute("DROP INDEX topic_reopen_message")
-        db.execute("DROP INDEX workspace_topic_order")
-        db.execute("CREATE INDEX workspace_listed_topics ON topics(workspace_id,archived,id)")
-        db.execute("ALTER TABLE topics DROP COLUMN state_message_id")
-        db.execute("ALTER TABLE topics DROP COLUMN activity_ms")
-        if version == "18":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 18 keeps each delivery's topic and indexes the pending ones by
-        # reader and topic, and drops the index of each message's replies that
-        # version 16 added (its reply horizons stay).
-        db.execute("DROP INDEX pending_topic_deliveries")
-        db.execute("ALTER TABLE deliveries DROP COLUMN topic_id")
-        db.execute("CREATE INDEX message_replies ON messages(reply_to,author_id) WHERE reply_to IS NOT NULL")
-        if version == "17":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 17 keeps the color each person chose for an agent.
-        db.execute("DROP TABLE color_choices")
-        if version == "16":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 16 keeps each reader's reply horizon and indexes each message's replies.
-        db.execute("DROP TABLE reply_horizons")
-        db.execute("DROP INDEX message_replies")
-        if version == "15":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 15 keeps the latest hosted turn in each topic.
-        db.execute("DROP TABLE hosted_turn_topics")
-        db.execute("DROP TABLE topic_turns")
-        if version == "14":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 14 records whether a message to someone asks or tells, and what waits on whoever it asks.
-        db.execute("ALTER TABLE topic_waiting DROP COLUMN ask_message_id")
-        db.execute("ALTER TABLE topic_waiting DROP COLUMN said")
-        db.execute("ALTER TABLE messages DROP COLUMN intent")
-        if version == "13":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 13 adds the messages each person marked unread.
-        db.execute("DROP TABLE message_marks")
-        if version == "12":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
-        # Version 12 orders what waits on each reader; the earlier form of its step,
-        # which also stamped 12, did not.
-        db.execute("DROP INDEX reader_waiting")
-        db.execute("CREATE INDEX actor_waiting ON topic_waiting(actor_id,topic_id)")
-        db.execute("ALTER TABLE topic_waiting DROP COLUMN archived")
-        db.execute("ALTER TABLE topic_waiting DROP COLUMN state_ms")
-        if version != "12-early":
-            # Version 12 adds when each message was sent.
-            db.execute("ALTER TABLE messages DROP COLUMN sent_ms")
-        if version in ("8", "9", "10"):
-            # Version 11 adds where each topic stands: its state, archive flag, note, and who it waits on.
-            db.execute("DROP TABLE topic_waiting")
-            db.execute("DROP INDEX workspace_listed_topics")
-            for column in ("state_ms", "state_by", "state_note", "archived", "state"):
-                db.execute("ALTER TABLE topics DROP COLUMN " + column)
-        if version in ("8", "9"):
-            # Version 10 adds the hosted turn records and handed_seq (on the schedule and on each attempt).
-            db.execute("DROP TABLE hosted_children")
-            db.execute("DROP TABLE hosted_turns")
-            db.execute("ALTER TABLE wake_attempts DROP COLUMN handed_seq")
-            db.execute("ALTER TABLE recipient_schedule DROP COLUMN handed_seq")
-        if version == "8":
-            # Version 9 only adds the openings table.
-            db.execute("DROP INDEX open_openings")
-            db.execute("DROP TABLE openings")
-        db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version.split("-")[0],))
+    """Reconstruct the declared frozen layout, preserving shared occupied columns."""
+    restore_frozen_layout(path, version, connect=sqlite3.connect)
 
 
 class MigrationCase(fixtures.StoreCase):
@@ -542,6 +201,7 @@ class MigrationCase(fixtures.StoreCase):
         self.create_topic()
         self.assertEqual(self.command("participation.set", {"actor_id": "agent-b", "present": True},
                                       {"topic_id": "t1"})["status"], "committed")
+        self.prepare_historical_records()
         # The exact stored layout of the older version, proven against its frozen DDL.
         step_back_by_hand(self.path, self.LAYOUT or self.VERSION)
         self.assertEqual(schema(self.path), frozen(self.FIXTURE))
@@ -571,8 +231,21 @@ class MigrationCase(fixtures.StoreCase):
     def unchanged(self):
         return self.path.read_bytes(), self.records()
 
+    def prepare_historical_records(self):
+        """Optional current command writers used before the declared historical fixture is frozen."""
+
     def upgrade(self):
         return migrate(self.path, "test-instance", self.binding)
+
+    def boundary_version(self):
+        """The real adjacent successor of this fixture's declared predecessor."""
+        return next(after for before, after, _, _, _ in migrations.STEPS if before == self.VERSION)
+
+    def upgrade_boundary(self):
+        # Physical down/up checks exercise this historical step, not every
+        # later feature's irreversible records. Full-head compatibility keeps
+        # using upgrade() and preserves the later records it creates.
+        return migrate(self.path, "test-instance", self.binding, self.boundary_version())
 
     def migrate_command(self):
         return self.admin("migrate", "--db", str(self.path), "--instance", "test-instance", "--binding", str(self.profile))
@@ -879,10 +552,10 @@ class MigrationCase(fixtures.StoreCase):
         self.assertEqual(self.migrate_command()[0], 0)
 
     def test_step_back_restores_version_8_while_no_opening_exists(self):
-        self.upgrade()
+        self.upgrade_boundary()
         upgraded, records = self.metadata(), self.records()
         result = migrate(self.path, "test-instance", self.binding, "8")
-        self.assertEqual(result, {"instance_id": "test-instance", "from_version": SCHEMA_VERSION, "schema_version": "8", "migrated": True})
+        self.assertEqual(result, {"instance_id": "test-instance", "from_version": self.boundary_version(), "schema_version": "8", "migrated": True})
         self.assertEqual(schema(self.path), frozen(SCHEMA_8))
         moved = self.metadata()
         self.assertEqual(moved["schema_version"], "8")
@@ -899,8 +572,20 @@ class MigrationCase(fixtures.StoreCase):
         before = self.unchanged()
         self.assertFalse(migrate(self.path, "test-instance", self.binding, "8")["migrated"])
         self.assertEqual(self.unchanged(), before)
-        self.assertTrue(self.upgrade()["migrated"])
+        self.assertTrue(self.upgrade_boundary()["migrated"])
         self.assertEqual(int(self.metadata()["commit_seq"]), int(moved["commit_seq"]) + 1)
+
+    def test_current_upgrade_keeps_populated_dossier_order_and_refuses_the_older_chain(self):
+        self.upgrade()
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+        self.assertGreater(self.sql("SELECT count(*) FROM dossier_order")[0][0], 0,
+                           "the real 48-to-49 backfill keeps the existing readers' order")
+        before = self.unchanged(), everything(self.path)
+        with self.assertRaises(MigrationError) as refused:
+            migrate(self.path, "test-instance", self.binding, "48")
+        self.assertEqual(refused.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual((self.unchanged(), everything(self.path)), before,
+                         "the refusal keeps every occupied row and the complete database unchanged")
 
     def test_step_back_refuses_while_any_opening_exists(self):
         self.upgrade()
@@ -922,7 +607,7 @@ class MigrationCase(fixtures.StoreCase):
                 self.assertEqual(self.unchanged(), before)
 
     def test_step_back_is_fenced_like_an_upgrade(self):
-        self.upgrade()
+        self.upgrade_boundary()
         before = self.unchanged()
         with Authority(self.path.resolve(), "test-instance", self.binding).runner_guard("runner"):
             with self.assertRaises(MigrationError) as raised:
@@ -1062,6 +747,17 @@ class Schema9Case(MigrationCase):
 
     VERSION, FIXTURE = "9", SCHEMA_9
 
+    def prepare_historical_records(self):
+        if self._testMethodName != "test_a_queue_route_pin_does_not_hold_the_step_back":
+            return
+        home = Path(self.temp.name) / "queue-home"
+        home.mkdir()
+        with self.store.runner_guard("provision") as guard:
+            receipt = self.store.provision_route_pin(guard, "agent-a", {
+                "kind": "codex-queue-stdio", "protocol_version": 1,
+                "codex_home": str(home.resolve()), "thread_id": HOSTED_THREAD})
+        self.assertEqual(receipt["status"], "provisioned", receipt)
+
     def hosted_pin(self, store, guard):
         home = Path(self.temp.name) / "codex-home"
         home.mkdir(exist_ok=True)
@@ -1108,9 +804,9 @@ class Schema9Case(MigrationCase):
         self.assertEqual(self.sql("SELECT mode,turn_id FROM hosted_turns"), [("start", "turn-1")])
 
     def test_step_back_to_9_restores_its_frozen_layout_while_nothing_is_hosted(self):
-        self.upgrade()
+        self.upgrade_boundary()
         upgraded, records = self.metadata(), self.records()
-        self.assertEqual(self.step_back(), {"instance_id": "test-instance", "from_version": SCHEMA_VERSION, "schema_version": "9", "migrated": True})
+        self.assertEqual(self.step_back(), {"instance_id": "test-instance", "from_version": self.boundary_version(), "schema_version": "9", "migrated": True})
         self.assertEqual(schema(self.path), frozen(SCHEMA_9))
         moved = self.metadata()
         self.assertEqual(int(moved["commit_seq"]), int(upgraded["commit_seq"]) + 1)
@@ -1122,7 +818,7 @@ class Schema9Case(MigrationCase):
         before = self.unchanged()
         self.assertFalse(self.step_back()["migrated"])
         self.assertEqual(self.unchanged(), before)
-        self.assertTrue(self.upgrade()["migrated"])
+        self.assertTrue(self.upgrade_boundary()["migrated"])
         self.assertEqual(self.sql("SELECT count(*) FROM hosted_turns"), [(0,)])
 
     def test_step_back_refuses_while_a_handed_seq_is_set(self):
@@ -1162,14 +858,13 @@ class Schema9Case(MigrationCase):
         self.refused()
 
     def test_a_queue_route_pin_does_not_hold_the_step_back(self):
-        self.upgrade()
-        store = Store(self.path, "test-instance", expected_binding=self.binding)
-        home = Path(self.temp.name) / "queue-home"
-        home.mkdir()
-        with store.runner_guard("provision") as guard:
-            store.provision_route_pin(guard, "agent-a", {"kind": "codex-queue-stdio", "protocol_version": 1,
-                                                          "codex_home": str(home.resolve()), "thread_id": HOSTED_THREAD})
+        pins = self.sql("SELECT key,value FROM metadata WHERE key LIKE 'route_pin.v1:%'")
+        self.assertTrue(pins, "the real queue-pin writer ran before the schema-9 fixture was frozen")
+        self.assertTrue(all(json.loads(value)["destination"]["kind"] == "codex-queue-stdio" for _, value in pins))
+        self.upgrade_boundary()
         self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(self.sql("SELECT key,value FROM metadata WHERE key LIKE 'route_pin.v1:%'"), pins,
+                         "the permitted historical downgrade keeps the queue pin unchanged")
 
     def test_a_step_back_never_runs_an_upgrade_step(self):
         # 9 -> 8 is one step back; it must not pass through 10 on the way.
@@ -1217,7 +912,7 @@ class Schema10Case(MigrationCase):
         self.assertEqual(self.update({"state": "waiting", "waiting_on": ["agent-b"], "note": "Needs a decision"})["status"], "committed")
 
     def test_step_back_to_10_restores_its_frozen_layout_while_no_topic_says_where_it_stands(self):
-        self.upgrade()
+        self.upgrade_boundary()
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_10))
@@ -1289,13 +984,13 @@ class Schema11Case(MigrationCase):
 
     def test_step_back_to_11_keeps_who_a_topic_waits_on(self):
         self.wait_at_11()
-        self.upgrade()
+        self.upgrade_boundary()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_11))
         self.assertEqual(self.sql("SELECT * FROM topic_waiting"), [("t1", "agent-b")])
 
     def test_step_back_to_11_restores_its_frozen_layout_while_no_message_has_a_time(self):
-        self.upgrade()
+        self.upgrade_boundary()
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_11))
@@ -1381,7 +1076,7 @@ class Schema12Case(MigrationCase):
         self.assertEqual(self.store.view("agent-b", "attention", {})["unread"], 1)
 
     def test_step_back_to_12_restores_its_frozen_layout_while_no_mark_exists(self):
-        self.upgrade()
+        self.upgrade_boundary()
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_12))
@@ -1430,7 +1125,7 @@ class Schema13Case(MigrationCase):
         self.assertEqual(self.sql("SELECT intent FROM messages ORDER BY seq DESC LIMIT 1"), [("ask",)])
 
     def test_step_back_to_13_restores_its_frozen_layout_while_no_message_says_ask_or_tell(self):
-        self.upgrade()
+        self.upgrade_boundary()
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_13))
@@ -1441,13 +1136,15 @@ class Schema13Case(MigrationCase):
         with sqlite3.connect(str(self.path)) as db:
             db.execute("UPDATE topics SET state='waiting',state_by='owner',state_ms=1234 WHERE id='t1'")
             db.execute("INSERT INTO topic_waiting(topic_id,actor_id,state_ms,archived) VALUES ('t1','agent-b',1234,0)")
-        self.upgrade()
+        self.upgrade_boundary()
         self.assertEqual(self.sql("SELECT topic_id,actor_id,said,ask_message_id FROM topic_waiting"), [("t1", "agent-b", 1, None)])
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(self.sql("SELECT * FROM topic_waiting"), [("t1", "agent-b", 1234, 0)])
+        # Current reads are a separate compatibility check after the historical round trip.
+        self.upgrade()
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         topic = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]
         self.assertEqual((topic["waiting_on"], topic["asks"]), (["agent-b"], []))
-        self.assertTrue(self.step_back()["migrated"])
-        self.assertEqual(self.sql("SELECT * FROM topic_waiting"), [("t1", "agent-b", 1234, 0)])
 
     def test_step_back_refuses_once_a_message_asks_or_tells(self):
         for intent in ("tell", "ask"):
@@ -1488,7 +1185,7 @@ class Schema14Case(MigrationCase):
         self.assertEqual((work["by"], work["how"]), ("owner", "posted"))
 
     def test_step_back_to_14_restores_its_frozen_layout_while_no_turn_is_recorded(self):
-        self.upgrade()
+        self.upgrade_boundary()
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_14))
@@ -1512,6 +1209,12 @@ class Schema15Case(MigrationCase):
 
     VERSION, FIXTURE = "15", SCHEMA_15
 
+    def prepare_historical_records(self):
+        if self._testMethodName == "test_step_back_to_15_restores_its_frozen_layout_even_with_replies":
+            self.boundary_parent = self.sql("SELECT id FROM messages ORDER BY seq LIMIT 1")[0][0]
+            self.boundary_reply = self.committed_post("agent-a", {
+                "body": "Answer a", "reply_to": self.boundary_parent}, "a")
+
     def step_back(self):
         return migrate(self.path, "test-instance", self.binding, "15")
 
@@ -1519,7 +1222,7 @@ class Schema15Case(MigrationCase):
         self.committed_post(actor, {"body": "Answer " + key, "reply_to": parent}, key)
 
     def committed_post(self, actor, args, key):
-        receipt = self.command("message.post", args, target={"topic_id": "t1"}, actor=actor, op="post-" + key)
+        receipt = self.command("message.post", post_fields(self, actor, args), target={"topic_id": "t1"}, actor=actor, op="post-" + key)
         self.assertEqual(receipt["status"], "committed", receipt)
         return receipt["result"]["message_id"]
 
@@ -1557,10 +1260,9 @@ class Schema15Case(MigrationCase):
         self.assertLess(answered, waiting)
 
     def test_step_back_to_15_restores_its_frozen_layout_even_with_replies(self):
-        self.upgrade()
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        opening = self.sql("SELECT id FROM messages ORDER BY seq LIMIT 1")[0][0]
-        self.reply("agent-a", opening, "a")
+        self.assertEqual(self.sql("SELECT reply_to FROM messages WHERE id=?", (self.boundary_reply,)),
+                         [(self.boundary_parent,)], "the actual fixture reply survives in schema15")
+        self.upgrade_boundary()
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_15))
@@ -1614,7 +1316,7 @@ class Schema16Case(MigrationCase):
                                       expected={"topic_revision": version}, actor="writer")["status"], "committed")
 
     def test_step_back_to_16_restores_its_frozen_layout_while_no_choice_exists(self):
-        self.upgrade()
+        self.upgrade_boundary()
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_16))
@@ -1639,6 +1341,35 @@ class Schema17Case(MigrationCase):
     """A schema-17 instance: version 18 places the New line by what each reader has read."""
 
     VERSION, FIXTURE = "17", SCHEMA_17
+
+    def prepare_historical_records(self):
+        if self._testMethodName == "test_step_back_to_17_restores_its_frozen_layout_and_works_out_the_horizons_again":
+            self.boundary_asked, self.boundary_answer = self.write_horizon_messages()
+
+    def write_horizon_messages(self):
+        def post(actor, key, **args):
+            receipt = self.command("message.post", post_fields(self, actor, dict(args, body=key)),
+                                   {"topic_id": "t1"}, actor=actor, op="post-" + key)
+            self.assertEqual(receipt["status"], "committed", receipt)
+            return receipt["result"]["message_id"]
+        asked = post("agent-a", "asked")
+        post("agent-a", "waiting")
+        answer = post("owner", "answer", reply_to=asked)
+        return asked, answer
+
+    def test_current_reply_writer_keeps_its_fold_and_downgrade_refuses_without_removing_it(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        asked, answer = self.write_horizon_messages()
+        self.assertEqual(self.sql("SELECT kind,message_id,owner FROM message_acts WHERE kind='fold'"),
+                         [("fold", asked, "owner")])
+        self.assertEqual(self.sql("SELECT reply_to FROM messages WHERE id=?", (answer,)), [(asked,)])
+        self.assertGreater(self.sql("SELECT count(*) FROM message_acts WHERE kind='cover'")[0][0], 0)
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as refused:
+            self.step_back()
+        self.assertEqual(refused.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
 
     def step_back(self):
         return migrate(self.path, "test-instance", self.binding, "17")
@@ -1665,21 +1396,14 @@ class Schema17Case(MigrationCase):
         self.assertEqual(answer["oldest_unread"], {"seq": opening[1], "id": opening[0], "sent_ms": opening[2]})
 
     def test_step_back_to_17_restores_its_frozen_layout_and_works_out_the_horizons_again(self):
-        # Horizons as version 17 kept them, after replies and posts to the whole topic.
-        self.upgrade()
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        def post(actor, key, **args):
-            receipt = self.command("message.post", dict(args, body=key), target={"topic_id": "t1"}, actor=actor, op="post-" + key)
-            self.assertEqual(receipt["status"], "committed", receipt)
-            return receipt["result"]["message_id"]
-        asked = post("agent-a", "asked")
-        post("agent-a", "waiting")
-        post("owner", "answer", reply_to=asked)
-        # The owner's reply folded the ask for them (item 377), an act no version before 35 holds, so the
-        # step back would refuse; this check is of the horizons, so the fold is taken out first, as an
-        # instance from before replies folded what they answer would never have had it.
-        self.assertEqual(self.sql("SELECT kind,message_id,owner FROM message_acts"), [("fold", asked, "owner")])
-        self.sql("DELETE FROM message_acts")
+        # The fixture writer ran before the exact17 layout was reconstructed.
+        # Recreate17's derived reply horizons before exercising the real18->17.
+        self.assertEqual(self.sql("SELECT reply_to FROM messages WHERE id=?", (self.boundary_answer,)), [(self.boundary_asked,)])
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("DELETE FROM reply_horizons")
+            for statement in conversation.UNANSWERED_BACKFILL:
+                db.execute(statement)
+        self.upgrade_boundary()
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_17))
@@ -1695,7 +1419,7 @@ class Schema17Case(MigrationCase):
         waiting = self.sql("SELECT seq FROM messages WHERE body='waiting'")[0][0]
         self.assertIn(("t1", "owner", waiting), stepped, "the owner answered the ask, not the message after it")
         # And it moves up again, keeping who has written where.
-        self.assertTrue(self.upgrade()["migrated"])
+        self.assertTrue(self.upgrade_boundary()["migrated"])
         self.assertEqual(self.sql("SELECT name FROM sqlite_master WHERE name IN ('reply_horizons','message_replies')"), [("reply_horizons",)])
         self.assertEqual(self.horizons(), self.newest_plus_one())
 
@@ -1770,7 +1494,7 @@ class Schema18Case(MigrationCase):
         self.assertEqual([item["id"] for item in listed["items"]], ["t1", "t4", "t3", "t2"], "641: topics lacking a creation change use id as a stable fallback")
 
     def test_step_back_to_18_restores_its_frozen_layout_while_no_topic_was_reopened(self):
-        self.upgrade()
+        self.upgrade_boundary()
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_18))
@@ -1821,7 +1545,7 @@ class Schema19Case(MigrationCase):
         self.assertEqual([(item["id"], item["read_revision"]) for item in listed], [("page", 1)])
 
     def test_step_back_to_19_restores_its_frozen_layout_while_nobody_has_read_a_page(self):
-        self.upgrade()
+        self.upgrade_boundary()
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_19))
@@ -1873,7 +1597,7 @@ class Schema20Case(MigrationCase):
         self.assertEqual(self.note("Set after", 0)["result"]["responsibility_revision"], 1)
 
     def test_step_back_to_20_restores_its_frozen_layout_while_no_note_has_a_revision(self):
-        self.upgrade()
+        self.upgrade_boundary()
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_20))
@@ -1939,24 +1663,32 @@ class Schema21Case(MigrationCase):
         self.assertEqual(self.store.view("owner", "wakes", {})["quiet"], [])
 
     def test_step_back_to_21_restores_its_frozen_layout_while_every_wake_is_answered(self):
-        self.upgrade()
+        self.upgrade_boundary()
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_21))
         self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
                          {k: v for k, v in records.items() if k != "metadata"})
 
-    def test_step_back_to_21_says_a_stopped_runner_is_idle(self):
+    def test_current_runner_stop_records_its_end(self):
         self.upgrade()
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        with self.store.runner_guard("stepping-back") as guard:
+        with self.store.runner_guard("stopping-current-runner") as guard:
             self.store.stop_runner(guard, self.store.acquire_runner(guard)["runner_token"])
+        state, ended = self.sql("SELECT state,ended_ms FROM runner_state")[0]
+        self.assertEqual(state, "stopped")
+        self.assertIsNotNone(ended)
+
+    def test_step_back_to_21_says_a_stopped_runner_is_idle(self):
+        self.upgrade_boundary()
+        self.sql("UPDATE runner_state SET state='stopped',reason_code='stopped',ended_ms=1234 WHERE id=1")
+        self.assertEqual(self.sql("SELECT state,ended_ms FROM runner_state"), [("stopped", 1234)])
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_21))
         self.assertEqual(self.sql("SELECT state,reason_code FROM runner_state"), [("idle", None)])
 
     def test_step_back_to_21_drops_the_unanswered_counts_which_are_nobodys_records(self):
-        self.upgrade()
+        self.upgrade_boundary()
         records = self.records()
         with sqlite3.connect(str(self.path)) as db:
             db.execute("UPDATE recipient_schedule SET unanswered_wakes=1,unanswered_since_ms=5,named_seq=1 WHERE recipient_id='agent-a'")
@@ -1995,7 +1727,7 @@ class Schema22Case(MigrationCase):
         self.assertEqual([item["release"] for item in self.store.view("owner", "releases", {})["items"]], [19])
 
     def test_step_back_to_22_restores_its_frozen_layout_while_no_release_is_recorded(self):
-        self.upgrade()
+        self.upgrade_boundary()
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_22))
@@ -2070,7 +1802,7 @@ class Schema23Case(MigrationCase):
 
     def test_step_back_to_23_restores_its_frozen_layout_with_activity_recorded(self):
         self.written_at_23()
-        self.upgrade()
+        self.upgrade_boundary()
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_23))
@@ -2091,6 +1823,38 @@ def everything(path):
             columns = [row[1] for row in db.execute("PRAGMA table_info(" + table + ")") if row[1] != "list_position"]
             rows[table] = sorted(db.execute("SELECT " + ",".join(columns) + " FROM " + table).fetchall(), key=repr)
         return rows
+
+
+def current_legacy_rows(path):
+    """Check the head's additive defaults, then compare pre-49 retained rows.
+
+    These fixtures contain no post-48 acts. Derived release links must match
+    every older release/item; the other later tables must be empty, not
+    silently omitted; every widened old row must have the declared new defaults.
+    The current schema is still checked against a freshly initialized instance.
+    No record is changed or removed by this observation.
+    """
+    rows = everything(path)
+    for table in ("cover_waiting", "memory_star_acts", "dossier_moves", "dossier_move_members",
+                  "ask_cover_links", "message_withdrawals", "refresh_requests", "question_closures",
+                  "answer_receipts", "message_removals", "message_first_exposures", "message_quote_sources",
+                  "outcome_color_choices", "pipeline_piece_freezes", "rail_dimming",
+                  "hosted_seats", "hosted_seat_events", "workspace_links", "memory_transfer_acts"):
+        assert rows.pop(table) == [], "no post-48 act in this fixture: " + table
+    with sqlite3.connect(str(path)) as db:
+        release_items = db.execute("SELECT number,items FROM releases").fetchall()
+    expected_links = {(item, number) for number, items in release_items for item in json.loads(items)}
+    assert rows.pop("source_cover_releases") == sorted(expected_links, key=repr), \
+        "every old release/item has its exact derived source-cover link"
+    maximum = max((row[0] for row in rows["messages"]), default=0)
+    assert rows.pop("message_removal_horizon") == [(maximum,)], "removal backfill retains the last old message"
+    for row in rows["deliveries"]:
+        assert row[-3:] == (None, None, None), "old deliveries are not requests, answers or retractions"
+    rows["deliveries"] = [row[:-3] for row in rows["deliveries"]]
+    for row in rows["memory_revisions"]:
+        assert row[-1] == 0, "every old Notebook revision remains undeleted"
+    rows["memory_revisions"] = [row[:-1] for row in rows["memory_revisions"]]
+    return rows
 
 
 def horizon_taken(upgraded, stored):
@@ -2144,12 +1908,29 @@ class Release19ChainCase(MigrationCase):
 
     VERSION, FIXTURE = "17", SCHEMA_17
 
+    def test_release_19_upgrades_through_the_complete_current_chain_without_losing_its_records(self):
+        chain = [pair[:2] for pair in migrations.STEPS if int(pair[0]) >= 17]
+        self.assertEqual(chain, [(str(n), str(n + 1)) for n in range(17, int(SCHEMA_VERSION))])
+        before = self.records()
+        self.assertEqual(self.upgrade()["from_version"], "17")
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        self.assertGreater(self.sql("SELECT count(*) FROM dossier_order")[0][0], 0)
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["id"], "t1")
+        unchanged = self.unchanged()
+        with self.assertRaises(MigrationError) as refused:
+            migrate(self.path, "test-instance", self.binding, "48")
+        self.assertEqual(refused.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), unchanged)
+
     def test_the_whole_chain_runs_up_and_down_from_release_19(self):
-        self.assertEqual([version for version, _ in RELEASE_20_LADDER] + [SCHEMA_VERSION],
-                         [str(n) for n in range(17, int(SCHEMA_VERSION) + 1)], "one chain, 17 to the head, nothing skipped")
-        stored, records, fresh = everything(self.path), self.records(), fresh_schema(self.temp.name)
-        layouts = [frozen(layout) for _, layout in RELEASE_20_LADDER] + [fresh]
-        versions = [version for version, _ in RELEASE_20_LADDER] + [SCHEMA_VERSION]
+        self.assertEqual([version for version, _ in RELEASE_20_LADDER],
+                         [str(n) for n in range(17, 49)], "the independently frozen17-to48 chain, nothing skipped")
+        stored, records, fresh = everything(self.path), self.records(), frozen(SCHEMA_48)
+        layouts = [frozen(layout) for _, layout in RELEASE_20_LADDER]
+        versions = [version for version, _ in RELEASE_20_LADDER]
         for here, there, layout in zip(versions, versions[1:], layouts[1:]):
             with self.subTest(up=there):
                 moved = migrate(self.path, "test-instance", self.binding, there)
@@ -2165,7 +1946,7 @@ class Release19ChainCase(MigrationCase):
                 self.assertEqual(schema(self.path), layout)
         self.assertEqual(everything(self.path), stored, "stepping all the way back gives release 19 every row it had")
         # And in one move each way.
-        self.assertEqual(self.upgrade()["from_version"], "17")
+        self.assertEqual(migrate(self.path, "test-instance", self.binding, "48")["from_version"], "17")
         self.assertEqual(schema(self.path), fresh)
         self.assertEqual(everything(self.path), at_head, "one move up gives what the steps gave")
         self.assertEqual(migrate(self.path, "test-instance", self.binding, "17")["schema_version"], "17")
@@ -2270,7 +2051,7 @@ class LiveShapedChainCase(MigrationCase):
                     args["reply_to"] = previous
                 if k % 5 == 4:
                     args.update(addressees=[others[k % 2]], intent="ask" if k % 10 == 4 else "tell")
-                previous = self.committed(self.command("message.post", args, target={"topic_id": topic}, actor=author,
+                previous = self.committed(self.command("message.post", post_fields(self, author, args), target={"topic_id": topic}, actor=author,
                                                        op="post-%s-%d" % (topic, k)))["message_id"]
             # Two agents write to each other by name, as on live, which is between others for the person.
             for k, (author, to) in enumerate((("agent-a", "agent-b"), ("agent-b", "agent-a"))):
@@ -2313,6 +2094,50 @@ class LiveShapedChainCase(MigrationCase):
         self.counted()
         stored, records = everything(self.path), self.records()
         started = time.monotonic()
+        self.assertEqual(migrate(self.path, "test-instance", self.binding, "48"), {"instance_id": "test-instance", "from_version": "17", "schema_version": "48", "migrated": True})
+        upgraded_in = time.monotonic() - started
+        self.assertEqual(schema(self.path), frozen(SCHEMA_48))
+        self.assertEqual({k: v for k, v in self.settled(self.records()).items() if k != "metadata"},
+                         {k: v for k, v in self.settled(records).items() if k != "metadata"})
+        # The person's messages between others are settled, and their counts lose exactly those.
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE state='pending' AND id IN (SELECT value FROM json_each(?))",
+                                  (json.dumps(sorted(self.between)),)), [(0,)])
+        self.counted()
+        self.assertEqual(self.sql("SELECT pending_count FROM recipient_schedule WHERE recipient_id='owner'"), [(unread - len(self.between),)])
+        # What the steps work out from the messages, checked against the messages themselves.
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.topic_id IS NOT m.topic_id"), [(0,)])
+        written = dict(((topic, author), seq + 1) for topic, author, seq in
+                       self.sql("SELECT topic_id,author_id,max(seq) FROM messages GROUP BY topic_id,author_id"))
+        horizons = dict(((topic, actor), seq) for topic, actor, seq in self.sql("SELECT topic_id,actor_id,seq FROM reply_horizons"))
+        self.assertEqual({key: horizons.get(key) for key in written}, written, "everyone who wrote in a topic has written there")
+        for topic, other in self.sql("SELECT topic_id,other_message_id FROM topic_summaries"):
+            rows = self.sql("SELECT id,author_id FROM messages WHERE topic_id=? ORDER BY seq DESC", (topic,))
+            expected = next((key for key, author in rows if author != rows[0][1]), None)
+            self.assertEqual(other, expected, topic)
+        self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE activity_ms IS NULL"), [(0,)])
+        after_up = everything(self.path)
+        # Back to release 19: the layout it knows, and every row it had, but for what was settled,
+        # which stays settled.
+        self.assertEqual(migrate(self.path, "test-instance", self.binding, "17")["schema_version"], "17")
+        self.assertEqual(schema(self.path), frozen(SCHEMA_17))
+        self.assertEqual(self.settled(everything(self.path)), self.settled(stored))
+        self.counted()
+        # And up again, to exactly what the first upgrade gave.
+        self.assertTrue(migrate(self.path, "test-instance", self.binding, "48")["migrated"])
+        self.assertEqual(everything(self.path), after_up)
+        self.assertEqual(self.fixture.read_bytes(), self.fixture_bytes, "the fixture itself was never touched")
+        self.assertLess(upgraded_in, 60, "the upgrade of %d messages took %.1f s" % (counts["messages"], upgraded_in))
+
+    def test_a_copy_of_a_live_shaped_release_19_instance_reaches_current_and_keeps_later_order(self):
+        counts = dict((table, self.sql("SELECT count(*) FROM " + table)[0][0]) for table in ("messages", "deliveries", "topics", "reply_horizons"))
+        self.assertGreaterEqual(counts["messages"], 520)
+        self.assertGreaterEqual(counts["deliveries"], 1000)
+        self.assertGreater(self.sql("SELECT count(*) FROM deliveries WHERE state='pending'")[0][0], 100)
+        self.assertGreaterEqual(len(self.between), 20, "the person has messages between others still unread")
+        unread = self.sql("SELECT pending_count FROM recipient_schedule WHERE recipient_id='owner'")[0][0]
+        self.counted()
+        stored, records = everything(self.path), self.records()
+        started = time.monotonic()
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "17", "schema_version": SCHEMA_VERSION, "migrated": True})
         upgraded_in = time.monotonic() - started
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
@@ -2338,18 +2163,14 @@ class LiveShapedChainCase(MigrationCase):
         listed = self.store.view("owner", "workspace_topics", {"workspace_id": "w1"})
         self.assertNotIn("error", listed, listed)
         self.assertTrue(all(not item["work"]["by"] or item["work"]["by"] != "owner" for item in listed["items"]), "the person's own posts are not work they see")
-        after_up = everything(self.path)
-        # Back to release 19: the layout it knows, and every row it had, but for what was settled,
-        # which stays settled.
-        self.assertEqual(migrate(self.path, "test-instance", self.binding, "17")["schema_version"], "17")
-        self.assertEqual(schema(self.path), frozen(SCHEMA_17))
-        self.assertEqual(self.settled(everything(self.path)), self.settled(stored))
-        self.counted()
-        # And up again, to exactly what the first upgrade gave.
-        self.assertTrue(self.upgrade()["migrated"])
-        self.assertEqual(everything(self.path), after_up)
+        self.assertGreater(self.sql("SELECT count(*) FROM dossier_order")[0][0], 0)
+        before = self.unchanged(), everything(self.path)
+        with self.assertRaises(MigrationError) as refused:
+            migrate(self.path, "test-instance", self.binding, "48")
+        self.assertEqual(refused.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual((self.unchanged(), everything(self.path)), before)
         self.assertEqual(self.fixture.read_bytes(), self.fixture_bytes, "the fixture itself was never touched")
-        self.assertLess(upgraded_in, 60, "the upgrade of %d messages took %.1f s" % (counts["messages"], upgraded_in))
+        self.assertLess(upgraded_in, 60, "the current upgrade of %d messages took %.1f s" % (counts["messages"], upgraded_in))
 
     def test_once_a_whisper_exists_on_the_live_shaped_copy_no_step_back_runs(self):
         self.assertTrue(self.upgrade()["migrated"])
@@ -2558,14 +2379,14 @@ class Schema24Case(MigrationCase):
                                   "FROM recipient_schedule WHERE recipient_id='owner'"), [(0, None, 0, None, 0, None)])
 
     def test_step_back_to_24_restores_its_frozen_layout(self):
-        self.upgrade()
+        self.upgrade_boundary()
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_24))
         self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
                          {k: v for k, v in records.items() if k != "metadata"})
         self.headless()
-        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+        self.assertTrue(self.upgrade_boundary()["migrated"], "and it moves up again")
 
 
 class Schema25Case(MigrationCase):
@@ -2615,7 +2436,7 @@ class Schema25Case(MigrationCase):
     def test_step_back_to_25_works_activity_out_again_by_its_rule_with_turns_recorded(self):
         base = self.written_at_25()
         stored = everything(self.path)
-        self.upgrade()
+        self.upgrade_boundary()
         self.assertEqual(self.activity(), base + 500)
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_25))
@@ -2656,13 +2477,13 @@ class Schema26Case(MigrationCase):
 
     def test_step_back_without_a_whisper_gives_26_its_layout_and_every_row_and_up_again_is_the_same(self):
         stored = everything(self.path)
-        self.upgrade()
-        at_head = schema(self.path)
+        self.upgrade_boundary()
+        at_successor = schema(self.path)
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_26))
         self.assertEqual(everything(self.path), stored)
-        self.assertTrue(self.upgrade()["migrated"])
-        self.assertEqual(schema(self.path), at_head)
+        self.assertTrue(self.upgrade_boundary()["migrated"])
+        self.assertEqual(schema(self.path), at_successor)
 
     def test_step_back_is_refused_once_a_whisper_exists_and_changes_nothing(self):
         self.upgrade()
@@ -2728,10 +2549,10 @@ class Schema27Case(MigrationCase):
         # gain their revision (the edit's step).
         widened = {"messages": 2, "topics": 2, "deliveries": 1}
         self.assertEqual({table: [row[:-widened[table]] if table in widened else row for row in kept]
-                          for table, kept in everything(self.path).items() if table in rows},
+                          for table, kept in current_legacy_rows(self.path).items() if table in rows},
                          rows, "only the new columns are added, to messages and topics")
         # The tables this step and the later ones add (the pipeline's among them) start empty, but for the horizon.
-        for table, kept in horizon_taken(everything(self.path), rows).items():
+        for table, kept in horizon_taken(current_legacy_rows(self.path), rows).items():
             if table not in rows:
                 self.assertEqual(kept, [], table)
         for table in ("conversation_items", "conversation_takes", "conversation_waits"):
@@ -2739,13 +2560,13 @@ class Schema27Case(MigrationCase):
 
     def test_step_back_without_a_conversation_gives_27_its_layout_and_every_row_and_up_again_is_the_same(self):
         stored = everything(self.path)
-        self.upgrade()
-        at_head = schema(self.path)
+        self.upgrade_boundary()
+        at_successor = schema(self.path)
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_27))
         self.assertEqual(everything(self.path), stored)
-        self.assertTrue(self.upgrade()["migrated"])
-        self.assertEqual(schema(self.path), at_head)
+        self.assertTrue(self.upgrade_boundary()["migrated"])
+        self.assertEqual(schema(self.path), at_successor)
 
     def test_step_back_is_refused_once_a_conversation_exists_and_changes_nothing(self):
         self.upgrade()
@@ -3204,7 +3025,7 @@ class SettleStepCase(MigrationCase):
 
     def posted(self, body, actor="owner", **args):
         topic = self.store.view("owner", "conversation", {"workspace_id": "w1"})["conversation"]["topic_id"]
-        receipt = self.command("message.post", dict({"body": body}, **args), {"topic_id": topic}, actor=actor)
+        receipt = self.command("message.post", post_fields(self, actor, dict({"body": body}, **args)), {"topic_id": topic}, actor=actor)
         self.assertEqual(receipt["status"], "committed", receipt)
         return receipt["result"]["message_id"]
 
@@ -3313,7 +3134,7 @@ class ReactionStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_REACTIONS,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
-        upgraded = horizon_taken(everything(self.path), stored)
+        upgraded = horizon_taken(current_legacy_rows(self.path), stored)
         # Each message gains whether it asks for a go-ahead, and none does.
         self.assertEqual([row[-1] for row in upgraded["messages"]], [0] * len(stored["messages"]))
         # Each delivery also gains its revision (the edit's step), the last column.
@@ -3326,43 +3147,42 @@ class ReactionStepCase(MigrationCase):
 
     def test_step_back_restores_the_frozen_layout_and_every_row_while_none_is_kept(self):
         stored = everything(self.path)
-        self.upgrade()
+        self.upgrade_boundary()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_REACTIONS))
         self.assertEqual(everything(self.path), stored)
-        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+        self.assertTrue(self.upgrade_boundary()["migrated"], "and it moves up again")
 
     def test_step_back_refuses_while_a_reaction_or_a_go_ahead_ask_is_kept_and_changes_nothing(self):
-        # A thumbs-up taken back still holds the instance: its revisions would restart.
-        def thumbed_and_taken_back():
-            self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-            self.thumb(True, 0)
-            self.thumb(False, 1)
+        # Revision2 with no value is a thumb taken back; its history still belongs to the reader.
+        self.upgrade_boundary()
+        self.assertTrue(self.step_back()["migrated"], "the empty historical boundary can move back")
+        self.upgrade_boundary()
+        message = self.sql("SELECT id FROM messages WHERE author_id='owner' ORDER BY seq LIMIT 1")[0][0]
+        self.sql("INSERT INTO message_reactions(actor_id,message_id,kind,topic_id,value,at_ms,revision) "
+                 "VALUES ('agent-b',?,'thumb','t1',NULL,1,2)", (message,))
+        self.assertEqual(self.sql("SELECT value,revision FROM message_reactions"), [(None, 2)])
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], REACTION_VERSION)
 
-        def asks_for_a_go_ahead():
-            self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-            receipt = self.command("message.post", {"body": "May I merge it?", "addressees": ["owner"], "intent": "ask", "go_ahead": True},
-                                   {"topic_id": "t1"}, actor="agent-b")
-            self.assertEqual(receipt["status"], "committed", receipt)
+    def test_step_back_refuses_a_go_ahead_message_without_reactions_and_changes_nothing(self):
+        self.upgrade_boundary()
+        self.sql("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id,intent,go_ahead) "
+                 "VALUES ('historical-go-ahead','t1','owner','May I merge it?','[]','[]','[]','historical-go-ahead','ask',1)")
+        self.assertEqual(self.sql("SELECT count(*) FROM message_reactions"), [(0,)],
+                         "a different reaction cannot mask the go-ahead guard")
+        self.assertEqual(self.sql("SELECT go_ahead FROM messages WHERE id='historical-go-ahead'"), [(1,)])
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], REACTION_VERSION)
 
-        for name, keep in (("a thumbs-up taken back", thumbed_and_taken_back), ("a message asking for a go-ahead", asks_for_a_go_ahead)):
-            with self.subTest(kept=name):
-                self.upgrade()
-                keep()
-                before = self.unchanged()
-                with self.assertRaises(MigrationError) as raised:
-                    self.step_back()
-                self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
-                self.assertEqual(self.unchanged(), before)
-                self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
-                # Cleared by hand (a message refuses an UPDATE by trigger, kept as it was), the step back goes through.
-                with sqlite3.connect(str(self.path)) as db:
-                    db.execute("DELETE FROM message_reactions")
-                    trigger = db.execute("SELECT sql FROM sqlite_master WHERE name='immutable_messages_update'").fetchone()[0]
-                    db.execute("DROP TRIGGER immutable_messages_update")
-                    db.execute("UPDATE messages SET go_ahead=0")
-                    db.execute(trigger)
-                self.assertTrue(self.step_back()["migrated"])
 
 class OrderStepCase(MigrationCase):
     """An instance at the reactions' version: the order's step adds each person's own
@@ -3387,7 +3207,7 @@ class OrderStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_ORDER,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
-        upgraded = horizon_taken(everything(self.path), stored)
+        upgraded = horizon_taken(current_legacy_rows(self.path), stored)
         # Each delivery gains its revision (the edit's step), the last column.
         self.assertEqual({table: [row[:-1] for row in kept] if table == "deliveries" else kept
                           for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
@@ -3399,28 +3219,33 @@ class OrderStepCase(MigrationCase):
 
     def test_step_back_restores_the_frozen_layout_and_every_row_while_nobody_has_placed_an_order(self):
         stored = everything(self.path)
-        self.upgrade()
+        self.upgrade_boundary()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_ORDER))
         self.assertEqual(everything(self.path), stored)
-        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+        self.assertTrue(self.upgrade_boundary()["migrated"], "and it moves up again")
 
-    def test_step_back_refuses_once_an_order_is_kept_even_emptied_and_changes_nothing(self):
+    def test_current_order_writer_keeps_a_revision_when_the_order_is_emptied(self):
         self.upgrade()
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         workspace = self.sql("SELECT workspace_id FROM workspace_members WHERE actor_id='owner' ORDER BY workspace_id LIMIT 1")[0][0]
         self.place([workspace], 0)
-        # Emptied, it still holds the instance: its revisions would restart.
         self.place([], 1)
+        self.assertEqual(self.sql("SELECT ids,revision FROM outline_orders WHERE actor_id='owner' AND within=''"), [("[]", 2)])
+
+    def test_step_back_refuses_once_an_order_is_kept_even_emptied_and_changes_nothing(self):
+        self.upgrade_boundary()
+        self.assertTrue(self.step_back()["migrated"], "an empty boundary can move back before an order exists")
+        self.upgrade_boundary()
+        self.sql("INSERT INTO outline_orders(actor_id,within,ids,revision) VALUES ('owner','','[]',2)")
+        self.assertEqual(self.sql("SELECT ids,revision FROM outline_orders"), [("[]", 2)],
+                         "the emptied historical order still retains its revision")
         before = self.unchanged()
         with self.assertRaises(MigrationError) as raised:
             self.step_back()
         self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
         self.assertEqual(self.unchanged(), before)
-        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
-        with sqlite3.connect(str(self.path)) as db:
-            db.execute("DELETE FROM outline_orders")
-        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(self.metadata()["schema_version"], self.boundary_version())
 
 
 class StacksStepCase(MigrationCase):
@@ -3447,7 +3272,7 @@ class StacksStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_STACKS,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
-        upgraded = horizon_taken(everything(self.path), stored)
+        upgraded = horizon_taken(current_legacy_rows(self.path), stored)
         # Each delivery gains its revision (the edit's step), the last column.
         self.assertEqual({table: [row[:-1] for row in kept] if table == "deliveries" else kept
                           for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
@@ -3458,25 +3283,26 @@ class StacksStepCase(MigrationCase):
 
     def test_step_back_restores_the_frozen_layout_and_every_row_while_nothing_is_recorded(self):
         stored = everything(self.path)
-        self.upgrade()
+        self.upgrade_boundary()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_STACKS))
         self.assertEqual(everything(self.path), stored)
-        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+        self.assertTrue(self.upgrade_boundary()["migrated"], "and it moves up again")
 
     def test_step_back_refuses_once_anything_is_recorded_and_changes_nothing(self):
-        self.upgrade()
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        self.star()
+        self.upgrade_boundary()
+        self.assertTrue(self.step_back()["migrated"], "an empty boundary can move back before an act exists")
+        self.upgrade_boundary()
+        message, topic, seq = self.sql("SELECT id,topic_id,seq FROM messages ORDER BY seq LIMIT 1")[0]
+        self.sql("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) "
+                 "VALUES ('star',?,?,?,'owner','owner','{\"starred\":true}',1,1)", (message, topic, seq))
+        self.assertEqual(self.sql("SELECT kind,message_id FROM message_acts"), [("star", message)])
         before = self.unchanged()
         with self.assertRaises(MigrationError) as raised:
             self.step_back()
         self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
         self.assertEqual(self.unchanged(), before)
-        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
-        with sqlite3.connect(str(self.path)) as db:
-            db.execute("DELETE FROM message_acts")
-        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(self.metadata()["schema_version"], self.boundary_version())
 
 
 class BlocksStepCase(MigrationCase):
@@ -3488,8 +3314,12 @@ class BlocksStepCase(MigrationCase):
     def step_back(self):
         return migrate(self.path, "test-instance", self.binding, BEFORE_BLOCKS)
 
-    def blocking_ask(self):
-        """A piece being built in t1 and an ask to the owner that holds it, through real commands."""
+    def prepare_historical_records(self):
+        if self._testMethodName == "test_step_back_refuses_once_an_ask_blocks_something_and_changes_nothing":
+            self.blocked_piece, _ = self.start_blocked_piece()
+
+    def start_blocked_piece(self):
+        """The piece uses its own agent-created topic; the person's t1 stays theirs."""
         def done(receipt):
             self.assertEqual(receipt["status"], "committed", receipt)
             return receipt["result"]
@@ -3500,12 +3330,30 @@ class BlocksStepCase(MigrationCase):
                           {"pipeline_revision": revision}))
         number = done(self.command("pipeline.item_add", {"title": "Held", "section": "now", "sources": [{"note": "a test"}]},
                                    {"workspace_id": workspace}))["number"]
-        piece = done(self.command("pipeline.piece_start", {"numbers": [number], "topic_id": "t1", "stage_id": "build", "size": "small"},
+        done(self.command("draft.save", {
+            "source_ref": {"kind": "new_topic", "id": "opening-blocked-piece", "workspace_id": workspace},
+            "topic_id": "blocked-piece-topic", "generation": "gA", "body": "Build the held piece",
+            "attachments": [], "quotes": [], "addressees": [],
+            "opening": {"workspace_id": workspace, "title": "Held piece", "participants": ["owner", "agent-a"]}},
+            {"draft_id": "blocked-piece-draft"}, {"draft_revision": 0}, actor="agent-a"))
+        done(self.command("submission.prepare", {"draft_id": "blocked-piece-draft", "submission_id": "blocked-piece-sub",
+                                               "send_operation_id": "open-blocked-piece"},
+                          {"topic_id": "blocked-piece-topic"}, {"draft_revision": 1}, actor="agent-a"))
+        done(self.command("topic.create_and_send", {"submission_id": "blocked-piece-sub"},
+                          {"topic_id": "blocked-piece-topic"}, actor="agent-a", op="open-blocked-piece"))
+        piece = done(self.command("pipeline.piece_start", {"numbers": [number], "topic_id": "blocked-piece-topic", "stage_id": "build", "size": "small"},
                                   {"workspace_id": workspace}))["piece_id"]
         asker = self.sql("SELECT actor_id FROM workspace_members WHERE workspace_id=? AND actor_id<>'owner' ORDER BY actor_id LIMIT 1",
                          (workspace,))[0][0]
-        return done(self.command("message.post", {"body": "Restart it?", "addressees": ["owner"], "intent": "ask",
-                                                  "blocks": {"kind": "piece", "ref": piece}}, {"topic_id": "t1"}, actor=asker))
+        return piece, asker
+
+    def blocking_ask(self):
+        piece, asker = self.start_blocked_piece()
+        receipt = self.command("message.post", post_fields(self, asker, {
+            "body": "Restart it?", "addressees": ["owner"], "intent": "ask", "go_ahead": False,
+            "blocks": {"kind": "piece", "ref": piece}}), {"topic_id": "t1"}, actor=asker)
+        self.assertEqual(receipt["status"], "committed", receipt)
+        return receipt["result"]
 
     def test_the_step_is_the_blocks_and_the_folds_step_follows_it(self):
         self.assertIn((BEFORE_BLOCKS, BLOCKS_VERSION), [step[:2] for step in migrations.STEPS])
@@ -3516,7 +3364,7 @@ class BlocksStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_BLOCKS,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
-        upgraded = horizon_taken(everything(self.path), stored)
+        upgraded = horizon_taken(current_legacy_rows(self.path), stored)
         # Each delivery gains its revision (the edit's step), the last column.
         self.assertEqual({table: [row[:-1] for row in kept] if table == "deliveries" else kept
                           for table, kept in upgraded.items() if table in stored}, stored, "every row the older version had is kept")
@@ -3532,22 +3380,28 @@ class BlocksStepCase(MigrationCase):
 
     def test_step_back_restores_the_frozen_layout_and_every_row_while_no_ask_blocks_anything(self):
         stored = everything(self.path)
-        self.upgrade()
+        self.upgrade_boundary()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_BLOCKS))
         self.assertEqual(everything(self.path), stored)
-        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+        self.assertTrue(self.upgrade_boundary()["migrated"], "and it moves up again")
 
     def test_step_back_refuses_once_an_ask_blocks_something_and_changes_nothing(self):
-        self.upgrade()
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        self.blocking_ask()
+        self.upgrade_boundary()
+        self.assertTrue(self.step_back()["migrated"], "the boundary permits rollback before any blocking ask")
+        self.upgrade_boundary()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id,intent) "
+                       "VALUES ('historical-block','t1','agent-a','Restart it?','[]','[]','[\"owner\"]','historical-block','ask')")
+            db.execute("INSERT INTO message_blocks(message_id,workspace_id,topic_id,seq,kind,ref) "
+                       "SELECT id,'w1',topic_id,seq,'piece',? FROM messages WHERE id='historical-block'", (self.blocked_piece,))
+        self.assertEqual(self.sql("SELECT message_id,ref FROM message_blocks"), [("historical-block", self.blocked_piece)])
         before = self.unchanged()
         with self.assertRaises(MigrationError) as raised:
             self.step_back()
         self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
         self.assertEqual(self.unchanged(), before)
-        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+        self.assertEqual(self.metadata()["schema_version"], BLOCKS_VERSION)
 
 
 class FoldStepCase(MigrationCase):
@@ -3592,7 +3446,7 @@ class FoldStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_FOLD,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
-        upgraded = horizon_taken(everything(self.path), stored)
+        upgraded = horizon_taken(current_legacy_rows(self.path), stored)
         # Each delivery gains its revision (the edit's step), the last column, and the edit's table starts empty.
         upgraded["deliveries"] = [row[:-1] for row in upgraded["deliveries"]]
         self.assertEqual(upgraded.pop("message_revisions"), [])
@@ -3611,11 +3465,11 @@ class FoldStepCase(MigrationCase):
     def test_step_back_restores_the_frozen_layout_and_every_row_while_nothing_is_folded(self):
         self.acted()
         stored = everything(self.path)
-        self.upgrade()
+        self.upgrade_boundary()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_FOLD))
         self.assertEqual(everything(self.path), stored, "every act and the acts' place in sqlite_sequence come back")
-        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+        self.assertTrue(self.upgrade_boundary()["migrated"], "and it moves up again")
 
     def test_step_back_refuses_once_a_message_is_folded_and_changes_nothing(self):
         message = self.acted()
@@ -3663,7 +3517,7 @@ class DraftStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_DRAFT,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
-        after = horizon_taken(everything(self.path), stored)
+        after = horizon_taken(current_legacy_rows(self.path), stored)
         self.assertEqual(after["memory_revisions"], sorted((row + (0,) for row in stored["memory_revisions"]), key=repr))
         # Each delivery gains its revision (the edit's step), the last column.
         self.assertEqual(after.pop("deliveries"), sorted((row + (1,) for row in stored.pop("deliveries")), key=repr))
@@ -3679,14 +3533,26 @@ class DraftStepCase(MigrationCase):
     def test_step_back_restores_the_frozen_layout_and_every_row_while_nothing_is_marked(self):
         self.written()
         stored = everything(self.path)
-        self.upgrade()
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        self.revise(2, False)
+        self.upgrade_boundary()
+        self.sql("INSERT INTO memory_revisions(item_id,revision,author_id,operation_id,title,body,attachments,refs,draft) "
+                 "VALUES ('page',3,'owner','historical-revise-3','Page','Words','[]','[]',0)")
+        self.sql("UPDATE memory_items SET current_revision=3 WHERE id='page'")
+        self.assertEqual(self.sql("SELECT draft FROM memory_revisions WHERE revision=3"), [(0,)])
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_DRAFT))
         back = everything(self.path)
         self.assertEqual(back["memory_revisions"][:2], stored["memory_revisions"])
-        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+        self.assertEqual(self.sql("SELECT revision,body FROM memory_revisions ORDER BY revision"),
+                         [(1, "Words"), (2, "More words"), (3, "Words")], "the added unmarked revision is retained too")
+        self.assertTrue(self.upgrade_boundary()["migrated"], "and it moves up again")
+
+    def test_current_writer_adds_an_unmarked_revision(self):
+        self.written()
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.revise(2, False)
+        self.assertEqual(self.sql("SELECT revision,body,draft FROM memory_revisions ORDER BY revision"),
+                         [(1, "Words", 0), (2, "More words", 0), (3, "Words", 0)])
 
     def test_step_back_refuses_once_a_revision_is_marked_and_changes_nothing(self):
         self.written()
@@ -3740,7 +3606,7 @@ class EditStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_EDIT,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
-        after = everything(self.path)
+        after = current_legacy_rows(self.path)
         self.assertEqual(after.pop("deliveries"), sorted((row + (1,) for row in stored.pop("deliveries")), key=repr),
                          "every delivery keeps its seq and id, at revision 1")
         for table in ("message_revisions", "message_edit_sessions", "message_exposures", "message_edit_horizon", "agent_invitations", "outcome_ends"):
@@ -3763,11 +3629,11 @@ class EditStepCase(MigrationCase):
     def test_step_back_restores_the_frozen_layout_and_every_row_while_nothing_is_edited(self):
         self.delivered()
         stored = everything(self.path)
-        self.upgrade()
+        self.upgrade_boundary()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_EDIT))
         self.assertEqual(everything(self.path), stored, "every delivery, reason and the deliveries' place in sqlite_sequence come back")
-        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+        self.assertTrue(self.upgrade_boundary()["migrated"], "and it moves up again")
 
     def test_step_back_refuses_once_a_message_is_edited_and_changes_nothing(self):
         message = self.delivered()
@@ -3832,7 +3698,7 @@ class JudgmentStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_JUDGMENT,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
-        after = everything(self.path)
+        after = current_legacy_rows(self.path)
         self.assertEqual(after.pop("release_judgments"), [], "the judgment's table exists, empty")
         self.assertEqual(after.pop("agent_invitations"), [], "and the invitations' step after it fills none")
         tools_taken(after)
@@ -3858,7 +3724,7 @@ class JudgmentStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_JUDGMENT,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
-        after = everything(self.path)
+        after = current_legacy_rows(self.path)
         self.assertEqual((after.pop("release_judgments"), after.pop("agent_invitations"), after.pop("outcome_ends")), ([], [], []))
         self.assertEqual(tools_taken(after), stored, "every row is kept")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
@@ -3867,11 +3733,11 @@ class JudgmentStepCase(MigrationCase):
     def test_step_back_restores_the_frozen_layout_and_every_row_while_no_judgment_is_attached(self):
         self.recorded()
         stored = everything(self.path)
-        self.upgrade()
+        self.upgrade_boundary()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_JUDGMENT))
         self.assertEqual(everything(self.path), stored)
-        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+        self.assertTrue(self.upgrade_boundary()["migrated"], "and it moves up again")
 
     def test_step_back_refuses_once_a_judgment_is_attached_and_changes_nothing(self):
         self.recorded()
@@ -3905,6 +3771,17 @@ class SessionStepCase(MigrationCase):
         self.assertEqual(receipt["status"], "committed", receipt)
         return receipt["result"]
 
+    def boundary_session(self, message, state="open", held=True):
+        author = self.sql("SELECT author_id FROM messages WHERE id=?", (message,))[0][0]
+        now = store_module._delivery._now_ms()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO message_edit_sessions(message_id,actor_id,holder,revision,base_revision,draft,state,renewed_ms,released_ms) "
+                       "VALUES (?,?,'h-laptop',1,1,?,?,?,NULL)", (message, author, "Core draft" if state == "open" else "", state, now))
+            if held:
+                changed = db.execute("UPDATE deliveries SET state='held' WHERE message_id=? AND recipient_id='agent-a' AND state='pending'",
+                                     (message,)).rowcount
+                self.assertEqual(changed, 1, "the fixture actually holds the agent's existing delivery")
+
     def test_the_step_follows_the_edits_and_the_judgments_step_follows_it(self):
         steps = [step[:2] for step in migrations.STEPS if int(step[1]) <= 47]
         self.assertIn((BEFORE_SESSION, SESSION_VERSION), steps)
@@ -3919,7 +3796,7 @@ class SessionStepCase(MigrationCase):
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
         self.assertFalse([sql for sql in schema(self.path) if "marked_words" in sql], "no schema object names the SQL function")
-        after = everything(self.path)
+        after = current_legacy_rows(self.path)
         self.assertEqual(after.pop("message_edit_horizon"), [(top,)], "the horizon is the last message at the upgrade")
         self.assertEqual((after.pop("message_edit_sessions"), after.pop("message_exposures"), after.pop("agent_invitations"), after.pop("outcome_ends")),
                          ([], [], [], []))
@@ -3942,60 +3819,76 @@ class SessionStepCase(MigrationCase):
     def test_step_back_is_refused_while_a_session_is_open_held_or_lapsed_or_a_delivery_is_held(self):
         message = self.first()
         stored = everything(self.path)
-        self.upgrade()
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        self.session("open", message)
+        self.upgrade_boundary()
+        self.boundary_session(message)
         self.assertTrue(self.sql("SELECT count(*) FROM deliveries WHERE state='held'")[0][0], "agent-a's delivery is held")
         for state, statement in (("held", None), ("lapsed", "UPDATE message_edit_sessions SET renewed_ms=renewed_ms-1000000"),
                                  ("lapsed and released", "UPDATE message_edit_sessions SET released_ms=renewed_ms")):
             with self.subTest(state=state):
                 if statement:
                     self.sql(statement)
+                    self.sql("UPDATE deliveries SET state='pending' WHERE state='held'")
+                    self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE state='held'"), [(0,)],
+                                     "an open lapsed draft alone holds the boundary")
                 before = self.unchanged()
                 with self.assertRaises(MigrationError) as raised:
                     self.step_back()
                 self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
                 self.assertEqual(self.unchanged(), before)
-                self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
-        # The open session is ended by its holder (a released lapse is not holding, so nothing is moved by the close).
-        self.sql("UPDATE message_edit_sessions SET released_ms=NULL,renewed_ms=?", (store_module._delivery._now_ms(),))
-        self.assertEqual(self.session("close", message)["closed"], True)
+                self.assertEqual(self.metadata()["schema_version"], SESSION_VERSION)
+        # An explicitly closed historical session has no live draft or held delivery.
+        self.sql("UPDATE message_edit_sessions SET state='closed',draft='',released_ms=NULL")
+        self.sql("UPDATE deliveries SET state='pending' WHERE state='held'")
+        self.assertEqual(self.sql("SELECT state,draft FROM message_edit_sessions"), [("closed", "")])
         self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE state='held'"), [(0,)], "with every session ended, no row is held")
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_SESSION))
         back = everything(self.path)
-        # The session commands write their operations and changes, and the hold and its release move the schedule
-        # (its generation and when it is due); every other row comes back as it was, every delivery the same row.
         written = ("changes", "operations", "recipient_schedule", "sqlite_sequence")
         self.assertEqual({k: v for k, v in back.items() if k not in written}, {k: v for k, v in stored.items() if k not in written},
-                         "every row the session commands did not write comes back as it was")
+                         "every row not written by the session fixture comes back as it was")
         self.assertEqual([row for row in back["sqlite_sequence"] if row[0] != "changes"], [row for row in stored["sqlite_sequence"] if row[0] != "changes"])
-        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+        self.assertTrue(self.upgrade_boundary()["migrated"], "and it moves up again")
 
     def test_a_saved_or_closed_session_does_not_hold_the_step_back_and_a_held_row_alone_does(self):
         message = self.first()
-        self.upgrade()
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        self.session("open", message)
-        self.session("close", message)
+        self.upgrade_boundary()
+        self.boundary_session(message, state="closed", held=False)
         self.assertEqual(self.sql("SELECT state FROM message_edit_sessions"), [("closed",)])
-        # A held delivery with no open session is outside the invariant; the step back still refuses it.
+        # With no open session, a held delivery alone must still refuse.
         self.sql("UPDATE deliveries SET state='held' WHERE id=(SELECT id FROM deliveries WHERE recipient_id='agent-a' ORDER BY seq LIMIT 1)")
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE state='held'"), [(1,)])
+        before = self.unchanged()
         with self.assertRaises(MigrationError) as raised:
             self.step_back()
         self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
         self.sql("UPDATE deliveries SET state='pending' WHERE state='held'")
         self.sql("UPDATE message_edit_sessions SET state='saved'")
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_SESSION))
 
-    def test_the_horizon_is_set_again_by_the_next_step_up(self):
+    def test_current_session_writer_holds_and_releases_deliveries(self):
         self.upgrade()
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         later = self.command("message.post", {"body": "After the first upgrade"}, {"topic_id": "t1"})
         self.assertEqual(later["status"], "committed", later)
+        message = self.first()
+        self.session("open", message)
+        self.assertTrue(self.sql("SELECT count(*) FROM deliveries WHERE state='held'")[0][0])
+        self.assertEqual(self.session("close", message)["closed"], True)
+        self.assertEqual(self.sql("SELECT state FROM message_edit_sessions"), [("closed",)])
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE state='held'"), [(0,)])
+
+    def test_the_horizon_is_set_again_by_the_next_step_up(self):
+        self.upgrade_boundary()
+        previous = self.sql("SELECT seq FROM message_edit_horizon")[0][0]
+        self.sql("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id) "
+                 "VALUES ('after-first-boundary','t1','owner','After the first upgrade','[]','[]','[]','after-first-boundary')")
+        self.assertGreater(self.sql("SELECT seq FROM messages WHERE id='after-first-boundary'")[0][0], previous,
+                           "the fixture actually adds a message beyond the first horizon")
         self.assertTrue(self.step_back()["migrated"])
-        self.assertTrue(self.upgrade()["migrated"])
+        self.assertTrue(self.upgrade_boundary()["migrated"])
         self.assertEqual(self.sql("SELECT seq FROM message_edit_horizon"), self.sql("SELECT max(seq) FROM messages"),
                          "every message before the second upgrade counts as handed: over-correcting, never missing one")
 
@@ -4147,7 +4040,7 @@ class InviteStepCase(MigrationCase):
         self.refused_at_42("owner", "agent-a", "refused-taken", "NAME_TAKEN")
         stored = everything(self.path)
         self.assertEqual(self.upgrade()["migrated"], True)
-        after = everything(self.path)
+        after = current_legacy_rows(self.path)
         self.assertEqual(after.pop("agent_invitations"), [], "a refusal registered no one, so it invited no one")
         self.assertEqual(after.pop("outcome_ends"), [], "and the ends' step after it finds no outcome ended")
         self.assertEqual(tools_taken(after), stored, "every row of every table is kept")
@@ -4177,27 +4070,27 @@ class InviteStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_INVITES,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
-        after = everything(self.path)
+        after = current_legacy_rows(self.path)
         self.assertEqual(after.pop("agent_invitations"), [], "no agent is known to have been invited before the step")
         self.assertEqual(after.pop("outcome_ends"), [], "and the ends' step after it finds no outcome ended")
         self.assertEqual(tools_taken(after), stored, "every row of every table is kept")
 
     def test_step_back_is_refused_once_an_agent_is_invited_and_restores_the_layout_while_none_is(self):
         stored = everything(self.path)
-        self.upgrade()
+        self.upgrade_boundary()
         self.assertTrue(self.step_back()["migrated"], "nothing invited yet")
         self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_INVITES))
         self.assertEqual(everything(self.path), stored)
-        self.upgrade()
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        self.invite("Late scribe")
+        # The real43 backfill reads a version42 invitation receipt; current API checks stay separate.
+        self.invited_at_42("Late scribe", "late-scribe")
+        self.upgrade_boundary()
         self.assertEqual(self.sql("SELECT agent_id,workspace_id,inviter_id FROM agent_invitations"), [("late-scribe", "w1", "owner")])
         before = self.unchanged()
         with self.assertRaises(MigrationError) as raised:
             self.step_back()
         self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
         self.assertEqual(self.unchanged(), before)
-        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+        self.assertEqual(self.metadata()["schema_version"], self.boundary_version())
 
 
 class ToolsStepCase(MigrationCase):
@@ -4351,7 +4244,7 @@ class CoverStepCase(MigrationCase):
         self.assertEqual(steps[-3:], [(BEFORE_ENDS, ENDS_VERSION), (BEFORE_COVERS, COVERS_VERSION), ("46", "47")])
         self.assertEqual([step for step in steps if step[0] == BEFORE_COVERS or step[1] == COVERS_VERSION],
                          [(BEFORE_COVERS, COVERS_VERSION)], "one step leaves 45 and one reaches 46")
-        self.assertEqual((BEFORE_COVERS, COVERS_VERSION, SCHEMA_VERSION), ("45", "46", "49"))
+        self.assertEqual((BEFORE_COVERS, COVERS_VERSION), ("45", "46"))
 
     def test_item_641_covers_45_to_46_precedes_positions_46_to_47(self):
         message = self.acted()
@@ -4364,9 +4257,9 @@ class CoverStepCase(MigrationCase):
             db.execute("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) "
                        "SELECT 'cover',id,topic_id,seq,'','owner','{}',5,1 FROM messages WHERE id=?", (message,))
         stored = everything(self.path)
-        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], SCHEMA_VERSION)
+        self.assertEqual(migrate(self.path, "test-instance", self.binding, "47")["schema_version"], "47")
         self.assertEqual(everything(self.path), stored, "positions preserve the cover and every retained record")
-        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        self.assertEqual(schema(self.path), frozen(SCHEMA_47))
         self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE list_position>0"), [(2,)])
         self.assertEqual(migrate(self.path, "test-instance", self.binding, "46")["schema_version"], "46")
         self.assertEqual(everything(self.path), stored, "topic rollback does not remove covers")
@@ -4388,7 +4281,7 @@ class CoverStepCase(MigrationCase):
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_COVERS,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
-        self.assertEqual(everything(self.path), stored, "every row is kept, sqlite_sequence's place for the acts included")
+        self.assertEqual(current_legacy_rows(self.path), stored, "every row is kept, sqlite_sequence's place for the acts included")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         covered = self.cover(message, {"stands": "Kept across the step"})
         self.assertEqual((covered["cover_revision"], covered["acts_version"]), (1, 4), "the next act's id follows the gone one")
@@ -4399,11 +4292,11 @@ class CoverStepCase(MigrationCase):
     def test_step_back_restores_the_frozen_layout_and_every_row_while_no_cover_was_written(self):
         self.acted()
         stored = everything(self.path)
-        self.upgrade()
+        self.upgrade_boundary()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_COVERS))
         self.assertEqual(everything(self.path), stored, "every act and the acts' place in sqlite_sequence come back")
-        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+        self.assertTrue(self.upgrade_boundary()["migrated"], "and it moves up again")
 
     def test_step_back_refuses_once_a_cover_was_written_even_cleared_and_changes_nothing(self):
         message = self.acted()
@@ -4505,6 +4398,155 @@ for _name in list(Schema11Case.__dict__):
         setattr(EarlySchema12Case, _name, None)
 
 
+class OccupiedBoundaryCase(MigrationCase):
+    """Later order records cannot mask an earlier feature's actual guard."""
+
+    def occupied(self, before, statements):
+        after = str(int(before) + 1)
+        migrate(self.path, "test-instance", self.binding, before)
+        migrate(self.path, "test-instance", self.binding, after)
+        self.assertTrue(migrate(self.path, "test-instance", self.binding, before)["migrated"],
+                        "the exact adjacent boundary permits rollback before this witness")
+        fixture = "30" if before == "31" else before
+        self.assertEqual(schema(self.path), frozen((Path(__file__).parent / "fixtures" / ("schema_%s.sql" % fixture)).read_text().splitlines()))
+        migrate(self.path, "test-instance", self.binding, after)
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("PRAGMA foreign_keys=ON")
+            for statement in statements:
+                db.execute(statement)
+        self.assertEqual(self.sql("PRAGMA foreign_key_check"), [], "the witness has no dangling record")
+        self.assertEqual(self.metadata()["schema_version"], after)
+        kept = self.path.read_bytes(), everything(self.path)
+        with self.assertRaises(MigrationError) as refused:
+            migrate(self.path, "test-instance", self.binding, before)
+        self.assertEqual(refused.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual((self.path.read_bytes(), everything(self.path)), kept,
+                         "the intended adjacent guard retains every byte and row")
+        self.assertEqual(self.metadata()["schema_version"], after)
+
+    def opening(self, state):
+        return ["INSERT INTO openings(id,actor_id,workspace_id,topic_id,revision,state,payload) "
+                "VALUES ('guard-opening','owner','w1','guard-topic',1,'%s','{}')" % state]
+
+    def test_open_opening(self):
+        self.occupied("8", self.opening("open"))
+
+    def test_published_opening(self):
+        self.occupied("8", self.opening("published"))
+
+    def test_discarded_opening(self):
+        self.occupied("8", self.opening("discarded"))
+
+    def attempt(self, handed="NULL"):
+        return "INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms,handed_seq) " \
+               "VALUES ('guard-attempt','guard-claim','guard-runner','agent-a',1,1,1,2,%s)" % handed
+
+    def test_hosted_turn_alone(self):
+        self.occupied("9", [self.attempt(), "INSERT INTO hosted_turns(attempt_id,recipient_id,thread_id,turn_id,mode,client_id,announced_seq,handed_ms) "
+                                           "VALUES ('guard-attempt','agent-a','thread','turn','start','client',1,1)"])
+
+    def test_hosted_child_alone(self):
+        self.occupied("9", ["INSERT INTO hosted_children(id,runner_token,codex_home,pid,started_at,spawned_ms) "
+                            "VALUES ('guard-child','runner','/synthetic',1,'synthetic',1)"])
+
+    def test_handed_attempt_alone(self):
+        self.occupied("9", [self.attempt("1")])
+
+    def test_hosted_route_pin_alone(self):
+        self.occupied("9", ["INSERT INTO metadata VALUES ('route_pin.v1:agent-a','{\"destination\":{\"kind\":\"codex-hosted-stdio\"}}')"])
+
+    def test_topic_state(self):
+        self.occupied("10", ["UPDATE topics SET archived=1 WHERE id='t1'"])
+
+    def test_message_time(self):
+        self.occupied("11", ["INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id,sent_ms) "
+                             "VALUES ('guard-time','t1','owner','Timed','[]','[]','[]','guard-time',1)"])
+
+    def test_cleared_mark(self):
+        self.occupied("12", ["INSERT INTO message_marks SELECT 'owner',id,topic_id,seq,2 FROM messages ORDER BY seq LIMIT 1"])
+
+    def intent(self, intent):
+        return ["INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id,intent) "
+                "VALUES ('guard-intent','t1','owner','Directed','[]','[]','[\"agent-a\"]','guard-intent','%s')" % intent]
+
+    def test_ask_intent(self):
+        self.occupied("13", self.intent("ask"))
+
+    def test_tell_intent(self):
+        self.occupied("13", self.intent("tell"))
+
+    def test_topic_turn(self):
+        self.occupied("14", ["INSERT INTO topic_turns(topic_id,turn_ms,turn_by) VALUES ('t1',1,'agent-a')"])
+
+    def test_reset_color(self):
+        self.occupied("16", ["INSERT INTO color_choices VALUES ('owner','agent-a',NULL,2)"])
+
+    def test_reopened_topic(self):
+        self.occupied("18", ["UPDATE topics SET state_message_id=(SELECT id FROM messages ORDER BY seq LIMIT 1) WHERE id='t1'"])
+
+    def page(self):
+        return ["INSERT INTO memory_items(id,scope_kind,scope_id,creator_id,current_revision) VALUES ('guard-page','workspace','w1','owner',1)",
+                "INSERT INTO memory_revisions(item_id,revision,author_id,operation_id,title,body,attachments,refs) "
+                "VALUES ('guard-page',1,'owner','guard-page','Page','Kept','[]','[]')"]
+
+    def test_page_read(self):
+        self.occupied("19", self.page() + ["INSERT INTO memory_reads VALUES ('agent-a','guard-page',1)"])
+
+    def test_responsibility_revision(self):
+        self.occupied("20", ["UPDATE topic_participants SET responsibility='Kept note',responsibility_revision=1 WHERE topic_id='t1' AND actor_id='agent-a'"])
+
+    def test_topic_source(self):
+        self.occupied("20", ["UPDATE topics SET source_message_id=(SELECT id FROM messages ORDER BY seq LIMIT 1) WHERE id='t1'"])
+
+    def release(self):
+        return ["INSERT INTO releases(number,commit_sha,deployed_at,deployed_ms,items,source,recorded_ms) "
+                "VALUES (1,'%s','synthetic',1,'[]','backfill',1)" % ("a" * 40)]
+
+    def test_release_record(self):
+        self.occupied("22", self.release())
+
+    def test_whisper(self):
+        self.occupied("26", ["INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id,private_to) "
+                             "VALUES ('guard-whisper','t1','agent-a','Private','[]','[]','[\"owner\"]','guard-whisper','owner')"])
+
+    def test_conversation(self):
+        self.occupied("27", ["UPDATE topics SET kind='conversation' WHERE id='t1'"])
+
+    def test_cleared_fold(self):
+        self.occupied("36", ["INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) "
+                             "SELECT 'fold',id,topic_id,seq,'owner','owner','{\"folded\":false}',1,2 FROM messages ORDER BY seq LIMIT 1"])
+
+    def test_earlier_marked_page_revision(self):
+        # The current revision is unmarked; the earlier marked revision still cannot be lost.
+        self.occupied("38", self.page() + [
+            "INSERT INTO memory_revisions(item_id,revision,author_id,operation_id,title,body,attachments,refs,draft) "
+            "VALUES ('guard-page',2,'owner','marked','Page','Marked','[]','[]',1)",
+            "INSERT INTO memory_revisions(item_id,revision,author_id,operation_id,title,body,attachments,refs,draft) "
+            "VALUES ('guard-page',3,'owner','unmarked','Page','Unmarked','[]','[]',0)",
+            "UPDATE memory_items SET current_revision=3 WHERE id='guard-page'"])
+
+    def test_message_revision(self):
+        self.occupied("39", ["INSERT INTO message_revisions(message_id,revision,author_id,operation_id,body,edited_ms) "
+                             "SELECT id,2,author_id,'guard-edit','Changed words',1 FROM messages ORDER BY seq LIMIT 1"])
+
+    def test_judgment(self):
+        self.occupied("41", self.release() + ["INSERT INTO release_judgments VALUES (1,'{}',1)"])
+
+    def test_ended_then_reopened_outcome(self):
+        self.occupied("44", ["INSERT INTO outcome_ends VALUES ('w1',1,'archived','[]','owner',1)",
+                             "INSERT INTO outcome_ends VALUES ('w1',2,'open','[]','owner',2)"])
+
+    def test_cleared_cover(self):
+        self.occupied("45", ["INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) "
+                             "SELECT 'cover',id,topic_id,seq,'','owner','{\"stands\":null}',1,2 FROM messages ORDER BY seq LIMIT 1"])
+
+
+# This class adds only its adjacent occupied cases, not MigrationCase's inherited cohort.
+for _boundary_name in list(MigrationCase.__dict__):
+    if _boundary_name.startswith("test_"):
+        setattr(OccupiedBoundaryCase, _boundary_name, None)
+
+
 class TopicPositionStepCase(unittest.TestCase):
     """Item 641: the train35 46->47 step preserves facts and saved orders; default positions are durable."""
     def setUp(self):
@@ -4530,6 +4572,26 @@ class TopicPositionStepCase(unittest.TestCase):
     def listed(self):
         return self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "limit": 100})
 
+    def test_historical_positions_roundtrip_rebuilds_the_same_order_and_keeps_saved_order(self):
+        self.create_topic()
+        self.topic("t2")
+        self.assertEqual(self.command("outline.order_set", {"ids": ["t1", "t2"]}, {"workspace_id": "w1"},
+                                      {"order_revision": 0})["status"], "committed")
+        step_back_by_hand(self.path, "46")
+        stored = everything(self.path)
+        migrate(self.path, "test-instance", self.binding, "47")
+        positions = self.sql("SELECT id,list_position FROM topics ORDER BY id")
+        saved = self.sql("SELECT * FROM outline_orders")
+        self.assertEqual(schema(self.path), frozen(SCHEMA_47))
+        self.assertEqual(everything(self.path), stored)
+        migrate(self.path, "test-instance", self.binding, "46")
+        self.assertEqual(schema(self.path), frozen(SCHEMA_46))
+        self.assertEqual(everything(self.path), stored)
+        migrate(self.path, "test-instance", self.binding, "47")
+        self.assertEqual(self.sql("SELECT id,list_position FROM topics ORDER BY id"), positions,
+                         "the retained creation facts rebuild the same order")
+        self.assertEqual(self.sql("SELECT * FROM outline_orders"), saved)
+
     def test_item_641_upgrade_reads_never_migrate_and_keeps_saved_orders_and_creation_positions(self):
         self.create_topic()
         self.topic("t2")
@@ -4543,9 +4605,10 @@ class TopicPositionStepCase(unittest.TestCase):
         with self.assertRaises(StoreOpenError):
             Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.path.read_bytes(), before, "a read cannot migrate")
-        self.assertEqual(migrations.STEPS[-3][:2], ("46", "47"), "no migration-number collision with the base")
+        self.assertEqual([step[:2] for step in migrations.STEPS if step[0] == "46" or step[1] == "47"],
+                         [("46", "47")], "one step leaves46 and one reaches47")
         self.assertTrue(migrate(self.path, "test-instance", self.binding)["migrated"])
-        self.assertEqual(everything(self.path), stored, "all pre-existing records, including saved orders and revisions, survive")
+        self.assertEqual(current_legacy_rows(self.path), stored, "all pre-existing records, including saved orders and revisions, survive")
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual([x["id"] for x in self.listed()["items"]], ["t2", "t1"], "creation, never recent activity")
@@ -4562,12 +4625,12 @@ class TopicPositionStepCase(unittest.TestCase):
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual([x["id"] for x in self.listed()["items"]], want, "restart and VACUUM preserve the order")
         self.assertEqual(self.sql("SELECT id,list_position FROM topics ORDER BY id"), positions, "activity changes no default position")
-        before_order = self.listed()["order"]
-        migrate(self.path, "test-instance", self.binding, "46")
-        migrate(self.path, "test-instance", self.binding)
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        self.assertEqual([x["id"] for x in self.listed()["items"]], want, "the retained creation facts rebuild the same order")
-        self.assertEqual(self.listed()["order"], before_order)
+        # Real rollback at the current head is refused for retained dossier order.
+        before = self.path.read_bytes(), everything(self.path)
+        with self.assertRaises(MigrationError) as refused:
+            migrate(self.path, "test-instance", self.binding, "46")
+        self.assertEqual(refused.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual((self.path.read_bytes(), everything(self.path)), before)
 
     def test_item_641_an_empty_instance_steps_back_and_up_without_inventing_topics(self):
         migrate(self.path, "test-instance", self.binding, "46")

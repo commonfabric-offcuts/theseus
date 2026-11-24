@@ -1,0 +1,21 @@
+{
+  "seat": "warp",
+  "profile": "/Users/you/.local/share/theseus/instances/INSTANCE/SEAT.profile.json",
+  "workspace": "building-theseus",
+  "live": "/Users/you/aim-next",
+  "instance": "/Users/you/.local/share/theseus/instances/INSTANCE",
+  "work": "/Users/you/.local/share/theseus/SEAT/land",
+  "clone": "/Users/you/aim-worktrees/SEAT-clone",
+  "worktrees": "/Users/you/aim-worktrees",
+  "scratch": "/Users/you/.cache/SEAT-tests",
+  "remote": "https://github.com/commonfabric-offcuts/theseus.git",
+  "repo": "commonfabric-offcuts/theseus",
+  "release_branch": "release/live73",
+  "coordinator": "/Users/you/.local/share/theseus/fable-tools/coordinator-20261117",
+  "guard": "deploy-tool-<installed head>-installed.json",
+  "ship": "/Users/you/.local/share/theseus/fable-tools/ship.py",
+  "posts": "/Users/you/.local/share/theseus/SEAT/posts",
+  "cards_note": "n-…",
+  "releases_topic": "t-…",
+  "dossier_tells": "tony"
+}

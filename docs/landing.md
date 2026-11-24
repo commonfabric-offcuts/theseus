@@ -5,6 +5,8 @@ rulings through #9924 and the auditor's #9909–9910. It supersedes the historic
 cadence, routing and recovery policy in [trains.md](trains.md). Deployment
 mechanics and evidence guards remain in [tools.md](tools.md#deploy-toolsdeploypy);
 the immutable record is described in [releases.md](releases.md).
+The commands that carry out an ordinary landing, for any seat, are in
+[landing-kit.md](landing-kit.md).
 
 ## Choose the route from the complete change
 

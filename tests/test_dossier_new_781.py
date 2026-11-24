@@ -3,6 +3,7 @@ from __future__ import annotations
 """The header act's existing Core protocol, on isolated records only."""
 import unittest
 import reader_fixture as fixtures
+from tests.historical_fixture import post_fields
 
 
 class DossierNewCase(fixtures.ReaderCase):
@@ -10,7 +11,7 @@ class DossierNewCase(fixtures.ReaderCase):
         args = dict(body=body, addressees=["owner"], intent="tell", **extra)
         if reply_to:
             args["reply_to"] = reply_to
-        return self.committed(self.command("message.post", args, {"topic_id": "t1"}, actor=actor))["message_id"]
+        return self.committed(self.command("message.post", post_fields(self, actor, args), {"topic_id": "t1"}, actor=actor))["message_id"]
 
     def unread(self):
         return {item["id"] for item in self.store.view("owner", "topic_messages", {"topic_id": "t1", "limit": 50})["items"] if item["unread"]}
@@ -56,8 +57,8 @@ class DossierNewCase(fixtures.ReaderCase):
 
     def test_native_head_fixture_has_one_new_head_and_a_read_reply_between_others(self):
         head = self.post("Head for fixture reader")
-        reply = self.committed(self.command("message.post", {"body": "Between other agents", "reply_to": head,
-            "addressees": ["agent-a"], "intent": "tell"}, {"topic_id": "t1"}, actor="agent-b"))["message_id"]
+        reply = self.committed(self.command("message.post", post_fields(self, "agent-b", {"body": "Between other agents", "reply_to": head,
+            "addressees": ["agent-a"], "intent": "tell"}), {"topic_id": "t1"}, actor="agent-b"))["message_id"]
         self.assertIn(head, self.unread())
         self.assertNotIn(reply, self.unread(), "native head/stale fixture must start with only the head New")
 

@@ -5,6 +5,7 @@ from unittest import mock
 
 from aim_next import store as store_module
 from reader_fixture import ReaderCase
+from tests.historical_fixture import post_fields
 
 
 class NewLineCase(ReaderCase):
@@ -18,7 +19,7 @@ class NewLineCase(ReaderCase):
         args = dict(args, body=body)
         if reply_to:
             args["reply_to"] = reply_to
-        return self.committed(self.command("message.post", args, target={"topic_id": "t1"}, actor=actor))["message_id"]
+        return self.committed(self.command("message.post", post_fields(self, actor, args), target={"topic_id": "t1"}, actor=actor))["message_id"]
 
     def line(self, actor="owner"):
         """The oldest unread message as topic_unread names it; every topic_messages page agrees."""

@@ -14,11 +14,12 @@ import sqlite3
 import unittest
 
 import reader_fixture as fixtures
+from tests.historical_fixture import post_fields
 
 
 class StackCase(fixtures.ReaderCase):
     def post(self, body="Words", actor="agent-a", topic="t1", **args):
-        return self.committed(self.command("message.post", dict({"body": body}, **args), target={"topic_id": topic}, actor=actor))["message_id"]
+        return self.committed(self.command("message.post", post_fields(self, actor, dict({"body": body}, **args)), target={"topic_id": topic}, actor=actor))["message_id"]
 
     def act(self, kind, message, args, revision=0, actor="owner", op=None):
         name = {"message.star": "star_revision", "message.deal": "deal_revision", "message.fold": "fold_revision",
@@ -104,12 +105,13 @@ class StarCase(StackCase):
         message = self.post()
         asked = self.post("Between us?", actor="owner", addressees=["agent-a"], whisper=True)
         whisper = self.post("Between us", addressees=["owner"], whisper=True, reply_to=asked)
+        existing_acts = self.sql("SELECT * FROM message_acts ORDER BY id")
         for kind, args in (("message.star", {"starred": True}), ("message.deal", {"dealt": True}), ("message.fold", {"folded": True}), ("stack.place", {"key": 3}),
                            ("stack.name", {"name": "Ours"}), ("stack.join", {"into": None})):
             self.rejected(self.act(kind, message, args, actor="other-reader"), "FORBIDDEN")
             self.rejected(self.act(kind, whisper, args, actor="agent-b"), "FORBIDDEN")
             self.rejected(self.act(kind, "m-unknown", args), "FORBIDDEN")
-        self.assertEqual(self.sql("SELECT count(*) FROM message_acts"), [(0,)])
+        self.assertEqual(self.sql("SELECT * FROM message_acts ORDER BY id"), existing_acts, "refusals preserve every existing root-cover record")
         self.rejected(self.store.view("other-reader", "message_acts", {"topic_id": "t1"}) | {"status": "x"}, "FORBIDDEN")
         # A star made while the reader could read it is not listed once they cannot.
         self.committed(self.star(message, actor="agent-b"))
@@ -483,9 +485,9 @@ class SharedCase(StackCase):
         lone = self.post("A message nobody answered.")
         dossier = lambda message, actor="owner": self.source({"kind": "message", "id": message}, actor)["dossier"]
         for message in (root, reply, deeper):
-            self.assertEqual(dossier(message), {"root_id": root, "name": None, "alone": False,
-                                                "first": {"body": "Where shall the lantern club meet?\nThe hall or the boathouse.", "attachments": []}}, message)
-        self.assertEqual(dossier(lone), {"root_id": lone, "name": None, "alone": True, "first": {"body": "A message nobody answered.", "attachments": []}})
+            self.assertEqual(dossier(message), {"root_id": root, "name": None, "alone": False, "can_move": True, "move_revision": 0,
+                                                "first": {"body": "Where shall the lantern club meet?\nThe hall or the boathouse.", "attachments": [], "withheld": False, "removal": None}}, message)
+        self.assertEqual(dossier(lone), {"root_id": lone, "name": None, "alone": True, "can_move": True, "move_revision": 0, "first": {"body": "A message nobody answered.", "attachments": [], "withheld": False, "removal": None}})
         self.committed(self.name(root, "Lantern club hall", actor="agent-a"))
         named = dossier(deeper, actor="agent-b")
         self.assertEqual((named["root_id"], named["name"]["text"], named["name"]["by"], named["alone"]), (root, "Lantern club hall", "agent-a", False))
