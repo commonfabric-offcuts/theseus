@@ -21,8 +21,9 @@ extras. Opening the menu reads only the named page, acquires no writing lock,
 and leaves the document, sheet, URL and current writing alone. An existing
 page uses its actual menu owner. Unloaded Star/Unstar uses the same fenced
 memory action envelope; Copy Link uses the page's current scope. Other choices
-open the existing sheet and recheck its current menu. Writing changes and
-file selection focus their choice there for a fresh press, so they use the
+open the existing sheet and recheck its current menu. Delete then runs the
+opened page's own Delete, so the delete owner keeps its Undo. Other writing
+changes and file selection focus their choice there for a fresh press, so they use the
 actual writer and browser activation. UI-only choices may open their UI.
 
 Private Draft and Side by side remain the current names. Menus retain the

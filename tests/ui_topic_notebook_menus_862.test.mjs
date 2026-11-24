@@ -272,7 +272,16 @@ test('862 remote Notebook Unstar preserves its star fence and exact unknown requ
   assert.equal(sent[0].expected.item_revision,undefined);assert.equal(sent[0].kind,'memory.star');assert.deepEqual(f.calls,['changed']);assert.equal(f.source.draft,true);
 });
 
-for (const key of ['draft','image','delete','restore']) test(`862 unopened Notebook ${key} opens the actual owner and focuses a fresh press`, async () => {
+test('862 unopened Notebook Delete opens the actual owner and runs its rechecked Delete there', async () => {
+  const f=notebookPorts(notebookSource()), page={more:{},doc:{},menuItems:()=>[{key:'delete',label:'Delete page',act:()=>f.calls.push('deleted')}]};
+  f.rail.open=async()=>{f.calls.push('open');f.setLoaded(page);return true;};
+  await f.rail.act(f.source,'delete','Delete page',{},new RailMenuCommands(),f.handles);
+  assert.deepEqual(f.calls,['open','deleted']);assert.equal(f.shown.length,0);
+  page.menuItems=()=>[{key:'delete',label:'Delete page',disabled:true,act:()=>assert.fail('a revoked Delete ran')}];f.setLoaded(null);
+  await assert.rejects(f.rail.act(f.source,'delete','Delete page',{},new RailMenuCommands(),f.handles),/page changed/);
+});
+
+for (const key of ['draft','image','restore']) test(`862 unopened Notebook ${key} opens the actual owner and focuses a fresh press`, async () => {
   const f=notebookPorts(notebookSource()), choice={key,label:key,act:()=>assert.fail('record action ran on arrival')}, page={more:{},doc:{},menuItems:()=>[choice]};
   f.rail.open=async()=>{f.calls.push('open');f.setLoaded(page);return true;};
   await f.rail.act(f.source,key,key,{},new RailMenuCommands(),f.handles);
