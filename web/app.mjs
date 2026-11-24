@@ -2329,7 +2329,7 @@ function sharedMessageMenuItems(item, { say, anchor = say, presentation = null, 
     rename: act => inReader ? run(() => leaveReaderForRename(presentation, act)) : act(),
     more: moves => anchor && openMessageMenu({ anchor, items: cardMenuActs(item, moves, anchor), label: 'Move or join', sheet: true }) }) : { first: [], last: [] };
   const move = item.stack_position?.can_move || item.dossier?.can_move
-    ? [{ label: 'Move to topic…', glyph: 'topic', act: () => moveDossier(item.id, anchor) }] : [];
+    ? [{ label: 'Move to topic…', glyph: 'movetopic', act: () => moveDossier(item.id, anchor) }] : [];
   const items = [...stack.first, ...move, { label: 'Copy Link', glyph: 'link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
   if (!inReader && !remote) {
     const card = cardIn(messageEntries.get(item.id));

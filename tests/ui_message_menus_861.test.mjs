@@ -243,3 +243,22 @@ test('feed and Reader keep 840’s one cover request and pending-link owner', as
   assert.deepEqual(opened[0], opened[1]);
   assert.equal(f.feed.menuItems(f.messages.get('m-reply'), { reader: true }).first.some(x => /cover/.test(x.label)), false);
 });
+
+
+test('move-to-topic uses the chosen dossier glyph on feed, dossier and Reader menus', () => {
+  for (const phone of [false, true]) {
+    const f = fixture({ phone });
+    const menus = [f.methods.messageMenuItems(f.item, f.anchor),
+      f.methods.messageMenuItems(f.item, null, f.anchor, [{ label: 'Reply', glyph: 'reply', act() {} }])];
+    f.methods.openReaderMenu();
+    menus.push(f.menu().items);
+    for (const items of menus) {
+      const moves = items.filter(item => item.label === 'Move to topic…');
+      assert.equal(moves.length, 1, 'one existing move action on each surface');
+      assert.equal(moves[0].glyph, 'movetopic', 'moving a dossier uses the chosen folder-and-arrow glyph');
+      assert.equal(items.find(item => item.label === 'Start a topic from this').glyph, 'topic', 'starting a topic keeps its own glyph');
+      moves[0].act();
+    }
+    assert.deepEqual(f.calls, [['move', 'm-first'], ['move', 'm-first'], ['move', 'm-first']], 'all surfaces retain the exact existing move owner');
+  }
+});
