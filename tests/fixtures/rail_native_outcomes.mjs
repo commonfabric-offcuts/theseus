@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const owners=['app.mjs','stack-feed.mjs','rail-topic-fold.mjs','notebook-rail-menu.mjs',
   'notebook-page.mjs','notebook-writing.mjs','notebook-delete-ui.mjs','outline-menus.mjs',
-  'outline-dossiers.mjs','things-rail.mjs'];
+  'outline-dossiers.mjs','things-rail.mjs','key-tree.mjs'];
 const pause=()=>new Promise(resolve=>setTimeout(resolve,25));
 async function until(read,accept,label){
   let last;for(const end=Date.now()+10000;Date.now()<end;){last=await read();if(accept(last))return last;await pause();}
@@ -60,7 +60,7 @@ async function nativeCase({browser,facts,evidence,key,look,theme='light'},act){
   try{
     await act({page,row,check,receipt,drain});await drain();await Promise.all(jobs);
     const required=key.startsWith('archive-')?['app.mjs','stack-feed.mjs','rail-topic-fold.mjs']:
-      ['app.mjs','notebook-rail-menu.mjs','notebook-page.mjs','notebook-writing.mjs','notebook-delete-ui.mjs','outline-menus.mjs','things-rail.mjs'];
+      ['app.mjs','notebook-rail-menu.mjs','notebook-page.mjs','notebook-writing.mjs','notebook-delete-ui.mjs','outline-menus.mjs','things-rail.mjs','key-tree.mjs'];
     check('actual served owners match inspected source',()=>{for(const file of required)assert.equal(row.served[file],hashes[file],file);});
     for(const file of Object.keys(row.served))assert.equal(row.served[file],hashes[file],file+' original served bytes');
     check('no browser application errors',()=>assert.deepEqual(row.errors,[]));row.passed=true;
