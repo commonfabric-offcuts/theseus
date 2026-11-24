@@ -46,7 +46,7 @@ class Runner:
         self.events = []
         with open(str(case.root / "runner-stderr.log"), "ab") as stderr:
             self.process = subprocess.Popen(
-                ["/usr/bin/python3", "-I", str(ROOT / "bin" / "aim-next-runner"), "--profile", str(case.lead_profile),
+                ["/usr/bin/python3", "-I", "-X", "pycache_prefix=" + str(case.root / "runner-pycache"), str(ROOT / "bin" / "aim-next-runner"), "--profile", str(case.lead_profile),
                  "--runner-id", "host-fixture", "--routes", str(case.map),
                  *([] if getattr(case, "default_host_dir", False) else ["--host-dir", str(case.host_dir)]), *extra],
                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=stderr)
@@ -144,8 +144,8 @@ class HostCase(unittest.TestCase):
         # The real CLI, through a launcher whose own location passes the
         # executable trust policy wherever this checkout lives.
         self.cli = self.root / "aim-next"
-        self.cli.write_text("#!/usr/bin/python3 -I\nimport os,sys\nos.execv('/usr/bin/python3',['/usr/bin/python3','-I',%r]+sys.argv[1:])\n"
-                            % str(ROOT / "bin" / "aim-next"))
+        self.cli.write_text("#!/usr/bin/python3 -I\nimport os,sys\nos.execv('/usr/bin/python3',['/usr/bin/python3','-I','-X',%r,%r]+sys.argv[1:])\n"
+                            % ("pycache_prefix=" + str(self.root / "cli-pycache"), str(ROOT / "bin" / "aim-next")))
         self.cli.chmod(0o700)
         self.config = self.root / "hosted-1.route.json"
         self.provisioned = self.provision()
@@ -159,7 +159,7 @@ class HostCase(unittest.TestCase):
         self.runners = []
 
     def provision(self, config=None, profile=None):
-        done = subprocess.run(["/usr/bin/python3", "-I", str(ROOT / "bin" / "aim-next-runner"), "host-provision",
+        done = subprocess.run(["/usr/bin/python3", "-I", "-X", "pycache_prefix=" + str(self.root / "provision-pycache"), str(ROOT / "bin" / "aim-next-runner"), "host-provision",
                                "--profile", str(self.lead_profile), "--runner-id", "host-fixture",
                                "--actor-profile", str(profile or self.agent_profile), "--codex-executable", str(self.codex),
                                "--codex-home", str(self.home), "--cli", str(self.cli), "--cwd", str(self.work),

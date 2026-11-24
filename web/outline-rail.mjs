@@ -683,7 +683,20 @@ export class OutlineRail {
   }
   // The keys come to the outline, on the row they were last on; coming back
   // from the messages (reading), on the row of the place being read.
-  focus({ reading = false } = {}) { return this.tree.focus(reading ? row => row.el.getAttribute('aria-current') === 'page' : null); }
+  focus({ reading = false } = {}) {
+    if (reading) {
+      const topic = this.currentTopicIn(this.here), outcome = topic && this.outcomes.get(topic.workspace_id);
+      if (outcome) {
+        // Coming from the feed chooses its Topic, even after folding this
+        // outcome or filtering it away. Keep the other outcomes as they are.
+        if (!this.isOpen(outcome.id) || outcome.li.hidden) this.setOpen(outcome, true);
+        const row = [...outcome.topics.querySelectorAll('a[data-topic-id]')].find(el => el.dataset.topicId === topic.id);
+        const group = row?.closest('details.topic-group');
+        if (group) group.open = true;
+      }
+    }
+    return this.tree.focus(reading ? row => row.el.getAttribute('aria-current') === 'page' : null);
+  }
   // The phone's drawer opens (rail-drawer.mjs): on the outline's own place, ringed while the person's choice stands.
   drawerOpened() { return this.tree.show(); }
   // A move begins (in-place-navigation.mjs): one begun from elsewhere than the

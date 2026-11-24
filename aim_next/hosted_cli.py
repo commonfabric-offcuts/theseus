@@ -203,6 +203,7 @@ class HostedCLI:
         pin = store.read_route_pin(self.profile.actor_id, self.destination)
         if pin.get('destination') != self.destination:
             raise Refusal('ROUTE_PIN_MISMATCH', 'Route pin changed; nothing sent by this attempt; retain the original binding')
+        store.observe_cli(self.profile.actor_id)
         if method == 'binding':
             return {'binding': self.binding, 'outbox': self.outbox}, b''
         if method == 'view':

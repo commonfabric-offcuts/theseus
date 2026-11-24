@@ -873,7 +873,7 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     const writingHint = await p.evaluate(`document.querySelector('${FULL} .deck-keys').children[1].textContent`);
     assert.match(writingHint, /← at the very start or → at the very end done/, 'the full-page writing hint describes display at both boundaries');
     assert.match(writingHint, /no selection/, 'the writing hint names the collapsed-caret default');
-    assert.match(writingHint, /⇧Tab at start or end outdent/, 'the writing hint includes end Shift-Tab');
+    assert.match(writingHint, /Tab or ⇧Tab at start or end indent or outdent card/, 'the writing hint names Tab and Shift-Tab at either boundary');
     assert.doesNotMatch(writingHint, /folds children|unfolds them/, 'the writing hint no longer promises editing-arrow folds');
     // ← moves the cursor through the words, then from the very start displays this card with its children untouched.
     for (let step = 0; step < 'Plan\nShip it.'.length; step++) await p.key('ArrowLeft');
