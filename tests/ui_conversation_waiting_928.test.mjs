@@ -37,7 +37,7 @@ test('928 Conversation pill reaches a real question for a reader who was not ask
   assert.equal(questionOf({ ...conversation, kind: 'topic' }, 'owner'), null, 'ordinary topic navigation keeps its existing rule');
   assert.equal(questionOf({ ...conversation, state: 'active', asks: [] }, 'owner'), null);
   const opened = [];
-  const rail = { question: () => questionOf(conversation, 'owner'), title: () => 'Conversation', open: (...args) => opened.push(args) };
+  const rail = { links: new Map(), rowItems: new WeakMap(), question: () => questionOf(conversation, 'owner'), title: () => 'Conversation', open: (...args) => opened.push(args) };
   TopicRail.prototype.activate.call(rail, conversation.id, { button: 0, target: { closest: () => null }, preventDefault() {} });
   assert.deepEqual(opened, [['conversation', 'Conversation', 'q-agent']]);
 });

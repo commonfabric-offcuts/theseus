@@ -153,7 +153,7 @@ class Runner:
         commit_started = False
         try:
             try:
-                db, _ = _connect(self.path)
+                db, _ = _connect(self.path, write=True)
             except (OSError, KeyboardInterrupt) as error:
                 # _connect explicitly chains a failed setup close. It still
                 # owns that unreturned handle; an ordinary interruption keeps
@@ -669,7 +669,7 @@ class Runner:
         from .store import _connect
         try:
             with self._authority.shared() as fence:
-                db, _ = _connect(self.path)
+                db, _ = _connect(self.path, write=True)
                 try:
                     db.execute("BEGIN IMMEDIATE")
                     fence.verify()
@@ -710,7 +710,7 @@ class Runner:
         from .store import _connect
         try:
             with self._authority.shared() as fence:
-                db, _ = _connect(self.path)
+                db, _ = _connect(self.path, write=True)
                 try:
                     db.execute("BEGIN IMMEDIATE")
                     fence.verify()

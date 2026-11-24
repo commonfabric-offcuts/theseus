@@ -4,6 +4,7 @@ import { topicCloseUI } from './topic-close-ui.mjs';
 import { QuestionStates, configureQuestionStates, questionOf, questionPill, Resolutions } from './question-state.mjs';
 import { reviewDifferences } from './review-differences.mjs';
 import { railDensity } from './rail-density.mjs';
+import { railHotkeysFor } from './rail-hotkeys.mjs';
 import { CardReplies } from './card-replies.mjs';
 import { MentionNotices } from './mention-notices.mjs';
 import { notebookDeleteUI } from './notebook-delete-ui.mjs';
@@ -3340,6 +3341,7 @@ async function initialize() {
   api = new Api(token); api.refused = () => run(reconnect);
   bootstrap = await api.bootstrap();
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
+  railHotkeysFor(document)?.bind(bootstrap,()=>!retired&&shell.page===thisRun&&document.body.dataset.ready==='true');
   notebookDeleting=await notebookDeleteUI({doc:document,shell,api,bootstrap,current:()=>!retired&&shell.page===thisRun,
     open:async(id,mode,scope)=>{if(!retired)await openNotebook(id,{mode});}});
   notebookTransferDrag({doc:document,bootstrap,rail:()=>panes.outline?.list,current:()=>!retired&&shell.page===thisRun,

@@ -23,7 +23,9 @@ from .media import VerifiedMedia
 
 HEADER_LIMIT = LIMITS['http_envelope_bytes'] + 8192
 BODY_LIMIT = LIMITS['media_file_bytes']
-DEADLINE = 10.0
+# An optional activity write and the command can each wait five seconds.
+# Leave framing/response margin after both bounded waits (1194).
+DEADLINE = 15.0
 
 
 class BrokerFailure(StoreError):

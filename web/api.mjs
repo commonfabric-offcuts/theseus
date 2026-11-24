@@ -271,10 +271,24 @@ function foregroundRead(job, signal) {
   });
 }
 
+const BUSY_BACKOFF_MS = [250, 750, 1500];
+function busyPause(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const cancelled = () => {
+      clearTimeout(timer); signal?.removeEventListener('abort', cancelled);
+      reject(signal?.reason ?? new DOMException('The change was cancelled.', 'AbortError'));
+    };
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', cancelled); resolve(); }, ms);
+    signal?.addEventListener('abort', cancelled, { once: true });
+    if (signal?.aborted) cancelled();
+  });
+}
+
 export class Api {
-  constructor(token, fetcher = globalThis.fetch.bind(globalThis)) {
+  constructor(token, fetcher = globalThis.fetch.bind(globalThis), pause = busyPause) {
     this.token = token;
     this.fetcher = fetcher;
+    this.pause = pause;
     // Told when the server refused this Api's session, as a restarted server
     // does: the page renews its session then (app.mjs).
     this.refused = () => {};
@@ -308,10 +322,33 @@ export class Api {
   }
 
   bootstrap(options) { return this.request('/api/bootstrap', undefined, options); }
-  command(envelope) { return this.request('/api/command', envelope); }
+  command(envelope, options) {
+    const saved = JSON.parse(JSON.stringify(envelope));
+    return this.change(() => this.request('/api/command', saved, options), options?.signal);
+  }
   view(name, args = {}, options) { return this.request('/api/view', { name, args }, options); }
 
-  upload(envelope, blob, options) { return attempted(this, () => this.sendUpload(envelope, blob, options), options?.signal); }
+  upload(envelope, blob, options) {
+    const saved = JSON.parse(JSON.stringify(envelope));
+    return this.change(() => attempted(this, () => this.sendUpload(saved, blob, options), options?.signal), options?.signal);
+  }
+
+  async change(send, signal) {
+    for (let retry = 0; ; retry++) {
+      if (signal?.aborted) throw signal.reason ?? new DOMException('The change was cancelled.', 'AbortError');
+      let receipt;
+      try { receipt = await send(); }
+      catch (error) {
+        // Only an explicit unrecorded busy answer permits automatic resend.
+        // A lost/unreadable answer still needs ordinary reconciliation.
+        if (error?.details?.recorded !== false || !isBusy(error.details) || retry === BUSY_BACKOFF_MS.length) throw error;
+        await this.pause(BUSY_BACKOFF_MS[retry], signal);
+        continue;
+      }
+      if (receipt?.recorded !== false || !isBusy(receipt) || retry === BUSY_BACKOFF_MS.length) return receipt;
+      await this.pause(BUSY_BACKOFF_MS[retry], signal);
+    }
+  }
   async sendUpload(envelope, blob, { signal } = {}) {
     const command = JSON.stringify(envelope).replace(/[\u007f-\uffff]/g, ch => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
     let response;

@@ -446,8 +446,8 @@ export class TopicRail {
     let link = this.links.get(item.id);
     if (!link) {
       link = document.createElement('a'); link.className = 'nav-item'; link.dataset.topicId = item.id;
-      // A topic waiting on the reader opens at the question (item 148): the Reader shows it.
-      // A press on its unread count opens it at its oldest unread message (item 613).
+      // The row and its unread count share the oldest-unread destination (1174).
+      // Without unread, a topic waiting on the reader still opens its question.
       link.onclick = event => this.activate(item.id, event);
       this.links.set(item.id, link);
     }
@@ -464,7 +464,8 @@ export class TopicRail {
     }
     if (Number.isSafeInteger(item.cover_waiting) && item.cover_waiting > 0) link.setAttribute('data-cover-waiting', '');
     else link.removeAttribute('data-cover-waiting');
-    link.href = routeHref(topicTarget(item.id, this.question(item.id)));
+    link.href = routeHref(Number.isSafeInteger(item.unread) && item.unread > 0
+      ? topicTarget(item.id, null, 'unread') : topicTarget(item.id, this.question(item.id)));
     if (item.id === this.selected?.id) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
     this.rowItems.set(link, item);
@@ -473,7 +474,9 @@ export class TopicRail {
   activate(id, event) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
-    if (landsOnUnread(event.target, event)) return this.open(id, this.title(id), null, 'unread');
+    const item = this.rowItems.get(this.links.get(id));
+    if ((Number.isSafeInteger(item?.unread) && item.unread > 0) || landsOnUnread(event.target, event))
+      return this.open(id, this.title(id), null, 'unread');
     return this.open(id, this.title(id), this.question(id, true));
   }
   // A second presentation reads the rows this rail actually drew, including
