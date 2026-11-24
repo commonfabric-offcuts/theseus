@@ -89,12 +89,8 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
    Heights come from the actual rows, including earlier stars and wrapping. */
 .ol-own[data-topic-fold]>.ol-topic-list{overflow:clip;max-height:var(--topic-fold-end);mask-image:linear-gradient(to bottom,#000 var(--topic-fold-start),transparent var(--topic-fold-end));transition:max-height .22s ease .35s}
 .ol-own[data-topic-fold]>.ol-topic-foot{overflow:clip;max-height:0;transition:max-height .22s ease .35s}
-.ol-own[data-topic-fold]:is(:focus-within,[data-topic-current])>.ol-topic-list{max-height:var(--topic-fold-full);mask-image:none;transition-delay:0s}
-.ol-own[data-topic-fold]:is(:focus-within,[data-topic-current])>.ol-topic-foot{max-height:var(--topic-fold-foot);transition-delay:0s}
-@media(hover:hover){
-  .ol-own[data-topic-fold]:hover>.ol-topic-list{max-height:var(--topic-fold-full);mask-image:none;transition-delay:0s}
-  .ol-own[data-topic-fold]:hover>.ol-topic-foot{max-height:var(--topic-fold-foot);transition-delay:0s}
-}
+.ol-own[data-topic-fold]:is(:focus-within,[data-topic-current],[data-topic-revealed])>.ol-topic-list{max-height:var(--topic-fold-full);mask-image:none;transition-delay:0s}
+.ol-own[data-topic-fold]:is(:focus-within,[data-topic-current],[data-topic-revealed])>.ol-topic-foot{max-height:var(--topic-fold-foot);transition-delay:0s}
 @media(prefers-reduced-motion:reduce){.ol-own[data-topic-fold]>:is(.ol-topic-list,.ol-topic-foot){transition:none}}
 /* Only New hides rows. Waiting keeps the rail's shape with 973's dim paint. */
 .outline[data-only=new] .ol-topics :is(.topic-list,#topics) a.nav-item:not(:has(.unread-count)),

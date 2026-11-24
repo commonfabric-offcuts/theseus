@@ -47,6 +47,13 @@ press on a topic's unread count opens it at its oldest unread message, here
 and on the right rail's Build rows alike (item 613; docs/attention.md, "In the
 browser").
 
+Seven topic rows stay fully visible, followed by a fading eighth when more
+are available. On a hovering pointer, the fade plus one row above it reveals
+the whole list. That reveal stays open through hovering and scrolling; the
+next click or key press anywhere on the page, including either side rail,
+closes it without consuming the action. Keyboard focus and the current topic
+remain visible through the existing keyboard/current-topic rules.
+
 - **Pencils.** A pencil means "new", the same glyph as New message and a new
   Notebook page (item 305). A quiet pencil beside an outcome's name starts a
   new topic there: a press opens the New topic title line under the row,
