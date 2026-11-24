@@ -106,7 +106,7 @@ shutdown adds elapsed time. The plan now says so explicitly. Neither forecast
 nor scripted startup proof establishes actual-model/physical boot success.
 
 Whole-system reviews recorded: Warp23494 and Steward23510. Remaining focused
-responses: Fable, Auditor, core-lane7, core-lane8, page-lane5 and page-lane6.
+responses after Fable23512: Auditor, core-lane7, core-lane8, page-lane5 and page-lane6.
 Core7's23495 ordering evidence is a scoped technical confirmation, not a claim
 to have reviewed the whole revised document.
 
