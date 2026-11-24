@@ -70,9 +70,10 @@ first fresh warp starts them, server first, before anything else touches the boa
 
 1. `/usr/bin/python3 -I W/land/start-server.py` starts the server from its last launch record, at the live checkout's
    head, through the deploy tool's own start.
-2. Before the runner starts, every hosted seat's fresh agent is requested, because a runner that starts first resumes
+2. Before the runner starts, a fresh agent is requested for each of the eight hosted seats in the reboot (fable,
+   auditor, flex, test-steward, core-lane7, core-lane8, page-lane5, page-lane6), because a runner that starts first resumes
    each seat's old thread. The request is the outcome owner's alone ([seat-refresh-1213.md](../seat-refresh-1213.md)):
-   warp posts Tony the exact `seat-refresh OUTCOME ACTOR ...` command, naming every hosted seat, ready to paste, and
+   warp posts Tony the exact `seat-refresh OUTCOME ACTOR ...` command, naming those eight and no other hosted actor Health lists, ready to paste, and
    waits until he reports its receipts. The service records each request with the runner stopped.
 3. `/usr/bin/python3 -I W/land/start-runner-with.py --seat-template core-lane7` starts the runner's supervisor the same
    way; `normalize-runner.py`, then `normalize-runner.py --check` in `W/land/`, must read `VISIBLE`, or the next landing
