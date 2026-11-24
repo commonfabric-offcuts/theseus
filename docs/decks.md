@@ -361,7 +361,7 @@ fail that check. This unit control alone does not establish native behavior.
 | finish editing and display the same card | ← at the collapsed very start, → at the collapsed very end | |
 | outdent while keeping the card's editor and caret | ⇧Tab at the collapsed very start or end | |
 | while editing, move the card past the one above or below it | ⌘↑ ⌘↓ | |
-| while editing, indent or outdent the card at the collapsed text start; elsewhere the current line or selected lines | Tab, ⇧Tab | |
+| while editing, indent or outdent the card at the collapsed text start or end; elsewhere the current line or selected lines | Tab, ⇧Tab | |
 | while editing, move the line the cursor is on past the line above or below it | ⌥↑ ⌥↓ | |
 | while editing, finish the card and go on editing the one above or below | ↑ at the very start, ↓ at the very end | |
 | a new card beside this one | Return while not editing | New card |
@@ -388,9 +388,10 @@ elsewhere. A new card goes beside the picked one, after its children, or with
 ⌥Return right above it, at its depth.
 
 While a card is being written, ⌘↑ and ⌘↓ move it by the same rules; what is
-written, and the cursor, stay where they were. At the collapsed very first
-text position, Tab and ⇧Tab indent and outdent the card, including a new
-empty box after ⌘Return. A blocked first-card indent or top-level outdent
+written, and the cursor, stay where they were. At either collapsed text boundary (offset zero or the actual text length),
+Tab and ⇧Tab indent and outdent the card, including a new empty box after
+⌘Return (1156). Whitespace, trailing newlines and Unicode remain part of the
+text; a nonempty selection reaching an end is not a boundary caret. A blocked first-card indent or top-level outdent
 keeps the words and focus. Shift-Tab at the collapsed very last text position
 also outdents the card and retains its editor, exact words and caret (1058).
 Elsewhere, including nonempty selections reaching either end,
