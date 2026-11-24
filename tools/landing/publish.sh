@@ -4,7 +4,9 @@
 # on the seat's cards page, then the seat's on_live command. land_ordinary.sh runs it once the deploy succeeds; run it
 # alone to finish a publication that failed, which reruns no test and no deploy. Each run keeps its own receipts in
 # <folder>/publish-<stamp>/ with phases.txt, so a failed publication and its recovery stay apart from the deploy's
-# result. A part already done (a release-N.id, a card already on the page) is read back and not done twice.
+# result. A part already done is not done twice: once the dossier's request is saved (<posts>/release-N.post.txt) its
+# evidence is read from that request rather than written again, the dossier goes again as that same request under the
+# same operation (post_dossier.sh), and a card already on the page is left there.
 set -u
 . "$(dirname "$0")/kit.sh"
 ITEM="$1"; A="$2"; F=$(cd "$A/../.." && pwd -P); POSTS=$(cfg posts) || exit 2
@@ -13,7 +15,9 @@ REL=$(spec "$F" release) || exit 2
 P="$F/publish-$(date '+%Y%m%d-%H%M%S')"; mkdir "$P" || { echo "STOP: cannot make $P"; exit 2; }
 PHASES="evidence dossier card on-live"
 finish() { phases "$P" $PHASES; seal "$P"; echo "$1"; exit "$2"; }
-step "$P" evidence "Evidence:" /usr/bin/python3 -I "$K/dossier_evidence.py" "$ITEM" "$POSTS/dossier-$ITEM.txt" "$A" || finish "NOT PUBLISHED $ITEM: evidence; see $P" 3
+if [ -f "$POSTS/release-$REL.post.txt" ]; then EVIDENCE=(/usr/bin/grep "^Evidence:" "$POSTS/release-$REL.post.txt")
+else EVIDENCE=(/usr/bin/python3 -I "$K/dossier_evidence.py" "$ITEM" "$POSTS/dossier-$ITEM.txt" "$A"); fi
+step "$P" evidence "Evidence:" "${EVIDENCE[@]}" || finish "NOT PUBLISHED $ITEM: evidence; see $P" 3
 step "$P" dossier "posted" bash "$K/post_dossier.sh" "$REL" "$ITEM" || finish "NOT PUBLISHED $ITEM: dossier; see $P" 3
 step "$P" card "on the page:" /usr/bin/python3 -I "$K/cards_add.py" "$ITEM" "$REL" || finish "NOT PUBLISHED $ITEM: card; see $P" 3
 ON_LIVE=$(cfg on_live)

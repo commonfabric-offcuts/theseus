@@ -57,7 +57,7 @@ def message_from_read(rows, message_id):
 
     rows are the read's JSON objects. A short message's items row is whole. A long one's items row holds only a preview
     (preview true), and its whole text arrives as a separate object naming it in source_ref, which spells the author
-    'author'. A withheld message is returned with no body, so no proof can be read from it."""
+    'author'. A withheld message is returned withheld, with no body, so no proof can be read from it."""
     row = next((m for r in rows for m in r.get('items') or [] if m.get('id') == message_id), None)
     if row is None:
         return None
@@ -65,6 +65,7 @@ def message_from_read(rows, message_id):
         whole = next((r for r in rows if (r.get('source_ref') or {}).get('id') == message_id), None)
         if whole is None:
             return None
-        row = dict(whole, id=message_id, author_id=whole.get('author'))
-    return {'id': message_id, 'author_id': row.get('author_id'), 'sent_ms': row.get('sent_ms'),
-            'body': '' if row.get('withheld') else (row.get('body') or '')}
+        row = dict(whole, id=message_id, author_id=whole.get('author'), seq=row.get('seq'))
+    withheld = bool(row.get('withheld'))
+    return {'id': message_id, 'topic_id': row.get('topic_id'), 'seq': row.get('seq'), 'author_id': row.get('author_id'),
+            'sent_ms': row.get('sent_ms'), 'withheld': withheld, 'body': '' if withheld else (row.get('body') or '')}

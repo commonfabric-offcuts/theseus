@@ -1,19 +1,19 @@
 #!/bin/bash
-# node_suite_check.sh CARRY_WORKTREE [LIVE_CHECKOUT] [OUT_DIR]
+# node_suite_check.sh CARRY_WORKTREE [LIVE_CHECKOUT] [OUT_DIR] [SPEC]
 # Runs the whole node unit suite on the carry tree and on live, and names any failure the carry adds, any shared
 # failure whose cause changed, and any case that passed on live and no longer runs on the carry.
 # Receipts in OUT_DIR (a landing names its sealed attempt folder; the default is a cache): binding.txt (each tree's
 # path, head and tree id), <tag>.tap (node's whole output), <tag>.events.jsonl (each case's file, name and status, from
-# node_reporter.mjs), <tag>.exit (node's own return code), <tag>.fails (names), changed.txt (the carry's changed files).
+# node_reporter.mjs), <tag>.exit (node's own return code), <tag>.fails (names).
 # Exit 0: no new failure. Exit 3: new failures (listed). Exit 4: a failure shared with live has a changed cause (listed).
-# Exit 5: a case that passed on live is skipped, todo, cancelled or gone on the carry, in a test file the carry did not
-# change (listed; execution_compare.py). Exit 2: a suite did not run to its summary, ran no test, cancelled a case, its
+# Exit 5: a case that passed on live is skipped, todo, cancelled or gone on the carry, and SPEC (the landing's SPEC.json)
+# names no reason for it in execution_changes (listed; execution_compare.py). Exit 2: a suite did not run to its summary, ran no test, cancelled a case, its
 # summary does not add up, its result lines or plan do not match its counts, it ran a fraction of the suite, its summary and its failing identities disagree, node's return code disagrees with its
 # summary, or the carry's failure count rose without a named new failure.
 set -u
 . "$(dirname "$0")/kit.sh"
 CARRY="$1"; LIVE="${2:-$(cfg live)}"
-OUT="${3:-$(cfg scratch)/node-suite}"; mkdir -p "$OUT" || exit 2
+OUT="${3:-$(cfg scratch)/node-suite}"; SPEC="${4:-}"; mkdir -p "$OUT" || exit 2
 { for pair in "carry:$CARRY" "live:$LIVE"; do tag=${pair%%:*}; dir=${pair#*:}
     echo "$tag $dir head $(git -C "$dir" rev-parse HEAD 2>/dev/null) tree $(git -C "$dir" rev-parse 'HEAD^{tree}' 2>/dev/null)"; done
   echo "node $(command -v node) $(node --version 2>/dev/null)"; date; } > "$OUT/binding.txt" || exit 2
@@ -62,7 +62,6 @@ if [ -n "$NEW" ]; then echo "NEW FAILURES on the carry (not on live):"; echo "$N
 /usr/bin/python3 -I "$K/cause_compare.py" "$OUT/carry.tap" "$OUT/live.tap"; CRC=$?
 [ "$CRC" = 0 ] || exit 4
 # A case that passed on live must still run on the carry; a skip or a lost body adds no failing name.
-git -C "$CARRY" diff --name-only "$(git -C "$LIVE" rev-parse HEAD)" HEAD > "$OUT/changed.txt" || { echo "cannot list the carry's changed files against live"; exit 2; }
-/usr/bin/python3 -I "$K/execution_compare.py" "$OUT/carry.events.jsonl" "$OUT/live.events.jsonl" "$OUT/changed.txt"; ERC=$?
+/usr/bin/python3 -I "$K/execution_compare.py" "$OUT/carry.events.jsonl" "$OUT/live.events.jsonl" ${SPEC:+"$SPEC"}; ERC=$?
 [ "$ERC" = 0 ] || exit "$ERC"
 echo "no new node failure (live carries $(wc -l < "$OUT/live.fails" | tr -d ' ') known)"

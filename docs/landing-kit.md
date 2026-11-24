@@ -25,7 +25,9 @@ running landing, and `land_ordinary.sh` refuses to start there.
    it, then `python3 -I tools/landing/check_inputs.py --record <work>/ITEM-land`.
 2. Fill `SPEC.json`'s null fields: `piece`, `topic`, `release` (live's number plus one), `title`, `review` (what the
    head does and its kind, which becomes the merge body), `review_head` (the head that review was written of),
-   `approved_head` (the same head) and `pr`.
+   `approved_head` (the same head) and `pr`. A node case the piece stops running on purpose (skipped, renamed or
+   removed) goes in `execution_changes` as `{"file", "names", "why"}`, one entry per case, or the node suite refuses
+   the landing.
 3. Draft `<posts>/dossier-ITEM.txt` (first line `Release NNN is live: …`, with a line `Evidence: EVIDENCE_TO_FILL`)
    and `<posts>/card-ITEM.md` (with `live as release NNN at TIME`). A landing without both refuses before it starts.
 4. `bash tools/landing/carry_ordinary.sh ITEM APPROVED_HEAD LIVE_COMMIT BRANCH PR` merges live into the head, pushes
@@ -49,10 +51,10 @@ running landing, and `land_ordinary.sh` refuses to start there.
 | Exit | Meaning | Next |
 |---|---|---|
 | 2 | an input, the config, the kit or a draft refused; nothing ran | read the STOP line |
-| 3 | the node suite refused: a new failure, a shared failure's changed cause, or a case that passed on live and is skipped or gone on the carry | `node-suite.out` names which; the lane fixes it; carry again |
+| 3 | the node suite refused: a new failure, a shared failure's changed cause, or a case that passed on live and is skipped or gone on the carry with no reason in `execution_changes` | `node-suite.out` names which; the lane fixes it, or names a deliberate change with its reason; carry again |
 | 4 | the preflight refused (a guarded file, the release record, the review's head) | read `preflight*.out`; a guarded file takes the judged path |
 | 5 | `land.py` stopped | read `land.out` and `STOP.json`; with `MERGED.json` present the PR is merged, so read it before anything else |
-| 6 | live, publication unfinished | `bash tools/landing/publish.sh ITEM ATTEMPT_DIR`, which reruns no test and no deploy; the dossier goes under the same operation id as before, so a post Core recorded is answered, not made twice |
+| 6 | live, publication unfinished | `bash tools/landing/publish.sh ITEM ATTEMPT_DIR`, which reruns no test and no deploy; a dossier request already saved goes again unchanged under the same operation id, so a post Core recorded is answered, not made twice |
 
 ## Receipts
 
@@ -69,9 +71,10 @@ publication and its recovery stay apart from the deploy's result.
 - a carry whose review was written of another head, or that is not live merged into the reviewed head
 - a carry whose push or preflight refused, reported as the carry's own exit
 - a carry that adds a node failure, or a shared failure whose cause changed
-- a case that passed on live and is skipped, todo, cancelled or gone on the carry, unless the carry changed its test
-  file (listed either way)
-- a second dossier post for one release, and a dossier recorded as posted before it is read back from the board
+- a case that passed on live and is skipped, todo, cancelled or gone on the carry, unless `execution_changes` names
+  that case with its reason (listed either way); an edit elsewhere in its test file explains nothing
+- a second dossier post for one release, a different request under its operation, and a dossier recorded as posted
+  before the message itself is read back from the board as the seat's, in the releases topic, with the whole text
 - an ordinary piece that changes a file the deploy guards
 - a dossier proof that is not the piece's own freeze and approval, or fable's read of the exact carry
 

@@ -282,11 +282,14 @@ class Execution(Seat):
         path.write_text(''.join(json.dumps({'file': f, 'names': n, 'occurrence': 1, 'status': s}) + '\n' for f, n, s in rows))
         return path
 
-    def compare(self, carry_rows, changed=()):
+    def compare(self, carry_rows, named=None):
         live = self.events('live.jsonl', [('tests/a.test.mjs', 'one', 'pass'), ('tests/a.test.mjs', 'two', 'pass')])
         carry = self.events('carry.jsonl', carry_rows)
-        (self.root / 'changed.txt').write_text(''.join(c + '\n' for c in changed))
-        return self.run_kit('execution_compare.py', carry, live, self.root / 'changed.txt')
+        if named is None:
+            return self.run_kit('execution_compare.py', carry, live)
+        spec = self.root / 'SPEC.json'
+        spec.write_text(json.dumps({'execution_changes': named}))
+        return self.run_kit('execution_compare.py', carry, live, spec)
 
     def test_a_case_that_still_runs_passes(self):
         self.assertEqual(self.compare([('tests/a.test.mjs', 'one', 'pass'), ('tests/a.test.mjs', 'two', 'fail')]).returncode, 0)
@@ -301,10 +304,21 @@ class Execution(Seat):
         self.assertEqual(out.returncode, 5)
         self.assertIn('two -> gone', out.stdout)
 
-    def test_a_case_in_a_file_the_carry_changed_is_explained(self):
-        out = self.compare([('tests/a.test.mjs', 'one', 'pass')], changed=['tests/a.test.mjs'])
-        self.assertEqual(out.returncode, 0)
-        self.assertIn('explained', out.stdout)
+    def test_a_case_the_spec_names_with_its_reason_is_listed_and_passes(self):
+        out = self.compare([('tests/a.test.mjs', 'one', 'pass')],
+                           named=[{'file': 'tests/a.test.mjs', 'names': 'two', 'why': 'retired with the old menu'}])
+        self.assertEqual(out.returncode, 0, out.stdout)
+        self.assertIn('tests/a.test.mjs :: two -> gone (retired with the old menu)', out.stdout)
+
+    def test_a_reason_covers_only_the_case_it_names(self):
+        out = self.compare([('tests/a.test.mjs', 'one', 'skip'), ('tests/a.test.mjs', 'two', 'skip')],
+                           named=[{'file': 'tests/a.test.mjs', 'names': 'two', 'why': 'retired with the old menu'}])
+        self.assertEqual(out.returncode, 5)
+        self.assertIn('tests/a.test.mjs :: one -> skip', out.stdout)
+
+    def test_an_entry_without_a_reason_refuses(self):
+        out = self.compare([('tests/a.test.mjs', 'one', 'pass')], named=[{'file': 'tests/a.test.mjs', 'names': 'two', 'why': ' '}])
+        self.assertEqual(out.returncode, 2)
 
     def test_the_reporter_names_each_case_with_its_file_and_how_it_ended(self):
         tests = self.root / 'tree' / 'tests'
@@ -321,7 +335,7 @@ class Execution(Seat):
 
 
 class NodeSuite(Seat):
-    """node_suite_check.sh on two trees of one repository: live, and a carry that changes only lib/flag.mjs."""
+    """node_suite_check.sh on two trees of one repository: live, and a carry that changes lib/flag.mjs."""
 
     SUITE = ("import test from 'node:test';\nimport { ready } from '../lib/flag.mjs';\n"
              "for (let i = 0; i < 1000; i++) test('case ' + i, () => {});\n"
@@ -343,8 +357,10 @@ class NodeSuite(Seat):
         git(carry, 'commit', '-q', '-am', 'carry')
         return carry, live
 
-    def check(self, carry, live):
-        return self.run_kit('node_suite_check.sh', carry, live, self.root / 'out')
+    def check(self, carry, live, named=()):
+        spec = self.root / 'SPEC.json'
+        spec.write_text(json.dumps({'execution_changes': list(named)}))
+        return self.run_kit('node_suite_check.sh', carry, live, self.root / 'out', spec)
 
     def test_a_case_the_carry_skips_from_outside_its_file_refuses(self):
         out = self.check(*self.trees('false'))
@@ -356,16 +372,21 @@ class NodeSuite(Seat):
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         self.assertIn('every case that passed on live runs on the carry', out.stdout)
 
-    def test_a_skip_in_a_test_file_the_carry_changed_is_listed_and_passes(self):
+    def test_an_edit_to_the_test_file_does_not_excuse_a_skip(self):
         out = self.check(*self.trees('false', self.SUITE + '// the carry edits this file\n'))
+        self.assertEqual(out.returncode, 5, out.stdout + out.stderr)
+        self.assertIn('tests/a.test.mjs :: needs the flag -> skip', out.stdout)
+
+    def test_a_skip_the_spec_names_with_its_reason_passes(self):
+        out = self.check(*self.trees('false'), named=[{'file': 'tests/a.test.mjs', 'names': 'needs the flag', 'why': 'the flag is off until 1300'}])
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
-        self.assertIn('explained: the carry changed its file', out.stdout)
+        self.assertIn('needs the flag -> skip (the flag is off until 1300)', out.stdout)
 
 
 STUB_CLI = r"""
 import json, os, sys
 state = os.path.join(os.environ['STUB_DIR'], 'ledger.json')
-ledger = json.load(open(state)) if os.path.exists(state) else {'posts': {}}
+ledger = json.load(open(state)) if os.path.exists(state) else {'posts': {}, 'messages': []}
 args = [a for a in sys.argv[1:] if a not in ('--json',)]
 args = args[2:] if args[:1] == ['--profile'] else args
 if args[0] == 'releases':
@@ -374,48 +395,87 @@ elif args[0] == 'post':
     operation = args[args.index('--operation') + 1] if '--operation' in args else 'fresh-%d' % len(ledger['posts'])
     body = sys.stdin.read()
     if operation not in ledger['posts']:
-        ledger['posts'][operation] = {'id': 'm-%032x' % (len(ledger['posts']) + 1), 'body': body}
+        seq = 1001 + len(ledger['messages'])
+        ledger['messages'].append({'id': 'm-%032x' % seq, 'seq': seq, 'topic_id': args[1], 'author_id': os.environ.get('STUB_AUTHOR', 'tester'),
+                                   'body': os.environ.get('STUB_STORED_BODY', body), 'withheld': bool(os.environ.get('STUB_WITHHELD'))})
+        ledger['posts'][operation] = {'id': 'm-%032x' % seq, 'body': body}
         json.dump(ledger, open(state, 'w'))
         if os.environ.get('STUB_LOSE_ANSWER'):
             sys.exit(1)
     elif ledger['posts'][operation]['body'] != body:
         print('rejected OPERATION_PAYLOAD_MISMATCH'); sys.exit(1)
-    print('posted %s in t-1' % ledger['posts'][operation]['id'])
+    print('posted %s in %s' % (ledger['posts'][operation]['id'], args[1]))
 elif args[0] == 'read':
-    print(json.dumps({'topic': {'id': 't-1'}}))
-    print(json.dumps({'items': [{'id': p['id'], 'author_id': 'tester', 'preview': False, 'body': p['body'], 'sent_ms': 1}
-                                for p in ledger['posts'].values()]}))
+    after = int(args[args.index('--after') + 1]) if '--after' in args else 0
+    limit = int(args[args.index('--limit') + 1]) if '--limit' in args else 50
+    page = [m for m in ledger['messages'] if m['topic_id'] == args[1] and m['seq'] > after][:limit]
+    print(json.dumps({'topic': {'id': args[1]}}))
+    print(json.dumps({'items': [dict(m, preview=False, sent_ms=1) for m in page], 'next_cursor': page[-1]['seq'] if page else None}))
 """
 
 
 class Publication(Seat):
+    DOSSIER = 'Release NNN is live: a thing.\n\nEvidence: read.\n'
+
     def setUp(self):
         super().setUp()
         (Path(self.settings['live']) / 'bin' / 'aim-next').write_text(STUB_CLI)
         self.env['STUB_DIR'] = str(self.root)
-        (Path(self.settings['posts']) / 'dossier-1300.txt').write_text('Release NNN is live: a thing.\n\nEvidence: read.\n')
+        self.posts_dir = Path(self.settings['posts'])
+        (self.posts_dir / 'dossier-1300.txt').write_text(self.DOSSIER)
 
-    def posts(self):
-        return json.loads((self.root / 'ledger.json').read_text())['posts']
+    def ledger(self):
+        return json.loads((self.root / 'ledger.json').read_text())
+
+    def post(self, **env):
+        self.env.update(env)
+        out = self.run_kit('post_dossier.sh', '9', '1300')
+        for key in env:
+            del self.env[key]
+        return out
 
     def test_a_post_whose_answer_was_lost_is_finished_without_a_second_post(self):
-        self.env['STUB_LOSE_ANSWER'] = '1'
-        first = self.run_kit('post_dossier.sh', '9', '1300')
+        first = self.post(STUB_LOSE_ANSWER='1')
         self.assertNotEqual(first.returncode, 0)
-        self.assertEqual(len(self.posts()), 1)
-        self.assertFalse((Path(self.settings['posts']) / 'release-9.id').exists())
-        del self.env['STUB_LOSE_ANSWER']
-        second = self.run_kit('post_dossier.sh', '9', '1300')
+        self.assertEqual(len(self.ledger()['posts']), 1)
+        self.assertFalse((self.posts_dir / 'release-9.id').exists())
+        second = self.post()
         self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
-        self.assertEqual(len(self.posts()), 1)
-        self.assertIn('read back', (Path(self.settings['posts']) / 'release-9.id').read_text())
+        self.assertEqual(len(self.ledger()['messages']), 1)
+        self.assertIn('seq 1001 in t-1, read back', (self.posts_dir / 'release-9.id').read_text())
 
-    def test_a_changed_dossier_is_not_sent_under_the_first_posts_operation(self):
-        self.run_kit('post_dossier.sh', '9', '1300')
-        (Path(self.settings['posts']) / 'dossier-1300.txt').write_text('Release NNN is live: another thing.\n')
-        out = self.run_kit('post_dossier.sh', '9', '1300')
+    def test_a_rerun_sends_the_saved_request_not_a_dossier_edited_since(self):
+        self.assertEqual(self.post().returncode, 0)
+        (self.posts_dir / 'dossier-1300.txt').write_text('Release NNN is live: another thing.\n')
+        again = self.post()
+        self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
+        self.assertEqual(len(self.ledger()['messages']), 1)
+        self.assertEqual(self.ledger()['messages'][0]['body'], self.DOSSIER.replace('NNN', '9'))
+
+    def test_a_different_request_under_the_same_operation_is_refused(self):
+        self.post(STUB_LOSE_ANSWER='1')
+        (self.posts_dir / 'release-9.post.txt').write_text('Release 9 is live: something else.\n')
+        out = self.post()
         self.assertNotEqual(out.returncode, 0)
-        self.assertEqual(len(self.posts()), 1)
+        self.assertEqual(len(self.ledger()['messages']), 1)
+        self.assertFalse((self.posts_dir / 'release-9.id').exists())
+
+    def test_a_post_beyond_the_first_page_of_the_topic_reads_back(self):
+        others = [{'id': 'm-other%d' % i, 'seq': i + 1, 'topic_id': 't-1', 'author_id': 'fable', 'body': 'x', 'withheld': False} for i in range(120)]
+        (self.root / 'ledger.json').write_text(json.dumps({'posts': {}, 'messages': others}))
+        out = self.post()
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn('seq 1121 in t-1, read back', (self.posts_dir / 'release-9.id').read_text())
+
+    def test_a_post_that_reads_back_with_another_body_author_or_withheld_refuses(self):
+        for env, what in (({'STUB_STORED_BODY': 'Release 9 is live: a thing.\n\nEvidence: other.\n'}, 'body'),
+                          ({'STUB_AUTHOR': 'fable'}, 'author'), ({'STUB_WITHHELD': '1'}, 'readable body')):
+            (self.root / 'ledger.json').unlink(missing_ok=True)
+            (self.posts_dir / 'release-9.post.txt').unlink(missing_ok=True)
+            out = self.post(**env)
+            self.assertNotEqual(out.returncode, 0, what)
+            self.assertIn(what, out.stdout)
+            self.assertFalse((self.posts_dir / 'release-9.id').exists(), what)
 
     def test_the_card_states_when_the_release_went_live_not_when_it_was_published(self):
         self.assertEqual(cards_add.live_time('release 9  abc1234  2026-11-24T09:31:05-08:00  shipped 1300', 9), '9:31 AM')
@@ -425,14 +485,16 @@ class Publication(Seat):
 
 class MessageRead(unittest.TestCase):
     def test_a_short_message_is_read_from_its_row(self):
-        rows = [{'topic': {}}, {'items': [{'id': 'm-1', 'author_id': 'fable', 'body': 'whole', 'sent_ms': 5, 'preview': False}]}]
-        self.assertEqual(decisions.message_from_read(rows, 'm-1'), {'id': 'm-1', 'author_id': 'fable', 'sent_ms': 5, 'body': 'whole'})
+        rows = [{'topic': {}}, {'items': [{'id': 'm-1', 'topic_id': 't', 'seq': 7, 'author_id': 'fable', 'body': 'whole', 'sent_ms': 5,
+                                           'preview': False}]}]
+        self.assertEqual(decisions.message_from_read(rows, 'm-1'), {'id': 'm-1', 'topic_id': 't', 'seq': 7, 'author_id': 'fable',
+                                                                    'sent_ms': 5, 'withheld': False, 'body': 'whole'})
 
     def test_a_previewed_message_is_read_whole_from_its_source(self):
-        rows = [{'topic': {}}, {'items': [{'id': 'm-1', 'author_id': 'fable', 'body': 'cut', 'sent_ms': 5, 'preview': True}]},
-                {'source_ref': {'kind': 'message', 'id': 'm-1'}, 'author': 'fable', 'body': 'cut and the rest ' + CARRY, 'sent_ms': 5}]
+        rows = [{'topic': {}}, {'items': [{'id': 'm-1', 'topic_id': 't', 'seq': 7, 'author_id': 'fable', 'body': 'cut', 'sent_ms': 5, 'preview': True}]},
+                {'source_ref': {'kind': 'message', 'id': 'm-1'}, 'topic_id': 't', 'author': 'fable', 'body': 'cut and the rest ' + CARRY, 'sent_ms': 5}]
         message = decisions.message_from_read(rows, 'm-1')
-        self.assertEqual((message['author_id'], message['body']), ('fable', 'cut and the rest ' + CARRY))
+        self.assertEqual((message['author_id'], message['seq'], message['body']), ('fable', 7, 'cut and the rest ' + CARRY))
         spec = dict(Proof.SPEC, carry_read={'topic': 't', 'seq': 5, 'id': 'm-1'})
         self.assertIn('the carry read by fable', decisions.proof(spec, {}, message))
 
@@ -440,7 +502,9 @@ class MessageRead(unittest.TestCase):
         rows = [{'items': [{'id': 'm-1', 'author_id': 'fable', 'body': 'cut', 'sent_ms': 5, 'preview': True}]}]
         self.assertIsNone(decisions.message_from_read(rows, 'm-1'))
         rows = [{'items': [{'id': 'm-1', 'author_id': 'fable', 'body': CARRY, 'sent_ms': 5, 'withheld': True}]}]
-        self.assertEqual(decisions.message_from_read(rows, 'm-1')['body'], '')
+        message = decisions.message_from_read(rows, 'm-1')
+        self.assertEqual((message['withheld'], message['body']), (True, ''))
+
 
 TAP = """TAP version 13
 not ok 1 - a test

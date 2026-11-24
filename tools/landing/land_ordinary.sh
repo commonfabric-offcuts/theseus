@@ -36,7 +36,7 @@ step "$A" preflight-early "PREFLIGHT OK" /usr/bin/python3 -I "$K/land.py" "$F" -
 tail -3 "$A/preflight-early.out" 2>/dev/null
 [ "$RC" = 0 ] || { phases "$A" $PHASES; seal "$A"; exit 4; }
 mkdir -p "$A/node-suite-tap"
-step "$A" node-suite "no new node failure" bash "$K/node_suite_check.sh" "$W" "$LIVE" "$A/node-suite-tap"; RC=$?
+step "$A" node-suite "no new node failure" bash "$K/node_suite_check.sh" "$W" "$LIVE" "$A/node-suite-tap" "$F/SPEC.json"; RC=$?
 tail -4 "$A/node-suite.out" 2>/dev/null
 [ "$RC" = 0 ] || { phases "$A" $PHASES; seal "$A"; exit 3; }
 step "$A" preflight "PREFLIGHT OK" /usr/bin/python3 -I "$K/land.py" "$F" --preflight; RC=$?

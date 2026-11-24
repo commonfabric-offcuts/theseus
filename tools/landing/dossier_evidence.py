@@ -77,6 +77,12 @@ parts = [proof,
 same = re.search(r'^same cause for all (\d+) failures shared with live', suite, re.M)
 if same:
     parts.append('each of the %s failures it shares with live fails for the same cause' % same.group(1))
+ran = re.search(r'^every case that passed on live runs on the carry \((\d+) cases, (\d+) stopped with a named reason\)', suite, re.M)
+if not ran:
+    refuse('node-suite.out has no execution comparison line')
+parts.append('every one of the %s cases that passed on live runs on the carry' % ran.group(1) if ran.group(2) == '0' else
+             '%d of the %s cases that passed on live run on the carry, and %s stop for the reasons SPEC.json names'
+             % (int(ran.group(1)) - int(ran.group(2)), ran.group(1), ran.group(2)))
 parts.append('no database step (schema %s)' % schema[1])
 line = 'Evidence: ' + '; '.join(parts) + '.'
 lines = dossier.read_text().split('\n')
