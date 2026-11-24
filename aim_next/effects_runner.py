@@ -313,7 +313,8 @@ class EffectsLoop:
             try:
                 page = self._storage(lambda:config.profile.store().view(config.profile.actor_id,'deliveries',args))
             except Exception as error:
-                self.pending_read = wake_diagnostics.observation('transport_failure', page_index, cursor, len(items))
+                self.pending_read = wake_diagnostics.observation('transport_failure', page_index, cursor, len(items),
+                    {'code': getattr(error, 'code', None), 'retryable': getattr(error, 'retryable', None)})
                 # Unknown handle cleanup still stops the runner. Its safe event
                 # describes this attempt; it never opens another storage handle.
                 claim = self.outstanding or {}
@@ -334,7 +335,7 @@ class EffectsLoop:
             try:
                 from .delivery import _position
                 next_position = _position(page.get('next_cursor'))
-                if page.get('next_cursor') is not None and (next_position <= _position(cursor) or not page['items']):
+                if page.get('next_cursor') is not None and next_position <= _position(cursor):
                     raise ValueError('Nonadvancing pending page')
                 # Exercise the existing projection owner before calling this a
                 # successful page. No rendered words enter diagnostics.
@@ -369,20 +370,19 @@ class EffectsLoop:
         self._observe_pending(claim, wake_diagnostics.observation('reading', 0))
         try:
             items, complete = self._pending(config)
-        except LoopFault:
-            if not self.cleanup_uncertain:
+        except LoopFault as error:
+            if not self.cleanup_uncertain and error.reason != 'route_binding_changed':
                 self._observe_pending(claim, self.pending_read)
             raise
+        if self.pending_read['code'] in wake_diagnostics.BINDING_CODES:
+            self._event('pending_read_failed', actor_id=actor, attempt_id=claim['attempt_id'], observation=self.pending_read)
+            raise LoopFault('route_binding_changed', refusal=self.pending_refusal)
         self._observe_pending(claim, self.pending_read)
         if items is None:
-            if self.pending_read['code'] in wake_diagnostics.BINDING_CODES:
-                # The original result is retained by the calling boundary; no
-                # different profile, actor or store is attempted.
-                raise LoopFault('route_binding_changed', refusal=self.pending_refusal)
             return self._finish(claim,'unavailable',reason='deliveries_unavailable')
         notice = hosted_notice.notice(items,claim.get('handed_seq'),actor,claim['attempt_id'],complete)
         if notice is None:
-            return self._finish(claim,'unavailable',reason='nothing_pending')
+            return self._finish(claim,'unavailable',reason='nothing_pending' if complete else 'deliveries_unavailable')
         self.host.dispatch(claim,config,notice)
 
     def _observe_pending(self, claim, observation):

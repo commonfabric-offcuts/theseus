@@ -117,6 +117,15 @@ def _named(value):
     return value if isinstance(value, str) and SAFE_ID.fullmatch(value) else UNNAMED
 
 
+def _recovered_answer(item):
+    value, message = item.get('answer_recovery'), item.get('message', {})
+    if (type(value) is dict and value.get('state') == 'answered'
+            and type(value.get('source_revision')) is int and value['source_revision'] == message.get('revision')
+            and type(value.get('seq')) is int and value['seq'] > 0):
+        return value
+    return None
+
+
 def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     """The notice for one claim from the recipient's pending deliveries (design §3.9).
 
@@ -165,13 +174,16 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
                              _named(request["message_id"]), _named(request["root_id"]), request["observed_revision"], _named(item["id"])))
             continue
         message = item["message"]
-        recovered = item.get('answer_recovery', {})
-        if recovered.get('state') == 'answered' and recovered.get('source_revision') == message.get('revision'):
+        recovered = _recovered_answer(item)
+        if recovered is not None:
             lines.append('%d. source %s revision %d already has your answer %s in topic %s; '
                          'read that existing answer, then acknowledge delivery %s. Redelivery does not request another answer; '
-                         'a deliberate later reply remains possible.' % (
+                         'continue any work still owed. A deliberate later reply remains possible.%s' % (
                              number, _named(message['id']), recovered['source_revision'], _named(recovered['message_id']),
-                             _named(item['topic']['id']), _named(item['id'])))
+                             _named(item['topic']['id']), _named(item['id']),
+                             ' This is a whisper; keep its source and answer private.' if message.get('whisper') else ''))
+            if _named(item['topic']['id']) != UNNAMED:
+                lines.append('Read: aim-next read %s --after %d --limit 1' % (item['topic']['id'], recovered['seq'] - 1))
             continue
         if item.get("correction"):
             # Core's words: its author edited a message this agent was sent (docs/message-edit.md). It is not new work, and
@@ -209,7 +221,7 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
                                           " Titles and previews are in the untrusted context." if PREVIEWS_IN_CONTEXT else ""))
     first = {}
     for item in listed:
-        if item.get("request") or item.get('retraction'):
+        if item.get("request") or item.get('retraction') or _recovered_answer(item) is not None:
             continue
         topic = item["topic"]["id"]
         if _named(topic) != UNNAMED:

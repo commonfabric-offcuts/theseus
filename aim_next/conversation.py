@@ -428,7 +428,7 @@ class Conversation:
                     _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent, private, snapshot.get("about_id"),
                     1 if snapshot.get("go_ahead") else 0)).lastrowid
         cover_affected = []
-        if basis is not None and not record_only:
+        if basis is not None and not record_only and not snapshot.get('part'):
             from . import answer_recovery
             answer_recovery.record(db, actor, message_id, basis)
         if divergence is not None:

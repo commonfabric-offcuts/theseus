@@ -1778,11 +1778,20 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
         if (type(result) is not dict or result.get('instance_id') != self.profile.instance_id
                 or 'error' not in result and result.get('operation_id') != operation):
             self.refuse('RECOVERY_UNKNOWN', 'The original operation could not be reconciled; nothing was sent')
+        if 'error' in result:
+            error = result['error']
+            if (type(error) is not dict or type(error.get('code')) is not str
+                    or type(error.get('message')) is not str or type(error.get('retryable')) is not bool):
+                self.refuse('RECOVERY_UNKNOWN', 'The original operation could not be reconciled; nothing was sent')
         if result.get('recorded') is not True and result.get('error'):
             # Preserve the actual bound refusal. It never authorizes replay.
             self.out.raw(result)
             self.fail(result['error'])
         if result.get('recorded') is True:
+            if (result.get('kind') != envelope['kind'] or result.get('status') not in ('committed', 'rejected')
+                    or 'result' not in result or type(result.get('affected')) is not list
+                    or (result['status'] == 'rejected') != ('error' in result)):
+                self.refuse('RECOVERY_UNKNOWN', 'The original operation could not be reconciled; nothing was sent')
             try:
                 local = json.loads((directory / (operation + '.receipt.json')).read_text(encoding='utf-8'))
             except (OSError, ValueError):

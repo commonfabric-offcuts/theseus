@@ -9,6 +9,8 @@ from unittest import mock
 
 from aim_next import effects_runner, hosted_notice, Store
 from aim_next.delivery import _cursor
+from aim_next.authority import AuthorityError
+from aim_next.profile import ProfileError
 import reader_fixture
 import test_agent_verbs as cli_fixture
 
@@ -118,14 +120,45 @@ class WakeReadCase(reader_fixture.ReaderCase):
         self.assertEqual((value.get('category'), value.get('page_index'), value.get('item_count')), ('partial', 4, 5))
         self.assertIn('Possibly more: run inbox', self.loop.host.dispatch.call_args.args[2]['input'][0]['text'])
 
+    def test_sparse_advancing_pages_keep_partial_work_distinct_from_empty_inbox(self):
+        self.dispatch([{'instance_id': 'test-instance', 'items': [], 'next_cursor': _cursor(1, index + 1)} for index in range(5)])
+        value = self.agent().get('wake_read', {})
+        self.assertEqual((value.get('category'), value.get('page_index'), value.get('item_count')), ('partial', 4, 0))
+        self.assertEqual(self.sql("SELECT failed_reason FROM wake_facts WHERE recipient_id='agent-a'"), [('deliveries_unavailable',)])
+        self.loop.host.dispatch.assert_not_called()
+
     def test_binding_refusal_stops_without_host_or_settlement(self):
-        with self.assertRaises(effects_runner.LoopFault) as caught:
-            self.dispatch([{'instance_id': 'test-instance', 'error': {'code': 'INVALID_BINDING', 'message': 'binding refused', 'retryable': False}}])
+        with mock.patch.object(self.store, 'record_wake_read', wraps=self.store.record_wake_read) as recorded:
+            with self.assertRaises(effects_runner.LoopFault) as caught:
+                self.dispatch([{'instance_id': 'test-instance', 'error': {'code': 'INVALID_BINDING', 'message': 'binding refused', 'retryable': False}}])
+        self.assertEqual([call.args[-1]['category'] for call in recorded.call_args_list], ['reading'],
+                         'a binding refusal stops before any post-read diagnostic write')
         self.assertEqual(caught.exception.reason, 'route_binding_changed')
         self.assertEqual(caught.exception.refusal['error']['message'], 'binding refused')
-        self.assertEqual(self.agent()['wake_read']['code'], 'INVALID_BINDING')
+        self.assertEqual(self.agent()['wake_read']['category'], 'reading')
+        event = next(value for value in self.events if value['event'] == 'pending_read_failed')
+        self.assertEqual(event['observation']['code'], 'INVALID_BINDING')
         self.loop.host.dispatch.assert_not_called()
         self.assertEqual(self.sql('SELECT count(*) FROM wake_results'), [(0,)])
+
+    def test_raised_binding_refusal_keeps_exact_cause_and_performs_no_followup_write(self):
+        refusal = AuthorityError('AUTHORITY_CHANGED', 'Original authority refusal')
+        with mock.patch.object(self.store, 'record_wake_read', wraps=self.store.record_wake_read) as recorded:
+            with self.assertRaises(effects_runner.LoopFault) as caught:
+                self.dispatch([refusal])
+        self.assertIs(caught.exception.__cause__, refusal)
+        self.assertEqual([call.args[-1]['category'] for call in recorded.call_args_list], ['reading'])
+        self.assertEqual(self.agent()['wake_read']['category'], 'reading')
+        event = next(value for value in self.events if value['event'] == 'pending_read_failed')
+        self.assertEqual(event['observation']['code'], 'AUTHORITY_CHANGED')
+
+    def test_clean_transport_failure_is_persisted_without_claiming_wake_delivery(self):
+        with self.assertRaises(effects_runner.LoopFault):
+            self.dispatch([ProfileError('Unavailable fixture transport')])
+        self.assertFalse(self.loop.cleanup_uncertain)
+        value = self.agent()['wake_read']
+        self.assertEqual((value['category'], value['state'], value['outcome']), ('transport_failure', 'pending_intent', None))
+        self.assertIsNone(self.agent()['reached_ms'])
 
     def test_transport_failure_with_uncertain_cleanup_does_not_open_another_handle(self):
         with self.assertRaises(effects_runner.LoopFault):
@@ -175,6 +208,7 @@ class AnswerCase(reader_fixture.ReaderCase):
         words = notice['input'][0]['text']
         self.assertIn('already has your answer ' + answer, words)
         self.assertIn('does not request another answer', words)
+        self.assertIn('Read: aim-next read t1 --after %d' % (recovered['seq'] - 1), words)
         self.assertEqual(self.sql('SELECT state FROM deliveries WHERE id=?', (item['id'],)), [('pending',)])
         later = self.answer(body='Deliberate follow-up')
         self.assertEqual(self.pending()['answer_recovery']['message_id'], later)
@@ -218,6 +252,32 @@ class AnswerCase(reader_fixture.ReaderCase):
             if item.get('message_id') == self.opening['id']:
                 self.assertEqual(item.get('answer_recovery', {}).get('state'), 'unknown')
                 self.assertNotIn('message_id', item['answer_recovery'])
+
+    def test_partial_conversation_reply_does_not_become_a_completed_answer_hint(self):
+        topic = self.store.view('owner', 'conversation', {'workspace_id': 'w1'})['conversation']['topic_id']
+        source = self.committed(self.command('message.post', {'body': 'Two pieces of fixture work'}, target={'topic_id': topic}))['message_id']
+        args = {'body': 'First part only', 'part': True, 'reply_to': source, 'reply_without_quote': 'Fixture progress'}
+        self.committed(self.command('message.post', args, target={'topic_id': topic}, actor='agent-a'))
+        item = next(value for value in self.store.view('agent-a', 'deliveries', {})['items'] if value.get('message_id') == source)
+        self.assertEqual(item['answer_recovery']['state'], 'unknown')
+        page = self.store.view('agent-a', 'topic_messages', {'topic_id': topic, 'message_ids': [source]})
+        self.assertEqual(page['items'][0]['item']['state'], 'new')
+        args.update(body='Remaining work completed', part=False)
+        answer = self.committed(self.command('message.post', args, target={'topic_id': topic}, actor='agent-a'))['message_id']
+        item = next(value for value in self.store.view('agent-a', 'deliveries', {})['items'] if value.get('message_id') == source)
+        self.assertEqual(item['answer_recovery']['message_id'], answer)
+
+    def test_private_existing_answer_keeps_its_privacy_instruction_and_access(self):
+        source = self.committed(self.command('message.post', {'body': 'Private fixture source', 'addressees': ['agent-a'], 'whisper': True}, target={'topic_id': 't1'}))['message_id']
+        answer = self.committed(self.command('message.post', {'body': 'Private fixture answer', 'addressees': ['owner'], 'whisper': True,
+                     'reply_to': source, 'reply_without_quote': 'Private fixture reply'}, target={'topic_id': 't1'}, actor='agent-a'))['message_id']
+        item = next(value for value in self.store.view('agent-a', 'deliveries', {})['items'] if value.get('message_id') == source)
+        self.assertEqual(item['answer_recovery']['message_id'], answer)
+        words = hosted_notice.notice([item], None, 'agent-a', 'a-fixture')['input'][0]['text']
+        self.assertIn('whisper', words)
+        self.assertIn('private', words)
+        hidden = self.store.view('agent-b', 'source', {'source_ref': {'kind': 'message', 'id': answer}})
+        self.assertEqual(hidden['error']['code'], 'FORBIDDEN')
 
 
 class RecoveryCLICase(cli_fixture.AgentVerbCase):
@@ -302,6 +362,24 @@ class RecoveryCLICase(cli_fixture.AgentVerbCase):
         with mock.patch.object(Store, 'command', send):
             self.assertEqual(self.run_cli('retry', operation)[0], 0)
         self.assertEqual(sent, [request['command']])
+
+    def test_malformed_reconciliation_cannot_overwrite_receipt_or_send_request(self):
+        operation, request = self.saved_post()
+        receipt = self.outbox() / (operation + '.receipt.json'); before = receipt.read_bytes()
+        real_view = Store.view
+        variants = [dict(instance_id='test-instance', operation_id=operation, recorded=True),
+                    dict(instance_id='test-instance', operation_id=operation, recorded=True, kind='wrong', status='committed', result={}, affected=[]),
+                    dict(instance_id='test-instance', operation_id=operation, recorded=False, status='unknown', error=[])]
+        for value in variants:
+            with self.subTest(shape=value):
+                def view(store, actor, name, args):
+                    return value if name == 'operation' else real_view(store, actor, name, args)
+                with mock.patch.object(Store, 'view', view), mock.patch.object(Store, 'command', side_effect=AssertionError('must not send')):
+                    code, output, error = self.run_cli('--json', 'retry', operation)
+                self.assertEqual(code, 2)
+                self.assertEqual(json.loads(output)['error']['code'], 'RECOVERY_UNKNOWN')
+                self.assertEqual(receipt.read_bytes(), before)
+                self.assertEqual(json.loads((self.outbox() / (operation + '.request.json')).read_text()), request)
 
 
 if __name__ == '__main__':
