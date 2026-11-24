@@ -808,9 +808,15 @@ export class StackFeed {
   // once. A starred message is not folded. ⌘Z puts it back; focus: the message
   // takes the focus, so ⌘Z is at hand (not on a phone's swipe).
   setFold(item, on, { focus = true, undoable = true } = {}) {
+    const acts = item && this.actsOf(item.id, item);
+    if (on && acts?.folded && !acts.starred && this.state.peeked.has(item.id)) {
+      this.state.peeked.delete(item.id);
+      foldInMotion(this.list.ownerDocument, () => this.entryFor(item.id), () => this.arrange(), true);
+      if (focus) this.focusOn(item.id);
+      return true;
+    }
     const reason = this.foldReason(item, on);
     if (reason) return this.refuseFold(reason);
-    const acts = this.actsOf(item.id, item);
     if (Boolean(acts.folded) === on) return false;
     this.state.peeked.delete(item.id);
     const sent = this.act('message.fold', item, { folded: on });
