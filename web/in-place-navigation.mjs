@@ -190,6 +190,7 @@ export class Shell {
     // What was asked while no run was up to take it (a back, a forward, a
     // place chosen): the run on its way takes it up as soon as it is up.
     this.owed = null; this.begun = null; this.placeOfRun = 0; this.up = null;
+    this.queuedBeforeReady = false;
     // How the person last acted ('pointer' or 'keys'), what a press was last
     // on, and how the move under way lands: 'keys' leaves the focus in the
     // rail it began in, 'page' puts it on the page reached, as a load does (land).
@@ -246,6 +247,7 @@ export class Shell {
   begin(page) {
     this.install();
     this.scope = new Scope();
+    this.queuedBeforeReady = false;
     this.page = page; this.handles = null; this.guards = [];
     const route = this.begun = this.route();
     this.placeOfRun = this.places?.index ?? 0;
@@ -272,6 +274,9 @@ export class Shell {
   // page is never sent (Superseded).
   ready(handles) {
     if (!this.page) return;
+    // A newer choice queued while this run started owns the next action even
+    // after owed is handed to its microtask, including a departure it refuses.
+    this.queuedBeforeReady ||= Boolean(this.owed);
     // The address names the run's place, as the page may have put it (a
     // message's link, say); one a back has moved on since is owed, below.
     const route = this.owed ? this.begun : this.route();
