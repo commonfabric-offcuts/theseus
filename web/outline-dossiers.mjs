@@ -1,7 +1,7 @@
 // The reader's starred dossiers under loaded topic rows (715). Each topic is
 // read in bounded star pages; the existing guard owns every navigation.
 import { messagePreview } from './message-preview.mjs';
-import { routeHref } from './topic-navigation.mjs';
+import { routeHref, paintUnread, landsOnUnread, UNREAD_TIP } from './topic-navigation.mjs';
 import { checkedView, readFailure } from './freshness.mjs';
 import { paintRemoval } from './message-removal.mjs';
 
@@ -134,7 +134,7 @@ export class OutlineDossiers {
         link.onclick = event => {
           if (!plain(event)) return;
           event.preventDefault();
-          this.outline.open(link.pageTarget, link.title);
+          this.outline.open(landsOnUnread(event.target, event) && link.unreadTarget ? link.unreadTarget : link.pageTarget, link.title);
         };
         state.links.set(id, link);
       }
@@ -145,10 +145,23 @@ export class OutlineDossiers {
         words = doc.createElement('span'); words.className = 'ol-dossier-words';
         link.replaceChildren('★ ', words);
       }
-      if (words.textContent !== title) words.textContent = title;
+      words.replaceChildren(title);
+      link.unreadTarget = null;
+      let counted = '';
+      if (!this.pageStars) {
+        const badge = paintUnread(words, item);
+        if (badge) {
+          counted = `, ${item.unread} unread`;
+          if (item.oldest_unread?.id) {
+            badge.dataset.lands = 'unread'; badge.title = UNREAD_TIP;
+            link.unreadTarget = {...target, message:item.oldest_unread.id};
+            counted += '. Return shows the oldest unread message';
+          }
+        }
+      }
       words.classList.toggle('retracted-words', item?.removal?.kind === 'retracted');
       paintRemoval(link, item, doc);
-      link.title = title; link.setAttribute('aria-label', (this.pageStars?'Starred page: ':'Starred dossier: ') + title);
+      link.title = title; link.setAttribute('aria-label', (this.pageStars?'Starred page: ':'Starred dossier: ') + title + counted);
       link.href = routeHref(target);
       alive.add(id); nodes.push(link);
     }
