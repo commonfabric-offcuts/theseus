@@ -65,6 +65,17 @@ class LaneLockTest(unittest.TestCase):
             self.assertTrue(condition(), what)
             time.sleep(0.02)
 
+    def stderr_so_far(self, proc):
+        """What a wrapper has said so far, read from its still-open stderr without blocking."""
+        fd = proc.stderr.fileno()
+        os.set_blocking(fd, False)
+        try:
+            chunk = os.read(fd, 65536).decode(errors='replace')
+        except BlockingIOError:
+            chunk = ''
+        proc.said = getattr(proc, 'said', '') + chunk
+        return proc.said
+
     def status(self):
         return subprocess.run([sys.executable, str(TOOL), 'status'], env=self.env, capture_output=True, text=True, check=True).stdout
 
@@ -105,6 +116,27 @@ class LaneLockTest(unittest.TestCase):
         self.until(late_marker.exists, 'the late run starts once the landing ends')
         late_release.touch()
         self.assertEqual(late.wait(WAIT), 0)
+
+    def test_a_run_waiting_for_a_slot_does_not_start_while_a_landing_is_pending(self):
+        runs = [self.start('run', 'lane {}'.format(i), 'w{}'.format(i)) for i in range(3)]
+        for _, marker, _ in runs:
+            self.until(marker.exists, 'three runs start')
+        fourth, marker4, release4 = self.start('run', 'lane 3', 'w3')
+        self.until(lambda: 'all 3 run slots are in use' in self.stderr_so_far(fourth), 'the fourth run waits for a slot')
+        land, land_marker, land_release = self.start('landing', '403 1197', 'wland')
+        self.until(lambda: '403 1197' in self.status(), 'the landing is pending')
+        runs[0][2].touch()
+        # A run retries the slots once a second, so the window outlasts a retry.
+        self.stays(lambda: not marker4.exists(), 'a run that was waiting for capacity does not take a freed slot while a landing is pending', seconds=2.5)
+        runs[1][2].touch()
+        runs[2][2].touch()
+        self.until(land_marker.exists, 'the landing starts once the open runs end')
+        self.stays(lambda: not marker4.exists(), 'the waiting run still waits while the landing runs')
+        land_release.touch()
+        self.assertEqual(land.wait(WAIT), 0)
+        self.until(marker4.exists, 'the waiting run starts once the landing ends')
+        release4.touch()
+        self.assertEqual(fourth.wait(WAIT), 0)
 
     def test_a_killed_wrapper_keeps_its_slot_until_its_command_dies(self):
         runs = [self.start('run', 'lane {}'.format(i), 'k{}'.format(i)) for i in range(3)]
