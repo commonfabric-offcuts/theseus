@@ -32,7 +32,7 @@ Every message to Tony follows [writing to Tony](working-with-tony.md).
 - Rerun a judged run.
 - Name a Tony topic's message as an item's source, or post coordination into his topics.
 - Move pipeline items; fable and Tony move them.
-- Signal Tony for anything but a seat or service down or a usage limit.
+- Signal Tony with play-by-play. When something needs him, [writing to Tony](working-with-tony.md) says to Signal first.
 
 ## Where its working files are
 
@@ -41,7 +41,9 @@ session scratch folder does not, and nothing warp needs may live in one.
 
 - **The CLI.** The seat's profile is `~/.local/share/theseus/instances/tony-first-01/warp.profile.json`; `W/bin/an`
   runs the live checkout's `aim-next` with it, so `an inbox`, `an read TOPIC --after SEQ` and the rest need no path.
-- **Landings.** One folder per landing, `W/land/ITEM-land/` (the kit's `new_folder.sh ITEM` makes it), with the
+- **Landings.** The kit runs from `/Users/commonfabric/aim-worktrees/warp-1196-kit/tools/landing`; the `clone` in
+  `~/.config/theseus/landing.json` is only where carry worktrees are added. One folder per landing,
+  `W/land/ITEM-land/` (the kit's `new_folder.sh ITEM` makes it), with the
   dossier and card drafts in `W/2026-11-19/`. A carry that meets a conflict two additions can both keep is settled by
   `RESOLVER=W/bin/union_resolver.py`, which leaves any real overlap for a hand merge.
 - **The Timeline.** Its source is `W/2026-11-23/board.html`. `kpi-dashboard.py board.html kpi-five.txt` and then
@@ -59,6 +61,8 @@ session scratch folder does not, and nothing warp needs may live in one.
 
 ## After a reboot
 
+This section is done once `an health` shows the runner running; a later wake skips it and goes on below.
+
 A fresh warp is a new Claude Code session started in `/Users/commonfabric/theseus/warp`, an empty folder kept for it:
 Claude Code keeps a memory per starting folder, and this one has none, while the live checkout's folder holds an old
 one. Tony starts it with `cd /Users/commonfabric/theseus/warp && claude --dangerously-skip-permissions` and this first
@@ -74,7 +78,7 @@ with the runner stopped, before the physical reboot, by
 [the rollout's operator procedure](../hosted-codex-rollout.md): fable's existing profile, the runner's own profile,
 owner Tony, a new `fable.hosted.json`, and a staged write of the route map. In the same write, auditor's entry is
 removed by the rollback pattern, which keeps its pin, control, context and waiting deliveries. A fresh warp reads the
-route map before step 2: fable is listed and auditor is not. If either is wrong, it makes the change before step 2,
+route map, `~/.local/share/theseus/instances/tony-first-01/routes.json`, before step 2: fable is listed and auditor is not. If either is wrong, it makes the change before step 2,
 because the refresh in step 2 is refused for a seat that is not hosted.
 
 1. `/usr/bin/python3 -I W/land/start-server.py` starts the server from its last launch record, at the live checkout's
@@ -85,18 +89,21 @@ because the refresh in step 2 is refused for a seat that is not hosted.
    warp posts Tony the exact `seat-refresh OUTCOME ACTOR ...` command, naming those seven and no other hosted actor Health lists, ready to paste, and
    waits until he reports its receipts. A terminal wraps a long command when it is copied, so warp gives him
    `bash /Users/commonfabric/theseus/refresh-seven.sh`, which runs exactly that command as him; `--status` after it
-   only reads whether each seat can be refreshed. The service records each request with the runner stopped. Auditor is not a
+   only reads whether each seat can be refreshed. If the refresh is refused, the runner stays stopped and warp reports
+   the exact refusal. The service records each request with the runner stopped. Auditor is not a
    hosted seat: its route is a queue route, which has no fresh-agent request, so it runs outside the runner as a new
    Codex chat that Tony starts from `/Users/commonfabric/theseus/auditor/KICKOFF.txt`, and the runner's route map holds no
    entry for it.
 3. `/usr/bin/python3 -I W/land/start-runner-with.py --seat-template core-lane7` starts the runner's supervisor the same
    way; `normalize-runner.py`, then `normalize-runner.py --check` in `W/land/`, must read `VISIBLE`, or the next landing
-   meets the runner's guard. Each seat's fresh agent starts when its next delivery reaches it.
+   meets the runner's guard. Each seat's fresh agent starts when its next delivery reaches it, so warp then sends
+   fable its first delivery in Releases: the refresh receipts, the live release and the first landing to freeze.
+   Fable sends the other refreshed seats theirs.
 4. `an health` shows the release, the runner and every hosted seat. Then the restart steps below.
 
 ## First commands after a restart
 
-From a clone of this repository, with the seat's profile in `P`:
+From a clone of this repository, with the seat's profile in `P` (`W/bin/an` is the same CLI with `P` already set):
 
 1. `aim-next --profile "$P" inbox` — what is waiting on warp, oldest first.
 2. `aim-next --profile "$P" note read n-85ea0961d1fd4e5791fed9024aa9b720` — the current rule.
@@ -105,7 +112,8 @@ From a clone of this repository, with the seat's profile in `P`:
 4. `python3 -I tools/lane_lock.py status` — a landing lock held by a previous warp is still running, or its process
    is gone and the lock is free.
 5. Finish every landing a previous warp left unfinished or unknown before anything new lands. In the kit's `work`
-   directory that is each `ITEM-land` folder whose newest attempt does not end with `land exit 0` in its `phases.txt`,
+   directory that is each `ITEM-land` folder whose newest attempt does not end with `land exit 0` in its `phases.txt`
+   (folders listed in `W/land/SETTLED.txt` predate that receipt and are finished),
    or whose newest publication does not end with `on-live exit 0`, including one that stops after a successful phase
    with no receipt for the next; and each release the release record lists whose publication never finished.
    Reconcile before acting: the release record (`aim-next releases`), `MERGED.json` and the pull request's merge, the
