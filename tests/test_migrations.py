@@ -192,6 +192,15 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Schema 52's move trigger names message columns absent before 48.
+        # Restore the independently frozen historical invariant before any
+        # column is removed; messages stay immutable throughout the fixture.
+        db.execute("DROP TRIGGER immutable_messages_update")
+        db.execute(next(sql.rstrip(";") for sql in SCHEMA_48
+                        if sql.startswith("CREATE TRIGGER immutable_messages_update ")))
+        # The later ask-cover index also names private_to; none of these
+        # independently frozen layouts contains that index.
+        db.execute("DROP INDEX public_actor_writing")
         db.execute("DROP TABLE IF EXISTS workspace_links")  # Empty 1021 collection is absent from historical layouts.
         # 1002's tables are empty here and absent from every frozen historical
         # layout. Its real upgrade and occupied downgrade have separate checks.
@@ -441,6 +450,8 @@ def step_back_by_hand(path, version):
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
             return
         # Version 19 keeps each topic's activity time and the message that reopened it.
+        # Its reopening lookup is absent before 19, while returns above keep it.
+        db.execute("DROP INDEX topic_reopen_message")
         db.execute("DROP INDEX workspace_topic_order")
         db.execute("CREATE INDEX workspace_listed_topics ON topics(workspace_id,archived,id)")
         db.execute("ALTER TABLE topics DROP COLUMN state_message_id")
@@ -976,6 +987,38 @@ HOSTED_THREAD = "12345678-1234-4234-8234-123456789abc"
 
 class CommitIdentityCase(fixtures.StoreCase):
     """The commit identity a store accepts is exactly the one it writes."""
+
+    def test_hand_built_predecessors_keep_message_identity_immutable(self):
+        # Start with a reachable current message, not an empty UPDATE that
+        # would pass even if the fixture accidentally removed its trigger.
+        with mock.patch('aim_next.dossier_order.published'):
+            message = self.create_topic()["id"]
+        self.assertEqual(self.sql("SELECT body FROM messages WHERE id=?", (message,)), [("Opening message",)])
+        historical = next(sql.rstrip(";") for sql in SCHEMA_48
+                          if sql.startswith("CREATE TRIGGER immutable_messages_update "))
+        # These layouts straddle every message-column removal in the helper,
+        # including the early-12 branch, and its earliest/latest endpoints.
+        for version, layout in (("8", SCHEMA_8), ("12-early", SCHEMA_12_EARLY),
+                                ("13", SCHEMA_13), ("26", SCHEMA_26),
+                                ("27", SCHEMA_27), (BEFORE_REACTIONS, SCHEMA_BEFORE_REACTIONS),
+                                ("48", SCHEMA_48)):
+            with self.subTest(version=version):
+                path = self.path.parent / ("predecessor-%s.sqlite3" % version)
+                with sqlite3.connect(str(self.path)) as source, sqlite3.connect(str(path)) as copy:
+                    source.backup(copy)
+                step_back_by_hand(path, version)
+                with sqlite3.connect(str(path)) as db:
+                    # This check deliberately scopes the new regression to
+                    # messages and their invariant. The existing whole-schema
+                    # checks remain intact and expose other historical drift.
+                    expected = next(sql.rstrip(";") for sql in layout if sql.startswith("CREATE TABLE messages "))
+                    self.assertEqual(db.execute("SELECT sql FROM sqlite_master WHERE name='messages'").fetchone()[0], expected)
+                    self.assertEqual(db.execute("SELECT sql FROM sqlite_master WHERE name='immutable_messages_update'").fetchone()[0], historical)
+                    before = db.execute("SELECT * FROM messages WHERE id=?", (message,)).fetchall()
+                    self.assertEqual(len(before), 1)
+                    with self.assertRaisesRegex(sqlite3.IntegrityError, "immutable message"):
+                        db.execute("UPDATE messages SET body='rewritten' WHERE id=?", (message,))
+                    self.assertEqual(db.execute("SELECT * FROM messages WHERE id=?", (message,)).fetchall(), before)
 
     def refused(self, statement, params=()):
         self.sql(statement, params)
