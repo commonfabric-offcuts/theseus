@@ -32,7 +32,8 @@ OUT=$("${AN[@]}" post "$TOPIC" --tells "$(cfg dossier_tells)" --divergence-reaso
 MID=$(echo "$OUT" | /usr/bin/grep -oE "^posted m-[0-9a-f]+" | head -1 | sed 's/^posted //')
 [ -n "$MID" ] || { echo "$OUT" | tail -2; echo "STOP: the post answered with no message; run this again, which sends the saved request under the same operation"; exit 1; }
 /usr/bin/python3 -I "$K/read_message.py" "$TOPIC" "$MID" "$(cat "$D/release-$N.after")" > "$D/release-$N.readback.json" 2>&1 || { cat "$D/release-$N.readback.json"; echo "STOP: posted $MID, but it did not read back; run this again"; exit 1; }
-SEQ=$(/usr/bin/python3 -I - "$D/release-$N.readback.json" "$MID" "$TOPIC" "$SEAT" "$SAVED" <<'PY'
+# The check's refusal is its output, so it is shown; on a match the output is the seq alone.
+SEQ=$(/usr/bin/python3 -I - "$D/release-$N.readback.json" "$MID" "$TOPIC" "$SEAT" "$SAVED" 2>&1 <<'PY'
 import json, sys
 message = json.load(open(sys.argv[1]))
 mid, topic, seat, saved = sys.argv[2:6]
