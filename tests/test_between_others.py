@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from reader_fixture import ReaderCase
+from tests.historical_fixture import post_fields
 
 
 class BetweenOthersCase(ReaderCase):
@@ -23,7 +24,7 @@ class BetweenOthersCase(ReaderCase):
     def post(self, actor, body, **args):
         if args.get("addressees"):
             args.setdefault("intent", "tell")
-        return self.committed(self.command("message.post", dict(args, body=body), target={"topic_id": "t1"}, actor=actor))["message_id"]
+        return self.committed(self.command("message.post", post_fields(self, actor, dict(args, body=body)), target={"topic_id": "t1"}, actor=actor))["message_id"]
 
     def state(self, message_id, actor="owner"):
         return self.sql("SELECT state FROM deliveries WHERE message_id=? AND recipient_id=?", (message_id, actor))[0][0]

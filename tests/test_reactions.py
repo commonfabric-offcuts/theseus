@@ -13,11 +13,12 @@ the asker as a short reply.
 import unittest
 
 import reader_fixture as fixtures
+from tests.historical_fixture import post_fields
 
 
 class ReactionCase(fixtures.ReaderCase):
     def post(self, body="Words", actor="agent-a", **args):
-        return self.committed(self.command("message.post", dict({"body": body}, **args), target={"topic_id": "t1"}, actor=actor))["message_id"]
+        return self.committed(self.command("message.post", post_fields(self, actor, dict({"body": body}, **args)), target={"topic_id": "t1"}, actor=actor))["message_id"]
 
     def ask(self, body="May I ship the copy?"):
         return self.post(body, addressees=["owner"], intent="ask", go_ahead=True)
