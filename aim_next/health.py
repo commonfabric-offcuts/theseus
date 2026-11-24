@@ -196,6 +196,14 @@ WHY = {
     "invalid_guard": "the wake did not match the agent runner's role",
     "deliveries_unavailable": "its waiting messages could not be read",
     "nothing_pending": "nothing was waiting by the time it was tried",
+    "observation_stale": "its claim ran out, or another runner took over, before the turn could start",
+    "recovery_home_busy": "its new thread waits until the other seats sharing its Codex process are idle",
+    "recovery_cancelled": "replacing its thread was called off",
+    "recovery_creation_unconfirmed": "Codex did not confirm the new thread made for it",
+    "recovery_ownership_lost": "another runner took over while its thread was being replaced",
+    "recovery_settings_not_applied": "Codex did not apply its settings to its new thread",
+    "recovery_settings_unconfirmed": "Codex did not confirm its settings on its new thread",
+    "recovery_persistence_unconfirmed": "Codex did not confirm it kept its new thread's setup",
     "abandoned": "the wake was given up",
     "child_exited": "the Codex process that hosts its turns exited",
     "not_steerable": "its running Codex turn could not take more work",
@@ -981,6 +989,14 @@ def report_lines(answer, at):
         waiting = "%d waiting%s" % (agent["waiting"], when(agent.get("waiting_since_ms"))) if agent.get("waiting") else "nothing waiting"
         reached = " · a wake last got through%s" % when(agent.get("reached_ms"), "at") if isinstance(agent.get("reached_ms"), int) else ""
         lines.append("  %s  %s · %s%s" % (agent["actor_id"].ljust(width), state, waiting, reached))
+        recovery = (agent.get('execution') or {}).get('replacement')
+        if recovery:
+            lines.append('    Thread replaced%s: %s -> %s; completed turns %s.' % (
+                when(recovery['committed_ms'], 'at'), recovery['old']['thread_id'], recovery['new']['thread_id'],
+                ', '.join(recovery['turns'])))
+        phase = (agent.get('execution') or {}).get('recovery_state')
+        if phase and phase != 'committed':
+            lines.append('    Thread recovery: %s; pending deliveries remain recorded.' % phase)
     if machine:
         cores = "%s cores" % machine["cpus"] if machine.get("cpus") else "a core count that could not be read"
         lines.append("This Mac: load %s on %s (1, 5 and 15 minutes: %s)" % (

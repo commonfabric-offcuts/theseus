@@ -19,7 +19,7 @@ import { reach } from './arrow-reach.mjs';
 export const UNDO_LIMIT = 50;
 const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · Context Menu or ⇧F10 card menu · → card controls';
 const ASKING_KEYS = '⌘Return ask · Escape back to the cards, keeping what you wrote · ↑ ↓ ← leave a box with nothing written';
-const WRITING_KEYS = 'Escape or ⌘Return done · selected text + ⌘Return new card below · ⌥Return above · ← at the very start or → at the very end done (no selection) · ⌘↑ ⌘↓ move the card · Tab at start indent card, ⇧Tab at start or end outdent (no selection); elsewhere indent lines · ⌥↑ ⌥↓ move a line · ↑ at the very start or ↓ at the very end goes on to the card beside';
+const WRITING_KEYS = 'Escape or ⌘Return done · selected text + ⌘Return new card below · ⌥Return above · ← at the very start or → at the very end done (no selection) · ⌘↑ ⌘↓ move the card · Tab or ⇧Tab at start or end indent or outdent card (no selection); elsewhere indent lines · ⌥↑ ⌥↓ move a line · ↑ at the very start or ↓ at the very end goes on to the card beside';
 // The same lines, short, where the cards stand in the composer over the feed (notebook-sheet.mjs); each keeps its
 // long form as its tooltip.
 const SHORT_KEYS = ['↑ ↓ pick · Return new card · ⌘Return edit · ⇧F10 menu', '⌘Return done · selection: new card', '⌘Return ask · Escape back'];
@@ -370,13 +370,13 @@ export class DeckPage {
     // The box's line keys come first. Escape and ⌘Return finish; Notebook's
     // nonblank selection keeps its split command. ⌥Return adds above.
     // ⌘↑/↓ move the card. At the text boundaries, ↑/↓ continue writing beside it; ←/→ finish in display mode.
-    // Tab at the collapsed text start moves the card; ⇧Tab also outdents at the end. Elsewhere it indents lines.
+    // Tab and ⇧Tab at either collapsed text boundary move the card. Elsewhere they indent lines.
     // Even a blocked card move, unchanged ⇧Tab or Safari's ⌥Tab keeps the box's focus.
     if (this.editing) {
       const field = this.editing.field, plain = !command && !event.shiftKey && !event.altKey;
       if (event.target !== field) return;
       const collapsed = field.selectionStart === field.selectionEnd, end = field.selectionEnd === field.value.length;
-      if (event.key === 'Tab' && !command && !event.altKey && collapsed && (field.selectionStart === 0 || event.shiftKey && end)) {
+      if (event.key === 'Tab' && !command && !event.altKey && collapsed && (field.selectionStart === 0 || end)) {
         event.preventDefault();
         if (this.base && !this.readOnly && !this.editing.input.readOnly()) this.moveWriting({ kind: event.shiftKey ? 'outdent' : 'indent' });
         return;

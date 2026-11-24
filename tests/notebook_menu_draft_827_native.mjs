@@ -52,15 +52,16 @@ export async function notebookDraft827Checks({check,page,until,control,view,fact
       await until(async()=>(await current()).starred===starred,'native star commits');
       assert.equal((await exact(draft)).source_ref.revision,before.source_ref.revision,'personal star writes no content revision');
      }
-     const field=(surface==='sheet'?'#notebook-sheet-dialog':'#topic-title')+' .notebook-rename:not([hidden])',before=await current();phase='rename-cancel-'+draft;
+     const field=(surface==='sheet'?'#notebook-sheet-dialog':'#topic-title')+' .notebook-rename:not([hidden])',before=await current();phase='rename-escape-save-'+draft;
      await openMenu(draft);await choose('Rename');await until(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(field)})?.getClientRects().length)`),'actual title field opens');
-     await press(field);await p.key('a',4);await p.send('Input.insertText',{text:'Canceled title'});await p.key('Escape');
-     assert.equal((await exact(draft)).source_ref.revision,before.source_ref.revision,'canceled rename writes no revision');
+     const escaped=title+' saved by Escape';await press(field);await p.key('a',4);await p.send('Input.insertText',{text:escaped});await p.key('Escape');
+     await until(async()=>(await current()).title===escaped,'Escape saves the page title');title=escaped;
+     assert.equal((await exact(draft)).source_ref.revision,before.source_ref.revision+1,'Escape appends one complete title revision');
      phase='rename-save-'+draft;await openMenu(draft);await choose('Rename');
      await until(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(field)})?.getClientRects().length)`),'title field returns');
      const renamed=title+' renamed';await press(field);await p.key('a',4);await p.send('Input.insertText',{text:renamed});await p.key('Enter');
      await until(async()=>(await current()).title===renamed,'native rename commits');title=renamed;
-     assert.equal((await exact(draft)).source_ref.revision,before.source_ref.revision+1,'rename appends one complete revision');
+     assert.equal((await exact(draft)).source_ref.revision,before.source_ref.revision+2,'Return appends the next complete revision');
      phase='explicit-draft-'+draft;await openMenu(draft);await choose('Private Draft');
      await until(async()=>(await current()).draft===!draft,'explicit Private Draft changes the flag');await exact(!draft);
     }

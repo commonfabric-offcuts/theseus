@@ -5783,5 +5783,31 @@
       "inputs": [],
       "scope": "generated/system/product"
     }
+  },
+  "tests/test_hosted_recovery_1104.py": {
+    "0842d5b6f91aca6c4143b2c32ce9db0ee2c7f8602d4bd827ab43ca1cb134790e": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "0842d5b6f91aca6c4143b2c32ce9db0ee2c7f8602d4bd827ab43ca1cb134790e:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "0fa920c4f18b01a27040ef750eb4857a7ef03542da1c45836a954f3a2afef6e5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "0fa920c4f18b01a27040ef750eb4857a7ef03542da1c45836a954f3a2afef6e5:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "515ccc360c6b896116b0e6b3b3c8241356841051f2984f73d8e01ea5bc806921": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "515ccc360c6b896116b0e6b3b3c8241356841051f2984f73d8e01ea5bc806921:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
   }
 }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { sameNotebookButtons } from './notebook_button_geometry.mjs';
+import { notebookPageTitle1159Checks } from './notebook_page_title_1159_native.mjs';
 
 // A Notebook page in the composer over the feed (item 396, docs/decks.md "Where it opens"), in the real browser
 // against the real server, at a laptop's width with a pointer and keys and at a phone's with touch: a page opened
@@ -28,6 +29,7 @@ export const sheetHead = p => p.evaluate(`(()=>{const d=document.querySelector('
     cut:!words?'no saving sign':words.scrollWidth>words.clientWidth+1?words.textContent:null,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
 
 export async function notebookSheetChecks({ check, page, until, control, view, facts, shot }) {
+  await notebookPageTitle1159Checks({ check, page, until, control, view, facts, shot });
   const SHEET = '#new-message-sheet', PAGE = `${SHEET} .notebook-sheet-page:not([hidden])`;
   // What the sheet shows: whether it is open as a Notebook page, whether it is on screen (drawn, and a press on its
   // title reaches it: a dialog in a box that is not drawn is open and shows nothing), its title, whether the Reader is
@@ -873,7 +875,7 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     const writingHint = await p.evaluate(`document.querySelector('${FULL} .deck-keys').children[1].textContent`);
     assert.match(writingHint, /← at the very start or → at the very end done/, 'the full-page writing hint describes display at both boundaries');
     assert.match(writingHint, /no selection/, 'the writing hint names the collapsed-caret default');
-    assert.match(writingHint, /⇧Tab at start or end outdent/, 'the writing hint includes end Shift-Tab');
+    assert.match(writingHint, /Tab or ⇧Tab at start or end indent or outdent card/, 'the writing hint names Tab and Shift-Tab at either boundary');
     assert.doesNotMatch(writingHint, /folds children|unfolds them/, 'the writing hint no longer promises editing-arrow folds');
     // ← moves the cursor through the words, then from the very start displays this card with its children untouched.
     for (let step = 0; step < 'Plan\nShip it.'.length; step++) await p.key('ArrowLeft');

@@ -309,6 +309,7 @@ main>#outcomes-home{margin-bottom:.4rem}
 
 /* A web address in a message's words: underlined in the words' own color, so it reads on every card and page; a long one wraps. */
 .words-link{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px;overflow-wrap:anywhere;word-break:break-word;cursor:pointer}.words-link:hover{text-decoration-thickness:2px}
+.words-reference{cursor:default}
 /* A quiet word that acts, not a button. */
 .text-action{min-height:2.5rem;padding:0;border:0;border-radius:.25rem;background:none;color:var(--muted);font-size:.85rem;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:.2em}
 .text-action:hover{background:none;color:var(--ink);text-decoration-color:currentColor}
@@ -1572,3 +1573,7 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 @media(pointer:coarse){.notebook-card-copy,.notebook-card-add{min-width:44px;min-height:44px}}
 
 .notebook-card-action{opacity:0;pointer-events:none}:where(.deck-pointing) .deck-card:hover .notebook-card-action,.deck-card[aria-current=true] .notebook-card-action,.notebook-card-action:focus{opacity:1;pointer-events:auto}
+
+/*1159: the page title is its own quiet, keyboard-reachable editing control.*/
+.notebook-title-edit{display:inline-block;max-width:100%;vertical-align:middle;overflow:hidden;text-overflow:ellipsis}.notebook-title-edit[aria-disabled=false]{cursor:pointer}.notebook-title-edit:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+@media(max-width:760px){.notebook-title-edit{min-width:44px;min-height:44px;line-height:44px}}
