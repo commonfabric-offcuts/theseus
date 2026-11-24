@@ -179,12 +179,12 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
       assert.deepEqual({ added: await said(p, 'add-stage'), ...await lines(), core: await stages() },
         { added: ['Saved. Theseus was busy, so this page does not show it yet.'], line: '', held: ['Shp'], heldSaid: ['Not saved: Theseus was busy. Try again'], tries: 1, core: ['Build', 'Review'] },
         'Shp is kept and not saved, beside its own words; Review is said to be saved; the line is clear');
-      // Escape on a title kept lets it go, sends nothing, and focus goes to the line it was typed on, for the next title.
+      // Emptying a held title, then Escape, lets it go without sending; focus returns to the add line.
       await addStage(p, 'Gone');
       await until(() => p.evaluate(`document.querySelectorAll('${held}').length===2`), 'Gone is kept too');
       const gone = await p.evaluate(`[...document.querySelectorAll('${held}')].find(f=>f.querySelector('input').value==='Gone').dataset.key`);
-      await tap(p, `[data-key="${gone}"] input`); await p.key('Escape');
-      await until(() => p.evaluate(`document.querySelectorAll('${held}').length===1`), 'Escape lets Gone go');
+      await tap(p, `[data-key="${gone}"] input`); await p.key('a', 4); await p.key('Backspace'); await p.key('Escape');
+      await until(() => p.evaluate(`document.querySelectorAll('${held}').length===1`), 'empty Escape lets Gone go');
       const left = await focused(p);
       assert.deepEqual([left.key, left.role, left.value, (await lines()).held, await stages()], ['add-stage', 'add-title', '', ['Shp'], ['Build', 'Review']],
         'focus is on the Add a stage line; Shp stays; nothing was sent');
@@ -329,8 +329,13 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     const kept_ = await focused(p);
     assert.deepEqual([kept_.key, kept_.value], ['add:next', 'Half typed'], 'what was being typed keeps its focus and its words');
     assert.equal(await p.evaluate(`document.activeElement.selectionStart`), 'Half typed'.length, 'and its caret');
+    const nextBeforeEscape = await kept('next');
     await p.key('Escape');
-    assert.deepEqual([(await focused(p)).key, (await focused(p)).value], ['add:next', ''], 'Escape clears the line and keeps focus on it');
+    await until(async () => (await kept('next')).length === nextBeforeEscape.length + 1, 'Escape adds the title kept through the live change');
+    const nextAfterEscape = await kept('next');
+    assert.deepEqual(nextAfterEscape.slice(0, -1), nextBeforeEscape, 'existing Next items retain their order');
+    assert.equal((await record(nextAfterEscape.at(-1))).title, 'Half typed', 'Core holds the exact Escape-created title');
+    assert.equal(await p.evaluate(`document.querySelector('[data-key="add:next"] input').value`), '', 'the add line clears after saving');
     await shot(p, 'pipeline-underway');
     // The owner's word: Done with this stage finishes the piece.
     await tap(p, `${card} [data-role=leave]`);
@@ -394,15 +399,9 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     await r.point('#add-to-pipeline');
     const first = await until(async () => { const f = await focused(r); return f.role === 'add-title' && f.value; }, 'one line opens under the message, focused');
     assert.equal(first, 'Could the page say which release is live?', 'its title is the message’s first sentence');
-    await r.key('Escape');
-    // Add to pipeline is in the Reader's ⋯ (docs/reader.md): Escape goes back there.
-    await until(async () => (await focused(r)).id === 'reader-menu', 'Escape closes it, back onto the ⋯ that held Add to pipeline');
-    assert.equal(await r.evaluate(`document.getElementById('pipeline-add').hidden`), true);
     const before = await kept('candidates');
-    await r.point('#add-to-pipeline');
-    await until(async () => (await focused(r)).role === 'add-title', 'it opens again');
-    await r.key('Enter');
-    const done = await until(() => r.evaluate(`document.querySelector('#pipeline-add [role=status]')?.textContent`), 'Return adds it');
+    await r.key('Escape');
+    const done = await until(() => r.evaluate(`document.querySelector('#pipeline-add [role=status]')?.textContent`), 'Escape adds it through the Return owner');
     const number = Number(/^Added (\d+) to Candidates\./.exec(done)?.[1]);
     assert.equal(done, `Added ${number} to Candidates.Open it`);
     assert.equal((await focused(r)).text, 'Open it', 'focus goes to Open it');

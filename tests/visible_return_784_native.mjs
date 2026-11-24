@@ -351,8 +351,8 @@ export async function visibleReturn784Checks({ check, page, until, control, shot
         await until(() => p.evaluate(`document.activeElement?.matches('.stack-rename-input')`), 'click pen still renames');
         await p.key('a', 4); await p.send('Input.insertText', { text: '784 renamed' }); await p.key('Enter');
         await until(() => p.evaluate(`!document.querySelector('.stack-rename-input')`), 'title field Return saves');
-        await press(pen); await p.send('Input.insertText', { text: 'discard me' }); await p.key('Escape');
-        assert.equal(await p.evaluate(`document.querySelector(${q(stack784(ids.head) + ' .stack-name')}).textContent`), '784 renamed', 'title Escape preserves saved name');
+        await press(pen); await p.send('Input.insertText', { text: '784 saved on Escape' }); await p.key('Escape');
+        await until(() => p.evaluate(`!document.querySelector('.stack-rename-input') && document.querySelector(${q(stack784(ids.head) + ' .stack-name')}).textContent==='784 saved on Escape'`), 'title Escape saves the typed name and finishes the field');
         await press('#people-heading'); await tabTo(p, card784(ids.a));
         await tabTo(p, '.message-bar button[data-act="more"]'); await p.key('Enter');
         await until(() => p.evaluate(`Boolean(document.activeElement?.closest('[role="menu"]'))`), 'message menu owns native focus');

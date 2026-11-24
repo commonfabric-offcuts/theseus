@@ -1,3 +1,4 @@
+import { keepOnEscape } from './keep-on-escape.mjs';
 // An outcome's target and its checks, the improvement loop, the problems found
 // before a check, and the Measurements page (items 14, 12, 104; docs/targets.md).
 // Every fact comes from the `outcome_checks` and `check_readings` views; every
@@ -55,10 +56,11 @@ class Folds {
   }
 }
 
-// A reason box: Return sends its words, Shift+Return is a new line, Escape steps back.
+// A reason box: Return or Escape sends its words; Shift+Return is a new line.
 const reasonKeys = (send, back) => event => {
-  if (event.key === 'Escape') { event.preventDefault(); back(); }
-  else if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (!event.repeat) send(); }
+  if (event.isComposing || event.keyCode === 229) return;
+  if (keepOnEscape(event, { value: (event.currentTarget ?? event.target)?.value, save: send, close: back })) return;
+  if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!event.repeat) send(); }
 };
 // The box grows with the words, a line at a time, where the browser cannot size it to them itself.
 const fit = box => { if (!CSS.supports('field-sizing', 'content')) { box.style.height = 'auto'; box.style.height = `${box.scrollHeight + 2}px`; } };
@@ -214,10 +216,16 @@ export class OutcomeTargets {
       placeholder: 'What done looks like, in a few sentences', enterkeyhint: 'done', oninput: event => { writer.text = event.currentTarget.value; } });
     field.value = writer.text;
     field.readOnly = writer.busy;
-    // Return saves the words and Esc cancels, so the box has no Save button (the form rule); Cancel is a quiet word for a tap.
+    field.onblur = event => { if (this.writer === writer && !event.relatedTarget?.closest?.('.tg-write')) this.saveWriter(); };
+    // Return or Escape uses the same owner; explicit Cancel remains a quiet tap.
     return el('div', { class: 'tg-write', onkeydown: event => {
+      if (event.isComposing || event.keyCode === 229) return;
+      if (event.target?.dataset?.key === 'writer' && keepOnEscape(event, { value: field.value, save: () => {
+        if (!writer.busy && writer.text.trim() === writer.original.trim()) this.closeWriter();
+        else return this.saveWriter();
+      }, close: () => this.closeWriter() })) return;
       if (event.key === 'Escape') { event.preventDefault(); this.closeWriter(); }
-      else if (event.key === 'Enter' && event.target?.dataset?.key === 'writer' && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (!event.repeat) this.saveWriter(); }
+      else if (event.key === 'Enter' && event.target?.dataset?.key === 'writer' && !event.shiftKey) { event.preventDefault(); if (!event.repeat) this.saveWriter(); }
     } }, field,
     el('p', { class: 'muted tg-write-how', text: writeHowWords({ hasTarget, youOwn, owner: view.owner }) }),
     needsAsk ? el('div', { class: 'tg-topics', role: 'group', 'aria-label': 'The topic the ask goes in' }, this.topicChips(view, writer)) : null,
@@ -334,7 +342,8 @@ export class OutcomeTargets {
   reachBox(view) {
     const draft = this.reaching, unmet = view.reach?.unmet ?? [];
     const words = reasonBox(draft, { 'data-key': 'reach-words', maxlength: '500', 'aria-label': 'Why it is reached, in your own words', placeholder: 'Why it is reached, in a sentence or two',
-      onkeydown: reasonKeys(() => this.sendReach(), () => this.closeReach()) });
+      onkeydown: reasonKeys(() => this.sendReach(), () => this.closeReach()),
+      onblur: event => { if (this.reaching === draft && !event.relatedTarget?.closest?.('.tg-reach')) this.sendReach(); } });
     // Not offered: something is not met, or nothing checks it yet; either way he confirms first (Core refuses NOT_MET without it).
     let anyway = null;
     if (!view.reach?.offered) {

@@ -122,7 +122,7 @@ test('A publish whose answer was lost and is then found closed opens the topic i
   assert.equal(await starter.start('Late'), 't-landed');
 });
 
-test('The line: Return submits what is typed, once; Escape cancels and goes no further; a refusal is said with its links and the words stay', async t => {
+test('The line: Return submits what is typed, once; Escape submits nonempty writing and goes no further; a refusal is said with its links and the words stay', async t => {
   dom(t);
   const submitted = [], opened = [];
   let answer = () => {};
@@ -152,10 +152,13 @@ test('The line: Return submits what is typed, once; Escape cancels and goes no f
   assert.deepEqual([opened, prevented], [['t-first'], 1], 'a plain click opens the topic in place; a modified click is the browser\'s');
   line.input.listeners.input();
   assert.equal(line.state.hidden, true, 'typing again clears what was said');
-  const escape = key('Escape'); down(escape);
-  assert.deepEqual([submitted.at(-1), escape.stopped, escape.prevented], ['cancelled', 1, 1], 'Escape closes the line, not what holds it');
+  const escape = key('Escape'); down(escape); await settle();
+  assert.deepEqual([submitted.at(-1), escape.stopped, escape.prevented], ['Which weekend', 1, 1], 'Escape uses the same refused submit and stops at the line');
+  assert.equal(line.input.value, 'Which weekend');
+  line.input.value = ''; down(key('Escape'));
+  assert.equal(submitted.at(-1), 'cancelled', 'empty Escape closes without a write');
   down(key('Enter', { repeat: true }));
-  assert.equal(submitted.filter(text => text !== 'cancelled').length, 2, 'a held Return sends nothing more');
+  assert.equal(submitted.filter(text => text !== 'cancelled').length, 3, 'a held Return sends nothing more');
 });
 
 test('A rail button opens its line under its heading; a second press or Escape closes it and gives the focus back', t => {
@@ -186,7 +189,7 @@ test('A message\'s first sentence is the title offered for a topic from it', () 
   assert.ok(long.length <= 120 && long.endsWith('…') && !long.includes('  '), long);
 });
 
-test('The purpose is set in place by whoever organises the outcome: Return saves, Shift+Return is a new line, Escape puts it back', async t => {
+test('The purpose is set in place by whoever organises the outcome: Return saves, Shift+Return is a new line, Escape saves too', async t => {
   dom(t);
   const host = new Element('div'), description = new Element('p'), saved = [];
   let answer = { status: 'committed' };
@@ -213,10 +216,10 @@ test('The purpose is set in place by whoever organises the outcome: Return saves
   assert.deepEqual([box.hidden, description.textContent, description.hidden, action.textContent, state.textContent], [true, 'Ship the forms piece', false, 'Edit purpose', 'Saved']);
   assert.equal(document.activeElement, action, 'the focus goes back to the quiet word');
   action.onclick(); box.value = 'Something else';
-  const escape = key('Escape'); box.onkeydown(escape);
-  assert.deepEqual([box.hidden, box.value, escape.stopped, saved.length], [true, 'Ship the forms piece', 1, 2], 'Escape puts back what was saved and sends nothing');
+  const escape = key('Escape'); box.onkeydown(escape); await settle();
+  assert.deepEqual([box.hidden, box.value, escape.stopped, saved.length], [true, 'Something else', 1, 3], 'Escape saves through the Return owner and finishes');
   action.onclick(); box.onkeydown(key('Enter'));
-  assert.deepEqual([saved.length, box.hidden], [2, true], 'Return with nothing changed only closes it');
+  assert.deepEqual([saved.length, box.hidden], [3, true], 'Return with nothing changed only closes it');
   line.paint({ id: 'w1', purpose: 'Changed elsewhere' }, true);
   assert.equal(box.value, 'Changed elsewhere', 'a closed box follows a change made elsewhere');
 });

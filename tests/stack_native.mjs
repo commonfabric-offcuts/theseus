@@ -3933,7 +3933,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
-  await check('reading stacks rename in place: Return saves it for everyone with who typed it, Esc cancels, ⌘Z puts it back, an empty name gives back the first line, and another\'s rename shows at once', async () => {
+  await check('reading stacks rename in place: Return or Escape saves it once for everyone with who typed it, empty Escape keeps the name, ⌘Z puts it back, an empty Return gives back the first line, and another\'s rename shows at once', async () => {
     const topic = 'stack-rename';
     const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Can we lock the cabin for the week of July 12 before Friday when the owner decides?' }],
       ['reply', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A reply.', read: true }]]);
@@ -3941,12 +3941,24 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const name = async () => (await look(p, ids, 'root')).name;
     await until(async () => (await name()) === 'Can we lock the cabin for the week of July 12 before Friday when the owner decides?', 'the name is the first line');
     const input = `#messages .reply-stack .stack-rename-input`;
+    const names = () => p.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`);
     await p.point(`${card(ids.root)} .stack-name`);
     await until(() => p.evaluate(`document.activeElement?.matches?.(${JSON.stringify(input)})`), 'a press on the name opens it to rename, the cursor in it');
     await p.send('Input.insertText', { text: 'Cabin week' });
     await p.key('Escape');
     await until(async () => !await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), 'Esc closes it');
-    assert.equal((await actsOf(topic, ids.root))?.name ?? null, null, 'Esc saves nothing');
+    await until(async () => (await name()) === 'Cabin week' && (await actsOf(topic, ids.root, other))?.name?.text === 'Cabin week', 'Escape saves the exact name for everyone');
+    assert.equal((await actsOf(topic, ids.root, other)).name.by, facts.actor, 'with who typed it');
+    assert.equal(await names(), 1, 'Escape sends one rename');
+    await p.point(`${card(ids.root)} .stack-pen`);
+    await until(() => p.evaluate(`document.activeElement?.matches?.(${JSON.stringify(input)})`), 'the pen opens the saved name');
+    await p.key('a', 4); await p.key('Backspace'); await p.key('Escape');
+    await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(input)})`), 'empty Escape closes the field');
+    assert.equal(await name(), 'Cabin week', 'empty Escape keeps the saved name');
+    assert.equal((await actsOf(topic, ids.root, other)).name.text, 'Cabin week', 'Core keeps it for everyone');
+    assert.equal(await names(), 1, 'empty Escape sends no rename');
+    await p.key('z', 4);
+    await until(async () => (await actsOf(topic, ids.root))?.name === null && (await name()).startsWith('Can we lock'), '⌘Z puts the Escape rename back, in Core');
     await p.point(`${card(ids.root)} .stack-pen`);
     await until(() => p.evaluate(`document.activeElement?.matches?.(${JSON.stringify(input)})`), 'the ✎ opens it too');
     await p.send('Input.insertText', { text: 'Cabin week' });
@@ -8811,7 +8823,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // Item 784 supersedes only item385's Return-to-rename entry point.
   // Evidence: Tony9689/9698/9705, source9707 SPEC N1/N2 and REPORT Exact limits.
   // Click/name/pen/menu rename and all title-field checks remain.
-  await check('reading stacks Return on a selected dossier invokes its title-bar Reply: pen rename keeps Return save and Escape cancel, writing types and a message replies', async () => {
+  await check('reading stacks Return on a selected dossier invokes its title-bar Reply: pen rename saves on Return or Escape, writing types and a message replies', async () => {
     const topic = 'stack-rename-key';
     const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Plan the cabin week.', read: true }],
       ['reply', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A reply to the plan.', read: true }],
@@ -8836,10 +8848,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await becomes(keysOn, 'Plan the cabin week.', 'pen click still edits the title');
     await p.send('Input.insertText', { text: 'Cabin week' });
     await p.key('Escape');
-    await until(async () => !await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), 'Escape cancels the edit');
-    assert.equal(await name(), 'Plan the cabin week.', 'the title is as it was');
-    assert.equal(await names(), 0, 'and nothing is sent');
-    assert.equal((await actsOf(topic, ids.root))?.name ?? null, null, 'nor held by Core');
+    await until(async () => !await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), 'Escape saves and finishes the edit');
+    await until(async () => (await name()) === 'Cabin week' && (await actsOf(topic, ids.root, other))?.name?.text === 'Cabin week', 'Escape saves the typed title for everyone');
+    assert.equal(await names(), 1, 'Escape sends one rename');
     // Its chevron selected stands for the dossier too.
     await centre(p, toggle); await p.point(toggle, 'move');
     const fold = (await look(p, ids, 'root')).fold;
@@ -8849,12 +8860,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal((await look(p, ids, 'root')).fold, fold, 'and does not press the chevron');
     await closeCurrentReply(ids.reply);
     await centre(p, section(ids.root) + ' .stack-pen'); await p.point(section(ids.root) + ' .stack-pen');
-    await becomes(keysOn, 'Plan the cabin week.', 'pen starts rename again');
-    await p.send('Input.insertText', { text: 'Cabin week' });
+    await becomes(keysOn, 'Cabin week', 'pen starts rename again with the Escape-saved title');
+    await p.send('Input.insertText', { text: 'Cabin week on Return' });
     await p.key('Enter');
-    await until(async () => (await name()) === 'Cabin week', 'Return in the title saves it');
-    await until(async () => (await actsOf(topic, ids.root, other))?.name?.text === 'Cabin week', 'Core holds it for everyone');
-    assert.equal(await names(), 1, 'one rename sent: the Return that saved it started no second edit');
+    await until(async () => (await name()) === 'Cabin week on Return', 'Return in the title saves it');
+    await until(async () => (await actsOf(topic, ids.root, other))?.name?.text === 'Cabin week on Return', 'Core holds it for everyone');
+    assert.equal(await names(), 2, 'one rename for each save: Return started no second edit');
     assert.equal(await editing(), null, 'the title is no longer being edited');
     // Fully open, the head shows its whole message: Return there replies, as on any message.
     await centre(p, toggle); await press(p, 'laptop', toggle);
@@ -8878,7 +8889,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.send('Input.insertText', { text: 'Two' });
     await until(() => p.evaluate("document.activeElement?.value === 'One\\nTwo'"), 'Return in the writing makes a new line');
     assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), false, 'and edits no title');
-    assert.equal(await names(), 1, 'nor renames anything');
+    assert.equal(await names(), 2, 'nor renames anything');
     assert.deepEqual(p.errors, []); await p.close();
   });
 

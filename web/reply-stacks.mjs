@@ -1,3 +1,4 @@
+import { keepOnEscape } from './keep-on-escape.mjs';
 // Replies gathered into stacks (docs/reply-stacks.md). A message and every
 // loaded reply to it, and to those replies, read as one stack, with any stack
 // someone joined to it: the message it starts with on top as its head, one
@@ -758,17 +759,28 @@ function renameField(section, stack, head, { state, doc }) {
   const p = parts.get(section);
   if (state.renaming !== stack.id) { p.rename?.remove(); p.rename = null; return null; }
   if (p.rename) return p.rename;
-  const field = element(doc, 'div', 'stack-rename'), input = element(doc, 'input', 'stack-rename-input'), hint = element(doc, 'span', 'stack-rename-hint', 'Return saves · Esc cancels');
+  const field = element(doc, 'div', 'stack-rename'), input = element(doc, 'input', 'stack-rename-input'), hint = element(doc, 'span', 'stack-rename-hint', 'Return or Esc saves');
   input.type = 'text'; input.value = head.name; input.maxLength = 200;
-  input.setAttribute('aria-label', 'Short name for this stack, for everyone here; empty gives back its first line');
+  input.setAttribute('aria-label', 'Short name for this stack, for everyone here; empty Escape keeps its name, empty Return gives back its first line');
   // edited: the person typed in it, so what it saves is theirs, though it
   // read the same when it opened (item 470).
-  let done = false, edited = false;
+  let done = false, saving = false, edited = false;
   input.addEventListener('input', () => { edited = true; });
-  const finish = save => { if (done) return; done = true; state.renaming = null; p.rename = null; field.remove(); save ? state.on?.renamed?.(stack, input.value, { edited }) : state.on?.cancelled?.(stack); };
+  const finish = async save => {
+    if (done || saving) return;
+    saving = true; input.readOnly = true;
+    try {
+      if (save) { const saved = state.on?.renamed?.(stack, input.value, { edited }); if (saved?.then) await saved; }
+      if (p.rename !== field || state.renaming !== stack.id) return;
+      done = true; state.renaming = null; p.rename = null; field.remove();
+      if (save) state.on?.renameFinished?.(stack); else state.on?.cancelled?.(stack);
+    } catch (error) { if (p.rename === field && state.renaming === stack.id) { hint.textContent = error.message; input.focus(); } }
+    finally { saving = false; input.readOnly = false; }
+  };
   input.addEventListener('keydown', event => {
+    if (event.isComposing || event.keyCode === 229) return;
+    if (keepOnEscape(event, { value: input.value, save: () => finish(true), close: () => finish(false) })) return;
     if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); finish(true); }
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); }
   });
   input.addEventListener('blur', () => finish(true));
   field.append(input, hint);

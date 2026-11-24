@@ -93,5 +93,5 @@ test('784 superseded rename expectations cite original authority and preserve pe
   assert.match(source, /pen click still edits the title/);
   assert.match(source, /Core holds it for everyone/);
   assert.match(source, /Return in the writing makes a new line/);
-  assert.match(source, /one rename sent: the Return that saved it started no second edit/);
+  assert.match(source, /Return started no second edit/);
 });

@@ -1518,7 +1518,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // A pencil brought into view in its rail, as a person scrolls to it: once it is wholly inside the window.
   const inView = (p, selector, what) => until(() => p.evaluate(`(e=>{e.scrollIntoView({block:'center'});const b=e.getBoundingClientRect();return b.top>=0&&b.bottom<=innerHeight})(document.querySelector(${JSON.stringify(selector)}))`), what);
   const commandsSent = async (p, key, kind) => (await recorded(p, key)).filter(entry => entry.request === '/api/command' && entry.name === kind).length;
-  await check('rail each pencil\'s title line, at 320, 375 and 390 in the open drawer and on a laptop, light and dark, open, refused when empty, busy while it starts and refused by the server, is under its row or heading and clear of it, in the rail with nothing over it; a second Return while busy sends nothing more, the server\'s refusal keeps the title and makes nothing, Escape closes the line, and Return again makes it', async () => {
+  await check('rail each pencil\'s title line, at 320, 375 and 390 in the open drawer and on a laptop, light and dark, open, refused when empty, busy while it starts and refused by the server, is under its row or heading and clear of it, in the rail with nothing over it; a second Return while busy sends nothing more, the server\'s refusal keeps the title and makes nothing, the pencil closes the line, and Return again makes it', async () => {
     const specs = [
       { name: 'topic', pencil: '#ol-pencil-w1', input: 'ol-new-topic-w1', anchor: '#outline .ol-outcome[data-workspace-id="w1"] > .ol-row', kind: 'opening.save', empty: 'Type the topic’s title, then press Return.' },
       { name: 'outcome', pencil: '#outline-new-outcome', input: 'outline-new-outcome-title', anchor: '#outline .ol-heading', kind: 'workspace.create', empty: 'Type the outcome’s title, then press Return.' },
@@ -1577,9 +1577,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         const refused = await looks('server-refused', { focused: true, busy: null, state: { text: REFUSAL + TRY_AGAIN, quiet: false } });
         assert.deepEqual([refused.value, refused.search], [title, before.search], said + ': the title stays as typed, and the page stays');
         await hold.stop();
-        // Escape closes the line from there and gives its pencil the keys; a phone's drawer stays open.
-        await p.key('Escape');
-        await until(() => p.evaluate(`!document.getElementById(${words}) && document.activeElement===document.querySelector(${JSON.stringify(spec.pencil)})`), said + ': Escape closes the line and gives the pencil the keys');
+        // The pencil explicitly dismisses the refused line without retrying; the phone drawer stays open.
+        if (phone) await tap(p, spec.pencil); else await p.point(spec.pencil);
+        await until(() => p.evaluate(`!document.getElementById(${words}) && document.activeElement===document.querySelector(${JSON.stringify(spec.pencil)})`), said + ': the pencil closes the line and keeps the keys');
         if (phone) assert.equal((await drawer(p)).open, true, said + ': the drawer stays open');
       }
       // Nothing the server refused was made: the one outcome asked for was answered here, and no topic was published.

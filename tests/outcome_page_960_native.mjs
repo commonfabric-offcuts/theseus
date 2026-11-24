@@ -101,8 +101,10 @@ try {
       const field=page.locator('#outcome-purpose-input');await field.fill(purpose);await field.press('Enter');
       await field.waitFor({state:'hidden'});
       const core=await control({method:'agent_view',actor:facts.actor,name:'workspace',args:{workspace_id:'w960'}});assert.equal(core.workspace.purpose,purpose);
-      await pencil.click();await field.fill('Discarded purpose960');await field.press('Escape');assert.equal(await pencil.evaluate(n=>n===document.activeElement),true);
-      assert.ok((await page.locator('#topic-description').innerText()).includes('Kept purpose960'));
+      const escapedPurpose=`Escape purpose960 ${key}`;
+      await pencil.click();await field.fill(escapedPurpose);await field.press('Escape');await field.waitFor({state:'hidden'});assert.equal(await pencil.evaluate(n=>n===document.activeElement),true);
+      assert.equal((await control({method:'agent_view',actor:facts.actor,name:'workspace',args:{workspace_id:'w960'}})).workspace.purpose,escapedPurpose);
+      assert.ok((await page.locator('#topic-description').innerText()).includes(escapedPurpose));
       const member=page.locator(`#outcome-agents .outcome-agent[data-actor-id="${facts.actor}"]`);
       assert.ok((await member.innerText()).includes('1 topic waits on you'));await member.click();
       await page.waitForFunction(()=>getComputedStyle(document.querySelector('[data-topic-id="t960one"].outcome-topic-card')).opacity==='0.25');
@@ -125,7 +127,8 @@ try {
         // 985: the bench holds at every width, so a narrower window keeps the purpose and its unsent words in place.
         await page.setViewportSize({width:1000,height:1000});
         assert.equal(await page.locator('#outcome-purpose>#topic-description').count(),1);assert.equal(await field.inputValue(),'Unsent resize writing960');
-        await page.setViewportSize({width,height:1000});assert.equal(await field.inputValue(),'Unsent resize writing960');await field.press('Escape');
+        await page.setViewportSize({width,height:1000});assert.equal(await field.inputValue(),'Unsent resize writing960');await field.press('Escape');await field.waitFor({state:'hidden'});
+        assert.equal((await control({method:'agent_view',actor:facts.actor,name:'workspace',args:{workspace_id:'w960'}})).workspace.purpose,'Unsent resize writing960');
         assert.equal(await pencil.evaluate(n=>n===document.activeElement),true);
         // Advance real scratch Core after the immutable request is queued,
         // then deliver it unchanged: this is an actual conflict, not a
@@ -142,7 +145,10 @@ try {
         const refused=page.waitForResponse(r=>{try{return r.request().postDataJSON()?.kind==='workspace.update';}catch{return false;}});
         await field.press('Enter');const receipt=await(await refused).json();assert.equal(receipt.status,'rejected');
         assert.equal(await field.inputValue(),'Retained after conflict960');assert.equal(await field.isVisible(),true);
-        await page.locator('#outcome-purpose .one-line-state:not([hidden])').waitFor();await page.unroute('**/api/command');await field.press('Escape');
+        await page.locator('#outcome-purpose .one-line-state:not([hidden])').waitFor();await page.unroute('**/api/command');
+        await page.waitForFunction(()=>document.querySelector('#topic-description').textContent.includes('Concurrent purpose960'));
+        await field.press('Escape');await field.waitFor({state:'hidden'});
+        assert.equal((await control({method:'agent_view',actor:facts.actor,name:'workspace',args:{workspace_id:'w960'}})).workspace.purpose,'Retained after conflict960','Escape retries the retained purpose through the current save owner');
         await card.click();await page.waitForURL(url=>url.searchParams.get('topic')==='t960two');await page.locator('#messages .message-card').first().waitFor();
         assert.equal(await page.locator('#outcome-page').isVisible(),false,'topic page remains its own surface');
         await page.setViewportSize({width:1280,height:1000});

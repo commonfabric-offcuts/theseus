@@ -170,9 +170,17 @@ and the writing. Focus stays visible and follows what the person did.
 
 ## Dismiss without losing work
 
-A press outside a pop-up closes it and keeps unsent writing and images. A press
-outside, Escape and the close control all keep work the same way. A press that
-starts or ends inside the pop-up is not an outside press.
+In an eligible writing field, Escape keeps what you typed, as Return does,
+then finishes the field. That press stays at the field; a second Escape
+closes its containing sheet, dialog or Reader. Empty titles and new lines
+close without writing; intentionally empty notes save. Refusal keeps the
+field and its reason. Messages retain their CmdReturn action and drafts;
+invitations and search/pickers keep their existing dismissal. IME keys are
+ignored. The exact inventory and proof limits are in [1172](escape-keeps-1172.md).
+
+A press outside a pop-up closes it and keeps unsent writing and images.
+Outside writing, Escape and the close control keep work the same way. A
+press that starts or ends inside the pop-up is not an outside press.
 
 - `tests/team_bar_native.mjs` (`native-colors`, `native-webkit-colors`):
   "colors item 643 B1 drag endpoints keep picker open" and the empty,

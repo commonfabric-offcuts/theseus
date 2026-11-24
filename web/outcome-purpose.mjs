@@ -1,7 +1,8 @@
+import { keepOnEscape } from './keep-on-escape.mjs';
 // What an outcome is for, set in place on its page by whoever organises it (its
 // owner or coordinator) after creating it with a title alone. A quiet "Add a
 // purpose" (or "Edit purpose") opens a box a few sentences wide; Return saves
-// it, Shift+Return starts a new line, Escape puts it back. Saving is
+// it, Shift+Return starts a new line, and Escape saves too. Saving is
 // workspace.update; a quiet "Saved" or the refusal in plain words says what
 // became of it, and a refusal keeps the words.
 import { glyph } from './glyphs.mjs';
@@ -22,10 +23,11 @@ export class PurposeLine {
     this.box.setAttribute('enterkeyhint', 'done');
     this.box.onkeydown = event => {
       if (event.isComposing || event.keyCode === 229) return;
+      if (keepOnEscape(event, { value: this.box.value, empty: 'save', save: () => this.commit() })) return;
       if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!event.repeat) this.commit(); }
-      else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.close(); }
     };
     this.box.oninput = () => this.show('');
+    this.box.onblur = () => { if (!this.box.hidden) this.commit(); };
     this.state = element('p', { className: 'one-line-state', hidden: true });
     this.state.setAttribute('role', 'status');
     host.replaceChildren(this.box, this.action, this.state);

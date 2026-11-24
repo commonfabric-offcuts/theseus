@@ -7,14 +7,14 @@ Four chips say where the topic stands, and Waiting adds a chip for each of
 its people. The note, the reader's own part ("Your part") and, for whoever
 organises the outcome and the topic's creator, the title are one line each. A tap
 saves at once; a line saves on Return or when the person leaves it, by Tab,
-by a press elsewhere, by ✕ or by closing Topic settings. Escape in a line
-puts back what is saved.
+by a press elsewhere, by ✕ or by closing Topic settings. Escape saves the
+line too and keeps that press inside it; a second Escape closes settings.
 
 ## Rename at the title (item 656)
 
 A pencil beside a topic's title, named and titled “Rename topic”, replaces
 that title with its selected, one-line title field. It stays in the header:
-Return or leaving saves, Escape puts back the saved title, and an unchanged
+Return, Escape or leaving saves, and an unchanged or emptied title
 line sends nothing. The saved title appears in the header and the outline,
 also after reload. The pencil is a quiet 44px target in both themes.
 
@@ -26,7 +26,7 @@ it without a reload. Rename in Topic settings remains available as before.
 Both entry points use the very same title field and `topic.update`, fenced
 only on the title. While saving it keeps the line; an error or a conflict
 keeps the typed words and notice together in the header, with Return to
-retry and Escape to cancel. Opening Topic settings brings its field back
+retry; Escape follows the same save path and retains a refusal. Opening Topic settings brings its field back
 there, keeping its words and any save in flight. Nothing else is renamed.
 
 If ownership is lost while editing, the header shows the saved heading and
@@ -35,7 +35,7 @@ and the settings panel must rebuild. Before replacing that panel it reclaims
 the lent field. The same field retains exact unsaved words, fences and any
 operation already sent, disabled and hidden in settings while permission is
 absent. An answer still settles that operation. Regaining permission can
-resume those words; Escape cancels them and a subsequent rename works. No
+resume those words; Return or Escape saves through the same owner. No
 new title or archive command starts without the current permission.
 
 ## ✅ Done at the top of a topic
@@ -85,7 +85,7 @@ the tap, and it means what the control showed when pressed.
    press Return to save yours in its place"). The newer words become where
    the change begins, so the next Return, made once they show, goes in
    their place. If Topic settings was closed, it opens again. The notice
-   stays until those words are saved or put back (Escape). A save the
+   stays until those words are saved. Escape requests the same save as Return. A save the
    person asked for while the refused one was out is dropped: it was made
    before they saw the newer words.
 3. When Core commits the person's save, every field's start that Core said
