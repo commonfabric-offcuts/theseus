@@ -66,7 +66,14 @@ message:
     /Users/commonfabric/aim-next/docs/seats/warp.md. Read it and follow it, starting with its After a reboot section.
 
 Neither the service nor the runner starts by itself: a deploy started each, and no launch agent brings them back. The
-first fresh warp starts them, server first, before anything else touches the board:
+first fresh warp starts them, server first, before anything else touches the board. One change comes before any of
+them, once: fable becomes a hosted seat and auditor's old queue route comes off the runner. The outgoing warp makes it
+with the runner stopped, before the physical reboot, by
+[the rollout's operator procedure](../hosted-codex-rollout.md): fable's existing profile, the runner's own profile,
+owner Tony, a new `fable.hosted.json`, and a staged write of the route map. In the same write, auditor's entry is
+removed by the rollback pattern, which keeps its pin, control, context and waiting deliveries. A fresh warp reads the
+route map before step 2: fable is listed and auditor is not. If either is wrong, it makes the change before step 2,
+because the refresh in step 2 is refused for a seat that is not hosted.
 
 1. `/usr/bin/python3 -I W/land/start-server.py` starts the server from its last launch record, at the live checkout's
    head, through the deploy tool's own start.
