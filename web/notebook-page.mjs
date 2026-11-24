@@ -1,4 +1,5 @@
 import { keepOnEscape } from './keep-on-escape.mjs';
+import { revealSelection } from './reveal.mjs';
 import { CardTextProjection, cardTextValue } from './notebook-card-text.mjs';
 import { stripDetails } from './card-details.mjs';
 import { pageLink } from './links.mjs';
@@ -568,7 +569,10 @@ export class NotebookPage extends DeckPage {
     if(this.folded.delete(card.title))this.keepFolds();
     this.picked=at;
     this.open({text:'',after:cardText(this.deck.cards[last]),depth:card.depth+1,near:last,fresh:true,at:0});
-    return Boolean(this.editing?.fresh);
+    const opened=Boolean(this.editing?.fresh);
+    // open() has restored pointer scrolling; now show the newly created editor.
+    if(opened)revealSelection(this.editing.field?.closest('li'));
+    return opened;
   }
   cardTitle(card) {
     const title=super.cardTitle(card);
