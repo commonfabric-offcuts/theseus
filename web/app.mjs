@@ -95,6 +95,7 @@ import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
 import { ToolPage, OutcomeTools, ToolsRail, TopicTools } from './skills.mjs';
 import { openDossierMove } from './dossier-move.mjs';
+import { MovedDossiers } from './moved-dossiers.mjs';
 import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
 import { openNotebookMenu, notebookReaderMenuItems } from './notebook-menu.mjs';
 import { NotebookStarts } from './notebook-start.mjs';
@@ -1437,11 +1438,7 @@ function paintViews(kind) {
   // The stacks are drawn with the new messages in before any of them is dealt with (stack-feed.mjs, arrived).
   if (kind === 'messages') { syncDossierHeads(); feedOf().arrived([...views.messages.values()]); paintCardReading(); }
   if (kind === 'messages') {
-    for (const old of $('messages').querySelectorAll('.dossier-moved-pointer')) old.remove();
-    for (const move of views.movedPointers ?? []) {
-      const link = node('a', `Dossier moved to ${move.title}`, 'dossier-moved-pointer');
-      link.href = routeHref(topicTarget(move.topic_id, move.root_id)); $('messages').append(link);
-    }
+    movedDossiers.paint($('messages'), views.movedPointers ?? []);
     placeLine(); menu?.paint(); paintDossierSourceStatus();
   }
   if (kind === 'messages') { paintMessageContext(); syncCardReplies(); }
@@ -1450,6 +1447,8 @@ function paintViews(kind) {
 }
 // Each message's entry by id, kept for the page's life.
 const messageEntries = new Map();
+const movedDossiers = new MovedDossiers({ doc: document, actorName: displayActor,
+  href: (topicId, rootId) => routeHref(rootId ? topicTarget(topicId, rootId) : { kind: 'topic', id: topicId }) });
 // Documents use the Reader's actual Open/Download control (1117), but their
 // URLs belong to the card. An unrelated Reader releases none of these files.
 const cardDocumentStates = new Map();

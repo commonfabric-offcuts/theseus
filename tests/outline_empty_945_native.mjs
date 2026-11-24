@@ -88,7 +88,9 @@ try {
   let error;
   try {
     await page.waitForFunction(() => [...document.querySelectorAll('.outcome-topic-card')].some(node => node.dataset.topicId === 'ordinary945' && node.getBoundingClientRect().height), undefined, { timeout: 4000 });
-    const shown = await state(page); assert.equal(shown.badge, '14'); assert.ok(!shown.empty.includes('No topics shown by the outline.'));
+    const shown = await state(page);
+    assert.equal(shown.expanded, 'true'); assert.equal(shown.badge, undefined, '1164: an expanded outcome has no unread badge');
+    assert.ok(!shown.empty.includes('No topics shown by the outline.'));
     assert.deepEqual(pageErrors, []);
   } catch (caught) { error = caught.stack; }
   const after = await state(page);
@@ -111,7 +113,8 @@ try {
     await page.locator('.outcome-topic-card[data-topic-id="ordinary945"]').waitFor({ state: 'visible' });
     await disclosure.click(); controls.folded = await state(page); assert.equal(controls.folded.expanded, 'false'); assert.deepEqual(controls.folded.cards, []);
     await disclosure.click(); await page.locator('.outcome-topic-card[data-topic-id="ordinary945"]').waitFor({ state: 'visible' });
-    controls.reopened = await state(page); assert.equal(controls.reopened.badge, String(counts.build.unread));
+    controls.reopened = await state(page);
+    assert.equal(controls.reopened.expanded, 'true'); assert.equal(controls.reopened.badge, undefined, '1164: reopening leaves unread counts with their Topic owners');
     if (width === 1280 && colorScheme === 'dark') {
       const empty = page.locator('.ol-outcome[data-workspace-id="empty945"]');
       step = 'empty-outcome'; if (await empty.locator('.ol-disclosure').getAttribute('aria-expanded') === 'false') await empty.locator('.ol-disclosure').click();

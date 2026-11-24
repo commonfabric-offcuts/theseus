@@ -1103,12 +1103,21 @@ def main():
                         # A star, a stack's short name, a join, a place or a dossier's cover, as another person or
                         # an agent makes it through Core (docs/reply-stacks.md, docs/dossier-covers.md), fenced on
                         # what they last read.
-                        field = "cover_revision" if request["kind"] in ("stack.cover", "stack.cover_refresh") else STACK_KINDS[request["kind"]][1]
-                        with sqlite3.connect(str(path)) as db:
-                            db.row_factory = sqlite3.Row
-                            revision = current_acts(db, request["sender"], [request["message_id"]]).get(request["message_id"], {}).get(field, 0)
+                        if request["kind"] == "stack.move":
+                            # 1170 fixture setup: the actual command's current source and move fence.
+                            source = store().view(request["sender"], "source", {
+                                "source_ref": {"kind": "message", "id": request["message_id"]}})
+                            assert "error" not in source, source
+                            expected = {"source_topic_id": source["topic_id"],
+                                        "move_revision": source["dossier"]["move_revision"]}
+                        else:
+                            field = "cover_revision" if request["kind"] in ("stack.cover", "stack.cover_refresh") else STACK_KINDS[request["kind"]][1]
+                            with sqlite3.connect(str(path)) as db:
+                                db.row_factory = sqlite3.Row
+                                revision = current_acts(db, request["sender"], [request["message_id"]]).get(request["message_id"], {}).get(field, 0)
+                            expected = {field: revision}
                         answer = command(request["kind"], request["operation_id"], request["args"], {"message_id": request["message_id"]},
-                                         {field: revision}, sender=request["sender"], refusable=True)
+                                         expected, sender=request["sender"], refusable=True)
                     elif freshness and request["method"] == "acts_as":
                         # What another reader sees of a topic's acts and of their own stars.
                         answer = {"acts": store().view(request["reader"], "message_acts", {"topic_id": request["topic_id"]}),

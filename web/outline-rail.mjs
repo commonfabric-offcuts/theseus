@@ -7,9 +7,9 @@ import { OutlineMenus } from './outline-menus.mjs';
 // current outcome without folding another.
 // On a phone a folded outcome
 // first opens its topics without moving (item 654); folded, it carries
-// the count of everything new inside it; open, its own row counts its
-// Build topics (the right rail's), since each topic row
-// under it shows its own. The topic rows are today's
+// the count of everything new inside it; open, its own row has no unread
+// badge (item 1164). Each topic row shows its own; Build topics and their
+// counts belong to the right rail. The topic rows are today's
 // (TopicRail): unread counts, the work ring, Waiting on you and Ready for
 // review, Done (N) and Archived (N), in the server's order; an outcome's Build
 // topics not yet Done are the right rail's, never listed here too (item 297).
@@ -62,18 +62,12 @@ const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
 export const asksIn = item => item?.light?.light === 'waiting' && item.light.short?.kind === 'asks' ? count(item.light.short.count) : 0;
 // Covers are separate from the light's said/ask topics; neither replaces the other.
 export const waitingIn = item => asksIn(item) + count(item?.cover_waiting);
-// What an outcome's row counts: folded, everything new inside it, the part
-// sent by name and its questions; open, what has no row of its own under it:
-// its Build topics', which the right rail lists in
-// place of the outline (item 297; Core counts them apart, item.build). Each
-// topic row under it shows its own.
+// Folded, the outcome's unread total and the part sent by name. Expanded,
+// no outcome-level unread badge: the topics keep their own counts, including
+// the Build topics in the right rail (items 1164 and 297).
 export function rowCount(item, { open = false } = {}) {
-  if (!open) return { unread: count(item?.unread), addressed: count(item?.addressed) };
-  return { unread: count(item?.build?.unread), addressed: count(item?.build?.addressed) };
-}
-// The words a screen reader hears after an open outcome's count: where what it counts is.
-export function countedWhere(item) {
-  return count(item?.build?.unread) ? 'its Build topics' : '';
+  if (open) return { unread: 0, addressed: 0 };
+  return { unread: count(item?.unread), addressed: count(item?.addressed) };
 }
 // Everything new and every question waiting, across every outcome listed.
 export function totals(items) {
@@ -812,15 +806,13 @@ export class OutlineRail {
       if (route?.kind === 'workspace' && route.id === item.id) outcome.name.setAttribute('aria-current', 'page'); else outcome.name.removeAttribute('aria-current');
       // The words only when they change, so the pointer's hover stays on what it was on.
       const counted = rowCount(item, { open });
-      const said = JSON.stringify([item.title, item.title_truncated, counted, open && countedWhere(item), item.light, open]);
+      const said = JSON.stringify([item.title, item.title_truncated, counted, item.light, open]);
       if (outcome.said !== said) {
         outcome.said = said;
         outcome.title.textContent = item.title + (item.title_truncated ? '…' : '');
         // On hover, the whole name, which a one-line row may cut short.
         if (outcome.name.title !== item.title) outcome.name.title = item.title;
-        paintUnread(outcome.title, { ...counted, unread: counted.unread });
-        const spoken = outcome.title.querySelector('.sr-only');
-        if (spoken && open && counted.unread) spoken.textContent += ' in ' + countedWhere(item);
+        paintUnread(outcome.title, counted);
         if (item.provisional) outcome.standing.replaceChildren(); else paintRowLight(outcome.standing, item.light);
         // The light leads the name; its words stay on the line under it.
         const lamp = outcome.standing.querySelector('.outcome-light');

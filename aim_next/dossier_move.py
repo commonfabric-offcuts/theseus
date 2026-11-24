@@ -273,7 +273,10 @@ class DossierMove:
         topic = self._topic(db, actor, args.get("topic_id"))
         limit = _page_size(args)
         # Admission precedes paging: neither an empty page nor its cursor may reveal hidden moves.
-        rows = db.execute("SELECT d.id,d.root_id,m.topic_id,m.seq,m.author_id,m.private_to,t.title FROM dossier_moves d "
+        rows = db.execute("SELECT d.id,d.root_id,d.actor_id,d.at_ms,m.topic_id,m.seq,m.author_id,m.private_to,t.title,"
+                          "(SELECT json_extract(a.value,'$.name') FROM message_acts a "
+                          "WHERE a.message_id=d.root_id AND a.kind='name' AND a.owner='' "
+                          "ORDER BY a.revision DESC LIMIT 1) AS name FROM dossier_moves d "
                           "JOIN messages m ON m.id=d.root_id JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
                           "WHERE (d.from_topic_id=:topic OR d.topic_id=:topic) AND d.id>:cursor "
                           "AND d.id=(SELECT max(q.id) FROM dossier_moves q WHERE q.root_id=d.root_id AND (q.from_topic_id=:topic OR q.topic_id=:topic)) "
@@ -291,6 +294,8 @@ class DossierMove:
             if row["topic_id"] == topic["id"]:
                 arrivals.append({"root_id": row["root_id"], "seq": row["seq"]})
             else:
-                items.append({"id": row["id"], "root_id": row["root_id"], "topic_id": row["topic_id"], "title": row["title"]})
+                # Metadata only: an unnamed root does not disclose its words through this pointer read.
+                items.append({"id": row["id"], "root_id": row["root_id"], "topic_id": row["topic_id"], "title": row["title"],
+                              "actor_id": row["actor_id"], "at_ms": row["at_ms"], "name": row["name"] or None})
         return {"instance_id": self.instance_id, "topic_id": topic["id"], "items": items, "arrivals": arrivals, "membership_revision": membership_revision(db, topic["id"], actor),
                 "next_cursor": rows[limit - 1]["id"] if len(rows) > limit else None}
