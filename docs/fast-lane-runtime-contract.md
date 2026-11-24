@@ -19,6 +19,15 @@ shared execution locks (1195/1196).1194 owns bounded same-operation busy retries
 The steward owns consumer discovery. The auditor evaluates timing after landing.
 This slice connects those facts; it does not implement their work a second time.
 
+Implement this contract as three small Core deliveries, not one combined gate:
+(1) current-rule/next-action context in the existing commands and wakes, with the
+1161/1169 contradiction checks; (2) lane/forecast/clock records and their view;
+(3) structured wake diagnostics and restart reconciliation. Each can land when
+its own behavior and consumers pass. An unimplemented later capability is
+explicitly unavailable and cannot delay the earlier shipping action. The first
+free Core lane starts with (1) and supplies its own estimate; this spec does not
+invent an implementation forecast for that lane.
+
 The first version requires no database DDL. Small current records may use a
 versioned Core metadata namespace, with every successful write's complete record
 and source in the existing immutable operation outcome. Read them by exact key,
