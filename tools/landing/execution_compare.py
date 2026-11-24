@@ -7,8 +7,8 @@ in SPEC.json's execution_changes, one entry per case, {"file", "names", "why"} w
 (counted from 1 in file order) when live runs that name more than once in that file. The events are
 node_reporter.mjs's lines: file, name path, occurrence and status.
 Exit 0: every case that stopped running is named with its reason (listed). Exit 5: a case stopped running and SPEC
-names no reason for it (listed). Exit 2: unreadable, an entry without a reason, or an entry that names a repeated case
-without its occurrence.
+names no reason for it (listed). Exit 2: unreadable, an entry not in that shape (land.py's preflight refuses one too,
+before the suite runs), or an entry that names a repeated case without its occurrence.
 """
 import json
 import sys
@@ -24,19 +24,34 @@ def cases(path):
     return out
 
 
+def entries_problem(named):
+    """Why execution_changes is not a list of entries in the shape above, or None. names is the case's one name, as
+    the stop lists it after "::"."""
+    if not isinstance(named, list):
+        return 'execution_changes in SPEC.json is not a list'
+    for entry in named:
+        if not (isinstance(entry, dict) and all(isinstance(entry.get(k), str) and entry[k].strip() for k in ('file', 'names', 'why'))):
+            return ('an execution_changes entry in SPEC.json needs "file", "names" and "why", each one non-empty string: %s'
+                    % json.dumps(entry))
+        if 'occurrence' in entry and not (type(entry['occurrence']) is int and entry['occurrence'] >= 1):
+            return 'an execution_changes entry\'s "occurrence" counts from 1: %s' % json.dumps(entry)
+    return None
+
+
 def main(carry_path, live_path, spec_path=None):
     try:
         carry, live = cases(carry_path), cases(live_path)
         named = json.load(open(spec_path, encoding='utf-8')).get('execution_changes') or [] if spec_path else []
-        reasons = {(entry['file'], entry['names'], entry.get('occurrence', 1)): entry.get('why') for entry in named}
-        repeated = {(entry['file'], entry['names']) for entry in named if 'occurrence' not in entry
-                    and sum(1 for key in live if key[:2] == (entry['file'], entry['names'])) > 1}
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         print('execution comparison unreadable: %s' % error)
         return 2
-    if not all(isinstance(why, str) and why.strip() for why in reasons.values()):
-        print('execution comparison: an execution_changes entry in SPEC.json gives no reason')
+    problem = entries_problem(named)
+    if problem:
+        print('execution comparison: %s' % problem)
         return 2
+    reasons = {(entry['file'], entry['names'], entry.get('occurrence', 1)): entry['why'] for entry in named}
+    repeated = {(entry['file'], entry['names']) for entry in named if 'occurrence' not in entry
+                and sum(1 for key in live if key[:2] == (entry['file'], entry['names'])) > 1}
     if repeated:
         print('execution comparison: live runs %s more than once; its execution_changes entry names no occurrence'
               % ', '.join('%s :: %s' % key for key in sorted(repeated)))
