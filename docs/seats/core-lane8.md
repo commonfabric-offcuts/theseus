@@ -34,6 +34,16 @@ the refused content through a database or another surface.
 
 ## Work and evidence
 
+Own source lives under `/Users/commonfabric/aim-worktrees`; durable helpers and
+proof live under `/Users/commonfabric/.local/share/theseus/core-lane8/evidence`.
+Recover the exact branch/head and proof from the assigned piece's topic and its
+source links or attachments. Recover assigned work there even if `inbox` is
+empty; no private checkpoint or old first-assignment text supplies current work.
+Temporary fixture roots, caches and old PID references are historical evidence,
+not an operating manual. Their absence after a physical reboot establishes
+neither a successful result nor cleanup and never authorizes replay. No required
+Core8 startup recipe depends on a temp folder.
+
 - Keep the live checkout read-only. Create a new own worktree and branch under
   the designated worktree root; preserve other owners' trees and coordinate
   shared surfaces before editing them.
