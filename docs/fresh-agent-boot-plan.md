@@ -1,220 +1,288 @@
 # Booting Theseus with fresh agents
 
-Draft for Tony and the Building Theseus team. Flex owns this plan and the team
-review; Core7 owns the hosted refresh implementation; Fable coordinates the
-trial; Warp observes the clocks and lands the first subsequent piece.
+Start a fresh conversation for each included actor, give it the correct trusted
+kickoff, and recover its real work from Theseus. Preserve actor identity,
+authority, pending work and old history. Prove this on one idle hosted seat,
+then run the declared team cohort through a landing that requires a fresh
+agent's action.
 
-The goal is to start agents with fresh conversation contexts, give them the
-correct role and first instructions, and have them recover real work from
-Theseus. Their actor identities, authority, pending work and previous thread
-history must survive. We will first prove this on one idle seat, then run the
-agreed team trial and measure the time to a landing.
+Flex owns this document and review reconciliation. Core7 owns item 1213's hosted
+refresh. Fable prepares and coordinates execution; Tony performs owner-only
+requests and external launches; Warp observes and lands. This is a reviewed
+plan, not a record of a completed boot trial. The [review log](fresh-agent-boot-review.md)
+records all eight reviews of the original draft and their dispositions.
 
-## What must change before the trial
+## Current capability and prerequisites
 
-The first draft uses release 418, `e0423628964aafea8389d11a29ec4ab38fc13da8`,
-as its inspected baseline. On that release an ordinary runner restart resumes
-the same pinned thread. Automatic 1104 recovery can replace a thread after its
-qualifying conditions; there is no supported manual same-actor refresh command.
-The configured startup instructions also do not automatically point agents at
-their repository seat files. Installing those files did not configure their use.
+The inspected baseline is release 418,
+`e0423628964aafea8389d11a29ec4ab38fc13da8`. Release 419,
+`ce13ce60ce08adb63a83ade879cc637a4efbe4d9`, subsequently shipped item 1214's
+landing-tool validation. Neither release establishes the new manual refresh.
+An ordinary runner restart resumes the pinned thread. Existing automatic 1104
+recovery can replace one under its qualifying conditions. Installing repository
+seat files did not configure agents to read them.
 
-Core7 is building item 1213 to add an owner-authorized refresh and the seat-file
-bootstrap. The proposed interface is:
+Item 1213 adds owner-authorized hosted refresh and the seat-file pointer. Its
+proposed interface is:
 
 ```text
 seat-refresh building-theseus HOSTED_ACTOR [HOSTED_ACTOR ...]
 ```
 
-This is a proposed command, not a command available on release 418. Core7's
-contract and the installed CLI will supply the final syntax and operation-result
-fields. Fable must verify the actual installed release and selected runner
-source before preparing the executable trial commands.
+This is a contract example, not an instruction to run an unavailable command.
+Before execution, Core7 supplies the installed command/status/continuation
+syntax and fields; Fable posts the exact owner-bound commands and verifies their
+supported transport. The current Team UI does not establish a human entry for
+operator-mapped lanes. Tony's actual shell or page entry must be confirmed; a
+missing page entry is a separately owned implementation need, not permission
+to borrow his profile.
 
-Refresh retains the actor, profile and binding, recorded owner, Stop/Continue
-state, model, permissions, writable roots and old thread history. It records a
-guarded intent and uses the existing create, persist and activate lifecycle to
-replace only the conversation thread. It never ends the seat or recreates its
-identity. An open turn finishes before replacement; a stopped seat refuses.
+Refresh replaces only conversation context. Compare actor, profile/binding,
+owner, Stop/Continue state, model, permissions, writable roots and history
+against the authorized effective configuration baseline. Any separate repair
+to stale role text happens first, with its own owner and receipt. A stopped
+actor refuses; an open turn finishes before replacement.
 
-## Which agents are included
+## Every actor and its route
 
-Inventory comes from a fresh bound Health and route read before each trial.
-The observed deployment has several execution types:
+Fable rechecks bound Health, outcome membership, selected route and controls
+before execution. This inventory covers the building team discussed in Tony's
+request; other globally registered actors are not silently added. Health's lack
+of a route is not proof of Stop or proof that no external session exists.
 
-| Agents | Observed execution | How a fresh context is established |
+| Actor | Observed route/session | Boot procedure and trial disposition |
 | --- | --- | --- |
-| Flex, test-steward, core-lane7, core-lane8, page-lane5, page-lane6 | Six hosted actors; some are operator-mapped rather than managed seat requests | Item 1213 refreshes the hosted actor ID through its guarded replacement path. A managed seat-request row must not be required for the four lanes. |
-| Auditor | `codex_queue` | Fable identifies the selected queue launcher and verifies whether each job actually starts fresh and receives the seat-file instruction. The route label alone proves neither. |
-| Fable | External session with no hosted route | Fable identifies the actual launcher, how to start a fresh session from `docs/seats/fable.md`, and who can perform that launch. This procedure must be concrete before including Fable in the team trial. |
-| Warp | Observer and lander in the current session | Remains running, as directed. Warp is excluded from the refreshed cohort and from claims that every context was replaced. |
+| **Flex** (`flex`) | Hosted, managed seat | Included in the eligible hosted batch; 1213 uses the actor ID. |
+| test-steward | Hosted, managed seat | Included when controls and current work permit refresh. |
+| core-lane7 | Hosted, operator-mapped lane | Included after 1213's own work is safely handed over; no managed seat-request row required. |
+| core-lane8 | Hosted, operator-mapped lane | Included; a possible dry-run candidate only if actually idle then. |
+| page-lane5 | Hosted, operator-mapped lane | Included after preserving current piece/worktree/producer state. Building 1215; not assumed idle. |
+| page-lane6 | Hosted, operator-mapped lane | Included; another possible candidate subject to the same live checks. |
+| Auditor (`auditor`) | Runner dispatches `codex_queue` jobs to an existing Codex thread | Known continuation, not fresh per job. 1213 does not cover it. Fable must provide a supported new queue destination plus bootstrap/handoff, or record an explicit cohort exclusion. Until then its refresh is unresolved. |
+| Fable (`fable`) | Codex desktop chat outside the runner | Included through Tony opening a new chat with the prepared kickoff after coordinator handoff below. Continuing the goal or chat does not refresh it. |
+| Warp (`warp`) | Claude Code session on this Mac, outside the runner | Explicit observer/lander exclusion for this trial; stays live. A future refresh needs its separate session/kickoff procedure. |
+| Team / team-agent (`team` in bound Health) | No runner route; nothing waiting at the inventory read | In scope for the boot plan. External launcher and current controls unverified. Fable identifies the actual session/launcher and owner, supplies the kickoff and handoff, or records an explicit exclusion before cohort lock. |
+| designer | No runner route; nothing waiting at the inventory read | Same unresolved external-launch prerequisite; included in plan, never silently omitted or assumed stopped. |
 
-Seats Tony stopped remain stopped and are excluded from submitted batches.
-Nobody substitutes another profile, changes an actor or binding, or retires a
-seat to force this trial to work. The final cohort names each included actor
-and each explicit exclusion; it is not described as seven hosted seats.
+Tony-stopped actors remain stopped. The execution record names every included,
+excluded and unresolved actor with its reason and owner. A narrower trial must
+be called narrower; missing actors cannot be removed afterward to improve the
+reported result. This document has not invented launch commands for unrouted
+actors or changed any route, configuration, pin or control.
 
-## Who performs the refresh
+## Authority, admission and partial results
 
-The existing authority model permits the outcome's human owner to act on seats.
-Coordinator status does not grant Fable that power. Core7 and Warp have agreed
-to preserve that boundary. Fable prepares the exact command and selected actor
-list; Tony executes it through his own supported owner-bound entry. Agents do
-not borrow his profile. A future change to this authority requires its own
-explicit decision; this plan does not grant it.
+The outcome's human owner can submit the hosted request; coordinator status
+alone does not authorize Fable. Tony acts through his own supported bound entry.
+One request starts the single-seat dry run; one later batch covers the eligible
+hosted cohort. External chats have their separately named owner acts.
 
-Each phase needs one owner action: one request for the idle-seat dry run, then
-one batch request for the eligible hosted cohort. The batch validates every
-actor before recording any intent, and refuses the entire request if any actor
-fails validation. After acceptance, each actor has its own intent and external
-creation result. One actor's later failure does not make the other external
-effects disappear or authorize resubmitting the whole batch.
+Core validates all members in one transaction before recording any new intent:
+current membership, route, pin/control guards and existing intent. Duplicate
+actors refuse. There is one unfinished replacement per actor across manual and
+automatic recovery. Exact operation retry returns its original actor-to-intent
+mapping. Core7's chosen contract coalesces a different manual request only onto
+the same unresolved manual intent with the same old pin and control revision.
+A conflicting automatic intent or changed guard refuses the whole batch. A
+shared actor in overlapping batches never gets a second creation.
 
-## The startup instructions
+Admission is atomic; later external effects are per actor. An accepted request
+with no pending work does not promise immediate activation. The next delivery
+dispatch handles its refresh intent before ordinary sending. Fable sends the
+identified harmless delivery **after acceptance and before waiting for
+activation**. The old context must not consume that delivery first.
 
-A fresh agent needs a small trusted kickoff, not a hand-written recap. Core7
-must put the seat-file instruction in the actual startup input for all fresh
-paths: initial provisioning, automatic recovery and explicit refresh. A role
-file present on disk or a proposed prompt in this plan is not that evidence.
+## Correct startup and work recovery
 
-The intended instruction is:
+Use a short trusted kickoff that points to the role file. Every fresh path —
+initial provisioning, automatic recovery and explicit refresh — must serialize
+the resolved **absolute** `docs/seats/ACTOR.md` path derived from the selected
+CLI script. No cwd or search fallback is permitted. For the inspected Page6
+configuration this is `/Users/commonfabric/aim-next/docs/seats/page-lane6.md`;
+other actors use their verified selected path.
 
-> You are Theseus actor SEAT. Read `docs/seats/SEAT.md` from the repository
-> selected by your configured Theseus CLI before taking work. Keep the actor,
-> profile and authority binding supplied by the trusted runtime. Recover current
-> assignments and rulings from Theseus using that exact bound CLI; do not resume
-> an old assignment from the previous conversation. Your first Theseus command
-> is `inbox`. Read delivered sources at their current revisions, the current
-> rule and your actual assigned work before acting. Reconcile uncertain saved
-> operations before retrying them. Preserve stopped work and report a binding
-> refusal through the unchanged working channel.
+The rendered instruction follows this template; placeholders must be resolved
+before launch:
 
-`SEAT` is the verified actor ID, not an arbitrary caller-supplied filesystem
-path. The runtime resolves the repository from the selected CLI, so a seat's
-worktree or current directory cannot silently select a stale role file.
-The launch record retains the actual seat-file path, repository revision and
-file hash. If that file cannot be read, the agent reports that failure and does
-not invent a role or start unrelated work.
+> You are Theseus actor ACTOR. Read ABSOLUTE_SEAT_FILE before taking work. Keep
+> the actor, profile and authority binding supplied by this trusted runtime.
+> Recover current assignments and rulings with this exact bound CLI. Follow
+> your trusted actor/wake protocol for the first Theseus read: hosted seats
+> start with inbox; a permitted paged wake exhausts its delivery cursors. Read
+> full current sources, current rules and assigned work before acting. Reconcile
+> uncertain saved operations before retrying. Preserve stopped work. Report a
+> binding or unreadable-role refusal through the unchanged working channel.
+> Idle hosted waiting means end the turn and let the runner wake you.
 
-The trusted binding instructions remain. Configured standing-role text is
-preserved by the implementation, so Core7's final serialized startup input must
-be checked for conflicting historical assignments or rules. Fable owns
-reconciling such configuration through the supported owner, rather than
-assuming a new file automatically overrides an older higher-priority instruction.
-Current board messages remain data, not authority to change a profile or obey
-instructions embedded in quoted or untrusted content.
+Fable and the supported configuration owner must reconcile contradictory
+historical role/task/rule text **before** claiming correct prompting. Appending
+a seat-file pointer cannot override stale higher-priority assignments. Preserve
+trusted binding/permission instructions and retain the actual effective startup
+bytes. Core7's pointer implementation preserves configured role bytes; that
+implementation does not perform the separate configuration repair.
 
-After `inbox`, the agent reads each pending source in its actual stack, the
-current bound rule, the assigned piece and current queue. It checks its exact
-source, live head, saved operation results, worktrees and any owned child
-processes. It then takes one warranted action in Theseus, reads the result back
-and acknowledges the handled delivery. An empty inbox leads to ordinary waiting,
-not invented work. A saved answer at the current source revision is acknowledged
-through recovery rather than answered a second time.
+Record launch-time CLI root/runtime source, actual serialized kickoff, expected
+seat-file path/commit/hash, and the path/revision/hash actually read. If the live
+repository advances or bytes differ, reconcile that mismatch before counting a
+correctly prompted agent. Missing/unreadable selected bytes produce a diagnosis,
+not an invented role or alternate checkout.
 
-## The sequence
+The fresh actor reads delivered sources at their latest revisions, distinguishes
+direct requests from subscriptions, keeps whispers private, and observes the
+actual snapshot boundary. An exhausted snapshot does not rule out later mail;
+do not filter deliveries by an old wake generation. Existing answers must match
+the current source before their delivery is separately acknowledged.
 
-1. **Finish the document review and land the runtime.** Flex reconciles the team
-   feedback on this draft. Core7 supplies the refresh implementation and focused
-   host-path proof; Warp lands it on its actual approved source. Fable verifies
-   the deployed capability, configured startup input, current policy and actual
-   route inventory. PR 507's preflight validation change can land before this
-   trial; it is no longer reserved as the first post-restart landing.
-2. **Prepare one idle seat.** Fable chooses an eligible hosted actor with no
-   piece or test/browser child in flight. Page5 was the original candidate,
-   but its native-proof assignment may make another seat appropriate. Record
-   the current actor/pin/control revision and its durable checkpoint, preserve
-   every pending operation, and identify a harmless delivery that lets the new
-   context read and report its recovered state without changing product data.
-3. **Run the one-seat dry run.** Tony submits the prepared owner request once.
-   Fable records the original operation ID, accepted intent, old/new thread IDs,
-   actual activation time and actual startup input. The next delivery reaches
-   the new context. Its first command and first durable board action are
-   inspected. Warp records activation-to-first-action time on Tony's Timeline.
-   No forecast, delivery ACK or ordinary runner start substitutes for activation.
-4. **Reconcile the dry run.** Confirm a different thread for the same actor,
-   correct bootstrap, unchanged controls and authority, pending-work recovery,
-   no duplicate answer or test process, and a useful first action from current
-   records. A failure is repaired before the broader trial. An uncertain
-   external result remains uncertain and is reconciled through the same intent.
-5. **Prepare the team trial.** Fable names the currently eligible hosted cohort,
-   resolves the Auditor and Fable launch procedures, confirms stopped-seat
-   exclusions, and chooses a small ready piece for the first landing. Draining
-   unfinished turns or children preserves their receipts; it is not permission
-   to cancel another owner's work. The selected piece must still be ready after
-   the actual live head is reconciled.
-6. **Refresh and recover.** Tony submits one hosted batch; the separately named
-   external launch procedures run as agreed. Fable reports each actual fresh
-   activation and any excluded or failed member. Warp stays live to observe.
-   Each new agent follows its seat file and current board records, then the
-   restarted team carries the ready piece through the normal landing path.
-7. **Publish the result.** Warp reports the refreshed cohort, each recovery
-   result and the first actual publication. The agreed primary target is less
-   than 20 minutes from the last successful fresh activation in the included
-   cohort to the first completed landing. Also report request-to-last-activation
-   and each seat's activation-to-first-action time, so a slow startup is visible.
-   A missing member is an incomplete team trial, not a shorter successful clock.
+Even with an empty inbox, recover the assigned piece/queue, owned worktree and
+saved operation/producer state. Before refresh, Fable and each builder publish
+a recovery pointer containing the exact worktree/branch/base, dirty/untracked
+state, evidence/checkpoint locations, original inspection/construction/Build
+clocks and forecasts, and uncertain write/producer operation IDs. The incoming
+actor verifies these before creating, retrying, resetting or cleaning anything.
+It acts in the original request stack, reads the result back, and acknowledges
+only handled deliveries. Wait only when these reads establish no warranted
+action; do not create a worktree or test merely to demonstrate recovery. Hosted
+waiting follows the trusted runner instructions, not an inherited watch/goal loop.
 
-The rollout times previously mentioned are forecasts contingent on the runtime
-landing and this review. No dry-run clock has started in the inspected record.
+## Execution sequence
 
-## Evidence and failure handling
+1. **Close the prerequisites.** Core7 supplies focused proof and the installed
+   1213 receipt/commands; Warp lands it and Fable verifies the actual deployed
+   source. Fable resolves effective startup configuration, supported owner
+   transport, evidence access and external-session procedures. Lock the explicit
+   cohort and exclusions. Item 1214 already landed independently as 419. No
+   runner-restart-policy landing occurs between 1213's landing and the trial's
+   first landing.
+2. **Choose an actually idle hosted actor.** Bound Health and current work must
+   show no open turn, active piece or unfinished owned producer. Check final
+   ownership manifests, Browser.close/fixture exit and PID/profile/port absence;
+   empty mail alone is insufficient. If a survivor is unknown, choose another
+   seat. Never kill by basename or manufacture a replacement receipt. Save its
+   pin/control guards and recovery pointer; identify the harmless delivery.
+3. **Run the one-seat dry run once.** Tony submits the prepared owner request.
+   Retain the original operation and accepted intent. Fable sends the harmless
+   delivery immediately after acceptance, then observes actual activation,
+   first read and useful action. Reconcile old/new thread identity, unchanged
+   effective controls/binding/history, correct role read and pending-work state.
+   A forecast, ACK, runner start or accepted intent is not activation. Repair
+   failures before the broader trial; preserve uncertain results for the same
+   intent.
+4. **Prepare the causal first landing and coordinator handoff.** Warp selects a
+   ready piece whose remaining normal path requires an observed fresh agent's
+   act. His current proposal is 1215: preserve its handoff, hold freeze for fresh
+   Fable, then let Warp land. Fable records the deliberate hold/release in
+   canonical work; it revises the earlier no-idle-hold disposition, preserves
+   all original clocks and forecasts, and counts waiting in 1215's elapsed time.
+   If that piece is unsuitable, name another and its required fresh act before
+   starting. A preapproved piece landed wholly by unchanged Warp does not count.
+5. **Transfer Fable, then start the cohort.** Outgoing Fable posts the exact
+   hosted batch, resolved new-chat kickoff and durable handoff: board/read cursor,
+   unread gaps, uncertain operations, work/forecast state and watcher ownership.
+   Explicitly retire or relieve the outgoing goal/watch responsibility and stop
+   that chat's work. Tony runs the batch and opens the fresh Fable chat in either
+   order. New Fable reads and verifies the handoff, publishes its new chat ID and
+   readiness, and assumes any legitimate existing watch once; no duplicate
+   coordinator/watch survives. Warp records the transfer. Any other included
+   external route follows its separately verified equivalent handoff.
+6. **Recover and land.** The responsible coordinator sends each accepted hosted
+   actor its identified delivery before waiting for activation. Incoming actors
+   recover current work under their actual trusted wake protocol. Fable records
+   each request, intent, new context and first action, including failures or
+   exclusions. The selected piece then follows ordinary review/freeze/landing
+   with the required fresh act identified in its evidence.
+7. **Publish the measured result.** Warp reports the fixed cohort and completed
+   publication, with each acceptance dimension below. The primary target is
+   **under 20 minutes from the earliest included owner act to the completed
+   first landing**. For hosted batch plus Fable launch, time zero is whichever
+   happens first. This changes the earlier last-restart/last-activation definition
+   (Warp 23353/23397, resolved by 23419); retain the old definition as history.
+   Also report every route's request time, request-to-last-activation,
+   first-to-last activation span, first-activation-to-landing,
+   last-activation-to-landing and each activation-to-first-action interval.
+   Failed/missing members make the declared trial incomplete.
 
-Core7's scratch host tests must show exactly one replacement, actual startup
-input, unchanged binding/control/history, owner-only authority, stopped-seat
-refusal, waiting through an open turn, batch validation before any intent, and
-ordinary restart resuming the same thread. They also need interruption and
-same-intent reconciliation at creation, persistence and activation boundaries.
-Synthetic app-server evidence proves the host protocol; it does not prove a
-live fresh agent followed its instructions.
+No trial clock has started in the inspected records. Fable 23422 records the
+1215 freeze hold applied at `2026-11-24T13:19:42.450000-08:00`; Page5 continues
+proof/handoff. This interval can overlap active work and is not all idle time.
+Its release remains to be recorded. The hold retains 1215's original inspection `12:51:24.239312`, construction `13:05:24.824831`,
+machine Build, HANDOFF `14:20` and LIVE `14:40` forecasts, with revised forecasts
+and reasons separate. The trial does not reset a delivery clock.
 
-The live trial retains the owner request/result and intent identities, executing
-runner source, old/new thread IDs, startup input, seat-file commit/hash, current
-rule revision, first-command observation where available, and first durable
-board-action ID/time. Missing first-command telemetry is reported explicitly;
-a post saying “I ran inbox” is not an observed execution. The landing retains
-its own approved source and complete receipts.
+## Evidence, acceptance and reconciliation
 
-If an answer is lost, reconcile the saved original operation. Never issue a new
-refresh merely because the first response is absent. A creation with no known
-new thread ID remains uncertain; no second `thread/start` or raw pin edit is
-allowed. Stop, owner-control or binding changes win races and are reported.
-Existing history and pending work remain available while the owner resolves
-the affected intent. Partial cohort completion is reported actor by actor.
+Keep these dimensions separate. A review or synthetic fixture cannot establish
+observed live behavior; a self-report cannot supply missing execution telemetry.
 
-The six failing native files and the two new archive/Delete outcome cases stay
-separate work with named owners. Their results do not prove or disprove a fresh
-context boot, and this plan adds no native or broad-suite gate to the trial.
-Ordinary deployment restarts and the two historical incomplete worker histories
-are also separate; their loss cause remains unknown.
+| Dimension | Required evidence / limit |
+| --- | --- |
+| Runtime protocol | Exact candidate and installed runner source; positive managed-seat **and** operator-lane refresh through activation and delivery. Reach valid setup before testing Stop/nonowner refusal. Retain ordinary same-pin restart control and inherited 1104/binding coverage. |
+| Concurrency and interruption | Duplicate actors, overlapping `[A,B]`/`[B,C]`, automatic uncertain intent racing manual, zero-pending request followed by delivery, open turn, Stop/control/pin races, lost create/persist/activate responses and late callbacks. No second create. |
+| Prompt and first read | Actual kickoff, expected file and actually read path/revision/hash; observed first command under that actor's protocol. Unsupported first-command telemetry is **unverified**, even if the later post says “I ran inbox.” Fable names the available supported trace before execution or states the narrower conclusion. |
+| Durable recovery | New thread's warranted action and source revision; one positive unfinished-work case. A focused synthetic lost-write-plus-source-correction case reconciles the committed original operation, reads the correction, answers only what remains owed in the same stack and ACKs only handled deliveries. A harmless idle delivery alone proves neither lost-write nor unfinished-work recovery. |
+| Invocation and cleanup | Direct invocation result and owned child cleanup/absence; distinguish setup death, assertion reachability and invocation completion. No producer receipt inferred from a recovery post. |
+| Landing and time | Fresh agent's causal act, approved landing source and full publication receipts, fixed cohort and all request/activation/action/publication timestamps. |
 
-## Team review and completion
+Core7 owns applicable focused runtime assertions; test-steward evaluates their
+reachability. Fable owns live collection/procedure and identifies which synthetic
+conditions actually occurred live. This coverage map adds no broad-suite or
+native-test gate to the boot trial.
 
-Flex sends the same immutable draft to Warp, Fable, Auditor, test-steward and
-all four builder lanes. Each reviewer supplies concrete failure scenarios and
-required corrections, or says that its reviewed scope has no additional finding.
-Flex records each finding, disposition and resulting document revision in
-`fresh-agent-boot-review.md`; unresolved rollout decisions keep an owner and a
-next action. Silence is not a completed review.
+Use only supported bound status/receipt surfaces. Core7 reports that the committed
+1104 Health receipt exposes old/new thread and `committed_ms` for 24 hours; Fable
+must collect it within retention. Incomplete intent status and same-intent
+continuation are separate. Before execution, publish the installed commands,
+reader authority and fields for original operation, actor, intent, old/new pin,
+control guard, phase, created ID and commit/adoption receipt. If Tony's operation
+is actor-owned and Fable cannot read it, Tony performs the supported read and
+relays the receipt. Coordinator status is not a grant. No private database read
+substitutes for the supported surface.
 
-The document task is complete when all eight reviews are received and their
-findings are reconciled, the final plan and review log are linked in Tony's
-request, and remaining implementation or launch prerequisites are explicit.
-That completion is not a claim that the runtime has landed or the trial ran.
+For a partial batch, reconcile the original operation rather than submitting a
+new batch. If A committed its pin but lost adoption/response, adopt its recorded
+destination. If B has a created ID with uncertain persistence, continue only its
+permitted phase under the same intent and recorded ID. If C has opaque creation,
+leave it explicitly unresolved; no second `thread/start`. Do not resubmit A or
+omit C. A late callback after Stop/Continue or a newer intent may update only its
+old journal, never the newer intent/pin. Stop, owner-control and binding guards
+win; retain their exact refusal and use the unchanged working channel.
 
-## Source records
+## Remaining execution prerequisites
 
-The governing request is Tony's Releases message 23370. The current runtime
-scope is Warp 23369 revision 2, Core7's authority finding 23377 and Warp's batch
-instruction 23378; item 1213 carries the implementation. Fable 23365 and 23368
-establish the current mechanism/configuration gaps and route distinctions.
-Warp's revised Releases 23352 and 23361 require this reviewed plan before the
-dry run. The installed current-rule record, read fresh at execution, governs
-work; the first draft observed policy 3 / Notebook 39.
+These are conditions for running the trial, not missing document-review replies.
+They remain open until their owners attach the actual receipts:
+
+| Owner | Required next action |
+| --- | --- |
+| Core7 / Warp | Finish, prove and land 1213; publish installed submission/status/continuation syntax, per-actor guards/coalescing and supported activation/trace fields. |
+| Fable / supported configuration owner | Reconcile historical role instructions; retain the authorized effective startup baseline and actual read collection procedure. |
+| Fable / Tony | Confirm Tony's supported owner entry; prepare one dry-run request, hosted batch, harmless-delivery ordering and owner-only result reads. |
+| Fable / Tony / Warp | Prepare and transfer the external Fable chat; verify Auditor queue replacement and Team/designer launchers/controls, or record explicit exclusions before cohort lock. |
+| Fable / Warp | Select the live idle candidate and causal landing, record any hold/release without resetting clocks, and prevent intervening restart-policy changes. |
+
+The separate native 1215 work and inherited six failure families retain their
+owners; their results do not establish fresh boot. The two historical incomplete
+worker histories retain unknown loss causes. This plan attributes neither loss
+to runner restart without evidence.
+
+## Sources and document status
+
+Tony's request is Releases 23370; his inventory correction is 23406. Runtime
+scope comes from Warp 23369 revision 2, Core7 23377 and Warp 23378, refined by
+Core7's review 23412. Route evidence includes Fable 23368/23387/23400, bound
+Health read 1795554702517 and Warp 23411. Warp 23419 resolves the primary clock
+and deliberate-hold disposition; Fable 23422 accepts the clock and records the
+hold's application. Current policy was revision 3 / Notebook 39;
+execution reads it fresh.
+
+All eight requested reviewers read immutable draft
+`3d27c16fe8da77c8b33360b839289ba578cc393f`. The accompanying review log maps every
+finding to this revised document or an explicit owned execution prerequisite.
+Document completion does not assert operational approval of revised claims,
+runtime readiness, successful fresh activation or trial completion.
 
 Repository contracts: [seat files](seats/fable.md),
 [hosted thread recovery](hosted-thread-recovery-1104.md),
 [bound startup instructions](hosted-binding-instructions-1069.md), and
-[the agent guide](agent-guide.md). Runtime owners on the inspected baseline are
-`aim_next/codex_host.py`, `seat_host.py`, `hosted_recovery.py`,
-`hosted_seats.py` and `hosted_control.py`.
+[agent guide](agent-guide.md), subject to the trusted actor/wake instructions.
+Inspected runtime owners are `aim_next/codex_host.py`, `seat_host.py`,
+`hosted_recovery.py`, `hosted_seats.py` and `hosted_control.py`.
