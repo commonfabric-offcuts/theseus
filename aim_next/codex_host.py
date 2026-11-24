@@ -27,6 +27,7 @@ from dataclasses import replace
 
 from . import broker_routes, hosted_notice
 from .hosted_cli import HostedCLI
+from .hosted_recovery import REASON as RECOVERY_REASON
 from .hosted_permissions import (permission_profile, validate_workspace, startup_overrides,
                                  proxy_configuration, proxy_probe, proxy_result)
 from .codex_broker import handshake_refusal
@@ -903,7 +904,7 @@ class Host:
                 activate()
             self._request(work, 'thread/inject_items', {'threadId':intent['new']['thread_id'], 'items':[{
                 'type':'message', 'role':'developer', 'content':[{'type':'input_text', 'text':reason}]}]}, persisted)
-        reason = ('Theseus replaced the prior thread after three completed turns left deliveries pending without a CLI call. '
+        reason = ('Theseus replaced the prior thread. ' + RECOVERY_REASON + ' '
                   'The actor and instructions are unchanged; the prior thread is retained. Recovery ' + intent['id'] + '.')
         if intent['phase'] == 'committed':
             return adopt(intent)

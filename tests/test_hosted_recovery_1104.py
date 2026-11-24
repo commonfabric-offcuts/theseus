@@ -10,6 +10,7 @@ import unittest
 import uuid
 
 from aim_next import Store
+from aim_next.hosted_recovery import REASON
 from aim_next.profile import write_profile
 from aim_next.route_pins import RoutePinError
 import test_runner as fixtures
@@ -232,7 +233,6 @@ class RecoveryCase(unittest.TestCase):
         self.finish_activity_turn(claim, turn)
 
     def test_lost_activity_records_allow_replacement_with_honest_receipt(self):
-        from aim_next.hosted_recovery import REASON
         self.assertIn('without recorded CLI activity', REASON)
         before = self.store.cli_activity('agent-a')['seq']
         for number in range(3):
@@ -533,7 +533,9 @@ class RecoveryHostCase(host_fixture.HostCase):
         state = self.fake_state()
         self.assertEqual(len(state['threads']), 2)
         self.assertEqual(len(state['threads'][self.thread]['turns']), len(self.turns) - 1)
-        self.assertIn('three completed turns', state['threads'][new]['instructions'])
+        # A lost activity record can hide a real CLI call, so the new thread is told what was recorded, not that none ran.
+        self.assertIn(REASON, state['threads'][new]['instructions'])
+        self.assertNotIn('without a CLI call', state['threads'][new]['instructions'])
         starts = [e['in']['params'] for e in self.wire() if e.get('in', {}).get('method') == 'thread/start']
         self.assertEqual(len(starts), 2)  # Provisioning plus one replacement.
         for key in ('cwd', 'approvalPolicy', 'approvalsReviewer', 'sandbox', 'model'):
