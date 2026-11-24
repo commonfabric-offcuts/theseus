@@ -180,8 +180,10 @@ export async function formChecks({ check, page, until, control, view, facts, sho
     await until(() => quiet(p, `document.activeElement?.id === 'start-topic-title'`), 'one title line, focused');
     assert.equal(await p.evaluate(`document.querySelector('#start-topic-title').value`), 'Should the release go out on Friday?', 'filled from the first sentence of the message');
     await audit(p, 'Start a topic line');
+    await p.key('a', 4); await p.key('Backspace');
     await p.key('Escape');
-    assert.equal(await p.evaluate(`document.querySelector('#reader').open`), true, 'Escape in the line closes the line, not the Reader');
+    await until(() => quiet(p, `!document.querySelector('#start-topic-title')`), 'empty Escape closes the title line without starting a topic');
+    assert.equal(await p.evaluate(`document.querySelector('#reader').open`), true, 'empty Escape leaves the Reader open');
     await press(p, '#toggle-note');
     assert.equal(await p.evaluate(`document.querySelector('#send-reply').textContent.trim()`), 'Done', 'a note that saves as it is written finishes with Done');
     await audit(p, 'Reader private note');

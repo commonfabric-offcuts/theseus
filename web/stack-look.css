@@ -312,7 +312,7 @@
 /* A click anywhere on the tab hides the full message again; its words are kept for a screen reader only. */
 .reply-stack .stack-hide{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 
-/* Renaming: the short name is typed in the tab. Return saves, Esc cancels. */
+/* Renaming: the short name is typed in the tab. Return or Escape saves. */
 .reply-stack:not(.only-new *) .stack-rename{cursor:default}
 .stack-rename-input{flex:1 1 auto;width:100%;min-width:0;height:var(--stack-name-lh);margin:0 -.15rem;padding:0 .45rem;
   border:1px solid var(--stack-input-edge);border-radius:.35rem;background:var(--stack-sheet);color:inherit;font-size:.95rem;font-weight:650;outline:none}

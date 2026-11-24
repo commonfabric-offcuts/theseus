@@ -74,7 +74,7 @@ const SKIPPED = {
   },
   '--targets': {
     'targets the owner reads No target yet and the kind as two chips, and one tap changes the kind': ACROSS,
-    'targets Write the target opens in place: Escape leaves the words as they were, Return saves them, and there is no Save button': ACROSS,
+    'targets Write the target opens in place: Return or Escape saves the words, and there is no Save button': ACROSS,
     'targets a run of the checks shows with no reload, grouped, and each group and check opens from the keyboard; Measurements lists every reading': ACROSS,
     'targets the loop: a chart says the mark under the pointer and the one Tab reaches; Ship it anyway opens with a press held across a commit, sends nothing without words and accepts on Return; the problems line opens from the keyboard and opens its topic': ACROSS,
     'targets Reached opens in place, asks him to confirm when nothing checks it, and folds the outcome into Reached (1)': ACROSS,

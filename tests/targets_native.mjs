@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 // An outcome's target, its kind and its checks (items 14, 104, 12; docs/targets.md) in the real browser against
 // the real server. On the outcome page its owner reads "No target yet" and the kind as two chips, one tap each;
-// "Write the target" opens in place, Escape leaves the words as they were, Return saves them, and there is no
+// "Write the target" opens in place, Return or Escape saves the words, and there is no
 // Save button; a run of the checks shows with no reload, grouped, each group and check opened from the keyboard;
 // Measurements lists every reading; a topic opens with the target as one closed line; in the improvement loop a
 // chart says the reading of the mark under the pointer or reached by Tab, Ship it anyway opens with a press and
@@ -89,19 +89,20 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
     assert.deepEqual(p.errors, []);
   });
 
-  await check('targets Write the target opens in place: Escape leaves the words as they were, Return saves them, and there is no Save button', async () => {
+  await check('targets Write the target opens in place: Return or Escape saves the words, and there is no Save button', async () => {
     const p = await open('targets-write', '/?workspace=w1');
     await ready(p);
     await until(async () => (await panel(p)).buttons.includes('Write the target'), 'the owner is offered Write the target');
     await pressAcross(p, '[data-key="write-open"]', elsewhere);
     await until(async () => (await focusedKey(p)) === 'writer', 'a press held across a commit elsewhere opens the box in place with the caret in it');
     assert.deepEqual((await panel(p)).buttons.filter(text => /save/i.test(text)), [], 'Return saves; there is no Save button');
-    await p.send('Input.insertText', { text: 'Every topic keeps its place.' });
+    await p.send('Input.insertText', { text: 'Every topic keeps its place by Escape.' });
     await p.key('Escape');
     await until(async () => (await focusedKey(p)) === 'write-open', 'Escape closes the box and gives the button its focus back');
-    assert.equal((await checks()).target, null, 'nothing was saved');
+    assert.equal((await checks()).target?.text, 'Every topic keeps its place by Escape.', 'Escape saves the typed target');
     await tap(p, '[data-key="write-open"]');
     await until(async () => (await focusedKey(p)) === 'writer', 'the box opens again');
+    await p.key('a', 4);
     await p.send('Input.insertText', { text: 'Every topic keeps its place.' });
     await p.key('Enter');
     await until(async () => (await checks()).target?.text === 'Every topic keeps its place.', 'Return saves the words');

@@ -88,7 +88,10 @@ try {
     }else{
       await section.locator('.stack-head').hover();await pen.click();result.pointerRoute='pencil click';
     }
-    const input=section.locator('.stack-rename-input');await input.waitFor();await input.fill('Pointer words not saved954');await input.press('Escape');assert.equal(await input.isVisible(),false);result.pointerRename=true;
+    const input=section.locator('.stack-rename-input');await input.waitFor();
+    const pointerName=`Pointer words saved954 ${key}`,pointerResponse=page.waitForResponse(r=>{try{return r.request().postDataJSON()?.kind==='stack.name';}catch{return false;}});
+    await input.fill(pointerName);await input.press('Escape');assert.equal((await(await pointerResponse).json()).status,'committed');await input.waitFor({state:'hidden'});
+    const pointerSaved=await control({method:'agent_view',actor:facts.actor,name:'topic_messages',args:{topic_id:tid,message_ids:[single]}});assert.equal(pointerSaved.items[0].stack_position.name.text,pointerName);result.pointerRename=true;
     const card=page.locator(`.message-card[data-id="${single}"]`);await card.focus();let more=false;
     for(let n=0;n<20;n++){more=await page.evaluate(()=>document.activeElement.matches('.message-bar [data-act=more]'));if(more)break;await page.keyboard.press('Tab');}
     assert.ok(more,'native Tab reaches the dossier menu button');await page.keyboard.press('Enter');await page.locator('.message-menu-list[role=menu]').waitFor();let rename=false;

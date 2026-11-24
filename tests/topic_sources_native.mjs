@@ -30,10 +30,10 @@ export async function sourcesChecks({ check, page, until, control, view, facts, 
     return until(async () => { const l = await line(p); return l?.focused && l; }, 'one title line in the Reader, focused');
   };
   // Return in the line: the publish request it sent, or none when it was refused before sending.
-  const enter = async (p, title) => {
+  const enter = async (p, title, key = 'Enter') => {
     if (title !== undefined) await p.send('Input.insertText', { text: title });
     const before = p.calls.length;
-    await p.key('Enter');
+    await p.key(key);
     return (await until(() => p.calls.slice(before).find(c => c.payload?.kind === 'opening.publish'), 'the publish request')).payload;
   };
   const started = async () => (await view('source_topics', { message_id: message })).items.map(item => item.id);
@@ -41,11 +41,11 @@ export async function sourcesChecks({ check, page, until, control, view, facts, 
   // publish reply names. Return here holds that reply at the network first, as a slow runner delivers it: until it
   // is released the page still shows the topic it was on, so no wait can take that topic for the new one.
   const address = p => quiet(p, `new URLSearchParams(location.search).get('topic')`);
-  const enterHeld = async p => {
+  const enterHeld = async (p, key = 'Enter') => {
     const from = await address(p), before = p.held.length;
     assert.ok(from, 'the page shows a topic before Return');
     p.intercept(payload => payload?.kind === 'opening.publish');
-    const publish = await enter(p);
+    const publish = await enter(p, undefined, key);
     const entry = await until(() => p.held.slice(before).find(held => held.payload?.kind === 'opening.publish'), 'the publish reply, held');
     p.intercept(null);
     const topic = (await p.response(entry.event)).result.topic.id;
@@ -67,9 +67,9 @@ export async function sourcesChecks({ check, page, until, control, view, facts, 
     await shot(p, 'sources-line');
     // The line opens with its words selected, so typing replaces them.
     await p.send('Input.insertText', { text: 'Release name' });
-    await p.key('Escape');
-    // Start a topic from this is in the Reader's ⋯ (docs/reader.md): the focus goes back there.
-    await until(() => quiet(p, `!document.querySelector('#start-topic-title') && document.activeElement?.id==='reader-menu'`), 'Escape closes the line and gives the focus back to the ⋯');
+    // The explicit opener toggles the line closed without submitting its typed title.
+    await p.point('#start-from-message');
+    await until(() => quiet(p, `!document.querySelector('#start-topic-title') && document.activeElement?.id==='reader-menu'`), 'the opener closes the line and gives the focus back to the ⋯');
     assert.equal(await p.evaluate(`document.querySelector('#reader').open`), true, 'and leaves the Reader open');
     assert.equal((await openLine(p)).value, 'Release name', 'the line opens again with the title as it was left');
     // The Reader steps to another message, which closes the line, and back.
@@ -81,7 +81,7 @@ export async function sourcesChecks({ check, page, until, control, view, facts, 
     await p.point('#previous-message');
     await until(() => quiet(p, `document.querySelector('#source-body').textContent.includes(${JSON.stringify(body)})`), 'the Reader is back on the question');
     assert.equal((await openLine(p)).value, 'Release name', 'stepping away and back keeps the title too');
-    const { publish, topic } = await enterHeld(p);
+    const { publish, topic } = await enterHeld(p, 'Escape');
     assert.deepEqual(publish.args, { seen: [] });
     // The new topic opens in place, so the page was ready before it: its title is painted when the topic's read lands.
     await until(() => quiet(p, `document.querySelector('#topic-title').textContent === 'Release name'`), 'the new topic is titled as typed');

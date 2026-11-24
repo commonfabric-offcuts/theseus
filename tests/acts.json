@@ -2465,12 +2465,12 @@
   },
   {
    "item": 283,
-   "act": "Esc cancels a rename and gives the row back as it was",
+   "act": "Escape saves typed rename words once; empty Escape keeps the saved name",
    "break": [
     [
-     "web/stack-feed.mjs",
-     "cancelled: stack => { this.arrange(); this.focusOn(stack.id); },",
-     "cancelled: stack => this.focusOn(stack.id),"
+     "web/reply-stacks.mjs",
+     "if (keepOnEscape(event, { value: input.value, save: () => finish(true), close: () => finish(false) })) return;",
+     "if (keepOnEscape(event, { value: input.value, save: () => finish(false), close: () => finish(false) })) return;"
     ]
    ],
    "check": {

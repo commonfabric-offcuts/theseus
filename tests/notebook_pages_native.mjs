@@ -307,11 +307,10 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       await press(button);
       await until(() => p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(input)})`), 'one title line, focused');
       await shot(p, 'notebook-create-' + label + '-line');
-      await p.send('Input.insertText', {text:'Cancelled notes'});
+      const before = await view('memory_items', {owner_scope:scope});
       await p.key('Escape');
       assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), false, 'Escape closes the line');
-      const before = await view('memory_items', {owner_scope:scope});
-      assert.equal(before.items.some(item => item.title==='Cancelled notes'), false, 'Escape creates nothing');
+      assert.deepEqual((await view('memory_items', {owner_scope:scope})).items, before.items, 'empty Escape creates nothing');
       if (phone) await press(button);
       else {
         // The keys reach it too: Escape gives the focus back to the pencil, and Return presses it.
@@ -321,7 +320,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       await until(() => p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(input)})`), 'the line opens again, focused');
       await p.key('a', 4);
       await p.send('Input.insertText', {text:name});
-      await p.key('Enter');
+      await p.key('Escape');
       // The new page comes up in the composer over the feed, its first card ready to write (item 396).
       const first = '#new-message-sheet.notebook-mode .notebook-sheet-page:not([hidden]) .deck-writing textarea';
       await until(() => p.evaluate(`document.querySelector('#new-message-sheet').open && document.querySelector('.notebook-sheet-title')?.textContent===${JSON.stringify(name)} && Boolean(document.querySelector(${JSON.stringify(first)}))`), 'the new page opens in the composer with its first card ready to write');
