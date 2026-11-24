@@ -22,7 +22,11 @@ guards apply; a page retains its real item identity and latest title. Unstar
 leaves all other readers' stars intact. Deleted pages have no projected star;
 restoration recovers stars whose readers did not unstar them.
 
-Rename edits the title inline. Return saves, Escape cancels. The shared
+Rename edits the title inline. Under1159/Tony20204, Return, Command-Return and
+Escape save and move into the first card writing in the current view (or its
+existing first-card entry). The current and remembered Text/Cards view stay;
+a card-free Text page focuses0 and preserves its opening words, inserting
+nothing (Warp21321/21332). The shared
 NotebookWriting journal and memory.revise carry exact body, attachments,
 references, draft, expected revision and operation identity. Existing merge,
 conflict and late-save fences preserve writing; no title-only alternate write.

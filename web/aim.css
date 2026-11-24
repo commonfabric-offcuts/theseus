@@ -1573,3 +1573,7 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 @media(pointer:coarse){.notebook-card-copy,.notebook-card-add{min-width:44px;min-height:44px}}
 
 .notebook-card-action{opacity:0;pointer-events:none}:where(.deck-pointing) .deck-card:hover .notebook-card-action,.deck-card[aria-current=true] .notebook-card-action,.notebook-card-action:focus{opacity:1;pointer-events:auto}
+
+/*1159: the page title is its own quiet, keyboard-reachable editing control.*/
+.notebook-title-edit{display:inline-block;max-width:100%;vertical-align:middle;overflow:hidden;text-overflow:ellipsis}.notebook-title-edit[aria-disabled=false]{cursor:pointer}.notebook-title-edit:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+@media(max-width:760px){.notebook-title-edit{min-width:44px;min-height:44px;line-height:44px}}
