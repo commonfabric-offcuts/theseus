@@ -20,10 +20,4 @@ Missing browsing context or measurement support leaves the full list available. 
 stored preference, timer, new paging request or separate topic projection.
 
 The designer reference is spec9e9a7830 and prototype d8ddd10a; the prototype's
-configuration panel and +N experiment are excluded. Modeled checks can prove
-owner decisions and guarded acts, not CSS geometry, timing or native gestures.
-The 15 modeled checks pass. The 16-file consumer cohort has 284 passes and
-the same pre-existing 847 missing-state-Map failure on release393. Browser
-attempts stopped before application navigation because the capture parent's
-file-size limit reached Chrome; native geometry and More navigation remain
-unproved here.
+configuration panel and +N experiment are excluded.
