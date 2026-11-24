@@ -336,7 +336,15 @@ class AgentCLICase(AgentCLIBase):
         self.assertEqual(source["addressees"], ["owner"])
         self.assertEqual(source["reply_to"], self.opening["id"])
         self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE operation_id='cli-send'"), [(1,)])
-        self.assertEqual(self.store.view("agent-a", "deliveries", {}), before_pending)
+        expected_pending = copy.deepcopy(before_pending)
+        answered_source = next(item for item in expected_pending["items"]
+                               if item["message_id"] == self.opening["id"])
+        self.assertEqual(answered_source["answer_recovery"],
+                         {"state": "unknown", "coverage": "exact_key_only"})
+        answered_source["answer_recovery"] = {
+            "state": "answered", "source_revision": 1,
+            "message_id": result["message_id"], "seq": source["seq"]}
+        self.assertEqual(self.store.view("agent-a", "deliveries", {}), expected_pending)
         _, editor, _ = self.view_cli("editor_state", {"source_ref": self.opening, "topic_id": "t1"})
         self.assertEqual(editor["draft"]["body"], "Newer private B")
         self.assertEqual(editor["draft"]["generation"], successor["generation"])

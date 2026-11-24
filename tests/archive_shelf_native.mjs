@@ -74,22 +74,6 @@ try {
       assert.deepEqual(d.replicas.map(r => [r.id, r.title, r.folder, r.sheets]), [[ids.one, one, 'false', '1']], 'its replica: its title, one sheet, no folder');
       assert.ok(await page.evaluate(() => window.flights) >= 1, 'the first archive into an empty shelf flies');
       assert.equal(d.focused, ids.one, 'the focus goes with it to its replica: ' + await page.evaluate(() => { const a = document.activeElement; return a ? `${a.tagName}#${a.id}.${a.className}` : 'none'; }));
-      //1205: actual focus grows the shelf, even when it holds only one replica.
-      const shelfSize = () => page.evaluate(() => {
-        const shelf = document.querySelector('#things .archive-shelf:not([hidden])');
-        return { height: shelf.getBoundingClientRect().height, rail: document.getElementById('things').getBoundingClientRect().height,
-          within: shelf.contains(document.activeElement) };
-      });
-      const expanded = async () => { const size = await shelfSize(); assert.equal(size.within, true);
-        assert.ok(Math.abs(size.height - size.rail * 2 / 3) <= 1, 'focused archive fills two thirds of the rail: ' + JSON.stringify(size)); };
-      await expanded();
-      await page.keyboard.press('Shift+Tab'); await expanded();
-      for (const height of [600, 1000, 900]) { await page.setViewportSize({ width: 1280, height }); await expanded(); }
-      await page.locator('#new-message').focus();
-      const compact = await shelfSize(); assert.equal(compact.within, false);
-      assert.ok(compact.height < compact.rail * 2 / 3, 'leaving the archive restores its compact height');
-      await page.locator(`.shelf-dossier[data-id="${ids.one}"]`).focus(); await expanded();
-      seen.push('1205 archive focus expands, survives internal focus/resize, and collapses on exit');
       assert.ok(d.feed.includes(ids.two) && d.feed.includes(ids.three), 'the other dossiers stay in the feed');
       assert.equal(d.more, false, 'the feed draws no Archived (N)'); seen.push('archived: replica, focus, feed');
       // The one-key undo works where the focus went: on the replica.

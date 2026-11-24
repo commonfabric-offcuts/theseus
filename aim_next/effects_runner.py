@@ -7,7 +7,7 @@ import re
 import sys
 import time
 
-from . import broker_routes, codex_host, hosted_notice, wake_adapter
+from . import broker_routes, codex_host, hosted_notice, wake_adapter, wake_diagnostics
 from .contract import Refusal, StoreError
 from .authority import AuthorityError, GuardBusy
 from .route_pins import RoutePinError
@@ -40,11 +40,14 @@ class Clock:
 
 
 class LoopFault(Exception):
-    def __init__(self, reason='storage_failure', child=None, detail=None):
+    def __init__(self, reason='storage_failure', child=None, detail=None, refusal=None):
         self.reason = reason
         # cleanup_failed: the (pid, started_at) whose group cleanup was not
         # confirmed, and the fixed code of the step that did not confirm it.
         self.child, self.detail = child, detail
+        # Exact refusal retained only at the calling boundary, never emitted
+        # as arbitrary text in runner diagnostics or Health.
+        self.refusal = refusal
 
 
 class ShortLease(Exception):
@@ -303,17 +306,46 @@ class EffectsLoop:
     def _pending(self, config):
         """The recipient's pending deliveries through its own binding, which acknowledges nothing."""
         items, cursor = [], None
-        for unused in range(NOTICE_PAGES):
+        self.pending_read = None
+        self.pending_refusal = None
+        for page_index in range(NOTICE_PAGES):
             args = dict(limit=100) if cursor is None else dict(limit=100,cursor=cursor)
             try:
                 page = self._storage(lambda:config.profile.store().view(config.profile.actor_id,'deliveries',args))
             except Exception as error:
+                self.pending_read = wake_diagnostics.observation('transport_failure', page_index, cursor, len(items),
+                    {'code': getattr(error, 'code', None), 'retryable': getattr(error, 'retryable', None)})
+                # Unknown handle cleanup still stops the runner. Its safe event
+                # describes this attempt; it never opens another storage handle.
+                claim = self.outstanding or {}
+                self._event('pending_read_failed', actor_id=config.profile.actor_id,
+                            attempt_id=claim.get('attempt_id'), observation=self.pending_read)
                 if not self._cleanup_known(error):
                     self.cleanup_uncertain = True
                 raise LoopFault(self._pin_reason(error)) from error
-            if type(page) is not dict or 'error' in page or type(page.get('items')) is not list:
+            if (type(page) is dict and page.get('instance_id') == config.profile.instance_id
+                    and type(page.get('error')) is dict):
+                self.pending_refusal = page
+                self.pending_read = wake_diagnostics.observation('core_refusal', page_index, cursor, len(items), page['error'])
+                return None, False
+            if (type(page) is not dict or page.get('instance_id') != config.profile.instance_id
+                    or 'error' in page or type(page.get('items')) is not list or len(page['items']) > 100):
+                self.pending_read = wake_diagnostics.observation('malformed', page_index, cursor, len(items))
+                return None, False
+            try:
+                from .delivery import _position
+                next_position = _position(page.get('next_cursor'))
+                if page.get('next_cursor') is not None and next_position <= _position(cursor):
+                    raise ValueError('Nonadvancing pending page')
+                # Exercise the existing projection owner before calling this a
+                # successful page. No rendered words enter diagnostics.
+                hosted_notice.notice(page['items'], None, config.profile.actor_id, 'validation')
+            except (Refusal, ValueError, TypeError, KeyError, AttributeError, IndexError):
+                self.pending_read = wake_diagnostics.observation('malformed', page_index, cursor, len(items))
                 return None, False
             items.extend(page['items'])
+            self.pending_read = wake_diagnostics.observation(
+                'complete' if page.get('next_cursor') is None else 'partial', page_index, cursor, len(items))
             cursor = page.get('next_cursor')
             if cursor is None:
                 return items, True
@@ -335,7 +367,17 @@ class EffectsLoop:
             if getattr(error, 'code', None) == 'SEAT_ENDED':
                 return self._finish(claim, 'unavailable', reason='seat_ending')
             raise LoopFault(self._pin_reason(error)) from error
-        items, complete = self._pending(config)
+        self._observe_pending(claim, wake_diagnostics.observation('reading', 0))
+        try:
+            items, complete = self._pending(config)
+        except LoopFault as error:
+            if not self.cleanup_uncertain and error.reason != 'route_binding_changed':
+                self._observe_pending(claim, self.pending_read)
+            raise
+        if self.pending_read['code'] in wake_diagnostics.BINDING_CODES:
+            self._event('pending_read_failed', actor_id=actor, attempt_id=claim['attempt_id'], observation=self.pending_read)
+            raise LoopFault('route_binding_changed', refusal=self.pending_refusal)
+        self._observe_pending(claim, self.pending_read)
         if items is None:
             return self._finish(claim,'unavailable',reason='deliveries_unavailable')
         from . import work_context
@@ -353,8 +395,13 @@ class EffectsLoop:
                 raise LoopFault('route_binding_changed')
         notice = hosted_notice.notice(items,claim.get('handed_seq'),actor,claim['attempt_id'],complete,context)
         if notice is None:
-            return self._finish(claim,'unavailable',reason='nothing_pending')
+            return self._finish(claim,'unavailable',reason='nothing_pending' if complete else 'deliveries_unavailable')
         self.host.dispatch(claim,config,notice)
+
+    def _observe_pending(self, claim, observation):
+        value = self._core('record_wake_read', claim['claim_token'], observation)
+        if value.get('status') != 'observed':
+            raise LoopFault('lease_lost')
 
     def _register(self, claim, pid, started_at):
         return self._response(self._storage(lambda:self.store.record_runner_child(

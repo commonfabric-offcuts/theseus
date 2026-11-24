@@ -138,6 +138,7 @@ function agentLines(agent, now, sending) {
     }
   }
   if (agent.failing) details.push(`${failedPhrase(agent.failing, now).replace(/^./, c => c.toUpperCase())} (${plural(agent.failing.count, 'time')}). ${why(agent.failing)}`);
+  if (agent.wake_read?.why) details.push(`${agent.wake_read.why}.`);
   // Health's own facts only: what the scheduler then does is its own (docs/effects-runner.md).
   if (agent.not_answering) details.push(`Its last ${count(agent.not_answering.count)} wakes reached it and it has not answered since ${at(agent.not_answering.since_ms, now)}.`);
   if (agent.route) {
