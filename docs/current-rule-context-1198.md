@@ -2,10 +2,12 @@
 
 Authority is Fable's assignment22719, accepted Fast lane revision8 and the
 current-rule Notebook n-85ea0961d1fd4e5791fed9024aa9b720. Its revision7 was the
-assignment's starting source; revision20 is the final read used by this bootstrap, including adopted404 execution,
-per-file continuations, scoped1194/1184 exceptions, installed1196, explicit
-process-versus-coverage accounting, completed406/407 states, the explicit1200 fixture-ownership handoff and the five-feature postmortem. The bootstrap keeps those exact sources and scoped
-exceptions, rather than treating a snapshot of resource occupancy as a grant.
+assignment's starting source; revision23 is the read used by this bootstrap.
+It includes adopted404 execution, per-file continuations, scoped1194/1184
+exceptions, installed1196, process-versus-coverage accounting, completed406/407,
+23053/23060's direct-name407 handoff, parked1200/1201 and the five-feature
+postmortem. It keeps those sources and exceptions; resource occupancy is not
+an execution grant.
 Flex's full contract is at3eeaf824833969ce4c4e7ec48af8544457cb1f93,
 `docs/fast-lane-runtime-contract.md`. This contract precedes product/test code.
 
@@ -81,8 +83,9 @@ Stop/Continue controls remain their owners' facts.
 
 1199's clock/lane/forecast records,1180's structured wake diagnostics and
 interrupted-operation recovery, and1200's durable browser jobs are separate,
-explicitly unavailable capabilities. This delivery does not create a scheduler,
-perform a seat restart or claim those follow-ons installed.
+explicitly unavailable capabilities;1200/1201 are parked by23053. This delivery
+does not create a scheduler, perform a seat restart or claim those follow-ons
+installed.
 
 ## Proof
 
@@ -98,8 +101,13 @@ Adapter checks prove CLI and wake context share that Core answer, bounded
 topic selection and safe untrusted text handling. A load-bearing mutation
 removes the actual contradiction/failure behavior, produces a failure, then
 restores exact bytes. The new tests run once on old code and pass on candidate;
-every importing/source-reading consumer file runs unfiltered. Receipts identify
-assertion reachability, completed/interrupted files and restoration/cleanup.
+the own/direct importing or source-reading files run unfiltered on the
+current407-based piece and407, with actual cause comparison. Store/import-chain
+expansion is excluded. Warp23066 fixes1198 at39 Python files,9 native files in
+the postlanding gauntlet and the fixture helper as input. Whole Node comparison
+belongs to landing; no broad Python, old controls, lane Node pair or783 replay
+is required. Receipts identify assertion reachability, completed/interrupted
+files and restoration/cleanup.
 
 Bootstrap arguments are in `docs/current-rule-fast-lane-1198.json`. Before applying,
 the coordinator rereads its named sources and current rendering revision, updates any

@@ -4,7 +4,7 @@
   "rules": [
     {
       "id": "build-proof",
-      "summary": "New tests fail once on old code, then pass on candidate; run complete importing/source-reading files. Retain original interruptions. Separate process terminal from coverage: reconcile expected identities with body entry or explicit skip/setup/discovery barriers; zero-case or unexplained gaps remain incomplete. Count failure events apart from case outcomes; bare/mock assertions need no counted unittest assertion.",
+      "summary": "23053/23060: own tests plus directly named importing/source-reading whole files on the current407-based piece and407, with no new or changed failure cause. Never expand through Store/import chains. About40+ goes to Warp with names/counts;1198 is the resolved39 Python files,9 native postlanding and its fixture input. Retain body/barrier and original interruption evidence. No broad Python,404/406 controls, lane Node pairs or783 phases.",
       "scope": {},
       "effect": {
         "require": [
@@ -17,13 +17,13 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
     {
       "id": "page-path",
-      "summary": "Small page pieces use exact source, read and freeze, carry/live whole Node comparison; native browser obligations follow landing.",
+      "summary": "Ordinary page handoff uses the own/direct selected whole-file current407 comparison. Exact source/read/freeze remain; whole Node carry/live comparison belongs to landing and native browser obligations follow landing.",
       "scope": {
         "paths": [
           "page"
@@ -38,13 +38,13 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
     {
       "id": "core-path",
-      "summary": "Actual Core paths require frontloaded Python consumer comparison and exact freeze/whole Node comparison, even when the mechanical deployment flag says ordinary.",
+      "summary": "23053 ordinary Core handoff compares the own/direct named Python files on the piece carried onto current407 and407, preserving actual failure causes. No transitive Store expansion or whole-suite handoff. Exact freeze/read remain; whole Node comparison belongs to landing, even when the mechanical flag says ordinary.",
       "scope": {
         "paths": [
           "core",
@@ -61,7 +61,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
@@ -81,7 +81,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
@@ -93,7 +93,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
@@ -105,7 +105,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
@@ -123,7 +123,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
@@ -142,13 +142,13 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
     {
       "id": "1184-scope",
-      "summary": "1184 is shipped in406. Preserve the rejected206 cohort, original205 and later238/243/witness attempts and their actual body/barrier evidence. Flex owns migration fixture/body contracts with the explicit22988 handoff to Page6 limited to1200 schema70 current_legacy_rows on landed406: empty browser_jobs and null legacy browser_job_id, retaining older rows, frozen-layout checks and1194 forwarding.1200/1201 retain the judged route and real-data rehearsal;1138 remains duplicate scope.",
+      "summary": "1184 shipped in406; preserve original rejected and later consumer/migration/body evidence. Flex owns fixture/body contracts;22988 delegated only1200 schema70 current_legacy_rows to Page6, preserving older rows, frozen-layout checks and1194 forwarding.1200/1201 are now parked by23053 with branches/evidence retained. The earlier judged route remains history, not current landing work.1138 is duplicate scope.",
       "scope": {
         "items": [
           1184,
@@ -159,7 +159,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
@@ -175,7 +175,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
@@ -191,7 +191,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
@@ -216,19 +216,19 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
     {
       "id": "independent-followons",
-      "summary": "1199 clock,1180 recovery and1200 jobs are independent, not1198 completion requirements. Restart needs1198/1196/1180/1199/1200 live, five-feature postmortem and a separately scheduled drill; no restart authorization or invented forecast.",
+      "summary": "1199 clock and1180 recovery remain independent1198 follow-ons.23053 parks1200/1201 today and removes1200 from restart prerequisites. Restart still requires1198/1196/1180/1199 live, the five features and prediction postmortem, isolated checks and a separately scheduled live drill. No restart authorization or invented forecast.",
       "scope": {},
       "effect": {},
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
@@ -240,7 +240,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
@@ -260,19 +260,19 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
     {
       "id": "installed-landing-kit",
-      "summary": "1196 is installed in405. Preserve its normalized cause and execution comparison plus original publication refusal/same-operation recovery. Installed tools do not establish each seat configuration or adoption. The actual pipeline/release record owns current source; this bootstrap is not a live-state copy.",
+      "summary": "1196 is installed in405 and1209 seat documents in407. Preserve actual normalized cause/execution comparison and original publication refusal/recovery. Installation is not seat configuration, adoption or restart. Current pipeline/release records own live state; this bootstrap is not a copied live-state authority.",
       "scope": {},
       "effect": {},
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     },
@@ -290,7 +290,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 20
+        "revision": 23
       },
       "supersedes": []
     }
