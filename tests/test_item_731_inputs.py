@@ -64,7 +64,7 @@ class ConversationSeedCase(unittest.TestCase):
             def post(name, reply=None):
                 ids[name] = call('agent_message', operation_id='731-seed-' + name, topic_id=topic, source='topic', sender='aim-core',
                                  addressees=['fixture-person'], body='Exact 731 ' + name,
-                                 **({'reply_to':ids[reply], 'reply_without_quote':'This fixture answer concerns the complete synthetic discussion'} if reply else {}))['result']['message_id']
+                                 **({'reply_to':ids[reply], 'reply_without_quote':'This fixture answer concerns the complete synthetic discussion'} if reply else {'divergence_reason':'The synthetic fixture opens a separate ordering example'}))['result']['message_id']
             post('b'); post('b1','b'); post('a'); post('a1','a')
             def page():
                 return call('agent_view', actor='fixture-person', name='topic_messages', args={'topic_id':topic,'direction':'before','limit':100})['items']
@@ -74,7 +74,7 @@ class ConversationSeedCase(unittest.TestCase):
             self.assertEqual({item['stack_position']['root_id']:item['stack_position']['order_key'] for item in after}, before)
             self.assertGreater(before[ids['a']], before[ids['b']])
             record = next(item for item in after if item['id']==ids['b2'])
-            self.assertEqual((record['topic_id'],record['body'],record['author_id']), (topic,'Exact 731 b2','aim-core'))
+            self.assertEqual((record['topic_id'],record['body'],record['author_id']), (topic,'> This fixture answer concerns the complete synthetic discussion\n\nExact 731 b2','aim-core'))
         finally:
             fixture.stdin.close()
             code = fixture.wait(timeout=15)

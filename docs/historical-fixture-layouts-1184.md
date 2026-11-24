@@ -72,18 +72,24 @@ a broken earlier guard. Cleared marks/folds/covers, reset colors, earlier draft
 revisions and reopened outcomes retain their history. Existing current-command
 positive coverage remains alongside these historical checks.
 
-## Evidence and limits
+## Verification scope
 
-Four occupied/sequence/rollback/explicit-choice controls are retained, including
-observed loss mutants and their restored controls. The original206-case body
-run was rejected; its205-consumer successor was not entered. Separate repaired
-source stages passed29 selected bodies on396 and21 selected bodies on398, with
-four and seven successful subcases respectively. Those are different source
-stages, not one combined current-candidate pass.
+Four occupied-row, allocation, rollback and explicit-argument witnesses check
+the shared helper, including applied loss mutations and restored controls.
+The migration-file collection has243 identities:225 locally defined bodies
+and18 inherited StoreCase bodies. The four helper witnesses are separate.
+Reports retain the actual method-definition file for inherited tests.
 
-The next expectation/guard selector has50 explicit identities and is unrun at
-this source checkpoint. Whole-current-file and shared-consumer verification are
-still owed. Source and assertion reachability, actual failures, terminal results
-and cleanup remain in the1184 Theseus dossier; an earlier pass does not validate
-a later source. The old order-deleting wrapper is removed, and no product guard
-is suppressed.
+Affected consumer files run complete, including the independent admission and
+refusal suites. A changed file runs again as a complete-file continuation;
+its previous attempt remains visible. The731 subprocess fixture records its
+actual PID, parent/group and reaped result, supplies explicit reply and root
+reasons, and checks the complete composed message body and stable order.
+
+The input manifest declares the helper's independently frozen schema files
+and generated database snapshots. Its real repository audit and deployment
+readers have their own complete-file results. Source discovery, actual body
+reachability, direct process results and cleanup are retained separately in
+the1184 Theseus dossier. Historical baseline failures keep their exact source,
+phase, exception and failing statement; fixture construction and permitted
+physical migration rollback remain separate checks.
