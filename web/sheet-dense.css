@@ -93,3 +93,12 @@ dialog.composer-home[open]:not(.notebook-mode){
 }
 @keyframes sheet-say-saving{to{max-width:30rem}}
 @keyframes sheet-pulse{50%{opacity:.35}}
+/* The phone pencil's tiles sit below its header. Reader panels keep their
+   keyboard-height layout; Notebook has its own sheet. */
+@media(max-width:760px){
+  dialog.composer-home:not(.notebook-mode) #inline-composer>.plus-panel{grid-area:panel;grid-row:auto;grid-column:1/-1;
+    height:auto;max-height:none;margin:.45rem 0 0;padding:.45rem .6rem .5rem;border:1px solid var(--sheet-hair);border-radius:.55rem;
+    background:color-mix(in srgb,var(--ink) 3%,var(--panel));box-shadow:none}
+  dialog.composer-home:not(.notebook-mode) #inline-composer>.plus-panel .tiles{display:flex;flex-wrap:wrap;gap:.4rem;padding-right:2.2rem}
+  dialog.composer-home:not(.notebook-mode) #inline-composer>.plus-panel .tile{min-height:2.75rem;padding:0 .9rem;border-radius:.5rem;font-size:.85rem}
+}
