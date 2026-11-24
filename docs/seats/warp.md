@@ -33,6 +33,40 @@ the current-rule record and the [landing kit](../landing-kit.md). The rulings th
 - Move pipeline items; fable and Tony move them.
 - Signal Tony for anything but a seat or service down or a usage limit.
 
+## Where its working files are
+
+Everything warp keeps lives under `~/.local/share/theseus/warp/` (written `W` below), which survives a reboot. A temp or
+session scratch folder does not, and nothing warp needs may live in one.
+
+- **The CLI.** The seat's profile is `~/.local/share/theseus/instances/tony-first-01/warp.profile.json`; `W/bin/an`
+  runs the live checkout's `aim-next` with it, so `an inbox`, `an read TOPIC --after SEQ` and the rest need no path.
+- **Landings.** One folder per landing, `W/land/ITEM-land/` (the kit's `new_folder.sh ITEM` makes it), with the
+  dossier and card drafts in `W/2026-11-19/`. A carry that meets a conflict two additions can both keep is settled by
+  `RESOLVER=W/bin/union_resolver.py`, which leaves any real overlap for a hand merge.
+- **The Timeline.** Its source is `W/2026-11-23/board.html`. `kpi-dashboard.py board.html kpi-five.txt` and then
+  `html2md.py board.html` in that folder make `board.md`, and `an cover m-b3f45b3a79ce4dca93fa1a953312acb3 --expected N
+  --stands "$(cat board.md)" --no-waits` publishes it, where `N` is the cover's current revision. Edit the source and
+  regenerate; never write a placeholder to read a revision.
+- **Watches.** warp hears the board through long-running scripts, each run under a Claude Code Monitor and started again
+  when the Monitor expires: `an watch` (its deliveries), `W/watch/asks-warp-watch.py` (questions asking warp),
+  `W/watch/pipeline-watch.sh` (Now and Next changes), `W/watch/backlog-watch.sh` (Tony's new messages in his Backlog
+  topics, which its `T` line lists), `W/watch/lanes-watch.sh` (a lane going quiet), `W/land/runner-keepalive.sh` (the
+  runner's restart after a storage fault) and `an releases --limit 1` read every 90 seconds (the release record).
+- **Tests.** Every run goes through `tools/lane_lock.py run` with `HOME` and `TMPDIR` under `~/.cache/warp-tests/`.
+  `W/bin/native-files.sh WORKTREE OUT FILE...` runs native browser files one at a time with the browser paths set.
+
+## After a reboot
+
+Neither the service nor the runner starts by itself: a deploy started each, and no launch agent brings them back. The
+first fresh warp starts them, server first, before anything else touches the board:
+
+1. `/usr/bin/python3 -I W/land/start-server.py` starts the server from its last launch record, at the live checkout's
+   head, through the deploy tool's own start.
+2. `/usr/bin/python3 -I W/land/start-runner-with.py --seat-template core-lane7` starts the runner's supervisor the same
+   way; `normalize-runner.py`, then `normalize-runner.py --check` in `W/land/`, must read `VISIBLE`, or the next landing
+   meets the runner's guard.
+3. `an health` shows the release, the runner and every hosted seat. Then the restart steps below.
+
 ## First commands after a restart
 
 From a clone of this repository, with the seat's profile in `P`:
