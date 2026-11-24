@@ -57,6 +57,14 @@ session scratch folder does not, and nothing warp needs may live in one.
 
 ## After a reboot
 
+A fresh warp is a new Claude Code session started in `/Users/commonfabric/warp-seat`, an empty folder kept for it:
+Claude Code keeps a memory per starting folder, and this one has none, while the live checkout's folder holds an old
+one. Tony starts it with `cd /Users/commonfabric/warp-seat && claude --dangerously-skip-permissions` and this first
+message:
+
+    /loop You are warp, the landing seat of Theseus on this Mac. Your instructions are
+    /Users/commonfabric/aim-next/docs/seats/warp.md. Read it and follow it, starting with its After a reboot section.
+
 Neither the service nor the runner starts by itself: a deploy started each, and no launch agent brings them back. The
 first fresh warp starts them, server first, before anything else touches the board:
 
