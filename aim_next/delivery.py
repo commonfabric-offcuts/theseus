@@ -414,6 +414,9 @@ class Delivery:
             item["state"] = "cancelled"
         item.update(reasons=self._effective_reasons(db, row), message=message, source_ref={"kind": "message", "id": row["message_id"]},
                     topic={"id": message["topic_id"], "title": title, "title_truncated": truncated})
+        if self._actor_kind(db, row['recipient_id']) == 'agent' and row['answer_id'] is None:
+            from . import answer_recovery
+            item['answer_recovery'] = answer_recovery.lookup(self, db, row['recipient_id'], row['message_id'], message['revision'])
         if row['answer_id'] is not None:
             item['answer'] = self._answer_receipt_value(db, row['answer_id'])
         # An agent that names the message's dossier, which nobody has named, is told so with the work (item 479).

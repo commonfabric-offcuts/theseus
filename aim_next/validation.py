@@ -163,7 +163,7 @@ VIEWS = {
     "onboarding_prompt": {"workspace_id", "variant"},
     "assessment": {"assessment_id"}, "assessments": {"topic_id","cursor","limit"},
     "changes": {"scope", "cursor", "limit"},
-    "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},
+    "capabilities": set(), "operation": {"operation_id", "expected_fingerprint"}, "workspace": {"workspace_id"},
     "workspaces": {"cursor", "limit", "reached", "ended"},
     "workspace_counts": {"workspace_ids"},
     "outcome_light": {"workspace_id"},

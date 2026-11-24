@@ -40,6 +40,13 @@ export class RailTopicFold {
     this.actionRoot = this.win.addEventListener ? this.win : doc;
     this.actionRoot.addEventListener?.('click', this.closeReveal, true);
     this.actionRoot.addEventListener?.('keydown', this.closeReveal, true);
+    // A sideways trackpad swipe outside the list archives or folds a dossier with no click or key press, so it is a
+    // page action too, as the archive shelf's menu treats it. Vertical scrolling, and anything inside the list, is not.
+    this.swipe = event => {
+      if (area.contains(event.target) || !(Math.abs(event.deltaX) > Math.abs(event.deltaY))) return;
+      this.closeReveal();
+    };
+    this.actionRoot.addEventListener?.('wheel', this.swipe, true);
     area.addEventListener('pointerdown', this.down, true);
     area.addEventListener('click', this.click, true);
     // CSS filters, refreshed words, reordered rows and newly drawn stars all
@@ -94,6 +101,7 @@ export class RailTopicFold {
     if (this.closeReveal) {
       this.actionRoot.removeEventListener?.('click', this.closeReveal, true);
       this.actionRoot.removeEventListener?.('keydown', this.closeReveal, true);
+      this.actionRoot.removeEventListener?.('wheel', this.swipe, true);
       this.closeReveal();
     }
     if (this.down) this.area.removeEventListener('pointerdown', this.down, true);
