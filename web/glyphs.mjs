@@ -78,6 +78,8 @@ const DRAWN = {
   layout: { d: 'M3.5 5h17v14h-17z M12 5v14' },
   // Move to a section, and Set aside to Later…: an arrow into a box.
   moveto: { d: 'M3 12h11 M10 8l4 4-4 4 M14 4h6v16h-6' },
+  // Move a dossier to another topic.
+  movetopic: { d: 'M3 19.5V4.5h6.5l2.5 2.5h9v12.5Z M7.5 13.25h8.5 M13 10.25l3 3-3 3' },
   // Drop…: a circle with a cross.
   drop: { d: 'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0 M9 9l6 6 M15 9l-6 6' },
   // A dossier's cover (item 624, its approved design page): a payload proposed, a box; done, a tick; what waits on

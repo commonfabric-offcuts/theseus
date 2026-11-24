@@ -23,7 +23,7 @@ export const GLYPH_OF = Object.freeze({
   'Open the cover request': 'link',
   'Copy Link': 'link', 'Show full message': 'full', Edit: 'pencil', 'Edit page': 'pencil', 'Mark unread': 'unread', 'Mark read': 'read',
   'Ask for update':'refresh','Start new':'topic','Start a new dossier':'pencil','Withdraw question':'undo',Unsend:'undo',Retract:'undo',
-  'Mark topic done':'kept','Archive topic':'archive','Move to topic…':'topic',Reply:'reply',
+  'Mark topic done':'kept','Archive topic':'archive','Move to topic…':'movetopic',Reply:'reply',
   // Item 601: an archive act shows the Reader's archive tray, in every menu.
   'Archive': 'archive', 'Bring back': 'back',
   'Move its stack up': 'up', 'Move its stack down': 'down', 'Fold its stack': 'chevron', 'Open its stack': 'chevdown',
@@ -91,6 +91,8 @@ export const APPROVED = Object.freeze({
   pipeline: { d: 'M4 6h10 M4 11h10 M4 16h6 M17 13v7 M13.5 16.5h7' },
   layout: { d: 'M3.5 5h17v14h-17z M12 5v14' },
   moveto: { d: 'M3 12h11 M10 8l4 4-4 4 M14 4h6v16h-6' },
+  // Tony's selected candidate A: a dossier moves to another topic.
+  movetopic: { d: 'M3 19.5V4.5h6.5l2.5 2.5h9v12.5Z M7.5 13.25h8.5 M13 10.25l3 3-3 3' },
   drop: { d: 'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0 M9 9l6 6 M15 9l-6 6' },
   // A dossier's cover's pills, as item 624's approved design page draws them.
   payload: { d: 'M4 8l8-4 8 4v8l-8 4-8-4z M4 8l8 4 8-4 M12 12v8' },
