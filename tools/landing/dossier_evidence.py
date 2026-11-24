@@ -59,8 +59,9 @@ def board_read(read):
         refuse('SPEC.json carry_read must name the topic, seq and id of fable\'s read of the carry')
     got = subprocess.run(AN + ['--json', 'read', read['topic'], '--after', str(read['seq'] - 1), '--limit', '1'],
                          capture_output=True, text=True)
-    rows = [json.loads(x) for x in got.stdout.split('\n')[1:] if x.strip()]
-    return next((m for r in rows for m in r.get('items') or [] if m.get('id') == read['id']), None) if got.returncode == 0 else None
+    if got.returncode != 0:
+        return None
+    return decisions.message_from_read([json.loads(x) for x in got.stdout.split('\n') if x.strip()], read['id'])
 
 
 frozen = (mine[0].get('freeze') or {}).get('head_commit')

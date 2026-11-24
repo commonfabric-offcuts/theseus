@@ -225,6 +225,223 @@ class Landing(Seat):
         self.assertIn('its review was written of bbbbbbbb', out.stdout + out.stderr)
 
 
+def git(cwd, *args):
+    return subprocess.run(['git', '-C', str(cwd), '-c', 'user.name=t', '-c', 'user.email=t@t', *args],
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+class Carry(Seat):
+    """carry_ordinary.sh against a local bare repository standing in for the remote."""
+
+    def setUp(self):
+        super().setUp()
+        remote, work = self.root / 'remote.git', self.root / 'work'
+        subprocess.run(['git', 'init', '-q', '--bare', str(remote)], check=True)
+        subprocess.run(['git', 'init', '-q', str(work)], check=True)
+        (work / 'base.txt').write_text('base\n')
+        git(work, 'add', '.'); git(work, 'commit', '-q', '-m', 'start')
+        git(work, 'checkout', '-q', '-b', 'piece')
+        (work / 'piece.txt').write_text('piece\n')
+        git(work, 'add', '.'); git(work, 'commit', '-q', '-m', 'piece')
+        self.head = git(work, 'rev-parse', 'HEAD')
+        git(work, 'checkout', '-q', '-b', 'live', 'HEAD~1')
+        (work / 'live.txt').write_text('live\n')
+        git(work, 'add', '.'); git(work, 'commit', '-q', '-m', 'live')
+        self.live = git(work, 'rev-parse', 'HEAD')
+        git(work, 'push', '-q', str(remote), 'piece', 'live')
+        subprocess.run(['git', 'clone', '-q', str(remote), str(self.root / 'gitclone')], check=True)
+        self.settings.update({'remote': str(remote), 'release_branch': 'live', 'clone': str(self.root / 'gitclone')})
+        self.write_config()
+        self.landing = self.folder()
+        spec = json.loads((self.landing / 'SPEC.json').read_text())
+        spec.update({'piece': 'p', 'topic': 't', 'release': 9, 'title': 'x', 'review': 'r',
+                     'approved_head': self.head, 'review_head': self.head})
+        (self.landing / 'SPEC.json').write_text(json.dumps(spec))
+
+    def test_a_refused_preflight_after_the_carry_is_the_carrys_exit(self):
+        out = self.run_kit('carry_ordinary.sh', '1300', self.head, self.live, 'piece-carry')
+        self.assertIn('CARRIED 1300', out.stdout)
+        self.assertEqual(out.returncode, 5, out.stdout + out.stderr)
+        self.assertIn('the preflight refused', out.stdout)
+        self.assertTrue((self.landing / 'carry-preflight.out').read_text())
+
+    def test_a_refused_push_is_the_carrys_exit_and_leaves_the_spec_alone(self):
+        hook = self.root / 'remote.git' / 'hooks' / 'pre-receive'
+        hook.write_text('#!/bin/sh\necho refused by the stand-in remote\nexit 1\n')
+        hook.chmod(0o755)
+        before = (self.landing / 'SPEC.json').read_text()
+        out = self.run_kit('carry_ordinary.sh', '1300', self.head, self.live, 'piece-carry')
+        self.assertEqual(out.returncode, 4, out.stdout + out.stderr)
+        self.assertIn('was refused', out.stdout)
+        self.assertEqual((self.landing / 'SPEC.json').read_text(), before)
+
+
+class Execution(Seat):
+    def events(self, name, rows):
+        path = self.root / name
+        path.write_text(''.join(json.dumps({'file': f, 'names': n, 'occurrence': 1, 'status': s}) + '\n' for f, n, s in rows))
+        return path
+
+    def compare(self, carry_rows, changed=()):
+        live = self.events('live.jsonl', [('tests/a.test.mjs', 'one', 'pass'), ('tests/a.test.mjs', 'two', 'pass')])
+        carry = self.events('carry.jsonl', carry_rows)
+        (self.root / 'changed.txt').write_text(''.join(c + '\n' for c in changed))
+        return self.run_kit('execution_compare.py', carry, live, self.root / 'changed.txt')
+
+    def test_a_case_that_still_runs_passes(self):
+        self.assertEqual(self.compare([('tests/a.test.mjs', 'one', 'pass'), ('tests/a.test.mjs', 'two', 'fail')]).returncode, 0)
+
+    def test_a_passing_case_turned_skip_without_a_failing_name_refuses(self):
+        out = self.compare([('tests/a.test.mjs', 'one', 'pass'), ('tests/a.test.mjs', 'two', 'skip')])
+        self.assertEqual(out.returncode, 5)
+        self.assertIn('tests/a.test.mjs :: two -> skip', out.stdout)
+
+    def test_a_passing_case_gone_from_the_carry_refuses(self):
+        out = self.compare([('tests/a.test.mjs', 'one', 'pass')])
+        self.assertEqual(out.returncode, 5)
+        self.assertIn('two -> gone', out.stdout)
+
+    def test_a_case_in_a_file_the_carry_changed_is_explained(self):
+        out = self.compare([('tests/a.test.mjs', 'one', 'pass')], changed=['tests/a.test.mjs'])
+        self.assertEqual(out.returncode, 0)
+        self.assertIn('explained', out.stdout)
+
+    def test_the_reporter_names_each_case_with_its_file_and_how_it_ended(self):
+        tests = self.root / 'tree' / 'tests'
+        tests.mkdir(parents=True)
+        (tests / 'a.test.mjs').write_text("import test from 'node:test';\ntest('runs', () => {});\n"
+                                          "test('skipped', { skip: true }, () => {});\n"
+                                          "test('outer', async (t) => { await t.test('inner', () => {}); });\n")
+        events = self.root / 'events.jsonl'
+        subprocess.run(['node', '--test', '--test-reporter=' + str(self.kit / 'node_reporter.mjs'),
+                        '--test-reporter-destination=' + str(events), 'tests/a.test.mjs'], cwd=self.root / 'tree', check=True)
+        got = {(e['file'], e['names'], e['status']) for e in map(json.loads, events.read_text().splitlines())}
+        self.assertEqual(got, {('tests/a.test.mjs', 'runs', 'pass'), ('tests/a.test.mjs', 'skipped', 'skip'),
+                               ('tests/a.test.mjs', 'outer > inner', 'pass'), ('tests/a.test.mjs', 'outer', 'pass')})
+
+
+class NodeSuite(Seat):
+    """node_suite_check.sh on two trees of one repository: live, and a carry that changes only lib/flag.mjs."""
+
+    SUITE = ("import test from 'node:test';\nimport { ready } from '../lib/flag.mjs';\n"
+             "for (let i = 0; i < 1000; i++) test('case ' + i, () => {});\n"
+             "test('needs the flag', { skip: !ready }, () => {});\n")
+
+    def trees(self, carry_flag, carry_suite=None):
+        live = self.root / 'livetree'
+        (live / 'tests').mkdir(parents=True)
+        (live / 'lib').mkdir()
+        (live / 'tests' / 'a.test.mjs').write_text(self.SUITE)
+        (live / 'lib' / 'flag.mjs').write_text('export const ready = true;\n')
+        subprocess.run(['git', 'init', '-q', str(live)], check=True)
+        git(live, 'add', '.'); git(live, 'commit', '-q', '-m', 'live')
+        carry = self.root / 'carrytree'
+        git(live, 'worktree', 'add', '-q', '--detach', str(carry))
+        (carry / 'lib' / 'flag.mjs').write_text('export const ready = %s; // as the carry has it\n' % carry_flag)
+        if carry_suite:
+            (carry / 'tests' / 'a.test.mjs').write_text(carry_suite)
+        git(carry, 'commit', '-q', '-am', 'carry')
+        return carry, live
+
+    def check(self, carry, live):
+        return self.run_kit('node_suite_check.sh', carry, live, self.root / 'out')
+
+    def test_a_case_the_carry_skips_from_outside_its_file_refuses(self):
+        out = self.check(*self.trees('false'))
+        self.assertEqual(out.returncode, 5, out.stdout + out.stderr)
+        self.assertIn('tests/a.test.mjs :: needs the flag -> skip', out.stdout)
+
+    def test_a_carry_that_keeps_every_case_running_passes(self):
+        out = self.check(*self.trees('true'))
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn('every case that passed on live runs on the carry', out.stdout)
+
+    def test_a_skip_in_a_test_file_the_carry_changed_is_listed_and_passes(self):
+        out = self.check(*self.trees('false', self.SUITE + '// the carry edits this file\n'))
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn('explained: the carry changed its file', out.stdout)
+
+
+STUB_CLI = r"""
+import json, os, sys
+state = os.path.join(os.environ['STUB_DIR'], 'ledger.json')
+ledger = json.load(open(state)) if os.path.exists(state) else {'posts': {}}
+args = [a for a in sys.argv[1:] if a not in ('--json',)]
+args = args[2:] if args[:1] == ['--profile'] else args
+if args[0] == 'releases':
+    print('release 9  abc1234  2026-11-24T09:31:05-08:00  shipped 1300')
+elif args[0] == 'post':
+    operation = args[args.index('--operation') + 1] if '--operation' in args else 'fresh-%d' % len(ledger['posts'])
+    body = sys.stdin.read()
+    if operation not in ledger['posts']:
+        ledger['posts'][operation] = {'id': 'm-%032x' % (len(ledger['posts']) + 1), 'body': body}
+        json.dump(ledger, open(state, 'w'))
+        if os.environ.get('STUB_LOSE_ANSWER'):
+            sys.exit(1)
+    elif ledger['posts'][operation]['body'] != body:
+        print('rejected OPERATION_PAYLOAD_MISMATCH'); sys.exit(1)
+    print('posted %s in t-1' % ledger['posts'][operation]['id'])
+elif args[0] == 'read':
+    print(json.dumps({'topic': {'id': 't-1'}}))
+    print(json.dumps({'items': [{'id': p['id'], 'author_id': 'tester', 'preview': False, 'body': p['body'], 'sent_ms': 1}
+                                for p in ledger['posts'].values()]}))
+"""
+
+
+class Publication(Seat):
+    def setUp(self):
+        super().setUp()
+        (Path(self.settings['live']) / 'bin' / 'aim-next').write_text(STUB_CLI)
+        self.env['STUB_DIR'] = str(self.root)
+        (Path(self.settings['posts']) / 'dossier-1300.txt').write_text('Release NNN is live: a thing.\n\nEvidence: read.\n')
+
+    def posts(self):
+        return json.loads((self.root / 'ledger.json').read_text())['posts']
+
+    def test_a_post_whose_answer_was_lost_is_finished_without_a_second_post(self):
+        self.env['STUB_LOSE_ANSWER'] = '1'
+        first = self.run_kit('post_dossier.sh', '9', '1300')
+        self.assertNotEqual(first.returncode, 0)
+        self.assertEqual(len(self.posts()), 1)
+        self.assertFalse((Path(self.settings['posts']) / 'release-9.id').exists())
+        del self.env['STUB_LOSE_ANSWER']
+        second = self.run_kit('post_dossier.sh', '9', '1300')
+        self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+        self.assertEqual(len(self.posts()), 1)
+        self.assertIn('read back', (Path(self.settings['posts']) / 'release-9.id').read_text())
+
+    def test_a_changed_dossier_is_not_sent_under_the_first_posts_operation(self):
+        self.run_kit('post_dossier.sh', '9', '1300')
+        (Path(self.settings['posts']) / 'dossier-1300.txt').write_text('Release NNN is live: another thing.\n')
+        out = self.run_kit('post_dossier.sh', '9', '1300')
+        self.assertNotEqual(out.returncode, 0)
+        self.assertEqual(len(self.posts()), 1)
+
+    def test_the_card_states_when_the_release_went_live_not_when_it_was_published(self):
+        self.assertEqual(cards_add.live_time('release 9  abc1234  2026-11-24T09:31:05-08:00  shipped 1300', 9), '9:31 AM')
+        with self.assertRaises(SystemExit):
+            cards_add.live_time('release 8  abc1234  2026-11-24T09:31:05-08:00  shipped 1299', 9)
+
+
+class MessageRead(unittest.TestCase):
+    def test_a_short_message_is_read_from_its_row(self):
+        rows = [{'topic': {}}, {'items': [{'id': 'm-1', 'author_id': 'fable', 'body': 'whole', 'sent_ms': 5, 'preview': False}]}]
+        self.assertEqual(decisions.message_from_read(rows, 'm-1'), {'id': 'm-1', 'author_id': 'fable', 'sent_ms': 5, 'body': 'whole'})
+
+    def test_a_previewed_message_is_read_whole_from_its_source(self):
+        rows = [{'topic': {}}, {'items': [{'id': 'm-1', 'author_id': 'fable', 'body': 'cut', 'sent_ms': 5, 'preview': True}]},
+                {'source_ref': {'kind': 'message', 'id': 'm-1'}, 'author': 'fable', 'body': 'cut and the rest ' + CARRY, 'sent_ms': 5}]
+        message = decisions.message_from_read(rows, 'm-1')
+        self.assertEqual((message['author_id'], message['body']), ('fable', 'cut and the rest ' + CARRY))
+        spec = dict(Proof.SPEC, carry_read={'topic': 't', 'seq': 5, 'id': 'm-1'})
+        self.assertIn('the carry read by fable', decisions.proof(spec, {}, message))
+
+    def test_a_preview_without_its_source_or_a_withheld_message_proves_nothing(self):
+        rows = [{'items': [{'id': 'm-1', 'author_id': 'fable', 'body': 'cut', 'sent_ms': 5, 'preview': True}]}]
+        self.assertIsNone(decisions.message_from_read(rows, 'm-1'))
+        rows = [{'items': [{'id': 'm-1', 'author_id': 'fable', 'body': CARRY, 'sent_ms': 5, 'withheld': True}]}]
+        self.assertEqual(decisions.message_from_read(rows, 'm-1')['body'], '')
+
 TAP = """TAP version 13
 not ok 1 - a test
   ---

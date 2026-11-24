@@ -2,7 +2,7 @@
 """check_inputs.py [--record] FOLDER
 
 A landing folder's input contract, checked before any suite or preflight. The kit's own files run every step, so
-INPUTS.json (written with --record when new_folder.sh makes the folder) names each kit file with its sha256 and the
+INPUTS.json (written with --record when new_folder.sh makes the folder) names each kit file (.py, .sh, .mjs) with its sha256 and the
 kit's commit; every one must still hash as recorded, so a kit changed between the folder's making and its landing
 refuses instead of landing with code nobody read. SPEC.json must parse and MERGE-BODY.txt must be readable (both are
 the item's own, so they carry no recorded hash). The external helpers config.py names (the ship tool, the deploy
@@ -27,7 +27,7 @@ def readable(path):
 
 def kit_files():
     return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(KIT.iterdir())
-            if p.is_file() and p.suffix in ('.py', '.sh')}
+            if p.is_file() and p.suffix in ('.py', '.sh', '.mjs')}
 
 
 RECORD = sys.argv[1:2] == ['--record']

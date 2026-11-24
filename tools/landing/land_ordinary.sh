@@ -4,7 +4,8 @@
 # each attempt's command/exit/output kept read-only under <folder>/attempts/<stamp>/ with phases.txt naming every
 # phase's exit or that it was not reached:
 #   the preflight must pass before the suite starts;
-#   the whole node suite on the carry against live must add no failure (node_suite_check.sh's exit);
+#   the whole node suite on the carry against live must add no failure, change no shared failure's cause and stop
+#   no case that passed on live (node_suite_check.sh's exit and its closing line);
 #   the preflight must return 0 and print PREFLIGHT OK; the landing must return 0 and print DEPLOY EXIT0.
 # The whole landing holds the lane lock (tools/lane_lock.py landing): a pending landing admits no new lane run, and the
 # runs already open drain before its suite starts. Once the deploy succeeds, publish.sh posts the dossier and the card;
@@ -35,7 +36,7 @@ step "$A" preflight-early "PREFLIGHT OK" /usr/bin/python3 -I "$K/land.py" "$F" -
 tail -3 "$A/preflight-early.out" 2>/dev/null
 [ "$RC" = 0 ] || { phases "$A" $PHASES; seal "$A"; exit 4; }
 mkdir -p "$A/node-suite-tap"
-step "$A" node-suite "" bash "$K/node_suite_check.sh" "$W" "$LIVE" "$A/node-suite-tap"; RC=$?
+step "$A" node-suite "no new node failure" bash "$K/node_suite_check.sh" "$W" "$LIVE" "$A/node-suite-tap"; RC=$?
 tail -4 "$A/node-suite.out" 2>/dev/null
 [ "$RC" = 0 ] || { phases "$A" $PHASES; seal "$A"; exit 3; }
 step "$A" preflight "PREFLIGHT OK" /usr/bin/python3 -I "$K/land.py" "$F" --preflight; RC=$?

@@ -15,7 +15,7 @@ PHASES="evidence dossier card on-live"
 finish() { phases "$P" $PHASES; seal "$P"; echo "$1"; exit "$2"; }
 step "$P" evidence "Evidence:" /usr/bin/python3 -I "$K/dossier_evidence.py" "$ITEM" "$POSTS/dossier-$ITEM.txt" "$A" || finish "NOT PUBLISHED $ITEM: evidence; see $P" 3
 step "$P" dossier "posted" bash "$K/post_dossier.sh" "$REL" "$ITEM" || finish "NOT PUBLISHED $ITEM: dossier; see $P" 3
-step "$P" card "revised\|already on the page" /usr/bin/python3 -I "$K/cards_add.py" "$ITEM" "$REL" || finish "NOT PUBLISHED $ITEM: card; see $P" 3
+step "$P" card "on the page:" /usr/bin/python3 -I "$K/cards_add.py" "$ITEM" "$REL" || finish "NOT PUBLISHED $ITEM: card; see $P" 3
 ON_LIVE=$(cfg on_live)
 if [ -n "$ON_LIVE" ]; then step "$P" on-live "" bash -c "$ON_LIVE \"\$1\" \"live \$2\"" on-live "$ITEM" "$REL" || finish "NOT PUBLISHED $ITEM: on_live; see $P" 3; fi
 finish "PUBLISHED $ITEM release $REL: $(cat "$POSTS/release-$REL.id" 2>/dev/null)" 0

@@ -50,3 +50,21 @@ def proof(spec, piece, carry_read=None):
         return "the builder's own proof, read and approved in Review at %s" % clock(approved['at_ms'])
     return "the builder's own proof, read in its worktree before the carry; the carry frozen by %s at %s" % (
         freeze.get('by') or 'fable', clock(freeze['at_ms']))
+
+
+def message_from_read(rows, message_id):
+    """One message as a --json read returned it, whole, or None when the read does not hold it.
+
+    rows are the read's JSON objects. A short message's items row is whole. A long one's items row holds only a preview
+    (preview true), and its whole text arrives as a separate object naming it in source_ref, which spells the author
+    'author'. A withheld message is returned with no body, so no proof can be read from it."""
+    row = next((m for r in rows for m in r.get('items') or [] if m.get('id') == message_id), None)
+    if row is None:
+        return None
+    if row.get('preview'):
+        whole = next((r for r in rows if (r.get('source_ref') or {}).get('id') == message_id), None)
+        if whole is None:
+            return None
+        row = dict(whole, id=message_id, author_id=whole.get('author'))
+    return {'id': message_id, 'author_id': row.get('author_id'), 'sent_ms': row.get('sent_ms'),
+            'body': '' if row.get('withheld') else (row.get('body') or '')}

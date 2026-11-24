@@ -1,6 +1,7 @@
 """cards_add.py ITEM RELEASE: puts <posts>/card-ITEM.md at the top of the Done section of the seat's cards page.
 
-The card's "release NNN at TIME" is filled with RELEASE and the time now. The page is read, the card inserted under its
+The card's "release NNN at TIME" is filled with RELEASE and the time the release record says it went live, so a
+publication finished late still states when the release went live. The page is read, the card inserted under its
 "## Done" heading, and the revision written with --expected the revision read, three tries when another writer moves
 it in between. The page's scratch section (a heading holding SCRATCH) must come through byte for byte, or nothing is
 written. A card whose title is already on the page is not added again."""
@@ -34,11 +35,21 @@ def insert(body, card):
     return new
 
 
+def live_time(releases, release):
+    """When RELEASE went live, from the release record's listing (`releases`: "release N  COMMIT  ISO-TIME  shipped …")."""
+    for line in releases.split('\n'):
+        fields = line.split()
+        if fields[:2] == ['release', str(release)] and len(fields) >= 4:
+            return datetime.datetime.fromisoformat(fields[3]).strftime('%-I:%M %p')
+    raise SystemExit('REFUSED: the release record does not list release %s' % release)
+
+
 def main(item, release):
     posts, note = Path(config.get('posts')), config.get('cards_note')
     cli = config.cli()
     path = posts / ('card-%s.md' % item)
-    card = re.sub(r'release (NNN|\d+) at TIME', 'release %s at %s' % (release, datetime.datetime.now().strftime('%-I:%M %p')), path.read_text())
+    record = subprocess.run(cli + ['releases', '--limit', '20'], capture_output=True, text=True).stdout
+    card = re.sub(r'release (NNN|\d+) at (TIME|\d+:\d\d [AP]M)', 'release %s at %s' % (release, live_time(record, release)), path.read_text())
     path.write_text(card)
     title = card.split('\n')[0]
     for _ in range(3):
@@ -48,15 +59,16 @@ def main(item, release):
             raise SystemExit('REFUSED: the cards page %s did not read: %s' % (note, (read.stdout + read.stderr)[-300:]))
         body = '\n'.join(read.stdout.split('\n')[2:])
         if title in body:
-            print('card %s already on the page at revision %s' % (item, revision.group(1)))
+            print('card %s on the page: already there at revision %s' % (item, revision.group(1)))
             return 0
         new = posts / 'cards.new.md'
         new.write_text(insert(body, card))
         out = subprocess.run(cli + ['note', 'revise', note, '--expected', revision.group(1), str(new)], capture_output=True, text=True)
         last = (out.stdout.strip().split('\n') or [''])[-1]
-        print('cards (expected %s): %s' % (revision.group(1), last))
         if 'revised' in last:
+            print('card %s on the page: %s' % (item, last))
             return 0
+        print('cards (expected %s): %s' % (revision.group(1), last))
     return 1
 
 

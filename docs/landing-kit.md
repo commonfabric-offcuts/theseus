@@ -29,15 +29,19 @@ running landing, and `land_ordinary.sh` refuses to start there.
 3. Draft `<posts>/dossier-ITEM.txt` (first line `Release NNN is live: …`, with a line `Evidence: EVIDENCE_TO_FILL`)
    and `<posts>/card-ITEM.md` (with `live as release NNN at TIME`). A landing without both refuses before it starts.
 4. `bash tools/landing/carry_ordinary.sh ITEM APPROVED_HEAD LIVE_COMMIT BRANCH PR` merges live into the head, pushes
-   the carry to the PR's branch, fills the rest of `SPEC.json` and runs the preflight. Run the piece's own tests on
-   the carry worktree, each wrapped in `python3 -I tools/lane_lock.py run --label "ITEM what" -- …`.
+   the carry to the PR's branch, fills the rest of `SPEC.json` and runs the preflight. It exits 0 only when all of
+   that held: 3 on a conflict or a refused `SPEC.json`, 4 when the push was refused (`SPEC.json` unchanged), 5 when
+   the preflight refused (the carry is pushed; `carry-preflight.out` holds the preflight's whole output). Run the
+   piece's own tests on the carry worktree, each wrapped in `python3 -I tools/lane_lock.py run --label "ITEM what" -- …`.
 5. Ask fable to freeze the piece at the carry head. A piece that may not be frozen (one changing
    `tests/test_migrations.py`) lands on fable's read of the carry instead: put `carry_read` `{topic, seq, id, why}`,
    naming that message, in `SPEC.json`.
 6. `bash tools/landing/land_ordinary.sh ITEM CARRY_WORKTREE` is the landing. It takes the lane lock (no new lane run
-   starts, open runs drain), runs the preflight, the whole node suite on the carry against live with each shared
-   failure's cause compared, the preflight again, then `land.py`: backup, rehearsal on a copy, merge, combine, deploy.
-   Once live, `publish.sh` fills the dossier's evidence from the receipts and posts the dossier and the card.
+   starts, open runs drain), runs the preflight, the whole node suite on the carry against live (each shared
+   failure's cause compared, and every case that passed on live checked to run on the carry), the preflight again,
+   then `land.py`: backup, rehearsal on a copy, merge, combine, deploy. Once live, `publish.sh` fills the dossier's
+   evidence from the receipts and posts the dossier and the card; the card states the time the release record gives
+   for the release, however late the publication finishes.
 7. Once live: `python3 -I tools/landing/drop_premerge_backup.py <work>/ITEM-land`.
 
 ## When it stops
@@ -45,16 +49,17 @@ running landing, and `land_ordinary.sh` refuses to start there.
 | Exit | Meaning | Next |
 |---|---|---|
 | 2 | an input, the config, the kit or a draft refused; nothing ran | read the STOP line |
-| 3 | the carry adds a node failure | the lane fixes it; carry again |
+| 3 | the node suite refused: a new failure, a shared failure's changed cause, or a case that passed on live and is skipped or gone on the carry | `node-suite.out` names which; the lane fixes it; carry again |
 | 4 | the preflight refused (a guarded file, the release record, the review's head) | read `preflight*.out`; a guarded file takes the judged path |
 | 5 | `land.py` stopped | read `land.out` and `STOP.json`; with `MERGED.json` present the PR is merged, so read it before anything else |
-| 6 | live, publication unfinished | `bash tools/landing/publish.sh ITEM ATTEMPT_DIR`, which reruns no test and no deploy |
+| 6 | live, publication unfinished | `bash tools/landing/publish.sh ITEM ATTEMPT_DIR`, which reruns no test and no deploy; the dossier goes under the same operation id as before, so a post Core recorded is answered, not made twice |
 
 ## Receipts
 
 Each landing attempt keeps, read-only, `<work>/ITEM-land/attempts/<stamp>/`: `binding.txt` (carry, live and kit
 heads), each phase's `.cmd`, `.out` and `.exit`, the node suite's TAP, and `phases.txt`, which names every phase's exit
-or that it was not reached. Each publication keeps `<work>/ITEM-land/publish-<stamp>/` the same way, so a failed
+or that it was not reached; the node suite's case events (each case's file, name and how it ended) sit beside its
+TAP. The carry keeps its merge, push and preflight output in the folder as `carry-*.out`. Each publication keeps `<work>/ITEM-land/publish-<stamp>/` the same way, so a failed
 publication and its recovery stay apart from the deploy's result.
 
 ## What it refuses
@@ -62,7 +67,11 @@ publication and its recovery stay apart from the deploy's result.
 - a kit changed since the folder was made, or run from the live checkout
 - a landing with no dossier or card draft
 - a carry whose review was written of another head, or that is not live merged into the reviewed head
+- a carry whose push or preflight refused, reported as the carry's own exit
 - a carry that adds a node failure, or a shared failure whose cause changed
+- a case that passed on live and is skipped, todo, cancelled or gone on the carry, unless the carry changed its test
+  file (listed either way)
+- a second dossier post for one release, and a dossier recorded as posted before it is read back from the board
 - an ordinary piece that changes a file the deploy guards
 - a dossier proof that is not the piece's own freeze and approval, or fable's read of the exact carry
 

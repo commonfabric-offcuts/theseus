@@ -4,6 +4,8 @@
 # (SPEC wt), refuses on a conflict, pushes the carry to BRANCH (the PR's head branch), and fills SPEC.json (source,
 # tree, base, carry, files; pr when given). Then it runs the landing's preflight, so a file the landing may not change
 # refuses in seconds. The piece's own tests are the caller's to run on the carry before landing.
+# Exit 0: carried and the preflight passed. 2: refused before the carry. 3: a conflict, or the SPEC or merge body
+# refused. 4: the push was refused. 5: carried, but the preflight refused (its whole output is <folder>/carry-preflight.out).
 set +e
 . "$(dirname "$0")/kit.sh"
 ITEM="$1"; HEAD="$2"; LIVE="$3"; BR="$4"; PR="${5:-}"
@@ -26,8 +28,9 @@ cd "$CLONE" && git fetch -q "$REMOTE" "$RB" "$HEAD" 2>/dev/null
 git fetch -q "$REMOTE" "$RB"; [ "$(git rev-parse FETCH_HEAD)" = "$LIVE" ] || { echo "STOP: $RB is $(git rev-parse FETCH_HEAD | cut -c1-8), not $LIVE"; exit 2; }
 [ -d "$W" ] || git worktree add -q --detach "$W" "$HEAD"
 cd "$W" && git checkout -q --detach "$HEAD" && git reset -q --hard "$HEAD" || { echo "STOP: cannot check out $HEAD in $W"; exit 2; }
-git -c user.name="$SEAT" -c user.email="$SEAT@theseus.local" merge -q --no-edit -m "Carry $ITEM onto live" "$LIVE" > /dev/null 2>&1
+git -c user.name="$SEAT" -c user.email="$SEAT@theseus.local" merge -q --no-edit -m "Carry $ITEM onto live" "$LIVE" > "$F/carry-merge.out" 2>&1; MERGE=$?
 C=$(git status --short | /usr/bin/grep -E "^(UU|AA|DU|UD)" | awk '{print $2}')
+[ "$MERGE" = 0 ] || [ -n "$C" ] || { echo "STOP: merging live into $HEAD failed with no conflict (git exit $MERGE); see $F/carry-merge.out"; exit 3; }
 if [ -n "$C" ]; then
   if [ -n "${RESOLVER:-}" ]; then
     for f in $C; do /usr/bin/python3 -I "$RESOLVER" "$f" || { echo "UNRESOLVED $f"; git merge --abort; exit 3; }; git add "$f"; done
@@ -38,7 +41,8 @@ if [ -n "$C" ]; then
   fi
 fi
 NEW=$(git rev-parse HEAD); echo "carry $NEW parents $(git log -1 --format=%p)"; git diff --stat "$LIVE" HEAD | tail -1
-git push -q "$REMOTE" "${NEW}:refs/heads/$BR" 2>&1 | /usr/bin/grep -vE "^remote:|^$" | head -2
+git push -q "$REMOTE" "${NEW}:refs/heads/$BR" > "$F/carry-push.out" 2>&1; PUSH=$?
+[ "$PUSH" = 0 ] || { /usr/bin/grep -vE "^remote:|^$" "$F/carry-push.out" | head -3; echo "STOP: the push of $NEW to $BR was refused (git exit $PUSH); SPEC.json is unchanged"; exit 4; }
 # land.py refuses unless SPEC files equals the number of paths the carry changes against live.
 /usr/bin/python3 -I - "$F/SPEC.json" "$NEW" "$(git rev-parse HEAD^{tree})" "$LIVE" "$PR" "$(git diff --name-only "$LIVE" HEAD | wc -l | tr -d ' ')" <<'PY'
 import json, os, re, subprocess, sys
@@ -62,4 +66,6 @@ else:
 PY
 [ $? -eq 0 ] || { echo "NOT CARRIED: $ITEM's SPEC or merge body refused above; the carry $NEW is pushed to $BR"; exit 3; }
 echo "CARRIED $ITEM $(date '+%-I:%M %p'): $NEW on $BR"
-/usr/bin/python3 -I "$K/land.py" "$F" --preflight 2>&1 | /usr/bin/grep -E "^(PREFLIGHT OK|STOP|AssertionError|RUNNER POLICY)" | head -3
+/usr/bin/python3 -I "$K/land.py" "$F" --preflight > "$F/carry-preflight.out" 2>&1; PRE=$?
+/usr/bin/grep -E "^(PREFLIGHT OK|STOP|AssertionError|RUNNER POLICY)" "$F/carry-preflight.out" | head -3
+[ "$PRE" = 0 ] && /usr/bin/grep -q "^PREFLIGHT OK" "$F/carry-preflight.out" || { echo "STOP: carried, but the preflight refused (exit $PRE); see $F/carry-preflight.out"; exit 5; }
