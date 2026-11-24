@@ -56,7 +56,9 @@ proof that any of these has happened.
 The inspected baseline is release 418,
 `e0423628964aafea8389d11a29ec4ab38fc13da8`. Release 419,
 `ce13ce60ce08adb63a83ade879cc637a4efbe4d9`, subsequently shipped item 1214's
-landing-tool validation. Neither release establishes the new manual refresh.
+landing-tool validation. Neither release establishes the new manual refresh. The subsequently observed
+release420 (`1e6c6d788ed49c82e75b32b62361e2475cd882c6`) is the web-only1217
+Undo repair; it also does not establish1213/1216 installation.
 An ordinary runner restart resumes the pinned thread. Existing automatic 1104
 recovery can replace one under its qualifying conditions. Installing repository
 seat files did not configure agents to read them.
@@ -354,6 +356,9 @@ acceptance, activation and first warranted action; service/runner stop/start;
 first/last activation span; request-to-last-activation; first- and
 last-activation-to-publication. Fresh Warp reconstructs these from receipts and
 message/release times. Unknown timestamps and failed members remain visible.
+The revised15:35 forecast is exactly20 minutes after15:15; it is not an
+under20-minute result, and an earlier initiating shutdown makes the interval
+longer. Preserve that forecast without scoring or shifting time zero to fit it.
 Speed, product acceptance, forecast error and independence from memory receive
 separate verdicts; a fast reboot cannot compensate for unreliable shipping.
 

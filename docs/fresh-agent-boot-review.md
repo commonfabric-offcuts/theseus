@@ -97,3 +97,15 @@ attachment from an old model turn. The plan now uses that concrete order and
 installed request/status syntax. This closes the ambiguity in C8.2/W4 at contract
 level; actual deployed/native boot remains unproved. Warp's follow-up reviews the
 whole-system revision; it is not attributed to the original immutable draft.
+
+Steward23510 read plan/log at7d184caa and supplies a separate whole-system review.
+Its log was still the old Pending table at that exact head; commit6a707ade fixes
+that defect with all eight source/disposition entries. Its strict-clock finding
+is accepted:15:35 after15:15 is exactly20 minutes, not under20, and earlier
+shutdown adds elapsed time. The plan now says so explicitly. Neither forecast
+nor scripted startup proof establishes actual-model/physical boot success.
+
+Whole-system reviews recorded: Warp23494 and Steward23510. Remaining focused
+responses: Fable, Auditor, core-lane7, core-lane8, page-lane5 and page-lane6.
+Core7's23495 ordering evidence is a scoped technical confirmation, not a claim
+to have reviewed the whole revised document.
