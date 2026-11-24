@@ -196,7 +196,7 @@ USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute
          "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] [--attach FILE]... TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
-         "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch [--once] | retry OPERATION | releases [--limit N] | health "
+         "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch [--once] | retry OPERATION | releases [--limit N] | browser-jobs OUTCOME [--release N] | browser-job ID | browser-catalog OUTCOME | health "
          "| attachment ATTACHMENT (--message MESSAGE | --page PAGE) --out FILE "
          "| notes SCOPE [--topic] | note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE|- "
          "| note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE|- "
@@ -405,6 +405,11 @@ def _parser():
     verb("watch").add_argument("--once", action="store_true")
     verb("retry").add_argument("operation")
     verb("releases").add_argument("--limit", type=int)
+    browser_jobs = verb("browser-jobs")
+    browser_jobs.add_argument("outcome")
+    browser_jobs.add_argument("--release", type=int)
+    verb("browser-job").add_argument("job")
+    verb("browser-catalog").add_argument("outcome")
     verb("health")
     attachment = verb("attachment")
     attachment.add_argument("attachment")
@@ -1028,6 +1033,26 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
         if not items:
             self.out.plain("no releases recorded")
 
+    def do_browser_job(self):
+        answer = self.view('browser_job', {'id': self.options.job})
+        self.out.plain(json.dumps(answer['job'], ensure_ascii=False, indent=2))
+
+    def do_browser_catalog(self):
+        answer = self.view('browser_catalog', {'workspace_id': self.options.outcome})
+        self.out.plain(json.dumps(answer['catalog'], ensure_ascii=False, indent=2))
+
+    def do_browser_jobs(self):
+        args = {'workspace_id': self.options.outcome}
+        if self.options.release is not None:
+            args['release'] = self.options.release
+        items = self.pages('browser_jobs', args)
+        for job in items:
+            self.out.plain('%s release%s %s %s owner=%s%s' % (
+                job['id'], job['release_number'], job['source_sha'], job['state'], job['owner_id'] or 'unassigned',
+                ' [' + job['mapping_problem'] + ']' if job['mapping_problem'] else ''))
+        if not items:
+            self.out.plain('no browser jobs recorded')
+
     def do_health(self):
         """What is healthy and what is not, from Core's facts, in the Health page's words (docs/health.md)."""
         answer = self.view("health", {})
@@ -1412,6 +1437,10 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
 
     @staticmethod
     def delivery_line(item):
+        if item.get('browser_job'):
+            job = item['browser_job']
+            return 'browser job %s release%s source %s state %s: browser-job %s  [%s in %s]' % (
+                job['id'], job['release_number'], job['source_sha'], job['state'], job['id'], item['id'], item['topic']['id'])
         if item.get('retraction'):
             removed = item['retraction']
             return 'retraction "%s" %s retracted %s; it no longer asks, answers or holds a wait.  [%s in %s]' % (

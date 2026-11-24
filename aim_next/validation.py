@@ -4,6 +4,9 @@ from .contract import LIMITS, Refusal, _identifier, _json
 
 
 COMMANDS = {
+    "browser_catalog.set": "_command_browser_catalog_set",
+    "browser_jobs.reconcile": "_command_browser_jobs_reconcile",
+    **{"browser_job." + name: "_command_browser_job_" + name for name in ("assign", "claim", "child", "finish", "fix")},
     **{"assessment."+name: "_command_assessment_"+name for name in ("request","attach","finish","renew","abandon")},
     "agent.execution": "_command_agent_execution",
     "workspace.create": "_command_workspace_create",
@@ -145,7 +148,13 @@ REQUIRED_EXPECTED = {"workspace.link_set": "link_revision","agent.execution": "e
                      "message.star": "star_revision", "message.deal": "deal_revision", "message.fold": "fold_revision", "message.fold_through": "fold_revision", "stack.aside": "aside_revision",
                      "stack.place": "place_revision", "stack.level": "level_revision", "stack.name": "name_revision", "stack.join": "join_revision",
                      "stack.move": "move_revision", "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
+EXPECTED.update({"browser_catalog.set": {"catalog_revision"}, "browser_jobs.reconcile": set(),
+                 **{"browser_job." + name: {"job_revision"} for name in ("assign", "claim", "child", "finish", "fix")}})
+REQUIRED_EXPECTED.update({"browser_catalog.set": "catalog_revision",
+                          **{"browser_job." + name: "job_revision" for name in ("assign", "claim", "child", "finish", "fix")}})
 VIEWS = {
+    "browser_job": {"id"}, "browser_jobs": {"workspace_id", "release", "limit", "cursor"},
+    "browser_catalog": {"workspace_id"},
     "workspace_links": {"workspace_id", "cursor", "limit"},
     "submission_mention_reach": {"submission_id", "cursor", "limit"},
     "rail_dimming": {"candidate"},
@@ -278,7 +287,7 @@ def _view_arguments(name, args):
             if cursor != "":
                 from .topic_state import order_position
                 order_position(cursor)
-        elif name in ("workspaces", "openings", "workspace_members", "actors", "colors", "source_topics", "assessments", "hosted_seats"):
+        elif name in ("workspaces", "openings", "workspace_members", "actors", "colors", "source_topics", "assessments", "hosted_seats", "browser_jobs"):
             if cursor != "":
                 _identifier(cursor, "cursor")
             elif not isinstance(cursor, str):

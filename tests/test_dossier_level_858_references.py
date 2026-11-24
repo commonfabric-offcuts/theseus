@@ -17,6 +17,14 @@ class DossierLevelReferences858(RequestCase):
     def kept(self):
         rows = {name: self.sql('SELECT * FROM "%s" ORDER BY rowid' % name)
                 for name in ("message_acts", "refresh_requests", "deliveries")}
+        # 1200 adds a typed delivery reference after this historical step.
+        # Prove its default explicitly, then retain every older column exactly.
+        columns = [row[1] for row in self.sql("PRAGMA table_info(deliveries)")]
+        if "browser_job_id" in columns:
+            index = columns.index("browser_job_id")
+            self.assertTrue(all(row[index] is None for row in rows["deliveries"]),
+                            "the historical fixture has no browser-job deliveries")
+            rows["deliveries"] = [row[:index] + row[index + 1:] for row in rows["deliveries"]]
         # A change to the acts is announced at its row id, so where the next id goes on from is kept too.
         rows["sequence"] = self.sql("SELECT seq FROM sqlite_sequence WHERE name='message_acts'")
         return rows

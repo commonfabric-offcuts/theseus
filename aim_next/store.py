@@ -67,12 +67,14 @@ from .withdrawal import Withdrawal, WITHDRAWAL_SCHEMA
 from .questions import Questions, QUESTION_SCHEMA
 from .answer_delivery import AnswerDelivery, ANSWER_UP
 from .refresh_delivery import RefreshDelivery, REQUEST_UP
+from .browser_jobs import BrowserJobs
+from .browser_job_schema import UP as BROWSER_JOBS_UP
 from . import message_edit, removal
 from .removal import Removal, REMOVAL_UP
 from .piece_freeze import FREEZE_SCHEMA
 from .hosted_seats import HostedSeats, SEAT_SCHEMA, END_SCHEMA
 from .workspace_links import WorkspaceLinks, LINK_SCHEMA
-SCHEMA_VERSION = "69"
+SCHEMA_VERSION = "70"
 from .hosted_seats import HostedSeats, SEAT_SCHEMA, END_SCHEMA, TEMPLATE_SCHEMA
 
 
@@ -162,7 +164,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path, write=True)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA + TOPIC_POSITION_SCHEMA + WRITER_SCHEMA + COVER_WAIT_SCHEMA + MEMORY_ACTION_SCHEMA + MOVE_SCHEMA + ASK_COVER_SCHEMA + DOSSIER_ORDER_SCHEMA + WITHDRAWAL_SCHEMA + REQUEST_UP + QUESTION_SCHEMA + ANSWER_UP + REMOVAL_UP + OUTCOME_COLOR_SCHEMA + FREEZE_SCHEMA + SOURCE_COVER_SCHEMA + DIM_SCHEMA + SEAT_SCHEMA + END_SCHEMA + LINK_SCHEMA + ACT_LEVEL + TEMPLATE_SCHEMA + MEMORY_TRANSFER_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA + TOPIC_POSITION_SCHEMA + WRITER_SCHEMA + COVER_WAIT_SCHEMA + MEMORY_ACTION_SCHEMA + MOVE_SCHEMA + ASK_COVER_SCHEMA + DOSSIER_ORDER_SCHEMA + WITHDRAWAL_SCHEMA + REQUEST_UP + QUESTION_SCHEMA + ANSWER_UP + REMOVAL_UP + OUTCOME_COLOR_SCHEMA + FREEZE_SCHEMA + SOURCE_COVER_SCHEMA + DIM_SCHEMA + SEAT_SCHEMA + END_SCHEMA + LINK_SCHEMA + ACT_LEVEL + TEMPLATE_SCHEMA + MEMORY_TRANSFER_SCHEMA + BROWSER_JOBS_UP:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -205,7 +207,7 @@ _TOPIC_SUMMARY = "LEFT JOIN topic_summaries s ON s.topic_id=t.id LEFT JOIN messa
 from .hosted_recovery import HostedRecovery
 
 
-class Store(HostedRecovery, WorkspaceLinks, MentionReach, RailDimming, Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, OutcomeColors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
+class Store(BrowserJobs, HostedRecovery, WorkspaceLinks, MentionReach, RailDimming, Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, OutcomeColors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
             OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Covers, CoverRefresh, DossierMove, AskCover, Blocking, MessageEdit, Invites, Tools, Withdrawal, RefreshDelivery, Questions, AnswerDelivery, Removal, HostedSeats):
     def __init__(self, db_path, expected_instance_id, *, expected_binding, machine=None, tools=None):
         self.path = Path(db_path).resolve()
@@ -278,6 +280,7 @@ class Store(HostedRecovery, WorkspaceLinks, MentionReach, RailDimming, Onboardin
             found["release"], written = write_release(db, record, _now_ms())
             if written:
                 self._ship_release(db, found["release"])
+                self._browser_enqueue_release(db, found["release"])
             return written
         written = self._operator_write(write, "recorded", "release record")
         return {"instance_id": self.instance_id, "release": found["release"], "recorded": written}

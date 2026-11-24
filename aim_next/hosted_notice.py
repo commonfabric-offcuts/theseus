@@ -144,6 +144,14 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     # Each dossier to name is said once, on its first delivery listed.
     to_name = set()
     for number, item in enumerate(listed, 1):
+        if item.get('browser_job'):
+            job = item['browser_job']
+            lines.append('%d. browser job %s for release %d, exact source %s, delivery %s. '
+                         'Read: aim-next browser-job %s. Reconcile its original attempt/child before any launch; '
+                         'an acknowledgement is not a browser result.' % (
+                             number, _named(job['id']), job['release_number'], _named(job['source_sha']),
+                             _named(item['id']), _named(job['id'])))
+            continue
         if item.get('retraction'):
             removed = item['retraction']
             lines.append('%d. retraction: message %s was retracted by %s; it no longer asks, answers or holds a wait. '
@@ -201,7 +209,7 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
                                           " Titles and previews are in the untrusted context." if PREVIEWS_IN_CONTEXT else ""))
     first = {}
     for item in listed:
-        if item.get("request") or item.get('retraction'):
+        if item.get("request") or item.get('retraction') or item.get('browser_job'):
             continue
         topic = item["topic"]["id"]
         if _named(topic) != UNNAMED:
@@ -212,8 +220,8 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     if PREVIEWS_IN_CONTEXT:
         previews = "\n".join("%s: %s" % (_named(item["id"]), json.dumps(
             {"topic": item["topic"]["id"], "title": _title(item["topic"]),
-             "from": item['retraction']['by'] if item.get('retraction') else item['answer']['actor_id'] if item.get('answer') else item["request"]["requester_id"] if item.get("request") else item["message"]["author_id"],
-             "body": 'Message retracted.' if item.get('retraction') else (('%s: %s%s; question: ' % (item['answer']['kind'], item['answer']['value'],
+             "from": 'Core browser job' if item.get('browser_job') else item['retraction']['by'] if item.get('retraction') else item['answer']['actor_id'] if item.get('answer') else item["request"]["requester_id"] if item.get("request") else item["message"]["author_id"],
+             "body": json.dumps(item['browser_job'], ensure_ascii=False) if item.get('browser_job') else 'Message retracted.' if item.get('retraction') else (('%s: %s%s; question: ' % (item['answer']['kind'], item['answer']['value'],
                        '' if item['answer']['stands'] else ' (no longer stands)')) + item['message']['body']) if item.get('answer') else
                      item["request"]["body"] if item.get("request") else item["message"]["body"]}, ensure_ascii=False)) for item in listed)
         context = {"theseus.previews." + attempt_id: {"kind": "untrusted", "value": previews}}
