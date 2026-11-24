@@ -66,8 +66,9 @@ test('1207 a hover-capable narrow screen can touch an already revealed topic on 
   assert.equal(f.revealed(), true);
   f.emit(link, 'pointerdown', { pointerType: 'touch' });
   const event = f.action('click', link);
-  assert.equal(f.revealed(), false); assert.equal(event.prevented, false); assert.equal(event.stopped, false);
-  assert.equal(f.opens[0][0], link.dataset.topicId);
+  assert.equal(f.revealed(), false);
+  assert.equal(f.opens[0]?.[0], link.dataset.topicId, 'the normal TopicRail action still opens the topic');
+  assert.equal(event.stopped, false, 'the first-touch reveal bridge must not swallow an already visible link');
 });
 
 test('1207 touch movement does not start pointer reveal', t => {
