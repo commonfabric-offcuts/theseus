@@ -126,6 +126,22 @@ class DeployHost938Case(HostCase):
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait(timeout=5)
+        # deploy.start creates a session for each captured process. Its direct
+        # exit can precede an in-flight Git child; wait for those owned groups
+        # before HostCase's earlier TemporaryDirectory cleanup removes .git.
+        groups = {process.pid for process in self.started}
+        deadline = time.monotonic() + 5
+        observations = []
+        while True:
+            rows = subprocess.check_output(['ps', '-axo', 'pid=,pgid=,command='], text=True).splitlines()
+            remaining = [row.strip() for row in rows if len(row.split(None, 2)) >= 2
+                         and int(row.split(None, 2)[1]) in groups]
+            observations.append({'at': time.monotonic(), 'remaining': remaining})
+            if not remaining or time.monotonic() >= deadline:
+                break
+            time.sleep(.05)
+        print(json.dumps({'fixture_cleanup': 'deploy938', 'groups': sorted(groups), 'observations': observations}))
+        self.assertEqual(remaining, [], 'owned deploy fixture group did not drain before directory cleanup')
 
     def perform(self, target, hook=None):
         summary = self.root / 'check.json'
