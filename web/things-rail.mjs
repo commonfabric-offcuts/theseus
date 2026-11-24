@@ -362,6 +362,8 @@ export class ThingsRail {
     return rows;
   }
   act(action, row, rows) {
+    // The rail has no Undo of its own; ⌘Z goes on to the page's, as after a Delete chosen from a row's menu.
+    if (action === 'undo') return false;
     const section = row.level === 1 ? row.el.parentElement : row.el.closest('details');
     // A plain Left always crosses the pane; folding is an explicit action.
     if (action === 'left') { panes.step('things', 'left', this.doc); return; }
