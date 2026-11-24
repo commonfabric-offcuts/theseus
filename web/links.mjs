@@ -8,6 +8,7 @@
 // message in one shows the topic's name once the page knows it.
 import { parseRoute, routeHref } from './topic-navigation.mjs';
 import { charBefore, isSpace, isWord } from './characters.mjs';
+import { copyLocalFileOnClick } from './local-file-copy.mjs';
 
 // Where an address may start: its scheme. Where one does start, and where it
 // ends, is addressAt's to say.
@@ -207,7 +208,7 @@ function topicLink(doc, words, link, place) {
 // The link its author wrote as [words](target), as { href, route, written },
 // or null when the target is neither a full http(s) address nor a query
 // naming one of this instance’s existing places. Explicit angle destinations
-// may also opt into an inert local { reference, written } instead. An address
+// may also opt into a local { reference, written } that copies its path. An address
 // goes to the target as written, whole: none of a bare address's endings
 // apply, and a link to a topic keeps its words rather than showing the
 // topic's name. Where such a link starts and ends is Markdown's to say
@@ -229,8 +230,8 @@ export function writtenLink(target, { meter, localReference = false } = {}) {
   return url ? { href: url.href, route: ownPlace(url), written: true } : null;
 }
 
-// One link as a node: an anchor showing words or a topic's name, or an inert
-// local reference whose title keeps the author's destination.
+// One link as a node: an anchor showing words or a topic's name, or a local
+// reference whose title keeps the author's destination and whose click copies it.
 // mark(node): told of each node that stands for the words, an anchor that
 // takes a bare id's place once its topic is named among them.
 export function linkNode(doc, words, link, mark = node => node) {
@@ -240,7 +241,8 @@ export function linkNode(doc, words, link, mark = node => node) {
     reference.title = link.reference;
     // Preserve native text selection while keeping the surrounding card's
     // fold, edit and modifier-selection handlers out of this press.
-    for (const type of ['mousedown', 'click']) reference.addEventListener(type, event => event.stopPropagation());
+    for (const type of ['pointerdown', 'mousedown', 'click']) reference.addEventListener(type, event => event.stopPropagation());
+    copyLocalFileOnClick(reference, link.reference, doc);
     return mark(reference);
   }
   return named(link) ? topicLink(doc, words, link, mark) : mark(anchor(doc, words, link));
